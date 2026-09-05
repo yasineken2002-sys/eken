@@ -1865,6 +1865,21 @@ model InvoicePayment {
 
   source InvoicePaymentSource
 
+  // ── BETALNINGSSÄTTET, ÄNTLIGEN SOM DATA ───────────────────────────────────
+  //
+  // Fanns tidigare bara i `InvoiceEvent.payload` (jsonb) — alltså i en
+  // append-only logg, oåtkomlig för en fråga. Kolumnen gör det som redan
+  // registrerades sökbart, och är NULL för rader skrivna före den fanns
+  // (append-only: ingen backfill kan gissa vad som inte lagrades).
+  paymentMethod PaymentMethod?
+
+  // RÅTEXTEN operatören valde: 'Plusgiro', 'Autogiro', 'Bankgiro'.
+  //
+  // Enumen ovan är grövre än gränssnittet — de tre blir alla BANK — och
+  // skillnaden kastades förut i `toPaymentMethod`. En avstämning mot ett
+  // kontoutdrag tappade då information som fanns i valögonblicket.
+  paymentMethodRaw String?
+
   createdAt DateTime @default(now())
 
   invoice         Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)

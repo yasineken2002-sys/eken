@@ -573,19 +573,40 @@ export type PaySupplierInvoiceInput = z.infer<typeof PaySupplierInvoiceSchema>
  */
 export const IsoDatumSchema = z.union([z.string().date(), z.string().datetime({ offset: true })])
 
+/**
+ * BETALNINGSSÄTTET — EN uppräkning för båda pengavägarna.
+ *
+ * Fanns tidigare i två oförenliga former: avin tog enumvärdet (`'BANK'`) mot
+ * `@IsEnum(PaymentMethod)`, fakturan tog en etikett (`'Bankgiro'`) mot fri text
+ * som `toPaymentMethod` mappade tyst. Samma fältnamn, samma handling —
+ * registrera en manuell betalning — och två värdemängder som inte gick att
+ * skicka mellan varandra: fakturans värde gav 400 hos avin, avins värde blev
+ * `MANUAL` hos fakturan (glidning G3, mätt i #801/#805).
+ *
+ * Värdena speglar Prisma-enumen `PaymentMethod`. Den är GROVARE än de fem
+ * alternativ gränssnittet erbjuder — bankgiro, plusgiro och autogiro är alla
+ * `BANK` — och därför bär nyttolasten också `paymentMethodRaw`, se nedan.
+ */
+export const PaymentMethodSchema = z.enum(['BANK', 'CASH', 'SWISH', 'MANUAL'])
+
 export const RegisterPaymentSchema = z.object({
   /** Inbetalt belopp i kronor. Grindas mot restskulden server-side. */
   amount: z.number().positive('Beloppet måste vara större än noll'),
   /**
-   * FRI TEXT med flit, inte en enum.
-   *
-   * Servern normaliserar via `toPaymentMethod` till Prisma-enumen
-   * (BANK/CASH/SWISH/MANUAL), och den mängden är GROVARE än de fem alternativ
-   * gränssnittet erbjuder: Bankgiro, Plusgiro och Autogiro blir alla `BANK`.
-   * Att skriva de fem här hade alltså PÅSTÅTT en precision modellen inte har.
-   * Se glidning G2 i PR-texten.
+   * SAMMA ENUM SOM AVIN sedan G3 stängdes. Utelämnat betyder `MANUAL` — "inte
+   * angivet" och "manuellt registrerat" är samma sak här, och den defaulten
+   * sätts på ETT ställe i tjänsten, inte av en textmappning.
    */
-  paymentMethod: z.string().optional(),
+  paymentMethod: PaymentMethodSchema.optional(),
+  /**
+   * RÅTEXTEN operatören valde, t.ex. `'Plusgiro'`.
+   *
+   * Enumen är grövre än gränssnittet: bankgiro, plusgiro och autogiro blir alla
+   * `BANK`. Tidigare KASTADES skillnaden — `toPaymentMethod` mappade och det
+   * valda ordet fanns sedan ingenstans. Nu sparas det bredvid enumen, så
+   * avstämningen behåller information den redan hade.
+   */
+  paymentMethodRaw: z.string().max(60).optional(),
   /** OCR eller annan referens. Utelämnad faller servern tillbaka på OCR-numret. */
   reference: z.string().optional(),
   /**
@@ -622,6 +643,7 @@ export const CreateCreditNoteSchema = z.object({
   reason: z.string().min(5, 'Ange ett skäl till krediteringen (minst 5 tecken)'),
 })
 
+export type PaymentMethodInput = z.infer<typeof PaymentMethodSchema>
 export type RegisterPaymentInput = z.infer<typeof RegisterPaymentSchema>
 export type CreditNoteLineInput = z.infer<typeof CreditNoteLineSchema>
 export type CreateCreditNoteInput = z.infer<typeof CreateCreditNoteSchema>
@@ -692,18 +714,13 @@ export const SendNoticesSchema = z.object({
 })
 
 /**
- * BETALSÄTTET ÄR ENUMEN HÄR, till skillnad från fakturans motsvarighet.
- *
- * `MarkPaidDto` har `@IsEnum(PaymentMethod)` och webben skickar `'BANK'`.
- * Fakturans `RegisterPaymentSchema` har fri text och webben skickar `'Bankgiro'`
- * — samma fältnamn, två oförenliga värdemängder, på två manuella
- * betalningsregistreringar (glidning G3 i #801). Det här schemat speglar sin
- * DTO; att ENA de två vägarna är ett eget beslut med egen migrering, inte en
- * följdändring i en kontrakts-PR.
+ * Betalsättet är `PaymentMethodSchema` — SAMMA uppräkning som fakturans sedan
+ * G3 stängdes. Skillnaden mot avin är att avin KRÄVER fältet; fakturan tillåter
+ * att det utelämnas och tolkar det som `MANUAL`.
  */
 export const MarkNoticePaidSchema = z.object({
   paidAmount: z.number().min(0.01, 'Beloppet måste vara större än noll'),
-  paymentMethod: z.enum(['BANK', 'CASH', 'SWISH', 'MANUAL']),
+  paymentMethod: PaymentMethodSchema,
   paidAt: IsoDatumSchema.optional(),
 })
 

@@ -1,5 +1,14 @@
 import type { RegisterPaymentInput, SammaNycklar } from '@eken/shared'
-import { IsNumber, IsOptional, IsPositive, IsString, IsDateString } from 'class-validator'
+import {
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+} from 'class-validator'
+import { PaymentMethod } from '@prisma/client'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 /**
@@ -25,9 +34,22 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   @ApiPropertyOptional({
     description: 'Betalningssätt (Bankgiro, Plusgiro, Swish, Kontant, Autogiro)',
   })
+  /**
+   * SAMMA ENUM SOM AVIN. Var tidigare fri text som `toPaymentMethod` mappade
+   * tyst — en felstavning blev `MANUAL` utan att något sa ifrån. Utelämnat
+   * betyder `MANUAL`, och den defaulten sätts i tjänsten.
+   */
+  @IsOptional()
+  @IsEnum(PaymentMethod, {
+    message: `Betalningssättet måste vara ett av ${Object.values(PaymentMethod).join(', ')}`,
+  })
+  paymentMethod?: PaymentMethod
+
+  /** Etiketten operatören valde ('Plusgiro'). Bevaras bredvid enumen. */
   @IsOptional()
   @IsString()
-  paymentMethod?: string
+  @MaxLength(60)
+  paymentMethodRaw?: string
 
   @ApiPropertyOptional({ description: 'OCR/referens' })
   @IsOptional()

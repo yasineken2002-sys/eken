@@ -55,22 +55,6 @@ const PAYABLE_STATUSES: InvoiceStatus[] = ['SENT', 'PARTIAL', 'OVERDUE', 'SENT_T
 // Frontend/AI skickar visningssträngar ('Bankgiro', 'Swish', …) eller inget alls —
 // inte PaymentMethod-enumen som styr likvidkontot. Mappa till enumen; okänt eller
 // utelämnat betalsätt → MANUAL (bokförs konservativt mot 1930, se PAYMENT_METHOD_TO_ACCOUNT).
-export function toPaymentMethod(raw: unknown): PaymentMethod {
-  switch (String(raw ?? '').toLowerCase()) {
-    case 'swish':
-      return 'SWISH'
-    case 'kontant':
-    case 'cash':
-      return 'CASH'
-    case 'bankgiro':
-    case 'plusgiro':
-    case 'autogiro':
-    case 'bank':
-      return 'BANK'
-    default:
-      return 'MANUAL'
-  }
-}
 
 @Injectable()
 export class InvoicesService {
@@ -1227,7 +1211,13 @@ export class InvoicesService {
     paymentMethod: PaymentMethod,
     actorId: string | null,
     actorType: 'USER' | 'SYSTEM',
-    opts: { enteredAmount?: number; reference?: string; paidAt?: Date } = {},
+    opts: {
+      enteredAmount?: number
+      reference?: string
+      paidAt?: Date
+      /** Etiketten operatören valde. Enumen ovan är grövre; se schemat. */
+      paymentMethodRaw?: string
+    } = {},
   ): Promise<Invoice> {
     const paymentDate = opts.paidAt ?? new Date()
 
@@ -1386,6 +1376,11 @@ export class InvoicesService {
             amount: settlement,
             paidAt: paymentDate,
             source: 'MANUAL',
+            // Betalsättet skrivs på ALLOKERINGEN, inte bara i händelseloggen.
+            // Loggen är append-only jsonb och går inte att fråga; det här är
+            // raden en avstämning faktiskt kan läsa.
+            paymentMethod,
+            ...(opts.paymentMethodRaw ? { paymentMethodRaw: opts.paymentMethodRaw } : {}),
           },
         })
 
@@ -1434,6 +1429,7 @@ export class InvoicesService {
             settlementAmount: settlement.toNumber(),
             outstandingAfter: debtAfter.outstanding.toNumber(),
             paymentMethod,
+            ...(opts.paymentMethodRaw ? { paymentMethodRaw: opts.paymentMethodRaw } : {}),
             ...(opts.enteredAmount != null ? { amount: opts.enteredAmount } : {}),
             ...(opts.reference ? { reference: opts.reference } : {}),
             paidAt: paymentDate.toISOString(),

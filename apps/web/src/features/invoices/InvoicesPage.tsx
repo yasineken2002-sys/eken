@@ -49,6 +49,7 @@ import type {
   Tenant,
 } from '@eken/shared'
 import { RegisterPaymentSchema } from '@eken/shared'
+import { ETIKETTER, metodForEtikett } from './components/payment-methods'
 import { downloadInvoicePdf } from './api/invoices.api'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
@@ -131,13 +132,7 @@ function PaymentSubForm({
           label="Betalningssätt"
           value={form.paymentMethod}
           onChange={(e) => setForm((p) => ({ ...p, paymentMethod: e.target.value }))}
-          options={[
-            { value: 'Bankgiro', label: 'Bankgiro' },
-            { value: 'Plusgiro', label: 'Plusgiro' },
-            { value: 'Swish', label: 'Swish' },
-            { value: 'Kontant', label: 'Kontant' },
-            { value: 'Autogiro', label: 'Autogiro' },
-          ]}
+          options={ETIKETTER.map((e) => ({ value: e, label: e }))}
         />
         <div className="col-span-2">
           <Input
@@ -321,9 +316,13 @@ export function InvoicesPage() {
     // ANNOTERAD: utan typen är literalen en inferrerad const och TypeScript kör
     // ingen överskottskontroll — ett fält som finns här men inte i kontraktet
     // hade passerat tyst.
+    // Etiketten översätts till enumen HÄR, och båda skickas. Hittas etiketten
+    // inte i tabellen är det en bugg i listan ovan, inte något att gissa om —
+    // därför MANUAL och råtexten kvar, så spåret finns.
     const kropp: RegisterPaymentInput = {
       amount: Number(form.amount),
-      paymentMethod: form.paymentMethod,
+      paymentMethod: metodForEtikett(form.paymentMethod),
+      paymentMethodRaw: form.paymentMethod,
       reference: form.reference,
     }
 

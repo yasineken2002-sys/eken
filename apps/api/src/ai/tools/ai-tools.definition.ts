@@ -1,4 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { PaymentMethodSchema } from '@eken/shared'
+
+/**
+ * Betalsättets tillåtna värden — HÄRLEDDA ur det delade schemat, aldrig en egen
+ * lista. En andra uppräkning här hade kunnat glida ifrån den enum servern
+ * validerar mot, och modellen hade då fått veta något annat än vad som gäller.
+ */
+const BETALSATT_VARDEN = [...PaymentMethodSchema.options]
 
 export const TOOLS: Anthropic.Tool[] = [
   // ── READ TOOLS (no confirmation needed) ──────────────────────────────────
@@ -163,6 +171,15 @@ export const TOOLS: Anthropic.Tool[] = [
         invoiceNumber: { type: 'string', description: 'För visning' },
         amount: { type: 'number', description: 'Betalt belopp' },
         paymentDate: { type: 'string', description: 'Betalningsdatum YYYY-MM-DD' },
+        // DEKLARERAT, inte bara läst. Utföraren läste `toolInput.paymentMethod`
+        // medan schemat inte nämnde fältet — modellen kunde alltså aldrig
+        // legitimt fylla i det, och `toPaymentMethod(undefined)` gjorde varje
+        // AI-registrerad betalning till MANUAL utan att någon valt det.
+        paymentMethod: {
+          type: 'string',
+          enum: BETALSATT_VARDEN,
+          description: 'Betalningssätt. Utelämnat = MANUAL (manuellt registrerad).',
+        },
       },
       required: ['invoiceId', 'invoiceNumber', 'amount'],
     },

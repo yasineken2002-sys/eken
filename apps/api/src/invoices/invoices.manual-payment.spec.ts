@@ -30,7 +30,7 @@
 jest.mock('./pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
-import { InvoicesService, toPaymentMethod } from './invoices.service'
+import { InvoicesService } from './invoices.service'
 
 function makeService(
   opts: {
@@ -276,21 +276,5 @@ describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
       service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {}),
     ).rejects.toThrow(/redan reglerad eller makulerad/i)
     expect(createJournalEntryForInvoiceManualPayment).not.toHaveBeenCalled()
-  })
-})
-
-describe('toPaymentMethod — UI-sträng → PaymentMethod-enum', () => {
-  it('mappar visningssträngarna till rätt enum', () => {
-    expect(toPaymentMethod('Bankgiro')).toBe('BANK')
-    expect(toPaymentMethod('Plusgiro')).toBe('BANK')
-    expect(toPaymentMethod('Autogiro')).toBe('BANK')
-    expect(toPaymentMethod('Swish')).toBe('SWISH')
-    expect(toPaymentMethod('Kontant')).toBe('CASH')
-  })
-
-  it('faller tillbaka till MANUAL för okänt/utelämnat betalsätt', () => {
-    expect(toPaymentMethod(undefined)).toBe('MANUAL')
-    expect(toPaymentMethod('')).toBe('MANUAL')
-    expect(toPaymentMethod('Bitcoin')).toBe('MANUAL')
   })
 })

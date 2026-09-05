@@ -11,7 +11,8 @@ import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
-import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
+import { PaymentMethodSchema } from '@eken/shared'
+import { InvoicesService } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
 import { LeasesService } from '../../leases/leases.service'
@@ -1455,7 +1456,10 @@ export class ToolExecutorService {
           await this.invoicesService.markAsPaidManually(
             paidInvoiceId,
             organizationId,
-            toPaymentMethod(toolInput.paymentMethod),
+            // SAMMA schema som människovägen validerar mot — ingen egen lista
+            // och ingen textmappning. Ett värde utanför enumen tas inte emot;
+            // utelämnat betyder MANUAL, precis som i controllern.
+            PaymentMethodSchema.catch('MANUAL').parse(toolInput.paymentMethod),
             userId,
             'USER',
             {

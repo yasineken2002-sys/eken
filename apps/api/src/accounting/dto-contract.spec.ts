@@ -40,6 +40,8 @@ import { CreateExpenseDto } from './dto/create-expense.dto'
 import { CreateSupplierInvoiceDto } from './dto/supplier-invoice.dto'
 import { CreateMeterSchema, RegisterPaymentSchema } from '@eken/shared'
 import { RegisterPaymentDto } from '../invoices/dto/register-payment.dto'
+import { MarkNoticePaidSchema } from '@eken/shared'
+import { MarkPaidDto } from '../avisering/dto/mark-paid.dto'
 import { CreateMeterDto } from '../consumption/dto/create-meter.dto'
 import { KONTRAKTSREGISTER } from '../common/contract/schema-dto-registry'
 import type { ZodType } from 'zod'
@@ -317,7 +319,7 @@ describe('känd avvikelse: uuid-strikthet', () => {
  * fäller åt båda hållen.
  */
 describe('paidAt — datumformat i paritet', () => {
-  const bas = { amount: 1250, paymentMethod: 'Bankgiro' }
+  const bas = { amount: 1250, paymentMethod: 'BANK' }
   const godtagna = [
     '2026-09-01',
     '2026-09-01T10:30:00Z',
@@ -392,5 +394,82 @@ describe('känd avvikelse: .date() är strängare än @IsISO8601()', () => {
       accountNumber: 5070,
     }
     expect(schematGodtar(CreateExpenseSchema, kropp)).toBe(true)
+  })
+})
+
+/**
+ * G3 STÄNGD — samma indata, samma utfall på BÅDA pengavägarna.
+ *
+ * Före den här ändringen tog avin enumvärdet (`'BANK'`) mot
+ * `@IsEnum(PaymentMethod)` medan fakturan tog en etikett (`'Bankgiro'`) mot fri
+ * text som `toPaymentMethod` mappade tyst. Samma fältnamn, samma handling, två
+ * värdemängder: fakturans värde gav 400 hos avin, avins värde blev `MANUAL` hos
+ * fakturan.
+ *
+ * Provet nedan är den skarpa formen av "enade": för varje indata måste båda
+ * vägarna svara LIKA. Ett prov som bara kollat att fakturan godtar `'BANK'` hade
+ * varit grönt även om avin fortsatt vara strängare — det är därför utfallen
+ * jämförs mot varandra och inte mot en förväntan per väg.
+ *
+ * Mängden är HELA enumen plus de etiketter gränssnittet erbjuder, så en
+ * återinförd textmappning på endera sidan blir röd.
+ */
+describe('G3: betalsättet betyder samma sak på båda pengavägarna', () => {
+  const fakturakropp = (paymentMethod: unknown) => ({ amount: 1250, paymentMethod })
+  const avikropp = (paymentMethod: unknown) => ({ paidAmount: 1250, paymentMethod })
+
+  const badaVagarna = async (varde: unknown) => {
+    const faktura = {
+      zod: schematGodtar(RegisterPaymentSchema, fakturakropp(varde)),
+      dto: await pipenGodtar(RegisterPaymentDto, fakturakropp(varde)),
+    }
+    const avi = {
+      zod: schematGodtar(MarkNoticePaidSchema, avikropp(varde)),
+      dto: await pipenGodtar(MarkPaidDto, avikropp(varde)),
+    }
+    return { faktura, avi }
+  }
+
+  it.each(['BANK', 'CASH', 'SWISH', 'MANUAL'])('%s godtas av BÅDA vägarna', async (varde) => {
+    const { faktura, avi } = await badaVagarna(varde)
+    expect({ varde, faktura, avi }).toEqual({
+      varde,
+      faktura: { zod: true, dto: true },
+      avi: { zod: true, dto: true },
+    })
+  })
+
+  it.each(['Bankgiro', 'Plusgiro', 'Autogiro', 'Swish', 'Kontant'])(
+    'ETIKETTEN %s avvisas av BÅDA vägarna — den översätts i webben, inte på servern',
+    async (etikett) => {
+      const { faktura, avi } = await badaVagarna(etikett)
+      expect({ etikett, faktura, avi }).toEqual({
+        etikett,
+        faktura: { zod: false, dto: false },
+        avi: { zod: false, dto: false },
+      })
+    },
+  )
+
+  it.each(['Bitcoin', '', 'bank', 42])('skräpvärdet %p avvisas av BÅDA vägarna', async (varde) => {
+    // `'bank'` står med av ett skäl: den gamla mappningen lowercase:ade och hade
+    // godtagit den. Att den nu avvisas är hela poängen — inget tyst MANUAL.
+    const { faktura, avi } = await badaVagarna(varde)
+    expect({ varde, faktura, avi }).toEqual({
+      varde,
+      faktura: { zod: false, dto: false },
+      avi: { zod: false, dto: false },
+    })
+  })
+
+  it('SKILLNADEN SOM ÄR KVAR, och den är avsiktlig: avin KRÄVER fältet', async () => {
+    // Fakturan tillåter att det utelämnas och tolkar det som MANUAL. Avin gör
+    // det inte. Provet står här så att skillnaden är MÄTT och inte en glömska —
+    // och blir rött den dag någon ändrar endera sidan.
+    const utan = { faktura: { amount: 1250 }, avi: { paidAmount: 1250 } }
+    expect(schematGodtar(RegisterPaymentSchema, utan.faktura)).toBe(true)
+    expect(await pipenGodtar(RegisterPaymentDto, utan.faktura)).toBe(true)
+    expect(schematGodtar(MarkNoticePaidSchema, utan.avi)).toBe(false)
+    expect(await pipenGodtar(MarkPaidDto, utan.avi)).toBe(false)
   })
 })
