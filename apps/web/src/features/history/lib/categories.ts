@@ -116,6 +116,13 @@ const EXACT: Record<string, string> = {
   TENANT_ANONYMIZED: 'Personuppgifter borttagna',
   AI_TOOL_EXECUTED: 'AI utförde åtgärd',
   AI_TOOL_FAILED: 'AI-åtgärd misslyckades',
+  // Uppdragskön (etapp 4). De fyra står här och inte bara som familjefallback,
+  // därför att fallbacken hade skrivit "AI-åtgärd" på en MÄNNISKAS godkännande
+  // — en etikett som påstår fel aktör om raden bredvid.
+  AI_ASSIGNMENT_CREATED: 'AI föreslog uppdrag',
+  AI_ASSIGNMENT_APPROVED: 'Uppdrag godkänt',
+  AI_ASSIGNMENT_REJECTED: 'Uppdrag avslaget',
+  AI_ASSIGNMENT_EXPIRED: 'Uppdrag förföll',
 }
 
 /** Familjenamn för de källor som bygger sin typ av data. */
