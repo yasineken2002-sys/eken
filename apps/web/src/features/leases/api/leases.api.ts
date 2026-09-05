@@ -240,3 +240,18 @@ export interface ContractStatus {
 export function fetchContractStatus(leaseId: string): Promise<ContractStatus> {
   return get<ContractStatus>(`/contracts/status/${leaseId}`)
 }
+
+/**
+ * Förbered en signeringsbegäran för ett kontraktsdokument.
+ *
+ * Samma endpoint och samma tjänstemetod (`SigningService.createSigningRequest`)
+ * som AI-verktyget `prepare_contract_signing` anropar. Signeringsmodulen är
+ * inert i produktion tills S3 — då svarar den 503, och felet visas i klartext
+ * i stället för att knappen tyst inte gör något.
+ */
+export function createSigningRequest(documentId: string): Promise<{
+  id: string
+  status: string
+}> {
+  return post<{ id: string; status: string }>('/signing/requests', { documentId })
+}

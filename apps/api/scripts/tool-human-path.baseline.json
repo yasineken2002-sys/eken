@@ -1,19 +1,6 @@
 {
-  "kommentar": "ACTION_TOOLS som saknar en mänsklig väg i apps/web. Var SJU vid #773. Fyra har fått sin väg och är borttagna härifrån: create_journal_entry och record_expense (#782), samt update_tenant (knappen \"Redigera\" på hyresgästens detaljvy — endpointen och hooken fanns redan, ingen komponent anropade dem) och send_document_to_tenant (POST /documents/:id/send-to-tenant plus åtgärden \"Skicka till hyresgäst\" i dokumentlistan, genom samma deliverToTenant som verktyget). Varje post är ett dokumenterat FYND enligt planens Regel 2 — inte ett godkännande. Listan FÅR BARA KRYMPA: check-tool-human-path.mjs fäller ett nytt namn (NY), ett namn som fått en väg (STALE) och ett namn som inte finns bland verktygen. Skälet står HÄR och ingen annanstans; human-path.ts bär bara markören { saknas: true }, så prosan kan inte glida isär från sin ratchet.",
-  "matt_mot": "59f4f7b",
+  "kommentar": "ACTION_TOOLS som saknar en mänsklig väg i apps/web. MÄNGDEN ÄR TOM sedan 2026-09-05 — den var SJU när ratcheten byggdes (#773) och krympte i tre steg: create_journal_entry + record_expense (#782), update_tenant + send_document_to_tenant (#785), och send_overdue_reminders + mark_sent_to_collection + prepare_contract_signing (den här). FILEN SKA FINNAS KVAR TOM och får aldrig raderas: check-tool-human-path.mjs KRÄVER att den går att läsa och parsa, och behandlar en saknad fil som ett FEL — inte som noll poster. Skälet är R5c (ett namn i baslinjen som inte är ett verktyg): den regeln kan bara falla om det finns en baslinje att läsa, och 'ingen fil = noll poster' hade gjort en raderad fil oskiljbar från en tom. En post som läggs till här är ny skuld och ska motiveras i PR-texten; listan får bara krympa.",
+  "matt_mot": "349f5c4",
   "matt_datum": "2026-09-05",
-  "poster": {
-    "send_overdue_reminders": {
-      "skal": "POST /v1/notifications/send-overdue-reminders finns (ADMIN/OWNER) men ingen rad i apps/web anropar den; gränssnittet kan pausa och återuppta påminnelser, inte utlösa ett utskick.",
-      "arende": ""
-    },
-    "mark_sent_to_collection": {
-      "skal": "Endpoint finns och markSentToCollection är exporterad ur collections.api.ts, men ingen komponent importerar den — funktionen är död i gränssnittet, vilket ser ut som en väg i en sökning och inte är en.",
-      "arende": ""
-    },
-    "prepare_contract_signing": {
-      "skal": "POST /v1/signing/requests finns men ingen rad i apps/web anropar den; ContractTab visar signeringens status medan begäran i dag bara startas av portalaktiveringen eller av AI-verktyget.",
-      "arende": ""
-    }
-  }
+  "poster": {}
 }

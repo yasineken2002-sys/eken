@@ -1,10 +1,24 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Gavel, Pause, Play, Send, FileDown, Package, AlertTriangle } from 'lucide-react'
+import {
+  Gavel,
+  Pause,
+  Play,
+  Send,
+  FileDown,
+  Package,
+  AlertTriangle,
+  CheckCheck,
+} from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
+import { extractApiError } from '@/lib/api'
+import {
+  MarkSentToCollectionModal,
+  type InkassoFaktura,
+} from './components/MarkSentToCollectionModal'
 import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
@@ -19,6 +33,7 @@ import {
   type CollectionBucket,
   type OverdueInvoice,
   type ReminderEntry,
+  markSentToCollection,
 } from './api/collections.api'
 
 const TABS: Array<{ id: CollectionBucket; label: string; description: string }> = [
@@ -49,6 +64,8 @@ const REMINDER_LABEL: Record<ReminderEntry['type'], string> = {
 export function CollectionsPage() {
   const [bucket, setBucket] = useState<CollectionBucket>('in-progress')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [markSent, setMarkSent] = useState<InkassoFaktura | null>(null)
+  const [markSentFel, setMarkSentFel] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const {
@@ -73,6 +90,23 @@ export function CollectionsPage() {
       window.open(res.pdfUrl, '_blank', 'noopener')
       void queryClient.invalidateQueries({ queryKey: ['collections'] })
     },
+  })
+
+  // Människans väg till `mark_sent_to_collection`. Grinden på faktisk skuld
+
+  // (INV-D) och rollen ligger i tjänsten — ingen kopia här.
+
+  const markSentMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) => markSentToCollection(id, note),
+
+    onSuccess: () => {
+      setMarkSent(null)
+
+      void queryClient.invalidateQueries({ queryKey: ['collections'] })
+    },
+
+    onError: (err) =>
+      setMarkSentFel(extractApiError(err, 'Kunde inte markera fakturan som skickad')),
   })
 
   const exportBulk = useMutation({
@@ -243,6 +277,16 @@ export function CollectionsPage() {
                   selected={selected.has(inv.id)}
                   onToggle={() => toggleSelect(inv.id)}
                   onExport={() => exportSingle.mutate(inv.id)}
+                  onMarkSent={() => {
+                    setMarkSentFel(null)
+                    setMarkSent({
+                      id: inv.id,
+                      invoiceNumber: inv.invoiceNumber,
+                      tenantName: inv.tenantName,
+                      total: inv.total,
+                      dueDate: inv.dueDate,
+                    })
+                  }}
                   onPause={() => {
                     const reason = window.prompt(
                       'Anledning till paus (t.ex. avbetalningsplan avtalad):',
@@ -259,6 +303,18 @@ export function CollectionsPage() {
           </table>
         )}
       </div>
+
+      <MarkSentToCollectionModal
+        open={markSent !== null}
+        onClose={() => setMarkSent(null)}
+        faktura={markSent}
+        arbetar={markSentMutation.isPending}
+        fel={markSentFel}
+        onBekrafta={(note) => {
+          if (!markSent) return
+          markSentMutation.mutate({ id: markSent.id, ...(note ? { note } : {}) })
+        }}
+      />
     </PageWrapper>
   )
 }
@@ -269,6 +325,7 @@ interface RowProps {
   selected: boolean
   onToggle: () => void
   onExport: () => void
+  onMarkSent: () => void
   onPause: () => void
   onResume: () => void
   exporting: boolean
@@ -280,6 +337,7 @@ function CollectionRow({
   selected,
   onToggle,
   onExport,
+  onMarkSent,
   onPause,
   onResume,
   exporting,
@@ -378,6 +436,21 @@ function CollectionRow({
             <Button variant="primary" size="sm" onClick={onExport} disabled={exporting}>
               <Send size={12} className="mr-1" />
               Skicka till inkasso
+            </Button>
+          )}
+          {/* MARKERINGEN ÄR ETT EGET STEG efter exporten. Exporten producerar
+              underlaget; markeringen påstår att det ÄR överlämnat — och den
+              pausar påminnelser och tar fakturan ur kravtrappan. Att slå ihop
+              dem hade gjort en nedladdning till ett bindande beslut. */}
+          {bucket === 'ready' && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={onMarkSent}
+              data-testid={`mark-sent-${invoice.id}`}
+            >
+              <CheckCheck size={12} className="mr-1" />
+              Markera som skickad
             </Button>
           )}
           {bucket === 'sent' && (

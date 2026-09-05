@@ -13,6 +13,8 @@ import {
   getRentNoticeEvents,
   getRentNoticeCollectionStatus,
   resendRentNoticeReminder,
+  fetchReminderPreview,
+  sendOverdueReminders,
 } from '../api/avisering.api'
 import type { NoticeFilter, PaymentMethod, CreateRentNoticeCreditInput } from '../api/avisering.api'
 
@@ -180,6 +182,39 @@ export function useResendReminder(id: string | undefined) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['rent-notice-collection-status', id] })
       void qc.invalidateQueries({ queryKey: ['rent-notice-events', id] })
+    },
+  })
+}
+
+// ── FÖRFALLOPÅMINNELSER ─────────────────────────────────────────────────────
+
+/**
+ * Förhandsbeskedet hämtas bara när modalen är öppen (`enabled`). Skälet är att
+ * det gör TVÅ frågor per anrop — urvalet och färskhetsläget — och att svaret
+ * bara har en läsare. En stående hämtning hade lagt last på varje sidvisning
+ * för en knapp de flesta aldrig trycker på.
+ */
+export function useReminderPreview(enabled: boolean) {
+  return useQuery({
+    queryKey: ['notifications', 'overdue-reminders', 'preview'],
+    queryFn: fetchReminderPreview,
+    enabled,
+    // Underlaget ändras av bankimporter och betalningar; en cachad mängd som är
+    // några minuter gammal hade visat fel antal i en bekräftelse.
+    staleTime: 0,
+  })
+}
+
+export function useSendOverdueReminders() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: sendOverdueReminders,
+    onSuccess: () => {
+      // Utskicket skriver InvoiceEvent (REMINDER_SENT) och ändrar därmed både
+      // fakturans händelselista och nästa förhandsbesked.
+      void qc.invalidateQueries({ queryKey: ['notifications', 'overdue-reminders'] })
+      void qc.invalidateQueries({ queryKey: ['invoices'] })
+      void qc.invalidateQueries({ queryKey: ['avisering'] })
     },
   })
 }
