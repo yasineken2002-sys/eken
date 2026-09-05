@@ -62,6 +62,25 @@ export interface SkapaUppdrag {
    */
   deadline: Date
   assignedToUserId: string
+
+  /**
+   * UPPDRAGETS OMFÅNG — vad det handlar om. Alla tre valfria.
+   *
+   * Sätts av producenten ur det den redan vet, och är det som gör uppdraget
+   * synligt i hyresgästens, lägenhetens och fastighetens historik. Utelämnas
+   * de betyder det "rör inget enskilt objekt" — sant för 17 av de 23 dugliga
+   * verktygen (`generate_rent_notices`, `export_sie4`, `import_bgmax_file` …).
+   * Uppdraget finns då kvar i kön och i läsytan; det syns bara inte i någon
+   * objekthistorik.
+   *
+   * De HÄRLEDS med flit inte ur `toolInput`. Mätt mot `71d2998`: bara sex av de
+   * 23 har någon av `tenantId`/`unitId`/`propertyId` i sitt inputschema, så en
+   * härledning hade varit blind för tre fjärdedelar av kön — och blind på det
+   * tysta sättet.
+   */
+  tenantId?: string
+  unitId?: string
+  propertyId?: string
 }
 
 @Injectable()
@@ -107,6 +126,17 @@ export class AiAssignmentsService {
       throw new BadRequestException('Mottagaren finns inte i organisationen.')
     }
 
+    // OMFÅNGET MÅSTE LIGGA I ORGANISATIONEN, av samma skäl som mottagaren.
+    // Utan kontrollen kan ett uppdrag peka på en annan organisations hyresgäst;
+    // historikläsningen är visserligen org-scopad och hade inte visat raden,
+    // men FK:n hade ändå bundit två organisationer till varandra — och en
+    // felskriven producent hade inte fått veta det förrän någon undrade varför
+    // uppdraget inte syns någonstans.
+    //
+    // `Unit` bär ingen egen `organizationId` — den scopas via sin fastighet,
+    // samma villkor som `assertSubjectInOrg` använder.
+    await this.prövaOmfång(organizationId, input)
+
     const uppdrag = await this.prisma.aiAssignment.create({
       data: {
         organizationId,
@@ -119,6 +149,9 @@ export class AiAssignmentsService {
         evidence: input.evidence ?? [],
         deadline: input.deadline,
         assignedToUserId: input.assignedToUserId,
+        tenantId: input.tenantId ?? null,
+        unitId: input.unitId ?? null,
+        propertyId: input.propertyId ?? null,
       },
     })
 
@@ -134,6 +167,36 @@ export class AiAssignmentsService {
     )
 
     return uppdrag
+  }
+
+  /**
+   * Omfångets tre id:n, vart och ett prövat mot organisationen.
+   *
+   * Ett id som inte finns i organisationen avvisas — det är ett
+   * programmeringsfel hos producenten, inte ett tillstånd att tolerera.
+   */
+  private async prövaOmfång(organizationId: string, input: SkapaUppdrag): Promise<void> {
+    if (input.tenantId) {
+      const finns = await this.prisma.tenant.findFirst({
+        where: { id: input.tenantId, organizationId },
+        select: { id: true },
+      })
+      if (!finns) throw new BadRequestException('Hyresgästen finns inte i organisationen.')
+    }
+    if (input.unitId) {
+      const finns = await this.prisma.unit.findFirst({
+        where: { id: input.unitId, property: { organizationId } },
+        select: { id: true },
+      })
+      if (!finns) throw new BadRequestException('Lägenheten finns inte i organisationen.')
+    }
+    if (input.propertyId) {
+      const finns = await this.prisma.property.findFirst({
+        where: { id: input.propertyId, organizationId },
+        select: { id: true },
+      })
+      if (!finns) throw new BadRequestException('Fastigheten finns inte i organisationen.')
+    }
   }
 
   /** Organisationens uppdrag, närmast deadline först. */

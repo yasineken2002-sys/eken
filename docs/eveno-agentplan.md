@@ -143,7 +143,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (5/7) `5f94360` |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
-| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `dbe12ff` |
+| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `71d2998` — båda halvorna av kriteriet nu mätta; kön saknar producent och utförare |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `dbe12ff` |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
@@ -326,12 +326,61 @@ något:
 [B] besluta(APPROVED) → decidedByUserId satt, anspråket atomiskt
 ```
 
-Uppdraget överlever alltså natten, och godkännandet går igenom. Vad som
-**inte** stämmer i klart-kriteriet: *"och syns i historiken"*. **Noll av 20**
-`HISTORY_SOURCES` läser `AiAssignment`, och modellen står inte i
-`history-sources.ack.json`. `check-history-registry.mjs` kan inte se det —
-`AiAssignment` har varken tenant-, unit- eller propertyrelation, så vakten
-ställer aldrig frågan om den. Det är en riktad blindhet, inte ett fel i vakten.
+Uppdraget överlever alltså natten, och godkännandet går igenom.
+
+**Andra halvan — *"och syns i historiken"* — är nu också mätt** (mot `71d2998`).
+Den var det inte när stycket ovan skrevs, och lydelsen då stod sig: **noll av 20**
+`HISTORY_SOURCES` läste `AiAssignment`, och modellen stod inte i
+`history-sources.ack.json`. `check-history-registry.mjs` kunde inte se det —
+`AiAssignment` hade varken tenant-, unit- eller propertyrelation, så vakten
+ställde aldrig frågan om den. Det var en riktad blindhet, inte ett fel i vakten.
+
+Åtgärden angrep just den blindheten och inte bara symtomet. `AiAssignment` fick
+tre nullbara FK:er — `tenantId`, `unitId`, `propertyId`, satta vid skapandet ur
+uppdragets omfång och prövade mot organisationen — varefter vakten **KRÄVER** en
+källa i alla tre dimensionerna. Kanariefågeln kördes i den ordningen, med
+schemat committat och källan ännu inte skriven:
+
+```
+FÖRE  node apps/api/scripts/check-history-registry.mjs → exit 1
+      R1 Tenant.aiAssignments · R1 Unit.aiAssignments · R1 Property.aiAssignments
+EFTER exit 0 — Tenant 24 relationer (16 registrerade, 8 kvitterade) ·
+      Unit 10 (8/2) · Property 9 (7/2)
+```
+
+Omfånget **härleds inte ur `toolInput`**, och det är en mätning: av de 23 verktyg
+`dugligaVerktyg()` släpper fram har bara **sex** någon av
+`tenantId`/`unitId`/`propertyId` i sitt inputschema — tre, två, två. **Sjutton**
+har ingen alls. En härledning ur nyttolasten hade alltså varit blind för tre
+fjärdedelar av kön, på det tysta sättet. NULL i de tre kolumnerna betyder därför
+"rör inget enskilt objekt", inte "vi vet inte".
+
+Källan `ai-assignment` har **fyra** händelsetyper, inte sex, och aktören är den
+som faktiskt agerade:
+
+| händelse | aktör | belägg |
+| --- | --- | --- |
+| `AI_ASSIGNMENT_CREATED` | `AGENT` | controllern har inget `POST`; `skapa()` nås bara serverside |
+| `AI_ASSIGNMENT_APPROVED` / `_REJECTED` | `HUMAN` | `besluta()` nås bara från `@Patch(':id/decision')` med `user.sub`; ingen AI-väg dit |
+| `AI_ASSIGNMENT_EXPIRED` | `SYSTEM` | cronen `ai-assignment-expiry` |
+
+`EXECUTED` och `FAILED` skrivs **inte**. `AiAssignmentStatus` har fyra värden, och
+schemat säger uttryckligen att de två läggs till av den PR som bygger utföraren,
+tillsammans med det som skriver dem — ett enumvärde ingenting kan skriva är en
+vokabulär som ser ut som en mekanism, och en historikrad för ett tillstånd som
+inte kan uppstå är samma fel en nivå upp.
+
+Provet är `apps/api/src/history/ai-assignment-history.db.spec.ts`: mot riktig
+Postgres, med egna förutsättningar, kört två gånger mot en tom databas. Ett
+uppdrag skapat 03:00 läses 09:00 ur hyresgästens historik med `AGENT` som aktör;
+ett uppdrag i en annan organisation syns inte, och inte heller ett för en annan
+hyresgäst i SAMMA organisation — den andra avgränsningen är den org-filtret
+ensamt hade släppt igenom.
+
+**Varför raden ändå står som DELVIS.** Kriteriets båda halvor är mätta, men kön
+har fortfarande **ingen producent och ingen utförare**. Inget uppdrag har alltså
+uppstått klockan 03:00 i drift — riggen bygger sitt eget — och spåret (G4) slutar
+vid människans beslut. Raden flyttas när något skriver i kön av sig självt.
 
 Del 12:s kapplöpning: **grinden vid skapandet finns** (`assignment-eligibility.ts:90`,
 23 av 30 `ACTION_TOOLS` dugliga, de 7 avvisade alla `DEDUPLICERBAR`).

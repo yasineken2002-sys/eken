@@ -834,6 +834,149 @@ const aiToolExecutions: HistorySourceDefinition = {
   },
 }
 
+const aiAssignments: HistorySourceDefinition = {
+  key: 'ai-assignment',
+  table: 'AiAssignment',
+  relations: { tenant: 'aiAssignments', unit: 'aiAssignments', property: 'aiAssignments' },
+  // UPPDRAGSKÖN I SAMMA FLÖDE SOM ALLT ANNAT (planens etapp 4). `AiToolExecution`
+  // bär vad agenten GJORDE; den här källan bär vad den BAD OM ATT FÅ GÖRA och
+  // vad människan svarade. Utan den är "uppdrag från 03:00 finns 09:00" sant i
+  // databasen och osynligt för hyresvärden.
+  //
+  // Speglar läsytan `GET /ai/assignments`, som är OWNER, ADMIN, MANAGER
+  // (`ai-assignments.controller.ts`). ETT AGGREGAT FÅR INTE VIDGA ÅTKOMST.
+  restrictedToRoles: ['OWNER', 'ADMIN', 'MANAGER'],
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: { organizationId, tenantId: q.subject.id },
+        unit: { organizationId, unitId: q.subject.id },
+        property: { organizationId, propertyId: q.subject.id },
+      },
+      'ai-assignment',
+    )
+    const rows = await prisma.aiAssignment.findMany({
+      where,
+      select: {
+        id: true,
+        createdAt: true,
+        toolName: true,
+        title: true,
+        status: true,
+        statusReason: true,
+        deadline: true,
+        decidedAt: true,
+        decidedByUserId: true,
+      },
+    })
+
+    const subject = { kind: q.subject.kind, id: q.subject.id, label: null } as const
+    const händelser: HistoryEvent[] = []
+
+    for (const r of rows) {
+      // ── 1. SKAPAT — alltid, för varje uppdrag ────────────────────────────
+      //
+      // AKTÖREN ÄR `AGENT`, OCH DET ÄR ETT MÄTT PÅSTÅENDE, INTE EN GISSNING.
+      // `AiAssignmentsController` har inget `POST` — det står utskrivet i dess
+      // egen docblock — och `AiAssignmentsService` refereras utanför sin katalog
+      // bara av `ai.module.ts` som provider. Det finns alltså ingen väg för en
+      // människa att lägga en rad i den här tabellen. En uppdragsrad ÄR ett
+      // agentförslag; det är hela tabellens skäl att finnas.
+      //
+      // `id: null` med flit: vid skapandet finns ingen `AiToolExecution` att
+      // peka på (`aiToolExecutionId` fylls först av utföraren, etapp 8-9). Att
+      // skriva in mottagaren eller beslutsfattaren där hade varit att låta
+      // `actor.id` betyda en människa i en rad vars `kind` säger AGENT.
+      händelser.push({
+        at: r.createdAt,
+        type: 'AI_ASSIGNMENT_CREATED',
+        actor: { kind: 'AGENT', id: null, label: r.toolName },
+        subject,
+        description: `AI föreslog: ${r.title}`,
+        amount: null,
+        severity: 'INFO',
+        source: { table: 'AiAssignment', id: r.id },
+      })
+
+      // ── 2. UTFALLET — noll eller en rad till, aldrig fler ────────────────
+      //
+      // FYRA TILLSTÅND, INTE FEM ELLER SEX. `AiAssignmentStatus` har
+      // `AWAITING_APPROVAL | APPROVED | REJECTED | EXPIRED`, och schemat säger
+      // uttryckligen att `EXECUTED` och `FAILED` läggs till av den PR som bygger
+      // utföraren, TILLSAMMANS MED DET SOM SKRIVER DEM. Att skriva en
+      // "utförd"-händelse här hade gett läsytan en rad som aldrig kan uppstå —
+      // en vokabulär som ser ut som en mekanism.
+      //
+      // `AWAITING_APPROVAL` ger ingen andra rad. Ett uppdrag som väntar HAR inte
+      // haft ett utfall, och en rad om det hade varit en händelse utan
+      // tidpunkt.
+      if (r.status === 'APPROVED' || r.status === 'REJECTED') {
+        // AKTÖREN ÄR `HUMAN`, och det är belagt på samma sätt som ovan:
+        // `besluta()` anropas bara från `@Patch(':id/decision')` med `user.sub`
+        // ur JWT:n. Det finns ingen AI-verktygsväg dit. Det här är alltså ETT AV
+        // FÅ ställen i historiken där `HUMAN` går att säga utan att gissa — jfr
+        // `humanOrUnknown`, som måste svara UNKNOWN därför att dess kolumner
+        // skrivs av både människa och assistent.
+        const godkänt = r.status === 'APPROVED'
+        händelser.push({
+          // `decidedAt` sätts i samma `updateMany` som statusen och kan därför
+          // inte saknas här. Fallbacken finns för typens skull, inte för ett
+          // känt fall.
+          at: r.decidedAt ?? r.createdAt,
+          type: godkänt ? 'AI_ASSIGNMENT_APPROVED' : 'AI_ASSIGNMENT_REJECTED',
+          actor: { kind: 'HUMAN', id: r.decidedByUserId, label: null },
+          subject,
+          description: godkänt
+            ? `Uppdrag godkänt: ${r.title}`
+            : `Uppdrag avslaget: ${r.title}${r.statusReason ? ` — ${r.statusReason}` : ''}`,
+          amount: null,
+          // Ett godkännande är ett tillstånd att utföra, inte en utförd effekt.
+          // Ett avslag är en människas nej. Båda är värda att märka i flödet,
+          // ingetdera är en varning.
+          severity: 'NOTICE',
+          source: { table: 'AiAssignment', id: r.id },
+        })
+      } else if (r.status === 'EXPIRED') {
+        // ── VARFÖR `deadline` OCH INTE `updatedAt` ────────────────────────
+        //
+        // Modellen bär ingen stängningstidpunkt: `decidedAt` är null vid
+        // förfall, och `updatedAt` är en teknisk kolumn vars betydelse vilar på
+        // invarianten "ingenting rör en EXPIRED-rad efteråt". Den invarianten
+        // är sann i dag och är exakt den sorts premiss som ruttnar tyst när
+        // utföraren landar.
+        //
+        // `deadline` är i stället DATA: satt vid skapandet, och den är själva
+        // faktumet händelsen handlar om. Priset står här så att ingen behöver
+        // gissa det: ligger utgångscronen nere ett dygn säger raden fortfarande
+        // att gränsen passerade när den passerade — inte när passet råkade
+        // upptäcka det.
+        //
+        // Aktören är `SYSTEM`: cronen `ai-assignment-expiry` stängde raden.
+        // Ingen människa var inblandad, och det är hela poängen med det
+        // synliga förfallet (planens Del 12).
+        händelser.push({
+          at: r.deadline,
+          type: 'AI_ASSIGNMENT_EXPIRED',
+          actor: { kind: 'SYSTEM', id: null, label: null },
+          subject,
+          description: `Uppdrag förföll utan beslut: ${r.title}${
+            r.statusReason ? ` — ${r.statusReason}` : ''
+          }`,
+          amount: null,
+          // WARNING och inte INFO: ett uppdrag som förföll är något som INTE
+          // hände fast det var tänkt att hända. Ett tyst förfall är förbjudet.
+          severity: 'WARNING',
+          source: { table: 'AiAssignment', id: r.id },
+        })
+      }
+    }
+
+    return händelser
+  },
+}
+
 const meters: HistorySourceDefinition = {
   key: 'meter',
   table: 'Meter',
@@ -1158,6 +1301,7 @@ export const HISTORY_SOURCES: readonly HistorySourceDefinition[] = [
   miscCharges,
   anonymizationLogs,
   aiToolExecutions,
+  aiAssignments,
   meters,
   maintenancePlans,
   newsPosts,
