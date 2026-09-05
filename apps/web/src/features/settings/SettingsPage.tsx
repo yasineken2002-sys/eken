@@ -46,6 +46,8 @@ import { UsersPanel } from '@/features/users/UsersPanel'
 import { PlanPanel } from './components/PlanPanel'
 import { BankIdPanel } from './components/BankIdPanel'
 import { useAuthStore } from '@/stores/auth.store'
+import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
+import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { get, del } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -78,6 +80,9 @@ export function SettingsPage() {
   const uploadMutation = useUploadLogo()
   const [tab, setTab] = useState<SettingsTab>('general')
   const currentUser = useAuthStore((s) => s.user)
+  // Antalet skuggförslag hittills — läses ur samma summary som inkorgens KPI,
+  // så de två ytorna inte kan säga olika saker om samma mängd.
+  const inboxSummary = useInboxSummary()
 
   const [savedFlash, setSavedFlash] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -94,6 +99,7 @@ export function SettingsPage() {
   const [invoiceSavedFlash, setInvoiceSavedFlash] = useState(false)
 
   const [morningReportEnabled, setMorningReportEnabled] = useState(false)
+  const [shadowAgentEnabled, setShadowAgentEnabled] = useState(false)
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [reminderFeeSek, setReminderFeeSek] = useState(60)
   const [reminderFormalDay, setReminderFormalDay] = useState(14)
@@ -151,6 +157,7 @@ export function SettingsPage() {
         setBrandSecondaryColor(org.invoiceColor ?? DEFAULT_BRAND_COLOR)
       }
       setMorningReportEnabled(org.morningReportEnabled ?? false)
+      setShadowAgentEnabled(org.shadowAgentEnabled ?? false)
       setRemindersEnabled(org.remindersEnabled ?? true)
       setReminderFeeSek(org.reminderFeeSek ?? 60)
       setReminderFormalDay(org.reminderFormalDay ?? 14)
@@ -249,6 +256,14 @@ export function SettingsPage() {
   const handleMorningReportToggle = (value: boolean) => {
     setMorningReportEnabled(value)
     updateMutation.mutate({ morningReportEnabled: value })
+  }
+
+  const handleShadowAgentToggle = (value: boolean) => {
+    // Optimistiskt, som grannen ovan. Faller skrivningen (t.ex. 403 för en
+    // icke-ägare som kommit förbi den dolda knappen) rättas läget vid nästa
+    // hämtning — och API:t är den grind som faktiskt håller.
+    setShadowAgentEnabled(value)
+    updateMutation.mutate({ shadowAgentEnabled: value })
   }
 
   const handleAiMemoriesToggle = (value: boolean) => {
@@ -987,6 +1002,18 @@ export function SettingsPage() {
                     />
                   </button>
                 </div>
+
+                <ShadowAgentSection
+                  roll={currentUser?.role}
+                  pa={shadowAgentEnabled}
+                  onToggle={handleShadowAgentToggle}
+                  antalForslag={
+                    inboxSummary.data?.status
+                      ? Object.values(inboxSummary.data.status).reduce((a, b) => a + b, 0)
+                      : undefined
+                  }
+                  sparar={updateMutation.isPending}
+                />
 
                 {/* AI memories toggle */}
                 <div className="flex items-center justify-between">

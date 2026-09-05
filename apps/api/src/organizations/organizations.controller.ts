@@ -3,8 +3,11 @@ import type { FastifyRequest } from 'fastify'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
+import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrganizationsService } from './organizations.service'
 import { UpdateOrganizationDto } from './dto/update-organization.dto'
+
+import type { JwtPayload } from '@eken/shared'
 
 @Controller('organizations')
 @UseGuards(JwtAuthGuard)
@@ -16,10 +19,22 @@ export class OrganizationsController {
     return this.organizationsService.findMyOrganization(organizationId)
   }
 
+  /**
+   * Rutten är ADMIN + OWNER — och ETT fält i den är OWNER-only.
+   *
+   * `@Roles` kan bara grinda hela rutten. Att smalna den till OWNER hade tagit
+   * bankgiro och fakturafärg ifrån varje admin; att lämna den öppen hade låtit
+   * en admin slå på en agent. Rollen skickas därför VIDARE till tjänsten, som
+   * äger fältnivågrinden — se `FAR_SLA_PA_SKUGGAGENT` där.
+   */
   @Patch('me')
   @Roles('ADMIN', 'OWNER')
-  async update(@OrgId() organizationId: string, @Body() dto: UpdateOrganizationDto) {
-    return this.organizationsService.update(organizationId, dto)
+  async update(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateOrganizationDto,
+  ) {
+    return this.organizationsService.update(organizationId, dto, user.role)
   }
 
   @Patch('me/logo')

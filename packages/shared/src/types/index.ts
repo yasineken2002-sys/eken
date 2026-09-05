@@ -108,6 +108,13 @@ export interface Organization {
   brandFont?: string
   brandSecondaryColor?: string | null
   morningReportEnabled?: boolean
+  /**
+   * Skuggagenten på felanmälningar (etapp 6).
+   *
+   * LÄSBAR för alla org-roller, SKRIVBAR bara för OWNER — grinden ligger i
+   * `OrganizationsService`, inte i typen. Se `shadow-agent-field-authz.spec.ts`.
+   */
+  shadowAgentEnabled?: boolean
   remindersEnabled?: boolean
   reminderFeeSek?: number
   reminderFormalDay?: number

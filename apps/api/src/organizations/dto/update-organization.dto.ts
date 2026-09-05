@@ -51,6 +51,26 @@ export class UpdateOrganizationDto {
   @IsOptional()
   morningReportEnabled?: boolean
 
+  /**
+   * SKUGGAGENTEN PÅ FELANMÄLAN (etapp 6).
+   *
+   * ── FÄLTET ÄR OWNER-ONLY, MEN DTO:N ÄR DET INTE ────────────────────────────
+   *
+   * `@Roles` sitter på RUTTEN, inte på fältet — `PATCH /organizations/me` är
+   * ADMIN + OWNER, och det ska den förbli: en admin ska kunna ändra bankgiro och
+   * fakturafärg. Men att slå PÅ en agent är ett annat slags beslut, och det ska
+   * bara ägaren få fatta.
+   *
+   * Grinden ligger därför i TJÄNSTEN och inte här: DTO:t kan inte uttrycka
+   * "det här fältet kräver en annan roll än de andra", och en `@ValidateIf` hade
+   * flyttat regeln till en plats där bara HTTP-vägen ser den. Tjänsten är den
+   * enda ingången alla anropare passerar — samma resonemang som
+   * `DecideAssignmentDto.reason`, som är valfri här och obligatorisk där.
+   */
+  @IsBoolean()
+  @IsOptional()
+  shadowAgentEnabled?: boolean
+
   // ── Påminnelse- och inkassoinställningar ───────────────────────────────
   @IsBoolean()
   @IsOptional()

@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import type { UserRole } from '@prisma/client'
+
 import { PrismaService } from '../common/prisma/prisma.service'
 import { SAFE_ORGANIZATION_SELECT } from './organization-select'
 import { StorageService } from '../storage/storage.service'
@@ -14,6 +16,15 @@ import {
 interface MultipartFile {
   toBuffer(): Promise<Buffer>
 }
+
+/**
+ * ROLLER SOM FÅR SLÅ PÅ SKUGGAGENTEN.
+ *
+ * Bara ägaren. `PATCH /organizations/me` är i övrigt ADMIN + OWNER, och det ska
+ * den förbli — men att ge en maskin rätt att föreslå åtgärder på hyresgästernas
+ * ärenden är ett ägarbeslut, inte en inställning bland andra.
+ */
+const FAR_SLA_PA_SKUGGAGENT: readonly UserRole[] = ['OWNER']
 
 @Injectable()
 export class OrganizationsService {
@@ -53,7 +64,28 @@ export class OrganizationsService {
     return org
   }
 
-  async update(organizationId: string, dto: UpdateOrganizationDto) {
+  async update(
+    organizationId: string,
+    dto: UpdateOrganizationDto,
+    /**
+     * Anroparens roll. VALFRI med flit: befintliga anropare (och prov) som inte
+     * rör `shadowAgentEnabled` ska inte behöva ändras. Utelämnas den OCH fältet
+     * sätts, faller det stängt — se nedan.
+     */
+    rollHosAnroparen?: UserRole,
+  ) {
+    // ── FÄLTNIVÅGRIND ─────────────────────────────────────────────────────
+    //
+    // FAIL-CLOSED: en anropare som inte lämnat sin roll får inte sätta fältet.
+    // Alternativet — att låta ett `undefined` passera — hade gjort grinden
+    // beroende av att varje framtida anropare kommer ihåg att skicka rollen,
+    // och den sortens spärr slutar gälla tyst.
+    if (dto.shadowAgentEnabled !== undefined) {
+      if (!rollHosAnroparen || !FAR_SLA_PA_SKUGGAGENT.includes(rollHosAnroparen)) {
+        throw new ForbiddenException('Bara organisationens ägare får slå på eller av skuggagenten.')
+      }
+    }
+
     // F-skatt-datum: bara meningsfullt när hasFSkatt = true. Om
     // användaren bockar av F-skatt nollställer vi datumet samtidigt.
     const fSkattDateUpdate = (() => {
@@ -78,6 +110,7 @@ export class OrganizationsService {
         ...(dto.morningReportEnabled != null
           ? { morningReportEnabled: dto.morningReportEnabled }
           : {}),
+        ...(dto.shadowAgentEnabled != null ? { shadowAgentEnabled: dto.shadowAgentEnabled } : {}),
         ...(dto.remindersEnabled != null ? { remindersEnabled: dto.remindersEnabled } : {}),
         ...(dto.reminderFeeSek != null ? { reminderFeeSek: dto.reminderFeeSek } : {}),
         ...(dto.reminderFormalDay != null ? { reminderFormalDay: dto.reminderFormalDay } : {}),
