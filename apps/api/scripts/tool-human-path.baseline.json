@@ -1,16 +1,8 @@
 {
-  "kommentar": "ACTION_TOOLS som saknar en mänsklig väg i apps/web. Var SJU vid #773; create_journal_entry och record_expense fick sin väg 2026-09-05 (POST /accounting/journal-entries respektive /accounting/expenses, plus knapparna \"Ny verifikation\" och \"Registrera utgift\" på bokföringssidan) och är därför borttagna härifrån. Varje post är ett dokumenterat FYND enligt planens Regel 2 — inte ett godkännande. Listan FÅR BARA KRYMPA: check-tool-human-path.mjs fäller ett nytt namn (NY), ett namn som fått en väg (STALE) och ett namn som inte finns bland verktygen. Skälet står HÄR och ingen annanstans; human-path.ts bär bara markören { saknas: true }, så prosan kan inte glida isär från sin ratchet.",
-  "matt_mot": "a7313dd",
+  "kommentar": "ACTION_TOOLS som saknar en mänsklig väg i apps/web. Var SJU vid #773. Fyra har fått sin väg och är borttagna härifrån: create_journal_entry och record_expense (#782), samt update_tenant (knappen \"Redigera\" på hyresgästens detaljvy — endpointen och hooken fanns redan, ingen komponent anropade dem) och send_document_to_tenant (POST /documents/:id/send-to-tenant plus åtgärden \"Skicka till hyresgäst\" i dokumentlistan, genom samma deliverToTenant som verktyget). Varje post är ett dokumenterat FYND enligt planens Regel 2 — inte ett godkännande. Listan FÅR BARA KRYMPA: check-tool-human-path.mjs fäller ett nytt namn (NY), ett namn som fått en väg (STALE) och ett namn som inte finns bland verktygen. Skälet står HÄR och ingen annanstans; human-path.ts bär bara markören { saknas: true }, så prosan kan inte glida isär från sin ratchet.",
+  "matt_mot": "59f4f7b",
   "matt_datum": "2026-09-05",
   "poster": {
-    "send_document_to_tenant": {
-      "skal": "DocumentDeliveryService.deliverToTenant har exakt en anropare i hela kodbasen och det är det här verktyget; att ladda upp ett dokument och att skicka det till en hyresgäst är två olika saker och bara den första finns för människan.",
-      "arende": ""
-    },
-    "update_tenant": {
-      "skal": "Endpoint finns och useUpdateTenant finns, men ingen komponent anropar hooken — TenantsPage är läsning, portalinbjudan och avidentifiering, så en hyresvärd kan inte rätta en felstavad hyresgäst i gränssnittet.",
-      "arende": ""
-    },
     "send_overdue_reminders": {
       "skal": "POST /v1/notifications/send-overdue-reminders finns (ADMIN/OWNER) men ingen rad i apps/web anropar den; gränssnittet kan pausa och återuppta påminnelser, inte utlösa ett utskick.",
       "arende": ""

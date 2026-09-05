@@ -9,6 +9,8 @@ import { DocumentCategory } from '@prisma/client'
 import { v4 as uuid } from 'uuid'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
+import { DocumentDeliveryService } from './document-delivery.service'
+import type { PortalDocumentCategory } from './document-delivery.service'
 import {
   validateUploadedFile,
   extensionForDetectedMime,
@@ -57,7 +59,77 @@ export class DocumentsService {
     private prisma: PrismaService,
     private config: ConfigService,
     private storage: StorageService,
+    private delivery: DocumentDeliveryService,
   ) {}
+
+  /**
+   * SKICKA ETT BEFINTLIGT DOKUMENT TILL EN HYRESGÄSTS PORTAL.
+   *
+   * ── VARFÖR METODEN FINNS ──────────────────────────────────────────────────
+   *
+   * `DocumentDeliveryService.deliverToTenant` hade exakt EN anropare i hela
+   * kodbasen, och det var AI-verktyget `send_document_to_tenant`. Att ladda upp
+   * ett dokument och att skicka det till en hyresgäst är två olika saker, och
+   * bara den första fanns för människan — verktyget stod därför i
+   * `tool-human-path.baseline.json`.
+   *
+   * ── SAMMA PRIMITIV, INTE EN KOPIA ─────────────────────────────────────────
+   *
+   * Leveransen går genom `deliverToTenant`, precis som verktyget. Den äger
+   * org-scopingen av mottagaren, INVOICE-coercningen (kategorin döljs i
+   * portalen), den innehålls- och mottagarhärledda lagringsnyckeln och
+   * notisen. Inget av det upprepas här.
+   *
+   * ── SKILLNADEN MOT VERKTYGET, OCH VARFÖR DEN INTE ÄR ETT UNDERSKOTT ───────
+   *
+   * Verktyget KOMPONERAR ett dokument: det tar en titel och en text, renderar
+   * en PDF och levererar den. Den här vägen tar ett dokument som REDAN finns.
+   * Människan kommer alltså åt samma förmåga — leverera till portalen — via en
+   * fil hon laddat upp själv, vilket är minst lika mycket: uppladdningen
+   * accepterar fler filtyper än den genererade PDF:en verktyget kan bygga.
+   *
+   * ── 404, ALDRIG 403 ───────────────────────────────────────────────────────
+   *
+   * `findOne` slår upp med `{ id, organizationId }` och kastar NotFound. Ett
+   * 403 hade avslöjat att dokumentet FINNS i någon annan organisation — en
+   * skillnad som går att räkna på utifrån.
+   */
+  async sendToTenant(params: {
+    documentId: string
+    tenantId: string
+    organizationId: string
+    notify?: boolean
+  }): Promise<{ documentId: string }> {
+    const { documentId, tenantId, organizationId } = params
+
+    // Kastar NotFound om dokumentet inte finns i anroparens organisation.
+    const document = await this.findOne(documentId, organizationId)
+
+    const content = await this.storage.getFileBuffer(document.storageKey)
+
+    // Kategorin ärvs från källdokumentet när den är en portal-kategori.
+    // INVOICE tas om hand av leveranstjänsten (coercas till OTHER) — vi
+    // upprepar inte den regeln här, för då hade det funnits två.
+    return this.delivery.deliverToTenant({
+      organizationId,
+      tenantId,
+      content,
+      // `Document` HAR INGEN `fileName`-kolumn — bara `name`, `storageKey`,
+      // `mimeType` och `fileSize`. Och `deliverToTenant` LÄSER inte fältet:
+      // uppmätt, det förekommer exakt en gång i filen, i typdeklarationen.
+      // Lagringsnyckeln härleds numera ur mottagaren och innehållet, med
+      // ändelsen ur mimetypen — filnamnet togs medvetet ur nyckeln (se
+      // docblocket där). Fältet är alltså en kvarleva som typen fortfarande
+      // kräver. Vi skickar visningsnamnet, inte ett påhittat filnamn, och
+      // städningen av det obrukade fältet hör till en egen ändring: den rör
+      // också AI-verktygets anrop.
+      fileName: document.name,
+      name: document.name,
+      category: document.category as PortalDocumentCategory,
+      mimeType: document.mimeType,
+      ...(params.notify === undefined ? {} : { notify: params.notify }),
+    })
+  }
 
   async findAll(
     organizationId: string,

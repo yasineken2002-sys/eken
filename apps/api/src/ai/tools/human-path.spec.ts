@@ -51,16 +51,14 @@ describe('HUMAN_PATHS — delmängdsregeln', () => {
     }
   })
 
-  it('mängden utan mänsklig väg är den mätta — fem fynd, inte noll', () => {
+  it('mängden utan mänsklig väg är den mätta — tre fynd, inte noll', () => {
     // Ett tal här är med flit: mängden ska inte kunna växa obemärkt. Krymper den
     // ska den här raden ändras i SAMMA PR som baslinjen, annars är fyndet inte
     // borta utan bara osynligt.
     expect(verktygUtanMansligVag()).toEqual([
       'mark_sent_to_collection',
       'prepare_contract_signing',
-      'send_document_to_tenant',
       'send_overdue_reminders',
-      'update_tenant',
     ])
   })
 })

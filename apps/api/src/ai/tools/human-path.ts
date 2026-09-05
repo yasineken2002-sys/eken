@@ -145,10 +145,18 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   resume_reminders: { rutt: '/collections', atgard: 'Återuppta' },
   export_for_collection: { rutt: '/collections', atgard: 'Exportera' },
 
-  // ══ SAKNAR MÄNSKLIG VÄG — fem FYND ═══════════════════════════════════════
+  // Hyresgästen och dokumentet fick sina vägar 2026-09-05. `update_tenant` var
+  // den otäckaste posten i baslinjen: `useUpdateTenant` FANNS och exporterades,
+  // så en sökning gav en träff och såg ut som en väg — men ingen komponent
+  // anropade hooken. Död kod som liknar täckning.
+  update_tenant: { rutt: '/tenants', atgard: 'Redigera' },
+  send_document_to_tenant: { rutt: '/documents', atgard: 'Skicka till hyresgäst' },
+
+  // ══ SAKNAR MÄNSKLIG VÄG — tre FYND ═══════════════════════════════════════
   //
   // Var SJU när ratcheten byggdes (#773, mätt mot dbe12ff). `create_journal_entry`
-  // och `record_expense` fick sin väg 2026-09-05 och står ovan under Bokföring.
+  // och `record_expense` fick sin väg (#782), `update_tenant` och
+  // `send_document_to_tenant` i den här ändringen — alla fyra står ovan.
   //
   // Ordningen är efter hur långt bort vägen är: först de som saknar BÅDE
   // endpoint och yta, sedan de som har en endpoint men ingen yta. Skälet per
@@ -156,8 +164,6 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   // markören, så att katalogen kan fälla stängt utan att bära en andra kopia av
   // prosan.
 
-  send_document_to_tenant: { saknas: true },
-  update_tenant: { saknas: true },
   send_overdue_reminders: { saknas: true },
   mark_sent_to_collection: { saknas: true },
   prepare_contract_signing: { saknas: true },

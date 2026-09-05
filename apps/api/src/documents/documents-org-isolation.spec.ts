@@ -40,7 +40,15 @@ function make() {
     document: { create: jest.fn().mockResolvedValue({ id: 'd1' }) },
   }
   const storage = { uploadFile: jest.fn().mockResolvedValue('https://r2/x') }
-  const service = new DocumentsService(prisma as never, {} as never, storage as never)
+  // Fjärde argumentet är DocumentDeliveryService, tillagd när människans väg
+  // till `send_document_to_tenant` byggdes. Ingen av vägarna i den här filen
+  // rör den — attrappen finns bara för att konstruktorn kräver den.
+  const service = new DocumentsService(
+    prisma as never,
+    {} as never,
+    storage as never,
+    { deliverToTenant: jest.fn() } as never,
+  )
   return { service, prisma, storage }
 }
 

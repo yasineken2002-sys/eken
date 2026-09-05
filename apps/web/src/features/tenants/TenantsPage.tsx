@@ -13,6 +13,7 @@ import {
   Home,
   FileSignature,
   Info,
+  Pencil,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -34,6 +35,7 @@ import { formatCurrency, formatDate } from '@eken/shared'
 import type { Tenant } from '@eken/shared'
 import { InvitePortalModal } from './components/InvitePortalModal'
 import { AnonymizeTenantModal } from './components/AnonymizeTenantModal'
+import { EditTenantModal } from './components/EditTenantModal'
 import { HistoryTab } from '@/features/history/HistoryTab'
 import type { TenantWithCount, TenantDetail, LeaseWithUnit } from './api/tenants.api'
 import { cn } from '@/lib/cn'
@@ -326,6 +328,7 @@ interface DetailPanelProps {
 function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
   const role = useAuthStore((s) => s.user?.role)
   const [anonymizeOpen, setAnonymizeOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>('detaljer')
   const alreadyAnonymized = !!selected.anonymizedAt
 
@@ -360,7 +363,23 @@ function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
 
           {/* Kontaktinfo */}
           <div>
-            <p className="mb-3 text-[13px] font-semibold text-gray-700">Kontaktuppgifter</p>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[13px] font-semibold text-gray-700">Kontaktuppgifter</p>
+              {/* En AVIDENTIFIERAD hyresgäst får inte redigeras: uppgifterna är
+                  medvetet raderade, och att skriva tillbaka en e-postadress hade
+                  återinfört persondata som togs bort på begäran. */}
+              {!alreadyAnonymized && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditOpen(true)}
+                  data-testid="tenant-edit"
+                >
+                  <Pencil size={13} strokeWidth={1.8} />
+                  Redigera
+                </Button>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4 rounded-xl border border-gray-100 p-4">
               <InfoRow icon={Mail} label="E-post" value={selected.email} />
               <InfoRow icon={Phone} label="Telefon" value={selected.phone ?? '–'} />
@@ -491,6 +510,15 @@ function DetailPanel({ selected, selectedTenant }: DetailPanelProps) {
           )}
         </div>
       )}
+
+      <EditTenantModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        tenantId={selected.id}
+        namn={displayName(selected)}
+        epost={selected.email}
+        telefon={selected.phone ?? null}
+      />
 
       <AnonymizeTenantModal
         open={anonymizeOpen}

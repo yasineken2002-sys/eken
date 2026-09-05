@@ -1,5 +1,5 @@
 import { toast } from 'sonner'
-import { api, get, del, extractApiError } from '@/lib/api'
+import { api, get, del, extractApiError, post } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { sanitizeFilename, openPresignedDownload } from '@/lib/download'
 
@@ -96,4 +96,23 @@ export async function downloadDocument(id: string, name: string): Promise<void> 
 
 export async function deleteDocument(id: string): Promise<void> {
   return del(`/documents/${id}`)
+}
+
+/**
+ * Skicka ett BEFINTLIGT dokument till en hyresgästs portal.
+ *
+ * Backend går genom `DocumentDeliveryService.deliverToTenant` — samma primitiv
+ * som AI-verktyget `send_document_to_tenant`, som fram till nu var dess enda
+ * anropare. Org-scopingen av både dokumentet och hyresgästen ligger där; ett
+ * dokument i en annan organisation ger 404, aldrig 403.
+ */
+export async function sendDocumentToTenant(
+  documentId: string,
+  tenantId: string,
+  notify: boolean,
+): Promise<{ documentId: string }> {
+  return post<{ documentId: string }>(`/documents/${documentId}/send-to-tenant`, {
+    tenantId,
+    notify,
+  })
 }
