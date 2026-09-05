@@ -28,15 +28,17 @@ import type { UnitWithProperty, UnitDetail, CreateUnitInput } from './api/units.
 import { cn } from '@/lib/cn'
 import { DocumentList } from '@/features/documents/components/DocumentList'
 import { HistoryTab } from '@/features/history/HistoryTab'
+import { EquipmentSection } from './components/EquipmentSection'
 import { useCanWrite } from '@/hooks/useCanWrite'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type FilterTab = 'ALL' | UnitStatus
-type DetailTab = 'detaljer' | 'historik' | 'redigera'
+type DetailTab = 'detaljer' | 'utrustning' | 'historik' | 'redigera'
 
 const DETAIL_TAB_LABELS: Record<DetailTab, string> = {
   detaljer: 'Detaljer',
+  utrustning: 'Utrustning',
   historik: 'Historik',
   redigera: 'Redigera',
 }
@@ -417,7 +419,7 @@ function UnitDetailPanel({
     <div>
       {/* Tab strip */}
       <div className="mb-5 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
-        {(['detaljer', 'historik', 'redigera'] as const).map((t) => (
+        {(['detaljer', 'utrustning', 'historik', 'redigera'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setDetailTab(t)}
@@ -432,6 +434,8 @@ function UnitDetailPanel({
           </button>
         ))}
       </div>
+
+      {detailTab === 'utrustning' && <EquipmentSection unitId={selected.id} />}
 
       {detailTab === 'historik' && (
         <HistoryTab dimension="units" id={selected.id} vad="objektets historik" />
