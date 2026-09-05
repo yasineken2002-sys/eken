@@ -140,7 +140,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** `5f94360` |
 | 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** `5f94360` |
 | 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** `5f94360` |
-| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (5/7) `5f94360` |
+| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (6/7) `59f4f7b` — prov 4 och 5 klara mot Postgres; prov 6 föll isär i två halvor och den ena är en MÄTT DEFEKT |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `71d2998` — båda halvorna av kriteriet nu mätta; kön saknar producent och utförare |
@@ -210,19 +210,72 @@ STÄLLA; svaret kan inte bli annat än tomt i prod förrän ett byte går att re
 | 1 | Samma bekräftelse två gånger → 1 effekt | KLAR | `numbered-entry-race.concurrency.spec.ts:203` (B1) |
 | 2 | Två olika bekräftelser → 2 effekter, var mot sin identitet | KLAR | `:215` (B2); `ai/tools/ai-journal-idempotens.db.spec.ts:78` (A2) |
 | 3 | Två samtidiga försök, samma identitet → 1 effekt | KLAR | `:236` (B3); `pending-action-claim.concurrency.spec.ts:115` (samtidiga anspråk, med negativkontroll `:119`) |
-| 4 | Krasch efter claim, före execution → 0 spår, 0 effekt, svar ≠ "redan utförd" | DELVIS | Svarshalvan: `ai-confirm-crash-honesty.spec.ts:83` — men **mockad Prisma** (`:40`), inte Postgres. "0 spår, 0 effekt" står bara som en mätning i filens docblock (`:9`), inte som ett prov. |
-| 5 | Retry efter den kraschen | **SAKNAS** | Noll träffar på retry/omförsök/återförsök i `apps/api/src/ai/**/*.spec.ts`. Närmast är `ai/tools/action-idempotency.spec.ts:214`, som visar mot riktig Postgres att en NY bekräftelse på identisk input kan anspråkas — men den är skriven som *legitimt upprepande*, utgår aldrig från kraschtillståndet (förbrukat anspråk **och** noll `AiToolExecution`) och når aldrig fram till en execution. |
-| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | DELVIS | "Ingen andraeffekt" mot Postgres: B1 `:203`. Meddelandet: `ai-confirm-crash-honesty.spec.ts:118` — mockad. |
+| 4 | Krasch efter claim, före execution → 0 spår, 0 effekt, svar ≠ "redan utförd" | **KLAR** | `ai/g0-crash-retry-replay.db.spec.ts:304` mot riktig Postgres. Alla tre halvorna är nu prov och inte prosa: `AiToolExecution` 0 rader, `JournalEntry` 0 rader, och uppspelningen ger den ärliga meningen — aldrig "redan utförd". `:348` mäter dessutom GRÄNSEN mot processdöd: ett kastat fel lämnar exakt ETT `AiMessage` mer än en krasch skulle, och rör inte anspråket. |
+| 5 | Retry efter den kraschen | **KLAR** | `:365`–`:430`, ur kraschtillståndet. Fyra utsagor: anspråket går **inte** att ta igen (`:365`) — det är designen, inte en defekt, och produktionskoden säger det rakt ut (`ai-assistant.service.ts:993`); omtaget genom en NY bekräftelse lyckas med exakt EN effekt och EN körning (`:377`); den nya raden är en annan rad med **samma** `toolInputHash` (`:392`); och omtag efter en krasch **efter commit** ger fortfarande ETT verifikat, buret av den innehållshärledda `sourceId` (`:430`). |
+| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | **DELVIS — men av ett nytt skäl** | "Ingen andraeffekt" är KLAR mot Postgres (`:464`). Meddelandet delar sig på spårform: för **FÖRE_EFFEKTEN** ges "redan utförd" som planen kräver (positiv kontroll, `:489`), för **TRANSAKTIONELL** ges den ärliga meningen om ett utförande som bevisligen skedde (`:564`). Se fyndet nedan. |
 | 7 | Deterministisk identitet borttagen → regressionen faller | KLAR | `:330` (B4); `ai/tools/ai-journal-idempotens.db.spec.ts:91` (A3) |
 
-Prov 5 är det som bär planens egen poäng: *klockan 03:00 finns ingen som ber om ett nytt
-förslag.* Att anspråksvägen mekaniskt är öppen är mätt; att den är öppen **ur
-kraschtillståndet** är det inte.
+**Attrappen är borta.** Prov 4, 5 och 6 går sedan `59f4f7b` mot riktig Postgres i
+`apps/api/src/ai/g0-crash-retry-replay.db.spec.ts` (10 prov). Sömmen är
+**`ToolExecutorService`-injektionen, inte Prisma**: anspråket (`ai-assistant.service.ts:1251`)
+och utförandet (`:1045`) är två skilda anrop utan delad transaktion, och mellan dem körs
+bara rena funktioner. Prisma är därför riktig hela vägen, så det atomära anspråket,
+treutfallsuppslaget (`:1240`) och körningsuppslaget (`:976`) utvärderas på riktigt.
 
-Notera vad de två DELVIS-proven har gemensamt: båda vilar på en **attrapp**. En mockad
-Prisma returnerar det den blev tillsagd att returnera oavsett `where`, så prov 4 och 6
-mäter vilket SVAR som ges — aldrig att noll rader faktiskt skrevs. Det är precis den
-halva frågan CLAUDE.md varnar för, och skälet till att raden inte kan stå som 7/7.
+Filen skriver ut vad den INTE kan se: ett kastat fel är inte processdöd. Skillnaden är
+mätt och inte antagen — catch-blocket (`:1053`) skriver ETT `AiMessage` och gör inget
+annat; det rör varken anspråket eller `AiToolExecution`.
+
+**Prov 5 bar planens egen poäng — *klockan 03:00 finns ingen som ber om ett nytt förslag*
+— och svaret är mätt: anspråket går INTE att ta igen, med flit.** Ett engångsanspråk som
+kan återuppstå är inget engångsanspråk, och det är det som gör att 24 samtidiga
+bekräftelser ger EN körning (prov 3). Återupptagningen måste därför gå via en NY
+bekräftelse på samma innehåll, och det som gör den vägen säker är den innehållshärledda
+`sourceId` (`ai-journal-source.ts`) — inte anspråket. För en obevakad 03:00-körning är
+det producenten i uppdragskön som måste kunna utfärda den nya bekräftelsen; anspråket
+kommer aldrig att göra det åt den.
+
+> ### FYND (`59f4f7b`) — uppspelningen FÖRNEKAR ett utförande som skedde, för två verktyg
+>
+> Prov 6 gick inte att få helgrönt, och skälet är en defekt i produktionskoden — inte i
+> riggen. Efter ett **bevisligen** lyckat `create_journal_entry` (1 `JournalEntry`,
+> 1 `AiToolExecution`, mätt tre rader ovanför i samma prov) svarar uppspelningen
+> *"det går INTE att bekräfta att åtgärden utfördes"*.
+>
+> Det är **spegelbilden av den defekt den ärliga formuleringen byggdes för att laga**:
+> förut påstods "redan utförd" om något som aldrig skedde; nu förnekas något som skedde.
+> Båda får en hyresvärd att sluta lita på svaret, och den här riktningen leder till att
+> någon bokför posten en andra gång för hand.
+>
+> **Orsaken, mätt.** Uppslaget på `ai-assistant.service.ts:976` lyder
+> `where: { conversationId, toolName, confirmedAt: { not: null } }`. De två spårvägarna
+> fyller fälten olika:
+>
+> ```
+> FÖRE_EFFEKTEN   beginToolExecution        (tool-executor.service.ts:602)
+>                 skickar conversationId OCH confirmedAt ur auditContext
+> TRANSAKTIONELL  skrivTransaktionelltSpar  (:786) → writeInTransaction
+>                 skickar VARKEN conversationId ELLER confirmedAt
+>
+> uppmätt radform efter ett lyckat create_journal_entry, med båda fälten satta
+> av anroparen:
+>   { conversationId: null, confirmedAt: null, completedAt: <satt> }
+> ```
+>
+> Villkoret kan alltså aldrig matcha, och grenen tar den ärliga utgången av fel skäl.
+>
+> **Omfånget är en uppräkning, inte ett stickprov.** De 30 `ACTION_TOOLS` fördelar sig
+> **21 FÖRE_EFFEKTEN / 7 BÄST_MÖJLIGA / 2 TRANSAKTIONELL**, och de två är
+> `create_journal_entry` och `record_expense` — precis de som skriver verifikat.
+>
+> **Orsaken är bevisad, inte korrelerad.** Negativkontroll NK3: samma defekt injicerad i
+> den FUNGERANDE vägen (`confirmedAt: null` i `beginToolExecution`) fick den positiva
+> kontrollen att falla med **ordagrant samma mening**. Ett prov föll, nio var gröna.
+>
+> **Inte lagat här, och det är ett beslut.** Fixen bor i `tool-executor.service.ts` och
+> har två former — vidarebefordra de två fälten (den lilla, och den som gör de två
+> vägarna lika), eller ändra uppslaget. Provet på `:564` **pinnar nuläget** och är en
+> tripwire: den dag vidarebefordringen lagas blir det rött och pekar hit.
 
 **2b — KLAR.** `otherFiles` finns inte längre i vakten — den enda kvarvarande träffen i
 hela repot är en historisk kommentar i `check-history-registry.mjs:37`. Omfånget härleds:
