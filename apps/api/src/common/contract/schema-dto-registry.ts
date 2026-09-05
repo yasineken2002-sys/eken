@@ -17,6 +17,8 @@ import {
   SendNoticesSchema,
   MarkNoticePaidSchema,
   CreateRentNoticeCreditSchema,
+  ManualMatchSchema,
+  ConfirmImportSchema,
   UpdateMeterSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
@@ -40,6 +42,8 @@ import { GenerateNoticesDto } from '../../avisering/dto/generate-notices.dto'
 import { SendNoticesDto } from '../../avisering/dto/send-notices.dto'
 import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
+import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
+import { ConfirmImportDto } from '../../reconciliation/dto/confirm-import.dto'
 import type { ZodType } from 'zod'
 
 /**
@@ -349,5 +353,29 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { lines: [{ amount: 500 }], reason: 'Felaktig hyresdebitering' },
     ogiltig: { lines: [], reason: 'Felaktig hyresdebitering' },
     ogiltigVarfor: 'en kreditering utan poster krediterar ingenting',
+  },
+  {
+    endpoint: 'PATCH /reconciliation/transactions/:id/match',
+    inputTyp: 'ManualMatchInput',
+    schema: ManualMatchSchema,
+    dto: ManualMatchDto,
+    giltig: { invoiceId: '11111111-2222-4333-8444-555555555555' },
+    ogiltig: { invoiceId: 'inte-ett-uuid' },
+    ogiltigVarfor: 'invoiceId måste vara ett UUID',
+  },
+  {
+    endpoint: 'POST /reconciliation/imports/:id/confirm',
+    inputTyp: 'ConfirmImportInput',
+    schema: ConfirmImportSchema,
+    dto: ConfirmImportDto,
+    giltig: {
+      transactions: [
+        { date: '2026-09-01', description: 'Hyra sep', ocr: '1234567', amount: 12000 },
+      ],
+    },
+    ogiltig: {
+      transactions: [{ date: '2026-09-01', description: 'Hyra sep', amount: 'tolvtusen' }],
+    },
+    ogiltigVarfor: 'beloppet måste vara ett tal',
   },
 ]

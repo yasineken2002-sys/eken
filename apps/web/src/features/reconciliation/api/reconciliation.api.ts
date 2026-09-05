@@ -1,5 +1,11 @@
 import { api, del, get, patch, post } from '@/lib/api'
-import type { BankTransaction, ImportResult, ReconciliationStats } from '@eken/shared'
+import type {
+  BankTransaction,
+  ConfirmImportInput,
+  ImportResult,
+  ManualMatchInput,
+  ReconciliationStats,
+} from '@eken/shared'
 
 export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
 
@@ -69,7 +75,8 @@ export async function importBgMaxFile(file: File): Promise<ImportResult & { file
 }
 
 export async function autoMatchAll(): Promise<AutoMatchResult> {
-  return post<AutoMatchResult>('/reconciliation/auto-match', {})
+  // Ingen kropp: rutten tar inget @Body().
+  return post<AutoMatchResult>('/reconciliation/auto-match')
 }
 
 export async function getTransactions(filters?: {
@@ -84,19 +91,18 @@ export async function getReconciliationStats(): Promise<ReconciliationStats> {
   return get<ReconciliationStats>('/reconciliation/stats')
 }
 
-export async function manualMatch(
-  transactionId: string,
-  target: { invoiceId?: string; rentNoticeId?: string },
-): Promise<void> {
+export async function manualMatch(transactionId: string, target: ManualMatchInput): Promise<void> {
   await patch(`/reconciliation/transactions/${transactionId}/match`, target)
 }
 
 export async function ignoreTransaction(transactionId: string): Promise<void> {
-  await patch(`/reconciliation/transactions/${transactionId}/ignore`, {})
+  // Ingen kropp: rutten tar inget @Body().
+  await patch(`/reconciliation/transactions/${transactionId}/ignore`)
 }
 
 export async function unmatchTransaction(transactionId: string): Promise<void> {
-  await patch(`/reconciliation/transactions/${transactionId}/unmatch`, {})
+  // Ingen kropp: rutten tar inget @Body().
+  await patch(`/reconciliation/transactions/${transactionId}/unmatch`)
 }
 
 // ─── PDF-import ─────────────────────────────────────────────────────────────
@@ -116,9 +122,8 @@ export async function confirmPdfImport(
   importId: string,
   transactions?: ParsedTransaction[],
 ): Promise<ImportCommitResult> {
-  return post<ImportCommitResult>(`/reconciliation/imports/${importId}/confirm`, {
-    ...(transactions ? { transactions } : {}),
-  })
+  const kropp: ConfirmImportInput = { ...(transactions ? { transactions } : {}) }
+  return post<ImportCommitResult>(`/reconciliation/imports/${importId}/confirm`, kropp)
 }
 
 export async function cancelPdfImport(importId: string): Promise<void> {
