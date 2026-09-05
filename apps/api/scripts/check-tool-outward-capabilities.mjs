@@ -92,7 +92,7 @@
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { codeMask, blankComments } from '../../../scripts/lib/source-scan.mjs'
+import { codeMask, blankComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = join(HERE, '..', 'src')
@@ -459,7 +459,13 @@ export function parseActionTools(rå) {
   const start = kod.indexOf('[', i)
   const slut = kod.indexOf(']', start)
   if (start === -1 || slut === -1) return new Set()
-  return new Set([...rå.slice(start, slut).matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]))
+  // `\p{Ll}\p{N}_` och inte `[a-z0-9_]`: verktygsnamnen är ASCII i dag, men en
+  // ASCII-härledning av en identifierare KAPAR ett namn med svensk initial i
+  // stället för att missa det, och antalet är då oförändrat. Se
+  // check-identifier-regex.mjs.
+  return new Set(
+    [...rå.slice(start, slut).matchAll(/'([\p{Ll}\p{N}_]+)'/gu)].map((m) => m[1]),
+  )
 }
 
 /** Effektdeklarationerna, de tre fält R3 behöver. */
@@ -961,6 +967,16 @@ function selfTest() {
     t('VY: namnen läses ur RÅTEXTEN på maskens offset',
       namnUrRåtext.size === 5 && namnUrRåtext.has('mejla') && namnUrMasken.size < namnUrRåtext.size,
       `råtext=${namnUrRåtext.size} mask=${namnUrMasken.size} [${[...namnUrMasken.keys()].map((k) => JSON.stringify(k)).join(',')}]`)
+  }
+
+  // ── DEN DELADE KÄLLSKANNERNS EGNA KANARIEFÅGLAR ──────────────────────────
+  // Vakten läser allt genom `codeMask`. Går skannern sönder blir VARJE konsument
+  // röd, inte bara skannerns egen körning (#463). Kravet är dessutom mekaniskt:
+  // check-guard-preprocessors.mjs R2 fäller en vakt som använder skannern utan
+  // att pröva den.
+  for (const f of kanariefåglar()) {
+    fel++
+    console.error(`  ❌ delad källskanner: ${f}`)
   }
 
   if (fel > 0) {
