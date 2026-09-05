@@ -1,5 +1,11 @@
 import { get, post } from '@/lib/api'
-import type { Account, JournalEntry } from '@eken/shared'
+import type {
+  Account,
+  CreateExpenseInput,
+  CreateJournalEntryInput,
+  CreateSupplierInvoiceInput,
+  JournalEntry,
+} from '@eken/shared'
 
 export const fetchAccounts = (): Promise<Account[]> => get<Account[]>('/accounting/accounts')
 
@@ -224,43 +230,18 @@ export const closeFiscalYear = (year: number): Promise<FiscalYearCloseResult> =>
 // `createNumberedEntry`), så gränssnittet behöver inte veta något om konton
 // utöver numret hyresvärden väljer.
 
-export interface ManuellVerifikatrad {
-  accountNumber: number
-  debit?: number
-  credit?: number
-  description?: string
-}
-
-export interface SkapaVerifikatInput {
-  date: string
-  description: string
-  lines: ManuellVerifikatrad[]
-  /**
-   * En nyckel per öppnad modal. Två skickningar med samma nyckel ger EN
-   * journalpost — ett omtag efter en tappad uppkoppling får inte bli två
-   * verifikat i huvudboken.
-   */
-  idempotencyKey: string
-  attachmentUrl?: string
-}
-
-export const createJournalEntry = (input: SkapaVerifikatInput): Promise<JournalEntry> =>
+/**
+ * NYTTOLASTERNA ÄR DELADE — se `packages/shared/src/schemas/contract.ts`.
+ *
+ * De här typerna skrevs tidigare lokalt, parallellt med API:ts DTO:er, och
+ * ingen av definitionerna visste om den andra. Nu är formen ETT schema som
+ * båda sidor härleds ur: formuläret validerar mot det via zodResolver och
+ * DTO:n deklarerar `implements` mot samma typ.
+ */
+export const createJournalEntry = (input: CreateJournalEntryInput): Promise<JournalEntry> =>
   post<JournalEntry>('/accounting/journal-entries', input)
 
-export interface SkapaUtgiftInput {
-  date: string
-  description: string
-  supplier?: string
-  /** BRUTTO — det som lämnar bankkontot. Momsen bryts UT ur det, inte till. */
-  amount: number
-  vatRate?: number
-  vatAmount?: number
-  accountNumber: number
-  idempotencyKey: string
-  attachmentUrl?: string
-}
-
-export const createExpense = (input: SkapaUtgiftInput): Promise<JournalEntry> =>
+export const createExpense = (input: CreateExpenseInput): Promise<JournalEntry> =>
   post<JournalEntry>('/accounting/expenses', input)
 
 // ─── LEVERANTÖRSSKULDER (2440) ────────────────────────────────────────────────
@@ -292,25 +273,10 @@ export interface SupplierInvoice {
   createdAt: string
 }
 
-export interface SkapaLeverantorsfakturaInput {
-  supplierName: string
-  invoiceNumber?: string
-  description: string
-  invoiceDate: string
-  dueDate: string
-  expenseAccount: number
-  /** BRUTTO — det som står på fakturan. Momsen bryts UT ur det, inte till. */
-  amount: number
-  vatRate?: number
-  /** Avstämning mot serverns egen uträkning — se modalens kommentar. */
-  vatAmount?: number
-  attachmentUrl?: string
-}
-
 export const getSupplierInvoices = (status?: 'OPEN' | 'PAID' | 'CANCELLED') =>
   get<SupplierInvoice[]>(`/accounting/supplier-invoices${status ? `?status=${status}` : ''}`)
 
-export const createSupplierInvoice = (input: SkapaLeverantorsfakturaInput) =>
+export const createSupplierInvoice = (input: CreateSupplierInvoiceInput) =>
   post<SupplierInvoice>('/accounting/supplier-invoices', input)
 
 export const paySupplierInvoice = (input: { id: string; paidDate: string }) =>

@@ -11,6 +11,7 @@ import {
   MinLength,
 } from 'class-validator'
 import { Transform } from 'class-transformer'
+import type { CreateSupplierInvoiceInput, SammaNycklar } from '@eken/shared'
 import { VAT_RATES } from '@eken/shared'
 
 /**
@@ -27,7 +28,18 @@ import { VAT_RATES } from '@eken/shared'
  * VALIDERINGEN HÄR ÄR BEKVÄMLIGHET. Balanskravet, kontouppslaget och
  * periodspärren sitter i tjänsten och i `createNumberedEntry`.
  */
-export class CreateSupplierInvoiceDto {
+
+// ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
+//
+// Klassen deklarerar `implements CreateSupplierInvoiceInput` och raden längst ned kräver
+// EXAKT samma nyckelmängd. Formen ägs alltså av `CreateSupplierInvoiceSchema` i
+// @eken/shared, som webbens formulär validerar mot — ett fält som bara finns på
+// ena sidan är ett kompileringsfel i stället för ett 400-svar i produktion.
+//
+// VÄRDEIMPORT av typen är inte nödvändig (det är en typ), men klassen självt
+// måste fortsätta importeras som VÄRDE i controllern — `import type` raderar den
+// och ValidationPipe tappar all metadata. Se CLAUDE.md:s DTO-regel.
+export class CreateSupplierInvoiceDto implements CreateSupplierInvoiceInput {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({ message: 'Ange leverantörens namn' })
   @MinLength(2, { message: 'Leverantörsnamnet måste vara minst 2 tecken' })
@@ -96,3 +108,16 @@ export class PaySupplierInvoiceDto {
   @IsISO8601({}, { message: 'Betalningsdatum måste anges som ÅÅÅÅ-MM-DD' })
   paidDate!: string
 }
+
+/**
+ * NYCKELPARITET mot det delade schemat. Faller kompileringen här står det
+ * saknade fältets namn i felmeddelandet.
+ *
+ * `implements` ovan räcker inte: en klass som utelämnar ett VALFRITT fält ur
+ * interfacet passerar `implements` utan anmärkning. Raden nedan gör inte det.
+ */
+const _kontraktLeverantorsfaktura: SammaNycklar<
+  CreateSupplierInvoiceDto,
+  CreateSupplierInvoiceInput
+> = true
+void _kontraktLeverantorsfaktura

@@ -11,6 +11,7 @@ import {
   MinLength,
 } from 'class-validator'
 import { Transform } from 'class-transformer'
+import type { CreateExpenseInput, SammaNycklar } from '@eken/shared'
 import { VAT_RATES } from '@eken/shared'
 
 /**
@@ -35,7 +36,18 @@ import { VAT_RATES } from '@eken/shared'
  * Att skriva in satsen i momsradens text vore billigt, men skulle göra AI-vägens
  * och människovägens verifikattexter olika: verktyget får bara ett belopp.
  */
-export class CreateExpenseDto {
+
+// ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
+//
+// Klassen deklarerar `implements CreateExpenseInput` och raden längst ned kräver
+// EXAKT samma nyckelmängd. Formen ägs alltså av `CreateExpenseSchema` i
+// @eken/shared, som webbens formulär validerar mot — ett fält som bara finns på
+// ena sidan är ett kompileringsfel i stället för ett 400-svar i produktion.
+//
+// VÄRDEIMPORT av typen är inte nödvändig (det är en typ), men klassen självt
+// måste fortsätta importeras som VÄRDE i controllern — `import type` raderar den
+// och ValidationPipe tappar all metadata. Se CLAUDE.md:s DTO-regel.
+export class CreateExpenseDto implements CreateExpenseInput {
   @IsISO8601({}, { message: 'Datum måste anges som ÅÅÅÅ-MM-DD' })
   date!: string
 
@@ -83,3 +95,13 @@ export class CreateExpenseDto {
   @MaxLength(500)
   attachmentUrl?: string
 }
+
+/**
+ * NYCKELPARITET mot det delade schemat. Faller kompileringen här står det
+ * saknade fältets namn i felmeddelandet.
+ *
+ * `implements` ovan räcker inte: en klass som utelämnar ett VALFRITT fält ur
+ * interfacet passerar `implements` utan anmärkning. Raden nedan gör inte det.
+ */
+const _kontraktUtgift: SammaNycklar<CreateExpenseDto, CreateExpenseInput> = true
+void _kontraktUtgift
