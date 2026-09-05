@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { decideInboxItem, fetchInbox, fetchInboxSummary } from '../api/inbox.api'
+import {
+  decideInboxItem,
+  fetchInbox,
+  fetchInboxSummary,
+  fetchKanDelegera,
+  skapaDelegationUrForslag,
+} from '../api/inbox.api'
 
 import type { AssignmentStatus } from '../api/inbox.api'
 
@@ -34,6 +40,33 @@ export function useDecideInboxItem() {
       void qc.invalidateQueries({ queryKey: ['notifications'] })
       // `/uppdrag` läser samma rader.
       void qc.invalidateQueries({ queryKey: ['assignments'] })
+    },
+  })
+}
+
+/**
+ * Kan förslaget bli en delegation?
+ *
+ * `enabled` på ett id: frågan ställs bara när en rad är öppen, och aldrig för ett
+ * förslag som inte är godkänt — knappen finns inte där ändå.
+ */
+export function useKanDelegera(assignmentId: string | null, aktivt: boolean) {
+  return useQuery({
+    queryKey: ['inbox', 'kanDelegera', assignmentId ?? 'ingen'],
+    queryFn: () => fetchKanDelegera(assignmentId as string),
+    enabled: Boolean(assignmentId) && aktivt,
+    staleTime: 30_000,
+  })
+}
+
+export function useSkapaDelegation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: skapaDelegationUrForslag,
+    onSuccess: () => {
+      // Knappen ska bli grå direkt: förslaget har nu blivit en delegation.
+      void qc.invalidateQueries({ queryKey: ['inbox', 'kanDelegera'] })
+      void qc.invalidateQueries({ queryKey: ['delegationer'] })
     },
   })
 }
