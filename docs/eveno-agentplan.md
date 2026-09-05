@@ -144,7 +144,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `71d2998` — båda halvorna av kriteriet nu mätta; kön saknar producent och utförare |
-| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `f6b24cf` — katalogen kastar, alla 7 vakterna setts falla; kvar: `agentAllowlist`, `supportsUndo`, `authorityScope` |
+| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `59f4f7b` — alla sju fälten finns, 11 vakter setts falla; kvar: **5 verktyg utan mänsklig väg** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
@@ -453,12 +453,12 @@ Av planens sju fält fanns tre. Ett fjärde landar med den här omgången:
 | Fält | Läge |
 | --- | --- |
 | `toolName` | finns — nyckeln i `EFFECT_DECLARATIONS` |
-| `effectClassification` | **delvis** — `effectIdempotency`, `idempotencyUnit`, `traceDurability`, `traceIntegrity`, `externalHandle` finns; axeln *anteckning \| utåtriktad handling* är inte ett deklarerat fält |
+| `effectClassification` | **delvis** — `effectIdempotency`, `idempotencyUnit`, `traceDurability`, `traceIntegrity`, `externalHandle` finns. Axeln *anteckning \| utåtriktad handling* är fortfarande inget EGET fält, men den går numera att härleda ur två mätta mängder: vakt 7:s manifest (skickar den något?) och `authorityScope` (vems rätt?). Att göra den till ett tredje fält vore att låna ett svar de två redan ger |
 | `requiresApproval` | finns, **härlett** ur `ACTION_TOOLS` — ingen andra lista |
 | `humanPath` | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) — `ai/tools/human-path.ts` + `check-tool-human-path.mjs`, ratchet i tre riktningar |
-| `agentAllowlist` | saknas |
-| `supportsUndo` | saknas per verktyg (bara `AiAssignment.undoHint` per uppdrag) |
-| `authorityScope` | saknas |
+| `agentAllowlist` | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784), `59f4f7b`) — `boolean`, medveten reduktion av planens "vilka agenter": agentidentiteter finns inte i koden, och en mängd med tom domän är en vokabulär som ser ut som en mekanism. **9 av 30** är `true` |
+| `supportsUndo` | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784), `59f4f7b`) — `VÄG{fil,symbol}` \| `IRREVERSIBEL{skäl}` \| `INGEN_EFFEKT`. Aldrig bara `false`: "går inte att backa" och "ingen letade" ser likadana ut. 22 vägar slås upp i kod, 7 är irreversibla med skäl, 1 har ingen effekt |
+| `authorityScope` | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784), `59f4f7b`) — `EGEN_ORG` \| `MOT_HYRESGAST` \| `MOT_TREDJE_PART`. Uppmätt: 12 · 16 · 2 |
 
 Vakterna i Del 10, en rad var:
 
@@ -471,6 +471,10 @@ Vakterna i Del 10, en rad var:
 | 5 | historikdomän saknas i registret | `check-history-registry.mjs` |
 | 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) |
 | 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **byggd** ([#779](https://github.com/yasineken2002-sys/eken/pull/779), `f6b24cf`) — `check-tool-outward-capabilities.mjs` + `tool-outward-capabilities.json` |
+| 8 | `agentAllowlist: true` på något som inte är hyresvärdens egna register | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — `check-tool-authority.mjs` R1, fyra härledda villkor |
+| 9 | `MOT_TREDJE_PART` utan externt handtag | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R2; flyttade `mark_sent_to_collection` till `MOT_HYRESGAST` |
+| 10 | något som bokför eller skickar deklareras oåterkalleligt utan skäl | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R3, tröskel **80** tecken |
+| 11 | en ångerväg som pekar på en metod som inte finns | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R4, symbolen slås upp som KOD, `\p{L}`-avgränsad |
 
 **Vakt 7 är byggd** (2026-09-05, mätt mot `f6b24cf`). Stycket nedan beskrev
 tidigare varför den saknades, och analysen stod sig: `check-ai-tool-effects.mjs`
@@ -527,14 +531,33 @@ dynamiska anrop (`this[namn](…)`), och en tjänst som byter beteende utanför
 räckvidden ovan. `MailQueue` räknas därför som sänka i sig, så `MailService` inte
 behöver följas vidare.
 
-Vad etapp 5 saknar för att bli KLAR, ommätt 2026-09-05: **vakt 7 är byggd** och
-alla sju har setts falla. Kvar står tre fält — `agentAllowlist`, `supportsUndo`,
-`authorityScope` — och de sju verktyg som saknar mänsklig väg
-(`apps/api/scripts/tool-human-path.baseline.json`). Inget av de tre fälten är
-struket ur kriteriet, och de är inte pynt: `agentAllowlist` är det som avgör vad
-en agent får göra obevakat, `authorityScope` med vilken rätt, och `supportsUndo`
-per verktyg finns i dag bara som `AiAssignment.undoHint` per uppdrag. Raden är
-därför **DELVIS**, inte KLAR.
+Ommätt 2026-09-05 efter [#784](https://github.com/yasineken2002-sys/eken/pull/784). **De tre fälten finns nu**, obligatoriska i typen och
+fail-closed i `buildEffectCatalog` — katalogen kastar med verktygets namn och
+frågan i klartext om något av dem saknas i runtime, och `effect-idempotency.spec.ts`
+prövar alla tre kasten plus motprovet att `agentAllowlist: false` INTE kastar
+(kontrollen är `typeof !== 'boolean'`, inte en falsy-kontroll — den hade fällt 21
+av 30 korrekt deklarerade verktyg).
+
+Fyra nya korsregler vaktar dem, alla mot mängder som redan mäts av något annat:
+inga nya listor att underhålla. `check-tool-authority.mjs` R1–R4, var och en sedd
+falla mot skarp kod.
+
+**Kriteriets fem villkor, mätta:**
+
+| villkor | läge |
+| --- | --- |
+| katalogen kastar | ✅ tre nya fail-closed-kast, prövade |
+| vakt 1–7 har setts falla | ✅ |
+| `agentAllowlist` | ✅ 9 av 30 |
+| `authorityScope` | ✅ 12 EGEN_ORG · 16 MOT_HYRESGAST · 2 MOT_TREDJE_PART |
+| `supportsUndo` | ✅ 22 vägar + 7 irreversibla med skäl + 1 utan effekt |
+| verktyg utan mänsklig väg | ❌ **5 kvar** (`tool-human-path.baseline.json`) |
+
+**Raden är därför DELVIS, inte KLAR** — och det som återstår är den sista raden i
+tabellen, ingenting annat. Delmängdsregeln säger att agenten aldrig får kunna mer
+än människan; fem verktyg bryter fortfarande mot den, och baslinjen är en ratchet
+som bara får krympa (7 → 5 i [#782](https://github.com/yasineken2002-sys/eken/pull/782)).
+Att flytta raden till KLAR med de fem kvar hade gjort kriteriet till en formalitet.
 
 **Ordningen härifrån, beslutad 2026-09-04.** Tre saker mätningen fann byggs
 medvetet INTE i samma omgång, och skälet står här så att nästa person inte tar
