@@ -810,6 +810,15 @@ export class ToolExecutorService {
      * `conversationId` och `confirmedAt` föll bort, och uppspelningen förnekade
      * därför utföranden som skedde (#783). Att ta emot identiteten som ETT
      * värde gör det omöjligt att skicka halva.
+     *
+     * MÄTT BIVERKAN: med `exactOptionalPropertyTypes: true` är den NATURLIGA
+     * formen av defekten inte längre skrivbar. Att plocka ut ett par fält ur
+     * `identitet` i stället för att sprida den är ett KOMPILERINGSFEL, inte ett
+     * rött prov — `userId` blir då `string | null | undefined` mot ett fält som
+     * bara tillåter `string | null`. Att återinföra defekten kräver att man
+     * uttryckligen skriver `conversationId: null, confirmedAt: null` EFTER
+     * spridningen, alltså en avsiktshandling. (Negativkontroll NK4 gör precis
+     * det, och fäller då exakt de två transaktionella verktygen.)
      */
     identitet: ToolExecutionIdentity,
   ): Promise<void> {
