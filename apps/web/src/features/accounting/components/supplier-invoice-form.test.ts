@@ -4,6 +4,7 @@ import {
   beraknaBelopp,
   fakturaFel,
   idagIso,
+  makuleringKorsarRakenskapsar,
   type LeverantorsfakturaUtkast,
 } from './supplier-invoice-form'
 
@@ -95,5 +96,26 @@ describe('arForfallen — speglar serverns isOverdue', () => {
 describe('idagIso', () => {
   it('ger ÅÅÅÅ-MM-DD', () => {
     expect(idagIso(new Date('2026-09-05T23:30:00Z'))).toBe('2026-09-05')
+  })
+})
+
+describe('makuleringKorsarRakenskapsar', () => {
+  it('samma år → ingen varning', () => {
+    expect(makuleringKorsarRakenskapsar('2026-09-01', '2026-09-05')).toBe(false)
+  })
+
+  it('fakturan i fjol, rättelsen i år → VARNING', () => {
+    // Kostnaden ligger kvar i 2025 års resultat medan rättelsen sänker 2026:s.
+    // Det är rätt för ett oväsentligt belopp och fel för ett väsentligt — och
+    // skillnaden är en bedömning, inte en beräkning.
+    expect(makuleringKorsarRakenskapsar('2025-12-20', '2026-01-04')).toBe(true)
+  })
+
+  it('nyårsafton och nyårsdagen är olika räkenskapsår trots elva dagars mellanrum', () => {
+    expect(makuleringKorsarRakenskapsar('2025-12-31', '2026-01-01')).toBe(true)
+  })
+
+  it('januari och december samma år är SAMMA räkenskapsår', () => {
+    expect(makuleringKorsarRakenskapsar('2026-01-02', '2026-12-30')).toBe(false)
   })
 })

@@ -5,6 +5,7 @@
  * i huvudboken ägs av `supplier-invoice.db.spec.ts` mot riktig Postgres.
  */
 
+import { calculateVat, vatFromGross } from '@eken/shared'
 import {
   byggLeverantorsbetalningsrader,
   byggLeverantorsfakturareverseringsrader,
@@ -269,5 +270,55 @@ describe('byggLeverantorsfakturareverseringsrader — makuleringen vänder motta
     expect(new Set([receiptSourceId(id), paymentSourceId(id), cancellationSourceId(id)]).size).toBe(
       3,
     )
+  })
+})
+
+describe('momsen är SERVERNS uträkning — vatRate lagras, vatAmount bokförs', () => {
+  // Riggen är ren aritmetik: det som prövas är regeln, inte Prisma. Den skarpa
+  // vägen (SupplierInvoiceService.create) använder samma `vatFromGross` och
+  // samma tolerans.
+  const godtas = (brutto: number, sats: number, inskickad?: number) => {
+    const beraknad = vatFromGross(brutto, sats)
+    const moms = inskickad ?? beraknad
+    return Math.abs(moms - beraknad) <= 0.01
+  }
+
+  it('utelämnat momsbelopp räknas fram ur brutto och sats', () => {
+    expect(vatFromGross(1250, 25)).toBe(250)
+    expect(vatFromGross(1120, 12)).toBe(120)
+    expect(vatFromGross(1060, 6)).toBe(60)
+  })
+
+  it('0 % ger noll moms', () => {
+    expect(vatFromGross(1000, 0)).toBe(0)
+  })
+
+  it('DEN AVGÖRANDE: fel formel (belopp × sats/100) FÄLLS', () => {
+    // 1250 × 25/100 = 312,50. Ett verifikat med det talet BALANSERAR — netto
+    // 937,50 mot skuld 1250 — men bokför fel summa som kostnad. Ingen
+    // balansgrind kan se det; den här kontrollen kan.
+    expect(godtas(1250, 25, 312.5)).toBe(false)
+  })
+
+  it('noll moms med 25 % angivet FÄLLS — registret får inte säga emot verifikatet', () => {
+    expect(godtas(1250, 25, 0)).toBe(false)
+  })
+
+  it('en ÖRES avvikelse godtas — leverantören kan ha avrundat åt andra hållet', () => {
+    expect(godtas(1250, 25, 250.01)).toBe(true)
+    expect(godtas(1250, 25, 249.99)).toBe(true)
+  })
+
+  it('två ören godtas INTE — toleransen är avrundning, inte slack', () => {
+    expect(godtas(1250, 25, 250.02)).toBe(false)
+  })
+
+  it('vatFromGross är MOTSATSEN till calculateVat — de tas lätt för varandra', () => {
+    // calculateVat(1000, 25) = 250 lägger TILL momsen på ett netto.
+    // vatFromGross(1250, 25) = 250 bryter UT den ur ett brutto.
+    // Samma svar för olika indata; fel funktion på fel tal är felet.
+    expect(calculateVat(1000, 25)).toBe(250)
+    expect(vatFromGross(1250, 25)).toBe(250)
+    expect(vatFromGross(1000, 25)).not.toBe(calculateVat(1000, 25))
   })
 })

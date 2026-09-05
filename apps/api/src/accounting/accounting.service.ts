@@ -4216,6 +4216,17 @@ export class AccountingService {
    * redan avslutat resultat, och i en stängd period hade den inte gått igenom
    * alls. Är rättelsedagens period stängd faller den här — vilket är rätt svar
    * och inte ett hinder att gå runt.
+   *
+   * ── MEDVETEN FÖRENKLING ÖVER ÅRSGRÄNS ───────────────────────────────────
+   *
+   * Mottogs fakturan i år N och makuleras i N+1, går reverseringen genom
+   * RESULTATRÄKNINGEN i N+1: N:s resultat bär kvar kostnaden, N+1:s blir
+   * motsvarande högre. För ett oväsentligt belopp är det branschpraxis. För ett
+   * VÄSENTLIGT belopp kräver god redovisningssed rättelse mot balanserat
+   * resultat i stället — och väsentlighet är en bedömning, inte en beräkning, så
+   * den kan inte automatiseras här. UI:t VARNAR när gränsen korsas
+   * (`makuleringKorsarRakenskapsar`) och hänvisar till revisorn; koden spärrar
+   * inte, eftersom det vanliga fallet är det oväsentliga.
    */
   async bookSupplierInvoiceCancellation(params: {
     organizationId: string

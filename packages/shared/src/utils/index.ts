@@ -26,6 +26,23 @@ export function calculateVat(amount: number, vatRate: number): number {
   return Math.round(amount * (vatRate / 100) * 100) / 100
 }
 
+/**
+ * Momsen SOM DEL AV ett bruttobelopp — motsatt riktning mot `calculateVat`.
+ *
+ * De två står medvetet bredvid varandra, eftersom det är här man tar fel:
+ *
+ *   calculateVat(1000, 25)  → 250   NETTO in  (moms LÄGGS TILL: 1000 → 1250)
+ *   vatFromGross(1250, 25)  → 250   BRUTTO in (moms BRYTS UT:  1250 → 1000)
+ *
+ * Fel funktion på ett bruttobelopp ger 312,50 i stället för 250 — ett verifikat
+ * som fortfarande BALANSERAR, med fel summa som kostnad. Varken en balansgrind
+ * eller ett radantalsprov kan se det.
+ */
+export function vatFromGross(gross: number, vatRate: number): number {
+  if (!(gross > 0) || !(vatRate > 0)) return 0
+  return Math.round(((gross * vatRate) / (100 + vatRate)) * 100) / 100
+}
+
 export function calculateTotal(subtotal: number, vatTotal: number): number {
   return Math.round((subtotal + vatTotal) * 100) / 100
 }

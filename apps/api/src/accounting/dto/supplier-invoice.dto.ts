@@ -67,9 +67,19 @@ export class CreateSupplierInvoiceDto {
   })
   vatRate!: number
 
+  /**
+   * VALFRITT. Utelämnas det räknar SERVERN fram momsen ur `amount` och
+   * `vatRate` (`vatFromGross`). Skickas det används det ändå bara efter att ha
+   * stämt mot serverns egen uträkning — se `SupplierInvoiceService.create`.
+   *
+   * Skälet att alls ta emot det: fakturans tryckta momsbelopp kan avvika en öre
+   * från formeln beroende på hur leverantören avrundat, och det är fakturan som
+   * är verifikationsunderlaget.
+   */
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Momsbeloppet anges med högst två decimaler' })
   @Min(0, { message: 'Momsbeloppet kan inte vara negativt' })
-  vatAmount!: number
+  vatAmount?: number
 
   @IsOptional()
   @IsString()

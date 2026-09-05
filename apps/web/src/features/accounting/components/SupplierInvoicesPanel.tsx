@@ -14,7 +14,7 @@ import {
   usePaySupplierInvoice,
   useCancelSupplierInvoice,
 } from '../hooks/useAccounting'
-import { idagIso } from './supplier-invoice-form'
+import { idagIso, makuleringKorsarRakenskapsar } from './supplier-invoice-form'
 import type { SupplierInvoice } from '../api/accounting.api'
 
 /**
@@ -313,6 +313,7 @@ function BetalningsModal({ faktura, onClose }: { faktura: SupplierInvoice; onClo
 function MakuleringsModal({ faktura, onClose }: { faktura: SupplierInvoice; onClose: () => void }) {
   const [fel, setFel] = useState<string | null>(null)
   const mutation = useCancelSupplierInvoice()
+  const korsarAr = makuleringKorsarRakenskapsar(faktura.invoiceDate.slice(0, 10), idagIso())
 
   const bekrafta = () => {
     setFel(null)
@@ -337,9 +338,25 @@ function MakuleringsModal({ faktura, onClose }: { faktura: SupplierInvoice; onCl
     >
       <div className="space-y-4">
         <p className="text-[13px] text-gray-600">
-          Skulden på konto 2440 tas bort genom ett rättelseverifikat. Ursprungsverifikatet ligger
-          kvar i journalen — en bokförd händelse raderas aldrig.
+          Skulden på konto 2440 tas bort genom ett rättelseverifikat, daterat i dag.
+          Ursprungsverifikatet ligger kvar i journalen — en bokförd händelse raderas aldrig.
         </p>
+
+        {korsarAr && (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <CircleAlert
+              size={14}
+              strokeWidth={1.8}
+              className="mt-0.5 flex-shrink-0 text-amber-700"
+            />
+            <p className="text-[13px] text-amber-700">
+              Fakturan bokfördes {formatDate(faktura.invoiceDate)}, i ett annat räkenskapsår.
+              Rättelsen påverkar <strong>årets</strong> resultat — inte det år kostnaden uppstod. Är
+              beloppet väsentligt ska rättelsen i stället göras mot balanserat resultat; stäm av med
+              din revisor först.
+            </p>
+          </div>
+        )}
         {fel && <p className="text-[12px] text-red-500">{fel}</p>}
         <ModalFooter>
           <Button variant="secondary" onClick={onClose}>

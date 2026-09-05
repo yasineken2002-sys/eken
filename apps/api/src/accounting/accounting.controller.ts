@@ -417,7 +417,7 @@ export class AccountingController {
       expenseAccount: dto.expenseAccount,
       totalAmount: dto.amount,
       vatRate: dto.vatRate,
-      vatAmount: dto.vatAmount,
+      ...(dto.vatAmount !== undefined ? { vatAmount: dto.vatAmount } : {}),
       ...(dto.attachmentUrl ? { attachmentUrl: dto.attachmentUrl } : {}),
     })
   }
@@ -429,10 +429,19 @@ export class AccountingController {
   @Get('supplier-invoices')
   @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
   async listSupplierInvoices(@OrgId() organizationId: string, @Query('status') status?: string) {
-    const giltiga = ['OPEN', 'PAID', 'CANCELLED']
+    const giltiga: SupplierInvoiceStatus[] = ['OPEN', 'PAID', 'CANCELLED']
+    // Ett OKÄNT värde FÄLLER, det faller inte tillbaka på "visa allt". En tyst
+    // reserv hade gett den som skrivit fel en komplett lista som SER filtrerad
+    // ut — utfallet är då en obetald faktura som räknas som betald av den som
+    // läser skärmen, inte ett fel någon kan se.
+    if (status !== undefined && !giltiga.includes(status as SupplierInvoiceStatus)) {
+      throw new BadRequestException(
+        `Okänd status "${status}". Giltiga värden: ${giltiga.join(', ')}.`,
+      )
+    }
     return this.supplierInvoices.findAll(
       organizationId,
-      status && giltiga.includes(status) ? { status: status as SupplierInvoiceStatus } : undefined,
+      status ? { status: status as SupplierInvoiceStatus } : undefined,
     )
   }
 

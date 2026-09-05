@@ -302,6 +302,8 @@ export interface SkapaLeverantorsfakturaInput {
   /** BRUTTO — det som står på fakturan. Momsen bryts UT ur det, inte till. */
   amount: number
   vatRate?: number
+  /** Avstämning mot serverns egen uträkning — se modalens kommentar. */
+  vatAmount?: number
   attachmentUrl?: string
 }
 

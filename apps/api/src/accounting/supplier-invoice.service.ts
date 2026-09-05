@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import { vatFromGross } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { AccountingService } from './accounting.service'
 import {
@@ -50,19 +51,49 @@ export class SupplierInvoiceService {
     expenseAccount: number
     totalAmount: number
     vatRate: number
-    vatAmount: number
+    /** Utelämnas → servern räknar. Skickas → måste stämma med serverns tal. */
+    vatAmount?: number | undefined
     attachmentUrl?: string | undefined
   }) {
+    // FRAMTIDA FAKTURADATUM är nästan alltid en felskrivning (fel år), och
+    // konsekvensen är att kostnaden hamnar i en period som ännu inte finns —
+    // osynlig i årets resultat tills någon undrar var den tog vägen. En dags
+    // marginal, eftersom fakturadatumet är leverantörens och tidszonen vår.
+    const imorgon = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    if (params.invoiceDate.getTime() > imorgon.getTime()) {
+      throw new UnprocessableEntityException(
+        'Fakturadatum kan inte ligga i framtiden. Kontrollera årtalet.',
+      )
+    }
     if (params.dueDate.getTime() < params.invoiceDate.getTime()) {
       throw new UnprocessableEntityException('Förfallodatum kan inte ligga före fakturadatum.')
     }
-    if (params.vatAmount > params.totalAmount) {
+    // ── MOMSEN RÄKNAS HÄR, INTE I WEBBLÄSAREN ──────────────────────────────
+    //
+    // `vatRate` LAGRAS på raden medan `vatAmount` BOKFÖRS. Kom de från olika
+    // uträkningar kunde registret säga 25 % om ett verifikat som bokfört noll,
+    // och den motsägelsen hade legat kvar i databasen — inte bara i ett svar.
+    // Serverns tal är därför facit, och ett inskickat belopp godtas bara om det
+    // stämmer med det.
+    const beraknad = vatFromGross(params.totalAmount, params.vatRate)
+    const vatAmount = params.vatAmount ?? beraknad
+
+    // TOLERANSEN är ett öre, och den finns för avrundningsriktningen — inte för
+    // att släppa igenom "ungefär rätt". 1250 kr med 25 % ger 250,00; formeln
+    // belopp × sats/100 hade gett 312,50 och fälls här, vilket är hela poängen:
+    // det felet BALANSERAR i verifikatet och syns ingen annanstans.
+    if (Math.abs(vatAmount - beraknad) > 0.01) {
+      throw new UnprocessableEntityException(
+        `Momsbeloppet ${vatAmount.toFixed(2)} kr stämmer inte med ${params.vatRate} % av ${params.totalAmount.toFixed(2)} kr inkl. moms (${beraknad.toFixed(2)} kr). Kontrollera momssatsen — beloppet ska anges INKLUSIVE moms.`,
+      )
+    }
+    if (vatAmount > params.totalAmount) {
       throw new UnprocessableEntityException(
         'Momsen kan inte vara större än beloppet — beloppet ska vara inklusive moms.',
       )
     }
 
-    const netAmount = params.totalAmount - params.vatAmount
+    const netAmount = params.totalAmount - vatAmount
 
     return this.prisma.$transaction(async (tx) => {
       const faktura = await tx.supplierInvoice.create({
@@ -77,7 +108,7 @@ export class SupplierInvoiceService {
           expenseAccount: params.expenseAccount,
           netAmount,
           vatRate: params.vatRate,
-          vatAmount: params.vatAmount,
+          vatAmount,
           totalAmount: params.totalAmount,
           ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
         },
@@ -94,7 +125,7 @@ export class SupplierInvoiceService {
         description: params.description,
         expenseAccount: params.expenseAccount,
         totalAmount: params.totalAmount,
-        vatAmount: params.vatAmount,
+        vatAmount,
         createdById: params.createdById,
         ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
         tx,

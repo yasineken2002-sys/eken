@@ -89,3 +89,27 @@ export function arForfallen(dueDate: string, status: string, idag: string): bool
 export function idagIso(nu: Date = new Date()): string {
   return nu.toISOString().slice(0, 10)
 }
+
+/**
+ * Korsar makuleringen en RÄKENSKAPSÅRSGRÄNS?
+ *
+ * Rättelsen bokförs på den dag den görs, inte på fakturadagen — en avslutad
+ * period får inte skrivas om. Konsekvensen är att en faktura som bokfördes i år
+ * N och makuleras i år N+1 lämnar N:s resultat OFÖRÄNDRAT (kostnaden ligger
+ * kvar) och sänker N+1:s kostnader i stället.
+ *
+ * För ett oväsentligt belopp är det branschpraxis och rätt. För ett VÄSENTLIGT
+ * belopp kräver god redovisningssed rättelse mot balanserat resultat i stället,
+ * vilket inte är något systemet kan avgöra åt någon — väsentlighet är en
+ * bedömning. Därför en VARNING och inte en spärr: den som makulerar ska veta att
+ * gränsen korsas, och sedan välja själv.
+ *
+ * Räkenskapsåret antas följa kalenderåret, vilket det gör för alla organisationer
+ * systemet i dag kan uttrycka (jfr det öppna ärendet #729 om brutet och
+ * förkortat första räkenskapsår).
+ */
+export function makuleringKorsarRakenskapsar(invoiceDate: string, idag: string): boolean {
+  const fakturaAr = invoiceDate.slice(0, 4)
+  const rattelseAr = idag.slice(0, 4)
+  return Boolean(fakturaAr) && Boolean(rattelseAr) && fakturaAr !== rattelseAr
+}

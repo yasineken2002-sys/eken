@@ -41,6 +41,11 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
     vatRate: 25,
   }
   const [utkast, setUtkast] = useState<LeverantorsfakturaUtkast>(tomtUtkast)
+  // Bilagan ligger utanför utkastet: den är verifikationsUNDERLAG, inte en
+  // uppgift reglerna räknar på. Fakturametoden är just det flöde där underlaget
+  // betyder mest — det är en riktig leverantörsfaktura som ska bevaras i sju år
+  // (BFL 7 kap 2 §), inte ett kvitto man redan har i banken.
+  const [bilaga, setBilaga] = useState('')
   const [serverfel, setServerfel] = useState<string | null>(null)
 
   const mutation = useCreateSupplierInvoice()
@@ -62,6 +67,7 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
 
   const stang = () => {
     setUtkast(tomtUtkast)
+    setBilaga('')
     setServerfel(null)
     onClose()
   }
@@ -79,6 +85,11 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
         expenseAccount: kontonummer,
         amount: brutto,
         vatRate: utkast.vatRate,
+        // Skickas som en AVSTÄMNING, inte som fakta: servern räknar om samma
+        // sak och avvisar om talen skiljer sig mer än ett öre. Det som visas i
+        // konteringen ovan är därför bevisligen det som bokförs.
+        vatAmount: moms,
+        ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
       },
       {
         onSuccess: stang,
@@ -185,6 +196,15 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
           </div>
         </div>
 
+        <Input
+          label="Bilaga (valfri länk)"
+          value={bilaga}
+          onChange={(e) => setBilaga(e.target.value)}
+          placeholder="https://…"
+          hint="Länk till fakturan. Underlaget ska kunna visas i sju år."
+          data-testid="supplier-attachment"
+        />
+
         {/* KONTERINGEN INNAN MAN BOKFÖR. Den enda raden som skiljer den här
             vägen från "Registrera utgift" är den sista — och det är den som
             avgör om skulden syns i balansräkningen. */}
@@ -213,6 +233,14 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
           <p className="text-ink-muted mt-2 text-[12px]">
             Ingen betalning bokförs nu — skulden ligger kvar på 2440 tills du markerar fakturan som
             betald.
+          </p>
+          {/* EN momssats och ETT kostnadskonto per post. En faktura med både
+              25 % och 12 %, eller med material och arbete på olika konton, ska
+              delas upp — annars måste ett av talen bli fel. Det står här i
+              stället för i en manual, eftersom det är här valet görs. */}
+          <p className="text-ink-muted mt-1 text-[12px]">
+            En momssats och ett kostnadskonto per post. Har fakturan flera — registrera den som
+            flera poster med samma fakturanummer.
           </p>
         </div>
 
