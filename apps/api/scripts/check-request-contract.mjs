@@ -240,6 +240,95 @@ export function anropIFil(kalla) {
   return ut
 }
 
+// ── REGEL 2: ETT DELAT SCHEMA MÅSTE OCKSÅ BÄRA API-SIDAN ────────────────────
+//
+// Regel 1 ovan är en RATCHET med baslinje: den hindrar NYA otypade nyttolaster
+// men accepterar de gamla. Regel 2 är en RAK SPÄRR utan baslinje, och det är
+// avsiktligt: den gäller bara endpoints som REDAN har ett delat schema, och för
+// dem finns ingen ursäkt att låta DTO:n beskriva något annat. Mängden är i dag
+// åtta, och den kan bara växa när någon delar ett schema till.
+//
+// Två krav per delad nyttolasttyp:
+//
+//   HÄRLEDD    någon DTO-fil bär `SammaNycklar<…, XInput>` — alltså är
+//              API-sidans form bunden till samma schema vid kompilering
+//   UPPRÄKNAD  typen står i KONTRAKTSREGISTER, så paritetsprovet kör den. En
+//              härledning utan prov mäter bara nycklar, inte gränser.
+
+const DTO_KATALOGER = 'apps/api/src'
+const REGISTER = 'apps/api/src/common/contract/schema-dto-registry.ts'
+
+/** Alla `SammaNycklar<Dto, XInput>` i API-trädet → mängden härledda Input-typer. */
+export function harleddaTyper(rot = ROT) {
+  const ut = new Map()
+  const gaa = (katalog) => {
+    for (const namn of readdirSync(katalog)) {
+      const p = join(katalog, namn)
+      if (statSync(p).isDirectory()) gaa(p)
+      else if (namn.endsWith('.dto.ts')) {
+        // Frågan är "finns det ett ANROP av typen SammaNycklar här" — kod,
+        // alltså codeMask. En nämnd typ i en kommentar duger inte: det var
+        // precis den formen check-transaction-limits gick blind på.
+        const kod = codeMask(readFileSync(p, 'utf8'))
+        // \p{L}: ett typnamn får börja på å/ä/ö lika gärna som på a. \w hade
+        // tappat `Överforingsinput` tyst — samma form CLAUDE.md:s ASCII-avsnitt
+        // handlar om, och check-identifier-regex fällde den här raden direkt.
+        const SAMMA = /SammaNycklar<\s*[\p{L}\p{N}_$]+\s*,\s*([\p{L}\p{N}_$]+)\s*>/gu
+        for (const m of kod.matchAll(SAMMA)) {
+          ut.set(m[1], relative(rot, p))
+        }
+      }
+    }
+  }
+  gaa(join(rot, DTO_KATALOGER))
+  return ut
+}
+
+/** Delade nyttolasttyper som webben faktiskt skickar, med sin endpoint. */
+export function deladeNyttolaster(rot = ROT) {
+  const ut = new Map()
+  for (const fil of korpusfiler(rot)) {
+    for (const a of anropIFil(readFileSync(join(rot, fil), 'utf8'))) {
+      if (a.delad && a.typ) ut.set(a.typ, `${a.metod} ${a.url}`)
+    }
+  }
+  return ut
+}
+
+export function oharledda(rot = ROT) {
+  const harledda = harleddaTyper(rot)
+  let register = ''
+  try {
+    // STRÄNGVYN, inte kodvyn. `inputTyp: 'CreateMeterInput'` är med FLIT en
+    // sträng — det är så registret gör typnamnet matchbart för en vakt — och
+    // codeMask blankar stränginnehåll. Kodvyn gav därför OHÄRLEDD på alla åtta
+    // poster fast registret var komplett. Jämför raden ovan, som frågar efter
+    // ett ANROP och därför måste läsa kod: en vy per fråga, inte en vy per fil.
+    register = blankComments(readFileSync(join(rot, REGISTER), 'utf8'))
+  } catch {
+    return [`REGISTRET SAKNAS (${REGISTER}) — utan det kan inget provas.`]
+  }
+  const fel = []
+  for (const [typ, endpoint] of deladeNyttolaster(rot)) {
+    if (!harledda.has(typ)) {
+      fel.push(
+        `OHÄRLEDD ${endpoint} — webben skickar ${typ} ur @eken/shared, men ingen DTO ` +
+          `bär \`SammaNycklar<…, ${typ}>\`. API-sidan kan då beskriva något annat ` +
+          'utan att något blir rött. Lägg `implements` + paritetsraden i DTO:n.',
+      )
+    }
+    const iRegistret = new RegExp(`(?<![\\p{L}\\p{N}_$])${typ}(?![\\p{L}\\p{N}_$])`, 'u')
+    if (!iRegistret.test(register)) {
+      fel.push(
+        `OUPPRÄKNAD ${endpoint} — ${typ} står inte i KONTRAKTSREGISTER. ` +
+          'Paritetsprovet kör då inte endpointen, och gränserna (inte bara nycklarna) ' +
+          'kan glida isär tyst.',
+      )
+    }
+  }
+  return fel
+}
+
 /** Överträdelser: ett skrivanrop med kropp vars typ inte kommer ur @eken/shared. */
 export function overtradelser(rot = ROT) {
   const ut = []
@@ -418,7 +507,20 @@ function selfTest() {
     ? ok('api.post räknas — punktformen är en lika verklig skrivväg')
     : f('api.post räknades inte')
 
-  // 8. DEN DELADE SKANNERNS EGNA KANARIEFÅGLAR. Vakten läser världen genom
+  // 8. REGEL 2 — mängden är icke-trivial och tyst när allt är bundet.
+  const delade8 = deladeNyttolaster()
+  const harledda8 = harleddaTyper()
+  delade8.size >= 8
+    ? ok(`regel 2: ${delade8.size} delade nyttolasttyper i webben`)
+    : f(`bara ${delade8.size} delade nyttolasttyper — mängden ser för liten ut`)
+  oharledda().length === 0
+    ? ok('regel 2: alla delade typer är härledda OCH uppräknade')
+    : f(`regel 2 fäller på det riktiga trädet: ${oharledda().join(' | ')}`)
+  harledda8.size >= delade8.size
+    ? ok(`regel 2: ${harledda8.size} SammaNycklar-rader hittade i DTO-trädet`)
+    : f(`hittade bara ${harledda8.size} härledningar mot ${delade8.size} delade typer`)
+
+  // 9. DEN DELADE SKANNERNS EGNA KANARIEFÅGLAR. Vakten läser världen genom
   // codeMask och blankComments — går de sönder mäter den fel utan att bli röd.
   // Kravet kommer ur check-guard-preprocessors (R2), och det är rätt krav.
   // `kanariefåglar()` returnerar FELEN, inte proven — tom lista betyder grönt.
@@ -431,7 +533,7 @@ function selfTest() {
     ? ok(`den delade skannern: ${KANARIEFÅGEL_LÄGEN.length} lägen provade, noll fel`)
     : f(`skannerns provmängd är ${KANARIEFÅGEL_LÄGEN.length} lägen — för liten`)
 
-  // 9. Korpusen är inte tom — en vakt utan filer mäter ingenting.
+  // 10. Korpusen är inte tom — en vakt utan filer mäter ingenting.
   const filer = korpusfiler()
   filer.length > 10
     ? ok(`korpus: ${filer.length} api-filer`)
@@ -457,6 +559,16 @@ if (process.argv.includes('--self-test')) {
 
   const baslinje = las()
   const fel = jamfor(nu, baslinje)
+
+  // REGEL 2 har ingen baslinje — se kommentaren vid `oharledda`.
+  const felR2 = oharledda()
+  if (felR2.length) {
+    console.error('❌ Kontraktet webb↔API: delat schema utan bunden API-sida\n')
+    for (const f of felR2) console.error(`  ${f}`)
+    console.error('')
+    process.exit(1)
+  }
+
   if (fel.length) {
     console.error('❌ Kontraktet webb↔API: nyttolasttyper som inte är delade\n')
     for (const f of fel) console.error(`  ${f}`)
@@ -469,6 +581,10 @@ if (process.argv.includes('--self-test')) {
   console.warn(
     `✅ Kontraktet webb↔API: ${antal} kända överträdelser i ${nu.length} filer, ` +
       'inga nya och inga stale.',
+  )
+  console.warn(
+    `✅ Regel 2: ${deladeNyttolaster().size} delade nyttolasttyper, alla härledda ` +
+      'i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.',
   )
   console.warn(
     '   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av ' +
