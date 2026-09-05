@@ -412,6 +412,36 @@ export class AccountingService {
      * bilaga hyresvärden trodde var sparad försvann då tyst.
      */
     attachmentUrl?: string | null
+    /**
+     * AI-ursprunget. Mjuk referens till `AiToolExecution.id`, utan främmande
+     * nyckel — skälet står i schemat. Sätts bara av AI-vägen.
+     */
+    aiToolExecutionId?: string | null
+    /**
+     * KÖRS I ALLA TRE UTFALLEN: när posten skapades, när idempotensuppslaget
+     * hittade en befintlig, och när en sann samtidig kollision rullade tillbaka
+     * vår transaktion och vinnarens rad slogs upp efteråt.
+     *
+     * De två första körs INUTI verifikatets transaktion. Det tredje kan inte —
+     * transaktionen är rullad tillbaka — och får därför en egen kort
+     * transaktion. Skillnaden står utskriven vid anropsstället: en garanti om
+     * atomicitet som bara gäller två av tre grenar är värre än ingen garanti.
+     *
+     * Finns för AI-vägen, som måste skriva sitt utförandespår atomiskt med
+     * effekten (G0). Att låta anroparen skicka in en egen `tx` hade också
+     * fungerat, men då tappar den race-återhämtningen: med en inskickad
+     * transaktion äger anroparen rollbacken och kollisionen kastar vidare. En
+     * hook låter skrivvägen förbli EN och behålla alla sina spärrar.
+     *
+     * BÅDA UTFALLEN, och det är inte en detalj: verktyget KÖRDE även när det
+     * inte skapade något, och ett spår som saknas för idempotensträffen gör en
+     * uppspelning till en förnekelse av något som hände.
+     */
+    efterSkrivning?: (
+      tx: Prisma.TransactionClient,
+      entry: { id: string },
+      redanFanns: boolean,
+    ) => Promise<void>
     // Valfri yttre transaktion. Anges när verifikatet måste skapas ATOMISKT
     // tillsammans med andra DB-writes (t.ex. unmatch-flödet som måste rulla
     // tillbaka statusändringar om bokföringen fallerar — BFL 5 kap 5 §/9 §).
@@ -517,7 +547,10 @@ export class AccountingService {
         where: { ...params.idempotencyWhere, source: params.source },
         ...(params.include ? { include: params.include } : {}),
       })
-      if (existing) return existing
+      if (existing) {
+        if (params.efterSkrivning) await params.efterSkrivning(tx, existing, true)
+        return existing
+      }
 
       const { series, verNumber, fiscalYear } = await this.verifikationsnummer.allocate(
         tx,
@@ -525,7 +558,7 @@ export class AccountingService {
         params.date,
       )
 
-      return tx.journalEntry.create({
+      const skapad = await tx.journalEntry.create({
         data: {
           organizationId: params.organizationId,
           date: params.date,
@@ -540,6 +573,15 @@ export class AccountingService {
             ? { reversalOfEntryId: params.reversalOfEntryId }
             : {}),
           ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
+          // `!== undefined`, inte `!= null`: skillnaden är "anroparen skickade
+          // INGET fält" mot "anroparen skickade null". AI-vägen skickar alltid
+          // `aiToolExecutionId ?? null` och ska då få kolumnen skriven som null
+          // — precis som dess egen transaktion gjorde före #790. De tjugo
+          // övriga anroparna skickar inget och får fältet utelämnat, alltså
+          // oförändrad nyttolast.
+          ...(params.aiToolExecutionId !== undefined
+            ? { aiToolExecutionId: params.aiToolExecutionId }
+            : {}),
           lines: {
             create: params.lines.map((l) => ({
               accountId: l.accountId,
@@ -551,6 +593,8 @@ export class AccountingService {
         },
         ...(params.include ? { include: params.include } : {}),
       })
+      if (params.efterSkrivning) await params.efterSkrivning(tx, skapad, false)
+      return skapad
     }
     // Inskickad transaktion: anroparen äger rollbacken, och en kollision ska
     // rulla tillbaka HELA hens transaktion. Ingen återhämtning här — se
@@ -590,6 +634,34 @@ export class AccountingService {
       // sourceId. Att returnera den posten hade varit att svara på fel fråga.
       // Felet fortsätter upp och hanteras där reverseringen startade.
       if (!winner) throw err
+
+      // ── HOOKEN GÄLLER ÄVEN HÄR, OCH DET ÄR TREDJE UTFALLET ─────────────
+      //
+      // `run()` har två utfall — snabbträff och ny post — och båda anropar
+      // hooken. Det HÄR är det tredje: en sann samtidig kollision, där vår
+      // transaktion rullades tillbaka och vinnarens rad slås upp efteråt.
+      //
+      // Utan raden nedan tappas AI-vägens utförandespår HELT i just det
+      // fallet. Konsekvensen är mätbar och värre än en saknad loggrad:
+      // `create_journal_entry`/`record_expense` är `traceIntegrity:
+      // 'TRANSAKTIONELL'`, alltså skrivs INGEN AiToolExecution-rad i förväg —
+      // hela raden är hookens ansvar. Uteblir den finns varken en lyckad, en
+      // misslyckad eller en påbörjad körning, medan verktyget svarar
+      // "Verifikat skapat" (`redanFanns` sätts bara inuti hooken och förblir
+      // false). En körning som hände förnekas alltså av sitt eget spår.
+      //
+      // Det var dessutom en REGRESSION mot läget före den här ändringen: AI:ns
+      // egen transaktion hade ingen P2002-fångst, så en kollision kastade
+      // vidare och `logToolExecution` skrev en FAILED-rad. Ett synligt fel MED
+      // spår blev en tyst framgång UTAN spår.
+      //
+      // EN EGEN KORT TRANSAKTION, därför att den ursprungliga är rullad
+      // tillbaka — det finns ingen levande `tx` att skriva i. Skrivningen är
+      // liten och rör bara spårtabellen.
+      if (params.efterSkrivning) {
+        const hook = params.efterSkrivning
+        await this.prisma.$transaction((tx) => hook(tx, winner, true), PRISMA_DEFAULT_TX_LIMITS)
+      }
       return winner
     }
   }
@@ -3861,8 +3933,29 @@ export class AccountingService {
     idempotencyKey: string
     createdById?: string | null
     attachmentUrl?: string | null
+    /**
+     * NAMNRYMDEN. 'MANUAL' för människans väg, 'AI' för verktygets.
+     *
+     * Idempotensen gäller per `(organizationId, source, sourceId)`, så de två
+     * namnrymderna kan inte tysta varandra: en hyresvärd som medvetet bokför
+     * samma belopp som AI:n nyss bokförde får ett EGET verifikat i stället för
+     * att avvisas som en dubblett av något hen inte gjorde.
+     */
+    source?: 'MANUAL' | 'AI'
+    /** AI-ursprunget, mjuk referens till AiToolExecution. Bara AI-vägen. */
+    aiToolExecutionId?: string | null
+    /**
+     * Körs INUTI verifikatets transaktion, i båda utfallen. AI-vägen skriver
+     * sitt utförandespår här — G0 kräver att spåret och effekten är atomiska.
+     */
+    efterSkrivning?: (
+      tx: Prisma.TransactionClient,
+      entry: { id: string },
+      redanFanns: boolean,
+    ) => Promise<void>
   }) {
     const { organizationId, date, description } = params
+    const source = params.source ?? 'MANUAL'
 
     if (Number.isNaN(date.getTime())) {
       throw new UnprocessableEntityException('Ogiltigt datum.')
@@ -3889,12 +3982,19 @@ export class AccountingService {
       organizationId,
       date,
       description: description.trim(),
-      source: 'MANUAL',
+      source,
       sourceId: params.idempotencyKey,
       createdById: params.createdById ?? null,
       lines: byggt.rader,
-      idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      idempotencyWhere: { organizationId, source, sourceId: params.idempotencyKey },
       ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
+      // `!== undefined`: AI-vägen skickar alltid fältet (null när ingen körning
+      // förhandsallokerats) och ska då få kolumnen skriven som null — precis som
+      // dess egen transaktion gjorde före #790.
+      ...(params.aiToolExecutionId !== undefined
+        ? { aiToolExecutionId: params.aiToolExecutionId }
+        : {}),
+      ...(params.efterSkrivning ? { efterSkrivning: params.efterSkrivning } : {}),
       include: { lines: { include: { account: true } } },
     })
   }
@@ -3913,8 +4013,29 @@ export class AccountingService {
     createdById?: string | null
     attachmentUrl?: string | null
     utgift: UtgiftIndata
+    /**
+     * NAMNRYMDEN. 'MANUAL' för människans väg, 'AI' för verktygets.
+     *
+     * Idempotensen gäller per `(organizationId, source, sourceId)`, så de två
+     * namnrymderna kan inte tysta varandra: en hyresvärd som medvetet bokför
+     * samma belopp som AI:n nyss bokförde får ett EGET verifikat i stället för
+     * att avvisas som en dubblett av något hen inte gjorde.
+     */
+    source?: 'MANUAL' | 'AI'
+    /** AI-ursprunget, mjuk referens till AiToolExecution. Bara AI-vägen. */
+    aiToolExecutionId?: string | null
+    /**
+     * Körs INUTI verifikatets transaktion, i båda utfallen. AI-vägen skriver
+     * sitt utförandespår här — G0 kräver att spåret och effekten är atomiska.
+     */
+    efterSkrivning?: (
+      tx: Prisma.TransactionClient,
+      entry: { id: string },
+      redanFanns: boolean,
+    ) => Promise<void>
   }) {
     const { organizationId, date } = params
+    const source = params.source ?? 'MANUAL'
 
     if (Number.isNaN(date.getTime())) {
       throw new UnprocessableEntityException('Ogiltigt datum.')
@@ -3936,12 +4057,19 @@ export class AccountingService {
       organizationId,
       date,
       description: `Utgift: ${params.utgift.beskrivning.trim()}`,
-      source: 'MANUAL',
+      source,
       sourceId: params.idempotencyKey,
       createdById: params.createdById ?? null,
       lines: byggt.rader,
-      idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      idempotencyWhere: { organizationId, source, sourceId: params.idempotencyKey },
       ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
+      // `!== undefined`: AI-vägen skickar alltid fältet (null när ingen körning
+      // förhandsallokerats) och ska då få kolumnen skriven som null — precis som
+      // dess egen transaktion gjorde före #790.
+      ...(params.aiToolExecutionId !== undefined
+        ? { aiToolExecutionId: params.aiToolExecutionId }
+        : {}),
+      ...(params.efterSkrivning ? { efterSkrivning: params.efterSkrivning } : {}),
       include: { lines: { include: { account: true } } },
     })
   }

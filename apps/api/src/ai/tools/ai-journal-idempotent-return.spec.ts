@@ -17,6 +17,7 @@ jest.mock('../../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { ToolExecutorService } from './tool-executor.service'
+import { AccountingService } from '../../accounting/accounting.service'
 import { aiJournalSourceId } from './ai-journal-source'
 
 const BEFINTLIGT = {
@@ -67,6 +68,12 @@ function makeExecutor(prisma: unknown) {
   }
   const args: unknown[] = Array.from({ length: 32 }, () => noop)
   args[0] = prisma
+  // Position 8 är AccountingService — den ENDA skrivvägen för verifikat sedan
+  // AI:ns egen transaktion togs bort. Riggen ger en RIKTIG tjänst byggd ur samma
+  // attrapp-prisma, inte en `noop`: provet mäter fortfarande mekaniken (vilket
+  // svar som ges i vilket läge), men det gör det nu genom den väg som faktiskt
+  // körs. En attrapp här hade gjort provet grönt om något som inte finns.
+  args[8] = new AccountingService(prisma as never, verifikationsnummer as never)
   args[9] = verifikationsnummer
   args[20] = audit
   return new (ToolExecutorService as unknown as new (...a: unknown[]) => ToolExecutorService)(
