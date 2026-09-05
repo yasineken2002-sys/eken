@@ -134,6 +134,24 @@ medDb('objekthistoriken', () => {
    * FACIT för lägenheten — räknat ur KÄLLTABELLERNA med egna frågor, inte
    * genom att anropa tjänsten. Varje term speglar källans dokumenterade regel.
    */
+  /**
+   * FACIT för uppdragskön i en objektdimension: 1 per rad (skapat) + 1 per rad
+   * som fått ett UTFALL. Ett väntande uppdrag har inte haft något och bidrar
+   * därför med exakt en rad.
+   */
+  async function förväntatUppdrag(where: {
+    organizationId: string
+    unitId?: string
+    propertyId?: string
+  }): Promise<number> {
+    return (
+      (await prisma.aiAssignment.count({ where })) +
+      (await prisma.aiAssignment.count({
+        where: { ...where, status: { in: ['APPROVED', 'REJECTED', 'EXPIRED'] } },
+      }))
+    )
+  }
+
   async function förväntatFörUnit(): Promise<{ total: number; per: Record<string, number> }> {
     const org = ids.organizationId
     const unitId = ids.unitId
@@ -179,6 +197,7 @@ medDb('objekthistoriken', () => {
     per['equipment-event'] = await prisma.unitEquipmentEvent.count({
       where: { equipment: { organizationId: org, unitId } },
     })
+    per['ai-assignment'] = await förväntatUppdrag({ organizationId: org, unitId })
 
     return { total: Object.values(per).reduce((a, b) => a + b, 0), per }
   }
@@ -218,6 +237,7 @@ medDb('objekthistoriken', () => {
     per['equipment-event'] = await prisma.unitEquipmentEvent.count({
       where: { equipment: { organizationId: org, propertyId } },
     })
+    per['ai-assignment'] = await förväntatUppdrag({ organizationId: org, propertyId })
 
     return { total: Object.values(per).reduce((a, b) => a + b, 0), per }
   }

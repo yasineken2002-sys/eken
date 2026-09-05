@@ -146,6 +146,27 @@ export const AI_TENANT_LINK_STEPS: readonly AiTenantLinkStep[] = [
       'behöver den här kopplingen; den ska finnas kvar då.',
   },
   {
+    model: 'AiAssignment',
+    action: 'unlink',
+    reason:
+      'UPPDRAGETS OMFÅNG, inte dess aktör — men samma sluttillstånd. `tenantId` ' +
+      'säger vad uppdraget HANDLAR om, och det är just den kopplingen mellan ' +
+      'person och rad en raderingsbegäran träffar: så länge den finns dyker ' +
+      'uppdraget upp i hyresgästens historik (`history-sources.registry.ts`, ' +
+      'källan `ai-assignment`). Nollas den är raden borta ur svaret i samma ' +
+      'ögonblick — historiken sammanställs vid läsning och har ingen andra kopia. ' +
+      'Raden själv rörs INTE: den bär en människas beslut (`decidedByUserId`, ' +
+      '`statusReason`) och är revisionsspår över hyresvärdens handlingar, samma ' +
+      'skäl som `AiToolExecution`. `SetNull` i schemat säger redan att detta är ' +
+      'rätt sluttillstånd — steget ser till att det faktiskt inträffar. ' +
+      'KVARSTÅR, och det ska stå utskrivet: fritexten i `title`, `reasoning`, ' +
+      '`consequence` och `toolInput` kan nämna hyresgästen vid namn, och ett ' +
+      'uppdrag som också bär `unitId` eller `propertyId` syns då kvar i ' +
+      'OBJEKTETS historik. Det är samma ärvda yta som `Lease.terminationReason` ' +
+      'och ärendetexterna — anonymiseringsvägens öppna fråga (#508), inte ' +
+      'uppdragskönas.',
+  },
+  {
     model: 'AiMemoryTenant',
     action: 'keep',
     reason:

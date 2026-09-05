@@ -35,6 +35,7 @@ interface FakeState {
   aiTenantMessages: { conversationId: string }[]
   aiToolExecutions: { tenantId: string | null }[]
   aiUsageLogs: { tenantId: string | null }[]
+  aiAssignments: { tenantId: string | null }[]
   /**
    * #612: varje `$executeRaw`-anrop, med de bundna värdena.
    *
@@ -99,6 +100,7 @@ function freshState(): FakeState {
     ],
     aiToolExecutions: [{ tenantId: TENANT }, { tenantId: 'annan-hyresgast' }, { tenantId: null }],
     aiUsageLogs: [{ tenantId: TENANT }, { tenantId: TENANT }, { tenantId: 'annan-hyresgast' }],
+    aiAssignments: [{ tenantId: TENANT }, { tenantId: 'annan-hyresgast' }, { tenantId: null }],
     rawCalls: [],
   }
 }
@@ -172,6 +174,18 @@ function fakeTx(state: FakeState) {
       updateMany: async ({ where }: { where: { tenantId: string } }) => {
         let n = 0
         for (const r of state.aiUsageLogs) {
+          if (r.tenantId === where.tenantId) {
+            r.tenantId = null
+            n++
+          }
+        }
+        return { count: n }
+      },
+    },
+    aiAssignment: {
+      updateMany: async ({ where }: { where: { tenantId: string } }) => {
+        let n = 0
+        for (const r of state.aiAssignments) {
           if (r.tenantId === where.tenantId) {
             r.tenantId = null
             n++
@@ -346,6 +360,19 @@ describe('AI-lagret — riktad skrubbning där tenantId finns', () => {
     expect(state.aiToolExecutions).toHaveLength(3)
     expect(state.aiToolExecutions.filter((r) => r.tenantId === TENANT)).toEqual([])
     expect(state.aiToolExecutions.filter((r) => r.tenantId === 'annan-hyresgast')).toHaveLength(1)
+  })
+
+  it('nollar kopplingen i AiAssignment — uppdraget försvinner ur hyresgästens historik', async () => {
+    const state = freshState()
+    await anonymizeTenantWithin(fakeTx(state), TENANT, ORG, ACTOR)
+    // Radantalet är OFÖRÄNDRAT: uppdraget bär en människas beslut och är
+    // revisionsspår över hyresvärdens handlingar, samma skäl som AiToolExecution.
+    expect(state.aiAssignments).toHaveLength(3)
+    // Men KOPPLINGEN är borta — och därmed raden ur historiken, som
+    // sammanställs vid läsning och inte har någon andra kopia att glömma.
+    expect(state.aiAssignments.filter((r) => r.tenantId === TENANT)).toEqual([])
+    // Grannens uppdrag rörs inte. Avgränsningen är inte för grov.
+    expect(state.aiAssignments.filter((r) => r.tenantId === 'annan-hyresgast')).toHaveLength(1)
   })
 
   it('nollar kopplingen i AiUsageLog utan att radera kvot-/faktureringsunderlaget', async () => {
@@ -528,6 +555,7 @@ describe('VAKT: AI-tabeller med tenantId hanteras explicit vid avidentifiering',
         .map((m) => m.name)
         .sort(),
     ).toEqual([
+      'AiAssignment',
       'AiMemoryTenant',
       'AiMessageTenant',
       'AiTenantConversation',

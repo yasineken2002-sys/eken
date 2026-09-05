@@ -362,6 +362,18 @@ medDb('hyresgästens historik — antalet härleds ur källtabellerna', () => {
       where: { organizationId: orgId, tenantId },
     })
 
+    // AiAssignment: 1 per rad (skapat) + 1 per rad som fått ett UTFALL. Ett
+    // uppdrag som väntar har inte haft något, och bidrar därför med exakt en.
+    const uppdrag = await prisma.aiAssignment.count({ where: { organizationId: orgId, tenantId } })
+    const uppdragAvgjorda = await prisma.aiAssignment.count({
+      where: {
+        organizationId: orgId,
+        tenantId,
+        status: { in: ['APPROVED', 'REJECTED', 'EXPIRED'] },
+      },
+    })
+    per['ai-assignment'] = uppdrag + uppdragAvgjorda
+
     // Källor utan rader i fixturen bidrar med noll — men räknas ändå, så att
     // en oavsiktlig rad i någon av dem syns i stället för att tyst passera.
     per['invoice-event'] = await prisma.invoiceEvent.count({
