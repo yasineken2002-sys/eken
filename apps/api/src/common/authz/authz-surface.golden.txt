@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (188 st)
+## 1. HTTP-endpoints med rollgrind (192 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -94,6 +94,7 @@ PATCH /contracts/:leaseId/appendices/:documentId                ADMIN, MANAGER, 
 PATCH /customers/:id                                            ADMIN, MANAGER, OWNER
 PATCH /deposits/:id/pay                                         ADMIN, MANAGER, OWNER
 PATCH /deposits/:id/refund                                      ADMIN, MANAGER, OWNER
+PATCH /equipment/:id                                            ADMIN, MANAGER, OWNER
 PATCH /inspections/:id/items/:itemId                            ADMIN, MANAGER, OWNER
 PATCH /inspections/:id                                          ADMIN, MANAGER, OWNER
 PATCH /invoices/:id/status                                      ADMIN, MANAGER, OWNER
@@ -155,6 +156,9 @@ POST /customers                                                 ADMIN, MANAGER, 
 POST /deposits                                                  ADMIN, MANAGER, OWNER
 POST /documents/:id/send-to-tenant                              ADMIN, MANAGER, OWNER
 POST /documents                                                 ADMIN, MANAGER, OWNER
+POST /equipment/:id/events/correction                           ADMIN, MANAGER, OWNER
+POST /equipment/:id/replacement                                 ADMIN, MANAGER, OWNER
+POST /equipment                                                 ADMIN, MANAGER, OWNER
 POST /import/contract-batches/:id/confirm-safe                  ADMIN, MANAGER, OWNER
 POST /import/contract-batches/:id/rows/:rowId/confirm           ADMIN, MANAGER, OWNER
 POST /import/contract-batches/:id/rows/:rowId/skip              ADMIN, MANAGER, OWNER
@@ -208,7 +212,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (171 st)
+## 1b. HTTP-endpoints UTAN rollgrind (172 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -222,7 +226,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (71 st)
+### a) Org-inloggad, öppen för VARJE roll (72 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -236,7 +240,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (71 st)
+GRANSKADE — avsiktligt öppna, med skälet (72 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -371,6 +375,28 @@ GET /documents                                                  documents.contro
     här kolumnen. common/authz/documents-authz.ts filtrerar bort CONTRACT-rader
     för roller utan kontraktsbehörighet (listan delar annars ut dokument-id:t,
     som är allt nedladdningen behöver).
+
+GET /equipment/unit/:unitId                                     equipment.controller.ts
+    Läser utrustningen i EN lägenhet. Ingen @Roles därför att det är samma
+    slags läsning som `GET /units/:id`, som inte heller har någon — vad som
+    sitter i en lägenhet är förvaltningsdata varje roll i organisationen
+    behöver, inklusive VIEWER och ACCOUNTANT (livslängd och byteskostnad är
+    underlag för både underhållsplan och bokslut).
+
+    GRINDEN ÄR ORG-SCOPNINGEN, inte rollen: `findByUnit` slår upp lägenheten
+    via `unit.property.organizationId` och kastar 404 innan den läser något
+    (EquipmentService.unitInOrg). En annan organisations lägenhet ger alltså
+    inte en tom lista utan ett nekande — prövat i
+    equipment-write-path.db.spec.ts, med systerraden att samma lägenhet ur
+    SIN EGEN org fungerar.
+
+    SKRIVVÄGARNA ÄR GRINDADE: create/update/replacement/correction bär alla
+    @Roles(MANAGER, ADMIN, OWNER). Det är att registrera ett byte som är en
+    förvaltningshandling, inte att se vad som sitter där.
+
+    PERSONDATA: svaret bär `performedBy` med förnamn och efternamn på en
+    användare i SAMMA organisation — samma uppgift som redan syns i
+    användarlistan. Ingen hyresgästdata, inga personnummer.
 
 GET /history/properties/:propertyId/gaps                        history.controller.ts
     Beräknade luckor för fastigheten: avier över fastighetens alla avtal,
