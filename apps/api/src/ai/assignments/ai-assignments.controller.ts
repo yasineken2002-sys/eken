@@ -31,7 +31,37 @@ export class AiAssignmentsController {
 
   @Get()
   async list(@OrgId() organizationId: string, @Query() query: QueryAssignmentsDto) {
-    return this.service.lista(organizationId, query.status)
+    return this.service.lista(organizationId, {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.shadow === undefined ? {} : { shadow: query.shadow === 'true' }),
+      ...(query.limit === undefined ? {} : { limit: query.limit }),
+      ...(query.offset === undefined ? {} : { offset: query.offset }),
+    })
+  }
+
+  /**
+   * KPI-korten. Egen endpoint och inte ett fält på listan, därför att listan är
+   * SIDINDELAD: en sammanfattning som räknade sidans rader hade visat "3
+   * väntande" om en inkorg med trettio.
+   */
+  @Get('summary')
+  async summary(@OrgId() organizationId: string, @Query() query: QueryAssignmentsDto) {
+    return this.service.sammanfattning(
+      organizationId,
+      query.shadow === undefined ? undefined : query.shadow === 'true',
+    )
+  }
+
+  /**
+   * DETALJEN — planens fem: vad · varför · vilken information · hur säker · vad
+   * som hade krävt godkännande.
+   *
+   * `:id` deklareras EFTER `summary`, annars fångar den strängen "summary" som
+   * ett id och svarar 404 på KPI-anropet. Fastify matchar i deklarationsordning.
+   */
+  @Get(':id')
+  async detail(@OrgId() organizationId: string, @Param('id') id: string) {
+    return this.service.hamta(organizationId, id)
   }
 
   @Patch(':id/decision')

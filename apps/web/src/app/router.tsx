@@ -42,6 +42,7 @@ import { ConsumptionPage } from '../features/consumption/ConsumptionPage'
 import { DepositsPage } from '../features/deposits/DepositsPage'
 import { RentIncreasesPage } from '../features/rent-increases/RentIncreasesPage'
 import { AssignmentsPage } from '../features/assignments/AssignmentsPage'
+import { InboxPage } from '../features/inbox/InboxPage'
 import { TerminationsPage } from '../features/terminations/TerminationsPage'
 import { AccountingPage } from '../features/accounting/AccountingPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
@@ -290,6 +291,10 @@ const consumptionRoute = appPage('/consumption', ConsumptionPage)
 const depositsRoute = appPage('/deposits', DepositsPage)
 const rentIncreasesRoute = appPage('/rent-increases', RentIncreasesPage)
 const assignmentsRoute = appPage('/uppdrag', AssignmentsPage)
+// Inkorgen (etapp 6): agentens SKUGGFÖRSLAG. Egen rutt och inte en flik på
+// /uppdrag — de svarar på olika frågor. `/uppdrag` är kön av arbete som väntar
+// på ett ja; inkorgen är förslag som aldrig utförs och vars ja är ett facit.
+const inboxRoute = appPage('/inkorg', InboxPage)
 const terminationsRoute = appPage('/terminations', TerminationsPage)
 const accountingRoute = appPage('/accounting', AccountingPage)
 const reportsRoute = appPage('/reports', ReportsPage)
@@ -390,6 +395,7 @@ const routeTree = rootRoute.addChildren([
     depositsRoute,
     rentIncreasesRoute,
     assignmentsRoute,
+    inboxRoute,
     terminationsRoute,
     accountingRoute,
     reportsRoute,

@@ -145,7 +145,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#790](https://github.com/yasineken2002-sys/eken/pull/790), skuggläget). Kvar: **utföraren**, etapp 8–9 |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
-| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
+| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `fa680cf` — producent ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och inkorg ([#794](https://github.com/yasineken2002-sys/eken/pull/794)) finns; **inte prövat i verkliga fall** — flaggan är av för varje organisation |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
@@ -1541,6 +1541,43 @@ Hantverkarbokning ingår **inte** förrän `MaintenanceTicket.assignedToId` är 
 | 5 | Affärsögat | avvikelser, kostnadsproblem, möjligheter — byggs sist, kräver att resten är tillförlitligt |
 
 ### Shadow mode
+
+**BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och
+inkorgen ([#794](https://github.com/yasineken2002-sys/eken/pull/794)).
+
+Planens fem krav nedan är fem fält på `AiAssignment`, och detaljvyn visar dem i
+just den ordningen — handling → motivering → underlag → säkerhet → vad som hade
+krävt godkännande. Ordningen är inte kosmetisk: det är den ordning man behöver
+för att kunna säga EMOT ett förslag.
+
+| kravet | fältet |
+| --- | --- |
+| vad hade agenten gjort | `toolName` + `toolInput` |
+| varför | `reasoning` |
+| vilken information den använde | `evidence` |
+| hur säker den var | `confidence` (nullbar — "vet inte" är inte 0) |
+| vad som hade krävt godkännande | `consequence` |
+
+**Godkännandet är ett FACIT, inte en handling.** Planens formulering nedan säger
+att varje skrivande åtgärd kräver godkännande; i den här etappen utförs
+ingenting ENS vid godkännande, eftersom utföraren inte finns (etapp 8–9). De två
+är förenliga bara av det skälet — inte för att beslutet betyder något annat — och
+bekräftelserutan säger det rakt ut. Utan den texten godkänner hyresvärden något i
+tron att det händer, och den missuppfattningen är värre än ett dåligt förslag.
+
+**Träffgraden är en FRÅGA, aldrig en lagrad procent** (`prediction` mot `outcome`,
+per fält). Nämnaren är rader med FACIT — ett förslag som ingen ännu avslutat
+ärendet för är varken träff eller miss. Att räkna det som en miss hade gjort
+måttet till en mätning av hur snabbt hyresvärden stänger ärenden. KPI-kortet
+visar därför `—` och inte `0 %` innan facit finns.
+
+> **Varför raden är DELVIS och inte KLAR.** Kriteriet säger *"den föreslår rätt i
+> VERKLIGA FALL"*, och skuggläget är avstängt för varje organisation:
+> `Organization.shadowAgentEnabled` är `false` som default. Att slå på det för en
+> kund är ett beslut som hör till människan, inte till den här PR:en. Raden
+> flyttas när flaggan varit på för minst en riktig organisation och träffgraden
+> går att läsa.
+
 
 Innan en agent får agera skarpt ska den kunna köras i skuggläge: läsa, resonera, välja
 verktyg, simulera — men varje skrivande åtgärd kräver godkännande.
