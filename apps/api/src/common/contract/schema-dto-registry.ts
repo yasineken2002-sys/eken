@@ -13,6 +13,10 @@ import {
   BulkExportSchema,
   MarkSentSchema,
   PauseRemindersSchema,
+  GenerateNoticesSchema,
+  SendNoticesSchema,
+  MarkNoticePaidSchema,
+  CreateRentNoticeCreditSchema,
   UpdateMeterSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
@@ -32,6 +36,10 @@ import {
   MarkSentDto,
   PauseRemindersDto,
 } from '../../collections/dto/collections.dto'
+import { GenerateNoticesDto } from '../../avisering/dto/generate-notices.dto'
+import { SendNoticesDto } from '../../avisering/dto/send-notices.dto'
+import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
+import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import type { ZodType } from 'zod'
 
 /**
@@ -304,5 +312,42 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { reason: 'Avbetalningsplan överenskommen' },
     ogiltig: { reason: 42 },
     ogiltigVarfor: 'skälet måste vara text',
+  },
+  {
+    endpoint: 'POST /avisering/generate',
+    inputTyp: 'GenerateNoticesInput',
+    schema: GenerateNoticesSchema,
+    dto: GenerateNoticesDto,
+    giltig: { month: 9, year: 2026 },
+    ogiltig: { month: 13, year: 2026 },
+    ogiltigVarfor: 'månad 13 finns inte',
+  },
+  {
+    endpoint: 'POST /avisering/send',
+    inputTyp: 'SendNoticesInput',
+    schema: SendNoticesSchema,
+    dto: SendNoticesDto,
+    giltig: { noticeIds: ['11111111-2222-4333-8444-555555555555'] },
+    ogiltig: { noticeIds: ['inte-ett-uuid'] },
+    ogiltigVarfor: 'varje avi-id måste vara ett UUID',
+  },
+  {
+    endpoint: 'PATCH /avisering/:id/paid',
+    inputTyp: 'MarkNoticePaidInput',
+    schema: MarkNoticePaidSchema,
+    dto: MarkPaidDto,
+    giltig: { paidAmount: 12000, paymentMethod: 'BANK' },
+    ogiltig: { paidAmount: 12000, paymentMethod: 'Bankgiro' },
+    ogiltigVarfor:
+      'Bankgiro är en ETIKETT, inte enumvärdet — exakt den form fakturavägen skickar (G3)',
+  },
+  {
+    endpoint: 'POST /avisering/:id/credit',
+    inputTyp: 'CreateRentNoticeCreditInput',
+    schema: CreateRentNoticeCreditSchema,
+    dto: CreateRentNoticeCreditDto,
+    giltig: { lines: [{ amount: 500 }], reason: 'Felaktig hyresdebitering' },
+    ogiltig: { lines: [], reason: 'Felaktig hyresdebitering' },
+    ogiltigVarfor: 'en kreditering utan poster krediterar ingenting',
   },
 ]
