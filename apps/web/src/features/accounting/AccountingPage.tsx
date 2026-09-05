@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, FileX, Database, ArrowRightLeft } from 'lucide-react'
+import { BookOpen, FileX, Database, ArrowRightLeft, Plus, Receipt } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -16,6 +16,8 @@ import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAcco
 import { PeriodsPanel } from './components/PeriodsPanel'
 import { FiscalYearsPanel } from './components/FiscalYearsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
+import { NewJournalEntryModal } from './components/NewJournalEntryModal'
+import { RecordExpenseModal } from './components/RecordExpenseModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { isForbidden } from '@/lib/api'
 
@@ -175,6 +177,8 @@ export function AccountingPage() {
   const [view, setView] = useState<View>('chart')
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
   const [reversing, setReversing] = useState<JournalEntry | null>(null)
+  const [nyVerifikation, setNyVerifikation] = useState(false)
+  const [nyUtgift, setNyUtgift] = useState(false)
   // Rättelse är en redovisningshandling — MANAGER utesluts, precis som
   // server-side. Speglat här så knappen inte visas för den som ändå nekas.
   const role = useAuthStore((s) => s.user?.role)
@@ -207,7 +211,36 @@ export function AccountingPage() {
 
   return (
     <PageWrapper id="accounting">
-      <PageHeader title="Bokföring" description="BAS-kontoplan och verifikationsjournal" />
+      <PageHeader
+        title="Bokföring"
+        description="BAS-kontoplan och verifikationsjournal"
+        action={
+          // SAMMA rollmängd som rättelsen och som server-side (ACCOUNTANT+).
+          // MANAGER utesluts: att bokföra ett fritt verifikat är en
+          // redovisningshandling, inte en förvaltningsåtgärd. Knappen visas
+          // därför inte för den som ändå hade fått 403 på klick.
+          mayReverse ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setNyUtgift(true)}
+                data-testid="record-expense"
+              >
+                <Receipt size={14} strokeWidth={1.8} />
+                Registrera utgift
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => setNyVerifikation(true)}
+                data-testid="new-journal-entry"
+              >
+                <Plus size={14} strokeWidth={1.8} />
+                Ny verifikation
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -393,6 +426,17 @@ export function AccountingPage() {
           </>
         )}
       </Modal>
+
+      <NewJournalEntryModal
+        open={nyVerifikation}
+        onClose={() => setNyVerifikation(false)}
+        accounts={accounts.data ?? []}
+      />
+      <RecordExpenseModal
+        open={nyUtgift}
+        onClose={() => setNyUtgift(false)}
+        accounts={accounts.data ?? []}
+      />
 
       {reversing && (
         <ReverseEntryModal

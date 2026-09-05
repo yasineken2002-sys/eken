@@ -44,6 +44,15 @@ import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockhol
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
+import {
+  byggUtgiftsrader,
+  byggVerifikatrader,
+  kontouppslagAv,
+  type Kontouppslag,
+  type RadIndata,
+  type UtgiftIndata,
+} from './manual-entry'
+import { isPeriodClosed, periodKeyOf, periodOfDate } from './closed-period'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Konteringsrad i internt format innan den mappas till Prisma create-input.
@@ -396,6 +405,13 @@ export class AccountingService {
     // operatörsstyrda rättelsevägen; de automatiska motverifikaten (annullerad
     // avi, makulerad faktura, hävd matchning) lämnar den tom och är oförändrade.
     reversalOfEntryId?: string
+    /**
+     * Underlaget till en MANUELLT bokförd post (BFL 7 kap). Sätts bara av den
+     * fria vägen — automatiska verifikat har sitt underlag i affärshändelsen de
+     * kommer ur. Fältet togs tidigare emot av DTO:n och skrevs ingenstans; en
+     * bilaga hyresvärden trodde var sparad försvann då tyst.
+     */
+    attachmentUrl?: string | null
     // Valfri yttre transaktion. Anges när verifikatet måste skapas ATOMISKT
     // tillsammans med andra DB-writes (t.ex. unmatch-flödet som måste rulla
     // tillbaka statusändringar om bokföringen fallerar — BFL 5 kap 5 §/9 §).
@@ -523,6 +539,7 @@ export class AccountingService {
           ...(params.reversalOfEntryId != null
             ? { reversalOfEntryId: params.reversalOfEntryId }
             : {}),
+          ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
           lines: {
             create: params.lines.map((l) => ({
               accountId: l.accountId,
@@ -3796,5 +3813,150 @@ export class AccountingService {
       idempotencyWhere: { organizationId, sourceId },
       ...(tx ? { tx } : {}),
     })
+  }
+
+  // ── MANUELL BOKFÖRING: MÄNNISKANS VÄG ─────────────────────────────────────
+  //
+  // De två metoderna nedan finns för att `create_journal_entry` och
+  // `record_expense` var två av sju AI-verktyg UTAN mänsklig väg
+  // (`tool-human-path.baseline.json`): AI:n kunde bokföra en verifikation som
+  // hyresvärden inte kunde bokföra själv. Delmängdsregeln kräver att människan
+  // kan minst lika mycket.
+  //
+  // De duplicerar INTE verktygets kontering: kontouppslag, momsdelning och
+  // balanskrav byggs av samma rena funktioner som AI-vägen använder
+  // (`manual-entry.ts`).
+  //
+  // SKRIVNINGEN är däremot inte delad, och det ska inte läsas fel. De två
+  // metoderna här går ut i `createNumberedEntry` — balansgrind (C1), gap-fritt
+  // nummer, idempotens per `(organizationId, source, sourceId)`. AI-vägen har
+  // sin EGEN transaktion i `tool-executor.service.ts`. En ny spärr som läggs i
+  // `createNumberedEntry` gäller alltså människovägen och inte AI-vägen; att
+  // unifiera dem är ett eget arbete.
+  //
+  // SKILLNADEN MOT AI-VÄGEN ÄR NAMNRYMDEN, och den är avsiktlig: `source` är
+  // 'MANUAL' här och 'AI' där. Idempotensen gäller per namnrymd, så en
+  // hyresvärd som medvetet bokför samma belopp som AI:n nyss bokförde får ett
+  // EGET verifikat i stället för att tystas bort som en dubblett av något hen
+  // inte gjorde.
+
+  /**
+   * Fritt verifikat, bokfört av en människa.
+   *
+   * `idempotencyKey` är anroparens egen nyckel och blir `sourceId`. Två anrop
+   * med samma nyckel ger EN journalpost — samma egenskap som AI-vägen har, och
+   * av samma skäl: ett omtag efter en tappad uppkoppling får inte bli två
+   * verifikat i huvudboken.
+   *
+   * Kastar `UnprocessableEntityException` när verifikatet inte balanserar eller
+   * ett konto saknas, med ett SPECIFIKT svenskt meddelande — det går rakt ut
+   * till hyresvärden, och "ogiltig indata" hade tvingat hen att gissa vilken rad
+   * som var fel.
+   */
+  async createManualJournalEntry(params: {
+    organizationId: string
+    date: Date
+    description: string
+    lines: readonly RadIndata[]
+    idempotencyKey: string
+    createdById?: string | null
+    attachmentUrl?: string | null
+  }) {
+    const { organizationId, date, description } = params
+
+    if (Number.isNaN(date.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt datum.')
+    }
+    if (!description.trim()) {
+      throw new UnprocessableEntityException('Verifikatet behöver en beskrivning.')
+    }
+    // Förhandsbesked, INTE spärren — den verkställande kontrollen sitter i
+    // `allocate()` inuti transaktionen. Frågan ställs via samma delade
+    // uppslagning som AI-vägen (`closed-period.ts`), så de aldrig kan svara
+    // olika; en egen kopia hade blivit en tyst tillåtare den dag
+    // representationen ändras.
+    if (await isPeriodClosed(this.prisma, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra datum eller återöppna perioden.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggVerifikatrader(params.lines, konton)
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: description.trim(),
+      source: 'MANUAL',
+      sourceId: params.idempotencyKey,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * Utgift, bokförd av en människa: kostnad (netto) debet, ingående moms debet
+   * om den finns, bank kredit (brutto).
+   *
+   * `belopp` är BRUTTO — det som lämnar 1930. Momsen bryts UT ur det, den läggs
+   * inte till. Se `byggUtgiftsrader` för varför den riktningen är utskriven.
+   */
+  async recordManualExpense(params: {
+    organizationId: string
+    date: Date
+    idempotencyKey: string
+    createdById?: string | null
+    attachmentUrl?: string | null
+    utgift: UtgiftIndata
+  }) {
+    const { organizationId, date } = params
+
+    if (Number.isNaN(date.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt datum.')
+    }
+    if (!params.utgift.beskrivning.trim()) {
+      throw new UnprocessableEntityException('Utgiften behöver en beskrivning.')
+    }
+    if (await isPeriodClosed(this.prisma, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra datum eller återöppna perioden.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggUtgiftsrader(params.utgift, konton)
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: `Utgift: ${params.utgift.beskrivning.trim()}`,
+      source: 'MANUAL',
+      sourceId: params.idempotencyKey,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * Kontoplanen som nummer → id, för människovägen. Formningen delas med
+   * AI-vägen genom `kontouppslagAv`; själva hämtningen gör varje väg själv, så
+   * att den delade regeln inte drar med sig ett DI-beroende (se manual-entry.ts).
+   */
+  private async kontouppslag(organizationId: string): Promise<Kontouppslag> {
+    return kontouppslagAv(
+      await this.prisma.account.findMany({
+        where: { organizationId },
+        select: { id: true, number: true },
+      }),
+    )
   }
 }

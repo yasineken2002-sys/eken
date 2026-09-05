@@ -1,0 +1,47 @@
+{
+  "__doc__": [
+    "HÄRLETT AV apps/api/scripts/check-tool-outward-capabilities.mjs — skriv aldrig för hand.",
+    "Per verktyg: vilka utåtriktade sänkor dess anropskedja når, och hur de känns igen.",
+    "Vakten diffar åt BÅDA hållen: en sänka i koden som saknas här är en NY FÖRMÅGA;",
+    "en sänka här som koden inte har är en BORTTAGEN förmåga eller ett svep som gått blint.",
+    "Uppdatering är en AVSIKTLIG handling: kör --skriv och motivera i PR-texten."
+  ],
+  "verktyg": {
+    "compose_and_send_email": {
+      "MAIL": ["mailService.sendCustomEmail"]
+    },
+    "create_tenant_and_lease": {
+      "KÖ": [
+        "LeasesService.transitionStatus → activationQueue.enqueueGenerateContract",
+        "LeasesService.transitionStatus → activationQueue.enqueueInitialNotices",
+        "LeasesService.transitionStatus → activationQueue.enqueueWelcomeMail"
+      ]
+    },
+    "export_for_collection": {
+      "LAGRING_R2": ["CollectionExportService.exportForInvoice → storage.uploadFile"]
+    },
+    "generate_lease_contract": {
+      "LAGRING_R2": ["storage.uploadFile"]
+    },
+    "prepare_contract_signing": {
+      "SIGNERING": ["SigningService.createSigningRequest → provider.createRequest"]
+    },
+    "send_document_to_tenant": {
+      "LAGRING_R2": ["DocumentDeliveryService.deliverToTenant → storage.uploadFile"],
+      "MAIL": ["DocumentDeliveryService.deliverToTenant → mail.sendCustomEmail"]
+    },
+    "send_invoice_email": {
+      "KÖ": ["InvoicesService.sendInvoiceEmail → pdfQueue.enqueue"]
+    },
+    "send_overdue_reminders": {
+      "MAIL": ["mailService.sendOverdueReminder"]
+    },
+    "transition_lease_status": {
+      "KÖ": [
+        "LeasesService.transitionStatus → activationQueue.enqueueGenerateContract",
+        "LeasesService.transitionStatus → activationQueue.enqueueInitialNotices",
+        "LeasesService.transitionStatus → activationQueue.enqueueWelcomeMail"
+      ]
+    }
+  }
+}
