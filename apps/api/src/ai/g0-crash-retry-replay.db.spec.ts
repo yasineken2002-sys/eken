@@ -547,6 +547,13 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
      * fördelar sig 21 FÖRE_EFFEKTEN / 7 BÄST_MÖJLIGA / 2 TRANSAKTIONELL, och de
      * två är `create_journal_entry` och `record_expense`. Båda skriver verifikat.
      *
+     * ORSAKEN ÄR BEVISAD, INTE KORRELERAD. Negativkontroll NK3, körd 2026-09-05:
+     * med `confirmedAt: auditContext?.confirmedAt ?? null` ändrad till
+     * `confirmedAt: null` i `beginToolExecution` — alltså exakt den här defekten
+     * injicerad i den FUNGERANDE vägen — föll POSITIVA KONTROLLEN ovan, och den
+     * föll med ORDAGRANT samma mening som den här raden får. Ett prov föll,
+     * nio var gröna.
+     *
      * VARFÖR PROVET PINNAR NULÄGET I STÄLLET FÖR ATT KRÄVA RÄTT SVAR: fixen bor
      * i `tool-executor.service.ts`, som ägs av en annan ström i den här
      * omgången, och den ÄR ett beslut — vidarebefordra de två fälten, eller
