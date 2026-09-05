@@ -141,7 +141,9 @@ function ConsentKort({
             <p className="text-[12px] text-gray-400">Bankkoppling</p>
           </div>
         </div>
-        <BankConsentStatusBadge status={visning.status} />
+        <span data-testid={`bank-consent-status-${index}`}>
+          <BankConsentStatusBadge status={visning.status} />
+        </span>
       </div>
 
       <dl className="mt-4 space-y-1.5">
@@ -305,7 +307,12 @@ export function BankConnectionPage({ psd2 }: { psd2?: string | undefined }) {
                 />
                 {pollar ? 'Synkar…' : 'Synka nu'}
               </Button>
-              <Button variant="primary" onClick={anslut} disabled={beginMutation.isPending}>
+              <Button
+                variant="primary"
+                onClick={anslut}
+                disabled={beginMutation.isPending}
+                data-testid="psd2-connect"
+              >
                 <Link2 size={14} strokeWidth={1.8} />
                 Anslut bank
               </Button>
@@ -360,7 +367,7 @@ export function BankConnectionPage({ psd2 }: { psd2?: string | undefined }) {
               description="Anslut din bank så hämtas transaktionerna automatiskt till bankavstämningen."
               action={
                 kanAndra ? (
-                  <Button variant="primary" onClick={anslut}>
+                  <Button variant="primary" onClick={anslut} data-testid="psd2-connect-empty">
                     <Link2 size={14} strokeWidth={1.8} />
                     Anslut bank
                   </Button>

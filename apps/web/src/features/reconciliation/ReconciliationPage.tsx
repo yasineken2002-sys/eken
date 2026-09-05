@@ -1046,13 +1046,14 @@ function BankConnectionCard() {
     <Link
       to="/reconciliation/settings"
       className="border-line bg-surface mt-6 flex items-center gap-4 rounded-2xl border p-4 transition-shadow hover:shadow-sm"
+      data-testid="bank-connection-card"
     >
       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-gray-100 bg-gray-50">
         <Landmark size={16} strokeWidth={1.8} className="text-gray-500" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[13.5px] font-medium text-gray-900">Bankkoppling</p>
-        <p className="mt-0.5 text-[13px] text-gray-500">
+        <p className="mt-0.5 text-[13px] text-gray-500" data-testid="bank-connection-card-text">
           {isError || aktiva === null
             ? 'Hämta transaktioner automatiskt i stället för att importera filer.'
             : aktiva > 0
