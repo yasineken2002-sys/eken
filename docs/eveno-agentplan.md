@@ -456,9 +456,9 @@ Av planens sju fält fanns tre. Ett fjärde landar med den här omgången:
 | `effectClassification` | **delvis** — `effectIdempotency`, `idempotencyUnit`, `traceDurability`, `traceIntegrity`, `externalHandle` finns. Axeln *anteckning \| utåtriktad handling* är fortfarande inget EGET fält, men den går numera att härleda ur två mätta mängder: vakt 7:s manifest (skickar den något?) och `authorityScope` (vems rätt?). Att göra den till ett tredje fält vore att låna ett svar de två redan ger |
 | `requiresApproval` | finns, **härlett** ur `ACTION_TOOLS` — ingen andra lista |
 | `humanPath` | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) — `ai/tools/human-path.ts` + `check-tool-human-path.mjs`, ratchet i tre riktningar |
-| `agentAllowlist` | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783), `59f4f7b`) — `boolean`, medveten reduktion av planens "vilka agenter": agentidentiteter finns inte i koden, och en mängd med tom domän är en vokabulär som ser ut som en mekanism. **9 av 30** är `true` |
-| `supportsUndo` | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783), `59f4f7b`) — `VÄG{fil,symbol}` \| `IRREVERSIBEL{skäl}` \| `INGEN_EFFEKT`. Aldrig bara `false`: "går inte att backa" och "ingen letade" ser likadana ut. 22 vägar slås upp i kod, 7 är irreversibla med skäl, 1 har ingen effekt |
-| `authorityScope` | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783), `59f4f7b`) — `EGEN_ORG` \| `MOT_HYRESGAST` \| `MOT_TREDJE_PART`. Uppmätt: 12 · 16 · 2 |
+| `agentAllowlist` | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784), `59f4f7b`) — `boolean`, medveten reduktion av planens "vilka agenter": agentidentiteter finns inte i koden, och en mängd med tom domän är en vokabulär som ser ut som en mekanism. **9 av 30** är `true` |
+| `supportsUndo` | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784), `59f4f7b`) — `VÄG{fil,symbol}` \| `IRREVERSIBEL{skäl}` \| `INGEN_EFFEKT`. Aldrig bara `false`: "går inte att backa" och "ingen letade" ser likadana ut. 22 vägar slås upp i kod, 7 är irreversibla med skäl, 1 har ingen effekt |
+| `authorityScope` | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784), `59f4f7b`) — `EGEN_ORG` \| `MOT_HYRESGAST` \| `MOT_TREDJE_PART`. Uppmätt: 12 · 16 · 2 |
 
 Vakterna i Del 10, en rad var:
 
@@ -471,10 +471,10 @@ Vakterna i Del 10, en rad var:
 | 5 | historikdomän saknas i registret | `check-history-registry.mjs` |
 | 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) |
 | 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **byggd** ([#779](https://github.com/yasineken2002-sys/eken/pull/779), `f6b24cf`) — `check-tool-outward-capabilities.mjs` + `tool-outward-capabilities.json` |
-| 8 | `agentAllowlist: true` på något som inte är hyresvärdens egna register | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783)) — `check-tool-authority.mjs` R1, fyra härledda villkor |
-| 9 | `MOT_TREDJE_PART` utan externt handtag | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783)) — R2; flyttade `mark_sent_to_collection` till `MOT_HYRESGAST` |
-| 10 | något som bokför eller skickar deklareras oåterkalleligt utan skäl | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783)) — R3, tröskel **80** tecken |
-| 11 | en ångerväg som pekar på en metod som inte finns | **byggd** ([#783](https://github.com/yasineken2002-sys/eken/pull/783)) — R4, symbolen slås upp som KOD, `\p{L}`-avgränsad |
+| 8 | `agentAllowlist: true` på något som inte är hyresvärdens egna register | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — `check-tool-authority.mjs` R1, fyra härledda villkor |
+| 9 | `MOT_TREDJE_PART` utan externt handtag | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R2; flyttade `mark_sent_to_collection` till `MOT_HYRESGAST` |
+| 10 | något som bokför eller skickar deklareras oåterkalleligt utan skäl | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R3, tröskel **80** tecken |
+| 11 | en ångerväg som pekar på en metod som inte finns | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R4, symbolen slås upp som KOD, `\p{L}`-avgränsad |
 
 **Vakt 7 är byggd** (2026-09-05, mätt mot `f6b24cf`). Stycket nedan beskrev
 tidigare varför den saknades, och analysen stod sig: `check-ai-tool-effects.mjs`
@@ -531,7 +531,7 @@ dynamiska anrop (`this[namn](…)`), och en tjänst som byter beteende utanför
 räckvidden ovan. `MailQueue` räknas därför som sänka i sig, så `MailService` inte
 behöver följas vidare.
 
-Ommätt 2026-09-05 efter [#783](https://github.com/yasineken2002-sys/eken/pull/783). **De tre fälten finns nu**, obligatoriska i typen och
+Ommätt 2026-09-05 efter [#784](https://github.com/yasineken2002-sys/eken/pull/784). **De tre fälten finns nu**, obligatoriska i typen och
 fail-closed i `buildEffectCatalog` — katalogen kastar med verktygets namn och
 frågan i klartext om något av dem saknas i runtime, och `effect-idempotency.spec.ts`
 prövar alla tre kasten plus motprovet att `agentAllowlist: false` INTE kastar
