@@ -839,6 +839,35 @@ function selfTest() {
       JSON.stringify(r.problem.map((p) => p.detalj.slice(0, 30))))
   }
 
+  // ── REGELKANARIEFÅGELN (b2): EN AV FLERA SÄNKOR FÖRSVINNER ────────────────
+  //
+  // (b) ovan tar bort verktygets ENDA sänka, och då faller verktyget ur den
+  // svepta mängden helt — utfallet blir "OKÄNT VERKTYG". Grenen som fäller när
+  // ett verktyg BEHÅLLER en sänka men tappar en annan är en EGEN kodväg, och
+  // utan det här provet har ingen sett den falla.
+  {
+    const r = evaluate({
+      ...bas(),
+      actionTools: new Set(['mejla']),
+      // Koden ger `mejla` bara MAIL. Manifestet påstår MAIL + LAGRING_R2.
+      manifest: {
+        verktyg: {
+          mejla: { MAIL: ['mailService.sendCustomEmail'], LAGRING_R2: ['storage.uploadFile'] },
+        },
+      },
+      deklarationer: new Map([
+        ['mejla', { externalHandle: 'INGET', effectIdempotency: 'DEDUPLICERBAR', plats: 'DATABAS_TILLSTÅND' }],
+      ]),
+      humanPaths: new Set(['mejla']),
+    })
+    t('REGELKANARIE (b2): en av FLERA sänkor borta ur koden → RÖTT som BORTTAGEN',
+      r.problem.some((p) => p.regel === 'R2' && p.detalj.includes('BORTTAGEN') && p.detalj.includes('LAGRING_R2')),
+      JSON.stringify(r.problem.map((p) => p.detalj.slice(0, 34))))
+    t('REGELKANARIE (b2): och den sänka som FINNS larmar inte',
+      !r.problem.some((p) => p.detalj.includes('MAIL')),
+      JSON.stringify(r.problem.map((p) => p.detalj.slice(0, 34))))
+  }
+
   // ── REGELKANARIEFÅGELN (c): PÅHITTAT VERKTYG I MANIFESTET ─────────────────
   {
     const manifest = {
