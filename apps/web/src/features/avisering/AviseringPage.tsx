@@ -10,16 +10,19 @@ import {
   Clock,
   DollarSign,
   Mail,
+  Bell,
   Search,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { extractApiError } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { RentNoticeBadge } from './components/RentNoticeBadge'
 import { GenerateModal } from './components/GenerateModal'
+import { SendRemindersModal, ReminderFreshnessBadge } from './components/SendRemindersModal'
 import { MarkPaidModal } from './components/MarkPaidModal'
 import { RentNoticeDetailModal } from './components/RentNoticeDetailModal'
 import { fetchNotice } from './api/avisering.api'
@@ -29,6 +32,8 @@ import {
   useSendNotices,
   useSendAllNotices,
   useDownloadPdf,
+  useReminderPreview,
+  useSendOverdueReminders,
 } from './hooks/useAvisering'
 import { useNavigate } from '@tanstack/react-router'
 import { formatDate, formatCurrency } from '@eken/shared'
@@ -88,6 +93,8 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
   const [year, setYear] = useState(now.getFullYear())
   const [statusTab, setStatusTab] = useState<RentNoticeStatus | 'ALL'>('ALL')
   const [generateOpen, setGenerateOpen] = useState(false)
+  const [remindersOpen, setRemindersOpen] = useState(false)
+  const [reminderFel, setReminderFel] = useState<string | null>(null)
   const [markPaidNotice, setMarkPaidNotice] = useState<RentNotice | null>(null)
   // #518 — avi-detaljen. Ingången till nedsättning, och den enda ytan som
   // visar avins BERÄKNADE skuld i stället för bruttot på raden.
@@ -117,6 +124,10 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
   const { data: stats } = useNoticeStats(month, year)
   const sendNotices = useSendNotices()
   const sendAll = useSendAllNotices()
+  // Människans väg till `send_overdue_reminders`. Förhandsbeskedet hämtas bara
+  // medan modalen är öppen.
+  const reminderPreview = useReminderPreview(remindersOpen)
+  const sendReminders = useSendOverdueReminders()
   const downloadPdf = useDownloadPdf()
 
   // Djuplänk → detaljmodal. TVÅ STEG, av samma skäl som MaintenancePage: listan
@@ -201,6 +212,18 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
                 <Mail size={13} strokeWidth={1.8} />
                 Skicka alla
               </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setReminderFel(null)
+                  setRemindersOpen(true)
+                }}
+                data-testid="open-send-reminders"
+              >
+                <Bell size={13} strokeWidth={1.8} />
+                Skicka påminnelser
+              </Button>
+              <ReminderFreshnessBadge besked={reminderPreview.data} />
               <Button variant="primary" onClick={() => setGenerateOpen(true)}>
                 <Plus size={14} strokeWidth={2} />
                 Generera avier
@@ -465,6 +488,22 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
           )}
         </div>
       </div>
+
+      <SendRemindersModal
+        open={remindersOpen}
+        onClose={() => setRemindersOpen(false)}
+        besked={reminderPreview.data}
+        skickar={sendReminders.isPending}
+        fel={reminderFel}
+        onSkicka={() => {
+          setReminderFel(null)
+          sendReminders.mutate(undefined, {
+            onSuccess: () => setRemindersOpen(false),
+            onError: (err) =>
+              setReminderFel(extractApiError(err, 'Kunde inte skicka påminnelserna')),
+          })
+        }}
+      />
 
       <AnimatePresence>
         {generateOpen && (

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -8,8 +9,11 @@ import {
   Download,
   RefreshCw,
   Paperclip,
+  FileSignature,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { extractApiError } from '@/lib/api'
+import { SendForSigningModal } from './SendForSigningModal'
 import {
   fetchContractStatus,
   fetchAppendices,
@@ -19,6 +23,7 @@ import {
   type AppendixCategory,
   type AppendixItem,
   type ContractDocument,
+  createSigningRequest,
 } from '../api/leases.api'
 
 interface Props {
@@ -110,6 +115,18 @@ export function ContractTab({ leaseId }: Props) {
   }
 
   const latest = data.latest!
+  const [signingOpen, setSigningOpen] = useState(false)
+  const [signingFel, setSigningFel] = useState<string | null>(null)
+  // Människans väg till `prepare_contract_signing` — samma endpoint och samma
+  // tjänstemetod som verktyget. Ingen parallell implementation.
+  const signing = useMutation({
+    mutationFn: () => createSigningRequest(latest.id),
+    onSuccess: () => {
+      setSigningOpen(false)
+      void qc.invalidateQueries({ queryKey: CONTRACT_KEY(leaseId) })
+    },
+    onError: (err) => setSigningFel(extractApiError(err, 'Kunde inte förbereda signeringen')),
+  })
   const versions = data.versions
 
   return (
@@ -205,8 +222,35 @@ export function ContractTab({ leaseId }: Props) {
             <RefreshCw size={13} strokeWidth={1.8} className="mr-1.5" />
             Generera ny version
           </Button>
+          {/* Ett REDAN SIGNERAT kontrakt skickas inte igen: dokumentet är låst,
+              och en andra begäran mot samma version hade varit ett krav på en
+              underskrift som redan finns. */}
+          {!latest.signedAt && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setSigningFel(null)
+                setSigningOpen(true)
+              }}
+              data-testid="open-send-for-signing"
+            >
+              <FileSignature size={13} strokeWidth={1.8} className="mr-1.5" />
+              Skicka för signering
+            </Button>
+          )}
         </div>
       </div>
+
+      <SendForSigningModal
+        open={signingOpen}
+        onClose={() => setSigningOpen(false)}
+        dokumentnamn={latest.name}
+        mottagare={signedByLabel(latest) || 'Hyresgästen'}
+        arbetar={signing.isPending}
+        fel={signingFel}
+        onBekrafta={() => signing.mutate()}
+      />
 
       {/* Versionshistorik */}
       <AppendicesSection leaseId={leaseId} />
