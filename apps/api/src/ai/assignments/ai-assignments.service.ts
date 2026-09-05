@@ -263,7 +263,13 @@ export class AiAssignmentsService {
     organizationId: string,
     shadow?: boolean,
   ): Promise<Record<AiAssignment['status'], number>> {
-    const bas = { organizationId, ...(shadow === undefined ? {} : { shadow }) }
+    // TYPEN KRÄVER `organizationId` (S2 i check-spread-where). `{ ...undefined }`
+    // ger `{}`, och ett uppslag utan org-avgränsning korsar tenant-gränsen
+    // tyst — #703. Typen gör felet omöjligt i stället för osannolikt.
+    const bas: { organizationId: string } & Record<string, unknown> = {
+      organizationId,
+      ...(shadow === undefined ? {} : { shadow }),
+    }
     const grupper = await this.prisma.aiAssignment.groupBy({
       by: ['status'],
       where: bas,
