@@ -44,6 +44,7 @@ import { PaymentReminderService } from '../../notifications/payment-reminder.ser
 import { StorageService } from '../../storage/storage.service'
 import { RedisService } from '../../common/redis/redis.service'
 import { AiAuditService } from '../audit/ai-audit.service'
+import type { ToolExecutionIdentity } from '../audit/ai-audit.service'
 import { DocumentDeliveryService } from '../../documents/document-delivery.service'
 import { SigningService } from '../../signing/signing.service'
 import type { PortalDocumentCategory } from '../../documents/document-delivery.service'
@@ -588,6 +589,19 @@ export class ToolExecutorService {
     // id finns inget att peka på vid skrivtillfället. Se #494 beslut 4.
     const executionId = randomUUID()
 
+    /**
+     * IDENTITETEN, byggd EN gång och delad av alla fyra skrivvägarna nedan
+     * (begin, de två log-anropen och den transaktionella). Innan #783 räknade
+     * varje väg upp fälten för hand, och den transaktionella glömde två av dem.
+     */
+    const spårIdentitet: ToolExecutionIdentity = {
+      organizationId,
+      userId,
+      conversationId: auditContext?.conversationId ?? null,
+      requiredConfirmation: ACTION_TOOLS.has(toolName),
+      confirmedAt: auditContext?.confirmedAt ?? null,
+    }
+
     // ── SPÅRET ÖPPNAS FÖRE EFFEKTEN (steg 3b) ────────────────────────────────
     //
     // För verktyg som deklarerar `FÖRE_EFFEKTEN` skrivs och COMMITTAS raden
@@ -604,14 +618,10 @@ export class ToolExecutorService {
     const spårform = effectTraceIntegrity(toolName)
     if (spårform === 'FÖRE_EFFEKTEN') {
       await this.audit.beginToolExecution({
+        ...spårIdentitet,
         id: executionId,
-        organizationId,
-        userId,
-        conversationId: auditContext?.conversationId ?? null,
         toolName,
         toolInput,
-        requiredConfirmation: ACTION_TOOLS.has(toolName),
-        confirmedAt: auditContext?.confirmedAt ?? null,
       })
     }
 
@@ -623,7 +633,15 @@ export class ToolExecutorService {
       // Prisma-extensionen noterar varje skrivning som sker här inne, in i den
       // kollektor `executeTool` öppnade. Verktygen vet ingenting om det.
       result = await runAsAi(executionId, { kind: 'USER', id: userId }, () =>
-        this.executeToolUnsafe(toolName, toolInput, organizationId, userId, userRole, executionId),
+        this.executeToolUnsafe(
+          toolName,
+          toolInput,
+          organizationId,
+          userId,
+          userRole,
+          executionId,
+          spårIdentitet,
+        ),
       )
 
       // ÄMNESKOPPLINGENS KÄLLA (#510). Verktyget vet vilka hyresgäster det rörde;
@@ -660,17 +678,13 @@ export class ToolExecutorService {
       }
       // Logga miss-exekveringen innan vi kastar vidare
       void this.audit.logToolExecution({
+        ...spårIdentitet,
         id: executionId,
-        organizationId,
-        userId,
-        conversationId: auditContext?.conversationId ?? null,
         toolName,
         toolInput,
         success: false,
         errorMessage: thrownError.message,
         durationMs: Date.now() - startedAt,
-        requiredConfirmation: ACTION_TOOLS.has(toolName),
-        confirmedAt: auditContext?.confirmedAt ?? null,
         // ÄVEN VID FEL. Ett verktyg som hann skapa två rader innan det kastade
         // har orsakat två rader — att bara spåra lyckade körningar hade lämnat
         // just de fall som är svårast att städa utan spår.
@@ -749,10 +763,8 @@ export class ToolExecutorService {
     // Audit-logg — fire-and-forget. Misslyckad loggning ska aldrig blockera
     // det faktiska tool-svaret.
     void this.audit.logToolExecution({
+      ...spårIdentitet,
       id: executionId,
-      organizationId,
-      userId,
-      conversationId: auditContext?.conversationId ?? null,
       toolName,
       toolInput,
       // BÄST_MÖJLIGA-vägen bär också handtaget när verktyget har ett —
@@ -762,8 +774,6 @@ export class ToolExecutorService {
       success: result.success,
       errorMessage: result.success ? null : result.message,
       durationMs: Date.now() - startedAt,
-      requiredConfirmation: ACTION_TOOLS.has(toolName),
-      confirmedAt: auditContext?.confirmedAt ?? null,
       // VAD KÖRNINGEN ORSAKADE. Samlat av Prisma-extensionen, inte av verktyget.
       effects: drainEffects(),
     })
@@ -792,17 +802,23 @@ export class ToolExecutorService {
     executionId: string | undefined,
     toolName: string,
     toolInput: Record<string, unknown>,
-    organizationId: string,
-    userId: string,
+    /**
+     * HELA identiteten, inte två av dess sex fält.
+     *
+     * Metoden tog tidigare `organizationId` och `userId` var för sig och byggde
+     * resten själv — vilket i praktiken betydde att den INTE byggde resten:
+     * `conversationId` och `confirmedAt` föll bort, och uppspelningen förnekade
+     * därför utföranden som skedde (#783). Att ta emot identiteten som ETT
+     * värde gör det omöjligt att skicka halva.
+     */
+    identitet: ToolExecutionIdentity,
   ): Promise<void> {
     if (!executionId) return
     await this.audit.writeInTransaction(tx, {
+      ...identitet,
       id: executionId,
-      organizationId,
-      userId,
       toolName,
       toolInput,
-      requiredConfirmation: ACTION_TOOLS.has(toolName),
       // Effekterna som noterats HITTILLS i den här transaktionen. Töms här med
       // flit: rullas transaktionen tillbaka ska de inte kunna skrivas en andra
       // gång av den yttre vägen, för då hade de överlevt sin egen effekt.
@@ -825,6 +841,13 @@ export class ToolExecutorService {
      * bekvämlighet.
      */
     aiToolExecutionId?: string,
+    /**
+     * Identiteten spåret ska bära. VALFRI av samma skäl som `aiToolExecutionId`
+     * ovan: nio specar anropar metoden direkt med fem argument. Produktions-
+     * vägen skickar den alltid, och `spårIdentitet()` nedan är enda stället den
+     * byggs.
+     */
+    spårIdentitet?: ToolExecutionIdentity,
   ): Promise<ToolResult> {
     // ── Role guards (propagate as HTTP exceptions) ────────────────────────────
 
@@ -4017,8 +4040,7 @@ export class ToolExecutorService {
                 aiToolExecutionId,
                 toolName,
                 toolInput,
-                organizationId,
-                userId,
+                spårIdentitet ?? { organizationId, userId },
               )
               return { entry: befintligt, redanFanns: true }
             }
@@ -4049,8 +4071,7 @@ export class ToolExecutorService {
               aiToolExecutionId,
               toolName,
               toolInput,
-              organizationId,
-              userId,
+              spårIdentitet ?? { organizationId, userId },
             )
             return { entry: skapat, redanFanns: false }
           }, PRISMA_DEFAULT_TX_LIMITS)
@@ -4141,8 +4162,7 @@ export class ToolExecutorService {
                 aiToolExecutionId,
                 toolName,
                 toolInput,
-                organizationId,
-                userId,
+                spårIdentitet ?? { organizationId, userId },
               )
               return { entry: befintligt, redanFanns: true }
             }
@@ -4169,8 +4189,7 @@ export class ToolExecutorService {
               aiToolExecutionId,
               toolName,
               toolInput,
-              organizationId,
-              userId,
+              spårIdentitet ?? { organizationId, userId },
             )
             return { entry: skapat, redanFanns: false }
           }, PRISMA_DEFAULT_TX_LIMITS)
