@@ -14,7 +14,13 @@ import { cn } from '@/lib/cn'
 
 import { InboxDetailModal } from './components/InboxDetailModal'
 import { formatKonfidens, formatTraffgrad, konfidensVariant } from './lib/confidence'
-import { useDecideInboxItem, useInbox, useInboxSummary } from './hooks/useInbox'
+import {
+  useDecideInboxItem,
+  useInbox,
+  useInboxSummary,
+  useKanDelegera,
+  useSkapaDelegation,
+} from './hooks/useInbox'
 
 import type { AssignmentStatus, InboxItem } from './api/inbox.api'
 
@@ -52,6 +58,9 @@ export function InboxPage() {
   const lista = useInbox(status)
   const summary = useInboxSummary()
   const beslut = useDecideInboxItem()
+  // Frågan ställs bara för en ÖPPEN och GODKÄND rad — knappen finns inte annars.
+  const kanDelegera = useKanDelegera(vald?.id ?? null, vald?.status === 'APPROVED')
+  const delegera = useSkapaDelegation()
 
   const rader = lista.data?.rader ?? []
 
@@ -143,6 +152,16 @@ export function InboxPage() {
         item={vald}
         onClose={() => setVald(null)}
         pending={beslut.isPending}
+        kanDelegera={kanDelegera.data}
+        delegeringLaddar={kanDelegera.isLoading}
+        delegeringSparar={delegera.isPending}
+        onDelegera={(villkor) => {
+          if (!vald) return
+          delegera.mutate({
+            assignmentId: vald.id,
+            ...(villkor ? { villkor } : {}),
+          })
+        }}
         onDecide={(p) => {
           beslut.mutate(p, { onSuccess: () => setVald(null) })
         }}

@@ -6,14 +6,20 @@ import { Modal, ModalFooter } from '@eken/ui/react'
 import { formatDate } from '@eken/shared'
 
 import { formatKonfidens, konfidensVariant } from '../lib/confidence'
+import { GorAlltidSaHar } from './GorAlltidSaHar'
 
-import type { InboxItem } from '../api/inbox.api'
+import type { InboxItem, KanDelegera } from '../api/inbox.api'
 
 interface Props {
   item: InboxItem | null
   onClose: () => void
   onDecide: (params: { id: string; decision: 'APPROVED' | 'REJECTED'; reason?: string }) => void
   pending?: boolean
+  /** "Gör alltid så här" — utelämnas i prov som bara mäter beslutsflödet. */
+  kanDelegera?: KanDelegera | undefined
+  delegeringLaddar?: boolean
+  delegeringSparar?: boolean
+  onDelegera?: (villkor: Record<string, unknown> | undefined) => void
 }
 
 /** Ett fält i planens ordning. Rubriken är frågan, inte fältnamnet. */
@@ -35,7 +41,16 @@ function Falt({ rubrik, children }: { rubrik: string; children: React.ReactNode 
  * till motivering till underlag, vilket är den ordning man behöver för att kunna
  * säga emot.
  */
-export function InboxDetailModal({ item, onClose, onDecide, pending }: Props) {
+export function InboxDetailModal({
+  item,
+  onClose,
+  onDecide,
+  pending,
+  kanDelegera,
+  delegeringLaddar,
+  delegeringSparar,
+  onDelegera,
+}: Props) {
   const [bekraftar, setBekraftar] = useState<'APPROVED' | 'REJECTED' | null>(null)
   const [skal, setSkal] = useState('')
 
@@ -98,6 +113,17 @@ export function InboxDetailModal({ item, onClose, onDecide, pending }: Props) {
         {item.statusReason && <Falt rubrik="Ditt skäl">{item.statusReason}</Falt>}
         <Falt rubrik="Skapat">{formatDate(item.createdAt)}</Falt>
       </div>
+
+      {onDelegera && (
+        <GorAlltidSaHar
+          status={item.status}
+          kan={kanDelegera}
+          toolName={item.toolName}
+          laddar={delegeringLaddar}
+          sparar={delegeringSparar}
+          onSkapa={onDelegera}
+        />
+      )}
 
       {!beslutat && bekraftar === null && (
         <ModalFooter>

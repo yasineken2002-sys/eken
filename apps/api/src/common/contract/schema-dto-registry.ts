@@ -20,6 +20,7 @@ import {
   ManualMatchSchema,
   ConfirmImportSchema,
   UpdateMeterSchema,
+  CreateDelegationFromAssignmentSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
@@ -44,6 +45,8 @@ import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
 import { ConfirmImportDto } from '../../reconciliation/dto/confirm-import.dto'
+import { CreateFromAssignmentDto } from '../../ai/delegation/dto/create-from-assignment.dto'
+
 import type { ZodType } from 'zod'
 
 /**
@@ -377,5 +380,18 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       transactions: [{ date: '2026-09-01', description: 'Hyra sep', amount: 'tolvtusen' }],
     },
     ogiltigVarfor: 'beloppet måste vara ett tal',
+  },
+  {
+    // Etapp 7 (G2). "Gör alltid så här" — delegationen som föds ur ett godkänt
+    // förslag. Villkoret är ett OTYPAT objekt med flit (fältnamnen härleds ur
+    // SKUGGFALT[0]), så pariteten prövar frekvensvillkorets gränser i stället:
+    // de är de enda tal i nyttolasten som kan glida isär.
+    endpoint: 'POST /agent/delegations/from-assignment/:assignmentId',
+    inputTyp: 'CreateDelegationFromAssignmentInput',
+    schema: CreateDelegationFromAssignmentSchema,
+    dto: CreateFromAssignmentDto,
+    giltig: { frekvensvillkor: { maxAntal: 3, periodDagar: 7 } },
+    ogiltig: { frekvensvillkor: { maxAntal: 0, periodDagar: 7 } },
+    ogiltigVarfor: 'ett tak på noll är inte ett tak — det är en avstängning i förklädnad',
   },
 ]
