@@ -31,7 +31,7 @@ import { isPeriodClosed, periodKeyOf, periodOfDate } from '../../accounting/clos
 // Den DELADE konteringen. Samma funktioner som människans väg
 // (POST /accounting/journal-entries och /accounting/expenses) bygger sina rader
 // med — se manual-entry.ts för varför den inte får finnas i två kopior.
-import { byggUtgiftsrader, byggVerifikatrader } from '../../accounting/manual-entry'
+import { byggUtgiftsrader, byggVerifikatrader, kontouppslagAv } from '../../accounting/manual-entry'
 import { assertMayActOnCollections } from '../../common/authz/collections-authz'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
@@ -3982,7 +3982,12 @@ export class ToolExecutorService {
           // tillagd när det här verktyget fick sin mänskliga motsvarighet). Två
           // kopior av kontoreglerna hade glidit isär utan att något blev rött.
           // Se `manual-entry.ts`.
-          const konton = await this.accountingService.kontouppslag(organizationId)
+          const konton = kontouppslagAv(
+            await this.prisma.account.findMany({
+              where: { organizationId },
+              select: { id: true, number: true },
+            }),
+          )
           const byggt = byggVerifikatrader(linesInput, konton)
           if (!byggt.ok) {
             return { success: false, message: byggt.fel }
@@ -4098,7 +4103,12 @@ export class ToolExecutorService {
           // de på två ställen hade AI:n och hyresvärden kunnat bokföra OLIKA för
           // samma utgift den dag ett kontonummer byts.
           const vat = vatAmount ?? 0
-          const konton = await this.accountingService.kontouppslag(organizationId)
+          const konton = kontouppslagAv(
+            await this.prisma.account.findMany({
+              where: { organizationId },
+              select: { id: true, number: true },
+            }),
+          )
           const byggtUtgift = byggUtgiftsrader(
             {
               belopp: amount,

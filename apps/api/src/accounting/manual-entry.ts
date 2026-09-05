@@ -60,6 +60,22 @@
 /** Uppslagning kontonummer → kontots id, byggd av anroparen ur kontoplanen. */
 export type Kontouppslag = ReadonlyMap<number, string>
 
+/**
+ * Kontoplanen som nummer → id.
+ *
+ * REN funktion, inte en tjänstemetod. Den formen är vald med flit: en metod på
+ * `AccountingService` hade gjort tjänsten till ett BEROENDE för AI-vägen, och
+ * det beroendet mättes — tre specrigg:ar som bygger `ToolExecutorService` med
+ * attrapper föll på `kontouppslag is not a function`. Ett delat regelverk ska
+ * inte kosta en ny DI-kant; funktionen tar därför raderna och båda vägarna
+ * hämtar dem själva.
+ */
+export function kontouppslagAv(
+  konton: ReadonlyArray<{ id: string; number: number }>,
+): Kontouppslag {
+  return new Map(konton.map((k) => [k.number, k.id]))
+}
+
 export interface Verifikatrad {
   accountId: string
   debit?: number

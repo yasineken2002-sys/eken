@@ -47,6 +47,7 @@ import { basChartFor } from './bas-chart'
 import {
   byggUtgiftsrader,
   byggVerifikatrader,
+  kontouppslagAv,
   type Kontouppslag,
   type RadIndata,
   type UtgiftIndata,
@@ -3946,15 +3947,16 @@ export class AccountingService {
   }
 
   /**
-   * Kontoplanen som nummer → id. Egen metod därför att BÅDA vägarna behöver
-   * exakt samma uppslagning, och en `select` som skiljer sig åt mellan dem är
-   * precis hur två konteringar börjar glida isär.
+   * Kontoplanen som nummer → id, för människovägen. Formningen delas med
+   * AI-vägen genom `kontouppslagAv`; själva hämtningen gör varje väg själv, så
+   * att den delade regeln inte drar med sig ett DI-beroende (se manual-entry.ts).
    */
-  async kontouppslag(organizationId: string): Promise<Kontouppslag> {
-    const accounts = await this.prisma.account.findMany({
-      where: { organizationId },
-      select: { id: true, number: true },
-    })
-    return new Map(accounts.map((a) => [a.number, a.id]))
+  private async kontouppslag(organizationId: string): Promise<Kontouppslag> {
+    return kontouppslagAv(
+      await this.prisma.account.findMany({
+        where: { organizationId },
+        select: { id: true, number: true },
+      }),
+    )
   }
 }
