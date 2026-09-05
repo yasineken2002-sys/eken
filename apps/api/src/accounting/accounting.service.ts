@@ -44,6 +44,14 @@ import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockhol
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
+import {
+  byggUtgiftsrader,
+  byggVerifikatrader,
+  type Kontouppslag,
+  type RadIndata,
+  type UtgiftIndata,
+} from './manual-entry'
+import { isPeriodClosed, periodKeyOf, periodOfDate } from './closed-period'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Konteringsrad i internt format innan den mappas till Prisma create-input.
@@ -3796,5 +3804,142 @@ export class AccountingService {
       idempotencyWhere: { organizationId, sourceId },
       ...(tx ? { tx } : {}),
     })
+  }
+
+  // ── MANUELL BOKFÖRING: MÄNNISKANS VÄG ─────────────────────────────────────
+  //
+  // De två metoderna nedan finns för att `create_journal_entry` och
+  // `record_expense` var två av sju AI-verktyg UTAN mänsklig väg
+  // (`tool-human-path.baseline.json`): AI:n kunde bokföra en verifikation som
+  // hyresvärden inte kunde bokföra själv. Delmängdsregeln kräver att människan
+  // kan minst lika mycket.
+  //
+  // De duplicerar INTE verktyget. Konteringen — kontouppslag, momsdelning,
+  // balanskrav — byggs av samma rena funktioner som AI-vägen använder
+  // (`manual-entry.ts`), och skrivningen går ut i samma `createNumberedEntry`
+  // som varje annat verifikat i huset: balansgrind (C1), gap-fritt nummer,
+  // idempotens per `(organizationId, source, sourceId)`.
+  //
+  // SKILLNADEN MOT AI-VÄGEN ÄR NAMNRYMDEN, och den är avsiktlig: `source` är
+  // 'MANUAL' här och 'AI' där. Idempotensen gäller per namnrymd, så en
+  // hyresvärd som medvetet bokför samma belopp som AI:n nyss bokförde får ett
+  // EGET verifikat i stället för att tystas bort som en dubblett av något hen
+  // inte gjorde.
+
+  /**
+   * Fritt verifikat, bokfört av en människa.
+   *
+   * `idempotencyKey` är anroparens egen nyckel och blir `sourceId`. Två anrop
+   * med samma nyckel ger EN journalpost — samma egenskap som AI-vägen har, och
+   * av samma skäl: ett omtag efter en tappad uppkoppling får inte bli två
+   * verifikat i huvudboken.
+   *
+   * Kastar `UnprocessableEntityException` när verifikatet inte balanserar eller
+   * ett konto saknas, med ett SPECIFIKT svenskt meddelande — det går rakt ut
+   * till hyresvärden, och "ogiltig indata" hade tvingat hen att gissa vilken rad
+   * som var fel.
+   */
+  async createManualJournalEntry(params: {
+    organizationId: string
+    date: Date
+    description: string
+    lines: readonly RadIndata[]
+    idempotencyKey: string
+    createdById?: string | null
+    attachmentUrl?: string | null
+  }) {
+    const { organizationId, date, description } = params
+
+    if (Number.isNaN(date.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt datum.')
+    }
+    if (!description.trim()) {
+      throw new UnprocessableEntityException('Verifikatet behöver en beskrivning.')
+    }
+    // Förhandsbesked, INTE spärren — den verkställande kontrollen sitter i
+    // `allocate()` inuti transaktionen. Frågan ställs via samma delade
+    // uppslagning som AI-vägen (`closed-period.ts`), så de aldrig kan svara
+    // olika; en egen kopia hade blivit en tyst tillåtare den dag
+    // representationen ändras.
+    if (await isPeriodClosed(this.prisma, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra datum eller återöppna perioden.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggVerifikatrader(params.lines, konton)
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: description.trim(),
+      source: 'MANUAL',
+      sourceId: params.idempotencyKey,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * Utgift, bokförd av en människa: kostnad (netto) debet, ingående moms debet
+   * om den finns, bank kredit (brutto).
+   *
+   * `belopp` är BRUTTO — det som lämnar 1930. Momsen bryts UT ur det, den läggs
+   * inte till. Se `byggUtgiftsrader` för varför den riktningen är utskriven.
+   */
+  async recordManualExpense(params: {
+    organizationId: string
+    date: Date
+    idempotencyKey: string
+    createdById?: string | null
+    attachmentUrl?: string | null
+    utgift: UtgiftIndata
+  }) {
+    const { organizationId, date } = params
+
+    if (Number.isNaN(date.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt datum.')
+    }
+    if (!params.utgift.beskrivning.trim()) {
+      throw new UnprocessableEntityException('Utgiften behöver en beskrivning.')
+    }
+    if (await isPeriodClosed(this.prisma, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra datum eller återöppna perioden.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggUtgiftsrader(params.utgift, konton)
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: `Utgift: ${params.utgift.beskrivning.trim()}`,
+      source: 'MANUAL',
+      sourceId: params.idempotencyKey,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * Kontoplanen som nummer → id. Egen metod därför att BÅDA vägarna behöver
+   * exakt samma uppslagning, och en `select` som skiljer sig åt mellan dem är
+   * precis hur två konteringar börjar glida isär.
+   */
+  async kontouppslag(organizationId: string): Promise<Kontouppslag> {
+    const accounts = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { id: true, number: true },
+    })
+    return new Map(accounts.map((a) => [a.number, a.id]))
   }
 }

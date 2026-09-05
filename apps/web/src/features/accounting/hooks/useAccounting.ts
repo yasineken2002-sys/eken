@@ -12,6 +12,8 @@ import {
   fetchFiscalYears,
   fetchFiscalYearClosePreview,
   closeFiscalYear,
+  createJournalEntry,
+  createExpense,
 } from '../api/accounting.api'
 
 export function useAccounts() {
@@ -165,4 +167,33 @@ export function useCloseFiscalYear() {
     },
     meta: { handlesOwnError: true },
   })
+}
+
+/**
+ * Manuell bokföring: fritt verifikat respektive utgift.
+ *
+ * INVALIDERINGEN träffar `['accounting','journal']` (posten dyker upp i
+ * journalen) och `['accounting','periods']` + `['accounting','period-precheck']`
+ * — ett nytt verifikat ändrar vad en periodstängning skulle hitta, och en
+ * förhandskontroll som visar ett läge före skrivningen är sämre än ingen.
+ * Nyckelrymderna är disjunkta i övrigt; det här är en riktad korsning vid en
+ * känd händelse, inte en delad prefix.
+ */
+function useInvalideraEfterBokforing() {
+  const qc = useQueryClient()
+  return () => {
+    void qc.invalidateQueries({ queryKey: ['accounting', 'journal'] })
+    void qc.invalidateQueries({ queryKey: ['accounting', 'periods'] })
+    void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
+  }
+}
+
+export function useCreateJournalEntry() {
+  const invalidera = useInvalideraEfterBokforing()
+  return useMutation({ mutationFn: createJournalEntry, onSuccess: invalidera })
+}
+
+export function useCreateExpense() {
+  const invalidera = useInvalideraEfterBokforing()
+  return useMutation({ mutationFn: createExpense, onSuccess: invalidera })
 }

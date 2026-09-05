@@ -129,13 +129,24 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
 
   // ── Bokföring ─────────────────────────────────────────────────────────────
   close_period: { rutt: '/accounting', atgard: 'Stäng period' },
+  // De två nedan stod i baslinjen som FYND fram till 2026-09-05: controllern
+  // hade 17 rutter och ingen av dem skapade ett verifikat, så AI:n kunde bokföra
+  // något hyresvärden inte kunde bokföra själv. Vägen är nu byggd — och den är
+  // inte en andra implementation: konteringen byggs av samma rena funktioner
+  // (`accounting/manual-entry.ts`) och skrivs genom samma `createNumberedEntry`
+  // som verktyget använder.
+  create_journal_entry: { rutt: '/accounting', atgard: 'Ny verifikation' },
+  record_expense: { rutt: '/accounting', atgard: 'Registrera utgift' },
 
   // ── Påminnelser och inkasso ───────────────────────────────────────────────
   pause_reminders: { rutt: '/collections', atgard: 'Pausa' },
   resume_reminders: { rutt: '/collections', atgard: 'Återuppta' },
   export_for_collection: { rutt: '/collections', atgard: 'Exportera' },
 
-  // ══ SAKNAR MÄNSKLIG VÄG — sju FYND, mätta 2026-09-04 ═════════════════════
+  // ══ SAKNAR MÄNSKLIG VÄG — fem FYND ═══════════════════════════════════════
+  //
+  // Var SJU när ratcheten byggdes (#773, mätt mot dbe12ff). `create_journal_entry`
+  // och `record_expense` fick sin väg 2026-09-05 och står ovan under Bokföring.
   //
   // Ordningen är efter hur långt bort vägen är: först de som saknar BÅDE
   // endpoint och yta, sedan de som har en endpoint men ingen yta. Skälet per
@@ -143,8 +154,6 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   // markören, så att katalogen kan fälla stängt utan att bära en andra kopia av
   // prosan.
 
-  create_journal_entry: { saknas: true },
-  record_expense: { saknas: true },
   send_document_to_tenant: { saknas: true },
   update_tenant: { saknas: true },
   send_overdue_reminders: { saknas: true },
