@@ -1,5 +1,5 @@
 {
-  "total": 86,
+  "total": 80,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -37,17 +37,6 @@
         "POST '/auth/bankid/login/choose' → INLINE-LITERAL",
         "POST '/auth/bankid/login/collect' → INLINE-LITERAL",
         "POST '/auth/bankid/login/start' → INLINE-LITERAL"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/avisering/api/avisering.api.ts",
-      "medlemmar": [
-        "PATCH `/avisering/${id}/paid` → INLINE-LITERAL",
-        "POST '/avisering/generate' → INLINE-LITERAL",
-        "POST '/avisering/send' → INLINE-LITERAL",
-        "POST `/avisering/${id}/credit` → CreateRentNoticeCreditInput",
-        "POST `/avisering/${id}/reminder/resend` → INLINE-LITERAL",
-        "POST `/avisering/send-all/${month}/${year}` → INLINE-LITERAL"
       ]
     },
     {

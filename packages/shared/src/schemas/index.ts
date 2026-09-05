@@ -679,3 +679,51 @@ export const MarkSentSchema = z.object({
 export type BulkExportInput = z.infer<typeof BulkExportSchema>
 export type PauseRemindersInput = z.infer<typeof PauseRemindersSchema>
 export type MarkSentInput = z.infer<typeof MarkSentSchema>
+
+// ─── Hyresavier: generering, utskick, betalning och kreditering ───────────────
+
+export const GenerateNoticesSchema = z.object({
+  month: z.number().int().min(1, 'Månad är 1–12').max(12, 'Månad är 1–12'),
+  year: z.number().int().min(2020, 'Året måste vara 2020 eller senare'),
+})
+
+export const SendNoticesSchema = z.object({
+  noticeIds: z.array(z.string().uuid('Varje avi-id måste vara ett UUID')),
+})
+
+/**
+ * BETALSÄTTET ÄR ENUMEN HÄR, till skillnad från fakturans motsvarighet.
+ *
+ * `MarkPaidDto` har `@IsEnum(PaymentMethod)` och webben skickar `'BANK'`.
+ * Fakturans `RegisterPaymentSchema` har fri text och webben skickar `'Bankgiro'`
+ * — samma fältnamn, två oförenliga värdemängder, på två manuella
+ * betalningsregistreringar (glidning G3 i #801). Det här schemat speglar sin
+ * DTO; att ENA de två vägarna är ett eget beslut med egen migrering, inte en
+ * följdändring i en kontrakts-PR.
+ */
+export const MarkNoticePaidSchema = z.object({
+  paidAmount: z.number().min(0.01, 'Beloppet måste vara större än noll'),
+  paymentMethod: z.enum(['BANK', 'CASH', 'SWISH', 'MANUAL']),
+  paidAt: IsoDatumSchema.optional(),
+})
+
+export const RentNoticeCreditLineSchema = z.object({
+  /** Utelämnad = hyreskapitalet. */
+  rentNoticeLineId: z.string().uuid('rentNoticeLineId måste vara ett giltigt UUID').optional(),
+  /** Brutto i kronor. */
+  amount: z
+    .number()
+    .multipleOf(0.01, 'Belopp anges med högst två decimaler')
+    .min(0.01, 'Belopp måste vara större än noll'),
+})
+
+export const CreateRentNoticeCreditSchema = z.object({
+  lines: z.array(RentNoticeCreditLineSchema).min(1, 'En kreditering måste innehålla minst en post'),
+  reason: z.string().min(5, 'Ange ett skäl till krediteringen (minst 5 tecken)'),
+})
+
+export type GenerateNoticesInput = z.infer<typeof GenerateNoticesSchema>
+export type SendNoticesInput = z.infer<typeof SendNoticesSchema>
+export type MarkNoticePaidInput = z.infer<typeof MarkNoticePaidSchema>
+export type RentNoticeCreditLineInput = z.infer<typeof RentNoticeCreditLineSchema>
+export type CreateRentNoticeCreditInput = z.infer<typeof CreateRentNoticeCreditSchema>

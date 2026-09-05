@@ -1,4 +1,10 @@
 import { get, post, patch, del, api } from '@/lib/api'
+import type {
+  CreateRentNoticeCreditInput,
+  GenerateNoticesInput,
+  MarkNoticePaidInput,
+  SendNoticesInput,
+} from '@eken/shared'
 
 export type RentNoticeStatus = 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'FAILED'
 
@@ -100,16 +106,21 @@ export function fetchNotice(id: string) {
   return get<RentNotice>(`/avisering/${id}`)
 }
 
+// NYTTOLASTERNA ÄR ANNOTERADE med de delade typerna — utan annotering körs ingen
+// överskottskontroll på literalen.
 export function generateNotices(month: number, year: number) {
-  return post<GenerateResult>('/avisering/generate', { month, year })
+  const kropp: GenerateNoticesInput = { month, year }
+  return post<GenerateResult>('/avisering/generate', kropp)
 }
 
 export function sendNotices(noticeIds: string[]) {
-  return post<SendResult>('/avisering/send', { noticeIds })
+  const kropp: SendNoticesInput = { noticeIds }
+  return post<SendResult>('/avisering/send', kropp)
 }
 
 export function sendAllNotices(month: number, year: number) {
-  return post<SendResult>(`/avisering/send-all/${month}/${year}`, {})
+  // Ingen kropp: månad och år står i sökvägen, rutten har inget @Body().
+  return post<SendResult>(`/avisering/send-all/${month}/${year}`)
 }
 
 export function markAsPaid(
@@ -118,11 +129,12 @@ export function markAsPaid(
   paymentMethod: PaymentMethod,
   paidAt?: string,
 ) {
-  return patch<RentNotice>(`/avisering/${id}/paid`, {
+  const kropp: MarkNoticePaidInput = {
     paidAmount,
     paymentMethod,
     ...(paidAt ? { paidAt } : {}),
-  })
+  }
+  return patch<RentNotice>(`/avisering/${id}/paid`, kropp)
 }
 
 export function cancelNotice(id: string) {
@@ -223,11 +235,6 @@ export interface RentNoticeCreditPreview {
   collectionStage: RentCollectionStage
   credits: RentNoticeCreditRecord[]
   projection: RentNoticeCreditProjection | null
-}
-
-export interface CreateRentNoticeCreditInput {
-  reason: string
-  lines: Array<{ rentNoticeLineId?: string; amount: number }>
 }
 
 export interface CreateRentNoticeCreditResult {
@@ -336,7 +343,8 @@ export function getRentNoticeCollectionStatus(id: string) {
 }
 
 export function resendRentNoticeReminder(id: string) {
-  return post<{ enqueued: true }>(`/avisering/${id}/reminder/resend`, {})
+  // Ingen kropp: rutten tar inget @Body().
+  return post<{ enqueued: true }>(`/avisering/${id}/reminder/resend`)
 }
 
 // ── FÖRFALLOPÅMINNELSER: människans väg till `send_overdue_reminders` ────────

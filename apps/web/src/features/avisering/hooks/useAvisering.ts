@@ -16,7 +16,8 @@ import {
   fetchReminderPreview,
   sendOverdueReminders,
 } from '../api/avisering.api'
-import type { NoticeFilter, PaymentMethod, CreateRentNoticeCreditInput } from '../api/avisering.api'
+import type { CreateRentNoticeCreditInput } from '@eken/shared'
+import type { NoticeFilter, PaymentMethod } from '../api/avisering.api'
 
 export function useNotices(filters?: NoticeFilter) {
   return useQuery({
