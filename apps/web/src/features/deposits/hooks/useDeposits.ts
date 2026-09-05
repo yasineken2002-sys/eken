@@ -6,8 +6,7 @@ import {
   markDepositPaid,
   refundDeposit,
 } from '../api/deposits.api'
-import type { CreateDepositInput, RefundDepositInput } from '../api/deposits.api'
-import type { DepositStatus } from '@eken/shared'
+import type { CreateDepositInput, DepositStatus, RefundDepositInput } from '@eken/shared'
 
 const DEPOSITS_LIST = ['deposits', 'list'] as const
 const DEPOSIT_DETAIL = (id: string) => ['deposit', 'detail', id] as const
