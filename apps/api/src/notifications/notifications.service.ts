@@ -118,6 +118,37 @@ function isoWeek(ymd: string): { key: string; week: number } {
  */
 // Flyttad till common/redis/cron-lock.ts — delas nu av sju låsta jobb.
 
+/**
+ * URVALET FÖR MANUELLA FÖRFALLOPÅMINNELSER — ETT villkor, läst av båda.
+ *
+ * `sendOverdueRemindersForOrg` (utskicket) och `previewOverdueReminders`
+ * (bekräftelsen) MÅSTE gå igenom exakt samma mängd. Står villkoret på två
+ * ställen visar bekräftelsen förr eller senare en annan mängd än den som
+ * skickas — och en bekräftelse som ljuger är värre än ingen alls.
+ *
+ * DEPOSITIONER STÅR UTANFÖR (#352). En depositionsfaktura är en riktig fordran
+ * men en ENGÅNGSBETALNING vid kontraktsstart, inte en löpande skuldrelation.
+ * Synligheten är orörd — förfallolistan visar den fortfarande (#348); det är
+ * eskaleringen som stoppas, inte insynen.
+ *
+ * ── `organizationId` STÅR MEDVETET UTANFÖR KONSTANTEN ───────────────────────
+ *
+ * Första utformningen var `OVERDUE_REMINDER_WHERE(organizationId)`, alltså hela
+ * villkoret inklusive org-scopingen. Det MÄTTES och kostade något:
+ * object-scope-inventariet klassade om `InvoiceEvent.create` i den här filen
+ * från "A kedje-query" till "C scopat anrop". Båda är godtagna skyddsformer,
+ * men A är verifierbar PÅ RADEN medan C kräver att man litar på anropet — och
+ * att göra en grind svårare att läsa för att spara fyra tecken är fel byte.
+ *
+ * Konstanten bär därför bara det som faktiskt kan glida isär mellan utskicket
+ * och förhandsbeskedet: statusen och depositionsundantaget. Org-scopingen
+ * skrivs ut på varje anropsställe, där den syns.
+ */
+const OVERDUE_REMINDER_SCOPE = {
+  status: 'OVERDUE' as const,
+  type: { not: 'DEPOSIT' as const },
+}
+
 @Injectable()
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger(NotificationsService.name)
@@ -340,7 +371,17 @@ export class NotificationsService implements OnModuleInit {
     )
   }
 
-  async sendOverdueRemindersForOrg(organizationId: string): Promise<void> {
+  /**
+   * Manuellt utskick av förfallopåminnelser för en organisation.
+   *
+   * RETURNERAR RÄKNARE sedan människans väg fick en knapp. Metoden loggade dem
+   * redan; de nådde bara aldrig anroparen, så endpointen kunde bara svara
+   * "Påminnelser skickade" — även när noll gick i väg för att alla redan fått
+   * sitt brev i dag. Ett besked som är sant oavsett utfall är inget besked.
+   */
+  async sendOverdueRemindersForOrg(
+    organizationId: string,
+  ): Promise<{ sent: number; failed: number; skipped: number }> {
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       // ── #352: DEPOSITIONER PÅMINNS INTE HÄRIFRÅN ──────────────────────────
       //
@@ -353,7 +394,7 @@ export class NotificationsService implements OnModuleInit {
       // penganeutral och bär depositionens SYNLIGHET, som #348 uttryckligen
       // fastställde ska finnas kvar. Synlighet och automatisk eskalering med
       // ekonomiska konsekvenser är två skilda saker. (FAR-granskat, #352.)
-      where: { organizationId, status: 'OVERDUE', type: { not: 'DEPOSIT' } },
+      where: { organizationId, ...OVERDUE_REMINDER_SCOPE },
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
@@ -435,6 +476,74 @@ export class NotificationsService implements OnModuleInit {
     this.logger.log(
       `Overdue reminders (org ${organizationId}): ${sent} sent, ${failed} failed, ${skipped} skipped`,
     )
+    return { sent, failed, skipped }
+  }
+
+  /**
+   * FÖRHANDSBESKED: vad skulle ett manuellt utskick faktiskt göra?
+   *
+   * ── VARFÖR ETT EGET SVAR OCH INTE BARA "SKICKA" ─────────────────────────
+   *
+   * Utskicket är utåtriktat — brev till människor utanför systemet, och de går
+   * inte att ta tillbaka. En knapp som bara säger "Skicka påminnelser" tvingar
+   * hyresvärden att lita på att mängden är den hen tror. Förhandsbeskedet listar
+   * fakturorna, antalet och den sammanlagda RESTSKULDEN innan något händer.
+   *
+   * ── SAMMA `where` SOM UTSKICKET, INTE EN LIKNANDE ────────────────────────
+   *
+   * Urvalet nedan måste vara exakt det `sendOverdueRemindersForOrg` går igenom,
+   * annars visar bekräftelsen en annan mängd än den som skickas — och det vore
+   * värre än ingen bekräftelse alls. Villkoret bor därför i
+   * `OVERDUE_REMINDER_SCOPE` och läses av båda.
+   *
+   * ── VAD DET INTE KAN VETA ────────────────────────────────────────────────
+   *
+   * Vilka som hoppas över för att de redan fått sitt brev i dag. Dedupen sker
+   * per faktura inuti loopen (`InvoiceEvent` REMINDER_SENT samma dag), och att
+   * upprepa den frågan här hade varit en andra kopia av samma regel. Antalet i
+   * bekräftelsen är därför ett TAK — "högst så här många brev" — och texten
+   * säger det.
+   */
+  async previewOverdueReminders(organizationId: string): Promise<{
+    invoices: Array<{
+      id: string
+      invoiceNumber: string
+      recipient: string
+      outstanding: number
+      dueDate: Date
+    }>
+    count: number
+    totalOutstanding: number
+  }> {
+    const invoices = await this.prisma.invoice.findMany({
+      where: { organizationId, ...OVERDUE_REMINDER_SCOPE },
+      include: {
+        tenant: { select: SAFE_TENANT_SELECT },
+        customer: { select: SAFE_CUSTOMER_SELECT },
+        organization: true,
+        payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    })
+
+    // Samma filter som loopen: utan e-postadress går inget brev, och en rad i
+    // bekräftelsen för en mottagare som inte kan nås är en osanning.
+    const medMottagare = invoices.filter((i) => (i.tenant ?? i.customer)?.email)
+
+    const rader = medMottagare.map((invoice) => ({
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      recipient: this.resolveTenantName(invoice),
+      outstanding: invoiceOutstanding(invoice),
+      dueDate: invoice.dueDate,
+    }))
+
+    return {
+      invoices: rader,
+      count: rader.length,
+      totalOutstanding: rader.reduce((s, r) => s + r.outstanding, 0),
+    }
   }
 
   @Cron('0 7 * * 1-5', {

@@ -127,6 +127,12 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   import_bgmax_file: { rutt: '/reconciliation', atgard: 'Importera' },
   unmatch_transaction: { rutt: '/reconciliation', atgard: 'Häv matchning' },
 
+  // ── Avtal ─────────────────────────────────────────────────────────────────
+  // Knappen FÖRBEREDER en begäran; signeringen slutförs av en människa med
+  // BankID. Modulen är inert i produktion tills S3 — då svarar den 503, och
+  // felet visas i klartext i stället för att knappen tyst inte gör något.
+  prepare_contract_signing: { rutt: '/leases', atgard: 'Skicka för signering' },
+
   // ── Bokföring ─────────────────────────────────────────────────────────────
   close_period: { rutt: '/accounting', atgard: 'Stäng period' },
   // De två nedan stod i baslinjen som FYND fram till 2026-09-05: controllern
@@ -144,6 +150,14 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   pause_reminders: { rutt: '/collections', atgard: 'Pausa' },
   resume_reminders: { rutt: '/collections', atgard: 'Återuppta' },
   export_for_collection: { rutt: '/collections', atgard: 'Exportera' },
+  // Markeringen är ett EGET steg efter exporten: exporten producerar underlaget,
+  // markeringen påstår att det är överlämnat — och pausar påminnelser. Grinden
+  // på faktisk skuld (INV-D) ligger kvar i tjänsten; UI:t har ingen kopia.
+  mark_sent_to_collection: { rutt: '/collections', atgard: 'Markera som skickad' },
+  // Aviseringssidan, inte inkassosidan: det är där hyresvärden står när frågan
+  // "har de fått en påminnelse?" uppstår. Färskhetsgrinden spärrar knappen med
+  // skälet i klartext, och servern verkställer samma regel med 409.
+  send_overdue_reminders: { rutt: '/avisering', atgard: 'Skicka påminnelser' },
 
   // Hyresgästen och dokumentet fick sina vägar 2026-09-05. `update_tenant` var
   // den otäckaste posten i baslinjen: `useUpdateTenant` FANNS och exporterades,
@@ -152,21 +166,18 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   update_tenant: { rutt: '/tenants', atgard: 'Redigera' },
   send_document_to_tenant: { rutt: '/documents', atgard: 'Skicka till hyresgäst' },
 
-  // ══ SAKNAR MÄNSKLIG VÄG — tre FYND ═══════════════════════════════════════
+  // ══ INGA FYND KVAR ═══════════════════════════════════════════════════════
   //
-  // Var SJU när ratcheten byggdes (#773, mätt mot dbe12ff). `create_journal_entry`
-  // och `record_expense` fick sin väg (#782), `update_tenant` och
-  // `send_document_to_tenant` i den här ändringen — alla fyra står ovan.
+  // Mängden `saknas` är TOM sedan 2026-09-05. Den var SJU när ratcheten byggdes
+  // (#773, mätt mot dbe12ff) och krympte i tre steg: create_journal_entry och
+  // record_expense (#782), update_tenant och send_document_to_tenant (#785), och
+  // de tre sista här.
   //
-  // Ordningen är efter hur långt bort vägen är: först de som saknar BÅDE
-  // endpoint och yta, sedan de som har en endpoint men ingen yta. Skälet per
-  // verktyg står i `apps/api/scripts/tool-human-path.baseline.json` — här bara
-  // markören, så att katalogen kan fälla stängt utan att bära en andra kopia av
-  // prosan.
-
-  send_overdue_reminders: { saknas: true },
-  mark_sent_to_collection: { saknas: true },
-  prepare_contract_signing: { saknas: true },
+  // ATT MÄNGDEN ÄR TOM GÖR INTE MARKÖREN DÖD. `MansligVag` bär fortfarande
+  // `{ saknas: true }`, och det är avsiktligt: nästa verktyg som läggs till utan
+  // en väg ska kunna deklareras ärligt i stället för att någon hittar på en rutt
+  // för att få vakten grön. Att ta bort formen hade gjort den lögnen enklare än
+  // sanningen.
 }
 
 export interface HumanPathPost {
