@@ -44,6 +44,14 @@ describe('förutsättningar', () => {
  */
 const SKYDDADE = [
   'AccountingPeriodEvent',
+  // Etapp 7 (G2). Delegationens livshistoria — och sanningskällan för dess
+  // status, som BERÄKNAS ur just de här raderna. Går de att skriva om går det
+  // inte att svara på "hade agenten rätt när den gjorde detta i mars", och
+  // planen kräver uttryckligen att historiken kan bevisa att delegationen
+  // existerade. Satsnivå räcker: enda FK:n (delegationId) är CASCADE, och
+  // `actorUserId` är en NAKEN kolumn utan relation just för att en raderad
+  // användare inte ska kunna skriva om historiken via en SET NULL.
+  'AiDelegationEvent',
   'FailedEmail',
   'InvoiceEvent',
   'PiiSecretRotation',

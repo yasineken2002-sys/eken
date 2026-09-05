@@ -145,7 +145,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `e6401d6` — kriteriet mätt, kön har producent, läsyta och facit. Enda resten: **utföraren**, etapp 8–9 |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#796](https://github.com/yasineken2002-sys/eken/pull/796)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
-| 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
+| 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | **DELVIS** `a9e74b8` — modellen, grunden och grinden finns ([#803](https://github.com/yasineken2002-sys/eken/pull/803)); **föds inte ur inkorgen än, och ingen sida** |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
 | 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
@@ -446,7 +446,14 @@ Det som **fattas** är vägen från domänraden till grunden. `aiToolExecutionId
 finns på **4** modeller (`InvoiceEvent`, `JournalEntry`, `AiAssignment`,
 `AiToolEffect`), medan `actorKind` finns på 23 — för de övriga 19 går vägen bara
 via `AiToolEffect(entityType, entityId)`, och det är en koppling, inte ett fält.
-Delegationsgrunden finns inte alls; den är etapp 7.
+
+**Delegationsgrunden finns sedan 2026-09-05** ([#803](https://github.com/yasineken2002-sys/eken/pull/803), etapp 7). `AiToolExecution`
+och `AiAssignment` bär nu `authorityKind` (`APPROVAL | DELEGATION`, **NOT NULL**)
+och `delegationId`. NOT NULL är hela poängen: en nullbar pekare hade betytt tre
+saker samtidigt — "en människa godkände", "raden skrevs innan delegationer
+fanns" och "ingen har svarat" — och en kolumn som betyder tre saker kan inte
+uttrycka någon av dem. Befintliga rader är `APPROVAL`, och det är ett **faktum**
+och inte en gissning: delegationer fanns inte när de skrevs.
 
 **Etapp 4 — G3/G4.** Riggen kördes i **två skilda processer** mot en tom,
 nyskapad databas med egna förutsättningar. En ny `PrismaClient` hade delat
@@ -939,6 +946,45 @@ money_operations           ✗
 
 Återkallelse är en händelse, inte en radering — historiken måste kunna bevisa att
 delegationen existerade.
+
+**BYGGT 2026-09-05** ([#803](https://github.com/yasineken2002-sys/eken/pull/803)). `AiDelegation` + `AiDelegationEvent`, den senare med
+samma `BEFORE UPDATE`-trigger som de tio andra append-only-tabellerna — nu elva.
+
+**Status är BERÄKNAD, inte en kolumn.** Tillståndet härleds ur händelserna plus
+klockan, av samma skäl som skuld är ett beräknat tillstånd: en lagrad status kan
+glida isär från det den sammanfattar, och avvikelsen är osynlig. `EXPIRED` skrivs
+ändå som en händelse när ett pass ser det — beräkningen är sanningen, händelsen
+är kvittot på att systemet *såg* det.
+
+**Mängden är ÅTTA av trettio, inte nio.** Ett fjärde villkor tillkom vid bygget:
+`supportsUndo.kind !== 'INGEN_EFFEKT'`. `export_sie4` är `agentAllowlist: true`
+men bygger bara en buffert och returnerar den — att ge bort rätten till det är
+inte farligt utan MENINGSLÖST, och en meningslös post i en rättighetslista är
+värre än ingen, eftersom den ser ut som ett beslut någon fattat. Villkoret står
+i `delegation-scope.ts` och inte som en ändring av `agentAllowlist`: det fältet
+svarar på "får en agent göra detta obevakat", och svaret för `export_sie4` är
+fortfarande ja.
+
+**Frekvensvillkor krävs för `DEDUPLICERBAR`-verktyg** (tre av de åtta:
+`create_inspection`, `create_invoice`, `create_maintenance_ticket`). En omkörning
+ger där en ANDRA rad, och en delegation utan tak hade gjort en obevakad loop till
+en obegränsad. `IDEMPOTENT`-verktyg behöver inget: deras egen nyckel utesluter
+dubbletten.
+
+**Växeln av → PAUSAD, inte återkallad.** Att stänga av skuggagenten är inte att
+ta tillbaka en rättighet. Hyresvärden som slår på den igen ska få tillbaka det hen
+gav, och historiken ska visa att pausen var systemets (`actorKind: SYSTEM`), inte
+människans.
+
+**`assertDelegated` producerar inget bevis.** Den svarar ja eller nej med skäl och
+returnerar bara delegationens id — den skriver ingenting, sätter ingen flagga och
+rör inte `claimed`. **Den har ingen anropare utöver proven**, och det är
+avsiktligt: utföraren som skulle anropa den är etapp 8–9, och en grind utan
+anropare är ärligare än en grind som anropas från en väg ingen prövat.
+
+Vad som **fortfarande saknas i etapp 7**: delegationen föds inte ur inkorgen än
+("Gör alltid detta"), och det finns ingen sida där hyresvärden ser vad systemet
+tror om hen. Båda är egna PR:er.
 
 ### R5:s omfång — protokoll över en blindhet som är ÅTGÄRDAD
 

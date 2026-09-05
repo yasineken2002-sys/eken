@@ -66,8 +66,10 @@ Unit                    update      units/units.service.ts                      
 UserBankIdIdentity      deleteMany  bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 UserBankIdIdentity      upsert      bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 
-## Form 2 — create (40 rader)
+## Form 2 — create (42 rader)
 
+AiDelegationEvent       create      ai/delegation/delegation.service.ts                     A kedje-query
+AiDelegationEvent       create      ai/delegation/delegation.service.ts                     P förälder org-bunden  ← nästlad via AiDelegation.events
 AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
 AiMessageTenant         createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
@@ -167,6 +169,7 @@ Unit.updateMany  —  units/unit-status.sync.ts  (2 st)
 Varje sådan modell måste vara klassificerad. Tillkommer en oklassificerad
 failar testet — en ny förälder-scopad modell ska inte glida in obemärkt.
 
+AiDelegationEvent               förälder-scopad via AiDelegation
 AiMemoryTenant                  förälder-scopad via AiMemory
 AiMessage                       förälder-scopad via AiConversation
 AiMessageTenant                 förälder-scopad via AiMessage

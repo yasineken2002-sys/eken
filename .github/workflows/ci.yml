@@ -1741,6 +1741,44 @@ jobs:
       - name: Tool authority guard
         run: node apps/api/scripts/check-tool-authority.mjs
 
+  delegation-scope-guard:
+    name: Delegation scope guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # En delegation (G2, etapp 7) är en STÅENDE rätt: agenten får utföra
+      # verktyget utan ett ja per handling, tills någon återkallar den. Ges den
+      # för fel verktyg går ingenting sönder — den bara gäller. Det felet syns
+      # inte i något test, och det är därför det behöver en vakt.
+      #
+      # Planens Del 6: "Aldrig delegerbart: allt klassat som utåtriktat."
+      #
+      # FYRA VILLKOR, härledda ur katalogen och prövade var för sig:
+      #   agentAllowlist === true
+      #   authorityScope === 'EGEN_ORG'
+      #   inga sänkor i tool-outward-capabilities.json (vakt 7)
+      #   supportsUndo.kind !== 'INGEN_EFFEKT'   ← nytt i etapp 7
+      #
+      # Det fjärde filtrerar bort `export_sie4`: den bygger en buffert och
+      # returnerar den. Mängden är 8 av 30, inte 9.
+      #
+      # R1 jämför tjänstens mängd med vaktens — TVÅ oberoende uppräkningar, en
+      # ur den importerade katalogen och en ur källtexten. En jämförelse mot sig
+      # själv hade varit grön för allt.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (R1 canaries, comment canary, scope)
+        run: node apps/api/scripts/check-delegation-scope.mjs --self-test
+
+      - name: Delegation scope guard
+        run: node apps/api/scripts/check-delegation-scope.mjs
+
   api-build-artifact-guard:
     name: API build artifact guard
     runs-on: ubuntu-latest
@@ -2203,6 +2241,7 @@ jobs:
       - history-registry-guard
       - tool-outward-capabilities-guard
       - tool-authority-guard
+      - delegation-scope-guard
       - equipment-chain-guard
       - api-build-artifact-guard
       - append-only-guard

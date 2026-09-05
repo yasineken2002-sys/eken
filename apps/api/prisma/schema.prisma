@@ -839,6 +839,7 @@ model Organization {
   aiToolExecutions          AiToolExecution[]
   aiResumptionVerdicts      AiResumptionVerdict[]
   aiAssignments             AiAssignment[]
+  aiDelegations             AiDelegation[]
   aiToolEffects             AiToolEffect[]
   maintenanceTickets        MaintenanceTicket[]
   rentNotices               RentNotice[]
@@ -875,13 +876,13 @@ model Organization {
   signingRequests           SigningRequest[]
   signatureEvidence         SignatureEvidence[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  supplierInvoices SupplierInvoice[]
 
   @@index([orgNumber])
   @@index([customerNumber])
   @@index([subscriptionPlan])
-  supplierInvoices SupplierInvoice[]
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────
@@ -961,14 +962,15 @@ model User {
   impersonationLogs        ImpersonationLog[]       @relation("ImpersonationTargetUser")
   aiAssignmentsAssigned    AiAssignment[]           @relation("AiAssignmentAssignee")
   aiAssignmentsDecided     AiAssignment[]           @relation("AiAssignmentDecider")
+  aiDelegationsCreated     AiDelegation[]           @relation("AiDelegationCreator")
   equipmentEventsPerformed UnitEquipmentEvent[]     @relation("EquipmentEventPerformer")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  supplierInvoices SupplierInvoice[]
 
   @@index([organizationId])
   @@index([email])
-  supplierInvoices SupplierInvoice[]
 }
 
 // One-time-use tokens för glömt-lösenord-flödet. Cascade så att tokens
@@ -3470,7 +3472,16 @@ model AiToolExecution {
   // FELVÄGEN STÄNGER OCKSÅ SIN RAD. Ett verktyg som kastar sätter `completedAt`
   // med `success: false`. En "påbörjad" som egentligen betyder "misslyckades"
   // vore samma tvetydighet i ny förklädnad.
-  completedAt DateTime?
+  completedAt   DateTime?
+  // ── MED VILKEN RÄTT (G2, etapp 7) ─────────────────────────────────────────
+  //
+  // Samma fält och samma skäl som på `AiAssignment` — se docblocket där.
+  // NOT NULL med `APPROVAL` som default: en nullbar pekare hade betytt både
+  // "en människa godkände" och "ingen har svarat", och de två är precis den
+  // tvetydighet fältet finns för att ta bort.
+  authorityKind AiAuthorityKind @default(APPROVAL)
+  delegationId  String?
+  delegation    AiDelegation?   @relation(fields: [delegationId], references: [id], onDelete: SetNull)
 
   // ── DET EXTERNA HANDTAGET (klass B, steg 1) ───────────────────────────────
   //
@@ -3731,6 +3742,28 @@ model AiAssignment {
   /// som `JournalEntry.aiToolExecutionId`.
   aiToolExecutionId String?
 
+  /// ── MED VILKEN RÄTT (G2, etapp 7) ─────────────────────────────────────────
+  ///
+  /// Planens Del 3: en skrivning ska inte kunna representeras som gjord av en
+  /// agent utan att det samtidigt går att uttrycka VARFÖR agenten hade rätt att
+  /// göra den. `authorityKind` är det uttrycket.
+  ///
+  /// NOT NULL, med `APPROVAL` som default — och det är hela poängen. En nullbar
+  /// pekare hade betytt TVÅ saker: "en människa godkände" och "ingen har
+  /// svarat", och de två är precis den tvetydighet fältet finns för att ta bort.
+  /// Befintliga rader är per definition godkännanden: delegationer fanns inte
+  /// när de skrevs.
+  authorityKind AiAuthorityKind @default(APPROVAL)
+
+  /// Delegationen rätten kom ur, när `authorityKind` är `DELEGATION`.
+  ///
+  /// `SetNull` och inte `Cascade`: en återkallad delegation raderas aldrig — den
+  /// får en händelse — men skulle raden ändå försvinna ska spåret av vad agenten
+  /// gjorde finnas kvar. Ett revisionsspår som tas bort med sin grund kan inte
+  /// besvara den fråga det finns för.
+  delegationId String?
+  delegation   AiDelegation? @relation(fields: [delegationId], references: [id], onDelete: SetNull)
+
   /// ── SKUGGLÄGET (etapp 6) ──────────────────────────────────────────────────
   ///
   /// `shadow: true` betyder att uppdraget är ett FÖRSLAG som aldrig utförs —
@@ -3845,6 +3878,9 @@ model AiAssignment {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// Delegationer som FÖDDES ur det här beslutet. Se AiDelegation.
+  bornDelegations AiDelegation[] @relation("AiDelegationOrigin")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -5679,10 +5715,10 @@ model SupplierInvoice {
   id             String @id @default(uuid())
   organizationId String
 
-// Leverantören som FRITEXT, inte en relation. En leverantörsmodell (orgnr,
-// betalvillkor, historik) är ett eget arbete; en halv sådan hade varit sämre
-// än ingen. Samma avvägning som utgiftsvägens `supplier` (#785).
-  supplierName String
+  // Leverantören som FRITEXT, inte en relation. En leverantörsmodell (orgnr,
+  // betalvillkor, historik) är ett eget arbete; en halv sådan hade varit sämre
+  // än ingen. Samma avvägning som utgiftsvägens `supplier` (#785).
+  supplierName  String
   invoiceNumber String?
 
   description String
@@ -5700,12 +5736,12 @@ model SupplierInvoice {
 
   attachmentUrl String?
 
-// NÄR fakturan betalades. En HÄNDELSE — statusen härleds, se docblocket ovan.
-// Är den satt finns ett betalningsverifikat med sourceId
-// `supplier-invoice-payment:<id>`.
-  paidAt DateTime?
-// NÄR fakturan makulerades. Makulering är bara tillåten INNAN betalning; en
-// betald faktura rättas med ett motverifikat, aldrig genom att fältet sätts.
+  // NÄR fakturan betalades. En HÄNDELSE — statusen härleds, se docblocket ovan.
+  // Är den satt finns ett betalningsverifikat med sourceId
+  // `supplier-invoice-payment:<id>`.
+  paidAt      DateTime?
+  // NÄR fakturan makulerades. Makulering är bara tillåten INNAN betalning; en
+  // betald faktura rättas med ett motverifikat, aldrig genom att fältet sätts.
   cancelledAt DateTime?
 
   createdById String?
@@ -6147,4 +6183,170 @@ model CronHeartbeat {
   lastOutcome    String
   lastDurationMs Int
   updatedAt      DateTime @updatedAt
+}
+
+/// MED VILKEN RÄTT en agentskrivning skedde (G2, etapp 7).
+///
+/// Två värden, och inget tredje: antingen sa en människa ja till just den här
+/// handlingen, eller så fanns en delegation som täckte den. Ett tredje värde för
+/// "vet inte" hade återinfört exakt den tvetydighet fältet tar bort.
+enum AiAuthorityKind {
+  /// En människa godkände handlingen. Alla rader skrivna före etapp 7 är detta.
+  APPROVAL
+  /// En delegation täckte handlingen. `delegationId` pekar då på den.
+  DELEGATION
+}
+
+/// Vad som hände med en delegation. Se `AiDelegationEvent`.
+enum AiDelegationEventType {
+  /// Delegationen föddes — alltid ur ett godkänt förslag, aldrig ur fritext.
+  CREATED
+  /// Skuggagenten stängdes av för organisationen. Delegationen är vilande, inte
+  /// borta: den återupptas när växeln slås på igen.
+  PAUSED
+  RESUMED
+  /// Människan tog tillbaka rätten. Slutgiltigt — en återkallad delegation kan
+  /// inte återupptas, bara ersättas av en ny.
+  REVOKED
+  /// Tidsgränsen passerade.
+  EXPIRED
+  /// `expiresAt` flyttades framåt. En förlängning är ett nytt beslut och ska
+  /// synas som ett.
+  EXTENDED
+}
+
+/// ── DELEGATIONEN (G2, planens Del 6) ────────────────────────────────────────
+///
+/// "Hyresvärden kan delegera" — en stående rätt för agenten att utföra ETT
+/// verktyg inom en avgränsning, utan ett ja per handling.
+///
+/// ── SCOPE ÄR ETT VERKTYGSNAMN, ALDRIG EN KATEGORI ───────────────────────────
+///
+/// Planen är uttrycklig: `approve_vendor_invoice` javisst, `money_operations`
+/// aldrig. En kategori är en mängd någon annan kan utöka i efterhand, och då
+/// växer rätten utan att någon fattat ett beslut.
+///
+/// ── STATUS ÄR BERÄKNAD, INTE EN KOLUMN ──────────────────────────────────────
+///
+/// Det finns med flit ingen `status`-kolumn. Tillståndet härleds ur
+/// `AiDelegationEvent` plus klockan, av samma skäl som skuld är ett beräknat
+/// tillstånd i resten av systemet: en lagrad status kan glida isär från
+/// händelserna den påstår sig sammanfatta, och avvikelsen är osynlig.
+///
+/// `EXPIRED` skrivs ändå som en händelse när ett pass upptäcker den. Det är
+/// ingen motsägelse: beräkningen är sanningen, händelsen är kvittot på att
+/// systemet SÅG det — och utan kvittot går det inte att skilja "förföll och
+/// ingen märkte det" från "förföll och mottagaren fick veta".
+model AiDelegation {
+  id             String @id @default(uuid())
+  organizationId String
+
+  /// Verktyget. Ett namn, aldrig en kategori. `check-delegation-scope.mjs`
+  /// kräver att det är delegerbart: agentAllowlist, EGEN_ORG, inga utåtriktade
+  /// sänkor, och en effekt att delegera.
+  toolName String
+
+  /// ── KOPIERAD VID SKAPANDET, INTE SLAGEN UPP VID LÄSNING ───────────────────
+  ///
+  /// Katalogens `authorityScope` för verktyget, som det såg ut när rätten gavs.
+  /// Ändras klassificeringen senare ska den GAMLA delegationen inte tyst byta
+  /// innebörd — hyresvärden gav rätt till något, och vad det var får inte
+  /// skrivas om i efterhand. En avvikelse mellan kopian och katalogen är i sig
+  /// ett fynd: den betyder att rätten inte längre motsvarar verktyget.
+  authorityScope String
+
+  /// ── AVGRÄNSNINGEN, OCH ATT DESS FRÅNVARO SYNS ────────────────────────────
+  ///
+  /// `{ propertyId?, unitId?, maxBelopp?, kategori? }`. NULL betyder UTAN
+  /// avgränsning — "det här verktyget, alltid, i hela organisationen" — och det
+  /// är lagligt men mycket bredare än det enskilda fall delegationen föddes ur.
+  /// Att låta null och `{}` betyda samma sak hade gjort skillnaden osynlig;
+  /// läsytan ska kunna säga "utan avgränsning" i klartext.
+  villkor Json?
+
+  /// ── FREKVENSVILLKORET, OCH VARFÖR DET IBLAND ÄR OBLIGATORISKT ────────────
+  ///
+  /// `{ maxAntal, periodDagar }`. Krävs för verktyg som är `DEDUPLICERBAR` men
+  /// inte `IDEMPOTENT`: en omkörning ger då en ANDRA rad, och en delegation utan
+  /// tak hade gjort en obevakad loop till en obegränsad. För `IDEMPOTENT`-verktyg
+  /// är det valfritt — deras egen nyckel utesluter dubbletten.
+  frekvensvillkor Json?
+
+  /// Tidsgränsen. NOT NULL: en delegation utan slut är en rätt ingen längre
+  /// minns att hen gav. Default 90 dagar, förlängbar med en EXTENDED-händelse.
+  expiresAt DateTime
+
+  /// Vem gav rätten. Bara OWNER får — samma grind som skuggagentens växel.
+  createdByUserId String?
+  createdByUser   User?   @relation("AiDelegationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  /// ── FÖDD UR ETT GODKÄNT FÖRSLAG, ALDRIG UR FRITEXT ───────────────────────
+  ///
+  /// Planens Del 6: vägen är observation → förslag → mänskligt tryck →
+  /// delegation, och "först när människan trycker Gör alltid detta får en
+  /// delegation skapas". Pekaren gör härkomsten kontrollerbar i stället för
+  /// utlovad — läsytan ska kunna visa VILKET beslut som födde rätten.
+  ///
+  /// Nullbar därför att den första delegationen i en organisation kan behöva
+  /// skapas innan inkorgen hunnit producera något. Att det är möjligt ska synas
+  /// i läsytan, inte döljas av ett NOT NULL som tvingar fram en påhittad pekare.
+  bornFromAssignmentId String?
+  bornFromAssignment   AiAssignment? @relation("AiDelegationOrigin", fields: [bornFromAssignmentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       AiDelegationEvent[]
+  executions   AiToolExecution[]
+  assignments  AiAssignment[]
+
+  /// Grindens fråga: organisationens delegationer för ett verktyg.
+  @@index([organizationId, toolName])
+  /// Utgångspassets fråga.
+  @@index([expiresAt])
+}
+
+/// APPEND-ONLY. Delegationens livshistoria — och sanningskällan för dess status.
+///
+/// Återkallelse är en HÄNDELSE, inte en radering: planen kräver att historiken
+/// kan bevisa att delegationen existerade. En raderad rad kan inte svara på
+/// "hade agenten rätt när den gjorde detta i mars".
+///
+/// Samma triggerskydd som de tio andra append-only-tabellerna (#585).
+model AiDelegationEvent {
+  id           String                @id @default(uuid())
+  delegationId String
+  type         AiDelegationEventType
+
+  /// ── VEM HANDLINGEN TILLSKRIVS — OCH VARFÖR FÄLTET INTE HETER `actorKind` ──
+  ///
+  /// `HUMAN` vid CREATED/REVOKED/EXTENDED, `SYSTEM` vid PAUSED/RESUMED/EXPIRED.
+  ///
+  /// Fältet heter MED FLIT inte `actorKind`. Det namnet är taget, och det svarar
+  /// på en annan fråga: `actorKind` är RADENS FÖRFATTARE, stämplad av
+  /// `actorStampExtension` vid tre gränser, och `check-actor-stamping.mjs` R4
+  /// fäller varje handpåläggning av det — med rätta, eftersom en stämpel som
+  /// ibland sätts för hand är en mekanism som kan gå sönder tyst.
+  ///
+  ///     actorKind     vem SKREV raden?
+  ///     handlingAv    vem tillskrivs HANDLINGEN raden beskriver?
+  ///
+  /// De skiljer sig i praktiken: när ägaren stänger av skuggagenten är det en
+  /// människa som skriver raden, men pausen är SYSTEMETS — den är en följd av en
+  /// inställning, inte ett beslut om just den delegationen. Att slå ihop dem hade
+  /// gjort en paus oskiljbar från en återkallelse i historiken, och det är precis
+  /// den skillnad tabellen finns för att bevara.
+  handlingAv  ActorKind
+  /// `User.id` när en människa handlade, annars null.
+  actorUserId String?
+
+  /// Svensk mening. Vid REVOKED är den människans skäl — skälet är minnesmat.
+  note String?
+
+  createdAt DateTime @default(now())
+
+  delegation AiDelegation @relation(fields: [delegationId], references: [id], onDelete: Cascade)
+
+  @@index([delegationId, createdAt])
 }
