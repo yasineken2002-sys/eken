@@ -24,8 +24,9 @@
  *
  * ── MÄNGDEN ÄR STRUKTURELL, INTE EN LISTA ───────────────────────────────────
  *
- * Hjärtslaget skrivs av `LockService.runIfUnlocked`, och den har EXAKT TIO
- * anropare — samma tio som ack-filen klassar som A (låsta). Mängden uppstår
+ * Hjärtslaget skrivs av `LockService.runIfUnlocked`, och dess anropare är exakt
+ * de jobb ack-filen klassar som A (låsta) — elva sedan skuggsvepet (etapp 6).
+ * Mängden uppstår
  * alltså av konstruktion. Kartan nedan behövs ändå, eftersom tröskeln kräver
  * jobbets SCHEMA, och det står i en dekorator i källan.
  *
@@ -44,6 +45,7 @@ export const LASTA_CRON_JOBB: Readonly<Record<string, string>> = {
   'cron:ai-assignment-expiry': '* * * * *',
   'cron:ai-resumption-freshness': '*/15 * * * *',
   'cron:ai-resumption-shadow': '* * * * *',
+  'cron:ai-shadow-sweep': '*/15 * * * *',
   'cron:ai-usage-warnings': '0 9 * * *',
   'cron:daily-backup': '0 3 * * *',
   'cron:leases-lifecycle': '0 6 * * *',

@@ -51,6 +51,7 @@ import { PlatformModule } from './platform/platform.module'
 import { StorageModule } from './storage/storage.module'
 import { OcrModule } from './common/ocr/ocr.module'
 import { RedisModule } from './common/redis/redis.module'
+import { AiShadowModule } from './ai/shadow/shadow.module'
 import { PdfQueueModule } from './pdf-jobs/pdf-queue.module'
 import { AiUsagePageModule } from './ai-usage/ai-usage.module'
 import { PublicPlansModule } from './public/public-plans.module'
@@ -169,6 +170,9 @@ import { Psd2Module } from './psd2/psd2.module'
     OcrModule,
     RedisModule,
     PdfQueueModule,
+    // Skuggläget (etapp 6). @Global — MaintenanceService injicerar kön utan
+    // att maintenance blir beroende av AI-lagret.
+    AiShadowModule,
 
     // Feature modules
     AuthModule,

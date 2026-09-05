@@ -33,7 +33,16 @@ function make() {
     fn: (tx: typeof prisma) => unknown,
   ) => fn(prisma)
   const notifications = { createForAllOrgUsers: jest.fn().mockResolvedValue(undefined) }
-  const service = new MaintenanceService(prisma as never, notifications as never, {} as never)
+  const service = new MaintenanceService(
+    prisma as never,
+    notifications as never,
+    {} as never,
+    {
+      // Skuggkön (etapp 6). Specen prövar att en främmande orgs id ger 404 FÖRE
+      // transaktionen — köandet ligger efter och nås aldrig.
+      enqueue: async () => 'x',
+    } as never,
+  )
   return { service, prisma }
 }
 
