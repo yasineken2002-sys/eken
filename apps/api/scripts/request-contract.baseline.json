@@ -1,5 +1,5 @@
 {
-  "total": 80,
+  "total": 75,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -134,16 +134,6 @@
     {
       "fil": "apps/web/src/features/properties/api/properties.api.ts",
       "medlemmar": ["PATCH `/properties/${id}` → Partial"]
-    },
-    {
-      "fil": "apps/web/src/features/reconciliation/api/reconciliation.api.ts",
-      "medlemmar": [
-        "PATCH `/reconciliation/transactions/${transactionId}/ignore` → INLINE-LITERAL",
-        "PATCH `/reconciliation/transactions/${transactionId}/match` → OTYPAD",
-        "PATCH `/reconciliation/transactions/${transactionId}/unmatch` → INLINE-LITERAL",
-        "POST '/reconciliation/auto-match' → INLINE-LITERAL",
-        "POST `/reconciliation/imports/${importId}/confirm` → INLINE-LITERAL"
-      ]
     },
     {
       "fil": "apps/web/src/features/rent-increases/api/rent-increases.api.ts",

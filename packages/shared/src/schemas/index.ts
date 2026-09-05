@@ -727,3 +727,42 @@ export type SendNoticesInput = z.infer<typeof SendNoticesSchema>
 export type MarkNoticePaidInput = z.infer<typeof MarkNoticePaidSchema>
 export type RentNoticeCreditLineInput = z.infer<typeof RentNoticeCreditLineSchema>
 export type CreateRentNoticeCreditInput = z.infer<typeof CreateRentNoticeCreditSchema>
+
+// ─── Bankavstämning: manuell matchning och PDF-import ─────────────────────────
+
+/**
+ * MANUELL MATCHNING mot en faktura ELLER en avi.
+ *
+ * Regeln "exakt en av dem" står MEDVETET inte här. Den finns i
+ * `reconciliation.service.ts:2303-2309` och gäller båda riktningarna (ingen
+ * angiven / båda angivna). Att lägga en `.refine()` här hade gjort schemat
+ * STRÄNGARE än DTO:n, alltså en glidning åt andra hållet — webben stoppar något
+ * servern beskriver som giltigt — och hela serien bygger på att de två
+ * beskrivningarna säger samma sak. Samma gränsdragning som depositionernas
+ * summainvariant: servern äger regeln, schemat äger formen.
+ */
+export const ManualMatchSchema = z.object({
+  invoiceId: z.string().uuid('invoiceId måste vara ett UUID').optional(),
+  rentNoticeId: z.string().uuid('rentNoticeId måste vara ett UUID').optional(),
+})
+
+export const EditedTransactionSchema = z.object({
+  date: z.string(),
+  description: z.string(),
+  /**
+   * NULL och SAKNAD är olika saker här: DTO:n har `ocr?: string | null`, alltså
+   * kan fältet skickas som `null` för att säga "ingen OCR" — inte bara utelämnas.
+   */
+  ocr: z.string().nullable().optional(),
+  amount: z.number(),
+  isIncoming: z.boolean().optional(),
+})
+
+export const ConfirmImportSchema = z.object({
+  /** Utelämnad = bekräfta utkastet som det står. */
+  transactions: z.array(EditedTransactionSchema).optional(),
+})
+
+export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
+export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
+export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>
