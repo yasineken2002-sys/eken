@@ -760,8 +760,61 @@ curl -sS --fail-with-body http://localhost:3000/v1/properties \
 - **Routing:** **TanStack Router** (URL-baserad, `createRouter`/`RouterProvider` i `src/app/router.tsx`). _OBS: den gamla `useState<Route>`-routern är borttagen._
 - **Server state:** React Query (`@tanstack/react-query`, staleTime 60s)
 - **Client state:** Zustand (persisteras till localStorage som `eken-auth`)
-- **Formulär:** React Hook Form + `@hookform/resolvers/zod`
+- **Formulär:** TVÅ mönster i bruk, inte ett — se avsnittet nedan innan du väljer
 - **Animationer:** Framer Motion 12
+
+### Formulär: två mönster, och vilket du ska välja
+
+Raden ovan sa fram till 2026-09-05 bara "React Hook Form + `@hookform/resolvers/zod`",
+alltså som om det fanns ETT mönster. **Mätt mot `86f9f206`:**
+
+| grupp | antal | vad det är |
+| --- | --- | --- |
+| **React Hook Form** (`useForm`) | **20** | varav 19 med `zodResolver`, 1 utan (`customers/components/CustomerForm.tsx`) |
+| **`useState`-formulär** | **36** | kontrollerade fält + submit, ingen RHF |
+| sidor med tillstånd men utan fält | 11 | inte formulär — `AccountingPage`, `NotificationBell` m.fl. |
+| varken | 64 | resten av 131 `.tsx` under `features/` |
+
+RHF är alltså **20 av 56 formulär** — en minoritet, inte standarden. Och av de 19
+resolvrarna läser bara **4** ett DELAT schema:
+
+```
+DELAT   consumption/MeterForm · consumption/ReadingForm
+        consumption/TariffForm · invoices/InvoiceForm
+LOKALT  15 st — de sex auth-sidorna, PropertyForm (PropertyFormSchema),
+        UnitForm, SettingsPage, LeaseForm, CreateTicketModal, m.fl.
+```
+
+**Att raden var fel spelade roll**, inte bara stil: den som läste "vi använder
+RHF + zodResolver" och byggde därefter fick höra att `zodResolver` inte gick att
+använda i bokföringens modaler — de är `useState`-formulär, och en resolver har
+ingenting att fästa i.
+
+#### Vilket mönster för ett nytt formulär
+
+**Har formuläret ett delat Zod-schema** (se *Kontraktet webb↔API* ovan) — använd
+**React Hook Form med `zodResolver(<DeladeSchemat>)`**. `MeterForm.tsx` är
+förlagan: ett schema, en resolver, ingen andra beskrivning av samma form.
+
+**Är formuläret ett `useState`-formulär** — ett av de 36, eller ett nytt med
+egen förhandsvisning där RHF inte betalar sig — gäller
+`apps/web/src/features/accounting/components/contract-gate.ts`:
+
+```ts
+const kropp: CreateXInput = { … }          // ANNOTERAD, annars ingen
+                                            // överskottskontroll
+const kontrakt = kontraktsfel(CreateXSchema, kropp)
+if (kontrakt) { setServerfel(kontrakt); return }
+mutation.mutate(kropp, …)
+```
+
+Grinden ger samma RUNTIME-egenskap som en resolver — nyttolasten prövas mot
+samma schema som API:ts DTO är bunden till — utan att formuläret skrivs om. Den
+ersätter INTE fältvisa fel medan man skriver; den ordningen ägs av formulärets
+egen `…Fel()`-funktion och körs före.
+
+**Ingen migrering av de 36 är beställd eller gjord.** Raden ovan beskriver
+läget, inte en plan.
 
 ### Routing (TanStack Router)
 
