@@ -31,13 +31,30 @@ describe('skuggdugligheten', () => {
   })
 
   it('avvisar verktyg UTAN mänsklig väg — delmängdsregeln gäller förslag också', () => {
+    // ── MÄNGDEN ÄR TOM I DAG, OCH DET ÄR ETT FRAMSTEG ────────────────────
+    // Delmängdsbaslinjen gick 7 → 0 under 2026-09-05 (#782, #786, #787): alla
+    // trettio verktygen har numera en verifierad mänsklig väg. Provet får
+    // därför INTE kräva att mängden är icke-tom — det hade gjort ett framsteg
+    // till ett fel.
+    //
+    // Men regeln måste ändå kunna ses falla, annars är den en kommentar. Den
+    // prövas därför mot en PÅHITTAD deklaration nedan, och över den verkliga
+    // mängden bara som ett villkorat prov: finns ett verktyg utan väg SKA det
+    // avvisas.
     const utan = Object.keys(HUMAN_PATHS).filter((n) => 'saknas' in (HUMAN_PATHS[n] ?? {}))
-    expect(utan.length).toBeGreaterThan(0) // annars mäter provet ingenting
+
+    console.warn(`[skuggrind] verktyg utan mänsklig väg: ${utan.length}`)
     for (const n of utan) {
       const r = provaSkuggDuglighet(n)
       expect(r.duglig).toBe(false)
       if (!r.duglig) expect(r.skäl).toBe('SAKNAR_MÄNSKLIG_VÄG')
     }
+    // REGELKANARIEFÅGELN: mot en påhittad post, så den fäller oavsett baslinjen.
+    const dekl = { zz_sond: EFFECT_DECLARATIONS['create_property']! }
+    const utanVag = { zz_sond: { saknas: true } } as unknown as typeof HUMAN_PATHS
+    const r = provaSkuggDuglighet('zz_sond', dekl, utanVag)
+    expect(r.duglig).toBe(false)
+    if (!r.duglig) expect(r.skäl).toBe('SAKNAR_MÄNSKLIG_VÄG')
   })
 
   it('avvisar MOT_TREDJE_PART', () => {
