@@ -1,16 +1,8 @@
 {
-  "kommentar": "ACTION_TOOLS som saknar en mänsklig väg i apps/web. Varje post är ett dokumenterat FYND enligt planens Regel 2 — inte ett godkännande. Listan FÅR BARA KRYMPA: check-tool-human-path.mjs fäller ett nytt namn (NY), ett namn som fått en väg (STALE) och ett namn som inte finns bland verktygen. Skälet står HÄR och ingen annanstans; human-path.ts bär bara markören { saknas: true }, så prosan kan inte glida isär från sin ratchet.",
-  "matt_mot": "dbe12ff",
-  "matt_datum": "2026-09-04",
+  "kommentar": "ACTION_TOOLS som saknar en mänsklig väg i apps/web. Var SJU vid #773; create_journal_entry och record_expense fick sin väg 2026-09-05 (POST /accounting/journal-entries respektive /accounting/expenses, plus knapparna \"Ny verifikation\" och \"Registrera utgift\" på bokföringssidan) och är därför borttagna härifrån. Varje post är ett dokumenterat FYND enligt planens Regel 2 — inte ett godkännande. Listan FÅR BARA KRYMPA: check-tool-human-path.mjs fäller ett nytt namn (NY), ett namn som fått en väg (STALE) och ett namn som inte finns bland verktygen. Skälet står HÄR och ingen annanstans; human-path.ts bär bara markören { saknas: true }, så prosan kan inte glida isär från sin ratchet.",
+  "matt_mot": "a7313dd",
+  "matt_datum": "2026-09-05",
   "poster": {
-    "create_journal_entry": {
-      "skal": "Ingen mänsklig väg alls: accounting.controller.ts har 17 rutter och ingen av dem skapar ett verifikat — bara journal/:id/reverse — så AI:n kan bokföra en verifikation som hyresvärden inte kan bokföra själv.",
-      "arende": ""
-    },
-    "record_expense": {
-      "skal": "Samma hål som create_journal_entry och samma controller: varken endpoint eller yta för att registrera en utgift för hand, medan verktyget slår upp konton och skriver ett verifikat via AccountingService.",
-      "arende": ""
-    },
     "send_document_to_tenant": {
       "skal": "DocumentDeliveryService.deliverToTenant har exakt en anropare i hela kodbasen och det är det här verktyget; att ladda upp ett dokument och att skicka det till en hyresgäst är två olika saker och bara den första finns för människan.",
       "arende": ""

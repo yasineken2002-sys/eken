@@ -21,6 +21,11 @@ import { AccountingPeriodService } from './accounting-period.service'
 // Värde-import, inte `import type` — ValidationPipe behöver klassen i runtime.
 import { ReopenPeriodDto } from './dto/reopen-period.dto'
 import { ReverseEntryDto } from './dto/reverse-entry.dto'
+// VÄRDE-import, aldrig `import type`: NestJS läser reflect-metadata i runtime och
+// en typ-import raderar klassen, varpå ValidationPipe tappar all metadata.
+import { CreateJournalEntryDto } from './dto/create-journal-entry.dto'
+import { CreateExpenseDto } from './dto/create-expense.dto'
+import { randomUUID } from 'crypto'
 
 // Validerar ISO-datum (YYYY-MM-DD) från query. Kastar 400 vid saknat/felaktigt
 // format så rapporterna aldrig kör mot ogiltiga Date-objekt (NaN-period).
@@ -293,6 +298,88 @@ export class AccountingController {
       actorRole: user.role,
       actorUserId: user.sub,
       reason: dto.reason,
+    })
+  }
+
+  // ── MANUELL BOKFÖRING: MÄNNISKANS VÄG ───────────────────────────────────
+  //
+  // De två rutterna nedan är motsvarigheten till AI-verktygen
+  // `create_journal_entry` och `record_expense`, som stod i
+  // `tool-human-path.baseline.json` som verktyg UTAN mänsklig väg: controllern
+  // hade 17 rutter och ingen av dem skapade ett verifikat — bara
+  // `journal/:id/reverse` — så AI:n kunde bokföra en verifikation hyresvärden
+  // inte kunde bokföra själv.
+  //
+  // Konteringen är inte en parallell implementation: den byggs av de rena
+  // funktionerna i `manual-entry.ts`, samma som AI-verktyget använder.
+  // Skrivningen går ut i `createNumberedEntry`; AI-vägen har sin egen
+  // transaktion, och den skillnaden står utskriven i manual-entry.ts.
+  //
+  // ROLLERNA: ACCOUNTANT och uppåt, alltså klassnivåns mängd minus MANAGER. Att
+  // bokföra ett fritt verifikat är en redovisningshandling, inte en
+  // förvaltningsåtgärd — samma avgränsning som `journal/:id/reverse` och
+  // periodstängningen redan har.
+
+  /**
+   * Fritt verifikat. Balanskravet (debet = kredit) och kontouppslaget ligger i
+   * tjänsten; ett obalanserat verifikat ger 422 med beloppen utskrivna, aldrig
+   * ett tyst avrundat verifikat.
+   *
+   * `idempotencyKey` faller tillbaka på ett serverside-uuid när klienten inte
+   * skickar någon. Det är AVSIKTLIGT inte ett fel: en anropare som inte kan göra
+   * om sitt anrop ska få ett verifikat, inte ett 400. Webben skickar alltid en
+   * nyckel per öppnad modal, så dess omtag är idempotenta.
+   */
+  @Post('journal-entries')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(201)
+  async createJournalEntry(
+    @OrgId() organizationId: string,
+    @Body() dto: CreateJournalEntryDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.accountingService.createManualJournalEntry({
+      organizationId,
+      date: new Date(dto.date),
+      description: dto.description,
+      lines: dto.lines,
+      idempotencyKey: dto.idempotencyKey ?? `manual-journal:${randomUUID()}`,
+      createdById: user.sub,
+      ...(dto.attachmentUrl ? { attachmentUrl: dto.attachmentUrl } : {}),
+    })
+  }
+
+  /**
+   * Utgift. `amount` är BRUTTO — det som lämnar 1930 — och `vatAmount` bryts UT
+   * ur det. Kontering: kostnadskonto (netto) debet, 2641 (moms) debet om den
+   * finns, 1930 kredit (brutto).
+   */
+  @Post('expenses')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(201)
+  async createExpense(
+    @OrgId() organizationId: string,
+    @Body() dto: CreateExpenseDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    // Leverantören står i beskrivningen och inte i en relation: en
+    // leverantörsmodell är ett eget arbete, och en halv sådan (fritextnamn i en
+    // egen tabell utan orgnr, betalvillkor eller historik) hade varit sämre än
+    // ingen alls.
+    const beskrivning = dto.supplier ? `${dto.supplier} — ${dto.description}` : dto.description
+
+    return this.accountingService.recordManualExpense({
+      organizationId,
+      date: new Date(dto.date),
+      idempotencyKey: dto.idempotencyKey ?? `manual-expense:${randomUUID()}`,
+      createdById: user.sub,
+      ...(dto.attachmentUrl ? { attachmentUrl: dto.attachmentUrl } : {}),
+      utgift: {
+        belopp: dto.amount,
+        ...(dto.vatAmount !== undefined ? { moms: dto.vatAmount } : {}),
+        kontonummer: dto.accountNumber,
+        beskrivning,
+      },
     })
   }
 

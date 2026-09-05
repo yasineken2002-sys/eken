@@ -216,3 +216,49 @@ export const fetchFiscalYearClosePreview = (year: number): Promise<FiscalYearClo
 
 export const closeFiscalYear = (year: number): Promise<FiscalYearCloseResult> =>
   post<FiscalYearCloseResult>(`/accounting/fiscal-years/${year}/close`)
+
+// ── MANUELL BOKFÖRING (människans väg till create_journal_entry/record_expense) ─
+//
+// De två anropen nedan är motsvarigheten till AI-verktygen. Backend delar
+// kontering och skrivning med verktyget (`accounting/manual-entry.ts` +
+// `createNumberedEntry`), så gränssnittet behöver inte veta något om konton
+// utöver numret hyresvärden väljer.
+
+export interface ManuellVerifikatrad {
+  accountNumber: number
+  debit?: number
+  credit?: number
+  description?: string
+}
+
+export interface SkapaVerifikatInput {
+  date: string
+  description: string
+  lines: ManuellVerifikatrad[]
+  /**
+   * En nyckel per öppnad modal. Två skickningar med samma nyckel ger EN
+   * journalpost — ett omtag efter en tappad uppkoppling får inte bli två
+   * verifikat i huvudboken.
+   */
+  idempotencyKey: string
+  attachmentUrl?: string
+}
+
+export const createJournalEntry = (input: SkapaVerifikatInput): Promise<JournalEntry> =>
+  post<JournalEntry>('/accounting/journal-entries', input)
+
+export interface SkapaUtgiftInput {
+  date: string
+  description: string
+  supplier?: string
+  /** BRUTTO — det som lämnar bankkontot. Momsen bryts UT ur det, inte till. */
+  amount: number
+  vatRate?: number
+  vatAmount?: number
+  accountNumber: number
+  idempotencyKey: string
+  attachmentUrl?: string
+}
+
+export const createExpense = (input: SkapaUtgiftInput): Promise<JournalEntry> =>
+  post<JournalEntry>('/accounting/expenses', input)

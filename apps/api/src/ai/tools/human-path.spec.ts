@@ -1,10 +1,5 @@
 import { ACTION_TOOLS } from './ai-tools.definition'
-import {
-  HUMAN_PATHS,
-  arSaknad,
-  buildHumanPathCatalog,
-  verktygUtanMansligVag,
-} from './human-path'
+import { HUMAN_PATHS, arSaknad, buildHumanPathCatalog, verktygUtanMansligVag } from './human-path'
 
 /**
  * SPECEN ÄGER MEKANIKEN, VAKTEN ÄGER PÅKOPPLINGEN (#571).
@@ -56,15 +51,13 @@ describe('HUMAN_PATHS — delmängdsregeln', () => {
     }
   })
 
-  it('mängden utan mänsklig väg är den mätta — sju fynd, inte noll', () => {
+  it('mängden utan mänsklig väg är den mätta — fem fynd, inte noll', () => {
     // Ett tal här är med flit: mängden ska inte kunna växa obemärkt. Krymper den
     // ska den här raden ändras i SAMMA PR som baslinjen, annars är fyndet inte
     // borta utan bara osynligt.
     expect(verktygUtanMansligVag()).toEqual([
-      'create_journal_entry',
       'mark_sent_to_collection',
       'prepare_contract_signing',
-      'record_expense',
       'send_document_to_tenant',
       'send_overdue_reminders',
       'update_tenant',

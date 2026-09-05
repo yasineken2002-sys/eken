@@ -28,6 +28,10 @@ import { AccountingService } from '../../accounting/accounting.service'
 import { AccountingPeriodService } from '../../accounting/accounting-period.service'
 import { VerifikationsnummerService } from '../../accounting/verifikationsnummer.service'
 import { isPeriodClosed, periodKeyOf, periodOfDate } from '../../accounting/closed-period'
+// Den DELADE konteringen. Samma funktioner som människans väg
+// (POST /accounting/journal-entries och /accounting/expenses) bygger sina rader
+// med — se manual-entry.ts för varför den inte får finnas i två kopior.
+import { byggUtgiftsrader, byggVerifikatrader, kontouppslagAv } from '../../accounting/manual-entry'
 import { assertMayActOnCollections } from '../../common/authz/collections-authz'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
@@ -3972,56 +3976,24 @@ export class ToolExecutorService {
               message: `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra datum eller återöppna perioden manuellt.`,
             }
           }
-          const accounts = await this.prisma.account.findMany({
-            where: { organizationId },
-            select: { id: true, number: true },
-          })
-          const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
-          let totalDebit = 0
-          let totalCredit = 0
-          const prismaLines: Array<{
-            accountId: string
-            debit?: number
-            credit?: number
-            description?: string
-          }> = []
-          for (const line of linesInput) {
-            const accountId = accountByNumber.get(line.accountNumber)
-            if (!accountId) {
-              return {
-                success: false,
-                message: `BAS-konto ${line.accountNumber} finns inte i kontoplanen. Lägg till det först eller välj ett befintligt konto.`,
-              }
-            }
-            const debit = typeof line.debit === 'number' && line.debit > 0 ? line.debit : 0
-            const credit = typeof line.credit === 'number' && line.credit > 0 ? line.credit : 0
-            if (debit === 0 && credit === 0) {
-              return {
-                success: false,
-                message: `Rad mot konto ${line.accountNumber} saknar både debet och kredit.`,
-              }
-            }
-            if (debit > 0 && credit > 0) {
-              return {
-                success: false,
-                message: `Rad mot konto ${line.accountNumber} har både debet och kredit — använd separata rader.`,
-              }
-            }
-            totalDebit += debit
-            totalCredit += credit
-            prismaLines.push({
-              accountId,
-              ...(debit > 0 ? { debit } : {}),
-              ...(credit > 0 ? { credit } : {}),
-              ...(line.description ? { description: line.description } : {}),
-            })
+          // KONTERINGEN BYGGS AV DEN DELADE FUNKTIONEN, inte här. Kontouppslag,
+          // per-rad-reglerna och balanskravet stod tidigare inline — och samma
+          // regler behövdes för människans väg (POST /accounting/journal-entries,
+          // tillagd när det här verktyget fick sin mänskliga motsvarighet). Två
+          // kopior av kontoreglerna hade glidit isär utan att något blev rött.
+          // Se `manual-entry.ts`.
+          const konton = kontouppslagAv(
+            await this.prisma.account.findMany({
+              where: { organizationId },
+              select: { id: true, number: true },
+            }),
+          )
+          const byggt = byggVerifikatrader(linesInput, konton)
+          if (!byggt.ok) {
+            return { success: false, message: byggt.fel }
           }
-          if (Math.abs(totalDebit - totalCredit) > 0.01) {
-            return {
-              success: false,
-              message: `Verifikatet balanserar inte: debet ${formatAmount(totalDebit)} kr, kredit ${formatAmount(totalCredit)} kr.`,
-            }
-          }
+          const prismaLines = byggt.rader
+          const totalDebit = byggt.summa
           // IDEMPOTENSNYCKELN (se ai-journal-source.ts). Härledd ur ÅTGÄRDENS
           // INNEHÅLL, inte ur bekräftelsens id — den måste överleva ett omtag
           // efter en krasch, och ett omtag har ett nytt pendingActionId.
@@ -4126,59 +4098,31 @@ export class ToolExecutorService {
               message: `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd.`,
             }
           }
-          const accounts = await this.prisma.account.findMany({
-            where: { organizationId },
-            select: { id: true, number: true },
-          })
-          const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
-          const expenseAccountId = accountByNumber.get(accountNumber)
-          const bankAccountId = accountByNumber.get(1930)
-          const vatInAccountId = accountByNumber.get(2641)
-          if (!expenseAccountId) {
-            return {
-              success: false,
-              message: `Kostnadskonto ${accountNumber} finns inte. Använd t.ex. 5070 (Reparationer) eller 5080 (Försäkring).`,
-            }
-          }
-          if (!bankAccountId) {
-            return {
-              success: false,
-              message:
-                'Konto 1930 (Företagskonto/Bank) saknas i kontoplanen. Lägg till standardkontoplan först.',
-            }
-          }
+          // Samma delade kontering som människans väg (POST /accounting/expenses).
+          // Kontovalen 1930/2641 och momsdelningen bor i `manual-entry.ts`; stod
+          // de på två ställen hade AI:n och hyresvärden kunnat bokföra OLIKA för
+          // samma utgift den dag ett kontonummer byts.
           const vat = vatAmount ?? 0
-          const netExpense = amount - vat
-          const lines: Array<{
-            accountId: string
-            debit?: number
-            credit?: number
-            description?: string
-          }> = [
+          const konton = kontouppslagAv(
+            await this.prisma.account.findMany({
+              where: { organizationId },
+              select: { id: true, number: true },
+            }),
+          )
+          const byggtUtgift = byggUtgiftsrader(
             {
-              accountId: expenseAccountId,
-              debit: netExpense,
-              description,
+              belopp: amount,
+              ...(vat > 0 ? { moms: vat } : {}),
+              kontonummer: accountNumber,
+              beskrivning: description,
             },
-            {
-              accountId: bankAccountId,
-              credit: amount,
-              description: 'Betalning bank',
-            },
-          ]
-          if (vat > 0) {
-            if (!vatInAccountId) {
-              return {
-                success: false,
-                message: 'Konto 2641 (Ingående moms) saknas — kan inte bokföra moms separat.',
-              }
-            }
-            lines.push({
-              accountId: vatInAccountId,
-              debit: vat,
-              description: 'Ingående moms',
-            })
+            konton,
+          )
+          if (!byggtUtgift.ok) {
+            return { success: false, message: byggtUtgift.fel }
           }
+          const lines = byggtUtgift.rader
+          const netExpense = amount - vat
           // Samma idempotensnyckel som create_journal_entry — se
           // ai-journal-source.ts. Härledd ur innehållet, inte ur bekräftelsen.
           const sourceId = aiJournalSourceId('record_expense', toolInput)
