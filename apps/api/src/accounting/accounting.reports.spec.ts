@@ -115,8 +115,10 @@ describe('AccountingController — query-validering', () => {
       getBalanceSheet: jest.fn().mockResolvedValue({ ok: true }),
       getVatReport: jest.fn().mockResolvedValue({ ok: true }),
     }
-    // PR1a: controllern tar även AccountingPeriodService (periodvyn).
-    const controller = new AccountingController(service as never, {} as never)
+    // PR1a: controllern tar även AccountingPeriodService (periodvyn), och sedan
+    // leverantörsskulden SupplierInvoiceService. Ingen av rapportvägarna i den
+    // här filen rör dem — attrapperna finns bara för att konstruktorn kräver dem.
+    const controller = new AccountingController(service as never, {} as never, {} as never)
     return { controller, service }
   }
 

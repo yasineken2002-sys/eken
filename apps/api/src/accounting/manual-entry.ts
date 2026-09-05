@@ -117,6 +117,8 @@ const ORE = 0.01
 /** Kontona utgiftsvägen konterar mot. Namngivna, inte inströdda som magiska tal. */
 export const KONTO_BANK = 1930
 export const KONTO_INGAENDE_MOMS = 2641
+/** Leverantörsskulder. Fakturametodens motkonto — se `byggLeverantorsfakturarader`. */
+export const KONTO_LEVERANTORSSKULD = 2440
 
 /**
  * Fritt verifikat: rad för rad mot kontoplanen, med balanskravet.
@@ -247,4 +249,153 @@ export function byggUtgiftsrader(indata: UtgiftIndata, konton: Kontouppslag): By
 /** Samma format som verktygets `formatAmount` — två decimaler, punkt som avgränsare. */
 function formatBelopp(v: number): string {
   return v.toFixed(2)
+}
+
+// ── LEVERANTÖRSFAKTURA: FAKTURAMETODENS TVÅ STEG ────────────────────────────
+//
+// `byggUtgiftsrader` ovan är KONTANTMETODEN: en redan betald utgift i ett steg
+// mot 1930. En faktura som tas emot i dag och betalas om trettio dagar kan inte
+// bokföras så — skulden skulle saknas i balansräkningen mellan de två datumen,
+// och kostnaden hamna i fel period över ett bokslut.
+//
+// De två funktionerna nedan är stegen. De delar kontouppslag och momsregler med
+// utgiftsvägen; det som skiljer är motkontot (2440 i stället för 1930) och att
+// det finns ett andra steg.
+
+export interface LeverantorsfakturaIndata {
+  /** BRUTTO — det som ska lämna bankkontot. Momsen bryts UT ur det. */
+  belopp: number
+  /** Momsbeloppet i kronor. 0 eller utelämnat = ingen momsrad. */
+  moms?: number | undefined
+  kontonummer: number
+  beskrivning: string
+}
+
+/**
+ * STEG 1 — MOTTAGANDE: kostnad (netto) debet, ingående moms debet, 2440 kredit
+ * (brutto).
+ *
+ * Skulden bokas när fakturan tas emot, inte när den betalas. Det är hela
+ * skillnaden mot `byggUtgiftsrader`, och skälet till att den här vägen finns.
+ */
+export function byggLeverantorsfakturarader(
+  indata: LeverantorsfakturaIndata,
+  konton: Kontouppslag,
+): Byggutfall {
+  const { belopp, kontonummer, beskrivning } = indata
+  const moms = indata.moms ?? 0
+
+  if (!(belopp > 0)) return { ok: false, fel: 'Beloppet måste vara större än noll.' }
+  if (moms < 0) return { ok: false, fel: 'Momsbeloppet kan inte vara negativt.' }
+  if (moms > belopp + ORE) {
+    return {
+      ok: false,
+      fel: `Momsen (${formatBelopp(moms)} kr) kan inte vara större än beloppet (${formatBelopp(belopp)} kr) — beloppet ska vara inklusive moms.`,
+    }
+  }
+
+  const kostnadskonto = konton.get(kontonummer)
+  if (!kostnadskonto) {
+    return {
+      ok: false,
+      fel: `Kostnadskonto ${kontonummer} finns inte. Använd t.ex. 5070 (Reparationer) eller 5080 (Försäkring).`,
+    }
+  }
+  const skuldkonto = konton.get(KONTO_LEVERANTORSSKULD)
+  if (!skuldkonto) {
+    return {
+      ok: false,
+      fel: `Konto ${KONTO_LEVERANTORSSKULD} (Leverantörsskulder) saknas i kontoplanen. Lägg till standardkontoplan först.`,
+    }
+  }
+
+  const netto = belopp - moms
+  const rader: Verifikatrad[] = [
+    { accountId: kostnadskonto, debit: netto, description: beskrivning },
+    { accountId: skuldkonto, credit: belopp, description: 'Leverantörsskuld' },
+  ]
+
+  if (moms > 0) {
+    const momskonto = konton.get(KONTO_INGAENDE_MOMS)
+    if (!momskonto) {
+      return {
+        ok: false,
+        fel: `Konto ${KONTO_INGAENDE_MOMS} (Ingående moms) saknas — kan inte bokföra moms separat.`,
+      }
+    }
+    rader.push({ accountId: momskonto, debit: moms, description: 'Ingående moms' })
+  }
+
+  return { ok: true, rader, summa: belopp }
+}
+
+/**
+ * MAKULERING — vänder mottagningsverifikatet rad för rad.
+ *
+ * Speglar `byggLeverantorsfakturarader` med ombytta sidor: kostnaden krediteras
+ * med NETTOT, ingående moms krediteras, och 2440 debiteras med BRUTTOT. Efter
+ * de två verifikaten är fakturans avtryck i huvudboken noll på varje konto den
+ * rörde.
+ *
+ * Den byggs UR SAMMA indata som mottagningen och inte ur en egen beskrivning av
+ * "motsatsen" — annars kan de två glida isär och skillnaden BALANSERAR ändå,
+ * eftersom båda verifikaten är balanserade var för sig. Det felet syns inte i
+ * någon balansgrind, bara i ett saldo som aldrig går till noll.
+ */
+export function byggLeverantorsfakturareverseringsrader(
+  indata: LeverantorsfakturaIndata,
+  konton: Kontouppslag,
+): Byggutfall {
+  const framat = byggLeverantorsfakturarader(indata, konton)
+  if (!framat.ok) return framat
+
+  // Sidbytet görs på det BYGGDA resultatet, så en ändring i mottagningens
+  // kontering följer med hit av sig själv. En andra uppräkning av konton hade
+  // varit ett andra ställe att glömma.
+  const rader: Verifikatrad[] = framat.rader.map((rad) => ({
+    accountId: rad.accountId,
+    ...(rad.debit !== undefined ? { credit: rad.debit } : {}),
+    ...(rad.credit !== undefined ? { debit: rad.credit } : {}),
+    ...(rad.description ? { description: `Makulering: ${rad.description}` } : {}),
+  }))
+
+  return { ok: true, rader, summa: framat.summa }
+}
+
+/**
+ * STEG 2 — BETALNING: 2440 debet, 1930 kredit. BRUTTO på båda.
+ *
+ * Ingen moms här. Momsen drogs av vid mottagandet — att röra 2641 igen hade
+ * dubblerat avdraget, vilket är ett fel som balanserar och därför inte syns i
+ * någon balansgrind.
+ *
+ * Tillsammans nettar de två stegen 2440 till NOLL för fakturan. Det är
+ * invarianten `supplier-invoice.db.spec.ts` mäter.
+ */
+export function byggLeverantorsbetalningsrader(belopp: number, konton: Kontouppslag): Byggutfall {
+  if (!(belopp > 0)) return { ok: false, fel: 'Beloppet måste vara större än noll.' }
+
+  const skuldkonto = konton.get(KONTO_LEVERANTORSSKULD)
+  if (!skuldkonto) {
+    return {
+      ok: false,
+      fel: `Konto ${KONTO_LEVERANTORSSKULD} (Leverantörsskulder) saknas i kontoplanen.`,
+    }
+  }
+  const bankkonto = konton.get(KONTO_BANK)
+  if (!bankkonto) {
+    return {
+      ok: false,
+      fel: `Konto ${KONTO_BANK} (Företagskonto/Bank) saknas i kontoplanen.`,
+    }
+  }
+
+  return {
+    ok: true,
+    rader: [
+      { accountId: skuldkonto, debit: belopp, description: 'Betald leverantörsfaktura' },
+      { accountId: bankkonto, credit: belopp, description: 'Betalning bank' },
+    ],
+    summa: belopp,
+  }
 }

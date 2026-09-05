@@ -184,6 +184,14 @@ enum JournalEntrySource {
   // Bokförs i PR 2 med source=MISC_CHARGE, sourceId='misc-charge:{id}' → egen
   // idempotensnyckel, separat ledger-filtrering från consumption/faktura.
   MISC_CHARGE
+  // Leverantörsfaktura (fakturametoden). TVÅ verifikat per faktura, båda i den
+  // här källan men med SKILDA sourceId:
+  //   'supplier-invoice:{id}'          mottagande  kostnad + 2641 / 2440
+  //   'supplier-invoice-payment:{id}'  betalning   2440 / 1930
+  // Två nycklar och inte en: de är två affärshändelser vid två tidpunkter, och
+  // en gemensam nyckel hade gjort betalningen till en idempotensträff på
+  // mottagandet — alltså tyst ingen bokföring alls.
+  SUPPLIER_INVOICE
 }
 
 // ─── Invoice Event Types ──────────────────────────────────────────────────────
@@ -873,6 +881,7 @@ model Organization {
   @@index([orgNumber])
   @@index([customerNumber])
   @@index([subscriptionPlan])
+  supplierInvoices SupplierInvoice[]
 }
 
 // ─── User ─────────────────────────────────────────────────────────────────────
@@ -959,6 +968,7 @@ model User {
 
   @@index([organizationId])
   @@index([email])
+  supplierInvoices SupplierInvoice[]
 }
 
 // One-time-use tokens för glömt-lösenord-flödet. Cascade så att tokens
@@ -5637,6 +5647,79 @@ model ConsumptionCharge {
 // PR 1 (denna): BARA datamodellen + scope-kolumner. INGEN bokföringslogik, ingen
 // debiterings-service, ingen frontend. Bokföring (1510 D / 3040|3990 K) sker i
 // PR 2/3 via AccountingService med source=MISC_CHARGE, sourceId='misc-charge:{id}'.
+// LEVERANTÖRSFAKTURA — fakturametoden, till skillnad från "Registrera utgift".
+//
+// "Registrera utgift" (#782) bokför en REDAN BETALD utgift i ETT steg mot 1930.
+// En faktura som tas emot i dag och betalas om trettio dagar kan inte bokföras
+// så: skulden skulle saknas i balansräkningen mellan de två datumen, och
+// kostnaden hamna i fel period över ett bokslut. Fakturametoden är två steg:
+//
+// mottagande   kostnad + 2641 ingående moms  /  2440 Leverantörsskulder
+// betalning    2440 Leverantörsskulder       /  1930 Företagskonto
+//
+// ── STATUS ÄR BERÄKNAT, INTE EN FLAGGA ──────────────────────────────────────
+//
+// Det finns MEDVETET ingen `status`-kolumn. En faktura är betald när dess
+// betalningsverifikat finns, och öppen annars — precis som skulden i huset i
+// övrigt är ett beräknat tillstånd och aldrig en flagga (CLAUDE.md). En kolumn
+// hade kunnat säga PAID om en post vars verifikat rullades tillbaka, och då är
+// balansräkningen och listan oense utan att något blir rött.
+//
+// `paidAt` och `cancelledAt` är HÄNDELSER, inte tillstånd: de säger NÄR något
+// skedde. Tillståndet härleds ur dem plus verifikaten av `supplierInvoiceStatus`
+// i `supplier-invoice-status.ts`.
+//
+// ── BELOPPEN ÄR SNAPSHOTS ───────────────────────────────────────────────────
+//
+// `netAmount` + `vatAmount` = `totalAmount`, och totalen är BRUTTO: det som ska
+// lämna bankkontot. Samma riktning som `record_expense` och av samma skäl — den
+// omvända tolkningen ger ett verifikat som balanserar men bokför fel summa på
+// banken, ett fel varken balansgrinden eller ett radprov kan se.
+model SupplierInvoice {
+  id             String @id @default(uuid())
+  organizationId String
+
+// Leverantören som FRITEXT, inte en relation. En leverantörsmodell (orgnr,
+// betalvillkor, historik) är ett eget arbete; en halv sådan hade varit sämre
+// än ingen. Samma avvägning som utgiftsvägens `supplier` (#785).
+  supplierName String
+  invoiceNumber String?
+
+  description String
+
+  invoiceDate DateTime @db.Date
+  dueDate     DateTime @db.Date
+
+  expenseAccount Int
+
+  // Snapshots. netAmount + vatAmount = totalAmount (BRUTTO).
+  netAmount   Decimal @db.Decimal(10, 2)
+  vatRate     Int     @default(25)
+  vatAmount   Decimal @default(0) @db.Decimal(10, 2)
+  totalAmount Decimal @db.Decimal(10, 2)
+
+  attachmentUrl String?
+
+// NÄR fakturan betalades. En HÄNDELSE — statusen härleds, se docblocket ovan.
+// Är den satt finns ett betalningsverifikat med sourceId
+// `supplier-invoice-payment:<id>`.
+  paidAt DateTime?
+// NÄR fakturan makulerades. Makulering är bara tillåten INNAN betalning; en
+// betald faktura rättas med ett motverifikat, aldrig genom att fältet sätts.
+  cancelledAt DateTime?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User?        @relation(fields: [createdById], references: [id])
+
+  @@index([organizationId])
+  // Öppna poster sorteras på förfallodatum — det är listans enda ordning.
+  @@index([organizationId, dueDate])
+}
+
 model MiscCharge {
   id String @id @default(uuid())
 

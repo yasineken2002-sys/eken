@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, FileX, Database, ArrowRightLeft, Plus, Receipt } from 'lucide-react'
+import { BookOpen, FileX, Database, ArrowRightLeft, Plus, Receipt, Wallet } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
@@ -17,11 +17,13 @@ import { PeriodsPanel } from './components/PeriodsPanel'
 import { FiscalYearsPanel } from './components/FiscalYearsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
 import { NewJournalEntryModal } from './components/NewJournalEntryModal'
+import { SupplierInvoicesPanel } from './components/SupplierInvoicesPanel'
+import { NewSupplierInvoiceModal } from './components/NewSupplierInvoiceModal'
 import { RecordExpenseModal } from './components/RecordExpenseModal'
 import { useAuthStore } from '@/stores/auth.store'
 import { isForbidden } from '@/lib/api'
 
-type View = 'chart' | 'journal' | 'periods'
+type View = 'chart' | 'journal' | 'periods' | 'supplier-invoices'
 
 const accountTypeLabel: Record<string, string> = {
   ASSET: 'Tillgångar',
@@ -179,6 +181,7 @@ export function AccountingPage() {
   const [reversing, setReversing] = useState<JournalEntry | null>(null)
   const [nyVerifikation, setNyVerifikation] = useState(false)
   const [nyUtgift, setNyUtgift] = useState(false)
+  const [nyLeverantorsfaktura, setNyLeverantorsfaktura] = useState(false)
   // Rättelse är en redovisningshandling — MANAGER utesluts, precis som
   // server-side. Speglat här så knappen inte visas för den som ändå nekas.
   const role = useAuthStore((s) => s.user?.role)
@@ -221,6 +224,19 @@ export function AccountingPage() {
           // därför inte för den som ändå hade fått 403 på klick.
           mayReverse ? (
             <div className="flex items-center gap-2">
+              {/* Leverantörsfakturan hör till sin egen flik. Att visa knappen
+                  bara där håller huvudet läsbart och gör valet mellan de två
+                  bokföringsmetoderna till ett val i ETT sammanhang. */}
+              {view === 'supplier-invoices' && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setNyLeverantorsfaktura(true)}
+                  data-testid="new-supplier-invoice"
+                >
+                  <Wallet size={14} strokeWidth={1.8} />
+                  Ny leverantörsfaktura
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 onClick={() => setNyUtgift(true)}
@@ -259,6 +275,7 @@ export function AccountingPage() {
             { id: 'chart', label: 'Kontoplan' },
             { id: 'journal', label: 'Verifikationer' },
             { id: 'periods', label: 'Perioder' },
+            { id: 'supplier-invoices', label: 'Leverantörsskulder' },
           ] as const
         ).map((v) => (
           <button
@@ -297,6 +314,8 @@ export function AccountingPage() {
           )}
         </div>
       )}
+
+      {view === 'supplier-invoices' && <SupplierInvoicesPanel />}
 
       {view === 'periods' && (
         <>
@@ -435,6 +454,11 @@ export function AccountingPage() {
       <RecordExpenseModal
         open={nyUtgift}
         onClose={() => setNyUtgift(false)}
+        accounts={accounts.data ?? []}
+      />
+      <NewSupplierInvoiceModal
+        open={nyLeverantorsfaktura}
+        onClose={() => setNyLeverantorsfaktura(false)}
         accounts={accounts.data ?? []}
       />
 

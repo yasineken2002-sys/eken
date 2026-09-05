@@ -45,6 +45,15 @@ import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
 import { basChartFor } from './bas-chart'
 import {
+  cancelBlockedReason,
+  paymentSourceId,
+  cancellationSourceId,
+  receiptSourceId,
+} from './supplier-invoice-status'
+import {
+  byggLeverantorsbetalningsrader,
+  byggLeverantorsfakturareverseringsrader,
+  byggLeverantorsfakturarader,
   byggUtgiftsrader,
   byggVerifikatrader,
   kontouppslagAv,
@@ -4072,6 +4081,204 @@ export class AccountingService {
       ...(params.efterSkrivning ? { efterSkrivning: params.efterSkrivning } : {}),
       include: { lines: { include: { account: true } } },
     })
+  }
+
+  // ── LEVERANTÖRSFAKTURA: FAKTURAMETODENS TVÅ VERIFIKAT ─────────────────────
+  //
+  // Båda går genom `createNumberedEntry`, alltså samma chokepunkt som människans
+  // fria verifikat och som AI-vägen sedan #792: balansgrind (C1), org-scopad
+  // idempotensnyckel (C0), gap-fritt nummer, race-återhämtning.
+  //
+  // TVÅ SKILDA sourceId, inte en. Mottagandet och betalningen är två
+  // affärshändelser vid två tidpunkter; en gemensam nyckel hade gjort
+  // betalningen till en idempotensträff på mottagandet — alltså tyst ingen
+  // bokföring alls, och en skuld som aldrig regleras i huvudboken.
+
+  /**
+   * STEG 1 — bokför en MOTTAGEN leverantörsfaktura.
+   *
+   * Kostnad (netto) debet, ingående moms debet, 2440 kredit (brutto). Datumet är
+   * FAKTURADATUM, inte betaldatum: kostnaden hör till den period fakturan avser.
+   */
+  async bookSupplierInvoiceReceipt(params: {
+    organizationId: string
+    invoiceId: string
+    date: Date
+    supplierName: string
+    description: string
+    expenseAccount: number
+    totalAmount: number
+    vatAmount?: number
+    createdById?: string | null
+    attachmentUrl?: string | null
+    /**
+     * Yttre transaktion. Registerraden och verifikatet MÅSTE skrivas atomiskt —
+     * en faktura utan verifikat är en skuld som inte syns i balansräkningen.
+     * Med inskickad `tx` äger anroparen rollbacken, och en idempotenskollision
+     * kastar vidare i stället för att återhämtas; det är rätt här, eftersom
+     * kollisionen då också ska rulla tillbaka registerraden.
+     */
+    tx?: Prisma.TransactionClient
+  }) {
+    const { organizationId, date } = params
+
+    if (Number.isNaN(date.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt fakturadatum.')
+    }
+    if (await isPeriodClosed(this.prisma, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Ändra fakturadatum eller återöppna perioden.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggLeverantorsfakturarader(
+      {
+        belopp: params.totalAmount,
+        ...(params.vatAmount !== undefined ? { moms: params.vatAmount } : {}),
+        kontonummer: params.expenseAccount,
+        beskrivning: params.description,
+      },
+      konton,
+    )
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    const sourceId = receiptSourceId(params.invoiceId)
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: `Leverantörsfaktura: ${params.supplierName} — ${params.description}`,
+      source: 'SUPPLIER_INVOICE',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'SUPPLIER_INVOICE', sourceId },
+      ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
+      ...(params.tx ? { tx: params.tx } : {}),
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * STEG 2 — bokför BETALNINGEN av en leverantörsfaktura.
+   *
+   * 2440 debet, 1930 kredit, BRUTTO på båda. Ingen moms: den drogs av vid
+   * mottagandet, och att röra 2641 igen hade dubblerat avdraget — ett fel som
+   * BALANSERAR och därför inte syns i någon balansgrind.
+   *
+   * Datumet är BETALDATUM. Tillsammans nettar de två stegen 2440 till noll.
+   */
+  async bookSupplierInvoicePayment(params: {
+    organizationId: string
+    invoiceId: string
+    paidDate: Date
+    supplierName: string
+    totalAmount: number
+    createdById?: string | null
+    /** Se `bookSupplierInvoiceReceipt` — samma atomicitetskrav. */
+    tx?: Prisma.TransactionClient
+  }) {
+    const { organizationId, paidDate } = params
+
+    if (Number.isNaN(paidDate.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt betalningsdatum.')
+    }
+    if (await isPeriodClosed(this.prisma, organizationId, paidDate)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(paidDate))} är stängd. Ändra betalningsdatum eller återöppna perioden.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggLeverantorsbetalningsrader(params.totalAmount, konton)
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    const sourceId = paymentSourceId(params.invoiceId)
+    return this.createNumberedEntry({
+      organizationId,
+      date: paidDate,
+      description: `Betald leverantörsfaktura: ${params.supplierName}`,
+      source: 'SUPPLIER_INVOICE',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'SUPPLIER_INVOICE', sourceId },
+      ...(params.tx ? { tx: params.tx } : {}),
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * MAKULERING — vänder mottagningsverifikatet.
+   *
+   * Datumet är DAGEN RÄTTELSEN GÖRS, inte fakturadatumet. En rättelse bokförs
+   * när den upptäcks; att backdatera den till ursprungsdatumet hade ändrat ett
+   * redan avslutat resultat, och i en stängd period hade den inte gått igenom
+   * alls. Är rättelsedagens period stängd faller den här — vilket är rätt svar
+   * och inte ett hinder att gå runt.
+   */
+  async bookSupplierInvoiceCancellation(params: {
+    organizationId: string
+    invoiceId: string
+    date: Date
+    supplierName: string
+    description: string
+    expenseAccount: number
+    totalAmount: number
+    vatAmount?: number
+    createdById?: string | null
+    /** Se `bookSupplierInvoiceReceipt` — samma atomicitetskrav. */
+    tx?: Prisma.TransactionClient
+  }) {
+    const { organizationId, date } = params
+
+    if (Number.isNaN(date.getTime())) {
+      throw new UnprocessableEntityException('Ogiltigt makuleringsdatum.')
+    }
+    if (await isPeriodClosed(this.prisma, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Återöppna perioden för att bokföra makuleringen.`,
+      )
+    }
+
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggLeverantorsfakturareverseringsrader(
+      {
+        belopp: params.totalAmount,
+        ...(params.vatAmount !== undefined ? { moms: params.vatAmount } : {}),
+        kontonummer: params.expenseAccount,
+        beskrivning: params.description,
+      },
+      konton,
+    )
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+
+    const sourceId = cancellationSourceId(params.invoiceId)
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: `Makulerad leverantörsfaktura: ${params.supplierName} — ${params.description}`,
+      source: 'SUPPLIER_INVOICE',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'SUPPLIER_INVOICE', sourceId },
+      ...(params.tx ? { tx: params.tx } : {}),
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * Spärren mot att makulera en BETALD faktura, som en tjänstemetod.
+   *
+   * Ligger här och inte i controllern därför att den är en redovisningsregel:
+   * makulering nollar ingenting i huvudboken, så en "makulerad" betald faktura
+   * hade lämnat både kostnaden och betalningen kvar medan listan påstod att
+   * posten inte finns. Rättelsen är ett motverifikat.
+   */
+  assertMayCancelSupplierInvoice(faktura: { paidAt: Date | null; cancelledAt: Date | null }): void {
+    const skäl = cancelBlockedReason(faktura)
+    if (skäl) throw new UnprocessableEntityException(skäl)
   }
 
   /**

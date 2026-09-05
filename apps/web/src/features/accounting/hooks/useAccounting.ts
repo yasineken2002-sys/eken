@@ -14,6 +14,10 @@ import {
   closeFiscalYear,
   createJournalEntry,
   createExpense,
+  getSupplierInvoices,
+  createSupplierInvoice,
+  paySupplierInvoice,
+  cancelSupplierInvoice,
 } from '../api/accounting.api'
 
 export function useAccounts() {
@@ -196,4 +200,45 @@ export function useCreateJournalEntry() {
 export function useCreateExpense() {
   const invalidera = useInvalideraEfterBokforing()
   return useMutation({ mutationFn: createExpense, onSuccess: invalidera })
+}
+
+// ─── LEVERANTÖRSSKULDER ───────────────────────────────────────────────────────
+
+/**
+ * Nyckelrymden `['accounting','supplier-invoices', status]` — status ingår, så
+ * en filtrerad lista inte skriver över en ofiltrerad i cachen.
+ *
+ * Varje skrivning här bokför ett verifikat, och invaliderar därför BÅDE listan
+ * och det `useInvalideraEfterBokforing` täcker: journalen visar det nya
+ * verifikatet, och periodkontrollerna hittar något de inte hittade förut.
+ */
+export function useSupplierInvoices(status?: 'OPEN' | 'PAID' | 'CANCELLED') {
+  return useQuery({
+    queryKey: ['accounting', 'supplier-invoices', status ?? 'all'],
+    queryFn: () => getSupplierInvoices(status),
+  })
+}
+
+function useInvalideraLeverantorsfakturor() {
+  const qc = useQueryClient()
+  const efterBokforing = useInvalideraEfterBokforing()
+  return () => {
+    efterBokforing()
+    void qc.invalidateQueries({ queryKey: ['accounting', 'supplier-invoices'] })
+  }
+}
+
+export function useCreateSupplierInvoice() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: createSupplierInvoice, onSuccess: invalidera })
+}
+
+export function usePaySupplierInvoice() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: paySupplierInvoice, onSuccess: invalidera })
+}
+
+export function useCancelSupplierInvoice() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: cancelSupplierInvoice, onSuccess: invalidera })
 }

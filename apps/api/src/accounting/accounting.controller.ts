@@ -25,6 +25,9 @@ import { ReverseEntryDto } from './dto/reverse-entry.dto'
 // en typ-import raderar klassen, varpå ValidationPipe tappar all metadata.
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto'
 import { CreateExpenseDto } from './dto/create-expense.dto'
+import { CreateSupplierInvoiceDto, PaySupplierInvoiceDto } from './dto/supplier-invoice.dto'
+import { SupplierInvoiceService } from './supplier-invoice.service'
+import type { SupplierInvoiceStatus } from './supplier-invoice-status'
 import { randomUUID } from 'crypto'
 
 // Validerar ISO-datum (YYYY-MM-DD) från query. Kastar 400 vid saknat/felaktigt
@@ -66,6 +69,7 @@ function optionalUuid(value: string | undefined, field: string): string | undefi
 export class AccountingController {
   constructor(
     private readonly accountingService: AccountingService,
+    private readonly supplierInvoices: SupplierInvoiceService,
     private readonly periods: AccountingPeriodService,
   ) {}
 
@@ -380,6 +384,92 @@ export class AccountingController {
         kontonummer: dto.accountNumber,
         beskrivning,
       },
+    })
+  }
+
+  // ── LEVERANTÖRSSKULD (2440): FAKTURAMETODEN ─────────────────────────────
+  //
+  // "Registrera utgift" (#782) är KONTANTMETODEN — en redan betald utgift i ett
+  // steg mot 1930. Rutterna nedan är fakturametoden: skulden bokas när fakturan
+  // tas emot, och regleras när den betalas.
+  //
+  // Båda verifikaten går genom `createNumberedEntry`, samma chokepunkt som
+  // människans fria verifikat och som AI-vägen sedan #792.
+  //
+  // ROLLERNA: ACCOUNTANT och uppåt, som de övriga bokföringsrutterna.
+
+  @Post('supplier-invoices')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(201)
+  async createSupplierInvoice(
+    @OrgId() organizationId: string,
+    @Body() dto: CreateSupplierInvoiceDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.supplierInvoices.create({
+      organizationId,
+      createdById: user.sub,
+      supplierName: dto.supplierName,
+      ...(dto.invoiceNumber ? { invoiceNumber: dto.invoiceNumber } : {}),
+      description: dto.description,
+      invoiceDate: new Date(dto.invoiceDate),
+      dueDate: new Date(dto.dueDate),
+      expenseAccount: dto.expenseAccount,
+      totalAmount: dto.amount,
+      vatRate: dto.vatRate,
+      vatAmount: dto.vatAmount,
+      ...(dto.attachmentUrl ? { attachmentUrl: dto.attachmentUrl } : {}),
+    })
+  }
+
+  /**
+   * Öppna poster. `status` och `overdue` räknas i tjänsten, inte här och inte i
+   * webben — ett beräknat tillstånd som räknas på tre ställen är tre svar.
+   */
+  @Get('supplier-invoices')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  async listSupplierInvoices(@OrgId() organizationId: string, @Query('status') status?: string) {
+    const giltiga = ['OPEN', 'PAID', 'CANCELLED']
+    return this.supplierInvoices.findAll(
+      organizationId,
+      status && giltiga.includes(status) ? { status: status as SupplierInvoiceStatus } : undefined,
+    )
+  }
+
+  @Post('supplier-invoices/:id/pay')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(200)
+  async paySupplierInvoice(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @Body() dto: PaySupplierInvoiceDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.supplierInvoices.markPaid({
+      organizationId,
+      invoiceId: id,
+      paidDate: new Date(dto.paidDate),
+      createdById: user.sub,
+    })
+  }
+
+  /**
+   * Makulera en OBETALD faktura. Ett motverifikat bokförs som vänder
+   * mottagningen — spärren mot att makulera en BETALD ligger i tjänsten och
+   * inte här, därför att det är en redovisningsregel.
+   */
+  @Post('supplier-invoices/:id/cancel')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(200)
+  async cancelSupplierInvoice(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.supplierInvoices.cancel({
+      organizationId,
+      invoiceId: id,
+      createdById: user.sub,
     })
   }
 
