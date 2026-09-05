@@ -1626,6 +1626,49 @@ jobs:
       - name: History registry guard
         run: node apps/api/scripts/check-history-registry.mjs
 
+  tool-outward-capabilities-guard:
+    name: Tool outward capabilities guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # VAKT 7 i planens Del 10. Vakt 1–6 är NAMNLISTOR: de mäter att ett verktyg
+      # är deklarerat, inte vad det gör. Ett verktyg som i dag bara skriver i
+      # databasen och i morgon får en rad `await this.mailService.sendX(...)`
+      # passerar allihop — namnet är oförändrat, deklarationen är oförändrad, och
+      # det enda som ändrats är att en hyresgäst nu får ett mejl.
+      #
+      # Vakten HÄRLEDER i stället förmågorna ur koden på METODNIVÅ och diffar mot
+      # tool-outward-capabilities.json åt BÅDA hållen. Metodnivån är hela
+      # skillnaden: på tjänstenivå ser 23 av 30 verktyg utåtriktade ut, på
+      # metodnivå är det 9.
+      #
+      # Den fann två verktyg planens egen mätning missade — `transition_lease_status`
+      # och `create_tenant_and_lease` köar ett välkomstmejl via LeaseActivationQueue,
+      # som varken heter `mailService` eller `pdfQueue`.
+      #
+      # FYRA REGLER, alla med kanariefåglar:
+      #   R1 varje injicerad typ är klassad som sänka eller kvitterad som inåt
+      #   R2 manifestet stämmer åt båda hållen (ny sänka OCH borttagen sänka)
+      #   R3 en utåtriktad förmåga måste vara förenlig med EFFECT_DECLARATIONS
+      #      och ha ett ställningstagande i HUMAN_PATHS
+      #   R4 omfånget är inte tomt (case-block, injektioner, sänkmängd)
+      # Plus en VY-kanariefågel: sänkorna är ANROP, så vyn måste vara codeMask.
+      # Med blankComments räknas ett `mailService`-anrop i en STRÄNG som kod, och
+      # provet kräver att de två vyerna ger olika tal.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (rule, scope, R1/R3 and view canaries)
+        run: node apps/api/scripts/check-tool-outward-capabilities.mjs --self-test
+
+      - name: Tool outward capabilities guard
+        run: node apps/api/scripts/check-tool-outward-capabilities.mjs
+
   api-build-artifact-guard:
     name: API build artifact guard
     runs-on: ubuntu-latest
@@ -2086,6 +2129,7 @@ jobs:
       - ai-tool-effects-guard
       - ai-journal-source-guard
       - history-registry-guard
+      - tool-outward-capabilities-guard
       - equipment-chain-guard
       - api-build-artifact-guard
       - append-only-guard

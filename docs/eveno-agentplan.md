@@ -144,7 +144,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `71d2998` — båda halvorna av kriteriet nu mätta; kön saknar producent och utförare |
-| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `dbe12ff` |
+| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `f6b24cf` — katalogen kastar, alla 7 vakterna setts falla; kvar: `agentAllowlist`, `supportsUndo`, `authorityScope` |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
@@ -417,19 +417,71 @@ Vakterna i Del 10, en rad var:
 | 4 | samma identitet ger inte två effekter | 6 `.db.spec.ts` mot riktig Postgres |
 | 5 | historikdomän saknas i registret | `check-history-registry.mjs` |
 | 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) |
-| 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **saknas** — se nedan |
+| 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **byggd** ([#779](https://github.com/yasineken2002-sys/eken/pull/779), `f6b24cf`) — `check-tool-outward-capabilities.mjs` + `tool-outward-capabilities.json` |
 
-Vakt 7 är den planen säger ska byggas FÖRST, och den är den enda som fortfarande
-inte finns. Närmast ligger `check-ai-tool-effects.mjs` R5/R6, men den jämför
-`EFFECT_PRODUCING_TOOLS ∪ effectFree` mot `ACTION_TOOLS` — och de mängderna
-ändras inte när ett *befintligt* verktyg får en ny förmåga. `externalHandle`
-deklareras men **prövas inte mot koden**: noll träffar på fältnamnet i
-`apps/api/scripts/`. Det är alltså en deklaration utan vakt, vilket är precis den
-form planen varnar för.
+**Vakt 7 är byggd** (2026-09-05, mätt mot `f6b24cf`). Stycket nedan beskrev
+tidigare varför den saknades, och analysen stod sig: `check-ai-tool-effects.mjs`
+R5/R6 jämför `EFFECT_PRODUCING_TOOLS ∪ effectFree` mot `ACTION_TOOLS`, och de
+mängderna ändras inte när ett *befintligt* verktyg får en ny förmåga.
+`externalHandle` deklarerades men **prövades inte mot koden** — noll träffar på
+fältnamnet i `apps/api/scripts/`. En deklaration utan vakt.
 
-Vad etapp 5 saknar för att bli KLAR: vakt 7, `agentAllowlist`, `supportsUndo`,
-`authorityScope`, och de sju verktyg som i dag saknar mänsklig väg
-(`apps/api/scripts/tool-human-path.baseline.json`).
+`check-tool-outward-capabilities.mjs` härleder i stället förmågorna ur koden på
+METODNIVÅ och diffar mot ett committat manifest åt BÅDA hållen. Räckvidden:
+
+```
+case-kropp → ett steg via privat hjälpare i exekveraren
+           → den anropade metodens kropp i den klassens egen fil
+             → ett steg via privat hjälpare där
+```
+
+Hoppet över injektionsgränsen behöver ingen typgraf — mottagarens typ står i
+konstruktorn. Gränsen är mätt: ett svep som stannar i exekverarens fil ger 12
+kandidater och missar `send_invoice_email`, vars kö ligger i
+`invoices.service.ts:1611`; att i stället klassa hela `InvoicesService` som sänka
+hade fällt `create_invoice` och `mark_invoice_paid` — tillbaka till tjänstenivåns 23.
+
+**Fyra regler.** R1 kräver att varje typ som injiceras i exekveraren är klassad
+som sänka eller kvitterad som inåtriktad med skäl — det är den regeln som gör att
+sänkordlistan inte kan ruttna, och skälet till att ingen SMS-regel finns (noll
+träffar på `sms|twilio|46elks` i hela `src`; en regel med tom mängd som aldrig kan
+fyra är en kommentar). R2 diffar manifestet åt båda hållen. R3 kräver att en
+utåtriktad förmåga är förenlig med `EFFECT_DECLARATIONS` och har ett
+ställningstagande i `HUMAN_PATHS`. R4 fäller på tom mängd.
+
+> ### ⚠️ VAKTEN FANN TVÅ VERKTYG DEN HÄR PLANENS EGEN MÄTNING MISSADE
+>
+> Mätningen 2026-09-01 gav "fem mot tredje part, sju med extern effekt". **Sju var
+> fel — det är NIO**, och de två som saknades är:
+>
+> | Verktyg | Kedjan | Stod som |
+> |---|---|---|
+> | `transition_lease_status` | `transitionStatus(ACTIVE)` → `dispatchActivationJobs({origin:'manual'})` (`leases.service.ts:1010`) → `enqueueWelcomeMail` (`:766`) → Bull → `lease-activation.worker.ts:59` → Resend-mejl till hyresgästen | `externalHandle: EJ_TILLÄMPLIG` |
+> | `create_tenant_and_lease` | samma kedja | `externalHandle: EJ_TILLÄMPLIG` |
+>
+> `origin: 'manual'` är hårdkodat på den vägen, så mejlet är inte villkorat av
+> något AI:n väljer. Båda är nu rättade till `FÖRE_DISPATCH` — job-id:t är härlett
+> (`welcome-${tenantId}`) och känt före dispatch.
+>
+> **Felet var i metoden, inte i räkningen** — precis som rättelsen 2026-09-01
+> ovan. Den mätningen sökte `mailService` och `pdfQueue`; `LeaseActivationQueue`
+> heter ingendera. En kanalsökning friar fel verktyg, och den fällan har nu slagit
+> till TVÅ gånger i samma dokument. Vakten härleder mottagartypen ur konstruktorn
+> och kan därför inte missa en kö den inte känner namnet på.
+
+**Vad vakten inte kan se**, utskrivet i dess egen fil: anrop två steg bort,
+dynamiska anrop (`this[namn](…)`), och en tjänst som byter beteende utanför
+räckvidden ovan. `MailQueue` räknas därför som sänka i sig, så `MailService` inte
+behöver följas vidare.
+
+Vad etapp 5 saknar för att bli KLAR, ommätt 2026-09-05: **vakt 7 är byggd** och
+alla sju har setts falla. Kvar står tre fält — `agentAllowlist`, `supportsUndo`,
+`authorityScope` — och de sju verktyg som saknar mänsklig väg
+(`apps/api/scripts/tool-human-path.baseline.json`). Inget av de tre fälten är
+struket ur kriteriet, och de är inte pynt: `agentAllowlist` är det som avgör vad
+en agent får göra obevakat, `authorityScope` med vilken rätt, och `supportsUndo`
+per verktyg finns i dag bara som `AiAssignment.undoHint` per uppdrag. Raden är
+därför **DELVIS**, inte KLAR.
 
 **Ordningen härifrån, beslutad 2026-09-04.** Tre saker mätningen fann byggs
 medvetet INTE i samma omgång, och skälet står här så att nästa person inte tar
@@ -1067,7 +1119,8 @@ Varje viktig egenskap har en mekanisk vakt med kanariefågel:
 5. Fäller när en historikproducerande domän saknas i registret.
 6. Fäller på verktyg utan `humanPath`, och på `humanPath` som inte finns.
 7. Fäller när ett **befintligt** verktyg får en ny utåtriktad förmåga — ett nytt verktyg
-   märks, en ny förmåga i ett gammalt gör det inte.
+   märks, en ny förmåga i ett gammalt gör det inte. **BYGGD** (#779):
+   `check-tool-outward-capabilities.mjs`, metodnivå, manifest diffat åt båda hållen.
 
 Minst en ska vara en kommentar-mot-kod-kontroll: kommentaren beskriver
 identitetsprincipen, vakten fäller när implementationen slutar följa den.
