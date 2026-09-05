@@ -3822,11 +3822,16 @@ export class AccountingService {
   // hyresvärden inte kunde bokföra själv. Delmängdsregeln kräver att människan
   // kan minst lika mycket.
   //
-  // De duplicerar INTE verktyget. Konteringen — kontouppslag, momsdelning,
-  // balanskrav — byggs av samma rena funktioner som AI-vägen använder
-  // (`manual-entry.ts`), och skrivningen går ut i samma `createNumberedEntry`
-  // som varje annat verifikat i huset: balansgrind (C1), gap-fritt nummer,
-  // idempotens per `(organizationId, source, sourceId)`.
+  // De duplicerar INTE verktygets kontering: kontouppslag, momsdelning och
+  // balanskrav byggs av samma rena funktioner som AI-vägen använder
+  // (`manual-entry.ts`).
+  //
+  // SKRIVNINGEN är däremot inte delad, och det ska inte läsas fel. De två
+  // metoderna här går ut i `createNumberedEntry` — balansgrind (C1), gap-fritt
+  // nummer, idempotens per `(organizationId, source, sourceId)`. AI-vägen har
+  // sin EGEN transaktion i `tool-executor.service.ts`. En ny spärr som läggs i
+  // `createNumberedEntry` gäller alltså människovägen och inte AI-vägen; att
+  // unifiera dem är ett eget arbete.
   //
   // SKILLNADEN MOT AI-VÄGEN ÄR NAMNRYMDEN, och den är avsiktlig: `source` är
   // 'MANUAL' här och 'AI' där. Idempotensen gäller per namnrymd, så en

@@ -108,15 +108,16 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
       open={open}
       onClose={stang}
       title="Registrera utgift"
-      description="Bokförs som kostnad mot bank. Beloppet anges inklusive moms."
+      description="För en REDAN BETALD utgift. Bokförs som kostnad mot bankkontot, beloppet inklusive moms."
     >
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input
-            label="Datum"
+            label="Betalningsdatum"
             type="date"
             value={datum}
             onChange={(e) => setDatum(e.target.value)}
+            hint="Dagen pengarna lämnade kontot — inte fakturadatumet."
             data-testid="expense-date"
           />
           <Input
@@ -208,6 +209,18 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
             </dl>
           </div>
         )}
+
+        {/* BEGRÄNSNINGEN, utskriven. Verktyget konterar i ETT steg direkt mot
+            1930 — kontantmetoden. En leverantörsfaktura som mottagits men inte
+            betalats ska bokföras i två steg via 2440 Leverantörsskulder, annars
+            saknas skulden i balansräkningen mellan faktura- och betaldatum och
+            kostnaden kan hamna i fel period över ett bokslut. Den vägen finns
+            inte här, och det ska synas i gränssnittet i stället för att
+            upptäckas av en revisor. */}
+        <p className="border-line rounded-xl border bg-gray-50/60 px-4 py-3 text-[12px] text-gray-500">
+          Obetalda leverantörsfakturor hör inte hemma här — de ska bokföras mot leverantörsskuld
+          (2440) i två steg. Den vägen finns ännu inte i Eveno.
+        </p>
 
         <Input
           label="Bilaga (valfri)"

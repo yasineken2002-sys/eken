@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (184 st)
+## 1. HTTP-endpoints med rollgrind (186 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -121,7 +121,9 @@ PATCH /terminations/:id/reject                                  ADMIN, OWNER
 PATCH /units/:id                                                ADMIN, MANAGER, OWNER
 PATCH /users/:id/role                                           OWNER
 POST /accounting/accounts/seed                                  ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /accounting/expenses                                       ACCOUNTANT, ADMIN, OWNER
 POST /accounting/fiscal-years/:year/close                       ADMIN, OWNER
+POST /accounting/journal-entries                                ACCOUNTANT, ADMIN, OWNER
 POST /accounting/journal/:id/reverse                            ACCOUNTANT, ADMIN, OWNER
 POST /accounting/periods/:year/:month/close                     ACCOUNTANT, ADMIN, OWNER
 POST /accounting/periods/:year/:month/reopen                    OWNER

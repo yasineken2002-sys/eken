@@ -24,9 +24,16 @@ import { VAT_RATES } from '@eken/shared'
  * fel summa på banken, vilket varken balansgrinden eller ett radprov kan se.
  *
  * `vatRate` är momsSATSEN ur `VAT_RATES` (@eken/shared) och används för att
- * RÄKNA FRAM momsbeloppet i gränssnittet. Servern tar emot både satsen och
- * beloppet: satsen för spårbarhet, beloppet därför att det är beloppet som
- * konteras och avrundningen ska ske på ETT ställe — hos den som har kvittot.
+ * RÄKNA FRAM momsbeloppet i gränssnittet. Det som KONTERAS är `vatAmount`;
+ * avrundningen ska ske på ett ställe, hos den som har kvittot.
+ *
+ * SATSEN LAGRAS INTE, och det står här för att fältet annars ser ut att göra
+ * mer än det gör: den valideras mot `VAT_RATES` och kastas sedan. Det är en
+ * sanity-check på klientens räkning, inte ett spår. Ingen bokföringsuppgift går
+ * förlorad — satsen är härledbar ur `vatAmount / (amount - vatAmount)` — men
+ * den som söker efter "vilken momssats angavs" hittar den inte som ett fält.
+ * Att skriva in satsen i momsradens text vore billigt, men skulle göra AI-vägens
+ * och människovägens verifikattexter olika: verktyget får bara ett belopp.
  */
 export class CreateExpenseDto {
   @IsISO8601({}, { message: 'Datum måste anges som ÅÅÅÅ-MM-DD' })

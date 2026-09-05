@@ -36,7 +36,23 @@ function makePrisma(latest: { type: string } | null) {
   }
 }
 
-function makeExecutor(prisma: unknown) {
+/**
+ * Kontoplansuppslagningen är SONDEN för "kom förbi periodkontrollen".
+ *
+ * Den låg tidigare som `prisma.account.findMany` rakt i tool-executorn, och
+ * proven nedan mätte just det anropet. När konteringen bröts ut till
+ * `accounting/manual-entry.ts` (delad med människans väg) flyttade uppslaget till
+ * `AccountingService.kontouppslag` — samma fråga, en indirektion bort.
+ *
+ * Sonden pekar därför på tjänsten i stället. INTENTIONEN är oförändrad: den
+ * första sak båda verktygen gör EFTER periodkontrollen är att slå upp
+ * kontoplanen, så ett anrop hit betyder att periodkontrollen släppte igenom.
+ */
+function makeAccounting() {
+  return { kontouppslag: jest.fn().mockResolvedValue(new Map<number, string>()) }
+}
+
+function makeExecutor(prisma: unknown, accounting: unknown) {
   const noop = {} as never
   const audit = {
     logToolExecution: jest.fn().mockResolvedValue(undefined),
@@ -53,7 +69,7 @@ function makeExecutor(prisma: unknown) {
     noop,
     noop,
     noop,
-    noop,
+    accounting as never, // 9 accountingService — bär kontoplansuppslagningen
     noop,
     noop,
     noop,
@@ -73,8 +89,13 @@ function makeExecutor(prisma: unknown) {
 }
 
 async function run(prisma: unknown, tool: string, input: Record<string, unknown>) {
-  const executor = makeExecutor(prisma)
-  return (
+  return (await runMed(prisma, tool, input)).res
+}
+
+async function runMed(prisma: unknown, tool: string, input: Record<string, unknown>) {
+  const accounting = makeAccounting()
+  const executor = makeExecutor(prisma, accounting)
+  const res = await (
     executor as unknown as {
       executeToolUnsafe: (
         name: string,
@@ -85,6 +106,7 @@ async function run(prisma: unknown, tool: string, input: Record<string, unknown>
       ) => Promise<{ success: boolean; message: string }>
     }
   ).executeToolUnsafe(tool, input, 'org-1', 'user-1', 'OWNER')
+  return { res, accounting }
 }
 
 const ENTRY_INPUT = {
@@ -118,10 +140,13 @@ describe('T5 PR1b · AI-lagrets periodbesked delar uppslagning med spärren', ()
 
     it('aldrig stängd period → släpps förbi periodkontrollen', async () => {
       const { prisma } = makePrisma(null)
-      const res = await run(prisma, 'create_journal_entry', ENTRY_INPUT)
+      const { res, accounting } = await runMed(prisma, 'create_journal_entry', ENTRY_INPUT)
 
       expect(res.message).not.toMatch(/stängd/)
-      expect(prisma.account.findMany).toHaveBeenCalled()
+      // Sonden: kontoplansuppslagningen är det första som händer EFTER
+      // periodkontrollen. Den ligger numera i AccountingService (delad med
+      // människans väg) i stället för som ett rått prisma-anrop här.
+      expect(accounting.kontouppslag).toHaveBeenCalled()
     })
 
     it('senaste händelsen REOPENED → släpps förbi (perioden ÄR öppen)', async () => {
@@ -157,10 +182,13 @@ describe('T5 PR1b · AI-lagrets periodbesked delar uppslagning med spärren', ()
 
     it('aldrig stängd period → släpps förbi periodkontrollen', async () => {
       const { prisma } = makePrisma(null)
-      const res = await run(prisma, 'record_expense', EXPENSE_INPUT)
+      const { res, accounting } = await runMed(prisma, 'record_expense', EXPENSE_INPUT)
 
       expect(res.message).not.toMatch(/stängd/)
-      expect(prisma.account.findMany).toHaveBeenCalled()
+      // Sonden: kontoplansuppslagningen är det första som händer EFTER
+      // periodkontrollen. Den ligger numera i AccountingService (delad med
+      // människans väg) i stället för som ett rått prisma-anrop här.
+      expect(accounting.kontouppslag).toHaveBeenCalled()
     })
   })
 

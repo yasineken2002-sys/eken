@@ -25,8 +25,10 @@ import { Transform, Type } from 'class-transformer'
  *
  * VALIDERINGEN HÄR ÄR BEKVÄMLIGHET, INTE SKYDDET. Balanskravet, kontouppslaget
  * och periodspärren sitter i `AccountingService.createManualJournalEntry` och i
- * `createNumberedEntry` — chokepunkten som varje verifikat i huset passerar.
- * Det som står här ger bara ett snabbare och tydligare fel för det uppenbara.
+ * `createNumberedEntry`. Den senare är chokepunkten för alla verifikat som
+ * skrivs GENOM AccountingService — AI-verktygen har en egen skrivtransaktion, se
+ * `manual-entry.ts`. Det som står här ger bara ett snabbare och tydligare fel
+ * för det uppenbara.
  */
 export class JournalLineDto {
   @IsInt({ message: 'Kontonummer måste vara ett heltal' })

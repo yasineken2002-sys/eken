@@ -131,10 +131,12 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   close_period: { rutt: '/accounting', atgard: 'Stäng period' },
   // De två nedan stod i baslinjen som FYND fram till 2026-09-05: controllern
   // hade 17 rutter och ingen av dem skapade ett verifikat, så AI:n kunde bokföra
-  // något hyresvärden inte kunde bokföra själv. Vägen är nu byggd — och den är
-  // inte en andra implementation: konteringen byggs av samma rena funktioner
-  // (`accounting/manual-entry.ts`) och skrivs genom samma `createNumberedEntry`
-  // som verktyget använder.
+  // något hyresvärden inte kunde bokföra själv. Vägen är nu byggd, och
+  // KONTERINGEN är inte en andra implementation: den byggs av samma rena
+  // funktioner (`accounting/manual-entry.ts`) som verktyget använder.
+  // SKRIVNINGEN är däremot fortfarande två vägar — människan genom
+  // `createNumberedEntry`, AI:n i sin egen transaktion. Gränsen står utskriven
+  // i manual-entry.ts och är inte den här ändringens ärende.
   create_journal_entry: { rutt: '/accounting', atgard: 'Ny verifikation' },
   record_expense: { rutt: '/accounting', atgard: 'Registrera utgift' },
 

@@ -18,9 +18,27 @@
  * Funktionerna här är därför RENA: de tar kontoplanen som en uppslagning och
  * returnerar antingen rader eller ett fel. Både `AccountingService`
  * (människovägen) och `ToolExecutorService` (AI-vägen) bygger sina rader genom
- * dem. Skrivningen delas också — båda går ut i `createNumberedEntry`, som äger
+ * dem.
+ *
+ * ── KONTERINGEN ÄR DELAD. SKRIVNINGEN ÄR DET INTE. ──────────────────────────
+ *
+ * Det här är en gräns som är lätt att läsa fel, så den står utskriven:
+ *
+ *     kontering (konton, moms, balans)   DELAD — de här funktionerna
+ *     skrivning (nummer, idempotens)     TVÅ VÄGAR, ännu
+ *
+ * Människovägen går ut i `AccountingService.createNumberedEntry`, som äger
  * balansgrinden (C1), det gap-fria numret och idempotensen per
- * `(organizationId, source, sourceId)`.
+ * `(organizationId, source, sourceId)`. AI-vägen har sin EGEN `$transaction` i
+ * `tool-executor.service.ts` med eget `verifikationsnummer.allocate`, eget
+ * `journalEntry.create` och eget idempotensuppslag — den rördes inte av den här
+ * ändringen utöver att radbygget byttes ut.
+ *
+ * Det spelar roll för nästa person som lägger en spärr i `createNumberedEntry`
+ * och tror sig ha skyddat båda vägarna. Balanskravet är i dag täckt åt båda
+ * hållen (AI via `byggVerifikatrader` här, människan via samma funktion PLUS
+ * C1-grinden), men en NY spärr i `createNumberedEntry` skulle bara gälla den
+ * ena. Att unifiera skrivvägen är ett eget arbete och inte den här ändringen.
  *
  * ── VAD SOM MEDVETET INTE DELAS ─────────────────────────────────────────────
  *

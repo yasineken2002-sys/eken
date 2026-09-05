@@ -14,6 +14,7 @@ import {
   KONTO_BANK,
   KONTO_INGAENDE_MOMS,
 } from './manual-entry'
+import { AccountingService } from './accounting.service'
 
 const KONTON = new Map<number, string>([
   [1930, 'id-1930'],
@@ -206,5 +207,84 @@ describe('byggUtgiftsrader — momsen bryts UT ur bruttot', () => {
       utanMoms,
     )
     expect(r.ok).toBe(false)
+  })
+})
+
+/**
+ * BILAGAN GENOM TJÄNSTEN, inte bara genom kolumnen.
+ *
+ * `manual-entry.db.spec.ts` bevisar att kolumnen finns och rundtrippar mot
+ * riktig Postgres — men den skriver raden med rå Prisma. Det kan inte se att
+ * `createManualJournalEntry` FÖR VIDARE fältet, och det var exakt den defekten
+ * som fanns här innan: DTO:n tog emot `attachmentUrl`, tjänsten hade det i sin
+ * signatur, och ingen skrev det. Bilagegränssnittet lovade sju års arkivering
+ * (BFL 7 kap) och höll det inte.
+ *
+ * Provet nedan går genom tjänstemetoden med en attrapp-Prisma och läser vad som
+ * faktiskt hamnade i `journalEntry.create`. Formen är lånad från
+ * `accounting.balance-guard.spec.ts`, som prövar C1-grinden på samma sätt.
+ */
+describe('createManualJournalEntry — bilagan når journalEntry.create', () => {
+  function makeService(): {
+    service: AccountingService
+    skapadeMed: () => Record<string, unknown> | null
+  } {
+    let sista: { data: Record<string, unknown> } | null = null
+    const prisma = {
+      journalEntry: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation((arg: { data: Record<string, unknown> }) => {
+          sista = arg
+          return Promise.resolve({ id: 'je-1', ...arg.data })
+        }),
+      },
+      account: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'id-1930', number: 1930 },
+          { id: 'id-3011', number: 3011 },
+        ]),
+      },
+      accountingPeriodEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma)),
+    }
+    const verifikationsnummer = {
+      allocate: jest.fn().mockResolvedValue({ series: 'V', verNumber: 1, fiscalYear: 2026 }),
+    }
+    const service = new AccountingService(prisma as never, verifikationsnummer as never)
+    return { service, skapadeMed: () => sista?.data ?? null }
+  }
+
+  it('attachmentUrl skrivs igenom när den finns', async () => {
+    const { service, skapadeMed } = makeService()
+    await service.createManualJournalEntry({
+      organizationId: 'org-1',
+      date: new Date('2026-09-05'),
+      description: 'Med kvitto',
+      lines: [
+        { accountNumber: 1930, debit: 100 },
+        { accountNumber: 3011, credit: 100 },
+      ],
+      idempotencyKey: 'nyckel-1',
+      attachmentUrl: 'https://exempel.test/kvitto.pdf',
+    })
+    expect(skapadeMed()?.['attachmentUrl']).toBe('https://exempel.test/kvitto.pdf')
+  })
+
+  it('MOTPROV: utan bilaga skrivs ingen tom sträng — fältet utelämnas', async () => {
+    // Utan den här raden kan provet ovan vara grönt av att fältet alltid sätts,
+    // och en tom sträng i kolumnen ser ut som en bilaga som inte går att öppna.
+    const { service, skapadeMed } = makeService()
+    await service.createManualJournalEntry({
+      organizationId: 'org-1',
+      date: new Date('2026-09-05'),
+      description: 'Utan kvitto',
+      lines: [
+        { accountNumber: 1930, debit: 100 },
+        { accountNumber: 3011, credit: 100 },
+      ],
+      idempotencyKey: 'nyckel-2',
+    })
+    expect(skapadeMed()).not.toHaveProperty('attachmentUrl')
   })
 })

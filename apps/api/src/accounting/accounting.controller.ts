@@ -310,9 +310,10 @@ export class AccountingController {
   // `journal/:id/reverse` — så AI:n kunde bokföra en verifikation hyresvärden
   // inte kunde bokföra själv.
   //
-  // De anropar SAMMA tjänst som verktyget skriver genom, inte en parallell
-  // implementation: konteringen byggs av de rena funktionerna i
-  // `manual-entry.ts` och skrivningen går ut i `createNumberedEntry`.
+  // Konteringen är inte en parallell implementation: den byggs av de rena
+  // funktionerna i `manual-entry.ts`, samma som AI-verktyget använder.
+  // Skrivningen går ut i `createNumberedEntry`; AI-vägen har sin egen
+  // transaktion, och den skillnaden står utskriven i manual-entry.ts.
   //
   // ROLLERNA: ACCOUNTANT och uppåt, alltså klassnivåns mängd minus MANAGER. Att
   // bokföra ett fritt verifikat är en redovisningshandling, inte en
