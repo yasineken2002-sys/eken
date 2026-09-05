@@ -648,6 +648,12 @@ model Organization {
 
   morningReportEnabled Boolean @default(false)
 
+  /// SKUGGAGENTEN PÅ FELANMÄLAN (etapp 6). Default AV, och per organisation —
+  /// skuggläget ska kunna slås på för EN kund i taget och stängas av utan en
+  /// deploy. En global flagga hade gjort det till ett allt-eller-inget-beslut,
+  /// och det är inte så man prövar en agent mot verkliga fall.
+  shadowAgentEnabled Boolean @default(false)
+
   // Intern kontrollgräns (COSO) för PDF-bankavstämning: rader vars belopp
   // överstiger detta avvisas och loggas vid AI-tolkning/confirm (flagga, ej
   // hårt stopp av importen). Default 5 MSEK — en enskild hyresinbetalning
@@ -1999,7 +2005,7 @@ model JournalEntry {
   // trodde var sparad hade tyst försvunnit, vilket är värre än ett fält som
   // inte finns. Ett handtag som inte sparas är förlorat för alltid; en frågeväg
   // går att bygga när som helst.
-  attachmentUrl  String?
+  attachmentUrl String?
 
   // ── AI-ursprung (#494 beslut 4) ───────────────────────────────────────────
   // Mjuk referens till `AiToolExecution.id` — MEDVETET utan främmande nyckel.
@@ -3714,6 +3720,60 @@ model AiAssignment {
   /// som `JournalEntry.aiToolExecutionId`.
   aiToolExecutionId String?
 
+  /// ── SKUGGLÄGET (etapp 6) ──────────────────────────────────────────────────
+  ///
+  /// `shadow: true` betyder att uppdraget är ett FÖRSLAG som aldrig utförs —
+  /// inte ens vid godkännande. Godkännandet är ett FACIT: hyresvärden säger om
+  /// agenten föreslog rätt, och det svaret är det enda som mäts.
+  ///
+  /// Planens Del 14 säger att skuggläget ska låta agenten "läsa, resonera, välja
+  /// verktyg, simulera — men varje skrivande åtgärd kräver godkännande". I den
+  /// här etappen är den grinden trivialt uppfylld: det finns ingen utförare
+  /// (etapp 8–9), så ingenting KAN skrivas. Att skriva ut det är inte pedanteri
+  /// — läsytan måste säga det rakt ut, annars godkänner hyresvärden något i tron
+  /// att det händer.
+  shadow Boolean @default(false)
+
+  /// AGENTENS EGEN SÄKERHET, 0–1. Nullbar därför att den är ett påstående
+  /// modellen gör om sig själv, och en modell som inte svarat på frågan ska
+  /// sakna värde i stället för att få 0 — "vet inte" och "helt osäker" är olika
+  /// saker, och bara det ena är ett fel.
+  confidence Float?
+
+  /// ── VAD FÖRSLAGET PRODUCERADES UR ─────────────────────────────────────────
+  ///
+  /// `sourceKind` + `sourceId` pekar på domänposten skuggkörningen läste, t.ex.
+  /// `('MAINTENANCE_TICKET', <ticketId>)`. Två skäl, och båda bär:
+  ///
+  ///   1. IDEMPOTENS. Migrationen lägger ett PARTIELLT unikt index över
+  ///      (organizationId, sourceKind, sourceId) WHERE shadow — så två samtidiga
+  ///      jobb ger EN rad av DATABASEN, inte av en kontroll som kan förlora en
+  ///      kapplöpning. Partiellt, därför att ett skarpt uppdrag mycket väl kan
+  ///      produceras flera gånger ur samma källa.
+  ///   2. FACIT. När ärendet avslutas ska utfallet skrivas bredvid förslaget,
+  ///      och utan pekaren finns ingen väg tillbaka till rätt rad.
+  ///
+  /// Ingen FK: källan är polymorf, och en FK per tänkbar källmodell hade varit
+  /// en kolumn per domän. Samma skäl som `AiToolEffect.entityId`.
+  sourceKind String?
+  sourceId   String?
+
+  /// ── FÖRSLAGET OCH FACIT, SAMMA NYCKLAR ────────────────────────────────────
+  ///
+  /// `prediction` är vad agenten trodde, `outcome` vad som faktiskt blev.
+  /// Nycklarna deklareras på ETT ställe (`SKUGGFÄLT` i
+  /// `ai/shadow/shadow-fields.ts`), och träffgraden BERÄKNAS ur de två — den
+  /// lagras aldrig. Samma hållning som "skuld är ett beräknat tillstånd": en
+  /// lagrad procent hade kunnat glida isär från de rader den påstod sig
+  /// sammanfatta, och den avvikelsen hade varit osynlig.
+  ///
+  /// `outcome` är NULL tills en människa avslutat ärendet. NULL betyder alltså
+  /// "facit finns inte än" och räknas varken som träff eller miss — den
+  /// skillnaden är hela poängen med att nämnaren är antalet BESVARADE fall.
+  prediction Json?
+  outcome    Json?
+  outcomeAt  DateTime?
+
   /// ── UPPDRAGETS OMFÅNG — VAD DET HANDLAR OM ────────────────────────────────
   ///
   /// Tre nullbara FK:er, satta VID SKAPANDET ur det producenten redan vet. De
@@ -3786,6 +3846,10 @@ model AiAssignment {
   @@index([organizationId, tenantId])
   @@index([organizationId, unitId])
   @@index([organizationId, propertyId])
+  /// Skuggläsytans fråga: organisationens förslag, nyast först.
+  @@index([organizationId, shadow, createdAt])
+  /// Facitskrivningens fråga: hitta förslaget som hör till en domänpost.
+  @@index([organizationId, sourceKind, sourceId])
 }
 
 /// ── VARFÖR BARA FYRA VÄRDEN ────────────────────────────────────────────────
