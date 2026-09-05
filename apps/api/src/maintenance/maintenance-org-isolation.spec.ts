@@ -42,6 +42,11 @@ function make() {
       // transaktionen — köandet ligger efter och nås aldrig.
       enqueue: async () => 'x',
     } as never,
+    {
+      // Skuggfacit (etapp 6 PR 3). Attrappen räcker: `update` med COMPLETED nås
+      // inte i det här provet.
+      skrivFacitForArende: async () => 0,
+    } as never,
   )
   return { service, prisma }
 }

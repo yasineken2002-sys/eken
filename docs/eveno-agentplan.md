@@ -143,9 +143,9 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **KLAR** (7/7) #786, mätt på `b02fc79` — alla sju mot Postgres; defekten prov 6 blottade är lagad och frågan ställs nu över samtliga 30 `ACTION_TOOLS` |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
-| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#790](https://github.com/yasineken2002-sys/eken/pull/790), skuggläget). Kvar: **utföraren**, etapp 8–9 |
+| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `e6401d6` — kriteriet mätt, kön har producent, läsyta och facit. Enda resten: **utföraren**, etapp 8–9 |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
-| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `fa680cf` — producent ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och inkorg ([#794](https://github.com/yasineken2002-sys/eken/pull/794)) finns; **inte prövat i verkliga fall** — flaggan är av för varje organisation |
+| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#795](https://github.com/yasineken2002-sys/eken/pull/795)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
@@ -1564,6 +1564,17 @@ ingenting ENS vid godkännande, eftersom utföraren inte finns (etapp 8–9). De
 är förenliga bara av det skälet — inte för att beslutet betyder något annat — och
 bekräftelserutan säger det rakt ut. Utan den texten godkänner hyresvärden något i
 tron att det händer, och den missuppfattningen är värre än ett dåligt förslag.
+
+**Facit skrivs när ärendet avslutas** ([#795](https://github.com/yasineken2002-sys/eken/pull/795)): `outcome` får de fält
+`prediction` har, i samma söm-familj som skapandet — efter transaktionen,
+fire-and-forget, med sväljd fångst. Skrivningen är IDEMPOTENT (`updateMany` med
+hela objektet som värde), så ett ärende som avslutas två gånger ger samma facit.
+
+> **Vad mätningen inte kan se, och det är den enda kända vägen till ett för högt
+> tal:** om människan ändrade kategori BARA för att agenten föreslog det är facit
+> agentens eget förslag i retur, och träffgraden mäter påverkan i stället för
+> riktighet. Det går inte att avgöra ur databasen. Det står i
+> `shadow-outcome.service.ts`.
 
 **Träffgraden är en FRÅGA, aldrig en lagrad procent** (`prediction` mot `outcome`,
 per fält). Nämnaren är rader med FACIT — ett förslag som ingen ännu avslutat
