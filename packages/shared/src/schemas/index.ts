@@ -565,6 +565,14 @@ export type PaySupplierInvoiceInput = z.infer<typeof PaySupplierInvoiceSchema>
 // ett belopp som bokförs på fel sätt — därför delade scheman, samma mönster som
 // bokföringen (se ./contract.ts).
 
+/**
+ * ETT ISO-DATUM SÅ SOM `@IsDateString()` DEFINIERAR DET — datum eller
+ * tidsstämpel med valfri offset. Finns som egen symbol för att nästa fält som
+ * ska spegla den dekoratorn inte ska behöva mäta om vilken Zod-form som
+ * motsvarar den.
+ */
+export const IsoDatumSchema = z.union([z.string().date(), z.string().datetime({ offset: true })])
+
 export const RegisterPaymentSchema = z.object({
   /** Inbetalt belopp i kronor. Grindas mot restskulden server-side. */
   amount: z.number().positive('Beloppet måste vara större än noll'),
@@ -580,8 +588,19 @@ export const RegisterPaymentSchema = z.object({
   paymentMethod: z.string().optional(),
   /** OCR eller annan referens. Utelämnad faller servern tillbaka på OCR-numret. */
   reference: z.string().optional(),
-  /** Betalningsdatum (ISO). Utelämnat: nu. */
-  paidAt: z.string().optional(),
+  /**
+   * Betalningsdatum. Utelämnat: nu.
+   *
+   * UNIONEN ÄR MÄTT, inte vald på känsla. DTO:n har `@IsDateString()`, och den
+   * accepterar BÅDE `2026-09-01` och `2026-09-01T10:30:00+02:00`. Ett enkelt
+   * `z.string().datetime()` hade avvisat den första — alltså en glidning åt
+   * andra hållet, där webben stoppar något servern gärna tar emot. Uppmätt över
+   * sex former; unionen och `@IsDateString()` ger samma svar på alla sex.
+   *
+   * Ett blankt `z.string()` hade å andra sidan inte validerat något alls, vilket
+   * var läget innan granskningen.
+   */
+  paidAt: IsoDatumSchema.optional(),
 })
 
 export const CreditNoteLineSchema = z.object({

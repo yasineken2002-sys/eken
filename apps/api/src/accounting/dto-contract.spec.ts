@@ -38,7 +38,8 @@ import {
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto'
 import { CreateExpenseDto } from './dto/create-expense.dto'
 import { CreateSupplierInvoiceDto } from './dto/supplier-invoice.dto'
-import { CreateMeterSchema } from '@eken/shared'
+import { CreateMeterSchema, RegisterPaymentSchema } from '@eken/shared'
+import { RegisterPaymentDto } from '../invoices/dto/register-payment.dto'
 import { CreateMeterDto } from '../consumption/dto/create-meter.dto'
 import { KONTRAKTSREGISTER } from '../common/contract/schema-dto-registry'
 import type { ZodType } from 'zod'
@@ -303,5 +304,93 @@ describe('känd avvikelse: uuid-strikthet', () => {
     }
     expect(schematGodtar(CreateMeterSchema, kropp)).toBe(true)
     expect(await pipenGodtar(CreateMeterDto, kropp)).toBe(true)
+  })
+})
+
+/**
+ * DATUMFORMATEN — de två beskrivningarna måste godta SAMMA former.
+ *
+ * `@IsDateString()` accepterar både `2026-09-01` och en full tidsstämpel med
+ * offset. Ett `z.string().datetime()` hade avvisat den första, alltså stoppat
+ * något servern gärna tar emot; ett blankt `z.string()` hade inte validerat
+ * något alls. Uppräkningen nedan är de former som faktiskt förekommer, och den
+ * fäller åt båda hållen.
+ */
+describe('paidAt — datumformat i paritet', () => {
+  const bas = { amount: 1250, paymentMethod: 'Bankgiro' }
+  const godtagna = [
+    '2026-09-01',
+    '2026-09-01T10:30:00Z',
+    '2026-09-01T10:30:00.000Z',
+    '2026-09-01T10:30:00+02:00',
+  ]
+
+  it.each(godtagna)('%s godtas av BÅDA', async (paidAt) => {
+    const kropp = { ...bas, paidAt }
+    const zod = schematGodtar(RegisterPaymentSchema, kropp)
+    const dto = await pipenGodtar(RegisterPaymentDto, kropp)
+    expect({ paidAt, zod, dto }).toEqual({ paidAt, zod: true, dto: true })
+  })
+
+  it.each(['i går', '2026-13-45', ''])('%s avvisas av BÅDA', async (paidAt) => {
+    const kropp = { ...bas, paidAt }
+    const zod = schematGodtar(RegisterPaymentSchema, kropp)
+    const dto = await pipenGodtar(RegisterPaymentDto, kropp)
+    expect({ paidAt, zod, dto }).toEqual({ paidAt, zod: false, dto: false })
+  })
+})
+
+/**
+ * KÄND AVVIKELSE 2 — dokumenterad, inte gömd: `.date()` mot `@IsISO8601()`.
+ *
+ * Registrets DTO:er har TOLV datumfält med `@IsISO8601()`/`@IsDateString()`.
+ * ELVA av dem är parade med `z.string().date()` i schemat, som bara godtar
+ * ÅÅÅÅ-MM-DD. Dekoratorn godtar dessutom en full tidsstämpel. Schemat är alltså
+ * STRÄNGARE än servern på elva fält:
+ *
+ *   create-journal-entry.date · create-expense.date
+ *   supplier-invoice.invoiceDate · .dueDate · .paidDate
+ *   create-meter.installedAt · update-meter.removedAt
+ *   record-reading.readingDate · .periodStart · .periodEnd
+ *   create-tariff.validFrom
+ *
+ * (Det tolfte, `register-payment.paidAt`, använder `IsoDatumSchema` och är i
+ * paritet — se provet ovan.)
+ *
+ * PRAKTISK BETYDELSE: noll i dag. Fälten fylls av `<input type="date">`, som
+ * inte kan producera en tidsstämpel. Riktningen är dessutom den ofarliga —
+ * webben stoppar något servern hade tagit emot, inte tvärtom.
+ *
+ * INTE LAGAD HÄR, och skälet är att båda vägarna har en avvägning:
+ * att lossa schemat bryter `dueDate < invoiceDate`, som jämför strängar
+ * lexikalt och slutar gälla om den ena bär tid; att strama åt DTO:n avvisar
+ * kroppar API:t godtar i dag. Det är ett eget beslut, inte en följdändring i en
+ * PR om fakturor.
+ *
+ * Provet står här så att avvikelsen är MÄTT och blir röd den dag någon ändrar
+ * någondera sidan utan att ändra den andra.
+ */
+describe('känd avvikelse: .date() är strängare än @IsISO8601()', () => {
+  const tidsstampel = '2026-09-01T10:30:00Z'
+
+  it('schemat avvisar en tidsstämpel som DTO:n godtar', async () => {
+    const kropp = {
+      date: tidsstampel,
+      description: 'Reparation trapphus',
+      amount: 1250,
+      accountNumber: 5070,
+    }
+    expect(schematGodtar(CreateExpenseSchema, kropp)).toBe(false)
+    expect(await pipenGodtar(CreateExpenseDto, kropp)).toBe(true)
+  })
+
+  it('ett datum utan tid godtas av båda — avvikelsen gäller bara tidsstämpeln', () => {
+    const kropp = {
+      date: '2026-09-01',
+      description: 'Reparation trapphus',
+      amount: 1250,
+      accountNumber: 5070,
+    }
+    expect(schematGodtar(CreateExpenseSchema, kropp)).toBe(true)
   })
 })

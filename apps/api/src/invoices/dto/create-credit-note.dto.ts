@@ -1,4 +1,4 @@
-import type { CreateCreditNoteInput, SammaNycklar } from '@eken/shared'
+import type { CreateCreditNoteInput, CreditNoteLineInput, SammaNycklar } from '@eken/shared'
 import { IsArray, IsNumber, IsOptional, IsString, IsUUID, MinLength, Min } from 'class-validator'
 import { ArrayMinSize, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
@@ -68,3 +68,12 @@ export class CreateCreditNoteDto implements CreateCreditNoteInput {
  */
 const _kontraktKreditnota: SammaNycklar<CreateCreditNoteDto, CreateCreditNoteInput> = true
 void _kontraktKreditnota
+
+/**
+ * OCH RADTYPEN. Paritet på toppnivån räcker inte: `lines` är en NÄSTLAD typ, och
+ * ett fält som läggs till på `CreditNoteLineSchema` men glöms i
+ * `CreditNoteLineDto` syns inte i toppnivåns nyckelmängd. Hålet satt i precis
+ * den mekanism den här serien infört — funnet av granskningen, inte av ett prov.
+ */
+const _kontraktKreditnotaRad: SammaNycklar<CreditNoteLineDto, CreditNoteLineInput> = true
+void _kontraktKreditnotaRad
