@@ -262,3 +262,61 @@ export interface SkapaUtgiftInput {
 
 export const createExpense = (input: SkapaUtgiftInput): Promise<JournalEntry> =>
   post<JournalEntry>('/accounting/expenses', input)
+
+// ─── LEVERANTÖRSSKULDER (2440) ────────────────────────────────────────────────
+
+/**
+ * En leverantörsfaktura som den ser ut UTÅT.
+ *
+ * `status` och `overdue` finns INTE som kolumner — servern räknar fram dem ur
+ * `paidAt`/`cancelledAt` och dagens datum (`supplier-invoice-status.ts`). Att
+ * typen ändå bär dem är avsiktligt: det är svarets form, och alternativet vore
+ * att varje yta räknade om samma sak ur råfälten och kunde räkna olika.
+ */
+export interface SupplierInvoice {
+  id: string
+  supplierName: string
+  invoiceNumber?: string | null
+  description: string
+  invoiceDate: string
+  dueDate: string
+  expenseAccount: number
+  netAmount: number
+  vatRate: number
+  vatAmount: number
+  totalAmount: number
+  paidAt?: string | null
+  cancelledAt?: string | null
+  status: 'OPEN' | 'PAID' | 'CANCELLED'
+  overdue: boolean
+  createdAt: string
+}
+
+export interface SkapaLeverantorsfakturaInput {
+  supplierName: string
+  invoiceNumber?: string
+  description: string
+  invoiceDate: string
+  dueDate: string
+  expenseAccount: number
+  /** BRUTTO — det som står på fakturan. Momsen bryts UT ur det, inte till. */
+  amount: number
+  vatRate?: number
+  /** Avstämning mot serverns egen uträkning — se modalens kommentar. */
+  vatAmount?: number
+  attachmentUrl?: string
+}
+
+export const getSupplierInvoices = (status?: 'OPEN' | 'PAID' | 'CANCELLED') =>
+  get<SupplierInvoice[]>(`/accounting/supplier-invoices${status ? `?status=${status}` : ''}`)
+
+export const createSupplierInvoice = (input: SkapaLeverantorsfakturaInput) =>
+  post<SupplierInvoice>('/accounting/supplier-invoices', input)
+
+export const paySupplierInvoice = (input: { id: string; paidDate: string }) =>
+  post<SupplierInvoice>(`/accounting/supplier-invoices/${input.id}/pay`, {
+    paidDate: input.paidDate,
+  })
+
+export const cancelSupplierInvoice = (input: { id: string }) =>
+  post<SupplierInvoice>(`/accounting/supplier-invoices/${input.id}/cancel`, {})

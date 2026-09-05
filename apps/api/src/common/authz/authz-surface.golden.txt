@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (194 st)
+## 1. HTTP-endpoints med rollgrind (198 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -50,6 +50,7 @@ GET /accounting/reports/balance-sheet                           ACCOUNTANT, ADMI
 GET /accounting/reports/profit-loss                             ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/reports/sie4                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/reports/vat                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/supplier-invoices                               ACCOUNTANT, ADMIN, OWNER
 GET /ai-usage/current                                           ACCOUNTANT, ADMIN, OWNER
 GET /ai-usage/history                                           ACCOUNTANT, ADMIN, OWNER
 GET /ai/analysis                                                ACCOUNTANT, ADMIN, MANAGER, OWNER
@@ -131,6 +132,9 @@ POST /accounting/journal-entries                                ACCOUNTANT, ADMI
 POST /accounting/journal/:id/reverse                            ACCOUNTANT, ADMIN, OWNER
 POST /accounting/periods/:year/:month/close                     ACCOUNTANT, ADMIN, OWNER
 POST /accounting/periods/:year/:month/reopen                    OWNER
+POST /accounting/supplier-invoices/:id/cancel                   ACCOUNTANT, ADMIN, OWNER
+POST /accounting/supplier-invoices/:id/pay                      ACCOUNTANT, ADMIN, OWNER
+POST /accounting/supplier-invoices                              ACCOUNTANT, ADMIN, OWNER
 POST /ai-usage/buy-credits                                      ADMIN, OWNER
 POST /ai/attachments                                            ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /ai/chat                                                   ACCOUNTANT, ADMIN, MANAGER, OWNER

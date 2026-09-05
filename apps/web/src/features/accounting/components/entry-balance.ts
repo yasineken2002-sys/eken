@@ -19,6 +19,8 @@
  * hade gjort knappen klickbar för något servern avvisar.
  */
 
+import { vatFromGross } from '@eken/shared'
+
 /**
  * Balansen jämförs i HELA ÖREN, precis som servern. En tolerans hade gjort
  * knappen klickbar för en obalans backend avvisar — och flyttalsbruset gör en
@@ -135,6 +137,8 @@ export function verifikatFel(
  * felet är osynligt i ett verifikat som ändå balanserar.
  */
 export function momsAvBrutto(belopp: number, satsProcent: number): number {
-  if (!(belopp > 0) || !(satsProcent > 0)) return 0
-  return Math.round(((belopp * satsProcent) / (100 + satsProcent)) * 100) / 100
+  // EN implementation, i @eken/shared. API:t räknar samma sak när det tar emot
+  // en leverantörsfaktura, och två kopior av avrundningen hade kunnat ge två
+  // svar på samma faktura — förhandsvisningen ett, verifikatet ett annat.
+  return vatFromGross(belopp, satsProcent)
 }
