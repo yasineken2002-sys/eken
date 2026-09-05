@@ -86,16 +86,15 @@ describe('?psd2= — kvittensen efter bankens SCA', () => {
  * utdatan och inte hittar några är oskiljbart från ett prov som letar på fel
  * ställe. Därför prövas letmetoden först mot ett värde som SKA finnas där.
  *
- * VAD PROVET INTE KAN SE:
+ * MÄNGDEN ÄR NUMERA EN. `SAFE_BANK_CONSENT_FIELDS` kommer från `@eken/shared`,
+ * och backends `SAFE_BANK_CONSENT_SELECT` byggs ur samma lista. Här stod
+ * tidigare att de var två uppräkningar i två paket som ingen vakt band ihop —
+ * det gäller inte längre, och partitionsprovet i `psd2-consent-leak.spec.ts`
+ * kräver dessutom att varje kolumn på modellen står i exakt en av två mängder.
  *
- *  1. Att `SAFE_BANK_CONSENT_FIELDS` här och `SAFE_BANK_CONSENT_SELECT` i
- *     backend är samma mängd. De är två uppräkningar i två paket, och ingen
- *     vakt binder ihop dem i dag. Det som faktiskt skyddar är backend-selecten
- *     — den avgör vad som lämnar servern; listan här är en spegling som gör
- *     avsikten läsbar.
- *  2. Att komponenten går genom `consentDisplayFields`. Det bärs av att
- *     `ConsentKort` tar en `ConsentVisning` som prop och aldrig ser ett
- *     `BankConsent` — det finns inget objekt att gå förbi till.
+ * VAD PROVET INTE KAN SE: att komponenten går genom `consentDisplayFields`. Det
+ * bärs av att `ConsentKort` tar en `ConsentVisning` som prop och aldrig ser ett
+ * `BankConsent` — det finns inget objekt att gå förbi till.
  */
 describe('consentDisplayFields — inget utanför allow-listen når UI:t', () => {
   const HEMLIGHETER = {

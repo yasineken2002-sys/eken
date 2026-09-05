@@ -1325,13 +1325,13 @@ jobs:
       # byta scenario under körningen utan att starta om API:t. E2E täcker därför
       # `active`, det enda scenario som ger ett inflöde.
       #
-      # VAD SOM TÄCKER DE ANDRA, mätt och inte antaget: `expired` prövas av
-      # psd2.module.spec.ts ("scenariot når providern — och ett okänt scenario
-      # fäller bygget"), och ett OKÄNT värde av samma prov plus
-      # env.validation.integration.spec.ts. `revoked` och `error` har INGET eget
-      # prov: de vilar på att SCENARIO_STATUS i mock-bank-data.provider.ts är en
-      # uttömmande `Record<Psd2MockScenario, …>`, alltså på typen och inte på en
-      # körning. Det är en känd lucka och skrivs ut här hellre än att räknas in.
+      # VAD SOM TÄCKER DE ANDRA: `psd2-provider-mode.spec.ts` har ett prov per
+      # scenario — status, inflöde OCH det getConsentStatus rapporterar — mot ett
+      # handskrivet facit, plus okända värden och motprovet att den parameterlösa
+      # konstruktorn är oförändrad. Luckan som stod här (revoked och error vilade
+      # på att SCENARIO_STATUS är en uttömmande Record, alltså på typen och inte
+      # på en körning) är stängd: en uttömmande Record garanterar att varje
+      # scenario HAR en status, aldrig att det är RÄTT status.
       PSD2_ENABLED: 'true'
       PSD2_PROVIDER: 'mock'
       PSD2_MOCK_SCENARIO: 'active'

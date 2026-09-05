@@ -1,5 +1,6 @@
 import { Injectable, Inject, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { Prisma } from '@prisma/client'
 import { Cron } from '@nestjs/schedule'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -7,6 +8,7 @@ import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { BankConsentCryptoService } from './bank-consent-crypto.service'
 import { PSD2_PROVIDER, type BankDataProvider } from './psd2.types'
+import { SAFE_BANK_CONSENT_FIELDS, type SafeBankConsentField } from '@eken/shared'
 
 // Consent-state lever kort (SCA-redirecten ska ske direkt). 15 min räcker väl.
 const STATE_TTL_MS = 15 * 60 * 1000
@@ -15,16 +17,19 @@ const STATE_TTL_MS = 15 * 60 * 1000
  * Allow-list: de ENDA BankConsent-fält som får lämna backend. Tokens
  * (accessTokenEnc/refreshTokenEnc), scope och cursor är MEDVETET uteslutna och
  * når ALDRIG frontend/AI. (Mönster från tenant-portal-läcktätningen / signering.)
+ *
+ * HÄRLEDD, INTE SKRIVEN. Fältnamnen bor i `@eken/shared`
+ * (`SAFE_BANK_CONSENT_FIELDS`) och webben härleder ur samma lista. Tidigare stod
+ * mängden på två ställen i två paket — och webbens egen spec skrev ut att inget
+ * band ihop dem. Två uppräkningar som ska vara lika är inte en uppräkning.
+ *
+ * `satisfies Prisma.BankConsentSelect` är kompileringstidslänken tillbaka till
+ * schemat: ett fältnamn i den delade listan som INTE är en kolumn på BankConsent
+ * blir ett typfel här, inte ett tomt fält i ett svar.
  */
-export const SAFE_BANK_CONSENT_SELECT = {
-  id: true,
-  provider: true,
-  status: true,
-  expiresAt: true,
-  lastSyncedAt: true,
-  revokedAt: true,
-  createdAt: true,
-} as const
+export const SAFE_BANK_CONSENT_SELECT = Object.fromEntries(
+  SAFE_BANK_CONSENT_FIELDS.map((fält) => [fält, true]),
+) as { [K in SafeBankConsentField]: true } satisfies Prisma.BankConsentSelect
 
 @Injectable()
 export class Psd2ConsentService {

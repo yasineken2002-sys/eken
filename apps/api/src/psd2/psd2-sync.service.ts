@@ -74,11 +74,31 @@ export class Psd2SyncService {
         accessToken,
       })
       if (statusCheck.status !== 'ACTIVE') {
-        // Dataminimering: ett dött samtycke ska inte bära kvar bank-tokens.
+        // LAGRAD STATUS = RAPPORTERAD STATUS. Raden löd tidigare
+        // `statusCheck.status === 'REVOKED' ? 'REVOKED' : 'EXPIRED'`, alltså
+        // föll ERROR ihop med EXPIRED: ett samtycke banken rapporterade som FEL
+        // lagrades som utgånget, och operatören läste "Utgången" om ett fel.
+        // Utfallet var inte ett kast utan en trovärdig men felaktig text — värre
+        // än ett rått fel, eftersom den som läser den slutar leta.
+        //
+        // Bytet är ofarligt nedströms, och det är MÄTT och inte antaget: den
+        // ENDA koden som läser `BankConsent.status` för att bestämma något är
+        // `where: { status: 'ACTIVE' }` några rader upp, och EXPIRED och ERROR
+        // är lika mycket icke-ACTIVE. Färskhetsgrinden, kravtrappans paus och
+        // larmen känner inte till BankConsent alls — de läser
+        // `Organization.paymentDataThrough`. Köns omförsök är `attempts: 3`
+        // oberoende av status. Enda skillnaden är badgens etikett och färg, och
+        // det är precis den skillnaden som ska finnas.
+        //
+        // Typen bär resten: i den här grenen är `statusCheck.status` avsmalnad
+        // till 'EXPIRED' | 'REVOKED' | 'ERROR', alltså exakt de tre icke-aktiva
+        // värdena i `BankConsentStatus`. En femte providerstatus utan motsvarande
+        // enumvärde blir ett typfel här.
         await this.prisma.bankConsent.update({
           where: { id: consent.id },
           data: {
-            status: statusCheck.status === 'REVOKED' ? 'REVOKED' : 'EXPIRED',
+            status: statusCheck.status,
+            // Dataminimering: ett dött samtycke ska inte bära kvar bank-tokens.
             accessTokenEnc: '',
             refreshTokenEnc: null,
           },

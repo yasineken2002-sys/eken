@@ -16,7 +16,7 @@ två av dem är byggda och väntar på driftsättning, och bara delar av dem gat
 | ---------------------- | ------------------------------------------------- | ---------------------------------------- |
 | DB-backup              | **DELVIS** — mekanism klar och bevisad, drift av  | backup-env i prod: noll satta            |
 | BankID-inloggning      | **DELVIS** — allt utom den skarpa adaptern        | RP/broker-avtal (orgnr)                  |
-| Bankkoppling (PSD2)    | **DELVIS** — P0–P2 + frontend i main, P3 saknas   | aggregatoravtal (orgnr)                  |
+| Bankkoppling (PSD2)    | **DELVIS** — allt utom P3-adaptern i main         | aggregatoravtal (orgnr)                  |
 | Juridisk slutgenomgång | **DELVIS** — texter finns, genomgången inte gjord | orgnummer i texterna + extern granskning |
 
 **DB-backup — DELVIS.** `apps/api/src/backup/`: `runBackup`
@@ -91,18 +91,29 @@ boot på `PSD2_PROVIDER=mock` i produktion **oberoende av `PSD2_ENABLED`** — e
 mock som slog igenom skarpt hade skrivit fiktiva betalningar i en kunds
 avstämning, inte bara valt fel provider.
 
+**E2E mot Mock finns** (PR 2, #777): `apps/web/e2e/psd2-bank-connection.spec.ts`
+kör anslut → callback → aktivt samtycke genom webbläsaren, och CI grepar
+`[psd2] aktivt — provider MOCK` i API-loggen innan första spec — nådde
+variablerna inte processen väljer factoryn Stub och hela ytan svarar 503.
+
+**ERROR-hålet i synken är lagat** (PR 3, #778). Raden skrev tidigare
+`status === 'REVOKED' ? 'REVOKED' : 'EXPIRED'`, så ett samtycke banken
+rapporterade som `ERROR` lagrades som `EXPIRED` och operatören fick texten
+"Utgången" om ett fel. Synken lagrar nu den status providern rapporterade.
+Skillnaden nedströms mättes före bytet och är noll utom i badgen: enda koden som
+läser `BankConsent.status` för att bestämma något är `where: { status: 'ACTIVE' }`
+i synken, och färskhetsgrind, kravtrappa och larm känner inte till `BankConsent`
+alls — de läser `Organization.paymentDataThrough`.
+
+Samma PR gjorde den säkra fältmängden till EN lista
+(`SAFE_BANK_CONSENT_FIELDS` i `@eken/shared`), som både API:ets select och
+webbens typ härleds ur, med ett partitionsprov över modellens faktiska kolumner.
+
 Vad som saknas: (1) **P3, den skarpa adaptern** — `psd2-provider.factory.ts`
 kastar uttryckligen att den levereras i P3 och kräver avtal/nycklar, så flaggan
-går inte att slå på skarpt, (2) `PSD2_ENABLED` och `PSD2_TOKEN_KEY` i prod,
-(3) e2e mot Mock (PR 2). **Gatas** av aggregatoravtal — men bara adaptern; P3 är
-numera ett adapterbyte, allt annat är byggt och prövbart mot mocken.
-
-> Ett känt hål i P2:s sync, upptäckt när `error`-scenariot byggdes och MEDVETET
-> inte lagat här: `psd2-sync.service.ts` skriver `status === 'REVOKED' ?
-'REVOKED' : 'EXPIRED'`, så ett samtycke som banken rapporterar som `ERROR`
-> lagras som `EXPIRED`. `BankConsentStatus.ERROR` finns i schemat och renderas av
-> UI:t, men är i dag bara nåbar via en direkt DB-skrivning — och operatören får
-> texten "Utgången" om något som faktiskt är ett fel.
+går inte att slå på skarpt, (2) `PSD2_ENABLED` och `PSD2_TOKEN_KEY` i prod.
+**Gatas** av aggregatoravtal — men bara adaptern; P3 är numera ett adapterbyte,
+allt annat är byggt och prövbart mot mocken.
 
 **Juridisk slutgenomgång — DELVIS.** Tre policydokument finns i `docs/legal/`,
 renderade i `apps/web/src/features/legal/` och `apps/portal/`. Versionsstyrningen

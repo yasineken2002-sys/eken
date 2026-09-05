@@ -117,3 +117,66 @@ describe('Psd2SyncService.syncOrganization', () => {
     )
   })
 })
+
+/**
+ * LAGRAD STATUS = RAPPORTERAD STATUS.
+ *
+ * Mappningen löd tidigare `=== 'REVOKED' ? 'REVOKED' : 'EXPIRED'`, så ERROR föll
+ * ihop med EXPIRED och operatören läste "Utgången" om ett fel banken rapporterat.
+ * Ett prov PER statusvärde, och inte ett enda om ERROR, av två skäl:
+ *
+ *  1. Ett prov som bara visar ERROR→ERROR kan vara grönt av att mappningen
+ *     ersatts med en konstant. Att alla tre värdena bevaras skiljer "identitet"
+ *     från "råkar ge rätt svar för just det fall provet valde".
+ *  2. ACTIVE står med som MOTPROV: den grenen ska aldrig nå uppdateringen alls.
+ *     Utan den mäter proven inte att pausvillkoret fortfarande är `!== ACTIVE`.
+ */
+describe('samtyckets status lagras som banken rapporterade den', () => {
+  const PAUSANDE = ['EXPIRED', 'REVOKED', 'ERROR'] as const
+
+  it.each(PAUSANDE)('%s rapporterat → %s lagrat, inte något annat', async (status) => {
+    const provider = new MockBankDataProvider()
+    provider.consentStatus = status
+    const { service, prisma, reconciliation } = makeService(provider)
+    provider.transactions = [TX('ext-1')]
+
+    await service.syncOrganization('org-1')
+
+    expect(reconciliation.ingestFromApi).not.toHaveBeenCalled()
+    expect(prisma.bankConsent.update).toHaveBeenCalledTimes(1)
+    const anrop = prisma.bankConsent.update.mock.calls[0]?.[0] as {
+      data: { status: string; accessTokenEnc: string; refreshTokenEnc: null }
+    }
+    // Likhet med det RAPPORTERADE värdet — inte med en förväntad literal.
+    // Skrivs mappningen om till en konstant faller alla tre proven utom ett.
+    expect(anrop.data.status).toBe(status)
+    expect(anrop.data.accessTokenEnc).toBe('')
+    expect(anrop.data.refreshTokenEnc).toBeNull()
+  })
+
+  it('MOTPROV: ACTIVE pausar inte och skriver ingen status alls', async () => {
+    const provider = new MockBankDataProvider()
+    provider.consentStatus = 'ACTIVE'
+    const { service, prisma, reconciliation } = makeService(provider)
+    provider.transactions = [TX('ext-1')]
+    // Den aktiva grenen når inflödet på riktigt, så attrappen måste svara som
+    // ingestFromApi gör. Utan svaret faller provet på en TypeError i tjänsten —
+    // alltså rött av fel skäl, vilket är oskiljbart från ett fällt motprov.
+    reconciliation.ingestFromApi.mockResolvedValue({
+      outcome: 'imported',
+      transactionId: 't1',
+      matched: false,
+    })
+
+    await service.syncOrganization('org-1')
+
+    expect(reconciliation.ingestFromApi).toHaveBeenCalled()
+    // Den enda uppdateringen i den här grenen är cursor/lastSyncedAt — aldrig
+    // en status. Hade pausgrenen tagits skulle `status` stå i nyttolasten.
+    for (const [arg] of prisma.bankConsent.update.mock.calls as Array<
+      [{ data: Record<string, unknown> }]
+    >) {
+      expect(arg.data).not.toHaveProperty('status')
+    }
+  })
+})
