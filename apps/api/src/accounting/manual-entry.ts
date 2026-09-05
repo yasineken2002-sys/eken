@@ -22,23 +22,19 @@
  *
  * ── KONTERINGEN ÄR DELAD. SKRIVNINGEN ÄR DET INTE. ──────────────────────────
  *
- * Det här är en gräns som är lätt att läsa fel, så den står utskriven:
- *
  *     kontering (konton, moms, balans)   DELAD — de här funktionerna
- *     skrivning (nummer, idempotens)     TVÅ VÄGAR, ännu
+ *     skrivning (nummer, idempotens)     DELAD — createNumberedEntry
  *
- * Människovägen går ut i `AccountingService.createNumberedEntry`, som äger
- * balansgrinden (C1), det gap-fria numret och idempotensen per
- * `(organizationId, source, sourceId)`. AI-vägen har sin EGEN `$transaction` i
- * `tool-executor.service.ts` med eget `verifikationsnummer.allocate`, eget
- * `journalEntry.create` och eget idempotensuppslag — den rördes inte av den här
- * ändringen utöver att radbygget byttes ut.
+ * BÅDA raderna är delade sedan #790. Stycket här sa fram till dess att
+ * skrivningen var två vägar, med varningen att "en NY spärr i
+ * `createNumberedEntry` skulle bara gälla den ena". Den varningen gällde, och
+ * den är nu inlöst: AI-vägens egen `$transaction` är BORTTAGEN, och båda
+ * vägarna går ut i `createNumberedEntry` — som äger balansgrinden (C1),
+ * org-scopingen av idempotensnyckeln (C0), det gap-fria numret och
+ * race-återhämtningen vid P2002.
  *
- * Det spelar roll för nästa person som lägger en spärr i `createNumberedEntry`
- * och tror sig ha skyddat båda vägarna. Balanskravet är i dag täckt åt båda
- * hållen (AI via `byggVerifikatrader` här, människan via samma funktion PLUS
- * C1-grinden), men en NY spärr i `createNumberedEntry` skulle bara gälla den
- * ena. Att unifiera skrivvägen är ett eget arbete och inte den här ändringen.
+ * AI-vägen skickar med en `efterSkrivning`-hook som skriver utförandespåret i
+ * samma transaktion som effekten (G0).
  *
  * ── VAD SOM MEDVETET INTE DELAS ─────────────────────────────────────────────
  *

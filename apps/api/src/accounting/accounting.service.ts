@@ -418,8 +418,14 @@ export class AccountingService {
      */
     aiToolExecutionId?: string | null
     /**
-     * KÖRS INUTI SAMMA TRANSAKTION som verifikatet, i BÅDA utfallen — både när
-     * posten skapades och när idempotensuppslaget hittade en befintlig.
+     * KÖRS I ALLA TRE UTFALLEN: när posten skapades, när idempotensuppslaget
+     * hittade en befintlig, och när en sann samtidig kollision rullade tillbaka
+     * vår transaktion och vinnarens rad slogs upp efteråt.
+     *
+     * De två första körs INUTI verifikatets transaktion. Det tredje kan inte —
+     * transaktionen är rullad tillbaka — och får därför en egen kort
+     * transaktion. Skillnaden står utskriven vid anropsstället: en garanti om
+     * atomicitet som bara gäller två av tre grenar är värre än ingen garanti.
      *
      * Finns för AI-vägen, som måste skriva sitt utförandespår atomiskt med
      * effekten (G0). Att låta anroparen skicka in en egen `tx` hade också
@@ -567,7 +573,13 @@ export class AccountingService {
             ? { reversalOfEntryId: params.reversalOfEntryId }
             : {}),
           ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
-          ...(params.aiToolExecutionId != null
+          // `!== undefined`, inte `!= null`: skillnaden är "anroparen skickade
+          // INGET fält" mot "anroparen skickade null". AI-vägen skickar alltid
+          // `aiToolExecutionId ?? null` och ska då få kolumnen skriven som null
+          // — precis som dess egen transaktion gjorde före #790. De tjugo
+          // övriga anroparna skickar inget och får fältet utelämnat, alltså
+          // oförändrad nyttolast.
+          ...(params.aiToolExecutionId !== undefined
             ? { aiToolExecutionId: params.aiToolExecutionId }
             : {}),
           lines: {
@@ -622,6 +634,34 @@ export class AccountingService {
       // sourceId. Att returnera den posten hade varit att svara på fel fråga.
       // Felet fortsätter upp och hanteras där reverseringen startade.
       if (!winner) throw err
+
+      // ── HOOKEN GÄLLER ÄVEN HÄR, OCH DET ÄR TREDJE UTFALLET ─────────────
+      //
+      // `run()` har två utfall — snabbträff och ny post — och båda anropar
+      // hooken. Det HÄR är det tredje: en sann samtidig kollision, där vår
+      // transaktion rullades tillbaka och vinnarens rad slås upp efteråt.
+      //
+      // Utan raden nedan tappas AI-vägens utförandespår HELT i just det
+      // fallet. Konsekvensen är mätbar och värre än en saknad loggrad:
+      // `create_journal_entry`/`record_expense` är `traceIntegrity:
+      // 'TRANSAKTIONELL'`, alltså skrivs INGEN AiToolExecution-rad i förväg —
+      // hela raden är hookens ansvar. Uteblir den finns varken en lyckad, en
+      // misslyckad eller en påbörjad körning, medan verktyget svarar
+      // "Verifikat skapat" (`redanFanns` sätts bara inuti hooken och förblir
+      // false). En körning som hände förnekas alltså av sitt eget spår.
+      //
+      // Det var dessutom en REGRESSION mot läget före den här ändringen: AI:ns
+      // egen transaktion hade ingen P2002-fångst, så en kollision kastade
+      // vidare och `logToolExecution` skrev en FAILED-rad. Ett synligt fel MED
+      // spår blev en tyst framgång UTAN spår.
+      //
+      // EN EGEN KORT TRANSAKTION, därför att den ursprungliga är rullad
+      // tillbaka — det finns ingen levande `tx` att skriva i. Skrivningen är
+      // liten och rör bara spårtabellen.
+      if (params.efterSkrivning) {
+        const hook = params.efterSkrivning
+        await this.prisma.$transaction((tx) => hook(tx, winner, true), PRISMA_DEFAULT_TX_LIMITS)
+      }
       return winner
     }
   }
@@ -3948,7 +3988,12 @@ export class AccountingService {
       lines: byggt.rader,
       idempotencyWhere: { organizationId, source, sourceId: params.idempotencyKey },
       ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
-      ...(params.aiToolExecutionId != null ? { aiToolExecutionId: params.aiToolExecutionId } : {}),
+      // `!== undefined`: AI-vägen skickar alltid fältet (null när ingen körning
+      // förhandsallokerats) och ska då få kolumnen skriven som null — precis som
+      // dess egen transaktion gjorde före #790.
+      ...(params.aiToolExecutionId !== undefined
+        ? { aiToolExecutionId: params.aiToolExecutionId }
+        : {}),
       ...(params.efterSkrivning ? { efterSkrivning: params.efterSkrivning } : {}),
       include: { lines: { include: { account: true } } },
     })
@@ -4018,7 +4063,12 @@ export class AccountingService {
       lines: byggt.rader,
       idempotencyWhere: { organizationId, source, sourceId: params.idempotencyKey },
       ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
-      ...(params.aiToolExecutionId != null ? { aiToolExecutionId: params.aiToolExecutionId } : {}),
+      // `!== undefined`: AI-vägen skickar alltid fältet (null när ingen körning
+      // förhandsallokerats) och ska då få kolumnen skriven som null — precis som
+      // dess egen transaktion gjorde före #790.
+      ...(params.aiToolExecutionId !== undefined
+        ? { aiToolExecutionId: params.aiToolExecutionId }
+        : {}),
       ...(params.efterSkrivning ? { efterSkrivning: params.efterSkrivning } : {}),
       include: { lines: { include: { account: true } } },
     })

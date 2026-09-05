@@ -66,7 +66,7 @@ Unit                    update      units/units.service.ts                      
 UserBankIdIdentity      deleteMany  bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 UserBankIdIdentity      upsert      bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 
-## Form 2 — create (40 rader)
+## Form 2 — create (39 rader)
 
 AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
@@ -88,7 +88,6 @@ InvoicePayment          create      deposits/deposits.service.ts                
 InvoicePayment          create      invoices/invoices.service.ts                            A kedje-query
 InvoicePayment          create      reconciliation/reconciliation.service.ts                A kedje-query
 JournalEntryLine        create      accounting/accounting.service.ts                        P förälder org-bunden  ← nästlad via JournalEntry.lines
-JournalEntryLine        create      ai/tools/tool-executor.service.ts                   ×2  P förälder org-bunden  ← nästlad via JournalEntry.lines
 MaintenanceComment      create      maintenance/maintenance.service.ts                      C scopat anrop
 MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT

@@ -19,6 +19,7 @@ jest.mock('../../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { ToolExecutorService } from './tool-executor.service'
+import { AccountingService } from '../../accounting/accounting.service'
 
 type Created = Record<string, unknown>
 
@@ -81,7 +82,11 @@ function makeExecutor(prisma: unknown) {
     noop,
     noop,
     noop,
-    noop,
+    // Position 9 (index 8) är AccountingService — den ENDA skrivvägen för
+    // verifikat sedan AI:ns egen transaktion togs bort. En RIKTIG tjänst byggd
+    // ur samma attrapp-prisma, inte en `noop`: provet mäter att AI-verifikat
+    // märks `source: 'AI'`, och det måste mätas genom vägen som faktiskt körs.
+    new AccountingService(prisma as never, verifikationsnummer as never) as never,
     noop,
     noop,
     noop,
