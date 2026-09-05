@@ -38,6 +38,9 @@ import {
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto'
 import { CreateExpenseDto } from './dto/create-expense.dto'
 import { CreateSupplierInvoiceDto } from './dto/supplier-invoice.dto'
+import { CreateMeterSchema } from '@eken/shared'
+import { CreateMeterDto } from '../consumption/dto/create-meter.dto'
+import { KONTRAKTSREGISTER } from '../common/contract/schema-dto-registry'
 import type { ZodType } from 'zod'
 
 const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
@@ -215,5 +218,90 @@ describe('leverantörsfaktura — schema och DTO ger samma svar', () => {
     expect(await pipenGodtar(CreateSupplierInvoiceDto, { ...leverantorsfaktura, hittepa: 1 })).toBe(
       false,
     )
+  })
+})
+
+/**
+ * UPPRÄKNINGEN — varje delat schema som har en DTO, inte bara de tre någon skrev
+ * ett prov för.
+ *
+ * De namngivna proven ovan mäter GRÄNSER i detalj för bokföringen. Loopen nedan
+ * mäter att paritet över huvud taget håller för ALLA poster i registret, så att
+ * en sjätte koppling inte kan glida isär tyst. Att registret är FULLSTÄNDIGT
+ * ägs av `check-request-contract.mjs`, som kräver att varje delad nyttolasttyp i
+ * webben står här — det kan ett prov inte se, och det står därför i vaktens fil.
+ */
+describe('KONTRAKTSREGISTER — paritet för varje delat schema med en DTO', () => {
+  it('registret är icke-trivialt', () => {
+    // En loop över en tom lista är grön om ingenting. Talet är en undre gräns,
+    // inte en sanning: växer registret ska den här inte behöva ändras.
+    expect(KONTRAKTSREGISTER.length).toBeGreaterThanOrEqual(8)
+  })
+
+  it.each(KONTRAKTSREGISTER.map((p) => [p.endpoint, p] as const))(
+    '%s — giltig kropp godtas av BÅDA',
+    async (_endpoint, post) => {
+      const zod = schematGodtar(post.schema, post.giltig)
+      const dto = await pipenGodtar(post.dto, post.giltig)
+      expect({ zod, dto }).toEqual({ zod: true, dto: true })
+    },
+  )
+
+  it.each(KONTRAKTSREGISTER.map((p) => [p.endpoint, p] as const))(
+    '%s — ogiltig kropp avvisas av BÅDA',
+    async (_endpoint, post) => {
+      const zod = schematGodtar(post.schema, post.ogiltig)
+      const dto = await pipenGodtar(post.dto, post.ogiltig)
+      expect({ fall: post.ogiltigVarfor, zod, dto }).toEqual({
+        fall: post.ogiltigVarfor,
+        zod: false,
+        dto: false,
+      })
+    },
+  )
+
+  it.each(KONTRAKTSREGISTER.map((p) => [p.endpoint, p] as const))(
+    '%s — KANARIEFÅGEL: ett okänt fält avvisas av pipen',
+    async (_endpoint, post) => {
+      // Utan den kan "giltig godtas" vara grön av att pipen inte gör något alls.
+      expect(await pipenGodtar(post.dto, { ...post.giltig, zzHittepa: 1 })).toBe(false)
+    },
+  )
+})
+
+/**
+ * KÄND AVVIKELSE — dokumenterad, inte gömd.
+ *
+ * `z.string().uuid()` och `@IsUUID()` är oense om EXAKT en form: ett id med
+ * felaktig variant-nibble. Uppmätt över fem former; de fyra andra (kanonisk v4,
+ * v3, nil-uuid, rent skräp) behandlas lika av båda.
+ *
+ * Praktisk betydelse: liten — riktiga id:n kommer ur databasen och är
+ * kanoniska. Men avvikelsen finns, och den yttrar sig som ett 400 på en kropp
+ * formuläret sa var giltig. Provet står här så att nästa person hittar den som
+ * ett MÄTT förhållande i stället för att upptäcka den igen som en bugg — och så
+ * att det blir rött den dag något av biblioteken ändrar sig.
+ */
+describe('känd avvikelse: uuid-strikthet', () => {
+  const felaktigVariant = '11111111-2222-3333-4444-555555555555'
+
+  it('zod godtar den, DTO:n avvisar den', async () => {
+    const kropp = {
+      unitId: felaktigVariant,
+      type: 'ELECTRICITY',
+      unitOfMeasure: 'kWh',
+    }
+    expect(schematGodtar(CreateMeterSchema, kropp)).toBe(true)
+    expect(await pipenGodtar(CreateMeterDto, kropp)).toBe(false)
+  })
+
+  it('en KANONISK v4 godtas av båda', async () => {
+    const kropp = {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      type: 'ELECTRICITY',
+      unitOfMeasure: 'kWh',
+    }
+    expect(schematGodtar(CreateMeterSchema, kropp)).toBe(true)
+    expect(await pipenGodtar(CreateMeterDto, kropp)).toBe(true)
   })
 })
