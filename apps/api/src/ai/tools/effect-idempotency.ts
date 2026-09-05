@@ -273,10 +273,21 @@ export type TraceIntegrity = 'TRANSAKTIONELL' | 'FÖRE_EFFEKTEN' | 'BÄST_MÖJLI
  *
  * ── MÄTT 2026-09-01, metodnivå ─────────────────────────────────────────────
  *
- *     FÖRE_DISPATCH  3   härledda R2-nycklar, och en härledd Bull-nyckel
+ *     FÖRE_DISPATCH  5   härledda R2-nycklar, och tre härledda Bull-nycklar
  *     I_SVARET       2   Bulls job-id, providerns request-id
  *     INGET          2
- *     EJ_TILLÄMPLIG 23   klass A
+ *     EJ_TILLÄMPLIG 21   klass A
+ *
+ * ── OMMÄTT 2026-09-05 AV VAKT 7 ────────────────────────────────────────────
+ *
+ * Talen ovan stod 3/2/2/23 och summerade till trettio. De var ändå fel:
+ * `create_tenant_and_lease` och `transition_lease_status` stod som klass A men
+ * köar ett VÄLKOMSTMEJL till hyresgästen via `LeaseActivationQueue`. Mätningen
+ * 2026-09-01 gjordes genom att söka `mailService` och `pdfQueue`, och
+ * aktiveringskön är ingendera — samma fälla som `prepare_contract_signing` en
+ * gång föll i. `check-tool-outward-capabilities.mjs` härleder i stället
+ * mottagartypen ur konstruktorn och följer anropskedjan, och kan därför inte
+ * missa en kö den inte känner namnet på.
  *
  * Ingen av de sju har en MÄTT idempotensgaranti hos mottagaren. Två har en som
  * är strukturellt sund (PUT på samma nyckel skriver över), två har en som
@@ -620,7 +631,10 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
-    externalHandle: 'EJ_TILLÄMPLIG',
+    // ── RÄTTAT AV VAKT 7 (2026-09-05) ──────────────────────────────────────
+    // Samma kedja som `create_tenant_and_lease` ovan: `transitionStatus(ACTIVE)`
+    // köar välkomstmejlet till hyresgästen. Se noten där.
+    externalHandle: 'FÖRE_DISPATCH',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
@@ -885,7 +899,24 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',
     traceDurability: { plats: 'DATABAS_INDEX', livslangd: DB_RAD },
-    externalHandle: 'EJ_TILLÄMPLIG',
+    // ── RÄTTAT AV VAKT 7 (2026-09-05) ──────────────────────────────────────
+    // Stod som `EJ_TILLÄMPLIG` — alltså "ingen extern mottagare, klass A" —
+    // fram till att `check-tool-outward-capabilities.mjs` mätte anropskedjan:
+    //
+    //   leasesService.transitionStatus(ACTIVE)
+    //     → dispatchActivationJobs({ origin: 'manual' })   leases.service.ts:1010
+    //       → activationQueue.enqueueWelcomeMail            :766
+    //         → Bull → lease-activation.worker.ts:59 → Resend-mejl till HYRESGÄSTEN
+    //
+    // `origin: 'manual'` är hårdkodat på den vägen, så mejlet är inte villkorat
+    // av något AI:n väljer. Planens metodnivå-mätning (`docs/eveno-agentplan.md`,
+    // "fem/sju") jagade `mailService` och `pdfQueue` och såg därför aldrig
+    // aktiveringskön — talet är alltså NIO, inte sju.
+    //
+    // `FÖRE_DISPATCH` och inte `INGET`: job-id:t är HÄRLETT
+    // (`welcome-${tenantId}`, `gen-pdf-${leaseId}`, `initial-notices-${leaseId}`)
+    // och känt innan något skickas.
+    externalHandle: 'FÖRE_DISPATCH',
     traceIntegrity: 'FÖRE_EFFEKTEN',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
