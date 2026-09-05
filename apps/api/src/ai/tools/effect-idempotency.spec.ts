@@ -70,6 +70,42 @@ describe('effektklassificeringen', () => {
       expect(() => buildEffectCatalog()).not.toThrow()
     })
 
+    it.each([
+      ['agentAllowlist', /Får en AGENT utföra det/],
+      ['authorityScope', /Vems rätt utövas/],
+      ['supportsUndo', /Aldrig bara "nej"/],
+    ])('KASTAR när %s saknas — ett obesvarat fält får inte se ut som ett svar', (fält, text) => {
+      // Fälten är obligatoriska i TYPEN, men katalogen byggs också ur data i
+      // prov och sonder, och deklarationerna läses på flera ställen som
+      // `Record<string, …>`. Ett saknat fält i RUNTIME hade gett `undefined` —
+      // och `agentAllowlist: undefined` är falsy, alltså ett "nej" ingen fattat.
+      const post = EFFECT_DECLARATIONS['export_sie4'] as unknown as Record<string, unknown>
+      const original = post[fält]
+      delete post[fält]
+      try {
+        expect(() => buildEffectCatalog()).toThrow(/export_sie4/)
+        expect(() => buildEffectCatalog()).toThrow(text)
+      } finally {
+        post[fält] = original
+      }
+      // Riggen städad — annars ärver varje senare test en trasig deklaration.
+      expect(() => buildEffectCatalog()).not.toThrow()
+    })
+
+    it('agentAllowlist: false KASTAR INTE — falsy är ett giltigt svar', () => {
+      // Kontrollen är `typeof !== 'boolean'`, inte `!d.agentAllowlist`. Med en
+      // falsy-kontroll hade katalogen kastat på 21 av 30 korrekt deklarerade
+      // verktyg, och det felet hade sett ut som en saknad deklaration.
+      const post = EFFECT_DECLARATIONS['export_sie4']!
+      const original = post.agentAllowlist
+      post.agentAllowlist = false
+      try {
+        expect(() => buildEffectCatalog()).not.toThrow()
+      } finally {
+        post.agentAllowlist = original
+      }
+    })
+
     it('KASTAR när någon frågar om ett verktyg som inte finns', () => {
       // Ett tyst `false` hade dolt att frågan ställdes fel — anroparen hade
       // trott att den fått ett svar om verktyget, inte om sin egen stavning.
