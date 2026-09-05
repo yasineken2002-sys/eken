@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
+import { kontraktsfel } from '@/lib/contract-gate'
 import {
   Plus,
   Filter,
@@ -39,7 +41,14 @@ import {
 } from './hooks/useInvoiceQueries'
 import type { InvoiceWithOutstanding } from './hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
-import type { Invoice, InvoiceStatus, CreateInvoiceInput, Tenant } from '@eken/shared'
+import type {
+  RegisterPaymentInput,
+  Invoice,
+  InvoiceStatus,
+  CreateInvoiceInput,
+  Tenant,
+} from '@eken/shared'
+import { RegisterPaymentSchema } from '@eken/shared'
 import { downloadInvoicePdf } from './api/invoices.api'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
@@ -309,13 +318,25 @@ export function InvoicesPage() {
     if (!selected) return
     // Går via /pay (markAsPaidManually) som bokför inbetalningen — inte /status,
     // som skulle flippa till PAID utan verifikat.
+    // ANNOTERAD: utan typen är literalen en inferrerad const och TypeScript kör
+    // ingen överskottskontroll — ett fält som finns här men inte i kontraktet
+    // hade passerat tyst.
+    const kropp: RegisterPaymentInput = {
+      amount: Number(form.amount),
+      paymentMethod: form.paymentMethod,
+      reference: form.reference,
+    }
+
+    // SISTA GRINDEN mot det delade schemat. Ett pengaflöde: en nyttolast servern
+    // avvisar ska stoppas här, inte bli ett 400 mitt i en betalningsregistrering.
+    const kontrakt = kontraktsfel(RegisterPaymentSchema, kropp)
+    if (kontrakt) {
+      toast.error(kontrakt)
+      return
+    }
+
     payMutation.mutate(
-      {
-        id: selected.id,
-        amount: Number(form.amount),
-        paymentMethod: form.paymentMethod,
-        reference: form.reference,
-      },
+      { id: selected.id, ...kropp },
       {
         onSuccess: (updated) => {
           setSelected(updated)

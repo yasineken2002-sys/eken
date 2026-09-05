@@ -1,15 +1,8 @@
 import { get, post } from '@/lib/api'
-import type { Invoice } from '@eken/shared'
+import type { CreateCreditNoteInput, RegisterPaymentInput, Invoice } from '@eken/shared'
 
 export function downloadInvoicePdf(id: string): void {
   window.open(`/api/v1/invoices/${id}/pdf`, '_blank')
-}
-
-export interface RegisterPaymentInput {
-  amount: number
-  paymentMethod?: string
-  reference?: string
-  paidAt?: string
 }
 
 // Bokför inbetalningen på servern (likvidkonto D / 1510 K). Ersätter den gamla
@@ -55,11 +48,6 @@ export interface CreditNotePreview {
   allowed: boolean
   blockedReason: string | null
   lines: CreditNotePreviewLine[]
-}
-
-export interface CreateCreditNoteInput {
-  lines: Array<{ invoiceLineId: string; description?: string; quantity: number; unitPrice: number }>
-  reason: string
 }
 
 export interface CreateCreditNoteResult {

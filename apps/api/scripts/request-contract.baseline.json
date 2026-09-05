@@ -1,5 +1,5 @@
 {
-  "total": 95,
+  "total": 93,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -100,13 +100,6 @@
         "PATCH `/inspections/${id}` → UpdateInspectionInput",
         "PATCH `/inspections/${inspectionId}/items/${itemId}` → UpdateInspectionItemInput",
         "POST '/inspections' → CreateInspectionInput"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/invoices/api/invoices.api.ts",
-      "medlemmar": [
-        "POST `/invoices/${id}/credit-note` → CreateCreditNoteInput",
-        "POST `/invoices/${id}/pay` → RegisterPaymentInput"
       ]
     },
     {

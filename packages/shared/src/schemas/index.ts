@@ -558,3 +558,51 @@ export type CreateJournalEntryInput = z.infer<typeof CreateJournalEntrySchema>
 export type CreateExpenseInput = z.infer<typeof CreateExpenseSchema>
 export type CreateSupplierInvoiceInput = z.infer<typeof CreateSupplierInvoiceSchema>
 export type PaySupplierInvoiceInput = z.infer<typeof PaySupplierInvoiceSchema>
+
+// ─── Fakturor: betalning och kreditnota ───────────────────────────────────────
+//
+// Pengaflöde. Ett kontraktsglapp här är i bästa fall ett 400 och i sämsta fall
+// ett belopp som bokförs på fel sätt — därför delade scheman, samma mönster som
+// bokföringen (se ./contract.ts).
+
+export const RegisterPaymentSchema = z.object({
+  /** Inbetalt belopp i kronor. Grindas mot restskulden server-side. */
+  amount: z.number().positive('Beloppet måste vara större än noll'),
+  /**
+   * FRI TEXT med flit, inte en enum.
+   *
+   * Servern normaliserar via `toPaymentMethod` till Prisma-enumen
+   * (BANK/CASH/SWISH/MANUAL), och den mängden är GROVARE än de fem alternativ
+   * gränssnittet erbjuder: Bankgiro, Plusgiro och Autogiro blir alla `BANK`.
+   * Att skriva de fem här hade alltså PÅSTÅTT en precision modellen inte har.
+   * Se glidning G2 i PR-texten.
+   */
+  paymentMethod: z.string().optional(),
+  /** OCR eller annan referens. Utelämnad faller servern tillbaka på OCR-numret. */
+  reference: z.string().optional(),
+  /** Betalningsdatum (ISO). Utelämnat: nu. */
+  paidAt: z.string().optional(),
+})
+
+export const CreditNoteLineSchema = z.object({
+  invoiceLineId: z.string().uuid('invoiceLineId måste vara ett giltigt UUID'),
+  /** Egen radtext. Utelämnad ärvs originalets. */
+  description: z.string().optional(),
+  quantity: z.number().min(0.01, 'Antal måste vara större än noll'),
+  /** Belopp per enhet EXKLUSIVE moms — samma riktning som fakturaraden. */
+  unitPrice: z.number().min(0.01, 'Belopp per enhet måste vara större än noll'),
+})
+
+export const CreateCreditNoteSchema = z.object({
+  lines: z.array(CreditNoteLineSchema).min(1, 'En kreditnota måste innehålla minst en rad'),
+  /**
+   * Skälet blir kreditnotans anteckning och läggs i händelseloggen. Samma krav
+   * som på en verifikaträttelse: en korrigering utan angivet skäl går inte att
+   * granska i efterhand.
+   */
+  reason: z.string().min(5, 'Ange ett skäl till krediteringen (minst 5 tecken)'),
+})
+
+export type RegisterPaymentInput = z.infer<typeof RegisterPaymentSchema>
+export type CreditNoteLineInput = z.infer<typeof CreditNoteLineSchema>
+export type CreateCreditNoteInput = z.infer<typeof CreateCreditNoteSchema>
