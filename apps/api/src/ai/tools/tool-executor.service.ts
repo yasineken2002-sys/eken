@@ -53,7 +53,6 @@ import { effectTraceIntegrity } from './effect-idempotency'
 import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
-import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
 import { redactSensitive } from '../../common/redaction/redact-sensitive'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
@@ -797,6 +796,32 @@ export class ToolExecutorService {
    * vägen skickar alltid id:t — att det gör det ägs av
    * `effect-trace-production-path.db.spec.ts`.
    */
+  /**
+   * BOKFÖRINGSTJÄNSTEN — den enda skrivvägen för verifikat.
+   *
+   * Föredrar den DI-injicerade instansen. Faller tillbaka på en lokal
+   * konstruktion ur `prisma` + `verifikationsnummer`, vilket är exakt de två
+   * beroenden `AccountingService` har.
+   *
+   * ── VARFÖR EN FALLBACK OCH INTE BARA `this.accountingService` ─────────────
+   *
+   * Flera riggar bygger `ToolExecutorService` med `Object.create(prototype)` och
+   * sätter bara de fält frågan de äger behöver — `g0-crash-retry-replay.db.spec.ts`
+   * sätter `prisma`, `audit` och `verifikationsnummer`. Att flytta AI:ns
+   * verifikatskrivning in i tjänsten hade då fällt en spec som handlar om något
+   * helt annat (krasch, omtag, uppspelning), och den specen är BEVISET för att
+   * den här ändringen inte rörde G0:s egenskaper. Att ändra den för att få den
+   * grön hade tagit bort just det beviset.
+   *
+   * Fallbacken är ofarlig därför att tjänsten är TILLSTÅNDSLÖS: samma klass,
+   * samma två beroenden, samma spärrar. Det är inte två vägar — det är två sätt
+   * att få tag på samma väg. I produktion injicerar Nest alltid, så grenen tas
+   * bara i riggar.
+   */
+  private get bokföring(): AccountingService {
+    return this.accountingService ?? new AccountingService(this.prisma, this.verifikationsnummer)
+  }
+
   private async skrivTransaktionelltSpar(
     tx: Prisma.TransactionClient,
     executionId: string | undefined,
@@ -4014,6 +4039,11 @@ export class ToolExecutorService {
           // tillagd när det här verktyget fick sin mänskliga motsvarighet). Två
           // kopior av kontoreglerna hade glidit isär utan att något blev rött.
           // Se `manual-entry.ts`.
+          // FÖRHANDSBESKEDET, inte skrivningen. Tjänsten bygger raderna igen
+          // med samma funktion — det här anropet finns bara för att kunna svara
+          // AI:n med ett läsbart fel i stället för ett kast, och för att få
+          // summan till meddelandet. Att bygga två gånger är billigt; att ha två
+          // olika svar på samma fråga är det inte, och det är samma funktion.
           const konton = kontouppslagAv(
             await this.prisma.account.findMany({
               where: { organizationId },
@@ -4024,26 +4054,52 @@ export class ToolExecutorService {
           if (!byggt.ok) {
             return { success: false, message: byggt.fel }
           }
-          const prismaLines = byggt.rader
           const totalDebit = byggt.summa
           // IDEMPOTENSNYCKELN (se ai-journal-source.ts). Härledd ur ÅTGÄRDENS
           // INNEHÅLL, inte ur bekräftelsens id — den måste överleva ett omtag
           // efter en krasch, och ett omtag har ett nytt pendingActionId.
           const sourceId = aiJournalSourceId('create_journal_entry', toolInput)
-          const { entry, redanFanns } = await this.prisma.$transaction(async (tx) => {
-            // Uppslaget körs INUTI transaktionen och matchar exakt det unika
-            // DB-indexet (organizationId, source, sourceId) — samma konstruktion
-            // som createNumberedEntry, så app-kontroll och constraint är i synk
-            // (TOCTOU-säkert). Utan den här raden blir en dubblett ett P2002 i
-            // stället för ett idempotent svar.
-            const befintligt = await tx.journalEntry.findFirst({
-              where: { organizationId, source: 'AI', sourceId },
-              include: { lines: { include: { account: true } } },
-            })
-            if (befintligt) {
-              // ÄVEN IDEMPOTENSTRÄFFEN får ett spår. Verktyget KÖRDE; att det
-              // inte skapade något är en effektlista med noll poster, inte en
-              // körning som aldrig hände.
+
+          // ── EN SKRIVVÄG ────────────────────────────────────────────────
+          //
+          // Här stod tidigare en EGEN `$transaction` med eget idempotensuppslag,
+          // eget `verifikationsnummer.allocate` och eget `journalEntry.create`.
+          // Konteringen delades med människans väg (#782) men SKRIVNINGEN gjorde
+          // det inte, och priset var mätbart: C0 (idempotensnyckeln måste vara
+          // org-scopad), C1 (den globala balansgrinden i Decimal, plus "inga
+          // rader" och "debet och kredit på samma rad") och race-återhämtningen
+          // vid P2002 gällde BARA människan. Två samtidiga omtag gav här ett
+          // okänt P2002 i stället för det befintliga verifikatet.
+          //
+          // Värre än de tre: en NY spärr i chokepunkten hade tyst inte gällt
+          // AI:n. Nu finns bara en väg in.
+          //
+          // SPÅRET SKRIVS I SAMMA TRANSAKTION via `efterSkrivning` — G0 kräver
+          // att spåret och effekten är atomiska. Hooken körs i BÅDA utfallen:
+          // verktyget KÖRDE även när idempotensen hittade en befintlig post, och
+          // ett spår som saknas då gör en uppspelning till en förnekelse av något
+          // som hände.
+          //
+          // Varför en hook och inte en inskickad `tx`: med en egen transaktion
+          // äger anroparen rollbacken och `createNumberedEntry` kastar
+          // kollisionen vidare i stället för att återhämta. Hooken låter
+          // skrivvägen förbli en OCH behålla alla sina spärrar.
+          let redanFanns = false
+          const entry = await this.bokföring.createManualJournalEntry({
+            organizationId,
+            date,
+            description,
+            lines: linesInput,
+            idempotencyKey: sourceId,
+            source: 'AI',
+            // #494 beslut 4: AI-skapade verifikat skrevs som MANUAL och gick
+            // därför inte att skilja från handskrivna. `createdById` står kvar —
+            // den bär användaren som BAD om posten, vilket fortfarande är den
+            // ansvariga människan.
+            createdById: userId,
+            aiToolExecutionId: aiToolExecutionId ?? null,
+            efterSkrivning: async (tx, _post, fanns) => {
+              redanFanns = fanns
               await this.skrivTransaktionelltSpar(
                 tx,
                 aiToolExecutionId,
@@ -4051,39 +4107,8 @@ export class ToolExecutorService {
                 toolInput,
                 spårIdentitet ?? { organizationId, userId },
               )
-              return { entry: befintligt, redanFanns: true }
-            }
-
-            const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
-            const skapat = await tx.journalEntry.create({
-              data: {
-                organizationId,
-                date,
-                description,
-                // #494 beslut 4: AI-skapade verifikat skrevs som MANUAL och gick
-                // därför inte att skilja från handskrivna. `createdById` står
-                // kvar — den bär användaren som BAD om posten, vilket fortfarande
-                // är den ansvariga människan.
-                source: 'AI',
-                sourceId,
-                aiToolExecutionId: aiToolExecutionId ?? null,
-                createdById: userId,
-                series: v.series,
-                verNumber: v.verNumber,
-                fiscalYear: v.fiscalYear,
-                lines: { create: prismaLines },
-              },
-              include: { lines: { include: { account: true } } },
-            })
-            await this.skrivTransaktionelltSpar(
-              tx,
-              aiToolExecutionId,
-              toolName,
-              toolInput,
-              spårIdentitet ?? { organizationId, userId },
-            )
-            return { entry: skapat, redanFanns: false }
-          }, PRISMA_DEFAULT_TX_LIMITS)
+            },
+          })
           return {
             success: true,
             data: { id: entry.id, total: totalDebit, alreadyExisted: redanFanns },
@@ -4151,21 +4176,30 @@ export class ToolExecutorService {
           if (!byggtUtgift.ok) {
             return { success: false, message: byggtUtgift.fel }
           }
-          const lines = byggtUtgift.rader
           const netExpense = amount - vat
           // Samma idempotensnyckel som create_journal_entry — se
           // ai-journal-source.ts. Härledd ur innehållet, inte ur bekräftelsen.
           const sourceId = aiJournalSourceId('record_expense', toolInput)
-          const { entry, redanFanns } = await this.prisma.$transaction(async (tx) => {
-            // Uppslaget inuti transaktionen, mot samma (org, source, sourceId)
-            // som det unika indexet — se noten i create_journal_entry.
-            const befintligt = await tx.journalEntry.findFirst({
-              where: { organizationId, source: 'AI', sourceId },
-            })
-            if (befintligt) {
-              // ÄVEN IDEMPOTENSTRÄFFEN får ett spår. Verktyget KÖRDE; att det
-              // inte skapade något är en effektlista med noll poster, inte en
-              // körning som aldrig hände.
+
+          // EN SKRIVVÄG, samma som create_journal_entry ovan — se noten där för
+          // vad den egna transaktionen kostade (C0, C1 och race-återhämtningen
+          // gällde bara människan).
+          let redanFanns = false
+          const entry = await this.bokföring.recordManualExpense({
+            organizationId,
+            date,
+            idempotencyKey: sourceId,
+            source: 'AI',
+            createdById: userId,
+            aiToolExecutionId: aiToolExecutionId ?? null,
+            utgift: {
+              belopp: amount,
+              ...(vat > 0 ? { moms: vat } : {}),
+              kontonummer: accountNumber,
+              beskrivning: description,
+            },
+            efterSkrivning: async (tx, _post, fanns) => {
+              redanFanns = fanns
               await this.skrivTransaktionelltSpar(
                 tx,
                 aiToolExecutionId,
@@ -4173,35 +4207,8 @@ export class ToolExecutorService {
                 toolInput,
                 spårIdentitet ?? { organizationId, userId },
               )
-              return { entry: befintligt, redanFanns: true }
-            }
-
-            const v = await this.verifikationsnummer.allocate(tx, organizationId, date)
-            const skapat = await tx.journalEntry.create({
-              data: {
-                organizationId,
-                date,
-                description: `Utgift: ${description}`,
-                // Samma sak som i create_journal_entry — se noten där.
-                source: 'AI',
-                sourceId,
-                aiToolExecutionId: aiToolExecutionId ?? null,
-                createdById: userId,
-                series: v.series,
-                verNumber: v.verNumber,
-                fiscalYear: v.fiscalYear,
-                lines: { create: lines },
-              },
-            })
-            await this.skrivTransaktionelltSpar(
-              tx,
-              aiToolExecutionId,
-              toolName,
-              toolInput,
-              spårIdentitet ?? { organizationId, userId },
-            )
-            return { entry: skapat, redanFanns: false }
-          }, PRISMA_DEFAULT_TX_LIMITS)
+            },
+          })
           const propertyTag = typeof toolInput.propertyId === 'string' ? toolInput.propertyId : null
           return {
             success: true,
