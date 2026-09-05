@@ -145,7 +145,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#790](https://github.com/yasineken2002-sys/eken/pull/790), skuggläget). Kvar: **utföraren**, etapp 8–9 |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
-| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `fa680cf` — producent ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och inkorg ([#793](https://github.com/yasineken2002-sys/eken/pull/793)) finns; **inte prövat i verkliga fall** — flaggan är av för varje organisation |
+| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `fa680cf` — producent ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och inkorg ([#794](https://github.com/yasineken2002-sys/eken/pull/794)) finns; **inte prövat i verkliga fall** — flaggan är av för varje organisation |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
@@ -1543,7 +1543,7 @@ Hantverkarbokning ingår **inte** förrän `MaintenanceTicket.assignedToId` är 
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och
-inkorgen ([#793](https://github.com/yasineken2002-sys/eken/pull/793)).
+inkorgen ([#794](https://github.com/yasineken2002-sys/eken/pull/794)).
 
 Planens fem krav nedan är fem fält på `AiAssignment`, och detaljvyn visar dem i
 just den ordningen — handling → motivering → underlag → säkerhet → vad som hade
