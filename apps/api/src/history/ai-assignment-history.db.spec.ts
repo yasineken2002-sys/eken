@@ -97,7 +97,17 @@ medDb('uppdragskön i historiken', () => {
     reasoning: 'Felanmälan från i natt beskriver rinnande vatten under diskbänken.',
     consequence: 'En bokning skapas. Inget skickas till någon utanför systemet.',
     undoHint: 'Bokningen kan avbokas fram till dagen före.',
-    deadline: new Date(KL_09.getTime() + 6 * 60 * 60 * 1000),
+    // ── TIDSBOMB, LAGAD ──────────────────────────────────────────────────
+    // Stod som `KL_09 + 6h`, alltså ett FAST klockslag 2026-09-05T15:00Z. Det
+    // fungerade till klockan tre samma dag, varefter `skapa()` avvisade varje
+    // uppdrag med "tidsgränsen måste ligga i framtiden" — och hela filen föll i
+    // CI utan att en rad kod hade ändrats.
+    //
+    // Gränsen MÅSTE vara relativ till `Date.now()` eftersom produktionskoden
+    // prövar den mot den riktiga klockan. `createdAt` får däremot förbli ett
+    // fast klockslag: det backdateras med en egen `update` och rör aldrig den
+    // kontrollen. Det är skillnaden mellan en fixtur och en gräns.
+    deadline: new Date(Date.now() + 6 * 60 * 60 * 1000),
     assignedToUserId: userId,
     ...över,
   })

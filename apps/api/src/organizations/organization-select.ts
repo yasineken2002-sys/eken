@@ -79,6 +79,11 @@ export const SAFE_ORGANIZATION_SELECT = {
 
   // Driftinställningar organisationen själv styr
   morningReportEnabled: true,
+  // Skuggagenten på felanmälan (etapp 6). Vald och inte utelämnad av samma skäl
+  // som raden ovan: det är en inställning hyresvärden äger och ska kunna se —
+  // inte en hemlighet. Växeln byggs med inkorgen; fältet är läsbart redan nu så
+  // att läsytan kan säga OM skuggläget är på i stället för att gissa.
+  shadowAgentEnabled: true,
   maxBankTxAmount: true,
   maxContractBatchFiles: true,
   maxContractBatchCostSek: true,

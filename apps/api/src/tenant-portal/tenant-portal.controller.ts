@@ -27,6 +27,7 @@ import {
   IsArray,
   ArrayMaxSize,
   MinLength,
+  MaxLength,
 } from 'class-validator'
 import { MaintenanceCategory } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
@@ -170,8 +171,15 @@ class SubmitMaintenanceDto {
   @MinLength(3)
   title!: string
 
+  // ── TAK PÅ DET SOM BETALAS PER TOKEN ────────────────────────────────────
+  // Fältet hade `@MinLength(10)` men inget tak. Med Fastifys standardgräns på
+  // 1 MiB kan en hyresgäst skicka text som spränger modellens kontextfönster i
+  // skuggagenten (etapp 6) — och kostnaden per ärende blir obunden uppåt.
+  // Skuggkörningen har ett eget tak för de rader som redan finns; det här
+  // hindrar nya.
   @IsString()
   @MinLength(10)
+  @MaxLength(4000)
   description!: string
 
   @IsEnum(MaintenanceCategory)
