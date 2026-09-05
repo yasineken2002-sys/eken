@@ -1255,6 +1255,9 @@ const equipmentEvents: HistorySourceDefinition = {
         type: true,
         occurredAt: true,
         note: true,
+        cost: true,
+        performedById: true,
+        correctsId: true,
         maintenanceTicketId: true,
         equipment: { select: { id: true, kind: true, label: true, unitId: true } },
       },
@@ -1266,14 +1269,28 @@ const equipmentEvents: HistorySourceDefinition = {
       return {
         at: r.occurredAt,
         type: `EQUIPMENT_${r.type}`,
-        actor: ACTOR_UNKNOWN,
+        // AV VEM — `performedById` bär den människa som utförde ARBETET, inte
+        // den som registrerade det. `humanOrUnknown` och inte `HUMAN`: en
+        // kolumn som bär en `User.id` BEVISAR inte att en människa skrev raden
+        // (en AI-väg kan sätta den), och det varaktiga aktörsslaget bor i
+        // `actorKind`. Frånvaro av belägg ska säga att den saknas.
+        actor: humanOrUnknown(r.performedById),
         subject: {
           kind: (r.equipment.unitId ? 'UNIT' : 'PROPERTY') as 'UNIT' | 'PROPERTY',
           id: r.equipment.unitId ?? q.subject.id,
           label: r.equipment.label,
         },
-        description: r.note ? `${namn}: ${r.note}` : `${namn}: ${r.type}`,
-        amount: null,
+        // En RÄTTELSE ska inte gå att förväxla med det den rättar. Två rader med
+        // samma text och olika belopp är inte en historik, det är en gåta.
+        description: r.correctsId
+          ? `${namn}: RÄTTELSE — ${r.note ?? r.type}`
+          : r.note
+            ? `${namn}: ${r.note}`
+            : `${namn}: ${r.type}`,
+        // KOSTNADEN är en del av svaret på "vad byttes och när": ett byte som
+        // kostade 12 000 kr och ett som kostade noll är olika händelser för den
+        // som planerar underhåll. `toAmount` släpper igenom null = okänt.
+        amount: toAmount(r.cost),
         severity: r.type === 'REPAIRED' ? ('WARNING' as const) : ('INFO' as const),
         source: { table: 'UnitEquipmentEvent', id: r.id },
       }

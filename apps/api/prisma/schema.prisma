@@ -5939,6 +5939,18 @@ model UnitEquipmentEvent {
   //                  svar och ska inte gissas.
   //
   // NULL BETYDER OKÄNT — INTE MÄNNISKA. Ingen backfill, av samma skäl som G1.
+  //
+  // ── OCH performedById ÄR Restrict, INTE SetNull ───────────────────────────
+  //
+  // Exakt samma skäl som `maintenanceTicketId` ovan, och det är inte en
+  // upprepning utan en fälla som gillrar om: `ON DELETE SET NULL` är en
+  // kaskad-UPDATE som databasen gör utan att koden vet om det, och den här
+  // tabellens append-only-trigger AVVISAR den. Det var precis interaktionen som
+  // bröt organisationsraderingen i #585.
+  //
+  // Priset är en ordning, och den är redan betald: `delete-organization.ts`
+  // raderar `UnitEquipmentEvent` uttryckligen före `MaintenanceTicket`, alltså
+  // långt före `User` faller med kaskaden från `Organization`.
   actorKind     ActorKind?
   performedById String?
 
@@ -5954,7 +5966,7 @@ model UnitEquipmentEvent {
 
   equipment         UnitEquipment      @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   maintenanceTicket MaintenanceTicket? @relation(fields: [maintenanceTicketId], references: [id], onDelete: Restrict)
-  performedBy       User?              @relation("EquipmentEventPerformer", fields: [performedById], references: [id], onDelete: SetNull)
+  performedBy       User?              @relation("EquipmentEventPerformer", fields: [performedById], references: [id], onDelete: Restrict)
 
   corrects    UnitEquipmentEvent? @relation("EquipmentEventCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
   correctedBy UnitEquipmentEvent? @relation("EquipmentEventCorrection")
