@@ -9,6 +9,8 @@ export interface UpdateOrganizationInput {
   brandFont?: string
   brandSecondaryColor?: string
   morningReportEnabled?: boolean
+  /** Skuggagenten på felanmälningar (etapp 6). Skrivning är OWNER-only i API:t. */
+  shadowAgentEnabled?: boolean
   remindersEnabled?: boolean
   reminderFeeSek?: number
   reminderFormalDay?: number
