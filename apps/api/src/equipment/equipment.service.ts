@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { assertNoEquipmentCycle } from '../history/equipment-chain'
 import { CreateEquipmentDto } from './dto/create-equipment.dto'
 import { UpdateEquipmentDto } from './dto/update-equipment.dto'
@@ -121,7 +122,11 @@ export class EquipmentService {
         data: { equipmentId: skapad.id, type: 'INSTALLED', occurredAt: installedAt },
       })
       return skapad
-    })
+      // GRÄNSEN ÄR INTE VALFRI. En transaktion utan tak håller en connection
+      // öppen tills poolen tar slut, och `check-transaction-limits` fäller varje
+      // `$transaction` som saknar den. Standardtaket räcker här: det här är
+      // fyra korta skrivningar, inte en pengaväg med retry.
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /** Bara etikett och förväntningar — se `UpdateEquipmentDto` för vad som INTE går. */
@@ -233,7 +238,7 @@ export class EquipmentService {
       })
 
       return { replacement: ny, event: händelse }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   /**
