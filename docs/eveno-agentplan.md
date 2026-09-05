@@ -143,7 +143,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **KLAR** (7/7) #786, mätt på `b02fc79` — alla sju mot Postgres; defekten prov 6 blottade är lagad och frågan ställs nu över samtliga 30 `ACTION_TOOLS` |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
-| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#785](https://github.com/yasineken2002-sys/eken/pull/785), skuggläget). Kvar: **utföraren**, etapp 8–9 |
+| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#788](https://github.com/yasineken2002-sys/eken/pull/788), skuggläget). Kvar: **utföraren**, etapp 8–9 |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `59f4f7b` — alla sju fälten finns, 11 vakter setts falla; kvar: **5 verktyg utan mänsklig väg** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
@@ -769,7 +769,7 @@ uppdragens gräns hade flyttat återupptagningsmotorns tak utan att något blev 
 
 Vad som finns: kön, grinden vid skapandet (se Del 12), det synliga förfallet vid
 tidsgräns, kallelsen via `Notification` och läsytan `/uppdrag`.
-**Producenten finns sedan 2026-09-05** ([#785](https://github.com/yasineken2002-sys/eken/pull/785), etapp 6): skuggläget på felanmälan
+**Producenten finns sedan 2026-09-05** ([#788](https://github.com/yasineken2002-sys/eken/pull/788), etapp 6): skuggläget på felanmälan
 skriver `AiAssignment` med `shadow: true`. Kön är alltså inte längre tom med en
 läsare — den fylls av verkliga fall.
 
