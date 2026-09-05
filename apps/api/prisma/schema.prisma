@@ -1038,6 +1038,7 @@ model Property {
   maintenancePlans   MaintenancePlan[]
   equipment          UnitEquipment[]
   newsPosts          NewsPost[]
+  aiAssignments      AiAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1110,6 +1111,7 @@ model Unit {
   documents          Document[]
   maintenanceTickets MaintenanceTicket[]
   inspections        Inspection[]
+  aiAssignments      AiAssignment[]
   keyHandovers       KeyHandover[]
   meters             Meter[]
   equipment          UnitEquipment[]
@@ -1257,6 +1259,7 @@ model Tenant {
 
   aiMessageSubjects AiMessageTenant[]
   aiMemorySubjects  AiMemoryTenant[]
+  aiAssignments     AiAssignment[]
 
   // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
   //
@@ -3698,6 +3701,51 @@ model AiAssignment {
   /// som `JournalEntry.aiToolExecutionId`.
   aiToolExecutionId String?
 
+  /// ── UPPDRAGETS OMFÅNG — VAD DET HANDLAR OM ────────────────────────────────
+  ///
+  /// Tre nullbara FK:er, satta VID SKAPANDET ur det producenten redan vet. De
+  /// finns av ett mekaniskt skäl: historiken sammanställs vid läsning ur
+  /// domäntabellerna, och `check-history-registry.mjs` kan bara kräva en källa
+  /// för en modell som är ett RELATIONSFÄLT på `Tenant`, `Unit` eller
+  /// `Property`. Utan de här kolumnerna var uppdragskön osynlig för vakten —
+  /// noll av 20 källor läste `AiAssignment`, och ingenting blev rött.
+  ///
+  /// ── VARFÖR INTE HÄRLEDA UR `toolInput` ────────────────────────────────────
+  ///
+  /// Mätt mot `71d2998`: av de 23 verktyg som `dugligaVerktyg()` släpper fram
+  /// har bara SEX någon av `tenantId`/`unitId`/`propertyId` i sitt
+  /// inputschema — tre, två respektive två. SJUTTON har ingen alls. En
+  /// härledning ur nyttolasten hade alltså varit blind för tre fjärdedelar av
+  /// kön, och blind på det tysta sättet: uppdraget syns inte i historiken, och
+  /// historiken ser komplett ut.
+  ///
+  /// `evidence` duger inte heller. Den är display-data som servern per sin egen
+  /// dokumentation ALDRIG tolkar; att börja tolka den vore att låna ett fält som
+  /// svarar på en annan fråga.
+  ///
+  /// ── ALLA TRE ÄR NULLBARA, OCH DET ÄR INTE SLARV ───────────────────────────
+  ///
+  /// Sjutton av de dugliga verktygen rör inget enskilt objekt
+  /// (`generate_rent_notices`, `export_sie4`, `import_bgmax_file` …). Ett
+  /// uppdrag för dem HAR inget omfång, och ett obligatoriskt fält hade tvingat
+  /// producenten att hitta på ett. NULL betyder här "rör inget enskilt objekt"
+  /// — uppdraget finns kvar i kön och i läsytan, det syns bara inte i någon
+  /// objekthistorik.
+  ///
+  /// ── `SetNull`, INTE `Cascade` ─────────────────────────────────────────────
+  ///
+  /// Samma skäl som `assignedToUser`: ett uppdrag är ARBETE, och beslutet om
+  /// det ska inte raderas för att objektet det gällde tas bort. Raden faller då
+  /// tillbaka på organisationsscopet.
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  unitId String?
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
   /// ── UPPDRAGSGIVAREN (G1, #676) — FÖRBEREDD, OTILLSATT ─────────────────────
   ///
   /// `AiPrincipal` är `{ kind: 'USER' | 'TENANT', id }`. Kolumnerna ligger här
@@ -3721,6 +3769,10 @@ model AiAssignment {
   /// Utgångscronens fråga: väntande uppdrag vars gräns passerat.
   @@index([status, deadline])
   @@index([assignedToUserId])
+  /// Historikkällans tre frågor — en per dimension, alla scopade på org.
+  @@index([organizationId, tenantId])
+  @@index([organizationId, unitId])
+  @@index([organizationId, propertyId])
 }
 
 /// ── VARFÖR BARA FYRA VÄRDEN ────────────────────────────────────────────────
