@@ -655,3 +655,27 @@ export const RefundDepositSchema = z.object({
 export type DepositDeductionInput = z.infer<typeof DepositDeductionSchema>
 export type CreateDepositInput = z.infer<typeof CreateDepositSchema>
 export type RefundDepositInput = z.infer<typeof RefundDepositSchema>
+
+// ─── Inkasso: export och påminnelsestyrning ───────────────────────────────────
+//
+// Bindande handlingar i kravtrappan. `bulk-export` skickar fordringar till
+// inkasso; grinden mot att exportera något som inte är förfallet ligger i
+// tjänsten (INV-D), inte här — schemat beskriver formen, inte behörigheten.
+
+export const BulkExportSchema = z.object({
+  invoiceIds: z.array(z.string().uuid('Varje faktura-id måste vara ett UUID')),
+})
+
+export const PauseRemindersSchema = z.object({
+  /** Fri text. Loggas på fakturan så att pausen går att förklara i efterhand. */
+  reason: z.string().optional(),
+})
+
+export const MarkSentSchema = z.object({
+  /** Utelämnad eller ifylld — men inte tom sträng; DTO:n har @MinLength(1). */
+  note: z.string().min(1, 'Anteckningen kan inte vara tom').optional(),
+})
+
+export type BulkExportInput = z.infer<typeof BulkExportSchema>
+export type PauseRemindersInput = z.infer<typeof PauseRemindersSchema>
+export type MarkSentInput = z.infer<typeof MarkSentSchema>

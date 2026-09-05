@@ -10,32 +10,13 @@ import {
   Post,
   Query,
 } from '@nestjs/common'
-import { IsArray, IsOptional, IsString, IsUUID, MinLength } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
+import { BulkExportDto, MarkSentDto, PauseRemindersDto } from './dto/collections.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { PaymentReminderService } from '../notifications/payment-reminder.service'
 import { CollectionExportService } from './collection-export.service'
-
-class BulkExportDto {
-  @IsArray()
-  @IsUUID('4', { each: true })
-  invoiceIds!: string[]
-}
-
-class PauseRemindersDto {
-  @IsOptional()
-  @IsString()
-  reason?: string
-}
-
-class MarkSentDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  note?: string
-}
 
 /**
  * Inkasso — fakturaflödet.

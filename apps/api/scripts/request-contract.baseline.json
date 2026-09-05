@@ -1,5 +1,5 @@
 {
-  "total": 90,
+  "total": 86,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -53,15 +53,6 @@
     {
       "fil": "apps/web/src/features/backfill/api/backfill.api.ts",
       "medlemmar": ["POST `/avisering/backfill/${leaseId}/confirm` → OTYPAD"]
-    },
-    {
-      "fil": "apps/web/src/features/collections/api/collections.api.ts",
-      "medlemmar": [
-        "PATCH `/collections/reminders/${invoiceId}/pause` → reason ? { reason } : {}",
-        "PATCH `/collections/reminders/${invoiceId}/resume` → INLINE-LITERAL",
-        "POST '/collections/bulk-export' → INLINE-LITERAL",
-        "POST `/collections/mark-sent/${invoiceId}` → note ? { note } : {}"
-      ]
     },
     {
       "fil": "apps/web/src/features/contract-batch/api/contractBatch.api.ts",

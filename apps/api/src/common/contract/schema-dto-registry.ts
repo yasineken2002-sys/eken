@@ -10,6 +10,9 @@ import {
   RegisterPaymentSchema,
   CreateDepositSchema,
   RefundDepositSchema,
+  BulkExportSchema,
+  MarkSentSchema,
+  PauseRemindersSchema,
   UpdateMeterSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
@@ -24,6 +27,11 @@ import { CreateCreditNoteDto } from '../../invoices/dto/create-credit-note.dto'
 import { RegisterPaymentDto } from '../../invoices/dto/register-payment.dto'
 import { CreateDepositDto } from '../../deposits/dto/create-deposit.dto'
 import { RefundDepositDto } from '../../deposits/dto/refund-deposit.dto'
+import {
+  BulkExportDto,
+  MarkSentDto,
+  PauseRemindersDto,
+} from '../../collections/dto/collections.dto'
 import type { ZodType } from 'zod'
 
 /**
@@ -269,5 +277,32 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltig: { refundAmount: -1 },
     ogiltigVarfor: 'ett återbetalningsbelopp kan inte vara negativt',
+  },
+  {
+    endpoint: 'POST /collections/bulk-export',
+    inputTyp: 'BulkExportInput',
+    schema: BulkExportSchema,
+    dto: BulkExportDto,
+    giltig: { invoiceIds: ['11111111-2222-4333-8444-555555555555'] },
+    ogiltig: { invoiceIds: ['inte-ett-uuid'] },
+    ogiltigVarfor: 'varje faktura-id måste vara ett UUID',
+  },
+  {
+    endpoint: 'POST /collections/mark-sent/:invoiceId',
+    inputTyp: 'MarkSentInput',
+    schema: MarkSentSchema,
+    dto: MarkSentDto,
+    giltig: { note: 'Skickad till Intrum 2026-09-01' },
+    ogiltig: { note: '' },
+    ogiltigVarfor: 'en tom anteckning är inte samma sak som ingen anteckning',
+  },
+  {
+    endpoint: 'PATCH /collections/reminders/:invoiceId/pause',
+    inputTyp: 'PauseRemindersInput',
+    schema: PauseRemindersSchema,
+    dto: PauseRemindersDto,
+    giltig: { reason: 'Avbetalningsplan överenskommen' },
+    ogiltig: { reason: 42 },
+    ogiltigVarfor: 'skälet måste vara text',
   },
 ]

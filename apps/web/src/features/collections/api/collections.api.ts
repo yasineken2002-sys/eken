@@ -1,4 +1,5 @@
 import { get, post, patch } from '@/lib/api'
+import type { BulkExportInput, MarkSentInput, PauseRemindersInput } from '@eken/shared'
 
 export type CollectionBucket = 'in-progress' | 'ready' | 'sent'
 
@@ -44,17 +45,27 @@ export const exportSingleCollection = (invoiceId: string) =>
     csvUrl: string
   }>(`/collections/export/${invoiceId}`)
 
-export const exportBulkCollections = (invoiceIds: string[]) =>
-  post<{ zipUrl: string; count: number }>('/collections/bulk-export', { invoiceIds })
+// NYTTOLASTERNA ÄR ANNOTERADE med de delade typerna. Utan annotering är
+// literalen en inferrerad const, och då körs ingen överskottskontroll — ett fält
+// som finns här men inte i kontraktet hade passerat tyst.
+export const exportBulkCollections = (invoiceIds: string[]) => {
+  const kropp: BulkExportInput = { invoiceIds }
+  return post<{ zipUrl: string; count: number }>('/collections/bulk-export', kropp)
+}
 
-export const markSentToCollection = (invoiceId: string, note?: string) =>
-  post<{ id: string; status: 'SENT_TO_COLLECTION' }>(
+export const markSentToCollection = (invoiceId: string, note?: string) => {
+  const kropp: MarkSentInput = { ...(note ? { note } : {}) }
+  return post<{ id: string; status: 'SENT_TO_COLLECTION' }>(
     `/collections/mark-sent/${invoiceId}`,
-    note ? { note } : {},
+    kropp,
   )
+}
 
-export const pauseReminders = (invoiceId: string, reason?: string) =>
-  patch<unknown>(`/collections/reminders/${invoiceId}/pause`, reason ? { reason } : {})
+export const pauseReminders = (invoiceId: string, reason?: string) => {
+  const kropp: PauseRemindersInput = { ...(reason ? { reason } : {}) }
+  return patch<unknown>(`/collections/reminders/${invoiceId}/pause`, kropp)
+}
 
 export const resumeReminders = (invoiceId: string) =>
-  patch<unknown>(`/collections/reminders/${invoiceId}/resume`, {})
+  // Ingen kropp: rutten tar inget @Body().
+  patch<unknown>(`/collections/reminders/${invoiceId}/resume`)
