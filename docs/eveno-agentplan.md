@@ -144,7 +144,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `e6401d6` — kriteriet mätt, kön har producent, läsyta och facit. Enda resten: **utföraren**, etapp 8–9 |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
-| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#795](https://github.com/yasineken2002-sys/eken/pull/795)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
+| 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#796](https://github.com/yasineken2002-sys/eken/pull/796)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
@@ -1595,7 +1595,7 @@ ingenting ENS vid godkännande, eftersom utföraren inte finns (etapp 8–9). De
 bekräftelserutan säger det rakt ut. Utan den texten godkänner hyresvärden något i
 tron att det händer, och den missuppfattningen är värre än ett dåligt förslag.
 
-**Facit skrivs när ärendet avslutas** ([#795](https://github.com/yasineken2002-sys/eken/pull/795)): `outcome` får de fält
+**Facit skrivs när ärendet avslutas** ([#796](https://github.com/yasineken2002-sys/eken/pull/796)): `outcome` får de fält
 `prediction` har, i samma söm-familj som skapandet — efter transaktionen,
 fire-and-forget, med sväljd fångst. Skrivningen är IDEMPOTENT (`updateMany` med
 hela objektet som värde), så ett ärende som avslutas två gånger ger samma facit.
