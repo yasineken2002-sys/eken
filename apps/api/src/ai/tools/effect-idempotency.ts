@@ -297,6 +297,63 @@ export type TraceIntegrity = 'TRANSAKTIONELL' | 'FÖRE_EFFEKTEN' | 'BÄST_MÖJLI
  */
 export type ExternalHandle = 'FÖRE_DISPATCH' | 'I_SVARET' | 'INGET' | 'EJ_TILLÄMPLIG'
 
+/**
+ * VEMS RÄTT UTÖVAS NÄR EFFEKTEN SKER? (planens Del 10)
+ *
+ * Frågan är INTE "syns effekten utanför" — det är `resumptionPolicy`:s fråga —
+ * och inte "finns ett handtag" — det är `externalHandle`:s. Den här frågar vems
+ * rättsställning som rörs, och den avgör hur mycket auktoritet en delegation
+ * behöver ge innan agenten får utföra något.
+ *
+ *  • `EGEN_ORG`         hyresvärdens EGNA register. Ett fel drabbar den som
+ *    beställde det, och ingen annan behöver få veta.
+ *  • `MOT_HYRESGAST`    effekten påverkar en hyresgästs rättsställning eller
+ *    når hen. Hyra, skuld, avtal, portalpost, mejl.
+ *  • `MOT_TREDJE_PART`  myndighet, inkasso, signeringsprovider, bank.
+ *
+ * ── VAD SOM AVGÖR, OCH VAD SOM INTE GÖR DET ────────────────────────────────
+ *
+ * NAMNET avgör inte. Två mätningar 2026-09-05 flyttade poster som såg självklara
+ * ut i motsatt riktning:
+ *
+ *   generate_rent_notices  ser ut att nå hyresgästen. Portalen visar avier bara
+ *                          i SENT|PAID|OVERDUE (`tenant-portal.service.ts:647`);
+ *                          en genererad avi vilar i PENDING tills en människa
+ *                          släpper in den → EGEN_ORG.
+ *   create_invoice         samma sak: portalen döljer DRAFT (`:660`) → EGEN_ORG.
+ *
+ * Och åt andra hållet: `mark_sent_to_collection` HETER som en handling mot
+ * inkasso men skriver bara status (`externalHandle: EJ_TILLÄMPLIG`). Den är
+ * `MOT_HYRESGAST` — den registrerar en permanent DEBT_COLLECTION-post mot en
+ * enskild person. `check-tool-authority.mjs` R2 tvingar fram just den
+ * skillnaden: `MOT_TREDJE_PART` utan externt handtag avvisas.
+ */
+export type AuthorityScope = 'EGEN_ORG' | 'MOT_HYRESGAST' | 'MOT_TREDJE_PART'
+
+/**
+ * GÅR EFFEKTEN ATT BACKA I SYSTEMET, OCH HUR?
+ *
+ * ALDRIG bara `false`. "Går inte att backa" och "ingen har letat efter vägen"
+ * hade sett likadana ut, och det är exakt den tystnad `undoHint` på
+ * `AiAssignment` en gång infördes för att ta bort — men där per uppdrag, här per
+ * verktyg. De två är olika frågor: kortet beskriver vad hyresvärden får veta
+ * INNAN hen säger ja, det här fältet vad koden faktiskt kan.
+ *
+ *  • `VÄG`           en namngiven metod i en namngiven fil. `check-tool-authority.mjs`
+ *    R4 slår upp symbolen i KOD (codeMask, \p{L}-avgränsad) i just den filen —
+ *    formen är lånad av `Mekanism`, som redan gör detsamma för idempotensgrindar.
+ *  • `IRREVERSIBEL`  med ett SKÄL i klartext. R3 kräver minst MIN_REASON tecken
+ *    för allt som bokför eller skickar; en tom motivering är samma sak som ett
+ *    `false`.
+ *  • `INGEN_EFFEKT`  det finns ingenting att backa. Tillåtet BARA där
+ *    idempotensmekanismen också säger `INGEN_EFFEKT` — annars hade fältet blivit
+ *    en bekväm väg förbi de två andra.
+ */
+export type SupportsUndo =
+  | { kind: 'VÄG'; fil: string; symbol: string }
+  | { kind: 'IRREVERSIBEL'; skäl: string }
+  | { kind: 'INGEN_EFFEKT' }
+
 export interface EffectDeclaration {
   effectIdempotency: EffectIdempotency
   idempotencyUnit: IdempotencyUnit
@@ -320,6 +377,39 @@ export interface EffectDeclaration {
   policyBeslutad: boolean
   /** Tom lista är tillåten BARA när effectIdempotency inte är IDEMPOTENT. */
   mekanismer: Mekanism[]
+
+  /**
+   * FÅR EN AGENT UTFÖRA DETTA UTAN BEKRÄFTELSE PER HANDLING, givet en delegation?
+   *
+   * ── VARFÖR BOOLEAN OCH INTE "VILKA AGENTER" ────────────────────────────────
+   *
+   * Planens Del 10 skriver fältet som *"vilka agenter som får ha det"* — en
+   * mängd. Agentidentiteter finns inte i koden (noll träffar på `AgentId`,
+   * `agentId`, `AGENT_IDS`), så en per-agent-lista hade varit en vokabulär med
+   * TOM DOMÄN: den hade sett ut som en mekanism och kunnat vara vad som helst.
+   * Samma fel som ett enumvärde ingenting kan skriva.
+   *
+   * Boolean är därför den ärliga formen i dag: FÅR någon agent alls hålla det
+   * här verktyget? Mängdformen är ett eget steg när etapp 7 ger agenterna namn,
+   * och den ändringen ska göras av den PR som bygger delegationerna.
+   *
+   * ── VÄRDET ÄR EN REGEL, INTE TRETTIO ÅSIKTER ───────────────────────────────
+   *
+   * `check-tool-authority.mjs` R1 kräver fyra HÄRLEDDA villkor för `true`:
+   * `authorityScope === 'EGEN_ORG'`, inga sänkor i vakt 7:s manifest,
+   * `supportsUndo.kind !== 'IRREVERSIBEL'`, och att verktyget inte står i
+   * `ACCOUNTING_ONLY_ACTIONS`. Alla fyra är mängder som redan finns och mäts av
+   * något annat — ingen ny lista att underhålla.
+   *
+   * Fail-closed: `false` är svaret som inte kräver ett beslut.
+   */
+  agentAllowlist: boolean
+
+  /** Vems rätt utövas. Se AuthorityScope. */
+  authorityScope: AuthorityScope
+
+  /** Vägen som backar effekten, eller varför det inte går. Se SupportsUndo. */
+  supportsUndo: SupportsUndo
 }
 
 const DB_RAD = 'så länge raden finns (räkenskapsinformation bevaras 7 år)'
@@ -339,6 +429,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [{ typ: 'INGEN_EFFEKT' }],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'INGEN_EFFEKT' },
   },
 
   // RentNotice @@unique([leaseId, year, month, type]) OCH ett explicit
@@ -355,6 +448,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'RentNotice', falt: ['leaseId', 'year', 'month', 'type'] },
     ],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'avisering/avisering.service.ts', symbol: 'cancelNotice' },
   },
 
   // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) via `crossSource`
@@ -375,6 +471,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'crossSource',
       },
     ],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'reconciliation/reconciliation.service.ts',
+      symbol: 'unmatchTransaction',
+    },
   },
 
   // InvoicePayment.bankTransactionId @unique — schemat kallar den rakt ut
@@ -389,6 +492,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'InvoicePayment', falt: ['bankTransactionId'] }],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'reconciliation/reconciliation.service.ts',
+      symbol: 'unmatchTransaction',
+    },
   },
 
   // `if (transaction.status !== 'MATCHED') throw` — en omkörning mot en redan
@@ -415,6 +525,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'unmatchTransaction',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'reconciliation/reconciliation.service.ts',
+      symbol: 'matchTransaction',
+    },
   },
 
   // Unit @@unique([propertyId, unitNumber]) → en omkörning med samma nummer
@@ -428,6 +545,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'Unit', falt: ['propertyId', 'unitNumber'] }],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'units/units.service.ts', symbol: 'remove' },
   },
 
   // sourceId = ai:<innehållshash> + JournalEntry @@unique([organizationId,
@@ -453,6 +573,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         falt: ['organizationId', 'source', 'sourceId'],
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'accounting/accounting.service.ts',
+      symbol: 'reverseJournalEntry',
+    },
   },
 
   // Samma mekanism som create_journal_entry.
@@ -476,6 +603,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         falt: ['organizationId', 'source', 'sourceId'],
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'accounting/accounting.service.ts',
+      symbol: 'reverseJournalEntry',
+    },
   },
 
   // signing.service.ts härleder sha256(documentId + contentHash) och dedupar
@@ -511,6 +645,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         falt: ['organizationId', 'idempotencyKey'],
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_TREDJE_PART',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Signeringsinbjudan har dispatchats till providern, som skickar den vidare till hyresgästen. Systemet kan makulera sin egen begäran men inte det hyresgästen redan fått i sin inkorg.',
+    },
   },
 
   // Ren update med absoluta värden — ingen append, ingen increment. Samma
@@ -526,6 +666,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'REN_UPPDATERING', fil: 'apps/api/src/tenants/tenants.service.ts', symbol: 'update' },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: { kind: 'VÄG', fil: 'tenants/tenants.service.ts', symbol: 'update' },
   },
 
   // Sätter remindersPaused: true. ⚠️ remindersPausedAt sätts till new Date()
@@ -546,6 +689,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'remindersPaused',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'notifications/payment-reminder.service.ts',
+      symbol: 'resumeReminders',
+    },
   },
 
   resume_reminders: {
@@ -563,6 +713,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'resumeReminders',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'notifications/payment-reminder.service.ts',
+      symbol: 'pauseReminders',
+    },
   },
 
   // `if (pre.alreadyClosed) throw ConflictException('redan stängd')` plus en
@@ -582,6 +739,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'alreadyClosed',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'accounting/accounting-period.service.ts',
+      symbol: 'reopenPeriod',
+    },
   },
 
   // Atomär, status-grindad claim (#307). transitionBlockReason ur statusmaskinen
@@ -601,6 +765,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'transitionBlockReason',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_TREDJE_PART',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Filen ligger i R2 och en människa vidarebefordrar den till inkassobolaget. Uppladdningen går att skriva över, men det som redan lämnat huset gör det inte — och systemet kan inte veta vilket av de två som hänt.',
+    },
   },
 
   // Mekaniskt samma spärr som export_for_collection — OCH ändå KRÄVER_MÄNNISKA,
@@ -622,6 +792,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'transitionBlockReason',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Posten är ett permanent påstående om att kravet lämnats till inkasso, och den bär ett datum en människa handlat på. Att radera den hade gjort kravtrappan osann bakåt; rättelsen är en ny post, inte en ångring.',
+    },
   },
 
   // assertLeaseTransition spärrar ogiltiga övergångar. ACTIVE→TERMINATED
@@ -655,6 +831,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'terminatedAt',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: { kind: 'VÄG', fil: 'leases/leases.service.ts', symbol: 'transitionStatus' },
   },
 
   // ══ DEDUPLICERBAR ════════════════════════════════════════════════════════
@@ -670,6 +849,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Mejlet är köat och skickas av workern. Efter dispatch finns inget sätt att ta tillbaka det — och före dispatch vet verktyget inte om jobbet redan körts.',
+    },
   },
 
   // NYCKELN FINNS NU, OCH DEN BITER. `storageKey` var
@@ -705,6 +890,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'Document', falt: ['organizationId', 'storageKey'] },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Dokumentet ligger i hyresgästens portal OCH ett mejl har gått ut. Portalposten går att ta bort; mejlet gör det inte, och hyresgästen har redan sett båda.',
+    },
   },
 
   // LOOP över förfallna fakturor, try/catch per mottagare. Enheten MÅSTE vara
@@ -745,6 +936,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [{ typ: 'UNIKT_INDEX', modell: 'PaymentReminder', falt: ['invoiceId', 'type'] }],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Påminnelsen har nått hyresgästen och en påminnelseavgift kan ha bokförts. Avgiften går att stryka, men kravet i mottagarens inkorg gör det inte.',
+    },
   },
 
   // LOOP över hyresgäster. 15-min bulk-cooldown i Redis vid >5 mottagare är ett
@@ -785,6 +982,12 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         falt: ['organizationId', 'tenantId', 'batchId'],
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl: 'Ett avsänt mejl går inte att kalla tillbaka. Mottagaren har läst det, och ingen radering i systemet ändrar det. Rättelsen är ett NYTT mejl, inte en ångring.',
+    },
   },
 
   // PDF → R2 → Document.create. Posten sa "Document saknar unikt index" fram
@@ -825,6 +1028,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'Document', falt: ['organizationId', 'storageKey'] },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: { kind: 'VÄG', fil: 'documents/documents.service.ts', symbol: 'remove' },
   },
 
   // invoiceNumber allokeras ur en sekvens → varje omkörning får ett NYTT nummer
@@ -862,6 +1068,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'invoices/invoices.service.ts', symbol: 'remove' },
   },
 
   // NYCKELN FINNS I DOMÄNEN: `@@unique([unitId, tenantId, startDate])`. Samma
@@ -887,6 +1096,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'Lease', falt: ['unitId', 'tenantId', 'startDate'] },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: { kind: 'VÄG', fil: 'leases/leases.service.ts', symbol: 'remove' },
   },
 
   // Skapar BÅDE hyresgäst och avtal, och BÅDA halvorna är nu nycklade.
@@ -932,6 +1144,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'Lease', falt: ['unitId', 'tenantId', 'startDate'] },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: { kind: 'VÄG', fil: 'leases/leases.service.ts', symbol: 'remove' },
   },
 
   // NYCKELN FINNS I DOMÄNEN, och den är nu byggd:
@@ -960,6 +1175,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [
       { typ: 'UNIKT_INDEX', modell: 'Property', falt: ['organizationId', 'propertyDesignation'] },
     ],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'properties/properties.service.ts', symbol: 'remove' },
   },
 
   // ticketNumber ur sekvens. ⚠️ Nämnaren är svår här: två identiska felanmälningar
@@ -992,6 +1210,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'maintenance/maintenance.service.ts', symbol: 'update' },
   },
 
   // Inspection saknar unikt index, och ska inte få ett: två besiktningar av
@@ -1016,6 +1237,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'AUTOMATISK',
     policyBeslutad: true,
     mekanismer: [],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'inspections/inspections.service.ts', symbol: 'delete' },
   },
 
   // NYCKELN FINNS I DOMÄNEN: hyran kan bara ändras en gång på ett givet datum,
@@ -1057,6 +1281,13 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'ärLevandeHöjningskonflikt',
       },
     ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: {
+      kind: 'VÄG',
+      fil: 'rent-increases/rent-increases.service.ts',
+      symbol: 'withdraw',
+    },
   },
 
   // VAR BLANDAD, ÄR DET INTE LÄNGRE. Statusdelen var en ren update och därmed
@@ -1097,6 +1328,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
         symbol: 'statusÄndras',
       },
     ],
+    agentAllowlist: true,
+    authorityScope: 'EGEN_ORG',
+    supportsUndo: { kind: 'VÄG', fil: 'maintenance/maintenance.service.ts', symbol: 'update' },
   },
 
   // FULL betalning spärras ('Fakturan är redan betald'). Men verktyget tar ett
@@ -1132,6 +1366,9 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [],
+    agentAllowlist: false,
+    authorityScope: 'MOT_HYRESGAST',
+    supportsUndo: { kind: 'VÄG', fil: 'invoices/invoices.service.ts', symbol: 'update' },
   },
 }
 
@@ -1179,6 +1416,37 @@ export function buildEffectCatalog(): EffectCatalogEntry[] {
           `AiToolEffect skrivs för det — TRANSAKTIONELL, FÖRE_EFFEKTEN eller ` +
           `BÄST_MÖJLIGA. OKÄND betyder "ingen har svarat", och det får inte se ut ` +
           `som ett svar.`,
+      )
+    }
+    // ── DE TRE AUKTORITETSFÄLTEN — FAIL-CLOSED, SAMMA SKÄL ──────────────────
+    //
+    // TypeScript kräver dem redan vid kompilering, men katalogen byggs också ur
+    // data i prov och sonder, och `EFFECT_DECLARATIONS` läses på flera ställen
+    // som `Record<string, …>`. Ett fält som saknas i RUNTIME hade då gett
+    // `undefined` — och `agentAllowlist: undefined` är falsy, alltså ett
+    // "nej" ingen fattat. Ett obesvarat fält får inte se ut som ett svar.
+    //
+    // `agentAllowlist` prövas med `typeof` och inte med `!d.agentAllowlist`:
+    // `false` är ett giltigt, vanligt svar (21 av 30), och en falsy-kontroll
+    // hade kastat på varje korrekt deklarerat verktyg.
+    if (typeof d.agentAllowlist !== 'boolean') {
+      throw new Error(
+        `Verktyget "${name}" saknar agentAllowlist. Får en AGENT utföra det utan ` +
+          `bekräftelse per handling, givet en delegation? Svara true eller false — ` +
+          `frånvaro är inget svar.`,
+      )
+    }
+    if (!d.authorityScope) {
+      throw new Error(
+        `Verktyget "${name}" saknar authorityScope. Vems rätt utövas när effekten ` +
+          `sker — EGEN_ORG, MOT_HYRESGAST eller MOT_TREDJE_PART?`,
+      )
+    }
+    if (!d.supportsUndo?.kind) {
+      throw new Error(
+        `Verktyget "${name}" saknar supportsUndo. Ange VÄGEN som backar effekten ` +
+          `({ kind: 'VÄG', fil, symbol }), eller IRREVERSIBEL med ett skäl. ` +
+          `Aldrig bara "nej": "går inte att backa" och "ingen letade" ser likadana ut.`,
       )
     }
     return { name, ...d, autoResumable: autoResumable(d) }
