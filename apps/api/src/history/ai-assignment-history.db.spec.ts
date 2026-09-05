@@ -49,9 +49,52 @@ import type { HistoryEvent } from './history-event'
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
 
-/** Klockslagen ur planens klart-kriterium, samma dygn. */
-const KL_03 = new Date('2026-09-05T03:00:00.000Z')
-const KL_09 = new Date('2026-09-05T09:00:00.000Z')
+/**
+ * Klockslagen ur planens klart-kriterium, samma dygn — HÄRLEDDA UR KLOCKAN,
+ * inte skrivna som en literal.
+ *
+ * ── DEFEKTEN SOM MOTIVERAR HÄRLEDNINGEN (mätt 2026-09-05) ──────────────────
+ *
+ * Konstanterna stod tidigare som `new Date('2026-09-05T03:00:00.000Z')` och
+ * `…T09:00…`, och tidsgränsen nedan som `KL_09 + 6h` — alltså 15:00 UTC den
+ * 5 september. Klockan 15:00 den dagen blev gränsen historisk, och
+ * `AiAssignmentsService.skapa` avvisar med rätta en tidsgräns som inte ligger i
+ * framtiden. Sexton prov föll, på `main`, utan att någon rört koden:
+ *
+ *     CI-körning 15:17 UTC   BadRequestException: Uppdragets tidsgräns måste
+ *                            ligga i framtiden.
+ *
+ * Provet var alltså grönt av att dagen inte hade passerat, inte av att
+ * mekanismen fungerade. Det är samma familj som en vakt med tom mängd: den kan
+ * inte falla för det den påstår sig skydda mot, och när den väl faller är det
+ * av fel skäl.
+ *
+ * ── TVÅ SAKER SOM SKILJDES ÅT ──────────────────────────────────────────────
+ *
+ *   KL_03/KL_09   dygnets klockslag, härledda ur dagens datum. De ska ligga i
+ *                 DÅTID: raden bakdateras till 03:00 och frågan ställs som om
+ *                 den kom 09:00.
+ *   TIDSGRÄNS     ett uppdrags deadline, som per definition ska ligga i
+ *                 FRAMTIDEN. Den hörde aldrig ihop med klockslagen och var bara
+ *                 räknad ur dem — vilket är precis vad som band ihop dem till
+ *                 en tidsbomb.
+ */
+const NU = new Date()
+/**
+ * GÅRDAGENS klockslag, inte dagens — och det är inte överdrift.
+ *
+ * Med dagens datum ligger 03:00 och 09:00 i FRAMTIDEN för varje körning före
+ * dess, alltså mellan midnatt och 09:00 UTC. Raden bakdateras med en direkt
+ * `update` som går förbi valideringen, så det hade inte kastat — det hade blivit
+ * en rad som påstår sig skapad i framtiden, och ett prov som är grönt av att
+ * ingen frågar. Gårdagen är i dåtid dygnet runt.
+ */
+const dygnetsKl = (timme: number) =>
+  new Date(Date.UTC(NU.getUTCFullYear(), NU.getUTCMonth(), NU.getUTCDate() - 1, timme, 0, 0, 0))
+const KL_03 = dygnetsKl(3)
+const KL_09 = dygnetsKl(9)
+/** Alltid i framtiden, oavsett när på dygnet sviten körs. */
+const TIDSGRÄNS = () => new Date(Date.now() + 6 * 60 * 60 * 1000)
 
 describe('förutsättningar', () => {
   it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => {
@@ -97,7 +140,7 @@ medDb('uppdragskön i historiken', () => {
     reasoning: 'Felanmälan från i natt beskriver rinnande vatten under diskbänken.',
     consequence: 'En bokning skapas. Inget skickas till någon utanför systemet.',
     undoHint: 'Bokningen kan avbokas fram till dagen före.',
-    deadline: new Date(KL_09.getTime() + 6 * 60 * 60 * 1000),
+    deadline: TIDSGRÄNS(),
     assignedToUserId: userId,
     ...över,
   })
