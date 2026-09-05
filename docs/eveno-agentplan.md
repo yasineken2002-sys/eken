@@ -144,7 +144,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#790](https://github.com/yasineken2002-sys/eken/pull/790), skuggläget). Kvar: **utföraren**, etapp 8–9 |
-| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `59f4f7b` — alla sju fälten finns, 11 vakter setts falla; kvar: **5 verktyg utan mänsklig väg** |
+| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
@@ -152,7 +152,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
 | 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |
 
-### Mätt status — etapp 0–2b mot `5f94360`, etapp 3–5 mot `dbe12ff`
+### Mätt status — etapp 0–2b mot `5f94360`, 3–4 mot `dbe12ff`, 5 mot `1278a9b`
 
 **Samma regel som [`docs/revision-status.md`](./revision-status.md): en rad här är ett
 SPÅR, inte ett faktum.** Sha:n är poängen — den säger vilket tillstånd raden beskriver,
@@ -168,7 +168,9 @@ git log --oneline 5f94360..HEAD -- apps/api/src/history apps/api/src/ai \
 `—` i statuskolumnen betyder **inte mätt i den här omgången**, aldrig "inte gjord".
 Raderna 6–11+ bär `—`, och en tom cell är inte ett godkännande.
 
-Etapp 3–5 mättes i #775 mot `dbe12ff` och står oförändrade här. Etapp 0–2b mättes om mot
+Etapp 3 och 4 mättes i #775 mot `dbe12ff` och står oförändrade här. **Etapp 5 mättes
+om mot `1278a9b` (2026-09-05) och är KLAR** — se stycket "Etapp 5 — Tool Catalog"
+längre ner. Etapp 0–2b mättes om mot
 `5f94360` (2026-09-05): `dbe12ff` är förfader till `5f94360`, och den enda commit däremellan
 som rör de mätta sökvägarna är #773 (`8743f72`), som bara LÄGGER TILL delmängdsvakten
 `check-tool-human-path.mjs` och `human-path.ts`. Ingen av raderna nedan ändrade bedömning;
@@ -437,12 +439,38 @@ kommentar, noll anropare av `skapa()`, och noll skrivare av
 `AiAssignment.aiToolExecutionId`. Ingen producent, ingen utförare — precis som
 tjänstens eget docblock säger.
 
-**Etapp 5 — Tool Catalog.** Katalogen **kastar**, i två oberoende byggare:
-`buildToolCatalog()` (`ai-tools.catalog.ts:351`) och `buildEffectCatalog()`
-(`effect-idempotency.ts:1121`), den senare även vid `traceIntegrity: 'OKÄND'`.
-Prövat: 30/30 gröna i `ai-tools-catalog.spec.ts` + `effect-idempotency.spec.ts`.
+**Etapp 5 — Tool Catalog. KLAR, mätt mot `1278a9b` (2026-09-05).**
 
-Av planens sju fält fanns tre. Ett fjärde landar med den här omgången:
+Tre villkor, alla uppfyllda:
+
+1. **Katalogen kastar**, i två oberoende byggare: `buildToolCatalog()`
+   (`ai-tools.catalog.ts:351`) och `buildEffectCatalog()`
+   (`effect-idempotency.ts:1121`), den senare även vid `traceIntegrity: 'OKÄND'`.
+   Prövat: 30/30 gröna i `ai-tools-catalog.spec.ts` + `effect-idempotency.spec.ts`.
+2. **Alla sju fälten finns** — se tabellen nedan. `effectClassification` står som
+   "delvis" och det är avsiktligt: axeln *anteckning | utåtriktad handling* är
+   inget eget fält, därför att den går att härleda ur två redan mätta mängder.
+   Ett tredje fält hade lånat ett svar de två ger — samma fälla som CLAUDE.md
+   beskriver under "Återanvänd inte ett fält som svarar på en ANNAN fråga".
+3. **Vakt 1–11 har setts falla.** Alla elva finns och är prövade i båda
+   riktningarna; ingen av dem är en kontroll med tom mängd.
+
+**Det som stod kvar var delmängdsregeln, och den är stängd.**
+`tool-human-path.baseline.json` gick 7 → 0 i fyra steg
+([#773](https://github.com/yasineken2002-sys/eken/pull/773) byggde ratcheten,
+[#782](https://github.com/yasineken2002-sys/eken/pull/782),
+[#785](https://github.com/yasineken2002-sys/eken/pull/785),
+[#787](https://github.com/yasineken2002-sys/eken/pull/787)).
+`check-tool-human-path.mjs` läser **30 verktyg, 30 med en verifierad mänsklig väg,
+0 utan**.
+
+Baslinjefilen finns kvar TOM och får inte raderas: R5c (ett namn i baslinjen som
+inte är ett verktyg) kan bara falla om det FINNS en baslinje att läsa, och
+"ingen fil = noll poster" hade gjort en raderad fil oskiljbar från en tom.
+`läsBaslinje` kastar därför vid saknad fil, trasig JSON eller saknat
+`poster`-fält — negativkontrollerat i #787, alla tre ger exit 1.
+
+Av planens sju fält fanns tre när etappen skrevs. Fyra tillkom:
 
 | Fält | Läge |
 | --- | --- |
@@ -463,7 +491,7 @@ Vakterna i Del 10, en rad var:
 | 3 | skrivande verktyg utan deterministisk identitet | `check-effect-idempotency.mjs` R1–R5 |
 | 4 | samma identitet ger inte två effekter | 6 `.db.spec.ts` mot riktig Postgres |
 | 5 | historikdomän saknas i registret | `check-history-registry.mjs` |
-| 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) |
+| 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) — **baseline tom sedan [#787](https://github.com/yasineken2002-sys/eken/pull/787)**, 30/30 verktyg har en väg; filen finns kvar tom så R5c fortfarande kan falla |
 | 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **byggd** ([#779](https://github.com/yasineken2002-sys/eken/pull/779), `f6b24cf`) — `check-tool-outward-capabilities.mjs` + `tool-outward-capabilities.json` |
 | 8 | `agentAllowlist: true` på något som inte är hyresvärdens egna register | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — `check-tool-authority.mjs` R1, fyra härledda villkor |
 | 9 | `MOT_TREDJE_PART` utan externt handtag | **byggd** ([#784](https://github.com/yasineken2002-sys/eken/pull/784)) — R2; flyttade `mark_sent_to_collection` till `MOT_HYRESGAST` |
