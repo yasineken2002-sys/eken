@@ -406,6 +406,39 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
       expect(omtagRad.toolInputHash).toBe(kraschRad.toolInputHash)
       expect(await antalVerifikat(input)).toBe(1)
     }, 60_000)
+    /**
+     * ── DEN ANDRA KRASCHPUNKTEN, och den som kostar pengar ──────────────────
+     *
+     * Provet ovan utgår från en krasch FÖRE effekten: ingenting var skrivet, så
+     * "exakt EN effekt" är sant av att det inte fanns någon att dubbla. Den
+     * farliga kraschen är den EFTER commit — transaktionen gick igenom, men
+     * svaret nådde aldrig användaren, som ber om åtgärden igen.
+     *
+     * `ai-journal-source.ts` byggdes uttryckligen för det fallet, och skälet
+     * står där: nyckeln får INTE vara `ai:<pendingActionId>`, för omtaget har
+     * ett nytt sådant id. Den härleds ur åtgärdens INNEHÅLL, så den överlever.
+     */
+    it('omtag efter en krasch EFTER commit → fortfarande exakt ETT verifikat', async () => {
+      const input = indata('p5d')
+      await utförSkarpt(input)
+      expect(await antalVerifikat(input)).toBe(1)
+      const körningarEfterFörsta = await antalKörningar()
+
+      // Användaren såg aldrig svaret och ber om samma sak igen: NY bekräftelse,
+      // nytt pendingActionId, identiskt innehåll.
+      const { svar } = await utförSkarpt(input)
+
+      // Effekten är ETT verifikat — spärren är databasens unika index.
+      expect(await antalVerifikat(input)).toBe(1)
+      // …och svaret SÄGER att inget nytt skapades, i stället för att påstå
+      // "Verifikat skapat" om något som fanns.
+      expect(svar.reply).toMatch(/finns redan/)
+      expect(svar.reply).not.toMatch(/Verifikat skapat/)
+
+      // Körningen räknas ändå: verktyget KÖRDE, det skrev bara inget nytt.
+      // (Idempotensträffen skriver sitt eget spår, tool-executor.service.ts:4043.)
+      expect(await antalKörningar()).toBe(körningarEfterFörsta + 1)
+    }, 60_000)
   })
 
   // ── PROV 6 ────────────────────────────────────────────────────────────────
