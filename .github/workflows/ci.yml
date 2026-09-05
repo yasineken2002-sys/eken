@@ -1301,6 +1301,42 @@ jobs:
       BANKID_ENABLED: 'true'
       BANKID_PROVIDER: 'mock'
 
+      # ── PSD2: FLAGGAN PÅ, MOCK-PROVIDER, ETT SCENARIO ───────────────────────
+      #
+      # Samma form som BankID ovan, och av samma skäl: utan raderna väljer
+      # DI-factoryn StubBankDataProvider och HELA bankkopplings-ytan svarar 503,
+      # så psd2-bank-connection.spec.ts kan inte skapa ett samtycke alls.
+      #
+      # `PSD2_PROVIDER=mock` är bundet till KÖRNINGSLÄGET, inte till ett värde —
+      # 'mock' + NODE_ENV=production får appen att VÄGRA STARTA, kontrollerat
+      # både i validateEnv och i factoryn. Felriktningen är dessutom värre här än
+      # för en inloggning: mocken matar `ingestFromApi`, alltså exakt den väg som
+      # skapar BankTransaction-rader. Se psd2-provider-mode.ts.
+      #
+      # PSD2_TOKEN_KEY är ett TESTVÄRDE och skyddar ingen riktig data — samma
+      # status som SIGNING_PII_KEY ovan. Den behövs ändå: mock-grenen ligger
+      # EFTER krypto-kontrollen, därför att mock-flödet FAKTISKT skriver
+      # krypterade tokens i BankConsent via handleCallback. 64 hex-tecken krävs
+      # av bank-consent-crypto.service.ts; värdet nedan stavar "0e2e" sexton
+      # gånger, så det går att se i en logg att det är e2e-nyckeln.
+      #
+      # ETT SCENARIO PER API-START. `PSD2_MOCK_SCENARIO` läses av factoryn när
+      # providern konstrueras, alltså EN gång vid boot — det finns ingen väg att
+      # byta scenario under körningen utan att starta om API:t. E2E täcker därför
+      # `active`, det enda scenario som ger ett inflöde.
+      #
+      # VAD SOM TÄCKER DE ANDRA, mätt och inte antaget: `expired` prövas av
+      # psd2.module.spec.ts ("scenariot når providern — och ett okänt scenario
+      # fäller bygget"), och ett OKÄNT värde av samma prov plus
+      # env.validation.integration.spec.ts. `revoked` och `error` har INGET eget
+      # prov: de vilar på att SCENARIO_STATUS i mock-bank-data.provider.ts är en
+      # uttömmande `Record<Psd2MockScenario, …>`, alltså på typen och inte på en
+      # körning. Det är en känd lucka och skrivs ut här hellre än att räknas in.
+      PSD2_ENABLED: 'true'
+      PSD2_PROVIDER: 'mock'
+      PSD2_MOCK_SCENARIO: 'active'
+      PSD2_TOKEN_KEY: '0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e'
+
       # ── KANARIEFÅGELNS TAL ──────────────────────────────────────────────────
       #
       # Antalet tester CI ska köra. Talet hör ihop med `testIgnore` i
@@ -1316,7 +1352,7 @@ jobs:
       #   npx playwright test --list <riktig> <påhittad>   → exit 0, 1 test
       # En bortdöpt spec försvann alltså ur CI utan att något blev rött. Ett
       # förväntat antal kan inte krympa tyst.
-      E2E_EXPECTED_TESTS: '13'
+      E2E_EXPECTED_TESTS: '14'
 
     steps:
       - uses: actions/checkout@v4
@@ -1441,6 +1477,20 @@ jobs:
             exit 1
           fi
           echo "BankID aktivt med MOCK-provider — inloggningsflödet går att köra."
+          # Tredje kontrollen, samma form och samma skäl. En PSD2_PROVIDER som
+          # inte nådde processen ger Stub, alltså 503 på varje endpoint under
+          # /v1/reconciliation/psd2 — och psd2-bank-connection.spec.ts hade
+          # fallit på "Bankkopplingen är inte aktiverad i den här miljön" utan
+          # att någon kunnat se att det var konfigurationen och inte koden.
+          # Raden kommer från Psd2Module-konstruktorn och skriver ut den provider
+          # som FAKTISKT injicerades, inte vad variabeln sa.
+          if ! grep -q "\[psd2\] aktivt — provider MOCK" /tmp/api.log; then
+            echo "::error::PSD2_ENABLED/PSD2_PROVIDER nådde inte API-processen."
+            echo "Bankkopplings-ytan hade svarat 503 och psd2-bank-connection.spec.ts sett flakig ut."
+            grep -i psd2 /tmp/api.log | tail -10
+            exit 1
+          fi
+          echo "PSD2 aktivt med MOCK-provider — bankkopplingsflödet går att köra."
 
       # Vilka specar som INTE körs står i apps/web/playwright.config.ts
       # (`testIgnore`, aktiv bara när CI är satt), med motiveringen bredvid varje
