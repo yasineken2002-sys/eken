@@ -130,12 +130,24 @@ function isoWeek(ymd: string): { key: string; week: number } {
  * men en ENGÅNGSBETALNING vid kontraktsstart, inte en löpande skuldrelation.
  * Synligheten är orörd — förfallolistan visar den fortfarande (#348); det är
  * eskaleringen som stoppas, inte insynen.
+ *
+ * ── `organizationId` STÅR MEDVETET UTANFÖR KONSTANTEN ───────────────────────
+ *
+ * Första utformningen var `OVERDUE_REMINDER_WHERE(organizationId)`, alltså hela
+ * villkoret inklusive org-scopingen. Det MÄTTES och kostade något:
+ * object-scope-inventariet klassade om `InvoiceEvent.create` i den här filen
+ * från "A kedje-query" till "C scopat anrop". Båda är godtagna skyddsformer,
+ * men A är verifierbar PÅ RADEN medan C kräver att man litar på anropet — och
+ * att göra en grind svårare att läsa för att spara fyra tecken är fel byte.
+ *
+ * Konstanten bär därför bara det som faktiskt kan glida isär mellan utskicket
+ * och förhandsbeskedet: statusen och depositionsundantaget. Org-scopingen
+ * skrivs ut på varje anropsställe, där den syns.
  */
-const OVERDUE_REMINDER_WHERE = (organizationId: string) => ({
-  organizationId,
+const OVERDUE_REMINDER_SCOPE = {
   status: 'OVERDUE' as const,
   type: { not: 'DEPOSIT' as const },
-})
+}
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -382,7 +394,7 @@ export class NotificationsService implements OnModuleInit {
       // penganeutral och bär depositionens SYNLIGHET, som #348 uttryckligen
       // fastställde ska finnas kvar. Synlighet och automatisk eskalering med
       // ekonomiska konsekvenser är två skilda saker. (FAR-granskat, #352.)
-      where: OVERDUE_REMINDER_WHERE(organizationId),
+      where: { organizationId, ...OVERDUE_REMINDER_SCOPE },
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
@@ -482,7 +494,7 @@ export class NotificationsService implements OnModuleInit {
    * Urvalet nedan måste vara exakt det `sendOverdueRemindersForOrg` går igenom,
    * annars visar bekräftelsen en annan mängd än den som skickas — och det vore
    * värre än ingen bekräftelse alls. Villkoret bor därför i
-   * `OVERDUE_REMINDER_WHERE` och läses av båda.
+   * `OVERDUE_REMINDER_SCOPE` och läses av båda.
    *
    * ── VAD DET INTE KAN VETA ────────────────────────────────────────────────
    *
@@ -504,7 +516,7 @@ export class NotificationsService implements OnModuleInit {
     totalOutstanding: number
   }> {
     const invoices = await this.prisma.invoice.findMany({
-      where: OVERDUE_REMINDER_WHERE(organizationId),
+      where: { organizationId, ...OVERDUE_REMINDER_SCOPE },
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
