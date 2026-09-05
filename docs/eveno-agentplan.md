@@ -234,7 +234,36 @@ kontrollen att härledningen tar mekanismfilerna och lämnar fakturans egna `cla
 R5 är dessutom skärpt från fil- till funktionsnivå (`:325`–`:332`). Landade i #596;
 kroppsavgränsningen lagades i #747.
 
-<!-- NEGATIVKONTROLL-PLATSHÅLLARE -->
+**Vakten HAR setts falla — negativkontroll körd 2026-09-05 mot `5f94360`.** Raden fick
+inte stå som KLAR på att mekanismen ser rätt ut i källtexten; kravet i "Klar när" är att
+en injicerad sond utanför det härledda omfånget fäller vakten. Sondnamnet grepades först
+till noll träffar under svepets båda rötter (`AiUppdragSondService`: 0, `ai-uppdrag.sond`:
+0), så ingen träff kan förväxlas med något som redan fanns.
+
+```
+git status --short   FÖRE                              (tomt — rent träd)
+
+baslinje, vakten normalt                          →  GRÖN, exit 0
+   R5: 5 filer i omfånget, härledda ur 503 källfiler
+sond apps/api/src/ai/ai-uppdrag.sond.ts på disk   →  RÖD,  exit 1
+   ❌ apps/api/src/ai/ai-uppdrag.sond.ts
+      skapar ett bevis (`claimed: true`) utan ett atomärt anspråk i samma funktion
+sonden borttagen                                  →  GRÖN, exit 0
+
+git status --short   EFTER                             (tomt — rent träd)
+```
+
+Sondens styrka lästes ur vaktens egna trösklar, inte gissades: den måste dels tas UPP av
+omfånget (matcha `PROOF_SIGNALS` — den bär `actionProof`), dels BRYTA R5 (ett `claimed:
+true` som inte är en typdeklaration, i en funktionskropp utan både `updateMany(` och
+`count === 1`). Det är precis den fil en hårdkodad tvålista aldrig hade prövat — och som
+det härledda svepet namnger.
+
+En anmärkning om återställningen: sonden var en NY fil och därmed ospårad, så
+`git checkout -- apps/api/src/ai/ai-uppdrag.sond.ts` kunde inte ta bort den (`pathspec
+did not match any file(s) known to git`). Den togs bort med `rm -f "${SOND:?}"` på den
+namngivna sökvägen. `git checkout --` återställer ÄNDRADE spårade filer; en injicerad ny
+fil kräver en radering, och den som antar det förra lämnar kvar sin sond.
 
 Parallellt och oberoende: backup-token, BankID, PSD2, juridisk slutgenomgång.
 
