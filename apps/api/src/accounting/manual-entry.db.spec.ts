@@ -191,6 +191,37 @@ medDb('manuell bokföring — idempotens per (org, source, sourceId)', () => {
     expect(antal).toBe(2)
   })
 
+  it('BILAGAN lagras — ett fält som tas emot och tappas är värre än inget fält', () => {
+    // Kolumnen `attachmentUrl` lades till i samma PR som den manuella vägen.
+    // Innan dess tog DTO:n emot fältet och skrev det ingenstans: hyresvärden
+    // trodde underlaget var sparat, och det fanns inte. Provet mäter att
+    // kolumnen finns på modellen — att den SKRIVS bärs av raden nedan.
+    return prisma.journalEntry
+      .create({
+        data: {
+          organizationId: orgId,
+          date: new Date('2026-09-05'),
+          description: 'Med bilaga',
+          source: 'MANUAL',
+          sourceId: `bilaga-${randomUUID()}`,
+          series: 'V',
+          verNumber: Math.floor(Math.random() * 1_000_000),
+          fiscalYear: 2026,
+          attachmentUrl: 'https://exempel.test/kvitto.pdf',
+          lines: {
+            create: [
+              { accountId: konton.get(1930) as string, debit: 100 },
+              { accountId: konton.get(3011) as string, credit: 100 },
+            ],
+          },
+        },
+      })
+      .then(async (skapad) => {
+        const last = await prisma.journalEntry.findUniqueOrThrow({ where: { id: skapad.id } })
+        expect(last.attachmentUrl).toBe('https://exempel.test/kvitto.pdf')
+      })
+  })
+
   it('utgiften konterar netto + moms mot brutto, och raderna balanserar i DATABASEN', async () => {
     const byggt = byggUtgiftsrader(
       { belopp: 1250, moms: 250, kontonummer: 5070, beskrivning: 'Rörmokare' },

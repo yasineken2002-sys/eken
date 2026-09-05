@@ -1988,6 +1988,19 @@ model JournalEntry {
   source         JournalEntrySource @default(MANUAL)
   sourceId       String?
 
+  // ── Underlaget (BFL 7 kap — räkenskapsinformation bevaras i sju år) ────────
+  // Länk till kvittot/underlaget för en MANUELLT bokförd post. Nullable därför
+  // att de allra flesta verifikat är automatiska och har sitt underlag i den
+  // affärshändelse de kommer ur (avin, fakturan, bankimporten) — det är bara
+  // den fria vägen som saknar en sådan koppling.
+  //
+  // Kolumnen lades till när den manuella vägen byggdes. Fältet togs emot av
+  // DTO:n redan innan dess och skrevs ingenstans: en bilaga som hyresvärden
+  // trodde var sparad hade tyst försvunnit, vilket är värre än ett fält som
+  // inte finns. Ett handtag som inte sparas är förlorat för alltid; en frågeväg
+  // går att bygga när som helst.
+  attachmentUrl  String?
+
   // ── AI-ursprung (#494 beslut 4) ───────────────────────────────────────────
   // Mjuk referens till `AiToolExecution.id` — MEDVETET utan främmande nyckel.
   //

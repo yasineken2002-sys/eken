@@ -404,6 +404,13 @@ export class AccountingService {
     // operatörsstyrda rättelsevägen; de automatiska motverifikaten (annullerad
     // avi, makulerad faktura, hävd matchning) lämnar den tom och är oförändrade.
     reversalOfEntryId?: string
+    /**
+     * Underlaget till en MANUELLT bokförd post (BFL 7 kap). Sätts bara av den
+     * fria vägen — automatiska verifikat har sitt underlag i affärshändelsen de
+     * kommer ur. Fältet togs tidigare emot av DTO:n och skrevs ingenstans; en
+     * bilaga hyresvärden trodde var sparad försvann då tyst.
+     */
+    attachmentUrl?: string | null
     // Valfri yttre transaktion. Anges när verifikatet måste skapas ATOMISKT
     // tillsammans med andra DB-writes (t.ex. unmatch-flödet som måste rulla
     // tillbaka statusändringar om bokföringen fallerar — BFL 5 kap 5 §/9 §).
@@ -531,6 +538,7 @@ export class AccountingService {
           ...(params.reversalOfEntryId != null
             ? { reversalOfEntryId: params.reversalOfEntryId }
             : {}),
+          ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
           lines: {
             create: params.lines.map((l) => ({
               accountId: l.accountId,
@@ -3880,6 +3888,7 @@ export class AccountingService {
       createdById: params.createdById ?? null,
       lines: byggt.rader,
       idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
       include: { lines: { include: { account: true } } },
     })
   }
@@ -3926,6 +3935,7 @@ export class AccountingService {
       createdById: params.createdById ?? null,
       lines: byggt.rader,
       idempotencyWhere: { organizationId, source: 'MANUAL', sourceId: params.idempotencyKey },
+      ...(params.attachmentUrl ? { attachmentUrl: params.attachmentUrl } : {}),
       include: { lines: { include: { account: true } } },
     })
   }
