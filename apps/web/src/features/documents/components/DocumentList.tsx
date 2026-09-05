@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { FileText, File, Image, Upload, Download, Trash2 } from 'lucide-react'
+import { FileText, File, Image, Upload, Download, Trash2, Send } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useDocuments, useDeleteDocument } from '../hooks/useDocuments'
 import { downloadDocument } from '../api/documents.api'
 import { UploadDocumentModal } from './UploadDocumentModal'
+import { SendToTenantModal } from './SendToTenantModal'
 import { formatDate } from '@eken/shared'
 
 interface Props {
@@ -64,6 +65,7 @@ export function DocumentList({
 }: Props) {
   const [showUpload, setShowUpload] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [skickaDok, setSkickaDok] = useState<{ id: string; name: string } | null>(null)
 
   const { data: documents = [], isLoading } = useDocuments({
     ...(propertyId ? { propertyId } : {}),
@@ -160,6 +162,14 @@ export function DocumentList({
               <div className="flex flex-shrink-0 items-center gap-2">
                 <span className="text-[11.5px] text-gray-400">{formatFileSize(doc.fileSize)}</span>
                 <button
+                  onClick={() => setSkickaDok({ id: doc.id, name: doc.name })}
+                  className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                  title="Skicka till hyresgäst"
+                  data-testid={`send-to-tenant-${doc.id}`}
+                >
+                  <Send size={13} strokeWidth={1.8} />
+                </button>
+                <button
                   onClick={() => downloadDocument(doc.id, doc.name)}
                   className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
                   title="Ladda ner"
@@ -196,6 +206,13 @@ export function DocumentList({
           ))}
         </motion.div>
       )}
+
+      <SendToTenantModal
+        open={skickaDok !== null}
+        onClose={() => setSkickaDok(null)}
+        documentId={skickaDok?.id ?? ''}
+        documentName={skickaDok?.name ?? ''}
+      />
 
       <UploadDocumentModal
         open={showUpload}
