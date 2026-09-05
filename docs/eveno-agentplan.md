@@ -139,7 +139,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | --- | --- | --- | --- | --- |
 | 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** `5f94360` |
 | 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** `5f94360` |
-| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** `5f94360` |
+| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **KLAR** #788 — skrivvägen finns, och frågan besvaras nu GENOM produktionskod |
 | 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **KLAR** (7/7) #786, mätt på `b02fc79` — alla sju mot Postgres; defekten prov 6 blottade är lagad och frågan ställs nu över samtliga 30 `ACTION_TOOLS` |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
@@ -195,15 +195,69 @@ så fliken nås med agenten av. **Vakten har setts falla:** `check-history-regis
 kommentarkanariefåglarna RÖTT, registrerad källa TYST, exit 0. Blockerande i CI som
 `history-registry-guard` (`ci.yml:1543`, i `ci-passed`:s `needs` på `:2038`).
 
-**1b — DELVIS. Läsvägen finns, skrivvägen inte.** Modellerna är byggda
-(`schema.prisma:5731 UnitEquipment`, `:5836 UnitEquipmentEvent`), och
-`GET /v1/history/units/:unitId` svarar `EQUIPMENT_REPLACED` med tidpunkt och
-efterträdare (`history-sources.registry.ts:1061`), bevisat mot riktig Postgres i
-`unit-equipment.db.spec.ts:123`. Men **ingen controller rör `unitEquipment`** — noll
-träffar i `*.controller.ts` — och `unitEquipment.create` finns bara i `history-fixture.ts`
-(5) och två specar (2 + 3). Cykelspärren `assertNoEquipmentCycle` (`equipment-chain.ts:35`)
-anropas därför **bara från sin egen spec, aldrig från produktionskod**. Frågan går att
-STÄLLA; svaret kan inte bli annat än tomt i prod förrän ett byte går att registrera.
+**1b — KLAR. Skrivvägen finns, och kriteriet mäts genom produktionskod.**
+
+Raden stod som DELVIS därför att läsvägen fanns men ingenting kunde skriva raderna.
+Mätt före bygget, och det bekräftade exakt den beskrivningen:
+
+```
+moduler/kataloger med "equip"                        0
+*.controller.ts som nämner equipment                 0
+unitEquipment.create i produktionskod                0   (bara en fixtur + två specar)
+apps/web/src med utrustnings-feature                 0   (bara historikens visningshjälpare)
+assertNoEquipmentCycle-anropare i produktionskod     0   (bara sin egen spec)
+```
+
+Alltså **ingetdera** — varken endpoint utan UI eller UI utan endpoint.
+
+**Vad som byggdes.** `apps/api/src/equipment/`: fem endpoints under `/v1/equipment`, alla
+org-scopade och `@Roles('MANAGER','ADMIN','OWNER')`, med DTO:er som VÄRDEimport.
+Org-scopningen är ett UPPSLAG och inte ett filter på svaret — en annan organisations
+lägenhet ger 404, inte en tom lista, för en tom lista är ett svar.
+
+**Bytet är en händelse, inte en uppdatering.** Registreringen skriver fyra saker i EN
+transaktion: efterträdaren, `removedAt` + `replacedById` på föregångaren, en `REPLACED`
+på den gamla och en `INSTALLED` på den nya. En efterträdare utan händelse vore ett byte
+utan spår; en händelse utan efterträdare vore ett spår efter något som inte finns.
+
+`assertNoEquipmentCycle` får därmed sin **första anropare i produktionskod** — den fanns
+sedan läsvägen men hade bara sin egen spec, och en mekanism utan anropare skyddar inget.
+
+**Append-only, och rättelse som en ny händelse.** `UnitEquipmentEvent` bär en
+databastrigger (#585). Provet går förbi tjänsten med flit: det är databasen som ska säga
+nej. En felregistrering rättas med en ny händelse som bär `correctsId`, `@unique` — två
+rättelser kan inte peka på samma original, för en förgrenad rättelsekedja är ingen
+rättelse.
+
+**Tre nya kolumner, och NULL betyder OKÄNT på alla tre.** `cost` (okänt ≠ noll —
+"gratis" och "vi vet inte" måste gå att skilja åt), `attachmentUrl`, och `performedById`
++ `actorKind`. De två sista svarar på **olika frågor** och är därför två fält:
+`actorKind` är VILKEN SORTS aktör som skrev raden (stämplas av mekaniken, härledd ur
+schemat), `performedById` är VILKEN MÄNNISKA som utförde arbetet — hyresvärden kan
+registrera ett byte en montör gjorde.
+
+> `performedById` är `onDelete: Restrict`, INTE `SetNull`. `SET NULL` är en kaskad-UPDATE
+> som tabellens append-only-trigger avvisar — exakt interaktionen som bröt
+> organisationsraderingen i #585. Migrationen skrevs dessutom **för hand**: `prisma
+> migrate diff` tog med ett `DROP INDEX` på HNSW-indexet, som skapas av rå SQL och därför
+> "saknas" i varje differens. Att låta det följa med hade tappat vektorindexet i prod.
+
+**Kriteriet mäts genom produktionskod, inte i riggens egen fråga.**
+`equipment-write-path.db.spec.ts` registrerar två byten och ställer frågan via
+registrets EGEN `load` (`HISTORY_SOURCES.find(k => k.table === 'UnitEquipmentEvent')`).
+Kopplas källan bort blir provet rött; en rigg som ställt sin egen fråga hade varit grön.
+Svaret kräver rätt ordning (äldst först) och rätt aktör (var sitt byte, var sin
+människa). Historiken bär nu också kostnaden som `amount` och märker ut rättelser, så två
+rader med samma text och olika belopp inte blir en gåta.
+
+**Registervakten är sedd falla.** Ändringen lägger ingen ny Unit-relation, så vakten
+fäller inte av sig själv — den mätningen står i PR-texten tillsammans med sondens
+utfall: en injicerad relation på `model Unit` ger `❌ R1` och exit 1 före registrering.
+
+**Web:** fliken *Utrustning* på lägenhetens detaljvy, med lista, "Lägg till" och
+"Registrera byte" i modal. Formulärets REGLER bor i en ren modul (`equipment-form.ts`)
+och inte i JSX — en regel som bara finns i en komponent kan bara prövas genom att
+rendera och klicka, och ett sådant prov faller lika gärna på en klassändring.
 
 **2 — DELVIS, fem av sju prov.** Per prov, mot riktig Postgres där inget annat sägs:
 

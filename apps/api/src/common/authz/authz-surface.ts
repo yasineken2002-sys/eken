@@ -505,6 +505,29 @@ const TOOL_COL = 32
  */
 const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   [
+    'GET /equipment/unit/:unitId',
+    'Läser utrustningen i EN lägenhet. Ingen @Roles därför att det är samma\n' +
+      'slags läsning som `GET /units/:id`, som inte heller har någon — vad som\n' +
+      'sitter i en lägenhet är förvaltningsdata varje roll i organisationen\n' +
+      'behöver, inklusive VIEWER och ACCOUNTANT (livslängd och byteskostnad är\n' +
+      'underlag för både underhållsplan och bokslut).\n' +
+      '\n' +
+      'GRINDEN ÄR ORG-SCOPNINGEN, inte rollen: `findByUnit` slår upp lägenheten\n' +
+      'via `unit.property.organizationId` och kastar 404 innan den läser något\n' +
+      '(EquipmentService.unitInOrg). En annan organisations lägenhet ger alltså\n' +
+      'inte en tom lista utan ett nekande — prövat i\n' +
+      'equipment-write-path.db.spec.ts, med systerraden att samma lägenhet ur\n' +
+      'SIN EGEN org fungerar.\n' +
+      '\n' +
+      'SKRIVVÄGARNA ÄR GRINDADE: create/update/replacement/correction bär alla\n' +
+      '@Roles(MANAGER, ADMIN, OWNER). Det är att registrera ett byte som är en\n' +
+      'förvaltningshandling, inte att se vad som sitter där.\n' +
+      '\n' +
+      'PERSONDATA: svaret bär `performedBy` med förnamn och efternamn på en\n' +
+      'användare i SAMMA organisation — samma uppgift som redan syns i\n' +
+      'användarlistan. Ingen hyresgästdata, inga personnummer.',
+  ],
+  [
     'POST /auth/bankid/enroll/start',
     'Startar en BankID-anslutning till DET EGNA kontot. Ingen @Roles därför att\n' +
       'varje roll ska kunna koppla sitt eget BankID — det är en handling på det\n' +

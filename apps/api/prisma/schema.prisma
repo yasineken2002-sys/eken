@@ -929,29 +929,30 @@ model User {
   privacyVersion  String?
   privacyHash     String?
 
-  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  refreshTokens           RefreshToken[]
-  bankIdIdentities        UserBankIdIdentity[]
-  passwordResetTokens     PasswordResetToken[]
-  invitations             UserInvitation[]
-  journalEntries          JournalEntry[]
-  closedPeriods           ClosedAccountingPeriod[]
-  periodEvents            AccountingPeriodEvent[]
-  fiscalYearCloses        FiscalYearClose[]
-  documents               Document[]
-  importJobs              ImportJob[]
-  aiConversations         AiConversation[]
-  aiAttachments           AiAttachment[]
-  aiMemories              AiMemory[]
-  aiUsageLogs             AiUsageLog[]
-  aiToolExecutions        AiToolExecution[]
-  notifications           Notification[]
-  newsPosts               NewsPost[]
-  sentMessages            SentMessage[]
-  tenantAnonymizationLogs TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
-  impersonationLogs       ImpersonationLog[]       @relation("ImpersonationTargetUser")
-  aiAssignmentsAssigned   AiAssignment[]           @relation("AiAssignmentAssignee")
-  aiAssignmentsDecided    AiAssignment[]           @relation("AiAssignmentDecider")
+  organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refreshTokens            RefreshToken[]
+  bankIdIdentities         UserBankIdIdentity[]
+  passwordResetTokens      PasswordResetToken[]
+  invitations              UserInvitation[]
+  journalEntries           JournalEntry[]
+  closedPeriods            ClosedAccountingPeriod[]
+  periodEvents             AccountingPeriodEvent[]
+  fiscalYearCloses         FiscalYearClose[]
+  documents                Document[]
+  importJobs               ImportJob[]
+  aiConversations          AiConversation[]
+  aiAttachments            AiAttachment[]
+  aiMemories               AiMemory[]
+  aiUsageLogs              AiUsageLog[]
+  aiToolExecutions         AiToolExecution[]
+  notifications            Notification[]
+  newsPosts                NewsPost[]
+  sentMessages             SentMessage[]
+  tenantAnonymizationLogs  TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
+  impersonationLogs        ImpersonationLog[]       @relation("ImpersonationTargetUser")
+  aiAssignmentsAssigned    AiAssignment[]           @relation("AiAssignmentAssignee")
+  aiAssignmentsDecided     AiAssignment[]           @relation("AiAssignmentDecider")
+  equipmentEventsPerformed UnitEquipmentEvent[]     @relation("EquipmentEventPerformer")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -5977,13 +5978,66 @@ model UnitEquipmentEvent {
   /// → ärende → hantverkare redan. Inget fält här nämner leverantör.
   maintenanceTicketId String?
 
+  /// Vad det kostade. NULLBAR, och det betyder OKÄNT — inte noll. En reparation
+  /// utan känd kostnad och en reparation som var gratis är olika saker, och en
+  /// default på 0 hade gjort dem omöjliga att skilja åt i efterhand.
+  cost Decimal? @db.Decimal(12, 2)
+
+  /// Kvitto, protokoll eller foto — samma form som `JournalEntry.attachmentUrl`
+  /// (R2-nyckel, inte en Document-rad). En bilaga hör till händelsen, och
+  /// händelsen är append-only; en Document-rad hade kunnat raderas under den.
+  attachmentUrl String?
+
+  // ── VEM UTFÖRDE ───────────────────────────────────────────────────────────
+  //
+  // TVÅ FÄLT SOM SVARAR PÅ TVÅ FRÅGOR — jfr CLAUDE.md om att inte låna ett fält
+  // som besvarar en annan fråga:
+  //
+  //   actorKind      VILKEN SORTS aktör skrev raden (människa/agent/system).
+  //                  Sätts av `actorStampExtension`, aldrig av anropsstället.
+  //                  Mängden härleds ur schemat: en modell som BÄR fältet
+  //                  stämplas, utan att någon rör extensionen.
+  //   performedById  VILKEN MÄNNISKA som utförde arbetet. Det är inte samma sak
+  //                  som vem som registrerade det — hyresvärden kan registrera
+  //                  ett byte en montör gjorde. Nullbar: okänt är ett giltigt
+  //                  svar och ska inte gissas.
+  //
+  // NULL BETYDER OKÄNT — INTE MÄNNISKA. Ingen backfill, av samma skäl som G1.
+  //
+  // ── OCH performedById ÄR Restrict, INTE SetNull ───────────────────────────
+  //
+  // Exakt samma skäl som `maintenanceTicketId` ovan, och det är inte en
+  // upprepning utan en fälla som gillrar om: `ON DELETE SET NULL` är en
+  // kaskad-UPDATE som databasen gör utan att koden vet om det, och den här
+  // tabellens append-only-trigger AVVISAR den. Det var precis interaktionen som
+  // bröt organisationsraderingen i #585.
+  //
+  // Priset är en ordning, och den är redan betald: `delete-organization.ts`
+  // raderar `UnitEquipmentEvent` uttryckligen före `MaintenanceTicket`, alltså
+  // långt före `User` faller med kaskaden från `Organization`.
+  actorKind     ActorKind?
+  performedById String?
+
+  /// RÄTTELSE. Raden är append-only (trigger, #585), så en felregistrerad
+  /// händelse ändras inte — den ERSÄTTS av en ny som pekar tillbaka.
+  ///
+  /// `@unique` gör att två rättelser inte kan peka på samma original: en
+  /// förgrenad rättelsekedja är inte en rättelse, den är en tvist om vad som
+  /// hände. Samma konstruktion som `UnitEquipment.replacedById`.
+  correctsId String? @unique
+
   createdAt DateTime @default(now())
 
   equipment         UnitEquipment      @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   maintenanceTicket MaintenanceTicket? @relation(fields: [maintenanceTicketId], references: [id], onDelete: Restrict)
+  performedBy       User?              @relation("EquipmentEventPerformer", fields: [performedById], references: [id], onDelete: Restrict)
+
+  corrects    UnitEquipmentEvent? @relation("EquipmentEventCorrection", fields: [correctsId], references: [id], onDelete: Restrict)
+  correctedBy UnitEquipmentEvent? @relation("EquipmentEventCorrection")
 
   @@index([equipmentId, occurredAt])
   @@index([maintenanceTicketId])
+  @@index([performedById])
 }
 
 // ── #710: HJÄRTSLAG PER LÅST CRON-JOBB ──────────────────────────────────────

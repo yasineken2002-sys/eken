@@ -17,6 +17,7 @@ import { UsersModule } from './users/users.module'
 import { OrganizationsModule } from './organizations/organizations.module'
 import { PropertiesModule } from './properties/properties.module'
 import { UnitsModule } from './units/units.module'
+import { EquipmentModule } from './equipment/equipment.module'
 import { TenantsModule } from './tenants/tenants.module'
 import { CustomersModule } from './customers/customers.module'
 import { LeasesModule } from './leases/leases.module'
@@ -180,6 +181,7 @@ import { Psd2Module } from './psd2/psd2.module'
     OrganizationsModule,
     PropertiesModule,
     UnitsModule,
+    EquipmentModule,
     TenantsModule,
     CustomersModule,
     LeasesModule,
