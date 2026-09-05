@@ -135,16 +135,16 @@ Bygg inte UI först. Bygg först de mekanismer som gör agenten säker.
 avstängd, alltså ett rent bygge av Regel 3, och den är underlaget varje senare agent
 läser. Bygger vi agenten först får den gissa om saker som redan står i databasen.
 
-| Etapp | Innehåll | Blockerad av | Klar när | Mätt status |
+| Etapp | Innehåll | Blockerad av | Klar när | Status |
 | --- | --- | --- | --- | --- |
-| 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** · `dbe12ff` |
-| 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** · `dbe12ff` |
-| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** · `dbe12ff` |
-| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (5/7) · `dbe12ff` |
-| 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför de två hårdkodade filerna fäller vakten | **KLAR** · `dbe12ff` |
-| 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | — |
-| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | — |
-| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | — |
+| 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** `5f94360` |
+| 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** `5f94360` |
+| 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** `5f94360` |
+| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (5/7) `5f94360` |
+| 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
+| 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
+| 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `dbe12ff` |
+| 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **DELVIS** `dbe12ff` |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | — |
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | — |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | — |
@@ -152,85 +152,89 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
 | 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |
 
-### Mätt status — etapp 0–2b, mot `dbe12ff` (2026-09-04)
+### Mätt status — etapp 0–2b mot `5f94360`, etapp 3–5 mot `dbe12ff`
 
 **Samma regel som [`docs/revision-status.md`](./revision-status.md): en rad här är ett
 SPÅR, inte ett faktum.** Sha:n är poängen — den säger vilket tillstånd raden beskriver,
-inte när någon skrev den. Mät om innan du bygger på en rad:
+inte när någon skrev den. Läs `dbe12ff` respektive `5f94360` som **var mätningen
+gjordes**, inte att den gäller i dag. Mät om innan du bygger på en rad:
 
 ```bash
-git merge-base --is-ancestor dbe12ff HEAD && echo "raden mätt mot en förfader"
-git log --oneline dbe12ff..HEAD -- apps/api/src/history apps/api/scripts/check-action-tool-authorization.mjs
+git merge-base --is-ancestor 5f94360 HEAD && echo "raden mätt mot en förfader"
+git log --oneline 5f94360..HEAD -- apps/api/src/history apps/api/src/ai \
+  apps/api/src/common/actor apps/api/scripts/check-action-tool-authorization.mjs
 ```
 
-Raderna 3–11 bär `—`: de är inte mätta här, och en tom cell är inte ett godkännande.
+`—` i statuskolumnen betyder **inte mätt i den här omgången**, aldrig "inte gjord".
+Raderna 6–11+ bär `—`, och en tom cell är inte ett godkännande.
+
+Etapp 3–5 mättes i #775 mot `dbe12ff` och står oförändrade här. Etapp 0–2b mättes om mot
+`5f94360` (2026-09-05): `dbe12ff` är förfader till `5f94360`, och den enda commit däremellan
+som rör de mätta sökvägarna är #773 (`8743f72`), som bara LÄGGER TILL delmängdsvakten
+`check-tool-human-path.mjs` och `human-path.ts`. Ingen av raderna nedan ändrade bedömning;
+det som ändrades är radnummer och sha.
 
 **0 — DELVIS.** Gränsen ÄR mätt och 1:1-sonden finns, men **båda ligger utanför repot**:
 `~/.claude/scripts/kontrollera-index.py` (`--self-test`, fem sonder som var och en fäller
-och tystnar). Körd 2026-09-04: `198/200 rader · 17 186/25 000 B · 174 filer · 174
-refererade`. I repot är träffarna noll — `MEMORY.md` nämns bara av den här planen. Alltså
-oversionerat, utanför CI, och osynligt för alla utom den maskin det ligger på.
+och tystnar). Körd 2026-09-05, efter att indexet komprimerats till samlingsrader:
+`103/200 rader · 16 623/25 000 B · 176 filer · 176 refererade`. I repot är träffarna noll
+— `MEMORY.md` nämns bara av den här planen. Alltså oversionerat, utanför CI, och osynligt
+för alla utom den maskin det ligger på. Det är hela skälet till att raden är DELVIS och
+inte KLAR: mätningen finns, men ingen annan kan köra den.
 
 **1 — KLAR.** `apps/api/src/history/` (18 filer), register `history-sources.registry.ts`,
 kvittering `history-sources.ack.json`. Tre nivåer i API:t — `history.controller.ts:25`
-(hyresgäst), `:40` (objekt), `:51` (fastighet), med luckorna på `:64`/`:69`/`:74` — och i
+(hyresgäst), `:40` (objekt), `:50` (fastighet), med luckorna på `:64`/`:69`/`:74` — och i
 web via `TenantsPage.tsx:353`, `UnitsPage.tsx:437`, `PropertiesPage.tsx:415`.
-**Full nytta utan agent:** ingen AI-flagga finns någonstans i vägen (noll träffar i
-`apps/web/src` och `apps/api/src/history/`), så `HistoryTab` nås med agenten av.
-**Vakten har setts falla:** `check-history-registry.mjs --self-test` kört — regel-,
-omfångs- (alla tre formerna) och kommentarkanariefåglarna RÖTT, registrerad källa TYST.
-Blockerande i CI som `history-registry-guard` (`ci.yml:1574`, `:1577`).
+**Full nytta utan agent:** ingen AI-flagga finns någonstans i vägen (noll träffar på
+`AI_ENABLED`/`aiEnabled`/`isAiEnabled` i `apps/api/src/history/` och i `HistoryTab.tsx`),
+så fliken nås med agenten av. **Vakten har setts falla:** `check-history-registry.mjs
+--self-test` kört 2026-09-05 — regel-, omfångs- (alla tre formerna) och
+kommentarkanariefåglarna RÖTT, registrerad källa TYST, exit 0. Blockerande i CI som
+`history-registry-guard` (`ci.yml:1543`, i `ci-passed`:s `needs` på `:2038`).
 
 **1b — DELVIS. Läsvägen finns, skrivvägen inte.** Modellerna är byggda
 (`schema.prisma:5731 UnitEquipment`, `:5836 UnitEquipmentEvent`), och
 `GET /v1/history/units/:unitId` svarar `EQUIPMENT_REPLACED` med tidpunkt och
 efterträdare (`history-sources.registry.ts:1061`), bevisat mot riktig Postgres i
 `unit-equipment.db.spec.ts:123`. Men **ingen controller rör `unitEquipment`** — noll
-träffar — och `unitEquipment.create` finns bara i `history-fixture.ts` och två specar.
-Cykelspärren `assertNoEquipmentCycle` (`equipment-chain.ts:35`) anropas därför **bara från
-sin egen spec, aldrig från produktionskod**. Frågan går att STÄLLA; svaret kan inte bli
-annat än tomt i prod förrän ett byte går att registrera.
+träffar i `*.controller.ts` — och `unitEquipment.create` finns bara i `history-fixture.ts`
+(5) och två specar (2 + 3). Cykelspärren `assertNoEquipmentCycle` (`equipment-chain.ts:35`)
+anropas därför **bara från sin egen spec, aldrig från produktionskod**. Frågan går att
+STÄLLA; svaret kan inte bli annat än tomt i prod förrän ett byte går att registrera.
 
 **2 — DELVIS, fem av sju prov.** Per prov, mot riktig Postgres där inget annat sägs:
 
 | # | Prov | Utfall | Belägg |
 | --- | --- | --- | --- |
 | 1 | Samma bekräftelse två gånger → 1 effekt | KLAR | `numbered-entry-race.concurrency.spec.ts:203` (B1) |
-| 2 | Två olika bekräftelser → 2 effekter, var mot sin identitet | KLAR | `:215` (B2); `ai-journal-idempotens.db.spec.ts:78` (A2) |
-| 3 | Två samtidiga försök, samma identitet → 1 effekt | KLAR | `:236` (B3); `pending-action-claim.concurrency.spec.ts:115` (24 samtidiga, med negativkontroll `:119`) |
-| 4 | Krasch efter claim, före execution → 0 spår, 0 effekt, svar ≠ "redan utförd" | DELVIS | Svarshalvan: `ai-confirm-crash-honesty.spec.ts:83` — men **mockad Prisma** (`:41`), inte Postgres. "0 spår, 0 effekt" står bara som en mätning i filens docblock (`:8`), inte som ett prov. |
-| 5 | Retry efter den kraschen | **SAKNAS** | Noll träffar på retry/omförsök i `apps/api/src/ai/**/*.spec.ts`. Närmast är `action-idempotency.spec.ts:214`, som visar mot riktig Postgres att en NY bekräftelse på identisk input kan anspråkas — men den är skriven som *legitimt upprepande*, utgår aldrig från kraschtillståndet (förbrukat anspråk **och** noll `AiToolExecution`) och når aldrig fram till en execution. |
-| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | DELVIS | "Ingen andraeffekt" mot Postgres: B1 `:203`. Meddelandet: `ai-confirm-crash-honesty.spec.ts:119` — mockad. |
-| 7 | Deterministisk identitet borttagen → regressionen faller | KLAR | `:330` (B4); `ai-journal-idempotens.db.spec.ts:91` (A3) |
+| 2 | Två olika bekräftelser → 2 effekter, var mot sin identitet | KLAR | `:215` (B2); `ai/tools/ai-journal-idempotens.db.spec.ts:78` (A2) |
+| 3 | Två samtidiga försök, samma identitet → 1 effekt | KLAR | `:236` (B3); `pending-action-claim.concurrency.spec.ts:115` (samtidiga anspråk, med negativkontroll `:119`) |
+| 4 | Krasch efter claim, före execution → 0 spår, 0 effekt, svar ≠ "redan utförd" | DELVIS | Svarshalvan: `ai-confirm-crash-honesty.spec.ts:83` — men **mockad Prisma** (`:40`), inte Postgres. "0 spår, 0 effekt" står bara som en mätning i filens docblock (`:9`), inte som ett prov. |
+| 5 | Retry efter den kraschen | **SAKNAS** | Noll träffar på retry/omförsök/återförsök i `apps/api/src/ai/**/*.spec.ts`. Närmast är `ai/tools/action-idempotency.spec.ts:214`, som visar mot riktig Postgres att en NY bekräftelse på identisk input kan anspråkas — men den är skriven som *legitimt upprepande*, utgår aldrig från kraschtillståndet (förbrukat anspråk **och** noll `AiToolExecution`) och når aldrig fram till en execution. |
+| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | DELVIS | "Ingen andraeffekt" mot Postgres: B1 `:203`. Meddelandet: `ai-confirm-crash-honesty.spec.ts:118` — mockad. |
+| 7 | Deterministisk identitet borttagen → regressionen faller | KLAR | `:330` (B4); `ai/tools/ai-journal-idempotens.db.spec.ts:91` (A3) |
 
 Prov 5 är det som bär planens egen poäng: *klockan 03:00 finns ingen som ber om ett nytt
 förslag.* Att anspråksvägen mekaniskt är öppen är mätt; att den är öppen **ur
 kraschtillståndet** är det inte.
 
-**2b — KLAR.** `otherFiles` finns inte längre — noll träffar. Omfånget härleds:
+Notera vad de två DELVIS-proven har gemensamt: båda vilar på en **attrapp**. En mockad
+Prisma returnerar det den blev tillsagd att returnera oavsett `where`, så prov 4 och 6
+mäter vilket SVAR som ges — aldrig att noll rader faktiskt skrevs. Det är precis den
+halva frågan CLAUDE.md varnar för, och skälet till att raden inte kan stå som 7/7.
+
+**2b — KLAR.** `otherFiles` finns inte längre i vakten — den enda kvarvarande träffen i
+hela repot är en historisk kommentar i `check-history-registry.mjs:37`. Omfånget härleds:
 `PROOF_SIGNALS` (`check-action-tool-authorization.mjs:113`), `samlaKällfiler` (`:116`),
 `härledProofFiler` (`:130`), över rötterna `apps/api/src` och `packages/shared/src`
-(`:640`–`:651`). Mängdkanariefågeln finns (`:313`, *"NOLL filer i R5:s omfång"*, samma form
-som exekverarkanariefågeln) och prövas i självtestet (`:579`), tillsammans med
+(`:643`–`:651`). Mängdkanariefågeln finns (`:313`–`:315`, *"NOLL filer i R5:s omfång"*,
+samma form som exekverarkanariefågeln) och prövas i självtestet (`:578`), tillsammans med
 kontrollen att härledningen tar mekanismfilerna och lämnar fakturans egna `claimed`.
-R5 är dessutom skärpt från fil- till funktionsnivå (`:326`). Landade i #596; kroppsav-
-gränsningen lagades i #747.
+R5 är dessutom skärpt från fil- till funktionsnivå (`:325`–`:332`). Landade i #596;
+kroppsavgränsningen lagades i #747.
 
-**Planens negativkontroll körd 2026-09-04 mot `dbe12ff`** — sondnamnet först grepat till
-noll träffar under svepets rötter:
-
-```
-baslinje, vakten normalt          →  GRÖN, exit 0   (R5: 5 filer av 500 källfiler)
-sond AiDelegationService på disk  →  RÖD,  exit 1
-   ❌ src/ai/ai-delegation.sond.ts
-      skapar ett bevis (`claimed: true`) utan ett atomärt anspråk i samma funktion
-sonden borttagen                  →  GRÖN igen, trädet rent
-```
-
-Alltså precis det utfall planen krävde och som **inte** gick att få 2026-08-30. Ratcheten
-(`check-identifier-regex.mjs`: 47 vaktskript, 8 förekomster, exakt baslinjen) och
-metavakten (`check-self-tests-fail.mjs`: 44 självtester fäller på en injicerad
-kanariefågel) är gröna i samma körning.
+<!-- NEGATIVKONTROLL-PLATSHÅLLARE -->
 
 Parallellt och oberoende: backup-token, BankID, PSD2, juridisk slutgenomgång.
 
@@ -254,6 +258,117 @@ finns redan och gör rätt sak — den är bara inte inkopplad i den generella v
 ett av bara två skrivande hyresgästverktyg (`tenant-tool-executor.service.ts:380`, det
 andra är `request_termination` på `:448`), och `TENANT_TOOLS` är 8 verktyg varav sex rena
 läsningar. Men "bedöm allvar" landar i `OTHER` tills klagomålsfrågan är avgjord.
+
+### Mätning 2026-09-04 — etapp 3, 4 och 5 mot `dbe12ff`
+
+Alla tre står på **DELVIS**, och det som fattas är olika saker i varje rad. Talen
+nedan är körda mot koden, inte lästa ur en tidigare rad.
+
+**Etapp 3 — G1 Aktörsmodellen.** Tre av fyra dimensioner är byggda och fäller.
+
+| | Mekanism | Läge |
+| --- | --- | --- |
+| VEM | `ActorKind` (`schema.prisma:32`), stämplad av `actorStampExtension` vid tre gränser (`common/actor/actor.context.ts:76`) | **23 modeller** bär kolumnen (härlett ur DMMF) |
+| FÖR VEMS RÄKNING | `AiPrincipal`, obligatorisk vid AI-gränsen (`common/ai-origin/ai-origin.context.ts:53`, `:112`) | persisteras som `AiToolExecution.userId`/`tenantId` |
+| MED VILKEN RÄTT | bara *att* en människa bekräftade (`requiredConfirmation`/`confirmedAt`) | **halv** — se nedan |
+| INOM VILKEN GRÄNS | `organizationId` | 22 av 23 direkt, `Unit` via `Property` |
+
+Den negativa kontrollen är ett **fel, inte ett SAKNAS** — kört:
+
+```
+runAsAi utan uppdragsgivare  → KASTAR "AI-körning utan uppdragsgivare: aktörsobjektet saknas"
+bindande verktyg utan bevis  → KASTAR ForbiddenException (assertActionToolAuthorized)
+```
+
+Det som **fattas** är vägen från domänraden till grunden. `aiToolExecutionId`
+finns på **4** modeller (`InvoiceEvent`, `JournalEntry`, `AiAssignment`,
+`AiToolEffect`), medan `actorKind` finns på 23 — för de övriga 19 går vägen bara
+via `AiToolEffect(entityType, entityId)`, och det är en koppling, inte ett fält.
+Delegationsgrunden finns inte alls; den är etapp 7.
+
+**Etapp 4 — G3/G4.** Riggen kördes i **två skilda processer** mot en tom,
+nyskapad databas med egna förutsättningar. En ny `PrismaClient` hade delat
+process, modulcache och `AsyncLocalStorage` med skrivaren och alltså inte prövat
+något:
+
+```
+[A] pid=38821  skrev uppdraget + kallelsen, dog
+[B] pid=39133  hittade det, status=AWAITING_APPROVAL, toolInput intakt
+[B] besluta(APPROVED) → decidedByUserId satt, anspråket atomiskt
+```
+
+Uppdraget överlever alltså natten, och godkännandet går igenom. Vad som
+**inte** stämmer i klart-kriteriet: *"och syns i historiken"*. **Noll av 20**
+`HISTORY_SOURCES` läser `AiAssignment`, och modellen står inte i
+`history-sources.ack.json`. `check-history-registry.mjs` kan inte se det —
+`AiAssignment` har varken tenant-, unit- eller propertyrelation, så vakten
+ställer aldrig frågan om den. Det är en riktad blindhet, inte ett fel i vakten.
+
+Del 12:s kapplöpning: **grinden vid skapandet finns** (`assignment-eligibility.ts:90`,
+23 av 30 `ACTION_TOOLS` dugliga, de 7 avvisade alla `DEDUPLICERBAR`).
+**Omprövningen vid utförandet saknas — bekräftat, inte antaget**: i
+`src/ai/assignments/` finns noll referenser till `ToolExecutorService` utom i en
+kommentar, noll anropare av `skapa()`, och noll skrivare av
+`AiAssignment.aiToolExecutionId`. Ingen producent, ingen utförare — precis som
+tjänstens eget docblock säger.
+
+**Etapp 5 — Tool Catalog.** Katalogen **kastar**, i två oberoende byggare:
+`buildToolCatalog()` (`ai-tools.catalog.ts:351`) och `buildEffectCatalog()`
+(`effect-idempotency.ts:1121`), den senare även vid `traceIntegrity: 'OKÄND'`.
+Prövat: 30/30 gröna i `ai-tools-catalog.spec.ts` + `effect-idempotency.spec.ts`.
+
+Av planens sju fält fanns tre. Ett fjärde landar med den här omgången:
+
+| Fält | Läge |
+| --- | --- |
+| `toolName` | finns — nyckeln i `EFFECT_DECLARATIONS` |
+| `effectClassification` | **delvis** — `effectIdempotency`, `idempotencyUnit`, `traceDurability`, `traceIntegrity`, `externalHandle` finns; axeln *anteckning \| utåtriktad handling* är inte ett deklarerat fält |
+| `requiresApproval` | finns, **härlett** ur `ACTION_TOOLS` — ingen andra lista |
+| `humanPath` | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) — `ai/tools/human-path.ts` + `check-tool-human-path.mjs`, ratchet i tre riktningar |
+| `agentAllowlist` | saknas |
+| `supportsUndo` | saknas per verktyg (bara `AiAssignment.undoHint` per uppdrag) |
+| `authorityScope` | saknas |
+
+Vakterna i Del 10, en rad var:
+
+| # | Vakt | Läge |
+| --- | --- | --- |
+| 1 | `sourceId = NULL` på AI-verifikat | `check-ai-journal-source.mjs` R1/R2 |
+| 2 | förbrukat claim ger "redan utförd" | samma vakt, defekt B + `ai-confirm-crash-honesty.spec.ts` |
+| 3 | skrivande verktyg utan deterministisk identitet | `check-effect-idempotency.mjs` R1–R5 |
+| 4 | samma identitet ger inte två effekter | 6 `.db.spec.ts` mot riktig Postgres |
+| 5 | historikdomän saknas i registret | `check-history-registry.mjs` |
+| 6 | verktyg utan `humanPath`, och `humanPath` som inte finns | **byggd** ([#773](https://github.com/yasineken2002-sys/eken/pull/773), `8743f72`) |
+| 7 | **befintligt** verktyg får **ny utåtriktad förmåga** | **saknas** — se nedan |
+
+Vakt 7 är den planen säger ska byggas FÖRST, och den är den enda som fortfarande
+inte finns. Närmast ligger `check-ai-tool-effects.mjs` R5/R6, men den jämför
+`EFFECT_PRODUCING_TOOLS ∪ effectFree` mot `ACTION_TOOLS` — och de mängderna
+ändras inte när ett *befintligt* verktyg får en ny förmåga. `externalHandle`
+deklareras men **prövas inte mot koden**: noll träffar på fältnamnet i
+`apps/api/scripts/`. Det är alltså en deklaration utan vakt, vilket är precis den
+form planen varnar för.
+
+Vad etapp 5 saknar för att bli KLAR: vakt 7, `agentAllowlist`, `supportsUndo`,
+`authorityScope`, och de sju verktyg som i dag saknar mänsklig väg
+(`apps/api/scripts/tool-human-path.baseline.json`).
+
+**Ordningen härifrån, beslutad 2026-09-04.** Tre saker mätningen fann byggs
+medvetet INTE i samma omgång, och skälet står här så att nästa person inte tar
+frånvaron för ett förbiseende:
+
+1. **Ytorna för `create_journal_entry` och `record_expense` byggs i en egen PR.**
+   De två är det starkaste fyndet — AI:n kan bokföra en verifikation hyresvärden
+   inte kan bokföra själv — men en bokföringsyta är ett eget arbete, inte en
+   bilaga till en vakt. Tills dess är de dokumenterade undantag i en baslinje som
+   bara får krympa.
+2. **Historikkällan för `AiAssignment` byggs i en egen PR efter delmängdsvakten.**
+   Etapp 4 står som DELVIS just av det skälet, och raden ska inte flyttas förrän
+   källan finns — inte förrän någon tycker att den borde finnas.
+3. **Vakt 7 byggs efter att etapp 2b landat — och 2b HAR landat** (#596, #747).
+   Villkoret var att vakten annars ärver R5:s blindhet från ett omfång som inte är
+   formbaserat; omfånget härleds numera ur koden och har en mängdkanariefågel, så
+   spärren är borta. Vakt 7 kan byggas.
 
 ---
 
@@ -505,46 +620,43 @@ money_operations           ✗
 Återkallelse är en händelse, inte en radering — historiken måste kunna bevisa att
 delegationen existerade.
 
-### R5 faller inte — vakten är blind för ny kod
+### R5:s omfång — protokoll över en blindhet som är ÅTGÄRDAD
 
-> **ÅTGÄRDAT — ommätt 2026-09-04 mot `dbe12ff`.** Avsnittet nedan står kvar som
-> protokollet över vad mätningen 2026-08-30 hittade, och den beskrivningen var sann då.
-> **Den är inte sann om dagens kod.** `otherFiles` finns inte längre; omfånget härleds ur
-> koden och har en egen mängdkanariefågel (#596, lagad i #747). Samma sond som var GRÖN
-> här fäller nu vakten med exit 1. Belägget står i Del 3:s statusblock, rad 2b — läs det
-> innan du bygger på något i det här avsnittet. Följd 1 (delegationen ska inte producera
-> `ActionProof` utan vara en separat `assertDelegated`) står kvar oförändrad, och vilar
-> numera på en spärr som finns. Följd 2 är utförd.
-
+> **Avsnittet är HISTORIK.** Rubriken löd "R5 faller inte — vakten är blind för ny kod",
+> och den beskrivningen var sann 2026-08-30. **Den är inte sann om dagens kod.** Etapp 2b
+> landade i #596 (kroppsavgränsningen lagad i #747): `otherFiles` finns inte längre,
+> omfånget härleds ur koden, och mängden har en egen kanariefågel. Samma sond som var GRÖN
+> här fäller nu vakten med exit 1 — belägget står i Del 3:s statusblock, rad 2b. Texten
+> står kvar därför att den säger vad blindheten KOSTADE, inte vad koden gör.
 
 Planen påstod att en delegationsgrind skulle fälla R5 i
-`check-action-tool-authorization.mjs`. **Det är falskt, och mätt.**
+`check-action-tool-authorization.mjs`. **Det var falskt, och mätt.**
 
-Regeln (`:147–164`) prövar bara filer i `otherFiles` — en **hårdkodad lista om två filer**
-(`:326`): `ai-assistant.service.ts` och `tenant-ai.service.ts`. En ny delegationsmodul
-ligger inte i den mängden och prövas aldrig.
+Regeln prövade då bara filer i `otherFiles` — en **hårdkodad lista om två filer**:
+`ai-assistant.service.ts` och `tenant-ai.service.ts`. En ny delegationsmodul låg inte i
+den mängden och prövades aldrig.
 
-Negativkontroll, med sondnamnet `AiDelegationService` grepat först (0 träffar i repot):
+Negativkontroll 2026-08-30, med sondnamnet `AiDelegationService` grepat först (0 träffar):
 
 ```
-sond på disk, vakten körd normalt      →  GRÖN, exit 0
-samma filinnehåll matat in i evaluate()  →  1 brott
-   ❌ skapar ett bevis utan ett atomärt anspråk
+sond på disk, vakten körd normalt        →  GRÖN, exit 0        ← blindheten
+samma filinnehåll matat in i evaluate()  →  1 brott             ← sonden var stark
 ```
 
-Sonden är alltså stark; **omfånget är blint**. Vakten har en kanariefågel för exekverare
-(`:101`, *"NOLL exekverare lästes"*) men **ingen för `otherFiles`** — parametern defaultar
-till `[]`, och R5 mäter då ingenting utan att bli röd.
+Sonden var alltså stark; **omfånget var blint**. Vakten hade en kanariefågel för
+exekverare (*"NOLL exekverare lästes"*) men **ingen för `otherFiles`** — parametern
+defaultade till `[]`, och R5 mätte då ingenting utan att bli röd. Det är husets
+kanariefågelregel i renodlad form: en kontroll som inte kan falla mäter ingenting.
 
-Två följder:
+Två följder, båda utförda:
 
 1. **Rådet i sak står kvar:** delegationen ska inte producera `ActionProof` utan vara en
    separat `assertDelegated`. Två producenter av samma bevis är hur en spärr blir otydlig.
-   Men rådet vilade på en spärr som inte finns — det var en förhoppning, inte en vakt.
-2. **R5:s omfång måste bli formbaserat med en egen kanariefågel innan agentvakterna
-   byggs**, annars ärver de samma blindhet. Billigt nu, dyrt sedan. Notera dessutom att
-   R5 är en *filnivå-samförekomst*: en delegationstjänst som av egna skäl råkar göra
-   `updateMany` med `count === 1` passerar även om den vore i mängden.
+   Rådet vilade då på en spärr som inte fanns — det var en förhoppning, inte en vakt. Nu
+   vilar det på en spärr som finns.
+2. **R5:s omfång är formbaserat med en egen kanariefågel** (etapp 2b), och R5 är dessutom
+   skärpt från *filnivå-samförekomst* till funktionsnivå: en delegationstjänst som av egna
+   skäl råkar göra `updateMany` med `count === 1` passerar inte längre bara av det.
 
 **Aldrig delegerbart:** allt klassat som utåtriktat (Del 9).
 
@@ -888,9 +1000,10 @@ effekttaxonomin är den enda som fångar att ett *befintligt* verktyg fått en n
 förmåga — och därmed den enda som gör konstruktionen värd något. Byggs den sist ger de
 andra falsk trygghet under tiden.
 
-**Innan någon agentvakt byggs: rätta R5:s omfång.** `otherFiles` ska bli ett formbaserat
-svep med en kanariefågel på omfånget, precis som exekverarkontrollen redan har (`:101`).
-Annars ärver varje ny vakt en blindhet vi nu vet finns.
+**Innan någon agentvakt byggs: rätta R5:s omfång — UTFÖRT** (etapp 2b, #596/#747).
+`otherFiles` ersattes av ett formbaserat svep med en kanariefågel på omfånget, precis som
+exekverarkontrollen redan hade. Villkoret är alltså uppfyllt; det står kvar därför att
+det säger VARFÖR ordningen var den — inte som en kvarvarande uppgift.
 
 **Varje ny vakt ska dessutom ha en omfångskanariefågel, inte bara en regelkanariefågel.**
 Det är lärdomen av R5: regeln fungerade, mängden den prövade var tom. En vakt vars
