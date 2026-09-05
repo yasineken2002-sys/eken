@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { AiShadowQueue } from '../ai/shadow/shadow.queue'
+import { ShadowOutcomeService } from '../ai/shadow/shadow-outcome.service'
 import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { QUEUE_AI_SHADOW } from '../ai/shadow/shadow.types'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -60,6 +61,9 @@ export class MaintenanceService {
     // SKUGGLÄGET (etapp 6). Kön injiceras, aldrig agenten: maintenance får
     // inte bli beroende av AI-lagret — bara tvärtom.
     private readonly aiShadowQueue: AiShadowQueue,
+    // Facit (etapp 6 PR 3). Skrivs när ett ärende avslutas; gör ingenting när
+    // ärendet inte hade något skuggförslag — vilket är normalfallet.
+    private readonly shadowOutcome: ShadowOutcomeService,
   ) {}
 
   /**
@@ -395,6 +399,30 @@ export class MaintenanceService {
     })
 
     if (dto.status === 'COMPLETED') {
+      // ── FACIT TILL SKUGGFÖRSLAGET ──────────────────────────────────────
+      //
+      // Samma söm-familj som skapandet: efter transaktionen, fire-and-forget,
+      // med sväljd fångst. Ett fel i mätningen får aldrig fälla ett avslutat
+      // ärende — men det får inte heller försvinna tyst, så det loggas.
+      //
+      // `statusÄndras` är INTE ett villkor här, och det är avsiktligt.
+      // Skrivningen är idempotent (`updateMany` med hela `outcome` som värde),
+      // så en omkörning ger samma rad — och att gata den på övergången hade
+      // gjort facit beroende av i vilken ordning någon klickade.
+      void this.shadowOutcome
+        .skrivFacitForArende(organizationId, {
+          id: result.id,
+          category: result.category,
+          priority: result.priority,
+          assignedToId: result.assignedToId,
+        })
+        .catch((err) =>
+          this.logger.error(
+            'Skuggfacit kunde inte skrivas',
+            err instanceof Error ? err.stack : String(err),
+          ),
+        )
+
       void this.notificationsService
         .createForAllOrgUsers(
           organizationId,

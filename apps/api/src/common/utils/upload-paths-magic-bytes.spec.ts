@@ -48,7 +48,7 @@ function makeMaintenance() {
     uploadFile: jest.fn().mockResolvedValue('https://r2/obj'),
     getPresignedUrl: jest.fn().mockResolvedValue('https://r2/signed'),
   }
-  // Ordning: (prisma, notificationsService, storage)
+  // Ordning: (prisma, notificationsService, storage, aiShadowQueue, shadowOutcome)
   const service = new MaintenanceService(
     prisma as never,
     {} as never,
@@ -57,6 +57,11 @@ function makeMaintenance() {
       // Skuggkön (etapp 6). Attrappen räcker: specen prövar bilduppladdning,
       // och `create` — den enda väg som köar — anropas aldrig här.
       enqueue: async () => 'x',
+    } as never,
+    {
+      // Skuggfacit (etapp 6 PR 3). Attrappen räcker: `update` med COMPLETED nås
+      // inte i det här provet.
+      skrivFacitForArende: async () => 0,
     } as never,
   )
   return { service, prisma, storage }

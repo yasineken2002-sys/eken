@@ -7,6 +7,7 @@ import { RedisModule } from '../../common/redis/redis.module'
 import { HistoryModule } from '../../history/history.module'
 import { AiUsageModule } from '../usage/ai-usage.module'
 import { MaintenanceShadowService } from './maintenance-shadow.service'
+import { ShadowOutcomeService } from './shadow-outcome.service'
 import { AiShadowQueue } from './shadow.queue'
 import { AiShadowSweepService } from './shadow-sweep.service'
 import { AiShadowWorker } from './shadow.worker'
@@ -47,7 +48,13 @@ import { QUEUE_AI_SHADOW } from './shadow.types'
     RedisModule,
     CronErrorSinkModule,
   ],
-  providers: [AiShadowQueue, AiShadowWorker, MaintenanceShadowService, AiShadowSweepService],
-  exports: [AiShadowQueue, MaintenanceShadowService],
+  providers: [
+    AiShadowQueue,
+    AiShadowWorker,
+    MaintenanceShadowService,
+    AiShadowSweepService,
+    ShadowOutcomeService,
+  ],
+  exports: [AiShadowQueue, MaintenanceShadowService, ShadowOutcomeService],
 })
 export class AiShadowModule {}
