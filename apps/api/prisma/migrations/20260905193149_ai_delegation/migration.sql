@@ -71,7 +71,7 @@ CREATE TABLE "AiDelegationEvent" (
     "id" TEXT NOT NULL,
     "delegationId" TEXT NOT NULL,
     "type" "AiDelegationEventType" NOT NULL,
-    "actorKind" "ActorKind" NOT NULL,
+    "handlingAv" "ActorKind" NOT NULL,
     "actorUserId" TEXT,
     "note" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

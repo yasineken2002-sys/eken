@@ -120,7 +120,7 @@ medDb('delegationen', () => {
       expect(await status(d.id)).toBe('AKTIV')
       const h = await prisma.aiDelegationEvent.findMany({ where: { delegationId: d.id } })
       expect(h).toHaveLength(1)
-      expect(h[0]).toMatchObject({ type: 'CREATED', actorKind: 'HUMAN', actorUserId: agareA })
+      expect(h[0]).toMatchObject({ type: 'CREATED', handlingAv: 'HUMAN', actorUserId: agareA })
       // Scopet är KOPIERAT vid skapandet, inte uppslaget vid läsning.
       expect(d.authorityScope).toBe('EGEN_ORG')
       // 90 dagar som default — ett beslut, inte en härledning.
@@ -135,7 +135,7 @@ medDb('delegationen', () => {
       const h = await prisma.aiDelegationEvent.findMany({
         where: { delegationId: d.id, type: 'PAUSED' },
       })
-      expect(h[0]?.actorKind).toBe('SYSTEM')
+      expect(h[0]?.handlingAv).toBe('SYSTEM')
     })
 
     it('återupptagen → AKTIV igen', async () => {

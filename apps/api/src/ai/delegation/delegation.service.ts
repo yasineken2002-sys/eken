@@ -144,7 +144,7 @@ export class DelegationService {
             type: 'CREATED',
             // En människa gav rätten. Aldrig SYSTEM — det hade varit en maskin
             // som påstod sig ha fått rätten av sig själv.
-            actorKind: 'HUMAN',
+            handlingAv: 'HUMAN',
             actorUserId: aktör.userId,
           },
         },
@@ -163,7 +163,7 @@ export class DelegationService {
       data: {
         delegationId,
         type,
-        actorKind: aktör.kind,
+        handlingAv: aktör.kind,
         ...(aktör.userId ? { actorUserId: aktör.userId } : {}),
         ...(note ? { note } : {}),
       },

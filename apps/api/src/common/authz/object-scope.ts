@@ -168,6 +168,9 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   // Etapp 1b: utrustningens händelser når man bara via sin UnitEquipment, som
   // i sin tur bär organizationId. Samma form som InspectionItem → Inspection.
   UnitEquipmentEvent: { scope: 'parent-scoped', parent: 'UnitEquipment' },
+  // Etapp 7 (G2). Delegationens händelser bär ingen egen organizationId —
+  // de scopas via delegationen, som gör det. Samma form som raden ovan.
+  AiDelegationEvent: { scope: 'parent-scoped', parent: 'AiDelegation' },
   InspectionImage: { scope: 'parent-scoped', parent: 'Inspection' },
   AiTenantConversation: { scope: 'parent-scoped', parent: 'Tenant' },
   // Ämneskoppling (#510): ren metadata, adresserbar bara via sin AI-rad.

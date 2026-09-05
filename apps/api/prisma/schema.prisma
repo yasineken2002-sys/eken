@@ -6319,9 +6319,25 @@ model AiDelegationEvent {
   delegationId String
   type         AiDelegationEventType
 
-  /// Vem. `HUMAN` vid CREATED/REVOKED/EXTENDED, `SYSTEM` vid PAUSED/RESUMED/
-  /// EXPIRED — aktörsmodellen, aldrig en människa som låtsas.
-  actorKind   ActorKind
+  /// ── VEM HANDLINGEN TILLSKRIVS — OCH VARFÖR FÄLTET INTE HETER `actorKind` ──
+  ///
+  /// `HUMAN` vid CREATED/REVOKED/EXTENDED, `SYSTEM` vid PAUSED/RESUMED/EXPIRED.
+  ///
+  /// Fältet heter MED FLIT inte `actorKind`. Det namnet är taget, och det svarar
+  /// på en annan fråga: `actorKind` är RADENS FÖRFATTARE, stämplad av
+  /// `actorStampExtension` vid tre gränser, och `check-actor-stamping.mjs` R4
+  /// fäller varje handpåläggning av det — med rätta, eftersom en stämpel som
+  /// ibland sätts för hand är en mekanism som kan gå sönder tyst.
+  ///
+  ///     actorKind     vem SKREV raden?
+  ///     handlingAv    vem tillskrivs HANDLINGEN raden beskriver?
+  ///
+  /// De skiljer sig i praktiken: när ägaren stänger av skuggagenten är det en
+  /// människa som skriver raden, men pausen är SYSTEMETS — den är en följd av en
+  /// inställning, inte ett beslut om just den delegationen. Att slå ihop dem hade
+  /// gjort en paus oskiljbar från en återkallelse i historiken, och det är precis
+  /// den skillnad tabellen finns för att bevara.
+  handlingAv  ActorKind
   /// `User.id` när en människa handlade, annars null.
   actorUserId String?
 
