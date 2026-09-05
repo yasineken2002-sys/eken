@@ -43,6 +43,27 @@
  * En tredje kanariefågel prövar att registret läses som KOD: ett relationsnamn
  * som bara står i en KOMMENTAR får inte räknas som registrerat.
  *
+ * ── VAD DEN HÄR VAKTEN INTE KAN SE ──────────────────────────────────────────
+ *
+ * Den mäter att en källa är DEKLARERAD, inte att den är PÅKOPPLAD.
+ * `registreradeRelationer` söker `tenant|unit|property: '…'` i hela filens KOD —
+ * den vet ingenting om `HISTORY_SOURCES`-arrayen längst ned. En källa vars
+ * objekt finns kvar men som lyfts UT ur den exporterade arrayen läses därför
+ * fortfarande som registrerad, och vakten förblir grön medan historiken tappar
+ * hela källan.
+ *
+ * Uppmätt 2026-09-05, med `aiAssignments` bortkommenterad ur arrayen:
+ *
+ *     check-history-registry.mjs                       exit 0  (GRÖN)
+ *     ai-assignment-history.db.spec.ts                 14 av 19 föll
+ *
+ * Att göra vakten arraymedveten hade varit att låta den läsa två saker med ett
+ * villkor. Påkopplingen ägs i stället av källornas EGNA prov: varje
+ * `*-history.db.spec.ts` läser genom `HistoryService`, som itererar
+ * `HISTORY_SOURCES`, och `ai-assignment-history.db.spec.ts` har dessutom en
+ * uttrycklig omfångskanariefågel som slår upp posten i arrayen. Faller en källa
+ * ur arrayen blir de röda — det är dit man ska titta, inte hit.
+ *
  * Lokalt:    node apps/api/scripts/check-history-registry.mjs
  * Självtest: node apps/api/scripts/check-history-registry.mjs --self-test
  */
