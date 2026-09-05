@@ -1,0 +1,243 @@
+{
+  "total": 95,
+  "poster": [
+    {
+      "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
+      "medlemmar": [
+        "POST `/accounting/journal/${id}/reverse` → INLINE-LITERAL",
+        "POST `/accounting/periods/${args.year}/${args.month}/reopen` → INLINE-LITERAL",
+        "POST `/accounting/supplier-invoices/${input.id}/cancel` → INLINE-LITERAL",
+        "POST `/accounting/supplier-invoices/${input.id}/pay` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/ai/api/ai.api.ts",
+      "medlemmar": ["POST '/ai/chat' → INLINE-LITERAL", "POST '/ai/confirm' → OTYPAD"]
+    },
+    {
+      "fil": "apps/web/src/features/assignments/api/assignments.api.ts",
+      "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
+    },
+    {
+      "fil": "apps/web/src/features/auth/api/auth.api.ts",
+      "medlemmar": [
+        "POST '/auth/accept-invite' → OTYPAD",
+        "POST '/auth/change-password' → OTYPAD",
+        "POST '/auth/forgot-password' → INLINE-LITERAL",
+        "POST '/auth/login' → LoginInput",
+        "POST '/auth/register' → RegisterInput",
+        "POST '/auth/reset-password' → OTYPAD"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/auth/api/bankid.api.ts",
+      "medlemmar": [
+        "POST '/auth/bankid/enroll/collect' → INLINE-LITERAL",
+        "POST '/auth/bankid/enroll/start' → INLINE-LITERAL",
+        "POST '/auth/bankid/login/choose' → INLINE-LITERAL",
+        "POST '/auth/bankid/login/collect' → INLINE-LITERAL",
+        "POST '/auth/bankid/login/start' → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/avisering/api/avisering.api.ts",
+      "medlemmar": [
+        "PATCH `/avisering/${id}/paid` → INLINE-LITERAL",
+        "POST '/avisering/generate' → INLINE-LITERAL",
+        "POST '/avisering/send' → INLINE-LITERAL",
+        "POST `/avisering/${id}/credit` → CreateRentNoticeCreditInput",
+        "POST `/avisering/${id}/reminder/resend` → INLINE-LITERAL",
+        "POST `/avisering/send-all/${month}/${year}` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/backfill/api/backfill.api.ts",
+      "medlemmar": ["POST `/avisering/backfill/${leaseId}/confirm` → OTYPAD"]
+    },
+    {
+      "fil": "apps/web/src/features/collections/api/collections.api.ts",
+      "medlemmar": [
+        "PATCH `/collections/reminders/${invoiceId}/pause` → reason ? { reason } : {}",
+        "PATCH `/collections/reminders/${invoiceId}/resume` → INLINE-LITERAL",
+        "POST '/collections/bulk-export' → INLINE-LITERAL",
+        "POST `/collections/mark-sent/${invoiceId}` → note ? { note } : {}"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/contract-batch/api/contractBatch.api.ts",
+      "medlemmar": [
+        "POST `/import/contract-batches/${batchId}/confirm-safe` → INLINE-LITERAL",
+        "POST `/import/contract-batches/${batchId}/rows/${rowId}/confirm` → ConfirmRowBody",
+        "POST `/import/contract-batches/${batchId}/rows/${rowId}/skip` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/customers/api/customers.api.ts",
+      "medlemmar": [
+        "PATCH `/customers/${id}` → UpdateCustomerInput",
+        "POST '/customers' → CreateCustomerInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/deposits/api/deposits.api.ts",
+      "medlemmar": [
+        "PATCH `/deposits/${id}/pay` → INLINE-LITERAL",
+        "PATCH `/deposits/${id}/refund` → RefundDepositInput",
+        "POST '/deposits' → CreateDepositInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/documents/api/documents.api.ts",
+      "medlemmar": ["POST `/documents/${documentId}/send-to-tenant` → INLINE-LITERAL"]
+    },
+    {
+      "fil": "apps/web/src/features/inbox/api/inbox.api.ts",
+      "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
+    },
+    {
+      "fil": "apps/web/src/features/inspections/api/inspections.api.ts",
+      "medlemmar": [
+        "PATCH `/inspections/${id}` → UpdateInspectionInput",
+        "PATCH `/inspections/${inspectionId}/items/${itemId}` → UpdateInspectionItemInput",
+        "POST '/inspections' → CreateInspectionInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/invoices/api/invoices.api.ts",
+      "medlemmar": [
+        "POST `/invoices/${id}/credit-note` → CreateCreditNoteInput",
+        "POST `/invoices/${id}/pay` → RegisterPaymentInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/keys/api/keys.api.ts",
+      "medlemmar": [
+        "PATCH `/keys/${id}/return` → ReturnKeyInput",
+        "PATCH `/keys/${id}` → UpdateKeyInput",
+        "POST '/keys' → IssueKeysInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/leases/api/leases.api.ts",
+      "medlemmar": [
+        "PATCH `/contracts/${leaseId}/appendices/${documentId}` → TerminateLeaseInput",
+        "PATCH `/leases/${id}/renew` → RenewLeaseInput",
+        "PATCH `/leases/${id}/status` → INLINE-LITERAL",
+        "PATCH `/leases/${id}/terminate` → TerminateLeaseInput",
+        "PATCH `/leases/${id}` → Partial",
+        "POST '/leases' → CreateLeaseInput",
+        "POST '/leases/with-tenant' → CreateLeaseWithTenantInput",
+        "POST '/signing/requests' → INLINE-LITERAL",
+        "POST `/contracts/generate/${leaseId}` → INLINE-LITERAL",
+        "POST `/leases/${leaseId}/initial-notices` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/maintenance-plan/api/maintenance-plan.api.ts",
+      "medlemmar": [
+        "PATCH `/maintenance-plans/${id}` → UpdateMaintenancePlanInput",
+        "POST '/maintenance-plans' → CreateMaintenancePlanInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/maintenance/api/maintenance.api.ts",
+      "medlemmar": [
+        "PATCH `/maintenance/${id}` → UpdateTicketInput",
+        "POST '/maintenance' → CreateTicketInput",
+        "POST `/maintenance/${id}/comments` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/messages/api/messages.api.ts",
+      "medlemmar": [
+        "POST '/messages/send' → SendMessagePayload",
+        "POST `/messages/${id}/retry` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/misc-charges/api/misc-charges.api.ts",
+      "medlemmar": ["POST '/misc-charges' → CreateMiscChargeBody"]
+    },
+    {
+      "fil": "apps/web/src/features/news/api/news.api.ts",
+      "medlemmar": [
+        "PATCH `/news/${id}` → UpdateNewsPostDto",
+        "POST '/news' → CreateNewsPostDto",
+        "POST `/news/${id}/publish` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/properties/api/properties.api.ts",
+      "medlemmar": ["PATCH `/properties/${id}` → Partial"]
+    },
+    {
+      "fil": "apps/web/src/features/reconciliation/api/reconciliation.api.ts",
+      "medlemmar": [
+        "PATCH `/reconciliation/transactions/${transactionId}/ignore` → INLINE-LITERAL",
+        "PATCH `/reconciliation/transactions/${transactionId}/match` → OTYPAD",
+        "PATCH `/reconciliation/transactions/${transactionId}/unmatch` → INLINE-LITERAL",
+        "POST '/reconciliation/auto-match' → INLINE-LITERAL",
+        "POST `/reconciliation/imports/${importId}/confirm` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/rent-increases/api/rent-increases.api.ts",
+      "medlemmar": [
+        "PATCH `/rent-increases/${id}/accept` → INLINE-LITERAL",
+        "PATCH `/rent-increases/${id}/reject` → INLINE-LITERAL",
+        "PATCH `/rent-increases/${id}/withdraw` → INLINE-LITERAL",
+        "POST '/rent-increases' → CreateRentIncreaseInput",
+        "POST `/rent-increases/${id}/send-notice` → INLINE-LITERAL"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/settings/api/plan.api.ts",
+      "medlemmar": ["POST '/ai-usage/buy-credits' → INLINE-LITERAL"]
+    },
+    {
+      "fil": "apps/web/src/features/settings/api/settings.api.ts",
+      "medlemmar": ["PATCH '/organizations/me' → UpdateOrganizationInput"]
+    },
+    {
+      "fil": "apps/web/src/features/tenants/api/invitations.api.ts",
+      "medlemmar": [
+        "POST '/tenant-portal/admin/invitations' → OTYPAD",
+        "POST '/tenant-portal/admin/invitations/resend' → OTYPAD"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/tenants/api/tenants.api.ts",
+      "medlemmar": [
+        "PATCH `/tenants/${id}` → flattenUpdate(dto)",
+        "POST `/tenants/${id}/anonymize` → reason ? { reason } : {}"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/terminations/api/terminations.api.ts",
+      "medlemmar": [
+        "PATCH `/terminations/${id}/approve` → OTYPAD",
+        "PATCH `/terminations/${id}/reject` → reason ? { reason } : {}"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/units/api/equipment.api.ts",
+      "medlemmar": [
+        "PATCH `/equipment/${id}` → CreateEquipmentInput",
+        "POST '/equipment' → CreateEquipmentInput",
+        "POST `/equipment/${id}/replacement` → RegisterReplacementInput"
+      ]
+    },
+    {
+      "fil": "apps/web/src/features/units/api/units.api.ts",
+      "medlemmar": ["PATCH `/units/${id}` → Partial", "POST '/units' → CreateUnitInput"]
+    },
+    {
+      "fil": "apps/web/src/features/users/api/users.api.ts",
+      "medlemmar": [
+        "PATCH `/users/${id}/role` → INLINE-LITERAL",
+        "POST '/users/invite' → InviteUserInput",
+        "POST `/users/${id}/reactivate` → INLINE-LITERAL"
+      ]
+    }
+  ]
+}

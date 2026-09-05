@@ -793,6 +793,41 @@ jobs:
       - name: Verify no new ASCII identifier derivations
         run: node apps/api/scripts/check-identifier-regex.mjs
 
+  request-contract-guard:
+    name: Request contract guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # KONTRAKTET WEBB↔API. Nyttolasten beskrivs på två ställen — ett interface
+      # i webbens api-lager och en class-validator-klass i API:ts dto/ — och
+      # ingen av dem vet om den andra.
+      #
+      # #795 mätte kostnaden: modalen skickade inget `vatAmount` medan DTO:n
+      # krävde det. Varje registrering hade svarat 400, och 37 gröna prov var
+      # fortsatt gröna eftersom samtliga gick förbi DTO:n. Det var inte en
+      # lucka i täckningen utan i kontraktet.
+      #
+      # Vakten mäter WEBBENS halva: typen ska bo i @eken/shared. Att API:ts DTO
+      # använder samma schema bärs av `SammaNycklar`-raden i DTO:n, som är ett
+      # KOMPILERINGSFEL och alltså fälls av Typecheck — inte här. Det står i
+      # vaktens egen fil, som ett eget stycke.
+      #
+      # Baslinjen är MEDLEMMAR, inte ett tal, och fäller åt båda hållen: en ny
+      # överträdelse är röd, och en post som inte längre är en överträdelse är
+      # också röd. Den får bara krympa.
+      #
+      # fs-only, inga beroenden, ingen DB.
+      - name: Self-test the guard (views, both directions, multipart exemption)
+        run: node apps/api/scripts/check-request-contract.mjs --self-test
+
+      - name: Verify no new unshared request payload types
+        run: node apps/api/scripts/check-request-contract.mjs
+
   self-tests-must-fail-guard:
     name: Self-tests must be able to fail
     runs-on: ubuntu-latest
@@ -2184,6 +2219,7 @@ jobs:
       - self-tests-must-fail-guard
       - source-scan-canary-guard
       - identifier-regex-guard
+      - request-contract-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard

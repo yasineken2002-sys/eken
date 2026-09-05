@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/Input'
 import { useCreateExpense } from '../hooks/useAccounting'
 import { momsAvBrutto, tolkaBelopp } from './entry-balance'
 import { extractApiError } from '@/lib/api'
-import { formatCurrency, VAT_RATES } from '@eken/shared'
+import { kontraktsfel } from './contract-gate'
+import type { CreateExpenseInput } from '@eken/shared'
+import { CreateExpenseSchema, formatCurrency, VAT_RATES } from '@eken/shared'
 import type { Account } from '@eken/shared'
 
 /**
@@ -84,23 +86,35 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
   const bokfor = () => {
     if (fel) return
     setServerfel(null)
-    mutation.mutate(
-      {
-        date: datum,
-        description: beskrivning.trim(),
-        ...(leverantor.trim() ? { supplier: leverantor.trim() } : {}),
-        amount: brutto,
-        vatRate: momssats,
-        vatAmount: moms,
-        accountNumber: kontonummer,
-        idempotencyKey: nyckel,
-        ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
-      },
-      {
-        onSuccess: stang,
-        onError: (err) => setServerfel(extractApiError(err, 'Kunde inte bokföra utgiften')),
-      },
-    )
+    // ANNOTERAD med flit. Utan typen är `kropp` en inferrerad const, och då
+    // körs INGEN överskottskontroll: ett fält som finns här men inte i
+    // kontraktet passerar tyst. Uppmätt i negativkontrollen — API-sidan blev
+    // röd, webben inte, förrän den här raden fanns.
+    const kropp: CreateExpenseInput = {
+      date: datum,
+      description: beskrivning.trim(),
+      ...(leverantor.trim() ? { supplier: leverantor.trim() } : {}),
+      amount: brutto,
+      vatRate: momssats,
+      vatAmount: moms,
+      accountNumber: kontonummer,
+      idempotencyKey: nyckel,
+      ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
+    }
+
+    // SISTA GRINDEN: nyttolasten prövas mot det DELADE schemat innan den lämnar
+    // webbläsaren. Formulärets egna regler har redan talat ovan; den här fångar
+    // det de missar — och det är samma form som i #795 blev ett 400-svar.
+    const kontrakt = kontraktsfel(CreateExpenseSchema, kropp)
+    if (kontrakt) {
+      setServerfel(kontrakt)
+      return
+    }
+
+    mutation.mutate(kropp, {
+      onSuccess: stang,
+      onError: (err) => setServerfel(extractApiError(err, 'Kunde inte bokföra utgiften')),
+    })
   }
 
   return (

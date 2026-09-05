@@ -632,6 +632,70 @@ import type { RegisterDto } from './dto/register.dto'
 
 `import type` är rätt för interfaces/typer från `@eken/shared`. Fel för NestJS DTOs.
 
+### Kontraktet webb↔API: formen ska bo på ETT ställe
+
+DTO-regeln ovan handlar om att DTO:n överlever till runtime. Det här handlar om
+att den beskriver **samma sak som webben skickar**.
+
+Nyttolasten beskrivs i dag på två ställen — ett interface i
+`apps/web/src/features/*/api/*.ts` och en `class-validator`-klass i
+`apps/api/src/*/dto/` — och ingen av dem vet om den andra. **Ett grönt testträd
+säger ingenting om glappet**, eftersom proven nästan alltid anropar tjänsten
+direkt och går förbi DTO:n.
+
+Kostnaden är uppmätt (#795). Modalen skickade inget `vatAmount` medan DTO:n
+krävde det:
+
+```
+varje registrering via UI  →  400
+prov som ändå var gröna    →  37   (alla anropade tjänsten, ingen gick genom DTO:n)
+```
+
+Det var alltså inte en lucka i täckningen utan i **kontraktet**, och ett prov per
+endpoint hade inte hittat nästa av samma form.
+
+**Mönstret, i tre delar.** Piloten är bokföringens tre endpoints
+(`journal-entries`, `expenses`, `supplier-invoices`):
+
+1. **Formen ägs av ett Zod-schema i `packages/shared/src/schemas`.** Webbens
+   nyttolasttyp ÄR `z.infer`-typen, och objektet som byggs ska vara
+   **annoterat** med den — utan annotering är literalen en inferrerad `const`
+   och TypeScript kör då ingen överskottskontroll, så ett fält som finns i
+   webben men inte i kontraktet passerar tyst. Uppmätt i negativkontrollen:
+   API-sidan blev röd, webben inte, förrän annoteringen fanns.
+
+2. **DTO:n deklarerar `implements <Input>` OCH en nyckelparitetsrad**
+   (`SammaNycklar`, `packages/shared/src/schemas/contract.ts`). Båda behövs och
+   fångar olika saker:
+
+   ```
+   implements     fel TYP på ett fält som finns i båda
+   SammaNycklar   ett fält som SAKNAS i den ena
+   ```
+
+   En klass som utelämnar ett **valfritt** fält ur interfacet passerar
+   `implements` utan anmärkning — `{ a: string }` uppfyller `{ a: string; b?: … }`.
+   Bara pariteten fäller den, och det är just det fältet som blir ett 400 den dag
+   webben börjar skicka det. Felmeddelandet bär fältnamnet:
+   `Type 'boolean' is not assignable to type '{ saknasIB: "supplierName" }'`.
+
+3. **`class-validator` ligger kvar och validerar i runtime.** Schemat beskriver
+   FORMEN, dekoratorerna beskriver GRÄNSERNA. Att de säger samma sak är inget
+   man antar: `dto-contract.spec.ts` kör **samma kropp genom båda** och kräver
+   samma svar. `nestjs-zod`/`createZodDto` finns inte i repot och infördes inte —
+   det hade bytt valideringsmotor för 90 DTO:er, och felmeddelandena är svenska,
+   handskrivna och lästa av Swagger.
+
+**Spärren mot nya:** `check-request-contract.mjs` (eget CI-jobb i `ci-passed`:s
+`needs`) kräver att varje POST/PATCH/PUT i webbens api-lager skickar en typ ur
+`@eken/shared`. Befintliga överträdelser står i `request-contract.baseline.json`,
+som **bara får krympa** och fäller åt båda hållen. Multipart-uppladdningar
+(`FormData`) är undantagna — en filuppladdning har ingen JSON-form att dela.
+
+Vakten mäter **webbens halva**. Att API-sidan använder samma schema bärs av
+`SammaNycklar`-raden (Typecheck) och av paritetsprovet — inte av vakten. Det står
+i vaktens egen fil.
+
 ### Common-lager (`src/common/`)
 
 - `@Public()` – markerar route som publik

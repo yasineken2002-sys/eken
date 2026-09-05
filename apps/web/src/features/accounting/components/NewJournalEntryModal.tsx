@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/Badge'
 import { useCreateJournalEntry } from '../hooks/useAccounting'
 import { beraknaSaldo, tolkaBelopp, verifikatFel, type RadUtkast } from './entry-balance'
 import { extractApiError } from '@/lib/api'
-import { formatCurrency } from '@eken/shared'
+import { kontraktsfel } from './contract-gate'
+import type { CreateJournalEntryInput } from '@eken/shared'
+import { CreateJournalEntrySchema, formatCurrency } from '@eken/shared'
 import type { Account } from '@eken/shared'
 
 /**
@@ -79,30 +81,42 @@ export function NewJournalEntryModal({ open, onClose, accounts }: Props) {
   const bokfor = () => {
     if (fel) return
     setServerfel(null)
-    mutation.mutate(
-      {
-        date: datum,
-        description: beskrivning.trim(),
-        idempotencyKey: nyckel,
-        ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
-        lines: rader
-          .filter((r) => r.accountNumber.trim() !== '')
-          .map((r) => {
-            const debit = tolkaBelopp(r.debit)
-            const credit = tolkaBelopp(r.credit)
-            return {
-              accountNumber: Number(r.accountNumber),
-              ...(debit > 0 ? { debit } : {}),
-              ...(credit > 0 ? { credit } : {}),
-              ...(r.description?.trim() ? { description: r.description.trim() } : {}),
-            }
-          }),
-      },
-      {
-        onSuccess: stang,
-        onError: (err) => setServerfel(extractApiError(err, 'Kunde inte bokföra verifikatet')),
-      },
-    )
+    // ANNOTERAD med flit. Utan typen är `kropp` en inferrerad const, och då
+    // körs INGEN överskottskontroll: ett fält som finns här men inte i
+    // kontraktet passerar tyst. Uppmätt i negativkontrollen — API-sidan blev
+    // röd, webben inte, förrän den här raden fanns.
+    const kropp: CreateJournalEntryInput = {
+      date: datum,
+      description: beskrivning.trim(),
+      idempotencyKey: nyckel,
+      ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
+      lines: rader
+        .filter((r) => r.accountNumber.trim() !== '')
+        .map((r) => {
+          const debit = tolkaBelopp(r.debit)
+          const credit = tolkaBelopp(r.credit)
+          return {
+            accountNumber: Number(r.accountNumber),
+            ...(debit > 0 ? { debit } : {}),
+            ...(credit > 0 ? { credit } : {}),
+            ...(r.description?.trim() ? { description: r.description.trim() } : {}),
+          }
+        }),
+    }
+
+    // SISTA GRINDEN: nyttolasten prövas mot det DELADE schemat innan den lämnar
+    // webbläsaren. Formulärets egna regler har redan talat ovan; den här fångar
+    // det de missar — och det är samma form som i #795 blev ett 400-svar.
+    const kontrakt = kontraktsfel(CreateJournalEntrySchema, kropp)
+    if (kontrakt) {
+      setServerfel(kontrakt)
+      return
+    }
+
+    mutation.mutate(kropp, {
+      onSuccess: stang,
+      onError: (err) => setServerfel(extractApiError(err, 'Kunde inte bokföra verifikatet')),
+    })
   }
 
   return (

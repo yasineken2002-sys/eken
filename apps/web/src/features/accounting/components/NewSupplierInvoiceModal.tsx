@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/Input'
 import { useCreateSupplierInvoice } from '../hooks/useAccounting'
 import { beraknaBelopp, fakturaFel, type LeverantorsfakturaUtkast } from './supplier-invoice-form'
 import { extractApiError } from '@/lib/api'
-import { formatCurrency, VAT_RATES } from '@eken/shared'
+import { kontraktsfel } from './contract-gate'
+import type { CreateSupplierInvoiceInput } from '@eken/shared'
+import { CreateSupplierInvoiceSchema, formatCurrency, VAT_RATES } from '@eken/shared'
 import type { Account } from '@eken/shared'
 
 /**
@@ -75,28 +77,40 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
   const registrera = () => {
     if (fel) return
     setServerfel(null)
-    mutation.mutate(
-      {
-        supplierName: utkast.supplierName.trim(),
-        ...(utkast.invoiceNumber.trim() ? { invoiceNumber: utkast.invoiceNumber.trim() } : {}),
-        description: utkast.description.trim(),
-        invoiceDate: utkast.invoiceDate,
-        dueDate: utkast.dueDate,
-        expenseAccount: kontonummer,
-        amount: brutto,
-        vatRate: utkast.vatRate,
-        // Skickas som en AVSTÄMNING, inte som fakta: servern räknar om samma
-        // sak och avvisar om talen skiljer sig mer än ett öre. Det som visas i
-        // konteringen ovan är därför bevisligen det som bokförs.
-        vatAmount: moms,
-        ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
-      },
-      {
-        onSuccess: stang,
-        onError: (err) =>
-          setServerfel(extractApiError(err, 'Kunde inte registrera leverantörsfakturan')),
-      },
-    )
+    // ANNOTERAD med flit. Utan typen är `kropp` en inferrerad const, och då
+    // körs INGEN överskottskontroll: ett fält som finns här men inte i
+    // kontraktet passerar tyst. Uppmätt i negativkontrollen — API-sidan blev
+    // röd, webben inte, förrän den här raden fanns.
+    const kropp: CreateSupplierInvoiceInput = {
+      supplierName: utkast.supplierName.trim(),
+      ...(utkast.invoiceNumber.trim() ? { invoiceNumber: utkast.invoiceNumber.trim() } : {}),
+      description: utkast.description.trim(),
+      invoiceDate: utkast.invoiceDate,
+      dueDate: utkast.dueDate,
+      expenseAccount: kontonummer,
+      amount: brutto,
+      vatRate: utkast.vatRate,
+      // Skickas som en AVSTÄMNING, inte som fakta: servern räknar om samma
+      // sak och avvisar om talen skiljer sig mer än ett öre. Det som visas i
+      // konteringen ovan är därför bevisligen det som bokförs.
+      vatAmount: moms,
+      ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
+    }
+
+    // SISTA GRINDEN: nyttolasten prövas mot det DELADE schemat innan den lämnar
+    // webbläsaren. Formulärets egna regler har redan talat ovan; den här fångar
+    // det de missar — och det är samma form som i #795 blev ett 400-svar.
+    const kontrakt = kontraktsfel(CreateSupplierInvoiceSchema, kropp)
+    if (kontrakt) {
+      setServerfel(kontrakt)
+      return
+    }
+
+    mutation.mutate(kropp, {
+      onSuccess: stang,
+      onError: (err) =>
+        setServerfel(extractApiError(err, 'Kunde inte registrera leverantörsfakturan')),
+    })
   }
 
   return (

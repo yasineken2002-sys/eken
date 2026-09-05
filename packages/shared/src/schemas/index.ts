@@ -1,4 +1,6 @@
 import { z } from 'zod'
+
+export * from './contract'
 import {
   isValidSwedishPersonalNumber,
   isValidSwedishOrgNumber,
@@ -460,3 +462,99 @@ export const CreateMiscChargeSchema = z.object({
 })
 
 export type CreateMiscChargeInput = z.infer<typeof CreateMiscChargeSchema>
+
+// ─── Bokföring: manuella verifikat, utgifter och leverantörsfakturor ──────────
+//
+// PILOTEN för kontraktsmönstret (se ./contract.ts). De tre schemana nedan är
+// ENDA källan till nyttolastens form: webbens formulär validerar mot dem via
+// zodResolver, webbens API-anrop skickar `z.infer`-typen, och API:ts DTO
+// deklarerar `implements` mot samma typ plus en nyckelparitetsrad. Ett fält som
+// bara finns på ena sidan är därmed ett KOMPILERINGSFEL, inte ett 400-svar.
+//
+// class-validator ligger kvar i DTO:erna och är fortfarande den som validerar i
+// runtime. Schemat beskriver FORMEN; dekoratorerna beskriver GRÄNSERNA. Där de
+// överlappar (t.ex. maxlängd) är schemat det formuläret visar och dekoratorn det
+// servern verkställer — och båda ska säga samma sak.
+
+/** BAS-kontonummer är fyrsiffriga. Samma intervall som DTO:ernas @Min/@Max. */
+const BasKontoSchema = z
+  .number()
+  .int('Kontonummer måste vara ett heltal')
+  .min(1000, 'BAS-kontonummer är fyrsiffriga (1000–8999)')
+  .max(8999, 'BAS-kontonummer är fyrsiffriga (1000–8999)')
+
+const BeloppSchema = z.number().multipleOf(0.01, 'Beloppet anges med högst två decimaler')
+
+export const JournalLineSchema = z.object({
+  accountNumber: BasKontoSchema,
+  debit: BeloppSchema.min(0, 'Debet kan inte vara negativt — byt till kredit i stället').optional(),
+  credit: BeloppSchema.min(
+    0,
+    'Kredit kan inte vara negativt — byt till debet i stället',
+  ).optional(),
+  description: z.string().max(200, 'Radtexten får vara högst 200 tecken').optional(),
+})
+
+export const CreateJournalEntrySchema = z.object({
+  date: z.string().date('Datum måste anges som ÅÅÅÅ-MM-DD'),
+  description: z
+    .string()
+    .min(3, 'Beskrivningen måste vara minst 3 tecken')
+    .max(300, 'Beskrivningen får vara högst 300 tecken'),
+  lines: z.array(JournalLineSchema).min(2, 'Ett verifikat behöver minst två konteringsrader'),
+  /**
+   * En nyckel per öppnad modal. Två skickningar med samma nyckel ger EN
+   * journalpost. VALFRI i kontraktet därför att servern faller tillbaka på en
+   * egen nyckel när den saknas — en äldre klient ska inte få 400.
+   */
+  idempotencyKey: z.string().max(100).optional(),
+  attachmentUrl: z.string().max(500).optional(),
+})
+
+export const CreateExpenseSchema = z.object({
+  date: z.string().date('Datum måste anges som ÅÅÅÅ-MM-DD'),
+  description: z
+    .string()
+    .min(3, 'Beskrivningen måste vara minst 3 tecken')
+    .max(300, 'Beskrivningen får vara högst 300 tecken'),
+  supplier: z.string().max(200, 'Leverantörsnamnet får vara högst 200 tecken').optional(),
+  /** BRUTTO — det som lämnar bankkontot. Momsen bryts UT ur det, inte till. */
+  amount: BeloppSchema.min(0.01, 'Beloppet måste vara större än noll'),
+  vatRate: z.number().optional(),
+  vatAmount: BeloppSchema.min(0, 'Momsbeloppet kan inte vara negativt').optional(),
+  accountNumber: BasKontoSchema,
+  idempotencyKey: z.string().max(100).optional(),
+  attachmentUrl: z.string().max(500).optional(),
+})
+
+export const CreateSupplierInvoiceSchema = z.object({
+  supplierName: z
+    .string()
+    .min(2, 'Leverantörsnamnet måste vara minst 2 tecken')
+    .max(200, 'Leverantörsnamnet får vara högst 200 tecken'),
+  /** Leverantörens EGET fakturanummer. Vårt verifikationsnummer är ett annat. */
+  invoiceNumber: z.string().max(60, 'Fakturanumret får vara högst 60 tecken').optional(),
+  description: z
+    .string()
+    .min(3, 'Beskrivningen måste vara minst 3 tecken')
+    .max(300, 'Beskrivningen får vara högst 300 tecken'),
+  invoiceDate: z.string().date('Fakturadatum måste anges som ÅÅÅÅ-MM-DD'),
+  dueDate: z.string().date('Förfallodatum måste anges som ÅÅÅÅ-MM-DD'),
+  expenseAccount: BasKontoSchema,
+  /** BRUTTO — det som står på fakturan. */
+  amount: BeloppSchema.min(0.01, 'Beloppet måste vara större än noll'),
+  vatRate: z.number(),
+  /** Valfritt: servern räknar själv och godtar ett inskickat tal inom ett öre. */
+  vatAmount: BeloppSchema.min(0, 'Momsbeloppet kan inte vara negativt').optional(),
+  attachmentUrl: z.string().max(500).optional(),
+})
+
+export const PaySupplierInvoiceSchema = z.object({
+  paidDate: z.string().date('Betalningsdatum måste anges som ÅÅÅÅ-MM-DD'),
+})
+
+export type JournalLineInput = z.infer<typeof JournalLineSchema>
+export type CreateJournalEntryInput = z.infer<typeof CreateJournalEntrySchema>
+export type CreateExpenseInput = z.infer<typeof CreateExpenseSchema>
+export type CreateSupplierInvoiceInput = z.infer<typeof CreateSupplierInvoiceSchema>
+export type PaySupplierInvoiceInput = z.infer<typeof PaySupplierInvoiceSchema>
