@@ -146,9 +146,18 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
 
   const nyckelFör = (input: Record<string, unknown>) => aiJournalSourceId(TOOL, input)
 
+  /**
+   * Räknas på BESKRIVNINGEN, inte på `sourceId`.
+   *
+   * Mätt skäl, inte smak: en negativkontroll som tar bort eller randomiserar
+   * idempotensnyckeln gör en `sourceId`-filtrerad räkning till NOLL — och då
+   * faller provet av att INSTRUMENTET slutade hitta rader, inte av att
+   * dubbletten uppstod. De två utfallen ser likadana ut i en röd rad.
+   * Beskrivningen är unik per prov och överlever varje injektion i nyckeln.
+   */
   const antalVerifikat = (input: Record<string, unknown>) =>
     prisma.journalEntry.count({
-      where: { organizationId: orgId, source: 'AI', sourceId: nyckelFör(input) },
+      where: { organizationId: orgId, description: input.description as string },
     })
 
   /**
@@ -430,6 +439,14 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
 
       // Effekten är ETT verifikat — spärren är databasens unika index.
       expect(await antalVerifikat(input)).toBe(1)
+      // …och den bär den INNEHÅLLSHÄRLEDDA nyckeln. Utan den här raden vore
+      // "ett verifikat" förenligt med att något helt annat råkade blockera.
+      const verifikat = await prisma.journalEntry.findFirst({
+        where: { organizationId: orgId, description: input.description as string },
+        select: { sourceId: true, source: true },
+      })
+      expect(verifikat!.source).toBe('AI')
+      expect(verifikat!.sourceId).toBe(nyckelFör(input))
       // …och svaret SÄGER att inget nytt skapades, i stället för att påstå
       // "Verifikat skapat" om något som fanns.
       expect(svar.reply).toMatch(/finns redan/)
