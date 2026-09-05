@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import { DepositStatusBadge } from '@/components/ui/Badge'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { CreateDepositSchema, RefundDepositSchema, formatCurrency, formatDate } from '@eken/shared'
+import type { CreateDepositInput, RefundDepositInput } from '@eken/shared'
+import { toast } from 'sonner'
+import { kontraktsfel } from '@/lib/contract-gate'
 import {
   useDeposits,
   useCreateDeposit,
@@ -30,10 +33,13 @@ export function DepositSection({ leaseId, fallbackAmount }: Props) {
   const payMutation = useMarkDepositPaid()
 
   const handleCreate = (amount: number, notes: string) => {
-    createMutation.mutate(
-      { leaseId, amount, ...(notes ? { notes } : {}) },
-      { onSuccess: () => setShowCreate(false) },
-    )
+    const kropp: CreateDepositInput = { leaseId, amount, ...(notes ? { notes } : {}) }
+    const kontrakt = kontraktsfel(CreateDepositSchema, kropp)
+    if (kontrakt) {
+      toast.error(kontrakt)
+      return
+    }
+    createMutation.mutate(kropp, { onSuccess: () => setShowCreate(false) })
   }
 
   if (isLoading) {
@@ -264,16 +270,24 @@ function RefundForm({
 
   const submit = () => {
     if (!valid) return
-    refundMutation.mutate(
-      {
-        id: deposit.id,
-        refundAmount: computedRefund,
-        deductions: deductions
-          .filter((d) => d.reason.trim() && Number(d.amount) > 0)
-          .map((d) => ({ reason: d.reason.trim(), amount: Number(d.amount) })),
-      },
-      { onSuccess },
-    )
+    // ANNOTERAD — utan typen körs ingen överskottskontroll på literalen.
+    const kropp: RefundDepositInput = {
+      refundAmount: computedRefund,
+      deductions: deductions
+        .filter((d) => d.reason.trim() && Number(d.amount) > 0)
+        .map((d) => ({ reason: d.reason.trim(), amount: Number(d.amount) })),
+    }
+
+    // SISTA GRINDEN mot det delade schemat. Invarianten (återbetalning + avdrag
+    // = depositionsbeloppet) ligger kvar i servern — den jämför mot ett belopp i
+    // databasen och kan inte uttryckas här.
+    const kontrakt = kontraktsfel(RefundDepositSchema, kropp)
+    if (kontrakt) {
+      toast.error(kontrakt)
+      return
+    }
+
+    refundMutation.mutate({ id: deposit.id, ...kropp }, { onSuccess })
   }
 
   return (

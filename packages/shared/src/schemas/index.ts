@@ -625,3 +625,33 @@ export const CreateCreditNoteSchema = z.object({
 export type RegisterPaymentInput = z.infer<typeof RegisterPaymentSchema>
 export type CreditNoteLineInput = z.infer<typeof CreditNoteLineSchema>
 export type CreateCreditNoteInput = z.infer<typeof CreateCreditNoteSchema>
+
+// ─── Depositioner ─────────────────────────────────────────────────────────────
+//
+// Pengaflöde med två steg och en invariant: återbetalning + avdrag måste summera
+// till depositionsbeloppet. Den invarianten kan INTE bo i schemat — den jämför
+// mot ett belopp i databasen — och grindas server-side
+// (`deposits.service.ts:665-670`). Schemat beskriver formen; servern äger regeln.
+
+export const DepositDeductionSchema = z.object({
+  reason: z.string().min(1, 'Ange vad avdraget avser').max(200, 'Högst 200 tecken'),
+  amount: z.number().min(0, 'Avdrag får inte vara negativa'),
+})
+
+export const CreateDepositSchema = z.object({
+  leaseId: z.string().uuid('Välj ett hyresavtal'),
+  /** Utelämnat: servern tar depositionsbeloppet ur avtalet. */
+  amount: z.number().min(1, 'Beloppet måste vara minst 1 krona').optional(),
+  notes: z.string().max(1000, 'Anteckningen får vara högst 1000 tecken').optional(),
+})
+
+export const RefundDepositSchema = z.object({
+  /** Noll är giltigt och betyder FÖRVERKAD deposition — inte "ingen åtgärd". */
+  refundAmount: z.number().min(0, 'Återbetalningsbelopp får inte vara negativt'),
+  deductions: z.array(DepositDeductionSchema).optional(),
+  notes: z.string().max(1000, 'Anteckningen får vara högst 1000 tecken').optional(),
+})
+
+export type DepositDeductionInput = z.infer<typeof DepositDeductionSchema>
+export type CreateDepositInput = z.infer<typeof CreateDepositSchema>
+export type RefundDepositInput = z.infer<typeof RefundDepositSchema>

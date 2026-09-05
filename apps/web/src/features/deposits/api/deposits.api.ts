@@ -1,5 +1,11 @@
 import { get, patch, post } from '@/lib/api'
-import type { Deposit, DepositStatus, Tenant } from '@eken/shared'
+import type {
+  CreateDepositInput,
+  RefundDepositInput,
+  Deposit,
+  DepositStatus,
+  Tenant,
+} from '@eken/shared'
 
 export type DepositDetail = Deposit & {
   lease: {
@@ -9,18 +15,6 @@ export type DepositDetail = Deposit & {
   }
   tenant: Tenant
   invoice?: { id: string; invoiceNumber: string; status: string; total: number } | null
-}
-
-export interface CreateDepositInput {
-  leaseId: string
-  amount?: number
-  notes?: string
-}
-
-export interface RefundDepositInput {
-  refundAmount: number
-  deductions?: { reason: string; amount: number }[]
-  notes?: string
 }
 
 export function fetchDeposits(filters?: {
@@ -39,7 +33,9 @@ export function createDeposit(dto: CreateDepositInput): Promise<DepositDetail> {
 }
 
 export function markDepositPaid(id: string): Promise<DepositDetail> {
-  return patch<DepositDetail>(`/deposits/${id}/pay`, {})
+  // Ingen kropp: rutten tar inget @Body(). Ett tomt objekt hade sett ut som
+  // en nyttolast utan att vara en.
+  return patch<DepositDetail>(`/deposits/${id}/pay`)
 }
 
 export function refundDeposit(id: string, dto: RefundDepositInput): Promise<DepositDetail> {

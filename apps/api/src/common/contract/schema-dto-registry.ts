@@ -8,6 +8,8 @@ import {
   CreateTariffSchema,
   CreateCreditNoteSchema,
   RegisterPaymentSchema,
+  CreateDepositSchema,
+  RefundDepositSchema,
   UpdateMeterSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
@@ -20,6 +22,8 @@ import { RecordReadingDto } from '../../consumption/dto/record-reading.dto'
 import { CreateTariffDto } from '../../consumption/dto/create-tariff.dto'
 import { CreateCreditNoteDto } from '../../invoices/dto/create-credit-note.dto'
 import { RegisterPaymentDto } from '../../invoices/dto/register-payment.dto'
+import { CreateDepositDto } from '../../deposits/dto/create-deposit.dto'
+import { RefundDepositDto } from '../../deposits/dto/refund-deposit.dto'
 import type { ZodType } from 'zod'
 
 /**
@@ -244,5 +248,26 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltigVarfor:
       'skälet är kortare än fem tecken — en kreditering utan skäl går inte att granska',
+  },
+  {
+    endpoint: 'POST /deposits',
+    inputTyp: 'CreateDepositInput',
+    schema: CreateDepositSchema,
+    dto: CreateDepositDto,
+    giltig: { leaseId: '11111111-2222-4333-8444-555555555555', amount: 12000 },
+    ogiltig: { leaseId: 'inte-ett-uuid', amount: 12000 },
+    ogiltigVarfor: 'leaseId måste vara ett UUID',
+  },
+  {
+    endpoint: 'PATCH /deposits/:id/refund',
+    inputTyp: 'RefundDepositInput',
+    schema: RefundDepositSchema,
+    dto: RefundDepositDto,
+    giltig: {
+      refundAmount: 9000,
+      deductions: [{ reason: 'Skadad diskmaskin', amount: 3000 }],
+    },
+    ogiltig: { refundAmount: -1 },
+    ogiltigVarfor: 'ett återbetalningsbelopp kan inte vara negativt',
   },
 ]

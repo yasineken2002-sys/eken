@@ -1,5 +1,5 @@
 {
-  "total": 93,
+  "total": 90,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -76,14 +76,6 @@
       "medlemmar": [
         "PATCH `/customers/${id}` → UpdateCustomerInput",
         "POST '/customers' → CreateCustomerInput"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/deposits/api/deposits.api.ts",
-      "medlemmar": [
-        "PATCH `/deposits/${id}/pay` → INLINE-LITERAL",
-        "PATCH `/deposits/${id}/refund` → RefundDepositInput",
-        "POST '/deposits' → CreateDepositInput"
       ]
     },
     {
