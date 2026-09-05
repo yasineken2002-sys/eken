@@ -61,8 +61,11 @@ describe('LASTA_CRON_JOBB — härledd, inte listad', () => {
     expect(Object.keys(LASTA_CRON_JOBB).sort()).toEqual(Object.keys(aJobb).sort())
   })
 
-  it('mängden är tio — och talet står i provet, inte bara i prosan', () => {
-    expect(Object.keys(aJobb)).toHaveLength(10)
+  it('mängden är elva — och talet står i provet, inte bara i prosan', () => {
+    // Tio till 2026-09-05, då skuggsvepet (etapp 6) blev det elfte låsta jobbet.
+    // Talet står här och inte bara i prosan därför att ett tolfte jobb ska fälla
+    // provet tills kartan följt med — det är hela poängen med härledningen.
+    expect(Object.keys(aJobb)).toHaveLength(11)
   })
 
   it('varje uttryck är en korrekt avskrift av källans @Cron', () => {
@@ -85,7 +88,7 @@ describe('LASTA_CRON_JOBB — härledd, inte listad', () => {
       },
     })
     const utökad = aJobbUrAck(fixtur)
-    expect(Object.keys(utökad)).toHaveLength(11)
+    expect(Object.keys(utökad)).toHaveLength(Object.keys(aJobb).length + 1)
     expect(Object.keys(LASTA_CRON_JOBB).sort()).not.toEqual(Object.keys(utökad).sort())
   })
 })

@@ -1,4 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { AiShadowQueue } from '../ai/shadow/shadow.queue'
+import { enqueueSafely } from '../common/queue/enqueue-safety'
+import { QUEUE_AI_SHADOW } from '../ai/shadow/shadow.types'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -54,6 +57,9 @@ export class MaintenanceService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly storage: StorageService,
+    // SKUGGLÄGET (etapp 6). Kön injiceras, aldrig agenten: maintenance får
+    // inte bli beroende av AI-lagret — bara tvärtom.
+    private readonly aiShadowQueue: AiShadowQueue,
   ) {}
 
   /**
@@ -276,6 +282,26 @@ export class MaintenanceService {
       .catch((err) =>
         this.logger.error('Notification error', err instanceof Error ? err.stack : String(err)),
       )
+
+    // ── SKUGGAGENTEN (etapp 6) ────────────────────────────────────────────
+    //
+    // Samma söm som notifieringen ovan, och av samma skäl: den får inte kunna
+    // fälla ärendet. `enqueueSafely` KASTAR ALDRIG — vid problem larmar den till
+    // Sentry med skrubbad detalj och returnerar ett utfall.
+    //
+    // Priset för det står i `shadow-sweep.service.ts`: ett tappat jobb blir
+    // tyst, och "agenten föreslog ingenting" ser likadant ut som "agenten kördes
+    // aldrig". Sveparcronen finns för exakt den skillnaden.
+    //
+    // Flaggan prövas INTE här. Den läses i tjänsten, efter att jobbet plockats:
+    // en organisation som slår på skuggläget ska inte behöva vänta på nästa
+    // ärende, och en som slår av det ska inte ha en kö full av jobb som redan
+    // passerat grinden.
+    await enqueueSafely(() => this.aiShadowQueue.enqueue({ organizationId, ticketId: ticket.id }), {
+      queue: QUEUE_AI_SHADOW,
+      jobType: 'maintenance-shadow',
+      organizationId,
+    })
 
     return ticket
   }

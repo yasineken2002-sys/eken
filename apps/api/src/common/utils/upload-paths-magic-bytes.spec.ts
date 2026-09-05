@@ -49,7 +49,16 @@ function makeMaintenance() {
     getPresignedUrl: jest.fn().mockResolvedValue('https://r2/signed'),
   }
   // Ordning: (prisma, notificationsService, storage)
-  const service = new MaintenanceService(prisma as never, {} as never, storage as never)
+  const service = new MaintenanceService(
+    prisma as never,
+    {} as never,
+    storage as never,
+    {
+      // Skuggkön (etapp 6). Attrappen räcker: specen prövar bilduppladdning,
+      // och `create` — den enda väg som köar — anropas aldrig här.
+      enqueue: async () => 'x',
+    } as never,
+  )
   return { service, prisma, storage }
 }
 

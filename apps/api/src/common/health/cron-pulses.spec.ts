@@ -65,13 +65,16 @@ afterEach(() => {
 })
 
 describe('cron-fältet', () => {
-  it('rapporterar EXAKT de tio låsta jobben — mängden är kartans, inte tabellens', async () => {
+  it('rapporterar EXAKT de låsta jobben — mängden är kartans, inte tabellens', async () => {
     // Kärnan: läste vi tabellen och listade det vi hittade hade ett jobb som
     // slutat köra FÖRSVUNNIT ur fältet i stället för att bli rött. Det är
     // precis den tystnad ärendet handlar om.
     const p = await pulser(NU, NU, [])
     expect(Object.keys(p.jobs).sort()).toEqual(Object.keys(LASTA_CRON_JOBB).sort())
-    expect(Object.keys(p.jobs)).toHaveLength(10)
+    // Talet HÄRLEDS ur kartan. Ett skrivet tal hade blivit fel första gången
+    // någon lade till ett låst jobb — vilket hände 2026-09-05 (skuggsvepet), och
+    // då är det kartan som ska fälla, inte den här raden.
+    expect(Object.keys(p.jobs).length).toBe(Object.keys(LASTA_CRON_JOBB).length)
   })
 
   it('ALDRIG KÖRT är inte stale under första intervallet efter boot', async () => {
@@ -103,7 +106,7 @@ describe('cron-fältet', () => {
     expect(p.jobs['cron:daily-backup']?.stale).toBe(true)
     // NU är alla tio tysta — ingen har någonsin skrivit, och även det
     // tåligaste jobbets tröskel har passerats.
-    expect(p.staleCount).toBe(10)
+    expect(p.staleCount).toBe(Object.keys(LASTA_CRON_JOBB).length)
   })
 
   it('beräknar ageSec och stale mot den injicerade tiden', async () => {
@@ -155,6 +158,6 @@ describe('cron-fältet', () => {
     // att då påstå stale:false vore ett intyg vi saknar täckning för.
     const långtEfter = new Date(NU.getTime() + 400 * 86_400_000)
     const p = await pulser(NU, långtEfter, new Error('db nere'))
-    expect(p.staleCount).toBe(10)
+    expect(p.staleCount).toBe(Object.keys(LASTA_CRON_JOBB).length)
   })
 })
