@@ -53,7 +53,7 @@
  *
  * Det var också den formen som i #783 visade sig FÖRNEKA sina egna utföranden:
  * `skrivTransaktionelltSpar` vidarebefordrade varken `conversationId` eller
- * `confirmedAt`, så uppspelningsuppslaget kunde aldrig matcha. Lagat i #784 —
+ * `confirmedAt`, så uppspelningsuppslaget kunde aldrig matcha. Lagat i #786 —
  * fälten byggs nu på ETT ställe (`spårIdentitet` i `executeToolWithAudit`) och
  * räknas upp på ETT ställe (`identitetsKolumner` i `ai-audit.service.ts`).
  * Provet som i går pinnade defekten kräver nu det riktiga svaret, och frågan
@@ -531,7 +531,7 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
      * ── DEN ANDRA SPÅRFORMEN, samma krav ────────────────────────────────────
      *
      * `create_journal_entry` är ett av TVÅ `TRANSAKTIONELL`-verktyg, och det var
-     * exakt den formen som förnekade sina egna utföranden före #784: dess spår
+     * exakt den formen som förnekade sina egna utföranden före #786: dess spår
      * skrivs av `skrivTransaktionelltSpar`, som inte vidarebefordrade
      * `conversationId`/`confirmedAt`.
      *
@@ -636,7 +636,7 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
    * ANROPARE låter bli att skicka den — det var den ursprungliga defekten, och
    * den ägs av de två prov ovan som går hela vägen genom `executeTool` för båda
    * de transaktionella verktygen, plus den positiva kontrollen för
-   * FÖRE_EFFEKTEN. Efter #784 finns dessutom bara EN uppräkning av fälten
+   * FÖRE_EFFEKTEN. Efter #786 finns dessutom bara EN uppräkning av fälten
    * (`identitetsKolumner` i `ai-audit.service.ts`) och EN plats där identiteten
    * byggs (`spårIdentitet` i `executeToolWithAudit`).
    */

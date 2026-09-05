@@ -140,7 +140,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** `5f94360` |
 | 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** `5f94360` |
 | 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** `5f94360` |
-| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **KLAR** (7/7) #784, mätt på `b02fc79` — alla sju mot Postgres; defekten prov 6 blottade är lagad och frågan ställs nu över samtliga 30 `ACTION_TOOLS` |
+| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **KLAR** (7/7) #786, mätt på `b02fc79` — alla sju mot Postgres; defekten prov 6 blottade är lagad och frågan ställs nu över samtliga 30 `ACTION_TOOLS` |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `71d2998` — båda halvorna av kriteriet nu mätta; kön saknar producent och utförare |
