@@ -1,3 +1,5 @@
+import { SAFE_BANK_CONSENT_FIELDS } from '@eken/shared'
+
 import { del, get, post } from '@/lib/api'
 
 /**
@@ -6,26 +8,22 @@ import { del, get, post } from '@/lib/api'
  * ── VAD SOM ALDRIG FÅR KOMMA HIT ────────────────────────────────────────────
  *
  * `BankConsent` bär `accessTokenEnc`, `refreshTokenEnc`, `scope` och
- * `syncCursor`. Backend har en allow-list — `SAFE_BANK_CONSENT_SELECT` i
- * `psd2-consent.service.ts` — och de fyra står MEDVETET utanför den. Typen nedan
- * speglar allow-listen fält för fält, så en framtida utvidgning av backend-
- * selecten inte tyst blir synlig i UI:t bara för att den råkar komma med i
- * svaret.
+ * `syncCursor`. De står MEDVETET utanför den säkra mängden.
+ *
+ * MÄNGDEN BOR I `@eken/shared` (`SAFE_BANK_CONSENT_FIELDS`) och backends
+ * `SAFE_BANK_CONSENT_SELECT` härleds ur samma lista. Tidigare stod den i två
+ * kopior i två paket, och webbens spec skrev själv ut att inget band ihop dem.
+ * Typen nedan speglar listan fält för fält, så en framtida utvidgning av
+ * backend-selecten inte tyst blir synlig i UI:t bara för att den råkar komma
+ * med i svaret.
  *
  * Typen ensam är förstås inget skydd i runtime — TypeScript raderas. Skyddet är
  * att `consentDisplayFields` nedan är den ENDA vägen från ett samtycke till
  * något som renderas, och att `psd2.spec.ts` matar in ett objekt med extra fält
  * och kräver att de inte kommer ut.
  */
-export const SAFE_BANK_CONSENT_FIELDS = [
-  'id',
-  'provider',
-  'status',
-  'expiresAt',
-  'lastSyncedAt',
-  'revokedAt',
-  'createdAt',
-] as const
+
+export { SAFE_BANK_CONSENT_FIELDS }
 
 export type BankConsentStatus = 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'ERROR'
 

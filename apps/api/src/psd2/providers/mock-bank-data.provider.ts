@@ -91,15 +91,20 @@ const DEV_TRANSAKTIONER: readonly ProviderRawTx[] = [
  * och specar ska inte gå via den: en spec som beskriver sitt eget fall är
  * läsbar, ett scenarionamn är det inte.
  *
- * ── VAD SCENARIOT INTE KAN VISA ─────────────────────────────────────────────
+ * ── ERROR ÄR NUMERA NÅBAR ───────────────────────────────────────────────────
  *
- * `PSD2_MOCK_SCENARIO=error` får `getConsentStatus` att svara `ERROR`, men
- * `Psd2SyncService` skriver `statusCheck.status === 'REVOKED' ? 'REVOKED' :
- * 'EXPIRED'` — alltså landar ERROR som EXPIRED i `BankConsent.status`, och
- * UI:t visar EXPIRED. Statuskoden ERROR finns i schemat och renderas av
- * `BankConsentStatusBadge`, men den är i dag bara nåbar genom en direkt
- * DB-skrivning. Det är ett befintligt beteende i P2:s sync och ändras inte av
- * den här PR:en; det står här för att `error` annars ser ut att vara trasigt.
+ * Här stod tidigare att `PSD2_MOCK_SCENARIO=error` visserligen fick
+ * `getConsentStatus` att svara `ERROR`, men att `Psd2SyncService` skrev
+ * `statusCheck.status === 'REVOKED' ? 'REVOKED' : 'EXPIRED'` — så ERROR landade
+ * som EXPIRED i `BankConsent.status` och statuskoden bara var nåbar genom en
+ * direkt DB-skrivning. Det stämde till och med #778.
+ *
+ * Synken lagrar nu den status providern rapporterade, oavsett vilken. `error`
+ * ger alltså ett samtycke med status ERROR, och badgen visar "Fel" i stället för
+ * "Utgången". Skillnaden nedströms är BARA etiketten och färgen — det var mätt
+ * innan bytet gjordes: den enda kod som läser `BankConsent.status` för att
+ * bestämma något är synkens `where: { status: 'ACTIVE' }`, och EXPIRED och ERROR
+ * är lika mycket icke-ACTIVE.
  */
 export class MockBankDataProvider implements BankDataProvider {
   readonly name = 'MOCK'

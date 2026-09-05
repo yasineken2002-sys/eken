@@ -250,3 +250,6 @@ export * from './lease-edit-lock'
 
 // Succession-carry: villkor som en förnyelse bär vidare (T1.3) — fail-closed via DMMF-test
 export * from './lease-succession-carry'
+
+// Bankkopplingens säkra fältmängd — EN lista, härledd av både api och web.
+export * from './psd2'
