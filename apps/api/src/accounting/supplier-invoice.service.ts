@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
 import { vatFromGross } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { AccountingService } from './accounting.service'
 import {
   isOverdue,
@@ -132,7 +133,11 @@ export class SupplierInvoiceService {
       })
 
       return faktura
-    })
+      // PAYMENT_TX_LIMITS: samma band som fakturabetalning och bankavstämning.
+      // Transaktionen allokerar ett verifikationsnummer under radlås och skriver
+      // verifikatet — samma sorts arbete, alltså samma gräns, inte Prismas
+      // defaults någon råkade ärva.
+    }, PAYMENT_TX_LIMITS)
   }
 
   /**
@@ -174,7 +179,7 @@ export class SupplierInvoiceService {
         where: { id: faktura.id },
         data: { paidAt: params.paidDate },
       })
-    })
+    }, PAYMENT_TX_LIMITS)
   }
 
   /**
@@ -219,7 +224,7 @@ export class SupplierInvoiceService {
         where: { id: faktura.id },
         data: { cancelledAt: idag },
       })
-    })
+    }, PAYMENT_TX_LIMITS)
   }
 
   /** Org-scopat uppslag. NotFound, aldrig Forbidden — se documents-mönstret. */

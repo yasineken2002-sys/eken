@@ -100,6 +100,10 @@ export const DELETION_STEPS: readonly Step[] = [
   { model: 'SignatureEvidence', restrictAgainst: 'Organization, SigningRequest', where: byOrg },
   { model: 'RentNotice', restrictAgainst: 'Lease, Organization, Tenant', where: byOrg },
   { model: 'MiscCharge', restrictAgainst: 'Lease, Organization, Tenant', where: byOrg },
+  // Inga barn: verifikaten den gav upphov till hänger i JournalEntry, inte i
+  // en FK härifrån. Enda kanten är Restrict mot Organization, så den behöver
+  // bara ligga före org-steget — inte före något särskilt annat.
+  { model: 'SupplierInvoice', restrictAgainst: 'Organization', where: byOrg },
   { model: 'MeterReading', restrictAgainst: 'Meter, Organization', where: byOrg },
   {
     model: 'JournalEntryLine',
