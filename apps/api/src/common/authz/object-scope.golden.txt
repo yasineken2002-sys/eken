@@ -66,7 +66,7 @@ Unit                    update      units/units.service.ts                      
 UserBankIdIdentity      deleteMany  bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 UserBankIdIdentity      upsert      bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 
-## Form 2 — create (39 rader)
+## Form 2 — create (40 rader)
 
 AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
@@ -106,6 +106,7 @@ RentNoticeSend          create      avisering/rent-reminder.service.ts          
 Unit                    create      history/history-fixture.ts                              INGEN UPPTÄCKT
 Unit                    create      import/import.service.ts                                A kedje-query
 Unit                    create      units/units.service.ts                                  A kedje-query
+UnitEquipmentEvent      create      equipment/equipment.service.ts                      ×4  A kedje-query + C scopat anrop
 UnitEquipmentEvent      create      history/history-fixture.ts                          ×2  INGEN UPPTÄCKT
 
 

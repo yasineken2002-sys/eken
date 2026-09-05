@@ -84,7 +84,7 @@ export const DELETION_STEPS: readonly Step[] = [
     //
     // UnitEquipment själv står INTE i listan: den kaskaderar från Organization.
     model: 'UnitEquipmentEvent',
-    restrictAgainst: 'MaintenanceTicket, UnitEquipment',
+    restrictAgainst: 'MaintenanceTicket, UnitEquipment, User',
     where: (ids) => ({ equipment: byOrg(ids) }),
   },
   {
