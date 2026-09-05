@@ -261,7 +261,8 @@ export type TraceIntegrity = 'TRANSAKTIONELL' | 'FÖRE_EFFEKTEN' | 'BÄST_MÖJLI
  * Handtaget är det som gör "skedde detta?" besvarbar EFTERÅT: köns job-id,
  * providerns request-id, en objektnyckel. Utan det kan varken en människa eller
  * en motor svara efter en krasch — att köra om är dubbel effekt, att låta bli är
- * utebliven. Det är därför de sju klass B-verktygen är den svåra sjundedelen.
+ * utebliven. Det är därför klass B-verktygen är de svåra — NIO av trettio
+ * sedan vakt 7 fann att aktiveringskön också når hyresgästen (2026-09-05).
  *
  *  • `FÖRE_DISPATCH`  — handtaget är HÄRLETT och känt innan något skickas. Bäst:
  *    det överlever en krasch som sker mitt i.
@@ -635,7 +636,11 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     // Samma kedja som `create_tenant_and_lease` ovan: `transitionStatus(ACTIVE)`
     // köar välkomstmejlet till hyresgästen. Se noten där.
     externalHandle: 'FÖRE_DISPATCH',
-    traceIntegrity: 'FÖRE_EFFEKTEN',
+    // Klass B efter vakt 7:s mätning. `enqueueSafely` KASTAR ALDRIG
+    // (`common/queue/enqueue-safety.ts`) — ett misslyckat enqueue larmar men
+    // sväljs, så verktyget kan rapportera framgång utan att välkomstmejlet
+    // blev köat. Spåret kan bekräfta, aldrig dementera.
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [
@@ -917,7 +922,11 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     // (`welcome-${tenantId}`, `gen-pdf-${leaseId}`, `initial-notices-${leaseId}`)
     // och känt innan något skickas.
     externalHandle: 'FÖRE_DISPATCH',
-    traceIntegrity: 'FÖRE_EFFEKTEN',
+    // Klass B efter vakt 7:s mätning. `enqueueSafely` KASTAR ALDRIG
+    // (`common/queue/enqueue-safety.ts`) — ett misslyckat enqueue larmar men
+    // sväljs, så verktyget kan rapportera framgång utan att välkomstmejlet
+    // blev köat. Spåret kan bekräfta, aldrig dementera.
+    traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
     policyBeslutad: true,
     mekanismer: [

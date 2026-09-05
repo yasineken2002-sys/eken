@@ -220,9 +220,12 @@ describe('effektklassificeringen', () => {
       ])
     })
 
-    it('traceIntegrity: 2 TRANSAKTIONELL, 21 FÖRE_EFFEKTEN, 7 BÄST_MÖJLIGA', () => {
+    it('traceIntegrity: 2 TRANSAKTIONELL, 19 FÖRE_EFFEKTEN, 9 BÄST_MÖJLIGA', () => {
       // Efter steg 3b. Talen är MÄTTA, inte valda:
-      //   • 7 BÄST_MÖJLIGA = klass B, verktygen med en extern effekt utanför
+      //   • 9 BÄST_MÖJLIGA = klass B, verktygen med en extern effekt utanför
+      //     (var 7 till 2026-09-05, då vakt 7 fann att `transition_lease_status`
+      //      och `create_tenant_and_lease` köar ett välkomstmejl via
+      //      LeaseActivationQueue — en kö varken mätningen eller prosan kände)
       //     transaktionen. De får #607-mönstret i en egen PR.
       //   • 2 TRANSAKTIONELL = de vägar där HELA effekten redan ryms i EN
       //     transaktion verktyget självt öppnar, och där spåret skrivs inne i
@@ -236,10 +239,10 @@ describe('effektklassificeringen', () => {
         foreEffekten: antal('FÖRE_EFFEKTEN'),
         bastMojliga: antal('BÄST_MÖJLIGA'),
         okand: antal('OKÄND'),
-      }).toEqual({ transaktionell: 2, foreEffekten: 21, bastMojliga: 7, okand: 0 })
+      }).toEqual({ transaktionell: 2, foreEffekten: 19, bastMojliga: 9, okand: 0 })
     })
 
-    it('externalHandle: 3 FÖRE_DISPATCH, 2 I_SVARET, 2 INGET, 23 EJ_TILLÄMPLIG', () => {
+    it('externalHandle: 5 FÖRE_DISPATCH, 2 I_SVARET, 2 INGET, 21 EJ_TILLÄMPLIG', () => {
       // Mätt på metodnivå. Talen står här så att en ändring blir ett medvetet
       // beslut och inte en glidning.
       const c = buildEffectCatalog()
@@ -249,7 +252,7 @@ describe('effektklassificeringen', () => {
         iSvaret: antal('I_SVARET'),
         inget: antal('INGET'),
         ejTillämplig: antal('EJ_TILLÄMPLIG'),
-      }).toEqual({ föreDispatch: 3, iSvaret: 2, inget: 2, ejTillämplig: 23 })
+      }).toEqual({ föreDispatch: 5, iSvaret: 2, inget: 2, ejTillämplig: 21 })
     })
 
     it('varje verktyg UTAN handtag står KRÄVER_MÄNNISKA', () => {
@@ -301,14 +304,20 @@ describe('effektklassificeringen', () => {
     it('en tom effektlista är trovärdig ENDAST där spåret inte kan tappas tyst', () => {
       // Kopplingen som gör fältet bärande i stället för dekorativt:
       // describeEffects läser det här och säger ODEFINIERAT i stället för "inga
-      // dataändringar" — men bara för BÄST_MÖJLIGA. Efter steg 3b är 23 av 30
+      // dataändringar" — men bara för BÄST_MÖJLIGA. Efter steg 3b var 23 av 30
       // trovärdiga, och den ändringen skedde utan att någon rörde
       // describeEffects.
+      //
+      // 21 sedan 2026-09-05: vakt 7 fann att `transition_lease_status` och
+      // `create_tenant_and_lease` når hyresgästen via aktiveringskön, och de är
+      // därmed klass B. Att talet SJÖNK är rätt håll — de två sa förut att en
+      // tom effektlista betydde "inga dataändringar" om verktyg som kan ha
+      // skickat ett välkomstmejl utan att spåret säger något.
       for (const e of buildEffectCatalog()) {
         expect(tomEffektlistaÄrTrovärdig(e.name)).toBe(e.traceIntegrity !== 'BÄST_MÖJLIGA')
       }
       const trovärdiga = buildEffectCatalog().filter((e) => tomEffektlistaÄrTrovärdig(e.name))
-      expect(trovärdiga).toHaveLength(23)
+      expect(trovärdiga).toHaveLength(21)
       // Okänt verktyg faller stängt i svarsledet, inte med ett kast.
       expect(tomEffektlistaÄrTrovärdig('finns_inte')).toBe(false)
     })
