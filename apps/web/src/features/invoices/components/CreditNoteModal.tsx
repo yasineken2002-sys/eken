@@ -5,7 +5,9 @@ import { AlertTriangle, ArrowLeft, Receipt } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
-import { formatCurrency } from '@eken/shared'
+import { CreateCreditNoteSchema, formatCurrency } from '@eken/shared'
+import type { CreateCreditNoteInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { useCreditNotePreview, useCreateCreditNote } from '../hooks/useInvoiceQueries'
 import type { CreditNotePreview, CreditNotePreviewLine } from '../api/invoices.api'
 import { cn } from '@/lib/cn'
@@ -122,16 +124,25 @@ export function CreditNoteModal({ invoiceId, invoiceNumber, open, onClose, onCre
   function skapa() {
     if (!preview) return
     setFel(null)
+    // ANNOTERAD — se contract-gate.ts om varför en oannoterad const inte
+    // överskottskontrolleras.
+    const kropp: CreateCreditNoteInput = {
+      reason: reason.trim(),
+      lines: beräknat.rader.map((r) => ({
+        invoiceLineId: r.line.invoiceLineId,
+        quantity: 1,
+        unitPrice: r.netto,
+      })),
+    }
+
+    const kontrakt = kontraktsfel(CreateCreditNoteSchema, kropp)
+    if (kontrakt) {
+      setFel(kontrakt)
+      return
+    }
+
     mutation.mutate(
-      {
-        id: invoiceId,
-        reason: reason.trim(),
-        lines: beräknat.rader.map((r) => ({
-          invoiceLineId: r.line.invoiceLineId,
-          quantity: 1,
-          unitPrice: r.netto,
-        })),
-      },
+      { id: invoiceId, ...kropp },
       {
         onSuccess: (res) => {
           onCreated(res.creditNote.invoiceNumber, beräknat.summa)

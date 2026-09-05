@@ -768,12 +768,12 @@ curl -sS --fail-with-body http://localhost:3000/v1/properties \
 Raden ovan sa fram till 2026-09-05 bara "React Hook Form + `@hookform/resolvers/zod`",
 alltså som om det fanns ETT mönster. **Mätt mot `86f9f206`:**
 
-| grupp | antal | vad det är |
-| --- | --- | --- |
-| **React Hook Form** (`useForm`) | **20** | varav 19 med `zodResolver`, 1 utan (`customers/components/CustomerForm.tsx`) |
-| **`useState`-formulär** | **36** | kontrollerade fält + submit, ingen RHF |
-| sidor med tillstånd men utan fält | 11 | inte formulär — `AccountingPage`, `NotificationBell` m.fl. |
-| varken | 64 | resten av 131 `.tsx` under `features/` |
+| grupp                             | antal  | vad det är                                                                   |
+| --------------------------------- | ------ | ---------------------------------------------------------------------------- |
+| **React Hook Form** (`useForm`)   | **20** | varav 19 med `zodResolver`, 1 utan (`customers/components/CustomerForm.tsx`) |
+| **`useState`-formulär**           | **36** | kontrollerade fält + submit, ingen RHF                                       |
+| sidor med tillstånd men utan fält | 11     | inte formulär — `AccountingPage`, `NotificationBell` m.fl.                   |
+| varken                            | 64     | resten av 131 `.tsx` under `features/`                                       |
 
 RHF är alltså **20 av 56 formulär** — en minoritet, inte standarden. Och av de 19
 resolvrarna läser bara **4** ett DELAT schema:
@@ -792,13 +792,13 @@ ingenting att fästa i.
 
 #### Vilket mönster för ett nytt formulär
 
-**Har formuläret ett delat Zod-schema** (se *Kontraktet webb↔API* ovan) — använd
+**Har formuläret ett delat Zod-schema** (se _Kontraktet webb↔API_ ovan) — använd
 **React Hook Form med `zodResolver(<DeladeSchemat>)`**. `MeterForm.tsx` är
 förlagan: ett schema, en resolver, ingen andra beskrivning av samma form.
 
 **Är formuläret ett `useState`-formulär** — ett av de 36, eller ett nytt med
 egen förhandsvisning där RHF inte betalar sig — gäller
-`apps/web/src/features/accounting/components/contract-gate.ts`:
+`apps/web/src/lib/contract-gate.ts`:
 
 ```ts
 const kropp: CreateXInput = { … }          // ANNOTERAD, annars ingen
