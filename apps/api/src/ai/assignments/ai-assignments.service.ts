@@ -7,9 +7,12 @@ import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { NotificationsService } from '../../notifications/notifications.service'
 import { prövaDuglighet } from './assignment-eligibility'
+import { traffgradPerFalt, type Traffgrad } from '../shadow/shadow-fields'
 import { INKORG_SIDSTORLEK_MAX, INKORG_SIDSTORLEK_STANDARD } from './dto/query-assignments.dto'
 
-import type { AiAssignment, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+
+import type { AiAssignment } from '@prisma/client'
 
 /**
  * UPPDRAGSKÖN — den persistenta, serverburna varianten av "AI:n föreslår,
@@ -39,6 +42,17 @@ const LAS_TTL_SEC = 60
 
 /** Hur många utgångna uppdrag ett pass stänger. Ett tak som SYNS — se nedan. */
 export const UTGANG_BATCH = 500
+
+/**
+ * Hur många besvarade förslag träffgraden räknar på.
+ *
+ * Ett tak, och det står här därför att jämförelsen sker i minnet: `prediction`
+ * och `outcome` är JSON och jämförs per fält. Talet är MEDVETET inte samma som
+ * `UTGANG_BATCH` — de svarar på olika frågor (hur många som stängs per pass mot
+ * hur många som mäts), och en delad konstant hade flyttat den ena varje gång
+ * någon justerade den andra.
+ */
+export const TRAFFGRAD_TAK = 1000
 
 export interface SkapaUppdrag {
   toolName: string
@@ -262,7 +276,10 @@ export class AiAssignmentsService {
   async sammanfattning(
     organizationId: string,
     shadow?: boolean,
-  ): Promise<Record<AiAssignment['status'], number>> {
+  ): Promise<{
+    status: Record<AiAssignment['status'], number>
+    traffgrad: Record<string, Traffgrad>
+  }> {
     // TYPEN KRÄVER `organizationId` (S2 i check-spread-where). `{ ...undefined }`
     // ger `{}`, och ett uppslag utan org-avgränsning korsar tenant-gränsen
     // tyst — #703. Typen gör felet omöjligt i stället för osannolikt.
@@ -282,7 +299,31 @@ export class AiAssignmentsService {
       EXPIRED: 0,
     } as Record<AiAssignment['status'], number>
     for (const g of grupper) ut[g.status] = g._count._all
-    return ut
+
+    // ── TRÄFFGRADEN ÄR EN FRÅGA, ALDRIG EN LAGRAD PROCENT ─────────────────
+    //
+    // Nämnaren är rader med FACIT (`outcome`), inte alla rader. Ett förslag som
+    // ingen ännu avslutat ärendet för är varken träff eller miss, och att räkna
+    // det som en miss hade gjort träffgraden till ett mått på hur snabbt
+    // hyresvärden stänger ärenden — en egenskap hos människan, inte hos agenten.
+    //
+    // Beräknas i minnet och inte i SQL därför att `prediction`/`outcome` är
+    // JSON och jämförelsen sker per fält enligt `SKUGGFALT`. Taket nedan gör
+    // kostnaden bunden; överskrids det syns det som ett tal, inte som en tyst
+    // trunkering.
+    const medFacit = await this.prisma.aiAssignment.findMany({
+      where: { ...bas, outcome: { not: Prisma.JsonNull } },
+      select: { prediction: true, outcome: true },
+      take: TRAFFGRAD_TAK,
+    })
+    const traffgrad = traffgradPerFalt(
+      medFacit.map((r) => ({
+        prediction: (r.prediction ?? null) as Record<string, unknown> | null,
+        outcome: (r.outcome ?? null) as Record<string, unknown> | null,
+      })),
+    )
+
+    return { status: ut, traffgrad }
   }
 
   /**
