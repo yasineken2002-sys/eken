@@ -338,6 +338,33 @@ efterfrågan när något annat redan tagit minnet. Kör du shardat: skriv ut att
 var shardat, och att en summa på rätt tal är en bekräftelse — inte samma bevis
 som en körning i en process.
 
+**Mätt 2026-09-05: sviten går inte längre att köra i EN process här — och en
+HÖJD heap gör det värre.** Den är nu **416 sviter / 4218 tester**. Två försök,
+båda med maskinen i övrigt ledig (~3,3 GB `available`):
+
+```
+--runInBand, Nodes default-heap    FATAL: JavaScript heap out of memory
+                                   216 s, 115 sviter, NOLL fallerade
+--runInBand, --max-old-space-size=3200   SIGTERM (exit 143)
+                                    77 s, 108 sviter, NOLL fallerade
+```
+
+De två felen har OLIKA orsak, och det är hela poängen med raden. Det första är
+V8:s eget takt: processen slog i ~2 GB och gav upp inifrån. Det andra är kärnan:
+med ett högre tak växte processen snabbare än maskinen hade kvar och blev
+**dödad utifrån efter en tredjedel av tiden**. Att höja heapen flyttar alltså
+inte gränsen, den byter bara ut vem som dödar körningen — och tidigare.
+
+Lokalt gäller därför shardat, och det ska SKRIVAS UT: `--shard=i/4` gav
+**415 sviter / 4198 tester på 212 s i fyra processer**, alla exit 0. Notera att
+det är en svit och tjugo tester FÄRRE än CI:s tal — skillnaden är miljöberoende
+specar och är inte spårad; ett lokalt tal är alltså inte ens samma mängd.
+
+**Beviset är CI**, som kör hela sviten i en process på en ren runner:
+**416/416 sviter, 4218/4218 tester, 172 s.** Att öppna PR:en för att få den
+körningen är rätt åtgärd när maskinen inte räcker — det är inte att kringgå
+kravet, det är att flytta mätningen till en maskin som kan utföra den.
+
 ### En spec kan vara grön av att `.env` inte var laddad
 
 Mekaniken har två halvor, och de blandas lätt ihop. **Mekanismen** är att
