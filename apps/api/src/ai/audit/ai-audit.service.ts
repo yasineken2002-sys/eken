@@ -169,6 +169,60 @@ export function sanitizeForAudit<T>(value: T, depth = 0): T {
   return value
 }
 
+/**
+ * IDENTITETEN ETT SPÅR BÄR — EN lista, inte sju.
+ *
+ * ── DEFEKTEN SOM MOTIVERAR TYPEN (mätt, #783) ───────────────────────────────
+ *
+ * `AiToolExecution` skrivs från SJU ställen: `beginToolExecution`,
+ * `logToolExecution` (×2 i vardera exekveraren) och `writeInTransaction`. Varje
+ * ställe räknade upp identitetsfälten för hand, och SEX av sju gjorde det lika.
+ * Det sjunde — `skrivTransaktionelltSpar`, den TRANSAKTIONELLA vägen — skickade
+ * varken `conversationId` eller `confirmedAt`.
+ *
+ * Följden var inte ett kraschat anrop utan ett FEL SVAR. Uppspelningsgrenen i
+ * `ai-assistant.service.ts:976` slår upp körningen med
+ * `where: { conversationId, toolName, confirmedAt: { not: null } }`, och den
+ * frågan kan aldrig matcha en rad med null i båda. Ett bevisligen lyckat
+ * `create_journal_entry` fick därför svaret *"det går INTE att bekräfta att
+ * åtgärden utfördes"* — spegelbilden av den defekt den ärliga formuleringen
+ * byggdes för att laga.
+ *
+ * ── VAD TYPEN LÖSER, OCH VAD DEN INTE LÖSER ─────────────────────────────────
+ *
+ * Den gör KOLUMNMÄNGDEN till en enda uppräkning: alla tre skrivarna nedan
+ * bygger sina identitetskolumner ur `identitetsKolumner`, så ett nytt fält kan
+ * inte längre läggas till på ett ställe och glömmas på ett annat.
+ *
+ * Den kan INTE tvinga en anropare att skicka ett VÄRDE. `conversationId: null`
+ * är helt legitimt — ett verktyg som körs utanför en konversation har inget —
+ * så ingen typ kan skilja "saknas med rätta" från "glömdes bort". Det ägs i
+ * stället av `g0-crash-retry-replay.db.spec.ts`, som kör uppspelningen över
+ * SAMTLIGA `ACTION_TOOLS` och kräver att spåret bär konversationen.
+ */
+export interface ToolExecutionIdentity {
+  organizationId: string
+  userId?: string | null
+  tenantId?: string | null
+  conversationId?: string | null
+  requiredConfirmation?: boolean
+  confirmedAt?: Date | null
+}
+
+/**
+ * De kolumner som utgör identiteten. Enda stället de räknas upp.
+ */
+export function identitetsKolumner(i: ToolExecutionIdentity) {
+  return {
+    organizationId: i.organizationId,
+    userId: i.userId ?? null,
+    tenantId: i.tenantId ?? null,
+    conversationId: i.conversationId ?? null,
+    requiredConfirmation: i.requiredConfirmation ?? false,
+    confirmedAt: i.confirmedAt ?? null,
+  }
+}
+
 @Injectable()
 export class AiAuditService {
   private readonly logger = new Logger(AiAuditService.name)
@@ -223,18 +277,13 @@ export class AiAuditService {
       await this.prisma.aiToolExecution.create({
         data: {
           ...(args.id !== undefined ? { id: args.id } : {}),
-          organizationId: args.organizationId,
-          userId: args.userId ?? null,
-          tenantId: args.tenantId ?? null,
-          conversationId: args.conversationId ?? null,
+          ...identitetsKolumner(args),
           toolName: args.toolName,
           toolInput: sanitizedInput as object,
           ...(sanitizedResult !== undefined ? { toolResult: sanitizedResult as object } : {}),
           success: args.success,
           errorMessage: args.errorMessage ?? null,
           durationMs: args.durationMs,
-          requiredConfirmation: args.requiredConfirmation ?? false,
-          confirmedAt: args.confirmedAt ?? null,
           // En rad som skrivs HÄR är per definition fullbordad — vägen skriver
           // efter körningen. Utan den här raden hade BÄST_MÖJLIGA-vägens rader
           // varit omöjliga att skilja från en påbörjad, och då hade det nya
@@ -294,18 +343,13 @@ export class AiAuditService {
     await this.prisma.aiToolExecution.create({
       data: {
         id: args.id,
-        organizationId: args.organizationId,
-        userId: args.userId ?? null,
-        tenantId: args.tenantId ?? null,
-        conversationId: args.conversationId ?? null,
+        ...identitetsKolumner(args),
         toolName: args.toolName,
         toolInput: sanitizeForAudit(args.toolInput) as object,
         // PÅBÖRJAD: success/durationMs är platshållare tills raden stängs.
         // `completedAt = null` är det som bär tillståndet — inte de här.
         success: false,
         durationMs: 0,
-        requiredConfirmation: args.requiredConfirmation ?? false,
-        confirmedAt: args.confirmedAt ?? null,
         completedAt: null,
       },
     })
@@ -382,30 +426,21 @@ export class AiAuditService {
    */
   async writeInTransaction(
     tx: TransactionClient,
-    args: {
+    args: ToolExecutionIdentity & {
       id: string
-      organizationId: string
-      userId?: string | null
-      conversationId?: string | null
       toolName: string
       toolInput: Record<string, unknown>
-      requiredConfirmation?: boolean
-      confirmedAt?: Date | null
       effects: AiToolEffect[]
     },
   ): Promise<void> {
     await tx.aiToolExecution.create({
       data: {
         id: args.id,
-        organizationId: args.organizationId,
-        userId: args.userId ?? null,
-        conversationId: args.conversationId ?? null,
+        ...identitetsKolumner(args),
         toolName: args.toolName,
         toolInput: sanitizeForAudit(args.toolInput) as object,
         success: true,
         durationMs: 0,
-        requiredConfirmation: args.requiredConfirmation ?? false,
-        confirmedAt: args.confirmedAt ?? null,
         completedAt: new Date(),
         ...(args.effects.length > 0
           ? {

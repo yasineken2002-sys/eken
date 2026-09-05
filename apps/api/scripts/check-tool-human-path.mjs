@@ -42,6 +42,26 @@
  *       baslinjepost som skyddar ingenting medan den ser ut att göra det.
  *       Baslinjen får bara krympa.
  *
+ *       ── BASLINJEN ÄR TOM SEDAN 2026-09-05, OCH FILEN SKA FINNAS KVAR ──────
+ *
+ *       Alla trettio verktygen har en mänsklig väg. Frågan blev då om filen
+ *       skulle raderas och en saknad fil läsas som "noll poster".
+ *
+ *       NEJ, och skälet är R5c. Den regeln finns för att fånga ett namn i
+ *       baslinjen som inte är ett verktyg — en kvittering som skyddar ingenting
+ *       men ser ut att göra det. Den kan bara falla om det FINNS en baslinje att
+ *       läsa. Läste vakten "ingen fil = noll poster" hade en RADERAD fil blivit
+ *       oskiljbar från en tom, och den dag någon lägger tillbaka en post i en
+ *       fil som inte längre läses vore R5c grön om en post den aldrig såg.
+ *
+ *       Filen är därför OBLIGATORISK: går den inte att läsa eller parsa är det
+ *       ett FEL, inte ett tomt läge. Se `läsBaslinje` nedan.
+ *
+ *       Att mängden är tom gör inte R5b och R5c blinda i den mening som räknas:
+ *       de itererar en tom mängd i den skarpa körningen, men deras förmåga att
+ *       FÄLLA bevisas av självtestet, som matar in syntetiska baslinjer. Det är
+ *       skillnaden mellan "inget att rapportera" och "kan inte rapportera".
+ *
  *   R6  FAIL-CLOSED ÄR PÅKOPPLAD. `buildHumanPathCatalog` måste KASTA vid en
  *       post som saknas. Specen äger att kastet sker; den här regeln äger att
  *       koden fortfarande innehåller det. (Delningen från #571.)
@@ -622,6 +642,47 @@ function självtest() {
 
 // ── körning ─────────────────────────────────────────────────────────────────
 
+/**
+ * Baslinjen är OBLIGATORISK, även när den är tom.
+ *
+ * En saknad eller trasig fil är ett FEL — aldrig "noll poster". Skälet står i
+ * docblocket vid R5: läses en saknad fil som tom blir en RADERAD baslinje
+ * oskiljbar från en tom, och R5c kan då aldrig falla för en post i en fil ingen
+ * längre läser.
+ *
+ * Kastet bär sökvägen, så att den som råkat radera filen i en rebase får veta
+ * exakt vad som ska tillbaka.
+ */
+function läsBaslinje() {
+  let rå
+  try {
+    rå = readFileSync(BASLINJE, 'utf8')
+  } catch (err) {
+    throw new Error(
+      `Baslinjen går inte att läsa: ${BASLINJE}\n` +
+        'Filen är obligatorisk även när den är TOM — en saknad fil är ett fel, ' +
+        'inte noll poster. Se docblocket vid R5.\n' +
+        `Ursprungligt fel: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  let parsad
+  try {
+    parsad = JSON.parse(rå)
+  } catch (err) {
+    throw new Error(
+      `Baslinjen är inte giltig JSON: ${BASLINJE}\n` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  if (!parsad || typeof parsad.poster !== 'object' || parsad.poster === null) {
+    throw new Error(
+      `Baslinjen saknar fältet "poster" (objekt): ${BASLINJE}\n` +
+        'Ett tomt läge skrivs som "poster": {} — inte genom att utelämna fältet.',
+    )
+  }
+  return parsad.poster
+}
+
 function kör() {
   const fel = []
 
@@ -637,7 +698,7 @@ function kör() {
   const poster = läsDeklarationer(deklarationText)
   const rutter = läsRutter(readFileSync(ROUTER, 'utf8'))
   const klassificerade = läsKlassificerade(readFileSync(EFFEKTER, 'utf8'))
-  const baslinje = JSON.parse(readFileSync(BASLINJE, 'utf8')).poster
+  const baslinje = läsBaslinje()
 
   // TOMHETSSPÄRRAR. Var och en av de tre mängderna kan bli tom av ett byte av
   // vy, en omdöpt konstant eller en flyttad fil — och en tom mängd ser exakt ut

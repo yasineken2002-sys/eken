@@ -338,3 +338,36 @@ export function getRentNoticeCollectionStatus(id: string) {
 export function resendRentNoticeReminder(id: string) {
   return post<{ enqueued: true }>(`/avisering/${id}/reminder/resend`, {})
 }
+
+// ── FÖRFALLOPÅMINNELSER: människans väg till `send_overdue_reminders` ────────
+//
+// Endpointerna ligger under /notifications (där tjänsten bor) men ytan är
+// aviseringssidans — det är där hyresvärden står när frågan uppstår.
+
+export interface PaminnelseForhandsbeskedSvar {
+  invoices: Array<{
+    id: string
+    invoiceNumber: string
+    recipient: string
+    outstanding: number
+    dueDate: string
+  }>
+  count: number
+  totalOutstanding: number
+  freshness: {
+    stale: boolean
+    through: string | null
+    ageDays: number | null
+    thresholdDays: number
+  }
+}
+
+export const fetchReminderPreview = (): Promise<PaminnelseForhandsbeskedSvar> =>
+  get<PaminnelseForhandsbeskedSvar>('/notifications/overdue-reminders/preview')
+
+export const sendOverdueReminders = (): Promise<{
+  sent: number
+  failed: number
+  skipped: number
+  message: string
+}> => post('/notifications/send-overdue-reminders')

@@ -118,6 +118,30 @@ export class PaymentFreshnessService {
    * Penganeutral: rör bara `paymentDataThrough`/`paymentDataStaleAlertedAt`.
    * Valfri `tx` så ingest-anroparen kan köra det i sin egen transaktion.
    */
+  /**
+   * Färskhetsläget för EN organisation, läst ur databasen.
+   *
+   * ── VARFÖR HÄR OCH INTE HOS ANROPAREN ────────────────────────────────────
+   *
+   * Frågan "är betalningsdatan färsk?" ska besvaras av den tjänst som äger
+   * begreppet, inte av var och en som råkar behöva svaret. Alternativet var att
+   * injicera den här tjänsten i `NotificationsService` — det mättes och kostade
+   * åtta specrigg:ar som konstruerar tjänsten med attrapper. En ny DI-kant för
+   * ett svar som redan finns här är fel pris.
+   *
+   * LARMAR INTE, till skillnad från `evaluateAndAlert`. Att öppna en sida ska
+   * inte kunna skicka ett driftlarm, och en hyresvärd som tittar på en knapp
+   * har inte gjort något som förtjänar en notis. Den skillnaden är hela skälet
+   * till att metoden inte bara anropar `evaluateAndAlert([id])`.
+   */
+  async evaluateForOrg(organizationId: string, now: Date = new Date()): Promise<StaleEvaluation> {
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { paymentDataThrough: true, paymentDataStaleDays: true },
+    })
+    return this.evaluate(org, now)
+  }
+
   async recordPaymentDataThrough(
     organizationId: string,
     through: Date,

@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Query,
+  Body,
   HttpCode,
   HttpStatus,
   Req,
@@ -13,6 +14,8 @@ import {
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger'
 import type { FastifyRequest } from 'fastify'
 import { DocumentsService } from './documents.service'
+// VÄRDE-import, aldrig `import type` — ValidationPipe läser reflect-metadata.
+import { SendDocumentToTenantDto } from './dto/send-document-to-tenant.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -132,6 +135,45 @@ export class DocumentsController {
     // öppnar sedan den signerade URL:en direkt mot R2.
     const { url, document } = await this.service.getDownloadUrl(id, orgId, user.role)
     return { url, filename: document.name, mimeType: document.mimeType }
+  }
+
+  /**
+   * SKICKA ETT BEFINTLIGT DOKUMENT TILL EN HYRESGÄSTS PORTAL.
+   *
+   * Människans väg till AI-verktyget `send_document_to_tenant`, som stod i
+   * `tool-human-path.baseline.json` med skälet att `deliverToTenant` hade exakt
+   * en anropare och att den var verktyget.
+   *
+   * ROLLERNA är MANAGER och uppåt — samma som uppladdningen (`@Post()` ovan).
+   * Att skicka ett dokument till en hyresgäst är en förvaltningsåtgärd, inte en
+   * redovisningshandling, och den som får lägga in dokumentet ska kunna skicka
+   * det. En snävare mängd hade gjort uppladdningen till en återvändsgränd för
+   * MANAGER.
+   *
+   * ORG-SCOPINGEN LIGGER INTE HÄR. Dokumentet slås upp med
+   * `{ id, organizationId }` i `findOne` och hyresgästen i `deliverToTenant` —
+   * båda kastar NotFound. Ett 403 hade avslöjat att raden finns i en annan
+   * organisation.
+   */
+  @Post(':id/send-to-tenant')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Skicka ett befintligt dokument till en hyresgästs portal' })
+  sendToTenant(
+    @Param('id') id: string,
+    @OrgId() orgId: string,
+    @Body() dto: SendDocumentToTenantDto,
+  ) {
+    return this.service.sendToTenant({
+      documentId: id,
+      tenantId: dto.tenantId,
+      organizationId: orgId,
+      // UTELÄMNAD = JA, samma default som AI-verktyget (`notifyTenant !== false`).
+      // Att i stället skicka vidare `undefined` hade gett NEJ, eftersom
+      // deliverToTenant gör `if (input.notify && …)` — och samma utelämnade fält
+      // hade då betytt olika saker beroende på vem som skickade. Se DTO:n.
+      notify: dto.notify !== false,
+    })
   }
 
   @Delete(':id')

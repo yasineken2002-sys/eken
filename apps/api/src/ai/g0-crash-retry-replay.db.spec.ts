@@ -50,8 +50,15 @@
  * effekten och spåret delar transaktion, så antalen är deterministiska och
  * behöver ingen pollning. Det är också det verktyg vars idempotensnyckel
  * (`ai-journal-source.ts`) uttryckligen byggdes FÖR omtaget efter en krasch.
- * Prov 6 nedan visar att just den formen bär en konsekvens som inget mockat
- * prov kunde se.
+ *
+ * Det var också den formen som i #783 visade sig FÖRNEKA sina egna utföranden:
+ * `skrivTransaktionelltSpar` vidarebefordrade varken `conversationId` eller
+ * `confirmedAt`, så uppspelningsuppslaget kunde aldrig matcha. Lagat i #786 —
+ * fälten byggs nu på ETT ställe (`spårIdentitet` i `executeToolWithAudit`) och
+ * räknas upp på ETT ställe (`identitetsKolumner` i `ai-audit.service.ts`).
+ * Provet som i går pinnade defekten kräver nu det riktiga svaret, och frågan
+ * ställs dessutom över SAMTLIGA `ACTION_TOOLS` längst ned i filen — ett fynd om
+ * två verktyg är inte ett instrument.
  */
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
@@ -66,6 +73,7 @@ import { VerifikationsnummerService } from '../accounting/verifikationsnummer.se
 import { TenantsService } from '../tenants/tenants.service'
 import { aiJournalSourceId } from './tools/ai-journal-source'
 import { effectTraceIntegrity } from './tools/effect-idempotency'
+import { ACTION_TOOLS } from './tools/ai-tools.definition'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -99,6 +107,7 @@ const TOOL = 'create_journal_entry'
 
 medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () => {
   let prisma: PrismaService
+  let audit: AiAuditService
   let riktigExecutor: ToolExecutorService
   let orgId: string
   let userId: string
@@ -188,7 +197,7 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
     const satt = Number(new URL(urlMedPool(basUrl, POOL)).searchParams.get('connection_limit'))
     if (!(satt > 1)) throw new Error(`POOL: connection_limit=${satt} är inte > 1`)
 
-    const audit = new AiAuditService(prisma)
+    audit = new AiAuditService(prisma)
     const verifikationsnummer = new VerifikationsnummerService(prisma)
     // Produktionens metodkropp med produktionens kollaboratörer för just den
     // här vägen. Konstruktorn tar 24 beroenden — samma skäl som i
@@ -222,6 +231,9 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
       data: [
         { organizationId: orgId, number: 1930, name: 'Bank', type: 'ASSET' },
         { organizationId: orgId, number: 3911, name: 'Hyresintäkt', type: 'REVENUE' },
+        // record_expense konterar mot 1930 (ovan), 2641 (moms) och utgiftskontot.
+        { organizationId: orgId, number: 2641, name: 'Ingående moms', type: 'ASSET' },
+        { organizationId: orgId, number: 5010, name: 'Lokalhyra', type: 'EXPENSE' },
       ],
     })
     const conv = await prisma.aiConversation.create({ data: { organizationId: orgId, userId } })
@@ -516,79 +528,170 @@ medDb('G0 · krasch mellan anspråk och utförande, omtag och uppspelning', () =
     }, 60_000)
 
     /**
-     * ── FYND, MÄTT 2026-09-05 · rapporterat, INTE lagat ─────────────────────
+     * ── DEN ANDRA SPÅRFORMEN, samma krav ────────────────────────────────────
      *
-     * För de TVÅ verktyg som har `traceIntegrity: 'TRANSAKTIONELL'` säger
-     * uppspelningen efter ett BEVISLIGEN lyckat utförande att utförandet inte
-     * går att bekräfta. Det är spegelbilden av den defekt den ärliga
-     * formuleringen byggdes för att laga: förut ljög den "redan utförd" om
-     * något som aldrig skedde — här förnekar den något som demonstrerbart
-     * skedde, i samma prov, tre rader ovanför.
+     * `create_journal_entry` är ett av TVÅ `TRANSAKTIONELL`-verktyg, och det var
+     * exakt den formen som förnekade sina egna utföranden före #786: dess spår
+     * skrivs av `skrivTransaktionelltSpar`, som inte vidarebefordrade
+     * `conversationId`/`confirmedAt`.
      *
-     * ORSAKEN, mätt och inte härledd. Uppslaget på `ai-assistant.service.ts:976`
-     * lyder `where: { conversationId, toolName, confirmedAt: { not: null } }`.
-     * De två spårvägarna fyller de fälten olika:
+     * Uppmätt radform FÖRE lagningen, med båda fälten satta av anroparen:
+     *     { conversationId: null, confirmedAt: null, completedAt: <satt> }
      *
-     *   FÖRE_EFFEKTEN  `beginToolExecution` (tool-executor.service.ts:602)
-     *                  skickar conversationId OCH confirmedAt ur auditContext
-     *   TRANSAKTIONELL `skrivTransaktionelltSpar` (:786) → `writeInTransaction`
-     *                  skickar VARKEN conversationId ELLER confirmedAt
-     *
-     * Uppmätt radform efter ett lyckat `create_journal_entry`, med båda
-     * fälten satta av anroparen:
-     *
-     *     { toolName: 'create_journal_entry',
-     *       conversationId: null, confirmedAt: null, completedAt: <satt> }
-     *
-     * Villkoret kan alltså aldrig matcha, och grenen tar den ärliga utgången av
-     * fel skäl.
-     *
-     * OMFÅNGET ÄR EN UPPRÄKNING, inte ett stickprov — de 30 ACTION_TOOLS
-     * fördelar sig 21 FÖRE_EFFEKTEN / 7 BÄST_MÖJLIGA / 2 TRANSAKTIONELL, och de
-     * två är `create_journal_entry` och `record_expense`. Båda skriver verifikat.
-     *
-     * ORSAKEN ÄR BEVISAD, INTE KORRELERAD. Negativkontroll NK3, körd 2026-09-05:
-     * med `confirmedAt: auditContext?.confirmedAt ?? null` ändrad till
-     * `confirmedAt: null` i `beginToolExecution` — alltså exakt den här defekten
-     * injicerad i den FUNGERANDE vägen — föll POSITIVA KONTROLLEN ovan, och den
-     * föll med ORDAGRANT samma mening som den här raden får. Ett prov föll,
-     * nio var gröna.
-     *
-     * VARFÖR PROVET PINNAR NULÄGET I STÄLLET FÖR ATT KRÄVA RÄTT SVAR: fixen bor
-     * i `tool-executor.service.ts`, som ägs av en annan ström i den här
-     * omgången, och den ÄR ett beslut — vidarebefordra de två fälten, eller
-     * ändra uppslaget. Provet är därför en TRIPWIRE: den dag någon lagar
-     * vidarebefordringen blir raden nedan RÖD och pekar på exakt det här
-     * stycket.
+     * Uppslaget på `ai-assistant.service.ts:976` lyder
+     * `where: { conversationId, toolName, confirmedAt: { not: null } }` och kunde
+     * alltså aldrig matcha. Provet nedan är den vändna tripwiren: samma rad som
+     * i går krävde den ärliga meningen kräver nu den riktiga.
      */
-    it('FYND · TRANSAKTIONELL-verktyg → uppspelningen förnekar ett utförande som skedde', async () => {
+    it('TRANSAKTIONELL-verktyg → uppspelningen säger "redan utförd"', async () => {
       expect(effectTraceIntegrity(TOOL)).toBe('TRANSAKTIONELL')
 
       const input = indata('p6b')
       const { svar } = await utförSkarpt(input)
       expect(svar.reply).toMatch(/Verifikat skapat/)
-
-      // UTFÖRANDET SKEDDE — belagt, inte antaget.
       expect(await antalVerifikat(input)).toBe(1)
-      expect(await antalKörningar()).toBeGreaterThan(0)
 
-      // MEKANISMEN: raden bär null i exakt de två fält uppslaget kräver.
+      // MEKANISMEN: raden bär nu identiteten. Utan de två fälten kan uppslaget
+      // inte matcha, och meningen nedan blir omöjlig — se NK4 i PR-texten.
       const rad = await prisma.aiToolExecution.findFirst({
         where: { organizationId: orgId, toolName: TOOL },
         orderBy: { createdAt: 'desc' },
         select: { conversationId: true, confirmedAt: true, completedAt: true },
       })
-      expect(rad).not.toBeNull()
       expect(rad!.completedAt).not.toBeNull()
-      expect(rad!.conversationId).toBeNull()
-      expect(rad!.confirmedAt).toBeNull()
+      expect(rad!.conversationId).toBe(convId)
+      expect(rad!.confirmedAt).not.toBeNull()
 
-      // FÖLJDEN: fel mening om rätt sak.
       await expect(tjänstMed(jest.fn()).confirmAction(...BEKRÄFTA(input))).rejects.toThrow(
-        /går INTE att bekräfta/,
+        /redan utförd/,
       )
-      // Effekten är ändå skyddad — det är bara MENINGEN som är fel.
       expect(await antalVerifikat(input)).toBe(1)
     }, 60_000)
+
+    /**
+     * DET ANDRA TRANSAKTIONELLA VERKTYGET, genom produktionsvägen.
+     *
+     * `create_journal_entry` ensamt hade varit ett stickprov på en mängd om två.
+     * `record_expense` delar `skrivTransaktionelltSpar` men har en egen
+     * verktygskropp och egen kontering, så det är den andra medlemmen och inte
+     * en upprepning av den första.
+     */
+    it('record_expense — det ANDRA TRANSAKTIONELLA verktyget — beter sig likadant', async () => {
+      expect(effectTraceIntegrity('record_expense')).toBe('TRANSAKTIONELL')
+
+      const input = {
+        date: '2026-09-01',
+        amount: 250,
+        description: `g0 utgift ${randomUUID().slice(0, 8)}`,
+        accountNumber: 5010,
+      }
+      const args = ['record_expense', input, convId, true, orgId, userId, 'OWNER'] as const
+
+      const tjänst = tjänstMed(riktigExecutor.executeTool.bind(riktigExecutor) as never)
+      await tjänst.recordPendingAction(convId, orgId, userId, 'record_expense', input)
+      const svar = await tjänst.confirmAction(...args)
+      expect(svar.reply).not.toMatch(/misslyckades/)
+
+      const rad = await prisma.aiToolExecution.findFirst({
+        where: { organizationId: orgId, toolName: 'record_expense' },
+        orderBy: { createdAt: 'desc' },
+        select: { conversationId: true, confirmedAt: true },
+      })
+      expect(rad!.conversationId).toBe(convId)
+      expect(rad!.confirmedAt).not.toBeNull()
+
+      await expect(tjänstMed(jest.fn()).confirmAction(...args)).rejects.toThrow(/redan utförd/)
+    }, 60_000)
+  })
+
+  /**
+   * ── UPPRÄKNINGEN: ALLA 30 ACTION_TOOLS, INTE DE TVÅ JAG SNUBBLADE PÅ ───────
+   *
+   * Fyndet i #783 beskrevs först som "två verktyg". Det var sant och för snävt
+   * som instrument: en TREDJE väg som glömmer fälten hade uppstått lika tyst som
+   * den andra gjorde, och ingenting hade blivit rött.
+   *
+   * Frågan ställs därför mot HELA mängden. Vilken skrivare ett verktyg använder
+   * är inte en gissning utan en HÄRLEDNING ur dess deklarerade spårform:
+   *
+   *     FÖRE_EFFEKTEN   → beginToolExecution
+   *     TRANSAKTIONELL  → writeInTransaction   (via skrivTransaktionelltSpar)
+   *     BÄST_MÖJLIGA    → logToolExecution
+   *
+   * Varje `ACTION_TOOL` körs genom SIN skrivare mot riktig Postgres, och raden
+   * måste bära både konversationen och bekräftelsen. En bekräftad åtgärd vars
+   * spår saknar dem går inte att spela upp sanningsenligt — det är exakt den
+   * defekten, oavsett vilket verktyg som råkar bära den.
+   *
+   * ── KANARIEFÅGELN ───────────────────────────────────────────────────────────
+   *
+   * En spårform utan känd skrivare FÄLLER provet i stället för att hoppas över.
+   * Utan den raden hade en fjärde form kunnat läggas till och tyst falla ur
+   * uppräkningen — en mängd som krymper utan att lämna spår är precis det
+   * CLAUDE.md kallar en vakt som slutat mäta.
+   *
+   * ── VAD DEN HÄR UPPRÄKNINGEN INTE KAN SE ────────────────────────────────────
+   *
+   * Den mäter att varje SKRIVARE bevarar identiteten. Den kan inte se att en
+   * ANROPARE låter bli att skicka den — det var den ursprungliga defekten, och
+   * den ägs av de två prov ovan som går hela vägen genom `executeTool` för båda
+   * de transaktionella verktygen, plus den positiva kontrollen för
+   * FÖRE_EFFEKTEN. Efter #786 finns dessutom bara EN uppräkning av fälten
+   * (`identitetsKolumner` i `ai-audit.service.ts`) och EN plats där identiteten
+   * byggs (`spårIdentitet` i `executeToolWithAudit`).
+   */
+  describe('varje ACTION_TOOL:s spår bär identiteten', () => {
+    const VERKTYG = [...ACTION_TOOLS] as string[]
+
+    it('MÄNGDKANARIEFÅGEL: uppräkningen är inte tom och har inte krympt tyst', () => {
+      expect(VERKTYG.length).toBeGreaterThanOrEqual(30)
+    })
+
+    it.each(VERKTYG)(
+      '%s — spåret bär conversationId och confirmedAt',
+      async (verktyg) => {
+        const form = effectTraceIntegrity(verktyg)
+        const id = randomUUID()
+        const identitet = {
+          organizationId: orgId,
+          userId,
+          conversationId: convId,
+          requiredConfirmation: true,
+          confirmedAt: new Date(),
+        }
+        const gemensamt = { id, toolName: verktyg, toolInput: { prov: 'identitet' } }
+
+        if (form === 'FÖRE_EFFEKTEN') {
+          await audit.beginToolExecution({ ...identitet, ...gemensamt })
+        } else if (form === 'TRANSAKTIONELL') {
+          await prisma.$transaction((tx) =>
+            audit.writeInTransaction(tx, { ...identitet, ...gemensamt, effects: [] }),
+          )
+        } else if (form === 'BÄST_MÖJLIGA') {
+          await audit.logToolExecution({
+            ...identitet,
+            ...gemensamt,
+            success: true,
+            durationMs: 0,
+          })
+        } else {
+          // KANARIEFÅGELN. En ny spårform utan skrivare ska FÄLLA, inte hoppas över.
+          throw new Error(
+            `${verktyg} har spårformen "${form}", som inte har någon känd skrivare i ` +
+              'det här provet. Lägg till skrivaren — annars faller verktyget tyst ur ' +
+              'uppräkningen och identiteten blir obevakad för just den formen.',
+          )
+        }
+
+        const rad = await prisma.aiToolExecution.findUnique({
+          where: { id },
+          select: { conversationId: true, confirmedAt: true },
+        })
+        expect(rad).not.toBeNull()
+        expect(rad!.conversationId).toBe(convId)
+        expect(rad!.confirmedAt).not.toBeNull()
+      },
+      30_000,
+    )
   })
 })

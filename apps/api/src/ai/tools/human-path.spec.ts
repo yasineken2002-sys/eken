@@ -51,16 +51,13 @@ describe('HUMAN_PATHS — delmängdsregeln', () => {
     }
   })
 
-  it('mängden utan mänsklig väg är den mätta — fem fynd, inte noll', () => {
+  it('mängden utan mänsklig väg är TOM — och tomheten är mätt, inte antagen', () => {
     // Ett tal här är med flit: mängden ska inte kunna växa obemärkt. Krymper den
     // ska den här raden ändras i SAMMA PR som baslinjen, annars är fyndet inte
     // borta utan bara osynligt.
-    expect(verktygUtanMansligVag()).toEqual([
-      'mark_sent_to_collection',
-      'prepare_contract_signing',
-      'send_document_to_tenant',
-      'send_overdue_reminders',
-      'update_tenant',
-    ])
+    // NOLL, och talet står kvar som ett prov. Mängden får inte kunna VÄXA
+    // obemärkt bara för att den råkar vara tom i dag: ett nytt verktyg utan väg
+    // ska fälla här och i check-tool-human-path.mjs (R5a), inte glida in.
+    expect(verktygUtanMansligVag()).toEqual([])
   })
 })

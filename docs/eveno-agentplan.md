@@ -140,7 +140,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 0 | Minnets form — `MEMORY.md` laddas bara delvis (utreds separat) | — | mätt gräns, 1:1-integritet bevisad med sond | **DELVIS** `5f94360` |
 | 1 | **Historiken** — händelser + luckor, hyresgäst/objekt/fastighet | — | full nytta utan agent; registervakten har setts falla | **KLAR** `5f94360` |
 | 1b | Datamodell för utrustning och byten i en lägenhet | 1 | "vad byttes och när" går att svara på | **DELVIS** `5f94360` |
-| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **DELVIS** (6/7) `59f4f7b` — prov 4 och 5 klara mot Postgres; prov 6 föll isär i två halvor och den ena är en MÄTT DEFEKT |
+| 2 | **G0 Execution Truth** — återupptagning, samtidighet, identitet för fler än 2 verktyg | — | de sju G0-proven gröna mot riktig Postgres, inkl. den fällda regressionen | **KLAR** (7/7) #786, mätt på `b02fc79` — alla sju mot Postgres; defekten prov 6 blottade är lagad och frågan ställs nu över samtliga 30 `ACTION_TOOLS` |
 | 2b | **R5:s omfång** — formbaserat svep + kanariefågel på mängden | — | en injicerad sond utanför det härledda omfånget fäller vakten | **KLAR** `5f94360` |
 | 3 | **G1 Aktörsmodell** | G0 | en agent kan skriva utan att låtsas vara en människa | **DELVIS** `dbe12ff` |
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `b02fc79` — kriteriet mätt, och kön har numera en **producent** ([#785](https://github.com/yasineken2002-sys/eken/pull/785), skuggläget). Kvar: **utföraren**, etapp 8–9 |
@@ -212,7 +212,7 @@ STÄLLA; svaret kan inte bli annat än tomt i prod förrän ett byte går att re
 | 3 | Två samtidiga försök, samma identitet → 1 effekt | KLAR | `:236` (B3); `pending-action-claim.concurrency.spec.ts:115` (samtidiga anspråk, med negativkontroll `:119`) |
 | 4 | Krasch efter claim, före execution → 0 spår, 0 effekt, svar ≠ "redan utförd" | **KLAR** | `ai/g0-crash-retry-replay.db.spec.ts:304` mot riktig Postgres. Alla tre halvorna är nu prov och inte prosa: `AiToolExecution` 0 rader, `JournalEntry` 0 rader, och uppspelningen ger den ärliga meningen — aldrig "redan utförd". `:348` mäter dessutom GRÄNSEN mot processdöd: ett kastat fel lämnar exakt ETT `AiMessage` mer än en krasch skulle, och rör inte anspråket. |
 | 5 | Retry efter den kraschen | **KLAR** | `:365`–`:430`, ur kraschtillståndet. Fyra utsagor: anspråket går **inte** att ta igen (`:365`) — det är designen, inte en defekt, och produktionskoden säger det rakt ut (`ai-assistant.service.ts:993`); omtaget genom en NY bekräftelse lyckas med exakt EN effekt och EN körning (`:377`); den nya raden är en annan rad med **samma** `toolInputHash` (`:392`); och omtag efter en krasch **efter commit** ger fortfarande ETT verifikat, buret av den innehållshärledda `sourceId` (`:430`). |
-| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | **DELVIS — men av ett nytt skäl** | "Ingen andraeffekt" är KLAR mot Postgres (`:464`). Meddelandet delar sig på spårform: för **FÖRE_EFFEKTEN** ges "redan utförd" som planen kräver (positiv kontroll, `:489`), för **TRANSAKTIONELL** ges den ärliga meningen om ett utförande som bevisligen skedde (`:564`). Se fyndet nedan. |
+| 6 | Replay efter lyckad execution → "redan utförd", ingen andraeffekt | **KLAR** | "Ingen andraeffekt" mot Postgres (`:476`). Meddelandet på BÅDA spårformerna: FÖRE_EFFEKTEN `:501`, TRANSAKTIONELL `:546` — och dess andra medlem `record_expense` `:579`, båda hela vägen genom `executeTool`. Defekten som gjorde raden DELVIS är lagad (se stycket nedan), och frågan ställs dessutom över samtliga 30 `ACTION_TOOLS` (`:650`) så att en tredje väg inte kan glömma fälten tyst. |
 | 7 | Deterministisk identitet borttagen → regressionen faller | KLAR | `:330` (B4); `ai/tools/ai-journal-idempotens.db.spec.ts:91` (A3) |
 
 **Attrappen är borta.** Prov 4, 5 och 6 går sedan `59f4f7b` mot riktig Postgres i
@@ -235,47 +235,41 @@ bekräftelse på samma innehåll, och det som gör den vägen säker är den inn
 det producenten i uppdragskön som måste kunna utfärda den nya bekräftelsen; anspråket
 kommer aldrig att göra det åt den.
 
-> ### FYND (`59f4f7b`) — uppspelningen FÖRNEKAR ett utförande som skedde, för två verktyg
->
-> Prov 6 gick inte att få helgrönt, och skälet är en defekt i produktionskoden — inte i
-> riggen. Efter ett **bevisligen** lyckat `create_journal_entry` (1 `JournalEntry`,
-> 1 `AiToolExecution`, mätt tre rader ovanför i samma prov) svarar uppspelningen
-> *"det går INTE att bekräfta att åtgärden utfördes"*.
->
-> Det är **spegelbilden av den defekt den ärliga formuleringen byggdes för att laga**:
-> förut påstods "redan utförd" om något som aldrig skedde; nu förnekas något som skedde.
-> Båda får en hyresvärd att sluta lita på svaret, och den här riktningen leder till att
-> någon bokför posten en andra gång för hand.
->
-> **Orsaken, mätt.** Uppslaget på `ai-assistant.service.ts:976` lyder
-> `where: { conversationId, toolName, confirmedAt: { not: null } }`. De två spårvägarna
-> fyller fälten olika:
->
-> ```
-> FÖRE_EFFEKTEN   beginToolExecution        (tool-executor.service.ts:602)
->                 skickar conversationId OCH confirmedAt ur auditContext
-> TRANSAKTIONELL  skrivTransaktionelltSpar  (:786) → writeInTransaction
->                 skickar VARKEN conversationId ELLER confirmedAt
->
-> uppmätt radform efter ett lyckat create_journal_entry, med båda fälten satta
-> av anroparen:
->   { conversationId: null, confirmedAt: null, completedAt: <satt> }
-> ```
->
-> Villkoret kan alltså aldrig matcha, och grenen tar den ärliga utgången av fel skäl.
->
-> **Omfånget är en uppräkning, inte ett stickprov.** De 30 `ACTION_TOOLS` fördelar sig
-> **21 FÖRE_EFFEKTEN / 7 BÄST_MÖJLIGA / 2 TRANSAKTIONELL**, och de två är
-> `create_journal_entry` och `record_expense` — precis de som skriver verifikat.
->
-> **Orsaken är bevisad, inte korrelerad.** Negativkontroll NK3: samma defekt injicerad i
-> den FUNGERANDE vägen (`confirmedAt: null` i `beginToolExecution`) fick den positiva
-> kontrollen att falla med **ordagrant samma mening**. Ett prov föll, nio var gröna.
->
-> **Inte lagat här, och det är ett beslut.** Fixen bor i `tool-executor.service.ts` och
-> har två former — vidarebefordra de två fälten (den lilla, och den som gör de två
-> vägarna lika), eller ändra uppslaget. Provet på `:564` **pinnar nuläget** och är en
-> tripwire: den dag vidarebefordringen lagas blir det rött och pekar hit.
+**FYNDET ÄR LAGAT — och uppräkningen ersatte stickprovet.** Prov 6 stod som DELVIS i
+`59f4f7b` därför att uppspelningen efter ett **bevisligen** lyckat
+`create_journal_entry` svarade *"det går INTE att bekräfta att åtgärden utfördes"* —
+spegelbilden av den defekt den ärliga formuleringen byggdes för att laga.
+
+Orsaken var att `AiToolExecution` skrevs från **sju** ställen som var och ett räknade upp
+identitetsfälten för hand. Sex gjorde det lika; det sjunde,
+`skrivTransaktionelltSpar`, skickade varken `conversationId` eller `confirmedAt`, och
+uppspelningsuppslaget (`ai-assistant.service.ts:976`) kunde därför aldrig matcha.
+
+Lagningen är strukturell, inte punktvis — sju uppräkningar blev **en**:
+
+```
+identitetsKolumner   ai-audit.service.ts   ENDA stället kolumnerna räknas upp;
+                                           begin/log/writeInTransaction läser den
+spårIdentitet        tool-executor.ts      ENDA stället identiteten byggs;
+                                           delas av alla fyra skrivvägarna
+skrivTransaktionelltSpar tar `ToolExecutionIdentity` som ETT värde i stället för
+två lösa fält — halva identiteten går inte längre att skicka av misstag.
+```
+
+**Mätt biverkan av typningen:** med `exactOptionalPropertyTypes: true` är den NATURLIGA
+formen av defekten inte längre skrivbar. Att plocka ut ett par fält i stället för att
+sprida identiteten är ett *kompileringsfel*; att återinföra defekten kräver att man
+uttryckligen skriver `conversationId: null, confirmedAt: null` efter spridningen —
+alltså en avsiktshandling.
+
+**Och stickprovet blev ett instrument.** Fyndet beskrevs först som "två verktyg". Det var
+sant och för snävt: en tredje väg som glömmer fälten hade uppstått lika tyst. Frågan
+ställs nu över **alla 30 `ACTION_TOOLS`**, där varje verktygs skrivare HÄRLEDS ur dess
+deklarerade spårform (FÖRE_EFFEKTEN → `beginToolExecution`, TRANSAKTIONELL →
+`writeInTransaction`, BÄST_MÖJLIGA → `logToolExecution`), med en kanariefågel som FÄLLER
+på en spårform utan känd skrivare. Filen skriver ut vad uppräkningen inte kan se: den
+mäter att varje SKRIVARE bevarar identiteten, medan att ANROPAREN skickar den ägs av de
+tre proven som går hela vägen genom `executeTool`.
 
 **2b — KLAR.** `otherFiles` finns inte längre i vakten — den enda kvarvarande träffen i
 hela repot är en historisk kommentar i `check-history-registry.mjs:37`. Omfånget härleds:
