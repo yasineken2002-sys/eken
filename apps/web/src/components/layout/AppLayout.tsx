@@ -45,6 +45,7 @@ type AppPath =
   | '/'
   | '/ai'
   | '/uppdrag'
+  | '/inkorg'
   | '/properties'
   | '/units'
   | '/tenants'
@@ -83,6 +84,9 @@ const NAV_PRIMARY: NavItem[] = [
   { to: '/', label: 'Översikt', icon: LayoutDashboard },
   { to: '/ai', label: 'AI-assistent', icon: Sparkles },
   { to: '/uppdrag', label: 'Uppdrag', icon: Inbox },
+  // Inkorgen (etapp 6) — agentens förslag. Bredvid Uppdrag och inte i stället
+  // för: planens Del 16 förbjuder att gömma befintliga ytor bakom inkorgen.
+  { to: '/inkorg', label: 'Inkorg', icon: ClipboardCheck },
 ]
 
 const NAV_PORTFOLIO: NavItem[] = [

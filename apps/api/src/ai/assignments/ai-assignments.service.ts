@@ -7,8 +7,12 @@ import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { NotificationsService } from '../../notifications/notifications.service'
 import { prövaDuglighet } from './assignment-eligibility'
+import { traffgradPerFalt, type Traffgrad } from '../shadow/shadow-fields'
+import { INKORG_SIDSTORLEK_MAX, INKORG_SIDSTORLEK_STANDARD } from './dto/query-assignments.dto'
 
-import type { AiAssignment, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
+
+import type { AiAssignment } from '@prisma/client'
 
 /**
  * UPPDRAGSKÖN — den persistenta, serverburna varianten av "AI:n föreslår,
@@ -38,6 +42,17 @@ const LAS_TTL_SEC = 60
 
 /** Hur många utgångna uppdrag ett pass stänger. Ett tak som SYNS — se nedan. */
 export const UTGANG_BATCH = 500
+
+/**
+ * Hur många besvarade förslag träffgraden räknar på.
+ *
+ * Ett tak, och det står här därför att jämförelsen sker i minnet: `prediction`
+ * och `outcome` är JSON och jämförs per fält. Talet är MEDVETET inte samma som
+ * `UTGANG_BATCH` — de svarar på olika frågor (hur många som stängs per pass mot
+ * hur många som mäts), och en delad konstant hade flyttat den ena varje gång
+ * någon justerade den andra.
+ */
+export const TRAFFGRAD_TAK = 1000
 
 export interface SkapaUppdrag {
   toolName: string
@@ -199,13 +214,116 @@ export class AiAssignmentsService {
     }
   }
 
-  /** Organisationens uppdrag, närmast deadline först. */
-  async lista(organizationId: string, status?: AiAssignment['status']): Promise<AiAssignment[]> {
-    return this.prisma.aiAssignment.findMany({
-      where: { organizationId, ...(status ? { status } : {}) },
-      orderBy: [{ status: 'asc' }, { deadline: 'asc' }],
-      take: 200,
+  /**
+   * Organisationens uppdrag, närmast deadline först.
+   *
+   * ── TAKET SYNS, DET KRYMPER INTE TYST ─────────────────────────────────────
+   *
+   * Den gamla formen returnerade `take: 200` utan att säga hur många som fanns.
+   * En inkorg med 201 förslag hade sett ut att ha 200, och skillnaden hade varit
+   * osynlig för den som läser. Svaret bär nu `total` från en egen `count`, så en
+   * trunkering går att LÄSA i stället för att gissa — samma hållning som
+   * utgångspassets `kandidater`.
+   */
+  async lista(
+    organizationId: string,
+    filter: {
+      status?: AiAssignment['status']
+      shadow?: boolean
+      limit?: number
+      offset?: number
+    } = {},
+  ): Promise<{ rader: AiAssignment[]; total: number; limit: number; offset: number }> {
+    const limit = Math.min(filter.limit ?? INKORG_SIDSTORLEK_STANDARD, INKORG_SIDSTORLEK_MAX)
+    const offset = filter.offset ?? 0
+    const where = {
+      organizationId,
+      ...(filter.status ? { status: filter.status } : {}),
+      ...(filter.shadow === undefined ? {} : { shadow: filter.shadow }),
+    }
+    const [rader, total] = await Promise.all([
+      this.prisma.aiAssignment.findMany({
+        where,
+        orderBy: [{ status: 'asc' }, { deadline: 'asc' }],
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.aiAssignment.count({ where }),
+    ])
+    return { rader, total, limit, offset }
+  }
+
+  /**
+   * ETT uppdrag, org-scopat.
+   *
+   * Kastar 404 för ett id i en annan organisation — samma svar som för ett id
+   * som inte finns alls, så att en främmande org:s id inte går att skilja från
+   * ett påhittat.
+   */
+  async hamta(organizationId: string, id: string): Promise<AiAssignment> {
+    const rad = await this.prisma.aiAssignment.findFirst({ where: { id, organizationId } })
+    if (!rad) throw new NotFoundException('Uppdraget hittades inte.')
+    return rad
+  }
+
+  /**
+   * SAMMANFATTNINGEN som inkorgens KPI-kort läser.
+   *
+   * BERÄKNAD, aldrig lagrad — samma hållning som "skuld är ett beräknat
+   * tillstånd". En lagrad räknare hade kunnat glida isär från raderna den
+   * påstod sig sammanfatta, och avvikelsen hade varit osynlig.
+   */
+  async sammanfattning(
+    organizationId: string,
+    shadow?: boolean,
+  ): Promise<{
+    status: Record<AiAssignment['status'], number>
+    traffgrad: Record<string, Traffgrad>
+  }> {
+    // TYPEN KRÄVER `organizationId` (S2 i check-spread-where). `{ ...undefined }`
+    // ger `{}`, och ett uppslag utan org-avgränsning korsar tenant-gränsen
+    // tyst — #703. Typen gör felet omöjligt i stället för osannolikt.
+    const bas: { organizationId: string } & Record<string, unknown> = {
+      organizationId,
+      ...(shadow === undefined ? {} : { shadow }),
+    }
+    const grupper = await this.prisma.aiAssignment.groupBy({
+      by: ['status'],
+      where: bas,
+      _count: { _all: true },
     })
+    const ut = {
+      AWAITING_APPROVAL: 0,
+      APPROVED: 0,
+      REJECTED: 0,
+      EXPIRED: 0,
+    } as Record<AiAssignment['status'], number>
+    for (const g of grupper) ut[g.status] = g._count._all
+
+    // ── TRÄFFGRADEN ÄR EN FRÅGA, ALDRIG EN LAGRAD PROCENT ─────────────────
+    //
+    // Nämnaren är rader med FACIT (`outcome`), inte alla rader. Ett förslag som
+    // ingen ännu avslutat ärendet för är varken träff eller miss, och att räkna
+    // det som en miss hade gjort träffgraden till ett mått på hur snabbt
+    // hyresvärden stänger ärenden — en egenskap hos människan, inte hos agenten.
+    //
+    // Beräknas i minnet och inte i SQL därför att `prediction`/`outcome` är
+    // JSON och jämförelsen sker per fält enligt `SKUGGFALT`. Taket nedan gör
+    // kostnaden bunden; överskrids det syns det som ett tal, inte som en tyst
+    // trunkering.
+    const medFacit = await this.prisma.aiAssignment.findMany({
+      where: { ...bas, outcome: { not: Prisma.JsonNull } },
+      select: { prediction: true, outcome: true },
+      take: TRAFFGRAD_TAK,
+    })
+    const traffgrad = traffgradPerFalt(
+      medFacit.map((r) => ({
+        prediction: (r.prediction ?? null) as Record<string, unknown> | null,
+        outcome: (r.outcome ?? null) as Record<string, unknown> | null,
+      })),
+    )
+
+    return { status: ut, traffgrad }
   }
 
   /**
