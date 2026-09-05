@@ -680,3 +680,90 @@ export const MarkSentSchema = z.object({
 export type BulkExportInput = z.infer<typeof BulkExportSchema>
 export type PauseRemindersInput = z.infer<typeof PauseRemindersSchema>
 export type MarkSentInput = z.infer<typeof MarkSentSchema>
+
+// ─── Hyresavier: generering, utskick, betalning och kreditering ───────────────
+
+export const GenerateNoticesSchema = z.object({
+  month: z.number().int().min(1, 'Månad är 1–12').max(12, 'Månad är 1–12'),
+  year: z.number().int().min(2020, 'Året måste vara 2020 eller senare'),
+})
+
+export const SendNoticesSchema = z.object({
+  noticeIds: z.array(z.string().uuid('Varje avi-id måste vara ett UUID')),
+})
+
+/**
+ * BETALSÄTTET ÄR ENUMEN HÄR, till skillnad från fakturans motsvarighet.
+ *
+ * `MarkPaidDto` har `@IsEnum(PaymentMethod)` och webben skickar `'BANK'`.
+ * Fakturans `RegisterPaymentSchema` har fri text och webben skickar `'Bankgiro'`
+ * — samma fältnamn, två oförenliga värdemängder, på två manuella
+ * betalningsregistreringar (glidning G3 i #801). Det här schemat speglar sin
+ * DTO; att ENA de två vägarna är ett eget beslut med egen migrering, inte en
+ * följdändring i en kontrakts-PR.
+ */
+export const MarkNoticePaidSchema = z.object({
+  paidAmount: z.number().min(0.01, 'Beloppet måste vara större än noll'),
+  paymentMethod: z.enum(['BANK', 'CASH', 'SWISH', 'MANUAL']),
+  paidAt: IsoDatumSchema.optional(),
+})
+
+export const RentNoticeCreditLineSchema = z.object({
+  /** Utelämnad = hyreskapitalet. */
+  rentNoticeLineId: z.string().uuid('rentNoticeLineId måste vara ett giltigt UUID').optional(),
+  /** Brutto i kronor. */
+  amount: z
+    .number()
+    .multipleOf(0.01, 'Belopp anges med högst två decimaler')
+    .min(0.01, 'Belopp måste vara större än noll'),
+})
+
+export const CreateRentNoticeCreditSchema = z.object({
+  lines: z.array(RentNoticeCreditLineSchema).min(1, 'En kreditering måste innehålla minst en post'),
+  reason: z.string().min(5, 'Ange ett skäl till krediteringen (minst 5 tecken)'),
+})
+
+export type GenerateNoticesInput = z.infer<typeof GenerateNoticesSchema>
+export type SendNoticesInput = z.infer<typeof SendNoticesSchema>
+export type MarkNoticePaidInput = z.infer<typeof MarkNoticePaidSchema>
+export type RentNoticeCreditLineInput = z.infer<typeof RentNoticeCreditLineSchema>
+export type CreateRentNoticeCreditInput = z.infer<typeof CreateRentNoticeCreditSchema>
+
+// ─── Bankavstämning: manuell matchning och PDF-import ─────────────────────────
+
+/**
+ * MANUELL MATCHNING mot en faktura ELLER en avi.
+ *
+ * Regeln "exakt en av dem" står MEDVETET inte här. Den finns i
+ * `reconciliation.service.ts:2303-2309` och gäller båda riktningarna (ingen
+ * angiven / båda angivna). Att lägga en `.refine()` här hade gjort schemat
+ * STRÄNGARE än DTO:n, alltså en glidning åt andra hållet — webben stoppar något
+ * servern beskriver som giltigt — och hela serien bygger på att de två
+ * beskrivningarna säger samma sak. Samma gränsdragning som depositionernas
+ * summainvariant: servern äger regeln, schemat äger formen.
+ */
+export const ManualMatchSchema = z.object({
+  invoiceId: z.string().uuid('invoiceId måste vara ett UUID').optional(),
+  rentNoticeId: z.string().uuid('rentNoticeId måste vara ett UUID').optional(),
+})
+
+export const EditedTransactionSchema = z.object({
+  date: z.string(),
+  description: z.string(),
+  /**
+   * NULL och SAKNAD är olika saker här: DTO:n har `ocr?: string | null`, alltså
+   * kan fältet skickas som `null` för att säga "ingen OCR" — inte bara utelämnas.
+   */
+  ocr: z.string().nullable().optional(),
+  amount: z.number(),
+  isIncoming: z.boolean().optional(),
+})
+
+export const ConfirmImportSchema = z.object({
+  /** Utelämnad = bekräfta utkastet som det står. */
+  transactions: z.array(EditedTransactionSchema).optional(),
+})
+
+export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
+export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
+export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>

@@ -1,3 +1,8 @@
+import type {
+  CreateRentNoticeCreditInput,
+  RentNoticeCreditLineInput,
+  SammaNycklar,
+} from '@eken/shared'
 import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import {
@@ -43,7 +48,15 @@ export class RentNoticeCreditLineDto {
   amount!: number
 }
 
-export class CreateRentNoticeCreditDto {
+// ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
+//
+// `implements CreateRentNoticeCreditInput` plus paritetsraden längst ned binder formen till
+// `CreateRentNoticeCreditSchema` i @eken/shared — samma mönster som #797/#799. Ett fält som bara
+// finns på ena sidan blir ett kompileringsfel i stället för ett 400-svar.
+//
+// Klassen måste fortsätta importeras som VÄRDE i controllern; `import type`
+// raderar den och ValidationPipe tappar all metadata (CLAUDE.md:s DTO-regel).
+export class CreateRentNoticeCreditDto implements CreateRentNoticeCreditInput {
   @ApiProperty({ type: [RentNoticeCreditLineDto] })
   @IsArray()
   @ArrayMinSize(1, { message: 'En kreditering måste innehålla minst en post' })
@@ -63,3 +76,16 @@ export class CreateRentNoticeCreditDto {
   @MinLength(5, { message: 'Ange ett skäl till krediteringen (minst 5 tecken)' })
   reason!: string
 }
+
+/**
+ * NYCKELPARITET mot det delade schemat. `implements` fångar fel TYP på ett fält
+ * som finns i båda; den här raden fångar ett fält som SAKNAS i den ena — en
+ * klass som utelämnar ett VALFRITT fält passerar `implements` utan anmärkning.
+ */
+const _kontraktAviKredit: SammaNycklar<CreateRentNoticeCreditDto, CreateRentNoticeCreditInput> =
+  true
+void _kontraktAviKredit
+
+/** OCH RADTYPEN — se #801: toppnivåns paritet ser inte en nästlad typ. */
+const _kontraktAviKreditRad: SammaNycklar<RentNoticeCreditLineDto, RentNoticeCreditLineInput> = true
+void _kontraktAviKreditRad
