@@ -1,6 +1,7 @@
+import type { SammaNycklar, AnonymizeTenantInput } from '@eken/shared'
 import { IsOptional, IsString, MaxLength } from 'class-validator'
 
-export class AnonymizeTenantDto {
+export class AnonymizeTenantDto implements AnonymizeTenantInput {
   /**
    * Fri anteckning om varför avidentifieringen gjordes, t.ex. ett ärendenummer.
    *
@@ -12,3 +13,7 @@ export class AnonymizeTenantDto {
   @MaxLength(500)
   reason?: string
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktAvidentifiera: SammaNycklar<AnonymizeTenantDto, AnonymizeTenantInput> = true
+void _kontraktAvidentifiera

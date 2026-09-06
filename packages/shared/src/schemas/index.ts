@@ -234,7 +234,61 @@ export const CreateTenantSchema = z
     { message: 'Namn krävs för valt hyresgästtyp' },
   )
 
-export const UpdateTenantSchema = CreateTenantSchema.innerType().partial()
+/**
+ * PATCH /tenants/:id — hyresgästens KONTAKTUPPGIFTER.
+ *
+ * ── VARFÖR DEN INTE ÄR `CreateTenantSchema.partial()` ───────────────────────
+ *
+ * Den var det, och beskrev då en form ingen skickar och servern inte tar emot.
+ * Tre former var i omlopp samtidigt (mätt 2026-09-06):
+ *
+ *   schemat här      `address: AddressSchema` (nästlad) + `contactPerson`
+ *   UpdateTenantDto  FLATA `street`/`city`/`postalCode`, inget contactPerson
+ *   webben           en EGEN lokal typ med nästlad address, plattad av
+ *                    `flattenUpdate` precis före anropet
+ *
+ * Webben plattade alltså nästlat → flatt för att träffa DTO:n, medan schemat
+ * påstod något tredje. `contactPerson` var värre än kosmetiskt: DTO:n saknar
+ * fältet, och pipen kör `forbidNonWhitelisted`, så ett schema-troget anrop hade
+ * AVVISATS av servern.
+ *
+ * Schemat beskriver nu TRÅDEN — den flata formen DTO:n faktiskt tar emot. Det
+ * är inte en inskränkning: ingen skickade den nästlade formen, `flattenUpdate`
+ * såg till det.
+ *
+ * Skapandet är oförändrat: `CreateTenantSchema` behåller sin nästlade `address`
+ * och sin `contactPerson`, eftersom `CreateTenantDto` har dem. De två vägarna
+ * har olika form i tråden, och det är ett faktum om API:t — inte något det här
+ * schemat ska dölja.
+ */
+export const UpdateTenantSchema = z.object({
+  type: z.enum(['INDIVIDUAL', 'COMPANY']).optional(),
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  companyName: z.string().min(1).max(200).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  personalNumber: z
+    .string()
+    .optional()
+    .refine(
+      (v) => !v || isValidSwedishPersonalNumber(v),
+      'Ogiltigt personnummer (kontrollera format och kontrollsiffra)',
+    ),
+  orgNumber: z
+    .string()
+    .optional()
+    .refine((v) => !v || isValidSwedishOrgNumber(v), 'Ogiltigt organisationsnummer'),
+  // FLAT adress — samma tre fält som DTO:n, inte AddressSchema.
+  street: z.string().optional(),
+  city: z.string().optional(),
+  postalCode: z.string().optional(),
+})
+
+/** Avidentifiering av en hyresgäst. Skälet är frivilligt, precis som DTO:n. */
+export const AnonymizeTenantSchema = z.object({
+  reason: z.string().max(500).optional(),
+})
 
 // ─── Lease ────────────────────────────────────────────────────────────────────
 
@@ -348,6 +402,8 @@ export type CreatePropertyInput = z.infer<typeof CreatePropertySchema>
 export type UpdatePropertyInput = z.infer<typeof UpdatePropertySchema>
 export type CreateUnitInput = z.infer<typeof CreateUnitSchema>
 export type CreateTenantInput = z.infer<typeof CreateTenantSchema>
+export type UpdateTenantInput = z.infer<typeof UpdateTenantSchema>
+export type AnonymizeTenantInput = z.infer<typeof AnonymizeTenantSchema>
 export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
 export type CreateLeaseWithTenantInput = z.infer<typeof CreateLeaseWithTenantSchema>
 export type NewTenantInLeaseInput = z.infer<typeof NewTenantInLeaseSchema>
