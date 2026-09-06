@@ -42,7 +42,24 @@ const UNIT_TYPE_LABELS: Record<UnitType, string> = {
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
-const schema = z
+/**
+ * TOM STRÄNG ÄR FORMULÄRETS "INGET VÄRDE".
+ *
+ * `<input type="date">` och `<input type="text">` ger `''` när de är tomma,
+ * aldrig `undefined`. Trådens schema avvisar `''` som datum — helt riktigt —
+ * så fältet måste översättas VID FORMULÄRETS KANT i stället för att tråden
+ * luckras upp.
+ *
+ * Utan den här översättningen fälldes formulärets NORMALLÄGE av sitt eget
+ * schema, och eftersom slutdatumsfältet bara renderas för FIXED_TERM hade
+ * felet ingen plats att visas på. Uppmätt i CI två gånger: E2E
+ * `create-base-data.spec.ts:109` väntade på att modalen skulle stängas och
+ * fick "unexpected value visible". Användaren trycker Spara — ingenting händer.
+ */
+const tomSomUtelamnad = <T extends z.ZodTypeAny>(inre: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), inre)
+
+export const schema = z
   .object({
     propertyId: z.string().min(1, 'Välj en fastighet'),
     unitId: z.string().uuid('Välj en enhet'),
@@ -77,7 +94,7 @@ const schema = z
     ...LEASE_CORE_FIELDS,
     ...LEASE_CONTRACT_TERMS,
 
-    // ── Tre överskrivningar, var och en med skäl ───────────────────────────
+    // ── Fyra överskrivningar, var och en med skäl ──────────────────────────
     //
     // 1. Samma GRÄNS som delat (min 0). Bara det svenska meddelandet läggs
     //    till, för att ett tomt fält annars visar Zods engelska standardtext.
@@ -93,6 +110,9 @@ const schema = z
     //    ett SYNLIGT val av användaren — inte en default som schemat sätter
     //    åt hen.
     leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']),
+    // 4. Samma DATUMGRÄNS som tråden, men `''` betyder utelämnat. Fältet
+    //    renderas bara för FIXED_TERM, så ett fel här hade varit osynligt.
+    endDate: tomSomUtelamnad(LEASE_CORE_FIELDS.endDate),
   })
   .superRefine((data, ctx) => {
     // Kontraktets fyra konsistensregler ägs av det delade schemat och prövas
