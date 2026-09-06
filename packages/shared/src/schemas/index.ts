@@ -713,6 +713,67 @@ export type RegisterReplacementInput = z.infer<typeof RegisterReplacementSchema>
 export type UpdateUnitInput = z.infer<typeof UpdateUnitSchema>
 export type CreateRentIncreaseInput = z.infer<typeof CreateRentIncreaseSchema>
 export type RejectRentIncreaseInput = z.infer<typeof RejectRentIncreaseSchema>
+// ─── Hyresgästportalens inbjudningar (admin) ─────────────────────────────────
+
+/**
+ * POST /tenant-portal/admin/invitations
+ *
+ * Två sätt att välja mottagare, och de utesluter varandra: `all` bjuder in
+ * varje hyresgäst med minst ett aktivt kontrakt, `tenantIds` ett uttryckligt
+ * urval. `force` kringgår 24-timmarsskyddet mot dubbelklick.
+ *
+ * TAKET 2000 är inte pynt. Ett massutskick går till riktiga människors
+ * e-postadresser, och ett urval utan tak är ett utskick vars storlek ingen
+ * bestämt. Samma tal står i DTO:ns `@ArrayMaxSize` — de härleds ur varandra
+ * genom `SammaNycklar` på nycklarna och prövas på GRÄNSERNA av
+ * paritetsprovet i KONTRAKTSREGISTER.
+ */
+export const INVITE_BATCH_MAX = 2000
+
+export const InviteTenantsSchema = z
+  .object({
+    all: z.boolean().optional(),
+    tenantIds: z.array(z.string().uuid()).max(INVITE_BATCH_MAX).optional(),
+    force: z.boolean().optional(),
+  })
+  .superRefine((d, ctx) => {
+    // Varken urval eller "alla" är inget utskick — men det såg ut som ett
+    // lyckat anrop: servern svarade 201 med noll inbjudna.
+    if (!d.all && !d.tenantIds?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Ange antingen alla hyresgäster eller ett urval att bjuda in',
+        path: ['tenantIds'],
+      })
+    }
+    if (d.all && d.tenantIds?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Ange antingen alla hyresgäster eller ett urval — inte båda',
+        path: ['tenantIds'],
+      })
+    }
+  })
+
+/** POST /tenant-portal/admin/invitations/resend */
+export const ResendInvitesSchema = z
+  .object({
+    tenantIds: z.array(z.string().uuid()).max(INVITE_BATCH_MAX).optional(),
+    onlyNotActivated: z.boolean().optional(),
+  })
+  .superRefine((d, ctx) => {
+    if (!d.onlyNotActivated && !d.tenantIds?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Ange ett urval eller kryssa i att bara ej aktiverade ska få nytt utskick',
+        path: ['tenantIds'],
+      })
+    }
+  })
+
+export type InviteTenantsInput = z.infer<typeof InviteTenantsSchema>
+export type ResendInvitesInput = z.infer<typeof ResendInvitesSchema>
+
 export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
 export type UpdateLeaseInput = z.infer<typeof UpdateLeaseSchema>
 export type TransitionLeaseStatusInput = z.infer<typeof TransitionLeaseStatusSchema>

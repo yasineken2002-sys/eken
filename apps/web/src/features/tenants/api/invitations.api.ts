@@ -1,4 +1,5 @@
 import { get, post } from '@/lib/api'
+import type { InviteTenantsInput, ResendInvitesInput } from '@eken/shared'
 
 export type TenantInviteStatus =
   | 'NOT_INVITED'
@@ -60,17 +61,10 @@ export function fetchInviteStatus(params?: {
   return get<InviteStatusList>(`/tenant-portal/admin/invitations${qs ? `?${qs}` : ''}`)
 }
 
-export function inviteTenants(body: {
-  all?: boolean
-  tenantIds?: string[]
-  force?: boolean
-}): Promise<InviteResult> {
+export function inviteTenants(body: InviteTenantsInput): Promise<InviteResult> {
   return post<InviteResult>('/tenant-portal/admin/invitations', body)
 }
 
-export function resendInvites(body: {
-  tenantIds?: string[]
-  onlyNotActivated?: boolean
-}): Promise<InviteResult> {
+export function resendInvites(body: ResendInvitesInput): Promise<InviteResult> {
   return post<InviteResult>('/tenant-portal/admin/invitations/resend', body)
 }

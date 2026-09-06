@@ -1,5 +1,5 @@
 {
-  "total": 50,
+  "total": 48,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -123,13 +123,6 @@
     {
       "fil": "apps/web/src/features/settings/api/settings.api.ts",
       "medlemmar": ["PATCH '/organizations/me' → UpdateOrganizationInput"]
-    },
-    {
-      "fil": "apps/web/src/features/tenants/api/invitations.api.ts",
-      "medlemmar": [
-        "POST '/tenant-portal/admin/invitations' → OTYPAD",
-        "POST '/tenant-portal/admin/invitations/resend' → OTYPAD"
-      ]
     },
     {
       "fil": "apps/web/src/features/users/api/users.api.ts",

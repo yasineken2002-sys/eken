@@ -23,9 +23,6 @@ import {
   IsOptional,
   IsEnum,
   IsUUID,
-  IsBoolean,
-  IsArray,
-  ArrayMaxSize,
   MinLength,
   MaxLength,
 } from 'class-validator'
@@ -50,6 +47,7 @@ import { CurrentTenant } from './current-tenant.decorator'
 import type { Tenant } from '@prisma/client'
 import { readTenantWithCredentials } from './tenant-credential-read'
 import { TenantBankIdService } from './tenant-bankid.service'
+import { InviteTenantsDto, ResendInvitesDto } from './dto/invite-tenants.dto'
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -132,38 +130,6 @@ class ResetPasswordDto {
   @IsString()
   @MinLength(1)
   password!: string
-}
-
-class InviteTenantsDto {
-  // Bjud in alla aktiva hyresgäster (≥1 ACTIVE-kontrakt).
-  @IsOptional()
-  @IsBoolean()
-  all?: boolean
-
-  // Eller ett explicit urval.
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(2000)
-  @IsUUID('4', { each: true })
-  tenantIds?: string[]
-
-  // Kringgå 24 h-dubbelklicks-skyddet (medveten omsändning).
-  @IsOptional()
-  @IsBoolean()
-  force?: boolean
-}
-
-class ResendInvitesDto {
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(2000)
-  @IsUUID('4', { each: true })
-  tenantIds?: string[]
-
-  // Skicka om till alla inbjudna men ej aktiverade.
-  @IsOptional()
-  @IsBoolean()
-  onlyNotActivated?: boolean
 }
 
 class SubmitMaintenanceDto {

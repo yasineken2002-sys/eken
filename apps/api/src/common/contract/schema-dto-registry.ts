@@ -42,6 +42,8 @@ import {
   RenewLeaseSchema,
   UpdateAppendixSchema,
   CreateSigningRequestSchema,
+  InviteTenantsSchema,
+  ResendInvitesSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
@@ -74,6 +76,7 @@ import { TerminateLeaseDto } from '../../leases/dto/terminate-lease.dto'
 import { RenewLeaseDto } from '../../leases/dto/renew-lease.dto'
 import { UpdateAppendixDto } from '../../contracts/dto/update-appendix.dto'
 import { CreateSigningRequestDto } from '../../signing/dto/create-signing-request.dto'
+import { InviteTenantsDto, ResendInvitesDto } from '../../tenant-portal/dto/invite-tenants.dto'
 import {
   BulkExportDto,
   MarkSentDto,
@@ -565,6 +568,26 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { documentId: '33333333-4444-4555-8666-777777777777' },
     ogiltig: { documentId: 'inte-ett-uuid' },
     ogiltigVarfor: 'documentId måste vara ett UUID',
+  },
+  // ─── Hyresgästportalens inbjudningar ──────────────────────────────────────
+  {
+    endpoint: 'POST /tenant-portal/admin/invitations',
+    inputTyp: 'InviteTenantsInput',
+    schema: InviteTenantsSchema,
+    dto: InviteTenantsDto,
+    giltig: { all: true },
+    ogiltig: {},
+    ogiltigVarfor:
+      'varken alla eller ett urval — ett massutskick utan mottagare svarade 201 med noll inbjudna',
+  },
+  {
+    endpoint: 'POST /tenant-portal/admin/invitations/resend',
+    inputTyp: 'ResendInvitesInput',
+    schema: ResendInvitesSchema,
+    dto: ResendInvitesDto,
+    giltig: { onlyNotActivated: true },
+    ogiltig: {},
+    ogiltigVarfor: 'varken urval eller "bara ej aktiverade" — omsändningen saknar mottagare',
   },
   {
     endpoint: 'POST /deposits',
