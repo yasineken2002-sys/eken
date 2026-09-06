@@ -253,3 +253,7 @@ export * from './lease-succession-carry'
 
 // Bankkopplingens säkra fältmängd — EN lista, härledd av både api och web.
 export * from './psd2'
+
+// Delegationens klartext — EN karta, läst av inkorgen OCH delegationssidan.
+// Mängdens riktighet ägs av apps/api/src/ai/delegation/delegation-text.spec.ts.
+export * from './delegation-text'

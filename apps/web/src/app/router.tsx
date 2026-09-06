@@ -43,6 +43,7 @@ import { DepositsPage } from '../features/deposits/DepositsPage'
 import { RentIncreasesPage } from '../features/rent-increases/RentIncreasesPage'
 import { AssignmentsPage } from '../features/assignments/AssignmentsPage'
 import { InboxPage } from '../features/inbox/InboxPage'
+import { DelegationerPage } from '../features/delegationer/DelegationerPage'
 import { TerminationsPage } from '../features/terminations/TerminationsPage'
 import { AccountingPage } from '../features/accounting/AccountingPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
@@ -294,7 +295,26 @@ const assignmentsRoute = appPage('/uppdrag', AssignmentsPage)
 // Inkorgen (etapp 6): agentens SKUGGFÖRSLAG. Egen rutt och inte en flik på
 // /uppdrag — de svarar på olika frågor. `/uppdrag` är kön av arbete som väntar
 // på ett ja; inkorgen är förslag som aldrig utförs och vars ja är ett facit.
-const inboxRoute = appPage('/inkorg', InboxPage)
+//
+// `validateSearch` finns för `?forslag=<id>`: delegationssidans kolumn "Född ur"
+// pekar tillbaka på det ENSKILDA beslut rätten föddes ur, inte bara på listan
+// där beslutet togs. Ett okänt eller borttaget id släpps igenom som sträng och
+// tolkas av sidan, som helt enkelt inte hittar någon rad att öppna.
+const inboxRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/inkorg',
+  validateSearch: (search: Record<string, unknown>): { forslag?: string } =>
+    typeof search['forslag'] === 'string' ? { forslag: search['forslag'] } : {},
+  component: function InboxRoute() {
+    const { forslag } = inboxRoute.useSearch()
+    return <InboxPage forslag={forslag} />
+  },
+})
+
+// Delegationerna (etapp 7): läsytan för det hyresvärden HAR gett bort. Egen
+// rutt bredvid inkorgen — inkorgen är beslut som väntar, den här är beslut som
+// redan är fattade och fortsätter gälla tills någon tar tillbaka dem.
+const delegationerRoute = appPage('/delegationer', DelegationerPage)
 const terminationsRoute = appPage('/terminations', TerminationsPage)
 const accountingRoute = appPage('/accounting', AccountingPage)
 const reportsRoute = appPage('/reports', ReportsPage)
@@ -396,6 +416,7 @@ const routeTree = rootRoute.addChildren([
     rentIncreasesRoute,
     assignmentsRoute,
     inboxRoute,
+    delegationerRoute,
     terminationsRoute,
     accountingRoute,
     reportsRoute,

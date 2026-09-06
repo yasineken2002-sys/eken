@@ -31,6 +31,7 @@ import {
   Gauge,
   History,
   Inbox,
+  ShieldCheck,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -46,6 +47,7 @@ type AppPath =
   | '/ai'
   | '/uppdrag'
   | '/inkorg'
+  | '/delegationer'
   | '/properties'
   | '/units'
   | '/tenants'
@@ -87,6 +89,10 @@ const NAV_PRIMARY: NavItem[] = [
   // Inkorgen (etapp 6) — agentens förslag. Bredvid Uppdrag och inte i stället
   // för: planens Del 16 förbjuder att gömma befintliga ytor bakom inkorgen.
   { to: '/inkorg', label: 'Inkorg', icon: ClipboardCheck },
+  // Delegationer (etapp 7) — UNDER inkorgen, därför att ordningen är vägen:
+  // förslaget kommer först, rätten föds ur ett ja på det. En post ovanför hade
+  // antytt att man börjar med att dela ut befogenheter.
+  { to: '/delegationer', label: 'Delegationer', icon: ShieldCheck },
 ]
 
 const NAV_PORTFOLIO: NavItem[] = [

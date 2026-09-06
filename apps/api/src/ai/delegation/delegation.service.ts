@@ -18,6 +18,12 @@ import type { DelegationStatus } from './delegation-status'
 /** Standardlivslängd. Ett beslut, inte en härledning ur någon annan konstant. */
 export const DELEGATION_DAGAR = 90
 
+/** Hur ofta en delegation får förlängas. Se `förläng`. */
+export const FÖRLÄNGNING_KARENS_DAGAR = 30
+
+/** Listans tak. Ett tak som syns i koden är bättre än ett som ingen satt. */
+const LISTA_TAK = 200
+
 /** Roller som får ge bort en rätt. Samma grind som skuggagentens växel. */
 const FAR_DELEGERA: readonly UserRole[] = ['OWNER']
 
@@ -375,10 +381,172 @@ export class DelegationService {
     }
     const d = await this.prisma.aiDelegation.findFirst({
       where: { id, organizationId },
-      select: { id: true },
+      select: { id: true, expiresAt: true, events: { select: { type: true, createdAt: true } } },
     })
     if (!d) throw new BadRequestException('Delegationen hittades inte.')
+    // Två återkallanden av samma delegation är inte två beslut. Utan spärren
+    // hade historiken visat ett upprepat val som aldrig gjordes.
+    if (beräknaStatus(d.events, d.expiresAt) === 'ÅTERKALLAD') {
+      throw new ConflictException('Delegationen är redan återkallad.')
+    }
     await this.skrivHändelse(id, 'REVOKED', { kind: 'HUMAN', userId: aktör.userId }, skäl)
+  }
+
+  /**
+   * Organisationens delegationer, med beräknad status och KÄLLA.
+   *
+   * "Se vad systemet tror om hen" (planens etapp 7) kräver att varje rad kan
+   * peka på VILKET beslut som födde den. Utan källan är listan en uppsättning
+   * rättigheter någon inte minns att hen gav — och då är den värre än ingen.
+   */
+  async lista(organizationId: string, nu: Date = new Date()) {
+    const rader = await this.prisma.aiDelegation.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      take: LISTA_TAK,
+      select: {
+        id: true,
+        toolName: true,
+        authorityScope: true,
+        villkor: true,
+        frekvensvillkor: true,
+        expiresAt: true,
+        createdAt: true,
+        createdByUserId: true,
+        createdByUser: { select: { firstName: true, lastName: true } },
+        bornFromAssignmentId: true,
+        bornFromAssignment: { select: { id: true, title: true } },
+        events: { select: { type: true, createdAt: true }, orderBy: { createdAt: 'asc' } },
+      },
+    })
+    return rader.map((r) => ({
+      ...r,
+      status: beräknaStatus(r.events, r.expiresAt, nu),
+      // Läsytans KPI. Beräknad här och inte i webben, så de två inte kan säga
+      // olika saker om samma rad.
+      löperUtInomDagar: Math.ceil((r.expiresAt.getTime() - nu.getTime()) / 86_400_000),
+    }))
+  }
+
+  /** Pausa EN delegation — människans beslut, till skillnad från växelns. */
+  async pausa(
+    organizationId: string,
+    id: string,
+    aktör: { userId: string; roll: UserRole },
+  ): Promise<void> {
+    await this.krävAktiv(organizationId, id, aktör, 'PAUSAD')
+    await this.skrivHändelse(id, 'PAUSED', { kind: 'HUMAN', userId: aktör.userId })
+  }
+
+  /** Återuppta EN delegation. */
+  async återuppta(
+    organizationId: string,
+    id: string,
+    aktör: { userId: string; roll: UserRole },
+  ): Promise<void> {
+    await this.krävAktiv(organizationId, id, aktör, 'AKTIV')
+    await this.skrivHändelse(id, 'RESUMED', { kind: 'HUMAN', userId: aktör.userId })
+  }
+
+  /**
+   * Förläng med 90 dagar.
+   *
+   * ── HÖGST EN FÖRLÄNGNING PER 30 DAGAR ────────────────────────────────────
+   *
+   * Utan taket blir "förläng" en knapp man trycker av vana, och delegationen
+   * blir evig utan att någon någonsin fattat beslutet att den ska vara det.
+   * Utgångsdatumet finns just för att tvinga fram ett omtag — ett tak som går
+   * att kringgå med två klick är inget tak.
+   *
+   * Trettio dagar och inte nittio: en delegation som löper ut om en vecka ska gå
+   * att förlänga utan att man först måste låta den dö.
+   */
+  async förläng(
+    organizationId: string,
+    id: string,
+    aktör: { userId: string; roll: UserRole },
+    nu: Date = new Date(),
+  ): Promise<Date> {
+    if (!FAR_DELEGERA.includes(aktör.roll)) {
+      throw new ForbiddenException('Bara organisationens ägare får förlänga en delegation.')
+    }
+    const d = await this.prisma.aiDelegation.findFirst({
+      where: { id, organizationId },
+      select: {
+        id: true,
+        expiresAt: true,
+        events: { select: { type: true, createdAt: true } },
+      },
+    })
+    if (!d) throw new NotFoundException('Delegationen hittades inte.')
+
+    const status = beräknaStatus(d.events, d.expiresAt, nu)
+    if (status === 'ÅTERKALLAD') {
+      throw new ConflictException(
+        'En återkallad delegation kan inte förlängas — skapa en ny från inkorgen.',
+      )
+    }
+
+    const gräns = new Date(nu.getTime() - FÖRLÄNGNING_KARENS_DAGAR * 24 * 60 * 60 * 1000)
+    const senaste = d.events
+      .filter((e) => e.type === 'EXTENDED')
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .at(-1)
+    if (senaste && senaste.createdAt.getTime() > gräns.getTime()) {
+      throw new ConflictException(
+        `Delegationen förlängdes ${senaste.createdAt.toISOString().slice(0, 10)}. ` +
+          `En ny förlängning går att göra tidigast ${FÖRLÄNGNING_KARENS_DAGAR} dagar efter den ` +
+          'förra — annars blir utgångsdatumet en formalitet.',
+      )
+    }
+
+    // FRÅN NU, inte från det gamla datumet. En utgången delegation som förlängs
+    // ska få 90 nya dagar, inte 90 dagar från en tidpunkt som redan passerat.
+    const nyttDatum = new Date(nu.getTime() + DELEGATION_DAGAR * 24 * 60 * 60 * 1000)
+    await this.prisma.aiDelegation.update({
+      where: { id },
+      data: { expiresAt: nyttDatum },
+    })
+    await this.skrivHändelse(
+      id,
+      'EXTENDED',
+      { kind: 'HUMAN', userId: aktör.userId },
+      `Förlängd till ${nyttDatum.toISOString().slice(0, 10)}.`,
+    )
+    return nyttDatum
+  }
+
+  /**
+   * Gemensam förkontroll för pausa/återuppta.
+   *
+   * `målstatus` är dit åtgärden ska leda. Är delegationen redan där avvisas
+   * anropet — annars hade historiken fått händelser som inte motsvarar något som
+   * hände, och en läsare kunde inte skilja "pausades två gånger" från "pausades
+   * och återupptogs och pausades igen".
+   */
+  private async krävAktiv(
+    organizationId: string,
+    id: string,
+    aktör: { userId: string; roll: UserRole },
+    målstatus: DelegationStatus,
+  ): Promise<void> {
+    if (!FAR_DELEGERA.includes(aktör.roll)) {
+      throw new ForbiddenException('Bara organisationens ägare får ändra en delegation.')
+    }
+    const d = await this.prisma.aiDelegation.findFirst({
+      where: { id, organizationId },
+      select: { expiresAt: true, events: { select: { type: true, createdAt: true } } },
+    })
+    if (!d) throw new NotFoundException('Delegationen hittades inte.')
+    const nu = beräknaStatus(d.events, d.expiresAt)
+    if (nu === målstatus) {
+      throw new ConflictException(`Delegationen är redan ${målstatus.toLowerCase()}.`)
+    }
+    if (nu === 'ÅTERKALLAD' || nu === 'UTGÅNGEN') {
+      throw new ConflictException(
+        `En ${nu.toLowerCase()} delegation kan inte ändras. Skapa en ny från inkorgen.`,
+      )
+    }
   }
 
   /**

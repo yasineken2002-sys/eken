@@ -39,3 +39,18 @@ export const CreateDelegationFromAssignmentSchema = z.object({
 export type CreateDelegationFromAssignmentInput = z.infer<
   typeof CreateDelegationFromAssignmentSchema
 >
+
+/**
+ * Återkallandet. Skälet är FRIVILLIGT med flit.
+ *
+ * Ett obligatoriskt fritextfält blir "x" efter tredje gången, och då är
+ * historiken sämre än om fältet varit tomt — den ser ifylld ut. Det som är
+ * obligatoriskt är HÄNDELSEN, inte motiveringen.
+ *
+ * Taket på 500 tecken finns för att skälet renderas i en historikrad; utan tak
+ * kan en inklistrad e-posttråd göra raden oläsbar för allt annat.
+ */
+export const RevokeDelegationSchema = z.object({
+  skäl: z.string().max(500).optional(),
+})
+export type RevokeDelegationInput = z.infer<typeof RevokeDelegationSchema>
