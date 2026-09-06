@@ -11,6 +11,8 @@ export interface UpdateOrganizationInput {
   morningReportEnabled?: boolean
   /** Skuggagenten på felanmälningar (etapp 6). Skrivning är OWNER-only i API:t. */
   shadowAgentEnabled?: boolean
+  /** Väsentlighetsgräns för sen bokföring, i ÖREN. Se schemats docblock. */
+  lateBookingMaterialityThreshold?: number
   remindersEnabled?: boolean
   reminderFeeSek?: number
   reminderFormalDay?: number

@@ -50,6 +50,12 @@ import type {
 } from '@eken/shared'
 import { RegisterPaymentSchema } from '@eken/shared'
 import { ETIKETTER, metodForEtikett } from './components/payment-methods'
+import { useAuthStore } from '@/stores/auth.store'
+import { useSenBokforingsLage } from '@/features/accounting/hooks/useSenBokforing'
+import {
+  SenBokforingBlock,
+  skalDugerForSenBokforing,
+} from '@/features/accounting/components/SenBokforingBlock'
 import { downloadInvoicePdf } from './api/invoices.api'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
@@ -91,6 +97,17 @@ interface PaymentFormState {
   amount: string
   paymentMethod: string
   reference: string
+  /**
+   * BETALNINGSDATUM. Fältet fanns inte förrän nu, och dess frånvaro var mer än
+   * en saknad bekvämlighet: utan datum skickade webben inget `paidAt`, servern
+   * föll tillbaka på `new Date()`, och en betalning kunde per konstruktion
+   * aldrig hamna i ett stängt räkenskapsår. Den sena bokföringen (#810) var
+   * alltså onåbar från fakturadialogen — API:t kunde ta emot den, gränssnittet
+   * kunde inte be om den.
+   */
+  paidAt: string
+  /** Skäl till sen bokföring. Tomt när räkenskapsåret är öppet. */
+  senBokforingSkal: string
 }
 
 function PaymentSubForm({
@@ -116,7 +133,17 @@ function PaymentSubForm({
     amount: String(Number(invoice.outstanding)),
     paymentMethod: 'Bankgiro',
     reference: invoice.reference ?? '',
+    paidAt: new Date().toISOString().slice(0, 10),
+    senBokforingSkal: '',
   })
+
+  const roll = useAuthStore((s) => s.user?.role)
+  const { aretStangt, arsetikett } = useSenBokforingsLage(form.paidAt)
+  const arAgare = roll === 'OWNER'
+  // Blocket gäller BARA ett stängt räkenskapsår. En stängd MÅNAD avvisas av
+  // servern med sitt eget meddelande om återöppning — oförändrat beteende.
+  const kraverSkal = aretStangt && arAgare
+  const skalDuger = !kraverSkal || skalDugerForSenBokforing(form.senBokforingSkal)
 
   return (
     <div className="space-y-4">
@@ -134,6 +161,12 @@ function PaymentSubForm({
           onChange={(e) => setForm((p) => ({ ...p, paymentMethod: e.target.value }))}
           options={ETIKETTER.map((e) => ({ value: e, label: e }))}
         />
+        <Input
+          label="Betalningsdatum"
+          type="date"
+          value={form.paidAt}
+          onChange={(e) => setForm((p) => ({ ...p, paidAt: e.target.value }))}
+        />
         <div className="col-span-2">
           <Input
             label="OCR / referens"
@@ -143,6 +176,14 @@ function PaymentSubForm({
           />
         </div>
       </div>
+      {aretStangt && (
+        <SenBokforingBlock
+          roll={roll}
+          arsetikett={arsetikett}
+          skal={form.senBokforingSkal}
+          onSkalChange={(v) => setForm((p) => ({ ...p, senBokforingSkal: v }))}
+        />
+      )}
       <ModalFooter>
         <Button type="button" onClick={onCancel} disabled={isSubmitting}>
           Avbryt
@@ -150,10 +191,10 @@ function PaymentSubForm({
         <Button
           type="button"
           variant="primary"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !skalDuger || (aretStangt && !arAgare)}
           onClick={() => onConfirm(form)}
         >
-          {isSubmitting ? 'Registrerar…' : 'Registrera betalning'}
+          {isSubmitting ? 'Registrerar…' : aretStangt ? 'Bokför sent' : 'Registrera betalning'}
         </Button>
       </ModalFooter>
     </div>
@@ -324,6 +365,10 @@ export function InvoicesPage() {
       paymentMethod: metodForEtikett(form.paymentMethod),
       paymentMethodRaw: form.paymentMethod,
       reference: form.reference,
+      ...(form.paidAt ? { paidAt: form.paidAt } : {}),
+      // Fältets NÄRVARO är samtycket till sen bokföring — se schemats docblock.
+      // Skickas bara när operatören faktiskt fyllt i ett skäl.
+      ...(form.senBokforingSkal.trim() ? { senBokforingSkal: form.senBokforingSkal.trim() } : {}),
     }
 
     // SISTA GRINDEN mot det delade schemat. Ett pengaflöde: en nyttolast servern

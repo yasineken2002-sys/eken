@@ -26,6 +26,15 @@ interface MultipartFile {
  */
 const FAR_SLA_PA_SKUGGAGENT: readonly UserRole[] = ['OWNER']
 
+/**
+ * Vem som får ändra väsentlighetsgränsen för sen bokföring.
+ *
+ * EGEN lista trots samma värde som ovan. De två svarar på olika frågor — "får
+ * slå på en agent" och "får bestämma vad en revisor ser i efterhand" — och två
+ * gränser som ska kunna ändras var för sig är inte en gräns.
+ */
+const FAR_ANDRA_VASENTLIGHETSGRANS: readonly UserRole[] = ['OWNER']
+
 @Injectable()
 export class OrganizationsService {
   constructor(
@@ -86,6 +95,19 @@ export class OrganizationsService {
       }
     }
 
+    // SAMMA FÄLTNIVÅGRIND, samma fail-closed. Väsentlighetsgränsen avgör vilka
+    // sent bokförda poster en revisor får syn på i efterhand — den hör till
+    // samma familj av beslut som att slå på en agent, inte till förvaltningen.
+    // Att den delar rollista med skuggagenten är ett sammanträffande i värde,
+    // inte i sak, och listan är därför EGEN: de två ska kunna glida isär.
+    if (dto.lateBookingMaterialityThreshold !== undefined) {
+      if (!rollHosAnroparen || !FAR_ANDRA_VASENTLIGHETSGRANS.includes(rollHosAnroparen)) {
+        throw new ForbiddenException(
+          'Bara organisationens ägare får ändra väsentlighetsgränsen för sen bokföring.',
+        )
+      }
+    }
+
     // F-skatt-datum: bara meningsfullt när hasFSkatt = true. Om
     // användaren bockar av F-skatt nollställer vi datumet samtidigt.
     const fSkattDateUpdate = (() => {
@@ -99,6 +121,9 @@ export class OrganizationsService {
     return this.prisma.organization.update({
       where: { id: organizationId },
       data: {
+        ...(dto.lateBookingMaterialityThreshold != null
+          ? { lateBookingMaterialityThreshold: dto.lateBookingMaterialityThreshold }
+          : {}),
         ...(dto.bankgiro != null ? { bankgiro: dto.bankgiro } : {}),
         ...(dto.paymentTermsDays != null ? { paymentTermsDays: dto.paymentTermsDays } : {}),
         ...(dto.invoiceColor != null ? { invoiceColor: dto.invoiceColor } : {}),

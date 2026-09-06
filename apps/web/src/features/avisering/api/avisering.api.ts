@@ -128,11 +128,17 @@ export function markAsPaid(
   paidAmount: number,
   paymentMethod: PaymentMethod,
   paidAt?: string,
+  /**
+   * Skäl till sen bokföring i ett stängt räkenskapsår. Fältets NÄRVARO är
+   * samtycket — utelämnat avvisar servern betalningen som förut. Kräver OWNER.
+   */
+  senBokforingSkal?: string,
 ) {
   const kropp: MarkNoticePaidInput = {
     paidAmount,
     paymentMethod,
     ...(paidAt ? { paidAt } : {}),
+    ...(senBokforingSkal ? { senBokforingSkal } : {}),
   }
   return patch<RentNotice>(`/avisering/${id}/paid`, kropp)
 }

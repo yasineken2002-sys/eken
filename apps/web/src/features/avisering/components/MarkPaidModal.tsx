@@ -5,6 +5,12 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/cn'
 import { formatCurrency } from '@eken/shared'
 import { useMarkAsPaid } from '../hooks/useAvisering'
+import { useSenBokforingsLage } from '@/features/accounting/hooks/useSenBokforing'
+import {
+  SenBokforingBlock,
+  skalDugerForSenBokforing,
+} from '@/features/accounting/components/SenBokforingBlock'
+import { useAuthStore } from '@/stores/auth.store'
 import type { PaymentMethod, RentNotice } from '../api/avisering.api'
 
 interface Props {
@@ -37,14 +43,33 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
   const [paidAmount, setPaidAmount] = useState('')
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('BANK')
+  const [senBokforingSkal, setSenBokforingSkal] = useState('')
   const markPaid = useMarkAsPaid()
+  // Hookarna måste anropas före den tidiga returen — annars byter
+  // hook-ordningen mellan renderingar och React kastar.
+  const roll = useAuthStore((s) => s.user?.role)
+  const { aretStangt, arsetikett } = useSenBokforingsLage(paidAt)
+  const arAgare = roll === 'OWNER'
 
   if (!notice) return null
+
+  // Blocket gäller BARA ett stängt räkenskapsår. En stängd MÅNAD avvisas av
+  // servern med sitt eget meddelande om återöppning — oförändrat beteende.
+  const kraverSkal = aretStangt && arAgare
+  const skalDuger = !kraverSkal || skalDugerForSenBokforing(senBokforingSkal)
 
   const handleSubmit = async () => {
     const amount = parseFloat(paidAmount.replace(',', '.'))
     if (isNaN(amount) || amount <= 0) return
-    await markPaid.mutateAsync({ id: notice.id, paidAmount: amount, paymentMethod, paidAt })
+    await markPaid.mutateAsync({
+      id: notice.id,
+      paidAmount: amount,
+      paymentMethod,
+      paidAt,
+      // Fältets NÄRVARO är samtycket — skickas bara när året faktiskt är stängt
+      // och ägaren angett ett skäl.
+      ...(kraverSkal ? { senBokforingSkal: senBokforingSkal.trim() } : {}),
+    })
     onSuccess()
     onClose()
   }
@@ -134,6 +159,14 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
               className="border-input h-9 w-full rounded-lg border px-3 text-[13.5px] text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          {aretStangt && (
+            <SenBokforingBlock
+              roll={roll}
+              arsetikett={arsetikett}
+              skal={senBokforingSkal}
+              onSkalChange={setSenBokforingSkal}
+            />
+          )}
         </div>
 
         <div className="border-line mt-5 flex justify-end gap-2 border-t pt-5">
@@ -143,11 +176,13 @@ export function MarkPaidModal({ notice, onClose, onSuccess }: Props) {
           <Button
             variant="primary"
             loading={markPaid.isPending}
-            disabled={!paidAmount || parseFloat(paidAmount) <= 0}
+            disabled={
+              !paidAmount || parseFloat(paidAmount) <= 0 || !skalDuger || (aretStangt && !arAgare)
+            }
             onClick={() => void handleSubmit()}
           >
             <CheckCircle2 size={13} strokeWidth={1.8} />
-            Bekräfta betalning
+            {aretStangt ? 'Bokför sent' : 'Bekräfta betalning'}
           </Button>
         </div>
       </motion.div>

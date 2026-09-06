@@ -48,6 +48,7 @@ import { BankIdPanel } from './components/BankIdPanel'
 import { useAuthStore } from '@/stores/auth.store'
 import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
+import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
 import { get, del } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -100,6 +101,7 @@ export function SettingsPage() {
 
   const [morningReportEnabled, setMorningReportEnabled] = useState(false)
   const [shadowAgentEnabled, setShadowAgentEnabled] = useState(false)
+  const [vasentlighetsgransOre, setVasentlighetsgransOre] = useState(1_000_000)
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [reminderFeeSek, setReminderFeeSek] = useState(60)
   const [reminderFormalDay, setReminderFormalDay] = useState(14)
@@ -158,6 +160,7 @@ export function SettingsPage() {
       }
       setMorningReportEnabled(org.morningReportEnabled ?? false)
       setShadowAgentEnabled(org.shadowAgentEnabled ?? false)
+      setVasentlighetsgransOre(org.lateBookingMaterialityThreshold ?? 1_000_000)
       setRemindersEnabled(org.remindersEnabled ?? true)
       setReminderFeeSek(org.reminderFeeSek ?? 60)
       setReminderFormalDay(org.reminderFormalDay ?? 14)
@@ -1002,6 +1005,16 @@ export function SettingsPage() {
                     />
                   </button>
                 </div>
+
+                <LateBookingMaterialitySection
+                  roll={currentUser?.role}
+                  gransOre={vasentlighetsgransOre}
+                  onSpara={(ore) => {
+                    setVasentlighetsgransOre(ore)
+                    updateMutation.mutate({ lateBookingMaterialityThreshold: ore })
+                  }}
+                  sparar={updateMutation.isPending}
+                />
 
                 <ShadowAgentSection
                   roll={currentUser?.role}

@@ -662,6 +662,33 @@ model Organization {
   /// och det är inte så man prövar en agent mot verkliga fall.
   shadowAgentEnabled Boolean @default(false)
 
+  /// VÄSENTLIGHETSGRÄNS FÖR EN SENT BOKFÖRD BETALNING (#810), i ÖREN.
+  ///
+  /// ── VAD DEN STYR, MÄTT — OCH VAD DEN INTE GÖR ─────────────────────────────
+  ///
+  /// Den styr EN sak: om `LateFiscalYearPosting.materialityFlagged` sätts till
+  /// true när en betalning bokförs sent i ett stängt räkenskapsår. Den är
+  /// varken en spärr eller en varning, och den kräver inget extra av
+  /// operatören — betalningen bokförs likadant över som under gränsen.
+  ///
+  /// Flaggan PEKAR UT poster för mänsklig efterhandsbedömning: ett väsentligt
+  /// belopp som bokförs i ett senare år kan kräva en justering av ingående eget
+  /// kapital i stället för att bara löpa genom årets resultat (BFN:s regler om
+  /// fel hänförliga till ett fastställt räkenskapsår). Den bedömningen tillhör
+  /// en människa; koden markerar bara var den behöver göras.
+  ///
+  /// ── ÖREN, INTE KRONOR ─────────────────────────────────────────────────────
+  ///
+  /// Heltal i ören av samma skäl som beloppen i övrigt: en gräns i flyttal
+  /// jämförs mot Decimal-belopp, och den jämförelsen ska inte gå genom en float.
+  /// Default 1 000 000 ören = 10 000 kr — exakt det hårdkodade tal som stod i
+  /// `accounting.service.ts` innan gränsen blev en kolumn, så befintliga
+  /// organisationer får oförändrat beteende.
+  ///
+  /// OWNER-redigerbar, samma nivå som skuggagenten och som själva den sena
+  /// bokföringen: gränsen avgör vad en revisor får syn på i efterhand.
+  lateBookingMaterialityThreshold Int @default(1000000)
+
   // Intern kontrollgräns (COSO) för PDF-bankavstämning: rader vars belopp
   // överstiger detta avvisas och loggas vid AI-tolkning/confirm (flagga, ej
   // hårt stopp av importen). Default 5 MSEK — en enskild hyresinbetalning

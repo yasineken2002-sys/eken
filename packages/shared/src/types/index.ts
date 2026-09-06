@@ -115,6 +115,11 @@ export interface Organization {
    * `OrganizationsService`, inte i typen. Se `shadow-agent-field-authz.spec.ts`.
    */
   shadowAgentEnabled?: boolean
+  /**
+   * Väsentlighetsgräns för sen bokföring, i ÖREN. Se kolumnens docblock i
+   * schema.prisma: den MARKERAR poster för granskning, den spärrar inget.
+   */
+  lateBookingMaterialityThreshold?: number
   remindersEnabled?: boolean
   reminderFeeSek?: number
   reminderFormalDay?: number

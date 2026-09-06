@@ -1,6 +1,7 @@
 import {
   IsString,
   IsOptional,
+  IsInt,
   IsNumber,
   IsBoolean,
   IsEnum,
@@ -70,6 +71,25 @@ export class UpdateOrganizationDto {
   @IsBoolean()
   @IsOptional()
   shadowAgentEnabled?: boolean
+
+  /**
+   * VÄSENTLIGHETSGRÄNS FÖR SEN BOKFÖRING, i ÖREN.
+   *
+   * Samma rollresonemang som `shadowAgentEnabled` ovan, och grinden ligger av
+   * samma skäl i TJÄNSTEN: OWNER. Gränsen avgör vilka sent bokförda poster en
+   * revisor får syn på i efterhand, och det är inte ett förvaltningsbeslut.
+   *
+   * `@Min(0)` speglar CHECK-villkoret i databasen — en negativ gräns hade gjort
+   * VARJE sen post väsentlig och därmed tyst förvandlat markeringen till brus.
+   * Taket är 1 000 000 000 ören (10 MSEK); över det är gränsen i praktiken
+   * avstängd, och ett fält utan tak inbjuder till en felskrivning som ser ut som
+   * en policy.
+   */
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000)
+  @IsOptional()
+  lateBookingMaterialityThreshold?: number
 
   // ── Påminnelse- och inkassoinställningar ───────────────────────────────
   @IsBoolean()
