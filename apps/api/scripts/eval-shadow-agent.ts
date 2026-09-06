@@ -190,8 +190,38 @@ async function main(): Promise<void> {
       const atgardFöreRegler =
         tolkat?.toolName ?? (raTool === INGEN_ATGARD ? 'INGEN' : raTool ? 'OTOLKBART' : 'OTOLKBART')
 
-      const kat = (tolkat?.prediction?.['category'] as string | undefined) ?? null
-      const råPri = (tolkat?.prediction?.['priority'] as string | undefined) ?? null
+      // ── PREDICTION BEHÅLLS ÄVEN NÄR SVARET ÄR INGEN_ATGARD ─────────────────
+      //
+      // `tolkaVerktygsanrop` returnerar null för `INGEN_ATGARD` — rätt i
+      // PRODUKTIONEN, där det inte finns någon rad att skriva. I MÄTNINGEN är
+      // det en tyst förlust: modellen fyllde i sin bedömning, och att kasta den
+      // gör att varje förbättring av tystnadsmålet SÄNKER nämnaren för kategori
+      // och prioritet. Uppmätt i körning 3: nämnaren var 50 av 52, och de två
+      // som saknades var precis de två `INGEN`-svaren. Lyckas agenten med alla
+      // fem tystnadsfallen mäts kategorin på fem ärenden färre.
+      //
+      // Koden gör redan motsatsen för FRÅGA, med samma motivering ordagrant.
+      // Här läses fältet ur det råa blocket i stället, så mätningen behåller
+      // datapunkten utan att produktionens semantik ändras.
+      const råPrediction =
+        block && block.type === 'tool_use'
+          ? (((block.input as Record<string, unknown>)['prediction'] as
+              | Record<string, unknown>
+              | undefined) ?? {})
+          : {}
+      const strängEllerNull = (v: unknown): string | null =>
+        typeof v === 'string' && v !== '' ? v : null
+      const kat =
+        (tolkat?.prediction?.['category'] as string | undefined) ??
+        strängEllerNull(råPrediction['category'])
+      const råPri =
+        (tolkat?.prediction?.['priority'] as string | undefined) ??
+        strängEllerNull(råPrediction['priority'])
+      const andraKategori =
+        tolkat?.andraKategori ??
+        (block && block.type === 'tool_use'
+          ? strängEllerNull((block.input as Record<string, unknown>)['andraKategori'])
+          : null)
 
       // ── REGLERNA UR PRODUKTIONEN, INTE EN KOPIA HÄR ────────────────────────
       //
@@ -199,7 +229,7 @@ async function main(): Promise<void> {
       // tillämpar sin egen version av en regel mäter sin egen version. Golvet och
       // frågeregeln körs alltså genom exakt den funktion skuggtjänsten anropar.
       const regler = tillämpaRegler(
-        { atgärd: atgardFöreRegler, prioritet: råPri, kategori: kat },
+        { atgärd: atgardFöreRegler, prioritet: råPri, kategori: kat, andraKategori },
         {
           titel: a.titel,
           beskrivning: a.beskrivning,
@@ -208,6 +238,19 @@ async function main(): Promise<void> {
       )
       const atgard = regler.atgärd
       const pri = regler.prioritet
+      const utanModell = tillämpaRegler(
+        {
+          atgärd: atgardFöreRegler,
+          prioritet: a.registreradPrioritet,
+          kategori: kat,
+          andraKategori,
+        },
+        {
+          titel: a.titel,
+          beskrivning: a.beskrivning,
+          registreradKategori: a.registreradKategori,
+        },
+      )
 
       // TORRLÄGETS DOM: hade en delegation för verktyget kunnat bära det här?
       // Räknas för verktygsförslag, inte för INGEN eller FRAGA — de utför inget.
@@ -230,6 +273,12 @@ async function main(): Promise<void> {
           // körning två saker som ser ut som en.
           atgardForeRegler: atgardFöreRegler,
           prioritetForeRegler: råPri,
+          // DEN DETERMINISTISKA KONTROLLEN: samma golv, men med ärendets
+          // REGISTRERADE prioritet i stället för modellens. Utan den går det
+          // inte att svara på om modellen ens tjänar sitt tokenpris — se
+          // `rapport.ts`. Den kostar noll extra anrop: samma rena funktion,
+          // annan indata.
+          prioritetUtanModell: utanModell.prioritet ?? undefined,
           domWouldExecute,
           kostnadUsd: kostnad,
           inTokens: inTok,

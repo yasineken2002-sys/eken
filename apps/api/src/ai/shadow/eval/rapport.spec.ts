@@ -77,6 +77,26 @@ describe('byggRapport', () => {
       expect(r.regler.golvForstorde).toBe(1)
     })
 
+    it('kontrollen utan modell räknas separat, och är null när den saknas', () => {
+      const utan = byggRapport([{ facit: f({ prioritet: 'HIGH' }), utfall: u() }])
+      expect(utan.regler.prioritetUtanModell).toBeNull()
+
+      const med = byggRapport([
+        {
+          facit: f({ prioritet: 'HIGH' }),
+          utfall: u({ prioritet: 'NORMAL', prioritetUtanModell: 'HIGH' }),
+        },
+        {
+          facit: f({ prioritet: 'LOW' }),
+          utfall: u({ prioritet: 'LOW', prioritetUtanModell: 'NORMAL' }),
+        },
+      ])
+      // Modellen 1/2, kontrollen 1/2 — och de träffar på OLIKA poster. Talen
+      // ska inte kunna smälta ihop.
+      expect(med.prioritet.traffar).toBe(1)
+      expect(med.regler.prioritetUtanModell).toEqual({ antal: 2, traffar: 1, andel: 0.5 })
+    })
+
     it('räknar en tvingad fråga och om den var rätt', () => {
       const r = byggRapport([
         {

@@ -383,7 +383,13 @@ export interface Triageutfall {
 const TVINGAD_FRÅGA_FÄLT = 'category'
 
 export function tillämpaRegler(
-  modell: { atgärd: string; prioritet: string | null; kategori: string | null },
+  modell: {
+    atgärd: string
+    prioritet: string | null
+    kategori: string | null
+    /** Modellens andrahandsval. Bär den tvingade frågans andra alternativ. */
+    andraKategori?: string | null
+  },
   ärende: { titel: string; beskrivning: string; registreradKategori: string },
 ): Triageutfall {
   const golv = prioritetsgolv(ärende.registreradKategori, ärende.titel, ärende.beskrivning)
@@ -412,14 +418,23 @@ export function tillämpaRegler(
   // registrerat som. Att hitta på en tredje kategori hade varit att lägga till
   // ett alternativ ingen hade skäl för — och en fråga vars alternativ är gissade
   // ger ett svar som inte betyder något.
-  const gissning =
-    modell.kategori !== null && modell.kategori !== MaintenanceCategory.OTHER
-      ? modell.kategori
-      : null
-  const alternativ = gissning
-    ? [gissning, MaintenanceCategory.OTHER as string]
-    : [MaintenanceCategory.OTHER as string]
-
+  // ── VARFÖR ANDRAHANDSVALET OCH INTE BARA FÖRSTAHANDSVALET ───────────────
+  //
+  // Den första formen läste bara `prediction.category` och ställde frågan som
+  // "gissningen eller OTHER". Uppmätt på körning 3: regeln träffade rätt två
+  // ärenden och tvingade fram NOLL frågor — i båda svarade modellen `OTHER`,
+  // vilket är precis vad den gissar i de fall regeln finns för. Villkoret
+  // `alternativ.length < 2` föll varje gång, och regeln var död utan att något
+  // blev rött. Den mätning som såg ut att belägga den mätte `kräverFråga` för
+  // sig, inte funktionens utfall — två olika frågor med samma namn.
+  //
+  // Alternativen byggs därför av modellens FÖRSTA och ANDRA val, i den ordning
+  // de dyker upp, och `OTHER` får vara ett av dem. Båda är belagda; ingen är
+  // påhittad av regeln.
+  const kandidater = [modell.kategori, modell.andraKategori ?? null].filter(
+    (k): k is string => typeof k === 'string' && k !== '',
+  )
+  const alternativ = [...new Set(kandidater)]
   // Kan ingen andra kategori beläggas finns ingen giltig fråga att ställa — då
   // lämnas förslaget orört. Fail-open mot MODELLEN, inte mot hyresvärden:
   // besiktningen blir kvar som ett förslag hen kan avslå.
@@ -439,8 +454,9 @@ export function tillämpaRegler(
       fält: TVINGAD_FRÅGA_FÄLT,
       alternativ,
       användsTill:
-        `Är ärendet ${gissning} går det att hantera direkt; är det ${MaintenanceCategory.OTHER} ` +
-        'behövs ett platsbesök för att avgöra vad felet gäller innan någon skickas.',
+        `Är ärendet ${alternativ[0]} går det till en annan hantering än om det är ` +
+        `${alternativ[1]} — kategorin avgör vem som skickas, och den går inte att ` +
+        'avgöra ur texten.',
     },
     golvHöjde: prioritet !== null && prioritet !== modellensPrioritet,
     frågaTvingad: true,

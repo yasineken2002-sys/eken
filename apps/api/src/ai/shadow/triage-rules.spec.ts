@@ -296,35 +296,49 @@ describe('triage-rules', () => {
       registreradKategori: MaintenanceCategory.OTHER,
     }
 
-    it('ställs om modellens gissning, med OTHER som andra alternativ', () => {
+    it('byggs av modellens första och andra kategorival', () => {
       const ut = tillämpaRegler(
         {
           atgärd: BESIKTNINGSVERKTYG,
           prioritet: MaintenancePriority.NORMAL,
-          kategori: MaintenanceCategory.HEATING,
+          kategori: MaintenanceCategory.OTHER,
+          andraKategori: MaintenanceCategory.HEATING,
         },
         ärende,
       )
       expect(ut.frågaTvingad).toBe(true)
       expect(ut.atgärd).toBe(FRAGA)
       expect(ut.fråga?.fält).toBe('category')
-      expect(ut.fråga?.alternativ).toEqual([MaintenanceCategory.HEATING, MaintenanceCategory.OTHER])
+      expect(ut.fråga?.alternativ).toEqual([MaintenanceCategory.OTHER, MaintenanceCategory.HEATING])
       expect(ut.fråga?.användsTill).toContain(MaintenanceCategory.HEATING)
     })
 
-    // FAIL-OPEN MOT MODELLEN, inte mot hyresvärden: kan inget andra alternativ
-    // beläggas finns ingen giltig fråga, och förslaget lämnas kvar att avslå.
-    it('lämnar förslaget orört när modellen inte kunde gissa någon kategori heller', () => {
-      const ut = tillämpaRegler(
-        {
-          atgärd: BESIKTNINGSVERKTYG,
-          prioritet: MaintenancePriority.NORMAL,
-          kategori: MaintenanceCategory.OTHER,
-        },
-        ärende,
-      )
-      expect(ut.frågaTvingad).toBe(false)
-      expect(ut.atgärd).toBe(BESIKTNINGSVERKTYG)
+    // ── REGRESSIONEN SOM GJORDE REGELN DÖD ────────────────────────────────
+    //
+    // Första formen byggde alternativen som "modellens gissning eller OTHER".
+    // Uppmätt på körning 3: regeln träffade rätt två ärenden och tvingade fram
+    // NOLL frågor — modellen svarade `OTHER` i båda, alltså samma värde som
+    // ärendet redan var registrerat som, och det fanns inget andra alternativ.
+    // Provet nedan är den formen: ett enda kandidatvärde ska INTE ge en fråga,
+    // och det som gör regeln levande är att modellen numera ombeds om ett
+    // andrahandsval.
+    it('lämnar förslaget orört när det bara finns ETT kandidatvärde', () => {
+      for (const modell of [
+        { kategori: MaintenanceCategory.OTHER, andraKategori: null },
+        { kategori: MaintenanceCategory.OTHER, andraKategori: MaintenanceCategory.OTHER },
+        { kategori: null, andraKategori: MaintenanceCategory.HEATING as string | null },
+      ]) {
+        const ut = tillämpaRegler(
+          { atgärd: BESIKTNINGSVERKTYG, prioritet: MaintenancePriority.NORMAL, ...modell },
+          ärende,
+        )
+        if (modell.kategori === null) {
+          // Ett enda värde, fast från det andra fältet — samma utfall.
+          expect(ut.fråga?.alternativ.length ?? 0).toBeLessThan(2)
+        }
+        expect(ut.frågaTvingad).toBe(false)
+        expect(ut.atgärd).toBe(BESIKTNINGSVERKTYG)
+      }
     })
 
     it('golvet gäller ÄVEN när frågan tvingas fram', () => {
@@ -333,6 +347,7 @@ describe('triage-rules', () => {
           atgärd: BESIKTNINGSVERKTYG,
           prioritet: MaintenancePriority.LOW,
           kategori: MaintenanceCategory.HEATING,
+          andraKategori: MaintenanceCategory.APPLIANCES,
         },
         // "påminner" och inte något vattenord: vattenorden innehåller "vatten",
         // som ÄR ett kategoriord, och då slutar frågeregeln gälla. De två
