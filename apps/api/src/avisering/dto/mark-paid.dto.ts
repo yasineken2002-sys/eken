@@ -1,5 +1,16 @@
 import type { MarkNoticePaidInput, SammaNycklar } from '@eken/shared'
-import { IsNumber, IsDateString, IsOptional, IsEnum, Min } from 'class-validator'
+import { SEN_BOKFORING_MIN_SKAL, SEN_BOKFORING_MAX_SKAL } from '@eken/shared'
+import {
+  IsNumber,
+  IsDateString,
+  IsOptional,
+  IsEnum,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator'
+import { Transform } from 'class-transformer'
 import { PaymentMethod } from '@prisma/client'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
@@ -25,6 +36,23 @@ export class MarkPaidDto implements MarkNoticePaidInput {
   @IsDateString()
   @IsOptional()
   paidAt?: string
+
+  /**
+   * Skälet till att bokföra en betalning i ett STÄNGT RÄKENSKAPSÅR på första
+   * öppna dag. Fältets NÄRVARO är samtycket — se schemats docblock.
+   *
+   * Rollspärren (OWNER) ligger i `assertFarBokforaSent`, inte här: DTO:n känner
+   * inte till vem som frågar.
+   */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
+  @IsString()
+  @MinLength(SEN_BOKFORING_MIN_SKAL, {
+    message:
+      'Skälet måste vara minst 10 tecken — det sparas i verifikatets spår och ska gå att förstå i efterhand',
+  })
+  @MaxLength(SEN_BOKFORING_MAX_SKAL, { message: 'Skälet får vara högst 500 tecken' })
+  senBokforingSkal?: string
 }
 
 /**

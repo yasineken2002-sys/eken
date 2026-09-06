@@ -187,7 +187,12 @@ describe('FIX 9 · PR 6 — AviseringService.markAsPaid', () => {
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1)
     // Bokföringen får transaktionsklienten som sista argument.
     const bokförArgs = accounting.createJournalEntryForRentNoticeManualPayment.mock.calls[0]
-    expect(bokförArgs[bokförArgs.length - 1]).toBe(prisma)
+    // IDENTITET, INTE POSITION. Raden löd `bokförArgs[bokförArgs.length - 1]`
+    // tills betalningsvägen fick en valfri parameter EFTER `tx` (sen bokföring
+    // i ett stängt räkenskapsår). Provets fråga är att transaktionsklienten
+    // TRÄDS IGENOM — inte var i argumentlistan den råkar stå — och den frågan
+    // överlever nästa parameter någon lägger till.
+    expect(bokförArgs).toContain(prisma)
   })
 
   it('transaktionen har EXPLICITA gränser — en svälten betalning failar, hänger inte', async () => {

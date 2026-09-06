@@ -865,6 +865,7 @@ model Organization {
   closedPeriods             ClosedAccountingPeriod[]
   periodEvents              AccountingPeriodEvent[]
   fiscalYearCloses          FiscalYearClose[]
+  lateFiscalYearPostings    LateFiscalYearPosting[]
   terminationRequests       TerminationRequest[]
   keyHandovers              KeyHandover[]
   meters                    Meter[]
@@ -948,6 +949,7 @@ model User {
   closedPeriods            ClosedAccountingPeriod[]
   periodEvents             AccountingPeriodEvent[]
   fiscalYearCloses         FiscalYearClose[]
+  lateFiscalYearPostings   LateFiscalYearPosting[]
   documents                Document[]
   importJobs               ImportJob[]
   aiConversations          AiConversation[]
@@ -2087,8 +2089,31 @@ model JournalEntry {
   // Som mest EN rättelse per verifikat — @unique på FK:n ovan gör relationen 1-1.
   reversedBy        JournalEntry? @relation("JournalEntryReversal")
 
+  // ── NÄR AFFÄRSHÄNDELSEN INTRÄFFADE (BFL 5 kap 7 §) ────────────────────────
+  //
+  // `date` ovan gör dubbel tjänst: det är BÅDE bokföringsdatum (styr period,
+  // `fiscalYear` och `verNumber`) och, i normalfallet, affärshändelsens datum.
+  // Så länge de två är samma dag räcker ett fält — och för i praktiken varje
+  // verifikat i kodbasen är de det.
+  //
+  // De går isär i exakt ETT fall: en betalning som verkligen inträffade i ett
+  // STÄNGT räkenskapsår. Året kan inte öppnas igen, men affärshändelsen måste
+  // ändå bokföras (BFL 5 kap 1–2 §§), så posten läggs på första öppna dag.
+  // BFL 5 kap 7 § kräver då att verifikationen redovisar "när affärshändelsen
+  // har inträffat" — det är det här fältet.
+  //
+  // NULL betyder "samma dag som `date`", inte "okänt". Det är den normala
+  // vägen, och en backfill vore fel: äldre poster har aldrig flyttats, så
+  // `date` ÄR deras händelsedatum. Att skriva in det i en andra kolumn hade
+  // fabricerat en uppgift och gjort NULL tvetydigt för framtiden.
+  //
+  // Härledningarna rör den INTE. `fiscalYear`, `verNumber` och periodspärren
+  // läser fortfarande `date`, annars hade den gap-fria nummerserien brutits.
+  eventDate DateTime? @db.Date
+
   // Bokföringslagen (1999:1078): journalposter är räkenskapsinformation, bevaras 7 år.
-  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lateFiscalYearLog LateFiscalYearPosting?
   createdBy       User?              @relation(fields: [createdById], references: [id])
   lines           JournalEntryLine[]
   fiscalYearClose FiscalYearClose?
@@ -2104,6 +2129,68 @@ model JournalEntry {
   @@index([organizationId])
   @@index([date])
   @@index([organizationId, fiscalYear])
+}
+
+/// Spåret efter en post som bokförts SENT därför att dess räkenskapsår var stängt.
+///
+/// ── VARFÖR EN EGEN MODELL OCH INTE EN AccountingPeriodEvent-TYP ────────────
+///
+/// `AccountingPeriodEvent` är nyckelad på (organizationId, year, month, seq) och
+/// har en CHECK som binder `reason`/`reasonCategory` till `type` — den beskriver
+/// vad som hände MED EN PERIOD. Den här händelsen hör till TVÅ perioder samtidigt
+/// (det stängda året posten kom från, och den öppna dagen den hamnade på) och
+/// till ett verifikat. Att pressa in den som en tredje typ hade krävt att CHECKen
+/// skrevs om och gjort `seq`-räknarens innebörd tvetydig — två frågor i ett fält.
+///
+/// ── APPEND-ONLY ────────────────────────────────────────────────────────────
+///
+/// Ingen `updatedAt`, samma mönster som `RentNoticeEvent` och
+/// `AccountingPeriodEvent`. Raden är räkenskapsinformation: den är beviset för
+/// att verifikatets `date` avviker från `eventDate` med avsikt, och vem som
+/// beslutade det. Skrivs i SAMMA transaktion som verifikatet — annars kunde ett
+/// flyttat verifikat existera utan sitt spår.
+model LateFiscalYearPosting {
+  id             String @id @default(uuid())
+  organizationId String
+
+  /// Verifikatet som flyttades. Unik: ett verifikat flyttas en gång.
+  /// Restrict av samma skäl som JournalEntry.organization — spåret får aldrig
+  /// försvinna före posten det förklarar.
+  journalEntryId String       @unique
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  /// Det VERKLIGA datumet för betalningen — samma värde som JournalEntry.eventDate.
+  /// Dubblerat med flit: verifikatet ska kunna läsas ensamt (BFL 5 kap 7 §), och
+  /// spåret ska kunna läsas utan att join:a verifikatet.
+  eventDate DateTime @db.Date
+  /// Datumet posten faktiskt bokfördes på — första öppna dag.
+  bookedDate DateTime @db.Date
+  /// Räkenskapsåret som var stängt och därför orsakade flytten.
+  closedFiscalYear Int
+
+  /// Beloppet, för väsentlighetsbedömningen. Ett väsentligt belopp ska inte bara
+  /// löpa genom innevarande års resultat — det kan kräva en justering av ingående
+  /// eget kapital, och det är en BEDÖMNING som en människa måste göra. Flaggan
+  /// nedan pekar ut posten; den utför ingenting.
+  amount             Decimal @db.Decimal(10, 2)
+  materialityFlagged Boolean @default(false)
+
+  /// Operatörens skäl. Obligatoriskt — en flytt utan angivet skäl är inte
+  /// spårbar, och tvingas av tjänstelagret innan raden skrivs.
+  reason String
+
+  /// Vem som beslutade. Samma enum som övriga händelsemodeller.
+  actorType   EventActorType
+  actorUserId String?
+  actorLabel  String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actor        User?        @relation(fields: [actorUserId], references: [id])
+
+  @@index([organizationId, closedFiscalYear])
+  @@index([organizationId, materialityFlagged])
 }
 
 model JournalEntryLine {

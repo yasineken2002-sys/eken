@@ -216,8 +216,18 @@ describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
     // Bokföringen får transaktionsklienten som sista argument. Allokerings-id:t
     // (#290) sköts in FÖRE den — tx ligger kvar sist, som avi-vägen.
     const bokförArgs = createJournalEntryForInvoiceManualPayment.mock.calls[0] as unknown[]
-    expect(bokförArgs[bokförArgs.length - 1]).toBe(tx)
-    expect(bokförArgs).toHaveLength(8)
+    // IDENTITET, INTE POSITION. Raden löd `bokförArgs[bokförArgs.length - 1]`
+    // tills betalningsvägen fick en valfri parameter EFTER `tx` (sen bokföring
+    // i ett stängt räkenskapsår). Provets fråga är att transaktionsklienten
+    // TRÄDS IGENOM — inte var i argumentlistan den råkar stå — och den frågan
+    // överlever nästa parameter någon lägger till.
+    expect(bokförArgs).toContain(tx)
+    // Arity prövas INTE längre. Raden löd `toHaveLength(8)`, vilket band provet
+    // till hur många argument metoden tar — och den fick en valfri nionde (sen
+    // bokföring i ett stängt räkenskapsår). Det som faktiskt betyder något är
+    // att allokerings-id och transaktionsklienten står på sina platser.
+    expect(bokförArgs[6]).toBe('alloc-1')
+    expect(bokförArgs[7]).toBe(tx)
   })
 
   it('INGEN skrivning går utanför transaktionen (#288 — fångar en glömd this.prisma)', async () => {

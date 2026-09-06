@@ -26,6 +26,7 @@ import { RentBackfillService } from './rent-backfill.service'
 import { GenerateNoticesDto } from './dto/generate-notices.dto'
 import { SendNoticesDto } from './dto/send-notices.dto'
 import { MarkPaidDto } from './dto/mark-paid.dto'
+import { assertFarBokforaSent } from '../accounting/closed-period'
 import { ConfirmBackfillDto } from './dto/confirm-backfill.dto'
 import { CreateRentNoticeCreditDto } from './dto/create-rent-notice-credit.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
@@ -267,7 +268,18 @@ export class AviseringController {
       dto.paymentMethod,
       dto.paidAt,
       user.sub,
+      // SEN BOKFÖRING I ETT STÄNGT RÄKENSKAPSÅR. Rollen prövas här, före
+      // tjänsten: endpointen släpper in MANAGER och ADMIN för vanliga
+      // betalningar, men flytten kräver OWNER. Samma spärrfunktion som
+      // fakturavägen använder — regeln bor på ETT ställe.
+      dto.senBokforingSkal ? this.senBokforing(user, dto.senBokforingSkal) : undefined,
     )
+  }
+
+  /** Rollspärr + nyttolast för sen bokföring. Speglar fakturacontrollern. */
+  private senBokforing(user: JwtPayload, reason: string) {
+    assertFarBokforaSent(user.role)
+    return { reason, actorLabel: user.email ?? null }
   }
 
   @Delete(':id')

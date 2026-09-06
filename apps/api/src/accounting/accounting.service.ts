@@ -13,6 +13,7 @@ import {
 // typerna (Prisma.TransactionClient m.fl.), så inget annat behöver ändras.
 import {
   CompanyForm,
+  EventActorType,
   PaymentMethod,
   Prisma,
   RentNoticeType,
@@ -61,7 +62,37 @@ import {
   type RadIndata,
   type UtgiftIndata,
 } from './manual-entry'
-import { isPeriodClosed, periodKeyOf, periodOfDate } from './closed-period'
+import { isPeriodClosed, periodKeyOf, periodOfDate, resolveBokforingsdatum } from './closed-period'
+
+/**
+ * Väsentlighetsgräns för en post som bokförts sent i ett stängt räkenskapsår.
+ *
+ * Flaggan PEKAR UT, den utför ingenting. Ett väsentligt belopp som bokförs i ett
+ * senare år ska inte bara löpa genom det årets resultat — det kan kräva en
+ * justering av ingående eget kapital, och det är en BEDÖMNING som tillhör en
+ * människa (BFN:s regler om fel hänförliga till ett fastställt räkenskapsår).
+ *
+ * Talet är ett EGET beslut och delas medvetet inte med någon annan gräns i
+ * kodbasen. `REMINDER_FEE_MAX_SEK` och konteringens beloppsspann svarar på andra
+ * frågor; två gränser som ska kunna ändras var för sig är inte en gräns.
+ */
+const VASENTLIGHETSGRANS = new Prisma.Decimal(10000)
+
+/**
+ * Operatörens beslut att bokföra en betalning sent, därför att räkenskapsåret
+ * den inträffade i är stängt.
+ *
+ * Den bärs av de MANUELLA betalningsvägarna och av ingen annan. Att den är en
+ * egen typ och inte en `boolean` är avsiktligt: en flytt utan skäl och aktör är
+ * inte spårbar, och typen gör det omöjligt att skicka bara ja:et.
+ */
+export interface SenBokforingBeslut {
+  tillat: boolean
+  reason: string
+  actorType: EventActorType
+  actorUserId?: string | null
+  actorLabel?: string | null
+}
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 // Konteringsrad i internt format innan den mappas till Prisma create-input.
@@ -429,6 +460,21 @@ export class AccountingService {
     // avi, makulerad faktura, hävd matchning) lämnar den tom och är oförändrade.
     reversalOfEntryId?: string
     /**
+     * OPERATÖRENS UTTRYCKLIGA JA till att bokföra en betalning som inträffade i
+     * ett STÄNGT RÄKENSKAPSÅR på första öppna dag.
+     *
+     * Frånvarande på varje väg utom de två manuella betalningsvägarna, och det
+     * är hela spärren: AI-verktyget och bankmatchningen kör obevakat och ska
+     * aldrig själva få besluta att en post hamnar i en annan period än den
+     * inträffade. De möter samma `ConflictException` som förut, vilket är rätt
+     * — beslutet är bindande och tillhör en människa.
+     *
+     * Den täcker INTE den stängda MÅNADEN. En månad kan öppnas igen, spårat, av
+     * en behörig användare; att rutta förbi den hade kringgått just det
+     * beslutet. Se `resolveBokforingsdatum`.
+     */
+    senBokforing?: SenBokforingBeslut
+    /**
      * Underlaget till en MANUELLT bokförd post (BFL 7 kap). Sätts bara av den
      * fria vägen — automatiska verifikat har sitt underlag i affärshändelsen de
      * kommer ur. Fältet togs tidigare emot av DTO:n och skrevs ingenstans; en
@@ -567,7 +613,15 @@ export class AccountingService {
       // sak — men den LÅSER ingenting när den inte hittar någon rad, och stoppar
       // därför inte en samtidig skrivning. Det gör indexet. Se docblocket ovan.
       const existing = await tx.journalEntry.findFirst({
-        where: { ...params.idempotencyWhere, source: params.source },
+        where: {
+          ...params.idempotencyWhere,
+          // S1: org-scopet skrivs UT, i stället för att vila på ett
+          // resonemang tvärs över två funktioner (kontrollen på rad ~558
+          // säger att `idempotencyWhere` bär organizationId). En spridning
+          // vars nyckel kan falla bort tyst korsar org-gränsen — #703.
+          organizationId: params.organizationId,
+          source: params.source,
+        },
         ...(params.include ? { include: params.include } : {}),
       })
       if (existing) {
@@ -575,16 +629,38 @@ export class AccountingService {
         return existing
       }
 
-      const { series, verNumber, fiscalYear } = await this.verifikationsnummer.allocate(
+      // ── SEN BOKFÖRING: VÄLJER DATUM, VERKSTÄLLER INGET ────────────────────
+      //
+      // Resolvern flyttar datumet BARA när anroparen uttryckligen tillåtit det
+      // OCH räkenskapsåret är stängt. Utan flaggan — AI-verktyget,
+      // bankmatchningen, och varje annan väg — är `bookingDate === params.date`
+      // och det här är en ren no-op.
+      //
+      // Den ERSÄTTER INTE spärren. `allocate` nedan anropar fortfarande
+      // `assertPeriodOpen`, på det datum som kommer ut här, i samma transaktion
+      // som posten. Landar resolvern på något stängt kastar spärren precis som
+      // förut: det finns fortfarande EXAKT EN punkt som säger nej, och den
+      // ligger nedanför den här raden.
+      const { bookingDate, eventDate, movedFromFiscalYear } = await resolveBokforingsdatum(
         tx,
         params.organizationId,
         params.date,
+        params.senBokforing?.tillat === true,
+      )
+
+      const { series, verNumber, fiscalYear } = await this.verifikationsnummer.allocate(
+        tx,
+        params.organizationId,
+        bookingDate,
       )
 
       const skapad = await tx.journalEntry.create({
         data: {
           organizationId: params.organizationId,
-          date: params.date,
+          date: bookingDate,
+          // Sätts BARA när posten flyttats. NULL betyder "samma dag som date",
+          // inte "okänt" — se kolumnens docblock i schemat.
+          ...(eventDate != null ? { eventDate } : {}),
           description: params.description,
           source: params.source,
           series,
@@ -616,6 +692,33 @@ export class AccountingService {
         },
         ...(params.include ? { include: params.include } : {}),
       })
+
+      // ── SPÅRET, I SAMMA TRANSAKTION SOM POSTEN ────────────────────────────
+      //
+      // Skrivs bara när resolvern faktiskt flyttade posten. Att det ligger inne
+      // i `run` och inte efter transaktionen är hela poängen: ett flyttat
+      // verifikat utan sitt spår är ett verifikat vars datum avviker från
+      // affärshändelsen utan att något förklarar varför, och det är sämre än
+      // att flytten inte gick igenom alls.
+      if (movedFromFiscalYear != null && eventDate != null) {
+        const senParams = params.senBokforing!
+        await tx.lateFiscalYearPosting.create({
+          data: {
+            organizationId: params.organizationId,
+            journalEntryId: skapad.id,
+            eventDate,
+            bookedDate: bookingDate,
+            closedFiscalYear: movedFromFiscalYear,
+            amount: debitSum,
+            materialityFlagged: debitSum.greaterThanOrEqualTo(VASENTLIGHETSGRANS),
+            reason: senParams.reason,
+            actorType: senParams.actorType,
+            ...(senParams.actorUserId != null ? { actorUserId: senParams.actorUserId } : {}),
+            ...(senParams.actorLabel != null ? { actorLabel: senParams.actorLabel } : {}),
+          },
+        })
+      }
+
       if (params.efterSkrivning) await params.efterSkrivning(tx, skapad, false)
       return skapad
     }
@@ -649,7 +752,15 @@ export class AccountingService {
       if (params.sourceId == null) throw err
 
       const winner = await this.prisma.journalEntry.findFirst({
-        where: { ...params.idempotencyWhere, source: params.source },
+        where: {
+          ...params.idempotencyWhere,
+          // S1: org-scopet skrivs UT, i stället för att vila på ett
+          // resonemang tvärs över två funktioner (kontrollen på rad ~558
+          // säger att `idempotencyWhere` bär organizationId). En spridning
+          // vars nyckel kan falla bort tyst korsar org-gränsen — #703.
+          organizationId: params.organizationId,
+          source: params.source,
+        },
         ...(params.include ? { include: params.include } : {}),
       })
       // Ingen post på VÅR nyckel betyder att kollisionen var någon annans —
@@ -1295,10 +1406,29 @@ export class AccountingService {
         `#VER "${serie}" ${entry.verNumber} ${dateStr} "${entry.description.replace(/"/g, '')}"`,
       )
       lines.push('{')
+      // ── transdat: NÄR AFFÄRSHÄNDELSEN INTRÄFFADE ──────────────────────────
+      //
+      // SIE4 har ett valfritt fält efter beloppet på `#TRANS` för exakt det här
+      // fallet: en transaktion vars verkliga datum skiljer sig från
+      // verifikationens `#VER`-datum. `#VER` bär bokföringsdatumet — det som
+      // styr period och verifikationsnummer — och ska fortsätta göra det.
+      //
+      // Utan fältet ser en revisor som granskar SIE-filen (den normala
+      // arbetsgången i Sverige) en helt vanlig verifikation daterad första
+      // januari, utan minsta antydan om att den avser en betalning från ett
+      // stängt föregående år. Uppgiften fanns i databasen men lämnade aldrig
+      // systemet — `eventDate` var osynligt just där det behövdes.
+      //
+      // Tomt, alltså oförändrad rad, för varje post som inte flyttats — vilket
+      // i praktiken är alla.
+      const transdat =
+        entry.eventDate != null
+          ? ` ${entry.eventDate.toISOString().slice(0, 10).replace(/-/g, '')}`
+          : ''
       for (const l of entry.lines) {
         // Samma formel som saldoposterna nedan — se sieSignedAmount.
         const amount = sieSignedAmount(l.debit, l.credit)
-        lines.push(`  #TRANS ${l.account.number} {} ${amount.toFixed(2)}`)
+        lines.push(`  #TRANS ${l.account.number} {} ${amount.toFixed(2)}${transdat}`)
       }
       lines.push('}')
       lines.push('')
@@ -2046,6 +2176,10 @@ export class AccountingService {
     // Valfri yttre transaktion — anges av deposits-modulens markPaid så att
     // depositions-/faktura-statusflip och detta verifikat skapas ATOMISKT.
     tx?: Prisma.TransactionClient,
+    // Operatörens uttryckliga ja till sen bokföring i ett stängt räkenskapsår.
+    // SIST i signaturen med flit: befintliga anropare skickar positionellt, och
+    // en parameter insatt i mitten hade tyst förskjutit `tx` hos dem.
+    senBokforing?: SenBokforingBeslut,
   ) {
     const amount = Number(paidAmount)
     if (!Number.isFinite(amount) || amount <= 0) return null
@@ -2095,6 +2229,7 @@ export class AccountingService {
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
       ...(tx ? { tx } : {}),
+      ...(senBokforing ? { senBokforing } : {}),
     })
   }
 
@@ -3684,6 +3819,9 @@ export class AccountingService {
     // bokföringen rullas HELA registreringen tillbaka av databasen, inte av ett
     // catch-block som förutsätter att processen fortfarande lever.
     tx?: Prisma.TransactionClient,
+    // Operatörens uttryckliga ja till sen bokföring i ett stängt räkenskapsår.
+    // SIST av samma skäl som på fakturavägen: anroparna skickar positionellt.
+    senBokforing?: SenBokforingBeslut,
   ) {
     if (notice.type === RentNoticeType.DEPOSIT) return null
 
@@ -3741,6 +3879,7 @@ export class AccountingService {
       idempotencyWhere: { organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },
       ...(tx ? { tx } : {}),
+      ...(senBokforing ? { senBokforing } : {}),
     })
   }
 
