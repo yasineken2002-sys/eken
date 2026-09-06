@@ -1269,9 +1269,10 @@ export class AccountingPeriodService {
     const org = await this.loadOrgForYearClose(organizationId)
     const bounds = fiscalYearBounds(fiscalYear, org.fiscalYearStartMonth)
 
-    const [checks, draft] = await Promise.all([
+    const [checks, draft, lateBookings] = await Promise.all([
       this.fiscalYearChecks(organizationId, org, bounds),
       this.buildYearEndDraft(this.prisma, organizationId, org, bounds),
+      this.listLateBookingsOverThreshold(organizationId, bounds),
     ])
 
     return {
@@ -1284,7 +1285,54 @@ export class AccountingPeriodService {
       canClose: !checks.some((c) => c.severity === 'blocking'),
       checks,
       entry: draft,
+      lateBookings,
     }
+  }
+
+  /**
+   * Årets sena bokföringar som översteg organisationens väsentlighetsgräns.
+   *
+   * ── AVGRÄNSNINGEN, OCH VILKET DATUM DEN GÅR PÅ ──────────────────────────
+   *
+   * `bookedDate`, inte `eventDate`. Posterna hör till det år som NU stängs —
+   * det är där de påverkar resultatet — medan `eventDate` pekar bakåt på ett
+   * år som redan är stängt. Att filtrera på händelsedatumet hade gett en tom
+   * lista i varje bokslut, eftersom ett stängt år per definition inte stängs
+   * igen.
+   *
+   * ORG-SCOPET SKRIVS UT. `organizationId` står explicit i `where` och kommer
+   * inte från en spridning — en annan organisations sena bokföringar får
+   * aldrig synas i det här bokslutet.
+   */
+  private async listLateBookingsOverThreshold(
+    organizationId: string,
+    bounds: { fiscalStart: Date; yearEndDate: Date },
+  ): Promise<LateBookingOverThreshold[]> {
+    const rader = await this.prisma.lateFiscalYearPosting.findMany({
+      where: {
+        organizationId,
+        materialityFlagged: true,
+        bookedDate: { gte: bounds.fiscalStart, lte: bounds.yearEndDate },
+      },
+      orderBy: [{ bookedDate: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        bookedDate: true,
+        eventDate: true,
+        closedFiscalYear: true,
+        amount: true,
+        reason: true,
+        actorLabel: true,
+      },
+    })
+
+    return rader.map((r) => ({
+      bookedDate: r.bookedDate.toISOString().slice(0, 10),
+      eventDate: r.eventDate.toISOString().slice(0, 10),
+      closedFiscalYear: r.closedFiscalYear,
+      amount: r.amount.toString(),
+      reason: r.reason,
+      actorLabel: r.actorLabel,
+    }))
   }
 
   /**
@@ -1815,6 +1863,34 @@ export interface FiscalYearClosePreview {
   canClose: boolean
   checks: FiscalYearCheck[]
   entry: FiscalYearEntryDraft
+  /**
+   * SENA BOKFÖRINGAR ÖVER VÄSENTLIGHETSGRÄNSEN — flaggans första läsare.
+   *
+   * `materialityFlagged` skrevs av #810 och lästes av INGENTING; uppräkningen
+   * gav noll träffar utanför skrivningen. Att sätta en flagga ingen ser är att
+   * göra ett arbete som inte utförs, och den som stänger året är exakt den som
+   * behöver se posterna: de tillhör affärshändelser i ett TIDIGARE, stängt år
+   * men ligger i det år som nu ska stängas.
+   *
+   * REN SYNLIGHET. Listan grindar ingenting — den är inte en `check` och rör
+   * inte `canClose`. Det var vad mätningen sa att flaggan är till för, och en
+   * spärr här hade varit en ny regel förklädd till en visning.
+   */
+  lateBookings: LateBookingOverThreshold[]
+}
+
+/** En sent bokförd post som översteg organisationens väsentlighetsgräns. */
+export interface LateBookingOverThreshold {
+  /** Verifikatets datum — dagen posten faktiskt bokfördes (första öppna dag). */
+  bookedDate: string
+  /** När betalningen VERKLIGEN skedde (BFL 5 kap 7 §). */
+  eventDate: string
+  /** Räkenskapsåret betalningen hörde till, och som var stängt. */
+  closedFiscalYear: number
+  amount: string
+  reason: string
+  /** Vem som beslutade. Null när aktören inte längre går att peka ut. */
+  actorLabel: string | null
 }
 
 /** Vad en genomförd årsstängning svarar. */

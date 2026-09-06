@@ -181,6 +181,60 @@ export function CloseFiscalYearModal({ fiscalYear, label, onClose }: Props) {
             </div>
           </div>
 
+          {/* ── SENA BOKFÖRINGAR FRÅN STÄNGDA RÄKENSKAPSÅR ─────────────────
+              Flaggans FÖRSTA läsare. `materialityFlagged` skrevs av #810 och
+              lästes av ingenting; den som stänger året är exakt den som behöver
+              se posterna, eftersom de tillhör affärshändelser i ett TIDIGARE,
+              stängt år men ligger i det år som nu stängs.
+
+              REN SYNLIGHET — blocket grindar ingenting och rör inte `canClose`.
+
+              TEXTEN ÄR GRANSKAD AV bokforings-expert och ändrad efter den
+              granskningen: "rättas" är K2/K3-termen (inte "justeras"), eget
+              kapital preciseras till balanserat resultat, och revisorn nämns
+              därför att steg två inte är valfritt — är posten ett väsentligt
+              FEL är rättelse mot eget kapital den föreskrivna behandlingen, inte
+              ett alternativ. Ett utkast som bara sa "bedöm om" framställde hela
+              frågan som ett val. INGET LAGRUM står i texten: Eveno har både K2-
+              och K3-kunder och punkten skiljer sig mellan regelverken, så en
+              enda hänvisning hade varit fel för hälften av användarna. */}
+          {data.lateBookings.length > 0 && (
+            <div
+              className="rounded-xl border border-amber-200 bg-amber-50 p-3"
+              data-testid="sena-bokforingar"
+            >
+              <p className="text-[13px] font-medium text-amber-800">
+                Sena bokföringar från stängda räkenskapsår
+              </p>
+              <p className="mt-1 text-[12px] text-amber-700">
+                Beloppen nedan avser affärshändelser i ett tidigare, stängt räkenskapsår som
+                bokförts sent. Bedöm — vid behov tillsammans med er revisor — om posten är ett
+                väsentligt fel som ska rättas mot eget kapital (balanserat resultat) i stället för
+                att påverka årets resultat.
+              </p>
+              <ul className="mt-2 space-y-2">
+                {data.lateBookings.map((rad) => (
+                  <li
+                    key={`${rad.bookedDate}-${rad.eventDate}-${rad.amount}`}
+                    className="border-t border-amber-200 pt-2 text-[12px] text-amber-800 first:border-0 first:pt-0"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="font-medium">{formatCurrency(Number(rad.amount))}</span>
+                      <span className="text-amber-700">
+                        Bokförd {formatDate(rad.bookedDate)} · Betald {formatDate(rad.eventDate)}{' '}
+                        (räkenskapsår {rad.closedFiscalYear})
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-amber-700">
+                      {rad.reason}
+                      {rad.actorLabel ? ` — ${rad.actorLabel}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* ── Vad stängningen INTE gör ───────────────────────────────── */}
           <div className="flex gap-2 rounded-xl bg-gray-100 p-3">
             <Info size={15} strokeWidth={1.8} className="mt-0.5 shrink-0 text-gray-500" />
