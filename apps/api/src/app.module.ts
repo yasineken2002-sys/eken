@@ -52,6 +52,7 @@ import { StorageModule } from './storage/storage.module'
 import { OcrModule } from './common/ocr/ocr.module'
 import { RedisModule } from './common/redis/redis.module'
 import { AiShadowModule } from './ai/shadow/shadow.module'
+import { DelegationModule } from './ai/delegation/delegation.module'
 import { PdfQueueModule } from './pdf-jobs/pdf-queue.module'
 import { AiUsagePageModule } from './ai-usage/ai-usage.module'
 import { PublicPlansModule } from './public/public-plans.module'
@@ -173,6 +174,8 @@ import { Psd2Module } from './psd2/psd2.module'
     // Skuggläget (etapp 6). @Global — MaintenanceService injicerar kön utan
     // att maintenance blir beroende av AI-lagret.
     AiShadowModule,
+    // Delegationerna (etapp 7). Ingen koppling till exekveraren — se modulen.
+    DelegationModule,
 
     // Feature modules
     AuthModule,

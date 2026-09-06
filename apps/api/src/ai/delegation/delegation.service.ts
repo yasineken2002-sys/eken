@@ -1,8 +1,16 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { beräknaStatus } from './delegation-status'
 import { delegerbaraVerktyg, kräverFrekvensvillkor, prövaDelegerbarhet } from './delegation-scope'
+import { TYPFÄLT, förifylltVillkor, typenFörFörslaget, villkoretSnävas } from './delegation-birth'
 
 import type { AiDelegation, Prisma, UserRole } from '@prisma/client'
 import type { DelegationStatus } from './delegation-status'
@@ -150,6 +158,191 @@ export class DelegationService {
         },
       },
     })
+  }
+
+  /**
+   * ── "GÖR ALLTID DETTA" — delegationen föds ur ett godkänt förslag ─────────
+   *
+   * Planens Del 6: *"Vägen är: observation → förslag → mänskligt tryck →
+   * delegation. Först när människan trycker Gör alltid detta får en delegation
+   * skapas."* Den här metoden är det trycket, och den är den ENDA vägen till en
+   * delegation som bär `bornFromAssignmentId`.
+   *
+   * ── VARFÖR DET ANDRA GODKÄNNANDET, INTE DET FÖRSTA ───────────────────────
+   *
+   * Planens exempel är *"du har godkänt det här sju gånger"* — ett MÖNSTER, inte
+   * en händelse. Ett enda ja kan vara ett undantag; två är en vana. Kravet är
+   * satt till två därför att det är det minsta tal som alls kan skilja de två
+   * åt, och därför att en högre tröskel hade gjort funktionen oåtkomlig för en
+   * hyresvärd med få ärenden — den som mest behöver automatiseringen.
+   *
+   * Villkoret prövas i TJÄNSTEN och inte i knappen: en grå knapp är en artighet,
+   * och `POST` går att anropa utan den.
+   */
+  async skapaUrFörslag(
+    organizationId: string,
+    assignmentId: string,
+    aktör: { userId: string; roll: UserRole },
+    val: { villkor?: DelegationVillkor; frekvensvillkor?: Frekvensvillkor } = {},
+    sänkorPerVerktyg: Record<string, unknown> = {},
+  ): Promise<AiDelegation> {
+    if (!FAR_DELEGERA.includes(aktör.roll)) {
+      throw new ForbiddenException('Bara organisationens ägare får delegera till agenten.')
+    }
+
+    const a = await this.prisma.aiAssignment.findFirst({
+      where: { id: assignmentId, organizationId },
+      select: {
+        id: true,
+        toolName: true,
+        status: true,
+        prediction: true,
+        propertyId: true,
+        unitId: true,
+        decidedByUserId: true,
+        createdAt: true,
+      },
+    })
+    // 404 och inte 403 för en annan organisations id: ett id i en annan org ska
+    // inte gå att skilja från ett påhittat.
+    if (!a) throw new NotFoundException('Förslaget hittades inte.')
+
+    if (a.status !== 'APPROVED') {
+      throw new ConflictException(
+        'Bara ett GODKÄNT förslag kan bli en delegation. Godkänn förslaget först.',
+      )
+    }
+    // En människa måste ha sagt ja. `decidedByUserId` sätts bara av `besluta`,
+    // som nås enbart från `@Patch(':id/decision')` med `user.sub` — det finns
+    // ingen AI-väg dit.
+    if (!a.decidedByUserId) {
+      throw new ConflictException(
+        'Förslaget saknar en människas beslut och kan inte bli en delegation.',
+      )
+    }
+
+    const d = prövaDelegerbarhet(a.toolName, undefined, sänkorPerVerktyg)
+    if (!d.delegerbar) throw new BadRequestException(d.text)
+
+    const typ = typenFörFörslaget(a.prediction)
+    if (!typ) {
+      // Ett förslag utan typ kan inte bli "gör alltid så här för DEN HÄR typen".
+      // Utan typen vore rätten "det här verktyget, alltid", vilket är något helt
+      // annat än det hyresvärden såg.
+      throw new ConflictException(
+        `Förslaget saknar ${TYPFÄLT} och kan därför inte bli en delegation för en TYP av ärende.`,
+      )
+    }
+
+    // ── IDEMPOTENSEN ────────────────────────────────────────────────────────
+    // Samma förslag två gånger ger EN delegation. Prövas här och inte med ett
+    // unikt index, därför att `bornFromAssignmentId` är nullbar och ett index
+    // över den hade förbjudit flera delegationer utan ursprung.
+    const redan = await this.prisma.aiDelegation.findFirst({
+      where: { organizationId, bornFromAssignmentId: a.id },
+      select: { id: true },
+    })
+    if (redan) {
+      throw new ConflictException('Det här förslaget har redan blivit en delegation.')
+    }
+
+    // ── MÖNSTRET: MINST ETT TIDIGARE GODKÄNNANDE AV SAMMA VERKTYG OCH TYP ───
+    const tidigare = await this.prisma.aiAssignment.findMany({
+      where: {
+        organizationId,
+        toolName: a.toolName,
+        status: 'APPROVED',
+        decidedByUserId: { not: null },
+        id: { not: a.id },
+      },
+      select: { prediction: true },
+    })
+    const antalSammaTyp = tidigare.filter((t) => typenFörFörslaget(t.prediction) === typ).length
+    if (antalSammaTyp < 1) {
+      throw new ConflictException(
+        `Du har godkänt det här en gång. En delegation skapas först när du godkänt ` +
+          `samma typ av förslag (${a.toolName}, ${typ}) en gång till.`,
+      )
+    }
+
+    // ── SCOPE FÖRIFYLLT UR FALLET, OCH BARA SNÄVBART ────────────────────────
+    const förifyllt = förifylltVillkor(a)
+    const villkor = val.villkor ?? förifyllt
+    const fel = villkoretSnävas(förifyllt, villkor)
+    if (fel.length > 0) {
+      throw new BadRequestException(`Villkoret får bara snävas, aldrig vidgas. ${fel.join(' ')}`)
+    }
+
+    return this.skapa(
+      organizationId,
+      {
+        toolName: a.toolName,
+        villkor,
+        ...(val.frekvensvillkor ? { frekvensvillkor: val.frekvensvillkor } : {}),
+        bornFromAssignmentId: a.id,
+      },
+      aktör,
+      sänkorPerVerktyg,
+    )
+  }
+
+  /**
+   * Kan det här förslaget bli en delegation just nu?
+   *
+   * Läsytans fråga — knappen är grå tills svaret är ja. Samma villkor som
+   * `skapaUrFörslag` prövar, men utan att skriva: en grå knapp är en artighet,
+   * spärren ligger i tjänsten.
+   */
+  async kanBliDelegation(
+    organizationId: string,
+    assignmentId: string,
+    sänkorPerVerktyg: Record<string, unknown> = {},
+  ): Promise<{ kan: boolean; skäl?: string; förifylltVillkor?: DelegationVillkor }> {
+    try {
+      const a = await this.prisma.aiAssignment.findFirst({
+        where: { id: assignmentId, organizationId },
+        select: {
+          id: true,
+          toolName: true,
+          status: true,
+          prediction: true,
+          propertyId: true,
+          unitId: true,
+          decidedByUserId: true,
+        },
+      })
+      if (!a) return { kan: false, skäl: 'Förslaget hittades inte.' }
+      if (a.status !== 'APPROVED' || !a.decidedByUserId)
+        return { kan: false, skäl: 'Förslaget är inte godkänt av en människa.' }
+      const d = prövaDelegerbarhet(a.toolName, undefined, sänkorPerVerktyg)
+      if (!d.delegerbar) return { kan: false, skäl: d.text }
+      const typ = typenFörFörslaget(a.prediction)
+      if (!typ) return { kan: false, skäl: `Förslaget saknar ${TYPFÄLT}.` }
+      const redan = await this.prisma.aiDelegation.findFirst({
+        where: { organizationId, bornFromAssignmentId: a.id },
+        select: { id: true },
+      })
+      if (redan) return { kan: false, skäl: 'Det här förslaget har redan blivit en delegation.' }
+      const tidigare = await this.prisma.aiAssignment.findMany({
+        where: {
+          organizationId,
+          toolName: a.toolName,
+          status: 'APPROVED',
+          decidedByUserId: { not: null },
+          id: { not: a.id },
+        },
+        select: { prediction: true },
+      })
+      if (tidigare.filter((t) => typenFörFörslaget(t.prediction) === typ).length < 1)
+        return {
+          kan: false,
+          skäl: 'Aktiveras efter att du godkänt samma typ av förslag en gång till.',
+        }
+      return { kan: true, förifylltVillkor: förifylltVillkor(a) }
+    } catch {
+      // Fail-closed: en fråga som inte gick att besvara är inte ett ja.
+      return { kan: false, skäl: 'Kunde inte avgöra just nu.' }
+    }
   }
 
   /** En händelse på en delegation. Append-only — raden skrivs, aldrig om. */

@@ -38,11 +38,18 @@ import type { InboxItem, InboxPage as InboxPageSvar, InboxSummary } from './api/
 const hamtaLista = vi.fn()
 const hamtaSummary = vi.fn()
 const beslutaMock = vi.fn()
+const kanDelegeraMock = vi.fn()
+const delegeraMock = vi.fn()
 
 vi.mock('./api/inbox.api', () => ({
   fetchInbox: (...a: unknown[]) => hamtaLista(...a),
   fetchInboxSummary: (...a: unknown[]) => hamtaSummary(...a),
   decideInboxItem: (...a: unknown[]) => beslutaMock(...a),
+  // "Gör alltid så här" (etapp 7). Mocken måste vara FULLSTÄNDIG: vitest kastar
+  // på en export som saknas, och det är rätt — en halvmockad modul hade gett
+  // ett fel som ser ut att handla om sidan i stället för om provets rigg.
+  fetchKanDelegera: (...a: unknown[]) => kanDelegeraMock(...a),
+  skapaDelegationUrForslag: (...a: unknown[]) => delegeraMock(...a),
 }))
 
 // Importen står EFTER `vi.mock` med flit. Vitest hissar `vi.mock`, men ordningen
@@ -99,6 +106,9 @@ beforeEach(() => {
   hamtaLista.mockReset()
   hamtaSummary.mockReset()
   beslutaMock.mockReset()
+  kanDelegeraMock.mockReset()
+  delegeraMock.mockReset()
+  kanDelegeraMock.mockResolvedValue({ kan: false, skäl: 'inte än', utförareFinns: false })
   hamtaLista.mockResolvedValue(sida([forslag()]))
   hamtaSummary.mockResolvedValue(summary())
 })

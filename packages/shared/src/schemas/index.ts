@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export * from './contract'
+export * from './agent-delegation'
 import {
   isValidSwedishPersonalNumber,
   isValidSwedishOrgNumber,
