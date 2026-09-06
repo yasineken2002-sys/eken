@@ -70,13 +70,33 @@ ALTER TABLE "LateFiscalYearPosting"
 -- inte matchar någon rad, och lyckas då tyst. Avsikten är "den här tabellen
 -- uppdateras aldrig", inte "de här raderna".
 --
--- BARA UPDATE. DELETE är med flit ospärrad, precis som för de sex befintliga
+-- BARA UPDATE. DELETE är med flit ospärrad, precis som för de åtta befintliga
 -- tabellerna: `scripts/delete-organization.ts` måste kunna radera, och en full
 -- spärr hade brutit den vägen — vilket hade upptäckts först vid en
 -- GDPR-begäran. Se append-only.db.spec.ts, som kräver att DELETE fungerar.
+--
+-- ── RADNIVÅ, INTE SATSNIVÅ — OCH VARFÖR ─────────────────────────────────────
+--
+-- Tabellen tar emot en KASKAD-UPDATE: `actorUserId` har ON DELETE SET NULL mot
+-- `User`, och SET NULL ÄR en UPDATE, utförd av databasen utan att appen vet om
+-- det. Med satsspärren `append_only_guard()` föll varje radering av en användare
+-- — uppmätt: elva sviter i shard 1/4 dog på
+--
+--     ERROR 23001: append-only: LateFiscalYearPosting får inte uppdateras
+--       at prisma.user.deleteMany() — cron-error-sink-e2e.db.spec.ts:76
+--
+-- Exakt samma fälla som `AccountingPeriodEvent` och `TenantAnonymizationLog`
+-- gick i (se 20260828140000, stycket "TVÅ TABELLER TAR EMOT EN KASKAD-UPDATE").
+-- Den tredje tabellen får därför samma lösning och samma funktion — ingen ny
+-- variant: `append_only_guard_actor` släpper igenom att aktörsreferensen nollas
+-- och ingenting annat, jämfört på hela raden.
+--
+-- PRISET, samma som för de två andra: en radnivå-trigger fyrar inte på en UPDATE
+-- som matchar noll rader, så `UPDATE … WHERE false` lyckas tyst. Satsen ändrar
+-- ingenting, så priset är begreppsmässigt — men det ska stå skrivet.
 CREATE TRIGGER append_only_late_fiscal_year_posting
   BEFORE UPDATE ON "LateFiscalYearPosting"
-  FOR EACH STATEMENT EXECUTE FUNCTION append_only_guard();
+  FOR EACH ROW EXECUTE FUNCTION append_only_guard_actor('actorUserId');
 
 -- ── OCH DEN SOM FAKTISKT BÄR REGELN ─────────────────────────────────────────
 --
