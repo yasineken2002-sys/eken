@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 
 import { PrismaModule } from '../../common/prisma/prisma.module'
+import { ObservationModule } from '../observation/observation.module'
 import { DelegationController } from './delegation.controller'
 import { DelegationService } from './delegation.service'
 
@@ -16,7 +17,7 @@ import { DelegationService } from './delegation.service'
  * fortfarande obyggd.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ObservationModule],
   controllers: [DelegationController],
   providers: [DelegationService],
   exports: [DelegationService],

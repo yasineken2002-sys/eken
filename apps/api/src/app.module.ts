@@ -53,6 +53,7 @@ import { OcrModule } from './common/ocr/ocr.module'
 import { RedisModule } from './common/redis/redis.module'
 import { AiShadowModule } from './ai/shadow/shadow.module'
 import { AiExecutionDryRunModule } from './ai/execution-dryrun/dryrun.module'
+import { ObservationModule } from './ai/observation/observation.module'
 import { DelegationModule } from './ai/delegation/delegation.module'
 import { PdfQueueModule } from './pdf-jobs/pdf-queue.module'
 import { AiUsagePageModule } from './ai-usage/ai-usage.module'
@@ -176,6 +177,7 @@ import { Psd2Module } from './psd2/psd2.module'
     // att maintenance blir beroende av AI-lagret.
     AiShadowModule,
     AiExecutionDryRunModule,
+    ObservationModule,
     // Delegationerna (etapp 7). Ingen koppling till exekveraren — se modulen.
     DelegationModule,
 

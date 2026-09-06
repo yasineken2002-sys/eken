@@ -58,6 +58,13 @@ vi.mock('./api/delegationer.api', () => ({
   resumeDelegation: (...a: unknown[]) => atertaMock(...a),
   extendDelegation: (...a: unknown[]) => forlangMock(...a),
   revokeDelegation: (...a: unknown[]) => aterkallaMock(...a),
+  // MOCKEN MÅSTE VARA FULLSTÄNDIG: sidan renderar <Antaganden />, som drar in
+  // samma modul. Vitest kastar på en export som saknas — och det är rätt, en
+  // halvmockad modul hade gett ett fel som ser ut att handla om sidan i stället
+  // för om provets rigg. Sektionens EGNA prov ligger i Antaganden.test.tsx.
+  fetchAntaganden: async () => [],
+  bekraftaAntagande: async () => undefined,
+  avvisaAntagande: async () => undefined,
 }))
 
 // Importen står EFTER `vi.mock` med flit — vitest hissar mocken, men ordningen

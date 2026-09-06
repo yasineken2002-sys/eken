@@ -19,6 +19,7 @@ import {
 } from '@eken/shared'
 import { cn } from '@/lib/cn'
 
+import { Antaganden } from './components/Antaganden'
 import { BekraftaAtgard } from './components/BekraftaAtgard'
 import {
   useDelegationer,
@@ -359,6 +360,12 @@ export function DelegationerPage() {
           />
         )}
       </div>
+
+      {/* ── DEN ANDRA HALVAN (etapp 8) ────────────────────────────────────
+          Tabellen ovanför är vad hyresvärden HAR gett bort. Den här sektionen
+          är vad systemet TROR — och som inte används förrän någon svarat.
+          Planens "se vad systemet tror om hen" kräver båda. */}
+      <Antaganden />
 
       <BekraftaAtgard
         atgard={atgard}

@@ -28,6 +28,7 @@ import { randomUUID } from 'node:crypto'
 import { ForbiddenException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 
+import { ObservationService } from '../observation/observation.service'
 import { DelegationService } from './delegation.service'
 import { beräknaStatus } from './delegation-status'
 
@@ -59,7 +60,7 @@ medDb('delegationen', () => {
 
   beforeAll(async () => {
     prisma = new PrismaClient()
-    tjanst = new DelegationService(prisma as never)
+    tjanst = new DelegationService(prisma as never, new ObservationService(prisma as never))
 
     const bygg = async (namn: string) => {
       const sfx = randomUUID().slice(0, 8)

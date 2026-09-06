@@ -184,7 +184,21 @@ function parseControllers(srcDir: string): {
         continue
       }
       const http = pending.find((d) => /^@(Get|Post|Patch|Put|Delete)\(/.test(d))
-      if (seenClass && http && /^(async\s+)?[a-zA-Z_]\w*\s*\(/.test(t)) {
+      // ── METODNAMNET FÅR VARA SVENSKT ────────────────────────────────────
+      //
+      // Regexen var `[a-zA-Z_]\w*`, och `\w` är ASCII-definierat: `bekräfta…`
+      // matchade fram till `ä` och föll. Utfallet var INTE att raden hoppades
+      // över — `pending` rensas bara när ingen HTTP-dekorator finns, så
+      // dekoratorn låg kvar och plockades upp av NÄSTA metod som matchade.
+      // Den metodens egen rutt försvann tyst ur golden-filen, och den
+      // föregåendes rutt tillskrevs fel handler.
+      //
+      // Uppmätt när `POST /ai/memory/assumptions/:id/reject` saknades i en
+      // fil som annars innehöll varje rutt i samma controller. Det är exakt
+      // formen CLAUDE.md beskriver under "`\b` är ASCII-definierat", och det
+      // är värre här än i en vakt: golden-filen är behörighetsytans facit, och
+      // en rutt som saknas där är en gräns ingen bevakar.
+      if (seenClass && http && /^(async\s+)?[\p{L}_$][\p{L}\p{N}_$]*\s*\(/u.test(t)) {
         const verb = /^@(\w+)/.exec(http)![1]!
         const path = /\(\s*['"`]([^'"`]*)['"`]/.exec(http)?.[1] ?? ''
         const roles = rolesOf(pending) || classRoles

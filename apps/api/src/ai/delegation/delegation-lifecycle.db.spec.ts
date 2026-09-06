@@ -32,6 +32,7 @@ import { randomUUID } from 'node:crypto'
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 
+import { ObservationService } from '../observation/observation.service'
 import { DelegationService, FÖRLÄNGNING_KARENS_DAGAR } from './delegation.service'
 import { SKUGGKALLA_FELANMALAN } from '../shadow/shadow-fields'
 
@@ -61,7 +62,7 @@ medDb('delegationens livscykel', () => {
 
   beforeAll(async () => {
     prisma = new PrismaClient()
-    tjanst = new DelegationService(prisma as never)
+    tjanst = new DelegationService(prisma as never, new ObservationService(prisma as never))
     const bygg = async (namn: string) => {
       const sfx = randomUUID().slice(0, 8)
       const o = await prisma.organization.create({

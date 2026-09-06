@@ -39,6 +39,7 @@ import { ForbiddenException } from '@nestjs/common'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { PropertiesService } from '../../properties/properties.service'
 import { AiAuditService } from './ai-audit.service'
+import { ObservationService } from '../observation/observation.service'
 import { DelegationService } from '../delegation/delegation.service'
 import { ToolExecutorService } from '../tools/tool-executor.service'
 
@@ -97,7 +98,7 @@ medDb('en SYSTEM-principal på en delegation', () => {
     const propertiesService = new PropertiesService(prisma)
     executor = Object.create(ToolExecutorService.prototype) as ToolExecutorService
     Object.assign(executor, { prisma, audit, propertiesService })
-    delegation = new DelegationService(prisma as never)
+    delegation = new DelegationService(prisma as never, new ObservationService(prisma as never))
 
     const sfx = randomUUID().slice(0, 8)
     const org = await prisma.organization.create({

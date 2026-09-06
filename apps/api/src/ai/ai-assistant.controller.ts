@@ -679,6 +679,43 @@ export class AiAssistantController {
     return this.memoryService.clearMemories(orgId, user.sub)
   }
 
+  /**
+   * ── ANTAGANDENA (etapp 8) ─────────────────────────────────────────────────
+   *
+   * Det systemet TROR men ingen har sagt. Motsvarigheten till `/delegationer`,
+   * som visar det hyresvärden HAR gett bort — planens "se vad systemet tror om
+   * hen", andra halvan.
+   *
+   * PER ANVÄNDARE, inte per organisation: `AiMemory` är nycklad på
+   * `(organizationId, userId, key)` och beskriver DEN HÄR användarens samtal.
+   * En kollegas antaganden är inte dina, och att visa dem hade gjort sidan till
+   * en läsyta över andras chattar.
+   */
+  @Get('memory/assumptions')
+  antaganden(@OrgId() orgId: string, @CurrentUser() user: JwtPayload) {
+    return this.memoryService.antaganden(orgId, user.sub)
+  }
+
+  @Post('memory/assumptions/:id/confirm')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  bekräftaAntagande(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.memoryService.bekräfta(orgId, user.sub, id, user.sub)
+  }
+
+  @Post('memory/assumptions/:id/reject')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  avvisaAntagande(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.memoryService.avvisa(orgId, user.sub, id, user.sub)
+  }
+
   @Get('analysis')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   getAnalysis(@OrgId() orgId: string, @Query('type') type: string) {

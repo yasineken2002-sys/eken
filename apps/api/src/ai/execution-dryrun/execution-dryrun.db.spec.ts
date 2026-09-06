@@ -41,6 +41,7 @@ import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
 
+import { ObservationService } from '../observation/observation.service'
 import { DelegationService } from '../delegation/delegation.service'
 import { SKUGGKALLA_FELANMALAN } from '../shadow/shadow-fields'
 import { AiExecutionDryRunService } from './execution-dryrun.service'
@@ -115,7 +116,7 @@ medDb('utföraren i torrläge', () => {
 
   beforeAll(async () => {
     prisma = new PrismaClient()
-    delegation = new DelegationService(prisma as never)
+    delegation = new DelegationService(prisma as never, new ObservationService(prisma as never))
     dryrun = new AiExecutionDryRunService(prisma as never, delegation)
 
     const bygg = async (namn: string) => {

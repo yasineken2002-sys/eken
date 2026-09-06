@@ -64,3 +64,27 @@ export const resumeDelegation = (id: string) =>
 
 export const extendDelegation = (id: string) =>
   post<{ expiresAt: string }>(`/agent/delegations/${id}/extend`)
+
+/**
+ * ── ANTAGANDENA (etapp 8) ────────────────────────────────────────────────────
+ *
+ * Det systemet TROR men ingen har sagt. Motsvarigheten till delegationerna, som
+ * är det hyresvärden HAR gett bort — planens "se vad systemet tror om hen",
+ * andra halvan.
+ */
+export interface Antagande {
+  id: string
+  key: string
+  value: string
+  type: 'preference' | 'fact' | 'relationship' | 'convention'
+  createdAt: string
+  updatedAt: string
+}
+
+export const fetchAntaganden = () => get<Antagande[]>('/ai/memory/assumptions')
+
+// INGEN NYTTOLAST: vad som ska hända står i URL:en. Ett tomt objekt hade varit
+// en form att hålla i synk utan innehåll — se `check-request-contract`.
+export const bekraftaAntagande = (id: string) => post<void>(`/ai/memory/assumptions/${id}/confirm`)
+
+export const avvisaAntagande = (id: string) => post<void>(`/ai/memory/assumptions/${id}/reject`)
