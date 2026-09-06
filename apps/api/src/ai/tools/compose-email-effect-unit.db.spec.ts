@@ -44,6 +44,8 @@ describe('förutsättningar', () => {
 })
 
 const SPAR_DEADLINE_MS = 8_000
+/** Hur länge spårantalet ska stå stilla innan baslinjen räknas som stabil. */
+const SPAR_LUGN_MS = 250
 /** Fem, inte sex: EMAIL_BULK_THRESHOLD är `> 5`, så cooldownen aktiveras inte. */
 const ANTAL_MOTTAGARE = 5
 const KRASCH_EFTER = 2
@@ -167,7 +169,7 @@ medDb('compose_and_send_email — enheten är mottagaren', () => {
     }
   }
 
-  const kändaSpårIds = async () =>
+  const spårIds = async () =>
     new Set(
       (
         await prisma.aiToolExecution.findMany({
@@ -176,6 +178,33 @@ medDb('compose_and_send_email — enheten är mottagaren', () => {
         })
       ).map((r) => r.id),
     )
+
+  /**
+   * BASLINJEN FÅR INTE TAS MEDAN FÖREGÅENDE SPÅR FORTFARANDE SKRIVS.
+   *
+   * `AiToolExecution` skrivs ASYNKRONT efter att verktyget svarat. Ett prov som
+   * snapshottar kända id:n direkt efter förra provets sista assertion missar
+   * därför de spår som ännu inte landat — och `väntaPåNyttSpår` returnerar då
+   * ETT AV DEM som om det vore körningen provet just gjorde.
+   *
+   * Uppmätt: `effektlistan skiljer …` fick 6 `SentMessage`-effekter där den
+   * krävde 0, alltså det FÖREGÅENDE provets spår. Felet är en kapplöpning i
+   * riggen, inte i koden — och det syntes bara ibland, vilket är värre än att
+   * det syntes alltid.
+   *
+   * Baslinjen tas därför först när antalet spår stått stilla en stund.
+   */
+  const baslinjeNärSpårenLagtSig = async () => {
+    const deadline = Date.now() + SPAR_DEADLINE_MS
+    let förra = await spårIds()
+    for (;;) {
+      await new Promise((r) => setTimeout(r, SPAR_LUGN_MS))
+      const nu = await spårIds()
+      if (nu.size === förra.size) return nu
+      förra = nu
+      if (Date.now() > deadline) return nu
+    }
+  }
 
   it('KRASCH efter N av M: raderna finns för de N, och omkörningen skickar bara till resten', async () => {
     // Kraschen slår där den faktiskt kan inträffa: `sentMessage.create` slutar
@@ -240,7 +269,7 @@ medDb('compose_and_send_email — enheten är mottagaren', () => {
   it('effektlistan skiljer en körning som skickade brev från en som inte gjorde något', async () => {
     // Läget efter förra provet: alla fem har en SENT-rad. En körning nu hoppar
     // över allihop och SKRIVER INGENTING — uppslaget är en läsning.
-    const föreTom = await kändaSpårIds()
+    const föreTom = await baslinjeNärSpårenLagtSig()
     const tomMail = bokförandeMail()
     await kör(byggExecutor(tomMail))
     expect(tomMail.mottagare).toHaveLength(0)
@@ -253,7 +282,7 @@ medDb('compose_and_send_email — enheten är mottagaren', () => {
     // Städa så att mottagarna är brevbara igen.
     await prisma.sentMessage.deleteMany({ where: { organizationId: orgId } })
 
-    const föreSkarp = await kändaSpårIds()
+    const föreSkarp = await baslinjeNärSpårenLagtSig()
     const skarpMail = bokförandeMail()
     await kör(byggExecutor(skarpMail))
     expect(skarpMail.mottagare).toHaveLength(ANTAL_MOTTAGARE)
