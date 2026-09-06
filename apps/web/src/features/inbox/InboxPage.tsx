@@ -186,11 +186,15 @@ export function InboxPage({ forslag }: { forslag?: string | undefined } = {}) {
         kanDelegera={kanDelegera.data}
         delegeringLaddar={kanDelegera.isLoading}
         delegeringSparar={delegera.isPending}
-        onDelegera={(villkor) => {
+        onDelegera={(villkor, frekvensvillkor) => {
           if (!vald) return
           delegera.mutate({
             assignmentId: vald.id,
             ...(villkor ? { villkor } : {}),
+            // TAKET FÖLJER MED när verktyget kräver ett. Utan raden avvisade
+            // servern hela delegationen med 400 för de tre DEDUPLICERBARA
+            // verktygen — mätt, och det såg ut som ett gränssnittsfel.
+            ...(frekvensvillkor ? { frekvensvillkor } : {}),
           })
         }}
         onDecide={(p) => {
