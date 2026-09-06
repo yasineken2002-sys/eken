@@ -187,6 +187,20 @@ const PAYMENT_METHOD_TO_ACCOUNT: Record<PaymentMethod, number> = {
 }
 
 // Radtext på debetraden i betalningsverifikatet, per betalningssätt.
+//
+// ── OCH VARFÖR RÅTEXTEN INTE STÅR HÄR ───────────────────────────────────────
+//
+// `InvoicePayment.paymentMethodRaw` bevarar etiketten operatören valde
+// ('Plusgiro'), men den når MED FLIT inte hit. Radtexten är en
+// bokföringsKATEGORI — den följer samma val som likvidkontot ovan — och en
+// verifikatrad som säger "Inbetalning (Plusgiro)" medan en annan säger
+// "Inbetalning bank" för samma konto gör verifikaten svårare att jämföra, inte
+// lättare.
+//
+// AVSTÄMNINGENS YTA ÄR ALLTSÅ `InvoicePayment`, inte verifikatraden: kolumnen är
+// sökbar, verifikatets text är det inte. Det är ett val, inte ett förbiseende —
+// funnet av granskningen, som noterade att PR-texten kunde läsas som att
+// råtexten skulle nå ända hit.
 const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   BANK: 'Inbetalning bank',
   CASH: 'Inbetalning kontant',
