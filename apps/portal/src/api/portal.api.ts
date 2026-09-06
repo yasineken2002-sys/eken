@@ -16,6 +16,7 @@ import type {
   PortalNotice,
   PortalRentNotice,
 } from '@/types/portal.types'
+import type { AddTenantCommentInput, SubmitTicketInput } from '@eken/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/v1` : '/api'
 
@@ -147,17 +148,22 @@ export const downloadInvoicePdf = (id: string, invoiceNumber: string) =>
 export const downloadRentNoticePdf = (id: string, noticeNumber: string) =>
   downloadPdfBlob(`/portal/rent-notices/${id}/download`, `hyresavi-${noticeNumber}.pdf`)
 export const fetchMaintenanceTickets = () => get<PortalMaintenanceTicket[]>('/portal/maintenance')
-export const createMaintenanceTicket = (dto: {
-  title: string
-  description: string
-  category: string
-}) => post<PortalMaintenanceTicket>('/portal/maintenance', dto)
-
-export async function submitMaintenanceRequest(dto: {
-  title: string
-  description: string
-  category: string
-}): Promise<PortalMaintenanceTicket> {
+/**
+ * DEN ENDA vägen att skapa en felanmälan från portalen.
+ *
+ * Här stod TVÅ funktioner med identisk kropp mot samma endpoint —
+ * `createMaintenanceTicket` och den här. Bara den här anropades
+ * (`MaintenancePage.tsx:163`); den andra var död kod som såg ut som ett andra
+ * flöde. Den är borttagen.
+ *
+ * Typen kommer nu ur `@eken/shared`. Den lokala hade `category: string`,
+ * OBLIGATORISK och utan värdemängd, medan servern har den valfri och bunden
+ * till Prismas enum — portalen kunde alltså beskriva ett anrop servern
+ * avvisar, och kunde inte beskriva ett giltigt anrop utan kategori.
+ */
+export async function submitMaintenanceRequest(
+  dto: SubmitTicketInput,
+): Promise<PortalMaintenanceTicket> {
   return post<PortalMaintenanceTicket>('/portal/maintenance', dto)
 }
 
@@ -181,8 +187,11 @@ export async function uploadMaintenanceImages(
   )
   return data.data
 }
-export const addTicketComment = (ticketId: string, content: string) =>
-  post<PortalMaintenanceTicket>(`/portal/maintenance/${ticketId}/comment`, { content })
+export const addTicketComment = (ticketId: string, content: string) => {
+  // Hyresgästen har inget `isInternal` — se AddTenantCommentDto.
+  const kropp: AddTenantCommentInput = { content }
+  return post<PortalMaintenanceTicket>(`/portal/maintenance/${ticketId}/comment`, kropp)
+}
 export const fetchNotices = () => get<PortalNotice[]>('/portal/notices')
 export const markNoticeRead = (id: string) => post<void>(`/portal/notices/${id}/read`)
 export const fetchNews = () => get<PortalNews[]>('/portal/news')

@@ -75,29 +75,66 @@ import {
 } from '../../../scripts/lib/source-scan.mjs'
 
 const ROT = resolve(new URL('../../..', import.meta.url).pathname)
-const KORPUS = 'apps/web/src/features'
+/**
+ * KORPUSEN — och vad den INTE såg fram till 2026-09-06.
+ *
+ * Stod `'apps/web/src/features'`, alltså EN app och ETT katalogmönster.
+ * Portalen har noll poster i baslinjen, och det såg ut som att den var bunden.
+ * Den var aldrig skannad: `apps/portal` låg utanför roten, och dess enda
+ * API-fil ligger dessutom på `src/api/portal.api.ts` — utan `features/`-nivå,
+ * alltså osynlig även för en breddad rot som behållit mönstret.
+ *
+ * Det är samma form som DTO-placeringen (`check-dto-placement.mjs`): en vakt
+ * som inte säger "otypad" utan INGENTING, och vars tystnad läses som godkänt.
+ * Portalen är dessutom den klient där nyttolasten kommer från en hyresgäst —
+ * den minst betrodda avsändaren systemet har.
+ *
+ * TALET STIGER av den här ändringen, och det är rätt riktning: en vakt som ser
+ * mer och visar fler poster mäter mer. Skillnaden är inte ny skuld utan
+ * upptäckt skuld.
+ */
+const KORPUS_ROTTER = [
+  { app: 'apps/web/src/features', form: 'feature' },
+  { app: 'apps/portal/src/features', form: 'feature' },
+  { app: 'apps/portal/src/api', form: 'platt' },
+  { app: 'apps/admin/src/features', form: 'feature' },
+]
 const BASLINJE_PATH = join(new URL('.', import.meta.url).pathname, 'request-contract.baseline.json')
 
 const SKRIVMETODER = ['post', 'patch', 'put']
 
 /** Filerna som ÄR API-lagret: `features/<namn>/api/<fil>.ts`, inte prov. */
 export function korpusfiler(rot = ROT) {
-  const bas = join(rot, KORPUS)
   const ut = []
-  for (const feature of readdirSync(bas)) {
-    const apiKatalog = join(bas, feature, 'api')
+  const laggTill = (katalog) => {
     let poster
     try {
-      poster = readdirSync(apiKatalog)
+      poster = readdirSync(katalog)
     } catch {
-      continue
+      // En app som inte har mönstret är inte ett fel — admin har ingen
+      // features/-katalog alls. Att sakna den är tyst; att inte LETA är felet.
+      return
     }
     for (const namn of poster) {
       if (!namn.endsWith('.ts')) continue
       if (/\.(spec|test)\.ts$/.test(namn)) continue
-      if (!statSync(join(apiKatalog, namn)).isFile()) continue
-      ut.push(relative(rot, join(apiKatalog, namn)))
+      if (!statSync(join(katalog, namn)).isFile()) continue
+      ut.push(relative(rot, join(katalog, namn)))
     }
+  }
+  for (const { app, form } of KORPUS_ROTTER) {
+    const bas = join(rot, app)
+    if (form === 'platt') {
+      laggTill(bas)
+      continue
+    }
+    let features
+    try {
+      features = readdirSync(bas)
+    } catch {
+      continue
+    }
+    for (const feature of features) laggTill(join(bas, feature, 'api'))
   }
   return ut.sort()
 }
@@ -225,6 +262,25 @@ export function anropIFil(kalla) {
 
       // URL:en bor i en STRÄNG → läses ur strängvyn, vid samma index.
       const url = arg[0] ? strangvy.slice(arg[0][0], arg[0][1]).trim().slice(0, 70) : '?'
+
+      // ── EN ENDPOINT ÄR EN LITERAL, INTE EN PARAMETER ────────────────────
+      //
+      // Portalens `post`-hjälpare bor i KORPUSFILEN själv:
+      //
+      //     async function post<T>(url: string, body?: unknown): Promise<T> {
+      //       const { data } = await portalApi.post<{ data: T }>(url, body)
+      //
+      // Både deklarationen och den inre delegeringen matchar mönstret ovan, och
+      // rapporterades som två otypade anrop till endpointerna `url` respektive
+      // `url: string`. Webbens hjälpare ligger i `src/lib/api.ts`, utanför
+      // korpusen, så gapet syntes först när portalen började skannas.
+      //
+      // Kravet är att första argumentet är en STRÄNG eller en MALLSTRÄNG —
+      // varje verklig endpoint är det. En identifierare eller en
+      // parameterdeklaration är per definition ingen endpoint.
+      const forstaArg = url.trim()
+      const arLiteral = /^['"`]/.test(forstaArg)
+      if (!arLiteral) continue
       const kroppText = arg[1] ? kodvy.slice(arg[1][0], arg[1][1]) : ''
       const typ = kroppenstyp(kodvy, kroppText, kodvy.slice(0, m.index))
 
@@ -573,7 +629,7 @@ if (process.argv.includes('--self-test')) {
     console.error('❌ Kontraktet webb↔API: nyttolasttyper som inte är delade\n')
     for (const f of fel) console.error(`  ${f}`)
     console.error(
-      '\nRegeln: varje POST/PATCH/PUT i apps/web/src/features/*/api/*.ts ska skicka en\n' +
+      '\nRegeln: varje POST/PATCH/PUT i webbens, portalens och adminets api-lager ska skicka en\n' +
         'nyttolast vars typ bor i @eken/shared. Baslinjen får bara KRYMPA.\n',
     )
     process.exit(1)

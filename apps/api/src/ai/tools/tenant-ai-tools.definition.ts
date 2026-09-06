@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 
+import { MAINTENANCE_CATEGORIES, MAINTENANCE_PRIORITIES } from '@eken/shared'
+
 /**
  * Tools tillgängliga för hyresgäst-AI:n. Avsiktligt få och starkt avgränsade
  * — hyresgästen får ALDRIG fråga AI:n om annan hyresgästs data, andra
@@ -97,15 +99,21 @@ export const TENANT_TOOLS: Anthropic.Tool[] = [
       properties: {
         title: { type: 'string', description: 'Kort titel på felet' },
         description: { type: 'string', description: 'Detaljerad beskrivning' },
+        // HÄRLEDD UR PRISMA, inte uppräknad. Listan stod tidigare här med SJU
+        // värden, varav TRE inte finns i databasen — `APPLIANCE` (singular),
+        // `STRUCTURAL` och `PEST` — och fyra av Prismas elva saknades. Värdet
+        // castades sedan `as MaintenanceCategory` utan kontroll, så en
+        // hyresgäst som skrev "skadedjur" fick modellen att svara `PEST` och
+        // skrivningen att falla i Postgres. Ett runtime-fel som väntade på rätt
+        // ord. `maintenance-enum-source.spec.ts` kräver exakt likhet.
         category: {
           type: 'string',
-          enum: ['PLUMBING', 'ELECTRICAL', 'HEATING', 'APPLIANCE', 'STRUCTURAL', 'PEST', 'OTHER'],
-          description:
-            'Kategori — VVS (PLUMBING), El (ELECTRICAL), Värme (HEATING), Vitvaror (APPLIANCE), Byggnad (STRUCTURAL), Skadedjur (PEST), Övrigt (OTHER)',
+          enum: [...MAINTENANCE_CATEGORIES],
+          description: `Kategori — ett av: ${MAINTENANCE_CATEGORIES.join(', ')}`,
         },
         priority: {
           type: 'string',
-          enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'],
+          enum: [...MAINTENANCE_PRIORITIES],
           description: 'URGENT endast för akut (vatten/brand/el)',
         },
       },

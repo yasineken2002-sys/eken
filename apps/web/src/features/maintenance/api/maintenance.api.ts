@@ -1,4 +1,9 @@
 import { get, post, patch, del } from '@/lib/api'
+import type {
+  AddTicketCommentInput,
+  CreateTicketInput,
+  MaintenanceCategoryValue,
+} from '@eken/shared'
 
 export type MaintenanceStatus =
   | 'NEW'
@@ -8,18 +13,13 @@ export type MaintenanceStatus =
   | 'CLOSED'
   | 'CANCELLED'
 export type MaintenancePriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
-export type MaintenanceCategory =
-  | 'PLUMBING'
-  | 'ELECTRICAL'
-  | 'HEATING'
-  | 'APPLIANCES'
-  | 'WINDOWS_DOORS'
-  | 'LOCKS'
-  | 'FACADE'
-  | 'ROOF'
-  | 'COMMON_AREAS'
-  | 'CLEANING'
-  | 'OTHER'
+/**
+ * Kategorierna kommer nu ur `@eken/shared`, som är bunden till Prismas enum av
+ * `maintenance-enum-source.spec.ts`. Här stod en egen uppräkning av samma elva
+ * värden — rätt när den skrevs, men en tredje kopia (Prisma, den här, och
+ * hyresgästverktygets, som hade glidit till sju värden varav tre påhittade).
+ */
+export type MaintenanceCategory = MaintenanceCategoryValue
 
 export interface MaintenanceComment {
   id: string
@@ -85,17 +85,6 @@ export interface MaintenanceStats {
   openCosts: number
 }
 
-export interface CreateTicketInput {
-  title: string
-  description: string
-  propertyId: string
-  unitId?: string
-  tenantId?: string
-  category?: MaintenanceCategory
-  priority?: MaintenancePriority
-  scheduledDate?: string
-  estimatedCost?: number
-}
 
 export interface UpdateTicketInput {
   title?: string
@@ -139,7 +128,11 @@ export const createTicket = (dto: CreateTicketInput) => post<MaintenanceTicket>(
 export const updateTicket = (id: string, dto: UpdateTicketInput) =>
   patch<MaintenanceTicket>(`/maintenance/${id}`, dto)
 
-export const addComment = (id: string, content: string, isInternal: boolean) =>
-  post<MaintenanceTicket>(`/maintenance/${id}/comments`, { content, isInternal })
+export const addComment = (id: string, content: string, isInternal: boolean) => {
+  const kropp: AddTicketCommentInput = { content, isInternal }
+  return post<MaintenanceTicket>(`/maintenance/${id}/comments`, kropp)
+}
 
 export const deleteTicket = (id: string) => del(`/maintenance/${id}`)
+
+export type { CreateTicketInput }

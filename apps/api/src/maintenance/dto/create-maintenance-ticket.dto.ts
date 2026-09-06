@@ -10,9 +10,26 @@ import {
 } from 'class-validator'
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
 
+import type { CreateTicketInput, SammaNycklar } from '@eken/shared'
+import { CreateTicketSchema } from '@eken/shared'
+
+import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
+
+/**
+ * ÄGARENS väg — supermängden. Tjänstens `create()` tar den här formen, och
+ * portalen når samma metod med en DELMÄNGD (`SubmitMaintenanceDto`, härledd ur
+ * `CreateTicketBaseSchema`) sedan servern fyllt i fastighet, lägenhet,
+ * hyresgäst och prioritet ur det aktiva avtalet.
+ *
+ * Delmängdsrelationen är en FÖLJD av att webbens schema är basen `.extend()`:ad
+ * — inte något ett prov råkar kontrollera. `maintenance-ticket-subset.spec.ts`
+ * härleder den ur schemana i stället för att lista fälten.
+ */
+@UppfyllerSchemat(CreateTicketSchema)
 export class CreateMaintenanceTicketDto {
   @IsString()
   @MinLength(3)
+  @MaxLength(200)
   title!: string
 
   // ── TAK PÅ DET SOM BETALAS PER TOKEN ────────────────────────────────────
@@ -53,3 +70,7 @@ export class CreateMaintenanceTicketDto {
   @IsOptional()
   estimatedCost?: number
 }
+
+// NYCKELPARITET mot det delade schemat — bryts den faller BYGGET, inte ett prov.
+const _kontraktSkapaArende: SammaNycklar<CreateMaintenanceTicketDto, CreateTicketInput> = true
+void _kontraktSkapaArende

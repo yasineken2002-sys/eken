@@ -20,6 +20,7 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
+import { AddTicketCommentDto } from './dto/add-ticket-comment.dto'
 
 @Controller('maintenance')
 @UseGuards(JwtAuthGuard)
@@ -74,7 +75,7 @@ export class MaintenanceController {
   @Roles('MANAGER', 'ADMIN', 'OWNER')
   addComment(
     @Param('id') id: string,
-    @Body() body: { content: string; isInternal?: boolean },
+    @Body() body: AddTicketCommentDto,
     @OrgId() orgId: string,
     @CurrentUser() user: JwtPayload,
   ) {
