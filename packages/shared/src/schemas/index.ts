@@ -189,11 +189,33 @@ export const UnitTypeSchema = z.enum([
 ])
 export const UnitStatusSchema = z.enum(['VACANT', 'OCCUPIED', 'UNDER_RENOVATION', 'RESERVED'])
 
+/**
+ * POST /units.
+ *
+ * ── VAD SOM RÄTTADES, OCH VARFÖR WEBBEN HADE EN EGEN TYP ────────────────────
+ *
+ * Schemat SAKNADE `propertyId` och `status` — båda finns i `CreateUnitDto`
+ * (`@IsUUID() propertyId!`, `@IsEnum(UNIT_STATUSES) @IsOptional() status?`).
+ * Ett schema utan `propertyId` kan inte beskriva en giltig kropp: utan
+ * fastigheten vet servern inte var lägenheten hör hemma. Det är därför webben
+ * bar en EGEN `CreateUnitInput` med båda fälten — den kunde inte använda den
+ * här.
+ *
+ * `area` sa dessutom `.positive()` medan DTO:n säger `@Min(0)`. Noll var alltså
+ * giltigt på servern och avvisat av schemat — en gränsvärdesskillnad som bara
+ * syns på exakt det värdet.
+ *
+ * Schemat beskriver nu DTO:n. Det är inte en utvidgning av vad som accepteras:
+ * servern tog emot precis detta hela tiden.
+ */
 export const CreateUnitSchema = z.object({
+  propertyId: z.string().uuid(),
   name: z.string().min(1).max(200),
   unitNumber: z.string().min(1).max(50),
   type: UnitTypeSchema,
-  area: z.number().positive(),
+  status: UnitStatusSchema.optional(),
+  /** `@Min(0)` i DTO:n — noll är giltigt (t.ex. en förrådsplats utan yta). */
+  area: z.number().min(0),
   floor: z.number().int().optional(),
   rooms: z.number().int().positive().optional(),
   monthlyRent: z.number().nonnegative(),
@@ -404,6 +426,10 @@ export type CreateUnitInput = z.infer<typeof CreateUnitSchema>
 export type CreateTenantInput = z.infer<typeof CreateTenantSchema>
 export type UpdateTenantInput = z.infer<typeof UpdateTenantSchema>
 export type AnonymizeTenantInput = z.infer<typeof AnonymizeTenantSchema>
+export type EquipmentKind = (typeof EQUIPMENT_KINDS)[number]
+export type CreateEquipmentInput = z.infer<typeof CreateEquipmentSchema>
+export type RegisterReplacementInput = z.infer<typeof RegisterReplacementSchema>
+export type UpdateUnitInput = z.infer<typeof UpdateUnitSchema>
 export type CreateRentIncreaseInput = z.infer<typeof CreateRentIncreaseSchema>
 export type RejectRentIncreaseInput = z.infer<typeof RejectRentIncreaseSchema>
 export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
@@ -809,6 +835,63 @@ export const SendNoticesSchema = z.object({
  * G3 stängdes. Skillnaden mot avin är att avin KRÄVER fältet; fakturan tillåter
  * att det utelämnas och tolkar det som `MANUAL`.
  */
+// ─── Utrustning ──────────────────────────────────────────────────────────────
+//
+// `EQUIPMENT_KINDS` stod i TVÅ oberoende deklarationer: webbens
+// `equipment.api.ts:3` och API:ts `create-equipment.dto.ts:18`. De var
+// identiska när jag mätte (17 värden, samma ordning) — men ingenting höll dem
+// lika, och den dag någon lägger till en typ på ena stället avvisar servern ett
+// värde gränssnittet erbjuder. Listan bor nu på ETT ställe.
+
+export const EQUIPMENT_KINDS = [
+  'REFRIGERATOR',
+  'FREEZER',
+  'STOVE',
+  'DISHWASHER',
+  'WASHING_MACHINE',
+  'DRYER',
+  'BOILER',
+  'HEAT_PUMP',
+  'VENTILATION',
+  'ELEVATOR',
+  'BATHROOM_FIXTURE',
+  'KITCHEN_FIXTURE',
+  'FLOORING',
+  'WINDOW',
+  'DOOR',
+  'LOCK',
+  'OTHER',
+] as const
+
+export const EquipmentKindSchema = z.enum(EQUIPMENT_KINDS)
+
+export const CreateEquipmentSchema = z.object({
+  unitId: z.string().uuid(),
+  kind: EquipmentKindSchema,
+  label: z.string().max(120).optional(),
+  installedAt: IsoDatumSchema,
+  expectedLifespanYears: z.number().int().min(1).optional(),
+  serviceIntervalMonths: z.number().int().min(1).optional(),
+})
+
+/**
+ * Registrering av ett BYTE. Webbens egen typ saknade `maintenanceTicketId` —
+ * fältet finns i DTO:n och kopplar bytet till felanmälan som föranledde det.
+ * Utan det gick kopplingen inte att sätta från gränssnittet.
+ */
+export const RegisterReplacementSchema = z.object({
+  kind: EquipmentKindSchema.optional(),
+  label: z.string().max(120).optional(),
+  occurredAt: IsoDatumSchema,
+  performedById: z.string().uuid().optional(),
+  cost: z.number().min(0).optional(),
+  attachmentUrl: z.string().max(500).optional(),
+  note: z.string().max(1000).optional(),
+  maintenanceTicketId: z.string().uuid().optional(),
+  expectedLifespanYears: z.number().int().min(1).optional(),
+  serviceIntervalMonths: z.number().int().min(1).optional(),
+})
+
 // ─── Hyreshöjningar ──────────────────────────────────────────────────────────
 //
 // FORMEN BINDS, BELOPPEN OCH FRISTERNA RÖRS INTE. Varje gräns nedan är avläst

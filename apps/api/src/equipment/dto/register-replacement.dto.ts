@@ -1,3 +1,4 @@
+import type { SammaNycklar, RegisterReplacementInput } from '@eken/shared'
 import {
   IsEnum,
   IsInt,
@@ -28,7 +29,7 @@ import { EQUIPMENT_KINDS } from './create-equipment.dto'
  * — att kopiera föregångarens vore att låta koden gissa åt människan, och ett
  * nytt kylskåp av annat fabrikat har inte samma livslängd som det gamla.
  */
-export class RegisterReplacementDto {
+export class RegisterReplacementDto implements RegisterReplacementInput {
   /** VAD som ersätter. Utelämnas `kind` ärvs föregångarens sort — samma sak, nytt exemplar. */
   @IsEnum(EQUIPMENT_KINDS)
   @IsOptional()
@@ -79,3 +80,7 @@ export class RegisterReplacementDto {
   @IsOptional()
   serviceIntervalMonths?: number
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktRegistreraByte: SammaNycklar<RegisterReplacementDto, RegisterReplacementInput> = true
+void _kontraktRegistreraByte

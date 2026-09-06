@@ -1,26 +1,15 @@
 import { get, post, patch } from '@/lib/api'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { CreateEquipmentSchema, RegisterReplacementSchema, EQUIPMENT_KINDS } from '@eken/shared'
+import type { CreateEquipmentInput, RegisterReplacementInput, EquipmentKind } from '@eken/shared'
+export type { CreateEquipmentInput, RegisterReplacementInput }
+export { EQUIPMENT_KINDS }
+export type { EquipmentKind }
 
-export const EQUIPMENT_KINDS = [
-  'REFRIGERATOR',
-  'FREEZER',
-  'STOVE',
-  'DISHWASHER',
-  'WASHING_MACHINE',
-  'DRYER',
-  'BOILER',
-  'HEAT_PUMP',
-  'VENTILATION',
-  'ELEVATOR',
-  'BATHROOM_FIXTURE',
-  'KITCHEN_FIXTURE',
-  'FLOORING',
-  'WINDOW',
-  'DOOR',
-  'LOCK',
-  'OTHER',
-] as const
-
-export type EquipmentKind = (typeof EQUIPMENT_KINDS)[number]
+// EQUIPMENT_KINDS och EquipmentKind kommer nu från @eken/shared. Listan stod i
+// TVÅ oberoende deklarationer (här och i create-equipment.dto.ts) som ingenting
+// höll lika — identiska när jag mätte, men en typ tillagd på ena stället hade
+// gett ett värde gränssnittet erbjuder och servern avvisar.
 
 export const EQUIPMENT_KIND_LABELS: Record<EquipmentKind, string> = {
   REFRIGERATOR: 'Kylskåp',
@@ -65,32 +54,20 @@ export interface Equipment {
   events: EquipmentEvent[]
 }
 
-export interface CreateEquipmentInput {
-  unitId: string
-  kind: EquipmentKind
-  label?: string
-  installedAt: string
-  expectedLifespanYears?: number
-  serviceIntervalMonths?: number
-}
-
-export interface RegisterReplacementInput {
-  kind?: EquipmentKind
-  label?: string
-  occurredAt: string
-  performedById?: string
-  cost?: number
-  attachmentUrl?: string
-  note?: string
-  expectedLifespanYears?: number
-  serviceIntervalMonths?: number
-}
-
+/**
+ * TYPERNA KOMMER NU FRÅN @eken/shared.
+ *
+ * `RegisterReplacementInput` saknade `maintenanceTicketId` — fältet finns i
+ * DTO:n och kopplar bytet till felanmälan som föranledde det. Kopplingen gick
+ * alltså inte att sätta från gränssnittet.
+ */
 export function fetchEquipment(unitId: string): Promise<Equipment[]> {
   return get<Equipment[]>(`/equipment/unit/${unitId}`)
 }
 
 export function createEquipment(dto: CreateEquipmentInput): Promise<Equipment> {
+  const kontrakt = kontraktsfel(CreateEquipmentSchema, dto)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
   return post<Equipment>('/equipment', dto)
 }
 
@@ -105,5 +82,7 @@ export function registerReplacement(
   id: string,
   dto: RegisterReplacementInput,
 ): Promise<{ replacement: Equipment; event: EquipmentEvent }> {
+  const kontrakt = kontraktsfel(RegisterReplacementSchema, dto)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
   return post(`/equipment/${id}/replacement`, dto)
 }

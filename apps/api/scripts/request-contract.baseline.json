@@ -1,5 +1,5 @@
 {
-  "total": 65,
+  "total": 60,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -145,18 +145,6 @@
         "POST '/tenant-portal/admin/invitations' → OTYPAD",
         "POST '/tenant-portal/admin/invitations/resend' → OTYPAD"
       ]
-    },
-    {
-      "fil": "apps/web/src/features/units/api/equipment.api.ts",
-      "medlemmar": [
-        "PATCH `/equipment/${id}` → CreateEquipmentInput",
-        "POST '/equipment' → CreateEquipmentInput",
-        "POST `/equipment/${id}/replacement` → RegisterReplacementInput"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/units/api/units.api.ts",
-      "medlemmar": ["PATCH `/units/${id}` → Partial", "POST '/units' → CreateUnitInput"]
     },
     {
       "fil": "apps/web/src/features/users/api/users.api.ts",

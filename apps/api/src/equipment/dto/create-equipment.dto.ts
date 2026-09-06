@@ -1,3 +1,5 @@
+import type { SammaNycklar, CreateEquipmentInput } from '@eken/shared'
+import { EQUIPMENT_KINDS } from '@eken/shared'
 import {
   IsEnum,
   IsInt,
@@ -15,27 +17,10 @@ import {
  * DTO:n måste överleva som ETT VÄRDE i runtime för att `ValidationPipe` ska ha
  * metadata att läsa (CLAUDE.md, DTO-regeln).
  */
-export const EQUIPMENT_KINDS = [
-  'REFRIGERATOR',
-  'FREEZER',
-  'STOVE',
-  'DISHWASHER',
-  'WASHING_MACHINE',
-  'DRYER',
-  'BOILER',
-  'HEAT_PUMP',
-  'VENTILATION',
-  'ELEVATOR',
-  'BATHROOM_FIXTURE',
-  'KITCHEN_FIXTURE',
-  'FLOORING',
-  'WINDOW',
-  'DOOR',
-  'LOCK',
-  'OTHER',
-] as const
+// EQUIPMENT_KINDS bor i @eken/shared — se dess docblock om de två kopiorna.
+export { EQUIPMENT_KINDS }
 
-export class CreateEquipmentDto {
+export class CreateEquipmentDto implements CreateEquipmentInput {
   @IsUUID()
   unitId!: string
 
@@ -66,3 +51,7 @@ export class CreateEquipmentDto {
   @IsOptional()
   serviceIntervalMonths?: number
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktSkapaUtrustning: SammaNycklar<CreateEquipmentDto, CreateEquipmentInput> = true
+void _kontraktSkapaUtrustning
