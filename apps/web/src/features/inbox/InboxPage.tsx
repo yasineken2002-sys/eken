@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { Inbox as InboxIcon } from 'lucide-react'
 
@@ -50,9 +50,13 @@ const STATUSTEXT: Record<
  * hyresvärden kunde göra för hand går fortfarande att göra på samma ställe som
  * förut.
  */
-export function InboxPage() {
-  const [flik, setFlik] = useState(0)
+export function InboxPage({ forslag }: { forslag?: string | undefined } = {}) {
+  // Kommer man via delegationssidans "Född ur"-länk är fliken ALLA från början.
+  // Rätten kan ha fötts ur ett förslag som inte längre står i standardvyn, och
+  // en länk som landar på en tom lista läser som att beslutet är borta.
+  const [flik, setFlik] = useState(forslag ? FLIKAR.length - 1 : 0)
   const [vald, setVald] = useState<InboxItem | null>(null)
+  const [öppnat, setÖppnat] = useState(false)
 
   const status = FLIKAR[flik]?.status
   const lista = useInbox(status)
@@ -63,6 +67,16 @@ export function InboxPage() {
   const delegera = useSkapaDelegation()
 
   const rader = lista.data?.rader ?? []
+
+  // ÖPPNA EN GÅNG. Utan spärren hade modalen öppnats igen varje gång listan
+  // hämtades om — inklusive direkt efter att användaren stängt den.
+  useEffect(() => {
+    if (!forslag || öppnat) return
+    const träff = rader.find((r) => r.id === forslag)
+    if (!träff) return
+    setVald(träff)
+    setÖppnat(true)
+  }, [forslag, öppnat, rader])
 
   const kolumner = [
     {

@@ -21,6 +21,7 @@ import {
   ConfirmImportSchema,
   UpdateMeterSchema,
   CreateDelegationFromAssignmentSchema,
+  RevokeDelegationSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
@@ -45,6 +46,7 @@ import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
 import { ConfirmImportDto } from '../../reconciliation/dto/confirm-import.dto'
+import { RevokeDelegationDto } from '../../ai/delegation/dto/revoke-delegation.dto'
 import { CreateFromAssignmentDto } from '../../ai/delegation/dto/create-from-assignment.dto'
 
 import type { ZodType } from 'zod'
@@ -392,5 +394,17 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { frekvensvillkor: { maxAntal: 3, periodDagar: 7 } },
     ogiltig: { frekvensvillkor: { maxAntal: 0, periodDagar: 7 } },
     ogiltigVarfor: 'ett tak på noll är inte ett tak — det är en avstängning i förklädnad',
+  },
+  {
+    // Etapp 7 PR 3. Återkallandet. Enda fältet är ett frivilligt skäl, så
+    // pariteten prövar TAKET — det enda i nyttolasten som kan glida isär, och
+    // det som avgör om en inklistrad e-posttråd kan göra en historikrad oläsbar.
+    endpoint: 'POST /agent/delegations/:id/revoke',
+    inputTyp: 'RevokeDelegationInput',
+    schema: RevokeDelegationSchema,
+    dto: RevokeDelegationDto,
+    giltig: { skäl: 'Vi sköter det manuellt igen.' },
+    ogiltig: { skäl: 'x'.repeat(501) },
+    ogiltigVarfor: 'ett skäl över 500 tecken gör historikraden oläsbar för allt annat',
   },
 ]
