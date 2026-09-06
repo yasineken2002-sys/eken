@@ -828,6 +828,40 @@ jobs:
       - name: Verify no new unshared request payload types
         run: node apps/api/scripts/check-request-contract.mjs
 
+  dto-placement-guard:
+    name: DTO placement guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # VAR EN DTO BOR AVGÖR OM NÅGON ANNAN VAKT KAN SE DEN.
+      #
+      # `check-request-contract.mjs` bygger mängden härledda nyttolasttyper
+      # genom att läsa filer som slutar på `.dto.ts` (`harleddaTyper`). Den
+      # premissen är osagd och kan vara falsk: en DTO som deklareras inne i en
+      # controller finns inte i mängden, och vakten kan aldrig kräva att den
+      # har ett delat schema. Vakten säger då inte "saknar schema" — den säger
+      # ingenting, och tystnaden ser ut som godkänt.
+      #
+      # Uppmätt: `PATCH /contracts/:leaseId/appendices/:documentId` bar en DTO
+      # inline i contracts.controller.ts och var osynlig hela tiden den fanns
+      # (#822 flyttade den). Vid införandet fanns 18 sådana klasser.
+      #
+      # Den här vakten gör alltså den ANDRA vaktens premiss sann. Den mäter
+      # inte kontrakt — bara placering. Att DTO:n faktiskt har ett schema ägs
+      # av request-contract-guard och av SammaNycklar-raden (Typecheck).
+      #
+      # fs-only, inga beroenden, ingen DB.
+      - name: Self-test the guard (positive, three negatives, derived total)
+        run: node apps/api/scripts/check-dto-placement.mjs --self-test
+
+      - name: Verify no validated class lives outside a *.dto.ts file
+        run: node apps/api/scripts/check-dto-placement.mjs
+
   self-tests-must-fail-guard:
     name: Self-tests must be able to fail
     runs-on: ubuntu-latest
@@ -2296,6 +2330,7 @@ jobs:
       - source-scan-canary-guard
       - identifier-regex-guard
       - request-contract-guard
+      - dto-placement-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard
