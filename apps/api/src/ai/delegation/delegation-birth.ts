@@ -105,3 +105,40 @@ export function förifylltVillkor(assignment: {
   else if (assignment.propertyId) ut.propertyId = assignment.propertyId
   return ut
 }
+
+/**
+ * FÖRIFYLLT FREKVENSVILLKOR för de verktyg som KRÄVER ett.
+ *
+ * ── VARFÖR DET MÅSTE FINNAS ETT DEFAULT ────────────────────────────────────
+ *
+ * `kräverFrekvensvillkor` är sant för verktyg klassade `DEDUPLICERBAR`: en
+ * omkörning ger en ANDRA rad, så en delegation utan tak hade gjort en obevakad
+ * loop till en obegränsad. Tjänsten avvisar därför en delegation utan tak — men
+ * fram till nu FRÅGADE inkorgen aldrig efter ett, och läsytan sa ändå ja.
+ * Utfallet var en grön knapp och ett 400 från servern, för tre av åtta
+ * delegerbara verktyg.
+ *
+ * ── VARFÖR JUST ETT PER DYGN ───────────────────────────────────────────────
+ *
+ * Talet är ett BESLUT, inte en härledning. Ett per dygn är det snävaste tak som
+ * fortfarande gör funktionen meningsfull: det täcker det normala fallet (en
+ * felanmälan blir ett ärende) och gör en skenande loop till högst en rad om
+ * dagen i stället för till en obegränsad mängd. Hyresvärden kan höja det i
+ * bekräftelsen — se nedan — men måste då göra det som ett synligt val.
+ *
+ * Talet står HÄR och inte i webben: en uppräkning i gränssnittet hade blivit en
+ * andra källa till samma regel, och den som syns för hyresvärden hade varit den
+ * som ingen prövat.
+ *
+ * ── OCH VARFÖR TAKET FÅR HÖJAS, TILL SKILLNAD FRÅN VILLKORET ───────────────
+ *
+ * `villkoretSnävas` tillåter bara att avgränsningen SNÄVAS, därför att den är
+ * förifylld ur det konkreta fall hyresvärden såg — att vidga den vore att ge en
+ * bredare rätt än den man tittade på.
+ *
+ * Frekvensen har inget sådant fall att vara trogen. Den är ett tak hyresvärden
+ * SÄTTER, inte en avgränsning hen såg, och ett tak som bara går att sänka hade
+ * gjort en för lågt satt gräns omöjlig att rätta utan att återkalla och börja
+ * om. Bekräftelsen skriver därför ut talet i klartext, och valet är människans.
+ */
+export const FÖRIFYLLT_FREKVENSVILLKOR = { maxAntal: 1, periodDagar: 1 } as const

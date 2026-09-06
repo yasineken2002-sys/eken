@@ -111,6 +111,18 @@ export interface KanDelegera {
    * gränssnitt hyresvärden har för att förstå vad hen ger bort.
    */
   utförareFinns: boolean
+  /**
+   * ── TAKET KRÄVS FÖR VISSA VERKTYG, OCH SERVERN SÄGER VILKA ────────────────
+   *
+   * Härlett ur effektkatalogen (`DEDUPLICERBAR`), aldrig en lista här. En
+   * uppräkning i webben hade blivit en andra källa till samma regel, och den
+   * som syns för hyresvärden hade varit den som ingen prövat.
+   *
+   * Fanns fältet inte svarade `can-create` ja medan `POST` kastade 400 — mätt
+   * för tre av åtta delegerbara verktyg.
+   */
+  kräverFrekvensvillkor?: boolean
+  förifylltFrekvensvillkor?: { maxAntal: number; periodDagar: number }
 }
 
 export const fetchKanDelegera = (assignmentId: string) =>
