@@ -6,6 +6,7 @@ import { Modal, ModalFooter } from '@eken/ui/react'
 import { formatDate } from '@eken/shared'
 
 import { formatKonfidens, konfidensVariant } from '../lib/confidence'
+import { verdiktVisning } from '../lib/verdict'
 import { GorAlltidSaHar } from './GorAlltidSaHar'
 
 import type { InboxItem, KanDelegera } from '../api/inbox.api'
@@ -109,6 +110,28 @@ export function InboxDetailModal({
             Ångerväg om det utförts: {item.undoHint}
           </div>
         </Falt>
+
+        {/* ── VAD SKARPT LÄGE HADE INNEBURIT (etapp 8) ────────────────────
+            Domen står FÖRE "Ditt skäl" och efter konsekvensen, alltså i samma
+            läsordning som beslutet fattas: vad det är, vad det hade kostat, och
+            först därefter vad du svarade. */}
+        {(() => {
+          const v = verdiktVisning(item)
+          if (!v) return null
+          return (
+            <Falt rubrik="I skarpt läge">
+              <span>{v.mening}</span>
+              {item.verdictAt && (
+                <div className="mt-1 text-[12px] text-gray-500">
+                  {/* TIDPUNKTEN ÄR INTE PYNT. Domen gäller det delegationsläge
+                      som rådde när den fälldes — återkallas delegationen i dag
+                      blir gårdagens dom inte falsk, den blir historisk. */}
+                  Bedömt {formatDate(item.verdictAt)}. Torrläge: ingenting utfördes.
+                </div>
+              )}
+            </Falt>
+          )
+        })()}
 
         {item.statusReason && <Falt rubrik="Ditt skäl">{item.statusReason}</Falt>}
         <Falt rubrik="Skapat">{formatDate(item.createdAt)}</Falt>

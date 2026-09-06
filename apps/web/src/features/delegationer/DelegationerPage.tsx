@@ -211,6 +211,24 @@ export function DelegationerPage() {
       ),
     },
     {
+      // ── VAD RÄTTEN FAKTISKT HADE BETYTT (etapp 8) ──────────────────────
+      //
+      // Talet är torrlägets facit: antal skuggförslag som HADE utförts enligt
+      // just den här delegationen. En nolla är inte ett fel — den betyder att
+      // rätten är för snäv eller att fallet inte dykt upp — och det är precis
+      // vad hyresvärden behöver veta innan skarpt läge slås på.
+      key: 'skulleHaUtlost',
+      header: 'Skulle ha utlöst',
+      align: 'right' as const,
+      cell: (d: Delegation) => (
+        <span
+          className={cn('tabular-nums', d.skulleHaUtlöst > 0 ? 'text-gray-900' : 'text-gray-400')}
+        >
+          {d.skulleHaUtlöst}
+        </span>
+      ),
+    },
+    {
       key: 'expiresAt',
       header: 'Löper ut',
       cell: (d: Delegation) => (

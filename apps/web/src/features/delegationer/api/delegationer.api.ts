@@ -32,6 +32,13 @@ export interface Delegation {
   /** KÄLLAN: vilket ärende som födde den. Null = skapad utanför inkorgen. */
   bornFromAssignmentId: string | null
   bornFromAssignment: { id: string; title: string } | null
+  /**
+   * TORRLÄGETS FACIT (etapp 8): hur många skuggförslag som HADE utförts enligt
+   * den här rätten. Räknas i API:t, inte här — det är samma tal som
+   * frekvensvillkoret förbrukar, och två räknare för samma sak hade kunnat säga
+   * olika saker om samma delegation.
+   */
+  skulleHaUtlöst: number
 }
 
 export const fetchDelegationer = () => get<Delegation[]>('/agent/delegations')

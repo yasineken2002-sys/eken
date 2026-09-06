@@ -75,6 +75,11 @@ const forslag = (over: Partial<InboxItem> = {}): InboxItem => ({
   deadline: '2026-09-12T00:00:00.000Z',
   decidedAt: null,
   createdAt: '2026-09-05T03:00:00.000Z',
+  executionVerdict: null,
+  verdictReason: null,
+  verdictAt: null,
+  verdictDelegationId: null,
+  verdictDelegation: null,
   ...over,
 })
 

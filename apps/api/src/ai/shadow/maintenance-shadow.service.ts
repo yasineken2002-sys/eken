@@ -6,6 +6,9 @@ import { HistoryService } from '../../history/history.service'
 import { AiQuotaService } from '../usage/ai-quota.service'
 import { AiUsageService } from '../usage/ai-usage.service'
 import { SKUGGFALT, SKUGGKALLA_FELANMALAN } from './shadow-fields'
+import { enqueueSafely } from '../../common/queue/enqueue-safety'
+import { AiExecutionDryRunQueue } from '../execution-dryrun/dryrun.queue'
+import { QUEUE_AI_EXECUTION_DRYRUN } from '../execution-dryrun/dryrun.types'
 import { INGEN_ATGARD, provaSkuggDuglighet, skuggverktygForFelanmalan } from './shadow-tool-gate'
 
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
@@ -89,6 +92,7 @@ export class MaintenanceShadowService {
     private readonly history: HistoryService,
     private readonly quota: AiQuotaService,
     private readonly usage: AiUsageService,
+    private readonly dryrun: AiExecutionDryRunQueue,
   ) {}
 
   /**
@@ -200,6 +204,18 @@ export class MaintenanceShadowService {
           propertyId: ticket.propertyId,
         },
         select: { id: true },
+      })
+      // ── TORRLÄGETS DOM KÖAS, MEN FÖRSLAGET ÄR REDAN SKRIVET ───────────
+      //
+      // Ordningen är avsiktlig och `enqueueSafely` KASTAR ALDRIG: ett
+      // Redis-avbrott larmar till Sentry och lämnar förslaget orört. Ett
+      // förslag utan dom är en lucka sveparcronen fyller; ett förslag som
+      // aldrig skrevs för att bedömningen var nere är en förlust.
+      await enqueueSafely(() => this.dryrun.enqueue({ organizationId, assignmentId: rad.id }), {
+        queue: QUEUE_AI_EXECUTION_DRYRUN,
+        jobType: 'dryrun-assignment',
+        organizationId,
+        logger: this.logger,
       })
       return { utfall: 'SKAPAD', assignmentId: rad.id }
     } catch (err: unknown) {

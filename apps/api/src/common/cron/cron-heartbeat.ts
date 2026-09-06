@@ -43,6 +43,7 @@
  */
 export const LASTA_CRON_JOBB: Readonly<Record<string, string>> = {
   'cron:ai-assignment-expiry': '* * * * *',
+  'cron:ai-execution-dryrun': '*/15 * * * *',
   'cron:ai-resumption-freshness': '*/15 * * * *',
   'cron:ai-resumption-shadow': '* * * * *',
   'cron:ai-shadow-sweep': '*/15 * * * *',
