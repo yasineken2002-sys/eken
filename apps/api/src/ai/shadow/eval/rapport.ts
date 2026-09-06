@@ -67,6 +67,25 @@ export interface Rapport {
     felFragaAndel: number
   }
   ingen: Rad
+  /**
+   * VAD DE DETERMINISTISKA REGLERNA TILLFÖRDE, mätt mot modellens eget svar.
+   *
+   * Utan den här raden är en körning ett tal där modell och regel inte går att
+   * skilja åt, och den dag en regel slutar tillföra något syns det inte. Fälten
+   * är null när posterna inte bär modellens svar — en äldre körning, eller en
+   * rigg som inte skrev fälten. Null betyder "inte mätt", aldrig "noll".
+   */
+  regler: {
+    /** Ärenden där golvet höjde modellens prioritet. */
+    golvHojde: number | null
+    /** Av dem: hur många blev RÄTT som annars varit fel. */
+    golvRaddade: number | null
+    /** Av dem: hur många blev FEL som annars varit rätt. */
+    golvForstorde: number | null
+    /** Besiktningsförslag som gjordes om till frågor. */
+    fragaTvingad: number | null
+    fragaTvingadRatt: number | null
+  }
   konfidens: Array<{ hink: string; antal: number; ratt: number; andel: number | null }>
   domWouldExecute: number
   kostnad: { totalUsd: number; perArendeUsd: number; inTokens: number; utTokens: number }
@@ -103,6 +122,30 @@ function atgardRatt(f: Facit, u: Utfall): boolean {
 
 export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall }>): Rapport {
   const antal = poster.length
+
+  // ── REGLERNAS BIDRAG ──────────────────────────────────────────────────────
+  //
+  // Mäts bara på poster som faktiskt bär modellens eget svar. Saknas fälten helt
+  // blir raden null i stället för noll: en körning från före reglerna ska inte
+  // kunna läsas som att reglerna inte gjorde något.
+  const medFöre = poster.filter((p) => p.utfall.atgardForeRegler !== undefined)
+  const reglerMätta = medFöre.length > 0
+  let golvHojde = 0
+  let golvRaddade = 0
+  let golvForstorde = 0
+  let fragaTvingad = 0
+  let fragaTvingadRatt = 0
+  for (const { facit: f, utfall: u } of medFöre) {
+    if (u.prioritetForeRegler !== undefined && u.prioritetForeRegler !== u.prioritet) {
+      golvHojde++
+      if (u.prioritet === f.prioritet) golvRaddade++
+      if (u.prioritetForeRegler === f.prioritet) golvForstorde++
+    }
+    if (u.atgardForeRegler !== u.atgard && u.atgard === 'FRAGA') {
+      fragaTvingad++
+      if (f.fragaRatt) fragaTvingadRatt++
+    }
+  }
 
   // ── KATEGORI OCH PRIORITET RÄKNAS BARA DÄR AGENTEN SVARADE ────────────────
   //
@@ -145,6 +188,13 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
       medPrioritet.filter((p) => p.utfall.prioritet === p.facit.prioritet).length,
     ),
     atgard: rad(antal, poster.filter((p) => atgardRatt(p.facit, p.utfall)).length),
+    regler: {
+      golvHojde: reglerMätta ? golvHojde : null,
+      golvRaddade: reglerMätta ? golvRaddade : null,
+      golvForstorde: reglerMätta ? golvForstorde : null,
+      fragaTvingad: reglerMätta ? fragaTvingad : null,
+      fragaTvingadRatt: reglerMätta ? fragaTvingadRatt : null,
+    },
     fraga: {
       rattFraga,
       felFraga,
@@ -186,6 +236,15 @@ export function formateraRapport(r: Rapport): string {
   rader.push(`  rätt fråga        ${r.fraga.rattFraga}`)
   rader.push(`  fel fråga         ${r.fraga.felFraga}   (${pct(r.fraga.felFragaAndel)} av alla)`)
   rader.push(`  missad fråga      ${r.fraga.missadFraga}`)
+  rader.push('')
+  rader.push('REGLERNAS BIDRAG')
+  const n = (v: number | null): string => (v === null ? 'ej mätt' : String(v))
+  rader.push(
+    `  prioritetsgolvet höjde ${n(r.regler.golvHojde)} svar — räddade ${n(r.regler.golvRaddade)}, förstörde ${n(r.regler.golvForstorde)}`,
+  )
+  rader.push(
+    `  besiktning → fråga     ${n(r.regler.fragaTvingad)} gånger — rätt ${n(r.regler.fragaTvingadRatt)}`,
+  )
   rader.push('')
   rader.push('KONFIDENS          antal  rätt  andel')
   for (const k of r.konfidens) {
