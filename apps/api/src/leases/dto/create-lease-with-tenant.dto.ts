@@ -1,3 +1,7 @@
+import { CreateLeaseWithTenantSchema } from '@eken/shared'
+import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
+
+import type { SammaNycklar, CreateLeaseWithTenantInput, NewTenantInLeaseInput } from '@eken/shared'
 import {
   IsUUID,
   IsDateString,
@@ -15,7 +19,7 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
-export class NewTenantDto {
+export class NewTenantDto implements NewTenantInLeaseInput {
   @IsEnum(['INDIVIDUAL', 'COMPANY'])
   type!: 'INDIVIDUAL' | 'COMPANY'
 
@@ -63,7 +67,8 @@ export class NewTenantDto {
   country?: string
 }
 
-export class CreateLeaseWithTenantDto {
+@UppfyllerSchemat(CreateLeaseWithTenantSchema)
+export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsUUID()
   unitId!: string
 
@@ -157,3 +162,20 @@ export class CreateLeaseWithTenantDto {
   // Default false → spara som utkast.
   @IsBoolean() @IsOptional() activate?: boolean
 }
+
+/**
+ * NYCKELPARITET — BÅDA NIVÅERNA.
+ *
+ * `implements` på ytterklassen fångar inte att den NÄSTLADE `newTenant` glidit:
+ * `SammaNycklar` jämför nycklarna på den nivå den får, och ett fält som saknas
+ * inuti `NewTenantDto` syns inte uppifrån. Den nästlade typen får därför en
+ * egen rad.
+ */
+const _kontraktAvtalMedHyresgast: SammaNycklar<
+  CreateLeaseWithTenantDto,
+  CreateLeaseWithTenantInput
+> = true
+void _kontraktAvtalMedHyresgast
+
+const _kontraktNyHyresgastIAvtal: SammaNycklar<NewTenantDto, NewTenantInLeaseInput> = true
+void _kontraktNyHyresgastIAvtal

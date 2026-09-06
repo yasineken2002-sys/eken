@@ -1,23 +1,40 @@
 import { toast } from 'sonner'
 import { get, post, patch, del, extractApiError } from '@/lib/api'
 import { openPresignedDownload, sanitizeFilename } from '@/lib/download'
-import type { Lease, Tenant, Unit, Property } from '@eken/shared'
+import type {
+  CreateLeaseInput,
+  CreateLeaseWithTenantInput,
+  Lease,
+  Property,
+  CreateSigningRequestInput,
+  RenewLeaseInput,
+  Tenant,
+  TerminateLeaseInput,
+  TransitionLeaseStatusInput,
+  Unit,
+  UpdateAppendixInput,
+  UpdateLeaseInput,
+} from '@eken/shared'
+
+/**
+ * KONTRAKTET ÄGS AV `@eken/shared`, inte av den här filen.
+ *
+ * Här stod tidigare fyra egna interface — `CreateLeaseInput`,
+ * `ContractTerms`, `CreateLeaseWithTenantInput`, `TerminateLeaseInput` och
+ * `RenewLeaseInput` — som beskrev samma endpoints som DTO:erna. De hade redan
+ * glidit: villkorsfälten var typade `?: number | null` medan schemat säger
+ * `.optional()`, och `existingTenantId` var `?: string` utan `| undefined`,
+ * vilket under `exactOptionalPropertyTypes: true` är en ANNAN typ än den
+ * schemat härleder.
+ *
+ * Namnen re-exporteras så att de sex importörerna inte behöver röras — men
+ * definitionen kommer nu från schemat.
+ */
+export type { CreateLeaseInput, CreateLeaseWithTenantInput, RenewLeaseInput, TerminateLeaseInput }
 
 export type LeaseDetail = Lease & {
   unit: Unit & { property: Property }
   tenant: Tenant
-}
-
-export interface CreateLeaseInput {
-  unitId: string
-  tenantId: string
-  startDate: string
-  endDate?: string
-  monthlyRent: number
-  depositAmount?: number
-  leaseType?: 'FIXED_TERM' | 'INDEFINITE'
-  renewalPeriodMonths?: number
-  noticePeriodMonths?: number
 }
 
 export function fetchLeases(): Promise<LeaseDetail[]> {
@@ -32,12 +49,16 @@ export function createLease(dto: CreateLeaseInput): Promise<LeaseDetail> {
   return post<LeaseDetail>('/leases', dto)
 }
 
-export function updateLease(id: string, dto: Partial<CreateLeaseInput>): Promise<LeaseDetail> {
+export function updateLease(id: string, dto: UpdateLeaseInput): Promise<LeaseDetail> {
   return patch<LeaseDetail>(`/leases/${id}`, dto)
 }
 
-export function transitionLeaseStatus(id: string, status: string): Promise<LeaseDetail> {
-  return patch<LeaseDetail>(`/leases/${id}/status`, { status })
+export function transitionLeaseStatus(
+  id: string,
+  status: TransitionLeaseStatusInput['status'],
+): Promise<LeaseDetail> {
+  const kropp: TransitionLeaseStatusInput = { status }
+  return patch<LeaseDetail>(`/leases/${id}/status`, kropp)
 }
 
 export function deleteLease(id: string): Promise<void> {
@@ -46,83 +67,6 @@ export function deleteLease(id: string): Promise<void> {
 
 export type PetPolicy = 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
 export type IndexClauseType = 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT'
-
-export interface ContractTerms {
-  // Vad ingår i hyran
-  includesHeating?: boolean
-  includesWater?: boolean
-  includesHotWater?: boolean
-  includesElectricity?: boolean
-  includesInternet?: boolean
-  includesCleaning?: boolean
-  includesParking?: boolean
-  includesStorage?: boolean
-  includesLaundry?: boolean
-
-  // Tilläggshyror
-  parkingFee?: number | null
-  storageFee?: number | null
-  garageFee?: number | null
-
-  // Användningsändamål, husdjur, andrahand, försäkring
-  usagePurpose?: string | null
-  petsAllowed?: PetPolicy
-  petsApprovalNotes?: string | null
-  sublettingAllowed?: boolean
-  requiresHomeInsurance?: boolean
-
-  // Indexklausul
-  indexClauseType?: IndexClauseType
-  indexBaseYear?: number | null
-  indexAdjustmentDate?: string | null
-  indexMaxIncrease?: number | null
-  indexMinIncrease?: number | null
-  indexNotes?: string | null
-
-  // Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0)
-  specialTerms?: string | null
-}
-
-export interface CreateLeaseWithTenantInput extends ContractTerms {
-  unitId: string
-  existingTenantId?: string
-  newTenant?: {
-    type: 'INDIVIDUAL' | 'COMPANY'
-    firstName?: string
-    lastName?: string
-    companyName?: string
-    email: string
-    phone?: string
-    personalNumber?: string
-    orgNumber?: string
-    street?: string
-    city?: string
-    postalCode?: string
-    country?: string
-  }
-  monthlyRent: number
-  depositAmount?: number
-  startDate: string
-  endDate?: string
-  leaseType?: 'FIXED_TERM' | 'INDEFINITE'
-  renewalPeriodMonths?: number
-  noticePeriodMonths?: number
-  /**
-   * När `true` aktiveras kontraktet (DRAFT → ACTIVE) i samma anrop —
-   * välkomstmejl + PDF-jobb enqueueas direkt. Default false → utkast.
-   */
-  activate?: boolean
-}
-
-export interface TerminateLeaseInput {
-  terminationReason?: string
-  effectiveDate?: string
-}
-
-export interface RenewLeaseInput {
-  newEndDate?: string
-  monthlyRent?: number
-}
 
 export function terminateLease(id: string, dto: TerminateLeaseInput): Promise<LeaseDetail> {
   return patch<LeaseDetail>(`/leases/${id}/terminate`, dto)
@@ -154,11 +98,7 @@ export function fetchAppendices(leaseId: string): Promise<{ items: AppendixItem[
 export function updateAppendix(
   leaseId: string,
   documentId: string,
-  dto: {
-    attachedToLeaseAsAppendix?: boolean
-    category?: AppendixCategory
-    appendixOrder?: number
-  },
+  dto: UpdateAppendixInput,
 ): Promise<AppendixItem> {
   return patch<AppendixItem>(`/contracts/${leaseId}/appendices/${documentId}`, dto)
 }
@@ -183,13 +123,18 @@ export interface InitialNoticesResult {
 // härleder själv om depositionen ska hoppas över — klienten skickar inga
 // flaggor, just för att en felaktig flagga skulle kunna dubbeldebitera.
 export function createInitialNotices(leaseId: string): Promise<InitialNoticesResult> {
-  return post<InitialNoticesResult>(`/leases/${leaseId}/initial-notices`, {})
+  // INGEN NYTTOLAST. Endpointen tar ingen kropp — allt den behöver står i
+  // sökvägen — och `{}` var ett tomt objekt som såg ut som ett kontrakt utan
+  // att vara ett. Ett schema hade inte kunnat beskriva det, och en läsare kan
+  // inte se skillnad på "kroppen är avsiktligt tom" och "fälten glömdes".
+  return post<InitialNoticesResult>(`/leases/${leaseId}/initial-notices`)
 }
 
 export function generateLeaseContract(
   leaseId: string,
 ): Promise<{ documentId: string; message: string }> {
-  return post(`/contracts/generate/${leaseId}`, {})
+  // Samma sak: kontraktet genereras ur avtalet, som identifieras av sökvägen.
+  return post(`/contracts/generate/${leaseId}`)
 }
 
 export async function downloadLeaseContract(leaseId: string): Promise<void> {
@@ -253,5 +198,6 @@ export function createSigningRequest(documentId: string): Promise<{
   id: string
   status: string
 }> {
-  return post<{ id: string; status: string }>('/signing/requests', { documentId })
+  const kropp: CreateSigningRequestInput = { documentId }
+  return post<{ id: string; status: string }>('/signing/requests', kropp)
 }

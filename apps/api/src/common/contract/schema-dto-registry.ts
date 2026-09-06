@@ -33,6 +33,14 @@ import {
   UpdateMeterSchema,
   CreateDelegationFromAssignmentSchema,
   RevokeDelegationSchema,
+  CreateLeaseSchema,
+  UpdateLeaseSchema,
+  CreateLeaseWithTenantSchema,
+  TransitionLeaseStatusSchema,
+  TerminateLeaseSchema,
+  RenewLeaseSchema,
+  UpdateAppendixSchema,
+  CreateSigningRequestSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
@@ -57,6 +65,14 @@ import { CreateCreditNoteDto } from '../../invoices/dto/create-credit-note.dto'
 import { RegisterPaymentDto } from '../../invoices/dto/register-payment.dto'
 import { CreateDepositDto } from '../../deposits/dto/create-deposit.dto'
 import { RefundDepositDto } from '../../deposits/dto/refund-deposit.dto'
+import { CreateLeaseDto } from '../../leases/dto/create-lease.dto'
+import { UpdateLeaseDto } from '../../leases/dto/update-lease.dto'
+import { CreateLeaseWithTenantDto } from '../../leases/dto/create-lease-with-tenant.dto'
+import { TransitionLeaseStatusDto } from '../../leases/dto/transition-status.dto'
+import { TerminateLeaseDto } from '../../leases/dto/terminate-lease.dto'
+import { RenewLeaseDto } from '../../leases/dto/renew-lease.dto'
+import { UpdateAppendixDto } from '../../contracts/dto/update-appendix.dto'
+import { CreateSigningRequestDto } from '../../signing/dto/create-signing-request.dto'
 import {
   BulkExportDto,
   MarkSentDto,
@@ -445,6 +461,108 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltigVarfor:
       'skälet är kortare än fem tecken — en kreditering utan skäl går inte att granska',
+  },
+  // ─── Hyresavtalet: tio poster, åtta med kropp ──────────────────────────────
+  //
+  // De två återstående (`POST /leases/:id/initial-notices` och
+  // `POST /contracts/generate/:leaseId`) tar INGEN kropp — de skickade tidigare
+  // `{}`, vilket såg ut som ett kontrakt utan att vara ett. Nyttolasten är
+  // borttagen i webben i stället för beskriven här.
+  {
+    endpoint: 'POST /leases',
+    inputTyp: 'CreateLeaseInput',
+    schema: CreateLeaseSchema,
+    dto: CreateLeaseDto,
+    giltig: {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      tenantId: '22222222-3333-4444-8555-666666666666',
+      startDate: '2026-01-01',
+      monthlyRent: 12000,
+    },
+    // MINIMUM per enhetstyp (3 mån bostad, 9 mån lokal) ägs av servern, som
+    // läser unit.type. Schemat kan bara säga att noll inte är en uppsägningstid.
+    ogiltig: {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      tenantId: '22222222-3333-4444-8555-666666666666',
+      startDate: '2026-01-01',
+      monthlyRent: 12000,
+      noticePeriodMonths: 0,
+    },
+    ogiltigVarfor: 'noll månaders uppsägningstid är ingen uppsägningstid (JB 12 kap 4 §)',
+  },
+  {
+    endpoint: 'PATCH /leases/:id',
+    inputTyp: 'UpdateLeaseInput',
+    schema: UpdateLeaseSchema,
+    dto: UpdateLeaseDto,
+    giltig: { monthlyRent: 13000 },
+    ogiltig: { indexBaseYear: 2026 },
+    ogiltigVarfor:
+      'ett indexfält utan indexklausul är en motsägelse — basåret beskriver en klausul som inte finns',
+  },
+  {
+    endpoint: 'POST /leases/with-tenant',
+    inputTyp: 'CreateLeaseWithTenantInput',
+    schema: CreateLeaseWithTenantSchema,
+    dto: CreateLeaseWithTenantDto,
+    giltig: {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      existingTenantId: '22222222-3333-4444-8555-666666666666',
+      startDate: '2026-01-01',
+      monthlyRent: 12000,
+    },
+    ogiltig: {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      startDate: '2026-01-01',
+      monthlyRent: 12000,
+    },
+    ogiltigVarfor:
+      'varken befintlig hyresgäst eller uppgifter för en ny — avtalet skulle sakna motpart',
+  },
+  {
+    endpoint: 'PATCH /leases/:id/status',
+    inputTyp: 'TransitionLeaseStatusInput',
+    schema: TransitionLeaseStatusSchema,
+    dto: TransitionLeaseStatusDto,
+    giltig: { status: 'ACTIVE' },
+    ogiltig: { status: 'AKTIV' },
+    ogiltigVarfor: 'AKTIV är inte ett av avtalets fyra tillstånd',
+  },
+  {
+    endpoint: 'PATCH /leases/:id/terminate',
+    inputTyp: 'TerminateLeaseInput',
+    schema: TerminateLeaseSchema,
+    dto: TerminateLeaseDto,
+    giltig: { terminationReason: 'Hyresgästen flyttar', effectiveDate: '2026-06-30' },
+    ogiltig: { effectiveDate: '30 juni 2026' },
+    ogiltigVarfor: 'ett uppsägningsdatum måste vara ett ISO-datum, inte fritext',
+  },
+  {
+    endpoint: 'PATCH /leases/:id/renew',
+    inputTyp: 'RenewLeaseInput',
+    schema: RenewLeaseSchema,
+    dto: RenewLeaseDto,
+    giltig: { newEndDate: '2027-12-31', monthlyRent: 13000 },
+    ogiltig: { monthlyRent: -1 },
+    ogiltigVarfor: 'en negativ hyra är ingen hyra',
+  },
+  {
+    endpoint: 'PATCH /contracts/:leaseId/appendices/:documentId',
+    inputTyp: 'UpdateAppendixInput',
+    schema: UpdateAppendixSchema,
+    dto: UpdateAppendixDto,
+    giltig: { attachedToLeaseAsAppendix: true, category: 'ENERGY_DECLARATION', appendixOrder: 1 },
+    ogiltig: { appendixOrder: -1 },
+    ogiltigVarfor: 'bilagans ordning är ett index, inte ett negativt tal',
+  },
+  {
+    endpoint: 'POST /signing/requests',
+    inputTyp: 'CreateSigningRequestInput',
+    schema: CreateSigningRequestSchema,
+    dto: CreateSigningRequestDto,
+    giltig: { documentId: '33333333-4444-4555-8666-777777777777' },
+    ogiltig: { documentId: 'inte-ett-uuid' },
+    ogiltigVarfor: 'documentId måste vara ett UUID',
   },
   {
     endpoint: 'POST /deposits',

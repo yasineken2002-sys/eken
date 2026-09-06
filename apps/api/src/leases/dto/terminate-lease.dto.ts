@@ -1,6 +1,7 @@
+import type { SammaNycklar, TerminateLeaseInput } from '@eken/shared'
 import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator'
 
-export class TerminateLeaseDto {
+export class TerminateLeaseDto implements TerminateLeaseInput {
   @IsString()
   @IsOptional()
   @MaxLength(500)
@@ -11,3 +12,7 @@ export class TerminateLeaseDto {
   @IsOptional()
   effectiveDate?: string
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktSagUppAvtal: SammaNycklar<TerminateLeaseDto, TerminateLeaseInput> = true
+void _kontraktSagUppAvtal

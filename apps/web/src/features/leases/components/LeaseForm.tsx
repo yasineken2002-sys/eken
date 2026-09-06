@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
+import type { DefaultValues } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
@@ -21,9 +22,15 @@ import { cn } from '@/lib/cn'
 import { useProperties } from '@/features/properties/hooks/useProperties'
 import { useUnits } from '@/features/units/hooks/useUnits'
 import { useTenants } from '@/features/tenants/hooks/useTenants'
-import { formatCurrency, LEASE_ACTIVE_LOCKED_UI_FIELDS, LEASE_LOCK_ROUTE_HINT } from '@eken/shared'
-import type { CreateLeaseWithTenantInput } from '../api/leases.api'
-import type { LeaseLockRoute, Tenant, UnitType } from '@eken/shared'
+import {
+  formatCurrency,
+  granskaKontraktsvillkor,
+  LEASE_ACTIVE_LOCKED_UI_FIELDS,
+  LEASE_CONTRACT_TERMS,
+  LEASE_CORE_FIELDS,
+  LEASE_LOCK_ROUTE_HINT,
+} from '@eken/shared'
+import type { CreateLeaseWithTenantInput, LeaseLockRoute, Tenant, UnitType } from '@eken/shared'
 
 const UNIT_TYPE_LABELS: Record<UnitType, string> = {
   APARTMENT: 'Lägenhet',
@@ -36,7 +43,24 @@ const UNIT_TYPE_LABELS: Record<UnitType, string> = {
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
-const schema = z
+/**
+ * TOM STRÄNG ÄR FORMULÄRETS "INGET VÄRDE".
+ *
+ * `<input type="date">` och `<input type="text">` ger `''` när de är tomma,
+ * aldrig `undefined`. Trådens schema avvisar `''` som datum — helt riktigt —
+ * så fältet måste översättas VID FORMULÄRETS KANT i stället för att tråden
+ * luckras upp.
+ *
+ * Utan den här översättningen fälldes formulärets NORMALLÄGE av sitt eget
+ * schema, och eftersom slutdatumsfältet bara renderas för FIXED_TERM hade
+ * felet ingen plats att visas på. Uppmätt i CI två gånger: E2E
+ * `create-base-data.spec.ts:109` väntade på att modalen skulle stängas och
+ * fick "unexpected value visible". Användaren trycker Spara — ingenting händer.
+ */
+const tomSomUtelamnad = <T extends z.ZodTypeAny>(inre: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), inre)
+
+export const schema = z
   .object({
     propertyId: z.string().min(1, 'Välj en fastighet'),
     unitId: z.string().uuid('Välj en enhet'),
@@ -53,70 +77,52 @@ const schema = z
     street: z.string().optional(),
     city: z.string().optional(),
     postalCode: z.string().optional(),
-    monthlyRent: z.coerce.number().min(1, 'Ange månadshyra'),
-    depositAmount: z.coerce.number().min(0).optional(),
+    // ── KONTRAKTET ────────────────────────────────────────────────────────
+    //
+    // Fälten nedan går på tråden och läses därför UR det delade schemat i
+    // stället för ur en egen uppräkning. Formuläret kan inte använda
+    // `CreateLeaseWithTenantSchema` rakt av: formuläret är PLATT (firstName,
+    // lastName … på toppnivå) där tråden nästar hyresgästen i `newTenant`, och
+    // det bär rena UI-fält (`propertyId`, `tenantMode`) som aldrig skickas.
+    // Skillnaden är strukturell. GRÄNSERNA är det inte — och genom att spreada
+    // de delade objekten kan de inte glida isär.
+    //
+    // Vad uppräkningen här kostade innan: `noticePeriodMonths` stod som
+    // `z.coerce.number().int().min(0).default(3)` medan DTO:n kräver
+    // `@Min(1)`. Formuläret släppte alltså igenom 0 — som servern avvisar med
+    // 400 i stället för med ett fältfel — och SATTE 3 månaders uppsägningstid
+    // när fältet tömdes, vilket är ett påstående om avtalet.
+    ...LEASE_CORE_FIELDS,
+    ...LEASE_CONTRACT_TERMS,
+
+    // ── Fyra överskrivningar, var och en med skäl ──────────────────────────
+    //
+    // 1. Samma GRÄNS som delat (min 0). Bara det svenska meddelandet läggs
+    //    till, för att ett tomt fält annars visar Zods engelska standardtext.
+    monthlyRent: z
+      .number({ required_error: 'Ange månadshyra', invalid_type_error: 'Ange månadshyra' })
+      .min(0),
+    // 2. Obligatoriskt i formuläret, med svensk text. `<input type="date">`
+    //    kan bara producera 'YYYY-MM-DD' eller tomt, så IsoDatumSchemas
+    //    formatkontroll har inget att fånga här — tomhetskontrollen har det.
     startDate: z.string().min(1, 'Ange startdatum'),
-    endDate: z.string().optional(),
+    // 3. OBLIGATORISKT här, valfritt på tråden: radioknappen har alltid ett
+    //    valt alternativ, så formuläret kan inte producera "utelämnad". Det är
+    //    ett SYNLIGT val av användaren — inte en default som schemat sätter
+    //    åt hen.
     leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']),
-    renewalPeriodMonths: z.coerce.number().int().min(1).optional(),
-    noticePeriodMonths: z.coerce.number().int().min(0).default(3),
-
-    // Vad ingår i hyran
-    includesHeating: z.boolean().default(true),
-    includesWater: z.boolean().default(true),
-    includesHotWater: z.boolean().default(true),
-    includesElectricity: z.boolean().default(false),
-    includesInternet: z.boolean().default(false),
-    includesCleaning: z.boolean().default(false),
-    includesParking: z.boolean().default(false),
-    includesStorage: z.boolean().default(false),
-    includesLaundry: z.boolean().default(true),
-
-    // Tilläggshyror
-    parkingFee: z.coerce.number().min(0).optional(),
-    storageFee: z.coerce.number().min(0).optional(),
-    garageFee: z.coerce.number().min(0).optional(),
-
-    // Användning, husdjur, andrahand, försäkring
-    usagePurpose: z.string().optional(),
-    petsAllowed: z
-      .enum(['ALLOWED', 'REQUIRES_APPROVAL', 'NOT_ALLOWED'])
-      .default('REQUIRES_APPROVAL'),
-    petsApprovalNotes: z.string().optional(),
-    sublettingAllowed: z.boolean().default(false),
-    requiresHomeInsurance: z.boolean().default(true),
-
-    // Indexklausul
-    indexClauseType: z.enum(['NONE', 'KPI', 'NEGOTIATED', 'MARKET_RENT']).default('NONE'),
-    indexBaseYear: z.coerce.number().int().min(1900).max(2100).optional(),
-    indexAdjustmentDate: z.string().optional(),
-    indexMaxIncrease: z.coerce.number().min(0).max(100).optional(),
-    indexMinIncrease: z.coerce.number().min(0).max(100).optional(),
-    indexNotes: z.string().optional(),
-
-    // Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0)
-    specialTerms: z.string().optional(),
+    // 4. Samma DATUMGRÄNS som tråden, men `''` betyder utelämnat. Fältet
+    //    renderas bara för FIXED_TERM, så ett fel här hade varit osynligt.
+    endDate: tomSomUtelamnad(LEASE_CORE_FIELDS.endDate),
   })
   .superRefine((data, ctx) => {
-    if (data.leaseType === 'FIXED_TERM' && !data.endDate) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Tidsbegränsade kontrakt kräver slutdatum',
-        path: ['endDate'],
-      })
-    }
-    if (
-      data.indexClauseType !== 'NONE' &&
-      data.indexMinIncrease != null &&
-      data.indexMaxIncrease != null &&
-      data.indexMinIncrease > data.indexMaxIncrease
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Min-höjning kan inte vara större än max-höjning',
-        path: ['indexMinIncrease'],
-      })
-    }
+    // Kontraktets fyra konsistensregler ägs av det delade schemat och prövas
+    // här genom SAMMA funktion som servern kör. Två av dem stod tidigare
+    // utskrivna på den här platsen (slutdatum vid FIXED_TERM, min ≤ max på
+    // indexhöjningen) — alltså två kopior som kunde svara olika. De andra två
+    // fanns inte här alls, så formuläret släppte vidare nyttolaster som
+    // servern avvisade.
+    granskaKontraktsvillkor(data, ctx)
     if (data.tenantMode === 'existing') {
       if (!data.existingTenantId || data.existingTenantId.trim() === '') {
         ctx.addIssue({
@@ -161,6 +167,16 @@ const schema = z
       }
     }
   })
+
+/**
+ * Talfält: `<input type="number">` ger RHF en STRÄNG.
+ *
+ * Schemat coercar inte längre (det läser de delade definitionerna, och tråden
+ * tar riktiga tal), så konverteringen sker här. Ett tomt fält blir `undefined`
+ * — inte `NaN` — annars faller varje VALFRITT talfält på "expected number,
+ * received nan" så fort användaren rensar det.
+ */
+const talfalt = { setValueAs: (v: unknown) => (v === '' || v == null ? undefined : Number(v)) }
 
 type FormValues = z.infer<typeof schema>
 
@@ -296,6 +312,100 @@ function LockHint({ route }: { route: LeaseLockRoute }) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+/**
+ * FORMULÄRETS DEFAULTVÄRDEN — exporterade, inte kopierade.
+ *
+ * Låg tidigare inline i `useForm`. Provet fick då skriva av dem, och en
+ * handskriven kopia mäter kopian: `renewalPeriodMonths: 12` stod i
+ * komponenten men inte i avskriften, så provet var grönt medan formuläret
+ * var oskickbart. Det kostade en CI-körning till.
+ *
+ * Nu läser provet SAMMA funktion som komponenten. En default som läggs till
+ * här hamnar i provet utan att någon behöver minnas det.
+ */
+export function byggDefaultvarden(
+  defaultValues?: Partial<CreateLeaseWithTenantInput>,
+  initialPropertyId?: string,
+): DefaultValues<FormValues> {
+  const today = new Date().toISOString().slice(0, 10)
+  return {
+    propertyId: initialPropertyId ?? '',
+    unitId: defaultValues?.unitId ?? '',
+    tenantMode: defaultValues?.existingTenantId ? 'existing' : 'new',
+    existingTenantId: defaultValues?.existingTenantId ?? '',
+    newTenantType: 'INDIVIDUAL',
+    firstName: '',
+    lastName: '',
+    companyName: '',
+    email: '',
+    phone: '',
+    personalNumber: '',
+    orgNumber: '',
+    street: '',
+    city: '',
+    postalCode: '',
+    monthlyRent: defaultValues?.monthlyRent ?? 0,
+    depositAmount: defaultValues?.depositAmount ?? 0,
+    startDate: defaultValues?.startDate ?? today,
+    endDate: defaultValues?.endDate ?? '',
+    leaseType: defaultValues?.leaseType ?? 'INDEFINITE',
+    // FÖRNYELSEPERIOD hör bara till TIDSBEGRÄNSADE avtal — ett tillsvidareavtal
+    // förnyas inte, det löper. Den fasta 12:an sattes oavsett avtalstyp, medan
+    // standardtypen är INDEFINITE: formulärets normalläge påstod alltså en
+    // förnyelseperiod på ett avtal som inte kan ha en, och regel 3 fällde det
+    // på ett fält som bara renderas för FIXED_TERM. Tyst blockerare, samma
+    // klass som slutdatumet och indexfälten.
+    ...(defaultValues?.renewalPeriodMonths != null
+      ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
+      : (defaultValues?.leaseType ?? 'INDEFINITE') === 'FIXED_TERM'
+        ? { renewalPeriodMonths: 12 }
+        : {}),
+    // INGEN FÖRIFYLLNING. `?? 3` gällde oavsett enhetstyp, medan lagens
+    // minimum är tre månader för bostad och nio för lokal
+    // (`leases.compliance.ts`, `minNoticePeriodMonths`). För en lokal
+    // förifylldes alltså ett tal servern avvisar med 400. Att i stället
+    // förifylla 3/9 här hade duplicerat regeln i klienten — samma dubblering
+    // schemats docblock avvisar. Lämnas fältet tomt sätter servern lagens
+    // minimum för den faktiska enheten.
+    ...(defaultValues?.noticePeriodMonths != null
+      ? { noticePeriodMonths: defaultValues.noticePeriodMonths }
+      : {}),
+
+    includesHeating: defaultValues?.includesHeating ?? true,
+    includesWater: defaultValues?.includesWater ?? true,
+    includesHotWater: defaultValues?.includesHotWater ?? true,
+    includesElectricity: defaultValues?.includesElectricity ?? false,
+    includesInternet: defaultValues?.includesInternet ?? false,
+    includesCleaning: defaultValues?.includesCleaning ?? false,
+    includesParking: defaultValues?.includesParking ?? false,
+    includesStorage: defaultValues?.includesStorage ?? false,
+    includesLaundry: defaultValues?.includesLaundry ?? true,
+
+    ...(defaultValues?.parkingFee != null ? { parkingFee: defaultValues.parkingFee } : {}),
+    ...(defaultValues?.storageFee != null ? { storageFee: defaultValues.storageFee } : {}),
+    ...(defaultValues?.garageFee != null ? { garageFee: defaultValues.garageFee } : {}),
+
+    usagePurpose: defaultValues?.usagePurpose ?? '',
+    petsAllowed: defaultValues?.petsAllowed ?? 'REQUIRES_APPROVAL',
+    petsApprovalNotes: defaultValues?.petsApprovalNotes ?? '',
+    sublettingAllowed: defaultValues?.sublettingAllowed ?? false,
+    requiresHomeInsurance: defaultValues?.requiresHomeInsurance ?? true,
+
+    indexClauseType: defaultValues?.indexClauseType ?? 'NONE',
+    ...(defaultValues?.indexBaseYear != null ? { indexBaseYear: defaultValues.indexBaseYear } : {}),
+    indexAdjustmentDate: defaultValues?.indexAdjustmentDate ?? '',
+    ...(defaultValues?.indexMaxIncrease != null
+      ? { indexMaxIncrease: defaultValues.indexMaxIncrease }
+      : {}),
+    ...(defaultValues?.indexMinIncrease != null
+      ? { indexMinIncrease: defaultValues.indexMinIncrease }
+      : {}),
+    indexNotes: defaultValues?.indexNotes ?? '',
+
+    specialTerms: defaultValues?.specialTerms ?? '',
+  }
+}
+
 export function LeaseForm({
   defaultValues,
   initialPropertyId,
@@ -306,7 +416,6 @@ export function LeaseForm({
   submitLabel = 'Spara som utkast',
   leaseStatus,
 }: Props) {
-  const today = new Date().toISOString().slice(0, 10)
   // Edit-lås: aktivt kontrakt → bindande fält låsta (T1.1a-backend speglas här).
   const isActiveLock = mode === 'edit' && leaseStatus === 'ACTIVE'
   const lockedSet = new Set<string>(LEASE_ACTIVE_LOCKED_UI_FIELDS)
@@ -327,67 +436,7 @@ export function LeaseForm({
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      propertyId: initialPropertyId ?? '',
-      unitId: defaultValues?.unitId ?? '',
-      tenantMode: defaultValues?.existingTenantId ? 'existing' : 'new',
-      existingTenantId: defaultValues?.existingTenantId ?? '',
-      newTenantType: 'INDIVIDUAL',
-      firstName: '',
-      lastName: '',
-      companyName: '',
-      email: '',
-      phone: '',
-      personalNumber: '',
-      orgNumber: '',
-      street: '',
-      city: '',
-      postalCode: '',
-      monthlyRent: defaultValues?.monthlyRent ?? 0,
-      depositAmount: defaultValues?.depositAmount ?? 0,
-      startDate: defaultValues?.startDate ?? today,
-      endDate: defaultValues?.endDate ?? '',
-      leaseType: defaultValues?.leaseType ?? 'INDEFINITE',
-      ...(defaultValues?.renewalPeriodMonths != null
-        ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
-        : { renewalPeriodMonths: 12 }),
-      noticePeriodMonths: defaultValues?.noticePeriodMonths ?? 3,
-
-      includesHeating: defaultValues?.includesHeating ?? true,
-      includesWater: defaultValues?.includesWater ?? true,
-      includesHotWater: defaultValues?.includesHotWater ?? true,
-      includesElectricity: defaultValues?.includesElectricity ?? false,
-      includesInternet: defaultValues?.includesInternet ?? false,
-      includesCleaning: defaultValues?.includesCleaning ?? false,
-      includesParking: defaultValues?.includesParking ?? false,
-      includesStorage: defaultValues?.includesStorage ?? false,
-      includesLaundry: defaultValues?.includesLaundry ?? true,
-
-      ...(defaultValues?.parkingFee != null ? { parkingFee: defaultValues.parkingFee } : {}),
-      ...(defaultValues?.storageFee != null ? { storageFee: defaultValues.storageFee } : {}),
-      ...(defaultValues?.garageFee != null ? { garageFee: defaultValues.garageFee } : {}),
-
-      usagePurpose: defaultValues?.usagePurpose ?? '',
-      petsAllowed: defaultValues?.petsAllowed ?? 'REQUIRES_APPROVAL',
-      petsApprovalNotes: defaultValues?.petsApprovalNotes ?? '',
-      sublettingAllowed: defaultValues?.sublettingAllowed ?? false,
-      requiresHomeInsurance: defaultValues?.requiresHomeInsurance ?? true,
-
-      indexClauseType: defaultValues?.indexClauseType ?? 'NONE',
-      ...(defaultValues?.indexBaseYear != null
-        ? { indexBaseYear: defaultValues.indexBaseYear }
-        : {}),
-      indexAdjustmentDate: defaultValues?.indexAdjustmentDate ?? '',
-      ...(defaultValues?.indexMaxIncrease != null
-        ? { indexMaxIncrease: defaultValues.indexMaxIncrease }
-        : {}),
-      ...(defaultValues?.indexMinIncrease != null
-        ? { indexMinIncrease: defaultValues.indexMinIncrease }
-        : {}),
-      indexNotes: defaultValues?.indexNotes ?? '',
-
-      specialTerms: defaultValues?.specialTerms ?? '',
-    },
+    defaultValues: byggDefaultvarden(defaultValues, initialPropertyId),
   })
 
   const leaseType = watch('leaseType')
@@ -432,6 +481,18 @@ export function LeaseForm({
   // Hyresgästens kontaktadress kan i 99% av fallen härledas från lägenheten
   // — gör fälten valfria via en explicit toggle. Skickas inte alls om av.
   const [showAddressOverride, setShowAddressOverride] = useState(false)
+  // Slutdatum och förnyelseperiod är TIDSBESTÄMDA avtals fält. Inputen renderas bara för
+  // FIXED_TERM, men RHF behåller värdet när användaren byter till INDEFINITE —
+  // och submit skickade det då vidare. Med regel 3b i schemat hade det blivit
+  // ett fel på ett fält som inte finns på skärmen, alltså exakt den blockerare
+  // som tomma indexsträngar orsakade. Värdet rensas i stället vid bytet.
+  useEffect(() => {
+    if (leaseType !== 'FIXED_TERM') {
+      setValue('endDate', '')
+      setValue('renewalPeriodMonths', undefined)
+    }
+  }, [leaseType, setValue])
+
   useEffect(() => {
     if (!showAddressOverride) {
       setValue('street', '')
@@ -909,15 +970,15 @@ export function LeaseForm({
               placeholder="12"
               disabled={locked('renewalPeriodMonths')}
               error={errors.renewalPeriodMonths?.message}
-              {...register('renewalPeriodMonths')}
+              {...register('renewalPeriodMonths', talfalt)}
             />
             <Input
               label="Uppsägningstid (månader)"
               type="number"
-              placeholder="3"
+              placeholder="Lagens minimum"
               disabled={locked('noticePeriodMonths')}
               error={errors.noticePeriodMonths?.message}
-              {...register('noticePeriodMonths')}
+              {...register('noticePeriodMonths', talfalt)}
             />
           </div>
         )}
@@ -926,10 +987,10 @@ export function LeaseForm({
           <Input
             label="Uppsägningstid (månader)"
             type="number"
-            placeholder="3"
+            placeholder="Lagens minimum"
             disabled={locked('noticePeriodMonths')}
             error={errors.noticePeriodMonths?.message}
-            {...register('noticePeriodMonths')}
+            {...register('noticePeriodMonths', talfalt)}
           />
         )}
 
@@ -941,7 +1002,7 @@ export function LeaseForm({
               placeholder="9 200"
               disabled={locked('monthlyRent')}
               error={errors.monthlyRent?.message}
-              {...register('monthlyRent')}
+              {...register('monthlyRent', talfalt)}
             />
             {locked('monthlyRent') && <LockHint route="RENT" />}
           </div>
@@ -951,7 +1012,7 @@ export function LeaseForm({
               type="number"
               placeholder="27 600"
               disabled={locked('depositAmount')}
-              {...register('depositAmount')}
+              {...register('depositAmount', talfalt)}
             />
             {locked('depositAmount') && <LockHint route="DEPOSIT" />}
           </div>
@@ -1001,21 +1062,21 @@ export function LeaseForm({
           type="number"
           placeholder="0"
           disabled={locked('parkingFee')}
-          {...register('parkingFee')}
+          {...register('parkingFee', talfalt)}
         />
         <Input
           label="Förråd (kr/mån)"
           type="number"
           placeholder="0"
           disabled={locked('storageFee')}
-          {...register('storageFee')}
+          {...register('storageFee', talfalt)}
         />
         <Input
           label="Garage (kr/mån)"
           type="number"
           placeholder="0"
           disabled={locked('garageFee')}
-          {...register('garageFee')}
+          {...register('garageFee', talfalt)}
         />
       </div>
 
@@ -1159,7 +1220,7 @@ export function LeaseForm({
                 type="number"
                 placeholder={String(new Date().getFullYear())}
                 disabled={locked('indexBaseYear')}
-                {...register('indexBaseYear')}
+                {...register('indexBaseYear', talfalt)}
               />
               <div className="space-y-1.5">
                 <label className="block text-[13px] font-medium text-gray-700">
@@ -1194,7 +1255,7 @@ export function LeaseForm({
                 placeholder="t.ex. 5"
                 disabled={locked('indexMaxIncrease')}
                 error={errors.indexMaxIncrease?.message}
-                {...register('indexMaxIncrease')}
+                {...register('indexMaxIncrease', talfalt)}
               />
               <Input
                 label="Min höjning per år (%, valfritt)"
@@ -1203,7 +1264,7 @@ export function LeaseForm({
                 placeholder="t.ex. 0"
                 disabled={locked('indexMinIncrease')}
                 error={errors.indexMinIncrease?.message}
-                {...register('indexMinIncrease')}
+                {...register('indexMinIncrease', talfalt)}
               />
             </div>
             <div className="space-y-1.5">
