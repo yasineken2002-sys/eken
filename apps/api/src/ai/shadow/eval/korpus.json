@@ -21,7 +21,27 @@
     "  facit.fragaRatt                true när uppgiften som avgör bedömningen inte",
     "                                 står i texten och inte går att sluta sig till.",
     "  facit.fragaFalt                vilket fält frågan i så fall gäller.",
-    "  facit.skal                     varför, på svenska — för den som läser en miss."
+    "  facit.skal                     varför, på svenska — för den som läser en miss.",
+    "",
+    "RÄTTELSER — läs dem, de påverkar hur talen ska tolkas.",
+    "",
+    "2026-09-07, efter körning 3: k26 och k62 stod som facit.atgard = INGEN. Båda är",
+    "ärenden där hyresgästen skriver att felet är löst och ber att ärendet stängs.",
+    "Att då föreslå update_maintenance_status är inte att missa tystnaden — det är",
+    "precis den repetitiva handling agenten finns för, och INGEN hade lämnat ett löst",
+    "ärende öppet. Facit var fel, och det rättades.",
+    "",
+    "ATT FACIT ÄNDRADES EFTER EN KÖRNING ÄR EN RISK, och den ska stå här och inte i",
+    "ett PR-meddelande: det är så en mätning blir värdelös. Två saker gör rättelsen",
+    "försvarbar, och läsaren får väga dem själv. (1) Argumentet ovan hänger inte på",
+    "vad modellen svarade — det är ett produktargument som går att pröva utan att",
+    "känna till svaret. (2) Rättelsen HÖJER åtgärdsträffen med två ärenden, eftersom",
+    "modellen redan svarade update_maintenance_status på båda; talet före och efter",
+    "redovisas därför var för sig i rapporten.",
+    "",
+    "k63 och k64 lades till i samma ändring för att tystnadsgruppen skulle förbli",
+    "fem ärenden och inte krympa till tre. Båda är skrivna utan att någon modell sett",
+    "dem."
   ],
   "arenden": [
     {
@@ -358,9 +378,9 @@
       "facit": {
         "kategori": "PLUMBING",
         "prioritet": "LOW",
-        "atgard": "INGEN",
+        "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Redan åtgärdat. Att föreslå en åtgärd här är att inte ha läst texten."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som INGEN. Hyresgästen ber uttryckligen att ärendet stängs — att föreslå en statusuppdatering är precis det repetitiva arbete agenten finns för. INGEN vore att låta ett löst ärende ligga kvar öppet."
       }
     },
     {
@@ -757,9 +777,37 @@
       "facit": {
         "kategori": "HEATING",
         "prioritet": "LOW",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som INGEN. \"Behöver inte komma\" betyder att ärendet är löst, inte att systemet ska tiga — statusen ska sättas."
+      }
+    },
+    {
+      "id": "k63",
+      "titel": "FAKTURA FÖRFALLEN - BETALA OMEDELBART",
+      "beskrivning": "Din betalning har misslyckats. Klicka pa lanken for att uppdatera dina kortuppgifter inom 24 timmar annars stangs ditt konto.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "HIGH",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
         "atgard": "INGEN",
         "fragaRatt": false,
-        "skal": "Hyresgästen säger uttryckligen att inget behövs. Att föreslå en åtgärd är att inte ha läst texten."
+        "skal": "Nätfiske i felanmälningsformuläret. Ingen åtgärd, och absolut inget mejl."
+      }
+    },
+    {
+      "id": "k64",
+      "titel": "Bara en fundering",
+      "beskrivning": "Jag funderade pa om ni brukar mala om trapphuset nan gang. Ingen bradska alls, undrar bara.",
+      "registreradKategori": "COMMON_AREAS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "COMMON_AREAS",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Ingen felanmälan — en undran utan ärende. Inget att föreslå, inget att fråga om."
       }
     }
   ]

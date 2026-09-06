@@ -33,6 +33,15 @@ export interface Utfall {
   fragaFalt?: string | null
   /** Torrlägets dom om en delegation hade funnits för verktyget. */
   domWouldExecute?: boolean
+  /**
+   * MODELLENS EGET SVAR, före de deterministiska reglerna i `triage-rules.ts`.
+   *
+   * De två fälten finns för att en körning annars mäter modell och regel som
+   * EN sak. Med dem går det att svara på "vad tillförde golvet" i efterhand,
+   * utan att köra om — och att se den dag en regel slutar tillföra något.
+   */
+  atgardForeRegler?: string
+  prioritetForeRegler?: string | null
   kostnadUsd: number
   inTokens: number
   utTokens: number

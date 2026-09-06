@@ -16,6 +16,7 @@ import {
   skuggverktygForFelanmalan,
 } from './shadow-tool-gate'
 import { FRAGEBARA_NYCKLAR, ärGiltigFråga } from '../questions/question-fields'
+import { tillämpaRegler } from './triage-rules'
 import { QuestionService } from '../questions/question.service'
 
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
@@ -194,6 +195,35 @@ export class MaintenanceShadowService {
     const kontext = await this.byggKontext(organizationId, ticket)
     const forslag = await this.fragaModellen(organizationId, ticket, kontext)
     if (!forslag) return { utfall: 'AVVISAT_FORSLAG', detalj: 'modellen svarade inte tolkbart' }
+
+    // ── DE DETERMINISTISKA REGLERNA, EFTER MODELLEN OCH FÖRE ALLT ANNAT ─────
+    //
+    // Golvet kan höja prioriteten men aldrig sänka den, och en besiktning på ett
+    // ärende vars kategori inte går att avgöra blir en fråga. Skälen till båda
+    // står i `triage-rules.ts`; det som hör hemma HÄR är ordningen: reglerna
+    // körs före grinden och före skrivningen, så det som sparas är det som
+    // gäller. Kördes de efteråt hade raden och beslutet kunnat säga olika saker.
+    const regler = tillämpaRegler(
+      {
+        atgärd: forslag.toolName,
+        prioritet: (forslag.prediction['priority'] as string | undefined) ?? null,
+        kategori: (forslag.prediction['category'] as string | undefined) ?? null,
+      },
+      {
+        titel: ticket.title,
+        beskrivning: ticket.description,
+        registreradKategori: ticket.category,
+      },
+    )
+    if (regler.prioritet !== null) forslag.prediction['priority'] = regler.prioritet
+    if (regler.frågaTvingad && regler.fråga) {
+      forslag.toolName = FRAGA
+      forslag.fraga = regler.fråga
+      this.logger.log(
+        `[ai-shadow] ärende ${ticket.ticketNumber}: besiktningsförslaget gjordes om till en fråga ` +
+          '— kategorin går inte att avgöra ur texten.',
+      )
+    }
 
     // ── FRÅGAN GÅR EN EGEN VÄG ─────────────────────────────────────────────
     //
@@ -648,6 +678,47 @@ export function byggPrompt(
     `eller ${FRAGA} om en uppgift saknas i ärendet och historiken.`,
     'Osäkerhet är inte en saknad uppgift: är bedömningen svår föreslår du ändå,',
     'med låg confidence.',
+    '',
+    // ── TYSTNADEN BEHÖVER SKRIVAS UT FÖR ATT VARA NÅBAR ──────────────────
+    //
+    // Uppmätt på mätkorpusen (körning 3): av fem ärenden där rätt svar var att
+    // INTE föreslå något träffade agenten två. Den svarade `FRAGA` på ren
+    // obegriplighet ("asdfasdf test test") och letade efter ett verktyg på en
+    // hälsning. `INGEN_ATGARD` stod med i uppräkningen ovan, men bara som ett
+    // alternativ bland tre — inte som något med egna fall.
+    //
+    // Skälet att tystnaden är värd egen plats: en inkorg som fylls med förslag
+    // om skräppost och artighetsfraser lär hyresvärden att inte läsa den, och
+    // då är hela skuggläget bortkastat.
+    `## När ${INGEN_ATGARD} är HELA svaret`,
+    `${INGEN_ATGARD} är ett fullständigt svar, inte en reservutgång. Välj det när:`,
+    '- texten är reklam, nätfiske eller skräppost,',
+    '- texten inte går att förstå som en felanmälan (slumpmässiga tecken, ett test),',
+    '- texten inte anmäler något fel alls — en hälsning, ett tack, en undran,',
+    '- samma fel redan står som ett öppet ärende i historiken ovan.',
+    'I de fallen ska du varken föreslå ett verktyg eller ställa en fråga. Det finns',
+    'inget att fråga om när det inte finns något ärende.',
+    '',
+    // ── PRIORITETEN ANVÄNDE BARA MITTEN ──────────────────────────────────
+    //
+    // Uppmätt (körning 3, 50 besvarade ärenden): modellen svarade NORMAL på 33
+    // mot facits 20, underskattade 14 gånger och överskattade 9 — den största
+    // enskilda felformen var HIGH som blev NORMAL, åtta gånger. LOW användes tre
+    // gånger mot facits tio.
+    //
+    // Golvet i `triage-rules.ts` fångar underskattningen deterministiskt och kan
+    // aldrig sänka. Det kan däremot inte få modellen att VÅGA säga LOW — ett
+    // golv höjer, det sänker inte — och därför står nivåerna också här, med
+    // kriterier i stället för adjektiv.
+    '## Prioritet — alla fyra nivåerna används',
+    'URGENT: skadan eller risken växer med timmarna. Vatten som rinner nu, ingen',
+    '  ström, gaslukt, brandrök, någon är utelåst, bostaden går inte att låsa.',
+    'HIGH: fukt eller mögel, skadedjur, ingen värme eller inget varmvatten, en dörr',
+    '  som inte går i lås, eller ett fel som anmälts förut utan att något hänt.',
+    'NORMAL: ett fel som ska lagas men tål att vänta till nästa vardag.',
+    'LOW: kosmetiskt, städning, en önskan, något som kan tas när någon ändå är på',
+    '  plats. LOW är ett riktigt svar — ett ärende utan brådska ska få LOW, inte',
+    '  NORMAL "för säkerhets skull".',
     '',
     // DEN HÄR MENINGEN GÖR FRÅGAN NÅBAR UTAN ATT GÖRA DEN TILL EN UTVÄG.
     //

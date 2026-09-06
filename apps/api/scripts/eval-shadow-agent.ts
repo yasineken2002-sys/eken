@@ -38,6 +38,7 @@ import {
   forslagsverktyg,
   tolkaVerktygsanrop,
 } from '../src/ai/shadow/maintenance-shadow.service'
+import { tillämpaRegler } from '../src/ai/shadow/triage-rules'
 import { INGEN_ATGARD, skuggverktygForFelanmalan } from '../src/ai/shadow/shadow-tool-gate'
 import { prövaDelegerbarhet } from '../src/ai/delegation/delegation-scope'
 import {
@@ -186,11 +187,27 @@ async function main(): Promise<void> {
       // `tolkaVerktygsanrop` returnerar null både för INGEN_ATGARD och för ett
       // otolkbart svar. De två är olika saker, och rapporten måste kunna skilja
       // dem: det RÅA `toolName` avgör vilket.
-      const atgard =
+      const atgardFöreRegler =
         tolkat?.toolName ?? (raTool === INGEN_ATGARD ? 'INGEN' : raTool ? 'OTOLKBART' : 'OTOLKBART')
 
       const kat = (tolkat?.prediction?.['category'] as string | undefined) ?? null
-      const pri = (tolkat?.prediction?.['priority'] as string | undefined) ?? null
+      const råPri = (tolkat?.prediction?.['priority'] as string | undefined) ?? null
+
+      // ── REGLERNA UR PRODUKTIONEN, INTE EN KOPIA HÄR ────────────────────────
+      //
+      // Samma skäl som `byggPrompt` och `forslagsverktyg` importeras: en rigg som
+      // tillämpar sin egen version av en regel mäter sin egen version. Golvet och
+      // frågeregeln körs alltså genom exakt den funktion skuggtjänsten anropar.
+      const regler = tillämpaRegler(
+        { atgärd: atgardFöreRegler, prioritet: råPri, kategori: kat },
+        {
+          titel: a.titel,
+          beskrivning: a.beskrivning,
+          registreradKategori: a.registreradKategori,
+        },
+      )
+      const atgard = regler.atgärd
+      const pri = regler.prioritet
 
       // TORRLÄGETS DOM: hade en delegation för verktyget kunnat bära det här?
       // Räknas för verktygsförslag, inte för INGEN eller FRAGA — de utför inget.
@@ -207,7 +224,12 @@ async function main(): Promise<void> {
           kategori: kat,
           prioritet: pri,
           confidence: tolkat?.confidence ?? null,
-          fragaFalt: tolkat?.fraga?.fält ?? null,
+          fragaFalt: regler.fråga?.fält ?? tolkat?.fraga?.fält ?? null,
+          // VAD REGLERNA GJORDE, per ärende. Utan de två fälten går det inte att
+          // i efterhand skilja modellens svar från regelns — och då mäter nästa
+          // körning två saker som ser ut som en.
+          atgardForeRegler: atgardFöreRegler,
+          prioritetForeRegler: råPri,
           domWouldExecute,
           kostnadUsd: kostnad,
           inTokens: inTok,
