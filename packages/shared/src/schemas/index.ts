@@ -404,6 +404,8 @@ export type CreateUnitInput = z.infer<typeof CreateUnitSchema>
 export type CreateTenantInput = z.infer<typeof CreateTenantSchema>
 export type UpdateTenantInput = z.infer<typeof UpdateTenantSchema>
 export type AnonymizeTenantInput = z.infer<typeof AnonymizeTenantSchema>
+export type CreateRentIncreaseInput = z.infer<typeof CreateRentIncreaseSchema>
+export type RejectRentIncreaseInput = z.infer<typeof RejectRentIncreaseSchema>
 export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
 export type CreateLeaseWithTenantInput = z.infer<typeof CreateLeaseWithTenantSchema>
 export type NewTenantInLeaseInput = z.infer<typeof NewTenantInLeaseSchema>
@@ -807,6 +809,32 @@ export const SendNoticesSchema = z.object({
  * G3 stängdes. Skillnaden mot avin är att avin KRÄVER fältet; fakturan tillåter
  * att det utelämnas och tolkar det som `MANUAL`.
  */
+// ─── Hyreshöjningar ──────────────────────────────────────────────────────────
+//
+// FORMEN BINDS, BELOPPEN OCH FRISTERNA RÖRS INTE. Varje gräns nedan är avläst
+// ur `CreateRentIncreaseDto` respektive `RejectRentIncreaseDto` — inte vald
+// här. En hyreshöjning är en juridisk handling, och en gräns som skiljer sig
+// mellan klient och server är ett fel som visar sig som ett 400 mitt i ett
+// bindande beslut.
+
+export const CreateRentIncreaseSchema = z.object({
+  leaseId: z.string().uuid(),
+  /** Den NYA hyran i kronor, inte höjningen. Min 1, som DTO:n. */
+  newRent: z.number().min(1),
+  /** Motiveringen hyresgästen får se. 3–500 tecken, som DTO:n. */
+  reason: z.string().min(3).max(500),
+  effectiveDate: IsoDatumSchema,
+  // INGET `notes`. DTO:n hade fältet, men `RentIncrease` saknar kolumn och
+  // `create()` läste det aldrig — det slängdes. Det är borttaget ur DTO:n i
+  // samma ändring; se dess docblock för varför det INTE räckte att ta in det
+  // här. Ett spöke som paritetskontrollen legitimerar är värre än inget fält.
+})
+
+export const RejectRentIncreaseSchema = z.object({
+  /** OBLIGATORISK, 2–500 tecken. Ett avslag utan skäl är inte spårbart. */
+  rejectionReason: z.string().min(2).max(500),
+})
+
 // ─── Uppsägningar ────────────────────────────────────────────────────────────
 //
 // FORMEN BINDS, BETYDELSEN RÖRS INTE. Båda fälten nedan är valfria i dag och

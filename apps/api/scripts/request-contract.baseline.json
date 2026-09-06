@@ -1,5 +1,5 @@
 {
-  "total": 70,
+  "total": 65,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -129,16 +129,6 @@
         "PATCH `/news/${id}` → UpdateNewsPostDto",
         "POST '/news' → CreateNewsPostDto",
         "POST `/news/${id}/publish` → INLINE-LITERAL"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/rent-increases/api/rent-increases.api.ts",
-      "medlemmar": [
-        "PATCH `/rent-increases/${id}/accept` → INLINE-LITERAL",
-        "PATCH `/rent-increases/${id}/reject` → INLINE-LITERAL",
-        "PATCH `/rent-increases/${id}/withdraw` → INLINE-LITERAL",
-        "POST '/rent-increases' → CreateRentIncreaseInput",
-        "POST `/rent-increases/${id}/send-notice` → INLINE-LITERAL"
       ]
     },
     {
