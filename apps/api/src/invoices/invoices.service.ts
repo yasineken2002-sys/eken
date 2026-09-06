@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common'
 // `Prisma` som VÄRDE — Prisma.Decimal används för betalningsaritmetiken
 // (belopp får aldrig passera float på väg till ett bokföringsbeslut).
-import { Prisma } from '@prisma/client'
+import { EventActorType, Prisma } from '@prisma/client'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
 import { computeInvoiceDebt, invoiceOutstanding, invoiceOverpaid } from './invoice-debt'
 import { computeInvoiceAmounts } from './invoice-amounts'
@@ -1217,6 +1217,21 @@ export class InvoicesService {
       paidAt?: Date
       /** Etiketten operatören valde. Enumen ovan är grövre; se schemat. */
       paymentMethodRaw?: string
+      /**
+       * Operatörens uttryckliga ja till att bokföra en betalning som inträffade
+       * i ett STÄNGT RÄKENSKAPSÅR på första öppna dag, med betalningsdatumet
+       * bevarat i `JournalEntry.eventDate` och ett spår i
+       * `LateFiscalYearPosting`.
+       *
+       * Utan den är beteendet oförändrat: spärren kastar. Att den kräver ett
+       * ANDRA anrop är avsiktligt — första försöket möter felmeddelandet, som
+       * säger vad som gäller, och operatören bekräftar sedan. En tyst flytt på
+       * första försöket hade varit maskinen som fattar ett bindande beslut åt
+       * människan.
+       *
+       * AI-verktyget och bankmatchningen sätter den ALDRIG.
+       */
+      senBokforing?: { reason: string; actorLabel?: string | null }
     } = {},
   ): Promise<Invoice> {
     const paymentDate = opts.paidAt ?? new Date()
@@ -1399,6 +1414,17 @@ export class InvoicesService {
           actorId,
           allocation.id,
           tx,
+          // Bara när operatören uttryckligen bekräftat. `actorType` följer med
+          // så att spåret säger VEM.
+          opts.senBokforing
+            ? {
+                tillat: true,
+                reason: opts.senBokforing.reason,
+                actorType: actorType === 'USER' ? EventActorType.USER : EventActorType.SYSTEM,
+                actorUserId: actorId,
+                actorLabel: opts.senBokforing.actorLabel ?? null,
+              }
+            : undefined,
         )
         // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
         if (entry === null) {

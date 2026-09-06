@@ -24,6 +24,7 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto'
 import { UpdateInvoiceDto } from './dto/update-invoice.dto'
 import { TransitionStatusDto } from './dto/transition-status.dto'
 import { RegisterPaymentDto } from './dto/register-payment.dto'
+import { assertFarBokforaSent } from '../accounting/closed-period'
 import { CreateCreditNoteDto } from './dto/create-credit-note.dto'
 import { ReverseReminderFeeDto } from '../avisering/dto/reverse-reminder-fee.dto'
 import { impersonatorOf } from '../common/auth/impersonation'
@@ -228,8 +229,24 @@ export class InvoicesController {
         ...(dto.paymentMethodRaw ? { paymentMethodRaw: dto.paymentMethodRaw } : {}),
         ...(dto.reference ? { reference: dto.reference } : {}),
         ...(dto.paidAt ? { paidAt: new Date(dto.paidAt) } : {}),
+        // SEN BOKFÖRING I ETT STÄNGT RÄKENSKAPSÅR. Fältets närvaro är
+        // samtycket, och rollen prövas INNAN tjänsten anropas. Endpointen
+        // släpper in MANAGER och ADMIN för vanliga betalningar; den här flytten
+        // kräver OWNER — samma nivå som att återöppna en period, och av ett
+        // starkare skäl: ett stängt räkenskapsår kan inte öppnas igen.
+        ...(dto.senBokforingSkal ? this.senBokforing(user, dto.senBokforingSkal) : {}),
       },
     )
+  }
+
+  /**
+   * Rollspärr + nyttolast för sen bokföring. Egen metod därför att `assert`:en
+   * MÅSTE köras innan objektet byggs — en spread med ett kommatecken i hade
+   * fungerat men varit läsbar som att rollen inte prövades alls.
+   */
+  private senBokforing(user: JwtPayload, reason: string) {
+    assertFarBokforaSent(user.role)
+    return { senBokforing: { reason, actorLabel: user.email ?? null } }
   }
 
   @Post(':id/send-email')

@@ -33,6 +33,7 @@ import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 import { isP2002From } from '../common/prisma/p2002-constraint'
 import { allocateRentNoticeNumber } from './rent-notice-number'
 import {
+  EventActorType,
   PaymentMethod,
   Prisma,
   RentCollectionStage,
@@ -1618,6 +1619,12 @@ export class AviseringService {
     paymentMethod: PaymentMethod,
     paidAt?: string,
     createdById?: string | null,
+    /**
+     * Operatörens uttryckliga ja till sen bokföring i ett STÄNGT
+     * RÄKENSKAPSÅR. Samma beslut och samma spår som på fakturavägen: utan den
+     * kastar spärren precis som förut, och en obevakad väg sätter den aldrig.
+     */
+    senBokforing?: { reason: string; actorLabel?: string | null },
   ) {
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
@@ -1841,6 +1848,17 @@ export class AviseringService {
           createdById ?? null,
           allocation.id,
           tx,
+          senBokforing
+            ? {
+                tillat: true,
+                reason: senBokforing.reason,
+                // Vägen hit går alltid genom en inloggad operatör (controllern
+                // kräver rollen); ingen cron eller kö anropar markAsPaid.
+                actorType: EventActorType.USER,
+                actorUserId: createdById ?? null,
+                actorLabel: senBokforing.actorLabel ?? null,
+              }
+            : undefined,
         )
         // null = saknat likvidkonto/1510 → bokföringsfel, inte ett giltigt no-op.
         // Kastet rullar tillbaka HELA transaktionen: ingen allokering, ingen

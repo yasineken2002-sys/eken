@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, ForbiddenException } from '@nestjs/common'
 import { AccountingPeriodEventType, EventActorType } from '@prisma/client'
 import type { AccountingPeriodEventReasonCategory, Prisma } from '@prisma/client'
 import { stockholmCivilDate, stockholmFiscalYear } from '../common/time/stockholm-period'
@@ -706,4 +706,168 @@ export async function getPeriodHistory(
       summary: true,
     },
   })
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * SEN BOKFÖRING I ETT STÄNGT RÄKENSKAPSÅR
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── PROBLEMET, MÄTT ────────────────────────────────────────────────────────
+ *
+ * `assertPeriodOpen` kastar på BÅDA stängningsformerna, och för den stängda
+ * MÅNADEN är det rätt: månaden kan öppnas igen av en behörig användare, spårat,
+ * och att låta en maskin rutta förbi ett medvetet mänskligt beslut vore att
+ * kringgå just det beslutet. Den vägen lämnas orörd.
+ *
+ * För det stängda RÄKENSKAPSÅRET finns ingen sådan utgång — ett stängt år kan
+ * per konstruktion inte öppnas igen (`FiscalYearClose` har ingen återöppning).
+ * En betalning som verkligen inträffade i ett stängt år kunde därför ALDRIG
+ * bokföras: `allocate` kastade, och det fanns ingen väg framåt. Det är en
+ * fullständighetsbrist i grundbokföringen (BFL 5 kap 1–2 §§), inte en
+ * försiktighetsåtgärd — affärshändelsen inträffade och MÅSTE bokföras.
+ *
+ * Notera att systemet redan SA det här: felmeddelandet ovan lyder "Bokför i
+ * innevarande räkenskapsår i stället." Det som saknades var vägen att göra det
+ * utan att tappa när betalningen faktiskt skedde.
+ *
+ * ── VAD DEN HÄR FUNKTIONEN GÖR, OCH INTE GÖR ───────────────────────────────
+ *
+ * Den VÄLJER BOKFÖRINGSDATUM. Den verkställer inget lås och ersätter ingen
+ * kontroll: `allocate` anropar fortfarande `assertPeriodOpen` på det datum som
+ * kommer ut här, i samma transaktion som posten. Resolvern flyttar alltså bara
+ * datumet till någonstans där den befintliga spärren släpper igenom det —
+ * misslyckas den med det kastar spärren precis som förut.
+ *
+ * Att det är EN kontroll och inte två är mekaniskt, inte en ambition: den här
+ * funktionen ställer sina frågor genom `findClosedFiscalYear` och
+ * `isPeriodClosed`, samma två funktioner `assertPeriodOpen` själv använder.
+ * Det finns ingen andra kopia av regeln att hålla i synk.
+ *
+ * ── VAD DEN INTE KAN SE ────────────────────────────────────────────────────
+ *
+ * Den vet inget om VEM som frågar eller om beloppet är väsentligt. Rollspärren
+ * och väsentlighetsflaggan ägs av anroparen (`AccountingService`), och det är
+ * med flit: en ren datumfunktion som också gjorde behörighetskontroll hade
+ * varit två regler i en, och den andra hade varit osynlig här.
+ */
+
+/** Hur många månader framåt resolvern letar efter en öppen period. */
+const MAX_MANADER_FRAMAT = 120
+
+export interface SenBokforingUtfall {
+  /** Datumet posten ska bokföras på. Lika med `desiredDate` när inget flyttats. */
+  bookingDate: Date
+  /**
+   * Det VERKLIGA datumet för affärshändelsen, satt bara när posten flyttats.
+   * `null` betyder att `bookingDate` ÄR händelsedatumet — den normala vägen.
+   */
+  eventDate: Date | null
+  /** Räkenskapsåret som var stängt och orsakade flytten. `null` = ingen flytt. */
+  movedFromFiscalYear: number | null
+}
+
+/**
+ * Första dagen från och med `from` vars period varken ligger i ett stängt
+ * räkenskapsår eller i en stängd månad.
+ *
+ * Går månadsvis och landar på månadens FÖRSTA dag. Att gå dagvis hade varit
+ * meningslöst: både `isPeriodClosed` och `findClosedFiscalYear` svarar per
+ * månad respektive år, så alla dagar i samma månad ger samma svar.
+ */
+async function forstaOppnaDag(
+  client: FiscalYearClient,
+  organizationId: string,
+  from: Date,
+): Promise<Date | null> {
+  const { year, month } = stockholmCivilDate(from)
+  let y = year
+  let m = month
+  for (let i = 0; i < MAX_MANADER_FRAMAT; i++) {
+    // Månadens första dag i svensk civil tid. UTC-midnatt på den första är
+    // samma kalenderdag i Sverige året runt (offset är +1 eller +2), så den
+    // här konstruktionen kan inte hamna i föregående månad.
+    const kandidat = new Date(Date.UTC(y, m - 1, 1))
+    const arStangt = await findClosedFiscalYear(client, organizationId, kandidat)
+    const manadStangd = await isPeriodClosed(client, organizationId, kandidat)
+    if (!arStangt && !manadStangd) return kandidat
+    m++
+    if (m > 12) {
+      m = 1
+      y++
+    }
+  }
+  return null
+}
+
+/**
+ * Avgör vilket datum posten ska bokföras på.
+ *
+ * `tillatSenBokforing` är anroparens uttryckliga ja — den sätts bara av de
+ * MANUELLA betalningsvägarna när operatören bekräftat flytten, aldrig av
+ * AI-verktyget eller bankmatchningen. Utan den är utfallet exakt som förut:
+ * datumet lämnas orört och `assertPeriodOpen` kastar nedströms.
+ */
+export async function resolveBokforingsdatum(
+  client: FiscalYearClient,
+  organizationId: string,
+  desiredDate: Date,
+  tillatSenBokforing: boolean,
+): Promise<SenBokforingUtfall> {
+  const oflyttat: SenBokforingUtfall = {
+    bookingDate: desiredDate,
+    eventDate: null,
+    movedFromFiscalYear: null,
+  }
+  if (!tillatSenBokforing) return oflyttat
+
+  const stangtAr = await findClosedFiscalYear(client, organizationId, desiredDate)
+  // BARA det stängda ÅRET flyttas. En stängd MÅNAD i ett öppet år lämnas till
+  // `assertPeriodOpen` att kasta på — den har en återöppningsväg, och att
+  // flytta förbi den hade kringgått ett spårat mänskligt beslut.
+  if (!stangtAr) return oflyttat
+
+  const mal = await forstaOppnaDag(client, organizationId, desiredDate)
+  if (!mal) {
+    throw new ConflictException(
+      `Betalningen ${stockholmCivilDate(desiredDate).year}-${String(
+        stockholmCivilDate(desiredDate).month,
+      ).padStart(2, '0')} ligger i ett stängt räkenskapsår, och ingen öppen ` +
+        `period hittades inom ${MAX_MANADER_FRAMAT} månader framåt. Öppna en ` +
+        'period innan betalningen bokförs.',
+    )
+  }
+
+  return {
+    bookingDate: mal,
+    eventDate: desiredDate,
+    movedFromFiscalYear: stangtAr.fiscalYear,
+  }
+}
+
+/**
+ * Minsta längd på skälet till en sen bokföring. Samma tal som periodens
+ * återöppning — men ett EGET beslut, medvetet inte en delad konstant: de två
+ * gränserna svarar på olika frågor och ska kunna ändras var för sig.
+ */
+export const SEN_BOKFORING_MIN_SKAL = 10
+
+/**
+ * Vem som får besluta att en betalning bokförs sent i ett STÄNGT räkenskapsår.
+ *
+ * OWNER, samma nivå som återöppning av en period — och av ett starkare skäl:
+ * en period kan öppnas igen, ett räkenskapsår kan det inte. Beslutet att lägga
+ * en post i ett annat år än den inträffade går inte att ångra.
+ *
+ * MANAGER och ADMIN får registrera betalningar (endpointen kräver det), men
+ * inte den här flytten. Att gränsen ligger HÄR och inte i två controllers är
+ * poängen: två kopior av en behörighetsregel är en regel som glider isär.
+ */
+export function assertFarBokforaSent(role: string | undefined): void {
+  if (role !== 'OWNER') {
+    throw new ForbiddenException(
+      'Bara en ägare får bokföra en betalning i ett stängt räkenskapsår. ' +
+        'Beslutet går inte att ångra — ett stängt räkenskapsår kan inte öppnas igen.',
+    )
+  }
 }

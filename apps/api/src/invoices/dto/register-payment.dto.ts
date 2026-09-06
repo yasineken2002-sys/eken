@@ -7,7 +7,9 @@ import {
   IsPositive,
   IsString,
   MaxLength,
+  MinLength,
 } from 'class-validator'
+import { Transform } from 'class-transformer'
 import { PaymentMethod } from '@prisma/client'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
@@ -70,6 +72,30 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   @IsOptional()
   @IsDateString()
   paidAt?: string
+
+  /**
+   * Skälet till att bokföra en betalning i ett STÄNGT RÄKENSKAPSÅR på första
+   * öppna dag. Fältets NÄRVARO är samtycket — se schemats docblock.
+   *
+   * Rollspärren ligger i `assertFarBokforaSent` (OWNER) och inte här: DTO:n
+   * känner inte till vem som frågar.
+   */
+  @ApiPropertyOptional({
+    minLength: 10,
+    maxLength: 500,
+    description:
+      'Skäl till sen bokföring i ett stängt räkenskapsår. Utelämnat: betalningen ' +
+      'avvisas som förut. Kräver OWNER.',
+  })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsOptional()
+  @IsString()
+  @MinLength(10, {
+    message:
+      'Skälet måste vara minst 10 tecken — det sparas i verifikatets spår och ska gå att förstå i efterhand',
+  })
+  @MaxLength(500, { message: 'Skälet får vara högst 500 tecken' })
+  senBokforingSkal?: string
 }
 
 /**

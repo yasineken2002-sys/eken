@@ -623,6 +623,22 @@ export const RegisterPaymentSchema = z.object({
    * var läget innan granskningen.
    */
   paidAt: IsoDatumSchema.optional(),
+  /**
+   * OPERATÖRENS SKÄL till att bokföra en betalning som inträffade i ett STÄNGT
+   * RÄKENSKAPSÅR på första öppna dag.
+   *
+   * Fältets NÄRVARO är samtycket — ingen separat boolean, därför att ett ja
+   * utan skäl inte är ett spår. Utelämnat är beteendet oförändrat: spärren
+   * avvisar betalningen precis som förut.
+   *
+   * Kräver OWNER, samma nivå som att återöppna en period, och av ett starkare
+   * skäl: ett stängt räkenskapsår kan inte öppnas igen, så beslutet går inte
+   * att ångra.
+   *
+   * Minst 10 tecken — skälet sparas i `LateFiscalYearPosting` och ska gå att
+   * förstå av en revisor långt efteråt.
+   */
+  senBokforingSkal: z.string().min(10).max(500).optional(),
 })
 
 export const CreditNoteLineSchema = z.object({
@@ -723,6 +739,12 @@ export const MarkNoticePaidSchema = z.object({
   paidAmount: z.number().min(0.01, 'Beloppet måste vara större än noll'),
   paymentMethod: PaymentMethodSchema,
   paidAt: IsoDatumSchema.optional(),
+  /**
+   * Skäl till sen bokföring i ett STÄNGT RÄKENSKAPSÅR — samma fält, samma
+   * betydelse och samma rollkrav som på fakturavägen. Se
+   * `RegisterPaymentSchema.senBokforingSkal`.
+   */
+  senBokforingSkal: z.string().min(10).max(500).optional(),
 })
 
 export const RentNoticeCreditLineSchema = z.object({
