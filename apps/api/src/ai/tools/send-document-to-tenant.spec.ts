@@ -113,7 +113,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Tim Johansson', title: 'Information', content: 'Hej\nVälkommen.' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -134,7 +134,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Tim Johansson', title: 'Information', content: 'Hej' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -155,7 +155,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Okänd Person', title: 'X', content: 'Y' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -172,7 +172,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantId: 'tenant-i-annan-org', title: 'X', content: 'Y' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -188,7 +188,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantId: 'tenant-tim2', title: 'X', content: 'Y' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -204,7 +204,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Tim', title: 'X', content: 'Y', category: 'INVOICE' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -219,7 +219,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Tim', title: 'X', content: 'Y', notifyTenant: false },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -237,7 +237,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Tim', title: 'Uppsägning av hyresavtal', content: 'Härmed sägs avtalet upp.' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -253,7 +253,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
       'send_document_to_tenant',
       { tenantName: 'Tim', title: 'X', content: 'Y' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'MANAGER',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -267,7 +267,7 @@ describe('send_document_to_tenant — leverans + disambiguering', () => {
         'send_document_to_tenant',
         { tenantName: 'Tim', title: 'X', content: 'Y' },
         'org-1',
-        'user-1',
+        { kind: 'USER', id: 'user-1' },
         'VIEWER',
       ),
     ).rejects.toThrow()

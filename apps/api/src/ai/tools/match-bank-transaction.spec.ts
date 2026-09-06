@@ -91,7 +91,7 @@ describe('match_bank_transaction — RentNotice-matchning går genom manualMatch
       'match_bank_transaction',
       { transactionId: 'tx-1', rentNoticeId: 'rn-1' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -115,7 +115,7 @@ describe('match_bank_transaction — RentNotice-matchning går genom manualMatch
       'match_bank_transaction',
       { transactionId: 'tx-2', invoiceId: 'inv-9' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -135,7 +135,7 @@ describe('match_bank_transaction — RentNotice-matchning går genom manualMatch
       'match_bank_transaction',
       { transactionId: 'tx-3', rentNoticeId: 'rn-3' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -152,7 +152,7 @@ describe('match_bank_transaction — validering', () => {
       'match_bank_transaction',
       { transactionId: 'tx-1' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -168,7 +168,7 @@ describe('match_bank_transaction — validering', () => {
       'match_bank_transaction',
       { transactionId: 'tx-1', invoiceId: 'inv-1', rentNoticeId: 'rn-1' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.

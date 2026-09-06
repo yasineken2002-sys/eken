@@ -253,7 +253,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
         ],
       },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       // Bindande verktyg kräver ett konsumerat anspråk (action-authorization.ts).
       { actionProof: { claimed: true } },
@@ -318,7 +318,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
       'generate_lease_contract',
       { ...indata },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )
@@ -326,7 +326,7 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
       'generate_lease_contract',
       { ...indata },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )
@@ -388,6 +388,10 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
       'create_maintenance_ticket',
       { title: titel, description: 'Kranen droppar.' },
       tenantId,
+      // HYRESGÄSTVÄGEN har en EGEN exekverare med en egen signatur: fjärde
+      // argumentet är `organizationId`, inte en principal. `TenantToolExecutorService`
+      // öppnar `runAsAi` med `{ kind: 'TENANT' }` själv — hyresgästen ÄR
+      // uppdragsgivaren, och det finns inget val att göra vid anropet.
       orgId,
       { actionProof: { claimed: true } },
     )

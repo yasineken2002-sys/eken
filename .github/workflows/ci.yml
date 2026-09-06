@@ -1779,6 +1779,42 @@ jobs:
       - name: Delegation scope guard
         run: node apps/api/scripts/check-delegation-scope.mjs
 
+  assignment-status-writers-guard:
+    name: Assignment status writers guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # `AiAssignmentStatus` fick EXECUTED/FAILED/LAPSED i etapp 8, INNAN
+      # skrivaren byggdes. Planens Del 12 sa att de skulle läggas till av den PR
+      # som bygger det som skriver dem — ett enumvärde utan skrivare är annars
+      # ett löfte: läsytan måste hantera en status som aldrig uppstår, och död
+      # kod ser ut som täckning.
+      #
+      # Undantaget godtogs på ETT villkor: att statusarna bevisligen inte kan
+      # uppstå i drift. Det här jobbet ÄR det beviset. Utan det är schemats
+      # docblock ett påstående ingen mäter.
+      #
+      # VYN ÄR `blankComments`, inte `codeMask`: det som söks BOR I EN STRÄNG
+      # (`status: 'EXECUTED'`), och codeMask blankar per konstruktion allt
+      # stränginnehåll — en vakt byggd på den hade varit grön för alltid utan att
+      # kunna falla. Självtestets tredje kanariefågel mäter just det.
+      #
+      # Den dag utföraren byggs blir jobbet RÖTT, och ska då bytas mot ett som
+      # kräver att skrivaren finns. Att det måste röras är själva poängen.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (write/comment/read canaries, view, scope)
+        run: node apps/api/scripts/check-assignment-status-writers.mjs --self-test
+
+      - name: Assignment status writers guard
+        run: node apps/api/scripts/check-assignment-status-writers.mjs
+
   api-build-artifact-guard:
     name: API build artifact guard
     runs-on: ubuntu-latest
@@ -2242,6 +2278,7 @@ jobs:
       - tool-outward-capabilities-guard
       - tool-authority-guard
       - delegation-scope-guard
+      - assignment-status-writers-guard
       - equipment-chain-guard
       - api-build-artifact-guard
       - append-only-guard

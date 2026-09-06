@@ -129,7 +129,7 @@ medDb('generate_lease_contract — lagringsnyckeln identifierar avtalet', () => 
       'generate_lease_contract',
       { leaseId, contractType: 'RESIDENTIAL' },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )

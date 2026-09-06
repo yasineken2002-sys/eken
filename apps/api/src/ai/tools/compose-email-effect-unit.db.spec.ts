@@ -90,7 +90,7 @@ medDb('compose_and_send_email — enheten är mottagaren', () => {
       'compose_and_send_email',
       { tenantIds, subject: AMNE, body: BREV, emailType: 'GENERAL' },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )

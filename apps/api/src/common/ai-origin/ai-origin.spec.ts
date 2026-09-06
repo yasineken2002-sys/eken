@@ -201,12 +201,58 @@ describe('C. uppdragsgivargrinden: en AI-körning utan uppdragsgivare startar in
   })
 
   it('ett OKÄNT slag fäller — en etikett är inte samma sak som ett subjekt', () => {
-    expect(() => runAsAi('exec-x', { kind: 'SYSTEM', id: 'a' } as never, () => 1)).toThrow(
+    // `SYSTEM` stod här till etapp 8, då det blev ett GILTIGT slag. Sonden är
+    // därför bytt mot ett namn som inte finns — annars hade provet mätt att ett
+    // slag saknas i stället för att ett okänt slag avvisas, och det är inte
+    // samma påstående.
+    expect(() => runAsAi('exec-x', { kind: 'ROBOT', id: 'a' } as never, () => 1)).toThrow(
       /okänt uppdragsgivarslag/,
     )
     expect(() => runAsAi('exec-x', { id: 'a' } as never, () => 1)).toThrow(
       /okänt uppdragsgivarslag/,
     )
+  })
+
+  describe('SYSTEM-slaget bär sina EGNA fält (G1, etapp 8)', () => {
+    // Ett SYSTEM utan delegation är bara "ingen människa" — precis det tillstånd
+    // hela aktörsmodellen finns för att göra omöjligt. Fälten prövas var för
+    // sig, därför att en gemensam kontroll hade kunnat vara grön av att den
+    // andra halvan råkade vara ifylld.
+    const bas = {
+      kind: 'SYSTEM' as const,
+      organizationId: 'org-1',
+      origin: 'delegation' as const,
+      delegationId: 'del-1',
+    }
+
+    it('ett giltigt SYSTEM går igenom', () => {
+      expect(runAsAi('exec-x', bas, () => 42)).toBe(42)
+    })
+
+    it('utan organizationId fäller', () => {
+      expect(() => runAsAi('exec-x', { ...bas, organizationId: '' }, () => 1)).toThrow(
+        /utan organizationId/,
+      )
+    })
+
+    it('utan delegationId fäller', () => {
+      expect(() => runAsAi('exec-x', { ...bas, delegationId: '  ' }, () => 1)).toThrow(
+        /utan delegationId/,
+      )
+    })
+
+    it('med ett okänt ursprung fäller', () => {
+      expect(() => runAsAi('exec-x', { ...bas, origin: 'cron' } as never, () => 1)).toThrow(
+        /okänt ursprung/,
+      )
+    })
+
+    it('SYSTEM kräver INGET id — fältet finns inte, och det är påståendet', () => {
+      // En agent som bär ett `id` frestar nästa person att fylla det med
+      // ägarens `User.id` "eftersom det ändå var hen som delegerade". Då säger
+      // raden att en människa gjorde något hen inte gjorde.
+      expect('id' in bas).toBe(false)
+    })
   })
 
   it('ett TOMT id fäller — ett fält som finns men är blankt är inte ifyllt', () => {
@@ -259,9 +305,26 @@ describe('C. uppdragsgivargrinden: en AI-körning utan uppdragsgivare startar in
     // Kanariefågel: hittar svepet ingenting är provet grönt av tomhet.
     expect(gränser.length).toBeGreaterThanOrEqual(2)
 
-    const slag = gränser.flatMap(([, kod]) =>
+    // ── FORMEN ÄNDRADES I ETAPP 8, OCH PROVET SÄGER HUR ────────────────────
+    //
+    // Ägarvägen skrev tidigare `{ kind: 'USER', id: userId }` vid gränsen. Nu
+    // FÖRMEDLAR den anroparens principal (`runAsAi(executionId, principal, …)`),
+    // därför att ägarvägen är den enda som kan köras av något annat än en
+    // människa — en delegation. Hyresgästvägen deklarerar fortfarande sitt slag
+    // literalt: hyresgästen ÄR uppdragsgivaren, och det finns inget val att
+    // göra vid anropet.
+    //
+    // Provet mäter därför TVÅ saker i stället för ett tal:
+    //   1. varje literal som finns är TENANT — ingen gräns påstår USER om
+    //      något som inte är en inloggad användare
+    //   2. minst en gräns FÖRMEDLAR en principal, alltså att formen ovan
+    //      faktiskt finns och inte bara påstås i en kommentar
+    const literaler = gränser.flatMap(([, kod]) =>
       [...kod.matchAll(/runAsAi\([^,]+,\s*\{\s*kind:\s*'(\w+)'/g)].map((m) => m[1]),
     )
-    expect(new Set(slag)).toEqual(new Set(['USER', 'TENANT']))
+    expect(new Set(literaler)).toEqual(new Set(['TENANT']))
+
+    const förmedlande = gränser.filter(([, kod]) => /runAsAi\([^,]+,\s*principal\s*,/.test(kod))
+    expect(förmedlande.length).toBeGreaterThanOrEqual(1)
   })
 })

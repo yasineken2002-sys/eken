@@ -265,7 +265,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'send_overdue_reminders',
       {},
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )
@@ -295,7 +295,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'send_overdue_reminders',
       {},
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )
@@ -327,7 +327,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'send_overdue_reminders',
       {},
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )
@@ -364,7 +364,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'send_overdue_reminders',
       { invoiceIds: [betaldFakturaId] },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )
@@ -385,7 +385,7 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
       'send_overdue_reminders',
       {},
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )

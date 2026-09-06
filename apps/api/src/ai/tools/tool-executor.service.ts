@@ -1,10 +1,12 @@
 import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
-import { runAsAi } from '../../common/ai-origin/ai-origin.context'
+import { assertUppdragsgivare, runAsAi } from '../../common/ai-origin/ai-origin.context'
+import { krävMänskligtSubjekt } from './human-subject'
 import { drainEffects, runWithEffectCollector } from '../../common/ai-effects/ai-effects.context'
 import { assertActionToolAuthorized } from './action-authorization'
 import { aiJournalSourceId } from './ai-journal-source'
-import type { ActionProof } from './action-authorization'
+import type { AiPrincipal } from '../../common/ai-origin/ai-origin.context'
+import type { ActionProof, DelegationProof } from './action-authorization'
 import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.context'
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
@@ -525,13 +527,24 @@ export class ToolExecutorService {
     toolName: string,
     toolInput: Record<string, unknown>,
     organizationId: string,
-    userId: string,
+    /**
+     * ── VEM KÖRNINGEN SKER PÅ UPPDRAG AV (G1, etapp 8) ─────────────────────
+     *
+     * Tog tidigare ett obligatoriskt `userId: string`, vilket gjorde det
+     * omöjligt att uttrycka en körning utan människa — och en agent som skriver
+     * med en människas id LÅTSAS vara den människan. Planens Del 5 är
+     * uttrycklig: en agent ska kunna skriva utan att göra det.
+     *
+     * Ingen tyst default: varje befintlig anropare skickar `{ kind: 'USER' }`
+     * explicit, och en ny väg måste välja slag för att kompilera.
+     */
+    principal: AiPrincipal,
     userRole: string,
     auditContext?: {
       conversationId?: string | null
       confirmedAt?: Date | null
       /** Beviset för ett bindande verktyg. Se action-authorization.ts. */
-      actionProof?: ActionProof
+      actionProof?: ActionProof | DelegationProof
     },
   ): Promise<ToolResult> {
     // ── BINDANDE VERKTYG KRÄVER BEVIS ─────────────────────────────────────
@@ -546,6 +559,20 @@ export class ToolExecutorService {
     // Loopar­nas kontroller är kvar som djupförsvar. Den här är den bärande.
     assertActionToolAuthorized(toolName, auditContext?.actionProof)
 
+    // ── UPPDRAGSGIVAREN PRÖVAS FÖRE ALLT SOM SKRIVER ────────────────────────
+    //
+    // `runAsAi` gör samma kontroll, men den öppnas FÖRST EFTER att spåret
+    // skrivits för `FÖRE_EFFEKTEN`-verktyg. En ogiltig SYSTEM-principal föll
+    // därför på en främmande nyckel inne i `aiToolExecution.create` — ett fel
+    // som säger "delegationId finns inte" i stället för "principalen är
+    // ogiltig", och som dessutom hann skriva en rad på vägen. Uppmätt när
+    // provet med tomt `delegationId` skrevs.
+    //
+    // Kontrollen står alltså på BÅDA ställena med flit: här som den bärande
+    // (ingenting har hänt än), i `runAsAi` som den som fångar en framtida
+    // anropare som går runt den här metoden.
+    assertUppdragsgivare(principal)
+
     // KOLLEKTORN OMSLUTER HELA KROPPEN, inte bara verktygskörningen.
     //
     // Först låg `runWithEffectCollector` runt enbart `executeToolUnsafe`, och
@@ -559,7 +586,7 @@ export class ToolExecutorService {
         toolName,
         toolInput,
         organizationId,
-        userId,
+        principal,
         userRole,
         auditContext,
       ),
@@ -570,15 +597,19 @@ export class ToolExecutorService {
     toolName: string,
     toolInput: Record<string, unknown>,
     organizationId: string,
-    userId: string,
+    principal: AiPrincipal,
     userRole: string,
     auditContext?: {
       conversationId?: string | null
       confirmedAt?: Date | null
       /** Beviset för ett bindande verktyg. Se action-authorization.ts. */
-      actionProof?: ActionProof
+      actionProof?: ActionProof | DelegationProof
     },
   ): Promise<ToolResult> {
+    // SUBJEKTET, HÄRLETT UR SLAGET. `null` för SYSTEM — och det är rätt värde,
+    // inte ett saknat: kolumnen `AiToolExecution.userId` är nullbar just för att
+    // en körning utan människa ska gå att skriva utan att hitta på en.
+    const userId = principal.kind === 'USER' ? principal.id : null
     const startedAt = Date.now()
     let result: ToolResult
     let thrownError: Error | null = null
@@ -600,6 +631,15 @@ export class ToolExecutorService {
       conversationId: auditContext?.conversationId ?? null,
       requiredConfirmation: ACTION_TOOLS.has(toolName),
       confirmedAt: auditContext?.confirmedAt ?? null,
+      // ── MED VILKEN RÄTT (G2, etapp 8) ───────────────────────────────────
+      //
+      // Läses ur SLAGET, inte ur beviset. Beviset säger att körningen fick ske;
+      // slaget säger vem som körde. De två kan bara skilja sig åt om någon
+      // skickar ett delegationsbevis med en USER-principal, och då är det
+      // människan som handlar — med ett bevis hen inte behövde.
+      ...(principal.kind === 'SYSTEM'
+        ? { authorityKind: 'DELEGATION' as const, delegationId: principal.delegationId }
+        : { authorityKind: 'APPROVAL' as const }),
     }
 
     // ── SPÅRET ÖPPNAS FÖRE EFFEKTEN (steg 3b) ────────────────────────────────
@@ -632,7 +672,7 @@ export class ToolExecutorService {
       // det nedträtt — en framtida anropare kan därmed inte glömma det.
       // Prisma-extensionen noterar varje skrivning som sker här inne, in i den
       // kollektor `executeTool` öppnade. Verktygen vet ingenting om det.
-      result = await runAsAi(executionId, { kind: 'USER', id: userId }, () =>
+      result = await runAsAi(executionId, principal, () =>
         this.executeToolUnsafe(
           toolName,
           toolInput,
@@ -865,7 +905,12 @@ export class ToolExecutorService {
     toolName: string,
     toolInput: Record<string, unknown>,
     organizationId: string,
-    userId: string,
+    /**
+     * `null` för en SYSTEM-körning. De verktyg som TILLSKRIVER handlingen en
+     * människa går genom `krävMänskligtSubjekt` och kastar då — se den filen
+     * för varför det är en funktion och inte ett `!`.
+     */
+    userId: string | null,
     userRole: string,
     /**
      * Id:t på den `AiToolExecution`-rad som kommer att skrivas efter körningen.
@@ -1186,20 +1231,24 @@ export class ToolExecutorService {
             }
           }
 
-          const invoice = await this.invoicesService.create(organizationId, userId, {
-            leaseId: tenantLease.id,
-            type: invoiceType,
-            issueDate: new Date().toISOString(),
-            dueDate: dueDateParsed.toISOString(),
-            lines: [
-              {
-                description,
-                quantity: 1,
-                unitPrice: amount,
-                vatRate: (toolInput.vatRate as number) ?? 0,
-              },
-            ],
-          })
+          const invoice = await this.invoicesService.create(
+            organizationId,
+            krävMänskligtSubjekt(userId, toolName),
+            {
+              leaseId: tenantLease.id,
+              type: invoiceType,
+              issueDate: new Date().toISOString(),
+              dueDate: dueDateParsed.toISOString(),
+              lines: [
+                {
+                  description,
+                  quantity: 1,
+                  unitPrice: amount,
+                  vatRate: (toolInput.vatRate as number) ?? 0,
+                },
+              ],
+            },
+          )
 
           return {
             success: true,
@@ -1268,7 +1317,7 @@ export class ToolExecutorService {
           const { jobId } = await this.invoicesService.sendInvoiceEmail(
             sendInvoiceId,
             organizationId,
-            userId,
+            krävMänskligtSubjekt(userId, toolName),
           )
           return {
             success: true,
@@ -1850,7 +1899,7 @@ export class ToolExecutorService {
                 data: {
                   organizationId,
                   tenantId: tenant.id,
-                  sentById: userId,
+                  sentById: krävMänskligtSubjekt(userId, toolName),
                   subject,
                   content: body,
                   sentToAll: false,
@@ -3428,7 +3477,7 @@ export class ToolExecutorService {
                 : {}),
             },
             organizationId,
-            userId,
+            krävMänskligtSubjekt(userId, toolName),
           )
 
           return {
@@ -3464,7 +3513,12 @@ export class ToolExecutorService {
             toolInput.ticketId as string,
             { status: toolInput.newStatus as never },
             organizationId,
-            toolInput.comment ? { content: toolInput.comment as string, userId } : undefined,
+            toolInput.comment
+              ? {
+                  content: toolInput.comment as string,
+                  userId: krävMänskligtSubjekt(userId, toolName),
+                }
+              : undefined,
           )
 
           // SVARET SÄGER VAD SOM FAKTISKT HÄNDE. Var statusen redan den begärda
@@ -3587,7 +3641,7 @@ export class ToolExecutorService {
               ...(toolInput.tenantId ? { tenantId: toolInput.tenantId as string } : {}),
             },
             organizationId,
-            userId,
+            krävMänskligtSubjekt(userId, toolName),
           )
 
           const typeLabels: Record<string, string> = {
@@ -3823,7 +3877,7 @@ export class ToolExecutorService {
               ...(rentNoticeId ? { rentNoticeId } : {}),
             },
             organizationId,
-            userId,
+            krävMänskligtSubjekt(userId, toolName),
           )
           return {
             success: true,
@@ -4382,7 +4436,7 @@ export class ToolExecutorService {
             organizationId,
             note,
             userRole as UserRole,
-            userId,
+            krävMänskligtSubjekt(userId, toolName),
           )
           return {
             success: true,

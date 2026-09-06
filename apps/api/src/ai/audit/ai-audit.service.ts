@@ -207,6 +207,20 @@ export interface ToolExecutionIdentity {
   conversationId?: string | null
   requiredConfirmation?: boolean
   confirmedAt?: Date | null
+  /**
+   * ── MED VILKEN RÄTT (G1/G2, etapp 8) ──────────────────────────────────────
+   *
+   * Kolumnerna har funnits på `AiToolExecution` sedan #803 men saknade skrivare
+   * — mätt: noll träffar utanför delegationsmodulen. En kolumn ingen skriver är
+   * ett löfte, inte ett spår.
+   *
+   * `APPROVAL` som default är ett FAKTUM och inte en gissning: varje befintlig
+   * körning gick genom en människas bekräftelse, eftersom det inte fanns någon
+   * annan väg. Samma resonemang som i migrationen som införde fältet.
+   */
+  authorityKind?: 'APPROVAL' | 'DELEGATION'
+  /** `AiDelegation.id` när `authorityKind` är `DELEGATION`. */
+  delegationId?: string | null
 }
 
 /**
@@ -220,6 +234,11 @@ export function identitetsKolumner(i: ToolExecutionIdentity) {
     conversationId: i.conversationId ?? null,
     requiredConfirmation: i.requiredConfirmation ?? false,
     confirmedAt: i.confirmedAt ?? null,
+    authorityKind: i.authorityKind ?? 'APPROVAL',
+    // NULL NÄR RÄTTEN INTE KOM UR EN DELEGATION. Att sätta ett id här utan att
+    // `authorityKind` är `DELEGATION` hade gjort de två kolumnerna motsägande i
+    // samma rad — `db-spec` kräver att de följs åt.
+    delegationId: i.delegationId ?? null,
   }
 }
 
@@ -257,6 +276,8 @@ export class AiAuditService {
     durationMs: number
     requiredConfirmation?: boolean
     confirmedAt?: Date | null
+    authorityKind?: 'APPROVAL' | 'DELEGATION'
+    delegationId?: string | null
     /**
      * Vad körningen ORSAKADE. Samlas av Prisma-extensionen
      * (`common/prisma/ai-effect-extension.ts`) medan verktyget kör, aldrig av
@@ -339,6 +360,8 @@ export class AiAuditService {
     toolInput: Record<string, unknown>
     requiredConfirmation?: boolean
     confirmedAt?: Date | null
+    authorityKind?: 'APPROVAL' | 'DELEGATION'
+    delegationId?: string | null
   }): Promise<void> {
     await this.prisma.aiToolExecution.create({
       data: {

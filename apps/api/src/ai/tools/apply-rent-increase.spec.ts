@@ -77,7 +77,7 @@ describe('apply_rent_increase — JB 54 a §-säker (H4)', () => {
         reason: 'Indexjustering enligt avtal',
       },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse.
       { actionProof: { claimed: true } },
@@ -105,7 +105,7 @@ describe('apply_rent_increase — JB 54 a §-säker (H4)', () => {
       'apply_rent_increase',
       { leaseId: 'lease-1', tenantName: 'Anna', currentRent: 10000, newRent: 10500 },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.

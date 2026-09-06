@@ -65,7 +65,7 @@ medDb('update_maintenance_status — noteringen skrivs vid övergången', () => 
       'update_maintenance_status',
       { ticketId, ticketNumber, newStatus: nyStatus, ...(kommentar ? { comment: kommentar } : {}) },
       orgId,
-      userId,
+      { kind: 'USER', id: userId },
       'OWNER',
       { actionProof: { claimed: true } },
     )

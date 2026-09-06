@@ -89,7 +89,7 @@ const skicka = async (executor: ToolExecutorService, body: string) =>
     'compose_and_send_email',
     { tenantIds: ['tenant-1'], subject: 'Ämne', body, emailType: 'GENERAL' },
     'org-1',
-    'user-1',
+    { kind: 'USER', id: 'user-1' },
     'OWNER',
     { actionProof: { claimed: true } },
   )

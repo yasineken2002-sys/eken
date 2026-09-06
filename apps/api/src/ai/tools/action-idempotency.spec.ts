@@ -106,7 +106,7 @@ describe('grinden sitter i executeTool — inte bara i modulen', () => {
   it('ett bindande verktyg UTAN bevis avvisas av executeTool', async () => {
     const executor = makeExecutor()
     await expect(
-      executor.executeTool('create_invoice', {}, 'org-1', 'user-1', 'OWNER'),
+      executor.executeTool('create_invoice', {}, 'org-1', { kind: 'USER', id: 'user-1' }, 'OWNER'),
     ).rejects.toBeInstanceOf(ForbiddenException)
   })
 
@@ -115,7 +115,7 @@ describe('grinden sitter i executeTool — inte bara i modulen', () => {
     // det här fallet vore "allt kastar" lika grönt som "rätt saker kastar".
     const executor = makeExecutor()
     const fel = await executor
-      .executeTool('get_invoices', {}, 'org-1', 'user-1', 'OWNER')
+      .executeTool('get_invoices', {}, 'org-1', { kind: 'USER', id: 'user-1' }, 'OWNER')
       .catch((e: unknown) => e)
     expect(fel).not.toBeInstanceOf(ForbiddenException)
   })

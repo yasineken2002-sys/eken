@@ -126,7 +126,7 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'generate_lease_contract',
       { leaseId: 'lease-1', contractType: 'RESIDENTIAL' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -148,7 +148,7 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'generate_lease_contract',
       { leaseId: 'lease-1', contractType: 'RESIDENTIAL', tenantId: 'tenant-attacker' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -166,7 +166,7 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'generate_lease_contract',
       { leaseId: 'lease-1', contractType: 'RESIDENTIAL' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -183,7 +183,7 @@ describe('generate_lease_contract — tenantId härleds från lease (portal-synl
       'generate_lease_contract',
       { leaseId: 'lease-1', contractType: 'RESIDENTIAL' },
       'org-2',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ADMIN',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
