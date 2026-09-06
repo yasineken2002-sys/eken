@@ -198,6 +198,24 @@ export interface FiscalYearClosePreview {
   canClose: boolean
   checks: FiscalYearCheck[]
   entry: FiscalYearEntryDraft
+  /**
+   * Årets sena bokföringar över väsentlighetsgränsen. REN SYNLIGHET — listan
+   * grindar ingenting och rör inte `canClose`.
+   */
+  lateBookings: LateBookingOverThreshold[]
+}
+
+/** En sent bokförd post som översteg organisationens väsentlighetsgräns. */
+export interface LateBookingOverThreshold {
+  /** Dagen posten faktiskt bokfördes (första öppna dag). */
+  bookedDate: string
+  /** När betalningen VERKLIGEN skedde. */
+  eventDate: string
+  /** Räkenskapsåret betalningen hörde till, och som var stängt. */
+  closedFiscalYear: number
+  amount: string
+  reason: string
+  actorLabel: string | null
 }
 
 export interface FiscalYearCloseResult {
