@@ -1,3 +1,8 @@
+import type { TransitionLeaseStatusInput } from '@eken/shared'
+
+/** De fyra tillstånd ett avtal kan flyttas till — härledd ur det delade schemat. */
+type LeaseStatusOvergang = TransitionLeaseStatusInput['status']
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchLeases,
@@ -64,7 +69,9 @@ export function useUpdateLease() {
 export function useTransitionLeaseStatus() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
+    // Unionen, inte `string`. Hooken tog tidigare vilken sträng som helst och
+    // lät servern avvisa den; nu är ett ogiltigt tillstånd ett kompileringsfel.
+    mutationFn: ({ id, status }: { id: string; status: LeaseStatusOvergang }) =>
       transitionLeaseStatus(id, status),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: LEASES_LIST })

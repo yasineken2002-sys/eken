@@ -26,6 +26,7 @@ import {
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { LeaseStatus, Tenant } from '@eken/shared'
 import type { LeaseDetail, CreateLeaseWithTenantInput } from './api/leases.api'
+import type { TransitionLeaseStatusInput } from '@eken/shared'
 import { fetchLease } from './api/leases.api'
 import { useFocusStore } from '@/stores/focus.store'
 import { cn } from '@/lib/cn'
@@ -211,7 +212,7 @@ export function LeasesPage() {
     )
   }
 
-  const handleTransition = (status: string) => {
+  const handleTransition = (status: TransitionLeaseStatusInput['status']) => {
     if (!selected) return
     transitionMutation.mutate(
       { id: selected.id, status },
@@ -560,7 +561,7 @@ interface DetailPanelProps {
   detailTab: DetailTab
   setDetailTab: (t: DetailTab) => void
   onUpdate: (dto: CreateLeaseWithTenantInput) => void
-  onTransition: (status: string) => void
+  onTransition: (status: TransitionLeaseStatusInput['status']) => void
   onDeleteRequest: () => void
   onTerminateRequest: () => void
   onRenewRequest: () => void

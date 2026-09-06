@@ -1,3 +1,6 @@
+import type { SammaNycklar, CreateLeaseInput } from '@eken/shared'
+import { CreateLeaseSchema } from '@eken/shared'
+import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
 import {
   IsUUID,
   IsDateString,
@@ -11,7 +14,8 @@ import {
   Max,
 } from 'class-validator'
 
-export class CreateLeaseDto {
+@UppfyllerSchemat(CreateLeaseSchema)
+export class CreateLeaseDto implements CreateLeaseInput {
   @IsUUID()
   unitId!: string
 
@@ -98,3 +102,7 @@ export class CreateLeaseDto {
   // när det är ifyllt.
   @IsString() @IsOptional() specialTerms?: string
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktSkapaAvtal: SammaNycklar<CreateLeaseDto, CreateLeaseInput> = true
+void _kontraktSkapaAvtal
