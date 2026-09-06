@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { upsertAiMemoryWithSubjects } from '../../common/ai-subjects/ai-subject-writer'
 
 import { Prisma } from '@prisma/client'
 import { FRAGEBARA_FALT, ärGiltigFråga, type FragansInnehall } from './question-fields'
@@ -206,23 +207,17 @@ export class QuestionService {
       fråga.sourceId ?? fråga.id,
       innehåll.fält,
     )
-    await this.prisma.aiMemory.upsert({
-      where: { organizationId_userId_key: { organizationId, userId, key: nyckel } },
-      create: {
-        organizationId,
-        userId,
-        key: nyckel,
-        value: svar,
-        type: 'fact',
-        provenanceKind: 'HUMAN_CONFIRMED',
-        sourceKind: 'ASSIGNMENT',
-        sourceId: assignmentId,
-        confirmedByUserId: userId,
-        confirmedAt: nu,
-      },
-      update: {
-        value: svar,
-        provenanceKind: 'HUMAN_CONFIRMED',
+    // GENOM DEN ENDA SKRIVAREN. `check-ai-subjects` kräver det, och skälet är
+    // inte formellt: en andra väg skriver minnen utan ämneskoppling, och då
+    // slår anonymisering av en hyresgäst inte igenom i minnet.
+    await upsertAiMemoryWithSubjects(this.prisma, {
+      organizationId,
+      userId,
+      key: nyckel,
+      value: svar,
+      type: 'fact',
+      provenans: {
+        kind: 'HUMAN_CONFIRMED',
         sourceKind: 'ASSIGNMENT',
         sourceId: assignmentId,
         confirmedByUserId: userId,
