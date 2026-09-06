@@ -156,6 +156,21 @@ function fakeDb() {
       },
     },
     aiMemory: {
+      /**
+       * ── DEGRADERINGEN (etapp 8) ────────────────────────────────────────
+       *
+       * `upsertAiMemoryWithSubjects` nollställer en bekräftelse när värdet
+       * FAKTISKT ändrats, så att en modellgenererad text inte ärver etiketten
+       * `HUMAN_CONFIRMED`. Attrappen behöver metoden för att skrivaren alls ska
+       * gå att köra.
+       *
+       * DEN GÖR MED FLIT INGENTING. Den här filen mäter ÄMNESKOPPLINGEN, och en
+       * attrapp kan ändå inte pröva att `where`-satsen är rätt — se CLAUDE.md,
+       * "en ATTRAPP kan inte pröva den FÖR GROVA riktningen". Degraderingen ägs
+       * av `memory-provenance.db.spec.ts` mot riktig Postgres, som kör både
+       * "nytt värde degraderar" och "samma värde gör det inte".
+       */
+      updateMany: async () => ({ count: 0 }),
       upsert: async ({ create }: { create: { key: string; value: string } }) => {
         const found = state.memories.find((m) => m.key === create.key)
         if (found) {
