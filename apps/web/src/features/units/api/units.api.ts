@@ -1,4 +1,10 @@
 import { get, post, patch, del } from '@/lib/api'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { CreateUnitSchema, UpdateUnitSchema } from '@eken/shared'
+import type { CreateUnitInput, UpdateUnitInput } from '@eken/shared'
+// Vidareexporteras: sidor och formulär importerar typerna härifrån sedan
+// tidigare, och det är ingen andra sanning — de kommer ur @eken/shared.
+export type { CreateUnitInput, UpdateUnitInput }
 import type { UnitType, UnitStatus } from '@eken/shared'
 
 export interface UnitWithProperty {
@@ -40,18 +46,14 @@ export type UnitDetail = UnitWithProperty & {
   leases: UnitLease[]
 }
 
-export interface CreateUnitInput {
-  propertyId: string
-  name: string
-  unitNumber: string
-  type: UnitType
-  status?: UnitStatus
-  area: number
-  floor?: number
-  rooms?: number
-  monthlyRent: number
-}
-
+/**
+ * TYPEN KOMMER NU FRÅN @eken/shared.
+ *
+ * Webben bar en EGEN `CreateUnitInput` därför att det delade schemat SAKNADE
+ * `propertyId` och `status` — utan fastigheten kan ingen lägenhet skapas, så
+ * schemat kunde inte beskriva en giltig kropp. Schemat är rättat i samma
+ * ändring; den lokala kopian behövs inte längre.
+ */
 export function fetchUnits(propertyId?: string): Promise<UnitWithProperty[]> {
   return get<UnitWithProperty[]>('/units', propertyId ? { propertyId } : undefined)
 }
@@ -61,10 +63,14 @@ export function fetchUnit(id: string): Promise<UnitDetail> {
 }
 
 export function createUnit(dto: CreateUnitInput): Promise<UnitWithProperty> {
+  const kontrakt = kontraktsfel(CreateUnitSchema, dto)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
   return post<UnitWithProperty>('/units', dto)
 }
 
-export function updateUnit(id: string, dto: Partial<CreateUnitInput>): Promise<UnitWithProperty> {
+export function updateUnit(id: string, dto: UpdateUnitInput): Promise<UnitWithProperty> {
+  const kontrakt = kontraktsfel(UpdateUnitSchema, dto)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
   return patch<UnitWithProperty>(`/units/${id}`, dto)
 }
 

@@ -9,6 +9,10 @@ import {
   UpdateTenantSchema,
   AnonymizeTenantSchema,
   CreateRentIncreaseSchema,
+  CreateUnitSchema,
+  UpdateUnitSchema,
+  CreateEquipmentSchema,
+  RegisterReplacementSchema,
   RejectRentIncreaseSchema,
   CreateReadingSchema,
   CreateSupplierInvoiceSchema,
@@ -40,6 +44,10 @@ import { RejectTerminationDto } from '../../terminations/dto/reject-termination.
 import { UpdateTenantDto } from '../../tenants/dto/update-tenant.dto'
 import { AnonymizeTenantDto } from '../../tenants/dto/anonymize-tenant.dto'
 import { CreateRentIncreaseDto } from '../../rent-increases/dto/create-rent-increase.dto'
+import { CreateUnitDto } from '../../units/dto/create-unit.dto'
+import { UpdateUnitDto } from '../../units/dto/update-unit.dto'
+import { CreateEquipmentDto } from '../../equipment/dto/create-equipment.dto'
+import { RegisterReplacementDto } from '../../equipment/dto/register-replacement.dto'
 import { RejectRentIncreaseDto } from '../../rent-increases/dto/reject-rent-increase.dto'
 import { CreateMeterDto } from '../../consumption/dto/create-meter.dto'
 import { UpdateMeterDto } from '../../consumption/dto/update-meter.dto'
@@ -269,6 +277,73 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     // skäl är inte spårbart, och båda vägarna kräver det.
     ogiltig: {},
     ogiltigVarfor: 'rejectionReason är obligatorisk',
+  },
+  {
+    endpoint: 'POST /units',
+    inputTyp: 'CreateUnitInput',
+    schema: CreateUnitSchema,
+    dto: CreateUnitDto,
+    // `propertyId` MED: schemat saknade det, och utan fastigheten kan ingen
+    // lägenhet skapas. Ett prov utan fältet hade inte visat att det nu finns.
+    giltig: {
+      propertyId: '11111111-2222-4333-8444-555555555555',
+      name: 'Lgh 1201',
+      unitNumber: '1201',
+      type: 'APARTMENT',
+      area: 62,
+      monthlyRent: 9500,
+    },
+    ogiltig: {
+      propertyId: 'inte-ett-uuid',
+      name: 'Lgh 1201',
+      unitNumber: '1201',
+      type: 'APARTMENT',
+      area: 62,
+      monthlyRent: 9500,
+    },
+    ogiltigVarfor: 'propertyId måste vara ett UUID — båda vägarna kräver det',
+  },
+  {
+    endpoint: 'PATCH /units/:id',
+    inputTyp: 'UpdateUnitInput',
+    schema: UpdateUnitSchema,
+    dto: UpdateUnitDto,
+    // PARTIELL: ett fält räcker, vilket är hela skillnaden mot POST.
+    giltig: { monthlyRent: 10200 },
+    ogiltig: { type: 'RADHUS' },
+    ogiltigVarfor: 'RADHUS är ingen giltig lägenhetstyp — även i en partiell uppdatering',
+  },
+  {
+    endpoint: 'POST /equipment',
+    inputTyp: 'CreateEquipmentInput',
+    schema: CreateEquipmentSchema,
+    dto: CreateEquipmentDto,
+    giltig: {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      kind: 'REFRIGERATOR',
+      installedAt: '2026-01-15',
+    },
+    ogiltig: {
+      unitId: '11111111-2222-4333-8444-555555555555',
+      kind: 'KYLSKÅP',
+      installedAt: '2026-01-15',
+    },
+    ogiltigVarfor: 'KYLSKÅP är inget värde i EQUIPMENT_KINDS — listan bor nu på ETT ställe',
+  },
+  {
+    endpoint: 'POST /equipment/:id/replacement',
+    inputTyp: 'RegisterReplacementInput',
+    schema: RegisterReplacementSchema,
+    dto: RegisterReplacementDto,
+    // `maintenanceTicketId` MED: fältet saknades i webbens egen typ, så
+    // kopplingen till felanmälan gick inte att sätta från gränssnittet.
+    giltig: {
+      occurredAt: '2026-09-01',
+      maintenanceTicketId: '11111111-2222-4333-8444-555555555555',
+      cost: 4500,
+    },
+    ogiltig: { occurredAt: '2026-09-01', cost: -1 },
+    ogiltigVarfor: 'kostnaden kan inte vara negativ',
   },
   {
     endpoint: 'POST /consumption/meters',

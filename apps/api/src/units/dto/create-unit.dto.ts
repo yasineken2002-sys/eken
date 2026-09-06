@@ -1,9 +1,10 @@
+import type { SammaNycklar, CreateUnitInput } from '@eken/shared'
 import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator'
 
 const UNIT_TYPES = ['APARTMENT', 'OFFICE', 'RETAIL', 'STORAGE', 'PARKING', 'OTHER'] as const
 const UNIT_STATUSES = ['VACANT', 'OCCUPIED', 'UNDER_RENOVATION', 'RESERVED'] as const
 
-export class CreateUnitDto {
+export class CreateUnitDto implements CreateUnitInput {
   @IsUUID()
   propertyId!: string
 
@@ -38,3 +39,7 @@ export class CreateUnitDto {
   @Min(0)
   monthlyRent!: number
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktSkapaLagenhet: SammaNycklar<CreateUnitDto, CreateUnitInput> = true
+void _kontraktSkapaLagenhet
