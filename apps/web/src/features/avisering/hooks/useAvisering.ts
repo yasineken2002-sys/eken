@@ -67,12 +67,14 @@ export function useMarkAsPaid() {
       paidAmount,
       paymentMethod,
       paidAt,
+      senBokforingSkal,
     }: {
       id: string
       paidAmount: number
       paymentMethod: PaymentMethod
       paidAt?: string
-    }) => markAsPaid(id, paidAmount, paymentMethod, paidAt),
+      senBokforingSkal?: string
+    }) => markAsPaid(id, paidAmount, paymentMethod, paidAt, senBokforingSkal),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['avisering'] }),
   })
 }

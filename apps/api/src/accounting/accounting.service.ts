@@ -63,20 +63,7 @@ import {
   type UtgiftIndata,
 } from './manual-entry'
 import { isPeriodClosed, periodKeyOf, periodOfDate, resolveBokforingsdatum } from './closed-period'
-
-/**
- * Väsentlighetsgräns för en post som bokförts sent i ett stängt räkenskapsår.
- *
- * Flaggan PEKAR UT, den utför ingenting. Ett väsentligt belopp som bokförs i ett
- * senare år ska inte bara löpa genom det årets resultat — det kan kräva en
- * justering av ingående eget kapital, och det är en BEDÖMNING som tillhör en
- * människa (BFN:s regler om fel hänförliga till ett fastställt räkenskapsår).
- *
- * Talet är ett EGET beslut och delas medvetet inte med någon annan gräns i
- * kodbasen. `REMINDER_FEE_MAX_SEK` och konteringens beloppsspann svarar på andra
- * frågor; två gränser som ska kunna ändras var för sig är inte en gräns.
- */
-const VASENTLIGHETSGRANS = new Prisma.Decimal(10000)
+import { arVasentligtBelopp } from './late-booking-materiality'
 
 /**
  * Operatörens beslut att bokföra en betalning sent, därför att räkenskapsåret
@@ -710,7 +697,10 @@ export class AccountingService {
             bookedDate: bookingDate,
             closedFiscalYear: movedFromFiscalYear,
             amount: debitSum,
-            materialityFlagged: debitSum.greaterThanOrEqualTo(VASENTLIGHETSGRANS),
+            // Gränsen är en ORGANISATIONSINSTÄLLNING, inte ett tal här. Läses
+            // genom `arVasentligtBelopp` — den enda läsaren, så nästa
+            // konsument ärver jämförelsen i stället för att skriva om den.
+            materialityFlagged: await arVasentligtBelopp(tx, params.organizationId, debitSum),
             reason: senParams.reason,
             actorType: senParams.actorType,
             ...(senParams.actorUserId != null ? { actorUserId: senParams.actorUserId } : {}),
