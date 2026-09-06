@@ -1,31 +1,43 @@
 {
   "rapport": {
-    "antal": 52,
+    "antal": 54,
     "kategori": {
-      "antal": 50,
-      "traffar": 44,
-      "andel": 0.88
+      "antal": 54,
+      "traffar": 47,
+      "andel": 0.8703703703703703
     },
     "prioritet": {
-      "antal": 50,
-      "traffar": 27,
-      "andel": 0.54
+      "antal": 54,
+      "traffar": 39,
+      "andel": 0.7222222222222222
     },
     "atgard": {
-      "antal": 52,
-      "traffar": 29,
-      "andel": 0.5576923076923077
+      "antal": 54,
+      "traffar": 47,
+      "andel": 0.8703703703703703
+    },
+    "regler": {
+      "golvHojde": 12,
+      "golvRaddade": 9,
+      "golvForstorde": 3,
+      "fragaTvingad": 3,
+      "fragaTvingadRatt": 2,
+      "prioritetUtanModell": {
+        "antal": 54,
+        "traffar": 41,
+        "andel": 0.7592592592592593
+      }
     },
     "fraga": {
-      "rattFraga": 6,
+      "rattFraga": 9,
       "felFraga": 1,
-      "missadFraga": 4,
-      "felFragaAndel": 0.019230769230769232
+      "missadFraga": 1,
+      "felFragaAndel": 0.018518518518518517
     },
     "ingen": {
       "antal": 5,
-      "traffar": 2,
-      "andel": 0.4
+      "traffar": 5,
+      "andel": 1
     },
     "konfidens": [
       {
@@ -36,29 +48,29 @@
       },
       {
         "hink": "0.50–0.69",
-        "antal": 1,
+        "antal": 0,
         "ratt": 0,
-        "andel": 0
+        "andel": null
       },
       {
         "hink": "0.70–0.84",
-        "antal": 8,
-        "ratt": 3,
-        "andel": 0.375
+        "antal": 1,
+        "ratt": 1,
+        "andel": 1
       },
       {
         "hink": "0.85–1.00",
-        "antal": 34,
-        "ratt": 18,
-        "andel": 0.5294117647058824
+        "antal": 39,
+        "ratt": 34,
+        "andel": 0.8717948717948718
       }
     ],
-    "domWouldExecute": 38,
+    "domWouldExecute": 33,
     "kostnad": {
-      "totalUsd": 0.211424,
-      "perArendeUsd": 0.004065846153846154,
-      "inTokens": 145794,
-      "utTokens": 13126
+      "totalUsd": 0.274687,
+      "perArendeUsd": 0.005086796296296297,
+      "inTokens": 204082,
+      "utTokens": 14121
     }
   },
   "poster": [
@@ -77,10 +89,14 @@
         "prioritet": "NORMAL",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004246,
-        "inTokens": 2821,
-        "utTokens": 285
+        "kostnadUsd": 0.004991,
+        "inTokens": 3796,
+        "utTokens": 239
       }
     },
     {
@@ -99,10 +115,14 @@
         "prioritet": "NORMAL",
         "confidence": null,
         "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
+        "andraKategori": "ROOF",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004812,
-        "inTokens": 2787,
-        "utTokens": 405
+        "kostnadUsd": 0.005477,
+        "inTokens": 3762,
+        "utTokens": 343
       }
     },
     {
@@ -115,15 +135,18 @@
       },
       "utfall": {
         "id": "k03",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "URGENT",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "URGENT",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0039120000000000005,
-        "inTokens": 2817,
-        "utTokens": 219
+        "kostnadUsd": 0.005052,
+        "inTokens": 3792,
+        "utTokens": 252
       }
     },
     {
@@ -136,15 +159,18 @@
       },
       "utfall": {
         "id": "k04",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "ELECTRICAL",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0039900000000000005,
-        "inTokens": 2805,
-        "utTokens": 237
+        "kostnadUsd": 0.0050100000000000006,
+        "inTokens": 3780,
+        "utTokens": 246
       }
     },
     {
@@ -157,15 +183,18 @@
       },
       "utfall": {
         "id": "k05",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "NORMAL",
         "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004064,
-        "inTokens": 2794,
-        "utTokens": 254
+        "kostnadUsd": 0.005259,
+        "inTokens": 3769,
+        "utTokens": 298
       }
     },
     {
@@ -179,15 +208,18 @@
       },
       "utfall": {
         "id": "k06",
-        "atgard": "create_inspection",
+        "atgard": "FRAGA",
         "kategori": "HEATING",
-        "prioritet": "NORMAL",
-        "confidence": 0.65,
-        "fragaFalt": null,
-        "domWouldExecute": true,
-        "kostnadUsd": 0.003978000000000001,
-        "inTokens": 2778,
-        "utTokens": 240
+        "prioritet": "HIGH",
+        "confidence": null,
+        "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "NORMAL",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.005218,
+        "inTokens": 3753,
+        "utTokens": 293
       }
     },
     {
@@ -200,15 +232,18 @@
       },
       "utfall": {
         "id": "k07",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
-        "prioritet": "NORMAL",
-        "confidence": 0.75,
+        "prioritet": "HIGH",
+        "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004044000000000001,
-        "inTokens": 2814,
-        "utTokens": 246
+        "kostnadUsd": 0.005104,
+        "inTokens": 3789,
+        "utTokens": 263
       }
     },
     {
@@ -226,10 +261,13 @@
         "prioritet": "URGENT",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003947,
-        "inTokens": 2807,
-        "utTokens": 228
+        "kostnadUsd": 0.005142000000000001,
+        "inTokens": 3782,
+        "utTokens": 272
       }
     },
     {
@@ -242,15 +280,18 @@
       },
       "utfall": {
         "id": "k09",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "WINDOWS_DOORS",
-        "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "prioritet": "HIGH",
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0040160000000000005,
-        "inTokens": 2821,
-        "utTokens": 239
+        "kostnadUsd": 0.005086,
+        "inTokens": 3796,
+        "utTokens": 258
       }
     },
     {
@@ -266,12 +307,15 @@
         "atgard": "update_maintenance_status",
         "kategori": "LOCKS",
         "prioritet": "NORMAL",
-        "confidence": 0.75,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004198,
-        "inTokens": 2813,
-        "utTokens": 277
+        "kostnadUsd": 0.0049830000000000004,
+        "inTokens": 3788,
+        "utTokens": 239
       }
     },
     {
@@ -289,10 +333,13 @@
         "prioritet": "URGENT",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "URGENT",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003992,
-        "inTokens": 2807,
-        "utTokens": 237
+        "kostnadUsd": 0.005012000000000001,
+        "inTokens": 3782,
+        "utTokens": 246
       }
     },
     {
@@ -308,12 +355,15 @@
         "atgard": "create_inspection",
         "kategori": "FACADE",
         "prioritet": "NORMAL",
-        "confidence": 0.9,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0039,
-        "inTokens": 2815,
-        "utTokens": 217
+        "kostnadUsd": 0.004905,
+        "inTokens": 3790,
+        "utTokens": 223
       }
     },
     {
@@ -331,10 +381,14 @@
         "prioritet": "HIGH",
         "confidence": 0.9,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
+        "andraKategori": "PLUMBING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003946,
-        "inTokens": 2806,
-        "utTokens": 228
+        "kostnadUsd": 0.0051210000000000006,
+        "inTokens": 3781,
+        "utTokens": 268
       }
     },
     {
@@ -349,13 +403,16 @@
         "id": "k14",
         "atgard": "update_maintenance_status",
         "kategori": "CLEANING",
-        "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "prioritet": "LOW",
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004149,
-        "inTokens": 2804,
-        "utTokens": 269
+        "kostnadUsd": 0.004859,
+        "inTokens": 3779,
+        "utTokens": 216
       }
     },
     {
@@ -373,10 +430,13 @@
         "prioritet": "LOW",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004092999999999999,
-        "inTokens": 2803,
-        "utTokens": 258
+        "kostnadUsd": 0.004998,
+        "inTokens": 3778,
+        "utTokens": 244
       }
     },
     {
@@ -392,12 +452,16 @@
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "HIGH",
-        "confidence": 0.9,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "NORMAL",
+        "andraKategori": "APPLIANCES</anraKategori>\n</invoke>",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004073,
-        "inTokens": 2818,
-        "utTokens": 251
+        "kostnadUsd": 0.005593,
+        "inTokens": 3793,
+        "utTokens": 360
       }
     },
     {
@@ -410,15 +474,18 @@
       },
       "utfall": {
         "id": "k18",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "NORMAL",
-        "confidence": 0.75,
+        "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003922,
-        "inTokens": 2802,
-        "utTokens": 224
+        "kostnadUsd": 0.004961999999999999,
+        "inTokens": 3777,
+        "utTokens": 237
       }
     },
     {
@@ -433,13 +500,16 @@
         "id": "k19",
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
-        "prioritet": "URGENT",
-        "confidence": 0.95,
+        "prioritet": "HIGH",
+        "confidence": 0.9,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004046,
-        "inTokens": 2806,
-        "utTokens": 248
+        "kostnadUsd": 0.005126,
+        "inTokens": 3781,
+        "utTokens": 269
       }
     },
     {
@@ -455,12 +525,15 @@
         "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004034,
-        "inTokens": 2804,
-        "utTokens": 246
+        "kostnadUsd": 0.005084,
+        "inTokens": 3779,
+        "utTokens": 261
       }
     },
     {
@@ -473,15 +546,19 @@
       },
       "utfall": {
         "id": "k21",
-        "atgard": "create_inspection",
+        "atgard": "FRAGA",
         "kategori": "ELECTRICAL",
-        "prioritet": "HIGH",
+        "prioritet": "URGENT",
         "confidence": 0.85,
-        "fragaFalt": null,
-        "domWouldExecute": true,
-        "kostnadUsd": 0.003935,
-        "inTokens": 2805,
-        "utTokens": 226
+        "fragaFalt": "category",
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "URGENT",
+        "andraKategori": "HEATING",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.005405,
+        "inTokens": 3780,
+        "utTokens": 325
       }
     },
     {
@@ -495,15 +572,18 @@
       },
       "utfall": {
         "id": "k22",
-        "atgard": "FRAGA",
+        "atgard": "OTOLKBART",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
         "confidence": null,
-        "fragaFalt": "category",
+        "fragaFalt": null,
+        "atgardForeRegler": "OTOLKBART",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004533,
-        "inTokens": 2793,
-        "utTokens": 348
+        "kostnadUsd": 0.005588,
+        "inTokens": 3768,
+        "utTokens": 364
       }
     },
     {
@@ -521,10 +601,13 @@
         "prioritet": "URGENT",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "URGENT",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004065,
-        "inTokens": 2815,
-        "utTokens": 250
+        "kostnadUsd": 0.0052499999999999995,
+        "inTokens": 3790,
+        "utTokens": 292
       }
     },
     {
@@ -540,21 +623,24 @@
         "atgard": "create_inspection",
         "kategori": "COMMON_AREAS",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.9,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003917,
-        "inTokens": 2797,
-        "utTokens": 224
+        "kostnadUsd": 0.004897,
+        "inTokens": 3772,
+        "utTokens": 225
       }
     },
     {
       "facit": {
         "kategori": "PLUMBING",
         "prioritet": "LOW",
-        "atgard": "INGEN",
+        "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Redan åtgärdat. Att föreslå en åtgärd här är att inte ha läst texten."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som INGEN. Hyresgästen ber uttryckligen att ärendet stängs — att föreslå en statusuppdatering är precis det repetitiva arbete agenten finns för. INGEN vore att låta ett löst ärende ligga kvar öppet."
       },
       "utfall": {
         "id": "k26",
@@ -563,10 +649,13 @@
         "prioritet": "NORMAL",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003758,
-        "inTokens": 2813,
-        "utTokens": 189
+        "kostnadUsd": 0.004758,
+        "inTokens": 3788,
+        "utTokens": 194
       }
     },
     {
@@ -580,14 +669,17 @@
       "utfall": {
         "id": "k28",
         "atgard": "INGEN",
-        "kategori": null,
-        "prioritet": null,
+        "kategori": "OTHER",
+        "prioritet": "LOW",
         "confidence": null,
         "fragaFalt": null,
+        "atgardForeRegler": "INGEN",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.0038569999999999998,
-        "inTokens": 2822,
-        "utTokens": 207
+        "kostnadUsd": 0.004787,
+        "inTokens": 3797,
+        "utTokens": 198
       }
     },
     {
@@ -600,15 +692,18 @@
       },
       "utfall": {
         "id": "k29",
-        "atgard": "FRAGA",
+        "atgard": "INGEN",
         "kategori": "OTHER",
         "prioritet": "LOW",
         "confidence": null,
-        "fragaFalt": "category",
+        "fragaFalt": null,
+        "atgardForeRegler": "INGEN",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004378,
-        "inTokens": 2778,
-        "utTokens": 320
+        "kostnadUsd": 0.004633,
+        "inTokens": 3753,
+        "utTokens": 176
       }
     },
     {
@@ -623,12 +718,16 @@
         "id": "k30",
         "atgard": "compose_and_send_email",
         "kategori": "HEATING",
-        "prioritet": "NORMAL",
-        "confidence": 0.75,
+        "prioritet": "HIGH",
+        "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "compose_and_send_email",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
+        "andraKategori": "HEATING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004109,
-        "inTokens": 2809,
+        "kostnadUsd": 0.005084,
+        "inTokens": 3784,
         "utTokens": 260
       }
     },
@@ -647,10 +746,13 @@
         "prioritet": "NORMAL",
         "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "compose_and_send_email",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.0040680000000000004,
-        "inTokens": 2798,
-        "utTokens": 254
+        "kostnadUsd": 0.004993,
+        "inTokens": 3773,
+        "utTokens": 244
       }
     },
     {
@@ -664,15 +766,19 @@
       },
       "utfall": {
         "id": "k32",
-        "atgard": "create_inspection",
+        "atgard": "FRAGA",
         "kategori": "HEATING",
         "prioritet": "NORMAL",
-        "confidence": 0.75,
-        "fragaFalt": null,
-        "domWouldExecute": true,
-        "kostnadUsd": 0.0039030000000000002,
-        "inTokens": 2803,
-        "utTokens": 220
+        "confidence": null,
+        "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
+        "andraKategori": "WINDOWS_DOORS",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.005483,
+        "inTokens": 3778,
+        "utTokens": 341
       }
     },
     {
@@ -687,13 +793,17 @@
         "id": "k33",
         "atgard": "create_inspection",
         "kategori": "PLUMBING",
-        "prioritet": "NORMAL",
+        "prioritet": "HIGH",
         "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
+        "andraKategori": "COMMON_AREAS",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004066,
-        "inTokens": 2811,
-        "utTokens": 251
+        "kostnadUsd": 0.0050609999999999995,
+        "inTokens": 3786,
+        "utTokens": 255
       }
     },
     {
@@ -706,15 +816,18 @@
       },
       "utfall": {
         "id": "k34",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
-        "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "prioritet": "HIGH",
+        "confidence": 0.9,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0038640000000000002,
-        "inTokens": 2794,
-        "utTokens": 214
+        "kostnadUsd": 0.005014,
+        "inTokens": 3769,
+        "utTokens": 249
       }
     },
     {
@@ -729,13 +842,16 @@
         "id": "k35",
         "atgard": "update_maintenance_status",
         "kategori": "WINDOWS_DOORS",
-        "prioritet": "HIGH",
-        "confidence": 0.9,
+        "prioritet": "URGENT",
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004077,
-        "inTokens": 2802,
-        "utTokens": 255
+        "kostnadUsd": 0.004897,
+        "inTokens": 3777,
+        "utTokens": 224
       }
     },
     {
@@ -750,13 +866,17 @@
         "id": "k38",
         "atgard": "create_inspection",
         "kategori": "ROOF",
-        "prioritet": "NORMAL",
+        "prioritet": "URGENT",
         "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "URGENT",
+        "andraKategori": "FACADE",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004025,
-        "inTokens": 2800,
-        "utTokens": 245
+        "kostnadUsd": 0.004975,
+        "inTokens": 3775,
+        "utTokens": 240
       }
     },
     {
@@ -769,15 +889,18 @@
       },
       "utfall": {
         "id": "k39",
-        "atgard": "compose_and_send_email",
+        "atgard": "INGEN",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
-        "confidence": 0.7,
+        "confidence": null,
         "fragaFalt": null,
+        "atgardForeRegler": "INGEN",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.003974,
-        "inTokens": 2799,
-        "utTokens": 235
+        "kostnadUsd": 0.005339,
+        "inTokens": 3774,
+        "utTokens": 313
       }
     },
     {
@@ -791,14 +914,17 @@
       "utfall": {
         "id": "k40",
         "atgard": "compose_and_send_email",
-        "kategori": "OTHER",
+        "kategori": "COMMON_AREAS",
         "prioritet": "LOW",
-        "confidence": 0.85,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "compose_and_send_email",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.003911,
-        "inTokens": 2801,
-        "utTokens": 222
+        "kostnadUsd": 0.004901,
+        "inTokens": 3776,
+        "utTokens": 225
       }
     },
     {
@@ -812,15 +938,19 @@
       },
       "utfall": {
         "id": "k41",
-        "atgard": "create_inspection",
+        "atgard": "FRAGA",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
         "confidence": 0.85,
-        "fragaFalt": null,
-        "domWouldExecute": true,
-        "kostnadUsd": 0.003977,
-        "inTokens": 2797,
-        "utTokens": 236
+        "fragaFalt": "category",
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "LOW",
+        "andraKategori": "HEATING",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.005002,
+        "inTokens": 3772,
+        "utTokens": 246
       }
     },
     {
@@ -833,15 +963,18 @@
       },
       "utfall": {
         "id": "k42",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "ELECTRICAL",
-        "prioritet": "NORMAL",
-        "confidence": 0.75,
+        "prioritet": "HIGH",
+        "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003899,
-        "inTokens": 2804,
-        "utTokens": 219
+        "kostnadUsd": 0.005013999999999999,
+        "inTokens": 3779,
+        "utTokens": 247
       }
     },
     {
@@ -854,15 +987,18 @@
       },
       "utfall": {
         "id": "k43",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "WINDOWS_DOORS",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004002,
-        "inTokens": 2822,
-        "utTokens": 236
+        "kostnadUsd": 0.005077,
+        "inTokens": 3797,
+        "utTokens": 256
       }
     },
     {
@@ -878,12 +1014,16 @@
         "atgard": "compose_and_send_email",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "compose_and_send_email",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": false,
-        "kostnadUsd": 0.003986,
-        "inTokens": 2811,
-        "utTokens": 235
+        "kostnadUsd": 0.005171,
+        "inTokens": 3786,
+        "utTokens": 277
       }
     },
     {
@@ -896,15 +1036,18 @@
       },
       "utfall": {
         "id": "k45",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "ELECTRICAL",
         "prioritet": "URGENT",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003927,
-        "inTokens": 2802,
-        "utTokens": 225
+        "kostnadUsd": 0.005022,
+        "inTokens": 3777,
+        "utTokens": 249
       }
     },
     {
@@ -923,10 +1066,13 @@
         "prioritet": "NORMAL",
         "confidence": null,
         "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004583,
-        "inTokens": 2793,
-        "utTokens": 358
+        "kostnadUsd": 0.005443,
+        "inTokens": 3768,
+        "utTokens": 335
       }
     },
     {
@@ -944,10 +1090,14 @@
         "prioritet": "HIGH",
         "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
+        "andraKategori": "CLEANING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.00406,
-        "inTokens": 2805,
-        "utTokens": 251
+        "kostnadUsd": 0.00511,
+        "inTokens": 3780,
+        "utTokens": 266
       }
     },
     {
@@ -962,13 +1112,17 @@
         "id": "k49",
         "atgard": "create_inspection",
         "kategori": "PLUMBING",
-        "prioritet": "HIGH",
+        "prioritet": "URGENT",
         "confidence": 0.85,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "URGENT",
+        "andraKategori": "ROOF",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004156,
-        "inTokens": 2801,
-        "utTokens": 271
+        "kostnadUsd": 0.005065999999999999,
+        "inTokens": 3776,
+        "utTokens": 258
       }
     },
     {
@@ -987,10 +1141,13 @@
         "prioritet": "URGENT",
         "confidence": null,
         "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "URGENT",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004539,
-        "inTokens": 2789,
-        "utTokens": 350
+        "kostnadUsd": 0.005439,
+        "inTokens": 3764,
+        "utTokens": 335
       }
     },
     {
@@ -1006,12 +1163,15 @@
         "atgard": "update_maintenance_status",
         "kategori": "CLEANING",
         "prioritet": "NORMAL",
-        "confidence": 0.9,
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004085999999999999,
-        "inTokens": 2796,
-        "utTokens": 258
+        "kostnadUsd": 0.004961,
+        "inTokens": 3771,
+        "utTokens": 238
       }
     },
     {
@@ -1030,10 +1190,13 @@
         "prioritet": "NORMAL",
         "confidence": null,
         "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004548,
-        "inTokens": 2778,
-        "utTokens": 354
+        "kostnadUsd": 0.005313,
+        "inTokens": 3753,
+        "utTokens": 312
       }
     },
     {
@@ -1048,13 +1211,17 @@
         "id": "k56",
         "atgard": "create_inspection",
         "kategori": "APPLIANCES",
-        "prioritet": "HIGH",
+        "prioritet": "URGENT",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "URGENT",
+        "prioritetUtanModell": "URGENT",
+        "andraKategori": "HEATING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0038989999999999997,
-        "inTokens": 2799,
-        "utTokens": 220
+        "kostnadUsd": 0.005104,
+        "inTokens": 3774,
+        "utTokens": 266
       }
     },
     {
@@ -1070,13 +1237,16 @@
         "id": "k57",
         "atgard": "FRAGA",
         "kategori": "PLUMBING",
-        "prioritet": "NORMAL",
+        "prioritet": "LOW",
         "confidence": null,
         "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.0045249999999999995,
-        "inTokens": 2810,
-        "utTokens": 343
+        "kostnadUsd": 0.00551,
+        "inTokens": 3785,
+        "utTokens": 345
       }
     },
     {
@@ -1089,15 +1259,18 @@
       },
       "utfall": {
         "id": "k59",
-        "atgard": "create_inspection",
+        "atgard": "update_maintenance_status",
         "kategori": "HEATING",
-        "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "prioritet": "URGENT",
+        "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003842,
-        "inTokens": 2802,
-        "utTokens": 208
+        "kostnadUsd": 0.004927,
+        "inTokens": 3777,
+        "utTokens": 230
       }
     },
     {
@@ -1111,15 +1284,19 @@
       },
       "utfall": {
         "id": "k60",
-        "atgard": "create_inspection",
+        "atgard": "FRAGA",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
         "confidence": 0.75,
-        "fragaFalt": null,
-        "domWouldExecute": true,
-        "kostnadUsd": 0.003906,
-        "inTokens": 2811,
-        "utTokens": 219
+        "fragaFalt": "category",
+        "atgardForeRegler": "create_inspection",
+        "prioritetForeRegler": "NORMAL",
+        "prioritetUtanModell": "LOW",
+        "andraKategori": "HEATING",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.005051,
+        "inTokens": 3786,
+        "utTokens": 253
       }
     },
     {
@@ -1133,35 +1310,89 @@
       "utfall": {
         "id": "k61",
         "atgard": "INGEN",
-        "kategori": null,
-        "prioritet": null,
+        "kategori": "OTHER",
+        "prioritet": "LOW",
         "confidence": null,
         "fragaFalt": null,
+        "atgardForeRegler": "INGEN",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.003871,
-        "inTokens": 2806,
-        "utTokens": 213
+        "kostnadUsd": 0.004861,
+        "inTokens": 3781,
+        "utTokens": 216
       }
     },
     {
       "facit": {
         "kategori": "HEATING",
         "prioritet": "LOW",
-        "atgard": "INGEN",
+        "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Hyresgästen säger uttryckligen att inget behövs. Att föreslå en åtgärd är att inte ha läst texten."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som INGEN. \"Behöver inte komma\" betyder att ärendet är löst, inte att systemet ska tiga — statusen ska sättas."
       },
       "utfall": {
         "id": "k62",
         "atgard": "update_maintenance_status",
         "kategori": "HEATING",
-        "prioritet": "NORMAL",
+        "prioritet": "LOW",
         "confidence": 0.95,
         "fragaFalt": null,
+        "atgardForeRegler": "update_maintenance_status",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.003816,
-        "inTokens": 2806,
-        "utTokens": 202
+        "kostnadUsd": 0.004771,
+        "inTokens": 3781,
+        "utTokens": 198
+      }
+    },
+    {
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Nätfiske i felanmälningsformuläret. Ingen åtgärd, och absolut inget mejl."
+      },
+      "utfall": {
+        "id": "k63",
+        "atgard": "INGEN",
+        "kategori": "OTHER",
+        "prioritet": "HIGH",
+        "confidence": null,
+        "fragaFalt": null,
+        "atgardForeRegler": "INGEN",
+        "prioritetForeRegler": "HIGH",
+        "prioritetUtanModell": "HIGH",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.004964,
+        "inTokens": 3804,
+        "utTokens": 232
+      }
+    },
+    {
+      "facit": {
+        "kategori": "COMMON_AREAS",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Ingen felanmälan — en undran utan ärende. Inget att föreslå, inget att fråga om."
+      },
+      "utfall": {
+        "id": "k64",
+        "atgard": "INGEN",
+        "kategori": "COMMON_AREAS",
+        "prioritet": "LOW",
+        "confidence": null,
+        "fragaFalt": null,
+        "atgardForeRegler": "INGEN",
+        "prioritetForeRegler": "LOW",
+        "prioritetUtanModell": "NORMAL",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.004834,
+        "inTokens": 3784,
+        "utTokens": 210
       }
     }
   ]

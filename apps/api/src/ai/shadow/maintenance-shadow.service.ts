@@ -16,6 +16,7 @@ import {
   skuggverktygForFelanmalan,
 } from './shadow-tool-gate'
 import { FRAGEBARA_NYCKLAR, ärGiltigFråga } from '../questions/question-fields'
+import { tillämpaRegler } from './triage-rules'
 import { QuestionService } from '../questions/question.service'
 
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
@@ -194,6 +195,48 @@ export class MaintenanceShadowService {
     const kontext = await this.byggKontext(organizationId, ticket)
     const forslag = await this.fragaModellen(organizationId, ticket, kontext)
     if (!forslag) return { utfall: 'AVVISAT_FORSLAG', detalj: 'modellen svarade inte tolkbart' }
+
+    // ── DE DETERMINISTISKA REGLERNA, EFTER MODELLEN OCH FÖRE ALLT ANNAT ─────
+    //
+    // Golvet kan höja prioriteten men aldrig sänka den, och en besiktning på ett
+    // ärende vars kategori inte går att avgöra blir en fråga. Skälen till båda
+    // står i `triage-rules.ts`; det som hör hemma HÄR är ordningen: reglerna
+    // körs före grinden och före skrivningen, så det som sparas är det som
+    // gäller. Kördes de efteråt hade raden och beslutet kunnat säga olika saker.
+    const regler = tillämpaRegler(
+      {
+        atgärd: forslag.toolName,
+        prioritet: (forslag.prediction['priority'] as string | undefined) ?? null,
+        kategori: (forslag.prediction['category'] as string | undefined) ?? null,
+      },
+      {
+        titel: ticket.title,
+        beskrivning: ticket.description,
+        registreradKategori: ticket.category,
+      },
+    )
+    if (regler.prioritet !== null) forslag.prediction['priority'] = regler.prioritet
+    // ── EN HÖJNING SOM INTE FÖRKLARAS FÅR LÄSYTAN ATT LJUGA ────────────────
+    //
+    // `reasoning` kommer från modellen, prioriteten från regeln. Höjer golvet
+    // utan att säga det står det "…tål att vänta till nästa vardag" bredvid
+    // URGENT i inkorgen, och planens femte krav — att hyresvärden ska se VARFÖR
+    // — är då uppfyllt på papperet och brutet i praktiken. Meningen läggs till
+    // sist, så modellens egen text står kvar oförändrad och det går att se var
+    // den slutar.
+    if (regler.golvHöjde && regler.prioritet !== null) {
+      forslag.reasoning =
+        `${forslag.reasoning} Prioriteten höjdes till ${regler.prioritet} av en ` +
+        'deterministisk regel som läser ärendetexten; agenten föreslog en lägre nivå.'
+    }
+    if (regler.frågaTvingad && regler.fråga) {
+      forslag.toolName = FRAGA
+      forslag.fraga = regler.fråga
+      this.logger.log(
+        `[ai-shadow] ärende ${ticket.ticketNumber}: besiktningsförslaget gjordes om till en fråga ` +
+          '— kategorin går inte att avgöra ur texten.',
+      )
+    }
 
     // ── FRÅGAN GÅR EN EGEN VÄG ─────────────────────────────────────────────
     //
@@ -519,7 +562,25 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
             'skickas. SVÅR BEDÖMNING: beskrivningen är fullständig men ligger i ' +
             'gränslandet mellan NORMAL och HIGH — det är låg confidence, inte en fråga.',
           properties: {
-            fält: {
+            // ── NYCKLARNA PÅ TRÅDEN ÄR ASCII, OCH DET ÄR EN MÄTNING ─────
+            //
+            // Fälten hette `fält` och `användsTill`. Uppmätt i körning 4: FEM av
+            // korpusens tio frågefall blev OTOLKBART — modellen valde FRAGA,
+            // skrev en riktig fråga, och stavade nyckeln `användssTill` med två
+            // s. `ärGiltigFråga` avvisade den fail-closed, `tolkaVerktygsanrop`
+            // returnerade null, och ingenting skrevs. Det var fem av sex missade
+            // frågor, och de såg i rapporten ut som att agenten inte frågade.
+            //
+            // En JSON-nyckel som en modell måste återge ORDAGRANT är ett
+            // maskinkontrakt, inte en läsyta. Å/ä/ö och dubbeltecken hör inte
+            // hemma där — samma familj som CLAUDE.md:s regel om skalvariabler
+            // och `\b` i regex: ett namn som ser svenskt ut men inte kan bäras
+            // av mekaniken, och där felet är TYST.
+            //
+            // Svenskan flyttar till BESKRIVNINGARNA, som modellen läser men inte
+            // behöver stava. Domäntypen inuti kodbasen är oförändrad; kartan
+            // mellan de två ligger i `tolkaVerktygsanrop`, på ett ställe.
+            falt: {
               type: 'string',
               enum: [...FRAGEBARA_NYCKLAR],
               description: 'Vilket fält uppgiften gäller.',
@@ -529,18 +590,42 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
               items: { type: 'string' },
               description: 'Två till fyra värden ur fältets register — de troligaste.',
             },
-            användsTill: {
+            nytta: {
               type: 'string',
               description:
                 'Vilka OLIKA åtgärder de olika svaren leder till, en mening som nämner ' +
                 'båda. Leder alla alternativ till samma förslag ska frågan inte ställas.',
             },
           },
-          required: ['fält', 'alternativ', 'användsTill'],
+          required: ['falt', 'alternativ', 'nytta'],
         },
         toolInput: {
           type: 'object',
-          description: 'Argument till verktyget. Hitta ALDRIG på id:n — utelämna hellre fältet.',
+          description:
+            'Argument till verktyget. Hitta ALDRIG på id:n — utelämna hellre fältet. ' +
+            'Lämna TOMT när toolName är FRAGA: en fråga är inget verktyg och har inga ' +
+            'argument. Frågans innehåll hör hemma i fältet fraga.',
+        },
+        // ── DEN NÄST TROLIGASTE KATEGORIN, OCH VARFÖR DEN BEHÖVS ──────────
+        //
+        // Fältet finns för EN sak: när en deterministisk regel gör om ett
+        // besiktningsförslag till en fråga behöver frågan två alternativ ur
+        // registret, och båda måste vara BELAGDA. Uppmätt på körning 3: regeln
+        // träffade rätt två ärenden — och tvingade fram noll frågor, därför att
+        // modellens `prediction.category` var `OTHER` i båda, alltså samma värde
+        // som ärendet redan var registrerat som. Det fanns inget andra alternativ
+        // att bygga frågan av, och regeln var i praktiken död.
+        //
+        // Att i stället tvinga modellen bort från `OTHER` hade varit fel: `OTHER`
+        // är en riktig kategori och FACIT för just de ärendena. Den här vägen tar
+        // andrahandsvalet utan att röra förstahandsvalet.
+        andraKategori: {
+          type: 'string',
+          enum: Object.values(MaintenanceCategory),
+          description:
+            'Den NÄST troligaste kategorin, om den första skulle vara fel. Måste vara ' +
+            'en annan än prediction.category. OBLIGATORISK när prediction.category är ' +
+            'OTHER — då är det andrahandsvalet som säger vad du faktiskt tror.',
         },
         reasoning: { type: 'string', description: 'Varför, på svenska, två till fyra meningar.' },
         confidence: {
@@ -635,7 +720,7 @@ export function byggPrompt(
     // för ett verktyg utan etikett, så ett nytt skuggverktyg kan inte tyst få
     // en tom rad.
     '## Verktyg du får föreslå',
-    ...verktyg.map((n) => `- ${n}: ${verktygsEtikett(n)}`),
+    ...verktyg.map((n) => `- ${n}: ${verktygsEtikett(n)} — ${skuggklausul(n)}`),
     '',
     // ── UTFALLEN STÅR I PROMPTEN, INTE BARA I SCHEMAT ────────────────────
     //
@@ -646,8 +731,72 @@ export function byggPrompt(
     // konfiguration mätningen säger är svag.
     `## Tre utfall: ett verktyg ovan, ${INGEN_ATGARD} om inget behöver göras,`,
     `eller ${FRAGA} om en uppgift saknas i ärendet och historiken.`,
+    // ── "FÖRESLÅ ÄNDÅ" ÄR VILLKORAT, INTE ALLMÄNT ────────────────────────
+    //
+    // Meningen gäller gränsen mot FRÅGA, men var skriven som en allmän regel
+    // och stod omedelbart före tystnadsavsnittet, vars fall alla handlar om
+    // texter där man just INTE ska föreslå något. Ventilen som skulle göra det
+    // ofarligt — "med låg confidence" — bär dessutom inte: uppmätt i körning 3
+    // låg NOLL av 43 förslag under 0,5, och 34 av dem över 0,85. Modellen tar
+    // handlingen men inte priset, och då är förbehållet inget förbehåll.
     'Osäkerhet är inte en saknad uppgift: är bedömningen svår föreslår du ändå,',
-    'med låg confidence.',
+    'med låg confidence — men bara om texten beskriver ett fel. Gör den inte det,',
+    'se avsnittet nedan.',
+    '',
+    // ── TYSTNADEN BEHÖVER SKRIVAS UT FÖR ATT VARA NÅBAR ──────────────────
+    //
+    // Uppmätt på mätkorpusen (körning 3): av fem ärenden där rätt svar var att
+    // INTE föreslå något träffade agenten två. Den svarade `FRAGA` på ren
+    // obegriplighet ("asdfasdf test test") och letade efter ett verktyg på en
+    // hälsning. `INGEN_ATGARD` stod med i uppräkningen ovan, men bara som ett
+    // alternativ bland tre — inte som något med egna fall.
+    //
+    // Skälet att tystnaden är värd egen plats: en inkorg som fylls med förslag
+    // om skräppost och artighetsfraser lär hyresvärden att inte läsa den, och
+    // då är hela skuggläget bortkastat.
+    `## När ${INGEN_ATGARD} är HELA svaret`,
+    `${INGEN_ATGARD} är ett fullständigt svar, inte en reservutgång. Välj det när:`,
+    '- texten är reklam, nätfiske eller skräppost,',
+    '- texten inte går att förstå som en felanmälan (slumpmässiga tecken, ett test),',
+    '- texten inte anmäler något fel och inte rör ett pågående ärende — en hälsning,',
+    '  en undran, ett tack utan sammanhang. Ett tack som säger att DET HÄR ärendet',
+    '  är löst är däremot en statusuppdatering, inte tystnad,',
+    '- samma fel redan står som ett öppet ärende i historiken ovan.',
+    'I de fallen ska du varken föreslå ett verktyg eller ställa en fråga. Det finns',
+    'inget att fråga om när det inte finns något ärende.',
+    '',
+    // ── PRIORITETEN ANVÄNDE BARA MITTEN ──────────────────────────────────
+    //
+    // Uppmätt (körning 3, 50 besvarade ärenden): modellen svarade NORMAL på 33
+    // mot facits 20, underskattade 14 gånger och överskattade 9 — den största
+    // enskilda felformen var HIGH som blev NORMAL, åtta gånger. LOW användes tre
+    // gånger mot facits tio.
+    //
+    // Golvet i `triage-rules.ts` fångar underskattningen deterministiskt och kan
+    // aldrig sänka. Det kan däremot inte få modellen att VÅGA säga LOW — ett
+    // golv höjer, det sänker inte — och därför står nivåerna också här, med
+    // kriterier i stället för adjektiv.
+    // ── PROMPTEN BÄR DET GOLVET INTE KAN, INTE SAMMA SAK EN GÅNG TILL ────
+    //
+    // Avsnittet räknade först upp nyckelord för URGENT och HIGH — i praktiken en
+    // andra kopia av `URGENT_ORD` och `HIGH_ORD` i `triage-rules.ts`. Två
+    // uppräkningar av samma regel glider, och glidningen hade varit tyst: golvet
+    // höjer ändå, så en prompt som slutat stämma märks inte.
+    //
+    // Golvet kan bara HÖJA. Det prompten måste bära är därför det motsatta
+    // hållet — att LOW är ett riktigt svar — och det golvet aldrig ser: att ett
+    // löst ärende inte är brådskande. Uppmätt i körning 3: LOW användes tre
+    // gånger mot facits tio, och LOW→NORMAL är den största felformen golvet per
+    // konstruktion inte kan laga.
+    '## Prioritet',
+    'URGENT: skadan eller risken växer med timmarna.',
+    'HIGH: ett fel som skadar bostaden eller gör den obekväm att bo i, eller ett',
+    '  fel som anmälts förut utan att något hänt.',
+    'NORMAL: ett fel som ska lagas men tål att vänta till nästa vardag.',
+    'LOW: kosmetiskt, städning, en önskan, något som kan tas när någon ändå är på',
+    '  plats. LOW är ett riktigt svar — ett ärende utan brådska ska få LOW, inte',
+    '  NORMAL "för säkerhets skull". Ett ärende hyresgästen säger är löst eller',
+    '  åtgärdat är LOW: det ska stängas, inte prioriteras.',
     '',
     // DEN HÄR MENINGEN GÖR FRÅGAN NÅBAR UTAN ATT GÖRA DEN TILL EN UTVÄG.
     //
@@ -660,9 +809,35 @@ export function byggPrompt(
     'beskrivningen MOTSÄGER det registrerade värdet, eller inte räcker för att',
     'pröva det.',
     '',
-    `Svara genom att anropa ${FORSLAG_VERKTYGSNAMN}. Registrerad kategori och`,
-    'prioritet är hyresvärdens FÖRSTA gissning — bedöm själv, och avvik när',
-    'beskrivningen säger något annat.',
+    // ── DET REGISTRERADE VÄRDET ÄR ETT BÄTTRE ANKARE ÄN EN FRI BEDÖMNING ──
+    //
+    // Sista meningen sa tidigare "bedöm själv, och avvik när beskrivningen säger
+    // något annat", vilket är den instruktion mätningen pekar ut som skadlig för
+    // just prioriteten. Offline mot körning 3:s svar:
+    //
+    //   modellens egen prioritet + golvet          36 av 50
+    //   REGISTRERAD prioritet + golvet, ingen modell   39 av 50
+    //
+    // En deterministisk rad slog alltså modellen med tre träffar och kostade
+    // noll tokens. Ankaret flyttas därför till det registrerade värdet — för
+    // PRIORITETEN. Kategorin ligger på 88 % och behåller "bedöm själv".
+    '## Så här väljer du prioritet',
+    'Utgå från den REGISTRERADE prioriteten. Höj den när beskrivningen visar att',
+    'det brådskar mer. Sänk den bara när beskrivningen uttryckligen säger att det',
+    'inte brådskar, eller att ärendet redan är löst. Säger beskrivningen inget om',
+    'brådska — behåll det registrerade värdet.',
+    '',
+    // ── BESLUTSORDNINGEN LIGGER SIST, DÄR DEN LÄSES ──────────────────────
+    // Recency är den enda placeringseffekt som rimligen biter i en prompt på
+    // knappt tusen tokens. Det sista modellen läser ska därför vara ordningen
+    // besluten fattas i — inte en uppmaning att avvika.
+    'Innan du svarar, i den här ordningen:',
+    '1. Beskriver texten ett fel? Om inte — svara ' + INGEN_ATGARD + '.',
+    '2. Går det att avgöra VAD felet gäller? Om inte — svara ' + FRAGA + '.',
+    '3. Annars: kategori (bedöm själv), prioritet enligt ovan, och det verktyg',
+    '   som hanterar felet.',
+    '',
+    `Svara genom att anropa ${FORSLAG_VERKTYGSNAMN}.`,
   ].join('\n')
 }
 
@@ -684,6 +859,8 @@ export function tolkaVerktygsanrop(input: unknown): {
   reasoning: string
   confidence: number | null
   prediction: Record<string, unknown>
+  /** Modellens andrahandsval av kategori. Läses av `tillämpaRegler`, inte av facit. */
+  andraKategori?: string
   /** Satt ENDAST när modellen valde FRÅGA och innehållet är giltigt. */
   fraga?: { fält: string; alternativ: string[]; användsTill: string }
 } | null {
@@ -701,7 +878,35 @@ export function tolkaVerktygsanrop(input: unknown): {
   // varit `FRAGA`, vilket inte är ett verktyg. Fail-closed: ingen rad alls.
   if (r['toolName'] === FRAGA) {
     if (typeof r['reasoning'] !== 'string' || !r['reasoning'].trim()) return null
-    const f = r['fraga']
+    // ── KARTAN MELLAN TRÅDENS ASCII OCH DOMÄNENS SVENSKA ────────────────────
+    // Ett ställe, och bara ett. Se skälet vid `falt`/`nytta` i schemat ovan.
+    // ── FRÅGAN LÄSES FRÅN BÅDA PLATSERNA, OCH DET ÄR EN MÄTNING ────────────
+    //
+    // Uppmätt i körning 5: åtta av korpusens tio frågefall blev OTOLKBART.
+    // Modellen skrev en fullt giltig fråga — rätt fält, tre till fyra riktiga
+    // kategorier, en nytta som skiljer utfallen åt — men lade den i `toolInput`
+    // i stället för i `fraga`:
+    //
+    //   "toolInput":{"falt":"category","alternativ":["PLUMBING","ROOF",…],"nytta":"…"}
+    //
+    // Formen är förutsägbar i efterhand: `toolInput` är ett OBLIGATORISKT
+    // objekt utan egen struktur, `fraga` är ett VALFRITT objekt bredvid det.
+    // Ett obligatoriskt fack drar till sig innehållet. Att skärpa
+    // beskrivningen räcker inte som ENDA åtgärd — det är samma sorts hopp som
+    // att be en modell om låg confidence och sedan mäta att den aldrig ger den.
+    //
+    // Placeringen är alltså fail-open, INNEHÅLLET är fortsatt fail-closed:
+    // `ärGiltigFråga` prövar exakt samma sak oavsett var payloaden låg, så
+    // ingenting ogiltigt släpps igenom av den här toleransen.
+    const rå = r['fraga'] ?? r['toolInput']
+    const f =
+      typeof rå === 'object' && rå !== null
+        ? {
+            fält: (rå as Record<string, unknown>)['falt'],
+            alternativ: (rå as Record<string, unknown>)['alternativ'],
+            användsTill: (rå as Record<string, unknown>)['nytta'],
+          }
+        : rå
     if (!ärGiltigFråga(f)) return null
     // PREDICTION BEHÅLLS ÄVEN VID FRÅGA. Schemat kräver den, och modellen
     // fyller i sin bästa gissning trots frågan — att kasta bort den hade tyst
@@ -747,8 +952,15 @@ export function tolkaVerktygsanrop(input: unknown): {
     }
   }
 
+  const andra = r['andraKategori']
+  const andraKategori =
+    typeof andra === 'string' && (Object.values(MaintenanceCategory) as string[]).includes(andra)
+      ? andra
+      : undefined
+
   return {
     toolName: r['toolName'],
+    ...(andraKategori !== undefined ? { andraKategori } : {}),
     toolInput:
       typeof r['toolInput'] === 'object' && r['toolInput'] !== null
         ? (r['toolInput'] as Record<string, unknown>)
@@ -768,6 +980,53 @@ export function tolkaVerktygsanrop(input: unknown): {
 export function fragetext(fält: string, ärendenummer: string): string {
   const f = QuestionService.fält(fält)
   return `${f ? f.etikett : fält} för ärende ${ärendenummer}?`
+}
+
+/**
+ * ── NÄR VERKTYGET GÄLLER I TRIAGE — en klausul per skuggverktyg ─────────────
+ *
+ * Uppmätt i körning 3: modellen föreslog `create_inspection` 24 gånger mot
+ * facits 4, och sexton av de tjugotre kvarvarande åtgärdsfelen låg i den ENDA
+ * övergången besiktning → statusuppdatering. De felaktiga var inte gränsfall:
+ * "Det luktar gas" (0,95), "hela huset är utan ström" (0,95), "VATTEN ÖVERALLT
+ * I BADRUMMET" (0,95). Ju akutare ärendet var, desto mer drog modellen mot
+ * "skicka någon dit" — och besiktning är det enda verktyget i menyn som betyder
+ * det.
+ *
+ * ── VARFÖR INTE ÄNDRA `menuLabel` ───────────────────────────────────────────
+ *
+ * Därför att `menuLabel` svarar på en ANNAN fråga: "vad ska stå i chattens
+ * verktygsmeny". Att skriva in triageregler där hade ändrat en text som visas
+ * för en människa i ett annat sammanhang, och nästa läsare hade inte kunnat se
+ * vilken av de två frågorna raden svarade på. Katalogens egen kommentar säger
+ * redan att en handskriven text per verktyg hör hemma i ett eget fält.
+ *
+ * ── FAIL-CLOSED, SAMMA SOM ETIKETTEN ────────────────────────────────────────
+ *
+ * Kastar för ett skuggverktyg utan klausul. Ett nytt verktyg ska inte kunna
+ * hamna i menyn med en tom förklaring — det är precis så en meny slutar bära
+ * betydelse, vilket är felet den här kartan finns för att laga.
+ */
+const SKUGGKLAUSULER: Readonly<Record<string, string>> = {
+  update_maintenance_status:
+    'STANDARDSVARET när felet är känt och ska hanteras, och när hyresgästen säger ' +
+    'att det redan är löst.',
+  create_inspection:
+    'bara när felets ART är okänd och måste bedömas på plats. Ett känt fel som ska ' +
+    'lagas är ingen besiktning, hur brådskande det än är.',
+  compose_and_send_email: 'när hyresgästen behöver ett svar, inte en åtgärd.',
+  record_expense: 'bara när ett belopp redan är betalt eller fakturerat.',
+}
+
+function skuggklausul(namn: string): string {
+  const k = SKUGGKLAUSULER[namn]
+  if (!k) {
+    throw new Error(
+      `Skuggverktyget ${namn} saknar en triageklausul i SKUGGKLAUSULER och kan inte ` +
+        'presenteras i menyn. Lägg till en — en meny utan betydelser väljs på namnet.',
+    )
+  }
+  return k
 }
 
 /**

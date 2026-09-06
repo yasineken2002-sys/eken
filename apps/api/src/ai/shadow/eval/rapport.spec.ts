@@ -31,6 +31,96 @@ const u = (över: Partial<Utfall> = {}): Utfall => ({
 })
 
 describe('byggRapport', () => {
+  describe('reglernas bidrag', () => {
+    // ── NULL BETYDER "INTE MÄTT", ALDRIG "NOLL" ────────────────────────────
+    //
+    // En körning från före reglerna bär inte fälten. Räknade rapporten dem som
+    // noll hade den sagt att reglerna inte tillförde något — vilket är ett
+    // PÅSTÅENDE om en mätning som aldrig gjordes, och exakt den sortens tystnad
+    // som gör ett tal värdelöst.
+    it('är null när posterna inte bär modellens eget svar', () => {
+      const r = byggRapport([{ facit: f(), utfall: u() }])
+      expect(r.regler.golvHojde).toBeNull()
+      expect(r.regler.fragaTvingad).toBeNull()
+      expect(formateraRapport(r)).toContain('ej mätt')
+    })
+
+    it('räknar en höjning som RÄDDADE ett svar', () => {
+      const r = byggRapport([
+        {
+          facit: f({ prioritet: 'HIGH' }),
+          utfall: u({
+            prioritet: 'HIGH',
+            atgardForeRegler: 'update_maintenance_status',
+            prioritetForeRegler: 'NORMAL',
+          }),
+        },
+      ])
+      expect(r.regler.golvHojde).toBe(1)
+      expect(r.regler.golvRaddade).toBe(1)
+      expect(r.regler.golvForstorde).toBe(0)
+    })
+
+    it('räknar en höjning som FÖRSTÖRDE ett svar — regeln får inte se bra ut gratis', () => {
+      const r = byggRapport([
+        {
+          facit: f({ prioritet: 'NORMAL' }),
+          utfall: u({
+            prioritet: 'HIGH',
+            atgardForeRegler: 'update_maintenance_status',
+            prioritetForeRegler: 'NORMAL',
+          }),
+        },
+      ])
+      expect(r.regler.golvHojde).toBe(1)
+      expect(r.regler.golvRaddade).toBe(0)
+      expect(r.regler.golvForstorde).toBe(1)
+    })
+
+    it('kontrollen utan modell räknas separat, och är null när den saknas', () => {
+      const utan = byggRapport([{ facit: f({ prioritet: 'HIGH' }), utfall: u() }])
+      expect(utan.regler.prioritetUtanModell).toBeNull()
+
+      const med = byggRapport([
+        {
+          facit: f({ prioritet: 'HIGH' }),
+          utfall: u({ prioritet: 'NORMAL', prioritetUtanModell: 'HIGH' }),
+        },
+        {
+          facit: f({ prioritet: 'LOW' }),
+          utfall: u({ prioritet: 'LOW', prioritetUtanModell: 'NORMAL' }),
+        },
+      ])
+      // Modellen 1/2, kontrollen 1/2 — och de träffar på OLIKA poster. Talen
+      // ska inte kunna smälta ihop.
+      expect(med.prioritet.traffar).toBe(1)
+      expect(med.regler.prioritetUtanModell).toEqual({ antal: 2, traffar: 1, andel: 0.5 })
+    })
+
+    it('räknar en tvingad fråga och om den var rätt', () => {
+      const r = byggRapport([
+        {
+          facit: f({ atgard: 'INGEN', fragaRatt: true }),
+          utfall: u({
+            atgard: 'FRAGA',
+            atgardForeRegler: 'create_inspection',
+            prioritetForeRegler: 'NORMAL',
+          }),
+        },
+        {
+          facit: f(),
+          utfall: u({
+            atgard: 'FRAGA',
+            atgardForeRegler: 'create_inspection',
+            prioritetForeRegler: 'NORMAL',
+          }),
+        },
+      ])
+      expect(r.regler.fragaTvingad).toBe(2)
+      expect(r.regler.fragaTvingadRatt).toBe(1)
+    })
+  })
+
   it('en full träff räknas i alla tre fälten', () => {
     const r = byggRapport([{ facit: f(), utfall: u() }])
     expect(r.kategori).toEqual({ antal: 1, traffar: 1, andel: 1 })

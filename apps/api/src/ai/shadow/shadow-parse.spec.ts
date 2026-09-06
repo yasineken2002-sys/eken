@@ -136,3 +136,99 @@ describe('tolkaVerktygsanrop', () => {
     expect(FORSLAG_VERKTYGSNAMN).toBe('lamna_forslag')
   })
 })
+
+describe('frågans nycklar på tråden', () => {
+  const bas = {
+    toolName: 'FRAGA',
+    reasoning: 'Det går inte att avgöra vad felet gäller ur texten.',
+    toolInput: {},
+    prediction: { category: 'PLUMBING', priority: 'NORMAL' },
+  }
+
+  it('tolkar en fråga med ASCII-nycklar', () => {
+    const r = tolkaVerktygsanrop({
+      ...bas,
+      fraga: { falt: 'category', alternativ: ['PLUMBING', 'ROOF'], nytta: 'Olika hantverkare.' },
+    })
+    expect(r?.toolName).toBe('FRAGA')
+    expect(r?.fraga).toEqual({
+      fält: 'category',
+      alternativ: ['PLUMBING', 'ROOF'],
+      användsTill: 'Olika hantverkare.',
+    })
+  })
+
+  // ── REGRESSIONEN SOM KOSTADE FEM FRÅGOR ────────────────────────────────
+  //
+  // Uppmätt i körning 4: modellen skrev `användssTill` med två s på det gamla,
+  // svenska nyckelnamnet. Frågan avvisades fail-closed och ingenting skrevs —
+  // fem av korpusens tio frågefall, och i rapporten såg det ut som att agenten
+  // inte frågade. Nycklarna på tråden är därför ASCII, och de här två proven
+  // håller fast BÅDA halvorna: den nya formen tolkas, den gamla gör det inte.
+  it('avvisar de GAMLA svenska nycklarna — kontraktet är ASCII', () => {
+    expect(
+      tolkaVerktygsanrop({
+        ...bas,
+        fraga: {
+          fält: 'category',
+          alternativ: ['PLUMBING', 'ROOF'],
+          användsTill: 'Olika hantverkare.',
+        },
+      }),
+    ).toBeNull()
+  })
+
+  it('avvisar den FAKTISKA felstavningen modellen skrev', () => {
+    expect(
+      tolkaVerktygsanrop({
+        ...bas,
+        fraga: {
+          falt: 'category',
+          alternativ: ['PLUMBING', 'ROOF'],
+          användssTill: 'Olika hantverkare.',
+        },
+      }),
+    ).toBeNull()
+  })
+
+  // ── PLACERINGEN ÄR TOLERANT, INNEHÅLLET ÄR DET INTE ────────────────────
+  //
+  // Uppmätt i körning 5: åtta av tio frågefall blev OTOLKBART därför att
+  // modellen lade frågan i `toolInput` — ett obligatoriskt fack bredvid det
+  // valfria `fraga`. Payloaden var giltig; bara platsen var fel.
+  it('läser frågan även när modellen lade den i toolInput', () => {
+    const r = tolkaVerktygsanrop({
+      toolName: 'FRAGA',
+      reasoning: 'Det går inte att avgöra vad felet gäller ur texten.',
+      prediction: { category: 'PLUMBING', priority: 'NORMAL' },
+      toolInput: {
+        falt: 'category',
+        alternativ: ['PLUMBING', 'ROOF'],
+        nytta: 'Olika hantverkare.',
+      },
+    })
+    expect(r?.fraga?.alternativ).toEqual(['PLUMBING', 'ROOF'])
+    // OCH `toolInput` bärs inte vidare som verktygsargument — en fråga har inga.
+    expect(r?.toolInput).toEqual({})
+  })
+
+  it('toleransen gäller INTE innehållet — en ogiltig fråga i toolInput avvisas', () => {
+    expect(
+      tolkaVerktygsanrop({
+        toolName: 'FRAGA',
+        reasoning: 'Text.',
+        prediction: { category: 'PLUMBING', priority: 'NORMAL' },
+        toolInput: { falt: 'category', alternativ: ['INTE_EN_KATEGORI', 'ROOF'], nytta: 'x' },
+      }),
+    ).toBeNull()
+  })
+
+  it('avvisar ett enda alternativ — ett val kräver två', () => {
+    expect(
+      tolkaVerktygsanrop({
+        ...bas,
+        fraga: { falt: 'category', alternativ: ['PLUMBING'], nytta: 'Olika hantverkare.' },
+      }),
+    ).toBeNull()
+  })
+})

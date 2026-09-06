@@ -161,15 +161,67 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 > kostar pengar varje gång. Korpusens form och rapportens summering har
 > däremot prov som går utan ett enda anrop.
 >
-> | | körning 1 | körning 2 | körning 3 |
-> | --- | --- | --- | --- |
-> | kategori | 85,4 % | 88,2 % | **88,0 %** |
-> | prioritet | 62,5 % | 58,8 % | **54,0 %** |
-> | åtgärd | 38,0 % | 44,2 % | **55,8 %** |
-> | inget förslag | 66,7 % (3) | 20,0 % (5) | **40,0 % (5)** |
-> | fel fråga | 0,0 % | 1,9 % | **1,9 %** |
-> | missad fråga | 3 | 3 | **4** |
-> | kostnad | $0,1914 | $0,2000 | **$0,2114** |
+> | | k1 | k2 | k3 | k4 | k5 | **k6** |
+> | --- | --- | --- | --- | --- | --- | --- |
+> | kategori | 85,4 % | 88,2 % | 88,0 % | 88,9 % | 87,0 % | **87,0 %** |
+> | prioritet | 62,5 % | 58,8 % | 54,0 % | 79,6 % | 79,6 % | **72,2 %** |
+> | åtgärd | 38,0 % | 44,2 % | 55,8 % | 77,8 % | 74,1 % | **87,0 %** |
+> | inget förslag | 66,7 % (3) | 20,0 % (5) | 40,0 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** |
+> | fel fråga | 0,0 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** |
+> | missad fråga | 3 | 3 | 4 | 6 | 8 | **1** |
+> | kostnad | $0,1914 | $0,2000 | $0,2114 | $0,2704 | $0,2714 | **$0,2747** |
+>
+> Körning 1–3 mättes på 52 ärenden, 4–6 på 54: två ärenden lades till när två
+> facit rättades (se `korpus.json`:s RÄTTELSER — rättelsen står där och inte här,
+> eftersom den påverkar hur talen ska läsas och en PR-text läses en gång).
+>
+> **Fem av sex mål nådda i körning 6.** Åtgärd ≥ 80 % (87,0), kategori ≥ 85 %
+> (87,0), inget förslag ≥ 80 % (100), missad fråga ≤ 2 (1), fel fråga ≤ 10 %
+> (1,9). **Prioriteten nådde inte 80 % i samma körning** — 79,6 % i k4 och k5,
+> 72,2 % i k6 — och det redovisas som ett utfall, inte som ett nästan.
+>
+> **Två deterministiska regler flyttades ur modellen** (`triage-rules.ts`):
+>
+> 1. *Prioritetsgolvet.* Nyckelord i ärendetexten sätter en lägsta nivå;
+>    modellen får höja, aldrig sänka. I k6: höjde 12 svar, räddade 9, förstörde
+>    3. Orden är valda med korpusen framför sig, vilket är överanpassning — den
+>    risken och gränsen som drogs står i filen.
+> 2. *Besiktning som inte kan vara en besiktning.* Föreslår modellen ett
+>    platsbesök på ett ärende vars kategori varken portalen eller texten kan
+>    avgöra, blir förslaget en FRÅGA. I k6: 3 gånger, 2 rätt.
+>
+> **Modellen tjänar inte sitt tokenpris på prioriteten.** Rapporten bär numera en
+> KONTROLL utan modell — ärendets registrerade prioritet, höjd av samma golv. I
+> k6: kontrollen 75,9 % mot modellens 72,2 %. Fyra kombinationer mätta offline
+> mot k6:s egna svar (noll extra anrop):
+>
+> ```
+> modellen ensam                                33/54  61,1 %
+> modell + golv           (det som är byggt)    39/54  72,2 %
+> registrerad + golv      (ingen modell alls)   41/54  75,9 %
+> registrerad, modellen får SÄNKA, + golv       43/54  79,6 %
+> ```
+>
+> Den sista är bäst mätt och är INTE byggd: den inverterar asymmetrin — där
+> modellen i dag får höja men inte sänka skulle den få sänka men inte höja. Det
+> är ett designbeslut och inte en justering, och det tas inte i en mätsession.
+>
+> **Tre defekter hittades av mätningen, ingen av läsning:**
+>
+> - *Frågeregeln var död.* Den byggde frågans alternativ av modellens gissning
+>   "eller OTHER" — och modellen svarar OTHER i precis de fall regeln finns för.
+>   Noll frågor tvingades fram, och inget blev rött. Modellen ombeds nu om ett
+>   ANDRAHANDSVAL, och regeln lever (k6: 3 gånger).
+> - *Nycklarna på tråden var svenska.* Modellen skrev `användssTill` med två s,
+>   frågan avvisades fail-closed, och fem av tio frågefall blev OTOLKBART — i
+>   rapporten såg det ut som att agenten inte frågade. En JSON-nyckel en modell
+>   måste återge ordagrant är ett maskinkontrakt: den är nu ASCII, svenskan bor i
+>   beskrivningarna.
+> - *Ett obligatoriskt fack drar till sig innehållet.* Med ASCII-nycklarna lade
+>   modellen i stället hela frågan i `toolInput` — obligatoriskt och
+>   strukturlöst — bredvid det valfria `fraga`. Åtta av tio frågefall blev
+>   OTOLKBART. Frågan läses nu från båda platserna; PLACERINGEN är tolerant,
+>   innehållet fortsatt fail-closed.
 >
 > **Tröskeln hölls i alla tre körningarna.** ai-architects krav var ≤ 10 %
 > frågor där frågan INTE är rätt; utfallet är 0–1,9 %. Frågan är alltså inte en
@@ -189,10 +241,20 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 > — 0,85–1,00 hade 22,2 % rätt mot 28,6 % för 0,70–0,84. I körning 3: 52,9 % mot
 > 37,5 %. Först då säger fältet något om triage.
 >
-> **Kvar att förstå: prioriteten sjönk** (62,5 → 54,0 %) medan åtgärden steg. Det
-> är inte utrett, och står här som en öppen post i stället för att utelämnas.
+> **Prioritetsfrågan från k3 är besvarad.** Nedgången (62,5 → 54,0 %) var en
+> systematisk dragning mot mitten: modellen svarade NORMAL på 33 av 50 mot
+> facits 20, underskattade 14 gånger och överskattade 9. Golvet fångar
+> underskattningen; det som återstår är spritt över alla felformer utan dominant
+> mönster, och därför inte en lucka som en regel till kan täppa.
+>
 > `record_expense` är skuggdugligt men har noll facit-fall — att bokföra en
 > utgift är inget svar på en felanmälan, och korpusen låtsas inte annat.
+>
+> **Vad de här talen INTE säger.** Korpusen körs med TOM historik, så tystnadens
+> fjärde fall ("samma fel står redan som ett öppet ärende") kan inte träffas i
+> någon körning — det är omätt, inte uppfyllt. Och kriteriet på rad 6 lyder
+> fortfarande "i VERKLIGA fall": `shadowAgentEnabled` är av i varje organisation,
+> och prod har noll felanmälningar.
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | **KLAR** — preferensresten är löst genom produktionskod (etapp 8 PR 4). `AiMemory` bär `provenanceKind` (`HUMAN_CONFIRMED`/`DECISION_DERIVED`/`ANTAGANDE`), `sourceKind`/`sourceId` och `confirmedBy`/`confirmedAt`; `getMemories` filtrerar i `where` så ett ANTAGANDE aldrig når en agentprompt, och varje rad som når den bär sin grund i klartext. `/delegationer` fick sektionen **Antaganden** med Bekräfta och Avvisa — planens "se vad systemet tror om hen" med BÅDA halvorna: vad du gett bort, och vad systemet gissat men ingen sagt. Ett avvisat antagande raderas inte (Del 7: att säga nej är också lärande). Mätt mot riktig Postgres, med negativkontroll per del |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | **KLAR** — alla tre delarna finns i produktionskod. **Observationslagret** (PR 4) är en FRÅGA och ingen tabell: `ObservationService.beslutsunderlag` svarar godkända/avvisade/delegerade/senaste ur inkorgens facit och delegationerna, och `kanBliDelegation` läser sin regel därifrån. **Delegationsförslagen** (PR 5a): tre godkännanden i obruten svit ger ETT förslag i inkorgen, idempotent per `<verktyg>\|<typ>\|<nivå>` under ett partiellt unikt index — systemet föreslår, det tar sig aldrig rätt. **Frågorna** (PR 5b): ett tredje utfall i skuggagenten, strukturerat (fält + 2–4 alternativ ur registret + vad svaret låser upp), högst en öppen fråga per ärende, ingen fråga vars svar redan finns, och svaret blir en `HUMAN_CONFIRMED`-minnespost som nästa förslag läser. **Kvar som en känd gräns, inte som en rest:** frågebara fält är `category` och `priority` — `assignedToId` saknar register tills etapp 10 ger det ett |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
