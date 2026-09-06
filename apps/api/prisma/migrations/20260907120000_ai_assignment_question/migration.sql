@@ -1,0 +1,26 @@
+-- AGENTEN FRÅGAR (etapp 8 PR 5b) — planens "den frågar innan du frågar".
+--
+-- ── EN FRÅGA ÄR INTE ETT FÖRSLAG MED LÅG KONFIDENS ─────────────────────────
+--
+-- Skuggagenten hade före det här exakt TVÅ utfall: ett förslag, eller
+-- INGEN_ATGARD. När den var osäker föreslog den ändå — med lägre konfidens
+-- (uppmätt spann 0,45–0,95). Den gissade alltså, och gissningen såg ut som ett
+-- omdöme.
+--
+-- Skillnaden mellan de två fallen är inte grad utan art: konfidens är hur säker
+-- agenten är på sin BEDÖMNING, en fråga ställs när en UPPGIFT saknas och ingen
+-- bedömning kan göras. Att låta låg konfidens utlösa en fråga hade gjort frågan
+-- till en utväg vid varje tveksamhet — och planens Del 11 är uttrycklig om att
+-- varje fråga måste låsa upp något.
+--
+-- ── VARFÖR INGEN NY TABELL ─────────────────────────────────────────────────
+--
+-- En fråga är ett uppdrag som väntar på en människa: den har en deadline, en
+-- mottagare, en status och ett beslut. `AiAssignment` bär redan allt det, och
+-- inkorgen läser redan den. En egen tabell hade betytt en andra kö, en andra
+-- läsyta och en andra förfallomekanism — för en rad som skiljer sig i vad den
+-- FRÅGAR om, inte i vad den ÄR.
+--
+-- Det strukturerade innehållet (fältet, alternativen, vad svaret används till)
+-- bor i `toolInput`, som redan är den kolumn som bär uppdragets nyttolast.
+ALTER TYPE "AiAssignmentKind" ADD VALUE 'QUESTION';

@@ -145,8 +145,56 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 4 | G4 spår + G3 persistent uppdragskö — spåret är samma flöde som historiken | G0, G1, 1 | uppdrag från 03:00 finns 09:00 och syns i historiken | **DELVIS** `ff8422e` — kriteriet mätt, kön har en **producent** ([#790](https://github.com/yasineken2002-sys/eken/pull/790)), och sedan etapp 8 PR 1 finns **utföraren i TORRLÄGE**: den prövar `assertDelegated` per skuggförslag och skriver en DOM (`executionVerdict`), men kan per konstruktion inte orsaka en effekt — modulen importerar inte `ToolExecutorService`, och db-provet räknar `AiToolExecution` och sex domäntabeller före/efter till noll. **Skarpt läge saknas**: ingen kodväg utför något |
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#796](https://github.com/yasineken2002-sys/eken/pull/796)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
+
+> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `1c49ca2`
+>
+> **Kriteriet lyder "den föreslår rätt i VERKLIGA fall".** Det finns inga
+> verkliga fall: skuggagenten är påslagen i noll organisationer, och prod har
+> noll felanmälningar (mätt 2026-09-06). Den här mätningen ERSÄTTER inte
+> kriteriet — den säger vad agenten gör på 52 konstruerade ärenden, tills det
+> finns riktiga. Rad 6 står därför kvar utan status.
+>
+> Korpusen är `apps/api/src/ai/shadow/eval/korpus.json` (52 felanmälningar på
+> vardaglig svenska med stavfel, facit per ärende, 10 fall där en FRÅGA är rätt
+> och 5 där rätt svar är att inte föreslå något). Riggen är `pnpm eval:shadow`,
+> temperatur 0, egen databas, och den körs **inte** i CI — femtio modellanrop
+> kostar pengar varje gång. Korpusens form och rapportens summering har
+> däremot prov som går utan ett enda anrop.
+>
+> | | körning 1 | körning 2 | körning 3 |
+> | --- | --- | --- | --- |
+> | kategori | 85,4 % | 88,2 % | **88,0 %** |
+> | prioritet | 62,5 % | 58,8 % | **54,0 %** |
+> | åtgärd | 38,0 % | 44,2 % | **55,8 %** |
+> | inget förslag | 66,7 % (3) | 20,0 % (5) | **40,0 % (5)** |
+> | fel fråga | 0,0 % | 1,9 % | **1,9 %** |
+> | missad fråga | 3 | 3 | **4** |
+> | kostnad | $0,1914 | $0,2000 | **$0,2114** |
+>
+> **Tröskeln hölls i alla tre körningarna.** ai-architects krav var ≤ 10 %
+> frågor där frågan INTE är rätt; utfallet är 0–1,9 %. Frågan är alltså inte en
+> utväg vid osäkerhet — den risken infriades inte.
+>
+> **Två promptändringar mellan körningarna, båda framtvingade av mätningen:**
+>
+> 1. *Menyn bar inga betydelser.* Verktygen stod som en naken namnlista, och
+>    modellen valde `create_inspection` 29 gånger mot facits 4 — den läste
+>    namnet. Etiketterna hämtas nu ur verktygskatalogen (enda sanningskällan,
+>    och den kastar för ett verktyg utan etikett).
+> 2. *Uppgiften var inte triagering.* Prompten sa "föreslå nästa åtgärd", vilket
+>    på en felanmälan läses som "skicka någon att titta". Den säger nu att de
+>    flesta ärenden ska TRIAGERAS, och vad en besiktning är till för.
+>
+> **Konfidensen blev användbar först i körning 3.** I körning 1 var den INVERTERAD
+> — 0,85–1,00 hade 22,2 % rätt mot 28,6 % för 0,70–0,84. I körning 3: 52,9 % mot
+> 37,5 %. Först då säger fältet något om triage.
+>
+> **Kvar att förstå: prioriteten sjönk** (62,5 → 54,0 %) medan åtgärden steg. Det
+> är inte utrett, och står här som en öppen post i stället för att utelämnas.
+> `record_expense` är skuggdugligt men har noll facit-fall — att bokföra en
+> utgift är inget svar på en felanmälan, och korpusen låtsas inte annat.
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | **KLAR** — preferensresten är löst genom produktionskod (etapp 8 PR 4). `AiMemory` bär `provenanceKind` (`HUMAN_CONFIRMED`/`DECISION_DERIVED`/`ANTAGANDE`), `sourceKind`/`sourceId` och `confirmedBy`/`confirmedAt`; `getMemories` filtrerar i `where` så ett ANTAGANDE aldrig når en agentprompt, och varje rad som når den bär sin grund i klartext. `/delegationer` fick sektionen **Antaganden** med Bekräfta och Avvisa — planens "se vad systemet tror om hen" med BÅDA halvorna: vad du gett bort, och vad systemet gissat men ingen sagt. Ett avvisat antagande raderas inte (Del 7: att säga nej är också lärande). Mätt mot riktig Postgres, med negativkontroll per del |
-| 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | **DELVIS** `ff8422e` — byggt: **torrläget** (PR 1), delegationsförslagens mätunderlag: kö + låst sveparcron med hjärtslag, tre domar (`WOULD_EXECUTE`/`NO_DELEGATION`/`BLOCKED`), domen på inkorgens kort och i modalen, och kolumnen "Skulle ha utlöst" på `/delegationer`. **Saknas:** agentens FRÅGOR — planens tre frågeslag och frågebudgeten har varken modell, kanal eller yta (mätt: noll träffar på en frågemodell i schemat), och **observationslagret** — `AiMemory` finns men fylls bara av en Haiku-extraktion ur chatten, saknar beslutshärkomst och läses UPP i systemprompten i stället för att sökas i, vilket Del 7 uttryckligen förbjuder. Ingenting räknar hyresvärdens beslutsmönster. **Tillkommer i PR 3:** aktörsmodellen som skarpt läge ska stå på — SYSTEM-principalen, `DelegationProof`, rätten i spåret och de tre utförandestatusarna (`EXECUTED`/`FAILED`/`LAPSED`, utan skrivare, med en vakt som bevisar att ingen produktionsväg kan sätta dem). Mängden som får köras obevakat är **fem**, inte åtta: de tre `DEDUPLICERBAR`-verktygen kräver att en människa ser varje gång. **Tillkommer i PR 4: observationslagret**, byggt som en FRÅGA och inte en tabell — `ObservationService.beslutsunderlag` svarar "vad har hyresvärden beslutat om verktyg X och typ Y" (godkända, avvisade, delegerade, senaste) ur inkorgens facit och delegationerna. `kanBliDelegation` läser sin "andra godkännandet"-regel därifrån, så båda vägarna har EN källa. En lagrad räknare hade kunnat glida isär från besluten den sammanfattar. **Saknas fortfarande:** agentens FRÅGOR — planens tre frågeslag och frågebudgeten har varken modell, kanal eller yta |
+| 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | **KLAR** — alla tre delarna finns i produktionskod. **Observationslagret** (PR 4) är en FRÅGA och ingen tabell: `ObservationService.beslutsunderlag` svarar godkända/avvisade/delegerade/senaste ur inkorgens facit och delegationerna, och `kanBliDelegation` läser sin regel därifrån. **Delegationsförslagen** (PR 5a): tre godkännanden i obruten svit ger ETT förslag i inkorgen, idempotent per `<verktyg>\|<typ>\|<nivå>` under ett partiellt unikt index — systemet föreslår, det tar sig aldrig rätt. **Frågorna** (PR 5b): ett tredje utfall i skuggagenten, strukturerat (fält + 2–4 alternativ ur registret + vad svaret låser upp), högst en öppen fråga per ärende, ingen fråga vars svar redan finns, och svaret blir en `HUMAN_CONFIRMED`-minnespost som nästa förslag läser. **Kvar som en känd gräns, inte som en rest:** frågebara fält är `category` och `priority` — `assignedToId` saknar register tills etapp 10 ger det ett |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |
 | 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
 | 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |

@@ -17,6 +17,7 @@ import type { InboxItem } from '../api/inbox.api'
 const item = (over: Partial<InboxItem> = {}): InboxItem =>
   ({
     id: 'a1',
+    kind: 'TOOL_PROPOSAL',
     shadow: true,
     toolName: 'update_maintenance_status',
     toolInput: { ticketId: 'T-1' },

@@ -6,7 +6,7 @@ import {
   forslagsverktyg,
   tolkaVerktygsanrop,
 } from './maintenance-shadow.service'
-import { INGEN_ATGARD, skuggverktygForFelanmalan } from './shadow-tool-gate'
+import { FRAGA, INGEN_ATGARD, skuggverktygForFelanmalan } from './shadow-tool-gate'
 
 /**
  * PROMPTEN OCH TOLKNINGEN — rena funktioner, inga modellanrop.
@@ -47,7 +47,12 @@ describe('förslagsverktygets schema', () => {
   it('menyn är ett SNITT med den härledda grinden, inte en kopia', () => {
     // Faller ett verktyg ur grinden ska det falla ur menyn av sig självt.
     const meny = new Set<string>(schema().properties['toolName']?.enum ?? [])
+    // TVÅ VÄRDEN I ENUMEN ÄR INTE VERKTYG: `INGEN_ATGARD` (avstå) och `FRAGA`
+    // (etapp 8 PR 5b — agenten saknar en uppgift). Båda tas bort innan snittet,
+    // och de räknas upp här och inte i en variabel: ett TREDJE icke-verktyg ska
+    // fälla provet tills någon tagit ställning till det.
     meny.delete(INGEN_ATGARD)
+    meny.delete(FRAGA)
     for (const n of meny) expect(skuggverktygForFelanmalan()).toContain(n)
   })
 })
@@ -75,7 +80,10 @@ describe('prompten', () => {
   })
 
   it('säger att ärendet redan är registrerat', () => {
-    expect(byggPrompt(t, [], ['x'])).toContain('REDAN registrerats')
+    // ETT RIKTIGT VERKTYGSNAMN, inte 'x': prompten slår sedan 2026-09-07 upp
+    // varje verktygs etikett i KATALOGEN och kastar för ett okänt namn — ett
+    // skuggverktyg utan etikett ska inte kunna bli en tom rad i menyn.
+    expect(byggPrompt(t, [], ['update_maintenance_status'])).toContain('REDAN registrerats')
   })
 })
 

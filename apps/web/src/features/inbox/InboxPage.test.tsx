@@ -59,6 +59,7 @@ import { InboxPage } from './InboxPage'
 
 const forslag = (over: Partial<InboxItem> = {}): InboxItem => ({
   id: 'a1',
+  kind: 'TOOL_PROPOSAL',
   shadow: true,
   toolName: 'update_maintenance_status',
   toolInput: { ticketId: 'T-1' },

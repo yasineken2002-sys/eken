@@ -4230,6 +4230,21 @@ enum AiAssignmentKind {
   /// Föds ur observationslagret när mönstret nått sin tröskel, aldrig ur en
   /// enskild händelse.
   DELEGATION_PROPOSAL
+
+  /// ── AGENTEN FRÅGAR (etapp 8 PR 5b) ────────────────────────────────────
+  ///
+  /// Planens Del 11: *"den frågar innan du frågar"*. En fråga är inte ett
+  /// förslag med låg konfidens — den ställs när något SAKNAS, inte när agenten
+  /// är osäker på sin gissning.
+  ///
+  /// STRUKTURERAD, aldrig fritext som enda väg: `toolInput` bär `{ fält,
+  /// alternativ[], användsTill }`, där alternativen HÄRLEDS ur registret för
+  /// fältet. Ett svar skrivs som en `HUMAN_CONFIRMED`-post i minnet med frågan
+  /// som källa, och nästa förslag i samma ärende läser den.
+  ///
+  /// `toolName` bär det verktyg frågan gäller, så observationslagret och
+  /// historiken kan koppla frågan till samma mönster som förslagen.
+  QUESTION
 }
 
 enum AiAssignmentStatus {
