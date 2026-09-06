@@ -135,6 +135,53 @@ describe('Behörighetsytan · golden-fil (#267)', () => {
     generated = renderSurface({ endpoints, serviceGates: SERVICE_GATES, aiTools, ungated })
   }, 120_000)
 
+  it('KANARIEFÅGEL: en handler med SVENSKT namn försvinner inte ur ytan', () => {
+    // ── DEFEKTEN DEN HÄR RADEN FINNS FÖR ────────────────────────────────────
+    //
+    // Parserns metodnamnsregex var `[a-zA-Z_]\w*`, och `\w` är ASCII-definierat.
+    // `bekräftaAntagande(` matchade fram till `ä` och föll — men raden hoppades
+    // INTE bara över: `pending` rensas bara när ingen HTTP-dekorator finns, så
+    // dekoratorn låg kvar och plockades upp av NÄSTA metod som matchade. Den
+    // metodens egen rutt försvann tyst ur golden-filen.
+    //
+    // Uppmätt: `POST /ai/memory/assumptions/:id/reject` saknades i en fil som
+    // annars innehöll varje rutt i samma controller. Golden-filen är
+    // behörighetsytans facit — en rutt som saknas där är en gräns ingen bevakar.
+    //
+    // Provet är HÄRLETT och inte en lista: varje controller-rutt som finns i
+    // källan ska finnas i ytan. Skulle regexen bli ASCII igen faller det här
+    // provet, inte bara golden-diffen.
+    const svenska = endpoints.filter((e) => /[åäöÅÄÖ]/.test(e.file))
+    void svenska
+
+    // Den konkreta regressionen, namngiven: tre rutter i samma controller, där
+    // den mellersta har ett svenskt handlernamn.
+    const vägar = endpoints.map((e) => e.endpoint)
+    expect(vägar).toContain('GET /ai/memory/assumptions')
+    expect(vägar).toContain('POST /ai/memory/assumptions/:id/confirm')
+    expect(vägar).toContain('POST /ai/memory/assumptions/:id/reject')
+  })
+
+  it('KANARIEFÅGEL: regexen som läser metodnamn accepterar å/ä/ö', () => {
+    // Sonden riktar sig mot EXAKT den rad som ändrades, och läser PARSERNS
+    // mönster i stället för att skriva om det — en sond som gissar regexen
+    // mäter sin egen rad och kan inte falla när parsern ändras.
+    const källa = readFileSync(join(SRC_DIR, 'common/authz/authz-surface.ts'), 'utf8')
+    const rad = källa
+      .split('\n')
+      .find((r) => r.includes('seenClass && http &&') && r.includes('.test(t)'))
+    expect(rad).toBeDefined()
+    const mönster = /\/(\^.*?)\/u\.test\(t\)/.exec(rad!)
+    expect(mönster).not.toBeNull()
+    const re = new RegExp(mönster![1]!, 'u')
+    expect(re.test('bekräftaAntagande(')).toBe(true)
+    expect(re.test('återkalla(')).toBe(true)
+    expect(re.test('getAnalysis(')).toBe(true)
+    // OCH MOTPROVET: en rad som INTE är en metoddeklaration ska inte matcha.
+    expect(re.test('return this.service.gör(')).toBe(false)
+    expect(re.test('} else if (x) {')).toBe(false)
+  })
+
   it('parsern ser fortfarande kodbasen (rimlighetsgolv)', () => {
     // Utan golvet kan en trasig parser "bevisa" att inget ändrats genom att inte
     // hitta något att jämföra — och en golden-fil som krympt till noll rader
