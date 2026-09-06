@@ -159,7 +159,7 @@ describe('beslutet', () => {
     const onSkapa = rendera()
     fireEvent.click(knapp()!)
     fireEvent.click(screen.getByRole('button', { name: 'Ja, delegera' }))
-    expect(onSkapa).toHaveBeenCalledWith({ category: 'PLUMBING', propertyId: 'p1' })
+    expect(onSkapa).toHaveBeenCalledWith({ category: 'PLUMBING', propertyId: 'p1' }, undefined)
   })
 
   it('ett TOMT villkor skickas som undefined, inte som {}', () => {
@@ -168,7 +168,7 @@ describe('beslutet', () => {
     const onSkapa = rendera({ kan: kan({ förifylltVillkor: {} }) })
     fireEvent.click(knapp()!)
     fireEvent.click(screen.getByRole('button', { name: 'Ja, delegera' }))
-    expect(onSkapa).toHaveBeenCalledWith(undefined)
+    expect(onSkapa).toHaveBeenCalledWith(undefined, undefined)
   })
 })
 
@@ -176,5 +176,82 @@ describe('klartext', () => {
   it('faller tillbaka på det tekniska namnet för ett okänt verktyg', () => {
     // Hellre en teknisk term än en påhittad svensk mening om fel sak.
     expect(klartext('zz_okant_verktyg')).toBe('zz_okant_verktyg')
+  })
+})
+
+describe('frekvensvillkoret — fältet finns BARA när servern säger att det krävs', () => {
+  const öppna = (över: Partial<KanDelegera>) => {
+    const onSkapa = rendera({ kan: kan(över) })
+    fireEvent.click(knapp()!)
+    return onSkapa
+  }
+
+  it('INGET fält för ett verktyg som inte kräver tak', () => {
+    // Ingen lista i webben: `kräverFrekvensvillkor` kommer från servern, som
+    // härleder det ur effektkatalogen. Ett fält som visas alltid hade bett
+    // hyresvärden om ett tak för verktyg som inte behöver ett.
+    öppna({ kräverFrekvensvillkor: false })
+    expect(screen.queryByLabelText('Högsta antal')).toBeNull()
+  })
+
+  it('inte heller när fältet SAKNAS i svaret — frånvaro är inte ett ja', () => {
+    öppna({})
+    expect(screen.queryByLabelText('Högsta antal')).toBeNull()
+  })
+
+  it('FÄLT för ett verktyg som kräver tak, förifyllt med serverns tal', () => {
+    öppna({
+      kräverFrekvensvillkor: true,
+      förifylltFrekvensvillkor: { maxAntal: 1, periodDagar: 1 },
+    })
+    expect((screen.getByLabelText('Högsta antal') as HTMLInputElement).value).toBe('1')
+    expect((screen.getByLabelText('Antal dagar') as HTMLInputElement).value).toBe('1')
+  })
+
+  it('taket FÖLJER MED till servern', () => {
+    const onSkapa = öppna({
+      kräverFrekvensvillkor: true,
+      förifylltFrekvensvillkor: { maxAntal: 1, periodDagar: 1 },
+    })
+    fireEvent.change(screen.getByLabelText('Högsta antal'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Antal dagar'), { target: { value: '7' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ja, delegera' }))
+    expect(onSkapa).toHaveBeenCalledWith(
+      { category: 'PLUMBING', propertyId: 'p1' },
+      { maxAntal: 3, periodDagar: 7 },
+    )
+  })
+
+  it('utan krav skickas INGET tak — inte ett tomt objekt', () => {
+    const onSkapa = öppna({ kräverFrekvensvillkor: false })
+    fireEvent.click(screen.getByRole('button', { name: 'Ja, delegera' }))
+    expect(onSkapa).toHaveBeenCalledWith({ category: 'PLUMBING', propertyId: 'p1' }, undefined)
+  })
+
+  it.each([
+    ['0', '1'],
+    ['1', '0'],
+    ['', '1'],
+    ['2.5', '1'],
+  ])('ETT OGILTIGT tak (%s per %s) spärrar knappen', (antal, dagar) => {
+    // Samma regel som serverns `giltigFrekvens`: heltal, minst 1. Ett tak på
+    // noll är inte ett tak — det är en avstängning i förklädnad.
+    öppna({
+      kräverFrekvensvillkor: true,
+      förifylltFrekvensvillkor: { maxAntal: 1, periodDagar: 1 },
+    })
+    fireEvent.change(screen.getByLabelText('Högsta antal'), { target: { value: antal } })
+    fireEvent.change(screen.getByLabelText('Antal dagar'), { target: { value: dagar } })
+    expect(
+      (screen.getByRole('button', { name: 'Ja, delegera' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('SKÄLET till taket står utskrivet — annars ser fälten ut som en inställning', () => {
+    öppna({
+      kräverFrekvensvillkor: true,
+      förifylltFrekvensvillkor: { maxAntal: 1, periodDagar: 1 },
+    })
+    expect(screen.getByText(/obevakad körning inte ska kunna bli obegränsad/)).toBeTruthy()
   })
 })

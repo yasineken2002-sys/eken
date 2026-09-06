@@ -28,6 +28,7 @@ import {
 import { PrismaClient } from '@prisma/client'
 
 import { DelegationService } from './delegation.service'
+import { FÖRIFYLLT_FREKVENSVILLKOR } from './delegation-birth'
 import { TYPFÄLT } from './delegation-birth'
 import { SKUGGKALLA_FELANMALAN } from '../shadow/shadow-fields'
 
@@ -336,6 +337,48 @@ medDb('delegationen föds ur ett godkänt förslag', () => {
 
     it('FAIL-CLOSED: ett okänt id är inte ett ja', async () => {
       expect((await tjanst.kanBliDelegation(orgA, randomUUID())).kan).toBe(false)
+    })
+
+    // ── LÄSYTAN OCH SKRIVYTAN SKA SVARA SAMMA SAK ────────────────────────
+    //
+    // Före det här sa `kanBliDelegation` JA för ett `DEDUPLICERBAR`-verktyg
+    // medan `skapaUrFörslag` kastade 400 om taket saknades. Utfallet var en
+    // grön knapp och ett fel som lästes som ett gränssnittsfel — för tre av
+    // åtta delegerbara verktyg.
+    describe('frekvensvillkoret bärs av BÅDA vägarna', () => {
+      it('ett DEDUPLICERBART verktyg: ja, MEN med kravet och ett förifyllt tak', async () => {
+        await forslag({ org: orgA, user: agareA, toolName: DEDUP })
+        const a2 = await forslag({ org: orgA, user: agareA, toolName: DEDUP })
+        const r = await tjanst.kanBliDelegation(orgA, a2.id)
+        expect(r.kan).toBe(true)
+        expect(r.kräverFrekvensvillkor).toBe(true)
+        // TALET LÄSES UR KONSTANTEN, inte ur en literal här: två uppräkningar
+        // av samma default hade kunnat glida isär, och den som syns för
+        // hyresvärden hade blivit den som ingen prövat.
+        expect(r.förifylltFrekvensvillkor).toEqual(FÖRIFYLLT_FREKVENSVILLKOR)
+      })
+
+      it('ett IDEMPOTENT verktyg kräver inget tak, och får inget förifyllt', async () => {
+        await forslag({ org: orgA, user: agareA })
+        const a2 = await forslag({ org: orgA, user: agareA })
+        const r = await tjanst.kanBliDelegation(orgA, a2.id)
+        expect(r.kan).toBe(true)
+        expect(r.kräverFrekvensvillkor).toBe(false)
+        expect(r.förifylltFrekvensvillkor).toBeUndefined()
+      })
+
+      it('END-TO-END: läsytans förifyllda tak GÅR IGENOM skrivytan', async () => {
+        // Hela buggen i ett prov: ta exakt det `can-create` föreslår och skicka
+        // det till `POST`. Innan lagningen fanns inget att ta, och POST:en föll.
+        await forslag({ org: orgA, user: agareA, toolName: DEDUP })
+        const a2 = await forslag({ org: orgA, user: agareA, toolName: DEDUP })
+        const r = await tjanst.kanBliDelegation(orgA, a2.id)
+        const d = await tjanst.skapaUrFörslag(orgA, a2.id, agare(agareA), {
+          ...(r.förifylltVillkor ? { villkor: r.förifylltVillkor } : {}),
+          ...(r.förifylltFrekvensvillkor ? { frekvensvillkor: r.förifylltFrekvensvillkor } : {}),
+        })
+        expect(d.frekvensvillkor).toEqual(FÖRIFYLLT_FREKVENSVILLKOR)
+      })
     })
   })
 })

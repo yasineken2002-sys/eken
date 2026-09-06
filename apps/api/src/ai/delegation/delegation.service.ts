@@ -10,7 +10,13 @@ import {
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { beräknaStatus } from './delegation-status'
 import { delegerbaraVerktyg, kräverFrekvensvillkor, prövaDelegerbarhet } from './delegation-scope'
-import { TYPFÄLT, förifylltVillkor, typenFörFörslaget, villkoretSnävas } from './delegation-birth'
+import {
+  FÖRIFYLLT_FREKVENSVILLKOR,
+  TYPFÄLT,
+  förifylltVillkor,
+  typenFörFörslaget,
+  villkoretSnävas,
+} from './delegation-birth'
 
 import type { AiDelegation, Prisma, UserRole } from '@prisma/client'
 import type { DelegationStatus } from './delegation-status'
@@ -303,7 +309,26 @@ export class DelegationService {
     organizationId: string,
     assignmentId: string,
     sänkorPerVerktyg: Record<string, unknown> = {},
-  ): Promise<{ kan: boolean; skäl?: string; förifylltVillkor?: DelegationVillkor }> {
+  ): Promise<{
+    kan: boolean
+    skäl?: string
+    förifylltVillkor?: DelegationVillkor
+    /**
+     * ── LÄSYTAN MÅSTE VETA ATT TAKET KRÄVS ────────────────────────────────
+     *
+     * `skapa` avvisar en delegation utan frekvensvillkor för `DEDUPLICERBAR`-
+     * verktyg. Sa den här frågan bara "ja" utan att nämna det, blev knappen
+     * grön och POST:en 400 — vilket den var för `create_inspection`,
+     * `create_invoice` och `create_maintenance_ticket`, alltså tre av åtta
+     * delegerbara verktyg. Uppmätt end-to-end innan raden fanns.
+     *
+     * HÄRLETT ur `kräverFrekvensvillkor`, aldrig en lista: läggs ett verktyg
+     * om till `DEDUPLICERBAR` följer kravet med hit av sig självt, och webben
+     * behöver ingen egen uppräkning.
+     */
+    kräverFrekvensvillkor?: boolean
+    förifylltFrekvensvillkor?: Frekvensvillkor
+  }> {
     try {
       const a = await this.prisma.aiAssignment.findFirst({
         where: { id: assignmentId, organizationId },
@@ -344,7 +369,13 @@ export class DelegationService {
           kan: false,
           skäl: 'Aktiveras efter att du godkänt samma typ av förslag en gång till.',
         }
-      return { kan: true, förifylltVillkor: förifylltVillkor(a) }
+      const krävs = kräverFrekvensvillkor(a.toolName)
+      return {
+        kan: true,
+        förifylltVillkor: förifylltVillkor(a),
+        kräverFrekvensvillkor: krävs,
+        ...(krävs ? { förifylltFrekvensvillkor: { ...FÖRIFYLLT_FREKVENSVILLKOR } } : {}),
+      }
     } catch {
       // Fail-closed: en fråga som inte gick att besvara är inte ett ja.
       return { kan: false, skäl: 'Kunde inte avgöra just nu.' }

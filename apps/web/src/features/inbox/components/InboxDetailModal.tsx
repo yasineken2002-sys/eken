@@ -9,6 +9,7 @@ import { formatKonfidens, konfidensVariant } from '../lib/confidence'
 import { verdiktVisning } from '../lib/verdict'
 import { GorAlltidSaHar } from './GorAlltidSaHar'
 
+import type { Frekvensvillkor } from '@eken/shared'
 import type { InboxItem, KanDelegera } from '../api/inbox.api'
 
 interface Props {
@@ -20,7 +21,10 @@ interface Props {
   kanDelegera?: KanDelegera | undefined
   delegeringLaddar?: boolean
   delegeringSparar?: boolean
-  onDelegera?: (villkor: Record<string, unknown> | undefined) => void
+  onDelegera?: (
+    villkor: Record<string, unknown> | undefined,
+    frekvensvillkor: Frekvensvillkor | undefined,
+  ) => void
 }
 
 /** Ett fält i planens ordning. Rubriken är frågan, inte fältnamnet. */
