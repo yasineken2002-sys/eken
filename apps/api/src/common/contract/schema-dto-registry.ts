@@ -3,6 +3,7 @@ import {
   CreateJournalEntrySchema,
   CreateMeterSchema,
   CreatePropertySchema,
+  UpdatePropertySchema,
   CreateReadingSchema,
   CreateSupplierInvoiceSchema,
   CreateTariffSchema,
@@ -27,6 +28,7 @@ import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
 import { CreateSupplierInvoiceDto } from '../../accounting/dto/supplier-invoice.dto'
 import { CreatePropertyDto } from '../../properties/dto/create-property.dto'
+import { UpdatePropertyDto } from '../../properties/dto/update-property.dto'
 import { CreateMeterDto } from '../../consumption/dto/create-meter.dto'
 import { UpdateMeterDto } from '../../consumption/dto/update-meter.dto'
 import { RecordReadingDto } from '../../consumption/dto/record-reading.dto'
@@ -172,6 +174,18 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       totalArea: 850,
     },
     ogiltigVarfor: 'HYRESHUS är ingen giltig fastighetstyp',
+  },
+  {
+    endpoint: 'PATCH /properties/:id',
+    inputTyp: 'UpdatePropertyInput',
+    schema: UpdatePropertySchema,
+    dto: UpdatePropertyDto,
+    // PARTIELL MED FLIT: en redigering skickar bara de fält som ändrats, och
+    // BÅDA vägarna ska acceptera det. Ett prov med alla fält satta hade inte
+    // prövat partialiteten — den är hela skillnaden mot POST.
+    giltig: { name: 'Kvarteret Eken 2' },
+    ogiltig: { type: 'HYRESHUS' },
+    ogiltigVarfor: 'HYRESHUS är ingen giltig fastighetstyp — även i en partiell uppdatering',
   },
   {
     endpoint: 'POST /consumption/meters',
