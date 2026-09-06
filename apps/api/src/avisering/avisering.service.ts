@@ -1852,9 +1852,11 @@ export class AviseringService {
             ? {
                 tillat: true,
                 reason: senBokforing.reason,
-                // Vägen hit går alltid genom en inloggad operatör (controllern
-                // kräver rollen); ingen cron eller kö anropar markAsPaid.
-                actorType: EventActorType.USER,
+                // VIA resolveActorType, aldrig hårdkodat. Vägen hit går genom
+                // en inloggad operatör (controllern kräver rollen), så USER är
+                // rätt fallback — men kommer anropet ur AI-lagret ska spåret
+                // säga AI.
+                actorType: resolveActorType(EventActorType.USER),
                 actorUserId: createdById ?? null,
                 actorLabel: senBokforing.actorLabel ?? null,
               }

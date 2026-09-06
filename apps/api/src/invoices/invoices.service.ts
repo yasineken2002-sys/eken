@@ -9,6 +9,7 @@ import {
 // `Prisma` som VÄRDE — Prisma.Decimal används för betalningsaritmetiken
 // (belopp får aldrig passera float på väg till ett bokföringsbeslut).
 import { EventActorType, Prisma } from '@prisma/client'
+import { resolveActorType } from '../common/ai-origin/ai-origin.context'
 import type { Invoice, InvoiceStatus, InvoiceEventType, PaymentMethod } from '@prisma/client'
 import { computeInvoiceDebt, invoiceOutstanding, invoiceOverpaid } from './invoice-debt'
 import { computeInvoiceAmounts } from './invoice-amounts'
@@ -1420,7 +1421,12 @@ export class InvoicesService {
             ? {
                 tillat: true,
                 reason: opts.senBokforing.reason,
-                actorType: actorType === 'USER' ? EventActorType.USER : EventActorType.SYSTEM,
+                // VIA resolveActorType, aldrig hårdkodat: kommer anropet ur
+                // AI-lagret ska spåret säga AI och inte USER. Fallbacken är
+                // vägens egen aktör.
+                actorType: resolveActorType(
+                  actorType === 'USER' ? EventActorType.USER : EventActorType.SYSTEM,
+                ),
                 actorUserId: actorId,
                 actorLabel: opts.senBokforing.actorLabel ?? null,
               }
