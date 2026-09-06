@@ -37,6 +37,20 @@ export interface InboxItem {
   deadline: string
   decidedAt: string | null
   createdAt: string
+  /** ── TORRLÄGETS DOM (etapp 8) ────────────────────────────────────────────
+   *
+   * `null` betyder INGEN DOM ÄNNU, inte "hade inte fått". De två är olika
+   * svar, och kortet måste kunna säga vilket — se `verdiktText`.
+   */
+  executionVerdict: 'WOULD_EXECUTE' | 'NO_DELEGATION' | 'BLOCKED' | null
+  verdictReason: string | null
+  verdictAt: string | null
+  verdictDelegationId: string | null
+  verdictDelegation: {
+    id: string
+    villkor: Record<string, unknown> | null
+    expiresAt: string
+  } | null
 }
 
 export interface InboxPage {

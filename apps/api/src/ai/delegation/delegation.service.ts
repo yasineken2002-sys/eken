@@ -417,11 +417,24 @@ export class DelegationService {
         bornFromAssignmentId: true,
         bornFromAssignment: { select: { id: true, title: true } },
         events: { select: { type: true, createdAt: true }, orderBy: { createdAt: 'asc' } },
+        // ── TORRLÄGETS FACIT, PER DELEGATION (etapp 8) ────────────────────
+        //
+        // "Skulle ha utlöst": hur många skuggförslag som HADE utförts enligt
+        // just den här rätten. Talet är det enda på sidan som säger något om
+        // vad rätten faktiskt hade betytt — en delegation med noll är antingen
+        // för snäv eller för ovanlig, och det är samma sak hyresvärden behöver
+        // veta innan skarpt läge slås på.
+        //
+        // `_count` och inte en egen fråga per rad: en N+1 över en lista som får
+        // vara 200 lång är en prestandafälla som växer med kundens användning.
+        _count: { select: { dryRunVerdicts: true } },
       },
     })
     return rader.map((r) => ({
       ...r,
       status: beräknaStatus(r.events, r.expiresAt, nu),
+      /** Antal skuggförslag som HADE utförts enligt den här delegationen. */
+      skulleHaUtlöst: r._count.dryRunVerdicts,
       // Läsytans KPI. Beräknad här och inte i webben, så de två inte kan säga
       // olika saker om samma rad.
       löperUtInomDagar: Math.ceil((r.expiresAt.getTime() - nu.getTime()) / 86_400_000),
@@ -597,6 +610,55 @@ export class DelegationService {
    * mening: `EJ_DELEGERBART` prövas FÖRE uppslaget, så att en delegation som
    * blivit ogiltig av en katalogändring nekas även om raden finns kvar.
    */
+  /**
+   * HUR MYCKET AV DELEGATIONEN SOM ÄR FÖRBRUKAD I FÖNSTRET.
+   *
+   * ── RÄKNAS PÅ EFFEKTER, INTE PÅ FÖRSÖK ──────────────────────────────────
+   *
+   * Ett nekat anrop ska inte förbruka kvoten — annars kan en trasig anropare
+   * tysta en giltig delegation.
+   *
+   * ── OCH TORRLÄGETS DOMAR RÄKNAS MED ─────────────────────────────────────
+   *
+   * En `WOULD_EXECUTE` betyder att agenten HADE handlat här. Räknade vi bara
+   * verkliga körningar skulle frekvensvillkoret aldrig bita i torrläge, och
+   * facit hade sagt "hade utförts" om ett tionde fall när taket är tre. Den
+   * siffran är precis den hyresvärden ska fatta sitt beslut på — den måste
+   * alltså räkna som om agenten faktiskt fått handla.
+   *
+   * ── DE TVÅ MÄNGDERNA ÄR DISJUNKTA, OCH DET ÄR EN KONSTRUKTION ───────────
+   *
+   * En dom skrivs BARA av torrläget, som per konstruktion inte utför något; en
+   * `AiToolExecution` med `delegationId` skrivs bara av en verklig körning. Ett
+   * och samma uppdrag kan alltså aldrig producera båda, och summan
+   * dubbelräknar inte. Skulle skarpt läge någon gång skriva båda om samma
+   * uppdrag är det den PR:ens sak att ta bort domen — inte den här metodens
+   * att gissa vilken av dem som gäller.
+   *
+   * EN metod, inte två uppräkningar: skarpt läge och torrläge måste räkna
+   * likadant, annars är facit inte ett facit.
+   */
+  private async förbrukatAntal(
+    organizationId: string,
+    delegationId: string,
+    från: Date,
+  ): Promise<number> {
+    const [utförda, torra] = await Promise.all([
+      this.prisma.aiToolExecution.count({
+        where: { organizationId, delegationId, createdAt: { gte: från } },
+      }),
+      this.prisma.aiAssignment.count({
+        where: {
+          organizationId,
+          executionVerdict: 'WOULD_EXECUTE',
+          verdictDelegationId: delegationId,
+          verdictAt: { gte: från },
+        },
+      }),
+    ])
+    return utförda + torra
+  }
+
   async assertDelegated(
     organizationId: string,
     toolName: string,
@@ -651,12 +713,7 @@ export class DelegationService {
       const f = k.frekvensvillkor as Frekvensvillkor | null
       if (!f) return { delegerad: true, delegationId: k.id }
       const från = new Date(nu.getTime() - f.periodDagar * 24 * 60 * 60 * 1000)
-      // Räknas på UTFÖRANDEN som pekar på delegationen, inte på försök. Ett
-      // nekat anrop ska inte förbruka kvoten — annars kan en trasig anropare
-      // tysta en giltig delegation.
-      const antal = await this.prisma.aiToolExecution.count({
-        where: { organizationId, delegationId: k.id, createdAt: { gte: från } },
-      })
+      const antal = await this.förbrukatAntal(organizationId, k.id, från)
       if (antal < f.maxAntal) return { delegerad: true, delegationId: k.id }
     }
 

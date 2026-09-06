@@ -98,6 +98,25 @@ export interface SkapaUppdrag {
   propertyId?: string
 }
 
+/**
+ * DOMENS DELEGATION, MED I LÄSYTAN.
+ *
+ * Kortet ska kunna säga *"hade utförts enligt din delegation för X, avgränsad
+ * till Y"* — inte bara att en dom finns. Utan villkoret hade läsytan tvingat
+ * hyresvärden att öppna en annan sida för att förstå vilken rätt som åberopades,
+ * och ett facit man måste slå upp är inget facit.
+ *
+ * BARA den säkra delmängden väljs: `villkor` och `expiresAt`. Delegationen bär
+ * inget känsligt, men en `include` utan `select` växer tyst med varje ny kolumn.
+ */
+export type UppdragMedDom = AiAssignment & {
+  verdictDelegation: { id: string; villkor: Prisma.JsonValue; expiresAt: Date } | null
+}
+
+const DOM_INCLUDE = {
+  verdictDelegation: { select: { id: true, villkor: true, expiresAt: true } },
+} as const
+
 @Injectable()
 export class AiAssignmentsService {
   private readonly logger = new Logger(AiAssignmentsService.name)
@@ -225,6 +244,7 @@ export class AiAssignmentsService {
    * trunkering går att LÄSA i stället för att gissa — samma hållning som
    * utgångspassets `kandidater`.
    */
+
   async lista(
     organizationId: string,
     filter: {
@@ -233,7 +253,7 @@ export class AiAssignmentsService {
       limit?: number
       offset?: number
     } = {},
-  ): Promise<{ rader: AiAssignment[]; total: number; limit: number; offset: number }> {
+  ): Promise<{ rader: UppdragMedDom[]; total: number; limit: number; offset: number }> {
     const limit = Math.min(filter.limit ?? INKORG_SIDSTORLEK_STANDARD, INKORG_SIDSTORLEK_MAX)
     const offset = filter.offset ?? 0
     const where = {
@@ -247,6 +267,7 @@ export class AiAssignmentsService {
         orderBy: [{ status: 'asc' }, { deadline: 'asc' }],
         take: limit,
         skip: offset,
+        include: DOM_INCLUDE,
       }),
       this.prisma.aiAssignment.count({ where }),
     ])
@@ -260,8 +281,11 @@ export class AiAssignmentsService {
    * som inte finns alls, så att en främmande org:s id inte går att skilja från
    * ett påhittat.
    */
-  async hamta(organizationId: string, id: string): Promise<AiAssignment> {
-    const rad = await this.prisma.aiAssignment.findFirst({ where: { id, organizationId } })
+  async hamta(organizationId: string, id: string): Promise<UppdragMedDom> {
+    const rad = await this.prisma.aiAssignment.findFirst({
+      where: { id, organizationId },
+      include: DOM_INCLUDE,
+    })
     if (!rad) throw new NotFoundException('Uppdraget hittades inte.')
     return rad
   }

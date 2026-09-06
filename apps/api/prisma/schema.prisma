@@ -3779,6 +3779,38 @@ model AiAssignment {
   delegationId String?
   delegation   AiDelegation? @relation(fields: [delegationId], references: [id], onDelete: SetNull)
 
+  /// ── TORRLÄGETS DOM (etapp 8) ──────────────────────────────────────────────
+  ///
+  /// EGNA FÄLT, INTE `authorityKind`/`delegationId` — och det är inte
+  /// symmetriskt slarv. De två uppsättningarna svarar på olika frågor:
+  ///
+  ///   delegationId         med vilken rätt UTFÖRDES det här?
+  ///   verdictDelegationId  vilken delegation HADE burit det, om det utförts?
+  ///
+  /// Den första är ett faktum om något som hänt, den andra ett kontrafaktiskt
+  /// påstående om något som inte hänt. Att låna det befintliga fältet hade gjort
+  /// varje torrlägesdom oskiljbar från en verklig delegerad körning i varje
+  /// fråga som räknar dem — och det är precis de frågorna revisionen ställer.
+  /// (CLAUDE.md: "Återanvänd inte ett fält som svarar på en ANNAN fråga.")
+  ///
+  /// NULL betyder "ingen dom ännu", inte "ingen delegation". Frånvaron av en dom
+  /// är ett eget tillstånd: sveparcronen har inte hunnit, eller kön tappade
+  /// jobbet.
+  executionVerdict AiExecutionVerdict?
+
+  /// Grindens EGEN text när domen är `BLOCKED`. Skrivs aldrig om till en egen
+  /// formulering: två uppräkningar av samma skäl glider isär, och den som syns
+  /// för hyresvärden hade blivit den som ingen prövat.
+  verdictReason String?
+
+  /// När domen fälldes. En dom är färsk bara mot det tillstånd delegationerna
+  /// hade då — återkallas delegationen i morgon blir gårdagens WOULD_EXECUTE
+  /// inte falsk, den blir HISTORISK, och läsytan behöver kunna säga vilket.
+  verdictAt DateTime?
+
+  verdictDelegationId String?
+  verdictDelegation   AiDelegation? @relation("AiAssignmentDryRunVerdict", fields: [verdictDelegationId], references: [id], onDelete: SetNull)
+
   /// ── SKUGGLÄGET (etapp 6) ──────────────────────────────────────────────────
   ///
   /// `shadow: true` betyder att uppdraget är ett FÖRSLAG som aldrig utförs —
@@ -3912,6 +3944,15 @@ model AiAssignment {
   @@index([organizationId, shadow, createdAt])
   /// Facitskrivningens fråga: hitta förslaget som hör till en domänpost.
   @@index([organizationId, sourceKind, sourceId])
+
+  /// Torrlägets sveparcron letar rader UTAN dom. Utan indexet blir det en
+  /// full scan var femtonde minut, och den växer med kön.
+  @@index([organizationId, shadow, executionVerdict])
+
+  /// `/delegationer` räknar "Skulle ha utlöst" per delegation, och
+  /// frekvensvillkoret räknar förbrukning inom ett tidsfönster. Båda frågorna
+  /// går genom de här två kolumnerna.
+  @@index([verdictDelegationId, verdictAt])
 }
 
 /// ── VARFÖR BARA FYRA VÄRDEN ────────────────────────────────────────────────
@@ -3924,6 +3965,34 @@ model AiAssignment {
 /// mekanism: läsytan hade fått en filterflik som aldrig kan ha innehåll, och
 /// nästa person hade läst det som att utförandet finns. Värdena läggs till av
 /// den PR som bygger utföraren, tillsammans med det som skriver dem.
+/// UTFÖRARENS TORRLÄGE — vad som HADE hänt, aldrig vad som hände.
+///
+/// ── TRE UTFALL, OCH DE SVARAR PÅ SAMMA FRÅGA ────────────────────────────────
+///
+/// Frågan är: *hade agenten fått göra detta själv, och enligt vilken delegation?*
+/// Domen är ett FACIT till skarpt läge, precis som skuggförslagets `outcome` är
+/// ett facit till förslaget — och den skrivs av en kodväg som per konstruktion
+/// inte kan orsaka en effekt.
+///
+///   WOULD_EXECUTE   en aktiv delegation täcker fallet. `verdictDelegationId`
+///                   pekar ut vilken. I skarpt läge hade agenten handlat här.
+///   NO_DELEGATION   ingen delegation finns för verktyget i organisationen —
+///                   eller ingen vars villkor täcker fallet. Hyresvärden hade
+///                   fått frågan, precis som i dag.
+///   BLOCKED         en delegation FINNS men bar inte fallet: pausad, utgången,
+///                   återkallad, frekvensen förbrukad, eller verktyget inte
+///                   delegerbart. `verdictReason` bär grindens egen text.
+///
+/// Skillnaden mellan `NO_DELEGATION` och `BLOCKED` är hela poängen med att ha
+/// tre värden och inte två: den första säger "du har inte gett den här rätten",
+/// den andra "du har gett den, men den gällde inte här". Att slå ihop dem hade
+/// gjort en återkallad delegation oskiljbar från en som aldrig funnits.
+enum AiExecutionVerdict {
+  WOULD_EXECUTE
+  NO_DELEGATION
+  BLOCKED
+}
+
 enum AiAssignmentStatus {
   /// Väntar på en människa.
   AWAITING_APPROVAL
@@ -6313,6 +6382,11 @@ model AiDelegation {
 
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   events       AiDelegationEvent[]
+
+  /// Torrlägets domar som pekar hit (etapp 8). Egen relation, skild från
+  /// `assignments`: den ena är vad som UTFÖRDES med rätten, den andra vad som
+  /// HADE utförts. Se docblocket vid `AiAssignment.verdictDelegationId`.
+  dryRunVerdicts AiAssignment[] @relation("AiAssignmentDryRunVerdict")
   executions   AiToolExecution[]
   assignments  AiAssignment[]
 

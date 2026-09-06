@@ -8,9 +8,12 @@ import { DelegationService } from './delegation.service'
  * DELEGATIONERNA (G2, etapp 7).
  *
  * Modulen importerar INTE AI-exekveraren, och den exporteras inte till den.
- * `assertDelegated` har ingen anropare utöver proven; utföraren som ska anropa
- * den är etapp 8–9. En grind utan anropare är ärligare än en grind som anropas
- * från en väg ingen prövat.
+ *
+ * `assertDelegated` fick sin FÖRSTA anropare i etapp 8:
+ * `AiExecutionDryRunService`, som fäller en DOM och inte utför något. Grinden är
+ * alltså prövad genom en väg innan den bär en effekt — vilket var hela skälet
+ * att den stod utan anropare fram till dess. Utföraren i skarpt läge är
+ * fortfarande obyggd.
  */
 @Module({
   imports: [PrismaModule],

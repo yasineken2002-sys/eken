@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn'
 
 import { InboxDetailModal } from './components/InboxDetailModal'
 import { formatKonfidens, formatTraffgrad, konfidensVariant } from './lib/confidence'
+import { verdiktVisning } from './lib/verdict'
 import {
   useDecideInboxItem,
   useInbox,
@@ -95,6 +96,22 @@ export function InboxPage({ forslag }: { forslag?: string | undefined } = {}) {
       cell: (r: InboxItem) => (
         <Badge variant={konfidensVariant(r.confidence)}>{formatKonfidens(r.confidence)}</Badge>
       ),
+    },
+    {
+      // TORRLÄGETS DOM PÅ KORTET (etapp 8). Hyresvärden ska se vad skarpt läge
+      // hade inneburit INNAN hen slår på det — inte efteråt.
+      key: 'verdict',
+      header: 'I skarpt läge',
+      cell: (r: InboxItem) => {
+        const v = verdiktVisning(r)
+        // INGEN DOM = INGEN BADGE. En tom cell säger "vi vet inte än", vilket
+        // är sant; en badge hade gjort en lucka i kön till ett påstående.
+        return v ? (
+          <Badge variant={v.variant}>{v.etikett}</Badge>
+        ) : (
+          <span className="text-gray-400">—</span>
+        )
+      },
     },
     {
       key: 'createdAt',

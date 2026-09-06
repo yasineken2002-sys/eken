@@ -78,6 +78,7 @@ const delegation = (over: Partial<Delegation> = {}): Delegation => ({
   createdByUser: { firstName: 'Anna', lastName: 'Ek' },
   bornFromAssignmentId: 'a1',
   bornFromAssignment: { id: 'a1', title: 'Förslag för ärende T-1' },
+  skulleHaUtlöst: 0,
   ...over,
 })
 
