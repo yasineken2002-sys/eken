@@ -13,6 +13,18 @@ export interface Beslutsunderlag {
   /** Antal AKTIVA delegationer som täcker verktyget. */
   delegerade: number
   senasteBeslut: Date | null
+  /**
+   * ── GODKÄNNANDEN I EN OBRUTEN SVIT ────────────────────────────────────────
+   *
+   * Antal godkännanden SEDAN det senaste avslaget. Skilt från `godkända`, som är
+   * totalen, och skillnaden är hela poängen: ett mönster som brutits av ett nej
+   * är inte ett mönster längre.
+   *
+   * Totalen duger för "har du gjort det här förut" (delegationens andra
+   * godkännande). Sviten krävs för "gör du det här ALLTID" — och det är den
+   * frågan ett delegationsFÖRSLAG ställer.
+   */
+  godkändaISvit: number
 }
 
 /**
@@ -67,6 +79,19 @@ export class ObservationService {
     // Typen gör det till ett kompileringsfel i stället för ett fynd.
     const bas: { organizationId: string } & Record<string, unknown> = {
       organizationId,
+      // ── BARA BESLUT OM VERKTYGET, aldrig om delegationen ────────────────
+      //
+      // Ett avvisat DELEGATIONSFÖRSLAG är ett nej till att automatisera, inte
+      // ett nej till att verktyget var rätt. Utan den här raden räknades det
+      // som ett avslag i sviten och nollställde mönstret — alltså kunde ett
+      // avvisat förslag ALDRIG komma tillbaka, hur många godkännanden som än
+      // följde. Uppmätt: provet "avvisa + 3 nya godkännanden" fick `FOR_FA`
+      // där det skulle få ett nytt förslag.
+      //
+      // Samma familj som "återanvänd inte ett fält som svarar på en annan
+      // fråga", en nivå upp: två sorters beslut i samma tabell är inte samma
+      // beslut.
+      kind: 'TOOL_PROPOSAL',
       toolName,
       // BARA det en MÄNNISKA avgjort. Ett förslag som förföll eller väntar är
       // inget beslut, och att räkna det hade gjort tystnad till ett svar.
@@ -77,6 +102,9 @@ export class ObservationService {
     const [beslutade, aktivaDelegationer] = await Promise.all([
       this.prisma.aiAssignment.findMany({
         where: { ...bas, status: { in: ['APPROVED', 'REJECTED'] } },
+        // ORDNAD, för att sviten alls ska gå att räkna. En osorterad lista
+        // ger ett godtyckligt svar på "sedan det senaste avslaget".
+        orderBy: { decidedAt: 'desc' },
         select: { status: true, prediction: true, decidedAt: true },
       }),
       // Delegationerna räknas på verktyget, inte på typen: villkoret kan vara
@@ -117,6 +145,16 @@ export class ObservationService {
         (d) => beräknaStatus(d.events as never, d.expiresAt) === 'AKTIV',
       ).length,
       senasteBeslut: senaste ?? null,
+      // SVITEN, räknad bakifrån: de senaste besluten först, och vi slutar
+      // räkna vid det första nejet. `relevanta` är redan sorterad fallande.
+      godkändaISvit: (() => {
+        let n = 0
+        for (const r of relevanta) {
+          if (r.status !== 'APPROVED') break
+          n++
+        }
+        return n
+      })(),
     }
   }
 }

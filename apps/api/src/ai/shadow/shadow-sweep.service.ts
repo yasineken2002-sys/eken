@@ -6,7 +6,8 @@ import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { AiShadowQueue } from './shadow.queue'
-import { SKUGGKALLA_FELANMALAN } from './shadow-fields'
+import { DelegationProposalService } from '../observation/delegation-proposal.service'
+import { SKUGGFALT, SKUGGKALLA_FELANMALAN } from './shadow-fields'
 
 /** Låsets livslängd. Passet köar jobb, det kör dem inte. */
 const LAS_TTL_SEC = 120
@@ -57,6 +58,7 @@ export class AiShadowSweepService {
     private readonly queue: AiShadowQueue,
     private readonly locks: LockService,
     private readonly cronErrors: CronErrorSink,
+    private readonly förslag: DelegationProposalService,
   ) {}
 
   @Cron('*/15 * * * *')
@@ -88,6 +90,47 @@ export class AiShadowSweepService {
       logger: this.logger,
       sink: this.cronErrors,
     })
+  }
+
+  /**
+   * MÖNSTREN I EN ORGANISATION — vilka (verktyg, typ) som besluten faktiskt rör.
+   *
+   * MÄNGDEN HÄRLEDS UR BESLUTEN, aldrig ur en lista. En uppräkning av "verktyg
+   * vi bryr oss om" hade blivit fel första gången skuggagenten föreslog något
+   * nytt, och felet hade varit tyst: förslaget uteblir, och ingen märker att en
+   * vana aldrig fick sin fråga.
+   */
+  private async prövaMönsterFör(organizationId: string, nu: Date): Promise<number> {
+    const beslutade = await this.prisma.aiAssignment.findMany({
+      where: {
+        organizationId,
+        kind: 'TOOL_PROPOSAL',
+        status: 'APPROVED',
+        decidedByUserId: { not: null },
+      },
+      select: { toolName: true, prediction: true },
+      // Taket är generöst men finns: mängden distinkta mönster är liten, men en
+      // organisation med tiotusen beslut ska inte läsa in dem alla varje kvart.
+      take: 500,
+      orderBy: { decidedAt: 'desc' },
+    })
+
+    const typfält = SKUGGFALT[0]!.nyckel
+    const mönster = new Set<string>()
+    for (const r of beslutade) {
+      const p = r.prediction as Record<string, unknown> | null
+      const typ = p?.[typfält]
+      if (typeof typ !== 'string' || typ === '') continue
+      mönster.add(`${r.toolName}\u0000${typ}`)
+    }
+
+    let skapade = 0
+    for (const m of mönster) {
+      const [verktyg, typ] = m.split('\u0000') as [string, string]
+      const r = await this.förslag.prövaMönster(organizationId, verktyg, typ, nu)
+      if (r.utfall === 'SKAPAT') skapade++
+    }
+    return skapade
   }
 
   /**
@@ -131,6 +174,32 @@ export class AiShadowSweepService {
         koade++
       }
     }
+
+    // ── DELEGATIONSFÖRSLAGEN, I SAMMA LÅSTA PASS ────────────────────────
+    //
+    // Egen cron hade betytt ett andra lås, ett andra hjärtslag och en andra
+    // uppräkning av "vilka organisationer har skuggagenten på" — för ett jobb
+    // som bara ställer frågor mot databasen. Passet är redan låst och har
+    // redan org-listan; mönsterprövningen hör hemma efter köandet, när
+    // dagens beslut hunnit skrivas.
+    //
+    // KASTAR ALDRIG UT: ett fel i förslagsdelen får inte ta med sig
+    // skuggköandet, som är passets huvuduppgift och det enda som är
+    // tidskritiskt. `runCronSafely` ovanför fångar ändå allt som slipper
+    // igenom, men då hade köandet redan hunnit ske.
+    let förslagSkapade = 0
+    for (const org of orgar) {
+      try {
+        förslagSkapade += await this.prövaMönsterFör(org.id, nu)
+      } catch (err) {
+        this.logger.error(
+          `[cron:ai-shadow-sweep] Mönsterprövningen föll för ${org.id}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+    if (förslagSkapade > 0)
+      this.logger.log(`[cron:ai-shadow-sweep] Skapade ${förslagSkapade} delegationsförslag.`)
 
     if (takNatt)
       this.logger.warn(

@@ -387,6 +387,38 @@ medDb('minnets härkomst och observationslagret', () => {
       expect((await observation.beslutsunderlag(orgA, VERKTYG, KATEGORI)).godkända).toBe(0)
     })
 
+    it('ETT AVVISAT DELEGATIONSFÖRSLAG är inte ett nej till verktyget', async () => {
+      // Regressionen: förslaget är också en `AiAssignment` med status REJECTED
+      // och en beslutsfattare. Utan `kind: 'TOOL_PROPOSAL'` i frågan räknades
+      // det som ett avslag i sviten och nollställde mönstret — alltså kunde ett
+      // avvisat förslag aldrig komma tillbaka, hur många godkännanden som följde.
+      await förslag(orgA, userA, 'APPROVED')
+      await förslag(orgA, userA, 'APPROVED')
+      await prisma.aiAssignment.create({
+        data: {
+          organizationId: orgA,
+          kind: 'DELEGATION_PROPOSAL',
+          sourceKind: 'DELEGATION_PATTERN',
+          sourceId: `${VERKTYG}|${KATEGORI}|3`,
+          toolName: VERKTYG,
+          toolInput: {},
+          title: 'F',
+          reasoning: 'R',
+          consequence: 'C',
+          undoHint: 'U',
+          prediction: { category: KATEGORI },
+          deadline: new Date(Date.now() + 6e6),
+          status: 'REJECTED',
+          decidedAt: new Date(),
+          decidedByUserId: userA,
+        },
+      })
+      const u = await observation.beslutsunderlag(orgA, VERKTYG, KATEGORI)
+      expect(u.godkända).toBe(2)
+      expect(u.avvisade).toBe(0)
+      expect(u.godkändaISvit).toBe(2)
+    })
+
     it('senasteBeslut är null när inget beslut finns', async () => {
       const u = await observation.beslutsunderlag(orgA, VERKTYG, KATEGORI)
       expect(u.senasteBeslut).toBeNull()
