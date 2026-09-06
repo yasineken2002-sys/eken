@@ -278,12 +278,12 @@ async function main(): Promise<void> {
           // inte att svara på om modellen ens tjänar sitt tokenpris — se
           // `rapport.ts`. Den kostar noll extra anrop: samma rena funktion,
           // annan indata.
-          prioritetUtanModell: utanModell.prioritet ?? undefined,
+          ...(utanModell.prioritet ? { prioritetUtanModell: utanModell.prioritet } : {}),
           // ANDRAHANDSVALET SPARAS. Utan det går det inte att i efterhand skilja
           // "regeln avstod" från "modellen gav inget att bygga frågan av" — och
           // det var precis den tvetydigheten som gjorde regeln död utan att
           // något blev rött.
-          andraKategori: andraKategori ?? undefined,
+          ...(andraKategori ? { andraKategori } : {}),
           domWouldExecute,
           kostnadUsd: kostnad,
           inTokens: inTok,
