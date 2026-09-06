@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { delegationVerktygstext, delegationVillkorsnamn } from '@eken/shared'
 
 import type { KanDelegera } from '../api/inbox.api'
 
@@ -13,29 +14,19 @@ interface Props {
   onSkapa: (villkor: Record<string, unknown> | undefined) => void
 }
 
-/** Verktygsnamn i klartext. Aldrig en teknisk term i en bekräftelse. */
-const KLARTEXT: Record<string, string> = {
-  create_property: 'lägga upp en fastighet',
-  create_unit: 'lägga upp en lägenhet',
-  create_invoice: 'skapa ett fakturautkast',
-  create_inspection: 'planera en besiktning',
-  create_maintenance_ticket: 'lägga upp ett ärende',
-  update_maintenance_status: 'ändra status på ett ärende',
-  generate_rent_notices: 'skapa månadens hyresavier',
-  import_bgmax_file: 'läsa in en bankfil',
-}
-
-/** Villkorets fält i klartext, i den ordning en människa läser dem. */
-const VILLKORSNAMN: Record<string, string> = {
-  category: 'Typ av ärende',
-  propertyId: 'Fastighet',
-  unitId: 'Lägenhet',
-  maxBelopp: 'Högsta belopp',
-}
-
-export function klartext(toolName: string): string {
-  return KLARTEXT[toolName] ?? toolName
-}
+/**
+ * KARTAN BOR I `@eken/shared`, INTE HÄR.
+ *
+ * Den låg i den här filen fram till etapp 7 PR 3, då delegationssidan blev en
+ * andra läsare av samma rättighet — den ena beskriver den innan den ges, den
+ * andra efteråt. Två kopior hade glidit isär, och utfallet är det värsta
+ * tänkbara just här: hyresvärden godkänner en mening och läser sedan en annan
+ * om samma sak, utan att något blivit rött.
+ *
+ * `klartext` står kvar som en re-export därför att den är den här komponentens
+ * publika yta och prövas av dess spec — men den är inte längre en egen karta.
+ */
+export const klartext = delegationVerktygstext
 
 /**
  * "GÖR ALLTID SÅ HÄR" — knappen som föder en delegation.
@@ -91,7 +82,7 @@ export function GorAlltidSaHar({ status, kan, toolName, laddar, sparar, onSkapa 
         </div>
         {Object.entries(villkor).map(([nyckel, varde]) => (
           <div key={nyckel} className="flex gap-2">
-            <dt className="w-40 shrink-0 text-gray-500">{VILLKORSNAMN[nyckel] ?? nyckel}</dt>
+            <dt className="w-40 shrink-0 text-gray-500">{delegationVillkorsnamn(nyckel)}</dt>
             <dd className="text-gray-900">{String(varde)}</dd>
           </div>
         ))}
