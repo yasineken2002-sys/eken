@@ -249,6 +249,29 @@ medDb('delegationsförslaget', () => {
     })
   })
 
+  describe('ett ÖPPET förslag stoppar ett nytt — även på en HÖGRE nivå', () => {
+    it('sviten växer till 6 medan förslaget på nivå 3 fortfarande väntar → inget nytt', async () => {
+      // ── VARFÖR DEN HÄR GRENEN BEHÖVER ETT EGET PROV ────────────────────
+      //
+      // Det unika indexet fångar bara SAMMA nyckel. Växer sviten från 3 till 6
+      // blir nyckeln en annan (`…|6`), och indexet släpper igenom — så utan
+      // öppet-spärren hade hyresvärden fått ett andra kort om exakt samma sak
+      // medan det första låg obesvarat.
+      //
+      // Uppmätt: med spärren urkopplad var hela sviten fortfarande grön. Den
+      // var alltså djupförsvar utan bevis, vilket är samma sak som en vakt med
+      // tom mängd. Det här provet är skillnaden.
+      for (let i = 0; i < 3; i++) await beslut(orgA, userA, 'APPROVED')
+      expect((await tjanst.prövaMönster(orgA, VERKTYG, KATEGORI)).utfall).toBe('SKAPAT')
+
+      // Förslaget lämnas ÖPPET (AWAITING_APPROVAL) och sviten växer.
+      for (let i = 0; i < 3; i++) await beslut(orgA, userA, 'APPROVED')
+      const r = await tjanst.prövaMönster(orgA, VERKTYG, KATEGORI)
+      expect(r).toEqual({ utfall: 'REDAN_FINNS' })
+      expect(await förslagen(orgA)).toHaveLength(1)
+    })
+  })
+
   describe('spärrarna', () => {
     it('ett UTÅTRIKTAT verktyg med tio godkännanden → inget förslag', async () => {
       for (let i = 0; i < 10; i++) await beslut(orgA, userA, 'APPROVED', UTATRIKTAT)
