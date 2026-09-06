@@ -562,7 +562,25 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
             'skickas. SVÅR BEDÖMNING: beskrivningen är fullständig men ligger i ' +
             'gränslandet mellan NORMAL och HIGH — det är låg confidence, inte en fråga.',
           properties: {
-            fält: {
+            // ── NYCKLARNA PÅ TRÅDEN ÄR ASCII, OCH DET ÄR EN MÄTNING ─────
+            //
+            // Fälten hette `fält` och `användsTill`. Uppmätt i körning 4: FEM av
+            // korpusens tio frågefall blev OTOLKBART — modellen valde FRAGA,
+            // skrev en riktig fråga, och stavade nyckeln `användssTill` med två
+            // s. `ärGiltigFråga` avvisade den fail-closed, `tolkaVerktygsanrop`
+            // returnerade null, och ingenting skrevs. Det var fem av sex missade
+            // frågor, och de såg i rapporten ut som att agenten inte frågade.
+            //
+            // En JSON-nyckel som en modell måste återge ORDAGRANT är ett
+            // maskinkontrakt, inte en läsyta. Å/ä/ö och dubbeltecken hör inte
+            // hemma där — samma familj som CLAUDE.md:s regel om skalvariabler
+            // och `\b` i regex: ett namn som ser svenskt ut men inte kan bäras
+            // av mekaniken, och där felet är TYST.
+            //
+            // Svenskan flyttar till BESKRIVNINGARNA, som modellen läser men inte
+            // behöver stava. Domäntypen inuti kodbasen är oförändrad; kartan
+            // mellan de två ligger i `tolkaVerktygsanrop`, på ett ställe.
+            falt: {
               type: 'string',
               enum: [...FRAGEBARA_NYCKLAR],
               description: 'Vilket fält uppgiften gäller.',
@@ -572,14 +590,14 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
               items: { type: 'string' },
               description: 'Två till fyra värden ur fältets register — de troligaste.',
             },
-            användsTill: {
+            nytta: {
               type: 'string',
               description:
                 'Vilka OLIKA åtgärder de olika svaren leder till, en mening som nämner ' +
                 'båda. Leder alla alternativ till samma förslag ska frågan inte ställas.',
             },
           },
-          required: ['fält', 'alternativ', 'användsTill'],
+          required: ['falt', 'alternativ', 'nytta'],
         },
         toolInput: {
           type: 'object',
@@ -603,8 +621,8 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
           enum: Object.values(MaintenanceCategory),
           description:
             'Den NÄST troligaste kategorin, om den första skulle vara fel. Måste vara ' +
-            'en annan än prediction.category. Utelämna bara om ingen andra kandidat ' +
-            'är rimlig.',
+            'en annan än prediction.category. OBLIGATORISK när prediction.category är ' +
+            'OTHER — då är det andrahandsvalet som säger vad du faktiskt tror.',
         },
         reasoning: { type: 'string', description: 'Varför, på svenska, två till fyra meningar.' },
         confidence: {
@@ -857,7 +875,17 @@ export function tolkaVerktygsanrop(input: unknown): {
   // varit `FRAGA`, vilket inte är ett verktyg. Fail-closed: ingen rad alls.
   if (r['toolName'] === FRAGA) {
     if (typeof r['reasoning'] !== 'string' || !r['reasoning'].trim()) return null
-    const f = r['fraga']
+    // ── KARTAN MELLAN TRÅDENS ASCII OCH DOMÄNENS SVENSKA ────────────────────
+    // Ett ställe, och bara ett. Se skälet vid `falt`/`nytta` i schemat ovan.
+    const rå = r['fraga']
+    const f =
+      typeof rå === 'object' && rå !== null
+        ? {
+            fält: (rå as Record<string, unknown>)['falt'],
+            alternativ: (rå as Record<string, unknown>)['alternativ'],
+            användsTill: (rå as Record<string, unknown>)['nytta'],
+          }
+        : rå
     if (!ärGiltigFråga(f)) return null
     // PREDICTION BEHÅLLS ÄVEN VID FRÅGA. Schemat kräver den, och modellen
     // fyller i sin bästa gissning trots frågan — att kasta bort den hade tyst

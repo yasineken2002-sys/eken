@@ -51,6 +51,8 @@ export interface Utfall {
    * tokenpris för ingenting.
    */
   prioritetUtanModell?: string
+  /** Modellens andrahandsval av kategori — frågeregelns andra alternativ. */
+  andraKategori?: string
   kostnadUsd: number
   inTokens: number
   utTokens: number

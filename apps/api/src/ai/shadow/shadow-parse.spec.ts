@@ -136,3 +136,67 @@ describe('tolkaVerktygsanrop', () => {
     expect(FORSLAG_VERKTYGSNAMN).toBe('lamna_forslag')
   })
 })
+
+describe('frågans nycklar på tråden', () => {
+  const bas = {
+    toolName: 'FRAGA',
+    reasoning: 'Det går inte att avgöra vad felet gäller ur texten.',
+    toolInput: {},
+    prediction: { category: 'PLUMBING', priority: 'NORMAL' },
+  }
+
+  it('tolkar en fråga med ASCII-nycklar', () => {
+    const r = tolkaVerktygsanrop({
+      ...bas,
+      fraga: { falt: 'category', alternativ: ['PLUMBING', 'ROOF'], nytta: 'Olika hantverkare.' },
+    })
+    expect(r?.toolName).toBe('FRAGA')
+    expect(r?.fraga).toEqual({
+      fält: 'category',
+      alternativ: ['PLUMBING', 'ROOF'],
+      användsTill: 'Olika hantverkare.',
+    })
+  })
+
+  // ── REGRESSIONEN SOM KOSTADE FEM FRÅGOR ────────────────────────────────
+  //
+  // Uppmätt i körning 4: modellen skrev `användssTill` med två s på det gamla,
+  // svenska nyckelnamnet. Frågan avvisades fail-closed och ingenting skrevs —
+  // fem av korpusens tio frågefall, och i rapporten såg det ut som att agenten
+  // inte frågade. Nycklarna på tråden är därför ASCII, och de här två proven
+  // håller fast BÅDA halvorna: den nya formen tolkas, den gamla gör det inte.
+  it('avvisar de GAMLA svenska nycklarna — kontraktet är ASCII', () => {
+    expect(
+      tolkaVerktygsanrop({
+        ...bas,
+        fraga: {
+          fält: 'category',
+          alternativ: ['PLUMBING', 'ROOF'],
+          användsTill: 'Olika hantverkare.',
+        },
+      }),
+    ).toBeNull()
+  })
+
+  it('avvisar den FAKTISKA felstavningen modellen skrev', () => {
+    expect(
+      tolkaVerktygsanrop({
+        ...bas,
+        fraga: {
+          falt: 'category',
+          alternativ: ['PLUMBING', 'ROOF'],
+          användssTill: 'Olika hantverkare.',
+        },
+      }),
+    ).toBeNull()
+  })
+
+  it('avvisar ett enda alternativ — ett val kräver två', () => {
+    expect(
+      tolkaVerktygsanrop({
+        ...bas,
+        fraga: { falt: 'category', alternativ: ['PLUMBING'], nytta: 'Olika hantverkare.' },
+      }),
+    ).toBeNull()
+  })
+})
