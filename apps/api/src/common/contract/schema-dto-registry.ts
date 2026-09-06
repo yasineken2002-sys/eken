@@ -8,6 +8,8 @@ import {
   RejectTerminationSchema,
   UpdateTenantSchema,
   AnonymizeTenantSchema,
+  CreateRentIncreaseSchema,
+  RejectRentIncreaseSchema,
   CreateReadingSchema,
   CreateSupplierInvoiceSchema,
   CreateTariffSchema,
@@ -37,6 +39,8 @@ import { ApproveTerminationDto } from '../../terminations/dto/approve-terminatio
 import { RejectTerminationDto } from '../../terminations/dto/reject-termination.dto'
 import { UpdateTenantDto } from '../../tenants/dto/update-tenant.dto'
 import { AnonymizeTenantDto } from '../../tenants/dto/anonymize-tenant.dto'
+import { CreateRentIncreaseDto } from '../../rent-increases/dto/create-rent-increase.dto'
+import { RejectRentIncreaseDto } from '../../rent-increases/dto/reject-rent-increase.dto'
 import { CreateMeterDto } from '../../consumption/dto/create-meter.dto'
 import { UpdateMeterDto } from '../../consumption/dto/update-meter.dto'
 import { RecordReadingDto } from '../../consumption/dto/record-reading.dto'
@@ -235,6 +239,36 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { reason: 'Begäran om radering, ärende 2026-114' },
     ogiltig: { reason: 'x'.repeat(501) },
     ogiltigVarfor: 'skälet får vara högst 500 tecken',
+  },
+  {
+    endpoint: 'POST /rent-increases',
+    inputTyp: 'CreateRentIncreaseInput',
+    schema: CreateRentIncreaseSchema,
+    dto: CreateRentIncreaseDto,
+    giltig: {
+      leaseId: '11111111-2222-4333-8444-555555555555',
+      newRent: 9500,
+      reason: 'Indexuppräkning enligt avtal',
+      effectiveDate: '2027-01-01',
+    },
+    ogiltig: {
+      leaseId: '11111111-2222-4333-8444-555555555555',
+      newRent: 9500,
+      reason: 'ok',
+      effectiveDate: '2027-01-01',
+    },
+    ogiltigVarfor: 'motiveringen måste vara minst 3 tecken — hyresgästen ska kunna förstå den',
+  },
+  {
+    endpoint: 'PATCH /rent-increases/:id/reject',
+    inputTyp: 'RejectRentIncreaseInput',
+    schema: RejectRentIncreaseSchema,
+    dto: RejectRentIncreaseDto,
+    giltig: { rejectionReason: 'Höjningen överstiger jämförbara lägenheter' },
+    // OBLIGATORISKT, till skillnad från uppsägningens `reason`. Ett avslag utan
+    // skäl är inte spårbart, och båda vägarna kräver det.
+    ogiltig: {},
+    ogiltigVarfor: 'rejectionReason är obligatorisk',
   },
   {
     endpoint: 'POST /consumption/meters',

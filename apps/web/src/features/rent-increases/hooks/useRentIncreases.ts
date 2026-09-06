@@ -8,7 +8,7 @@ import {
   sendRentIncreaseNotice,
   withdrawRentIncrease,
 } from '../api/rent-increases.api'
-import type { CreateRentIncreaseInput } from '../api/rent-increases.api'
+import type { CreateRentIncreaseInput } from '@eken/shared'
 import type { RentIncreaseStatus } from '@eken/shared'
 
 const LIST = ['rent-increases', 'list'] as const
