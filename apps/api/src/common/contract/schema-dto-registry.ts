@@ -33,6 +33,7 @@ import {
   UpdateMeterSchema,
   CreateDelegationFromAssignmentSchema,
   RevokeDelegationSchema,
+  AnswerQuestionSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
   CreateLeaseWithTenantSchema,
@@ -84,6 +85,7 @@ import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
 import { ConfirmImportDto } from '../../reconciliation/dto/confirm-import.dto'
+import { AnswerQuestionDto } from '../../ai/assignments/dto/answer-question.dto'
 import { RevokeDelegationDto } from '../../ai/delegation/dto/revoke-delegation.dto'
 import { CreateFromAssignmentDto } from '../../ai/delegation/dto/create-from-assignment.dto'
 
@@ -696,5 +698,18 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { skäl: 'Vi sköter det manuellt igen.' },
     ogiltig: { skäl: 'x'.repeat(501) },
     ogiltigVarfor: 'ett skäl över 500 tecken gör historikraden oläsbar för allt annat',
+  },
+  {
+    // Etapp 8 PR 5b. Svaret på en fråga från agenten. Enda fältet är en sträng,
+    // så pariteten prövar LÄNGDGRÄNSERNA — de enda tal i nyttolasten som kan
+    // glida isär. Att svaret måste vara ett av frågans egna alternativ prövas i
+    // TJÄNSTEN: alternativen bor på raden och schemat kan inte se dem.
+    endpoint: 'POST /ai/assignments/:id/answer',
+    inputTyp: 'AnswerQuestionInput',
+    schema: AnswerQuestionSchema,
+    dto: AnswerQuestionDto,
+    giltig: { svar: 'PLUMBING' },
+    ogiltig: { svar: '' },
+    ogiltigVarfor: 'ett tomt svar är inget val — frågan har alltid minst två alternativ',
   },
 ]

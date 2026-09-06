@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common'
 
 import { CronErrorSinkModule } from '../../common/cron/cron-error-sink.module'
 import { ObservationModule } from '../observation/observation.module'
+import { QuestionModule } from '../questions/question.module'
 import { PrismaModule } from '../../common/prisma/prisma.module'
 import { RedisModule } from '../../common/redis/redis.module'
 import { HistoryModule } from '../../history/history.module'
@@ -50,6 +51,8 @@ import { QUEUE_AI_SHADOW } from './shadow.types'
     CronErrorSinkModule,
     // Delegationsförslagen prövas i samma låsta pass — se shadow-sweep.service.
     ObservationModule,
+    // Det tredje utfallet: agenten frågar. Se maintenance-shadow.service.
+    QuestionModule,
   ],
   providers: [
     AiShadowQueue,

@@ -1,6 +1,6 @@
 import { get, patch, post } from '@/lib/api'
 
-import type { CreateDelegationFromAssignmentInput } from '@eken/shared'
+import type { AnswerQuestionInput, CreateDelegationFromAssignmentInput } from '@eken/shared'
 
 export type AssignmentStatus = 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
 
@@ -21,6 +21,17 @@ export interface InboxEvidence {
  */
 export interface InboxItem {
   id: string
+  /**
+   * VILKEN SORTS RAD DET ÄR (etapp 8).
+   *
+   * `TOOL_PROPOSAL` — agenten föreslår ett verktyg för ett fall.
+   * `DELEGATION_PROPOSAL` — agenten föreslår att du GER BORT rätten.
+   * `QUESTION` — agenten saknar en uppgift och frågar. Svaras med ett av
+   *   alternativen i `toolInput`, aldrig med ja/nej.
+   *
+   * Skilt från `shadow`, som svarar på om något UTFÖRS vid ett godkännande.
+   */
+  kind: 'TOOL_PROPOSAL' | 'DELEGATION_PROPOSAL' | 'QUESTION'
   shadow: boolean
   toolName: string
   toolInput: Record<string, unknown>
@@ -140,4 +151,35 @@ export const skapaDelegationUrForslag = (
     ...(params.frekvensvillkor ? { frekvensvillkor: params.frekvensvillkor } : {}),
   }
   return post<{ id: string }>(`/agent/delegations/from-assignment/${params.assignmentId}`, dto)
+}
+
+/** Frågans strukturerade innehåll, som det ligger i `toolInput`. */
+export interface FraganInnehall {
+  fält: string
+  alternativ: string[]
+  användsTill: string
+}
+
+/**
+ * Är raden en fråga med giltigt innehåll?
+ *
+ * FAIL-CLOSED: en fråga utan alternativ kan inte besvaras strukturerat, och att
+ * visa den som ett vanligt kort hade bett hyresvärden godkänna en fråga.
+ */
+export function fraganInnehall(item: InboxItem): FraganInnehall | null {
+  if (item.kind !== 'QUESTION') return null
+  const i = item.toolInput as Record<string, unknown>
+  const alt = i['alternativ']
+  if (typeof i['fält'] !== 'string' || !Array.isArray(alt) || alt.length < 2) return null
+  return {
+    fält: i['fält'],
+    alternativ: alt.filter((a): a is string => typeof a === 'string'),
+    användsTill: typeof i['användsTill'] === 'string' ? i['användsTill'] : '',
+  }
+}
+
+export const svaraPaFraga = (assignmentId: string, svar: string) => {
+  // NAMNGIVEN, DELAD-TYPAD nyttolast — se check-request-contract.
+  const dto: AnswerQuestionInput = { svar }
+  return post<{ ok: boolean }>(`/ai/assignments/${assignmentId}/answer`, dto)
 }

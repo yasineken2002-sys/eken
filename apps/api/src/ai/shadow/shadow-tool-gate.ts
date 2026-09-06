@@ -143,5 +143,15 @@ export function skuggverktygForFelanmalan(
   return RELEVANTA_FOR_FELANMALAN.filter((n) => dugliga.has(n))
 }
 
-/** Modellen måste kunna avstå. Se noten i prompten om att den sällan gör det. */
+/** Modellen måste kunna avstå. Se prompten, som räknar upp de tre utfallen. */
 export const INGEN_ATGARD = 'INGEN_ATGARD'
+
+/**
+ * DET TREDJE UTFALLET (etapp 8 PR 5b): agenten FRÅGAR.
+ *
+ * Skilt från `INGEN_ATGARD` och från ett förslag med låg konfidens. Ett värde i
+ * samma enum därför att modellen ska välja ETT av utfallen — hade frågan varit
+ * ett separat booleskt fält kunde den sättas tillsammans med ett verktygsnamn,
+ * och då är det inte längre ett val.
+ */
+export const FRAGA = 'FRAGA'

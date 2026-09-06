@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { QuestionModule } from './questions/question.module'
 import { AiAssistantController } from './ai-assistant.controller'
 import { AiAssistantService } from './ai-assistant.service'
 import { DataContextService } from './data-context.service'
@@ -45,6 +46,7 @@ import { AiAssignmentsService } from './assignments/ai-assignments.service'
 
 @Module({
   imports: [
+    QuestionModule,
     // #605 — varaktig felsänka för ai/:s två cron-jobb (bilagestädning,
     // gallring). Importerar bara PrismaModule, så ingen modulcykel.
     CronErrorSinkModule,

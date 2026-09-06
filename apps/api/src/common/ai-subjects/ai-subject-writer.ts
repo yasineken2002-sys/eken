@@ -101,9 +101,28 @@ export async function upsertAiMemoryWithSubjects(
     key: string
     value: string
     type: AiMemoryType
+    /**
+     * ── HÄRKOMSTEN, NÄR SKRIVAREN VET DEN ─────────────────────────────────
+     *
+     * Utelämnas för modellextraktionen, som per definition inte har någon —
+     * raden blir då `ANTAGANDE` av kolumnens default.
+     *
+     * Sätts av frågevägen (etapp 8 PR 5b), där en människa just tryckte på ett
+     * alternativ. Fältet finns HÄR och inte som en egen skrivväg därför att
+     * `check-ai-subjects` kräver att varje `AiMemory` går genom den här
+     * funktionen: en andra väg hade skrivit minnen utan ämneskoppling, och
+     * anonymisering av en hyresgäst hade då inte slagit igenom i minnet.
+     */
+    provenans?: {
+      kind: 'HUMAN_CONFIRMED' | 'DECISION_DERIVED'
+      sourceKind: string
+      sourceId: string
+      confirmedByUserId?: string
+      confirmedAt?: Date
+    }
   },
 ): Promise<{ id: string }> {
-  const { organizationId, userId, key, value, type } = args
+  const { organizationId, userId, key, value, type, provenans } = args
 
   // ── ETT NYTT VÄRDE ÄRVER INTE DEN GAMLA BEKRÄFTELSEN ─────────────────────
   //
@@ -124,10 +143,23 @@ export async function upsertAiMemoryWithSubjects(
     data: { provenanceKind: 'ANTAGANDE', confirmedAt: null, confirmedByUserId: null },
   })
 
+  // En uttryckt härkomst SKRIVS ÖVER degraderingen ovan: den gäller ju just det
+  // nya värdet. Utan `?? {}` hade extraktionen tvingats skicka `undefined` för
+  // fyra fält, och `exactOptionalPropertyTypes` gör det till ett kompileringsfel.
+  const härkomst = provenans
+    ? {
+        provenanceKind: provenans.kind,
+        sourceKind: provenans.sourceKind,
+        sourceId: provenans.sourceId,
+        confirmedByUserId: provenans.confirmedByUserId ?? null,
+        confirmedAt: provenans.confirmedAt ?? null,
+      }
+    : {}
+
   const memory = await db.aiMemory.upsert({
     where: { organizationId_userId_key: { organizationId, userId, key } },
-    create: { organizationId, userId, key, value, type },
-    update: { value, type },
+    create: { organizationId, userId, key, value, type, ...härkomst },
+    update: { value, type, ...härkomst },
     select: { id: true },
   })
 
