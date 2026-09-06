@@ -32,7 +32,11 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   amount!: number
 
   @ApiPropertyOptional({
-    description: 'Betalningssätt (Bankgiro, Plusgiro, Swish, Kontant, Autogiro)',
+    enum: PaymentMethod,
+    description:
+      'Betalningssätt: BANK, CASH, SWISH eller MANUAL. Utelämnat = MANUAL. ' +
+      'OBS: tog tidigare emot etiketter som "Bankgiro" — de översätts numera i ' +
+      'klienten och avvisas här.',
   })
   /**
    * SAMMA ENUM SOM AVIN. Var tidigare fri text som `toPaymentMethod` mappade
@@ -46,6 +50,12 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   paymentMethod?: PaymentMethod
 
   /** Etiketten operatören valde ('Plusgiro'). Bevaras bredvid enumen. */
+  @ApiPropertyOptional({
+    example: 'Plusgiro',
+    description:
+      'Etiketten som visades för operatören. Sparas på betalningsraden så att ' +
+      'skillnaden mellan bankgiro/plusgiro/autogiro inte går förlorad i enumen.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(60)

@@ -30,6 +30,7 @@
 jest.mock('./pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
+import { PaymentMethodSchema } from '@eken/shared'
 import { InvoicesService } from './invoices.service'
 
 function makeService(
@@ -276,5 +277,28 @@ describe('InvoicesService.markAsPaidManually — bokför inbetalningen', () => {
       service.markAsPaidManually('inv-1', 'org-1', 'BANK', 'user-1', 'USER', {}),
     ).rejects.toThrow(/redan reglerad eller makulerad/i)
     expect(createJournalEntryForInvoiceManualPayment).not.toHaveBeenCalled()
+  })
+})
+
+describe('AI-vägens betalsätt kastar i stället för att gissa', () => {
+  // Granskningen fann att `PaymentMethodSchema.catch('MANUAL').parse(...)` gör
+  // motsatsen till vad dess kommentar påstod: `.catch()` gör att `.parse()`
+  // ALDRIG kastar, så varje ogiltigt värde blev tyst MANUAL. Provet nedan är
+  // formen som ersatte den, och det skulle ha varit rött mot den gamla koden.
+  const som_i_utforaren = (varde: unknown) =>
+    varde === undefined ? 'MANUAL' : PaymentMethodSchema.parse(varde)
+
+  it('utelämnat betyder MANUAL — samma default som controllern', () => {
+    expect(som_i_utforaren(undefined)).toBe('MANUAL')
+  })
+
+  it.each(['BANK', 'CASH', 'SWISH', 'MANUAL'])('%s går igenom', (v) => {
+    expect(som_i_utforaren(v)).toBe(v)
+  })
+
+  it.each(['Bankgiro', 'bank', '', 42, null])('DEN AVGÖRANDE: %p KASTAR', (v) => {
+    // Med `.catch('MANUAL')` hade var och en av dessa returnerat 'MANUAL' och
+    // provet varit grönt om ett fel ingen kunde se.
+    expect(() => som_i_utforaren(v)).toThrow()
   })
 })

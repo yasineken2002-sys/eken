@@ -1456,10 +1456,21 @@ export class ToolExecutorService {
           await this.invoicesService.markAsPaidManually(
             paidInvoiceId,
             organizationId,
-            // SAMMA schema som människovägen validerar mot — ingen egen lista
-            // och ingen textmappning. Ett värde utanför enumen tas inte emot;
-            // utelämnat betyder MANUAL, precis som i controllern.
-            PaymentMethodSchema.catch('MANUAL').parse(toolInput.paymentMethod),
+            // SAMMA schema som människovägen, och det MÅSTE kasta.
+            //
+            // Här stod först `PaymentMethodSchema.catch('MANUAL').parse(...)`.
+            // `.catch()` gör att `.parse()` ALDRIG kastar: 'Bankgiro', 42 och ''
+            // blev alla tyst MANUAL — exakt den gissning `toPaymentMethod` togs
+            // bort för, och exakt det migrationen i samma ändring vägrar göra.
+            // Kommentaren påstod dessutom motsatsen om koden.
+            //
+            // Människovägen har `@IsEnum` före sitt `?? 'MANUAL'`, så där
+            // defaultas bara ett UTELÄMNAT fält. Anthropics verktygs-API
+            // validerar inte modellens svar mot `input_schema` — den garantin
+            // saknas alltså här och måste finnas i koden.
+            toolInput.paymentMethod === undefined
+              ? 'MANUAL'
+              : PaymentMethodSchema.parse(toolInput.paymentMethod),
             userId,
             'USER',
             {
