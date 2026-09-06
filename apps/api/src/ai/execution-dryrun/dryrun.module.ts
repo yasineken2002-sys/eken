@@ -1,6 +1,9 @@
 import { BullModule } from '@nestjs/bull'
 import { Global, Module } from '@nestjs/common'
 
+import { CronErrorSinkModule } from '../../common/cron/cron-error-sink.module'
+import { PrismaModule } from '../../common/prisma/prisma.module'
+import { RedisModule } from '../../common/redis/redis.module'
 import { DelegationModule } from '../delegation/delegation.module'
 import { AiExecutionDryRunQueue } from './dryrun.queue'
 import { AiExecutionDryRunSweepService } from './dryrun-sweep.service'
@@ -29,11 +32,31 @@ import { QUEUE_AI_EXECUTION_DRYRUN } from './dryrun.types'
  * `enqueueSafely` ser till att den inte kan kasta.
  *
  * Notera vad `@Global` INTE gör: den gör modulens EGNA exporter globala, inte
- * dess beroenden. Modulen måste importera `DelegationModule` som alla andra.
+ * dess beroenden. Modulen måste importera sina egna som alla andra — och det
+ * gäller ALLA fyra, inte bara den uppenbara.
+ *
+ * ── DEN HÄR RADEN FÄLLDES AV E2E, INTE AV ETT ENDA ENHETSPROV ─────────────
+ *
+ * Första versionen importerade bara `DelegationModule`. Sveparcronen behöver
+ * dessutom `PrismaModule` (frågorna), `RedisModule` (LockService) och
+ * `CronErrorSinkModule` (den varaktiga felsänkan) — och felet syntes inte i ett
+ * enda enhetsprov, eftersom de konstruerar tjänsterna för hand. Utfallet var ett
+ * API som inte ens STARTAR: *"Nest can't resolve dependencies of the
+ * AiExecutionDryRunSweepService"*.
+ *
+ * `AiShadowModule` bär exakt samma not sedan etapp 6. Att felet uppstod igen i
+ * den nästa modulen av samma form säger att noten var rätt och att den läses
+ * för sent — den står därför här också, vid raderna den handlar om.
  */
 @Global()
 @Module({
-  imports: [BullModule.registerQueue({ name: QUEUE_AI_EXECUTION_DRYRUN }), DelegationModule],
+  imports: [
+    BullModule.registerQueue({ name: QUEUE_AI_EXECUTION_DRYRUN }),
+    DelegationModule,
+    PrismaModule,
+    RedisModule,
+    CronErrorSinkModule,
+  ],
   providers: [
     AiExecutionDryRunService,
     AiExecutionDryRunQueue,
