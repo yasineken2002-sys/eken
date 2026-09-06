@@ -7,7 +7,7 @@ import {
   resendActivation,
   updateTenant,
 } from '../api/tenants.api'
-import type { UpdateTenantInput } from '../api/tenants.api'
+import type { UpdateTenantInput } from '@eken/shared'
 
 // Disjunkta query-nycklar så list-invalidering inte träffar detalj-queries.
 const TENANTS_LIST = (search?: string) => ['tenants', 'list', search ?? ''] as const

@@ -4,6 +4,10 @@ import {
   CreateMeterSchema,
   CreatePropertySchema,
   UpdatePropertySchema,
+  ApproveTerminationSchema,
+  RejectTerminationSchema,
+  UpdateTenantSchema,
+  AnonymizeTenantSchema,
   CreateReadingSchema,
   CreateSupplierInvoiceSchema,
   CreateTariffSchema,
@@ -29,6 +33,10 @@ import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
 import { CreateSupplierInvoiceDto } from '../../accounting/dto/supplier-invoice.dto'
 import { CreatePropertyDto } from '../../properties/dto/create-property.dto'
 import { UpdatePropertyDto } from '../../properties/dto/update-property.dto'
+import { ApproveTerminationDto } from '../../terminations/dto/approve-termination.dto'
+import { RejectTerminationDto } from '../../terminations/dto/reject-termination.dto'
+import { UpdateTenantDto } from '../../tenants/dto/update-tenant.dto'
+import { AnonymizeTenantDto } from '../../tenants/dto/anonymize-tenant.dto'
 import { CreateMeterDto } from '../../consumption/dto/create-meter.dto'
 import { UpdateMeterDto } from '../../consumption/dto/update-meter.dto'
 import { RecordReadingDto } from '../../consumption/dto/record-reading.dto'
@@ -186,6 +194,47 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { name: 'Kvarteret Eken 2' },
     ogiltig: { type: 'HYRESHUS' },
     ogiltigVarfor: 'HYRESHUS är ingen giltig fastighetstyp — även i en partiell uppdatering',
+  },
+  {
+    endpoint: 'PATCH /terminations/:id/approve',
+    inputTyp: 'ApproveTerminationInput',
+    schema: ApproveTerminationSchema,
+    dto: ApproveTerminationDto,
+    // TOM KROPP ÄR GILTIG och det är hela poängen: utelämnat `effectiveDate`
+    // betyder att servern beräknar slutdatumet ur uppsägningstiden. Ett prov
+    // som krävde fältet hade cementerat motsatsen.
+    giltig: { effectiveDate: '2026-12-31' },
+    ogiltig: { effectiveDate: 'sista december' },
+    ogiltigVarfor: 'effectiveDate måste vara ett ISO-datum, inte fritext',
+  },
+  {
+    endpoint: 'PATCH /terminations/:id/reject',
+    inputTyp: 'RejectTerminationInput',
+    schema: RejectTerminationSchema,
+    dto: RejectTerminationDto,
+    giltig: { reason: 'Uppsägningen saknar underskrift' },
+    ogiltig: { reason: 'x'.repeat(501) },
+    ogiltigVarfor: 'motiveringen får vara högst 500 tecken',
+  },
+  {
+    endpoint: 'PATCH /tenants/:id',
+    inputTyp: 'UpdateTenantInput',
+    schema: UpdateTenantSchema,
+    dto: UpdateTenantDto,
+    // FLAT adress. Den nästlade formen fanns bara i webbens egen typ och i det
+    // gamla schemat — DTO:n har alltid tagit street/city/postalCode.
+    giltig: { email: 'ny@example.se', street: 'Ekgatan 1', city: 'Lund' },
+    ogiltig: { email: 'inte-en-adress' },
+    ogiltigVarfor: 'e-postadressen valideras av båda vägarna',
+  },
+  {
+    endpoint: 'POST /tenants/:id/anonymize',
+    inputTyp: 'AnonymizeTenantInput',
+    schema: AnonymizeTenantSchema,
+    dto: AnonymizeTenantDto,
+    giltig: { reason: 'Begäran om radering, ärende 2026-114' },
+    ogiltig: { reason: 'x'.repeat(501) },
+    ogiltigVarfor: 'skälet får vara högst 500 tecken',
   },
   {
     endpoint: 'POST /consumption/meters',

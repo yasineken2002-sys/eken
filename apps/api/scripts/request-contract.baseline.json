@@ -1,5 +1,5 @@
 {
-  "total": 74,
+  "total": 70,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -154,20 +154,6 @@
       "medlemmar": [
         "POST '/tenant-portal/admin/invitations' → OTYPAD",
         "POST '/tenant-portal/admin/invitations/resend' → OTYPAD"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/tenants/api/tenants.api.ts",
-      "medlemmar": [
-        "PATCH `/tenants/${id}` → flattenUpdate(dto)",
-        "POST `/tenants/${id}/anonymize` → reason ? { reason } : {}"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/terminations/api/terminations.api.ts",
-      "medlemmar": [
-        "PATCH `/terminations/${id}/approve` → OTYPAD",
-        "PATCH `/terminations/${id}/reject` → reason ? { reason } : {}"
       ]
     },
     {

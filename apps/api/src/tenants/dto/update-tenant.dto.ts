@@ -1,9 +1,10 @@
+import type { SammaNycklar, UpdateTenantInput } from '@eken/shared'
 import { IsEnum, IsString, IsEmail, IsOptional } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 
 // Endast hyresgästens kontaktuppgifter kan uppdateras via denna route.
 // Kontrakt (`lease`) hanteras via /v1/leases/:id.
-export class UpdateTenantDto {
+export class UpdateTenantDto implements UpdateTenantInput {
   @ApiProperty({ required: false, enum: ['INDIVIDUAL', 'COMPANY'] })
   @IsEnum(['INDIVIDUAL', 'COMPANY'])
   @IsOptional()
@@ -59,3 +60,7 @@ export class UpdateTenantDto {
   @IsOptional()
   postalCode?: string
 }
+
+/** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */
+const _kontraktUppdateraHyresgast: SammaNycklar<UpdateTenantDto, UpdateTenantInput> = true
+void _kontraktUppdateraHyresgast
