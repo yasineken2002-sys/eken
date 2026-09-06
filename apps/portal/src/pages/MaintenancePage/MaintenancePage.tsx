@@ -13,14 +13,33 @@ import { Spinner } from '@/components/ui/Spinner'
 import { ErrorCard } from '@/components/ui/ErrorCard'
 import type { PortalMaintenanceTicket } from '@/types/portal.types'
 import styles from './MaintenancePage.module.css'
+import type { MaintenanceCategoryValue } from '@eken/shared'
 
-const CATEGORIES: { value: string; label: string; bg: string; color: string }[] = [
+/**
+ * TYPAD MOT PRISMAS ENUM, inte mot `string`.
+ *
+ * `value: string` gjorde listan omöjlig att ha fel — och den HADE fel:
+ * `'WINDOWS'` finns inte i databasen (Prisma säger `WINDOWS_DOORS`). Eftersom
+ * `SubmitMaintenanceDto.category` bär `@IsEnum(MaintenanceCategory)` svarade
+ * servern 400 på varje anmälan där hyresgästen valde "Fönster". Uppmätt mot
+ * den genererade klienten, inte härlett ur schemafilen.
+ *
+ * Med `MaintenanceCategoryValue` här är samma fel ett kompileringsfel. Det är
+ * den fjärde kopian av kategorilistan som binds till en källa i den här
+ * ändringen — Prisma, @eken/shared, hyresgästverktyget och den här.
+ */
+const CATEGORIES: {
+  value: MaintenanceCategoryValue
+  label: string
+  bg: string
+  color: string
+}[] = [
   { value: 'PLUMBING', label: 'VVS', bg: '#e0f2fe', color: '#0284c7' },
   { value: 'ELECTRICAL', label: 'El', bg: '#fef9c3', color: 'var(--ev-warning-500)' },
   { value: 'HEATING', label: 'Värme/Ventilation', bg: '#fee2e2', color: 'var(--ev-danger-500)' },
   { value: 'LOCKS', label: 'Lås/Dörrar', bg: '#f3e8ff', color: '#9333ea' },
   {
-    value: 'WINDOWS',
+    value: 'WINDOWS_DOORS',
     label: 'Fönster',
     bg: 'var(--ev-success-100)',
     color: 'var(--ev-success-500)',
@@ -147,7 +166,7 @@ export function MaintenancePage() {
   const [showSheet, setShowSheet] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [category, setCategory] = useState('OTHER')
+  const [category, setCategory] = useState<MaintenanceCategoryValue>('OTHER')
   const [images, setImages] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 

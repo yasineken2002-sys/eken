@@ -713,6 +713,121 @@ export type RegisterReplacementInput = z.infer<typeof RegisterReplacementSchema>
 export type UpdateUnitInput = z.infer<typeof UpdateUnitSchema>
 export type CreateRentIncreaseInput = z.infer<typeof CreateRentIncreaseSchema>
 export type RejectRentIncreaseInput = z.infer<typeof RejectRentIncreaseSchema>
+// ─── Felanmälan: EN BAS, TVÅ DELMÄNGDER ──────────────────────────────────────
+
+/**
+ * MaintenanceCategory och MaintenancePriority, som VÄRDEN.
+ *
+ * Sanningen bor i Prisma (`schema.prisma`, `enum MaintenanceCategory`). Den här
+ * listan är den delade kopian som webben, portalen och schemat läser — och den
+ * är BUNDEN till Prisma av ett prov i API:t
+ * (`maintenance-enum-source.spec.ts`), som kräver exakt likhet åt båda hållen.
+ * `@eken/shared` kan inte importera `@prisma/client`: paketet konsumeras av tre
+ * webbläsar-SPA:er.
+ *
+ * Kopian utan bindning är precis felet den ersätter. `tenant-ai-tools.definition.ts`
+ * hade en egen uppräkning med SJU värden, varav TRE inte finns i databasen
+ * (`APPLIANCE` — singular, `STRUCTURAL`, `PEST`) och fyra saknades. Värdet
+ * castades `as MaintenanceCategory` utan kontroll, så en hyresgäst som skrev
+ * "skadedjur" fick modellen att svara `PEST` och skrivningen att falla i
+ * Postgres — ett runtime-fel som väntade på rätt ord.
+ */
+export const MAINTENANCE_CATEGORIES = [
+  'PLUMBING',
+  'ELECTRICAL',
+  'HEATING',
+  'APPLIANCES',
+  'WINDOWS_DOORS',
+  'LOCKS',
+  'FACADE',
+  'ROOF',
+  'COMMON_AREAS',
+  'CLEANING',
+  'OTHER',
+] as const
+
+export const MAINTENANCE_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const
+
+export type MaintenanceCategoryValue = (typeof MAINTENANCE_CATEGORIES)[number]
+export type MaintenancePriorityValue = (typeof MAINTENANCE_PRIORITIES)[number]
+
+export const MaintenanceCategoryEnum = z.enum(MAINTENANCE_CATEGORIES)
+export const MaintenancePriorityEnum = z.enum(MAINTENANCE_PRIORITIES)
+
+/**
+ * BASEN — det en HYRESGÄST kan säga om sitt eget fel.
+ *
+ * Portalen skickar exakt de här tre fälten. De fem övriga (fastighet, lägenhet,
+ * hyresgäst, prioritet, datum, kostnad) HÄRLEDS server-side ur det aktiva
+ * avtalet — hyresgästen ska inte kunna peka ut en annan fastighet än sin egen,
+ * och prioriteten är hyresvärdens bedömning, inte anmälarens.
+ *
+ * Taken är inte kosmetiska. `description` hade `@MinLength(10)` men inget tak,
+ * och med Fastifys 1 MiB kan en anmälan spränga skuggagentens kontextfönster —
+ * kostnaden per ärende blir då obunden uppåt.
+ */
+export const CreateTicketBaseSchema = z
+  .object({
+    title: z.string().min(3).max(200),
+    description: z.string().min(10).max(4000),
+    category: MaintenanceCategoryEnum.optional(),
+  })
+  // ── .strict() ÄR EN BEHÖRIGHETSGRÄNS HÄR, INTE PEDANTERI ─────────────────
+  //
+  // Zods `.object()` STRYPER okända nycklar i tysthet; DTO:n avvisar dem
+  // (`forbidNonWhitelisted`). För portalen är skillnaden inte kosmetisk: en
+  // hyresgäst som skickar `propertyId` ska få NEJ, inte få fältet bortstruket
+  // utan besked. Schemat och DTO:n måste svara likadant, annars beskriver
+  // schemat ett anrop servern avvisar.
+  //
+  // `.extend()` ärver strikthet, så ägarvägen blir strikt av samma rad.
+  .strict()
+
+/**
+ * ÄGARENS väg: basen plus de sex fält bara en hyresvärd får bestämma.
+ *
+ * `.extend()` och inte en egen uppräkning — delmängdsrelationen ska vara en
+ * FÖLJD av konstruktionen, inte något ett prov råkar kontrollera. Provet
+ * härleder den i sin tur ur schemana (`Object.keys`), så det finns ingen
+ * handskriven lista någonstans i kedjan.
+ */
+export const CreateTicketSchema = CreateTicketBaseSchema.extend({
+  propertyId: z.string().uuid(),
+  unitId: z.string().uuid().optional(),
+  tenantId: z.string().uuid().optional(),
+  priority: MaintenancePriorityEnum.optional(),
+  scheduledDate: IsoDatumSchema.optional(),
+  estimatedCost: z.number().min(0).optional(),
+})
+
+/** Portalens väg ÄR basen. Ingen egen form, ingen egen gräns. */
+export const SubmitTicketSchema = CreateTicketBaseSchema
+
+/** De sex fält som skiljer ägarens väg från hyresgästens. Härledd, inte listad. */
+export const TICKET_OWNER_ONLY_FIELDS = Object.keys(CreateTicketSchema.shape).filter(
+  (k) => !(k in CreateTicketBaseSchema.shape),
+) as ReadonlyArray<keyof (typeof CreateTicketSchema)['shape']>
+
+/** POST /maintenance/:id/comments — hade INGEN DTO alls. */
+export const AddTicketCommentSchema = z.object({
+  content: z.string().min(1).max(4000),
+  isInternal: z.boolean().optional(),
+})
+
+/** POST /portal/maintenance/:id/comment — hyresgästen kan inte skriva internt. */
+export const AddTenantCommentSchema = z
+  .object({
+    content: z.string().min(1).max(4000),
+  })
+  // Strikt av samma skäl: `isInternal` ska AVVISAS, inte tyst strykas.
+  .strict()
+
+export type CreateTicketBaseInput = z.infer<typeof CreateTicketBaseSchema>
+export type CreateTicketInput = z.infer<typeof CreateTicketSchema>
+export type SubmitTicketInput = z.infer<typeof SubmitTicketSchema>
+export type AddTicketCommentInput = z.infer<typeof AddTicketCommentSchema>
+export type AddTenantCommentInput = z.infer<typeof AddTenantCommentSchema>
+
 // ─── Hyresgästportalens inbjudningar (admin) ─────────────────────────────────
 
 /**

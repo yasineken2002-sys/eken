@@ -17,16 +17,7 @@ import {
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { Throttle } from '@nestjs/throttler'
-import {
-  IsEmail,
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsUUID,
-  MinLength,
-  MaxLength,
-} from 'class-validator'
-import { MaintenanceCategory } from '@prisma/client'
+import { IsEmail, IsString, IsOptional, IsUUID, MinLength } from 'class-validator'
 import * as bcrypt from 'bcryptjs'
 import { Public } from '../common/decorators/public.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
@@ -48,6 +39,7 @@ import type { Tenant } from '@prisma/client'
 import { readTenantWithCredentials } from './tenant-credential-read'
 import { TenantBankIdService } from './tenant-bankid.service'
 import { InviteTenantsDto, ResendInvitesDto } from './dto/invite-tenants.dto'
+import { AddTenantCommentDto, SubmitMaintenanceDto } from './dto/submit-maintenance.dto'
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -132,32 +124,6 @@ class ResetPasswordDto {
   password!: string
 }
 
-class SubmitMaintenanceDto {
-  @IsString()
-  @MinLength(3)
-  title!: string
-
-  // ── TAK PÅ DET SOM BETALAS PER TOKEN ────────────────────────────────────
-  // Fältet hade `@MinLength(10)` men inget tak. Med Fastifys standardgräns på
-  // 1 MiB kan en hyresgäst skicka text som spränger modellens kontextfönster i
-  // skuggagenten (etapp 6) — och kostnaden per ärende blir obunden uppåt.
-  // Skuggkörningen har ett eget tak för de rader som redan finns; det här
-  // hindrar nya.
-  @IsString()
-  @MinLength(10)
-  @MaxLength(4000)
-  description!: string
-
-  @IsEnum(MaintenanceCategory)
-  @IsOptional()
-  category?: MaintenanceCategory
-}
-
-class AddCommentDto {
-  @IsString()
-  @MinLength(1)
-  content!: string
-}
 
 // ── Hjälpare ──────────────────────────────────────────────────────────────────
 
@@ -721,7 +687,7 @@ export class TenantPortalController {
   async addMaintenanceComment(
     @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
     @Param('id') ticketId: string,
-    @Body() dto: AddCommentDto,
+    @Body() dto: AddTenantCommentDto,
   ) {
     return this.portalService.addMaintenanceComment(tenant.id, ticketId, dto.content)
   }

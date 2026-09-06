@@ -475,14 +475,22 @@ export class TenantToolExecutorService {
           if (!lease) {
             throw new BadRequestException('Inget aktivt hyresavtal — kan inte skapa felanmälan.')
           }
-          const category =
-            typeof toolInput.category === 'string'
-              ? (toolInput.category as MaintenanceCategory)
-              : MaintenanceCategory.OTHER
-          const priority =
-            typeof toolInput.priority === 'string'
-              ? (toolInput.priority as MaintenancePriority)
-              : MaintenancePriority.NORMAL
+          // VALIDERA, casta inte. `as MaintenanceCategory` är ett PÅSTÅENDE om
+          // ett värde som kommer från en språkmodell som svarar på fritext från
+          // en hyresgäst — alltså det minst betrodda värde systemet hanterar.
+          // Ett okänt värde föll tidigare först i Postgres, som ett 500-fel med
+          // ett obegripligt meddelande. Nu faller det tillbaka på OTHER, vilket
+          // är vad en okänd kategori BETYDER.
+          const arKategori = (v: unknown): v is MaintenanceCategory =>
+            typeof v === 'string' && Object.hasOwn(MaintenanceCategory, v)
+          const arPrioritet = (v: unknown): v is MaintenancePriority =>
+            typeof v === 'string' && Object.hasOwn(MaintenancePriority, v)
+          const category = arKategori(toolInput.category)
+            ? toolInput.category
+            : MaintenanceCategory.OTHER
+          const priority = arPrioritet(toolInput.priority)
+            ? toolInput.priority
+            : MaintenancePriority.NORMAL
 
           const ticket = await this.maintenanceService.create(
             {

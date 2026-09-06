@@ -1,5 +1,5 @@
 {
-  "total": 16,
+  "total": 14,
   "poster": [
     {
       "fil": "apps/api/src/ai/tenant-ai.controller.ts",
@@ -35,10 +35,6 @@
     },
     {
       "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "AddCommentDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
       "klass": "BankIdChooseDto"
     },
     {
@@ -60,10 +56,6 @@
     {
       "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
       "klass": "ResetPasswordDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "SubmitMaintenanceDto"
     }
   ]
 }

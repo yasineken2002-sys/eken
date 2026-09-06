@@ -43,6 +43,10 @@ import {
   CreateSigningRequestSchema,
   InviteTenantsSchema,
   ResendInvitesSchema,
+  CreateTicketSchema,
+  SubmitTicketSchema,
+  AddTicketCommentSchema,
+  AddTenantCommentSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
@@ -76,6 +80,12 @@ import { RenewLeaseDto } from '../../leases/dto/renew-lease.dto'
 import { UpdateAppendixDto } from '../../contracts/dto/update-appendix.dto'
 import { CreateSigningRequestDto } from '../../signing/dto/create-signing-request.dto'
 import { InviteTenantsDto, ResendInvitesDto } from '../../tenant-portal/dto/invite-tenants.dto'
+import {
+  AddTenantCommentDto,
+  SubmitMaintenanceDto,
+} from '../../tenant-portal/dto/submit-maintenance.dto'
+import { CreateMaintenanceTicketDto } from '../../maintenance/dto/create-maintenance-ticket.dto'
+import { AddTicketCommentDto } from '../../maintenance/dto/add-ticket-comment.dto'
 import {
   BulkExportDto,
   MarkSentDto,
@@ -586,6 +596,63 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { onlyNotActivated: true },
     ogiltig: {},
     ogiltigVarfor: 'varken urval eller "bara ej aktiverade" — omsändningen saknar mottagare',
+  },
+  // ─── Felanmälan: EN BAS, TVÅ DELMÄNGDER ───────────────────────────────────
+  {
+    endpoint: 'POST /maintenance',
+    inputTyp: 'CreateTicketInput',
+    schema: CreateTicketSchema,
+    dto: CreateMaintenanceTicketDto,
+    giltig: {
+      title: 'Läckande kran',
+      description: 'Kranen i köket droppar dygnet runt sedan i måndags.',
+      propertyId: '11111111-2222-4333-8444-555555555555',
+    },
+    ogiltig: {
+      title: 'Kran',
+      description: 'Droppar',
+      propertyId: '11111111-2222-4333-8444-555555555555',
+    },
+    ogiltigVarfor:
+      'en beskrivning på sju tecken är ingen felanmälan — och utan tak blir kostnaden per ärende obunden uppåt',
+  },
+  {
+    endpoint: 'POST /portal/maintenance',
+    inputTyp: 'SubmitTicketInput',
+    schema: SubmitTicketSchema,
+    dto: SubmitMaintenanceDto,
+    giltig: {
+      title: 'Läckande kran',
+      description: 'Kranen i köket droppar dygnet runt sedan i måndags.',
+    },
+    // Hyresgästen får INTE peka ut en fastighet — den härleds ur avtalet.
+    ogiltig: {
+      title: 'Läckande kran',
+      description: 'Kranen i köket droppar dygnet runt sedan i måndags.',
+      propertyId: '11111111-2222-4333-8444-555555555555',
+    },
+    ogiltigVarfor:
+      'propertyId är ägarens fält — en hyresgäst som får sätta det kan anmäla fel på någon annans fastighet',
+  },
+  {
+    endpoint: 'POST /maintenance/:id/comments',
+    inputTyp: 'AddTicketCommentInput',
+    schema: AddTicketCommentSchema,
+    dto: AddTicketCommentDto,
+    giltig: { content: 'Rörmokare bokad till torsdag.', isInternal: true },
+    ogiltig: { content: '' },
+    ogiltigVarfor: 'en tom kommentar är ingen kommentar',
+  },
+  {
+    endpoint: 'POST /portal/maintenance/:id/comment',
+    inputTyp: 'AddTenantCommentInput',
+    schema: AddTenantCommentSchema,
+    dto: AddTenantCommentDto,
+    giltig: { content: 'Det droppar fortfarande.' },
+    // `isInternal` är hyresvärdens anteckning om ärendet — inte något den som
+    // anmäler kan skriva om sig själv.
+    ogiltig: { content: 'Det droppar fortfarande.', isInternal: true },
+    ogiltigVarfor: 'en hyresgäst kan inte skriva en INTERN kommentar',
   },
   {
     endpoint: 'POST /deposits',
