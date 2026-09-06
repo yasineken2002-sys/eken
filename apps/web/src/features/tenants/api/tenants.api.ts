@@ -1,4 +1,7 @@
 import { get, patch, post } from '@/lib/api'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { UpdateTenantSchema, AnonymizeTenantSchema } from '@eken/shared'
+import type { UpdateTenantInput, AnonymizeTenantInput } from '@eken/shared'
 import type { Tenant, Invoice, Lease, Unit, Property } from '@eken/shared'
 
 export type LeaseWithUnit = Lease & {
@@ -22,31 +25,25 @@ export type AnonymizeResult = {
 }
 
 export function anonymizeTenant(id: string, reason?: string): Promise<AnonymizeResult> {
-  return post<AnonymizeResult>(`/tenants/${id}/anonymize`, reason ? { reason } : {})
+  // `reason` är valfritt hela vägen: utelämnat blir en tom kropp, som förut.
+  const kropp: AnonymizeTenantInput = reason ? { reason } : {}
+  const kontrakt = kontraktsfel(AnonymizeTenantSchema, kropp)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
+  return post<AnonymizeResult>(`/tenants/${id}/anonymize`, kropp)
 }
 
-export type UpdateTenantInput = {
-  type?: 'INDIVIDUAL' | 'COMPANY'
-  firstName?: string
-  lastName?: string
-  companyName?: string
-  email?: string
-  phone?: string
-  personalNumber?: string
-  orgNumber?: string
-  address?: { street: string; city: string; postalCode: string }
-}
-
-function flattenUpdate(dto: UpdateTenantInput): Record<string, unknown> {
-  const { address, ...rest } = dto
-  return {
-    ...rest,
-    ...(address
-      ? { street: address.street, city: address.city, postalCode: address.postalCode }
-      : {}),
-  }
-}
-
+/**
+ * DEN LOKALA TYPEN OCH `flattenUpdate` ÄR BORTA.
+ *
+ * Webben bar en EGEN `UpdateTenantInput` med en NÄSTLAD `address`, och plattade
+ * den till `street`/`city`/`postalCode` precis före anropet — för att träffa en
+ * DTO som alltid tagit den flata formen. Tre former var alltså i omlopp för
+ * samma skrivning (webbens, schemats och DTO:ns), och plattningen dolde att de
+ * inte var samma.
+ *
+ * Typen kommer nu från @eken/shared och är den flata formen — samma som tråden.
+ * Anroparen skickar det servern tar emot, och ingen översättning behövs.
+ */
 export function fetchTenants(search?: string): Promise<TenantWithCount[]> {
   return get<TenantWithCount[]>('/tenants', search ? { search } : undefined)
 }
@@ -60,7 +57,9 @@ export function fetchTenant(id: string): Promise<TenantDetail> {
 // inte längre exponerad i UI:t.
 
 export function updateTenant(id: string, dto: UpdateTenantInput): Promise<Tenant> {
-  return patch<Tenant>(`/tenants/${id}`, flattenUpdate(dto))
+  const kontrakt = kontraktsfel(UpdateTenantSchema, dto)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
+  return patch<Tenant>(`/tenants/${id}`, dto)
 }
 
 // ── Portal-aktivering (admin) ────────────────────────────────────────────────

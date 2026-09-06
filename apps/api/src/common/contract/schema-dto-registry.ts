@@ -6,6 +6,8 @@ import {
   UpdatePropertySchema,
   ApproveTerminationSchema,
   RejectTerminationSchema,
+  UpdateTenantSchema,
+  AnonymizeTenantSchema,
   CreateReadingSchema,
   CreateSupplierInvoiceSchema,
   CreateTariffSchema,
@@ -33,6 +35,8 @@ import { CreatePropertyDto } from '../../properties/dto/create-property.dto'
 import { UpdatePropertyDto } from '../../properties/dto/update-property.dto'
 import { ApproveTerminationDto } from '../../terminations/dto/approve-termination.dto'
 import { RejectTerminationDto } from '../../terminations/dto/reject-termination.dto'
+import { UpdateTenantDto } from '../../tenants/dto/update-tenant.dto'
+import { AnonymizeTenantDto } from '../../tenants/dto/anonymize-tenant.dto'
 import { CreateMeterDto } from '../../consumption/dto/create-meter.dto'
 import { UpdateMeterDto } from '../../consumption/dto/update-meter.dto'
 import { RecordReadingDto } from '../../consumption/dto/record-reading.dto'
@@ -211,6 +215,26 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { reason: 'Uppsägningen saknar underskrift' },
     ogiltig: { reason: 'x'.repeat(501) },
     ogiltigVarfor: 'motiveringen får vara högst 500 tecken',
+  },
+  {
+    endpoint: 'PATCH /tenants/:id',
+    inputTyp: 'UpdateTenantInput',
+    schema: UpdateTenantSchema,
+    dto: UpdateTenantDto,
+    // FLAT adress. Den nästlade formen fanns bara i webbens egen typ och i det
+    // gamla schemat — DTO:n har alltid tagit street/city/postalCode.
+    giltig: { email: 'ny@example.se', street: 'Ekgatan 1', city: 'Lund' },
+    ogiltig: { email: 'inte-en-adress' },
+    ogiltigVarfor: 'e-postadressen valideras av båda vägarna',
+  },
+  {
+    endpoint: 'POST /tenants/:id/anonymize',
+    inputTyp: 'AnonymizeTenantInput',
+    schema: AnonymizeTenantSchema,
+    dto: AnonymizeTenantDto,
+    giltig: { reason: 'Begäran om radering, ärende 2026-114' },
+    ogiltig: { reason: 'x'.repeat(501) },
+    ogiltigVarfor: 'skälet får vara högst 500 tecken',
   },
   {
     endpoint: 'POST /consumption/meters',
