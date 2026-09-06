@@ -4015,6 +4015,20 @@ model AiAssignment {
   /// (etapp 8–9), så ingenting KAN skrivas. Att skriva ut det är inte pedanteri
   /// — läsytan måste säga det rakt ut, annars godkänner hyresvärden något i tron
   /// att det händer.
+  /// Vilken sorts uppdrag raden är. Se `AiAssignmentKind`.
+  ///
+  /// `TOOL_PROPOSAL` som default är ett FAKTUM: varje rad som fanns när
+  /// kolumnen infördes var ett verktygsförslag — delegationsförfrågningar fanns
+  /// inte. Samma resonemang som `authorityKind DEFAULT 'APPROVAL'`.
+  /// ── IDEMPOTENSEN LIGGER I ETT PARTIELLT INDEX, INTE HÄR ──────────────────
+  ///
+  /// `20260907090000_ai_assignment_kind` skapar
+  /// `AiAssignment_delegation_proposal_unique` över
+  /// `(organizationId, sourceKind, sourceId)` WHERE `kind = 'DELEGATION_PROPOSAL'`.
+  /// Prisma kan inte uttrycka partiella index, så raden bor i SQL — samma sak
+  /// som skuggindexet i `20260905135413_ai_assignment_shadow`.
+  kind AiAssignmentKind @default(TOOL_PROPOSAL)
+
   shadow Boolean @default(false)
 
   /// AGENTENS EGEN SÄKERHET, 0–1. Nullbar därför att den är ett påstående
@@ -4183,6 +4197,31 @@ enum AiExecutionVerdict {
   WOULD_EXECUTE
   NO_DELEGATION
   BLOCKED
+}
+
+/// VILKEN SORTS UPPDRAG RADEN ÄR.
+///
+/// ── VARFÖR ETT EGET FÄLT OCH INTE `shadow` ────────────────────────────────
+///
+/// `shadow` svarar på *utförs något om detta godkänns?* — för ett skuggförslag
+/// är svaret nej, godkännandet är ett FACIT. Det här fältet svarar på något
+/// annat: *vad är raden för sorts sak?* En delegationsförfrågan är inte ett
+/// skuggförslag som råkar handla om en delegation; den utför inget verktyg men
+/// ett ja på den SKAPAR en rättighet. Att låta `shadow: true` bära den hade
+/// gjort "godkännandet gör ingenting" osant för en hel klass av rader.
+///
+/// Två fält, två frågor — se CLAUDE.md om att låna ett fält som svarar på en
+/// annan fråga.
+enum AiAssignmentKind {
+  /// Agenten föreslår att ETT verktyg körs för ETT fall. Skuggläget skriver
+  /// dessa med `shadow: true`; en skarp uppdragskö skulle skriva dem utan.
+  TOOL_PROPOSAL
+
+  /// Agenten föreslår att hyresvärden GER BORT rätten — aldrig att den tar
+  /// den. Planens Del 6: observation → förslag → mänskligt tryck → delegation.
+  /// Föds ur observationslagret när mönstret nått sin tröskel, aldrig ur en
+  /// enskild händelse.
+  DELEGATION_PROPOSAL
 }
 
 enum AiAssignmentStatus {

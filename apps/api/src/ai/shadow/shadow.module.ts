@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bull'
 import { Global, Module } from '@nestjs/common'
 
 import { CronErrorSinkModule } from '../../common/cron/cron-error-sink.module'
+import { ObservationModule } from '../observation/observation.module'
 import { PrismaModule } from '../../common/prisma/prisma.module'
 import { RedisModule } from '../../common/redis/redis.module'
 import { HistoryModule } from '../../history/history.module'
@@ -47,6 +48,8 @@ import { QUEUE_AI_SHADOW } from './shadow.types'
     PrismaModule,
     RedisModule,
     CronErrorSinkModule,
+    // Delegationsförslagen prövas i samma låsta pass — se shadow-sweep.service.
+    ObservationModule,
   ],
   providers: [
     AiShadowQueue,

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 
 import { PrismaModule } from '../../common/prisma/prisma.module'
+import { DelegationProposalService } from './delegation-proposal.service'
 import { ObservationService } from './observation.service'
 
 /**
@@ -12,7 +13,7 @@ import { ObservationService } from './observation.service'
  */
 @Module({
   imports: [PrismaModule],
-  providers: [ObservationService],
-  exports: [ObservationService],
+  providers: [ObservationService, DelegationProposalService],
+  exports: [ObservationService, DelegationProposalService],
 })
 export class ObservationModule {}
