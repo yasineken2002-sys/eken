@@ -33,6 +33,7 @@ import { ConflictException, ForbiddenException, NotFoundException } from '@nestj
 import { PrismaClient } from '@prisma/client'
 
 import { DelegationService, FÖRLÄNGNING_KARENS_DAGAR } from './delegation.service'
+import { SKUGGKALLA_FELANMALAN } from '../shadow/shadow-fields'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -100,6 +101,7 @@ medDb('delegationens livscykel', () => {
 
   afterAll(async () => {
     await prisma.aiDelegation.deleteMany({ where: { organizationId: { in: [orgA, orgB] } } })
+    await prisma.aiAssignment.deleteMany({ where: { organizationId: { in: [orgA, orgB] } } })
     await prisma.user.deleteMany({ where: { organizationId: { in: [orgA, orgB] } } })
     await prisma.organization.deleteMany({ where: { id: { in: [orgA, orgB] } } })
     await prisma.$disconnect()
@@ -121,6 +123,40 @@ medDb('delegationens livscykel', () => {
       // Skapad direkt (inte ur ett ärende) → ingen härkomst, och det syns.
       expect(r?.bornFromAssignmentId).toBeNull()
       expect(d.id).toBe(r?.id)
+    })
+
+    it('KÄLLAN NÄR DEN FINNS: ärendet följer med, inte bara dess id', async () => {
+      // Det HÄR är kolumnen "Född ur". Provet ovan mäter fallet UTAN härkomst;
+      // utan det här mättes relationen aldrig — en `select` som tappade
+      // `bornFromAssignment` hade lämnat båda proven gröna och sidan hade
+      // renderat en rad utan länk tillbaka till det beslut rätten föddes ur.
+      const a = await prisma.aiAssignment.create({
+        data: {
+          organizationId: orgA,
+          shadow: true,
+          sourceKind: SKUGGKALLA_FELANMALAN,
+          sourceId: randomUUID(),
+          toolName: VERKTYG,
+          toolInput: {},
+          title: 'Förslag för ärende T-1',
+          reasoning: 'Därför.',
+          consequence: 'SKUGGLÄGE: ingenting utförs.',
+          undoHint: 'Inget att ångra.',
+          deadline: new Date(Date.now() + 6 * 60 * 60 * 1000),
+          status: 'APPROVED',
+          decidedAt: new Date(),
+          decidedByUserId: agareA,
+        },
+        select: { id: true },
+      })
+      await tjanst.skapa(orgA, { toolName: VERKTYG, bornFromAssignmentId: a.id }, agare(agareA))
+      const [r] = await tjanst.lista(orgA)
+      expect(r?.bornFromAssignmentId).toBe(a.id)
+      // TITELN, inte bara pekaren: det är den som blir länktexten.
+      expect(r?.bornFromAssignment?.title).toBe('Förslag för ärende T-1')
+      expect(r?.bornFromAssignment?.id).toBe(a.id)
+      await prisma.aiDelegation.deleteMany({ where: { organizationId: orgA } })
+      await prisma.aiAssignment.delete({ where: { id: a.id } })
     })
 
     it('statusen är BERÄKNAD ur händelserna, inte läst ur en kolumn', async () => {
