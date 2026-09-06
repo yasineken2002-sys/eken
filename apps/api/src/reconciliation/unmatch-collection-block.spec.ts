@@ -326,7 +326,7 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
       'unmatch_transaction',
       { transactionId: 'tx-inkasso', reason: 'Fel faktura' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -349,7 +349,7 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
       'unmatch_transaction',
       { transactionId: 'tx-partial', reason: 'Fel faktura' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'ACCOUNTANT',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.

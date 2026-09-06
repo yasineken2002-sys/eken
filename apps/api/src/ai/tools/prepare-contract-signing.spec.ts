@@ -86,7 +86,7 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
       'prepare_contract_signing',
       { documentId: 'doc-1' },
       'org-1',
-      'user-1',
+      { kind: 'USER', id: 'user-1' },
       'OWNER',
       // Bindande verktyg kräver bevis på en konsumerad bekräftelse
       // (action-authorization.ts). Testet efterliknar confirm-vägen.
@@ -107,7 +107,7 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
         'prepare_contract_signing',
         { documentId: 'doc-1' },
         'org-1',
-        'user-1',
+        { kind: 'USER', id: 'user-1' },
         'ACCOUNTANT',
       ),
     ).rejects.toBeInstanceOf(ForbiddenException)

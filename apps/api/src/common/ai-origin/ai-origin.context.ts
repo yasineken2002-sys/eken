@@ -55,6 +55,33 @@ export type AiPrincipal =
   | { readonly kind: 'USER'; readonly id: string }
   /** En hyresgäst i `portal`. `id` är en `Tenant.id`. */
   | { readonly kind: 'TENANT'; readonly id: string }
+  /**
+   * ── SYSTEMET, PÅ EN DELEGATION (G1, etapp 8) ─────────────────────────────
+   *
+   * Ingen människa tryckte just nu. Rätten kommer ur en delegation hyresvärden
+   * gav vid ett tidigare tillfälle, och det är den delegationen som är svaret
+   * på "med vilken rätt".
+   *
+   * **BÄR ALDRIG ETT `id`.** Det är inte en förenkling utan hela poängen: ett
+   * `id`-fält hade bjudit in att stoppa in ägarens `User.id` "eftersom det ändå
+   * var hen som delegerade", och då hade raden sagt att en människa utförde
+   * något hen inte gjorde. Planens Del 5, ordagrant: *en agent ska kunna skriva
+   * utan att låtsas vara en människa.*
+   *
+   * `organizationId` står här och inte som en `id`-omdöpning därför att slaget
+   * ska kunna bäras utan att någon frestas slå upp det i `User`. Gränsen är
+   * organisationen; subjektet finns inte.
+   *
+   * `origin` är en union med ETT värde i dag. Den finns för att nästa ursprung
+   * — ett cronjobb, en återupptagning — ska bli ett nytt värde och inte ett
+   * `delegationId: null`, som hade betytt två saker.
+   */
+  | {
+      readonly kind: 'SYSTEM'
+      readonly organizationId: string
+      readonly origin: 'delegation'
+      readonly delegationId: string
+    }
 
 type AiOrigin = {
   /** Id på den `AiToolExecution`-rad som skrivs efter körningen. */
@@ -65,7 +92,7 @@ type AiOrigin = {
 
 const storage = new AsyncLocalStorage<AiOrigin>()
 
-const GILTIGA_SLAG = new Set<AiPrincipal['kind']>(['USER', 'TENANT'])
+const GILTIGA_SLAG = new Set<AiPrincipal['kind']>(['USER', 'TENANT', 'SYSTEM'])
 
 /**
  * EN AI-KÖRNING UTAN DEKLARERAD UPPDRAGSGIVARE SKA INTE KUNNA STARTA.
@@ -97,6 +124,30 @@ export function assertUppdragsgivare(u: AiPrincipal): asserts u is AiPrincipal {
   if (!GILTIGA_SLAG.has(u.kind)) {
     throw new Error(`AI-körning med okänt uppdragsgivarslag: ${JSON.stringify(u.kind)}`)
   }
+
+  // ── PER SLAG, INTE EN GEMENSAM KONTROLL ────────────────────────────────
+  //
+  // De två sorterna bär OLIKA fält, och en kontroll som bara frågade efter
+  // `id` hade antingen släppt igenom ett SYSTEM utan delegation (fältet finns
+  // inte) eller krävt ett `id` som SYSTEM per konstruktion inte har. Båda
+  // felen är tysta: det första skriver en rad ingen kan härleda, det andra
+  // gör slaget oanvändbart.
+  if (u.kind === 'SYSTEM') {
+    if (typeof u.organizationId !== 'string' || u.organizationId.trim() === '') {
+      throw new Error('AI-körning som SYSTEM utan organizationId')
+    }
+    if (u.origin !== 'delegation') {
+      throw new Error(`AI-körning som SYSTEM med okänt ursprung: ${JSON.stringify(u.origin)}`)
+    }
+    // DELEGATIONEN ÄR SVARET PÅ "MED VILKEN RÄTT". Utan den är slaget bara
+    // "ingen människa", vilket är det tillstånd hela aktörsmodellen finns för
+    // att göra omöjligt.
+    if (typeof u.delegationId !== 'string' || u.delegationId.trim() === '') {
+      throw new Error('AI-körning som SYSTEM utan delegationId')
+    }
+    return
+  }
+
   if (typeof u.id !== 'string' || u.id.trim() === '') {
     throw new Error(`AI-körning utan uppdragsgivar-id (slag ${u.kind})`)
   }

@@ -4118,6 +4118,41 @@ enum AiAssignmentStatus {
   /// Tidsgränsen passerade utan beslut. SYNLIGT: cronen notifierar mottagaren.
   /// Ett tyst förfall är förbjudet (planens Del 12).
   EXPIRED
+
+  /// ── DE TRE UTFÖRANDESTATUSARNA (etapp 8) ─────────────────────────────────
+  ///
+  /// EXECUTED  uppdraget utfördes; `aiToolExecutionId` pekar på spåret.
+  /// FAILED    utförandet försöktes och kastade; `statusReason` bär felet.
+  /// LAPSED    förutsättningarna höll inte längre vid omprövningen FÖRE
+  ///           effekten, så ingenting utfördes. Planens Del 12: *"Skulle bokat
+  ///           rörmokare — du hade redan gjort det 08:14."*
+  ///
+  /// ── DE HAR INGEN SKRIVARE I DAG, OCH DET ÄR TILLÅTET HÄR ────────────────
+  ///
+  /// Planens Del 12 sa uttryckligen att de tre "läggs till av den PR som bygger
+  /// det som skriver dem". Den regeln finns för att ett enumvärde utan skrivare
+  /// normalt är ett löfte — en status läsytan måste hantera men som aldrig
+  /// uppstår, alltså död kod som ser ut som täckning.
+  ///
+  /// Undantaget vilar på två saker, och båda är mätbara:
+  ///
+  ///   1. SKRIVAREN ÄR IDENTIFIERAD, inte påhittad: utföraren i skarpt läge,
+  ///      vars övriga sömmar (SYSTEM-principalen, `DelegationProof`,
+  ///      `authorityKind` i spåret) landar i SAMMA PR som den här raden. Utan
+  ///      statusarna kan den aktörsmodellen inte prövas end-to-end — ett
+  ///      utförande som inte kan rapportera sitt utfall är inte prövbart.
+  ///   2. DE FÅR INTE UPPSTÅ I DRIFT FÖRRÄN SKRIVAREN FINNS, och det är
+  ///      BEVISAT: `assignment-status-writers.spec.ts` svepar produktionskoden
+  ///      efter varje väg som kan sätta dem på en `AiAssignment` och kräver
+  ///      NOLL. Provet har en kanariefågel — en injicerad skrivning MÅSTE
+  ///      hittas — så nollan betyder "ingen väg finns", inte "svepet tittade
+  ///      på fel sak".
+  ///
+  /// Den dag utföraren byggs blir provet rött, och då ska det bytas mot ett som
+  /// kräver att skrivaren finns. Att det måste röras är själva poängen.
+  EXECUTED
+  FAILED
+  LAPSED
 }
 
 /// VAD EN AI-VERKTYGSKÖRNING FAKTISKT ORSAKADE.

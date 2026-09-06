@@ -57,7 +57,7 @@ describe('AI-gränsen kopplar in ursprungskontexten', () => {
       return Promise.resolve({ success: true, message: 'ok' })
     }
 
-    await svc.executeTool('get_invoices', {}, 'org-1', 'user-1', 'OWNER')
+    await svc.executeTool('get_invoices', {}, 'org-1', { kind: 'USER', id: 'user-1' }, 'OWNER')
 
     expect(seen).toBeDefined()
     // Samma id som verktygsloggen får — annars pekar verifikatets referens fel.

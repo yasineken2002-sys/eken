@@ -794,7 +794,7 @@ export class AiAssistantService {
               tu.name,
               tu.input as Record<string, unknown>,
               organizationId,
-              userId,
+              { kind: 'USER', id: userId },
               userRole,
               { conversationId: conversation.id },
             )
@@ -1046,7 +1046,7 @@ export class AiAssistantService {
         toolName,
         toolInput,
         organizationId,
-        userId,
+        { kind: 'USER', id: userId },
         userRole,
         { conversationId, confirmedAt: new Date(), actionProof },
       )

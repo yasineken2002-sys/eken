@@ -438,7 +438,9 @@ export class AiAssistantController {
                 tu.name,
                 tu.input as Record<string, unknown>,
                 organizationId,
-                user.sub,
+                // SLAGET ÄR EXPLICIT. Ingen tyst default: en ny anropsväg måste välja
+                // vem körningen sker på uppdrag av för att alls kompilera.
+                { kind: 'USER', id: user.sub },
                 user.role,
                 { conversationId: conversation!.id },
               )
