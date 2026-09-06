@@ -26,6 +26,7 @@
     "knowledge:generate": "ts-node scripts/generate-legal-knowledge.ts",
     "knowledge:embed": "node --env-file-if-exists=.env -r ts-node/register scripts/embed-legal-knowledge.ts",
     "knowledge:eval": "node --env-file-if-exists=.env -r ts-node/register scripts/eval-legal-knowledge.ts",
+    "eval:shadow": "node --env-file-if-exists=.env -r ts-node/register/transpile-only scripts/eval-shadow-agent.ts",
     "db:studio": "prisma studio",
     "authz:golden": "UPDATE_AUTHZ_GOLDEN=1 jest src/common/authz/authz-surface.spec.ts --runInBand",
     "authz:objects": "UPDATE_OBJECT_SCOPE=1 jest src/common/authz/object-scope.spec.ts --runInBand",

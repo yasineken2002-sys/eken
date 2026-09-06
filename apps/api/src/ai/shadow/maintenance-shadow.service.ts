@@ -577,8 +577,28 @@ export function byggPrompt(
 ): string {
   return [
     'Du är en assistent åt en svensk hyresvärd. En felanmälan har REDAN registrerats.',
-    'Din uppgift är att välja ETT av tre utfall. Ingenting du föreslår utförs —',
-    'en människa läser förslaget och säger om det var rätt.',
+    'Din uppgift är att TRIAGERA den: bedöma vad ärendet gäller, hur brådskande',
+    'det är, och vilket nästa steg som är rimligt. Du väljer ETT av tre utfall.',
+    'Ingenting du föreslår utförs — en människa läser förslaget och säger om det',
+    'var rätt.',
+    '',
+    // ── VARFÖR TRIAGERINGEN STÅR UTSKRIVEN ──────────────────────────────
+    //
+    // Prompten sa tidigare bara "föreslå nästa åtgärd". Uppmätt på mätkorpusen
+    // (2026-09-07, 52 ärenden): modellen valde då `create_inspection` 26 gånger
+    // mot facits 4 — den läste "nästa åtgärd" som "skicka någon att titta", för
+    // varje fel. Åtgärdsträffen låg på 44 %.
+    //
+    // Raden nedan säger vad en besiktning ÄR till för, i stället för att lita
+    // på att verktygsnamnet räcker. Den är en avgränsning, inte en instruktion
+    // om vilket svar som är rätt: ett ärende som verkligen kräver platsbesök
+    // ska fortfarande få en besiktning.
+    '## Vad ett vanligt ärende leder till',
+    'De flesta felanmälningar ska TRIAGERAS — rätt kategori, rätt prioritet, rätt',
+    'status — inte besiktigas. En besiktning föreslås när något måste BEDÖMAS PÅ',
+    'PLATS innan det går att hantera (en spricka, en fuktfläck, en okänd lukt),',
+    'inte för att ett känt fel ska lagas. Rör ärendet i stället en fråga från',
+    'hyresgästen, ett svar eller en väntetid, är det ett meddelande som behövs.',
     '',
     '## Felanmälan',
     // ── AVGRÄNSAD OCH DEKLARERAD SOM DATA ────────────────────────────────
@@ -600,7 +620,22 @@ export function byggPrompt(
     historik.length > 0 ? historik.join('\n') : '(ingen historik)',
     '</historik>',
     '',
-    `## Verktyg du får föreslå: ${verktyg.join(', ')}`,
+    // ── MENYN BÄR SIN EGEN BETYDELSE ────────────────────────────────────
+    //
+    // Raden var tidigare en naken lista med verktygsNAMN, och modellen fick
+    // gissa vad de betyder. Uppmätt på mätkorpusen (50 ärenden, 2026-09-07):
+    // den föreslog `create_inspection` 29 gånger där facit sa
+    // `update_maintenance_status` 28 — alltså valde den nästan alltid det
+    // verktyg vars NAMN lät mest som "någon borde titta på det". Åtgärdsträff
+    // 38 %.
+    //
+    // Etiketterna läses ur VERKTYGSKATALOGEN och skrivs inte här: katalogen är
+    // enda sanningskällan för hur ett verktyg presenteras, och en andra lista
+    // hade glidit första gången någon döpte om något. Katalogen KASTAR dessutom
+    // för ett verktyg utan etikett, så ett nytt skuggverktyg kan inte tyst få
+    // en tom rad.
+    '## Verktyg du får föreslå',
+    ...verktyg.map((n) => `- ${n}: ${verktygsEtikett(n)}`),
     '',
     // ── UTFALLEN STÅR I PROMPTEN, INTE BARA I SCHEMAT ────────────────────
     //
@@ -733,4 +768,28 @@ export function tolkaVerktygsanrop(input: unknown): {
 export function fragetext(fält: string, ärendenummer: string): string {
   const f = QuestionService.fält(fält)
   return `${f ? f.etikett : fält} för ärende ${ärendenummer}?`
+}
+
+/**
+ * Verktygets etikett i klartext, ur katalogen.
+ *
+ * `menuLabel` och inte `label`: menyformen är imperativ ("Uppdatera felanmälans
+ * status") och läses som en sak man kan be om, vilket är precis vad raden i
+ * prompten är. `label` är pågående form och hade beskrivit något som redan
+ * händer.
+ *
+ * KASTAR för ett okänt namn. Ett verktyg som saknar etikett ska inte kunna
+ * hamna i menyn som en tom rad — det är samma fail-closed som katalogens egen
+ * byggare gör, och skälet är detsamma: luckorna uppstod av tysta fallbacks.
+ */
+function verktygsEtikett(namn: string): string {
+  // Lokalt uppslag för att hålla modulens toppimporter fria från katalogen i
+  // den heta vägen; prompten byggs en gång per ärende, inte per token.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildToolCatalog } = require('../tools/ai-tools.catalog') as {
+    buildToolCatalog: () => Array<{ name: string; menuLabel: string }>
+  }
+  const post = buildToolCatalog().find((e) => e.name === namn)
+  if (!post) throw new Error(`Verktyget ${namn} saknas i katalogen och kan inte presenteras.`)
+  return post.menuLabel
 }
