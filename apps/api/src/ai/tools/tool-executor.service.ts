@@ -11,7 +11,8 @@ import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
-import { InvoicesService, toPaymentMethod } from '../../invoices/invoices.service'
+import { PaymentMethodSchema } from '@eken/shared'
+import { InvoicesService } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
 import { LeasesService } from '../../leases/leases.service'
@@ -1455,7 +1456,21 @@ export class ToolExecutorService {
           await this.invoicesService.markAsPaidManually(
             paidInvoiceId,
             organizationId,
-            toPaymentMethod(toolInput.paymentMethod),
+            // SAMMA schema som människovägen, och det MÅSTE kasta.
+            //
+            // Här stod först `PaymentMethodSchema.catch('MANUAL').parse(...)`.
+            // `.catch()` gör att `.parse()` ALDRIG kastar: 'Bankgiro', 42 och ''
+            // blev alla tyst MANUAL — exakt den gissning `toPaymentMethod` togs
+            // bort för, och exakt det migrationen i samma ändring vägrar göra.
+            // Kommentaren påstod dessutom motsatsen om koden.
+            //
+            // Människovägen har `@IsEnum` före sitt `?? 'MANUAL'`, så där
+            // defaultas bara ett UTELÄMNAT fält. Anthropics verktygs-API
+            // validerar inte modellens svar mot `input_schema` — den garantin
+            // saknas alltså här och måste finnas i koden.
+            toolInput.paymentMethod === undefined
+              ? 'MANUAL'
+              : PaymentMethodSchema.parse(toolInput.paymentMethod),
             userId,
             'USER',
             {

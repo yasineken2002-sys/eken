@@ -240,8 +240,8 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     inputTyp: 'RegisterPaymentInput',
     schema: RegisterPaymentSchema,
     dto: RegisterPaymentDto,
-    giltig: { amount: 1250, paymentMethod: 'Bankgiro', reference: '1234567' },
-    ogiltig: { amount: 0, paymentMethod: 'Bankgiro' },
+    giltig: { amount: 1250, paymentMethod: 'BANK', reference: '1234567' },
+    ogiltig: { amount: 0, paymentMethod: 'BANK' },
     ogiltigVarfor: 'ett inbetalt belopp kan inte vara noll',
   },
   {
@@ -345,8 +345,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     dto: MarkPaidDto,
     giltig: { paidAmount: 12000, paymentMethod: 'BANK' },
     ogiltig: { paidAmount: 12000, paymentMethod: 'Bankgiro' },
-    ogiltigVarfor:
-      'Bankgiro är en ETIKETT, inte enumvärdet — exakt den form fakturavägen skickar (G3)',
+    ogiltigVarfor: 'Bankgiro är en ETIKETT, inte ett enumvärde — se betalsättsprovet nedan',
   },
   {
     endpoint: 'POST /avisering/:id/credit',

@@ -17,7 +17,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
-import { InvoicesService, toPaymentMethod } from './invoices.service'
+import { InvoicesService } from './invoices.service'
 import { CreditNoteService } from './credit-note.service'
 import { PdfService } from './pdf.service'
 import { CreateInvoiceDto } from './dto/create-invoice.dto'
@@ -218,11 +218,14 @@ export class InvoicesController {
     return this.invoicesService.markAsPaidManually(
       id,
       organizationId,
-      toPaymentMethod(dto.paymentMethod),
+      // INGEN textmappning längre. Kroppen bär enumen; utelämnat = MANUAL, och
+      // det är ett explicit val och inte en tyst reserv för något okänt.
+      dto.paymentMethod ?? 'MANUAL',
       user.sub,
       'USER',
       {
         enteredAmount: dto.amount,
+        ...(dto.paymentMethodRaw ? { paymentMethodRaw: dto.paymentMethodRaw } : {}),
         ...(dto.reference ? { reference: dto.reference } : {}),
         ...(dto.paidAt ? { paidAt: new Date(dto.paidAt) } : {}),
       },

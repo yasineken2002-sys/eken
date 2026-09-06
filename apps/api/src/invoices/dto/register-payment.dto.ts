@@ -1,5 +1,14 @@
 import type { RegisterPaymentInput, SammaNycklar } from '@eken/shared'
-import { IsNumber, IsOptional, IsPositive, IsString, IsDateString } from 'class-validator'
+import {
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+} from 'class-validator'
+import { PaymentMethod } from '@prisma/client'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 /**
@@ -23,11 +32,34 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   amount!: number
 
   @ApiPropertyOptional({
-    description: 'Betalningssätt (Bankgiro, Plusgiro, Swish, Kontant, Autogiro)',
+    enum: PaymentMethod,
+    description:
+      'Betalningssätt: BANK, CASH, SWISH eller MANUAL. Utelämnat = MANUAL. ' +
+      'OBS: tog tidigare emot etiketter som "Bankgiro" — de översätts numera i ' +
+      'klienten och avvisas här.',
+  })
+  /**
+   * SAMMA ENUM SOM AVIN. Var tidigare fri text som `toPaymentMethod` mappade
+   * tyst — en felstavning blev `MANUAL` utan att något sa ifrån. Utelämnat
+   * betyder `MANUAL`, och den defaulten sätts i tjänsten.
+   */
+  @IsOptional()
+  @IsEnum(PaymentMethod, {
+    message: `Betalningssättet måste vara ett av ${Object.values(PaymentMethod).join(', ')}`,
+  })
+  paymentMethod?: PaymentMethod
+
+  /** Etiketten operatören valde ('Plusgiro'). Bevaras bredvid enumen. */
+  @ApiPropertyOptional({
+    example: 'Plusgiro',
+    description:
+      'Etiketten som visades för operatören. Sparas på betalningsraden så att ' +
+      'skillnaden mellan bankgiro/plusgiro/autogiro inte går förlorad i enumen.',
   })
   @IsOptional()
   @IsString()
-  paymentMethod?: string
+  @MaxLength(60)
+  paymentMethodRaw?: string
 
   @ApiPropertyOptional({ description: 'OCR/referens' })
   @IsOptional()
