@@ -388,7 +388,11 @@ medDb('effektspåret skrivs av produktionsvägen', () => {
       'create_maintenance_ticket',
       { title: titel, description: 'Kranen droppar.' },
       tenantId,
-      { kind: 'USER', id: orgId },
+      // HYRESGÄSTVÄGEN har en EGEN exekverare med en egen signatur: fjärde
+      // argumentet är `organizationId`, inte en principal. `TenantToolExecutorService`
+      // öppnar `runAsAi` med `{ kind: 'TENANT' }` själv — hyresgästen ÄR
+      // uppdragsgivaren, och det finns inget val att göra vid anropet.
+      orgId,
       { actionProof: { claimed: true } },
     )
     expect(resultat.success).toBe(true)
