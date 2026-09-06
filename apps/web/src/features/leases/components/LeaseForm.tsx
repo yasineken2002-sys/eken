@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
+import type { DefaultValues } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
@@ -311,6 +312,100 @@ function LockHint({ route }: { route: LeaseLockRoute }) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+/**
+ * FORMULÄRETS DEFAULTVÄRDEN — exporterade, inte kopierade.
+ *
+ * Låg tidigare inline i `useForm`. Provet fick då skriva av dem, och en
+ * handskriven kopia mäter kopian: `renewalPeriodMonths: 12` stod i
+ * komponenten men inte i avskriften, så provet var grönt medan formuläret
+ * var oskickbart. Det kostade en CI-körning till.
+ *
+ * Nu läser provet SAMMA funktion som komponenten. En default som läggs till
+ * här hamnar i provet utan att någon behöver minnas det.
+ */
+export function byggDefaultvarden(
+  defaultValues?: Partial<CreateLeaseWithTenantInput>,
+  initialPropertyId?: string,
+): DefaultValues<FormValues> {
+  const today = new Date().toISOString().slice(0, 10)
+  return {
+    propertyId: initialPropertyId ?? '',
+    unitId: defaultValues?.unitId ?? '',
+    tenantMode: defaultValues?.existingTenantId ? 'existing' : 'new',
+    existingTenantId: defaultValues?.existingTenantId ?? '',
+    newTenantType: 'INDIVIDUAL',
+    firstName: '',
+    lastName: '',
+    companyName: '',
+    email: '',
+    phone: '',
+    personalNumber: '',
+    orgNumber: '',
+    street: '',
+    city: '',
+    postalCode: '',
+    monthlyRent: defaultValues?.monthlyRent ?? 0,
+    depositAmount: defaultValues?.depositAmount ?? 0,
+    startDate: defaultValues?.startDate ?? today,
+    endDate: defaultValues?.endDate ?? '',
+    leaseType: defaultValues?.leaseType ?? 'INDEFINITE',
+    // FÖRNYELSEPERIOD hör bara till TIDSBEGRÄNSADE avtal — ett tillsvidareavtal
+    // förnyas inte, det löper. Den fasta 12:an sattes oavsett avtalstyp, medan
+    // standardtypen är INDEFINITE: formulärets normalläge påstod alltså en
+    // förnyelseperiod på ett avtal som inte kan ha en, och regel 3 fällde det
+    // på ett fält som bara renderas för FIXED_TERM. Tyst blockerare, samma
+    // klass som slutdatumet och indexfälten.
+    ...(defaultValues?.renewalPeriodMonths != null
+      ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
+      : (defaultValues?.leaseType ?? 'INDEFINITE') === 'FIXED_TERM'
+        ? { renewalPeriodMonths: 12 }
+        : {}),
+    // INGEN FÖRIFYLLNING. `?? 3` gällde oavsett enhetstyp, medan lagens
+    // minimum är tre månader för bostad och nio för lokal
+    // (`leases.compliance.ts`, `minNoticePeriodMonths`). För en lokal
+    // förifylldes alltså ett tal servern avvisar med 400. Att i stället
+    // förifylla 3/9 här hade duplicerat regeln i klienten — samma dubblering
+    // schemats docblock avvisar. Lämnas fältet tomt sätter servern lagens
+    // minimum för den faktiska enheten.
+    ...(defaultValues?.noticePeriodMonths != null
+      ? { noticePeriodMonths: defaultValues.noticePeriodMonths }
+      : {}),
+
+    includesHeating: defaultValues?.includesHeating ?? true,
+    includesWater: defaultValues?.includesWater ?? true,
+    includesHotWater: defaultValues?.includesHotWater ?? true,
+    includesElectricity: defaultValues?.includesElectricity ?? false,
+    includesInternet: defaultValues?.includesInternet ?? false,
+    includesCleaning: defaultValues?.includesCleaning ?? false,
+    includesParking: defaultValues?.includesParking ?? false,
+    includesStorage: defaultValues?.includesStorage ?? false,
+    includesLaundry: defaultValues?.includesLaundry ?? true,
+
+    ...(defaultValues?.parkingFee != null ? { parkingFee: defaultValues.parkingFee } : {}),
+    ...(defaultValues?.storageFee != null ? { storageFee: defaultValues.storageFee } : {}),
+    ...(defaultValues?.garageFee != null ? { garageFee: defaultValues.garageFee } : {}),
+
+    usagePurpose: defaultValues?.usagePurpose ?? '',
+    petsAllowed: defaultValues?.petsAllowed ?? 'REQUIRES_APPROVAL',
+    petsApprovalNotes: defaultValues?.petsApprovalNotes ?? '',
+    sublettingAllowed: defaultValues?.sublettingAllowed ?? false,
+    requiresHomeInsurance: defaultValues?.requiresHomeInsurance ?? true,
+
+    indexClauseType: defaultValues?.indexClauseType ?? 'NONE',
+    ...(defaultValues?.indexBaseYear != null ? { indexBaseYear: defaultValues.indexBaseYear } : {}),
+    indexAdjustmentDate: defaultValues?.indexAdjustmentDate ?? '',
+    ...(defaultValues?.indexMaxIncrease != null
+      ? { indexMaxIncrease: defaultValues.indexMaxIncrease }
+      : {}),
+    ...(defaultValues?.indexMinIncrease != null
+      ? { indexMinIncrease: defaultValues.indexMinIncrease }
+      : {}),
+    indexNotes: defaultValues?.indexNotes ?? '',
+
+    specialTerms: defaultValues?.specialTerms ?? '',
+  }
+}
+
 export function LeaseForm({
   defaultValues,
   initialPropertyId,
@@ -321,7 +416,6 @@ export function LeaseForm({
   submitLabel = 'Spara som utkast',
   leaseStatus,
 }: Props) {
-  const today = new Date().toISOString().slice(0, 10)
   // Edit-lås: aktivt kontrakt → bindande fält låsta (T1.1a-backend speglas här).
   const isActiveLock = mode === 'edit' && leaseStatus === 'ACTIVE'
   const lockedSet = new Set<string>(LEASE_ACTIVE_LOCKED_UI_FIELDS)
@@ -342,76 +436,7 @@ export function LeaseForm({
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      propertyId: initialPropertyId ?? '',
-      unitId: defaultValues?.unitId ?? '',
-      tenantMode: defaultValues?.existingTenantId ? 'existing' : 'new',
-      existingTenantId: defaultValues?.existingTenantId ?? '',
-      newTenantType: 'INDIVIDUAL',
-      firstName: '',
-      lastName: '',
-      companyName: '',
-      email: '',
-      phone: '',
-      personalNumber: '',
-      orgNumber: '',
-      street: '',
-      city: '',
-      postalCode: '',
-      monthlyRent: defaultValues?.monthlyRent ?? 0,
-      depositAmount: defaultValues?.depositAmount ?? 0,
-      startDate: defaultValues?.startDate ?? today,
-      endDate: defaultValues?.endDate ?? '',
-      leaseType: defaultValues?.leaseType ?? 'INDEFINITE',
-      ...(defaultValues?.renewalPeriodMonths != null
-        ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
-        : { renewalPeriodMonths: 12 }),
-      // INGEN FÖRIFYLLNING. `?? 3` gällde oavsett enhetstyp, medan lagens
-      // minimum är tre månader för bostad och nio för lokal
-      // (`leases.compliance.ts`, `minNoticePeriodMonths`). För en lokal
-      // förifylldes alltså ett tal servern avvisar med 400. Att i stället
-      // förifylla 3/9 här hade duplicerat regeln i klienten — samma dubblering
-      // schemats docblock avvisar. Lämnas fältet tomt sätter servern lagens
-      // minimum för den faktiska enheten.
-      ...(defaultValues?.noticePeriodMonths != null
-        ? { noticePeriodMonths: defaultValues.noticePeriodMonths }
-        : {}),
-
-      includesHeating: defaultValues?.includesHeating ?? true,
-      includesWater: defaultValues?.includesWater ?? true,
-      includesHotWater: defaultValues?.includesHotWater ?? true,
-      includesElectricity: defaultValues?.includesElectricity ?? false,
-      includesInternet: defaultValues?.includesInternet ?? false,
-      includesCleaning: defaultValues?.includesCleaning ?? false,
-      includesParking: defaultValues?.includesParking ?? false,
-      includesStorage: defaultValues?.includesStorage ?? false,
-      includesLaundry: defaultValues?.includesLaundry ?? true,
-
-      ...(defaultValues?.parkingFee != null ? { parkingFee: defaultValues.parkingFee } : {}),
-      ...(defaultValues?.storageFee != null ? { storageFee: defaultValues.storageFee } : {}),
-      ...(defaultValues?.garageFee != null ? { garageFee: defaultValues.garageFee } : {}),
-
-      usagePurpose: defaultValues?.usagePurpose ?? '',
-      petsAllowed: defaultValues?.petsAllowed ?? 'REQUIRES_APPROVAL',
-      petsApprovalNotes: defaultValues?.petsApprovalNotes ?? '',
-      sublettingAllowed: defaultValues?.sublettingAllowed ?? false,
-      requiresHomeInsurance: defaultValues?.requiresHomeInsurance ?? true,
-
-      indexClauseType: defaultValues?.indexClauseType ?? 'NONE',
-      ...(defaultValues?.indexBaseYear != null
-        ? { indexBaseYear: defaultValues.indexBaseYear }
-        : {}),
-      indexAdjustmentDate: defaultValues?.indexAdjustmentDate ?? '',
-      ...(defaultValues?.indexMaxIncrease != null
-        ? { indexMaxIncrease: defaultValues.indexMaxIncrease }
-        : {}),
-      ...(defaultValues?.indexMinIncrease != null
-        ? { indexMinIncrease: defaultValues.indexMinIncrease }
-        : {}),
-      indexNotes: defaultValues?.indexNotes ?? '',
-
-      specialTerms: defaultValues?.specialTerms ?? '',
-    },
+    defaultValues: byggDefaultvarden(defaultValues, initialPropertyId),
   })
 
   const leaseType = watch('leaseType')
@@ -456,13 +481,16 @@ export function LeaseForm({
   // Hyresgästens kontaktadress kan i 99% av fallen härledas från lägenheten
   // — gör fälten valfria via en explicit toggle. Skickas inte alls om av.
   const [showAddressOverride, setShowAddressOverride] = useState(false)
-  // Slutdatumet är TIDSBESTÄMDA avtals fält. Inputen renderas bara för
+  // Slutdatum och förnyelseperiod är TIDSBESTÄMDA avtals fält. Inputen renderas bara för
   // FIXED_TERM, men RHF behåller värdet när användaren byter till INDEFINITE —
   // och submit skickade det då vidare. Med regel 3b i schemat hade det blivit
   // ett fel på ett fält som inte finns på skärmen, alltså exakt den blockerare
   // som tomma indexsträngar orsakade. Värdet rensas i stället vid bytet.
   useEffect(() => {
-    if (leaseType !== 'FIXED_TERM') setValue('endDate', '')
+    if (leaseType !== 'FIXED_TERM') {
+      setValue('endDate', '')
+      setValue('renewalPeriodMonths', undefined)
+    }
   }, [leaseType, setValue])
 
   useEffect(() => {

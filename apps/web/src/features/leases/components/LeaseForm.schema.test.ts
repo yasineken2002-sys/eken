@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { schema } from './LeaseForm'
+import { byggDefaultvarden, schema } from './LeaseForm'
 
 /**
  * FORMULÄRETS NORMALLÄGE MÅSTE PASSERA SITT EGET SCHEMA.
@@ -29,42 +29,38 @@ import { schema } from './LeaseForm'
  * Kopian är ändå värd sitt pris: den fäller på sekunder i stället för minuter,
  * och den pekar ut FÄLTET i stället för en modal som inte stängdes.
  */
-const normallage = {
-  propertyId: 'p1',
+/**
+ * KOMPONENTENS EGNA DEFAULTVÄRDEN, inte en avskrift av dem.
+ *
+ * Här stod först en handskriven kopia, och den kostade en CI-körning:
+ * `renewalPeriodMonths: 12` fanns i komponenten men inte i avskriften, så
+ * provet var grönt medan formuläret var oskickbart. En kopia mäter kopian.
+ *
+ * De fyra fälten nedan är sådant ANVÄNDAREN fyller i — de har inget default
+ * och måste anges för att kroppen ska vara komplett.
+ */
+const normallage = () => ({
+  ...byggDefaultvarden(undefined, 'p1'),
   unitId: '11111111-2222-4333-8444-555555555555',
-  tenantMode: 'new' as const,
-  existingTenantId: '',
-  newTenantType: 'INDIVIDUAL' as const,
   firstName: 'Anna',
   lastName: 'Ek',
   email: 'anna@ek.se',
-  monthlyRent: 12000,
-  startDate: '2026-01-01',
-  // Fälten som fällde formuläret. Alla tomma, alla i sitt defaultläge.
-  endDate: '',
-  leaseType: 'INDEFINITE' as const,
-  usagePurpose: '',
-  petsApprovalNotes: '',
-  indexClauseType: 'NONE' as const,
-  indexAdjustmentDate: '',
-  indexNotes: '',
-  specialTerms: '',
-}
+})
 
 describe('LeaseForms schema mot formulärets egna defaultvärden', () => {
   it('DEN AVGÖRANDE: normalläget går att skicka', () => {
-    const utfall = schema.safeParse(normallage)
+    const utfall = schema.safeParse(normallage())
     const fel = utfall.success ? [] : utfall.error.issues.map((i) => i.path.join('.'))
     expect(fel).toEqual([])
   })
 
   it('tomt slutdatum blir UTELÄMNAT, inte ett ogiltigt datum', () => {
-    const utfall = schema.safeParse(normallage)
+    const utfall = schema.safeParse(normallage())
     expect(utfall.success && utfall.data.endDate).toBeUndefined()
   })
 
   it('ett tidsbegränsat avtal utan slutdatum fälls — på ett fält som SYNS', () => {
-    const utfall = schema.safeParse({ ...normallage, leaseType: 'FIXED_TERM' })
+    const utfall = schema.safeParse({ ...normallage(), leaseType: 'FIXED_TERM' })
     expect(utfall.success).toBe(false)
     if (!utfall.success) {
       // Slutdatumsfältet renderas för FIXED_TERM, så felet har en plats.
@@ -73,12 +69,12 @@ describe('LeaseForms schema mot formulärets egna defaultvärden', () => {
   })
 
   it('KANARIEFÅGEL: ett ogiltigt datum avvisas ÄNDÅ — översättningen är inte ett hål', () => {
-    const utfall = schema.safeParse({ ...normallage, endDate: '30 juni 2026' })
+    const utfall = schema.safeParse({ ...normallage(), endDate: '30 juni 2026' })
     expect(utfall.success).toBe(false)
   })
 
   it('ett VERKLIGT indexfält utan klausul fälls fortfarande', () => {
-    const utfall = schema.safeParse({ ...normallage, indexBaseYear: 2026 })
+    const utfall = schema.safeParse({ ...normallage(), indexBaseYear: 2026 })
     expect(utfall.success).toBe(false)
   })
 })
