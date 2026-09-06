@@ -6,6 +6,7 @@ import {
   fetchInboxSummary,
   fetchKanDelegera,
   skapaDelegationUrForslag,
+  svaraPaFraga,
 } from '../api/inbox.api'
 
 import type { AssignmentStatus } from '../api/inbox.api'
@@ -67,6 +68,23 @@ export function useSkapaDelegation() {
       // Knappen ska bli grå direkt: förslaget har nu blivit en delegation.
       void qc.invalidateQueries({ queryKey: ['inbox', 'kanDelegera'] })
       void qc.invalidateQueries({ queryKey: ['delegationer'] })
+    },
+  })
+}
+
+/**
+ * SVARET PÅ EN FRÅGA.
+ *
+ * Egen mutation och inte en gren i `useDecideInboxItem`: ett beslut är ja eller
+ * nej, ett svar är ett värde ur en mängd, och `isPending` ska inte gälla båda
+ * knappuppsättningarna samtidigt.
+ */
+export function useSvaraPaFraga() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, svar }: { id: string; svar: string }) => svaraPaFraga(id, svar),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inbox'] })
     },
   })
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
@@ -8,6 +8,8 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { AiAssignmentsService } from './ai-assignments.service'
 import { DecideAssignmentDto } from './dto/decide-assignment.dto'
 import { QueryAssignmentsDto } from './dto/query-assignments.dto'
+import { AnswerQuestionDto } from './dto/answer-question.dto'
+import { QuestionService } from '../questions/question.service'
 
 import type { JwtPayload } from '@eken/shared'
 
@@ -27,7 +29,10 @@ import type { JwtPayload } from '@eken/shared'
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('OWNER', 'ADMIN', 'MANAGER')
 export class AiAssignmentsController {
-  constructor(private readonly service: AiAssignmentsService) {}
+  constructor(
+    private readonly service: AiAssignmentsService,
+    private readonly questions: QuestionService,
+  ) {}
 
   @Get()
   async list(@OrgId() organizationId: string, @Query() query: QueryAssignmentsDto) {
@@ -62,6 +67,25 @@ export class AiAssignmentsController {
   @Get(':id')
   async detail(@OrgId() organizationId: string, @Param('id') id: string) {
     return this.service.hamta(organizationId, id)
+  }
+
+  /**
+   * SVARA PÅ EN FRÅGA (etapp 8 PR 5b).
+   *
+   * Egen endpoint och inte `:id/decision`: ett beslut är ja eller nej, ett svar
+   * är ETT VÄRDE ur en mängd. Att trycka in det i beslutsvägen hade krävt att
+   * `statusReason` bar två olika saker beroende på radens `kind` — och då kan
+   * ingen fråga svaras utan att först veta vilken sorts rad det är.
+   */
+  @Post(':id/answer')
+  async answer(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: AnswerQuestionDto,
+  ) {
+    await this.questions.svara(organizationId, id, user.sub, body.svar)
+    return { ok: true }
   }
 
   @Patch(':id/decision')

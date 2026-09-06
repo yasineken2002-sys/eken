@@ -9,7 +9,14 @@ import { SKUGGFALT, SKUGGKALLA_FELANMALAN } from './shadow-fields'
 import { enqueueSafely } from '../../common/queue/enqueue-safety'
 import { AiExecutionDryRunQueue } from '../execution-dryrun/dryrun.queue'
 import { QUEUE_AI_EXECUTION_DRYRUN } from '../execution-dryrun/dryrun.types'
-import { INGEN_ATGARD, provaSkuggDuglighet, skuggverktygForFelanmalan } from './shadow-tool-gate'
+import {
+  FRAGA,
+  INGEN_ATGARD,
+  provaSkuggDuglighet,
+  skuggverktygForFelanmalan,
+} from './shadow-tool-gate'
+import { FRAGEBARA_NYCKLAR, ärGiltigFråga } from '../questions/question-fields'
+import { QuestionService } from '../questions/question.service'
 
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
 
@@ -77,7 +84,7 @@ const BESKRIVNING_TAK = 4000
 
 export interface SkuggUtfall {
   /** `SKAPAD` när ett förslag skrevs, annars varför inte. */
-  utfall: 'SKAPAD' | 'REDAN_FINNS' | 'AVSTANGD' | 'SAKNAS' | 'AVVISAT_FORSLAG'
+  utfall: 'SKAPAD' | 'REDAN_FINNS' | 'AVSTANGD' | 'SAKNAS' | 'AVVISAT_FORSLAG' | 'FRAGA_STALLD'
   assignmentId?: string
   detalj?: string
 }
@@ -93,6 +100,7 @@ export class MaintenanceShadowService {
     private readonly quota: AiQuotaService,
     private readonly usage: AiUsageService,
     private readonly dryrun: AiExecutionDryRunQueue,
+    private readonly questions: QuestionService,
   ) {}
 
   /**
@@ -121,6 +129,34 @@ export class MaintenanceShadowService {
       select: { id: true },
     })
     if (redan) return { utfall: 'REDAN_FINNS', assignmentId: redan.id }
+
+    // ── EN ÖPPEN FRÅGA STOPPAR OCKSÅ MODELLANROPET ──────────────────────────
+    //
+    // Frågeraden är `shadow: false` och fångas därför INTE av kontrollen ovan.
+    // Utan den här raden körde varje svep om modellanropet för ett ärende med en
+    // obesvarad fråga, fick `REDAN_ÖPPEN` av `QuestionService` och kastade bort
+    // svaret — ett betalt anrop var femtonde minut, i evighet, för ingenting.
+    //
+    // Egen fråga och inte ett `OR` i den ovan: de två svarar på olika saker
+    // ("finns redan ett förslag" respektive "väntar vi på ett svar"), och
+    // utfallen ska gå att skilja åt i loggen.
+    const väntarSvar = await this.prisma.aiAssignment.findFirst({
+      where: {
+        organizationId,
+        kind: 'QUESTION',
+        status: 'AWAITING_APPROVAL',
+        sourceKind: SKUGGKALLA_FELANMALAN,
+        sourceId: ticketId,
+      },
+      select: { id: true },
+    })
+    if (väntarSvar) {
+      return {
+        utfall: 'AVVISAT_FORSLAG',
+        detalj: 'väntar på svar på en fråga',
+        assignmentId: väntarSvar.id,
+      }
+    }
 
     const ticket = await this.prisma.maintenanceTicket.findFirst({
       where: { id: ticketId, organizationId },
@@ -158,6 +194,46 @@ export class MaintenanceShadowService {
     const kontext = await this.byggKontext(organizationId, ticket)
     const forslag = await this.fragaModellen(organizationId, ticket, kontext)
     if (!forslag) return { utfall: 'AVVISAT_FORSLAG', detalj: 'modellen svarade inte tolkbart' }
+
+    // ── FRÅGAN GÅR EN EGEN VÄG ─────────────────────────────────────────────
+    //
+    // Den passerar INTE verktygsgrinden: `FRAGA` är inget verktyg, och
+    // `provaSkuggDuglighet` hade avvisat den som "ingen effektklassificering".
+    // Grinden finns för att stoppa förslag om verktyg agenten inte får föreslå;
+    // en fråga föreslår inget verktyg alls.
+    if (forslag.toolName === FRAGA && forslag.fraga) {
+      // MOTTAGAREN ÄR ÄGAREN. En fråga är ett uppdrag som väntar på någon, och
+      // det finns ingen annan roll som kan svara på "hur ska det här hanteras"
+      // med bindande verkan. Saknas ägaren ställs ingen fråga — hellre tyst än
+      // ett uppdrag utan mottagare.
+      const ägare = await this.prisma.user.findFirst({
+        where: { organizationId, role: 'OWNER', isActive: true },
+        select: { id: true },
+      })
+      if (!ägare) {
+        return { utfall: 'AVVISAT_FORSLAG', detalj: 'fråga utan mottagare — ingen aktiv ägare' }
+      }
+      const r = await this.questions.ställ(organizationId, {
+        // `FRAGA` är INTE ett verktygsnamn — det är radens ämne. Modellen valde
+        // frågan i STÄLLET för ett verktyg, så det finns inget att ange. Att
+        // hitta på ett hade kopplat frågan till ett mönster den inte hör till,
+        // och observationslagret räknar ändå bara `kind: 'TOOL_PROPOSAL'`.
+        toolName: FRAGA,
+        sourceKind: SKUGGKALLA_FELANMALAN,
+        sourceId: ticket.id,
+        assignedToUserId: ägare.id,
+        fråga: forslag.fraga,
+        text: fragetext(forslag.fraga.fält, ticket.ticketNumber),
+        prediction: forslag.prediction,
+        propertyId: ticket.propertyId,
+        unitId: ticket.unitId,
+        tenantId: ticket.tenantId,
+      })
+      this.logger.log(`[ai-shadow] ärende ${ticket.ticketNumber}: FRÅGA — ${r.utfall}`)
+      return r.utfall === 'STÄLLD'
+        ? { utfall: 'FRAGA_STALLD', assignmentId: r.assignmentId }
+        : { utfall: 'AVVISAT_FORSLAG', detalj: `fråga ${r.utfall}` }
+    }
 
     const grind = provaSkuggDuglighet(forslag.toolName)
     if (!grind.duglig) {
@@ -255,8 +331,9 @@ export class MaintenanceShadowService {
   /** Kontexten agenten såg. Sparas som `evidence` — planens "vilken information". */
   private async byggKontext(
     organizationId: string,
-    ticket: { unitId: string | null; tenantId: string | null; propertyId: string },
+    ticket: { id: string; unitId: string | null; tenantId: string | null; propertyId: string },
   ): Promise<{ evidence: Array<Record<string, string>>; historik: string[] }> {
+    const ticketId = ticket.id
     const evidence: Array<Record<string, string>> = []
     const historik: string[] = []
 
@@ -278,6 +355,31 @@ export class MaintenanceShadowService {
         label: `${handelser.length} historikhändelser`,
       })
     }
+
+    // ── BESVARADE FRÅGOR ÄR KONTEXT, INTE HISTORIK ─────────────────────────
+    //
+    // Har hyresvärden redan svarat på en fråga om det HÄR ärendet ska nästa
+    // förslag använda svaret — annars var frågan bortkastad, och nästa körning
+    // ställer den igen (spärren i `QuestionService` stoppar dubbletten, men
+    // agenten fortsätter gissa på det den fått svar om).
+    //
+    // Raderna är `HUMAN_CONFIRMED` med frågan som källa, alltså den enda sorts
+    // minne som får läsas — samma grind som `getMemories`.
+    const svar = await this.prisma.aiMemory.findMany({
+      where: {
+        organizationId,
+        key: { startsWith: `svar:${SKUGGKALLA_FELANMALAN}:${ticketId}:` },
+        provenanceKind: 'HUMAN_CONFIRMED',
+        rejectedAt: null,
+      },
+      select: { key: true, value: true },
+    })
+    for (const r of svar) {
+      const fält = r.key.split(':').at(-1) ?? '?'
+      historik.push(`BESVARAT AV HYRESVÄRDEN: ${fält} = ${r.value}`)
+      evidence.push({ entityType: 'ANSWER', entityId: fält, label: `svar: ${r.value}` })
+    }
+
     return { evidence, historik }
   }
 
@@ -291,13 +393,7 @@ export class MaintenanceShadowService {
       priority: MaintenancePriority
     },
     kontext: { historik: string[] },
-  ): Promise<{
-    toolName: string
-    toolInput: Record<string, unknown>
-    reasoning: string
-    confidence: number | null
-    prediction: Record<string, unknown>
-  } | null> {
+  ): Promise<ReturnType<typeof tolkaVerktygsanrop>> {
     const verktyg = skuggverktygForFelanmalan()
     const prompt = byggPrompt(ticket, kontext.historik, verktyg)
 
@@ -398,8 +494,49 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
       properties: {
         toolName: {
           type: 'string',
-          enum: [...verktyg, INGEN_ATGARD],
-          description: `Verktyget du föreslår, eller ${INGEN_ATGARD} om ingen åtgärd behövs.`,
+          enum: [...verktyg, INGEN_ATGARD, FRAGA],
+          description:
+            `Verktyget du föreslår, ${INGEN_ATGARD} om ingen åtgärd behövs, eller ` +
+            `${FRAGA} ENDAST när en uppgift som behövs för bedömningen inte står ` +
+            'någonstans i ärendet eller historiken och inte går att sluta sig till. ' +
+            'Osäkerhet på din EGEN bedömning är inte en saknad uppgift — då föreslår ' +
+            'du ändå, med låg confidence. Prov innan du väljer FRAGA: kan du fylla i ' +
+            'prediction.category och prediction.priority ur det du läst? Kan du det ' +
+            'saknas ingen uppgift.',
+        },
+        // ── FRÅGAN ÄR ETT EGET UTFALL, INTE LÅG KONFIDENS ─────────────────
+        //
+        // Fältet läses BARA när `toolName` är FRÅGA, och beskrivningen skiljer
+        // uttryckligen "jag är osäker" från "jag saknar en uppgift". Utan den
+        // skillnaden blir frågan en utväg vid varje tveksamhet, och planens
+        // Del 11 kräver att varje fråga låser upp något.
+        fraga: {
+          type: 'object',
+          description:
+            `Fyll i BARA när toolName är ${FRAGA}. En fråga ställs när en UPPGIFT ` +
+            'saknas, inte när en bedömning är svår. SAKNAD UPPGIFT: beskrivningen ' +
+            'säger att det droppar men inte varifrån, och kategorin avgör vem som ' +
+            'skickas. SVÅR BEDÖMNING: beskrivningen är fullständig men ligger i ' +
+            'gränslandet mellan NORMAL och HIGH — det är låg confidence, inte en fråga.',
+          properties: {
+            fält: {
+              type: 'string',
+              enum: [...FRAGEBARA_NYCKLAR],
+              description: 'Vilket fält uppgiften gäller.',
+            },
+            alternativ: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Två till fyra värden ur fältets register — de troligaste.',
+            },
+            användsTill: {
+              type: 'string',
+              description:
+                'Vilka OLIKA åtgärder de olika svaren leder till, en mening som nämner ' +
+                'båda. Leder alla alternativ till samma förslag ska frågan inte ställas.',
+            },
+          },
+          required: ['fält', 'alternativ', 'användsTill'],
         },
         toolInput: {
           type: 'object',
@@ -413,7 +550,9 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
         prediction: {
           type: 'object',
           description:
-            'Din bedömning av hur ärendet BORDE hanteras. Jämförs med vad människan gjorde.',
+            'Din bedömning av hur ärendet BORDE hanteras. Jämförs med vad människan gjorde. ' +
+            `Fylls i ÄVEN när du väljer ${FRAGA} — då som din bästa gissning trots frågan, ` +
+            'så att förslaget kan jämföras med facit oavsett utfall.',
           properties: {
             category: { type: 'string', enum: Object.values(MaintenanceCategory) },
             priority: { type: 'string', enum: Object.values(MaintenancePriority) },
@@ -438,7 +577,7 @@ export function byggPrompt(
 ): string {
   return [
     'Du är en assistent åt en svensk hyresvärd. En felanmälan har REDAN registrerats.',
-    'Din uppgift är att föreslå nästa åtgärd. Ingenting du föreslår utförs —',
+    'Din uppgift är att välja ETT av tre utfall. Ingenting du föreslår utförs —',
     'en människa läser förslaget och säger om det var rätt.',
     '',
     '## Felanmälan',
@@ -462,6 +601,29 @@ export function byggPrompt(
     '</historik>',
     '',
     `## Verktyg du får föreslå: ${verktyg.join(', ')}`,
+    '',
+    // ── UTFALLEN STÅR I PROMPTEN, INTE BARA I SCHEMAT ────────────────────
+    //
+    // Mätt i den här kodbasen (shadow-tool-gate.ts): strukturerad utdata och
+    // en enum löste INTE dubblettförslaget — MENYN gjorde det. Den här
+    // modellen avgör alltså den här uppgiften på promptnivå, och ett tredje
+    // utfall som bara finns i en nästlad schemabeskrivning är precis den
+    // konfiguration mätningen säger är svag.
+    `## Tre utfall: ett verktyg ovan, ${INGEN_ATGARD} om inget behöver göras,`,
+    `eller ${FRAGA} om en uppgift saknas i ärendet och historiken.`,
+    'Osäkerhet är inte en saknad uppgift: är bedömningen svår föreslår du ändå,',
+    'med låg confidence.',
+    '',
+    // DEN HÄR MENINGEN GÖR FRÅGAN NÅBAR UTAN ATT GÖRA DEN TILL EN UTVÄG.
+    //
+    // Kategori och prioritet är NOT NULL med default på ärendet och skickas
+    // alltid in ovan — de kan alltså ALDRIG saknas, och en regel som säger
+    // "fråga när något saknas" hade varit tom för just de två fält som går
+    // att fråga om. Utan raden nedan är varje fråga modellen ställer per
+    // konstruktion den uteslutna läsningen.
+    'Kategori och prioritet STÅR redan i ärendet. Fråga om dem bara när',
+    'beskrivningen MOTSÄGER det registrerade värdet, eller inte räcker för att',
+    'pröva det.',
     '',
     `Svara genom att anropa ${FORSLAG_VERKTYGSNAMN}. Registrerad kategori och`,
     'prioritet är hyresvärdens FÖRSTA gissning — bedöm själv, och avvik när',
@@ -487,12 +649,45 @@ export function tolkaVerktygsanrop(input: unknown): {
   reasoning: string
   confidence: number | null
   prediction: Record<string, unknown>
+  /** Satt ENDAST när modellen valde FRÅGA och innehållet är giltigt. */
+  fraga?: { fält: string; alternativ: string[]; användsTill: string }
 } | null {
   if (typeof input !== 'object' || input === null) return null
   const r = input as Record<string, unknown>
   if (typeof r['toolName'] !== 'string' || !r['toolName']) return null
   // INGEN_ATGARD är ett giltigt svar men inget förslag att skriva en rad om.
   if (r['toolName'] === INGEN_ATGARD) return null
+
+  // ── FRÅGAN, OCH VARFÖR EN OGILTIG FRÅGA BLIR NULL ─────────────────────────
+  //
+  // Väljer modellen FRÅGA men skickar ett fält utanför registret, ett enda
+  // alternativ eller ingen nytta, är det INTE en fråga — och det får inte falla
+  // tillbaka på "då blir det ett förslag i stället", för då hade `toolName`
+  // varit `FRAGA`, vilket inte är ett verktyg. Fail-closed: ingen rad alls.
+  if (r['toolName'] === FRAGA) {
+    if (typeof r['reasoning'] !== 'string' || !r['reasoning'].trim()) return null
+    const f = r['fraga']
+    if (!ärGiltigFråga(f)) return null
+    // PREDICTION BEHÅLLS ÄVEN VID FRÅGA. Schemat kräver den, och modellen
+    // fyller i sin bästa gissning trots frågan — att kasta bort den hade tyst
+    // tagit bort en datapunkt ur etapp 7:s träffgradsnämnare varje gång agenten
+    // frågade, alltså gjort måttet sämre av att agenten blev försiktigare.
+    const fp: Record<string, unknown> = {}
+    const pf = r['prediction']
+    if (typeof pf === 'object' && pf !== null) {
+      for (const [k, v] of Object.entries(pf as Record<string, unknown>)) {
+        if (typeof v === 'string' && v !== '') fp[k] = v
+      }
+    }
+    return {
+      toolName: FRAGA,
+      toolInput: {},
+      reasoning: r['reasoning'],
+      confidence: null,
+      prediction: fp,
+      fraga: { fält: f.fält, alternativ: [...f.alternativ], användsTill: f.användsTill },
+    }
+  }
   if (typeof r['reasoning'] !== 'string' || !r['reasoning'].trim()) return null
 
   // ── NULL, INTE 0, NÄR MODELLEN INTE SVARAT ────────────────────────────────
@@ -527,4 +722,15 @@ export function tolkaVerktygsanrop(input: unknown): {
     confidence,
     prediction,
   }
+}
+
+/**
+ * FRÅGANS RUBRIK — på svenska, med ärendenumret och aldrig hyresgästens text.
+ *
+ * Samma slutna slinga som titeln på ett skuggförslag: hyresgästens ord skulle
+ * annars bli permanent kontext för varje framtida körning. Ärendenumret räcker.
+ */
+export function fragetext(fält: string, ärendenummer: string): string {
+  const f = QuestionService.fält(fält)
+  return `${f ? f.etikett : fält} för ärende ${ärendenummer}?`
 }

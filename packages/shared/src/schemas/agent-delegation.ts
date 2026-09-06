@@ -54,3 +54,14 @@ export const RevokeDelegationSchema = z.object({
   skäl: z.string().max(500).optional(),
 })
 export type RevokeDelegationInput = z.infer<typeof RevokeDelegationSchema>
+
+/**
+ * SVARET PÅ EN FRÅGA FRÅN AGENTEN (etapp 8 PR 5b).
+ *
+ * En sträng, och mängden lagliga värden bor på frågans egen rad — schemat kan
+ * inte känna dem. Formen prövas här, mängden i tjänsten.
+ */
+export const AnswerQuestionSchema = z.object({
+  svar: z.string().min(1).max(200),
+})
+export type AnswerQuestionInput = z.infer<typeof AnswerQuestionSchema>

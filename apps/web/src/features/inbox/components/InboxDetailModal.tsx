@@ -7,6 +7,7 @@ import { formatDate } from '@eken/shared'
 
 import { formatKonfidens, konfidensVariant } from '../lib/confidence'
 import { verdiktVisning } from '../lib/verdict'
+import { FragaKort } from './FragaKort'
 import { GorAlltidSaHar } from './GorAlltidSaHar'
 
 import type { Frekvensvillkor } from '@eken/shared'
@@ -21,6 +22,8 @@ interface Props {
   kanDelegera?: KanDelegera | undefined
   delegeringLaddar?: boolean
   delegeringSparar?: boolean
+  onSvara?: (svar: string) => void
+  svarSparar?: boolean | undefined
   onDelegera?: (
     villkor: Record<string, unknown> | undefined,
     frekvensvillkor: Frekvensvillkor | undefined,
@@ -54,6 +57,8 @@ export function InboxDetailModal({
   kanDelegera,
   delegeringLaddar,
   delegeringSparar,
+  onSvara,
+  svarSparar,
   onDelegera,
 }: Props) {
   const [bekraftar, setBekraftar] = useState<'APPROVED' | 'REJECTED' | null>(null)
@@ -140,6 +145,14 @@ export function InboxDetailModal({
         {item.statusReason && <Falt rubrik="Ditt skäl">{item.statusReason}</Falt>}
         <Falt rubrik="Skapat">{formatDate(item.createdAt)}</Falt>
       </div>
+
+      {/* ── AGENTENS FRÅGA (etapp 8 PR 5b) ──────────────────────────────
+          En fråga besvaras med ett VÄRDE, inte med ja/nej — därför egna
+          knappar och inte beslutsraden. Och `onSvara` finns bara när sidan
+          kopplat in den; utan den visas ingen fråga som besvarbar. */}
+      {onSvara && item.kind === 'QUESTION' && (
+        <FragaKort item={item} sparar={svarSparar} onSvara={onSvara} />
+      )}
 
       {onDelegera && (
         <GorAlltidSaHar
