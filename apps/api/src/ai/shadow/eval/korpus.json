@@ -1,0 +1,766 @@
+{
+  "__doc__": [
+    "MÄTKORPUS FÖR SKUGGAGENTEN — 50 felanmälningar som en hyresgäst skriver dem.",
+    "",
+    "TESTDATA, INTE PROMPT. Ingen text här matas in som instruktion; varje ärende",
+    "går genom samma väg som ett riktigt (byggPrompt + verktygsschemat). Facit",
+    "läses ALDRIG av modellen — det jämförs med svaret efteråt.",
+    "",
+    "SVENSKAN ÄR MED FLIT OJÄMN: stavfel, saknade mellanslag, talspråk, versaler.",
+    "En korpus i vårdad prosa mäter en uppgift agenten aldrig får.",
+    "",
+    "INGA RIKTIGA PERSONUPPGIFTER. Namn är påhittade och förekommer bara där en",
+    "hyresgäst rimligen skriver ett; inga personnummer, adresser eller telefonnummer.",
+    "",
+    "FÄLTEN:",
+    "  registreradKategori/Prioritet  vad portalen fick in — kan vara FEL, det är",
+    "                                 hela poängen med att agenten läser texten.",
+    "  facit.kategori/prioritet       vad en människa hade satt.",
+    "  facit.atgard                   verktyget ur den skuggdugliga mängden, eller",
+    "                                 INGEN när rätt svar är att inte föreslå något.",
+    "  facit.fragaRatt                true när uppgiften som avgör bedömningen inte",
+    "                                 står i texten och inte går att sluta sig till.",
+    "  facit.fragaFalt                vilket fält frågan i så fall gäller.",
+    "  facit.skal                     varför, på svenska — för den som läser en miss."
+  ],
+  "arenden": [
+    {
+      "id": "k01",
+      "titel": "Kranen i köket läcker",
+      "beskrivning": "Hej det droppar från kranen i köket hela tiden, blir en liten pöl på diskbänken. Har provat dra åt men det hjälper inte.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Tydligt VVS, ingen brådska — droppande kran, inte översvämning."
+      }
+    },
+    {
+      "id": "k02",
+      "titel": "det droppar",
+      "beskrivning": "Det droppar. Kan ni komma och titta?",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Droppar VAR? Tak (ROOF), kran (PLUMBING) eller element (HEATING) ger helt olika hantverkare. Uppgiften saknas och går inte att sluta sig till."
+      }
+    },
+    {
+      "id": "k03",
+      "titel": "VATTEN ÖVERALLT I BADRUMMET!!!",
+      "beskrivning": "det forsar vatten under handfatet, hela golvet är blött och det rinner ut i hallen. HJÄLP",
+      "registreradKategori": "PLUMBING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Pågående vattenskada. Registrerad prioritet NORMAL är fel — texten motsäger den."
+      }
+    },
+    {
+      "id": "k04",
+      "titel": "Lampan i hallen fungerar inte",
+      "beskrivning": "Taklampan i hallen tänds inte. Har bytt glödlampa men ingen skillnad.",
+      "registreradKategori": "ELECTRICAL",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "ELECTRICAL",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "El som inte fungerar efter lampbyte är inte LOW — det kan vara armaturen eller kretsen."
+      }
+    },
+    {
+      "id": "k05",
+      "titel": "Kallt i lägenheten",
+      "beskrivning": "Det är kallt inne. 17 grader på morgonen.",
+      "registreradKategori": "HEATING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "HEATING",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "17 grader är under vad som är godtagbart, ett konkret tal gör bedömningen möjlig."
+      }
+    },
+    {
+      "id": "k06",
+      "titel": "kallt",
+      "beskrivning": "det är kallt här",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Kallt av trasigt element (HEATING) eller av ett fönster som inte går att stänga (WINDOWS_DOORS)? Ingen temperatur, ingen ledtråd."
+      }
+    },
+    {
+      "id": "k07",
+      "titel": "Kylskåpet låter konstigt",
+      "beskrivning": "kylskåpet brummar och skramlar på nätterna, går inte att sova. Kylan funkar dock.",
+      "registreradKategori": "APPLIANCES",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "APPLIANCES",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Vitvara som låter men fungerar — normal prioritet."
+      }
+    },
+    {
+      "id": "k08",
+      "titel": "frysen har slutat frysa",
+      "beskrivning": "all mat i frysen har tinat, det står vatten på golvet framför. Detta hände i natt.",
+      "registreradKategori": "APPLIANCES",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "APPLIANCES",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Trasig frys med förstörd mat och vatten på golvet är inte LOW."
+      }
+    },
+    {
+      "id": "k09",
+      "titel": "Fönstret i sovrummet går inte att stänga",
+      "beskrivning": "Handtaget snurrar runt utan att låsa. Fönstret står på glänt hela tiden och det drar.",
+      "registreradKategori": "WINDOWS_DOORS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "WINDOWS_DOORS",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Ett fönster som inte går att stänga är både värme- och säkerhetsfråga."
+      }
+    },
+    {
+      "id": "k10",
+      "titel": "låset krånglar",
+      "beskrivning": "Nyckeln kärvar i ytterdörren, måste rycka i handtaget för att få upp. Går att låsa men jobbigt.",
+      "registreradKategori": "LOCKS",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "LOCKS",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Fungerar men kärvar — normal, inte låg: ett lås som fastnar helt låser ute någon."
+      }
+    },
+    {
+      "id": "k11",
+      "titel": "Kommer inte in i lägenheten",
+      "beskrivning": "Låset har gått sönder helt, nyckeln går inte att vrida. Står utanför nu.",
+      "registreradKategori": "LOCKS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "LOCKS",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Utelåst hyresgäst är akut oavsett vad som registrerats."
+      }
+    },
+    {
+      "id": "k12",
+      "titel": "det ser ut som en spricka i fasaden",
+      "beskrivning": "Har sett en spricka på utsidan under mitt fönster, ca en meter lång. Vet inte om den är ny.",
+      "registreradKategori": "FACADE",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "FACADE",
+        "prioritet": "NORMAL",
+        "atgard": "create_inspection",
+        "fragaRatt": false,
+        "skal": "En fasadspricka går inte att bedöma på en beskrivning — den ska besiktigas."
+      }
+    },
+    {
+      "id": "k13",
+      "titel": "fuktfläck i taket",
+      "beskrivning": "Det har kommit en brun fläck i taket i sovrummet, den blir större när det regnar.",
+      "registreradKategori": "ROOF",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "ROOF",
+        "prioritet": "HIGH",
+        "atgard": "create_inspection",
+        "fragaRatt": false,
+        "skal": "Växande fuktfläck vid regn tyder på takläckage — besiktning och hög prioritet."
+      }
+    },
+    {
+      "id": "k14",
+      "titel": "Trapphuset är smutsigt",
+      "beskrivning": "Det har inte städats i trapphuset på flera veckor, ligger skräp och löv i entren.",
+      "registreradKategori": "CLEANING",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "CLEANING",
+        "prioritet": "LOW",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Städning, låg prioritet — rätt registrerat."
+      }
+    },
+    {
+      "id": "k15",
+      "titel": "lampan i tvättstugan trasig",
+      "beskrivning": "Det är kolmörkt i tvättstugan, lysröret har gått.",
+      "registreradKategori": "COMMON_AREAS",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "ELECTRICAL",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Gemensamt utrymme men problemet är el. Mörk tvättstuga är en olycksrisk, inte LOW."
+      }
+    },
+    {
+      "id": "k16",
+      "titel": "Toaletten rinner",
+      "beskrivning": "toan rinner hela tiden, vattnet slutar aldrig. Hörs i hela lägenheten och jag är rädd att det syns på vattenräkningen.",
+      "registreradKategori": "PLUMBING",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Rinnande toalett slösar vatten men är ingen akut skada."
+      }
+    },
+    {
+      "id": "k18",
+      "titel": "Elementet blir inte varmt",
+      "beskrivning": "Elementet i vardagsrummet är kallt längst ner men varmt högst upp.",
+      "registreradKategori": "HEATING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "HEATING",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Klassisk luft i elementet — tydlig kategori, ingen brådska."
+      }
+    },
+    {
+      "id": "k19",
+      "titel": "inget varmvatten",
+      "beskrivning": "Det kommer bara kallt vatten ur alla kranar sedan igår kväll. Grannen säger samma sak.",
+      "registreradKategori": "PLUMBING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Varmvattenbortfall som rör flera lägenheter är akut."
+      }
+    },
+    {
+      "id": "k20",
+      "titel": "Spisen funkar bara på en platta",
+      "beskrivning": "3 av 4 plattor har slutat funka. Ugnen går fortfarande.",
+      "registreradKategori": "APPLIANCES",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "APPLIANCES",
+        "prioritet": "NORMAL",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Vitvara delvis trasig, normal."
+      }
+    },
+    {
+      "id": "k21",
+      "titel": "det luktar bränt",
+      "beskrivning": "Det luktar bränt plast i hallen sen imorse. Hittar inget som brinner men lukten är stark.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "ELECTRICAL",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Bränd plastlukt utan synlig källa är nästan alltid el, och är akut."
+      }
+    },
+    {
+      "id": "k22",
+      "titel": "något är sönder",
+      "beskrivning": "Det är trasigt i lägenheten. Kan någon komma?",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Ingen uppgift alls om vad. Kategorin går inte att sluta sig till."
+      }
+    },
+    {
+      "id": "k23",
+      "titel": "Hiss står still",
+      "beskrivning": "Hissen har stått stilla i tre dagar. Bor på 5:e våningen och har svårt att gå i trappor.",
+      "registreradKategori": "COMMON_AREAS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "COMMON_AREAS",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Trasig hiss med rörelsehindrad boende på hög våning — hög prioritet."
+      }
+    },
+    {
+      "id": "k25",
+      "titel": "Det luktar i källaren",
+      "beskrivning": "Unken lukt i källargången. Vet inte varifrån.",
+      "registreradKategori": "COMMON_AREAS",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "COMMON_AREAS",
+        "prioritet": "NORMAL",
+        "atgard": "create_inspection",
+        "fragaRatt": false,
+        "skal": "Okänd lukt i källare kan vara fukt — besiktning snarare än gissning."
+      }
+    },
+    {
+      "id": "k26",
+      "titel": "Tack, det är fixat",
+      "beskrivning": "Ni var här igår och lagade kranen, den funkar nu. Tack så mycket! Kan stänga ärendet.",
+      "registreradKategori": "PLUMBING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Redan åtgärdat. Att föreslå en åtgärd här är att inte ha läst texten."
+      }
+    },
+    {
+      "id": "k28",
+      "titel": "VINN EN IPHONE KLICKA HÄR",
+      "beskrivning": "Grattis du har vunnit! Besök vår sida för att hämta ditt pris. Erbjudandet gäller idag.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Skräppost i felanmälningsformuläret. Ingen åtgärd och ingen fråga — att fråga om kategori vore att ta skräpet på allvar."
+      }
+    },
+    {
+      "id": "k29",
+      "titel": "asdf",
+      "beskrivning": "asdfasdf test test",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Uppenbart testinlägg. Ingen fråga — det finns ingen uppgift att efterfråga."
+      }
+    },
+    {
+      "id": "k30",
+      "titel": "Redan anmält förra veckan",
+      "beskrivning": "Jag anmälde ju det här med elementet förra veckan, har inte hänt något. Skriver igen.",
+      "registreradKategori": "HEATING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "HEATING",
+        "prioritet": "HIGH",
+        "atgard": "compose_and_send_email",
+        "fragaRatt": false,
+        "skal": "Dubbelanmälan där hyresgästen väntat — svaret till hyresgästen är åtgärden, och väntetiden höjer prioriteten."
+      }
+    },
+    {
+      "id": "k31",
+      "titel": "när kommer ni?",
+      "beskrivning": "Hej, ni sa att någon skulle komma på tisdag men ingen kom. När kommer ni?",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "compose_and_send_email",
+        "fragaRatt": false,
+        "skal": "En fråga från hyresgästen som ska besvaras, inte ett nytt fel."
+      }
+    },
+    {
+      "id": "k32",
+      "titel": "Ojämn temperatur",
+      "beskrivning": "Det är olika varmt i olika rum. Vet inte om det är elementen eller fönstren som läcker.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Hyresgästen anger själv två möjliga orsaker i olika kategorier. Att gissa är att slänta."
+      }
+    },
+    {
+      "id": "k33",
+      "titel": "Blöt fläck på golvet i hallen",
+      "beskrivning": "Det är blött på golvet i hallen, precis utanför badrummet. Kommer varje morgon.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Återkommande vatten vid badrum är VVS och kan bli en fuktskada."
+      }
+    },
+    {
+      "id": "k34",
+      "titel": "Diskmaskinen läcker lite",
+      "beskrivning": "Det kommer lite vatten under diskmaskinen när den går.",
+      "registreradKategori": "APPLIANCES",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "APPLIANCES",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Läckande vitvara mot golv och stomme — högre än det låter."
+      }
+    },
+    {
+      "id": "k35",
+      "titel": "trasig ruta i porten",
+      "beskrivning": "Glaset i entredörren är krossat, ligger skärvor på marken.",
+      "registreradKategori": "WINDOWS_DOORS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "WINDOWS_DOORS",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Glasskärvor och obehörigt tillträde till huset — akut."
+      }
+    },
+    {
+      "id": "k38",
+      "titel": "det står vatten på balkongen",
+      "beskrivning": "Efter regn blir det en stor pöl på balkonggolvet som inte rinner undan.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "FACADE",
+        "prioritet": "NORMAL",
+        "atgard": "create_inspection",
+        "fragaRatt": false,
+        "skal": "Stående vatten på balkong är ett avvattningsfel i byggnaden — besiktning."
+      }
+    },
+    {
+      "id": "k39",
+      "titel": "grannen spelar hög musik",
+      "beskrivning": "Grannen ovanför spelar musik till klockan tre på natten varje helg.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "compose_and_send_email",
+        "fragaRatt": false,
+        "skal": "Störningsärende — hanteras med kontakt, inte med en hantverkare."
+      }
+    },
+    {
+      "id": "k40",
+      "titel": "Hur gör jag med sopsortering?",
+      "beskrivning": "Var ska jag slänga wellpapp? Hittar inget kärl för det.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "compose_and_send_email",
+        "fragaRatt": false,
+        "skal": "Ren informationsfråga från hyresgästen."
+      }
+    },
+    {
+      "id": "k41",
+      "titel": "något låter i väggen",
+      "beskrivning": "Det hörs ett ljud i väggen ibland. Svårt att beskriva.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Ljud i vägg kan vara VVS, ventilation eller värme. Ingen ledtråd i texten."
+      }
+    },
+    {
+      "id": "k42",
+      "titel": "Det blinkar i lampan",
+      "beskrivning": "Taklampan i köket blinkar ibland, särskilt när jag sätter på micron.",
+      "registreradKategori": "ELECTRICAL",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "ELECTRICAL",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Blinkning vid last tyder på glapp i elen — brandrisk, inte LOW."
+      }
+    },
+    {
+      "id": "k43",
+      "titel": "ytterdörren går inte igen ordentligt",
+      "beskrivning": "Måste trycka hårt för att dörren ska gå i lås. Ibland står den på glänt utan att jag märker det.",
+      "registreradKategori": "WINDOWS_DOORS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "WINDOWS_DOORS",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "En ytterdörr som står olåst är en säkerhetsfråga."
+      }
+    },
+    {
+      "id": "k44",
+      "titel": "Måste jag betala för detta?",
+      "beskrivning": "Ni bytte blandaren förra månaden. Nu har jag fått en faktura. Ska jag betala den?",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "compose_and_send_email",
+        "fragaRatt": false,
+        "skal": "Fakturafråga från hyresgästen — besvaras, ingen hantverkare."
+      }
+    },
+    {
+      "id": "k45",
+      "titel": "hela huset är utan ström",
+      "beskrivning": "Strömmen gick i hela trappuppgången för en timme sen. Inget fungerar.",
+      "registreradKategori": "ELECTRICAL",
+      "registreradPrioritet": "HIGH",
+      "facit": {
+        "kategori": "ELECTRICAL",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Strömbortfall i hela huset är akut, inte HIGH."
+      }
+    },
+    {
+      "id": "k47",
+      "titel": "det är fel på nåt",
+      "beskrivning": "Hej. Det funkar inte som det ska. Ring mig.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Ingen uppgift om vad som är fel."
+      }
+    },
+    {
+      "id": "k48",
+      "titel": "Skadedjur i soprummet",
+      "beskrivning": "Har sett råttor i soprummet två gånger den här veckan.",
+      "registreradKategori": "COMMON_AREAS",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "COMMON_AREAS",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Skadedjur är en hälsofråga och ska hanteras snabbt."
+      }
+    },
+    {
+      "id": "k49",
+      "titel": "det droppar från taket i badrummet",
+      "beskrivning": "Det droppar från badrumstaket. Grannen ovanför har badkar.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "PLUMBING",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Vatten från lägenheten ovanför är en pågående skada — ledtråden om badkaret gör kategorin sluten."
+      }
+    },
+    {
+      "id": "k50",
+      "titel": "brådskande",
+      "beskrivning": "Det här är brådskande, ni måste komma nu.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "URGENT",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "URGENT",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Prioriteten står i texten, men VAD som är brådskande gör det inte. Frågan gäller kategorin, inte prioriteten."
+      }
+    },
+    {
+      "id": "k53",
+      "titel": "nån har kissat i hissen",
+      "beskrivning": "Det luktar urin i hissen sedan igår. Äckligt.",
+      "registreradKategori": "CLEANING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "CLEANING",
+        "prioritet": "HIGH",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Sanering i ett litet slutet utrymme — bör inte vänta."
+      }
+    },
+    {
+      "id": "k55",
+      "titel": "trasigt",
+      "beskrivning": "trasigt i köket",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "NORMAL",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Kök rymmer VVS, el och vitvaror. Rummet räcker inte för att välja kategori."
+      }
+    },
+    {
+      "id": "k56",
+      "titel": "Det luktar gas",
+      "beskrivning": "Det luktar gas i köket. Har stängt av spisen men lukten är kvar.",
+      "registreradKategori": "APPLIANCES",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "APPLIANCES",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Gaslukt är alltid akut."
+      }
+    },
+    {
+      "id": "k57",
+      "titel": "kan ni titta på nåt när ni ändå är här",
+      "beskrivning": "Ni ska ju komma och laga kranen. Kan ni titta på en grej till samtidigt?",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "\"En grej till\" är ingen uppgift. Frågan är vad."
+      }
+    },
+    {
+      "id": "k59",
+      "titel": "elementet läcker vatten",
+      "beskrivning": "Det rinner vatten från ventilen på elementet i barnrummet, har lagt en hink under.",
+      "registreradKategori": "HEATING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "HEATING",
+        "prioritet": "URGENT",
+        "atgard": "update_maintenance_status",
+        "fragaRatt": false,
+        "skal": "Pågående vattenläcka från värmesystemet — akut trots hinken."
+      }
+    },
+    {
+      "id": "k60",
+      "titel": "vet inte om det är nåt",
+      "beskrivning": "Det kanske är inget men jag tycker det luktar lite konstigt ibland. Kan vara jag som inbillar mig.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": true,
+        "fragaFalt": "category",
+        "skal": "Lukt utan plats och utan karaktär. Frågan är var och hur det luktar."
+      }
+    },
+    {
+      "id": "k61",
+      "titel": "vill bara säga att allt är bra",
+      "beskrivning": "Hej! Inget problem, ville bara säga att ni gör ett bra jobb med gården.",
+      "registreradKategori": "OTHER",
+      "registreradPrioritet": "LOW",
+      "facit": {
+        "kategori": "OTHER",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Inget ärende. Ingen åtgärd, och ingen fråga — det finns ingen uppgift som saknas."
+      }
+    },
+    {
+      "id": "k62",
+      "titel": "Ärendet är löst",
+      "beskrivning": "Grannen hjälpte mig med elementet igår, det funkar nu. Behöver inte komma.",
+      "registreradKategori": "HEATING",
+      "registreradPrioritet": "NORMAL",
+      "facit": {
+        "kategori": "HEATING",
+        "prioritet": "LOW",
+        "atgard": "INGEN",
+        "fragaRatt": false,
+        "skal": "Hyresgästen säger uttryckligen att inget behövs. Att föreslå en åtgärd är att inte ha läst texten."
+      }
+    }
+  ]
+}

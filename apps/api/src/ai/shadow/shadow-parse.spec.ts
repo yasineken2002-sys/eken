@@ -80,7 +80,10 @@ describe('prompten', () => {
   })
 
   it('säger att ärendet redan är registrerat', () => {
-    expect(byggPrompt(t, [], ['x'])).toContain('REDAN registrerats')
+    // ETT RIKTIGT VERKTYGSNAMN, inte 'x': prompten slår sedan 2026-09-07 upp
+    // varje verktygs etikett i KATALOGEN och kastar för ett okänt namn — ett
+    // skuggverktyg utan etikett ska inte kunna bli en tom rad i menyn.
+    expect(byggPrompt(t, [], ['update_maintenance_status'])).toContain('REDAN registrerats')
   })
 })
 
