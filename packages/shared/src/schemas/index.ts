@@ -11,6 +11,20 @@ import {
   validateSwedishOrgNumber,
 } from '../utils'
 
+/**
+ * ETT ISO-DATUM SÅ SOM `@IsDateString()` DEFINIERAR DET — datum eller
+ * tidsstämpel med valfri offset. Finns som egen symbol för att nästa fält som
+ * ska spegla den dekoratorn inte ska behöva mäta om vilken Zod-form som
+ * motsvarar den.
+ */
+export const IsoDatumSchema = z.union([z.string().date(), z.string().datetime({ offset: true })])
+
+// ^ HISSAD hit 2026-09-06. Symbolen låg tidigare mitt i filen, under
+// fakturaavsnittet, och varje nytt schema OVANFÖR den punkten föll på
+// "used before its declaration" — tre gånger under kontraktsarbetet. Ett
+// datumformat är inte fakturornas egendom; det används av avtal, uppsägningar
+// och betalningar lika mycket. Den bor därför överst.
+
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
 export const PaginationSchema = z.object({
@@ -314,26 +328,222 @@ export const AnonymizeTenantSchema = z.object({
 
 // ─── Lease ────────────────────────────────────────────────────────────────────
 
-export const CreateLeaseSchema = z
-  .object({
-    unitId: z.string().uuid(),
-    tenantId: z.string().uuid(),
-    startDate: z.string().date(),
-    endDate: z.string().date().optional(),
-    monthlyRent: z.number().positive(),
-    depositAmount: z.number().nonnegative(),
-    noticePeriodMonths: z.number().int().min(1).max(12).default(3),
-    indexClause: z.boolean().default(false),
-  })
-  .refine(
-    (d) => {
-      if (d.endDate) return new Date(d.endDate) > new Date(d.startDate)
-      return true
-    },
-    { message: 'Slutdatum måste vara efter startdatum', path: ['endDate'] },
-  )
+/**
+ * KONTRAKTSVILLKOREN — de fält som beskriver vad avtalet innehåller.
+ *
+ * Delas av `CreateLeaseSchema` och `CreateLeaseWithTenantSchema`, som båda
+ * skickar dem till samma kolumner. Två kopior hade glidit isär, och det som
+ * glider är avtalstexten.
+ *
+ * ALLA VALFRIA, INGEN MED `.default()`. Se `CreateLeaseSchema`s docblock.
+ */
+export const LEASE_CONTRACT_TERMS = {
+  // Vad ingår i hyran
+  includesHeating: z.boolean().optional(),
+  includesWater: z.boolean().optional(),
+  includesHotWater: z.boolean().optional(),
+  includesElectricity: z.boolean().optional(),
+  includesInternet: z.boolean().optional(),
+  includesCleaning: z.boolean().optional(),
+  includesParking: z.boolean().optional(),
+  includesStorage: z.boolean().optional(),
+  includesLaundry: z.boolean().optional(),
+  // Tilläggsavgifter
+  parkingFee: z.number().min(0).optional(),
+  storageFee: z.number().min(0).optional(),
+  garageFee: z.number().min(0).optional(),
+  // Användning, husdjur, andrahand, försäkring
+  usagePurpose: z.string().optional(),
+  petsAllowed: z.enum(['ALLOWED', 'REQUIRES_APPROVAL', 'NOT_ALLOWED']).optional(),
+  petsApprovalNotes: z.string().optional(),
+  sublettingAllowed: z.boolean().optional(),
+  requiresHomeInsurance: z.boolean().optional(),
+  // Indexklausul
+  indexClauseType: z.enum(['NONE', 'KPI', 'NEGOTIATED', 'MARKET_RENT']).optional(),
+  indexBaseYear: z.number().int().min(1900).max(2100).optional(),
+  indexAdjustmentDate: z.string().optional(),
+  indexMaxIncrease: z.number().min(0).max(100).optional(),
+  indexMinIncrease: z.number().min(0).max(100).optional(),
+  indexNotes: z.string().optional(),
+  // Särskilda bestämmelser
+  specialTerms: z.string().optional(),
+} as const
 
-export const UpdateLeaseSchema = CreateLeaseSchema.innerType().partial()
+/** Fälten vars enda uppgift är att beskriva en indexklausul. */
+const INDEXFALT = [
+  'indexBaseYear',
+  'indexAdjustmentDate',
+  'indexMaxIncrease',
+  'indexMinIncrease',
+  'indexNotes',
+] as const
+
+/**
+ * De fyra reglerna som går att pröva UTAN att slå upp något i databasen.
+ *
+ * Var och en är intern konsistens i nyttolasten — inte en regel om avtalet som
+ * kräver enhetens typ. Sådana regler (uppsägningstidens minimum, depositions-
+ * taket, regimens giltighet) ägs av servern och får INTE dupliceras här; se
+ * `CreateLeaseSchema`s docblock.
+ */
+export function granskaKontraktsvillkor(
+  // `| undefined` uttryckligen: repot kör `exactOptionalPropertyTypes: true`,
+  // och utan det matchar signaturen inte Zods `superRefine`.
+  d: {
+    leaseType?: 'FIXED_TERM' | 'INDEFINITE' | undefined
+    endDate?: string | undefined
+    renewalPeriodMonths?: number | undefined
+    indexClauseType?: 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT' | undefined
+    indexMinIncrease?: number | undefined
+    indexMaxIncrease?: number | undefined
+  },
+  ctx: z.RefinementCtx,
+): void {
+  // 1. Ett tidsbestämt avtal MÅSTE ha ett slutdatum (JB 12 kap 3 §). Servern
+  //    kräver det redan; att spegla kravet här ger beskedet före anropet.
+  //    Notera: detta SÄTTER inget värde — det kräver bara att klienten anger ett.
+  if (d.leaseType === 'FIXED_TERM' && !d.endDate) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Ett tidsbegränsat kontrakt måste ha ett slutdatum',
+      path: ['endDate'],
+    })
+  }
+
+  // 2. Indexfält utan indexklausul är ett avtal som samtidigt säger "ingen
+  //    indexklausul" och bär en indexformel. Motsägelsen renderas rakt in i
+  //    kontraktstexten och blir en tolkningstvist.
+  const harIndexklausul = d.indexClauseType != null && d.indexClauseType !== 'NONE'
+  if (!harIndexklausul) {
+    for (const falt of INDEXFALT) {
+      if ((d as Record<string, unknown>)[falt] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'Indexuppgifter kan bara anges när kontraktet har en indexklausul (indexClauseType ≠ NONE)',
+          path: [falt],
+        })
+      }
+    }
+  }
+
+  // 3. Ett tillsvidareavtal förnyas inte — det löper. Datahygien, inte lagkrav.
+  if (d.leaseType === 'INDEFINITE' && d.renewalPeriodMonths != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Förnyelseperiod kan inte anges för ett tillsvidareavtal',
+      path: ['renewalPeriodMonths'],
+    })
+  }
+
+  // 4. Ett golv över taket är ingen klausul.
+  if (
+    d.indexMinIncrease != null &&
+    d.indexMaxIncrease != null &&
+    d.indexMinIncrease > d.indexMaxIncrease
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Lägsta indexuppräkning kan inte överstiga den högsta',
+      path: ['indexMinIncrease'],
+    })
+  }
+}
+
+/**
+ * POST /leases.
+ *
+ * ── SCHEMAT SÄTTER ALDRIG EN JURIDISK DEFAULT ───────────────────────────────
+ *
+ * Det här är den bärande regeln, och den kommer ur en mätning. Schemat hade
+ * `noticePeriodMonths: z.number().default(3)`. Tre månader är lagens minimum
+ * för BOSTAD; för LOKAL är det nio (JB 12 kap 4 §, `minNoticePeriodMonths`).
+ * Ett statiskt klientdefault kan alltså bara vara rätt för hälften av fallen:
+ * för en lokal skickade det ett värde servern avvisar, och för en bostad låste
+ * det ett tal operatören aldrig valde.
+ *
+ * Hyresjuristens bedömning gick längre än så, och den följs här: INGET fält får
+ * ett `.default()`, inte heller de som ser regimoberoende ut. `leaseType` och
+ * `tenancyRegime` har säkra serverfallbacker i dag (`?? 'INDEFINITE'`,
+ * `resolveTenancyRegime()` → TENANCY_ACT), men ett duplicerat default här vore
+ * en andra sanningskälla som kan glida ifrån `leases.compliance.ts` utan att
+ * någon vakt fångar det — precis som `noticePeriodMonths` en gång såg
+ * regimoberoende ut innan lokalstödet fanns. En fallback, ett skrivställe.
+ *
+ * Utelämnat fält betyder därför "operatören valde inte", och servern avgör.
+ *
+ * ── VAD SCHEMAT INTE FÅR VETA ───────────────────────────────────────────────
+ *
+ * Uppsägningstidens minimum, depositionstaket (3 månadshyror för bostad) och
+ * regimens giltighet är alla funktioner av `unit.type`, som ett stateless
+ * klientschema inte känner till. De ägs av `leases.compliance.ts` och
+ * `resolveTenancyRegime()`. Att replikera dem här hade varit den dubblering
+ * CLAUDE.md förbjuder — och den kopian hade dessutom varit den som blev fel.
+ *
+ * ── INGEN REGIMBEROENDE OBLIGATORISKHET ─────────────────────────────────────
+ *
+ * Jag skulle uttrycka regimberoende krav i `superRefine`. Juristen mätte och
+ * svarade att det inte FINNS några: skillnaden mellan TENANCY_ACT och
+ * PRIVATE_RENTAL ligger i uppsägningsMEKANIKEN vid uppsägningstillfället, inte
+ * i vad som krävs när avtalet skapas — `assertLeaseLegalLimits` läser bara
+ * `unit.type`, aldrig regimen. Att uppfinna en regel här hade varit att skriva
+ * en spärr som inte motsvarar någon rättsregel.
+ *
+ * `indexClauseType` × bostad/lokal ÄR en verklig lucka (en indexklausul på
+ * bostad utanför presumtionshyra är juridiskt tveksam), men den kräver
+ * `unit.type` och saknas i dag även server-side. Egen backlogpost, inte det här
+ * schemat.
+ */
+/**
+ * Kontraktets EKONOMISKA och TIDSMÄSSIGA kärnfält — det som inte är ett
+ * villkor i `LEASE_CONTRACT_TERMS` och inte en part.
+ *
+ * Egen konstant för att webbens formulär ska kunna komponera ur SAMMA
+ * definitioner. Formuläret kan inte använda `CreateLeaseWithTenantSchema` rakt
+ * av — det är PLATT (firstName, lastName … på toppnivå) medan trådformen
+ * nästar hyresgästen i `newTenant`, och bär dessutom rena UI-fält
+ * (`propertyId`, `tenantMode`) som aldrig går på tråden. Skillnaden är
+ * strukturell, inte slarv. Men GRÄNSERNA är desamma, och genom att båda läser
+ * de här objekten kan de inte glida isär.
+ *
+ * MÄTT GLIDNING som den här konstanten stänger: webben hade
+ * `noticePeriodMonths: z.coerce.number().int().min(0).default(3)` medan DTO:n
+ * kräver `@Min(1)`. Formuläret släppte alltså igenom 0 — som servern avvisar
+ * med 400 i stället för med ett fältfel — och SATTE 3 månader när fältet
+ * tömdes. Se `CreateLeaseSchema`s docblock om varför det senare är ett
+ * påstående om avtalet och inte en bekvämlighet.
+ */
+export const LEASE_CORE_FIELDS = {
+  monthlyRent: z.number().min(0),
+  depositAmount: z.number().min(0).optional(),
+  startDate: IsoDatumSchema,
+  endDate: IsoDatumSchema.optional(),
+  leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']).optional(),
+  renewalPeriodMonths: z.number().int().min(1).optional(),
+  // 1–60 speglar DTO:ns @Min(1) @Max(60). MINIMUM per enhetstyp (3 bostad,
+  // 9 lokal) ägs av servern — se docblocket.
+  noticePeriodMonths: z.number().int().min(1).max(60).optional(),
+} as const
+
+export const CreateLeaseBaseSchema = z.object({
+  unitId: z.string().uuid(),
+  tenantId: z.string().uuid(),
+  tenancyRegime: z.enum(['PRIVATE_RENTAL', 'TENANCY_ACT']).optional(),
+  ...LEASE_CORE_FIELDS,
+  ...LEASE_CONTRACT_TERMS,
+})
+
+export const CreateLeaseSchema = CreateLeaseBaseSchema.superRefine(granskaKontraktsvillkor)
+
+/**
+ * PATCH /leases/:id — partiell.
+ *
+ * Samma fyra konsistensregler gäller: de prövar nyttolasten mot sig själv, och
+ * en partiell kropp som sätter ett indexfält utan indexklausul är lika
+ * motsägelsefull som en fullständig.
+ */
+export const UpdateLeaseSchema =
+  CreateLeaseBaseSchema.partial().superRefine(granskaKontraktsvillkor)
 
 // Schema för det kombinerade flödet där en hyresgäst skapas tillsammans med
 // kontraktet (POST /leases/with-tenant). Adress + pers/orgnummer är optionella
@@ -358,20 +568,34 @@ export const CreateLeaseWithTenantSchema = z
     unitId: z.string().uuid(),
     existingTenantId: z.string().uuid().optional(),
     newTenant: NewTenantInLeaseSchema.optional(),
-    monthlyRent: z.number().positive(),
-    depositAmount: z.number().nonnegative().optional(),
-    startDate: z.string().date(),
-    endDate: z.string().date().optional(),
-    leaseType: z.enum(['FIXED_TERM', 'INDEFINITE']).optional(),
-    renewalPeriodMonths: z.number().int().min(1).optional(),
-    // JB 12 kap 4 § — minst 3 mån (bostad) eller 9 mån (lokal). API-laget
-    // gör den bostad-/lokal-specifika kontrollen mot Unit.type; här
-    // garanterar vi bara att värdet är ett positivt heltal.
-    noticePeriodMonths: z.number().int().min(1).max(60).optional(),
+    // SAMMA definitioner som skapandevägen. Stod tidigare utskrivna här, och
+    // hade redan glidit: `monthlyRent` var `.positive()` här men `.min(0)` i
+    // CreateLeaseBaseSchema, alltså två olika svar på om noll kronor är en
+    // giltig hyra beroende på vilken endpoint klienten råkade välja.
+    ...LEASE_CORE_FIELDS,
+    tenancyRegime: z.enum(['PRIVATE_RENTAL', 'TENANCY_ACT']).optional(),
+    /**
+     * `true` aktiverar kontraktet (DRAFT → ACTIVE) i samma anrop. Fältet fanns
+     * i DTO:n och i webbens lokala typ men SAKNADES här — det delade schemat
+     * kunde alltså inte beskriva ett anrop som aktiverar.
+     */
+    activate: z.boolean().optional(),
+    // SAMMA villkorsblock som CreateLeaseSchema. Fälten fanns i DTO:n och i
+    // webbens `extends ContractTerms`, men inte här — schemat kunde inte
+    // beskriva ett anrop som satte något av dem.
+    ...LEASE_CONTRACT_TERMS,
   })
-  .refine((d) => Boolean(d.existingTenantId) !== Boolean(d.newTenant), {
-    message: 'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
-    path: ['existingTenantId'],
+  .superRefine((d, ctx) => {
+    if (Boolean(d.existingTenantId) === Boolean(d.newTenant)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Ange antingen en befintlig hyresgäst eller uppgifter för en ny',
+        path: ['existingTenantId'],
+      })
+    }
+    // Samma fyra konsistensregler som skapandevägen — samma kolumner, samma
+    // avtalstext, och därför samma krav.
+    granskaKontraktsvillkor(d, ctx)
   })
 
 // ─── OCR (Bankgiro Luhn-mod10) ───────────────────────────────────────────────
@@ -433,6 +657,12 @@ export type UpdateUnitInput = z.infer<typeof UpdateUnitSchema>
 export type CreateRentIncreaseInput = z.infer<typeof CreateRentIncreaseSchema>
 export type RejectRentIncreaseInput = z.infer<typeof RejectRentIncreaseSchema>
 export type CreateLeaseInput = z.infer<typeof CreateLeaseSchema>
+export type UpdateLeaseInput = z.infer<typeof UpdateLeaseSchema>
+export type TransitionLeaseStatusInput = z.infer<typeof TransitionLeaseStatusSchema>
+export type TerminateLeaseInput = z.infer<typeof TerminateLeaseSchema>
+export type RenewLeaseInput = z.infer<typeof RenewLeaseSchema>
+export type UpdateAppendixInput = z.infer<typeof UpdateAppendixSchema>
+export type CreateSigningRequestInput = z.infer<typeof CreateSigningRequestSchema>
 export type CreateLeaseWithTenantInput = z.infer<typeof CreateLeaseWithTenantSchema>
 export type NewTenantInLeaseInput = z.infer<typeof NewTenantInLeaseSchema>
 export type CreateInvoiceInput = z.infer<typeof CreateInvoiceSchema>
@@ -649,14 +879,6 @@ export type PaySupplierInvoiceInput = z.infer<typeof PaySupplierInvoiceSchema>
 // Pengaflöde. Ett kontraktsglapp här är i bästa fall ett 400 och i sämsta fall
 // ett belopp som bokförs på fel sätt — därför delade scheman, samma mönster som
 // bokföringen (se ./contract.ts).
-
-/**
- * ETT ISO-DATUM SÅ SOM `@IsDateString()` DEFINIERAR DET — datum eller
- * tidsstämpel med valfri offset. Finns som egen symbol för att nästa fält som
- * ska spegla den dekoratorn inte ska behöva mäta om vilken Zod-form som
- * motsvarar den.
- */
-export const IsoDatumSchema = z.union([z.string().date(), z.string().datetime({ offset: true })])
 
 /**
  * BETALNINGSSÄTTET — EN uppräkning för båda pengavägarna.
@@ -916,6 +1138,49 @@ export const CreateRentIncreaseSchema = z.object({
 export const RejectRentIncreaseSchema = z.object({
   /** OBLIGATORISK, 2–500 tecken. Ett avslag utan skäl är inte spårbart. */
   rejectionReason: z.string().min(2).max(500),
+})
+
+// ─── Kontraktets övriga skrivvägar ───────────────────────────────────────────
+//
+// Fyra små kroppar som webben tidigare skickade som inline-literaler eller
+// lokala typer. Varje gräns är AVLÄST ur DTO:n, inte vald här.
+
+/** PATCH /leases/:id/status. Enumen är DTO:ns fyra värden. */
+export const TransitionLeaseStatusSchema = z.object({
+  status: z.enum(['ACTIVE', 'DRAFT', 'EXPIRED', 'TERMINATED']),
+})
+
+/**
+ * PATCH /leases/:id/terminate — hyresvärdens uppsägning.
+ *
+ * BÅDA fälten valfria, precis som DTO:n. `effectiveDate` utelämnat betyder att
+ * servern räknar fram slutdatumet ur uppsägningstiden; att kräva det här hade
+ * tyst tagit bort den vägen. Samma resonemang som för uppsägningsBEGÄRAN
+ * (`ApproveTerminationSchema`).
+ */
+export const TerminateLeaseSchema = z.object({
+  terminationReason: z.string().max(500).optional(),
+  effectiveDate: IsoDatumSchema.optional(),
+})
+
+/** PATCH /leases/:id/renew. */
+export const RenewLeaseSchema = z.object({
+  newEndDate: IsoDatumSchema.optional(),
+  monthlyRent: z.number().min(0).optional(),
+})
+
+/** PATCH /contracts/:leaseId/appendices/:documentId. */
+export const UpdateAppendixSchema = z.object({
+  attachedToLeaseAsAppendix: z.boolean().optional(),
+  category: z
+    .enum(['ENERGY_DECLARATION', 'HOUSE_RULES', 'INSPECTION_PROTOCOL', 'OTHER'])
+    .optional(),
+  appendixOrder: z.number().int().min(0).optional(),
+})
+
+/** POST /signing/requests. */
+export const CreateSigningRequestSchema = z.object({
+  documentId: z.string().uuid('documentId måste vara ett giltigt UUID'),
 })
 
 // ─── Uppsägningar ────────────────────────────────────────────────────────────

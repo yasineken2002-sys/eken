@@ -1,5 +1,5 @@
 {
-  "total": 60,
+  "total": 50,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -80,21 +80,6 @@
         "PATCH `/keys/${id}/return` → ReturnKeyInput",
         "PATCH `/keys/${id}` → UpdateKeyInput",
         "POST '/keys' → IssueKeysInput"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/leases/api/leases.api.ts",
-      "medlemmar": [
-        "PATCH `/contracts/${leaseId}/appendices/${documentId}` → TerminateLeaseInput",
-        "PATCH `/leases/${id}/renew` → RenewLeaseInput",
-        "PATCH `/leases/${id}/status` → INLINE-LITERAL",
-        "PATCH `/leases/${id}/terminate` → TerminateLeaseInput",
-        "PATCH `/leases/${id}` → Partial",
-        "POST '/leases' → CreateLeaseInput",
-        "POST '/leases/with-tenant' → CreateLeaseWithTenantInput",
-        "POST '/signing/requests' → INLINE-LITERAL",
-        "POST `/contracts/generate/${leaseId}` → INLINE-LITERAL",
-        "POST `/leases/${leaseId}/initial-notices` → INLINE-LITERAL"
       ]
     },
     {

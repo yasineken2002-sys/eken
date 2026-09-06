@@ -14,7 +14,6 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common'
-import { IsBoolean, IsEnum, IsInt, IsOptional, Min } from 'class-validator'
 import { Throttle } from '@nestjs/throttler'
 import * as crypto from 'crypto'
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
@@ -24,6 +23,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
+import { UpdateAppendixDto } from './dto/update-appendix.dto'
 import { ContractTemplateService } from './contract-template.service'
 
 // PDF:er upp till denna storlek validerar vi med full SHA-256 vid varje
@@ -31,17 +31,6 @@ import { ContractTemplateService } from './contract-template.service'
 // och lämnas till stickprovs-jobb vid behov. 10 MB täcker så gott som alla
 // kontrakt — typiska hyreskontrakt är 50-300 KB, även med foton.
 const HASH_VERIFY_MAX_BYTES = 10 * 1024 * 1024
-
-// DTO för PATCH /contracts/:leaseId/appendices/:documentId. Måste deklareras
-// före @Controller-klassen — annars körs decoratorn med ett fortfarande
-// odefinierat klassnamn (TDZ) i runtime.
-class UpdateAppendixDto {
-  @IsBoolean() @IsOptional() attachedToLeaseAsAppendix?: boolean
-  @IsEnum(['ENERGY_DECLARATION', 'HOUSE_RULES', 'INSPECTION_PROTOCOL', 'OTHER'])
-  @IsOptional()
-  category?: 'ENERGY_DECLARATION' | 'HOUSE_RULES' | 'INSPECTION_PROTOCOL' | 'OTHER'
-  @IsInt() @Min(0) @IsOptional() appendixOrder?: number
-}
 
 @Controller('contracts')
 @UseGuards(JwtAuthGuard)
