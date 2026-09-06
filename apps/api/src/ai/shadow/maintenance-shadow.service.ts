@@ -601,7 +601,10 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
         },
         toolInput: {
           type: 'object',
-          description: 'Argument till verktyget. Hitta ALDRIG på id:n — utelämna hellre fältet.',
+          description:
+            'Argument till verktyget. Hitta ALDRIG på id:n — utelämna hellre fältet. ' +
+            'Lämna TOMT när toolName är FRAGA: en fråga är inget verktyg och har inga ' +
+            'argument. Frågans innehåll hör hemma i fältet fraga.',
         },
         // ── DEN NÄST TROLIGASTE KATEGORIN, OCH VARFÖR DEN BEHÖVS ──────────
         //
@@ -877,7 +880,25 @@ export function tolkaVerktygsanrop(input: unknown): {
     if (typeof r['reasoning'] !== 'string' || !r['reasoning'].trim()) return null
     // ── KARTAN MELLAN TRÅDENS ASCII OCH DOMÄNENS SVENSKA ────────────────────
     // Ett ställe, och bara ett. Se skälet vid `falt`/`nytta` i schemat ovan.
-    const rå = r['fraga']
+    // ── FRÅGAN LÄSES FRÅN BÅDA PLATSERNA, OCH DET ÄR EN MÄTNING ────────────
+    //
+    // Uppmätt i körning 5: åtta av korpusens tio frågefall blev OTOLKBART.
+    // Modellen skrev en fullt giltig fråga — rätt fält, tre till fyra riktiga
+    // kategorier, en nytta som skiljer utfallen åt — men lade den i `toolInput`
+    // i stället för i `fraga`:
+    //
+    //   "toolInput":{"falt":"category","alternativ":["PLUMBING","ROOF",…],"nytta":"…"}
+    //
+    // Formen är förutsägbar i efterhand: `toolInput` är ett OBLIGATORISKT
+    // objekt utan egen struktur, `fraga` är ett VALFRITT objekt bredvid det.
+    // Ett obligatoriskt fack drar till sig innehållet. Att skärpa
+    // beskrivningen räcker inte som ENDA åtgärd — det är samma sorts hopp som
+    // att be en modell om låg confidence och sedan mäta att den aldrig ger den.
+    //
+    // Placeringen är alltså fail-open, INNEHÅLLET är fortsatt fail-closed:
+    // `ärGiltigFråga` prövar exakt samma sak oavsett var payloaden låg, så
+    // ingenting ogiltigt släpps igenom av den här toleransen.
+    const rå = r['fraga'] ?? r['toolInput']
     const f =
       typeof rå === 'object' && rå !== null
         ? {

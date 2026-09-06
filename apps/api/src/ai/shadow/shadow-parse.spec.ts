@@ -191,6 +191,38 @@ describe('frågans nycklar på tråden', () => {
     ).toBeNull()
   })
 
+  // ── PLACERINGEN ÄR TOLERANT, INNEHÅLLET ÄR DET INTE ────────────────────
+  //
+  // Uppmätt i körning 5: åtta av tio frågefall blev OTOLKBART därför att
+  // modellen lade frågan i `toolInput` — ett obligatoriskt fack bredvid det
+  // valfria `fraga`. Payloaden var giltig; bara platsen var fel.
+  it('läser frågan även när modellen lade den i toolInput', () => {
+    const r = tolkaVerktygsanrop({
+      toolName: 'FRAGA',
+      reasoning: 'Det går inte att avgöra vad felet gäller ur texten.',
+      prediction: { category: 'PLUMBING', priority: 'NORMAL' },
+      toolInput: {
+        falt: 'category',
+        alternativ: ['PLUMBING', 'ROOF'],
+        nytta: 'Olika hantverkare.',
+      },
+    })
+    expect(r?.fraga?.alternativ).toEqual(['PLUMBING', 'ROOF'])
+    // OCH `toolInput` bärs inte vidare som verktygsargument — en fråga har inga.
+    expect(r?.toolInput).toEqual({})
+  })
+
+  it('toleransen gäller INTE innehållet — en ogiltig fråga i toolInput avvisas', () => {
+    expect(
+      tolkaVerktygsanrop({
+        toolName: 'FRAGA',
+        reasoning: 'Text.',
+        prediction: { category: 'PLUMBING', priority: 'NORMAL' },
+        toolInput: { falt: 'category', alternativ: ['INTE_EN_KATEGORI', 'ROOF'], nytta: 'x' },
+      }),
+    ).toBeNull()
+  })
+
   it('avvisar ett enda alternativ — ett val kräver två', () => {
     expect(
       tolkaVerktygsanrop({

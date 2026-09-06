@@ -3,8 +3,8 @@
     "antal": 54,
     "kategori": {
       "antal": 54,
-      "traffar": 48,
-      "andel": 0.8888888888888888
+      "traffar": 47,
+      "andel": 0.8703703703703703
     },
     "prioritet": {
       "antal": 54,
@@ -13,15 +13,15 @@
     },
     "atgard": {
       "antal": 54,
-      "traffar": 42,
-      "andel": 0.7777777777777778
+      "traffar": 40,
+      "andel": 0.7407407407407407
     },
     "regler": {
-      "golvHojde": 12,
-      "golvRaddade": 9,
+      "golvHojde": 13,
+      "golvRaddade": 10,
       "golvForstorde": 3,
-      "fragaTvingad": 2,
-      "fragaTvingadRatt": 1,
+      "fragaTvingad": 3,
+      "fragaTvingadRatt": 2,
       "prioritetUtanModell": {
         "antal": 54,
         "traffar": 41,
@@ -29,9 +29,9 @@
       }
     },
     "fraga": {
-      "rattFraga": 4,
+      "rattFraga": 2,
       "felFraga": 1,
-      "missadFraga": 6,
+      "missadFraga": 8,
       "felFragaAndel": 0.018518518518518517
     },
     "ingen": {
@@ -54,23 +54,23 @@
       },
       {
         "hink": "0.70–0.84",
-        "antal": 3,
+        "antal": 2,
         "ratt": 2,
-        "andel": 0.6666666666666666
+        "andel": 1
       },
       {
         "hink": "0.85–1.00",
-        "antal": 36,
-        "ratt": 31,
-        "andel": 0.8611111111111112
+        "antal": 38,
+        "ratt": 33,
+        "andel": 0.868421052631579
       }
     ],
-    "domWouldExecute": 34,
+    "domWouldExecute": 33,
     "kostnad": {
-      "totalUsd": 0.27037000000000005,
-      "perArendeUsd": 0.005006851851851853,
-      "inTokens": 198520,
-      "utTokens": 14370
+      "totalUsd": 0.271369,
+      "perArendeUsd": 0.005025351851851852,
+      "inTokens": 199114,
+      "utTokens": 14451
     }
   },
   "poster": [
@@ -92,10 +92,11 @@
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005203,
-        "inTokens": 3693,
-        "utTokens": 302
+        "kostnadUsd": 0.005219,
+        "inTokens": 3704,
+        "utTokens": 303
       }
     },
     {
@@ -117,10 +118,11 @@
         "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
+        "andraKategori": "ROOF",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005174,
-        "inTokens": 3659,
-        "utTokens": 303
+        "kostnadUsd": 0.005475,
+        "inTokens": 3670,
+        "utTokens": 361
       }
     },
     {
@@ -142,9 +144,9 @@
         "prioritetForeRegler": "URGENT",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004999,
-        "inTokens": 3689,
-        "utTokens": 262
+        "kostnadUsd": 0.0050750000000000005,
+        "inTokens": 3700,
+        "utTokens": 275
       }
     },
     {
@@ -166,9 +168,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004842,
-        "inTokens": 3677,
-        "utTokens": 233
+        "kostnadUsd": 0.0049180000000000005,
+        "inTokens": 3688,
+        "utTokens": 246
       }
     },
     {
@@ -190,9 +192,9 @@
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005346,
-        "inTokens": 3666,
-        "utTokens": 336
+        "kostnadUsd": 0.005267,
+        "inTokens": 3677,
+        "utTokens": 318
       }
     },
     {
@@ -214,10 +216,11 @@
         "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "NORMAL",
+        "andraKategori": "WINDOWS_DOORS",
         "domWouldExecute": false,
-        "kostnadUsd": 0.00533,
-        "inTokens": 3650,
-        "utTokens": 336
+        "kostnadUsd": 0.005276,
+        "inTokens": 3661,
+        "utTokens": 323
       }
     },
     {
@@ -232,16 +235,16 @@
         "id": "k07",
         "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
-        "prioritet": "HIGH",
+        "prioritet": "NORMAL",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
-        "prioritetForeRegler": "HIGH",
+        "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005001,
-        "inTokens": 3686,
-        "utTokens": 263
+        "kostnadUsd": 0.0049570000000000005,
+        "inTokens": 3697,
+        "utTokens": 252
       }
     },
     {
@@ -263,9 +266,9 @@
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004984,
-        "inTokens": 3679,
-        "utTokens": 261
+        "kostnadUsd": 0.005065,
+        "inTokens": 3690,
+        "utTokens": 275
       }
     },
     {
@@ -287,9 +290,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0050880000000000005,
-        "inTokens": 3693,
-        "utTokens": 279
+        "kostnadUsd": 0.004999,
+        "inTokens": 3704,
+        "utTokens": 259
       }
     },
     {
@@ -311,9 +314,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.00482,
-        "inTokens": 3685,
-        "utTokens": 227
+        "kostnadUsd": 0.004871,
+        "inTokens": 3696,
+        "utTokens": 235
       }
     },
     {
@@ -335,9 +338,9 @@
         "prioritetForeRegler": "URGENT",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005069,
-        "inTokens": 3679,
-        "utTokens": 278
+        "kostnadUsd": 0.004920000000000001,
+        "inTokens": 3690,
+        "utTokens": 246
       }
     },
     {
@@ -353,15 +356,15 @@
         "atgard": "create_inspection",
         "kategori": "FACADE",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.9,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004852,
-        "inTokens": 3687,
-        "utTokens": 233
+        "kostnadUsd": 0.0049429999999999995,
+        "inTokens": 3698,
+        "utTokens": 249
       }
     },
     {
@@ -382,10 +385,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "HIGH",
+        "andraKategori": "PLUMBING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004928,
-        "inTokens": 3678,
-        "utTokens": 250
+        "kostnadUsd": 0.005079,
+        "inTokens": 3689,
+        "utTokens": 278
       }
     },
     {
@@ -407,9 +411,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004766,
-        "inTokens": 3676,
-        "utTokens": 218
+        "kostnadUsd": 0.004717,
+        "inTokens": 3687,
+        "utTokens": 206
       }
     },
     {
@@ -431,9 +435,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.00487,
-        "inTokens": 3675,
-        "utTokens": 239
+        "kostnadUsd": 0.004966,
+        "inTokens": 3686,
+        "utTokens": 256
       }
     },
     {
@@ -449,15 +453,15 @@
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "HIGH",
-        "confidence": null,
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.00503,
-        "inTokens": 3690,
-        "utTokens": 268
+        "kostnadUsd": 0.005071,
+        "inTokens": 3701,
+        "utTokens": 274
       }
     },
     {
@@ -479,9 +483,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004929,
-        "inTokens": 3674,
-        "utTokens": 251
+        "kostnadUsd": 0.00492,
+        "inTokens": 3685,
+        "utTokens": 247
       }
     },
     {
@@ -503,9 +507,9 @@
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005133,
-        "inTokens": 3678,
-        "utTokens": 291
+        "kostnadUsd": 0.005239,
+        "inTokens": 3689,
+        "utTokens": 310
       }
     },
     {
@@ -527,9 +531,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004941,
-        "inTokens": 3676,
-        "utTokens": 253
+        "kostnadUsd": 0.004967,
+        "inTokens": 3687,
+        "utTokens": 256
       }
     },
     {
@@ -550,10 +554,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "URGENT",
+        "andraKategori": "HEATING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005157,
-        "inTokens": 3677,
-        "utTokens": 296
+        "kostnadUsd": 0.005138,
+        "inTokens": 3688,
+        "utTokens": 290
       }
     },
     {
@@ -576,9 +581,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.00549,
-        "inTokens": 3665,
-        "utTokens": 365
+        "kostnadUsd": 0.005476,
+        "inTokens": 3676,
+        "utTokens": 360
       }
     },
     {
@@ -600,9 +605,9 @@
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005417,
-        "inTokens": 3687,
-        "utTokens": 346
+        "kostnadUsd": 0.005213,
+        "inTokens": 3698,
+        "utTokens": 303
       }
     },
     {
@@ -623,10 +628,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "LOW",
+        "andraKategori": "PLUMBING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004814,
-        "inTokens": 3669,
-        "utTokens": 229
+        "kostnadUsd": 0.0049499999999999995,
+        "inTokens": 3680,
+        "utTokens": 254
       }
     },
     {
@@ -648,9 +654,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.00466,
-        "inTokens": 3685,
-        "utTokens": 195
+        "kostnadUsd": 0.004666,
+        "inTokens": 3696,
+        "utTokens": 194
       }
     },
     {
@@ -672,9 +678,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004684,
-        "inTokens": 3694,
-        "utTokens": 198
+        "kostnadUsd": 0.004739999999999999,
+        "inTokens": 3705,
+        "utTokens": 207
       }
     },
     {
@@ -696,8 +702,8 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.00453,
-        "inTokens": 3650,
+        "kostnadUsd": 0.004541,
+        "inTokens": 3661,
         "utTokens": 176
       }
     },
@@ -719,10 +725,11 @@
         "atgardForeRegler": "compose_and_send_email",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "HIGH",
+        "andraKategori": "HEATING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005056,
-        "inTokens": 3681,
-        "utTokens": 275
+        "kostnadUsd": 0.005037,
+        "inTokens": 3692,
+        "utTokens": 269
       }
     },
     {
@@ -744,9 +751,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005025,
-        "inTokens": 3670,
-        "utTokens": 271
+        "kostnadUsd": 0.004771,
+        "inTokens": 3681,
+        "utTokens": 218
       }
     },
     {
@@ -769,9 +776,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005425,
-        "inTokens": 3675,
-        "utTokens": 350
+        "kostnadUsd": 0.005301,
+        "inTokens": 3686,
+        "utTokens": 323
       }
     },
     {
@@ -792,10 +799,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "HIGH",
+        "andraKategori": "FACADE",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005048,
-        "inTokens": 3683,
-        "utTokens": 273
+        "kostnadUsd": 0.005034,
+        "inTokens": 3694,
+        "utTokens": 268
       }
     },
     {
@@ -817,8 +825,8 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004921,
-        "inTokens": 3666,
+        "kostnadUsd": 0.004932,
+        "inTokens": 3677,
         "utTokens": 251
       }
     },
@@ -838,12 +846,12 @@
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
-        "prioritetForeRegler": "URGENT",
+        "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004939000000000001,
-        "inTokens": 3674,
-        "utTokens": 253
+        "kostnadUsd": 0.0051,
+        "inTokens": 3685,
+        "utTokens": 283
       }
     },
     {
@@ -864,10 +872,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "URGENT",
+        "andraKategori": "FACADE",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004876999999999999,
-        "inTokens": 3672,
-        "utTokens": 241
+        "kostnadUsd": 0.004863,
+        "inTokens": 3683,
+        "utTokens": 236
       }
     },
     {
@@ -889,9 +898,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005070999999999999,
-        "inTokens": 3671,
-        "utTokens": 280
+        "kostnadUsd": 0.004852,
+        "inTokens": 3682,
+        "utTokens": 234
       }
     },
     {
@@ -905,7 +914,7 @@
       "utfall": {
         "id": "k40",
         "atgard": "compose_and_send_email",
-        "kategori": "OTHER",
+        "kategori": "COMMON_AREAS",
         "prioritet": "LOW",
         "confidence": 0.95,
         "fragaFalt": null,
@@ -913,9 +922,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004778,
-        "inTokens": 3673,
-        "utTokens": 221
+        "kostnadUsd": 0.004939,
+        "inTokens": 3684,
+        "utTokens": 251
       }
     },
     {
@@ -932,15 +941,16 @@
         "atgard": "FRAGA",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
-        "confidence": 0.75,
+        "confidence": 0.85,
         "fragaFalt": "category",
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "LOW",
+        "andraKategori": "ELECTRICAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004949,
-        "inTokens": 3669,
-        "utTokens": 256
+        "kostnadUsd": 0.0049700000000000005,
+        "inTokens": 3680,
+        "utTokens": 258
       }
     },
     {
@@ -962,8 +972,8 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004901,
-        "inTokens": 3676,
+        "kostnadUsd": 0.004912,
+        "inTokens": 3687,
         "utTokens": 245
       }
     },
@@ -986,9 +996,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004919,
-        "inTokens": 3694,
-        "utTokens": 245
+        "kostnadUsd": 0.00524,
+        "inTokens": 3705,
+        "utTokens": 307
       }
     },
     {
@@ -1010,9 +1020,9 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004973,
-        "inTokens": 3683,
-        "utTokens": 258
+        "kostnadUsd": 0.004909,
+        "inTokens": 3694,
+        "utTokens": 243
       }
     },
     {
@@ -1034,9 +1044,9 @@
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004849,
-        "inTokens": 3674,
-        "utTokens": 235
+        "kostnadUsd": 0.004995,
+        "inTokens": 3685,
+        "utTokens": 262
       }
     },
     {
@@ -1058,10 +1068,11 @@
         "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005465,
-        "inTokens": 3665,
-        "utTokens": 360
+        "kostnadUsd": 0.005461000000000001,
+        "inTokens": 3676,
+        "utTokens": 357
       }
     },
     {
@@ -1082,10 +1093,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "HIGH",
+        "andraKategori": "CLEANING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005082,
-        "inTokens": 3677,
-        "utTokens": 281
+        "kostnadUsd": 0.005018,
+        "inTokens": 3688,
+        "utTokens": 266
       }
     },
     {
@@ -1106,10 +1118,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "URGENT",
+        "andraKategori": "ROOF",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005058,
-        "inTokens": 3673,
-        "utTokens": 277
+        "kostnadUsd": 0.005054,
+        "inTokens": 3684,
+        "utTokens": 274
       }
     },
     {
@@ -1123,18 +1136,18 @@
       },
       "utfall": {
         "id": "k50",
-        "atgard": "FRAGA",
+        "atgard": "OTOLKBART",
         "kategori": "OTHER",
         "prioritet": "URGENT",
         "confidence": null,
-        "fragaFalt": "category",
-        "atgardForeRegler": "FRAGA",
+        "fragaFalt": null,
+        "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "URGENT",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005391,
-        "inTokens": 3661,
-        "utTokens": 346
+        "kostnadUsd": 0.005412,
+        "inTokens": 3672,
+        "utTokens": 348
       }
     },
     {
@@ -1150,15 +1163,15 @@
         "atgard": "update_maintenance_status",
         "kategori": "CLEANING",
         "prioritet": "HIGH",
-        "confidence": 0.85,
+        "confidence": 0.9,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0050279999999999995,
-        "inTokens": 3668,
-        "utTokens": 272
+        "kostnadUsd": 0.004949,
+        "inTokens": 3679,
+        "utTokens": 254
       }
     },
     {
@@ -1172,18 +1185,19 @@
       },
       "utfall": {
         "id": "k55",
-        "atgard": "FRAGA",
+        "atgard": "OTOLKBART",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
         "confidence": null,
-        "fragaFalt": "category",
-        "atgardForeRegler": "FRAGA",
+        "fragaFalt": null,
+        "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005205,
-        "inTokens": 3650,
-        "utTokens": 311
+        "kostnadUsd": 0.005311,
+        "inTokens": 3661,
+        "utTokens": 330
       }
     },
     {
@@ -1204,10 +1218,11 @@
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "URGENT",
         "prioritetUtanModell": "URGENT",
+        "andraKategori": "HEATING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005025999999999999,
-        "inTokens": 3671,
-        "utTokens": 271
+        "kostnadUsd": 0.004952,
+        "inTokens": 3682,
+        "utTokens": 254
       }
     },
     {
@@ -1221,18 +1236,19 @@
       },
       "utfall": {
         "id": "k57",
-        "atgard": "FRAGA",
+        "atgard": "OTOLKBART",
         "kategori": "PLUMBING",
         "prioritet": "LOW",
         "confidence": null,
-        "fragaFalt": "category",
-        "atgardForeRegler": "FRAGA",
+        "fragaFalt": null,
+        "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
+        "andraKategori": "OTHER",
         "domWouldExecute": false,
-        "kostnadUsd": 0.0052770000000000004,
-        "inTokens": 3682,
-        "utTokens": 319
+        "kostnadUsd": 0.0054930000000000005,
+        "inTokens": 3693,
+        "utTokens": 360
       }
     },
     {
@@ -1248,15 +1264,15 @@
         "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "URGENT",
-        "confidence": 0.9,
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
-        "prioritetForeRegler": "HIGH",
+        "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "URGENT",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005074,
-        "inTokens": 3674,
-        "utTokens": 280
+        "kostnadUsd": 0.005005,
+        "inTokens": 3685,
+        "utTokens": 264
       }
     },
     {
@@ -1270,18 +1286,19 @@
       },
       "utfall": {
         "id": "k60",
-        "atgard": "create_inspection",
+        "atgard": "FRAGA",
         "kategori": "OTHER",
-        "prioritet": "LOW",
+        "prioritet": "NORMAL",
         "confidence": 0.75,
-        "fragaFalt": null,
+        "fragaFalt": "category",
         "atgardForeRegler": "create_inspection",
-        "prioritetForeRegler": "LOW",
+        "prioritetForeRegler": "NORMAL",
         "prioritetUtanModell": "LOW",
-        "domWouldExecute": true,
-        "kostnadUsd": 0.0048330000000000005,
-        "inTokens": 3683,
-        "utTokens": 230
+        "andraKategori": "HEATING",
+        "domWouldExecute": false,
+        "kostnadUsd": 0.004959,
+        "inTokens": 3694,
+        "utTokens": 253
       }
     },
     {
@@ -1303,9 +1320,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004713,
-        "inTokens": 3678,
-        "utTokens": 207
+        "kostnadUsd": 0.004719,
+        "inTokens": 3689,
+        "utTokens": 206
       }
     },
     {
@@ -1327,9 +1344,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0047279999999999996,
-        "inTokens": 3678,
-        "utTokens": 210
+        "kostnadUsd": 0.004744,
+        "inTokens": 3689,
+        "utTokens": 211
       }
     },
     {
@@ -1351,9 +1368,9 @@
         "prioritetForeRegler": "HIGH",
         "prioritetUtanModell": "HIGH",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004850999999999999,
-        "inTokens": 3701,
-        "utTokens": 230
+        "kostnadUsd": 0.0048319999999999995,
+        "inTokens": 3712,
+        "utTokens": 224
       }
     },
     {
@@ -1375,9 +1392,9 @@
         "prioritetForeRegler": "LOW",
         "prioritetUtanModell": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004850999999999999,
-        "inTokens": 3681,
-        "utTokens": 234
+        "kostnadUsd": 0.004937,
+        "inTokens": 3692,
+        "utTokens": 249
       }
     }
   ]
