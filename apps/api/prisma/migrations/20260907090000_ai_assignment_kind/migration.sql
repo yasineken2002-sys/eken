@@ -46,5 +46,9 @@ CREATE UNIQUE INDEX "AiAssignment_delegation_proposal_unique"
     WHERE "kind" = 'DELEGATION_PROPOSAL';
 
 -- Sveppasset frågar "finns ett ÖPPET förslag för det här mönstret".
-CREATE INDEX "AiAssignment_kind_status_idx"
+--
+-- NAMNET ÄR PRISMAS EGET, och indexet är deklarerat i schema.prisma. Ett
+-- handnamngivet index utanför schemat blir drift som `schema-drift-guard`
+-- föreslår att DROPPA — uppmätt i den här PR:ens första CI-körning.
+CREATE INDEX "AiAssignment_organizationId_kind_status_idx"
     ON "AiAssignment"("organizationId", "kind", "status");

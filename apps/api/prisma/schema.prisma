@@ -4155,6 +4155,14 @@ model AiAssignment {
   /// full scan var femtonde minut, och den växer med kön.
   @@index([organizationId, shadow, executionVerdict])
 
+  /// Sveppasset frågar "finns ett ÖPPET delegationsförslag för det här mönstret".
+  ///
+  /// DEKLARERAD HÄR, inte i rå SQL: ett vanligt index KAN uttryckas i Prisma, och
+  /// ett handnamngivet index utanför schemat blir drift som `schema-drift-guard`
+  /// föreslår att DROPPA. (Det partiella UNIKA indexet i samma migration kan
+  /// däremot inte uttryckas — därför bor bara det i SQL.)
+  @@index([organizationId, kind, status])
+
   /// `/delegationer` räknar "Skulle ha utlöst" per delegation, och
   /// frekvensvillkoret räknar förbrukning inom ett tidsfönster. Båda frågorna
   /// går genom de här två kolumnerna.
