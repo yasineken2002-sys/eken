@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import { PaymentMethodSchema } from '@eken/shared'
+import { PaymentMethodSchema, INSPECTION_TYPES, INSPECTION_STATUSES } from '@eken/shared'
 
 /**
  * Betalsättets tillåtna värden — HÄRLEDDA ur det delade schemat, aldrig en egen
@@ -7,6 +7,17 @@ import { PaymentMethodSchema } from '@eken/shared'
  * validerar mot, och modellen hade då fått veta något annat än vad som gäller.
  */
 const BETALSATT_VARDEN = [...PaymentMethodSchema.options]
+
+/**
+ * Besiktningens värden — samma regel, samma skäl. Listorna stod som PROSA i
+ * `get_inspections` ("MOVE_IN, MOVE_OUT, PERIODIC, DAMAGE") och som en
+ * handskriven `enum` i `create_inspection`. En prosarad är inget schemat kan
+ * upprätthålla, och båda var kopior av Prismas enum utan bindning — exakt den
+ * form som gav felanmälans tre påhittade kategorier. `inspection-enum-source.spec.ts`
+ * binder dem nu åt båda hållen.
+ */
+const BESIKTNINGSTYPER = [...INSPECTION_TYPES]
+const BESIKTNINGSSTATUSAR = [...INSPECTION_STATUSES]
 
 export const TOOLS: Anthropic.Tool[] = [
   // ── READ TOOLS (no confirmation needed) ──────────────────────────────────
@@ -569,8 +580,12 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        type: { type: 'string', description: 'MOVE_IN, MOVE_OUT, PERIODIC, DAMAGE' },
-        status: { type: 'string', description: 'SCHEDULED, IN_PROGRESS, COMPLETED, SIGNED' },
+        type: { type: 'string', enum: BESIKTNINGSTYPER, description: 'Typ av besiktning' },
+        status: {
+          type: 'string',
+          enum: BESIKTNINGSSTATUSAR,
+          description: 'Besiktningens status',
+        },
         unitId: { type: 'string', description: 'Filtrera på enhet' },
       },
       required: [],
@@ -583,7 +598,7 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        type: { type: 'string', enum: ['MOVE_IN', 'MOVE_OUT', 'PERIODIC', 'DAMAGE'] },
+        type: { type: 'string', enum: BESIKTNINGSTYPER },
         propertyId: { type: 'string' },
         propertyName: { type: 'string', description: 'För visning' },
         unitId: { type: 'string' },

@@ -1,5 +1,5 @@
 {
-  "total": 56,
+  "total": 52,
   "poster": [
     {
       "fil": "apps/portal/src/api/portal.api.ts",
@@ -27,16 +27,11 @@
     },
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
-      "medlemmar": [
-        "POST '/ai/chat' → INLINE-LITERAL",
-        "POST '/ai/confirm' → OTYPAD"
-      ]
+      "medlemmar": ["POST '/ai/chat' → INLINE-LITERAL", "POST '/ai/confirm' → OTYPAD"]
     },
     {
       "fil": "apps/web/src/features/assignments/api/assignments.api.ts",
-      "medlemmar": [
-        "PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"
-      ]
+      "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
     },
     {
       "fil": "apps/web/src/features/auth/api/auth.api.ts",
@@ -61,9 +56,7 @@
     },
     {
       "fil": "apps/web/src/features/backfill/api/backfill.api.ts",
-      "medlemmar": [
-        "POST `/avisering/backfill/${leaseId}/confirm` → OTYPAD"
-      ]
+      "medlemmar": ["POST `/avisering/backfill/${leaseId}/confirm` → OTYPAD"]
     },
     {
       "fil": "apps/web/src/features/contract-batch/api/contractBatch.api.ts",
@@ -81,24 +74,8 @@
       ]
     },
     {
-      "fil": "apps/web/src/features/documents/api/documents.api.ts",
-      "medlemmar": [
-        "POST `/documents/${documentId}/send-to-tenant` → INLINE-LITERAL"
-      ]
-    },
-    {
       "fil": "apps/web/src/features/inbox/api/inbox.api.ts",
-      "medlemmar": [
-        "PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/inspections/api/inspections.api.ts",
-      "medlemmar": [
-        "PATCH `/inspections/${id}` → UpdateInspectionInput",
-        "PATCH `/inspections/${inspectionId}/items/${itemId}` → UpdateInspectionItemInput",
-        "POST '/inspections' → CreateInspectionInput"
-      ]
+      "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
     },
     {
       "fil": "apps/web/src/features/keys/api/keys.api.ts",
@@ -117,9 +94,7 @@
     },
     {
       "fil": "apps/web/src/features/maintenance/api/maintenance.api.ts",
-      "medlemmar": [
-        "PATCH `/maintenance/${id}` → UpdateTicketInput"
-      ]
+      "medlemmar": ["PATCH `/maintenance/${id}` → UpdateTicketInput"]
     },
     {
       "fil": "apps/web/src/features/messages/api/messages.api.ts",
@@ -130,9 +105,7 @@
     },
     {
       "fil": "apps/web/src/features/misc-charges/api/misc-charges.api.ts",
-      "medlemmar": [
-        "POST '/misc-charges' → CreateMiscChargeBody"
-      ]
+      "medlemmar": ["POST '/misc-charges' → CreateMiscChargeBody"]
     },
     {
       "fil": "apps/web/src/features/news/api/news.api.ts",
@@ -144,15 +117,11 @@
     },
     {
       "fil": "apps/web/src/features/settings/api/plan.api.ts",
-      "medlemmar": [
-        "POST '/ai-usage/buy-credits' → INLINE-LITERAL"
-      ]
+      "medlemmar": ["POST '/ai-usage/buy-credits' → INLINE-LITERAL"]
     },
     {
       "fil": "apps/web/src/features/settings/api/settings.api.ts",
-      "medlemmar": [
-        "PATCH '/organizations/me' → UpdateOrganizationInput"
-      ]
+      "medlemmar": ["PATCH '/organizations/me' → UpdateOrganizationInput"]
     },
     {
       "fil": "apps/web/src/features/users/api/users.api.ts",
