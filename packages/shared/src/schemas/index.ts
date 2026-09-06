@@ -379,7 +379,23 @@ const INDEXFALT = [
 ] as const
 
 /**
- * De fyra reglerna som går att pröva UTAN att slå upp något i databasen.
+ * ÄR FÄLTET ANGIVET — eller nollställt?
+ *
+ * `!== undefined` räcker inte, och skillnaden var en BLOCKERARE. Webbens
+ * formulär sätter `indexAdjustmentDate: ''` och `indexNotes: ''` i sina
+ * defaultValues (`LeaseForm.tsx:374`, `:381`). Tom sträng är inte `undefined`,
+ * så regel 2 fällde formulärets NORMALLÄGE — och eftersom de två inputfälten
+ * bara renderas innanför `indexClauseType !== 'NONE'` hade felen ingen plats
+ * att visas på. Utfallet: användaren trycker Spara, och ingenting händer.
+ *
+ * Sakligt är regeln också fel med `!== undefined`: tom sträng och null är hur
+ * en klient NOLLAR ett fält, och en nollning kan aldrig vara en motsägelse.
+ * Att förbjuda den gör dessutom en indexklausul omöjlig att TA BORT.
+ */
+const angivet = (v: unknown): boolean => v !== undefined && v !== null && v !== ''
+
+/**
+ * De fem reglerna som går att pröva UTAN att slå upp något i databasen.
  *
  * Var och en är intern konsistens i nyttolasten — inte en regel om avtalet som
  * kräver enhetens typ. Sådana regler (uppsägningstidens minimum, depositions-
@@ -391,6 +407,7 @@ export function granskaKontraktsvillkor(
   // och utan det matchar signaturen inte Zods `superRefine`.
   d: {
     leaseType?: 'FIXED_TERM' | 'INDEFINITE' | undefined
+    startDate?: string | undefined
     endDate?: string | undefined
     renewalPeriodMonths?: number | undefined
     indexClauseType?: 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT' | undefined
@@ -416,7 +433,7 @@ export function granskaKontraktsvillkor(
   const harIndexklausul = d.indexClauseType != null && d.indexClauseType !== 'NONE'
   if (!harIndexklausul) {
     for (const falt of INDEXFALT) {
-      if ((d as Record<string, unknown>)[falt] !== undefined) {
+      if (angivet((d as Record<string, unknown>)[falt])) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message:
@@ -433,6 +450,46 @@ export function granskaKontraktsvillkor(
       code: z.ZodIssueCode.custom,
       message: 'Förnyelseperiod kan inte anges för ett tillsvidareavtal',
       path: ['renewalPeriodMonths'],
+    })
+  }
+
+  // 3b. DEN OMVÄNDA RIKTNINGEN av regel 1, som saknades: ett tillsvidareavtal
+  //     med ett SLUTDATUM. Ett avtal på obestämd tid upphör genom uppsägning —
+  //     ett slutdatum låter det upphöra utan, vilket är precis vad
+  //     besittningsskyddet finns för att hindra. Kolumnen skrivs i dag
+  //     (`leases.service.ts`, `...(dto.endDate != null ? …)`) utan att någon
+  //     frågar efter avtalstypen, och `endDate`-guarden i `update()` är byggd
+  //     på premissen att endDate bara finns på tidsbestämda avtal.
+  //
+  //     BARA vid ett UTTRYCKLIGEN satt INDEFINITE. Att härleda typen ur ett
+  //     utelämnat fält vore fel i den partiella vägen: en PATCH som bara
+  //     flyttar slutdatumet på ett tidsbestämt avtal skickar inget leaseType,
+  //     och den ska gå igenom.
+  if (d.leaseType === 'INDEFINITE' && angivet(d.endDate)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Ett tillsvidareavtal kan inte ha ett slutdatum — det upphör genom uppsägning',
+      path: ['endDate'],
+    })
+  }
+
+  // 5. HYRESTIDEN MÅSTE VARA EN TID.
+  //
+  //    Regeln bars av den gamla `.refine()`-kedjan och föll bort när de fyra
+  //    ovan skrevs — i samma PR som gör schemat BINDANDE. Den finns inte heller
+  //    någon annanstans i HTTP-vägen: varken `create`, `createWithTenant` eller
+  //    `update` kontrollerar det (bara `renew`, på framräknade datum). AI-vägen
+  //    hade den redan (`tool-executor.service.ts`), så ett avtal skapat av
+  //    agenten varnades medan samma avtal skapat av en människa gick rakt in.
+  //
+  //    Utfallet är ett tidsbestämt avtal vars hyrestid slutar före tillträdet:
+  //    aviseringen hoppar över det, utgångssvepet plockar det direkt, och
+  //    kontraktet renderas med en hyrestid som inte existerar.
+  if (d.startDate != null && d.endDate != null && new Date(d.endDate) <= new Date(d.startDate)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Slutdatum måste vara efter startdatum',
+      path: ['endDate'],
     })
   }
 

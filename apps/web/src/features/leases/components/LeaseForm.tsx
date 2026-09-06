@@ -346,7 +346,16 @@ export function LeaseForm({
       ...(defaultValues?.renewalPeriodMonths != null
         ? { renewalPeriodMonths: defaultValues.renewalPeriodMonths }
         : { renewalPeriodMonths: 12 }),
-      noticePeriodMonths: defaultValues?.noticePeriodMonths ?? 3,
+      // INGEN FÖRIFYLLNING. `?? 3` gällde oavsett enhetstyp, medan lagens
+      // minimum är tre månader för bostad och nio för lokal
+      // (`leases.compliance.ts`, `minNoticePeriodMonths`). För en lokal
+      // förifylldes alltså ett tal servern avvisar med 400. Att i stället
+      // förifylla 3/9 här hade duplicerat regeln i klienten — samma dubblering
+      // schemats docblock avvisar. Lämnas fältet tomt sätter servern lagens
+      // minimum för den faktiska enheten.
+      ...(defaultValues?.noticePeriodMonths != null
+        ? { noticePeriodMonths: defaultValues.noticePeriodMonths }
+        : {}),
 
       includesHeating: defaultValues?.includesHeating ?? true,
       includesWater: defaultValues?.includesWater ?? true,
@@ -427,6 +436,15 @@ export function LeaseForm({
   // Hyresgästens kontaktadress kan i 99% av fallen härledas från lägenheten
   // — gör fälten valfria via en explicit toggle. Skickas inte alls om av.
   const [showAddressOverride, setShowAddressOverride] = useState(false)
+  // Slutdatumet är TIDSBESTÄMDA avtals fält. Inputen renderas bara för
+  // FIXED_TERM, men RHF behåller värdet när användaren byter till INDEFINITE —
+  // och submit skickade det då vidare. Med regel 3b i schemat hade det blivit
+  // ett fel på ett fält som inte finns på skärmen, alltså exakt den blockerare
+  // som tomma indexsträngar orsakade. Värdet rensas i stället vid bytet.
+  useEffect(() => {
+    if (leaseType !== 'FIXED_TERM') setValue('endDate', '')
+  }, [leaseType, setValue])
+
   useEffect(() => {
     if (!showAddressOverride) {
       setValue('street', '')
@@ -909,7 +927,7 @@ export function LeaseForm({
             <Input
               label="Uppsägningstid (månader)"
               type="number"
-              placeholder="3"
+              placeholder="Lagens minimum"
               disabled={locked('noticePeriodMonths')}
               error={errors.noticePeriodMonths?.message}
               {...register('noticePeriodMonths', talfalt)}
@@ -921,7 +939,7 @@ export function LeaseForm({
           <Input
             label="Uppsägningstid (månader)"
             type="number"
-            placeholder="3"
+            placeholder="Lagens minimum"
             disabled={locked('noticePeriodMonths')}
             error={errors.noticePeriodMonths?.message}
             {...register('noticePeriodMonths', talfalt)}

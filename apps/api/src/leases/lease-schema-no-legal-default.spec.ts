@@ -82,6 +82,19 @@ const AVTALSBARANDE_FALT = [
   'specialTerms',
 ] as const
 
+/**
+ * Den kombinerade vägen bär ETT fält till: `activate`.
+ *
+ * Ett `.default(true)` där hade satt avtalet i kraft (DRAFT → ACTIVE,
+ * kontraktsnummer tilldelas, välkomstmejl och PDF köas) utan att någon
+ * människa valt det — det mest bindande beslut nyttolasten kan innehålla, och
+ * rakt emot husets princip att maskinen föreslår och människan bekräftar.
+ *
+ * Egen lista därför att den andra kanariefågeln kräver att varje namn finns i
+ * `CreateLeaseSchema`, där `activate` inte hör hemma.
+ */
+const AVTALSBARANDE_FALT_WITH_TENANT = [...AVTALSBARANDE_FALT, 'activate'] as const
+
 /** Har fältet ett `.default()` någonstans i sin kedja av omslag? */
 const harDefault = (falt: z.ZodTypeAny): boolean => {
   let nod: z.ZodTypeAny = falt
@@ -104,16 +117,29 @@ const formOf = (s: z.ZodTypeAny): Record<string, z.ZodTypeAny> => {
 }
 
 describe('inget avtalsbärande fält har en default i schemat', () => {
-  const scheman: Array<[string, z.ZodTypeAny]> = [
-    ['CreateLeaseSchema', CreateLeaseSchema],
-    ['UpdateLeaseSchema', UpdateLeaseSchema],
-    ['CreateLeaseWithTenantSchema', CreateLeaseWithTenantSchema],
+  const scheman: Array<[string, z.ZodTypeAny, readonly string[]]> = [
+    ['CreateLeaseSchema', CreateLeaseSchema, AVTALSBARANDE_FALT],
+    ['UpdateLeaseSchema', UpdateLeaseSchema, AVTALSBARANDE_FALT],
+    ['CreateLeaseWithTenantSchema', CreateLeaseWithTenantSchema, AVTALSBARANDE_FALT_WITH_TENANT],
   ]
 
-  it.each(scheman)('%s sätter inget avtalsvillkor åt parterna', (_namn, schema) => {
+  it.each(scheman)('%s sätter inget avtalsvillkor åt parterna', (_namn, schema, falt) => {
     const form = formOf(schema)
-    const med = AVTALSBARANDE_FALT.filter((f) => form[f] && harDefault(form[f] as z.ZodTypeAny))
+    const med = falt.filter((f) => form[f] && harDefault(form[f] as z.ZodTypeAny))
     expect(med).toEqual([])
+  })
+
+  it('KANARIEFÅGEL: activate täcks — ett .default(true) där skulle upptäckas', () => {
+    const smittat = z.object({ activate: z.boolean().optional().default(true) })
+    const form = formOf(smittat)
+    const med = AVTALSBARANDE_FALT_WITH_TENANT.filter(
+      (f) => form[f] && harDefault(form[f] as z.ZodTypeAny),
+    )
+    expect(med).toEqual(['activate'])
+  })
+
+  it('activate FINNS i den kombinerade vägens schema', () => {
+    expect(formOf(CreateLeaseWithTenantSchema)['activate']).toBeDefined()
   })
 
   /**
