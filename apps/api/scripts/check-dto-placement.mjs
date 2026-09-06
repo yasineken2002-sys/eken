@@ -67,7 +67,11 @@ const BASLINJE = 'apps/api/scripts/dto-placement.baseline.json'
 function valideringsdekoratorer(ratext) {
   const namn = [...ratext.matchAll(/import\s*(?:type\s*)?\{([^}]+)\}\s*from\s*'class-validator'/g)]
     .flatMap((m) => m[1].split(',').map((s) => s.trim().split(/\s+as\s+/)[0].trim()))
-    .filter((n) => /^[A-Z][\p{L}\p{N}_$]*$/u.test(n))
+    // \p{Lu}, inte [A-Z]. Frågan är "börjar namnet med en VERSAL", och den
+    // frågan är inte ASCII-specifik — `check-identifier-regex` fällde raden
+    // direkt, och den hade rätt: ett bibliotek med ett dekoratornamn på Å
+    // hade tappats tyst. Samma regel som CLAUDE.md:s avsnitt om \b.
+    .filter((n) => /^\p{Lu}[\p{L}\p{N}_$]*$/u.test(n))
   return namn
 }
 
@@ -254,6 +258,17 @@ if (process.argv.includes('--self-test')) {
   selfTest()
 }
 
+if (skrivLage) {
+  const poster = felplacerade().map((p) => ({ fil: p.fil, klass: p.klass }))
+  writeFileSync(
+    baslinjeSokvag,
+    `${JSON.stringify({ total: poster.length, poster }, null, 2)}\n`,
+    'utf8',
+  )
+  console.warn(`✅ Baslinjen skriven: ${poster.length} kända felplacerade klasser.`)
+  process.exit(0)
+}
+
 let baslinje = { total: 0, poster: [] }
 try {
   baslinje = JSON.parse(readFileSync(baslinjeSokvag, 'utf8'))
@@ -271,6 +286,8 @@ if (baslinje.total !== baslinje.poster.length) {
   )
   process.exit(1)
 }
+
+const funna = felplacerade()
 
 const kanda = new Set(baslinje.poster.map(nyckel))
 const nu = new Set(funna.map(nyckel))
