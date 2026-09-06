@@ -590,6 +590,22 @@ export const IsoDatumSchema = z.union([z.string().date(), z.string().datetime({ 
  */
 export const PaymentMethodSchema = z.enum(['BANK', 'CASH', 'SWISH', 'MANUAL'])
 
+/**
+ * Minsta längd på skälet till en sen bokföring i ett stängt räkenskapsår.
+ *
+ * ETT tal, läst av BÅDA Zod-schemana och BÅDA DTO:erna. Det stod tidigare
+ * hårdkodat som `10` på fyra ställen plus en oanvänd konstant i
+ * `closed-period.ts` som såg ut som källan men inte lästes av något — precis
+ * den form CLAUDE.md varnar för: två kopior av en gräns är en gräns som glider
+ * isär.
+ *
+ * Talet är ett EGET beslut och delas medvetet INTE med periodåteröppningens
+ * `reason`-gräns, trots att båda råkar vara 10 i dag: de svarar på olika frågor
+ * och ska kunna ändras var för sig.
+ */
+export const SEN_BOKFORING_MIN_SKAL = 10
+export const SEN_BOKFORING_MAX_SKAL = 500
+
 export const RegisterPaymentSchema = z.object({
   /** Inbetalt belopp i kronor. Grindas mot restskulden server-side. */
   amount: z.number().positive('Beloppet måste vara större än noll'),
@@ -638,7 +654,7 @@ export const RegisterPaymentSchema = z.object({
    * Minst 10 tecken — skälet sparas i `LateFiscalYearPosting` och ska gå att
    * förstå av en revisor långt efteråt.
    */
-  senBokforingSkal: z.string().min(10).max(500).optional(),
+  senBokforingSkal: z.string().min(SEN_BOKFORING_MIN_SKAL).max(SEN_BOKFORING_MAX_SKAL).optional(),
 })
 
 export const CreditNoteLineSchema = z.object({
@@ -744,7 +760,7 @@ export const MarkNoticePaidSchema = z.object({
    * betydelse och samma rollkrav som på fakturavägen. Se
    * `RegisterPaymentSchema.senBokforingSkal`.
    */
-  senBokforingSkal: z.string().min(10).max(500).optional(),
+  senBokforingSkal: z.string().min(SEN_BOKFORING_MIN_SKAL).max(SEN_BOKFORING_MAX_SKAL).optional(),
 })
 
 export const RentNoticeCreditLineSchema = z.object({

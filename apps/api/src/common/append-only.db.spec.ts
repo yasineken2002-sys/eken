@@ -54,6 +54,16 @@ const SKYDDADE = [
   'AiDelegationEvent',
   'FailedEmail',
   'InvoiceEvent',
+  // Sen bokföring i ett stängt räkenskapsår. Spåret ÄR beviset för att
+  // verifikatets `date` avviker från `eventDate` med avsikt, och vem som
+  // beslutade det — går raden att skriva om finns inget som binder ihop
+  // verifikatet med det stängda året (BFL 5 kap 7 §).
+  //
+  // RADNIVÅ, inte satsnivå: `actorUserId` är en FK med ON DELETE SET NULL, och
+  // SET NULL är en UPDATE. Med satsspärren föll varje radering av en användare.
+  // Samma undantag och samma funktion som AccountingPeriodEvent och
+  // TenantAnonymizationLog — `append_only_guard_actor('actorUserId')`.
+  'LateFiscalYearPosting',
   'PiiSecretRotation',
   'RentNoticeCredit',
   'RentNoticeEvent',
@@ -84,6 +94,9 @@ const MED_KASKADUNDANTAG: Record<string, string> = {
   AccountingPeriodEvent: 'actorUserId',
   TenantAnonymizationLog: 'performedById',
   FiscalYearClose: 'closedById',
+  // Sen bokföring i ett stängt räkenskapsår — samma form som de tre ovan:
+  // `actorUserId` är en FK med ON DELETE SET NULL, alltså en kaskad-UPDATE.
+  LateFiscalYearPosting: 'actorUserId',
 }
 
 medDb('append-only-spärren i databasen', () => {

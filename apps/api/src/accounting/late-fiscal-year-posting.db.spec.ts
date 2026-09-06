@@ -29,9 +29,12 @@
  *
  * ── VAD PROVET INTE KAN SE ──────────────────────────────────────────────────
  *
- * Rollspärren. `assertFarBokforaSent` är en ren funktion som prövas i
- * `late-fiscal-year-role.spec.ts`; controllern anropar den innan tjänsten nås,
- * och den vägen ägs av behörighetsytans golden-fil. Här mäts bokföringen.
+ * Rollspärren. `assertFarBokforaSent` är en ren funktion och prövas i
+ * `late-fiscal-year-role.spec.ts` (som SKREVS för det — docblocket påstod
+ * tidigare att filen fanns, och den gjorde inte det; ett täckningspåstående som
+ * pekar på en fil som inte finns är värre än ingen täckning alls). Att
+ * controllern faktiskt ANROPAR den före tjänsten ägs av behörighetsytans
+ * golden-fil. Här mäts bokföringen.
  */
 import { randomUUID } from 'node:crypto'
 
@@ -342,6 +345,21 @@ medDb('sen bokföring i stängt räkenskapsår', () => {
       await expect(
         prisma.lateFiscalYearPosting.update({ where: { id }, data: { reason: 'nytt skäl' } }),
       ).rejects.toThrow(/append-only/i)
+
+      // ── UNDANTAGET ÄR SMALT ───────────────────────────────────────────
+      //
+      // Radnivå-triggern släpper igenom att aktören nollas — men BARA det.
+      // Att nolla aktören och passa på att ändra något annat ska avvisas,
+      // annars vore undantaget en generell lucka. (Samma prov som
+      // append-only.db.spec.ts gör för AccountingPeriodEvent och
+      // FiscalYearClose; det testet är handskrivet per tabell, så den här
+      // tabellens motsvarighet bor här.)
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE "LateFiscalYearPosting" SET "actorUserId" = NULL, "reason" = 'annat' WHERE id = $1`,
+          id,
+        ),
+      ).rejects.toThrow(/append-only/)
 
       // DELETE är med FLIT ospärrad, precis som för de sex befintliga
       // append-only-tabellerna: `scripts/delete-organization.ts` måste kunna

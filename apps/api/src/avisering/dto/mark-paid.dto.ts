@@ -1,4 +1,5 @@
 import type { MarkNoticePaidInput, SammaNycklar } from '@eken/shared'
+import { SEN_BOKFORING_MIN_SKAL, SEN_BOKFORING_MAX_SKAL } from '@eken/shared'
 import {
   IsNumber,
   IsDateString,
@@ -46,11 +47,11 @@ export class MarkPaidDto implements MarkNoticePaidInput {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsOptional()
   @IsString()
-  @MinLength(10, {
+  @MinLength(SEN_BOKFORING_MIN_SKAL, {
     message:
       'Skälet måste vara minst 10 tecken — det sparas i verifikatets spår och ska gå att förstå i efterhand',
   })
-  @MaxLength(500, { message: 'Skälet får vara högst 500 tecken' })
+  @MaxLength(SEN_BOKFORING_MAX_SKAL, { message: 'Skälet får vara högst 500 tecken' })
   senBokforingSkal?: string
 }
 

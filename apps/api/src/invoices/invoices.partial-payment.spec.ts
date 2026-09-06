@@ -222,9 +222,14 @@ describe('C5 — /pay bokför det MOTTAGNA beloppet, inte fakturans total', () =
     expect(anrop.map((a) => a[1])).toEqual([500, 9_500])
     expect((anrop[0]![1] as number) + (anrop[1]![1] as number)).toBe(TOTAL)
 
-    // Transaktionsklienten ligger kvar SIST (#288) — allokerings-id sköts in före den.
+    // Transaktionsklienten ligger kvar på PLATS 8 (#288) — allokerings-id sköts
+    // in före den. Provet löd tidigare `toHaveLength(8)`, alltså "tx är sist".
+    // Det slutade vara sant när betalningsvägen fick en valfri nionde parameter
+    // (sen bokföring i ett stängt räkenskapsår), och arity är ändå fel fråga:
+    // det som betyder något är att allokerings-id och tx står på sina platser,
+    // inte hur många argument metoden råkar ta.
+    expect(anrop[0]![6]).toBe('alloc-1')
     expect(anrop[0]![7]).toBeDefined()
-    expect(anrop[0]!).toHaveLength(8)
   })
 
   it('utelämnat belopp = betala resten (bevarar beteendet för normalfallet)', async () => {

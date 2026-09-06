@@ -846,13 +846,6 @@ export async function resolveBokforingsdatum(
 }
 
 /**
- * Minsta längd på skälet till en sen bokföring. Samma tal som periodens
- * återöppning — men ett EGET beslut, medvetet inte en delad konstant: de två
- * gränserna svarar på olika frågor och ska kunna ändras var för sig.
- */
-export const SEN_BOKFORING_MIN_SKAL = 10
-
-/**
  * Vem som får besluta att en betalning bokförs sent i ett STÄNGT räkenskapsår.
  *
  * OWNER, samma nivå som återöppning av en period — och av ett starkare skäl:

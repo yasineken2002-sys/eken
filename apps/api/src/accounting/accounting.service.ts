@@ -473,14 +473,7 @@ export class AccountingService {
      * en behörig användare; att rutta förbi den hade kringgått just det
      * beslutet. Se `resolveBokforingsdatum`.
      */
-    senBokforing?: {
-      tillat: boolean
-      /** Varför posten bokförs sent. Tvingas av anroparen — ett tomt skäl är inget spår. */
-      reason: string
-      actorType: EventActorType
-      actorUserId?: string | null
-      actorLabel?: string | null
-    }
+    senBokforing?: SenBokforingBeslut
     /**
      * Underlaget till en MANUELLT bokförd post (BFL 7 kap). Sätts bara av den
      * fria vägen — automatiska verifikat har sitt underlag i affärshändelsen de
@@ -620,7 +613,15 @@ export class AccountingService {
       // sak — men den LÅSER ingenting när den inte hittar någon rad, och stoppar
       // därför inte en samtidig skrivning. Det gör indexet. Se docblocket ovan.
       const existing = await tx.journalEntry.findFirst({
-        where: { ...params.idempotencyWhere, source: params.source },
+        where: {
+          ...params.idempotencyWhere,
+          // S1: org-scopet skrivs UT, i stället för att vila på ett
+          // resonemang tvärs över två funktioner (kontrollen på rad ~558
+          // säger att `idempotencyWhere` bär organizationId). En spridning
+          // vars nyckel kan falla bort tyst korsar org-gränsen — #703.
+          organizationId: params.organizationId,
+          source: params.source,
+        },
         ...(params.include ? { include: params.include } : {}),
       })
       if (existing) {
@@ -751,7 +752,15 @@ export class AccountingService {
       if (params.sourceId == null) throw err
 
       const winner = await this.prisma.journalEntry.findFirst({
-        where: { ...params.idempotencyWhere, source: params.source },
+        where: {
+          ...params.idempotencyWhere,
+          // S1: org-scopet skrivs UT, i stället för att vila på ett
+          // resonemang tvärs över två funktioner (kontrollen på rad ~558
+          // säger att `idempotencyWhere` bär organizationId). En spridning
+          // vars nyckel kan falla bort tyst korsar org-gränsen — #703.
+          organizationId: params.organizationId,
+          source: params.source,
+        },
         ...(params.include ? { include: params.include } : {}),
       })
       // Ingen post på VÅR nyckel betyder att kollisionen var någon annans —
@@ -1397,10 +1406,29 @@ export class AccountingService {
         `#VER "${serie}" ${entry.verNumber} ${dateStr} "${entry.description.replace(/"/g, '')}"`,
       )
       lines.push('{')
+      // ── transdat: NÄR AFFÄRSHÄNDELSEN INTRÄFFADE ──────────────────────────
+      //
+      // SIE4 har ett valfritt fält efter beloppet på `#TRANS` för exakt det här
+      // fallet: en transaktion vars verkliga datum skiljer sig från
+      // verifikationens `#VER`-datum. `#VER` bär bokföringsdatumet — det som
+      // styr period och verifikationsnummer — och ska fortsätta göra det.
+      //
+      // Utan fältet ser en revisor som granskar SIE-filen (den normala
+      // arbetsgången i Sverige) en helt vanlig verifikation daterad första
+      // januari, utan minsta antydan om att den avser en betalning från ett
+      // stängt föregående år. Uppgiften fanns i databasen men lämnade aldrig
+      // systemet — `eventDate` var osynligt just där det behövdes.
+      //
+      // Tomt, alltså oförändrad rad, för varje post som inte flyttats — vilket
+      // i praktiken är alla.
+      const transdat =
+        entry.eventDate != null
+          ? ` ${entry.eventDate.toISOString().slice(0, 10).replace(/-/g, '')}`
+          : ''
       for (const l of entry.lines) {
         // Samma formel som saldoposterna nedan — se sieSignedAmount.
         const amount = sieSignedAmount(l.debit, l.credit)
-        lines.push(`  #TRANS ${l.account.number} {} ${amount.toFixed(2)}`)
+        lines.push(`  #TRANS ${l.account.number} {} ${amount.toFixed(2)}${transdat}`)
       }
       lines.push('}')
       lines.push('')

@@ -128,6 +128,12 @@ export const DELETION_STEPS: readonly Step[] = [
   // FÖRE JournalEntry: årsstängningen pekar på årsavslutsverifikatet med
   // Restrict (#704 PR 1), så raden måste bort innan verifikatet kan raderas.
   { model: 'FiscalYearClose', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
+  // FÖRE JournalEntry av exakt samma skäl: spåret efter en sent bokförd post
+  // pekar på sitt verifikat med Restrict. Utan det här steget blir varje
+  // organisation som någon gång bokfört en betalning i ett stängt räkenskapsår
+  // PERMANENT oraderbar (P2003) — en dataskyddsblockerare som hade upptäckts
+  // först vid en raderingsbegäran.
+  { model: 'LateFiscalYearPosting', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
   { model: 'JournalEntrySequence', restrictAgainst: 'Organization', where: byOrg },
   { model: 'JournalEntry', restrictAgainst: 'Organization', where: byOrg },
   { model: 'InvoiceNumberSequence', restrictAgainst: 'Organization', where: byOrg },
