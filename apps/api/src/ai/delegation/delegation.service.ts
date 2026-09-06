@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { ObservationService } from '../observation/observation.service'
 import { beräknaStatus } from './delegation-status'
 import { delegerbaraVerktyg, kräverFrekvensvillkor, prövaDelegerbarhet } from './delegation-scope'
 import {
@@ -23,6 +24,22 @@ import type { DelegationStatus } from './delegation-status'
 
 /** Standardlivslängd. Ett beslut, inte en härledning ur någon annan konstant. */
 export const DELEGATION_DAGAR = 90
+
+/**
+ * HUR MÅNGA TIDIGARE GODKÄNNANDEN SOM KRÄVS FÖR ATT MÖNSTRET SKA FINNAS.
+ *
+ * Ett — alltså det ANDRA godkännandet totalt. Planens Del 6 talar om ett mönster
+ * (*"du har godkänt det här sju gånger"*), inte om en händelse: ett enda ja kan
+ * vara ett undantag, två är en vana. Ett HÖGRE tal hade gjort funktionen
+ * oåtkomlig för en hyresvärd med få ärenden — den som mest behöver
+ * automatiseringen.
+ *
+ * Talet står som en konstant därför att BÅDA vägarna läser det: läsytans fråga
+ * (`kanBliDelegation`) och skrivvägen (`skapaUrFörslag`). Två literaler hade
+ * kunnat glida isär, och då hade knappen och servern haft olika åsikt om samma
+ * regel — precis det fall PR 2:s "gråheten är en artighet" vilar på att undvika.
+ */
+export const MÖNSTERTRÖSKEL = 1
 
 /** Hur ofta en delegation får förlängas. Se `förläng`. */
 export const FÖRLÄNGNING_KARENS_DAGAR = 30
@@ -92,7 +109,10 @@ export type DelegationsSvar =
 export class DelegationService {
   private readonly logger = new Logger(DelegationService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly observation: ObservationService,
+  ) {}
 
   /** Mängden verktyg som alls kan delegeras. Härledd ur katalogen. */
   delegerbara(sänkorPerVerktyg: Record<string, unknown> = {}): string[] {
@@ -259,18 +279,9 @@ export class DelegationService {
     }
 
     // ── MÖNSTRET: MINST ETT TIDIGARE GODKÄNNANDE AV SAMMA VERKTYG OCH TYP ───
-    const tidigare = await this.prisma.aiAssignment.findMany({
-      where: {
-        organizationId,
-        toolName: a.toolName,
-        status: 'APPROVED',
-        decidedByUserId: { not: null },
-        id: { not: a.id },
-      },
-      select: { prediction: true },
-    })
-    const antalSammaTyp = tidigare.filter((t) => typenFörFörslaget(t.prediction) === typ).length
-    if (antalSammaTyp < 1) {
+    const underlag = await this.observation.beslutsunderlag(organizationId, a.toolName, typ, a.id)
+    const antalSammaTyp = underlag.godkända
+    if (antalSammaTyp < MÖNSTERTRÖSKEL) {
       throw new ConflictException(
         `Du har godkänt det här en gång. En delegation skapas först när du godkänt ` +
           `samma typ av förslag (${a.toolName}, ${typ}) en gång till.`,
@@ -354,17 +365,13 @@ export class DelegationService {
         select: { id: true },
       })
       if (redan) return { kan: false, skäl: 'Det här förslaget har redan blivit en delegation.' }
-      const tidigare = await this.prisma.aiAssignment.findMany({
-        where: {
-          organizationId,
-          toolName: a.toolName,
-          status: 'APPROVED',
-          decidedByUserId: { not: null },
-          id: { not: a.id },
-        },
-        select: { prediction: true },
-      })
-      if (tidigare.filter((t) => typenFörFörslaget(t.prediction) === typ).length < 1)
+      // ── MÖNSTRET LÄSES UR OBSERVATIONSLAGRET, INTE UR EN EGEN RÄKNING ────
+      //
+      // Två uppräkningar av "vad har hyresvärden godkänt" kan svara olika om
+      // samma historik, och den som styr knappen hade varit den ingen prövat.
+      // Skrivvägen nedan läser samma tjänst.
+      const underlag = await this.observation.beslutsunderlag(organizationId, a.toolName, typ, a.id)
+      if (underlag.godkända < MÖNSTERTRÖSKEL)
         return {
           kan: false,
           skäl: 'Aktiveras efter att du godkänt samma typ av förslag en gång till.',

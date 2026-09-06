@@ -104,6 +104,26 @@ export async function upsertAiMemoryWithSubjects(
   },
 ): Promise<{ id: string }> {
   const { organizationId, userId, key, value, type } = args
+
+  // ── ETT NYTT VÄRDE ÄRVER INTE DEN GAMLA BEKRÄFTELSEN ─────────────────────
+  //
+  // Nyckeln är unik per `(organizationId, userId, key)`, så extraktionen
+  // UPSERTAR. Utan raden nedan skrev en senare körning om `value` medan raden
+  // behöll `HUMAN_CONFIRMED`, `confirmedAt` och `confirmedByUserId` — alltså ny,
+  // modellgenererad text i systemprompten, märkt med den starkaste etikett som
+  // finns, utan att hyresvärden sett den.
+  //
+  // Det är samma familj som "återanvänd inte ett fält som svarar på en annan
+  // fråga": bekräftelsen gällde ett VÄRDE, men låg lagrad som en egenskap hos
+  // NYCKELN.
+  //
+  // `value: { not: value }` — bara när texten FAKTISKT ändrats. En omkörning som
+  // skriver samma sak ska inte kosta hyresvärden hens ja.
+  await db.aiMemory.updateMany({
+    where: { organizationId, userId, key, value: { not: value } },
+    data: { provenanceKind: 'ANTAGANDE', confirmedAt: null, confirmedByUserId: null },
+  })
+
   const memory = await db.aiMemory.upsert({
     where: { organizationId_userId_key: { organizationId, userId, key } },
     create: { organizationId, userId, key, value, type },

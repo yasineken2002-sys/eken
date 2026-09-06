@@ -982,6 +982,8 @@ model User {
   aiConversations          AiConversation[]
   aiAttachments            AiAttachment[]
   aiMemories               AiMemory[]
+  aiMemoriesConfirmed       AiMemory[] @relation("AiMemoryConfirmer")
+  aiMemoriesRejected        AiMemory[] @relation("AiMemoryRejecter")
   aiUsageLogs              AiUsageLog[]
   aiToolExecutions         AiToolExecution[]
   notifications            Notification[]
@@ -3439,6 +3441,37 @@ enum AiMemoryType {
   convention
 }
 
+/// PÅ VILKA GRUNDER EN MINNESPOST FÅR LÄSAS IN I EN AGENTPROMPT.
+///
+/// ── FÄLTET SVARAR PÅ "MED VILKEN RÄTT", INTE "VAD ÄR DET" ──────────────────
+///
+/// `AiMemoryType` säger vilken SORTS påstående posten är (preferens, fakta,
+/// relation, konvention). Det här fältet säger något helt annat: om någon
+/// människa någonsin sagt att påståendet stämmer. En post kan vara en perfekt
+/// formulerad preferens och ändå vara ren gissning.
+///
+/// Planens Del 7 skiljer tre lager och ger bara det tredje — befogenhet — rätt
+/// att styra vad agenten GÖR. Preferenser får styra HUR den låter. Men en
+/// preferens som ingen bekräftat är inte lager 1; den är en modells sammanfattning
+/// av ett samtal, och att mata tillbaka den i prompten med orden "använd dessa
+/// som standard" gör en gissning till en instruktion.
+///
+///   HUMAN_CONFIRMED   en människa har tryckt "Bekräfta" på just den här posten.
+///   DECISION_DERIVED  härledd ur BESLUT som redan finns — godkännanden i
+///                     inkorgen, delegationer, historikens handlingar. Grunden
+///                     går att peka ut med `sourceKind` + `sourceId`.
+///   ANTAGANDE         ingen har sagt något. Extraktionen får skapa den, men
+///                     den läses ALDRIG in i en agentprompt.
+///
+/// Defaulten är `ANTAGANDE` och det är ett FAKTUM, inte en försiktighet: varje
+/// rad som fanns när kolumnen infördes skapades av `extractAndSaveMemories`,
+/// alltså av en modell som sammanfattade ett samtal. Ingen av dem har bekräftats.
+enum AiMemoryProvenance {
+  HUMAN_CONFIRMED
+  DECISION_DERIVED
+  ANTAGANDE
+}
+
 model AiMemory {
   id             String       @id @default(uuid())
   organizationId String
@@ -3449,12 +3482,57 @@ model AiMemory {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  /// ── PÅ VILKA GRUNDER (etapp 8) ────────────────────────────────────────────
+  ///
+  /// Se `AiMemoryProvenance`. `ANTAGANDE` som default är ett faktum om de rader
+  /// som fanns: alla skapades av modellextraktionen.
+  provenanceKind AiMemoryProvenance @default(ANTAGANDE)
+
+  /// ── GRUNDEN, UTPEKAD ──────────────────────────────────────────────────────
+  ///
+  /// `('ASSIGNMENT', <id>)`, `('DELEGATION', <id>)` eller `('TOOL_EXECUTION', <id>)`
+  /// för en `DECISION_DERIVED`-post. Polymorf och utan FK, av samma skäl som
+  /// `AiAssignment.sourceKind`: källan kan vara flera modeller, och en kolumn per
+  /// tänkbar modell hade varit en kolumn per domän.
+  ///
+  /// NULL för `HUMAN_CONFIRMED` — där ÄR bekräftelsen grunden, och den bärs av
+  /// `confirmedByUserId` — och för `ANTAGANDE`, där det per definition inte
+  /// finns någon.
+  sourceKind String?
+  sourceId   String?
+
+  /// Vem som tryckte "Bekräfta", och när. Satt ENBART för `HUMAN_CONFIRMED`.
+  ///
+  /// `SetNull` och inte `Cascade`: bekräftelsen är ett faktum om att någon en
+  /// gång sa ja, och den ska överleva att kontot raderas. Att spåret försvinner
+  /// med sin upphovsman gör det obesvarbart precis när det behövs.
+  confirmedByUserId String?
+  confirmedByUser   User?    @relation("AiMemoryConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  confirmedAt       DateTime?
+
+  /// ── ATT SÄGA NEJ ÄR OCKSÅ LÄRANDE ────────────────────────────────────────
+  ///
+  /// Planens Del 7, ordagrant: *"En agent som bara lär av ja:n lär sig fel."*
+  /// Ett avvisat antagande RADERAS därför inte — raden står kvar med en
+  /// tidsstämpel och en människa, och läses aldrig in.
+  ///
+  /// Skillnaden mot radering är inte teoretisk: `@@unique([organizationId,
+  /// userId, key])` gör att extraktionen upsertar på nyckeln. En raderad post
+  /// hade återuppstått som `ANTAGANDE` nästa gång samma ämne kom upp i ett
+  /// samtal — och hyresvärdens nej hade varit borta utan att någon märkte det.
+  rejectedAt       DateTime?
+  rejectedByUserId String?
+  rejectedByUser   User?     @relation("AiMemoryRejecter", fields: [rejectedByUserId], references: [id], onDelete: SetNull)
+
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenantSubjects AiMemoryTenant[]
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, userId])
+
+  /// Läsvägen frågar alltid på (org, användare, grund) — se `getMemories`.
+  @@index([organizationId, userId, provenanceKind])
 }
 
 // ── ÄMNESKOPPLING: VILKEN HYRESGÄST HANDLAR RADEN OM? (#510) ────────────────

@@ -27,6 +27,7 @@ import {
 } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 
+import { ObservationService } from '../observation/observation.service'
 import { DelegationService } from './delegation.service'
 import { FÖRIFYLLT_FREKVENSVILLKOR } from './delegation-birth'
 import { TYPFÄLT } from './delegation-birth'
@@ -94,7 +95,7 @@ medDb('delegationen föds ur ett godkänt förslag', () => {
 
   beforeAll(async () => {
     prisma = new PrismaClient()
-    tjanst = new DelegationService(prisma as never)
+    tjanst = new DelegationService(prisma as never, new ObservationService(prisma as never))
     const bygg = async (namn: string) => {
       const sfx = randomUUID().slice(0, 8)
       const o = await prisma.organization.create({
