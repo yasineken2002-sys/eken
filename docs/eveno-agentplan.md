@@ -128,6 +128,47 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ## Del 3 — Byggordningen
 
+### Läge `e9227ee4` — 2026-09-08
+
+**Mätt mot koden, inte mot minnet av den.** Raderna nedan är samma spår-regel som
+resten av planen: de säger vad som fanns när de skrevs.
+
+**Nio av elva rader är KLAR:** 1, 1b, 2, 2b, 3, 4, 5, 7, 8, 10. Etapp 11+ (agent
+2–5) är inte påbörjad och står med `—`.
+
+**Två rader väntar på VERKLIGA FALL, inte på kod.** Det är hela skillnaden mellan
+dem och de nio: det som saknas går inte att bygga, det måste inträffa.
+
+| rad | vad som FINNS | vad som SAKNAS för KLAR |
+| --- | --- | --- |
+| **6** — inkorgen + skuggläge | producent, inkorg, facit, deterministisk triage, mätkorpus (54 ärenden, körning 9) | `Organization.shadowAgentEnabled = true` för **en** organisation, och **en riktig felanmälan** som ger **ett förslag** |
+| **9** — agent 1 skarp | växeln, utföraren, de fyra grindarna, anspråket, reapern, "Gjort" med ångra | dessutom `agentExecutionEnabled = true`, **tre godkännanden** i obruten svit (som föder ett delegationsförslag), **en delegation**, och **ett utfört uppdrag** (`status = EXECUTED`) |
+
+**Ingen organisation har någon av flaggorna på.** Båda är `false` som default och
+är OWNER-grindade på fältnivå i `OrganizationsService` — och skarpt läge kräver
+dessutom att skuggan är på, samt stängs automatiskt när den stängs av.
+
+**Vad kriterierna INTE säger.** Rad 6 lyder "den föreslår rätt i verkliga fall".
+Mätkorpusen ersätter inte det: 54 konstruerade ärenden säger vad agenten gör, inte
+vad den gör mot en riktig hyresvärds ärenden. Rad 9 lyder "ärenden avslutas utan
+att hyresvärden rört dem" — det kräver att kedjan går hela vägen en gång, och den
+har aldrig gjort det i drift.
+
+**Kortaste vägen dit, i ordning:**
+
+1. Slå på `shadowAgentEnabled` för en organisation som faktiskt får felanmälningar.
+2. Låt den samla förslag tills hyresvärden godkänt **tre** av samma typ i följd —
+   då föreslår systemet självt en delegation (`kanBliDelegation`).
+3. Godkänn delegationen. Nu finns en rätt att utöva.
+4. Slå på `agentExecutionEnabled`. Utföraren tar nästa `WOULD_EXECUTE` som rör
+   ett av de **fem** verktyg som är både delegerbara och uppdragsdugliga.
+5. Ett `EXECUTED` med `aiToolExecutionId` i "Gjort" är beviset. Då — och först
+   då — går rad 6 och rad 9 till KLAR.
+
+Steg 1 är det enda som kräver ett beslut; resten följer av att systemet används.
+
+---
+
 Bygg inte UI först. Bygg först de mekanismer som gör agenten säker.
 
 **Historiken ligger först — och det är ingen avvägning mot Execution Truth.** Historiken

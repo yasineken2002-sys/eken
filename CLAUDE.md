@@ -8,6 +8,15 @@ _Eveno_ — fastighetsförvaltnings-SaaS för svenska privata hyresvärdar och m
 
 **Byggt och i main:** förvaltning (fastigheter/lägenheter/hyresgäster/avtal), automatisk hyresavisering (cron), IMD/förbruknings-debitering, AI-driven kontrakts-onboarding, dubbel bokföring, komplett inkasso-trappa (avi→påminnelse→ränta→inkasso-ready→export→kundförlust, automatisk), och härdad bankavstämning (skuld som beräknat tillstånd: INV-S→D→A→B).
 
+**Agentplattformen (etapp 1–10) är byggd och i main — och påslagen för noll
+organisationer.** Skuggagenten föreslår på felanmälan, torrläget fäller en dom om
+agenten HADE fått handla, och skarpt läge kan utföra fem verktyg på en delegation
+med SYSTEM-principal och spår. Båda växlarna (`shadowAgentEnabled`,
+`agentExecutionEnabled`) är `false` överallt, så ingen kund har sett ett enda
+förslag. Det som mätts är 54 KONSTRUERADE ärenden (körning 9: kategori 87,0 %,
+prioritet 90,7 %, åtgärd 83,3 %), inte verkliga fall — se `docs/eveno-agentplan.md`,
+Del 3, för vad som krävs för att de två sista raderna ska bli KLAR.
+
 **Återstår före lansering — mätt mot `918e8f5`.** Raden sa tidigare att alla fyra
 posterna gatas av bolagsregistreringen och att de var ogjorda. Ingetdera stämde:
 två av dem är byggda och väntar på driftsättning, och bara delar av dem gatas.
