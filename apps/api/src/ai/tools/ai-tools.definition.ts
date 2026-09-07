@@ -1,5 +1,14 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import { PaymentMethodSchema, INSPECTION_TYPES, INSPECTION_STATUSES } from '@eken/shared'
+import {
+  PaymentMethodSchema,
+  INSPECTION_TYPES,
+  INSPECTION_STATUSES,
+  MAINTENANCE_CATEGORIES,
+  MAINTENANCE_PRIORITIES,
+  MAINTENANCE_STATUSES,
+  AI_SETTABLE_MAINTENANCE_STATUSES,
+  RENT_NOTICE_STATUSES,
+} from '@eken/shared'
 
 /**
  * Betalsättets tillåtna värden — HÄRLEDDA ur det delade schemat, aldrig en egen
@@ -526,8 +535,16 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        status: { type: 'string', description: 'NEW, IN_PROGRESS, SCHEDULED, COMPLETED, CLOSED' },
-        priority: { type: 'string', description: 'LOW, NORMAL, HIGH, URGENT' },
+        status: {
+          type: 'string',
+          enum: [...MAINTENANCE_STATUSES],
+          description: `Filtrera på status — ett av: ${MAINTENANCE_STATUSES.join(', ')}`,
+        },
+        priority: {
+          type: 'string',
+          enum: [...MAINTENANCE_PRIORITIES],
+          description: `Filtrera på prioritet — ett av: ${MAINTENANCE_PRIORITIES.join(', ')}`,
+        },
         propertyId: { type: 'string' },
       },
       required: [],
@@ -546,8 +563,16 @@ export const TOOLS: Anthropic.Tool[] = [
         propertyName: { type: 'string' },
         unitId: { type: 'string' },
         unitName: { type: 'string' },
-        category: { type: 'string' },
-        priority: { type: 'string', enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'] },
+        category: {
+          type: 'string',
+          enum: [...MAINTENANCE_CATEGORIES],
+          description: `Kategori — ett av: ${MAINTENANCE_CATEGORIES.join(', ')}`,
+        },
+        priority: {
+          type: 'string',
+          enum: [...MAINTENANCE_PRIORITIES],
+          description: `Prioritet — ett av: ${MAINTENANCE_PRIORITIES.join(', ')}`,
+        },
         estimatedCost: { type: 'number' },
       },
       required: ['title', 'description', 'propertyId', 'propertyName'],
@@ -563,8 +588,12 @@ export const TOOLS: Anthropic.Tool[] = [
         ticketId: { type: 'string' },
         ticketNumber: { type: 'string' },
         newStatus: {
+          // DELMÄNGDEN, inte hela enumen: `NEW` betyder otriagerat, och att
+          // flytta ett ärende dit tillbaka raderar att någon tittat på det.
+          // Härledd ur MAINTENANCE_STATUSES — se AI_SETTABLE_MAINTENANCE_STATUSES.
           type: 'string',
-          enum: ['IN_PROGRESS', 'SCHEDULED', 'COMPLETED', 'CLOSED', 'CANCELLED'],
+          enum: [...AI_SETTABLE_MAINTENANCE_STATUSES],
+          description: `Ny status — ett av: ${AI_SETTABLE_MAINTENANCE_STATUSES.join(', ')}`,
         },
         comment: { type: 'string', description: 'Valfri kommentar om åtgärden' },
       },
@@ -621,7 +650,11 @@ export const TOOLS: Anthropic.Tool[] = [
       properties: {
         month: { type: 'number', description: 'Månad 1-12' },
         year: { type: 'number', description: 'År t.ex. 2026' },
-        status: { type: 'string', description: 'PENDING, SENT, PAID, OVERDUE, CANCELLED' },
+        status: {
+          type: 'string',
+          enum: [...RENT_NOTICE_STATUSES],
+          description: `Filtrera på status — ett av: ${RENT_NOTICE_STATUSES.join(', ')}`,
+        },
       },
       required: [],
     },

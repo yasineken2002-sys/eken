@@ -862,6 +862,45 @@ jobs:
       - name: Verify no validated class lives outside a *.dto.ts file
         run: node apps/api/scripts/check-dto-placement.mjs
 
+  as-never-guard:
+    name: as never guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # `as never` TYSTAR TYPCHECKAREN UTAN ATT KONTROLLERA NÅGOT.
+      #
+      # Formen uppstod där ett värde från en SPRÅKMODELL skulle in i en snävt
+      # typad parameter — `{ status: toolInput.status as never }` rakt in i
+      # Prismas where-sats. Castet gjorde inget: ett påhittat enum-värde föll
+      # först i Postgres, som ett 500-fel. I filterfallen var alternativet
+      # värre — ett tyst bortfall hade gett modellen en LÄNGRE lista som den
+      # trodde var filtrerad.
+      #
+      # Vid införandet: 1785 träffar i apps/api/src, varav 1769 i prov (där
+      # attrapper med flit ÄR påhittade) och 16 utanför. Av de 16 var 8 i
+      # tool-executor.service.ts — 6 kod, 2 kommentarer. Baslinjen är 2.
+      #
+      # Vakten läser KODVYN. Just den koden är fullskriven med kommentarer som
+      # förklarar varför ett cast togs bort, och en råtextvakt hade varit röd
+      # om sin egen dokumentation — med enda utvägen att sluta förklara.
+      #
+      # Den mäter att castet är BORTA, inte att valideringen som kom i stället
+      # prövar rätt mängd. Det ägs av maintenance-enum-source.spec.ts (att
+      # listan är Prismas) och enum-validering.spec.ts (att ett värde utanför
+      # den avvisas).
+      #
+      # fs-only, inga beroenden, ingen DB.
+      - name: Self-test the guard (positive, five negatives, derived total)
+        run: node apps/api/scripts/check-as-never.mjs --self-test
+
+      - name: Verify no new `as never` in production code
+        run: node apps/api/scripts/check-as-never.mjs
+
   self-tests-must-fail-guard:
     name: Self-tests must be able to fail
     runs-on: ubuntu-latest
@@ -2331,6 +2370,7 @@ jobs:
       - identifier-regex-guard
       - request-contract-guard
       - dto-placement-guard
+      - as-never-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard
