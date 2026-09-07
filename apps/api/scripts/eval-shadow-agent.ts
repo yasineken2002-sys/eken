@@ -229,28 +229,35 @@ async function main(): Promise<void> {
       // tillämpar sin egen version av en regel mäter sin egen version. Golvet och
       // frågeregeln körs alltså genom exakt den funktion skuggtjänsten anropar.
       const regler = tillämpaRegler(
-        { atgärd: atgardFöreRegler, prioritet: råPri, kategori: kat, andraKategori },
+        { atgärd: atgardFöreRegler, kategori: kat, andraKategori },
         {
           titel: a.titel,
           beskrivning: a.beskrivning,
           registreradKategori: a.registreradKategori,
+          registreradPrioritet: a.registreradPrioritet,
         },
       )
       const atgard = regler.atgärd
       const pri = regler.prioritet
-      const utanModell = tillämpaRegler(
-        {
-          atgärd: atgardFöreRegler,
-          prioritet: a.registreradPrioritet,
-          kategori: kat,
-          andraKategori,
-        },
-        {
-          titel: a.titel,
-          beskrivning: a.beskrivning,
-          registreradKategori: a.registreradKategori,
-        },
-      )
+      // ── UTMANAREN: SAMMA REGLER, MEN MED MODELLENS PRIORITET SOM INDATA ────
+      //
+      // Fram till körning 6 var det HÄR det byggda och raden ovan kontrollen.
+      // Sedan prioriteten sätts av regel är rollerna ombytta, och den här
+      // körningen finns kvar för att beslutet ska gå att falsifiera: slår den
+      // raden ovan ska bortkopplingen omprövas. Den kostar noll extra anrop —
+      // samma rena funktion, annan indata.
+      const medModell =
+        råPri === null
+          ? null
+          : tillämpaRegler(
+              { atgärd: atgardFöreRegler, kategori: kat, andraKategori },
+              {
+                titel: a.titel,
+                beskrivning: a.beskrivning,
+                registreradKategori: a.registreradKategori,
+                registreradPrioritet: råPri,
+              },
+            )
 
       // TORRLÄGETS DOM: hade en delegation för verktyget kunnat bära det här?
       // Räknas för verktygsförslag, inte för INGEN eller FRAGA — de utför inget.
@@ -273,12 +280,11 @@ async function main(): Promise<void> {
           // körning två saker som ser ut som en.
           atgardForeRegler: atgardFöreRegler,
           prioritetForeRegler: råPri,
-          // DEN DETERMINISTISKA KONTROLLEN: samma golv, men med ärendets
-          // REGISTRERADE prioritet i stället för modellens. Utan den går det
-          // inte att svara på om modellen ens tjänar sitt tokenpris — se
-          // `rapport.ts`. Den kostar noll extra anrop: samma rena funktion,
-          // annan indata.
-          ...(utanModell.prioritet ? { prioritetUtanModell: utanModell.prioritet } : {}),
+          // UTMANAREN, och ärendets egen registrerade prioritet — reglernas
+          // indata. Båda sparas per ärende, så rapporten kan summera dem utan
+          // att läsa korpusen, och så en gammal körning går att läsa om.
+          ...(medModell ? { prioritetMedModell: medModell.prioritet } : {}),
+          registreradPrioritet: a.registreradPrioritet,
           // ANDRAHANDSVALET SPARAS. Utan det går det inte att i efterhand skilja
           // "regeln avstod" från "modellen gav inget att bygga frågan av" — och
           // det var precis den tvetydigheten som gjorde regeln död utan att

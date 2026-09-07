@@ -3,9 +3,12 @@ import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
 import { FRAGA } from './shadow-tool-gate'
 import {
   BESIKTNINGSVERKTYG,
+  KALLGRANS_GRADER,
   PRIORITETSORDNING,
   SUBSTANSGRANS_ORD,
+  angivenTemperaturUnder,
   antalOrd,
+  hyresgastenSagerIngenBradska,
   högreAv,
   kategoriordFinns,
   kräverFråga,
@@ -32,7 +35,16 @@ import {
  * att båda vägarna går genom den ägs av de filerna.
  */
 describe('triage-rules', () => {
-  const enkel = { titel: 'Trasig lampa', beskrivning: 'Lampan i hallen fungerar inte längre alls' }
+  // ── FIXTUREN FÅR INTE BÄRA ETT KATEGORIORD ────────────────────────────────
+  //
+  // Den här hette "Trasig lampa" och blev röd när golvet började läsa textens
+  // kategoriord: 'lampa' är ett ELECTRICAL-ord, alltså lyfte den till NORMAL.
+  // Ett prov som ska visa att INGEN regel träffar måste vara fritt från allt
+  // som kan träffa — annars mäter det den regel man glömde.
+  const enkel = {
+    titel: 'Fråga om sopsortering',
+    beskrivning: 'Var ska jag slänga wellpapp, hittar inget kärl på gården',
+  }
 
   describe('prioritetsgolv', () => {
     it('ger LOW när ingen regel träffar — det betyder "ingen åsikt", inte "oviktigt"', () => {
@@ -92,8 +104,11 @@ describe('triage-rules', () => {
         ['inbrott', MaintenancePriority.URGENT],
         ['rinner vatten', MaintenancePriority.URGENT],
         ['droppar från taket', MaintenancePriority.URGENT],
-        ['vatten på golvet', MaintenancePriority.URGENT],
-        ['står vatten', MaintenancePriority.URGENT],
+        // FLER ÄN ETT HUSHÅLL — samma familj som 'hela huset'.
+        ['grannen säger samma', MaintenancePriority.URGENT],
+        ['grannen har också', MaintenancePriority.URGENT],
+        // VATTEN SOM LIGGER, inte vatten som kommer. Flyttat hit från URGENT.
+        ['vatten på golvet', MaintenancePriority.HIGH],
         ['blött på golvet', MaintenancePriority.HIGH],
         ['vatten under', MaintenancePriority.HIGH],
         ['fuktfläck', MaintenancePriority.HIGH],
@@ -107,8 +122,15 @@ describe('triage-rules', () => {
         ['ingen värme', MaintenancePriority.HIGH],
         ['inget varmvatten', MaintenancePriority.HIGH],
         ['går inte att stänga', MaintenancePriority.HIGH],
-        ['står olåst', MaintenancePriority.HIGH],
-        ['står på glänt', MaintenancePriority.HIGH],
+        // FÖRKORTADE FRASER: de långa ('står olåst', 'står på glänt') kunde inte
+        // matcha "står DEN på glänt" — ett mellanliggande ord räckte. Se
+        // negativkontrollen nedan, som är den som faktiskt fäller formen.
+        ['olåst', MaintenancePriority.HIGH],
+        ['på glänt', MaintenancePriority.HIGH],
+        // SANERING AV KROPPSVÄTSKOR.
+        ['luktar urin', MaintenancePriority.HIGH],
+        ['kissat', MaintenancePriority.HIGH],
+        ['avföring', MaintenancePriority.HIGH],
         ['anmälde', MaintenancePriority.HIGH],
         ['påminner', MaintenancePriority.HIGH],
         ['har inte hänt', MaintenancePriority.HIGH],
@@ -132,10 +154,143 @@ describe('triage-rules', () => {
       ).toBe(MaintenancePriority.LOW)
     })
 
+    // ── DE STRUKNA ORDEN ──────────────────────────────────────────────────
+    //
+    // Ett ord som tagits bort med en mätning ska inte kunna smyga tillbaka. Var
+    // och en av raderna nedan LYFTE golvet tidigare, och skälet står vid ordet
+    // i `triage-rules.ts`.
+    it('ord som strukits med mätning lyfter INTE', () => {
+      // KRAVET ÄR PER ORD, inte ett gemensamt LOW: raden om balkongen bär ordet
+      // 'vatten', som ÄR ett PLUMBING-kategoriord och därför lyfter till NORMAL
+      // med rätta — det är just det som gör `k38` rätt. Det som ska vara borta
+      // är den nivå det STRUKNA ordet gav, alltså URGENT.
+      const strukna: Array<[string, MaintenancePriority, string]> = [
+        ['flera lägenheter har fått fel namnskylt', MaintenancePriority.LOW, 'flera … utan felet'],
+        ['flera i huset har klagat på musiken', MaintenancePriority.LOW, 'flera … utan felet'],
+        ['en olastad container står på gården', MaintenancePriority.LOW, "'olast' ⊂ 'olastad'"],
+        [
+          'det står vatten på balkongen efter regn',
+          MaintenancePriority.NORMAL,
+          "'står vatten' saknade plats — kvar är kategoriordet 'vatten'",
+        ],
+      ]
+      const fel = strukna.filter(
+        ([t, väntat]) => prioritetsgolv(MaintenanceCategory.OTHER, '', t) !== väntat,
+      )
+      expect(fel).toEqual([])
+    })
+
     it('"läcker" lyfter INTE — ordet är tvetydigt och togs bort med mätning', () => {
+      // FIXTUREN SA "Kranen läcker" och blev röd när golvet började läsa textens
+      // kategoriord: 'kran' lyfter till NORMAL, och provet mätte då den regeln
+      // i stället för 'läcker'. Ordet måste stå ENSAMT för att provet ska säga
+      // något om ordet.
+      expect(prioritetsgolv(MaintenanceCategory.CLEANING, 'Det läcker', 'Lite bara')).toBe(
+        MaintenancePriority.LOW,
+      )
+    })
+
+    // ── FORMFELET SOM 'står på glänt' BAR ─────────────────────────────────
+    //
+    // Matchningen är en delsträngsmatchning, så en fras som binder ihop ett verb
+    // med sin fortsättning faller på ett enda mellanliggande ord. Uppmätt på
+    // korpusen: `k43` skriver "Ibland står den på glänt", och 'står på glänt'
+    // matchade inte — ärendet stannade på LOW mot facits HIGH.
+    //
+    // Provet är riktat mot exakt den formen: den korta frasen ska hittas i BÅDA
+    // meningarna, och det gör den bara så länge ordet är den DISTINGERANDE
+    // delen och inte en hel sats.
+    it('kanariefågel: en fras med ett mellanliggande ord hittas ändå', () => {
+      const båda = [
+        'Fönstret står på glänt hela tiden',
+        'Ibland står den på glänt utan att jag märker det',
+      ]
+      const missade = båda.filter(
+        (t) => prioritetsgolv(MaintenanceCategory.CLEANING, '', t) !== MaintenancePriority.HIGH,
+      )
+      expect(missade).toEqual([])
+    })
+
+    // ── TALET ÄR OCKSÅ ETT NYCKELORD ──────────────────────────────────────
+    //
+    // Gränsen läses UR KODEN (`KALLGRANS_GRADER`), inte skriven här — annars är
+    // det två uppräkningar av samma tal. Båda hållen prövas: ett tal under
+    // gränsen ska lyfta, ett på eller över den ska inte.
+    it('en angiven temperatur under gränsen lyfter, en över gör det inte', () => {
+      const under = `Det är ${KALLGRANS_GRADER - 1} grader inne på morgonen`
+      const över = `Det är ${KALLGRANS_GRADER + 2} grader inne på morgonen`
+      expect(prioritetsgolv(MaintenanceCategory.CLEANING, '', under)).toBe(MaintenancePriority.HIGH)
+      expect(prioritetsgolv(MaintenanceCategory.CLEANING, '', över)).toBe(MaintenancePriority.LOW)
+      expect(angivenTemperaturUnder(under, KALLGRANS_GRADER)).toBe(true)
+      expect(angivenTemperaturUnder(över, KALLGRANS_GRADER)).toBe(false)
+    })
+
+    // ── PROVET SOM FÖRST PÅSTOD MOTSATSEN AV SITT EGET NAMN ───────────────
+    //
+    // Den första formen hette "läser inte ett minustecken" och krävde `true` —
+    // alltså exakt det den sa att den inte gjorde. Regexen fångade inte
+    // tecknet, så `-5 grader` lästes som `5`, provet skrevs efter utfallet i
+    // stället för efter regeln, och docblocket i `triage-rules.ts` påstod något
+    // koden inte gjorde. Koden gör det nu, och provet kräver det.
+    it('läser inte minusgrader som en innetemperatur', () => {
+      const ute = [
+        'det var -5 grader ute i natt',
+        'det var −12 grader ute', // typografiskt minustecken
+        'minus 5 grader ute i natt', // ordformen, inte symbolen
+        // TRESIFFRIGA TAL: utan ankring läser `\d{1,2}` SVANSEN av talet, och
+        // regeln blir som mest fel där den är som mest säker — '100' → '00' → 0.
+        'vattnet är skållhett, 100 grader ur kranen',
+        'bastun håller 110 grader',
+      ]
+      expect(ute.filter((t) => angivenTemperaturUnder(t, KALLGRANS_GRADER))).toEqual([])
+
+      // …men ett POSITIVT tal i samma mening ska fortfarande hittas, annars är
+      // provet ovan grönt av att funktionen slutat matcha något alls.
       expect(
-        prioritetsgolv(MaintenanceCategory.CLEANING, 'Kranen läcker', 'Den droppar lite'),
-      ).toBe(MaintenancePriority.LOW)
+        angivenTemperaturUnder('det var -5 grader ute och 16 grader inne', KALLGRANS_GRADER),
+      ).toBe(true)
+    })
+
+    // ── TEXTENS KATEGORIORD LYFTER OCKSÅ ──────────────────────────────────
+    //
+    // Den registrerade kategorin kan vara fel — det är korpusens hela premiss.
+    // `k15` är ett trasigt lysrör registrerat som COMMON_AREAS.
+    // ── RISKLÄSNINGENS EGNA UNDANTAG ──────────────────────────────────────
+    //
+    // 'lås' och 'rör' är delsträngar av vanliga svenska ord. Det var ofarligt så
+    // länge bara frågeregeln läste dem (en falsk träff gör den TYST); i golvet
+    // HÖJER en falsk träff. Provet kräver båda hållen: de fyra meningarna får
+    // inte lyfta, och de riktiga formerna måste fortfarande göra det — annars
+    // vore raden ovan grön av att orden slutat matcha något alls.
+    it('en delsträng i ett vanligt ord lyfter INTE riskgolvet', () => {
+      const fårInte = [
+        'Det blåser in kalluft genom fönsterkarmen',
+        'En ruta på balkongen har blåst sönder i stormen',
+        'Det är rörigt och skräpigt i cykelrummet',
+        'Frågan berör hela trapphusets belysning',
+      ]
+      expect(
+        fårInte.filter(
+          (t) => prioritetsgolv(MaintenanceCategory.OTHER, '', t) !== MaintenancePriority.LOW,
+        ),
+      ).toEqual([])
+
+      const måste = ['låset på ytterdörren kärvar', 'röret under handfatet är trasigt']
+      expect(
+        måste.filter(
+          (t) => prioritetsgolv(MaintenanceCategory.OTHER, '', t) !== MaintenancePriority.NORMAL,
+        ),
+      ).toEqual([])
+    })
+
+    it('lyfter till NORMAL när TEXTEN pekar på en riskkategori', () => {
+      expect(
+        prioritetsgolv(
+          MaintenanceCategory.COMMON_AREAS,
+          'lampan i tvättstugan trasig',
+          'Det är kolmörkt i tvättstugan, lysröret har gått.',
+        ),
+      ).toBe(MaintenancePriority.NORMAL)
     })
   })
 
@@ -155,41 +310,212 @@ describe('triage-rules', () => {
   })
 
   describe('golvet SÄNKER aldrig', () => {
-    // Regelns hela löfte i ett prov: för VARJE par (modellsvar, golv) ska
-    // resultatet ligga minst lika högt som modellens svar. Faller den här har
-    // asymmetrin gått förlorad, och det är det enda som gör golvet ofarligt.
-    it('för varje kombination av modellsvar och golv', () => {
+    // Regelns hela löfte i ett prov: för VARJE par (registrerat värde, golv) ska
+    // resultatet ligga minst lika högt som det registrerade värdet. Faller den
+    // här har asymmetrin gått förlorad, och det är det enda som gör golvet
+    // ofarligt.
+    //
+    // ── UNDANTAGET ÄR TAKET, OCH DET PRÖVAS FÖR SIG ────────────────────────
+    //
+    // `hyresgastenSagerIngenBradska` får sänka, och därför får ingen av
+    // texterna här bära en sådan fras. Att blanda in en gjorde provet till en
+    // kontroll som inte kunde falla — se det egna blocket nedan.
+    it('för varje kombination av registrerat värde och golv', () => {
       const golvtexter = ['inget alls', 'det rinner vatten', 'fuktfläck i taket']
       const sankta: string[] = []
-      for (const modell of PRIORITETSORDNING) {
+      for (const registrerad of PRIORITETSORDNING) {
         for (const text of golvtexter) {
           const ut = tillämpaRegler(
-            { atgärd: 'update_maintenance_status', prioritet: modell, kategori: 'PLUMBING' },
-            { titel: '', beskrivning: text, registreradKategori: MaintenanceCategory.PLUMBING },
+            { atgärd: 'update_maintenance_status', kategori: 'PLUMBING' },
+            {
+              titel: '',
+              beskrivning: text,
+              registreradKategori: MaintenanceCategory.PLUMBING,
+              registreradPrioritet: registrerad,
+            },
           )
-          const före = PRIORITETSORDNING.indexOf(modell)
-          const efter = PRIORITETSORDNING.indexOf(ut.prioritet!)
-          if (efter < före) sankta.push(`${modell} + "${text}" → ${ut.prioritet}`)
+          const före = PRIORITETSORDNING.indexOf(registrerad)
+          const efter = PRIORITETSORDNING.indexOf(ut.prioritet)
+          if (efter < före) sankta.push(`${registrerad} + "${text}" → ${ut.prioritet}`)
         }
       }
       expect(sankta).toEqual([])
     })
 
-    it('lämnar prioriteten null när modellen inte svarade något giltigt', () => {
-      const ut = tillämpaRegler(
-        { atgärd: 'update_maintenance_status', prioritet: null, kategori: null },
-        { titel: '', beskrivning: 'det rinner vatten', registreradKategori: 'PLUMBING' },
+    // ── NEGATIVKONTROLLEN TILL PROVET OVAN ────────────────────────────────
+    //
+    // Ett prov som bara visar att ingenting sänktes skiljer inte "asymmetrin
+    // håller" från "golvet höjer aldrig något alls". Här matas ett registrerat
+    // LOW mot texter som MÅSTE lyfta, och kravet är att var och en gör det.
+    it('kanariefågel: golvet höjer faktiskt ett lågt registrerat värde', () => {
+      const fall: Array<[string, MaintenancePriority]> = [
+        ['det rinner vatten i badrummet', MaintenancePriority.URGENT],
+        ['det finns en fuktfläck i taket', MaintenancePriority.HIGH],
+        ['det är 15 grader inne på morgonen', MaintenancePriority.HIGH],
+      ]
+      const stumma = fall.filter(
+        ([text, väntat]) =>
+          tillämpaRegler(
+            { atgärd: 'update_maintenance_status', kategori: null },
+            {
+              titel: '',
+              beskrivning: text,
+              registreradKategori: MaintenanceCategory.CLEANING,
+              registreradPrioritet: MaintenancePriority.LOW,
+            },
+          ).prioritet !== väntat,
       )
-      expect(ut.prioritet).toBeNull()
-      expect(ut.golvHöjde).toBe(false)
+      expect(stumma).toEqual([])
     })
 
-    it('avvisar ett prioritetsvärde som inte finns i registret', () => {
+    it('faller tillbaka på golvet när det registrerade värdet inte finns i registret', () => {
       const ut = tillämpaRegler(
-        { atgärd: 'update_maintenance_status', prioritet: 'MEDIUM', kategori: null },
-        { titel: '', beskrivning: 'inget särskilt här', registreradKategori: 'OTHER' },
+        { atgärd: 'update_maintenance_status', kategori: null },
+        {
+          titel: '',
+          beskrivning: 'det rinner vatten',
+          registreradKategori: 'PLUMBING',
+          registreradPrioritet: 'MEDIUM',
+        },
       )
-      expect(ut.prioritet).toBeNull()
+      expect(ut.prioritet).toBe(MaintenancePriority.URGENT)
+    })
+
+    it('ger LOW när varken register eller text säger något', () => {
+      const ut = tillämpaRegler(
+        { atgärd: 'update_maintenance_status', kategori: null },
+        {
+          titel: '',
+          beskrivning: 'inget särskilt här',
+          registreradKategori: 'OTHER',
+          registreradPrioritet: 'MEDIUM',
+        },
+      )
+      expect(ut.prioritet).toBe(MaintenancePriority.LOW)
+    })
+  })
+
+  // ── TAKET ─────────────────────────────────────────────────────────────────
+  //
+  // Egen grupp, därför att det är den ENDA mekanismen i filen som får sänka.
+  // Två krav, och det andra är det som gör det ofarligt.
+  describe('taket: hyresgästens egen utsaga', () => {
+    const löst = {
+      titel: 'Ärendet är löst',
+      beskrivning: 'Grannen hjälpte mig med elementet igår, det funkar nu. Behöver inte komma.',
+    }
+
+    it('sänker ett registrerat NORMAL till LOW när felet sägs vara löst', () => {
+      const ut = tillämpaRegler(
+        { atgärd: 'update_maintenance_status', kategori: 'HEATING' },
+        {
+          ...löst,
+          registreradKategori: MaintenanceCategory.HEATING,
+          registreradPrioritet: MaintenancePriority.NORMAL,
+        },
+      )
+      expect(ut.prioritet).toBe(MaintenancePriority.LOW)
+      expect(ut.takSänkte).toBe(true)
+    })
+
+    it('sänker också kategorigolvet — ett löst fel är inget fel av någon art', () => {
+      expect(
+        prioritetsgolv(
+          MaintenanceCategory.PLUMBING,
+          'Tack, det är fixat',
+          'Ni lagade kranen igår, den funkar nu. Kan stänga ärendet.',
+        ),
+      ).toBe(MaintenancePriority.LOW)
+    })
+
+    // DET SOM GÖR TAKET OFARLIGT: `högreAv` ligger sist, så ett nyckelord i
+    // texten vinner alltid. Utan den här raden vore taket en väg att sänka ett
+    // akut ärende genom att skriva "ingen brådska" i beskrivningen.
+    //
+    // ── DEN FÖRSTA FORMEN AV DET HÄR PROVET KUNDE INTE FALLA ───────────────
+    //
+    // Fixturen hade `registreradPrioritet: LOW`. Taket sänker till LOW, alltså
+    // gjorde det ingenting alls i just den fixturen — och provet mätte då att
+    // ett golv lyfter ett LOW, inte att taket hålls tillbaka. Uppmätt med en
+    // injektion som flyttade taket EFTER `högreAv`: korpusen föll från 50/54
+    // till 38/54 medan hela specen förblev GRÖN.
+    //
+    // Varje registrerad nivå ÖVER LOW prövas därför, så taket alltid har något
+    // att sänka och nyckelordet alltid har något att slå.
+    it('når ALDRIG förbi ett nyckelord i texten', () => {
+      const släppte: string[] = []
+      for (const registrerad of PRIORITETSORDNING) {
+        const ut = tillämpaRegler(
+          { atgärd: 'update_maintenance_status', kategori: 'PLUMBING' },
+          {
+            titel: 'ingen brådska',
+            beskrivning: 'det rinner vatten från elementet men ingen brådska',
+            registreradKategori: MaintenanceCategory.PLUMBING,
+            registreradPrioritet: registrerad,
+          },
+        )
+        if (ut.prioritet !== MaintenancePriority.URGENT) {
+          släppte.push(`${registrerad} → ${ut.prioritet}`)
+        }
+      }
+      expect(släppte).toEqual([])
+    })
+
+    // ── KANARIEFÅGEL FÖR TAKETS ORD ────────────────────────────────────────
+    //
+    // Samma form som golvets: varje fras ska ENSAM kunna utlösa taket, och en
+    // text utan någon av dem ska inte göra det. Utan båda hållen kan en fras
+    // tystna, eller predikatet alltid svara sant, utan att något blir rött.
+    it('kanariefågel: ingen av takets fraser är stum, och inget annat utlöser den', () => {
+      const utlöser = [
+        'det är fixat nu',
+        'ärendet är löst',
+        'elementet funkar nu',
+        'behöver inte komma',
+        'ni kan stänga ärendet',
+        'ingen brådska alls',
+        'ingen stress',
+        'det är inte bråttom',
+        'undrar bara',
+        'bara en fundering',
+      ]
+      const stumma = utlöser.filter((t) => !hyresgastenSagerIngenBradska('', t))
+      expect(stumma).toEqual([])
+
+      // ── DEN NEGATIVA MÄNGDEN MÅSTE BÄRA ORDEN I EN ANNAN BETYDELSE ──────
+      //
+      // Den första formen hade bara tre neutrala meningar (droppande kran, kallt
+      // sovrum, stillastående hiss). Ingen av dem innehåller någon av takets
+      // fraser, så provet kunde bara falla om predikatet blev ALLTID SANT — det
+      // skilde inte "predikatet är rätt" från "predikatet är för brett".
+      //
+      // De fyra första raderna nedan är den skillnaden. `löst` är neutrumformen
+      // av **lös** lika mycket som perfektparticipet av **lösa**, och med
+      // 'är löst' i listan sänktes ett gnistrande eluttag till LOW.
+      const fårInte = [
+        'eluttaget i hallen är löst och gnistrar',
+        'handtaget på ytterdörren är löst',
+        'ett kakel i duschen är löst',
+        'en list i hallen har lossnat och är lös',
+        'kranen droppar i badrummet',
+        'det är kallt i sovrummet',
+        'hissen står stilla sedan i tisdags',
+      ]
+      expect(fårInte.filter((t) => hyresgastenSagerIngenBradska('', t))).toEqual([])
+    })
+
+    it('rör inte ett ärende utan någon sådan utsaga', () => {
+      const ut = tillämpaRegler(
+        { atgärd: 'update_maintenance_status', kategori: 'HEATING' },
+        {
+          titel: 'Elementet är kallt',
+          beskrivning: 'Det blir inte varmt i sovrummet',
+          registreradKategori: MaintenanceCategory.HEATING,
+          registreradPrioritet: MaintenancePriority.NORMAL,
+        },
+      )
+      expect(ut.prioritet).toBe(MaintenancePriority.NORMAL)
+      expect(ut.takSänkte).toBe(false)
     })
   })
 
@@ -294,13 +620,13 @@ describe('triage-rules', () => {
       titel: 'vet inte vad det är',
       beskrivning: 'Det känns konstigt ibland men jag kan inte säga vad det beror på',
       registreradKategori: MaintenanceCategory.OTHER,
+      registreradPrioritet: MaintenancePriority.NORMAL,
     }
 
     it('byggs av modellens första och andra kategorival', () => {
       const ut = tillämpaRegler(
         {
           atgärd: BESIKTNINGSVERKTYG,
-          prioritet: MaintenancePriority.NORMAL,
           kategori: MaintenanceCategory.OTHER,
           andraKategori: MaintenanceCategory.HEATING,
         },
@@ -328,10 +654,7 @@ describe('triage-rules', () => {
         { kategori: MaintenanceCategory.OTHER, andraKategori: MaintenanceCategory.OTHER },
         { kategori: null, andraKategori: MaintenanceCategory.HEATING as string | null },
       ]) {
-        const ut = tillämpaRegler(
-          { atgärd: BESIKTNINGSVERKTYG, prioritet: MaintenancePriority.NORMAL, ...modell },
-          ärende,
-        )
+        const ut = tillämpaRegler({ atgärd: BESIKTNINGSVERKTYG, ...modell }, ärende)
         if (modell.kategori === null) {
           // Ett enda värde, fast från det andra fältet — samma utfall.
           expect(ut.fråga?.alternativ.length ?? 0).toBeLessThan(2)
@@ -345,14 +668,17 @@ describe('triage-rules', () => {
       const ut = tillämpaRegler(
         {
           atgärd: BESIKTNINGSVERKTYG,
-          prioritet: MaintenancePriority.LOW,
           kategori: MaintenanceCategory.HEATING,
           andraKategori: MaintenanceCategory.APPLIANCES,
         },
         // "påminner" och inte något vattenord: vattenorden innehåller "vatten",
         // som ÄR ett kategoriord, och då slutar frågeregeln gälla. De två
         // reglerna läser samma text, och fixturen måste hålla dem isär.
-        { ...ärende, beskrivning: `${ärende.beskrivning}, jag påminner om detta` },
+        {
+          ...ärende,
+          registreradPrioritet: MaintenancePriority.LOW,
+          beskrivning: `${ärende.beskrivning}, jag påminner om detta`,
+        },
       )
       expect(ut.frågaTvingad).toBe(true)
       expect(ut.prioritet).toBe(MaintenancePriority.HIGH)

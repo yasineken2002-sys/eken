@@ -42,15 +42,22 @@ export interface Utfall {
    */
   atgardForeRegler?: string
   prioritetForeRegler?: string | null
+  /** Ärendets registrerade prioritet — reglernas indata sedan körning 7. */
+  registreradPrioritet?: string
   /**
-   * KONTROLLSVARET UTAN MODELL: ärendets REGISTRERADE prioritet, höjd av samma
-   * golv. Räknas ut av riggen genom `tillämpaRegler`, inte här — rapporten ska
-   * inte behöva ärendets text för att summera en körning.
+   * KONTROLLSVARET MED MODELL: modellens egen prioritet, höjd av samma golv och
+   * sänkt av samma tak — alltså den ordning som gällde till och med körning 6.
+   * Räknas ut av riggen genom `tillämpaRegler`, inte här.
    *
-   * En modellbaserad prioritet som inte slår det här talet betalar sitt
-   * tokenpris för ingenting.
+   * ── KONTROLLEN HAR BYTT SIDA, OCH DET ÄR HELA POÄNGEN ─────────────────────
+   *
+   * Fältet hette `prioritetUtanModell` och mätte det billigare alternativet mot
+   * det byggda. Sedan körning 7 ÄR det billigare alternativet det byggda:
+   * prioriteten sätts av regel, och modellen har ingen röst. Kontrollen mäter
+   * därför numera UTMANAREN. Ligger den här raden över `prioritet` ska beslutet
+   * omprövas — och tills den gör det är beslutet mätt, inte tyckt.
    */
-  prioritetUtanModell?: string
+  prioritetMedModell?: string
   /** Modellens andrahandsval av kategori — frågeregelns andra alternativ. */
   andraKategori?: string
   kostnadUsd: number
@@ -97,15 +104,15 @@ export interface Rapport {
     fragaTvingad: number | null
     fragaTvingadRatt: number | null
     /**
-     * KONTROLLEN UTAN MODELL: hur ofta det REGISTRERADE värdet, höjt av golvet,
-     * hade träffat facit. Null när posterna inte bär det registrerade värdet.
+     * KONTROLLEN MED MODELL: hur ofta MODELLENS prioritet, genom samma golv och
+     * tak, hade träffat facit. Null när posterna inte bär modellens värde.
      *
      * Raden finns för att en träffgrad utan jämförelsepunkt inte säger om
-     * modellen tillför något. Uppmätt offline mot körning 3: modell + golv 36 av
-     * 50, registrerat värde + golv 39 av 50 — den billigare raden var bättre.
-     * Ligger `utanModell` över `prioritet` är det ett besked, inte ett fel.
+     * regeln är rätt val. Uppmätt i körning 7: regel 50 av 54, modell + regel
+     * 46 av 54. Ligger `medModell` ÖVER `prioritet` är det ett besked om att
+     * beslutet att koppla bort modellen ska omprövas — inte ett fel.
      */
-    prioritetUtanModell: Rad | null
+    prioritetMedModell: Rad | null
   }
   konfidens: Array<{ hink: string; antal: number; ratt: number; andel: number | null }>
   domWouldExecute: number
@@ -151,17 +158,28 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
   // kunna läsas som att reglerna inte gjorde något.
   const medFöre = poster.filter((p) => p.utfall.atgardForeRegler !== undefined)
   const reglerMätta = medFöre.length > 0
+  // ── TVÅ VILLKOR, INTE ETT ────────────────────────────────────────────────
+  //
+  // Golv-fälten läser `registreradPrioritet`, som bara finns från körning 7;
+  // fråge-fälten läser `atgardForeRegler`, som finns från körning 4. En sparad
+  // körning 4–6 uppfyller det ena men inte det andra, och med ETT villkor blev
+  // de tre golv-fälten då `0` — precis det docblocket ovan förbjuder ("null
+  // betyder inte mätt, aldrig noll"). Uppmätt på en post utan fältet: `0,0,0`.
+  const golvMätta = poster.some((p) => p.utfall.registreradPrioritet !== undefined)
   let golvHojde = 0
   let golvRaddade = 0
   let golvForstorde = 0
   let fragaTvingad = 0
   let fragaTvingadRatt = 0
-  const medKontroll = poster.filter((p) => p.utfall.prioritetUtanModell !== undefined)
+  const medKontroll = poster.filter((p) => p.utfall.prioritetMedModell !== undefined)
   for (const { facit: f, utfall: u } of medFöre) {
-    if (u.prioritetForeRegler !== undefined && u.prioritetForeRegler !== u.prioritet) {
+    // JÄMFÖRELSEPUNKTEN ÄR DET REGISTRERADE VÄRDET, inte modellens. Sedan
+    // körning 7 är det registrerade värdet reglernas indata; att fortsätta mäta
+    // mot modellen hade räknat en skillnad reglerna inte längre orsakar.
+    if (u.registreradPrioritet !== undefined && u.registreradPrioritet !== u.prioritet) {
       golvHojde++
       if (u.prioritet === f.prioritet) golvRaddade++
-      if (u.prioritetForeRegler === f.prioritet) golvForstorde++
+      if (u.registreradPrioritet === f.prioritet) golvForstorde++
     }
     if (u.atgardForeRegler !== u.atgard && u.atgard === 'FRAGA') {
       fragaTvingad++
@@ -211,17 +229,17 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
     ),
     atgard: rad(antal, poster.filter((p) => atgardRatt(p.facit, p.utfall)).length),
     regler: {
-      golvHojde: reglerMätta ? golvHojde : null,
-      golvRaddade: reglerMätta ? golvRaddade : null,
-      golvForstorde: reglerMätta ? golvForstorde : null,
+      golvHojde: golvMätta ? golvHojde : null,
+      golvRaddade: golvMätta ? golvRaddade : null,
+      golvForstorde: golvMätta ? golvForstorde : null,
       fragaTvingad: reglerMätta ? fragaTvingad : null,
       fragaTvingadRatt: reglerMätta ? fragaTvingadRatt : null,
-      prioritetUtanModell:
+      prioritetMedModell:
         medKontroll.length === 0
           ? null
           : rad(
               medKontroll.length,
-              medKontroll.filter((p) => p.utfall.prioritetUtanModell === p.facit.prioritet).length,
+              medKontroll.filter((p) => p.utfall.prioritetMedModell === p.facit.prioritet).length,
             ),
     },
     fraga: {
@@ -269,14 +287,14 @@ export function formateraRapport(r: Rapport): string {
   rader.push('REGLERNAS BIDRAG')
   const n = (v: number | null): string => (v === null ? 'ej mätt' : String(v))
   rader.push(
-    `  prioritetsgolvet höjde ${n(r.regler.golvHojde)} svar — räddade ${n(r.regler.golvRaddade)}, förstörde ${n(r.regler.golvForstorde)}`,
+    `  golv/tak ändrade ${n(r.regler.golvHojde)} registrerade värden — räddade ${n(r.regler.golvRaddade)}, förstörde ${n(r.regler.golvForstorde)}`,
   )
   rader.push(
     `  besiktning → fråga     ${n(r.regler.fragaTvingad)} gånger — rätt ${n(r.regler.fragaTvingadRatt)}`,
   )
-  const k = r.regler.prioritetUtanModell
+  const k = r.regler.prioritetMedModell
   rader.push(
-    `  KONTROLL utan modell   ${k === null ? 'ej mätt' : `${k.traffar}/${k.antal}  ${pct(k.andel)} (registrerad prioritet + golvet)`}`,
+    `  KONTROLL med modell    ${k === null ? 'ej mätt' : `${k.traffar}/${k.antal}  ${pct(k.andel)} (modellens prioritet + golvet — utmanaren)`}`,
   )
   rader.push('')
   rader.push('KONFIDENS          antal  rätt  andel')

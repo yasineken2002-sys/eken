@@ -146,115 +146,234 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#796](https://github.com/yasineken2002-sys/eken/pull/796)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
 
-> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `1c49ca2`
+> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `5ee83e00`
+>
+> Sha:n är den körning 7 FAKTISKT kördes mot. En commit efter den lagade
+> minusgrader i temperaturregeln; den ändringen har **noll** effekt på
+> korpusen (50/54 före och efter, offline mot samma sparade svar), eftersom
+> inget ärende nämner en minusgrad. Talen nedan gäller alltså båda.
 >
 > **Kriteriet lyder "den föreslår rätt i VERKLIGA fall".** Det finns inga
 > verkliga fall: skuggagenten är påslagen i noll organisationer, och prod har
 > noll felanmälningar (mätt 2026-09-06). Den här mätningen ERSÄTTER inte
-> kriteriet — den säger vad agenten gör på 52 konstruerade ärenden, tills det
+> kriteriet — den säger vad agenten gör på 54 konstruerade ärenden, tills det
 > finns riktiga. Rad 6 står därför kvar utan status.
 >
-> Korpusen är `apps/api/src/ai/shadow/eval/korpus.json` (52 felanmälningar på
+> Korpusen är `apps/api/src/ai/shadow/eval/korpus.json` (54 felanmälningar på
 > vardaglig svenska med stavfel, facit per ärende, 10 fall där en FRÅGA är rätt
 > och 5 där rätt svar är att inte föreslå något). Riggen är `pnpm eval:shadow`,
 > temperatur 0, egen databas, och den körs **inte** i CI — femtio modellanrop
 > kostar pengar varje gång. Korpusens form och rapportens summering har
 > däremot prov som går utan ett enda anrop.
 >
-> | | k1 | k2 | k3 | k4 | k5 | **k6** |
-> | --- | --- | --- | --- | --- | --- | --- |
-> | kategori | 85,4 % | 88,2 % | 88,0 % | 88,9 % | 87,0 % | **87,0 %** |
-> | prioritet | 62,5 % | 58,8 % | 54,0 % | 79,6 % | 79,6 % | **72,2 %** |
-> | åtgärd | 38,0 % | 44,2 % | 55,8 % | 77,8 % | 74,1 % | **87,0 %** |
-> | inget förslag | 66,7 % (3) | 20,0 % (5) | 40,0 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** |
-> | fel fråga | 0,0 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** |
-> | missad fråga | 3 | 3 | 4 | 6 | 8 | **1** |
-> | kostnad | $0,1914 | $0,2000 | $0,2114 | $0,2704 | $0,2714 | **$0,2747** |
+> | | k1 | k2 | k3 | k4 | k5 | k6 | **k7** |
+> | --- | --- | --- | --- | --- | --- | --- | --- |
+> | kategori | 85,4 % | 88,2 % | 88,0 % | 88,9 % | 87,0 % | 87,0 % | **87,0 %** |
+> | prioritet | 62,5 % | 58,8 % | 54,0 % | 79,6 % | 79,6 % | 72,2 % | **92,6 %** |
+> | åtgärd | 38,0 % | 44,2 % | 55,8 % | 77,8 % | 74,1 % | 87,0 % | **87,0 %** |
+> | inget förslag | 66,7 % (3) | 20,0 % (5) | 40,0 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** |
+> | fel fråga | 0,0 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** |
+> | missad fråga | 3 | 3 | 4 | 6 | 8 | 1 | **1** |
+> | kostnad | $0,1914 | $0,2000 | $0,2114 | $0,2704 | $0,2714 | $0,2747 | **$0,2748** |
 >
-> Körning 1–3 mättes på 52 ärenden, 4–6 på 54: två ärenden lades till när två
+> Körning 1–3 mättes på 52 ärenden, 4–7 på 54: två ärenden lades till när två
 > facit rättades (se `korpus.json`:s RÄTTELSER — rättelsen står där och inte här,
 > eftersom den påverkar hur talen ska läsas och en PR-text läses en gång).
 >
-> **Fem av sex mål nådda i körning 6.** Åtgärd ≥ 80 % (87,0), kategori ≥ 85 %
+> **SEX AV SEX MÅL NÅDDA I KÖRNING 7.** Åtgärd ≥ 80 % (87,0), kategori ≥ 85 %
 > (87,0), inget förslag ≥ 80 % (100), missad fråga ≤ 2 (1), fel fråga ≤ 10 %
-> (1,9). **Prioriteten nådde inte 80 % i samma körning** — 79,6 % i k4 och k5,
-> 72,2 % i k6 — och det redovisas som ett utfall, inte som ett nästan.
+> (1,9) — och **prioritet ≥ 80 % (92,6)**, som inte nåddes i någon tidigare
+> körning.
 >
-> **Två deterministiska regler flyttades ur modellen** (`triage-rules.ts`):
+> ### Prioriteten sätts av REGEL. Modellen har ingen röst i den.
 >
-> 1. *Prioritetsgolvet.* Nyckelord i ärendetexten sätter en lägsta nivå;
->    modellen får höja, aldrig sänka. I k6: höjde 12 svar, räddade 9, förstörde
->    3. Orden är valda med korpusen framför sig, vilket är överanpassning — den
->    risken och gränsen som drogs står i filen.
-> 2. *Besiktning som inte kan vara en besiktning.* Föreslår modellen ett
->    platsbesök på ett ärende vars kategori varken portalen eller texten kan
->    avgöra, blir förslaget en FRÅGA. I k6: 3 gånger, 2 rätt.
+> Det är den enda ändringen mellan k6 och k7 utöver reglerna själva, och den är
+> mätt och inte vald. `tillämpaRegler` tar inte längre emot någon prioritet från
+> modellen — spärren är strukturell, inte en överenskommelse, så ingen kan råka
+> koppla in den igen.
 >
-> **Modellen tjänar inte sitt tokenpris på prioriteten.** Rapporten bär numera en
-> KONTROLL utan modell — ärendets registrerade prioritet, höjd av samma golv. I
-> k6: kontrollen 75,9 % mot modellens 72,2 %. Fyra kombinationer mätta offline
-> mot k6:s egna svar (noll extra anrop):
+> Fyra kombinationer, mätta offline mot k7:s egna svar (noll extra anrop):
 >
 > ```
 > modellen ensam                                33/54  61,1 %
-> modell + golv           (det som är byggt)    39/54  72,2 %
-> registrerad + golv      (ingen modell alls)   41/54  75,9 %
-> registrerad, modellen får SÄNKA, + golv       43/54  79,6 %
+> golvet ensamt                                 38/54  70,4 %
+> modell + regler        (ordningen till k6)    46/54  85,2 %
+> REGISTRERAD + regler   (ordningen sedan k7)   50/54  92,6 %
+> registrerad, modellen får SÄNKA, + regler     50/54  92,6 %
 > ```
 >
-> Den sista är bäst mätt och är INTE byggd: den inverterar asymmetrin — där
-> modellen i dag får höja men inte sänka skulle den få sänka men inte höja. Det
-> är ett designbeslut och inte en justering, och det tas inte i en mätsession.
+> Sista raden är skälet. När modellen får sänka tillför den **noll** — den
+> tillför alltså varken uppåt eller nedåt, och ett fält som inte tillför något
+> ska inte läsas. I k6 var samma jämförelse 72,2 mot 75,9, alltså samma tecken
+> men mindre marginal; det som gjorde beslutet entydigt var att lägga reglerna
+> till rätta först.
 >
-> **Tre defekter hittades av mätningen, ingen av läsning:**
+> **Kontrollen togs inte bort — den bytte sida.** Rapporten bär numera raden
+> `prioritetMedModell`: modellens egen prioritet genom exakt samma golv och tak.
+> Ligger den ÖVER `prioritet` ska bortkopplingen omprövas. Prompten ber därför
+> fortfarande om `prediction.priority`, oförändrad — en modell som blivit
+> tillsagd att svaret inte räknas är inte längre samma jämförelsepunkt.
 >
-> - *Frågeregeln var död.* Den byggde frågans alternativ av modellens gissning
->   "eller OTHER" — och modellen svarar OTHER i precis de fall regeln finns för.
->   Noll frågor tvingades fram, och inget blev rött. Modellen ombeds nu om ett
->   ANDRAHANDSVAL, och regeln lever (k6: 3 gånger).
-> - *Nycklarna på tråden var svenska.* Modellen skrev `användssTill` med två s,
->   frågan avvisades fail-closed, och fem av tio frågefall blev OTOLKBART — i
->   rapporten såg det ut som att agenten inte frågade. En JSON-nyckel en modell
->   måste återge ordagrant är ett maskinkontrakt: den är nu ASCII, svenskan bor i
->   beskrivningarna.
-> - *Ett obligatoriskt fack drar till sig innehållet.* Med ASCII-nycklarna lade
->   modellen i stället hela frågan i `toolInput` — obligatoriskt och
->   strukturlöst — bredvid det valfria `fraga`. Åtta av tio frågefall blev
->   OTOLKBART. Frågan läses nu från båda platserna; PLACERINGEN är tolerant,
->   innehållet fortsatt fail-closed.
+> ### Sju regeländringar, mätta en i taget
 >
-> **Tröskeln hölls i alla tre körningarna.** ai-architects krav var ≤ 10 %
-> frågor där frågan INTE är rätt; utfallet är 0–1,9 %. Frågan är alltså inte en
-> utväg vid osäkerhet — den risken infriades inte.
+> Varje rad är samma korpus, samma sparade modellsvar, en ändring isär.
 >
-> **Två promptändringar mellan körningarna, båda framtvingade av mätningen:**
+> | | ändringen | modell+regler | reg+regler |
+> | --- | --- | --- | --- |
+> | | baslinje (k6, `2cfdf664`) | 39/54 | 41/54 |
+> | R1 | fraser förkortade till sin distingerande del | 40 | 42 |
+> | R2 | en angiven innetemperatur under 18 grader → HIGH | 41 | 43 |
+> | R3 | textens kategoriord lyfter riskgolvet, inte bara formulärets | 41 | 43 |
+> | R5 | vatten som LIGGER är HIGH; 'står vatten' borttaget | 43 | 45 |
+> | R9 | hyresgästens egen utsaga: löst / ingen brådska → tak LOW | 44 | 48 |
+> | R4 | fler än ett hushåll rapporterar samma fel → URGENT | 45 | 49 |
+> | R7 | sanering av kroppsvätskor i gemensamt utrymme → HIGH | **46** | **50** |
 >
-> 1. *Menyn bar inga betydelser.* Verktygen stod som en naken namnlista, och
->    modellen valde `create_inspection` 29 gånger mot facits 4 — den läste
->    namnet. Etiketterna hämtas nu ur verktygskatalogen (enda sanningskällan,
->    och den kastar för ett verktyg utan etikett).
-> 2. *Uppgiften var inte triagering.* Prompten sa "föreslå nästa åtgärd", vilket
->    på en felanmälan läses som "skicka någon att titta". Den säger nu att de
->    flesta ärenden ska TRIAGERAS, och vad en besiktning är till för.
+> Tre av de sju lagar en regel som var FEL, inte en som saknades — och det är
+> den grupp som bär mest:
 >
-> **Konfidensen blev användbar först i körning 3.** I körning 1 var den INVERTERAD
-> — 0,85–1,00 hade 22,2 % rätt mot 28,6 % för 0,70–0,84. I körning 3: 52,9 % mot
-> 37,5 %. Först då säger fältet något om triage.
+> - **R1 var ett formfel.** 'står på glänt' kan inte matcha "står DEN på glänt";
+>   ett enda mellanliggande ord räckte. Frasen är nu 'på glänt'.
+> - **R5 var för bred.** 'står vatten' säger inte VAR. En pöl på en balkong efter
+>   regn och en pöl på ett badrumsgolv är inte samma ärende, och ordet kunde inte
+>   skilja dem — det fällde två ärenden och räddade noll. Skiljelinjen som
+>   URGENT-gruppen påstår sig dra är vatten som RÖR SIG; en pöl är ett resultat,
+>   och resultat är HIGH.
+> - **R3 var för smal.** Riskgolvet läste bara `registreradKategori` — men
+>   korpusens hela premiss är att det fältet kan vara fel.
 >
-> **Prioritetsfrågan från k3 är besvarad.** Nedgången (62,5 → 54,0 %) var en
-> systematisk dragning mot mitten: modellen svarade NORMAL på 33 av 50 mot
-> facits 20, underskattade 14 gånger och överskattade 9. Golvet fångar
-> underskattningen; det som återstår är spritt över alla felformer utan dominant
-> mönster, och därför inte en lucka som en regel till kan täppa.
+> ### Taket är den enda mekanism i filen som får SÄNKA
+>
+> `prioritetsgolv` är ett golv och förblir det. Taket ligger på INDATA, alltså
+> det värde golvet sedan jämförs mot: `prioritet = högreAv(tak ? LOW : registrerad, golv)`.
+> Ett nyckelord i texten vinner därför alltid — "det rinner vatten, ingen
+> brådska" blir URGENT.
+>
+> Risken går åt det farliga hållet (ett falskt tak sänker ett riktigt fel), och
+> det står i filen med den kända kostnaden: frasen 'funkar nu' kan stå i
+> "elementet funkar nu bara på halvfart".
+>
+> ### Två negativkontroller — och den ena visar att KORPUSEN är blind
+>
+> ```
+> golvet får SÄNKA (högreAv → lägreAv)      spec 7 röda   ·  korpus 50/54 → 12/54
+> taket flyttat EFTER högreAv               spec 1 röd    ·  korpus 50/54 → 50/54
+> ```
+>
+> Den andra raden är beskedet: **korpusen kan inte se det felet.** Den har inget
+> ärende där en avslutsfras och ett brådskeord står i samma text, så bara
+> fixturen fäller det. Ett tal på 92,6 % säger alltså ingenting om just den
+> ordningen — och hade jag mätt bara på korpusen hade jag inte vetat det.
+>
+> Den negativkontrollen fällde dessutom mitt EGET prov först: fixturen hade
+> `registreradPrioritet: LOW`, och taket sänker till LOW — det hade alltså inget
+> att sänka. Provet mätte att golvet lyfter ett LOW, inte att taket hålls
+> tillbaka, och hela specen förblev grön med injektionen inne. Provet går nu
+> igenom varje registrerad nivå.
+>
+> ### Fyra ärenden står kvar, och tre av dem är inte regelfrågor
+>
+> ```
+> k19  facit URGENT · regel HIGH   inget varmvatten, "alla kranar", grannen samma
+> k23  facit HIGH   · regel NORMAL hissen stått still i tre dagar, boende på plan 5
+> k25  facit NORMAL · regel LOW    unken lukt i källargången, ingen ledtråd
+> k57  facit LOW    · regel NORMAL "kan ni titta på en grej till när ni ändå är här"
+> ```
+>
+> **k19** träffas numera av regeln för fler än ett hushåll och landar på HIGH i
+> stället för URGENT — ett steg fel, inte ett missat ärende.
+>
+> **k23 och k25 är facitfrågor och ändras inte här.** k23:s facit säger HIGH och
+> modellen sa URGENT; en hiss ur funktion i tre dagar med en rörelsehindrad
+> boende på femte våningen är rimligen endera. k25:s facit säger NORMAL för en
+> okänd lukt, medan korpusens `k60` — också en okänd lukt — har facit LOW. Vilken
+> av dem som är rätt avgörs av en hyresvärd, inte av den här mätningen. **Ingen
+> facitrad har ändrats i den här omgången.**
+>
+> **k57 är R3:s kända pris.** Texten nämner "kranen", alltså ett PLUMBING-ord, men
+> är ingen felanmälan — den är en följdfråga. R3 lagade `k15` och kostade `k57`;
+> netto noll på det steget, och vinsten kom först när taket lades till.
+>
+> **k63 är kvar, och raden om den var först FEL.** Ärendet är nätfiske i
+> felanmälningsformuläret, registrerat som HIGH. Här stod att den registrerade
+> prioriteten är "fritt vald av den som skriver". Ommätt: **portalformuläret kan
+> inte sätta prioritet alls** — `tenant-portal.service.ts` hårdkodar `'NORMAL'`.
+> Vägen som FINNS är hyresgäst-AI:n, där `create_maintenance_ticket` exponerar
+> `priority` som enum och executorn skriver värdet rakt in.
+>
+> **Och korpusen kan inte härda mot det.** k50 och k63 har samma form — kategori
+> OTHER, inget kategoriord, golv LOW — och motsatt facit (URGENT respektive LOW).
+> Facit belönar alltså att man litar på ett registrerat värde utan textstöd i det
+> ena fallet och bestraffar det i det andra. Två härdningar prövades och kostade
+> båda sex ärenden (50/54 → 44/54). Det är en gräns i särdragen, inte en lucka i
+> reglerna, och den står nu i `triage-rules.ts` så nästa person inte bygger om
+> den. Ska något göras hör det hemma uppströms.
+>
+> ### Vad de här talen inte säger
+>
+> ### AI-granskningen fann fem defekter som korpusen inte kunde se
+>
+> Ingen av dem ändrade talet — **50/54 före och efter** — och det är hela poängen:
+> ett mätvärde är ingen granskning.
+>
+> 1. **'är löst' betyder "is loose".** `löst` är neutrumformen av _lös_ lika
+>    mycket som participet av _lösa_, och i en felanmälan är den första
+>    betydelsen vanligast. Uppmätt: "Eluttaget i hallen är löst och gnistrar"
+>    (ELECTRICAL/NORMAL) sänktes till **LOW** — åt det farliga hållet, och taket
+>    släckte dessutom kategorigolvet. Frasen kräver nu subjektet: 'ärendet är
+>    löst'.
+> 2. **Läsytan ljög.** `golvHöjde` jämförde mot `bas`, som taket redan sänkt, så
+>    BÅDA flaggorna blev sanna — och texten sa "Prioriteten HÖJDES till HIGH …
+>    registrerades som URGENT" om en **sänkning**, och samma mening om ärenden
+>    där ingenting ändrades. Flaggorna jämför nu mot det registrerade värdet och
+>    är ömsesidigt uteslutande.
+> 3. **R4:s 'flera …'-fraser hade noll vittnen** och gav mätta falska URGENT på
+>    en namnskylt och en musikstörning. Strukna, kostnad 0/54. Kvar är
+>    'grannen …', som bär både grannen och likheten — men med ETT vittne, och det
+>    står nu utskrivet.
+> 4. **`\d{1,2}` läste svansen av ett tresiffrigt tal.** "100 grader ur kranen" →
+>    `'00'` → 0 < 18 → HIGH på skållhett vatten. Siffergruppen är ankrad, och
+>    ordformen `minus` fångas nu också.
+> 5. **`KATEGORIORD`-lånet vände felriktningen.** Frågeregeln blir TYST av en
+>    falsk träff; golvet HÖJER. `'lås' ⊂ 'blåser'` och `'rör' ⊂ 'rörigt'` gav
+>    NORMAL på fyra ofarliga meningar. Riskläsningen har nu egna längre former.
+>
+> Granskningen fällde också ett stale-påstående i filen (dubblettlogik finns sedan
+> #655) och rättade motiveringen till att prompten lämnas oförändrad: skälet är
+> **promptparitet** — riggen måste mäta samma prompt som körs skarpt — inte
+> "kontrollen", som bara gäller i riggen och inte i produktionen, där svaret
+> kastas.
+>
+> **En mätning granskningen föreslog är INTE gjord:** en körning utan de två
+> prioritetsavsnitten i prompten, för $0,28, som skulle visa om de ~110 in-token
+> kostar uppmärksamhet på kategori och åtgärd (båda 87 %, båda sämre än
+> prioriteten). Den är specificerad och obetald.
+>
+> **Reglerna är valda med korpusen framför sig, och det är överanpassning.**
+> Gränsen som dragits står i `triage-rules.ts`: ett ord får bara stå där om det
+> bär en regel som går att säga i EN mening utan att nämna ett ärende. Två av
+> tilläggen har exakt ETT vittne i korpusen (R4 och R7), och det står utskrivet
+> vid vart och ett — talet nedan går inte att använda som belägg för dem, bara
+> regeln gör det.
+>
+> **Korpusen körs med TOM historik**, så tystnadens fjärde fall ("samma fel står
+> redan som ett öppet ärende") kan inte träffas i någon körning — det är omätt,
+> inte uppfyllt. Och kriteriet på rad 6 lyder fortfarande "i VERKLIGA fall":
+> `shadowAgentEnabled` är av i varje organisation, och prod har noll
+> felanmälningar.
 >
 > `record_expense` är skuggdugligt men har noll facit-fall — att bokföra en
 > utgift är inget svar på en felanmälan, och korpusen låtsas inte annat.
 >
-> **Vad de här talen INTE säger.** Korpusen körs med TOM historik, så tystnadens
-> fjärde fall ("samma fel står redan som ett öppet ärende") kan inte träffas i
-> någon körning — det är omätt, inte uppfyllt. Och kriteriet på rad 6 lyder
-> fortfarande "i VERKLIGA fall": `shadowAgentEnabled` är av i varje organisation,
-> och prod har noll felanmälningar.
+> ### Historik: de två promptändringarna och de tre defekterna (k1–k6)
+>
+> Står kvar oförkortade i [#827](https://github.com/yasineken2002-sys/eken/pull/827)
+> och i `korpus.json`. Kort: menyn var en naken namnlista (modellen valde
+> `create_inspection` 29 gånger mot facits 4), uppgiften kallades inte
+> triagering, frågeregeln var död på ett alternativ som alltid var OTHER,
+> nycklarna på tråden var svenska och avvisades fail-closed, och ett obligatoriskt
+> `toolInput` drog till sig frågan. Konfidensen var INVERTERAD i körning 1 och
+> blev användbar först i körning 3.
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | **KLAR** — preferensresten är löst genom produktionskod (etapp 8 PR 4). `AiMemory` bär `provenanceKind` (`HUMAN_CONFIRMED`/`DECISION_DERIVED`/`ANTAGANDE`), `sourceKind`/`sourceId` och `confirmedBy`/`confirmedAt`; `getMemories` filtrerar i `where` så ett ANTAGANDE aldrig når en agentprompt, och varje rad som når den bär sin grund i klartext. `/delegationer` fick sektionen **Antaganden** med Bekräfta och Avvisa — planens "se vad systemet tror om hen" med BÅDA halvorna: vad du gett bort, och vad systemet gissat men ingen sagt. Ett avvisat antagande raderas inte (Del 7: att säga nej är också lärande). Mätt mot riktig Postgres, med negativkontroll per del |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | **KLAR** — alla tre delarna finns i produktionskod. **Observationslagret** (PR 4) är en FRÅGA och ingen tabell: `ObservationService.beslutsunderlag` svarar godkända/avvisade/delegerade/senaste ur inkorgens facit och delegationerna, och `kanBliDelegation` läser sin regel därifrån. **Delegationsförslagen** (PR 5a): tre godkännanden i obruten svit ger ETT förslag i inkorgen, idempotent per `<verktyg>\|<typ>\|<nivå>` under ett partiellt unikt index — systemet föreslår, det tar sig aldrig rätt. **Frågorna** (PR 5b): ett tredje utfall i skuggagenten, strukturerat (fält + 2–4 alternativ ur registret + vad svaret låser upp), högst en öppen fråga per ärende, ingen fråga vars svar redan finns, och svaret blir en `HUMAN_CONFIRMED`-minnespost som nästa förslag läser. **Kvar som en känd gräns, inte som en rest:** frågebara fält är `category` och `priority` — `assignedToId` saknar register tills etapp 10 ger det ett |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | — |

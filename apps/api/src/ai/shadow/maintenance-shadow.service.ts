@@ -206,28 +206,47 @@ export class MaintenanceShadowService {
     const regler = tillämpaRegler(
       {
         atgärd: forslag.toolName,
-        prioritet: (forslag.prediction['priority'] as string | undefined) ?? null,
         kategori: (forslag.prediction['category'] as string | undefined) ?? null,
       },
       {
         titel: ticket.title,
         beskrivning: ticket.description,
         registreradKategori: ticket.category,
+        registreradPrioritet: ticket.priority,
       },
     )
-    if (regler.prioritet !== null) forslag.prediction['priority'] = regler.prioritet
-    // ── EN HÖJNING SOM INTE FÖRKLARAS FÅR LÄSYTAN ATT LJUGA ────────────────
+    // ── REGELNS SVAR SKRIVER ÖVER MODELLENS, OCH MODELLENS SPARAS INTE ─────
     //
-    // `reasoning` kommer från modellen, prioriteten från regeln. Höjer golvet
-    // utan att säga det står det "…tål att vänta till nästa vardag" bredvid
-    // URGENT i inkorgen, och planens femte krav — att hyresvärden ska se VARFÖR
-    // — är då uppfyllt på papperet och brutet i praktiken. Meningen läggs till
-    // sist, så modellens egen text står kvar oförändrad och det går att se var
-    // den slutar.
-    if (regler.golvHöjde && regler.prioritet !== null) {
+    // Modellen ombeds fortfarande om en prioritet — den är KONTROLLEN som gör
+    // beslutet i `triage-rules.ts` omprövbart. Här kastas den ändå, och det är
+    // ett val med ett skäl som ska stå kvar när någon undrar.
+    //
+    // `prediction` filtreras till `SKUGGFALT`, och den mängden är inte bara en
+    // lista: `typenFörFörslaget`, `FRAGEBARA_FALT` och delegationsförslagen
+    // härleder beteende ur den. Ett fält som inte har något facit hör inte
+    // hemma i en mängd som betyder "det här jämförs med facit" — att vidga den
+    // för en mätpunkt hade varit att låna ett fält som svarar på en annan fråga.
+    //
+    // Förlusten är verklig men inte permanent: kontrollen går att mäta om mot
+    // mätkorpusen när som helst, för en känd kostnad (~$0,28 per körning). Det
+    // som INTE går att återskapa är modellens svar på ett RIKTIGT ärende — och
+    // den dagen det behövs är rätt åtgärd en egen kolumn, inte ett lån.
+    forslag.prediction['priority'] = regler.prioritet
+    // ── EN PRIORITET SOM INTE FÖRKLARAS FÅR LÄSYTAN ATT LJUGA ──────────────
+    //
+    // `reasoning` kommer från modellen, prioriteten från regeln. Avviker de två
+    // står det "…tål att vänta till nästa vardag" bredvid URGENT i inkorgen, och
+    // planens femte krav — att hyresvärden ska se VARFÖR — är då uppfyllt på
+    // papperet och brutet i praktiken. Meningen läggs till sist, så modellens
+    // egen text står kvar oförändrad och det går att se var den slutar.
+    if (regler.golvHöjde) {
       forslag.reasoning =
         `${forslag.reasoning} Prioriteten höjdes till ${regler.prioritet} av en ` +
-        'deterministisk regel som läser ärendetexten; agenten föreslog en lägre nivå.'
+        `deterministisk regel som läser ärendetexten; anmälan registrerades som ${ticket.priority}.`
+    } else if (regler.takSänkte) {
+      forslag.reasoning =
+        `${forslag.reasoning} Prioriteten sänktes till ${regler.prioritet} av en ` +
+        'deterministisk regel: hyresgästen skriver själv att felet är löst eller att det inte brådskar.'
     }
     if (regler.frågaTvingad && regler.fråga) {
       forslag.toolName = FRAGA
@@ -821,6 +840,45 @@ export function byggPrompt(
     // En deterministisk rad slog alltså modellen med tre träffar och kostade
     // noll tokens. Ankaret flyttas därför till det registrerade värdet — för
     // PRIORITETEN. Kategorin ligger på 88 % och behåller "bedöm själv".
+    //
+    // ── OCH SEDAN KÖRNING 7 AVGÖR MODELLENS SVAR HÄR INGENTING ────────────
+    //
+    // Prioriteten sätts av `triage-rules.ts` ur det REGISTRERADE värdet, golvet
+    // och taket. Modellens `prediction.priority` läses inte av produkten.
+    //
+    // Avsnittet står ändå kvar, oförändrat och med flit — men skälet är inte
+    // det som först stod här. Det sa att modellens svar "är KONTROLLEN". Det är
+    // sant i RIGGEN och falskt HÄR: några rader ned kastas svaret och sparas
+    // ingenstans, så i produktionen finns ingen kontroll att bevara.
+    //
+    // Det som faktiskt bär i produktionen är PROMPTPARITET. Riggen mäter genom
+    // `byggPrompt`, alltså genom exakt den här texten. Tas avsnittet bort här
+    // mäter riggen en annan prompt än den som körs skarpt, och kontrollen
+    // (`prioritetMedModell` — körning 7: regeln 50/54, modellen genom samma
+    // regler 46/54) slutar säga något om driften.
+    //
+    // Att i stället skriva "din prioritet används inte" vore sämre än båda: en
+    // modell som blivit tillsagd att svaret inte räknas är inte längre samma
+    // jämförelsepunkt.
+    //
+    // ── EN BIEFFEKT SOM ÄR VÄRD ATT VETA ─────────────────────────────────
+    //
+    // Beskrivningen går oescapad in i `<beskrivning>` nedan, så en hyresgäst kan
+    // stänga taggen och skriva instruktioner. Fram till bortkopplingen var
+    // `prediction.priority` en KANAL UT för en sådan injektion. Nu kastas den —
+    // angriparen når fortfarande kategori, åtgärd och `reasoning`, men inte
+    // prioriteten.
+    //
+    // ── OCH EN KOSTNAD SOM INTE ÄR MÄTT ──────────────────────────────────
+    //
+    // De två prioritetsavsnitten är ~110 in-token av knappt tusen, spenderade på
+    // det enda utfall som inte används — medan kategori (87 %) och åtgärd (87 %)
+    // ANVÄNDS och är sämre än prioriteten (93 %). Om uppmärksamheten kostar går
+    // att mäta för $0,28: en körning utan de två avsnitten, allt annat lika.
+    // Den mätningen är INTE gjord.
+    //
+    // Formuleringen nedan är därför fortfarande den bästa vi mätt, och den
+    // ska ändras om och bara om kontrollen ska mätas om.
     '## Så här väljer du prioritet',
     'Utgå från den REGISTRERADE prioriteten. Höj den när beskrivningen visar att',
     'det brådskar mer. Sänk den bara när beskrivningen uttryckligen säger att det',
