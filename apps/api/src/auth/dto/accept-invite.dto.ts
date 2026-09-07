@@ -1,8 +1,9 @@
 import { IsString, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 import { IsStrongPassword } from './password.decorators'
+import type { SammaNycklar, AcceptInviteRequestInput } from '@eken/shared'
 
-export class AcceptInviteDto {
+export class AcceptInviteDto implements AcceptInviteRequestInput {
   @ApiProperty()
   @IsString()
   @MinLength(32)
@@ -12,3 +13,6 @@ export class AcceptInviteDto {
   @IsStrongPassword()
   newPassword!: string
 }
+
+const _kontraktAcceptInviteDto: SammaNycklar<AcceptInviteDto, AcceptInviteRequestInput> = true
+void _kontraktAcceptInviteDto

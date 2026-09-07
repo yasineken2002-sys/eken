@@ -1,33 +1,30 @@
 import { api, post } from '@/lib/api'
 import type { AuthResponse } from '@/stores/auth.store'
-import type { SwedishCompanyForm } from '@eken/shared'
+import type {
+  AcceptInviteRequestInput,
+  ChangePasswordRequestInput,
+  ForgotPasswordRequestInput,
+  LoginInput,
+  RegisterInput,
+  ResetPasswordRequestInput,
+} from '@eken/shared'
 
 export type { AuthResponse }
+export type { LoginInput, RegisterInput }
 
-export interface LoginInput {
-  email: string
-  password: string
-}
-
-export interface RegisterInput {
-  email: string
-  password: string
-  firstName: string
-  lastName: string
-  organizationName: string
-  orgNumber?: string
-  // accountType behålls för bakåtkompatibilitet — backend härleder
-  // companyForm från accountType om companyForm saknas. Nya klienter
-  // skickar companyForm explicit.
-  accountType?: 'COMPANY' | 'PRIVATE'
-  companyForm?: SwedishCompanyForm
-  hasFSkatt?: boolean
-  fSkattApprovedDate?: string
-  vatNumber?: string
-  // Måste vara true. Backend avvisar utan detta fält — sätts av
-  // RegisterPage när användaren bockat i acceptansrutan.
-  acceptTerms: true
-}
+// ── DE TVÅ LOKALA KOPIORNA ÄR BORTA ──────────────────────────────────────────
+//
+// `LoginInput` och `RegisterInput` deklarerades här som egna interfaces medan
+// `LoginSchema` och `RegisterSchema` fanns i @eken/shared hela tiden. Två
+// beskrivningar av samma form, och de HADE glidit isär:
+//
+//   RegisterSchema saknade `acceptTerms` — fältet DTO:n kräver med
+//   `@Equals(true)`. Den lokala kopian hade det. Den privata kopian var alltså
+//   mer korrekt än den delade källan, och registreringen fungerade bara
+//   därför. Schemat är rättat i samma PR.
+//
+// Kommentaren om `accountType` som stod här — att backend härleder companyForm
+// ur den — hör till serverns beteende och står nu vid fältet i RegisterSchema.
 
 export async function loginApi(dto: LoginInput): Promise<AuthResponse> {
   return post<AuthResponse>('/auth/login', dto)
@@ -48,29 +45,23 @@ export interface ChangePasswordResult {
   loggedOut: true
 }
 
-export async function changePasswordApi(input: {
-  currentPassword: string
-  newPassword: string
-}): Promise<ChangePasswordResult> {
+export async function changePasswordApi(
+  input: ChangePasswordRequestInput,
+): Promise<ChangePasswordResult> {
   return post<ChangePasswordResult>('/auth/change-password', input)
 }
 
 export async function forgotPasswordApi(email: string): Promise<void> {
-  await api.post('/auth/forgot-password', { email })
+  const kropp: ForgotPasswordRequestInput = { email }
+  await post<void>('/auth/forgot-password', kropp)
 }
 
-export async function resetPasswordApi(input: {
-  token: string
-  newPassword: string
-}): Promise<void> {
-  await api.post('/auth/reset-password', input)
+export async function resetPasswordApi(input: ResetPasswordRequestInput): Promise<void> {
+  await post<void>('/auth/reset-password', input)
 }
 
 // acceptInvite loggar INTE in användaren. Den sätter lösenordet och returnerar
 // e-postadressen så att LoginPage kan förfylla fältet och visa "Konto aktiverat".
-export async function acceptInviteApi(input: {
-  token: string
-  newPassword: string
-}): Promise<{ email: string }> {
+export async function acceptInviteApi(input: AcceptInviteRequestInput): Promise<{ email: string }> {
   return post<{ email: string }>('/auth/accept-invite', input)
 }

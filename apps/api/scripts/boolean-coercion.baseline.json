@@ -1,0 +1,77 @@
+{
+  "total": 18,
+  "poster": [
+    {
+      "fil": "apps/api/src/ai/dto/confirm-action.dto.ts",
+      "falt": "confirmed"
+    },
+    {
+      "fil": "apps/api/src/avisering/dto/confirm-backfill.dto.ts",
+      "falt": "allowBeyondWarning"
+    },
+    {
+      "fil": "apps/api/src/avisering/dto/confirm-backfill.dto.ts",
+      "falt": "vatDeclarationAcknowledged"
+    },
+    {
+      "fil": "apps/api/src/customers/dto/update-customer.dto.ts",
+      "falt": "isActive"
+    },
+    {
+      "fil": "apps/api/src/leases/dto/create-lease-with-tenant.dto.ts",
+      "falt": "indexClauseType"
+    },
+    {
+      "fil": "apps/api/src/leases/dto/create-lease-with-tenant.dto.ts",
+      "falt": "petsAllowed"
+    },
+    {
+      "fil": "apps/api/src/leases/dto/create-lease.dto.ts",
+      "falt": "indexClauseType"
+    },
+    {
+      "fil": "apps/api/src/leases/dto/create-lease.dto.ts",
+      "falt": "petsAllowed"
+    },
+    {
+      "fil": "apps/api/src/maintenance/dto/update-maintenance-ticket.dto.ts",
+      "falt": "tenantNotified"
+    },
+    {
+      "fil": "apps/api/src/messages/dto/send-message.dto.ts",
+      "falt": "sendToAll"
+    },
+    {
+      "fil": "apps/api/src/notifications/dto/query-notifications.dto.ts",
+      "falt": "unread"
+    },
+    {
+      "fil": "apps/api/src/organizations/dto/update-organization.dto.ts",
+      "falt": "agentExecutionEnabled"
+    },
+    {
+      "fil": "apps/api/src/organizations/dto/update-organization.dto.ts",
+      "falt": "hasFSkatt"
+    },
+    {
+      "fil": "apps/api/src/organizations/dto/update-organization.dto.ts",
+      "falt": "morningReportEnabled"
+    },
+    {
+      "fil": "apps/api/src/organizations/dto/update-organization.dto.ts",
+      "falt": "remindersEnabled"
+    },
+    {
+      "fil": "apps/api/src/organizations/dto/update-organization.dto.ts",
+      "falt": "shadowAgentEnabled"
+    },
+    {
+      "fil": "apps/api/src/reconciliation/dto/confirm-import.dto.ts",
+      "falt": "isIncoming"
+    },
+    {
+      "fil": "apps/api/src/tenant-portal/dto/invite-tenants.dto.ts",
+      "falt": "force"
+    }
+  ]
+}

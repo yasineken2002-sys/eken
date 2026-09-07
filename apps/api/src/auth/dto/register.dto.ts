@@ -12,10 +12,12 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { CompanyForm } from '@prisma/client'
 import { IsStrongPassword } from './password.decorators'
+import type { SammaNycklar, RegisterInput } from '@eken/shared'
+import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
 
 const COMPANY_FORM_VALUES = Object.values(CompanyForm) as string[]
 
-export class RegisterDto {
+export class RegisterDto implements RegisterInput {
   @ApiProperty() @IsEmail({}, { message: 'Ogiltig e-postadress' }) email!: string
 
   @ApiProperty({ minLength: 10 })
@@ -43,6 +45,7 @@ export class RegisterDto {
   // ─── F-skatt och moms (frivillig uppgift resp. momsnr på faktura, #392) ──
   @ApiPropertyOptional({ default: false })
   @IsOptional()
+  @IngenKoercion()
   @IsBoolean()
   hasFSkatt?: boolean
 
@@ -64,7 +67,10 @@ export class RegisterDto {
   @ApiPropertyOptional({ enum: ['COMPANY', 'PRIVATE'], default: 'COMPANY' })
   @IsOptional()
   @IsIn(['COMPANY', 'PRIVATE'])
-  accountType?: string
+  // Typen är unionen, inte `string`. `@IsIn` begränsade redan i runtime medan
+  // TS-typen påstod att vilken sträng som helst var giltig — en beskrivning som
+  // var lösare än beteendet.
+  accountType?: 'COMPANY' | 'PRIVATE'
 
   // ─── Acceptans av juridiska dokument ─────────────────────────────────────
   // literal(true) — avvisa allt utom exakt true. Detta är ett juridiskt krav
@@ -75,5 +81,36 @@ export class RegisterDto {
   @Equals(true, {
     message: 'Du måste acceptera Användarvillkor och Integritetspolicy',
   })
-  acceptTerms!: boolean
+  // Typen är `true`, inte `boolean` — samma sak som `@Equals(true)` säger i
+  // runtime. Ett samtycke har ett enda giltigt värde, och typen ska inte påstå
+  // att `false` är en form servern accepterar.
+  // ── @IngenKoercion ÄR SPÄRREN — NÄRVARON, INTE PLACERINGEN ───────────────
+  //
+  // Funnet av koercionsgrinden i paritetsprovet (#830), inte av läsning.
+  //
+  // Raden sa först att dekoratorn måste stå FÖRE `@IsBoolean()`. Det var ett
+  // obelagt mekanikpåstående, och koden nedan motsäger det redan — den står
+  // sist. Uppmätt mot den riktiga pipen, tre varianter:
+  //
+  //     @IngenKoercion före validatorerna   "false" → AVVISADE
+  //     @IngenKoercion efter validatorerna  "false" → AVVISADE
+  //     utan dekoratorn                     "false" → SLÄPPTE IGENOM
+  //
+  // Skälet: class-transformer kör HELA sin fas före class-validator, så var
+  // `@Transform` står bland fältets övriga dekoratorer saknar betydelse. Det
+  // som avgör är att den finns.
+  //
+  // Den globala pipen kör `enableImplicitConversion`, så class-transformer
+  // läser TS-typen och kör `Boolean(värdet)` INNAN validatorerna ser något.
+  // `Boolean('false')` är `true`. Strängen "false" — som betyder NEJ — blev
+  // alltså ett godkänt samtycke, och `@Equals(true)` såg bara resultatet av
+  // konverteringen.
+  //
+  // Det här är villkorsacceptansen. Ett nej som blir ett ja är den enda
+  // riktning som inte får finnas, och den fanns.
+  @IngenKoercion()
+  acceptTerms!: true
 }
+
+const _kontraktRegisterDto: SammaNycklar<RegisterDto, RegisterInput> = true
+void _kontraktRegisterDto

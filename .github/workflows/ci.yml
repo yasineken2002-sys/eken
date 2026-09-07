@@ -901,6 +901,41 @@ jobs:
       - name: Verify no new `as never` in production code
         run: node apps/api/scripts/check-as-never.mjs
 
+  boolean-coercion-guard:
+    name: Boolean coercion guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ETT BOOLESKT DTO-FÄLT UTAN @IngenKoercion KAN LÄSA ETT NEJ SOM ETT JA.
+      #
+      # Den globala pipen kör enableImplicitConversion, så class-transformer
+      # kör Boolean(värdet) INNAN validatorn ser något. Boolean('false') är
+      # true — strängen som betyder NEJ blir alltså ett JA, och @IsBoolean()
+      # prövar bara resultatet av konverteringen.
+      #
+      # Formen har hittats TRE gånger, varje gång av en mekanism och aldrig av
+      # läsning: tenant-ai `confirmed` (#830), arbetsorderns fält (#835) och
+      # `acceptTerms` — samtycket till användarvillkoren. Tre gånger är ett
+      # mönster.
+      #
+      # Paritetsprovet fångar bara fält som står i KONTRAKTSREGISTER. Den här
+      # läser ALLA *.dto.ts, och baslinjen (18 vid införandet) får bara krympa.
+      #
+      # Vakten mäter att dekoratorn FINNS, inte att den gör något — det ägs av
+      # dto-contract.spec.ts:s koercionshalva.
+      #
+      # fs-only, inga beroenden, ingen DB.
+      - name: Self-test the guard (positive, four negatives, derived total)
+        run: node apps/api/scripts/check-boolean-coercion.mjs --self-test
+
+      - name: Verify no new unprotected boolean DTO field
+        run: node apps/api/scripts/check-boolean-coercion.mjs
+
   self-tests-must-fail-guard:
     name: Self-tests must be able to fail
     runs-on: ubuntu-latest
@@ -2371,6 +2406,7 @@ jobs:
       - request-contract-guard
       - dto-placement-guard
       - as-never-guard
+      - boolean-coercion-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard
