@@ -206,28 +206,47 @@ export class MaintenanceShadowService {
     const regler = tillämpaRegler(
       {
         atgärd: forslag.toolName,
-        prioritet: (forslag.prediction['priority'] as string | undefined) ?? null,
         kategori: (forslag.prediction['category'] as string | undefined) ?? null,
       },
       {
         titel: ticket.title,
         beskrivning: ticket.description,
         registreradKategori: ticket.category,
+        registreradPrioritet: ticket.priority,
       },
     )
-    if (regler.prioritet !== null) forslag.prediction['priority'] = regler.prioritet
-    // ── EN HÖJNING SOM INTE FÖRKLARAS FÅR LÄSYTAN ATT LJUGA ────────────────
+    // ── REGELNS SVAR SKRIVER ÖVER MODELLENS, OCH MODELLENS SPARAS INTE ─────
     //
-    // `reasoning` kommer från modellen, prioriteten från regeln. Höjer golvet
-    // utan att säga det står det "…tål att vänta till nästa vardag" bredvid
-    // URGENT i inkorgen, och planens femte krav — att hyresvärden ska se VARFÖR
-    // — är då uppfyllt på papperet och brutet i praktiken. Meningen läggs till
-    // sist, så modellens egen text står kvar oförändrad och det går att se var
-    // den slutar.
-    if (regler.golvHöjde && regler.prioritet !== null) {
+    // Modellen ombeds fortfarande om en prioritet — den är KONTROLLEN som gör
+    // beslutet i `triage-rules.ts` omprövbart. Här kastas den ändå, och det är
+    // ett val med ett skäl som ska stå kvar när någon undrar.
+    //
+    // `prediction` filtreras till `SKUGGFALT`, och den mängden är inte bara en
+    // lista: `typenFörFörslaget`, `FRAGEBARA_FALT` och delegationsförslagen
+    // härleder beteende ur den. Ett fält som inte har något facit hör inte
+    // hemma i en mängd som betyder "det här jämförs med facit" — att vidga den
+    // för en mätpunkt hade varit att låna ett fält som svarar på en annan fråga.
+    //
+    // Förlusten är verklig men inte permanent: kontrollen går att mäta om mot
+    // mätkorpusen när som helst, för en känd kostnad (~$0,28 per körning). Det
+    // som INTE går att återskapa är modellens svar på ett RIKTIGT ärende — och
+    // den dagen det behövs är rätt åtgärd en egen kolumn, inte ett lån.
+    forslag.prediction['priority'] = regler.prioritet
+    // ── EN PRIORITET SOM INTE FÖRKLARAS FÅR LÄSYTAN ATT LJUGA ──────────────
+    //
+    // `reasoning` kommer från modellen, prioriteten från regeln. Avviker de två
+    // står det "…tål att vänta till nästa vardag" bredvid URGENT i inkorgen, och
+    // planens femte krav — att hyresvärden ska se VARFÖR — är då uppfyllt på
+    // papperet och brutet i praktiken. Meningen läggs till sist, så modellens
+    // egen text står kvar oförändrad och det går att se var den slutar.
+    if (regler.golvHöjde) {
       forslag.reasoning =
         `${forslag.reasoning} Prioriteten höjdes till ${regler.prioritet} av en ` +
-        'deterministisk regel som läser ärendetexten; agenten föreslog en lägre nivå.'
+        `deterministisk regel som läser ärendetexten; anmälan registrerades som ${ticket.priority}.`
+    } else if (regler.takSänkte) {
+      forslag.reasoning =
+        `${forslag.reasoning} Prioriteten sänktes till ${regler.prioritet} av en ` +
+        'deterministisk regel: hyresgästen skriver själv att felet är löst eller att det inte brådskar.'
     }
     if (regler.frågaTvingad && regler.fråga) {
       forslag.toolName = FRAGA

@@ -53,6 +53,11 @@ describe('byggRapport', () => {
             prioritet: 'HIGH',
             atgardForeRegler: 'update_maintenance_status',
             prioritetForeRegler: 'NORMAL',
+            // JÄMFÖRELSEPUNKTEN ÄR DET REGISTRERADE VÄRDET sedan körning 7 —
+            // det är reglernas indata. `prioritetForeRegler` är modellens svar
+            // och räknas inte längre här; att de skiljer sig i fixturen är
+            // avsiktligt, annars kan provet inte se vilket av fälten som lästes.
+            registreradPrioritet: 'NORMAL',
           }),
         },
       ])
@@ -68,7 +73,8 @@ describe('byggRapport', () => {
           utfall: u({
             prioritet: 'HIGH',
             atgardForeRegler: 'update_maintenance_status',
-            prioritetForeRegler: 'NORMAL',
+            prioritetForeRegler: 'LOW',
+            registreradPrioritet: 'NORMAL',
           }),
         },
       ])
@@ -77,24 +83,31 @@ describe('byggRapport', () => {
       expect(r.regler.golvForstorde).toBe(1)
     })
 
-    it('kontrollen utan modell räknas separat, och är null när den saknas', () => {
+    // ── KONTROLLEN HAR BYTT SIDA ──────────────────────────────────────────
+    //
+    // Fram till körning 6 mätte den här raden det BILLIGARE alternativet mot det
+    // byggda. Sedan prioriteten sätts av regel ÄR det billigare alternativet det
+    // byggda, och raden mäter UTMANAREN: modellens prioritet genom samma golv
+    // och tak. Ligger den över `prioritet` ska bortkopplingen omprövas.
+    it('kontrollen MED modell räknas separat, och är null när den saknas', () => {
       const utan = byggRapport([{ facit: f({ prioritet: 'HIGH' }), utfall: u() }])
-      expect(utan.regler.prioritetUtanModell).toBeNull()
+      expect(utan.regler.prioritetMedModell).toBeNull()
 
       const med = byggRapport([
         {
           facit: f({ prioritet: 'HIGH' }),
-          utfall: u({ prioritet: 'NORMAL', prioritetUtanModell: 'HIGH' }),
+          utfall: u({ prioritet: 'NORMAL', prioritetMedModell: 'HIGH' }),
         },
         {
           facit: f({ prioritet: 'LOW' }),
-          utfall: u({ prioritet: 'LOW', prioritetUtanModell: 'NORMAL' }),
+          utfall: u({ prioritet: 'LOW', prioritetMedModell: 'NORMAL' }),
         },
       ])
-      // Modellen 1/2, kontrollen 1/2 — och de träffar på OLIKA poster. Talen
-      // ska inte kunna smälta ihop.
+      // Regeln 1/2, utmanaren 1/2 — och de träffar på OLIKA poster. Talen ska
+      // inte kunna smälta ihop.
       expect(med.prioritet.traffar).toBe(1)
-      expect(med.regler.prioritetUtanModell).toEqual({ antal: 2, traffar: 1, andel: 0.5 })
+      expect(med.regler.prioritetMedModell).toEqual({ antal: 2, traffar: 1, andel: 0.5 })
+      expect(formateraRapport(med)).toContain('KONTROLL med modell')
     })
 
     it('räknar en tvingad fråga och om den var rätt', () => {
