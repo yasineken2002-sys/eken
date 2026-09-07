@@ -106,7 +106,14 @@ export const LEGAL_DOCUMENT_VERSIONS = {
   terms: '1.1',
   // 1.0 → 1.1 (samma ändring): säkerhetsavsnittets backup-punkt skrevs om och
   // "säkerhetskopior" ströks ur kryptering-i-vila-punkten.
-  privacy: '1.1',
+  //
+  // 1.1 → 1.2 (FÖRSLAG, etapp 10): ny mottagarkategori — hantverkare och
+  // entreprenörer som anlitas för att avhjälpa en felanmälan. MATERIELL: en
+  // kategori mottagare som inte fanns i texten, och en uppgift (hyresgästens
+  // kontaktväg) som kan lämnas ut till en självständig mottagare utanför
+  // biträdeskedjan. Att kalla det redaktionellt hade varit att lägga till en
+  // utlämningsväg utan att numret ändras.
+  privacy: '1.2',
   // Orörd av #574 — cookie-texten ändrades inte.
   cookies: '1.0',
 } as const
@@ -122,6 +129,7 @@ export const LEGAL_DOCUMENT_VERSIONS = {
 export const LEGAL_DOCUMENT_VERSION_HISTORY = [
   { doc: 'terms', version: '1.0', retiredAt: '2026-08-28' },
   { doc: 'privacy', version: '1.0', retiredAt: '2026-08-28' },
+  { doc: 'privacy', version: '1.1', retiredAt: '2026-09-07' },
 ] as const
 
 // ─── INNEHÅLLSHASH PER DOKUMENT ─────────────────────────────────────────────
@@ -148,8 +156,8 @@ export const LEGAL_DOCUMENT_HASHES = {
   // exakt den mekanism re-acceptansen finns för. Versionen betecknar den text
   // kunden ser; den texten är densamma idag som igår.
   privacy: {
-    version: '1.1',
-    sha256: 'dcf9e6cfca4849ed70b0c19d493bbb98e918a419a502b8d2a9c25999940e3a9e',
+    version: '1.2',
+    sha256: '1c8bdda55b1e95a17c25d8e5fbe55325fcd283068949ed9f7e80a40f559bf330',
   },
   cookies: {
     version: '1.0',
@@ -183,7 +191,7 @@ export const CURRENT_PRIVACY_VERSION = LEGAL_DOCUMENT_VERSIONS.privacy
 // lokaltid är rätt nämnare för ett svenskt avtalsdokument.)
 export const LEGAL_DOCUMENT_UPDATED_AT = {
   terms: '2026-08-28',
-  privacy: '2026-08-28',
+  privacy: '2026-09-07',
   // Cookie-texten rördes inte av #574.
   cookies: '2026-05-12',
 } as const
