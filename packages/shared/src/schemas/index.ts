@@ -1941,3 +1941,65 @@ export const MAINTENANCE_CATEGORY_ETIKETT: Record<MaintenanceCategoryValue, stri
   CLEANING: 'Städning',
   OTHER: 'Övrigt',
 }
+
+// ─── Arbetsorder till hantverkare (etapp 10, PR 2) ───────────────────────────
+
+/**
+ * POST /maintenance/:id/work-orders — SKICKA ARBETSORDER.
+ *
+ * `contractorId` står MED FLIT i kroppen och härleds inte ur ärendets
+ * tilldelning. De två är olika handlingar: att tilldela är en anteckning, att
+ * boka är ett mejl som lämnar huset. Att låta bokningen tyst använda "den som
+ * råkar vara tilldelad" hade gjort mottagaren till en följd av ett tidigare
+ * klick i stället för ett val man gör nu — och mottagaren är det enda som inte
+ * går att ta tillbaka.
+ *
+ * `delaHyresgastKontakt` är default AV och är hyresvärdens uttryckliga val per
+ * bokning. Fältet heter inte `samtycke`: hyresgästen har inte tillfrågats, och
+ * att kalla hyresvärdens val för hyresgästens samtycke hade varit ett påstående
+ * om något som inte hänt.
+ */
+export const SendWorkOrderSchema = z
+  .object({
+    contractorId: z.string().uuid(),
+    meddelande: z.string().max(2000).optional(),
+    delaHyresgastKontakt: z.boolean().optional(),
+  })
+  .strict()
+
+/**
+ * POST /work-orders/:token/respond — HANTVERKARENS SVAR.
+ *
+ * Publik endpoint: hantverkaren har ingen inloggning. Token är den enda
+ * behörigheten, den bär bara rätten att svara på just den här ordern, och den
+ * är engångs och kortlivad. Se `ContractorWorkOrder` i schemat.
+ *
+ * `accepterar: false` får INTE ha en `proposedAt` — ett avböjande med en
+ * föreslagen tid är två motstridiga besked, och den som läser svaret skulle
+ * behöva gissa vilket som gäller.
+ */
+export const WorkOrderResponseSchema = z
+  .object({
+    accepterar: z.boolean(),
+    proposedAt: IsoDatumSchema.optional(),
+    note: z.string().max(1000).optional(),
+  })
+  .strict()
+  .superRefine((d, ctx) => {
+    if (!d.accepterar && d.proposedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Ett avböjande kan inte bära en föreslagen tid',
+        path: ['proposedAt'],
+      })
+    }
+  })
+
+/** POST /work-orders/:id/cancel — avbokning. Se docblocket i tjänsten. */
+export const CancelWorkOrderSchema = z
+  .object({ skal: z.string().min(1).max(1000).optional() })
+  .strict()
+
+export type SendWorkOrderInput = z.infer<typeof SendWorkOrderSchema>
+export type WorkOrderResponseInput = z.infer<typeof WorkOrderResponseSchema>
+export type CancelWorkOrderInput = z.infer<typeof CancelWorkOrderSchema>

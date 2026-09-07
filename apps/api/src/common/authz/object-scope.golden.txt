@@ -91,6 +91,7 @@ InvoicePayment          create      deposits/deposits.service.ts                
 InvoicePayment          create      invoices/invoices.service.ts                            A kedje-query
 InvoicePayment          create      reconciliation/reconciliation.service.ts                A kedje-query
 JournalEntryLine        create      accounting/accounting.service.ts                        P förälder org-bunden  ← nästlad via JournalEntry.lines
+MaintenanceComment      create      contractors/work-order.service.ts                       A kedje-query
 MaintenanceComment      create      maintenance/maintenance.service.ts                      C scopat anrop
 MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT

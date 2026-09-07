@@ -305,6 +305,11 @@ const TOOL_META: Record<string, { label: string; menuLabel: string; group: ToolG
     menuLabel: 'Uppdatera felanmälans status',
     group: 'Fastigheter & underhåll',
   },
+  book_contractor: {
+    label: 'Skickar arbetsorder till hantverkare',
+    menuLabel: 'Boka hantverkare',
+    group: 'Fastigheter & underhåll',
+  },
   get_maintenance_plan: {
     label: 'Hämtar underhållsplan',
     menuLabel: 'Hämta underhållsplan',

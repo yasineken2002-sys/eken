@@ -7,6 +7,9 @@
     "Uppdatering är en AVSIKTLIG handling: kör --skriv och motivera i PR-texten."
   ],
   "verktyg": {
+    "book_contractor": {
+      "MAIL": ["WorkOrderService.send → mail.sendCustomEmail"]
+    },
     "compose_and_send_email": {
       "MAIL": ["mailService.sendCustomEmail"]
     },

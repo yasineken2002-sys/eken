@@ -51,7 +51,8 @@ function makeExecutor() {
     audit as never, // 21 audit
     noop, // 22 documentDelivery
     noop, // 23 signingService
-    noop, // 24 accountingPeriods
+    noop, // 24 accountingPeriods,
+    noop,
   )
   return { executor, manualMatch }
 }

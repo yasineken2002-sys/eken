@@ -334,6 +334,25 @@ const maintenanceTickets: HistorySourceDefinition = {
         assignedAt: true,
         assignedByUserId: true,
         assignedContractor: { select: { name: true } },
+        // ── ARBETSORDRAR (etapp 10 PR 2) ─────────────────────────────────
+        // Utåtriktade händelser: någon utanför organisationen har kontaktats.
+        // De hör till ärendets historik av samma skäl som tilldelningen, och
+        // ligger i SAMMA källa — `ContractorWorkOrder` är ingen relation på
+        // Tenant/Unit/Property och skulle vara osynlig för registervakten som
+        // egen källa.
+        workOrders: {
+          select: {
+            id: true,
+            createdAt: true,
+            status: true,
+            respondedAt: true,
+            responseAccepted: true,
+            cancelledAt: true,
+            sharedTenantContact: true,
+            sentByUserId: true,
+            contractor: { select: { name: true } },
+          },
+        },
       },
     })
     const out: HistoryEvent[] = []
@@ -365,6 +384,70 @@ const maintenanceTickets: HistorySourceDefinition = {
           severity: 'INFO',
           source: { table: 'MaintenanceTicket', id: r.id },
         })
+      }
+      for (const w of r.workOrders) {
+        out.push({
+          at: w.createdAt,
+          type: 'WORK_ORDER_SENT',
+          actor: humanOrUnknown(w.sentByUserId),
+          subject,
+          description: `Arbetsorder skickad till ${w.contractor.name} för ärende ${r.ticketNumber}`,
+          amount: null,
+          severity: 'INFO',
+          source: { table: 'ContractorWorkOrder', id: w.id },
+        })
+        // UTLÄMNANDET ÄR EN EGEN HÄNDELSE. "Arbetsorder skickad" säger
+        // ingenting om att en kontaktuppgift lämnats ut — det är två olika
+        // fakta, och hyresjuristens bedömning är att den andra ska gå att se i
+        // efterhand. VÄRDET står aldrig här; det bor i `sharedTenantContact`.
+        if (w.sharedTenantContact) {
+          out.push({
+            at: w.createdAt,
+            type: 'WORK_ORDER_CONTACT_SHARED',
+            actor: humanOrUnknown(w.sentByUserId),
+            subject,
+            description: `Hyresgästens kontaktuppgift delades med ${w.contractor.name}`,
+            amount: null,
+            severity: 'WARNING',
+            source: { table: 'ContractorWorkOrder', id: w.id },
+          })
+        }
+        // GATAT PÅ SVARET, INTE PÅ STATUS. `status` blir CANCELLED när
+        // hyresvärden avbokar, och en gating på den raderade "hantverkaren tog
+        // jobbet" ur historiken i samma stund. Uppmätt som en röd assertion
+        // (prov 12) innan `responseAccepted` fanns.
+        if (w.respondedAt && w.responseAccepted !== null) {
+          out.push({
+            at: w.respondedAt,
+            type: w.responseAccepted ? 'WORK_ORDER_ACCEPTED' : 'WORK_ORDER_DECLINED',
+            // AKTÖREN ÄR INTE EN ANVÄNDARE. Hantverkaren har ingen inloggning
+            // och finns inte i `User`; att stämpla svaret med hyresvärden som
+            // skickade ordern hade varit ett obelagt påstående om vem som
+            // handlade. ACTOR_UNKNOWN är det ärliga värdet — samma val som
+            // MAINTENANCE_COMPLETED gör.
+            actor: ACTOR_UNKNOWN,
+            subject,
+            description: w.responseAccepted
+              ? `${w.contractor.name} tog arbetsordern`
+              : `${w.contractor.name} avböjde arbetsordern`,
+            amount: null,
+            severity: w.responseAccepted ? 'INFO' : 'WARNING',
+            source: { table: 'ContractorWorkOrder', id: w.id },
+          })
+        }
+        // AVBOKNINGEN ÄR EN EGEN HÄNDELSE, inte frånvaron av en annan.
+        if (w.cancelledAt) {
+          out.push({
+            at: w.cancelledAt,
+            type: 'WORK_ORDER_CANCELLED',
+            actor: humanOrUnknown(w.sentByUserId),
+            subject,
+            description: `Arbetsordern till ${w.contractor.name} avbokades`,
+            amount: null,
+            severity: 'WARNING',
+            source: { table: 'ContractorWorkOrder', id: w.id },
+          })
+        }
       }
       if (r.completedAt) {
         out.push({

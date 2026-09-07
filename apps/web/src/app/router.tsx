@@ -37,6 +37,7 @@ import { UnitsPage } from '../features/units/UnitsPage'
 import { TenantsPage } from '../features/tenants/TenantsPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
 import { ContractorsPage } from '../features/contractors/ContractorsPage'
+import { WorkOrderResponsePage } from '../features/contractors/WorkOrderResponsePage'
 import { LeasesPage } from '../features/leases/LeasesPage'
 import { InvoicesPage } from '../features/invoices/InvoicesPage'
 import { ConsumptionPage } from '../features/consumption/ConsumptionPage'
@@ -173,6 +174,19 @@ function useLegalBack(): () => void {
     void navigate({ to: authSnapshot().isAuthenticated ? '/' : '/login' })
   }
 }
+
+/**
+ * HANTVERKARENS SVARSSIDA — PUBLIK, utanför AppLayout och utan inloggning.
+ *
+ * Rotrutt av samma skäl som de juridiska sidorna: hantverkaren har inget konto.
+ * Token i sökvägen är den enda behörigheten, och den prövas serverside —
+ * hashat uppslag, engångs, kortlivat.
+ */
+const workOrderResponseRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/arbetsorder/$token',
+  component: WorkOrderResponsePage,
+})
 
 const legalTermsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -397,6 +411,7 @@ const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   acceptInviteRoute,
   changePasswordRoute,
+  workOrderResponseRoute,
   legalTermsRoute,
   legalPrivacyRoute,
   legalCookiesRoute,

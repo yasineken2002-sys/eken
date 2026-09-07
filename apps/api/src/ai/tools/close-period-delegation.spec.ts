@@ -49,7 +49,8 @@ function makeExecutor(periods: Record<string, unknown>) {
     audit as never, // 21 audit
     noop, // 22 documentDelivery
     noop, // 23 signingService
-    periods as never, // 24 accountingPeriods
+    periods as never, // 24 accountingPeriods,
+    noop,
   )
 }
 

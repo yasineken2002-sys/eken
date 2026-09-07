@@ -96,6 +96,7 @@ export const HUMAN_PATHS: Record<string, HumanPathDeklaration> = {
   // ── Felanmälan ────────────────────────────────────────────────────────────
   create_maintenance_ticket: { rutt: '/maintenance', atgard: 'Ny felanmälan' },
   update_maintenance_status: { rutt: '/maintenance', atgard: 'Påbörja' },
+  book_contractor: { rutt: '/maintenance', atgard: 'Boka hantverkare' },
 
   // ── Fakturor ──────────────────────────────────────────────────────────────
   create_invoice: { rutt: '/invoices', atgard: 'Ny faktura' },

@@ -115,6 +115,8 @@ describe('#352 · steg 7 — AI-verktyget exkluderar DEPOSIT', () => {
       noop,
       noop,
       noop,
+
+      noop,
     )
   }
 

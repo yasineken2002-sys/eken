@@ -72,7 +72,8 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
       audit, // 21 audit
       noop, // 22 documentDelivery
       signing, // 23 signingService
-      noop, // 24 accountingPeriods
+      noop, // 24 accountingPeriods,
+      noop,
     )
   }
 
