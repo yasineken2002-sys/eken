@@ -27,6 +27,10 @@ import { computeRentDebt } from '../avisering/rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { harSystemtilldelatOcr } from './ocr-identity'
+import { AiPaymentShadowQueue } from '../ai/shadow/payment/payment-shadow.queue'
+import { PaymentOutcomeService } from '../ai/shadow/payment/payment-outcome.service'
+import { QUEUE_AI_PAYMENT_SHADOW } from '../ai/shadow/payment/payment-shadow.types'
+import { enqueueSafely } from '../common/queue/enqueue-safety'
 import { extractOcr, extractOcrFromProse } from './ocr-proveniens'
 import {
   PARTIAL_ALDRIG_VID_GISSNING,
@@ -305,7 +309,41 @@ export class ReconciliationService {
     // skrivtillfället, så historiken bär ett namn även om användaren senare
     // raderas (`users.service.ts` gör en riktig delete, ingen soft-delete).
     private readonly rentNoticeEvents: RentNoticeEventsService,
+    // ── AGENT 2 (etapp A) ─────────────────────────────────────────────────
+    //
+    // Kön OCH facitskrivningen. `AiShadowModule` är `@Global`, så den här
+    // modulen importerar aldrig AI-lagret — riktningen spelar roll: avstämningen
+    // får inte bli beroende av AI:n, bara AI:n av avstämningen. Samma
+    // konstruktion som `MaintenanceService` redan använder.
+    //
+    // INGEN AV DE TVÅ KAN FÄLLA EN MATCHNING. Köandet går genom `enqueueSafely`
+    // (kastar aldrig) och facit skrivs efter transaktionen med sväljd fångst.
+    // En mätrad som inte kunde skrivas får inte rulla tillbaka en bokföring.
+    private readonly betalningsSkugga: AiPaymentShadowQueue,
+    private readonly betalningsFacit: PaymentOutcomeService,
   ) {}
+
+  /**
+   * Köa ett skuggförslag för en rad automatiken inte kunde lösa.
+   *
+   * FLAGGAN PRÖVAS INTE HÄR utan i `PaymentShadowService.korForBankrad`, som
+   * första sak. Ett jobb för en avstängd organisation kostar ett Redis-anrop
+   * och en databasfråga, och det är billigare än att göra avstämningen
+   * beroende av en AI-inställning. Skulle grinden ligga på båda ställena vore
+   * det två uppräkningar av samma regel — och den som är fel först är den ingen
+   * läser.
+   */
+  private async köaSkuggförslag(organizationId: string, bankTransactionId: string): Promise<void> {
+    await enqueueSafely(
+      () => this.betalningsSkugga.enqueue({ organizationId, bankTransactionId }),
+      {
+        queue: QUEUE_AI_PAYMENT_SHADOW,
+        jobType: 'payment-shadow',
+        organizationId,
+        logger: this.logger,
+      },
+    )
+  }
 
   // Senaste giltiga transaktionsdatum i en importerad batch = den dag t.o.m. vilken
   // utdraget täcker betalningsdatan. Datakälls-agnostiskt: matar paymentDataThrough.
@@ -377,6 +415,17 @@ export class ReconciliationService {
 
     try {
       const matched = await this.matchTransaction(tx, organizationId)
+      // ── AGENT 2:S SÖM (etapp A) ───────────────────────────────────────
+      //
+      // `matchTransaction` som returnerar false ÄR sömmen — den enda punkt i
+      // pengaflödet där systemet ger upp och lämnar frågan åt en människa. Alla
+      // fyra ingest-vägarna löper ihop här och i `ingestFromApi`.
+      //
+      // `enqueueSafely` KASTAR ALDRIG: ett Redis-avbrott larmar till Sentry och
+      // släpper igenom importen, vilket är rätt — bankraden får inte falla för
+      // att skuggläget är nere. Följden är att förslaget då tyst uteblir, och
+      // det är precis vad sveparcronen finns för.
+      if (!matched) await this.köaSkuggförslag(organizationId, tx.id)
       return { duplicate: false, transactionId: tx.id, matched }
     } catch (err) {
       return {
@@ -459,6 +508,8 @@ export class ReconciliationService {
 
     try {
       const matched = await this.matchTransaction(tx, organizationId)
+      // Agent 2:s söm — samma som i `ingestFromFile`. Se noten där.
+      if (!matched) await this.köaSkuggförslag(organizationId, tx.id)
       return { outcome: 'imported', transactionId: tx.id, matched }
     } catch (err) {
       return {
@@ -1064,6 +1115,45 @@ export class ReconciliationService {
     // Vi matchar bara om TOTALT en kandidat över båda tabellerna ligger
     // inom toleransen — annars för osäkert (AMBIGUOUS skulle kräva annan
     // status-modell, idag faller vi tillbaka till manuell matchning).
+    // ── FUZZY SKRIVER INTE NÄR AGENT 2 ÄR PÅ (etapp A) ────────────────────
+    //
+    // BETEENDEÄNDRING, och den enda i den här PR:en. Bokförings-expertens
+    // villkor 1 (#843, Del 14b): grenen nedan bokför i dag en fordran som
+    // reglerad på grundval av att EXAKT EN kandidat råkar ligga inom 1 kr och
+    // ett 90-dagarsfönster. Det är en sannolikhetsbedömning, inte ett
+    // dokumenterat underlag — och BFL 5 kap 6 § kräver att en verifikation
+    // tydligt visar VAD den avser. Grenen utpekar inte fakturan, den gissar
+    // den.
+    //
+    // Kostnaden vid fel är asymmetrisk: en felmatchning reglerar FEL fordran
+    // och lämnar den RÄTTA obetald, varefter kravtrappan eskalerar mot någon
+    // som har betalat.
+    //
+    // KODEN SA DET SJÄLV. Kommentaren i fakturagrenen nedan har sedan #326
+    // sagt att frågan "är ett produktbeslut (eget ärende)". Det ärendet är det
+    // här, och beslutet är MEDVETET DELVIS: grenen slutar skriva bara för
+    // organisationer som slagit på skuggagenten för betalningar. Att stänga
+    // den för alla i samma PR som inför agenten hade varit att ta bort en
+    // fungerande automatik från någon som inte bett om ett alternativ — en
+    // tyst regression förklädd till en rättelse. Det generella avskaffandet
+    // är Del 15:s fråga, inte den här ändringens.
+    //
+    // GREN 2 GÖR REDAN SAMMA SAK. En rad med ett satt men olösligt OCR ger upp
+    // med flit några rader ovanför, med exakt det här skälet. Asymmetrin mellan
+    // de två var omotiverad; nu är den borta för den som slagit på flaggan.
+    const agent2 = await db.organization.findUnique({
+      where: { id: organizationId },
+      select: { shadowPaymentAgentEnabled: true },
+    })
+    if (agent2?.shadowPaymentAgentEnabled) {
+      this.logger.log(
+        `[reconciliation] transaktion ${transaction.id} (org ${organizationId}) lämnas UNMATCHED ` +
+          'i stället för att beloppsmatchas: skuggagenten för betalningar är på, och en ' +
+          'gissning ska föreslås för en människa i stället för att bokföras.',
+      )
+      return false
+    }
+
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000
     const dateFrom = new Date(transaction.date.getTime() - ninetyDaysMs)
     const dateTo = new Date(transaction.date.getTime() + ninetyDaysMs)
@@ -1900,7 +1990,16 @@ export class ReconciliationService {
       try {
         const ok = await this.matchTransaction(tx, organizationId)
         if (ok) matched++
-        else if (tx.rawOcr) skippedUnresolvedOcr++
+        else {
+          if (tx.rawOcr) skippedUnresolvedOcr++
+          // Agent 2:s söm, tredje och sista stället. Bulkkörningen går igenom
+          // rader som redan fanns; utan den här raden hade bara NYIMPORTERADE
+          // rader fått ett förslag, och en org som slår på flaggan i efterhand
+          // hade fått tystnad om allt som redan låg omatchat. Svepet hade tagit
+          // dem — men först vid nästa pass, och en operatör som just tryckt
+          // "Matcha alla" väntar inte femton minuter på att förstå varför.
+          await this.köaSkuggförslag(organizationId, tx.id)
+        }
       } catch (err) {
         // ── FÖRVÄNTAT vs FEL ──────────────────────────────────────────────
         //
@@ -2366,6 +2465,92 @@ export class ReconciliationService {
         )
       }
     }
+
+    // ── FACIT FÖR AGENT 2 (etapp A) ──────────────────────────────────────
+    //
+    // EFTER matchningen och med SVÄLJD FÅNGST. En mätrad som inte kunde
+    // skrivas får aldrig rulla tillbaka en bokföring — då hade observationen
+    // ätit det den observerar. Samma söm-familj som `ShadowOutcomeService`.
+    //
+    // Skrivningen är en no-op när ingen skuggrad finns, vilket är normalfallet:
+    // flaggan är av för nästan alla organisationer.
+    await this.skrivBetalningsfacit(transactionId, organizationId, target)
+  }
+
+  /** Facit: vad bankraden VISADE SIG höra till. Se `PaymentOutcomeService`. */
+  private async skrivBetalningsfacit(
+    transactionId: string,
+    organizationId: string,
+    target: { invoiceId?: string; rentNoticeId?: string },
+  ): Promise<void> {
+    try {
+      const träffId = target.invoiceId ?? target.rentNoticeId
+      if (!träffId) return
+      const tx = await this.prisma.bankTransaction.findFirst({
+        where: { id: transactionId, organizationId },
+        select: { amount: true },
+      })
+      if (!tx) return
+
+      if (target.invoiceId) {
+        const inv = await this.prisma.invoice.findFirst({
+          where: { id: target.invoiceId, organizationId },
+          select: { total: true, tenantId: true, payments: { select: { amount: true } } },
+        })
+        if (!inv) return
+        // UTESTÅENDE FÖRE DEN HÄR BETALNINGEN. Allokeringen är redan skriven när
+        // vi kommer hit, så den egna raden måste dras bort igen — annars ser en
+        // full betalning ut som en delbetalning i facit, och `belopp`-fältet
+        // hade mätt ordningen mellan två skrivningar i stället för utfallet.
+        const allokerat = inv.payments.reduce((sum, x) => sum + x.amount.toNumber(), 0)
+        await this.betalningsFacit.skrivFacitMatchad(
+          organizationId,
+          transactionId,
+          {
+            id: target.invoiceId,
+            utestaende: Math.max(0, inv.total.toNumber() - allokerat + tx.amount.toNumber()),
+            motpartId: inv.tenantId,
+          },
+          tx.amount.toNumber(),
+        )
+        return
+      }
+
+      const noticeId = target.rentNoticeId
+      if (!noticeId) return
+      const notice = await this.prisma.rentNotice.findFirst({
+        where: { id: noticeId, organizationId },
+        select: {
+          totalAmount: true,
+          consumptionAmount: true,
+          miscChargeAmount: true,
+          reminderFeeAmount: true,
+          credits: { select: { amount: true } },
+          payments: { select: { amount: true } },
+          tenantId: true,
+        },
+      })
+      if (!notice) return
+      const allokerat = notice.payments.reduce((sum, x) => sum + x.amount.toNumber(), 0)
+      await this.betalningsFacit.skrivFacitMatchad(
+        organizationId,
+        transactionId,
+        {
+          id: noticeId,
+          utestaende: Math.max(
+            0,
+            rentNoticePayableTotal(notice) - allokerat + tx.amount.toNumber(),
+          ),
+          motpartId: notice.tenantId,
+        },
+        tx.amount.toNumber(),
+      )
+    } catch (err) {
+      this.logger.warn(
+        `[reconciliation] betalningsfacit kunde inte skrivas för ${transactionId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   // ── Ignore ───────────────────────────────────────────────────────────────────
@@ -2380,6 +2565,17 @@ export class ReconciliationService {
       where: { id: transactionId },
       data: { status: 'IGNORED' },
     })
+
+    // FACIT: att lägga raden åt sidan ÄR ett svar — den hörde inte till någon
+    // avi. Ett aktivt nej ska kunna vara en TRÄFF för agenten (se `INGEN_AVI`).
+    await this.betalningsFacit
+      .skrivFacitIngen(organizationId, transactionId)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `[reconciliation] betalningsfacit (INGEN) kunde inte skrivas för ${transactionId}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
   }
 
   // ── Unmatch ───────────────────────────────────────────────────────────────────
@@ -2988,5 +3184,21 @@ export class ReconciliationService {
       `[BFL] Avmatchade banktransaktion ${transactionId} (org ${organizationId}) — ` +
         `status återställd och motverifikat bokfört atomiskt.`,
     )
+
+    // ── FACIT NOLLSTÄLLS, DET SKRIVS INTE OM TILL `INGEN` ─────────────────
+    //
+    // En hävning säger att den FÖRRA matchningen var fel. Den säger ingenting
+    // om vad som var rätt. Att skriva `INGEN` hade varit att påstå att raden
+    // inte hör till någon avi — ett påstående ingen gjort — och träffgraden
+    // hade då räknat ett okänt svar som ett facit. Skälet i sin helhet står i
+    // `PaymentOutcomeService`.
+    await this.betalningsFacit
+      .nollstallFacit(organizationId, transactionId)
+      .catch((err: unknown) =>
+        this.logger.warn(
+          `[reconciliation] betalningsfacit kunde inte nollställas för ${transactionId}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
   }
 }

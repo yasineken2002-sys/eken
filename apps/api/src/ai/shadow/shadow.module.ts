@@ -14,6 +14,11 @@ import { AiShadowQueue } from './shadow.queue'
 import { AiShadowSweepService } from './shadow-sweep.service'
 import { AiShadowWorker } from './shadow.worker'
 import { QUEUE_AI_SHADOW } from './shadow.types'
+import { AiPaymentShadowQueue } from './payment/payment-shadow.queue'
+import { AiPaymentShadowWorker } from './payment/payment-shadow.worker'
+import { PaymentShadowService } from './payment/payment-shadow.service'
+import { PaymentOutcomeService } from './payment/payment-outcome.service'
+import { QUEUE_AI_PAYMENT_SHADOW } from './payment/payment-shadow.types'
 
 /**
  * SKUGGLÄGET (etapp 6).
@@ -34,6 +39,13 @@ import { QUEUE_AI_SHADOW } from './shadow.types'
 @Module({
   imports: [
     BullModule.registerQueue({ name: QUEUE_AI_SHADOW }),
+    // ── AGENT 2 HAR EN EGEN KÖ, INTE EN ANDRA JOBBTYP I DEN FÖRSTA ────────
+    //
+    // Nyttolasterna är olika (`ticketId` mot `bankTransactionId`), och det
+    // härledda jobId:t är kons enda dubblettspärr. Två former i samma kö hade
+    // gjort `shadow-ticket-…` och `shadow-tx-…` till en namnrymd som ingen typ
+    // bevakar. En kö per producent gör felet omöjligt i stället för osannolikt.
+    BullModule.registerQueue({ name: QUEUE_AI_PAYMENT_SHADOW }),
     HistoryModule,
     AiUsageModule,
     // ── DE TRE SVEPET BEHÖVER, OCH VARFÖR DE STÅR HÄR ─────────────────────
@@ -60,7 +72,22 @@ import { QUEUE_AI_SHADOW } from './shadow.types'
     MaintenanceShadowService,
     AiShadowSweepService,
     ShadowOutcomeService,
+    AiPaymentShadowQueue,
+    AiPaymentShadowWorker,
+    PaymentShadowService,
+    PaymentOutcomeService,
   ],
-  exports: [AiShadowQueue, MaintenanceShadowService, ShadowOutcomeService],
+  exports: [
+    AiShadowQueue,
+    MaintenanceShadowService,
+    ShadowOutcomeService,
+    // `ReconciliationService` injicerar de här två. `@Global` gör att
+    // `ReconciliationModule` slipper importera AI-lagret — riktningen spelar
+    // roll, precis som för maintenance: avstämningen får inte bli beroende av
+    // AI:n, bara AI:n av avstämningen.
+    AiPaymentShadowQueue,
+    PaymentOutcomeService,
+    PaymentShadowService,
+  ],
 })
 export class AiShadowModule {}

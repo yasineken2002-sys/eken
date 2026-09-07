@@ -9,8 +9,26 @@ export interface AssignmentEvidence {
   label: string
 }
 
+/**
+ * Uppdragets SORT, och varför webben behöver känna till den.
+ *
+ * `PAYMENT_MATCH_PROPOSAL` är den enda sorten där ett godkännande UTFÖR något:
+ * matchningen bokförs genom avstämningens egen tjänstemetod. De andra sorterna
+ * är skuggläge, där ett ja är ett omdöme om förslaget och ingenting händer.
+ *
+ * Skillnaden måste synas FÖRE klicket, inte efteråt — därför bär kortet en
+ * bekräftelse för just den här sorten. Att låta ett ja betyda två olika saker
+ * bakom samma knapp är precis den tvetydighet inkorgen finns för att undvika.
+ */
+export type AssignmentKind =
+  | 'TOOL_PROPOSAL'
+  | 'DELEGATION_PROPOSAL'
+  | 'QUESTION'
+  | 'PAYMENT_MATCH_PROPOSAL'
+
 export interface Assignment {
   id: string
+  kind: AssignmentKind
   toolName: string
   title: string
   reasoning: string

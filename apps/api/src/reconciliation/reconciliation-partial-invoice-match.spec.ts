@@ -64,7 +64,16 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
     { record: jest.fn().mockResolvedValue(undefined) } as never,
     { createJournalEntryForPayment } as never,
     {} as never,
-    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   return { service, txMock, claimPaidWithinTx, notifyInvoicePaid, createJournalEntryForPayment }
 }

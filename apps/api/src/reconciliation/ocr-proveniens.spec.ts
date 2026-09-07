@@ -77,6 +77,14 @@ function rigg() {
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
   }
   const prisma = {
+    // ── AGENT 2:S GRIND, MED FLAGGAN AV ────────────────────────────────
+    // `matchTransaction`s fuzzy-gren läser numera
+    // `Organization.shadowPaymentAgentEnabled`: är den PÅ slutar grenen
+    // bokföra och lämnar raden till ett förslag. `null` här betyder AV,
+    // alltså exakt det beteende proven nedan beskriver. Att stubben står
+    // utskriven i stället för att vara underförstådd är poängen — annars
+    // hade de här proven tyst mätt ett läge ingen valt.
+    organization: { findUnique: jest.fn().mockResolvedValue(null) },
     invoice: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
@@ -109,6 +117,15 @@ function rigg() {
     // avvisas, och testet blir rött av fel skäl.
     { recordPaymentDataThrough: jest.fn().mockResolvedValue({}) } as never,
     { record: jest.fn().mockResolvedValue({}) } as never,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   return { service, prisma }
 }

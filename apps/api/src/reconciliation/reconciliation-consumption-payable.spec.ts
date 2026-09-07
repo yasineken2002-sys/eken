@@ -54,7 +54,16 @@ function makeService(noticeRow: Record<string, unknown> | null) {
     {} as never,
     {} as never,
     {} as never, // PaymentFreshnessService — ej använd i matchnings-vägen,
-    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   const apply = jest.fn().mockResolvedValue(true)
   // Isolera matchningslogiken: ersätt den privata appliceringen med en spion.

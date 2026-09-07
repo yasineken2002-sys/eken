@@ -43,6 +43,17 @@ import { TOMT_REGISTER_ALTERNATIV, hantverkarmeny } from '../src/ai/shadow/contr
 import { INGEN_ATGARD, skuggverktygForFelanmalan } from '../src/ai/shadow/shadow-tool-gate'
 import { prövaDelegerbarhet } from '../src/ai/delegation/delegation-scope'
 import {
+  provaKandidater,
+  beloppsutfall,
+  type Kandidat,
+} from '../src/ai/shadow/payment/payment-candidates'
+import {
+  betalningsverktyg,
+  byggBetalningsprompt,
+  tolkaBetalningssvar,
+} from '../src/ai/shadow/payment/payment-shadow.service'
+import { INGEN_AVI } from '../src/ai/shadow/payment/payment-fields'
+import {
   byggRapport,
   formateraRapport,
   type Facit,
@@ -77,7 +88,264 @@ interface KorpusArende {
   facit: Facit & { skal: string }
 }
 
+/**
+ * RIGGENS ANDRA LÄGE — AGENT 2, "PENGAR IN".
+ *
+ * ── VARFÖR DET INTE BEHÖVER EN DATABAS ──────────────────────────────────────
+ *
+ * Felanmälans läge skriver riktiga ärenden, därför att producenten läser dem
+ * genom Prisma. Betalningsläget behöver ingen: `provaKandidater` är en ren
+ * funktion och `byggBetalningsprompt` tar sina kandidater som argument. Riggen
+ * matar alltså korpusens poster direkt, och det är inte en genväg utan samma
+ * gräns som produktionskoden drar — reglerna vet ingenting om databasen.
+ *
+ * ── TVÅ HALVOR, OCH BARA DEN ENA KOSTAR PENGAR ──────────────────────────────
+ *
+ * `--utan-modell` kör bara regelhalvan: kandidatmängd, recall och de fall
+ * reglerna avgör ensamma. Den kostar noll och kräver ingen nyckel. Hela
+ * ablationen är regelhalvan MOT regel+modell, och att den nedre halvan går att
+ * köra gratis betyder att baslinjen inte kan ruttna mellan två betalda
+ * körningar. Regelhalvan mäts dessutom i CI av `korpus-betalningar.spec.ts`.
+ */
+async function körBetalningsläget(utanModell: boolean): Promise<void> {
+  const korpus = JSON.parse(
+    readFileSync(join(__dirname, '../src/ai/shadow/eval/korpus-betalningar.json'), 'utf8'),
+  ) as {
+    poster: Array<{
+      id: string
+      sort: 'AVI' | 'FAKTURA'
+      nummer: string
+      ocr: string
+      utestaende: number
+      forfallodatum: string
+      motpartId: string
+      motpartNamn: string
+    }>
+    bankrader: Array<{
+      id: string
+      datum: string
+      text: string
+      belopp: number
+      rawOcr: string | null
+      facit: {
+        avi: string
+        belopp: 'FULL' | 'DEL'
+        motpart: string
+        grupp: string
+        skal: string
+        regel?: string
+      }
+    }>
+  }
+
+  const kandidater: Kandidat[] = korpus.poster.map((p) => ({
+    id: p.id,
+    sort: p.sort,
+    nummer: p.nummer,
+    ocr: p.ocr,
+    utestaende: p.utestaende,
+    forfallodatum: new Date(p.forfallodatum),
+    motpartId: p.motpartId,
+    motpartNamn: p.motpartNamn,
+  }))
+
+  let anthropic: Anthropic | null = null
+  if (!utanModell) {
+    const nyckel = requireApiKey({
+      envVar: 'ANTHROPIC_API_KEY',
+      whatFor: 'mätriggen för agent 2 (eval:shadow --betalningar)',
+      expectedPrefix: 'sk-ant-',
+    })
+    await verifyAnthropicKey(nyckel)
+    anthropic = new Anthropic({ apiKey: nyckel })
+  }
+
+  type Utfall = {
+    id: string
+    grupp: string
+    regelTyp: string
+    antalKandidater: number
+    rättPostIMängden: boolean | null
+    svar: string | null
+    facitAvi: string
+    träff: boolean | null
+    beloppSvar: string | null
+    beloppTräff: boolean | null
+  }
+  const utfall: Utfall[] = []
+  let tokensIn = 0
+  let tokensUt = 0
+
+  for (const r of korpus.bankrader) {
+    const rad = {
+      id: r.id,
+      datum: new Date(r.datum),
+      text: r.text,
+      belopp: r.belopp,
+      rawOcr: r.rawOcr,
+    }
+    const regel = provaKandidater(rad, kandidater)
+    const iMängden =
+      r.facit.avi === INGEN_AVI
+        ? null
+        : regel.typ === 'KANDIDATER' && regel.kandidater.some((k) => k.id === r.facit.avi)
+
+    if (regel.typ !== 'KANDIDATER') {
+      // REGELN AVGJORDE. Ett INGEN_FRAGA är en kontroll; ett INGEN är ett svar.
+      const svar = regel.typ === 'INGEN' ? INGEN_AVI : null
+      utfall.push({
+        id: r.id,
+        grupp: r.facit.grupp,
+        regelTyp: regel.typ,
+        antalKandidater: 0,
+        rättPostIMängden: iMängden,
+        svar,
+        facitAvi: r.facit.avi,
+        träff: svar === null ? null : svar === r.facit.avi,
+        beloppSvar: null,
+        beloppTräff: null,
+      })
+      continue
+    }
+
+    if (!anthropic) {
+      utfall.push({
+        id: r.id,
+        grupp: r.facit.grupp,
+        regelTyp: regel.typ,
+        antalKandidater: regel.kandidater.length,
+        rättPostIMängden: iMängden,
+        svar: null,
+        facitAvi: r.facit.avi,
+        träff: null,
+        beloppSvar: null,
+        beloppTräff: null,
+      })
+      continue
+    }
+
+    const svarM = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      temperature: 0,
+      tools: [betalningsverktyg(regel.kandidater)],
+      tool_choice: { type: 'tool', name: 'valj_avi' },
+      messages: [{ role: 'user', content: byggBetalningsprompt(rad, regel.kandidater) }],
+    })
+    tokensIn += svarM.usage.input_tokens
+    tokensUt += svarM.usage.output_tokens
+    const block = svarM.content.find((b) => b.type === 'tool_use')
+    const tolkat =
+      block && block.type === 'tool_use' ? tolkaBetalningssvar(block.input, regel.kandidater) : null
+    // OTOLKBART SKRIVS UT RÅTT — samma lärdom som felanmälans läge: utan
+    // råsvaret går det inte att avgöra VARFÖR nästa gång det händer.
+    if (!tolkat && block && block.type === 'tool_use') {
+      console.warn(`  OTOLKBART ${r.id}: ${JSON.stringify(block.input)}`)
+    }
+    const vald = tolkat ? regel.kandidater.find((k) => k.id === tolkat.avi) : undefined
+    const beloppSvar = vald ? beloppsutfall(rad.belopp, vald.utestaende) : null
+    utfall.push({
+      id: r.id,
+      grupp: r.facit.grupp,
+      regelTyp: regel.typ,
+      antalKandidater: regel.kandidater.length,
+      rättPostIMängden: iMängden,
+      svar: tolkat ? tolkat.avi : null,
+      facitAvi: r.facit.avi,
+      träff: tolkat ? tolkat.avi === r.facit.avi : null,
+      beloppSvar,
+      beloppTräff: beloppSvar === null ? null : beloppSvar === r.facit.belopp,
+    })
+  }
+
+  // ── RAPPORTEN ─────────────────────────────────────────────────────────────
+  const kontroller = utfall.filter((u) => u.regelTyp === 'INGEN_FRAGA')
+  const modellfall = utfall.filter((u) => u.regelTyp === 'KANDIDATER')
+  const regelnej = utfall.filter((u) => u.regelTyp === 'INGEN')
+
+  console.warn('')
+  console.warn(`KORPUS: ${korpus.bankrader.length} bankrader mot ${korpus.poster.length} poster`)
+  console.warn(`  regeln svarade INGEN_FRAGA (kontroll)   ${kontroller.length}`)
+  console.warn(`  regeln svarade INGEN (utan modellanrop) ${regelnej.length}`)
+  console.warn(`  gick till modellen                      ${modellfall.length}`)
+
+  // ── NÄMNAREN UTESLUTER KONTROLLERNA, OCH DET ÄR EN RÄTTELSE ─────────────
+  //
+  // Första versionen räknade `rättPostIMängden !== null`, alltså varje rad vars
+  // facit pekar på en post. Det tog med de fyra `exakt_ocr`-KONTROLLERNA, som
+  // per konstruktion aldrig når kandidatmängden — regeln svarar INGEN_FRAGA och
+  // avstämningen tar raden. De räknades därför som recall-MISSAR, och riggen
+  // skrev 19/23 = 82,6 % när den verkliga recallen var 19/19.
+  //
+  // Felformen är värd att namnge: ett tal som ser lågt och trovärdigt ut. Ingen
+  // hade ifrågasatt 82,6 %. Det upptäcktes bara genom att provet i
+  // `korpus-betalningar.spec.ts` — som har rätt nämnare — sa 100 % samtidigt.
+  // Två uppräkningar av samma mängd är inte en uppräkning.
+  const medPost = utfall.filter((u) => u.rättPostIMängden !== null && u.regelTyp !== 'INGEN_FRAGA')
+  const recall = medPost.filter((u) => u.rättPostIMängden === true).length
+  console.warn('')
+  console.warn(
+    `RECALL (rätt post fanns bland kandidaterna): ${recall}/${medPost.length}` +
+      ` — ${((100 * recall) / Math.max(1, medPost.length)).toFixed(1)} %`,
+  )
+
+  const regelnejRätt = regelnej.filter((u) => u.träff === true).length
+  console.warn(
+    `REGELN ENSAM (INGEN utan modellanrop): ${regelnejRätt}/${regelnej.length} rätt` +
+      ` — ${((100 * regelnejRätt) / Math.max(1, regelnej.length)).toFixed(1)} %`,
+  )
+
+  if (anthropic) {
+    const besvarade = modellfall.filter((u) => u.träff !== null)
+    const rätt = besvarade.filter((u) => u.träff).length
+    const belopp = modellfall.filter((u) => u.beloppTräff !== null)
+    const beloppRätt = belopp.filter((u) => u.beloppTräff).length
+    console.warn('')
+    console.warn(
+      `MODELLEN (avi): ${rätt}/${besvarade.length}` +
+        ` — ${((100 * rätt) / Math.max(1, besvarade.length)).toFixed(1)} %`,
+    )
+    console.warn(
+      `MODELLEN (belopp FULL/DEL): ${beloppRätt}/${belopp.length}` +
+        ` — ${((100 * beloppRätt) / Math.max(1, belopp.length)).toFixed(1)} %`,
+    )
+    const helaKedjan = utfall.filter((u) => u.svar !== null)
+    const kedjaRätt = helaKedjan.filter((u) => u.träff).length
+    console.warn(
+      `HELA KEDJAN (regel + modell): ${kedjaRätt}/${helaKedjan.length}` +
+        ` — ${((100 * kedjaRätt) / Math.max(1, helaKedjan.length)).toFixed(1)} %`,
+    )
+    const kostnad = (tokensIn / 1e6) * PRIS_IN_PER_MTOK + (tokensUt / 1e6) * PRIS_UT_PER_MTOK
+    console.warn('')
+    console.warn(`KOSTNAD: ${tokensIn} in + ${tokensUt} ut ≈ $${kostnad.toFixed(4)}`)
+  } else {
+    console.warn('')
+    console.warn('MODELLHALVAN HOPPADES ÖVER (--utan-modell). Talen ovan är regelhalvan ensam.')
+  }
+
+  console.warn('')
+  console.warn('PER GRUPP')
+  const grupper = [...new Set(utfall.map((u) => u.grupp))].sort()
+  for (const g of grupper) {
+    const rader = utfall.filter((u) => u.grupp === g)
+    const svarade = rader.filter((u) => u.träff !== null)
+    const rätt = svarade.filter((u) => u.träff).length
+    console.warn(
+      `  ${g.padEnd(18)} ${String(rader.length).padStart(2)} rader · ` +
+        (svarade.length === 0
+          ? 'inget svar (kontroll eller modellhalvan avstängd)'
+          : `${rätt}/${svarade.length} rätt`),
+    )
+  }
+}
+
 async function main(): Promise<void> {
+  // ── ANDRA LÄGET: AGENT 2 ──────────────────────────────────────────────────
+  if (process.argv.includes('--betalningar')) {
+    await körBetalningsläget(process.argv.includes('--utan-modell'))
+    return
+  }
+
   // ── FÖRHANDSKONTROLLEN, FÖRE ALLT ARBETE ──────────────────────────────────
   const nyckel = requireApiKey({
     envVar: 'ANTHROPIC_API_KEY',

@@ -85,9 +85,10 @@ export interface Traffgrad {
 export function jamforSkuggfalt(
   prediction: Record<string, unknown> | null | undefined,
   outcome: Record<string, unknown> | null | undefined,
+  fält: readonly Skuggfalt[] = SKUGGFALT,
 ): Record<string, boolean | null> {
   const ut: Record<string, boolean | null> = {}
-  for (const { nyckel } of SKUGGFALT) {
+  for (const { nyckel } of fält) {
     const p = prediction?.[nyckel]
     const o = outcome?.[nyckel]
     if (p === undefined || p === null || o === undefined || o === null) {
@@ -105,12 +106,13 @@ export function traffgradPerFalt(
     prediction: Record<string, unknown> | null
     outcome: Record<string, unknown> | null
   }>,
+  fält: readonly Skuggfalt[] = SKUGGFALT,
 ): Record<string, Traffgrad> {
   const ut: Record<string, Traffgrad> = {}
-  for (const { nyckel } of SKUGGFALT) ut[nyckel] = { besvarade: 0, traffar: 0, andel: null }
+  for (const { nyckel } of fält) ut[nyckel] = { besvarade: 0, traffar: 0, andel: null }
   for (const rad of rader) {
-    const j = jamforSkuggfalt(rad.prediction, rad.outcome)
-    for (const { nyckel } of SKUGGFALT) {
+    const j = jamforSkuggfalt(rad.prediction, rad.outcome, fält)
+    for (const { nyckel } of fält) {
       const v = j[nyckel]
       if (v === null || v === undefined) continue
       const t = ut[nyckel]!
@@ -118,7 +120,7 @@ export function traffgradPerFalt(
       if (v) t.traffar++
     }
   }
-  for (const { nyckel } of SKUGGFALT) {
+  for (const { nyckel } of fält) {
     const t = ut[nyckel]!
     t.andel = t.besvarade === 0 ? null : t.traffar / t.besvarade
   }

@@ -230,6 +230,19 @@ medDb('autoMatchAll som bulkkörning', () => {
         },
       ),
       logger: { log: () => undefined, warn: () => undefined, error: () => undefined },
+      // ── AGENT 2 (etapp A): KÖN OCH FACIT ────────────────────────────────
+      //
+      // Riktiga stubbar och inte Proxy-fällor, till skillnad från de tre ovan.
+      // Skälet är vad de här proven MÄTER: att en avmatchning följd av en ny
+      // bulkkörning inte ger en andra allokering. Kön och facit ANROPAS på den
+      // vägen, och en Proxy som kastar hade gjort dem till en förutsättning för
+      // avstämningen — vilket är precis det de inte får vara.
+      betalningsSkugga: { enqueue: async () => 'jobb' },
+      betalningsFacit: {
+        skrivFacitMatchad: async () => undefined,
+        skrivFacitIngen: async () => undefined,
+        nollstallFacit: async () => undefined,
+      },
     })
   })
 

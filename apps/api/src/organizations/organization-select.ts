@@ -85,6 +85,11 @@ export const SAFE_ORGANIZATION_SELECT = {
   // att läsytan kan säga OM skuggläget är på i stället för att gissa.
   shadowAgentEnabled: true,
   agentExecutionEnabled: true,
+  // Skuggagent 2, "Pengar in" (etapp A). VALD av samma skäl som de två ovan —
+  // en inställning hyresvärden äger. Och en EGEN kolumn och inte ett andra
+  // värde i `shadowAgentEnabled`: ett misstag i agent 1 betyder fel
+  // hantverkare, i agent 2 fel fordran, så de ska kunna slås på var för sig.
+  shadowPaymentAgentEnabled: true,
   // Väsentlighetsgränsen för sen bokföring. Ingen hemlighet — den är en
   // policy operatören själv satt, och inställningssidan måste kunna visa
   // den för att kunna redigera den.

@@ -9,6 +9,8 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { ångravägen, type Ångravägen } from './undo-hint'
 import { prövaDuglighet } from './assignment-eligibility'
 import { traffgradPerFalt, type Traffgrad } from '../shadow/shadow-fields'
+import { SKUGGFALT_BETALNING } from '../shadow/payment/payment-fields'
+import { ReconciliationService } from '../../reconciliation/reconciliation.service'
 import { INKORG_SIDSTORLEK_MAX, INKORG_SIDSTORLEK_STANDARD } from './dto/query-assignments.dto'
 
 import { Prisma } from '@prisma/client'
@@ -127,6 +129,20 @@ export class AiAssignmentsService {
     private readonly notifications: NotificationsService,
     private readonly locks: LockService,
     private readonly cronErrors: CronErrorSink,
+    // ── AGENT 2: ETT JA UTFÖR MATCHNINGEN ────────────────────────────────
+    //
+    // Och det sker genom avstämningens EGEN tjänstemetod (`manualMatch`), med
+    // den godkännande människan som aktör. Det är avsiktligt att det inte finns
+    // någon andra skrivväg: en `PAYMENT_MATCH_PROPOSAL` som godkänns är exakt
+    // det som händer när samma människa trycker Matcha i /reconciliation —
+    // bara startad från en annan skärm. En egen matchningsimplementation här
+    // hade varit en andra väg förbi radlåset, status-guarden och
+    // verifikatskrivningen.
+    //
+    // `AiModule` importerar redan `ReconciliationModule`, och avstämningen
+    // importerar aldrig AI-lagret (den når skuggkön genom `@Global`). Riktningen
+    // är alltså oförändrad och det finns ingen modulcykel.
+    private readonly reconciliation: ReconciliationService,
   ) {}
 
   /**
@@ -409,6 +425,7 @@ export class AiAssignmentsService {
   ): Promise<{
     status: Record<AiAssignment['status'], number>
     traffgrad: Record<string, Traffgrad>
+    traffgradBetalningar: Record<string, Traffgrad>
   }> {
     // TYPEN KRÄVER `organizationId` (S2 i check-spread-where). `{ ...undefined }`
     // ger `{}`, och ett uppslag utan org-avgränsning korsar tenant-gränsen
@@ -453,7 +470,32 @@ export class AiAssignmentsService {
       })),
     )
 
-    return { status: ut, traffgrad }
+    // ── EGEN RAD FÖR BETALNINGAR, INTE EN VIDGAD MÄNGD ────────────────────
+    //
+    // Agent 2 jämförs mot `SKUGGFALT_BETALNING` (avi, belopp, motpart), agent 1
+    // mot `SKUGGFALT` (kategori, prioritet, hantverkare). Att slå ihop dem hade
+    // gett en procentsats som är ett medelvärde av två olika frågor om två
+    // olika objekt — ett tal som alltid går att räkna och aldrig betyder något.
+    //
+    // BLANDNINGEN ÄR OFARLIG ÅT ANDRA HÅLLET, och det är mätt i `jamforSkuggfalt`
+    // och inte antaget: ett fält som saknas på BÅDA sidor ger `null` och räknas
+    // inte. En betalningsrad kan alltså inte sänka felanmälans träffgrad, och
+    // tvärtom. Avgränsningen nedan är därför för LÄSBARHETEN — så att nämnaren
+    // säger vad den räknar — inte för att skydda talet.
+    const betalningsrader = await this.prisma.aiAssignment.findMany({
+      where: { ...bas, kind: 'PAYMENT_MATCH_PROPOSAL', outcome: { not: Prisma.JsonNull } },
+      select: { prediction: true, outcome: true },
+      take: TRAFFGRAD_TAK,
+    })
+    const traffgradBetalningar = traffgradPerFalt(
+      betalningsrader.map((r) => ({
+        prediction: (r.prediction ?? null) as Record<string, unknown> | null,
+        outcome: (r.outcome ?? null) as Record<string, unknown> | null,
+      })),
+      SKUGGFALT_BETALNING,
+    )
+
+    return { status: ut, traffgrad, traffgradBetalningar }
   }
 
   /**
@@ -506,7 +548,74 @@ export class AiAssignmentsService {
           : `Uppdraget är redan ${uppdrag.status === 'APPROVED' ? 'godkänt' : 'avslaget'}.`,
       )
     }
+
+    // ── ETT JA PÅ EN BETALNINGSMATCHNING UTFÖR DEN ────────────────────────
+    //
+    // EFTER anspråket, så exakt ett av två samtidiga ja kan nå hit. Före
+    // anspråket hade två klick kunnat matcha samma rad två gånger — och den
+    // andra hade fallit på avstämningens egen status-guard, alltså med rätt
+    // utfall men fel felmeddelande.
+    //
+    // Skiljer sig FRÅN skuggläget för felanmälan, där ett godkännande
+    // uttryckligen inte utför någonting. Det är därför sorten är en egen
+    // enum-medlem och inte ett `TOOL_PROPOSAL`: två rader som betyder olika
+    // saker vid samma knapptryck måste gå att skilja åt i databasen.
+    if (beslut === 'APPROVED' && uppdrag.kind === 'PAYMENT_MATCH_PROPOSAL') {
+      await this.utförBetalningsmatchning(organizationId, uppdrag, userId)
+    }
     return uppdrag
+  }
+
+  /**
+   * Utför den godkända matchningen genom avstämningens egen tjänstemetod.
+   *
+   * ── FEL HÄR ÄR ETT FEL FÖR ANVÄNDAREN, INTE EN SVÄLJD LOGGRAD ────────────
+   *
+   * Beslutet är redan skrivet när vi kommer hit, och det ska det vara: en
+   * matchning som inte gick igenom får inte göra att uppdraget ser obeslutat ut
+   * nästa gång någon tittar. Men felet KASTAS, så hyresvärden ser att
+   * matchningen inte blev av. Ett sväljt fel här hade betytt att hen tror att
+   * pengarna är bokförda.
+   *
+   * `statusReason` bär skälet, så det syns i inkorgen och inte bara i en logg.
+   */
+  private async utförBetalningsmatchning(
+    organizationId: string,
+    uppdrag: AiAssignment,
+    userId: string,
+  ): Promise<void> {
+    const input = (uppdrag.toolInput ?? {}) as Record<string, unknown>
+    const transactionId = typeof input['transactionId'] === 'string' ? input['transactionId'] : null
+    const rentNoticeId = typeof input['rentNoticeId'] === 'string' ? input['rentNoticeId'] : null
+    const invoiceId = typeof input['invoiceId'] === 'string' ? input['invoiceId'] : null
+
+    if (!transactionId || (!rentNoticeId && !invoiceId)) {
+      // FÖRSLAGET VAR "INGEN AVI PASSAR". Ett ja betyder då att hyresvärden
+      // HÅLLER MED om att raden inte hör någonstans — och rätt handling är att
+      // inte göra något. Att kasta här hade gjort ett giltigt svar till ett fel.
+      this.logger.log(
+        `[ai-payment-shadow] uppdrag ${uppdrag.id} godkändes utan matchningsmål — ` +
+          'hyresvärden höll med om att ingen avi passar. Ingenting utförs.',
+      )
+      return
+    }
+
+    try {
+      await this.reconciliation.manualMatch(
+        transactionId,
+        rentNoticeId ? { rentNoticeId } : { invoiceId: invoiceId as string },
+        organizationId,
+        userId,
+      )
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err)
+      await this.prisma.aiAssignment.updateMany({
+        where: { id: uppdrag.id, organizationId },
+        data: { statusReason: `Matchningen gick inte igenom: ${text}` },
+      })
+      this.logger.warn(`[ai-payment-shadow] uppdrag ${uppdrag.id}: matchningen föll — ${text}`)
+      throw err
+    }
   }
 
   // ── KLASSIFICERING: A — LÅST (cron:ai-assignment-expiry) ──────────────────

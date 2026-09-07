@@ -662,6 +662,25 @@ model Organization {
   /// och det är inte så man prövar en agent mot verkliga fall.
   shadowAgentEnabled Boolean @default(false)
 
+  /// ── SKUGGAGENT 2, "PENGAR IN" (etapp A) ───────────────────────────────────
+  ///
+  /// EGEN FLAGGA, och inte ett andra värde i `shadowAgentEnabled`. De två
+  /// svarar på olika frågor och rör olika risk:
+  ///
+  ///     shadowAgentEnabled          får agenten föreslå på FELANMÄLAN?
+  ///     shadowPaymentAgentEnabled   får agenten föreslå på BANKRADER?
+  ///
+  /// Ett misstag i den första betyder fel hantverkare; ett misstag i den andra
+  /// pekar ut fel fordran, och den rätta avin ligger då kvar obetald medan
+  /// kravtrappan eskalerar mot någon som har betalat (planens Del 14b). En
+  /// hyresvärd ska kunna pröva agent 1 utan att därmed ha sagt ja till agent 2.
+  ///
+  /// Flaggan har en ANDRA verkan som inte syns i namnet, och den står utskriven
+  /// i `reconciliation.service.ts`: när den är PÅ slutar avstämningens
+  /// fuzzy-gren bokföra automatiskt och lämnar raden till ett förslag i
+  /// stället. Det är bokförings-expertens villkor 1 (#843, Del 14b).
+  shadowPaymentAgentEnabled Boolean @default(false)
+
   /// ── SKARPT LÄGE (etapp 9): AGENTEN UTFÖR SJÄLV ────────────────────────────
   ///
   /// EGEN FLAGGA, inte ett andra värde i `shadowAgentEnabled`. De två svarar på
@@ -4285,6 +4304,19 @@ enum AiAssignmentKind {
   /// `toolName` bär det verktyg frågan gäller, så observationslagret och
   /// historiken kan koppla frågan till samma mönster som förslagen.
   QUESTION
+
+  /// ── AGENT 2 FÖRESLÅR EN BETALNINGSMATCHNING (etapp A) ──────────────────
+  ///
+  /// EGEN SORT, och inte ett `TOOL_PROPOSAL` med `toolName:
+  /// 'match_bank_transaction'`. Skillnaden är inte kosmetisk: ett godkännande
+  /// här UTFÖR matchningen genom avstämningens egen tjänstemetod, medan ett
+  /// godkänt `TOOL_PROPOSAL` i skuggläge uttryckligen inte utför någonting
+  /// (`consequence` säger det rakt ut). Två rader som betyder olika saker vid
+  /// samma knapptryck måste gå att skilja åt i databasen, inte bara i texten.
+  ///
+  /// Sorten bär också jämförelsen: träffgraden för betalningar räknas över
+  /// `SKUGGFALT_BETALNING`, inte över felanmälans tre fält.
+  PAYMENT_MATCH_PROPOSAL
 }
 
 enum AiAssignmentStatus {

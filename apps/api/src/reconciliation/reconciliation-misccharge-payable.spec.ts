@@ -34,6 +34,12 @@ function candidate(over: Record<string, unknown> = {}) {
 
 function makeService(candidates: Array<Record<string, unknown>>) {
   const db = {
+    // ── AGENT 2:S GRIND, MED FLAGGAN AV ────────────────────────────────
+    // `matchTransaction`s fuzzy-gren läser numera
+    // `Organization.shadowPaymentAgentEnabled`: är den PÅ slutar grenen
+    // bokföra och lämnar raden till ett förslag. `null` här betyder AV,
+    // alltså exakt det beteende proven nedan beskriver.
+    organization: { findUnique: jest.fn().mockResolvedValue(null) },
     invoice: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
@@ -50,7 +56,16 @@ function makeService(candidates: Array<Record<string, unknown>>) {
     {} as never,
     {} as never,
     {} as never,
-    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService
+    { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   const apply = jest.fn().mockResolvedValue(true)
   ;(service as unknown as { applyMatchToRentNotice: unknown }).applyMatchToRentNotice = apply
