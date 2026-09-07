@@ -4602,6 +4602,22 @@ model ContractorWorkOrder {
   expiresAt         DateTime
   respondedAt       DateTime?
 
+  /// HANTVERKARENS SVAR — en annan fråga än `status`.
+  ///
+  /// `status` är orderns NUVARANDE tillstånd; det här är vad hantverkaren
+  /// SVARADE, och de två slutade sammanfalla i samma stund avbokningen fanns:
+  /// en accepterad order som avbokas får `status = CANCELLED`, och utan det
+  /// här fältet försvann "hantverkaren tog jobbet" ur historiken — en historik
+  /// som skrivs om i efterhand.
+  ///
+  /// NULL betyder att hantverkaren inte svarat. Uppmätt som defekt i prov 12
+  /// (`work-order.db.spec.ts`) innan fältet fanns.
+  responseAccepted Boolean?
+
+  /// NÄR ordern avbokades. Egen tidsstämpel, inte `respondedAt`: en avbokning
+  /// är hyresvärdens handling, ett svar är hantverkarens.
+  cancelledAt DateTime?
+
   /// Hantverkarens föreslagna tid vid ACCEPTED. Ett förslag, inte en bokning:
   /// hyresvärden ser den och kan höra av sig.
   proposedAt   DateTime?

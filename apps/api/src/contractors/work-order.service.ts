@@ -232,6 +232,10 @@ export class WorkOrderService {
       where: { id: order.id, respondedAt: null, status: 'SENT' },
       data: {
         status: dto.accepterar ? 'ACCEPTED' : 'DECLINED',
+        // `responseAccepted` är HANTVERKARENS SVAR, `status` är orderns
+        // nuvarande tillstånd. De sammanfaller här och skiljer sig i samma
+        // stund ordern avbokas — se docblocket på `cancel`.
+        responseAccepted: dto.accepterar,
         respondedAt: nu,
         ...(dto.proposedAt ? { proposedAt: new Date(dto.proposedAt) } : {}),
         ...(dto.note ? { responseNote: dto.note } : {}),
@@ -263,9 +267,13 @@ export class WorkOrderService {
       throw new BadRequestException('Arbetsordern är redan avbokad')
     }
 
+    // `respondedAt` och `responseAccepted` RÖRS INTE. Hade avbokningen skrivit
+    // över dem vore "hantverkaren tog jobbet" borta ur historiken så snart
+    // hyresvärden ändrade sig — en historik som skrivs om i efterhand. Det var
+    // precis vad prov 12 fällde innan `cancelledAt` fanns.
     const uppdaterad = await this.prisma.contractorWorkOrder.update({
       where: { id },
-      data: { status: 'CANCELLED', respondedAt: order.respondedAt ?? new Date() },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
     })
 
     if (order.contractor.email) {

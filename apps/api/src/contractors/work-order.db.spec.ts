@@ -281,6 +281,28 @@ medDb('arbetsorderflödet mot riktig Postgres', () => {
     })
   })
 
+  it('12. en AVBOKAD order raderar inte att hantverkaren svarat', async () => {
+    // Ordern i prov 5 är ACCEPTED. Avbokas den ska historiken visa BÅDA
+    // fakta — att hantverkaren tog jobbet, och att det sedan ströks. Att den
+    // första försvinner vore en historik som skrivs om i efterhand.
+    const källa = HISTORY_SOURCES.find((k) => k.key === 'maintenance-ticket')!
+    const ladda = async () => {
+      const h = await källa.load({
+        prisma,
+        organizationId: orgA,
+        subject: { kind: 'TENANT', id: tenantId },
+      } as never)
+      return h.map((x) => x.type)
+    }
+    expect(await ladda()).toContain('WORK_ORDER_ACCEPTED')
+
+    await service.cancel(ids.order, orgA, 'Ändrade oss')
+
+    const efter = await ladda()
+    expect(efter).toContain('WORK_ORDER_ACCEPTED')
+    expect(efter).toContain('WORK_ORDER_CANCELLED')
+  })
+
   /**
    * KANARIEFÅGEL — mot INSTRUMENTET.
    *

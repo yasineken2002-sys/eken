@@ -346,6 +346,8 @@ const maintenanceTickets: HistorySourceDefinition = {
             createdAt: true,
             status: true,
             respondedAt: true,
+            responseAccepted: true,
+            cancelledAt: true,
             sharedTenantContact: true,
             sentByUserId: true,
             contractor: { select: { name: true } },
@@ -410,10 +412,14 @@ const maintenanceTickets: HistorySourceDefinition = {
             source: { table: 'ContractorWorkOrder', id: w.id },
           })
         }
-        if (w.respondedAt && (w.status === 'ACCEPTED' || w.status === 'DECLINED')) {
+        // GATAT PÅ SVARET, INTE PÅ STATUS. `status` blir CANCELLED när
+        // hyresvärden avbokar, och en gating på den raderade "hantverkaren tog
+        // jobbet" ur historiken i samma stund. Uppmätt som en röd assertion
+        // (prov 12) innan `responseAccepted` fanns.
+        if (w.respondedAt && w.responseAccepted !== null) {
           out.push({
             at: w.respondedAt,
-            type: w.status === 'ACCEPTED' ? 'WORK_ORDER_ACCEPTED' : 'WORK_ORDER_DECLINED',
+            type: w.responseAccepted ? 'WORK_ORDER_ACCEPTED' : 'WORK_ORDER_DECLINED',
             // AKTÖREN ÄR INTE EN ANVÄNDARE. Hantverkaren har ingen inloggning
             // och finns inte i `User`; att stämpla svaret med hyresvärden som
             // skickade ordern hade varit ett obelagt påstående om vem som
@@ -421,12 +427,24 @@ const maintenanceTickets: HistorySourceDefinition = {
             // MAINTENANCE_COMPLETED gör.
             actor: ACTOR_UNKNOWN,
             subject,
-            description:
-              w.status === 'ACCEPTED'
-                ? `${w.contractor.name} tog arbetsordern`
-                : `${w.contractor.name} avböjde arbetsordern`,
+            description: w.responseAccepted
+              ? `${w.contractor.name} tog arbetsordern`
+              : `${w.contractor.name} avböjde arbetsordern`,
             amount: null,
-            severity: w.status === 'DECLINED' ? 'WARNING' : 'INFO',
+            severity: w.responseAccepted ? 'INFO' : 'WARNING',
+            source: { table: 'ContractorWorkOrder', id: w.id },
+          })
+        }
+        // AVBOKNINGEN ÄR EN EGEN HÄNDELSE, inte frånvaron av en annan.
+        if (w.cancelledAt) {
+          out.push({
+            at: w.cancelledAt,
+            type: 'WORK_ORDER_CANCELLED',
+            actor: humanOrUnknown(w.sentByUserId),
+            subject,
+            description: `Arbetsordern till ${w.contractor.name} avbokades`,
+            amount: null,
+            severity: 'WARNING',
             source: { table: 'ContractorWorkOrder', id: w.id },
           })
         }

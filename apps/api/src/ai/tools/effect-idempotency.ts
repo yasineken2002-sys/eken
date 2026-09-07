@@ -671,9 +671,16 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
    * och att kalla den en ångring hade gjort två snarlika verktyg motstridigt
    * klassade utan att något blivit rött.
    *
-   * `policyBeslutad: false` med flit: verktyget är nytt, och fältets docblock
-   * säger att ett nytt verktyg börjar där tills principen prövats mot vad det
-   * faktiskt skriver. Det tvingar `KRÄVER_MÄNNISKA`, vilket är rätt läge.
+   * ── policyBeslutad: true, OCH VARFÖR INTE false ─────────────────────────
+   *
+   * `false` betyder "ingen har tänkt på det här än" — inte "en människa
+   * behövs". De två är olika saker, och fältet finns just för att skilja dem.
+   *
+   * Här ÄR beslutet fattat, och prövat mot vad verktyget skriver: en omkörning
+   * efter en krasch skulle skicka en ANDRA arbetsorder till samma hantverkare,
+   * och mottagaren kan inte skilja den från den första. Därför
+   * `KRÄVER_MÄNNISKA` — som ett avgörande, inte som ett konservativt
+   * platshållarvärde.
    */
   book_contractor: {
     // DEDUPLICERBAR, inte IDEMPOTENT: effekten är ENVÄGS — ett skickat mejl
@@ -687,7 +694,7 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     externalHandle: 'I_SVARET',
     traceIntegrity: 'BÄST_MÖJLIGA',
     resumptionPolicy: 'KRÄVER_MÄNNISKA',
-    policyBeslutad: false,
+    policyBeslutad: true,
     mekanismer: [
       {
         typ: 'STATUSGRIND',
