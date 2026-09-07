@@ -1,0 +1,13 @@
+{
+  "total": 2,
+  "poster": [
+    {
+      "fil": "apps/api/src/ai/observation/observation.service.ts",
+      "rad": 145
+    },
+    {
+      "fil": "apps/api/src/invoices/invoices.service.ts",
+      "rad": 1156
+    }
+  ]
+}

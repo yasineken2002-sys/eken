@@ -20,7 +20,18 @@ import {
   InspectionStatusEnum,
   INSPECTION_TYPES,
   INSPECTION_STATUSES,
+  MaintenanceCategoryEnum,
+  MaintenancePriorityEnum,
+  MaintenanceStatusEnum,
+  RentNoticeStatusEnum,
+  AiSettableMaintenanceStatusEnum,
+  MAINTENANCE_CATEGORIES,
+  MAINTENANCE_PRIORITIES,
+  MAINTENANCE_STATUSES,
+  RENT_NOTICE_STATUSES,
+  AI_SETTABLE_MAINTENANCE_STATUSES,
 } from '@eken/shared'
+import type { MaintenanceStatusValue } from '@eken/shared'
 import { InvoicesService } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
@@ -3407,9 +3418,38 @@ export class ToolExecutorService {
         }
 
         case 'get_maintenance_tickets': {
+          // ── FILTREN CASTAR INTE ──────────────────────────────────────────
+          //
+          // Samma form som besiktningsfiltren (#829). `as never` var ett
+          // påstående om ett värde en språkmodell valt, och verktyget deklarerade
+          // inte ens enumen — statusarna stod som PROSA i en `description`, och
+          // prosan saknade dessutom `CANCELLED`. Ett påhittat värde nådde därför
+          // Prismas where-sats och blev ett 500-fel i stället för ett svar
+          // modellen kan rätta.
+          //
+          // Ett TYST BORTFALL av filtret vore värre än båda: modellen hade fått
+          // en LÄNGRE lista och trott att den var filtrerad.
+          const ärendeStatus = toolInput.status
+            ? MaintenanceStatusEnum.safeParse(toolInput.status)
+            : undefined
+          if (ärendeStatus && !ärendeStatus.success) {
+            return {
+              success: false,
+              message: `Okänd ärendestatus "${String(toolInput.status)}". Giltiga: ${MAINTENANCE_STATUSES.join(', ')}.`,
+            }
+          }
+          const ärendePrioritet = toolInput.priority
+            ? MaintenancePriorityEnum.safeParse(toolInput.priority)
+            : undefined
+          if (ärendePrioritet && !ärendePrioritet.success) {
+            return {
+              success: false,
+              message: `Okänd prioritet "${String(toolInput.priority)}". Giltiga: ${MAINTENANCE_PRIORITIES.join(', ')}.`,
+            }
+          }
           const tickets = await this.maintenanceService.findAll(organizationId, {
-            ...(toolInput.status ? { status: toolInput.status as never } : {}),
-            ...(toolInput.priority ? { priority: toolInput.priority as never } : {}),
+            ...(ärendeStatus?.success ? { status: ärendeStatus.data } : {}),
+            ...(ärendePrioritet?.success ? { priority: ärendePrioritet.data } : {}),
             ...(toolInput.propertyId ? { propertyId: toolInput.propertyId as string } : {}),
           })
 
@@ -3430,6 +3470,37 @@ export class ToolExecutorService {
         }
 
         case 'create_maintenance_ticket': {
+          // ── AVSLAG HÄR, FALLBACK PÅ HYRESGÄSTVÄGEN — och skillnaden är
+          //    inte inkonsekvens ────────────────────────────────────────────
+          //
+          // `tenant-tool-executor.service.ts` faller tillbaka på OTHER/NORMAL
+          // vid ett okänt värde, och det är rätt DÄR: en hyresgäst skriver
+          // fritext, ingen bekräftar något, och "okänd kategori" BETYDER OTHER.
+          //
+          // Ägarvägen är en annan fråga. Verktyget KRÄVER BEKRÄFTELSE — hyresvärden
+          // ser förslaget och godkänner det. Skrivs `ROOF` tyst om till `OTHER`
+          // efter godkännandet skiljer sig det godkända från det skrivna, och
+          // människans ja gäller då något hon inte sa ja till. Därför avslag:
+          // modellen får veta vad som var fel och kan föreslå på nytt.
+          const nyKategori = toolInput.category
+            ? MaintenanceCategoryEnum.safeParse(toolInput.category)
+            : undefined
+          if (nyKategori && !nyKategori.success) {
+            return {
+              success: false,
+              message: `Okänd kategori "${String(toolInput.category)}". Giltiga: ${MAINTENANCE_CATEGORIES.join(', ')}.`,
+            }
+          }
+          const nyPrioritet = toolInput.priority
+            ? MaintenancePriorityEnum.safeParse(toolInput.priority)
+            : undefined
+          if (nyPrioritet && !nyPrioritet.success) {
+            return {
+              success: false,
+              message: `Okänd prioritet "${String(toolInput.priority)}". Giltiga: ${MAINTENANCE_PRIORITIES.join(', ')}.`,
+            }
+          }
+
           const propertyCheck = await this.prisma.property.findFirst({
             where: { id: toolInput.propertyId as string, organizationId },
           })
@@ -3477,8 +3548,8 @@ export class ToolExecutorService {
               description: toolInput.description as string,
               propertyId: toolInput.propertyId as string,
               ...(toolInput.unitId ? { unitId: toolInput.unitId as string } : {}),
-              ...(toolInput.category ? { category: toolInput.category as never } : {}),
-              ...(toolInput.priority ? { priority: toolInput.priority as never } : {}),
+              ...(nyKategori?.success ? { category: nyKategori.data } : {}),
+              ...(nyPrioritet?.success ? { priority: nyPrioritet.data } : {}),
               ...(toolInput.estimatedCost
                 ? { estimatedCost: toolInput.estimatedCost as number }
                 : {}),
@@ -3515,10 +3586,27 @@ export class ToolExecutorService {
           // ändras. Det tar bort BEHOVET av ett tidsfönster i stället för att
           // bygga ett: kommentaren beskriver en ÖVERGÅNG, och att skriva den när
           // ingen övergång skedde var alltid fel — inte bara vid en omkörning.
+          // ── DELMÄNGDEN, INTE HELA ENUMEN ─────────────────────────────────
+          //
+          // Prövas mot `AiSettableMaintenanceStatusEnum`, som är
+          // MAINTENANCE_STATUSES minus `NEW`. De två svarar på OLIKA frågor: den
+          // ena "är det här ett giltigt ärendetillstånd", den andra "får en
+          // assistent flytta ett ärende hit". `NEW` betyder otriagerat, och att
+          // flytta något dit tillbaka raderar att någon tittat på det. Att
+          // validera mot hela enumen hade alltså VIDGAT vad AI:n får göra, under
+          // sken av att bara ta bort ett cast.
+          const nyStatus = AiSettableMaintenanceStatusEnum.safeParse(toolInput.newStatus)
+          if (!nyStatus.success) {
+            return {
+              success: false,
+              message: `Ogiltig ny status "${String(toolInput.newStatus)}". Giltiga: ${AI_SETTABLE_MAINTENANCE_STATUSES.join(', ')}.`,
+            }
+          }
+
           const föreStatus = ticketCheck.status
           await this.maintenanceService.update(
             toolInput.ticketId as string,
-            { status: toolInput.newStatus as never },
+            { status: nyStatus.data as MaintenanceStatusValue },
             organizationId,
             toolInput.comment
               ? {
@@ -3532,7 +3620,7 @@ export class ToolExecutorService {
           // skrevs ingen notering, och det ska operatören få veta — annars ser
           // ett omtag ut som en genomförd ändring, och en notering som var tänkt
           // att fastna har tyst fallit bort.
-          if (föreStatus === (toolInput.newStatus as string)) {
+          if (föreStatus === nyStatus.data) {
             return {
               success: true,
               message:
@@ -3729,10 +3817,23 @@ export class ToolExecutorService {
         }
 
         case 'get_rent_notices': {
+          // Samma sak som ärendefiltren ovan, en annan enum. Verktyget räknade
+          // upp statusarna som PROSA och saknade `FAILED` — en modell kunde
+          // alltså aldrig fråga efter avier vars utskick misslyckats, och ett
+          // påhittat värde nådde Prismas where-sats som ett 500-fel.
+          const aviStatus = toolInput.status
+            ? RentNoticeStatusEnum.safeParse(toolInput.status)
+            : undefined
+          if (aviStatus && !aviStatus.success) {
+            return {
+              success: false,
+              message: `Okänd avistatus "${String(toolInput.status)}". Giltiga: ${RENT_NOTICE_STATUSES.join(', ')}.`,
+            }
+          }
           const notices = await this.aviseringService.findAll(organizationId, {
             ...(toolInput.month ? { month: toolInput.month as number } : {}),
             ...(toolInput.year ? { year: toolInput.year as number } : {}),
-            ...(toolInput.status ? { status: toolInput.status as never } : {}),
+            ...(aviStatus?.success ? { status: aviStatus.data } : {}),
           })
 
           if (notices.length === 0) {

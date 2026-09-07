@@ -755,6 +755,64 @@ export const MaintenanceCategoryEnum = z.enum(MAINTENANCE_CATEGORIES)
 export const MaintenancePriorityEnum = z.enum(MAINTENANCE_PRIORITIES)
 
 /**
+ * ÄRENDETS STATUS. Samma kopia-med-bindning som kategorierna ovan: listan är en
+ * spegling av Prismas `MaintenanceStatus`, och `maintenance-enum-source.spec.ts`
+ * är bindningen. Utan provet är en kopia precis det fel den ersätter.
+ */
+export const MAINTENANCE_STATUSES = [
+  'NEW',
+  'IN_PROGRESS',
+  'SCHEDULED',
+  'COMPLETED',
+  'CLOSED',
+  'CANCELLED',
+] as const
+
+/**
+ * VAD AI:n FÅR SÄTTA — en DELMÄNGD, och en annan fråga än den ovan.
+ *
+ * `MAINTENANCE_STATUSES` svarar på "är det här ett giltigt ärendetillstånd".
+ * Den här svarar på "får en assistent FLYTTA ett ärende hit". `NEW` betyder
+ * otriagerat, alltså tillståndet ett ärende föds i — att flytta något dit
+ * tillbaka är inte en åtgärd utan en radering av att någon tittat på det.
+ *
+ * Härledd, inte listad: skrivs en sjunde status i Prisma blir den automatiskt
+ * sättbar, och skulle den INTE vara det är undantaget en rad här — inte en
+ * andra uppräkning som glider isär. Jämför CLAUDE.md om att låna ett fält som
+ * svarar på en annan fråga.
+ */
+export const AI_EJ_SATTBAR_MAINTENANCE_STATUS = 'NEW'
+
+export const AI_SETTABLE_MAINTENANCE_STATUSES = MAINTENANCE_STATUSES.filter(
+  (s): s is Exclude<(typeof MAINTENANCE_STATUSES)[number], 'NEW'> =>
+    s !== AI_EJ_SATTBAR_MAINTENANCE_STATUS,
+)
+
+/**
+ * HYRESAVINS STATUS. Prisma har SEX värden; verktygets `description` räknade upp
+ * FEM — `FAILED` saknades, alltså kunde en modell aldrig fråga efter avier vars
+ * utskick misslyckats. Prosan var dessutom bara prosa: fältet hade ingen `enum`,
+ * så ingenting hindrade ett påhittat värde från att nå Prismas where-sats.
+ */
+export const RENT_NOTICE_STATUSES = [
+  'PENDING',
+  'SENT',
+  'PAID',
+  'OVERDUE',
+  'CANCELLED',
+  'FAILED',
+] as const
+
+export type MaintenanceStatusValue = (typeof MAINTENANCE_STATUSES)[number]
+export type RentNoticeStatusValue = (typeof RENT_NOTICE_STATUSES)[number]
+
+export const MaintenanceStatusEnum = z.enum(MAINTENANCE_STATUSES)
+export const RentNoticeStatusEnum = z.enum(RENT_NOTICE_STATUSES)
+export const AiSettableMaintenanceStatusEnum = z.enum(
+  AI_SETTABLE_MAINTENANCE_STATUSES as unknown as readonly [string, ...string[]],
+)
+
+/**
  * BASEN — det en HYRESGÄST kan säga om sitt eget fel.
  *
  * Portalen skickar exakt de här tre fälten. De fem övriga (fastighet, lägenhet,
