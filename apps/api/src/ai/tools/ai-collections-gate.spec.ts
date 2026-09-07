@@ -69,6 +69,8 @@ function makeExecutor(collectionExport: Record<string, unknown>) {
     noop,
     noop,
     noop,
+
+    noop,
   )
 }
 

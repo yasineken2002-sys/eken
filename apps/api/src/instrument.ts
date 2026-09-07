@@ -77,6 +77,20 @@ export function skrubbaEvent(event: ErrorEvent): ErrorEvent {
     if (b.data) b.data = deepScrub(b.data)
   }
 
+  // ── TAGGARNA SKRUBBADES ALDRIG ────────────────────────────────────────────
+  //
+  // `GlobalExceptionFilter` sätter `scope.setTag('path', request.url)` vid varje
+  // 5xx. Uppräkningen ovan täckte request, breadcrumbs, extra och contexts — men
+  // inte tags, och en tag är en förstklassig, SÖKBAR sträng i Sentrys UI.
+  //
+  // Det spelade mindre roll så länge varje bärartoken låg i en query-parameter.
+  // Etapp 10:s svarslänk lägger sitt token i PATHEN, och då är hela URL:en
+  // hemlig. Funnet av security-auditor, verifierat i koden.
+  if (event.tags) {
+    for (const [nyckel, varde] of Object.entries(event.tags)) {
+      if (typeof varde === 'string') event.tags[nyckel] = maskSensitiveText(varde)
+    }
+  }
   if (event.extra) event.extra = deepScrub(event.extra)
   if (event.contexts) event.contexts = deepScrub(event.contexts)
 

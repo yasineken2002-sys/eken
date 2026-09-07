@@ -8,11 +8,14 @@ import { Badge } from '@/components/ui/Badge'
 import { kontraktsfel } from '@/lib/contract-gate'
 
 import { useAssignContractor, useContractors } from '../hooks/useContractors'
+import { BookContractorButton } from '@/features/maintenance/components/BookContractorButton'
 
 interface Props {
   ticketId: string
+  ticketNumber: string
   category: MaintenanceCategoryValue
   assigned: { id: string; name: string; email: string | null; phone: string | null } | null
+  tenantHasContact: boolean
 }
 
 /**
@@ -26,7 +29,13 @@ interface Props {
  * Bara AKTIVA hantverkare hämtas. En avaktiverad kan inte tilldelas (servern
  * avvisar), och att visa den i väljaren hade gjort felet till användarens.
  */
-export function AssignContractorCard({ ticketId, category, assigned }: Props) {
+export function AssignContractorCard({
+  ticketId,
+  ticketNumber,
+  category,
+  assigned,
+  tenantHasContact,
+}: Props) {
   const [visaAlla, setVisaAlla] = useState(false)
   const [valt, setValt] = useState<string>(assigned?.id ?? '')
   const [fel, setFel] = useState<string | null>(null)
@@ -63,6 +72,17 @@ export function AssignContractorCard({ ticketId, category, assigned }: Props) {
             {assigned.email ?? 'Ingen e-post'}
             {assigned.phone ? ` · ${assigned.phone}` : ''}
           </p>
+          {/* BOKNINGEN kräver en tilldelad hantverkare. Att kunna boka utan att
+              ha tilldelat hade gjort ärendets "vem gör jobbet" och "vem har
+              kontaktats" till två svar som kan säga olika saker. */}
+          <div className="mt-3">
+            <BookContractorButton
+              ticketId={ticketId}
+              ticketNumber={ticketNumber}
+              contractor={assigned}
+              tenantHasContact={tenantHasContact}
+            />
+          </div>
           <Button
             variant="ghost"
             size="xs"

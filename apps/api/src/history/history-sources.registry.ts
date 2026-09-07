@@ -334,6 +334,23 @@ const maintenanceTickets: HistorySourceDefinition = {
         assignedAt: true,
         assignedByUserId: true,
         assignedContractor: { select: { name: true } },
+        // ── ARBETSORDRAR (etapp 10 PR 2) ─────────────────────────────────
+        // Utåtriktade händelser: någon utanför organisationen har kontaktats.
+        // De hör till ärendets historik av samma skäl som tilldelningen, och
+        // ligger i SAMMA källa — `ContractorWorkOrder` är ingen relation på
+        // Tenant/Unit/Property och skulle vara osynlig för registervakten som
+        // egen källa.
+        workOrders: {
+          select: {
+            id: true,
+            createdAt: true,
+            status: true,
+            respondedAt: true,
+            sharedTenantContact: true,
+            sentByUserId: true,
+            contractor: { select: { name: true } },
+          },
+        },
       },
     })
     const out: HistoryEvent[] = []
@@ -365,6 +382,54 @@ const maintenanceTickets: HistorySourceDefinition = {
           severity: 'INFO',
           source: { table: 'MaintenanceTicket', id: r.id },
         })
+      }
+      for (const w of r.workOrders) {
+        out.push({
+          at: w.createdAt,
+          type: 'WORK_ORDER_SENT',
+          actor: humanOrUnknown(w.sentByUserId),
+          subject,
+          description: `Arbetsorder skickad till ${w.contractor.name} för ärende ${r.ticketNumber}`,
+          amount: null,
+          severity: 'INFO',
+          source: { table: 'ContractorWorkOrder', id: w.id },
+        })
+        // UTLÄMNANDET ÄR EN EGEN HÄNDELSE. "Arbetsorder skickad" säger
+        // ingenting om att en kontaktuppgift lämnats ut — det är två olika
+        // fakta, och hyresjuristens bedömning är att den andra ska gå att se i
+        // efterhand. VÄRDET står aldrig här; det bor i `sharedTenantContact`.
+        if (w.sharedTenantContact) {
+          out.push({
+            at: w.createdAt,
+            type: 'WORK_ORDER_CONTACT_SHARED',
+            actor: humanOrUnknown(w.sentByUserId),
+            subject,
+            description: `Hyresgästens kontaktuppgift delades med ${w.contractor.name}`,
+            amount: null,
+            severity: 'WARNING',
+            source: { table: 'ContractorWorkOrder', id: w.id },
+          })
+        }
+        if (w.respondedAt && (w.status === 'ACCEPTED' || w.status === 'DECLINED')) {
+          out.push({
+            at: w.respondedAt,
+            type: w.status === 'ACCEPTED' ? 'WORK_ORDER_ACCEPTED' : 'WORK_ORDER_DECLINED',
+            // AKTÖREN ÄR INTE EN ANVÄNDARE. Hantverkaren har ingen inloggning
+            // och finns inte i `User`; att stämpla svaret med hyresvärden som
+            // skickade ordern hade varit ett obelagt påstående om vem som
+            // handlade. ACTOR_UNKNOWN är det ärliga värdet — samma val som
+            // MAINTENANCE_COMPLETED gör.
+            actor: ACTOR_UNKNOWN,
+            subject,
+            description:
+              w.status === 'ACCEPTED'
+                ? `${w.contractor.name} tog arbetsordern`
+                : `${w.contractor.name} avböjde arbetsordern`,
+            amount: null,
+            severity: w.status === 'DECLINED' ? 'WARNING' : 'INFO',
+            source: { table: 'ContractorWorkOrder', id: w.id },
+          })
+        }
       }
       if (r.completedAt) {
         out.push({

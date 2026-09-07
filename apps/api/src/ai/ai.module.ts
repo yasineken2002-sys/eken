@@ -23,6 +23,7 @@ import { UnitsModule } from '../units/units.module'
 import { AccountingModule } from '../accounting/accounting.module'
 import { MailModule } from '../mail/mail.module'
 import { MaintenanceModule } from '../maintenance/maintenance.module'
+import { ContractorsModule } from '../contractors/contractors.module'
 import { AviseringModule } from '../avisering/avisering.module'
 import { InspectionsModule } from '../inspections/inspections.module'
 import { MaintenancePlanModule } from '../maintenance-plan/maintenance-plan.module'
@@ -62,6 +63,7 @@ import { AiAssignmentsService } from './assignments/ai-assignments.service'
     AccountingModule,
     MailModule,
     MaintenanceModule,
+    ContractorsModule,
     AviseringModule,
     InspectionsModule,
     MaintenancePlanModule,

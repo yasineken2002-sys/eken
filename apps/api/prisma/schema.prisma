@@ -890,6 +890,7 @@ model Organization {
   rentIncreases             RentIncrease[]
   customers                 Customer[]
   contractors               Contractor[]
+  contractorWorkOrders      ContractorWorkOrder[]
   closedPeriods             ClosedAccountingPeriod[]
   periodEvents              AccountingPeriodEvent[]
   fiscalYearCloses          FiscalYearClose[]
@@ -992,6 +993,7 @@ model User {
   sentMessages             SentMessage[]
   tenantAnonymizationLogs  TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
   contractorAssignments    MaintenanceTicket[]      @relation("MaintenanceAssignedBy")
+  workOrdersSent           ContractorWorkOrder[]    @relation("WorkOrderSentBy")
   impersonationLogs        ImpersonationLog[]       @relation("ImpersonationTargetUser")
   aiAssignmentsAssigned    AiAssignment[]           @relation("AiAssignmentAssignee")
   aiAssignmentsDecided     AiAssignment[]           @relation("AiAssignmentDecider")
@@ -4532,11 +4534,93 @@ model Contractor {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   maintenanceTickets MaintenanceTicket[]
+  workOrders         ContractorWorkOrder[]
 
   @@index([organizationId])
   @@index([organizationId, isActive])
+}
+
+enum WorkOrderStatus {
+  /// Arbetsordern är skickad, hantverkaren har inte svarat.
+  SENT
+  /// Hantverkaren tryckte "Jag tar det", med en föreslagen tid.
+  ACCEPTED
+  /// Hantverkaren tryckte "Jag kan inte".
+  DECLINED
+  /// Hyresvärden avbokade efter att ordern skickats.
+  CANCELLED
+}
+
+/// EN ARBETSORDER — det utåtriktade steget i etapp 10.
+///
+/// Skild från tilldelningen med flit. `MaintenanceTicket.assignedContractorId`
+/// säger VEM som ska göra jobbet; den här raden säger att någon FAKTISKT
+/// KONTAKTATS, när, av vem, och vad hen svarade. Att slå ihop dem hade gjort en
+/// intern anteckning omöjlig att skilja från ett mejl som lämnat huset — och
+/// det är exakt den skillnad som avgör om något går att ta tillbaka.
+///
+/// Flera ordrar per ärende är tillåtet: en hantverkare tackar nej, nästa
+/// tillfrågas. Historiken ska visa båda.
+///
+/// ── SVARSLÄNKEN ────────────────────────────────────────────────────────────
+///
+/// `responseTokenHash` är sha256 av ett 32-bytes slumpat token — RÅVÄRDET
+/// LAGRAS ALDRIG, samma form som `TenantAuthService`s aktiverings- och
+/// återställningstoken. En databasdump ger alltså inga användbara länkar.
+/// (`TenantMagicLink.token` ligger i klartext; den formen upprepas inte här.)
+///
+/// `respondedAt` gör länken ENGÅNGS: en order som redan besvarats avvisar nästa
+/// försök. `expiresAt` gör den kortlivad. Båda krävs — en engångslänk utan
+/// livslängd är giltig för alltid tills någon råkar klicka, och en kortlivad
+/// länk utan engångsspärr kan spelas om av vem som helst som ser mejlet.
+///
+/// Länken bär INGEN behörighet utöver att svara på just den här ordern. Den är
+/// inte en session, den loggar inte in någon, och den kan inte läsa ärendet.
+model ContractorWorkOrder {
+  id             String @id @default(uuid())
+  organizationId String
+  ticketId       String
+  contractorId   String
+
+  status WorkOrderStatus @default(SENT)
+
+  /// Vad som FAKTISKT skickades, som ögonblicksbild. Ändras ärendets titel
+  /// efteråt ska ordern fortfarande visa vad hantverkaren fick se — annars är
+  /// den inte längre ett bevis på vad som beställdes.
+  subject     String
+  bodyText    String @db.Text
+  sentToEmail String
+
+  /// Delades hyresgästens kontaktuppgift, och vilken? NULL betyder att ingen
+  /// delades. Fältet finns för att frågan ska gå att BESVARA i efterhand —
+  /// se `work-order.service.ts` om samtyckesgrinden.
+  sharedTenantContact String?
+
+  responseTokenHash String    @unique
+  expiresAt         DateTime
+  respondedAt       DateTime?
+
+  /// Hantverkarens föreslagna tid vid ACCEPTED. Ett förslag, inte en bokning:
+  /// hyresvärden ser den och kan höra av sig.
+  proposedAt   DateTime?
+  /// Fritext från hantverkaren vid svaret, valfri och maxad i tjänsten.
+  responseNote String?   @db.Text
+
+  sentByUserId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ticket       MaintenanceTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  contractor   Contractor        @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  sentBy       User?             @relation("WorkOrderSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([ticketId])
+  @@index([contractorId])
+  @@index([responseTokenHash])
 }
 
 // ─── Maintenance (Underhåll) ──────────────────────────────────────────────────
@@ -4606,6 +4690,7 @@ model MaintenanceTicket {
 
   images          MaintenanceImage[]
   comments        MaintenanceComment[]
+  workOrders      ContractorWorkOrder[]
   equipmentEvents UnitEquipmentEvent[]
 
   createdAt DateTime @default(now())

@@ -655,6 +655,57 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
 
   // Ren update med absoluta värden — ingen append, ingen increment. Samma
   // indata ger samma tillstånd.
+  /**
+   * ── VARFÖR IRREVERSIBEL OCH INTE `VÄG` TILL AVBOKNINGEN ──────────────────
+   *
+   * Uppdraget som beställde verktyget sa `supportsUndo = avboknings-mejl`. Det
+   * avvisades, och skälet är kodbasens egen precedens: `prepare_contract_signing`
+   * är MOT_TREDJE_PART och klassad IRREVERSIBEL med motiveringen att systemet
+   * kan makulera sin EGEN begäran men inte det mottagaren redan har i sin
+   * inkorg. En arbetsorder har exakt samma form.
+   *
+   * `VÄG` betyder i den här filen att en funktion REVERSERAR effekten
+   * (`cancelNotice` tar bort en avi ur databasen). `WorkOrderService.cancel`
+   * gör något annat: den skickar ETT NYTT MEJL som säger att jobbet är av.
+   * Det är en KOMPENSERANDE handling — hantverkaren har redan läst den första —
+   * och att kalla den en ångring hade gjort två snarlika verktyg motstridigt
+   * klassade utan att något blivit rött.
+   *
+   * `policyBeslutad: false` med flit: verktyget är nytt, och fältets docblock
+   * säger att ett nytt verktyg börjar där tills principen prövats mot vad det
+   * faktiskt skriver. Det tvingar `KRÄVER_MÄNNISKA`, vilket är rätt läge.
+   */
+  book_contractor: {
+    // DEDUPLICERBAR, inte IDEMPOTENT: effekten är ENVÄGS — ett skickat mejl
+    // går inte att skicka "samma" en gång till — men en post KAN konsulteras
+    // före utförandet, och görs det: `send` avvisar när en öppen (SENT) order
+    // redan finns för (ärende, hantverkare). Spärren är alltså ett
+    // TILLSTÅNDSVILLKOR, inte en innehållsnyckel, och därför STATUSGRIND nedan.
+    effectIdempotency: 'DEDUPLICERBAR',
+    idempotencyUnit: 'ANROP',
+    traceDurability: { plats: 'DATABAS_TILLSTÅND', livslangd: DB_RAD },
+    externalHandle: 'I_SVARET',
+    traceIntegrity: 'BÄST_MÖJLIGA',
+    resumptionPolicy: 'KRÄVER_MÄNNISKA',
+    policyBeslutad: false,
+    mekanismer: [
+      {
+        typ: 'STATUSGRIND',
+        fil: 'apps/api/src/contractors/work-order.service.ts',
+        symbol: 'send',
+      },
+    ],
+    agentAllowlist: false,
+    authorityScope: 'MOT_TREDJE_PART',
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl:
+        'Arbetsordern är mejlad till hantverkaren, som är en utomstående utan konto i systemet. ' +
+        'WorkOrderService.cancel stänger svarslänken och skickar ett avbokningsmejl — en ' +
+        'KOMPENSERANDE handling, inte en ångring: den första ordern är redan läst.',
+    },
+  },
+
   update_tenant: {
     effectIdempotency: 'IDEMPOTENT',
     idempotencyUnit: 'ANROP',

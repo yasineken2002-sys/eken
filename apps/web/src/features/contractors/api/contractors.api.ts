@@ -1,9 +1,12 @@
 import { api, get, post, patch } from '@/lib/api'
 import type {
   AssignContractorInput,
+  CancelWorkOrderInput,
   CreateContractorInput,
   MaintenanceCategoryValue,
+  SendWorkOrderInput,
   UpdateContractorInput,
+  WorkOrderResponseInput,
 } from '@eken/shared'
 
 /**
@@ -68,4 +71,37 @@ export function assignContractor(ticketId: string, input: AssignContractorInput)
     `/maintenance/${ticketId}/assign`,
     input,
   )
+}
+
+// ─── Arbetsorder (PR 2) ──────────────────────────────────────────────────────
+
+export interface WorkOrder {
+  id: string
+  ticketId: string
+  contractorId: string
+  status: 'SENT' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED'
+  subject: string
+  sentToEmail: string
+  sharedTenantContact: string | null
+  expiresAt: string
+  respondedAt: string | null
+  proposedAt: string | null
+  responseNote: string | null
+  createdAt: string
+}
+
+export function sendWorkOrder(ticketId: string, input: SendWorkOrderInput): Promise<WorkOrder> {
+  return post<WorkOrder>(`/maintenance/${ticketId}/work-orders`, input)
+}
+
+export function cancelWorkOrder(id: string, input: CancelWorkOrderInput): Promise<WorkOrder> {
+  return post<WorkOrder>(`/work-orders/${id}/cancel`, input)
+}
+
+/**
+ * Hantverkarens svar. PUBLIK — anropas från svarssidan utan inloggning, och
+ * token i sökvägen är den enda behörigheten.
+ */
+export function respondToWorkOrder(token: string, input: WorkOrderResponseInput) {
+  return post<{ status: string }>(`/work-orders/${token}/respond`, input)
 }

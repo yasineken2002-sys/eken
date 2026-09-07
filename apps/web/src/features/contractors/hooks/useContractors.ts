@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   AssignContractorInput,
+  CancelWorkOrderInput,
   CreateContractorInput,
+  SendWorkOrderInput,
   UpdateContractorInput,
 } from '@eken/shared'
 
 import {
   assignContractor,
+  cancelWorkOrder,
   createContractor,
+  sendWorkOrder,
   deleteContractor,
   fetchContractor,
   fetchContractors,
@@ -78,6 +82,32 @@ export function useAssignContractor() {
   return useMutation({
     mutationFn: ({ ticketId, input }: { ticketId: string; input: AssignContractorInput }) =>
       assignContractor(ticketId, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['maintenance'] })
+      void qc.invalidateQueries({ queryKey: ['maintenance-ticket'] })
+    },
+  })
+}
+
+// ─── Arbetsorder (PR 2) ──────────────────────────────────────────────────────
+
+export function useSendWorkOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ticketId, input }: { ticketId: string; input: SendWorkOrderInput }) =>
+      sendWorkOrder(ticketId, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['maintenance'] })
+      void qc.invalidateQueries({ queryKey: ['maintenance-ticket'] })
+    },
+  })
+}
+
+export function useCancelWorkOrder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: CancelWorkOrderInput }) =>
+      cancelWorkOrder(id, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['maintenance'] })
       void qc.invalidateQueries({ queryKey: ['maintenance-ticket'] })

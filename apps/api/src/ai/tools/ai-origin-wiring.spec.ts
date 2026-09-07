@@ -49,6 +49,8 @@ describe('AI-gränsen kopplar in ursprungskontexten', () => {
       noop,
       noop,
       noop,
+
+      noop,
     )
 
     let seen: ReturnType<typeof currentAiOrigin>
