@@ -56,6 +56,7 @@ import { byggUtgiftsrader, byggVerifikatrader, kontouppslagAv } from '../../acco
 import { assertMayActOnCollections } from '../../common/authz/collections-authz'
 import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
+import { WorkOrderService } from '../../contractors/work-order.service'
 import { AviseringService } from '../../avisering/avisering.service'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
@@ -387,6 +388,11 @@ export class ToolExecutorService {
     // en parameter insatt i mitten hade tyst förskjutit alla efterföljande
     // beroenden hos dem.
     private readonly accountingPeriods: AccountingPeriodService,
+    // NYA BEROENDEN LÄGGS SIST. Ett femtontal specar bygger tjänsten
+    // POSITIONELLT med attrapper; en insättning mitt i listan hade tyst
+    // förskjutit alla efterföljande argument hos dem, och felet hade synts
+    // som ett obegripligt attrappfel långt från orsaken.
+    private readonly workOrders: WorkOrderService,
   ) {}
 
   /**
@@ -3562,6 +3568,31 @@ export class ToolExecutorService {
             success: true,
             data: ticket,
             message: `Ärende ${ticket.ticketNumber} skapat!\n${ticket.title}\nFastighet: ${toolInput.propertyName as string}${toolInput.unitName ? ` / ${toolInput.unitName as string}` : ''}`,
+          }
+        }
+
+        case 'book_contractor': {
+          // UTÅTRIKTAT. Verktyget står i ACTION_TOOLS, så det når hit först
+          // efter hyresvärdens bekräftelse, och `agentAllowlist: false` gör att
+          // ingen delegation kan kringgå den. Tjänsten gör alla kontroller —
+          // org-scopning, aktiv hantverkare, e-post, öppen order — och kastar
+          // med begriplig text; exekveraren lägger inget ovanpå.
+          const bokning = await this.workOrders.send(
+            toolInput.ticketId as string,
+            {
+              contractorId: toolInput.contractorId as string,
+              ...(toolInput.meddelande ? { meddelande: toolInput.meddelande as string } : {}),
+              ...(toolInput.delaHyresgastKontakt === true ? { delaHyresgastKontakt: true } : {}),
+            },
+            organizationId,
+            krävMänskligtSubjekt(userId, toolName),
+          )
+          return {
+            success: true,
+            data: bokning,
+            message:
+              `Arbetsorder skickad till ${toolInput.contractorName as string} för ärende ` +
+              `${toolInput.ticketNumber as string}. Hantverkaren svarar via länken i mejlet.`,
           }
         }
 

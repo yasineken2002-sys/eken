@@ -129,7 +129,22 @@ function parseControllers(srcDir: string): {
   const ungated: UngatedEndpoint[] = []
   for (const file of walkControllers(srcDir)) {
     const src = readFileSync(file, 'utf8')
-    const base = /@Controller\(\s*['"`]([^'"`]*)['"`]/.exec(src)?.[1] ?? ''
+    // ── PREFIXET ÄR KLASSNIVÅ, INTE FILNIVÅ ─────────────────────────────
+    //
+    // Raden läste tidigare den FÖRSTA `@Controller(...)` i filen och använde
+    // den för varje rutt i den. En fil med flera controllers fick då fel
+    // sökväg på alla utom den första — tyst, och i den fil som ÄR
+    // behörighetsytans protokoll.
+    //
+    // Uppmätt: `tenant-portal.controller.ts` har tre (`tenant-portal`,
+    // `tenant-portal/admin`, `portal`), och golden registrerade admin-rutterna
+    // som `/tenant-portal/invitations` — en sökväg som inte finns — medan
+    // hyresgästportalens egna `/portal/*`-rutter aldrig syntes under sitt
+    // riktiga prefix. Etapp 10 lade till en tredje sådan fil och gjorde felet
+    // synligt: en PUBLIK, oautentiserad endpoint stod under fel sökväg.
+    //
+    // Prefixet sätts nu där klassens övriga tillstånd sätts, vid `export class`.
+    let base = ''
     let classRoles = ''
     let classGuards = ''
     let classIsPublic = false
@@ -159,6 +174,12 @@ function parseControllers(srcDir: string): {
     for (const line of src.split('\n')) {
       const t = line.trim()
       if (/^export class /.test(t)) {
+        const prefix = pending
+          .map((d) => /^@Controller\(\s*['"`]([^'"`]*)['"`]/.exec(d)?.[1])
+          .find((x) => x !== undefined)
+        // En klass UTAN @Controller ärver inte föregående klass prefix — den
+        // är ingen controller, och dess metoder är inga rutter.
+        base = prefix ?? ''
         classRoles = rolesOf(pending)
         classGuards = guardsOf(pending)
         classIsPublic = pending.some((d) => /^@Public\(/.test(d))

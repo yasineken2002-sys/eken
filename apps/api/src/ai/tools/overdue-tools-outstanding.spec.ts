@@ -58,6 +58,8 @@ function makeExecutor(prisma: unknown) {
     noop,
     noop,
     noop,
+
+    noop,
   )
 }
 

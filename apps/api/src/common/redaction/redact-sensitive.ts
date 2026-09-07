@@ -105,6 +105,7 @@ const MASK = {
   epost: '[e-post]',
   personnummer: '[personnummer]',
   ocr: '[ocr]',
+  token: '[token]',
 } as const
 
 /**
@@ -135,6 +136,37 @@ const PERSONNUMMER = /(?<!\d)(\d{8}|\d{6})[-+]?(\d{4})(?!\d)/g
 const SIFFERSEKVENS = /(?<!\d)\d{8,25}(?!\d)/g
 
 /**
+ * HÖGENTROPI-TOKEN I HEX — 32 bytes som 64 tecken.
+ *
+ * Formen som `crypto.randomBytes(32).toString('hex')` ger, och som kodbasen
+ * använder för varje bärartoken utan konto bakom sig: aktiveringslänk,
+ * lösenordsåterställning, och sedan etapp 10 arbetsorderns svarslänk.
+ *
+ * ── VARFÖR ETT GENERELLT MÖNSTER OCH INTE EN REGEL PER RUTT ────────────────
+ *
+ * Arbetsordern lägger sitt token i URL:ens PATH (`/arbetsorder/<token>`), till
+ * skillnad från de äldre länkarna som bär det som query-parameter. Skillnaden
+ * spelar roll: `GlobalExceptionFilter` sätter `scope.setTag('path', request.url)`
+ * vid varje 5xx, och en tag är en förstklassig, sökbar sträng i Sentrys UI.
+ *
+ * En punktfix på den rutten hade lagat det kända fallet och lämnat nästa. Det
+ * här mönstret gäller varje 64-teckens hexsekvens som når maskeringen, alltså
+ * också token i flöden som inte finns än.
+ *
+ * ── VARFÖR EXAKT 64, INTE `{32,}` ──────────────────────────────────────────
+ *
+ * En sha256-HASH är också 64 hex — och den är inte hemlig, den är poängen med
+ * att inte lagra råvärdet. Att maskera den är ofarligt. Ett bredare spann hade
+ * däremot börjat träffa commit-shas (40), UUID-delar och färgkoder, och gjort
+ * felmeddelanden obrukbara utan att skydda mer.
+ *
+ * Gränserna är LOOKAROUND mot hex-tecken, av samma skäl som personnumret: en
+ * ordgräns hade kunnat träffa mitt i en längre sekvens och maskerat en del av
+ * den, vilket ser ut som en maskering men lämnar resten.
+ */
+const HEXTOKEN = /(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])/g
+
+/**
  * Maskerar personuppgifter i fritext.
  *
  * ORDNINGEN BÄR: personnummer före den generiska siffersekvensen, annars
@@ -146,6 +178,7 @@ export function maskSensitiveText(text: string): string {
   let ut = text.replace(EPOST, MASK.epost)
   ut = ut.replace(PERSONNUMMER, MASK.personnummer)
   ut = ut.replace(SIFFERSEKVENS, (m) => (isValidOcrNumber(m) ? MASK.ocr : m))
+  ut = ut.replace(HEXTOKEN, MASK.token)
   return ut
 }
 

@@ -44,6 +44,9 @@ import {
   CreateSigningRequestSchema,
   InviteTenantsSchema,
   CreateContractorSchema,
+  SendWorkOrderSchema,
+  WorkOrderResponseSchema,
+  CancelWorkOrderSchema,
   UpdateContractorSchema,
   AssignContractorSchema,
   TenantLoginSchema,
@@ -112,6 +115,11 @@ import {
   CreateContractorDto,
   UpdateContractorDto,
 } from '../../contractors/dto/contractor.dto'
+import {
+  CancelWorkOrderDto,
+  SendWorkOrderDto,
+  WorkOrderResponseDto,
+} from '../../contractors/dto/work-order.dto'
 import {
   AddTenantCommentDto,
   SubmitMaintenanceDto,
@@ -1027,5 +1035,34 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { contractorId: '11111111-2222-4333-8444-555555555555' },
     ogiltig: { contractorId: 'inte-ett-uuid' },
     ogiltigVarfor: 'contractorId måste vara ett uuid eller null',
+  },
+  // ─── ARBETSORDER (etapp 10, PR 2) ─────────────────────────────────────────
+  {
+    endpoint: 'POST /maintenance/:id/work-orders',
+    inputTyp: 'SendWorkOrderInput',
+    schema: SendWorkOrderSchema,
+    dto: SendWorkOrderDto,
+    giltig: { contractorId: '11111111-2222-4333-8444-555555555555', delaHyresgastKontakt: false },
+    ogiltig: { contractorId: '11111111-2222-4333-8444-555555555555', tenantPhone: '070-1234567' },
+    ogiltigVarfor:
+      'okänd nyckel — klienten får inte skicka med en kontaktuppgift, servern härleder den',
+  },
+  {
+    endpoint: 'POST /work-orders/:token/respond',
+    inputTyp: 'WorkOrderResponseInput',
+    schema: WorkOrderResponseSchema,
+    dto: WorkOrderResponseDto,
+    giltig: { accepterar: true, proposedAt: '2026-09-20' },
+    ogiltig: { accepterar: true, proposedAt: 'i nasta vecka' },
+    ogiltigVarfor: 'tiden måste vara ett datum, inte fritext',
+  },
+  {
+    endpoint: 'POST /work-orders/:id/cancel',
+    inputTyp: 'CancelWorkOrderInput',
+    schema: CancelWorkOrderSchema,
+    dto: CancelWorkOrderDto,
+    giltig: { skal: 'Hyresgästen löste det själv' },
+    ogiltig: { skal: '' },
+    ogiltigVarfor: 'ett angivet skäl får inte vara tomt',
   },
 ]

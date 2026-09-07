@@ -144,6 +144,8 @@ export const INÅT = {
   AiAuditService: 'Skriver revisionsrader i databasen.',
   InvoicesService: 'Fakturadomänen. Mest CRUD — men `sendInvoiceEmail` når kön, vilket räckviddsregeln ser på metodnivå.',
   PdfService: 'Lokal Puppeteer-rendering. Producerar bytes, riktar sig inte mot någon.',
+  WorkOrderService:
+    'Arbetsordrar till hantverkare. Injicerar MailService och når därmed MAIL — men räckviddsregeln ser på METODNIVÅ, och det är `send`/`cancel` som mejlar. Klassad här därför att tjänsten i sig är domänlogik; sänkan syns i manifestet per verktyg.',
   TenantsService: 'CRUD på hyresgäster.',
   LeasesService: 'CRUD på avtal.',
   RentIncreasesService: 'CRUD på hyreshöjningar.',

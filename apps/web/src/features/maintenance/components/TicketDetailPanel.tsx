@@ -221,8 +221,10 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
         {/* Tilldela hantverkare (etapp 10) */}
         <AssignContractorCard
           ticketId={ticket.id}
+          ticketNumber={ticket.ticketNumber}
           category={ticket.category}
           assigned={ticket.assignedContractor ?? null}
+          tenantHasContact={Boolean(ticket.tenant?.email)}
         />
 
         {/* Debitera hyresgäst & bokför (teknisk förvaltning, Spår A) */}

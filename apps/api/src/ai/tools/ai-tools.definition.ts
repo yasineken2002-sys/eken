@@ -580,6 +580,36 @@ export const TOOLS: Anthropic.Tool[] = [
   },
 
   {
+    // ── UTÅTRIKTAT: mejlet lämnar huset ──────────────────────────────────
+    //
+    // Verktyget står i ACTION_TOOLS (kräver bekräftelse) och har
+    // `agentAllowlist: false` i EFFECT_DECLARATIONS — en agent får aldrig boka
+    // åt någon, ens med delegation. Människan trycker; verktyget finns för att
+    // agenten ska kunna FÖRESLÅ bokningen i inkorgen.
+    name: 'book_contractor',
+    description:
+      'Skickar en arbetsorder till en hantverkare i registret för ett underhållsärende. ' +
+      'KRÄVER bekräftelse. Mejlet lämnar organisationen och kan inte tas tillbaka.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticketId: { type: 'string' },
+        ticketNumber: { type: 'string' },
+        contractorId: { type: 'string' },
+        contractorName: { type: 'string' },
+        meddelande: { type: 'string', description: 'Valfri text till hantverkaren' },
+        delaHyresgastKontakt: {
+          type: 'boolean',
+          description:
+            'Dela hyresgästens kontaktuppgift med hantverkaren. Default falskt. ' +
+            'Hyresvärdens val, inte hyresgästens samtycke.',
+        },
+      },
+      required: ['ticketId', 'ticketNumber', 'contractorId', 'contractorName'],
+    },
+  },
+
+  {
     name: 'update_maintenance_status',
     description: 'Uppdaterar status på ett underhållsärende. KRÄVER bekräftelse.',
     input_schema: {
@@ -1073,6 +1103,7 @@ export const TOOLS: Anthropic.Tool[] = [
 }
 
 export const ACTION_TOOLS = new Set([
+  'book_contractor',
   'create_maintenance_ticket',
   'update_maintenance_status',
   'create_invoice',
@@ -1131,6 +1162,7 @@ export const ACTION_TOOLS = new Set([
  * Kvitteringsfilen är därför tom, och det är ett resultat — inte en lucka.
  */
 export const EFFECT_PRODUCING_TOOLS = new Set([
+  'book_contractor',
   'create_maintenance_ticket',
   'update_maintenance_status',
   'create_invoice',

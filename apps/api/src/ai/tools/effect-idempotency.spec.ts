@@ -194,32 +194,44 @@ describe('effektklassificeringen', () => {
     // villkorades på en faktisk statusändring. Posten är AUTOMATISK och flyttar
     // därför raden om återupptagbara, 11 → 12.
     //
+    // 23/7 → 23/8 (2026-09-07, etapp 10): `book_contractor` tillkom som
+    // DEDUPLICERBAR. Effekten är ENVÄGS — ett mejl går inte att skicka "samma"
+    // en gång till — men en post konsulteras före utförandet: `send` avvisar när
+    // en öppen (SENT) order redan finns för (ärende, hantverkare). Posten är
+    // KRÄVER_MÄNNISKA och flyttar därför inte raden om återupptagbara.
+    //
     // Talen rör sig i takt med att nycklar byggs, och det är meningen. Raden
     // finns för att varje steg ska vara ett beslut — inte för att talet ska
     // vara stilla.
-    it('23 IDEMPOTENT, 7 DEDUPLICERBAR, 0 OKÄND', () => {
+    it('23 IDEMPOTENT, 8 DEDUPLICERBAR, 0 OKÄND', () => {
       const c = buildEffectCatalog()
       const antal = (k: string) => c.filter((e) => e.effectIdempotency === k).length
       expect({
         idempotent: antal('IDEMPOTENT'),
         deduplicerbar: antal('DEDUPLICERBAR'),
         okand: antal('OKÄND'),
-      }).toEqual({ idempotent: 23, deduplicerbar: 7, okand: 0 })
+      }).toEqual({ idempotent: 23, deduplicerbar: 8, okand: 0 })
     })
 
-    it('30 av 30 poster är policybeslutade — inga luckor kvar', () => {
+    it('31 av 31 poster är policybeslutade — inga luckor kvar', () => {
       // Fältets syfte är att en LUCKA ska synas. Tre poster stod obeslutade en
       // runda (unmatch_transaction, generate_lease_contract och
       // send_overdue_reminders) och är nu avgjorda; skälen står vid posterna.
       //
-      // Raden är skriven som en TOM MÄNGD och inte som talet 30 med flit: ett
+      // Raden är skriven som en TOM MÄNGD och inte som talet med flit: ett
       // nytt verktyg med policyBeslutad: false fäller den här, medan en
       // längdjämförelse hade blivit grön så fort någon lade till ännu ett.
+      //
+      // 30 → 31 (2026-09-07): `book_contractor`. Den stod på `false` en runda
+      // under bygget, och raden gjorde exakt sitt jobb — den tvingade fram
+      // frågan om beslutet var FATTAT eller bara uppskjutet. Det var fattat:
+      // en omkörning efter en krasch skulle skicka en andra arbetsorder, och
+      // mottagaren kan inte skilja den från den första. Skälet står vid posten.
       const obeslutade = buildEffectCatalog()
         .filter((e) => !e.policyBeslutad)
         .map((e) => e.name)
       expect(obeslutade).toEqual([])
-      expect(buildEffectCatalog()).toHaveLength(30)
+      expect(buildEffectCatalog()).toHaveLength(31)
     })
 
     it('exakt 12 verktyg är återupptagbara — alla med ett spår som finns', () => {
@@ -256,7 +268,10 @@ describe('effektklassificeringen', () => {
       ])
     })
 
-    it('traceIntegrity: 2 TRANSAKTIONELL, 19 FÖRE_EFFEKTEN, 9 BÄST_MÖJLIGA', () => {
+    // 9 → 10 BÄST_MÖJLIGA (2026-09-07): `book_contractor`. Spåret skrivs efter
+    // effekten och kan tappas om processen dör emellan — samma läge som de
+    // övriga utåtriktade posterna.
+    it('traceIntegrity: 2 TRANSAKTIONELL, 19 FÖRE_EFFEKTEN, 10 BÄST_MÖJLIGA', () => {
       // Efter steg 3b. Talen är MÄTTA, inte valda:
       //   • 9 BÄST_MÖJLIGA = klass B, verktygen med en extern effekt utanför
       //     (var 7 till 2026-09-05, då vakt 7 fann att `transition_lease_status`
@@ -275,10 +290,12 @@ describe('effektklassificeringen', () => {
         foreEffekten: antal('FÖRE_EFFEKTEN'),
         bastMojliga: antal('BÄST_MÖJLIGA'),
         okand: antal('OKÄND'),
-      }).toEqual({ transaktionell: 2, foreEffekten: 19, bastMojliga: 9, okand: 0 })
+      }).toEqual({ transaktionell: 2, foreEffekten: 19, bastMojliga: 10, okand: 0 })
     })
 
-    it('externalHandle: 5 FÖRE_DISPATCH, 2 I_SVARET, 2 INGET, 21 EJ_TILLÄMPLIG', () => {
+    // 2 → 3 I_SVARET (2026-09-07): `book_contractor` returnerar orderns id, som
+    // är handtaget mot den skickade arbetsordern.
+    it('externalHandle: 5 FÖRE_DISPATCH, 3 I_SVARET, 2 INGET, 21 EJ_TILLÄMPLIG', () => {
       // Mätt på metodnivå. Talen står här så att en ändring blir ett medvetet
       // beslut och inte en glidning.
       const c = buildEffectCatalog()
@@ -288,7 +305,7 @@ describe('effektklassificeringen', () => {
         iSvaret: antal('I_SVARET'),
         inget: antal('INGET'),
         ejTillämplig: antal('EJ_TILLÄMPLIG'),
-      }).toEqual({ föreDispatch: 5, iSvaret: 2, inget: 2, ejTillämplig: 21 })
+      }).toEqual({ föreDispatch: 5, iSvaret: 3, inget: 2, ejTillämplig: 21 })
     })
 
     it('varje verktyg UTAN handtag står KRÄVER_MÄNNISKA', () => {
