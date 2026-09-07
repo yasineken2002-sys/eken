@@ -6819,13 +6819,6 @@ model AiDelegation {
   @@index([expiresAt])
 }
 
-/// APPEND-ONLY. Delegationens livshistoria — och sanningskällan för dess status.
-///
-/// Återkallelse är en HÄNDELSE, inte en radering: planen kräver att historiken
-/// kan bevisa att delegationen existerade. En raderad rad kan inte svara på
-/// "hade agenten rätt när den gjorde detta i mars".
-///
-/// Samma triggerskydd som de tio andra append-only-tabellerna (#585).
 /// Vad som hänt med ett uppdrag EFTER att det utförts.
 enum AiAssignmentEventType {
   /// En människa har begärt att den utförda åtgärden backas.
@@ -6855,7 +6848,19 @@ model AiAssignmentEvent {
   /// `actorKind` är radens FÖRFATTARE (stämplad av extensionen), `handlingAv`
   /// är den som tillskrivs handlingen raden beskriver. En ångra-begäran är
   /// alltid en människas.
-  handlingAv  ActorKind
+  handlingAv ActorKind
+
+  /// `User.id`, som en NAKEN sträng utan främmande nyckel — och det är ett val,
+  /// inte ett förbiseende.
+  ///
+  /// En FK hade behövt `ON DELETE SET NULL` (raden får inte försvinna med den
+  /// som skrev den), och det är en UPDATE som databasen gör utan att koden vet
+  /// om det. Append-only-triggern nedan är på SATSNIVÅ, och en sådan kaskad
+  /// hade fällt organisationsraderingen — precis det som tvingade fram radnivå
+  /// för `AccountingPeriodEvent` och `TenantAnonymizationLog` i #585.
+  ///
+  /// Priset är att kolumnen kan peka på en raderad användare. Det är rätt pris
+  /// här: spåret ska överleva den som skrev det.
   actorUserId String?
 
   /// Hyresvärdens egna ord, när hen skrev några. Skälet är minnesmat.
@@ -6868,6 +6873,13 @@ model AiAssignmentEvent {
   @@index([assignmentId, createdAt])
 }
 
+/// APPEND-ONLY. Delegationens livshistoria — och sanningskällan för dess status.
+///
+/// Återkallelse är en HÄNDELSE, inte en radering: planen kräver att historiken
+/// kan bevisa att delegationen existerade. En raderad rad kan inte svara på
+/// "hade agenten rätt när den gjorde detta i mars".
+///
+/// Samma triggerskydd som de tio andra append-only-tabellerna (#585).
 model AiDelegationEvent {
   id           String                @id @default(uuid())
   delegationId String
