@@ -294,14 +294,60 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 > är ingen felanmälan — den är en följdfråga. R3 lagade `k15` och kostade `k57`;
 > netto noll på det steget, och vinsten kom först när taket lades till.
 >
-> **k63 är inte längre en regelmiss men förtjänar en rad.** Ärendet är nätfiske i
-> felanmälningsformuläret, registrerat som HIGH. Det som räddar det i dag är att
-> agenten svarar INGEN och att taket och golvet inte lyfter något — men den
-> REGISTRERADE prioriteten är fritt vald av den som skriver, alltså av
-> angriparen. En deterministisk prioritet som ankras i ett angriparstyrt fält är
-> en känd svaghet, inte en lagad sådan.
+> **k63 är kvar, och raden om den var först FEL.** Ärendet är nätfiske i
+> felanmälningsformuläret, registrerat som HIGH. Här stod att den registrerade
+> prioriteten är "fritt vald av den som skriver". Ommätt: **portalformuläret kan
+> inte sätta prioritet alls** — `tenant-portal.service.ts` hårdkodar `'NORMAL'`.
+> Vägen som FINNS är hyresgäst-AI:n, där `create_maintenance_ticket` exponerar
+> `priority` som enum och executorn skriver värdet rakt in.
+>
+> **Och korpusen kan inte härda mot det.** k50 och k63 har samma form — kategori
+> OTHER, inget kategoriord, golv LOW — och motsatt facit (URGENT respektive LOW).
+> Facit belönar alltså att man litar på ett registrerat värde utan textstöd i det
+> ena fallet och bestraffar det i det andra. Två härdningar prövades och kostade
+> båda sex ärenden (50/54 → 44/54). Det är en gräns i särdragen, inte en lucka i
+> reglerna, och den står nu i `triage-rules.ts` så nästa person inte bygger om
+> den. Ska något göras hör det hemma uppströms.
 >
 > ### Vad de här talen inte säger
+>
+> ### AI-granskningen fann fem defekter som korpusen inte kunde se
+>
+> Ingen av dem ändrade talet — **50/54 före och efter** — och det är hela poängen:
+> ett mätvärde är ingen granskning.
+>
+> 1. **'är löst' betyder "is loose".** `löst` är neutrumformen av _lös_ lika
+>    mycket som participet av _lösa_, och i en felanmälan är den första
+>    betydelsen vanligast. Uppmätt: "Eluttaget i hallen är löst och gnistrar"
+>    (ELECTRICAL/NORMAL) sänktes till **LOW** — åt det farliga hållet, och taket
+>    släckte dessutom kategorigolvet. Frasen kräver nu subjektet: 'ärendet är
+>    löst'.
+> 2. **Läsytan ljög.** `golvHöjde` jämförde mot `bas`, som taket redan sänkt, så
+>    BÅDA flaggorna blev sanna — och texten sa "Prioriteten HÖJDES till HIGH …
+>    registrerades som URGENT" om en **sänkning**, och samma mening om ärenden
+>    där ingenting ändrades. Flaggorna jämför nu mot det registrerade värdet och
+>    är ömsesidigt uteslutande.
+> 3. **R4:s 'flera …'-fraser hade noll vittnen** och gav mätta falska URGENT på
+>    en namnskylt och en musikstörning. Strukna, kostnad 0/54. Kvar är
+>    'grannen …', som bär både grannen och likheten — men med ETT vittne, och det
+>    står nu utskrivet.
+> 4. **`\d{1,2}` läste svansen av ett tresiffrigt tal.** "100 grader ur kranen" →
+>    `'00'` → 0 < 18 → HIGH på skållhett vatten. Siffergruppen är ankrad, och
+>    ordformen `minus` fångas nu också.
+> 5. **`KATEGORIORD`-lånet vände felriktningen.** Frågeregeln blir TYST av en
+>    falsk träff; golvet HÖJER. `'lås' ⊂ 'blåser'` och `'rör' ⊂ 'rörigt'` gav
+>    NORMAL på fyra ofarliga meningar. Riskläsningen har nu egna längre former.
+>
+> Granskningen fällde också ett stale-påstående i filen (dubblettlogik finns sedan
+> #655) och rättade motiveringen till att prompten lämnas oförändrad: skälet är
+> **promptparitet** — riggen måste mäta samma prompt som körs skarpt — inte
+> "kontrollen", som bara gäller i riggen och inte i produktionen, där svaret
+> kastas.
+>
+> **En mätning granskningen föreslog är INTE gjord:** en körning utan de två
+> prioritetsavsnitten i prompten, för $0,28, som skulle visa om de ~110 in-token
+> kostar uppmärksamhet på kategori och åtgärd (båda 87 %, båda sämre än
+> prioriteten). Den är specificerad och obetald.
 >
 > **Reglerna är valda med korpusen framför sig, och det är överanpassning.**
 > Gränsen som dragits står i `triage-rules.ts`: ett ord får bara stå där om det
