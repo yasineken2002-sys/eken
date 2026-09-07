@@ -357,17 +357,34 @@ describe('triage-rules', () => {
     // DET SOM GÖR TAKET OFARLIGT: `högreAv` ligger sist, så ett nyckelord i
     // texten vinner alltid. Utan den här raden vore taket en väg att sänka ett
     // akut ärende genom att skriva "ingen brådska" i beskrivningen.
+    //
+    // ── DEN FÖRSTA FORMEN AV DET HÄR PROVET KUNDE INTE FALLA ───────────────
+    //
+    // Fixturen hade `registreradPrioritet: LOW`. Taket sänker till LOW, alltså
+    // gjorde det ingenting alls i just den fixturen — och provet mätte då att
+    // ett golv lyfter ett LOW, inte att taket hålls tillbaka. Uppmätt med en
+    // injektion som flyttade taket EFTER `högreAv`: korpusen föll från 50/54
+    // till 38/54 medan hela specen förblev GRÖN.
+    //
+    // Varje registrerad nivå ÖVER LOW prövas därför, så taket alltid har något
+    // att sänka och nyckelordet alltid har något att slå.
     it('når ALDRIG förbi ett nyckelord i texten', () => {
-      const ut = tillämpaRegler(
-        { atgärd: 'update_maintenance_status', kategori: 'PLUMBING' },
-        {
-          titel: 'ingen brådska',
-          beskrivning: 'det rinner vatten från elementet men ingen brådska',
-          registreradKategori: MaintenanceCategory.PLUMBING,
-          registreradPrioritet: MaintenancePriority.LOW,
-        },
-      )
-      expect(ut.prioritet).toBe(MaintenancePriority.URGENT)
+      const släppte: string[] = []
+      for (const registrerad of PRIORITETSORDNING) {
+        const ut = tillämpaRegler(
+          { atgärd: 'update_maintenance_status', kategori: 'PLUMBING' },
+          {
+            titel: 'ingen brådska',
+            beskrivning: 'det rinner vatten från elementet men ingen brådska',
+            registreradKategori: MaintenanceCategory.PLUMBING,
+            registreradPrioritet: registrerad,
+          },
+        )
+        if (ut.prioritet !== MaintenancePriority.URGENT) {
+          släppte.push(`${registrerad} → ${ut.prioritet}`)
+        }
+      }
+      expect(släppte).toEqual([])
     })
 
     // ── KANARIEFÅGEL FÖR TAKETS ORD ────────────────────────────────────────
