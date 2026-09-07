@@ -1711,6 +1711,37 @@ det säger VARFÖR ordningen var den — inte som en kvarvarande uppgift.
 Det är lärdomen av R5: regeln fungerade, mängden den prövade var tom. En vakt vars
 parameter defaultar till `[]` mäter ingenting och är grön för alltid.
 
+### Känd lucka: ingen ångerväg för en manuellt registrerad betalning
+
+Mätt 2026-09-07, funnet av bokförings-experten i granskningen av agent 2
+([Del 14b](#del-14b--förslag-agent-2-pengar-in)) och efterkontrollerat i källan.
+
+`mark_invoice_paid` deklarerade `supportsUndo: VÄG` mot
+`invoices.service.ts:update`. Symbolen finns — men metoden kastar
+`Endast utkast kan redigeras` för allt som inte är `DRAFT`, och en betald faktura
+är aldrig `DRAFT`. Den enda verkliga reverseringen,
+`reverseJournalEntryForPayment`, har sina enda anropare i `unmatchTransaction`,
+som kräver en `BankTransaction` — och en manuell betalning har ingen
+(`InvoicePayment.bankTransactionId` är `NULL` just för den vägen).
+
+**Det finns alltså ingen kodväg som backar en manuellt registrerad betalning.**
+Deklarationen är rättad till `IRREVERSIBEL` med skälet i klartext, så
+hyresvärden får veta det i stället för att skickas till en knapp som inte finns.
+
+**Att bygga ångervägen är INTE beställt här, och raden ska inte läsas som en
+uppgift.** Rättelsen i huvudboken är en ny verifikation, inte en radering — så
+"ångra" betyder i praktiken en motbokning som någon måste besluta om. Att bygga
+den mekaniskt vore en andra utförandeväg med samma behov av delegation, bevis
+och spår som den första (samma resonemang som i `undo-hint.ts`). Frågan hör
+därför hemma i [Del 15](#del-15--öppna-beslut), inte i en vakt.
+
+**Vad R4 inte kunde se, och varför det inte är ett vaktfel.** R4 frågar om
+symbolen står i den namngivna filen. Den kan inte fråga om symbolen är NÅBAR för
+det tillstånd verktyget lämnar efter sig — det vet bara databasen. Gränsen står
+numera utskriven i `check-tool-authority.mjs` med det här fallet som exempel.
+Tills ett prov mot riktig Postgres bär frågan är det enda som håller den en
+människa som läser deklarationen, och det är inte en betryggande ordning.
+
 ---
 
 ## Del 11 — Inkorgen, godkännanden och frågor

@@ -1426,7 +1426,40 @@ export const EFFECT_DECLARATIONS: Record<string, EffectDeclaration> = {
     mekanismer: [],
     agentAllowlist: false,
     authorityScope: 'MOT_HYRESGAST',
-    supportsUndo: { kind: 'VÄG', fil: 'invoices/invoices.service.ts', symbol: 'update' },
+    // ── IRREVERSIBEL, OCH DET STOD `VÄG` FRAM TILL 2026-09-07 ─────────────
+    //
+    // Fältet pekade på `invoices.service.ts:update`. Symbolen FINNS, så
+    // `check-tool-authority.mjs` R4 var grön — men metoden går inte att nå för
+    // det tillstånd verktyget lämnar efter sig:
+    //
+    //   invoices.service.ts:420–423   kastar `Endast utkast kan redigeras` för
+    //                                 allt som inte är DRAFT, och en betald
+    //                                 faktura är per definition inte DRAFT
+    //   reverseJournalEntryForPayment enda anroparna är i `unmatchTransaction`
+    //                                 (reconciliation.service.ts:2967, :2976),
+    //                                 som bara verkar på en BankTransaction —
+    //                                 och en manuell betalning har ingen
+    //                                 (`InvoicePayment.bankTransactionId` är
+    //                                 NULL just för den vägen)
+    //
+    // Det finns alltså ingen kodväg alls som backar en manuellt registrerad
+    // betalning. Funnet av bokförings-experten i granskningen av agent 2:s
+    // förslagstabell (#843, Del 14b) och efterkontrollerat i källan.
+    //
+    // GRÄNSEN R4 INTE KAN SE står i vaktens egen fil: den mäter att symbolen
+    // finns, inte att den är NÅBAR för verktygets tillstånd. Skärpningen till
+    // en nåbarhetskontroll är en beteendefråga och hör hemma i ett prov mot
+    // riktig Postgres — samma gräns vakten redan drar.
+    //
+    // Skälet nedan visas ORDAGRANT för hyresvärden (`undo-hint.ts`), så det är
+    // skrivet för hen och inte för en utvecklare.
+    supportsUndo: {
+      kind: 'IRREVERSIBEL',
+      skäl:
+        'en registrerad betalning har inget motverifikat, och fakturan går bara att ' +
+        'redigera medan den är ett utkast. Rättelsen är därför en NY verifikation under ' +
+        'Bokföring — huvudboken raderar inte, den korrigerar.',
+    },
   },
 }
 
