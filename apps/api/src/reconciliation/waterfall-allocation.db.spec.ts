@@ -244,7 +244,11 @@ medDb('vattenfallet mot riktig Postgres', () => {
     return f
   }
 
-  async function riggaTvaAvier(prefix: string, f: Fallfixtur): Promise<{ a: string; b: string }> {
+  async function riggaTvaAvier(
+    prefix: string,
+    f: Fallfixtur,
+    belopp: [number, number] = [AVI_A, AVI_B],
+  ): Promise<{ a: string; b: string }> {
     const skapa = async (
       suffix: string,
       status: 'OVERDUE' | 'SENT',
@@ -298,8 +302,8 @@ medDb('vattenfallet mot riktig Postgres', () => {
       return avi.id
     }
     return {
-      a: await skapa('A', 'OVERDUE', 1, '2026-01-27', AVI_A),
-      b: await skapa('B', 'SENT', 2, '2026-02-27', AVI_B),
+      a: await skapa('A', 'OVERDUE', 1, '2026-01-27', belopp[0]),
+      b: await skapa('B', 'SENT', 2, '2026-02-27', belopp[1]),
     }
   }
 
@@ -510,5 +514,39 @@ medDb('vattenfallet mot riktig Postgres', () => {
     expect(verifikat[0]!.lines.find((l) => l.account.number === 1510)?.credit?.toString()).toBe(
       '3000',
     )
+  })
+
+  it('REGRESSION — samma bankrad får inte betala två avier', async () => {
+    const f = await riggaFall('MAN', 5)
+    const { a, b } = await riggaTvaAvier('MAN', f, [9000, 9000])
+    const txId = await skapaTransaktion('9000', f.ocr)
+    const operator = await prisma.user.create({
+      data: {
+        organizationId: ORG,
+        email: `${KORNING}-operator@example.invalid`,
+        passwordHash: 'synthetic-test-only',
+        firstName: 'Test',
+        lastName: 'Operator',
+        role: 'OWNER',
+      },
+      select: { id: true },
+    })
+
+    await service.manualMatch(txId, { rentNoticeId: a }, ORG, operator.id)
+
+    await expect(
+      service.manualMatch(txId, { rentNoticeId: b }, ORG, operator.id),
+    ).rejects.toThrow()
+
+    const allocations = await allokeringar(txId)
+    expect(allocations).toEqual([{ avi: 'MAN-A', belopp: '9000', id: allocations[0]!.id }])
+    expect(await avistatus([a, b])).toEqual([
+      { avi: 'MAN-A', status: 'PAID', betalt: '9000' },
+      { avi: 'MAN-B', status: 'SENT', betalt: '0' },
+    ])
+    expect(await betalverifikat(allocations.map((row) => row.id))).toHaveLength(1)
+    await expect(
+      prisma.bankTransaction.findUniqueOrThrow({ where: { id: txId } }),
+    ).resolves.toMatchObject({ status: 'MATCHED', matchedRentNoticeId: a })
   })
 })

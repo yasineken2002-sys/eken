@@ -1581,6 +1581,10 @@ export class ReconciliationService {
     const tolerance = new Decimal('1.00')
 
     return this.prisma.$transaction(async (tx) => {
+      // Lås bankraden före avin. Det gör tillgängliga bankmedel och den nya
+      // allokeringen atomiska även när samma inbetalning matchas samtidigt.
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+
       // Rad-lås FÖRST: serialiserar samtidiga delbetalningar på samma avi.
       //
       // ⚠️ LÅSORDNINGEN ÄR EN SPÄRR, INTE BARA SERIALISERING (#296, #298).
@@ -1650,6 +1654,18 @@ export class ReconciliationService {
         if (remainingDep.lte(0)) return false
         // Deposition betalas i sin helhet (allt-eller-inget) — delbetalning ej meningsfull.
         if (transactionAmount.minus(remainingDep).abs().gt(tolerance)) return false
+
+        const priorBankAllocations = await tx.rentNoticePayment.findMany({
+          where: { bankTransactionId: transactionId },
+          select: { amount: true },
+        })
+        const allocatedFromBank = priorBankAllocations.reduce(
+          (sum, allocation) => sum.plus(new Decimal(allocation.amount)),
+          new Decimal(0),
+        )
+        if (allocatedFromBank.plus(remainingDep).gt(transactionAmount)) {
+          return false
+        }
 
         // #326 D: id:t bär verifikatets idempotensnyckel.
         const depAllocation = await tx.rentNoticePayment.create({
@@ -1756,6 +1772,21 @@ export class ReconciliationService {
         completesNotice = false
       } else {
         // amount > restskuld + tolerans → överbetalning (D4): hanteras ej här.
+        return false
+      }
+
+      // En bankrad får fördelas över flera avier, men summan av allokeringarna
+      // får aldrig överstiga bankradens belopp. Bankraden är låst ovan, så
+      // kontrollen och INSERT:en utgör en enda serialiserad operation.
+      const priorBankAllocations = await tx.rentNoticePayment.findMany({
+        where: { bankTransactionId: transactionId },
+        select: { amount: true },
+      })
+      const allocatedFromBank = priorBankAllocations.reduce(
+        (sum, allocation) => sum.plus(new Decimal(allocation.amount)),
+        new Decimal(0),
+      )
+      if (allocatedFromBank.plus(allocationAmount).gt(transactionAmount)) {
         return false
       }
 
@@ -2128,6 +2159,20 @@ export class ReconciliationService {
     const tolerance = new Decimal('1.00')
 
     return this.prisma.$transaction(async (tx) => {
+      // Samma bankradslåsning används av både waterfall och enskild matchning.
+      // Efter låset får endast den första transaktionen skapa allokeringar;
+      // samtidiga försök ser då den redan förbrukade bankbudgeten.
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      const priorBankAllocations = await tx.rentNoticePayment.findMany({
+        where: { bankTransactionId: transactionId },
+        select: { amount: true },
+      })
+      const allocatedFromBank = priorBankAllocations.reduce(
+        (sum, allocation) => sum.plus(new Decimal(allocation.amount)),
+        new Decimal(0),
+      )
+      if (allocatedFromBank.gt(0)) return false
+
       // ORDNINGEN ÄR ALLOKERINGSREGELN, inte en presentationsdetalj: den avgör
       // vilka avier som blir betalda när pengarna tar slut. Identisk med
       // enskildvägens `orderBy` — dueDate först, createdAt som tie-break — så att
