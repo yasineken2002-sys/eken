@@ -61,13 +61,16 @@ describe('LASTA_CRON_JOBB — härledd, inte listad', () => {
     expect(Object.keys(LASTA_CRON_JOBB).sort()).toEqual(Object.keys(aJobb).sort())
   })
 
-  it('mängden är tolv — och talet står i provet, inte bara i prosan', () => {
+  it('mängden är tretton — och talet står i provet, inte bara i prosan', () => {
     // Tio till 2026-09-05, då skuggsvepet (etapp 6) blev det elfte låsta jobbet.
     // Tolfte 2026-09-06: torrlägets sveparcron (etapp 8, `cron:ai-execution-dryrun`).
-    // Talet står här och inte bara i prosan därför att ett trettonde jobb ska
+    // Trettonde 2026-09-07: skarpt läges sveparcron (etapp 9,
+    // `cron:ai-agent-execution`).
+    //
+    // Talet står här och inte bara i prosan därför att ett fjortonde jobb ska
     // fälla provet tills kartan följt med — det är hela poängen med
     // härledningen, och det fällde den här PR:en precis som det skulle.
-    expect(Object.keys(aJobb)).toHaveLength(12)
+    expect(Object.keys(aJobb)).toHaveLength(13)
   })
 
   it('varje uttryck är en korrekt avskrift av källans @Cron', () => {

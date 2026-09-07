@@ -6,6 +6,7 @@ import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { NotificationsService } from '../../notifications/notifications.service'
+import { ångravägen, type Ångravägen } from './undo-hint'
 import { prövaDuglighet } from './assignment-eligibility'
 import { traffgradPerFalt, type Traffgrad } from '../shadow/shadow-fields'
 import { INKORG_SIDSTORLEK_MAX, INKORG_SIDSTORLEK_STANDARD } from './dto/query-assignments.dto'
@@ -272,6 +273,111 @@ export class AiAssignmentsService {
       this.prisma.aiAssignment.count({ where }),
     ])
     return { rader, total, limit, offset }
+  }
+
+  /**
+   * ── "GJORT": DE UTFÖRDA ÅTGÄRDERNA ────────────────────────────────────────
+   *
+   * En EGEN metod och inte ett filter i `lista`. De två frågorna skiljer sig i
+   * mer än ett `where`: den här bär vad som faktiskt hände (spårets id, vilken
+   * delegation, när) och ÅNGRAVÄGEN, som `lista` varken behöver eller ska
+   * beräkna för hundra väntande rader.
+   *
+   * Sorterad på `decidedAt` fallande — nyast först. Väntande uppdrag sorteras på
+   * `deadline` stigande, för där är frågan "vad brådskar"; här är den "vad hände
+   * nyss", och det är olika ordningar av olika skäl.
+   */
+  async gjorda(
+    organizationId: string,
+    filter: { limit?: number; offset?: number } = {},
+  ): Promise<{
+    rader: Array<UppdragMedDom & { ångra: Ångravägen; ångraBegärd: Date | null }>
+    total: number
+    limit: number
+    offset: number
+  }> {
+    const limit = Math.min(filter.limit ?? INKORG_SIDSTORLEK_STANDARD, INKORG_SIDSTORLEK_MAX)
+    const offset = filter.offset ?? 0
+    // ALLA TRE UTFÖRANDESTATUSARNA. En sektion som bara visar `EXECUTED` hade
+    // sagt att agenten aldrig misslyckas — och `FAILED`/`LAPSED` är precis det
+    // hyresvärden behöver se för att lita på växeln.
+    const where = {
+      organizationId,
+      status: { in: ['EXECUTED', 'FAILED', 'LAPSED'] as AiAssignment['status'][] },
+    }
+    const [rader, total] = await Promise.all([
+      this.prisma.aiAssignment.findMany({
+        where,
+        orderBy: [{ decidedAt: 'desc' }],
+        take: limit,
+        skip: offset,
+        include: {
+          ...DOM_INCLUDE,
+          delegation: { select: { id: true, toolName: true, villkor: true } },
+          events: {
+            where: { type: 'UNDO_REQUESTED' as const },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { createdAt: true },
+          },
+        },
+      }),
+      this.prisma.aiAssignment.count({ where }),
+    ])
+    return {
+      rader: rader.map((r) => ({
+        ...r,
+        ångra: ångravägen(r.toolName),
+        // FÖRSTA begäran räknas: fältet svarar på "har någon redan sagt ifrån",
+        // inte på "hur många gånger". Listan är `take: 1` fallande, så raden
+        // bär den SENASTE — och för den frågan duger vilken som helst.
+        ångraBegärd: r.events[0]?.createdAt ?? null,
+      })),
+      total,
+      limit,
+      offset,
+    }
+  }
+
+  /**
+   * ÅNGRA-BEGÄRAN — en händelse, aldrig en backning.
+   *
+   * Skälet står i `undo-hint.ts`: att anropa varje verktygs `supportsUndo`-väg
+   * generiskt hade varit en andra utförandeväg utan någon av grindarna.
+   *
+   * IDEMPOTENT PÅ EFFEKTEN, inte på raden: en andra begäran skriver en andra
+   * händelse (append-only, och två gånger betyder något — hyresvärden sa ifrån
+   * igen), men svaret är detsamma. Ingen räknare, inget tak.
+   */
+  async begärÅngra(
+    organizationId: string,
+    id: string,
+    användare: { userId: string },
+    note?: string,
+  ): Promise<{ ångra: Ångravägen }> {
+    const rad = await this.prisma.aiAssignment.findFirst({
+      where: { id, organizationId },
+      select: { id: true, toolName: true, status: true },
+    })
+    if (!rad) throw new NotFoundException('Uppdraget hittades inte.')
+    // BARA en UTFÖRD åtgärd går att ångra. En som misslyckades eller förföll har
+    // ingen effekt att backa, och en knapp där hade lovat något som inte finns.
+    if (rad.status !== 'EXECUTED') {
+      throw new BadRequestException('Bara en utförd åtgärd går att ångra. Den här utfördes aldrig.')
+    }
+    await this.prisma.aiAssignmentEvent.create({
+      data: {
+        assignmentId: rad.id,
+        type: 'UNDO_REQUESTED',
+        // HANDLINGEN är människans, även om systemet skriver raden. Se
+        // `AiDelegationEvent` för varför fältet inte heter `actorKind`.
+        handlingAv: 'HUMAN',
+        actorUserId: användare.userId,
+        ...(note ? { note } : {}),
+      },
+    })
+    this.logger.log(`[inkorg] ångra begärd för uppdrag ${rad.id} (${rad.toolName}).`)
+    return { ångra: ångravägen(rad.toolName) }
   }
 
   /**

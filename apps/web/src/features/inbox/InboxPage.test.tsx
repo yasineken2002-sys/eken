@@ -92,7 +92,17 @@ const sida = (rader: InboxItem[]): InboxPageSvar => ({
 })
 
 const summary = (over: Partial<InboxSummary> = {}): InboxSummary => ({
-  status: { AWAITING_APPROVAL: 3, APPROVED: 2, REJECTED: 1, EXPIRED: 0 },
+  status: {
+    AWAITING_APPROVAL: 3,
+    APPROVED: 2,
+    REJECTED: 1,
+    EXPIRED: 0,
+    // NOLL och inte utelämnade: `Record<AssignmentStatus, number>` kräver alla,
+    // och en fixtur som saknar en status hade dolt att kartan vidgats.
+    EXECUTED: 0,
+    FAILED: 0,
+    LAPSED: 0,
+  },
   traffgrad: {},
   ...over,
 })

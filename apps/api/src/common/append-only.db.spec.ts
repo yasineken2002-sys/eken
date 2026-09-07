@@ -44,6 +44,15 @@ describe('förutsättningar', () => {
  */
 const SKYDDADE = [
   'AccountingPeriodEvent',
+  // Etapp 9. Uppdragets händelser — i dag bara ångra-begäran, som är
+  // hyresvärdens enda spår av att en agent-utförd åtgärd blev fel. En begäran
+  // som gick att skriva om i efterhand är ett sämre spår än inget spår.
+  //
+  // Satsnivå räcker: enda FK:n (assignmentId) är CASCADE, och `actorUserId` är
+  // en NAKEN kolumn utan relation — just för att undvika den `ON DELETE SET
+  // NULL` som tvingade fram radnivå för AccountingPeriodEvent och
+  // TenantAnonymizationLog.
+  'AiAssignmentEvent',
   // Etapp 7 (G2). Delegationens livshistoria — och sanningskällan för dess
   // status, som BERÄKNAS ur just de här raderna. Går de att skriva om går det
   // inte att svara på "hade agenten rätt när den gjorde detta i mars", och

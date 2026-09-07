@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  begarAngra,
   decideInboxItem,
+  fetchGjorda,
   fetchInbox,
   fetchInboxSummary,
   fetchKanDelegera,
@@ -15,6 +17,8 @@ import type { AssignmentStatus } from '../api/inbox.api'
 // ofiltrerade i cachen.
 const LIST = ['inbox', 'list'] as const
 const SUMMARY = ['inbox', 'summary'] as const
+/** "Gjort" är en EGEN nyckel — den läser andra rader och andra fält än listan. */
+const GJORT = ['inbox', 'gjorda'] as const
 
 export function useInbox(status?: AssignmentStatus) {
   return useQuery({
@@ -26,6 +30,28 @@ export function useInbox(status?: AssignmentStatus) {
 
 export function useInboxSummary() {
   return useQuery({ queryKey: SUMMARY, queryFn: fetchInboxSummary, staleTime: 30_000 })
+}
+
+/** De utförda åtgärderna. Egen fråga, egen nyckel — se `GJORT`. */
+export function useGjorda() {
+  return useQuery({ queryKey: GJORT, queryFn: () => fetchGjorda(), staleTime: 30_000 })
+}
+
+/**
+ * ÅNGRA-BEGÄRAN.
+ *
+ * Invaliderar `GJORT` så raden visar att någon sagt ifrån direkt. Den rör INTE
+ * `LIST` eller `SUMMARY`: begäran ändrar ingen status och inget KPI-tal — den
+ * lägger till en händelse.
+ */
+export function useBegarAngra() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: begarAngra,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: GJORT })
+    },
+  })
 }
 
 export function useDecideInboxItem() {
@@ -41,6 +67,9 @@ export function useDecideInboxItem() {
       void qc.invalidateQueries({ queryKey: ['notifications'] })
       // `/uppdrag` läser samma rader.
       void qc.invalidateQueries({ queryKey: ['assignments'] })
+      // Ett beslut kan flytta en rad in i "Gjort" (via utföraren), så den
+      // listan är inte längre färsk heller.
+      void qc.invalidateQueries({ queryKey: GJORT })
     },
   })
 }

@@ -42,6 +42,7 @@
  * Uttrycken är avskrifter av källan. Specen bevisar avskriften.
  */
 export const LASTA_CRON_JOBB: Readonly<Record<string, string>> = {
+  'cron:ai-agent-execution': '*/15 * * * *',
   'cron:ai-assignment-expiry': '* * * * *',
   'cron:ai-execution-dryrun': '*/15 * * * *',
   'cron:ai-resumption-freshness': '*/15 * * * *',

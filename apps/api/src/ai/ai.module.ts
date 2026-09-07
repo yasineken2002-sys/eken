@@ -109,6 +109,18 @@ import { AiAssignmentsService } from './assignments/ai-assignments.service'
     // ingenting. Ingen väg härifrån till ToolExecutorService.
     AiAssignmentsService,
   ],
-  exports: [AiAssistantService, AiAuditService, LegalEmbeddingService],
+  // ── `ToolExecutorService` EXPORTERAS SEDAN ETAPP 9 ────────────────────────
+  //
+  // Den var provider men inte export: den enda anroparen bodde i samma modul.
+  // Skarpt läge (`AiAgentExecutionModule`) är den andra, och den ska ligga i en
+  // EGEN modul — gränsen mellan "kan inte orsaka en effekt" (torrläget, som
+  // saknar beroendet) och "får" ska gå mellan två filer och inte inne i en.
+  //
+  // Exporten vidgar ytan, och det ska sägas: varje modul som importerar
+  // `AiModule` kan nu nå exekveraren. Det som står MELLAN den och en effekt är
+  // `assertActionToolAuthorized`, som kräver ett konsumerat bevis eller en
+  // delegation för varje bindande verktyg — och den grinden ligger först i
+  // `executeTool`, före allt annat.
+  exports: [AiAssistantService, AiAuditService, LegalEmbeddingService, ToolExecutorService],
 })
 export class AiModule {}

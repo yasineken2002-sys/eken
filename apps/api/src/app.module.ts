@@ -53,6 +53,7 @@ import { StorageModule } from './storage/storage.module'
 import { OcrModule } from './common/ocr/ocr.module'
 import { RedisModule } from './common/redis/redis.module'
 import { AiShadowModule } from './ai/shadow/shadow.module'
+import { AiAgentExecutionModule } from './ai/execution/execution.module'
 import { AiExecutionDryRunModule } from './ai/execution-dryrun/dryrun.module'
 import { ObservationModule } from './ai/observation/observation.module'
 import { QuestionModule } from './ai/questions/question.module'
@@ -179,6 +180,10 @@ import { Psd2Module } from './psd2/psd2.module'
     // att maintenance blir beroende av AI-lagret.
     AiShadowModule,
     AiExecutionDryRunModule,
+    // SKARPT LÄGE (etapp 9). Registrerad EFTER torrläget, och det är läsordning
+    // och inte en beroendeordning: den som läser listan ska se domen före
+    // effekten. Modulen är inert tills en organisation slår på växeln.
+    AiAgentExecutionModule,
     ObservationModule,
     QuestionModule,
     // Delegationerna (etapp 7). Ingen koppling till exekveraren — se modulen.

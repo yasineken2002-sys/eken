@@ -32,10 +32,21 @@ import type { UpdateOrganizationDto } from './dto/update-organization.dto'
 describe('shadowAgentEnabled är OWNER-only', () => {
   const bygg = () => {
     const update = jest.fn().mockResolvedValue({ id: 'o1', shadowAgentEnabled: true })
-    const prisma = { organization: { update } }
+    // ── `findUnique` OCH `delegations` KRÄVS SEDAN ETAPP 9 ──────────────────
+    //
+    // `update()` läser organisationens nuvarande flaggor ur databasen
+    // (invarianten "skarpt läge kräver skuggan" går inte att pröva mot bara
+    // DTO:t) och pausar delegationerna när skuggan stängs av. Attrappen svarar
+    // med båda flaggorna AV — det tillstånd varje organisation faktiskt är i —
+    // så rollgrinden, som är det provet mäter, prövas i sitt normalläge.
+    const findUnique = jest
+      .fn()
+      .mockResolvedValue({ shadowAgentEnabled: false, agentExecutionEnabled: false })
+    const pausaAlla = jest.fn().mockResolvedValue(0)
+    const prisma = { organization: { update, findUnique } }
     const service = Object.create(OrganizationsService.prototype) as OrganizationsService
-    Object.assign(service, { prisma, storage: {} })
-    return { service, update }
+    Object.assign(service, { prisma, storage: {}, delegations: { pausaAlla } })
+    return { service, update, pausaAlla }
   }
 
   const dto = (over: Partial<UpdateOrganizationDto> = {}): UpdateOrganizationDto =>

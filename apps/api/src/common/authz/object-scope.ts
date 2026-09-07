@@ -170,6 +170,7 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   UnitEquipmentEvent: { scope: 'parent-scoped', parent: 'UnitEquipment' },
   // Etapp 7 (G2). Delegationens händelser bär ingen egen organizationId —
   // de scopas via delegationen, som gör det. Samma form som raden ovan.
+  AiAssignmentEvent: { scope: 'parent-scoped', parent: 'AiAssignment' },
   AiDelegationEvent: { scope: 'parent-scoped', parent: 'AiDelegation' },
   InspectionImage: { scope: 'parent-scoped', parent: 'Inspection' },
   AiTenantConversation: { scope: 'parent-scoped', parent: 'Tenant' },

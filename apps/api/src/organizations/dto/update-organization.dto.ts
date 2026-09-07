@@ -73,6 +73,22 @@ export class UpdateOrganizationDto {
   shadowAgentEnabled?: boolean
 
   /**
+   * SKARPT LÄGE — agenten UTFÖR delegerade åtgärder själv (etapp 9).
+   *
+   * Samma rollgrind i tjänsten som fältet ovan, och av ett skarpare skäl: det
+   * här är fältet som gör att en maskin skriver i kundens data utan att någon
+   * säger ja just då.
+   *
+   * Tjänsten upprätthåller dessutom en INVARIANT som DTO:t inte kan uttrycka:
+   * skarpt läge kräver att skuggan är på, och stängs skuggan av följer skarpt
+   * läge med. Ett `@ValidateIf` här hade bara sett den ena riktningen, och bara
+   * på HTTP-vägen.
+   */
+  @IsBoolean()
+  @IsOptional()
+  agentExecutionEnabled?: boolean
+
+  /**
    * VÄSENTLIGHETSGRÄNS FÖR SEN BOKFÖRING, i ÖREN.
    *
    * Samma rollresonemang som `shadowAgentEnabled` ovan, och grinden ligger av

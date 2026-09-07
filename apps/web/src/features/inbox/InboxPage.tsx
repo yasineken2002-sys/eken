@@ -9,6 +9,8 @@ import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatCard } from '@/components/ui/StatCard'
 import { PageWrapper } from '@/components/ui/PageWrapper'
+
+import { GjortSektion } from './components/GjortSektion'
 import { formatDate } from '@eken/shared'
 import { cn } from '@/lib/cn'
 
@@ -41,6 +43,14 @@ const STATUSTEXT: Record<
   APPROVED: { text: 'Godkänt', variant: 'success' },
   REJECTED: { text: 'Avvisat', variant: 'danger' },
   EXPIRED: { text: 'Förföll', variant: 'warning' },
+  // ── DE TRE UTFÖRANDESTATUSARNA (etapp 9) ────────────────────────────────
+  //
+  // Kartan är `Record<AssignmentStatus, …>`, så TypeScript krävde de här tre i
+  // samma stund som unionen vidgades. Det är rätt håll: en status utan text
+  // hade renderats som en tom badge, och felet hade synts först i drift.
+  EXECUTED: { text: 'Utförd', variant: 'success' },
+  FAILED: { text: 'Misslyckades', variant: 'danger' },
+  LAPSED: { text: 'Utfördes inte', variant: 'warning' },
 }
 
 /**
@@ -201,6 +211,11 @@ export function InboxPage({ forslag }: { forslag?: string | undefined } = {}) {
           beslut.mutate(p, { onSuccess: () => setVald(null) })
         }}
       />
+
+      {/* SIST PÅ SIDAN, och det är ordningen som bär budskapet: förslagen som
+          väntar på dig först, det agenten redan gjort sist. Sektionen döljer
+          sig själv när den är tom — skarpt läge är av i varje organisation. */}
+      <GjortSektion />
     </PageWrapper>
   )
 }

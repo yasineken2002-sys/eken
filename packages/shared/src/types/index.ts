@@ -115,6 +115,8 @@ export interface Organization {
    * `OrganizationsService`, inte i typen. Se `shadow-agent-field-authz.spec.ts`.
    */
   shadowAgentEnabled?: boolean
+  /** Skarpt läge (etapp 9) — agenten utför delegerade åtgärder själv. */
+  agentExecutionEnabled?: boolean
   /**
    * Väsentlighetsgräns för sen bokföring, i ÖREN. Se kolumnens docblock i
    * schema.prisma: den MARKERAR poster för granskning, den spärrar inget.

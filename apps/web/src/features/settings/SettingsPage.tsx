@@ -47,6 +47,7 @@ import { PlanPanel } from './components/PlanPanel'
 import { BankIdPanel } from './components/BankIdPanel'
 import { useAuthStore } from '@/stores/auth.store'
 import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
+import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
 import { get, del } from '@/lib/api'
@@ -101,6 +102,7 @@ export function SettingsPage() {
 
   const [morningReportEnabled, setMorningReportEnabled] = useState(false)
   const [shadowAgentEnabled, setShadowAgentEnabled] = useState(false)
+  const [agentExecutionEnabled, setAgentExecutionEnabled] = useState(false)
   const [vasentlighetsgransOre, setVasentlighetsgransOre] = useState(1_000_000)
   const [remindersEnabled, setRemindersEnabled] = useState(true)
   const [reminderFeeSek, setReminderFeeSek] = useState(60)
@@ -160,6 +162,7 @@ export function SettingsPage() {
       }
       setMorningReportEnabled(org.morningReportEnabled ?? false)
       setShadowAgentEnabled(org.shadowAgentEnabled ?? false)
+      setAgentExecutionEnabled(org.agentExecutionEnabled ?? false)
       setVasentlighetsgransOre(org.lateBookingMaterialityThreshold ?? 1_000_000)
       setRemindersEnabled(org.remindersEnabled ?? true)
       setReminderFeeSek(org.reminderFeeSek ?? 60)
@@ -266,7 +269,16 @@ export function SettingsPage() {
     // icke-ägare som kommit förbi den dolda knappen) rättas läget vid nästa
     // hämtning — och API:t är den grind som faktiskt håller.
     setShadowAgentEnabled(value)
+    // SKARPT LÄGE FÖLJER MED NER. Servern gör samma sak (och pausar dessutom
+    // delegationerna); den här raden är bara för att gränssnittet inte ska visa
+    // ett läge som inte finns förrän nästa hämtning.
+    if (!value) setAgentExecutionEnabled(false)
     updateMutation.mutate({ shadowAgentEnabled: value })
+  }
+
+  const handleSkarptLageToggle = (value: boolean) => {
+    setAgentExecutionEnabled(value)
+    updateMutation.mutate({ agentExecutionEnabled: value })
   }
 
   const handleAiMemoriesToggle = (value: boolean) => {
@@ -1025,6 +1037,14 @@ export function SettingsPage() {
                       ? Object.values(inboxSummary.data.status).reduce((a, b) => a + b, 0)
                       : undefined
                   }
+                  sparar={updateMutation.isPending}
+                />
+
+                <SkarptLageSection
+                  roll={currentUser?.role}
+                  pa={agentExecutionEnabled}
+                  skuggaPa={shadowAgentEnabled}
+                  onToggle={handleSkarptLageToggle}
                   sparar={updateMutation.isPending}
                 />
 
