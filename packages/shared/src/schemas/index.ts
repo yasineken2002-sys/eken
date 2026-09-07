@@ -1650,3 +1650,154 @@ export const SendDocumentToTenantSchema = z
   .strict()
 
 export type SendDocumentToTenantInput = z.infer<typeof SendDocumentToTenantSchema>
+
+// ─── Hyresgästportalens INLOGGNINGSYTA ───────────────────────────────────────
+//
+// De nio schemana nedan beskriver portalens skrivanrop mot `/tenant-portal/*`.
+// Ytan är hyresgästens, alltså den enda i systemet en OINLOGGAD utomstående kan
+// nå: sex av de nio kräver ingen session, och tre av dem bär ett lösenord.
+//
+// ── VARFÖR `.strict()` PÅ ALLA NIO ──────────────────────────────────────────
+//
+// Samma skäl som `CreateTicketBaseSchema` (#828), fast skarpare här. Zods
+// `.object()` STRYPER okända nycklar i tysthet; DTO:n avvisar dem
+// (`forbidNonWhitelisted` i `main.ts`). Utan `.strict()` beskriver schemat
+// alltså ett anrop servern faktiskt säger nej till — och på just den här ytan
+// är den skillnaden en behörighetsgräns: `TenantLoginSchema` utan `.strict()`
+// hade sagt att en klient får skicka med extra fält vid inloggning, vilket är
+// precis vad en klient inte får.
+//
+// ── VAD SCHEMANA INTE GÖR ───────────────────────────────────────────────────
+//
+// De beskriver FORMEN. Lösenordsstyrkan bor kvar i
+// `TenantAuthService.assertStrongPassword`, och kandidatkontrollen för
+// `chooseToken` i `TenantBankIdService.choose`. Ett schema kan se att `tenantId`
+// är ett uuid; det kan aldrig se om just det id:t stod i den signerade
+// kandidatlistan. Skriv inte in de reglerna här — de skulle bli en andra,
+// svagare kopia av en kontroll som redan finns.
+
+/**
+ * POST /tenant-portal/login
+ *
+ * `organizationId` är VALFRITT och är inte en behörighetsuppgift: samma
+ * e-postadress kan vara hyresgäst hos två hyresvärdar, och fältet väljer vilken
+ * inloggningen gäller. Servern kontrollerar ändå att adressen hör till org:en —
+ * en klient som får peka ut en organisation väljer inte vem den är.
+ */
+export const TenantLoginSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(1),
+    organizationId: z.string().uuid().optional(),
+  })
+  .strict()
+
+/**
+ * POST /tenant-portal/activate
+ *
+ * `signatureName` är VALFRITT med flit: rena portalinbjudningar (massutskick
+ * till importerade hyresgäster utan kontrakts-PDF) signerar inget kontrakt och
+ * har ingen underskrift att lämna. Anges den ändå krävs minst två tecken —
+ * annars vore en tom sträng en signatur.
+ */
+export const TenantActivateSchema = z
+  .object({
+    token: z.string().min(1),
+    password: z.string().min(1),
+    signatureName: z.string().min(2).optional(),
+  })
+  .strict()
+
+/**
+ * POST /tenant-portal/auth/bankid/collect och /choose
+ *
+ * Anropen bär providerns handtag och INGET annat — ingen `tenantId` vid
+ * collect, inget personnummer någonstans. Servern avgör vem ordern gäller ur
+ * uppslaget mot hyresvärdens registrerade personnummer. `.strict()` är därför
+ * inte pedanteri: det är raden som gör att en klient som FÖRSÖKER skicka med en
+ * identitet får nej i stället för att få den tyst bortstruken.
+ */
+export const BankIdCollectSchema = z.object({ orderRef: z.string().min(1) }).strict()
+
+/**
+ * Kontovalet är undantaget från regeln ovan — här VÄLJER användaren. Att
+ * `tenantId` är ett uuid är allt schemat kan se; att raden stod i den signerade
+ * kandidatlistan kontrolleras i `TenantBankIdService.choose`.
+ */
+export const BankIdChooseSchema = z
+  .object({
+    chooseToken: z.string().min(1),
+    tenantId: z.string().uuid(),
+  })
+  .strict()
+
+/** POST /tenant-portal/forgot-password — svaret är generiskt oavsett träff. */
+export const TenantForgotPasswordSchema = z.object({ email: z.string().email() }).strict()
+
+/** POST /tenant-portal/reset-password — styrkan prövas i tjänsten, inte här. */
+export const TenantResetPasswordSchema = z
+  .object({
+    token: z.string().min(1),
+    password: z.string().min(1),
+  })
+  .strict()
+
+/**
+ * POST /tenant-portal/logout
+ *
+ * HADE INGEN DTO ALLS. Hanteraren tog `@Body() body: { sessionToken?: string }`
+ * — en INLINE-TYP, som försvinner i runtime, så `ValidationPipe` hade ingen
+ * metadata att läsa och validerade INGENTING. En kropp på 1 MiB skräp gick rakt
+ * igenom till `if (body.sessionToken)`. Det är samma defekt `check-dto-placement`
+ * finns för, en nivå värre: inte en klass på fel plats, utan ingen klass alls.
+ *
+ * Fältet förblir VALFRITT — en utloggning utan token är ett giltigt anrop (den
+ * som redan tappat sin session ska kunna städa lokalt), och hanteraren gör
+ * ingenting då. Skärpningen ligger i att allt ANNAT nu avvisas.
+ */
+export const TenantLogoutSchema = z.object({ sessionToken: z.string().min(1).optional() }).strict()
+
+/**
+ * POST /tenant-portal/ai/chat
+ *
+ * Taket 2000 är samma slag som `description` i #828: det som betalas per token
+ * måste ha en övre gräns, annars är kostnaden per meddelande obunden uppåt.
+ */
+export const TenantChatSchema = z
+  .object({
+    message: z.string().min(1).max(2000),
+    conversationId: z.string().optional(),
+  })
+  .strict()
+
+/**
+ * POST /tenant-portal/ai/confirm
+ *
+ * `toolInput` är avsiktligt en fri karta: den bär argumenten till det verktyg
+ * `toolName` namnger, och deras former är verktygens egna. Att beskriva dem här
+ * hade blivit en andra uppräkning av verktygsregistret — den sortens dubblett
+ * hela kontraktsarbetet finns för att ta bort.
+ *
+ * `confirmed` är INTE valfri och har ingen default. Ett utelämnat fält hade
+ * blivit `undefined`, och den enda säkra tolkningen av "vet ej" på en
+ * bekräftelse är nej — men då hade en klientbugg sett ut som ett aktivt avslag.
+ * Kravet gör skillnaden synlig i stället.
+ */
+export const TenantConfirmSchema = z
+  .object({
+    toolName: z.string().min(1),
+    toolInput: z.record(z.unknown()),
+    conversationId: z.string().min(1),
+    confirmed: z.boolean(),
+  })
+  .strict()
+
+export type TenantLoginInput = z.infer<typeof TenantLoginSchema>
+export type TenantActivateInput = z.infer<typeof TenantActivateSchema>
+export type BankIdCollectInput = z.infer<typeof BankIdCollectSchema>
+export type BankIdChooseInput = z.infer<typeof BankIdChooseSchema>
+export type TenantForgotPasswordInput = z.infer<typeof TenantForgotPasswordSchema>
+export type TenantResetPasswordInput = z.infer<typeof TenantResetPasswordSchema>
+export type TenantLogoutInput = z.infer<typeof TenantLogoutSchema>
+export type TenantChatInput = z.infer<typeof TenantChatSchema>
+export type TenantConfirmInput = z.infer<typeof TenantConfirmSchema>

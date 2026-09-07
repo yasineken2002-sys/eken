@@ -1,14 +1,6 @@
 {
-  "total": 14,
+  "total": 5,
   "poster": [
-    {
-      "fil": "apps/api/src/ai/tenant-ai.controller.ts",
-      "klass": "TenantChatDto"
-    },
-    {
-      "fil": "apps/api/src/ai/tenant-ai.controller.ts",
-      "klass": "TenantConfirmDto"
-    },
     {
       "fil": "apps/api/src/collections/rent-collections.controller.ts",
       "klass": "RentBulkExportDto"
@@ -28,34 +20,6 @@
     {
       "fil": "apps/api/src/platform/ai-usage/platform-ai-usage.controller.ts",
       "klass": "ChangePlanDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "ActivateDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "BankIdChooseDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "BankIdCollectDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "DeleteAccountDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "ForgotPasswordDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "LoginDto"
-    },
-    {
-      "fil": "apps/api/src/tenant-portal/tenant-portal.controller.ts",
-      "klass": "ResetPasswordDto"
     }
   ]
 }

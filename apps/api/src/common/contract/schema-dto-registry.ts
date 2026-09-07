@@ -43,6 +43,15 @@ import {
   UpdateAppendixSchema,
   CreateSigningRequestSchema,
   InviteTenantsSchema,
+  TenantLoginSchema,
+  TenantActivateSchema,
+  BankIdCollectSchema,
+  BankIdChooseSchema,
+  TenantForgotPasswordSchema,
+  TenantResetPasswordSchema,
+  TenantLogoutSchema,
+  TenantChatSchema,
+  TenantConfirmSchema,
   ResendInvitesSchema,
   CreateTicketSchema,
   SubmitTicketSchema,
@@ -85,6 +94,16 @@ import { RenewLeaseDto } from '../../leases/dto/renew-lease.dto'
 import { UpdateAppendixDto } from '../../contracts/dto/update-appendix.dto'
 import { CreateSigningRequestDto } from '../../signing/dto/create-signing-request.dto'
 import { InviteTenantsDto, ResendInvitesDto } from '../../tenant-portal/dto/invite-tenants.dto'
+import {
+  ActivateDto,
+  BankIdChooseDto,
+  BankIdCollectDto,
+  ForgotPasswordDto,
+  LoginDto,
+  LogoutDto,
+  ResetPasswordDto,
+} from '../../tenant-portal/dto/tenant-auth.dto'
+import { TenantChatDto, TenantConfirmDto } from '../../ai/dto/tenant-ai.dto'
 import {
   AddTenantCommentDto,
   SubmitMaintenanceDto,
@@ -869,5 +888,108 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     ogiltig: { tenantId: 'hyresgästen-i-trean' },
     ogiltigVarfor:
       'mottagaren pekas ut med id, inte med ett namn — vägen lägger en handling i en annan människas portal',
+  },
+  // ─── HYRESGÄSTPORTALENS INLOGGNINGSYTA ────────────────────────────────────
+  //
+  // Nio endpoints, sex av dem nåbara UTAN session. `ogiltig`-fallen prövar med
+  // flit två olika slag av fel: fel FORM på ett fält (e-post, uuid) och en
+  // OKÄND NYCKEL. Det andra slaget är det som binder `.strict()` i schemat till
+  // `forbidNonWhitelisted` i DTO:n — utan ett sådant fall kunde schemat strypa
+  // nyckeln tyst medan API:t svarade 400, och paritetsprovet varit grönt ändå.
+  {
+    endpoint: 'POST /tenant-portal/login',
+    inputTyp: 'TenantLoginInput',
+    schema: TenantLoginSchema,
+    dto: LoginDto,
+    giltig: { email: 'hyresgast@example.se', password: 'Hemligt123!' },
+    ogiltig: { email: 'inte-en-adress', password: 'Hemligt123!' },
+    ogiltigVarfor: 'e-postadressen har inte adressform',
+  },
+  {
+    endpoint: 'POST /tenant-portal/activate',
+    inputTyp: 'TenantActivateInput',
+    schema: TenantActivateSchema,
+    dto: ActivateDto,
+    giltig: { token: 'akt-abc123', password: 'Hemligt123!', signatureName: 'Anna Andersson' },
+    ogiltig: { token: 'akt-abc123', password: 'Hemligt123!', signatureName: 'A' },
+    ogiltigVarfor: 'en underskrift på ett tecken är ingen underskrift',
+  },
+  {
+    endpoint: 'POST /tenant-portal/auth/bankid/collect',
+    inputTyp: 'BankIdCollectInput',
+    schema: BankIdCollectSchema,
+    dto: BankIdCollectDto,
+    giltig: { orderRef: 'ord-abc123' },
+    ogiltig: { orderRef: 'ord-abc123', personalNumber: '19900101-1234' },
+    ogiltigVarfor: 'klienten får inte skicka med en identitet — servern slår upp vem ordern gäller',
+  },
+  {
+    endpoint: 'POST /tenant-portal/auth/bankid/choose',
+    inputTyp: 'BankIdChooseInput',
+    schema: BankIdChooseSchema,
+    dto: BankIdChooseDto,
+    giltig: { chooseToken: 'val-abc123', tenantId: '11111111-2222-4333-8444-555555555555' },
+    ogiltig: { chooseToken: 'val-abc123', tenantId: 'inte-ett-uuid' },
+    ogiltigVarfor: 'tenantId måste vara ett uuid',
+  },
+  {
+    endpoint: 'POST /tenant-portal/forgot-password',
+    inputTyp: 'TenantForgotPasswordInput',
+    schema: TenantForgotPasswordSchema,
+    dto: ForgotPasswordDto,
+    giltig: { email: 'hyresgast@example.se' },
+    ogiltig: {
+      email: 'hyresgast@example.se',
+      organizationId: '11111111-2222-4333-8444-555555555555',
+    },
+    ogiltigVarfor:
+      'okänd nyckel — svaret är generiskt med flit, och en org-styrd variant hade gett enumeration',
+  },
+  {
+    endpoint: 'POST /tenant-portal/reset-password',
+    inputTyp: 'TenantResetPasswordInput',
+    schema: TenantResetPasswordSchema,
+    dto: ResetPasswordDto,
+    giltig: { token: 'ater-abc123', password: 'Hemligt123!' },
+    ogiltig: { token: '', password: 'Hemligt123!' },
+    ogiltigVarfor: 'tom återställningstoken',
+  },
+  {
+    endpoint: 'POST /tenant-portal/logout',
+    inputTyp: 'TenantLogoutInput',
+    schema: TenantLogoutSchema,
+    dto: LogoutDto,
+    giltig: { sessionToken: 'sess-abc123' },
+    ogiltig: { sessionToken: 'sess-abc123', tenantId: '11111111-2222-4333-8444-555555555555' },
+    ogiltigVarfor:
+      'okänd nyckel — endpointen hade ingen DTO alls och validerade tidigare ingenting',
+  },
+  {
+    endpoint: 'POST /tenant-portal/ai/chat',
+    inputTyp: 'TenantChatInput',
+    schema: TenantChatSchema,
+    dto: TenantChatDto,
+    giltig: { message: 'När ska jag betala hyran?' },
+    ogiltig: { message: 'x'.repeat(2001) },
+    ogiltigVarfor: 'taket 2000 tecken — det som betalas per token måste ha en övre gräns',
+  },
+  {
+    endpoint: 'POST /tenant-portal/ai/confirm',
+    inputTyp: 'TenantConfirmInput',
+    schema: TenantConfirmSchema,
+    dto: TenantConfirmDto,
+    giltig: {
+      toolName: 'skapa_felanmalan',
+      toolInput: { title: 'Läckande kran' },
+      conversationId: 'konv-abc123',
+      confirmed: true,
+    },
+    ogiltig: {
+      toolName: 'skapa_felanmalan',
+      toolInput: { title: 'Läckande kran' },
+      conversationId: 'konv-abc123',
+    },
+    ogiltigVarfor:
+      'confirmed saknas — ett utelämnat fält på en bekräftelse får inte kunna läsas som ett ja',
   },
 ]

@@ -16,7 +16,19 @@ import type {
   PortalNotice,
   PortalRentNotice,
 } from '@/types/portal.types'
-import type { AddTenantCommentInput, SubmitTicketInput } from '@eken/shared'
+import type {
+  AddTenantCommentInput,
+  BankIdChooseInput,
+  BankIdCollectInput,
+  SubmitTicketInput,
+  TenantActivateInput,
+  TenantChatInput,
+  TenantConfirmInput,
+  TenantForgotPasswordInput,
+  TenantLoginInput,
+  TenantLogoutInput,
+  TenantResetPasswordInput,
+} from '@eken/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/v1` : '/api'
 
@@ -76,13 +88,10 @@ export const fetchActivationContract = (token: string) =>
     `/tenant-portal/activation/${encodeURIComponent(token)}/contract`,
   )
 
-export const activateAccount = (payload: {
-  token: string
-  password: string
-  signatureName: string
-}) => post<PortalAuthResult>('/tenant-portal/activate', payload)
+export const activateAccount = (payload: TenantActivateInput) =>
+  post<PortalAuthResult>('/tenant-portal/activate', payload)
 
-export const loginWithPassword = (payload: { email: string; password: string }) =>
+export const loginWithPassword = (payload: TenantLoginInput) =>
   post<PortalAuthResult>('/tenant-portal/login', payload)
 
 // ── BankID (#745 PR 4) ───────────────────────────────────────────────────────
@@ -99,22 +108,36 @@ export const loginWithPassword = (payload: { email: string; password: string }) 
  */
 export const publicFeatures = () => get<{ features: { bankId: boolean } }>('/public/config')
 
-export const bankIdStart = () => post<PortalBankIdStart>('/tenant-portal/auth/bankid/start', {})
+/**
+ * INGEN KROPP — och det är hela poängen. Hanteraren har inget `@Body`; den läser
+ * bara `req.ip`. Anropet skickade tidigare `{}`, vilket såg ut som en nyttolast
+ * utan att vara en, och gjorde endpointen till en otypad post i
+ * kontraktsbaslinjen. Det som inte skickas behöver inget schema.
+ */
+export const bankIdStart = () => post<PortalBankIdStart>('/tenant-portal/auth/bankid/start')
 
-export const bankIdCollect = (orderRef: string) =>
-  post<PortalBankIdCollect>('/tenant-portal/auth/bankid/collect', { orderRef })
+export const bankIdCollect = (orderRef: string) => {
+  const kropp: BankIdCollectInput = { orderRef }
+  return post<PortalBankIdCollect>('/tenant-portal/auth/bankid/collect', kropp)
+}
 
-export const bankIdChoose = (chooseToken: string, tenantId: string) =>
-  post<PortalBankIdCollect>('/tenant-portal/auth/bankid/choose', { chooseToken, tenantId })
+export const bankIdChoose = (chooseToken: string, tenantId: string) => {
+  const kropp: BankIdChooseInput = { chooseToken, tenantId }
+  return post<PortalBankIdCollect>('/tenant-portal/auth/bankid/choose', kropp)
+}
 
-export const requestForgotPassword = (email: string) =>
-  post<{ message: string }>('/tenant-portal/forgot-password', { email })
+export const requestForgotPassword = (email: string) => {
+  const kropp: TenantForgotPasswordInput = { email }
+  return post<{ message: string }>('/tenant-portal/forgot-password', kropp)
+}
 
-export const resetPassword = (payload: { token: string; password: string }) =>
+export const resetPassword = (payload: TenantResetPasswordInput) =>
   post<PortalAuthResult>('/tenant-portal/reset-password', payload)
 
-export const logoutSession = (sessionToken: string) =>
-  post<null>('/tenant-portal/logout', { sessionToken })
+export const logoutSession = (sessionToken: string) => {
+  const kropp: TenantLogoutInput = { sessionToken }
+  return post<null>('/tenant-portal/logout', kropp)
+}
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 
@@ -244,18 +267,19 @@ export interface TenantAiConversation {
   _count?: { messages: number }
 }
 
-export const sendAiMessage = (message: string, conversationId?: string) =>
-  post<TenantAiChatResponse>('/tenant-portal/ai/chat', {
+export const sendAiMessage = (message: string, conversationId?: string) => {
+  // ANNOTERAD, inte inferrerad. Utan `: TenantChatInput` blir literalen en
+  // inferrerad `const` och TypeScript kör då INGEN överskottskontroll — ett fält
+  // som finns här men inte i kontraktet hade passerat tyst. Se CLAUDE.md.
+  const kropp: TenantChatInput = {
     message,
     ...(conversationId ? { conversationId } : {}),
-  })
+  }
+  return post<TenantAiChatResponse>('/tenant-portal/ai/chat', kropp)
+}
 
-export const confirmAiAction = (params: {
-  toolName: string
-  toolInput: Record<string, unknown>
-  conversationId: string
-  confirmed: boolean
-}) => post<TenantAiChatResponse>('/tenant-portal/ai/confirm', params)
+export const confirmAiAction = (params: TenantConfirmInput) =>
+  post<TenantAiChatResponse>('/tenant-portal/ai/confirm', params)
 
 export const fetchAiConversations = () =>
   get<TenantAiConversation[]>('/tenant-portal/ai/conversations')
