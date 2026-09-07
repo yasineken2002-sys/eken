@@ -72,6 +72,16 @@ export interface MaintenanceTicket {
     createdAt: string
   }[]
   comments: MaintenanceComment[]
+  // Tilldelad hantverkare (etapp 10). Endast på detalj-svaret, som chargeId
+  // ovan. `assignedToId` finns kvar i databasen men är utfasad och läses inte
+  // här — se TODO vid fältet i schema.prisma.
+  assignedContractor?: {
+    id: string
+    name: string
+    email: string | null
+    phone: string | null
+    categories: string[]
+  } | null
   createdAt: string
   updatedAt: string
 }
@@ -84,7 +94,6 @@ export interface MaintenanceStats {
   urgent: number
   openCosts: number
 }
-
 
 export interface UpdateTicketInput {
   title?: string

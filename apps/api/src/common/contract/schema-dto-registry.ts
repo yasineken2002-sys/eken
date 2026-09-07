@@ -43,6 +43,9 @@ import {
   UpdateAppendixSchema,
   CreateSigningRequestSchema,
   InviteTenantsSchema,
+  CreateContractorSchema,
+  UpdateContractorSchema,
+  AssignContractorSchema,
   TenantLoginSchema,
   TenantActivateSchema,
   BankIdCollectSchema,
@@ -104,6 +107,11 @@ import {
   ResetPasswordDto,
 } from '../../tenant-portal/dto/tenant-auth.dto'
 import { TenantChatDto, TenantConfirmDto } from '../../ai/dto/tenant-ai.dto'
+import {
+  AssignContractorDto,
+  CreateContractorDto,
+  UpdateContractorDto,
+} from '../../contractors/dto/contractor.dto'
 import {
   AddTenantCommentDto,
   SubmitMaintenanceDto,
@@ -991,5 +999,33 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltigVarfor:
       'confirmed saknas — ett utelämnat fält på en bekräftelse får inte kunna läsas som ett ja',
+  },
+  // ─── HANTVERKARREGISTRET (etapp 10) ───────────────────────────────────────
+  {
+    endpoint: 'POST /contractors',
+    inputTyp: 'CreateContractorInput',
+    schema: CreateContractorSchema,
+    dto: CreateContractorDto,
+    giltig: { name: 'Rör & Värme AB', email: 'kontakt@ror.se', categories: ['PLUMBING'] },
+    ogiltig: { name: 'Rör & Värme AB', categories: ['SKADEDJUR'] },
+    ogiltigVarfor: 'kategorin finns inte i MaintenanceCategory — samma enum som ärendet bär',
+  },
+  {
+    endpoint: 'PATCH /contractors/:id',
+    inputTyp: 'UpdateContractorInput',
+    schema: UpdateContractorSchema,
+    dto: UpdateContractorDto,
+    giltig: { isActive: false },
+    ogiltig: { email: 'inte-en-adress' },
+    ogiltigVarfor: 'e-postadressen har inte adressform',
+  },
+  {
+    endpoint: 'PATCH /maintenance/:id/assign',
+    inputTyp: 'AssignContractorInput',
+    schema: AssignContractorSchema,
+    dto: AssignContractorDto,
+    giltig: { contractorId: '11111111-2222-4333-8444-555555555555' },
+    ogiltig: { contractorId: 'inte-ett-uuid' },
+    ogiltigVarfor: 'contractorId måste vara ett uuid eller null',
   },
 ]

@@ -41,7 +41,26 @@
     "",
     "k63 och k64 lades till i samma ändring för att tystnadsgruppen skulle förbli",
     "fem ärenden och inte krympa till tre. Båda är skrivna utan att någon modell sett",
-    "dem."
+    "dem.",
+    "",
+    "2026-09-07, efter körning 7: k23 gick från HIGH till URGENT och k60 från LOW",
+    "till NORMAL. Båda är beslut av en människa på två ärenden som mätningen lyfte",
+    "som DISKUTABLA — de ändrades inte av den som mätte, och de ändrades inte för",
+    "att flytta ett tal.",
+    "",
+    "k23: en hiss ur funktion i tre dagar med en rörelsehindrad boende på femte",
+    "våningen. Modellen svarade URGENT i körning 6 och 7; facit sa HIGH.",
+    "",
+    "k60: en okänd lukt utan plats. k25 är också en okänd lukt utan plats och hade",
+    "facit NORMAL. Samma art av ärende hade alltså två nivåer, vilket är en",
+    "inkonsekvens i facit och inte en skillnad i sak. k25 rördes inte.",
+    "",
+    "ATT FACIT ÄNDRAS EFTER EN KÖRNING ÄR EN RISK, och samma vägning gäller som för",
+    "rättelsen ovan: argumenten hänger inte på vad modellen svarade. Men var ärlig",
+    "om riktningen — k23 rör sig MOT modellens svar (den sa URGENT), så den",
+    "rättelsen kan inte redovisas som neutral. k60 rör sig BORT från modellens svar",
+    "i körning 7 (den sa NORMAL före reglerna men utfallet blev NORMAL, så där",
+    "sammanfaller de). Talen före och efter står i statusblocket, var för sig."
   ],
   "arenden": [
     {
@@ -349,10 +368,10 @@
       "registreradPrioritet": "NORMAL",
       "facit": {
         "kategori": "COMMON_AREAS",
-        "prioritet": "HIGH",
+        "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Trasig hiss med rörelsehindrad boende på hög våning — hög prioritet."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som HIGH. En hiss ur funktion i tre dagar med en boende som har svårt att gå i trappor på femte våningen är inte ett ärende som tål att vänta — personen är i praktiken instängd."
       }
     },
     {
@@ -747,11 +766,11 @@
       "registreradPrioritet": "LOW",
       "facit": {
         "kategori": "OTHER",
-        "prioritet": "LOW",
+        "prioritet": "NORMAL",
         "atgard": "INGEN",
         "fragaRatt": true,
         "fragaFalt": "category",
-        "skal": "Lukt utan plats och utan karaktär. Frågan är var och hur det luktar."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som LOW. Lukt utan plats och utan karaktär. Frågan är var och hur det luktar — och en okänd lukt är samma sak här som i k25, alltså NORMAL. Att samma art av ärende hade två nivåer var en inkonsekvens i facit, inte en skillnad i sak."
       }
     },
     {

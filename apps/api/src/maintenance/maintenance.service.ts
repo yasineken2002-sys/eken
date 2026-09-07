@@ -170,6 +170,9 @@ export class MaintenanceService {
         },
         images: true,
         comments: { orderBy: { createdAt: 'asc' } },
+        assignedContractor: {
+          select: { id: true, name: true, email: true, phone: true, categories: true },
+        },
       },
     })
     if (!ticket) throw new NotFoundException('Underhållsärende hittades inte')
@@ -336,6 +339,65 @@ export class MaintenanceService {
    * dem aldrig, portalen filtrerar `isInternal: false` — och den är för liten
    * för ett lås. Omkörningsfallet, som var det verkliga, är borta.
    */
+  /**
+   * TILLDELA ELLER AVTILLDELA EN HANTVERKARE.
+   *
+   * Egen metod och inte ett fält i `update`, av två skäl. Tilldelningen är en
+   * HÄNDELSE — den sätter `assignedAt` och `assignedByUserId`, som ingen klient
+   * får bestämma — och den har en egen behörighetsfråga: att peka ut vem som
+   * ska göra jobbet är förvaltning, inte redigering av ärendetexten.
+   *
+   * `contractorId: null` betyder AVTILLDELA och är ett giltigt anrop. Då nollas
+   * även `assignedAt` och `assignedByUserId`: en tilldelningstid utan tilldelad
+   * hade blivit en historikhändelse om något som inte hänt.
+   *
+   * Hantverkaren slås upp med `organizationId` i villkoret. Utan det hade ett
+   * gissat uuid kunnat tilldela en annan organisations hantverkare — och det
+   * hade dessutom läckt att hantverkaren finns.
+   */
+  async assignContractor(
+    id: string,
+    contractorId: string | null,
+    organizationId: string,
+    userId: string,
+  ) {
+    await this.findOne(id, organizationId)
+
+    if (contractorId !== null) {
+      const contractor = await this.prisma.contractor.findFirst({
+        where: { id: contractorId, organizationId },
+        select: { id: true, isActive: true },
+      })
+      if (!contractor) throw new NotFoundException('Hantverkaren hittades inte')
+      // En INAKTIV hantverkare går inte att tilldela. `isActive = false` betyder
+      // "anlitas inte längre", och att tyst tillåta en tilldelning ändå hade
+      // gjort flaggan till dekoration. Befintliga tilldelningar rörs inte —
+      // historiken ska visa vem som faktiskt fick ärendet.
+      if (!contractor.isActive) {
+        throw new BadRequestException(
+          'Hantverkaren är inaktiverad och kan inte tilldelas nya ärenden',
+        )
+      }
+    }
+
+    return this.prisma.maintenanceTicket.update({
+      where: { id },
+      data:
+        contractorId === null
+          ? { assignedContractorId: null, assignedAt: null, assignedByUserId: null }
+          : {
+              assignedContractorId: contractorId,
+              assignedAt: new Date(),
+              assignedByUserId: userId,
+            },
+      include: {
+        assignedContractor: {
+          select: { id: true, name: true, email: true, phone: true, categories: true },
+        },
+      },
+    })
+  }
+
   async update(
     id: string,
     dto: UpdateMaintenanceTicketDto,

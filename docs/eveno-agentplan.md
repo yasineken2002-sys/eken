@@ -146,12 +146,17 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#796](https://github.com/yasineken2002-sys/eken/pull/796)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
 
-> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `5ee83e00`
+> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `bc9f09bb` + facit k8
 >
-> Sha:n är den körning 7 FAKTISKT kördes mot. En commit efter den lagade
-> minusgrader i temperaturregeln; den ändringen har **noll** effekt på
-> korpusen (50/54 före och efter, offline mot samma sparade svar), eftersom
-> inget ärende nämner en minusgrad. Talen nedan gäller alltså båda.
+> **TVÅ FACITRADER ÄNDRADES EFTER KÖRNING 7, av en människa.** k23 gick från
+> HIGH till URGENT och k60 från LOW till NORMAL — de två av tre diskutabla fall
+> som lyftes ur mätningen och lämnades åt hyresvärden. Reglerna rördes INTE i
+> samma omgång, och koden är oförändrad sedan `bc9f09bb`. Körning 8 är alltså
+> samma agent mot ett rättat facit, och skillnaden mot k7 är facit och
+> ingenting annat. Skälen står i `korpus.json`:s RÄTTELSER.
+>
+> **k25 rördes inte** (den var redan NORMAL) och **k08 rördes inte** (facit HIGH
+> står kvar).
 >
 > **Kriteriet lyder "den föreslår rätt i VERKLIGA fall".** Det finns inga
 > verkliga fall: skuggagenten är påslagen i noll organisationer, och prod har
@@ -166,15 +171,31 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 > kostar pengar varje gång. Korpusens form och rapportens summering har
 > däremot prov som går utan ett enda anrop.
 >
-> | | k1 | k2 | k3 | k4 | k5 | k6 | **k7** |
-> | --- | --- | --- | --- | --- | --- | --- | --- |
-> | kategori | 85,4 % | 88,2 % | 88,0 % | 88,9 % | 87,0 % | 87,0 % | **87,0 %** |
-> | prioritet | 62,5 % | 58,8 % | 54,0 % | 79,6 % | 79,6 % | 72,2 % | **92,6 %** |
-> | åtgärd | 38,0 % | 44,2 % | 55,8 % | 77,8 % | 74,1 % | 87,0 % | **87,0 %** |
-> | inget förslag | 66,7 % (3) | 20,0 % (5) | 40,0 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** |
-> | fel fråga | 0,0 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** |
-> | missad fråga | 3 | 3 | 4 | 6 | 8 | 1 | **1** |
-> | kostnad | $0,1914 | $0,2000 | $0,2114 | $0,2704 | $0,2714 | $0,2747 | **$0,2748** |
+> | | k1 | k2 | k3 | k4 | k5 | k6 | k7 | **k8** |
+> | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+> | kategori | 85,4 % | 88,2 % | 88,0 % | 88,9 % | 87,0 % | 87,0 % | 87,0 % | **87,0 %** |
+> | prioritet | 62,5 % | 58,8 % | 54,0 % | 79,6 % | 79,6 % | 72,2 % | 92,6 % | **90,7 %** |
+> | åtgärd | 38,0 % | 44,2 % | 55,8 % | 77,8 % | 74,1 % | 87,0 % | 87,0 % | **87,0 %** |
+> | inget förslag | 66,7 % (3) | 20,0 % (5) | 40,0 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** |
+> | fel fråga | 0,0 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** |
+> | missad fråga | 3 | 3 | 4 | 6 | 8 | 1 | 1 | **1** |
+> | kostnad | $0,1914 | $0,2000 | $0,2114 | $0,2704 | $0,2714 | $0,2747 | $0,2748 | **$0,2749** |
+>
+> **k8: sex av sex mål håller fortfarande.** Prioriteten föll 92,6 → 90,7 %
+> (50/54 → 49/54) av facitändringen, alltså av att måttstocken flyttades — inte
+> av att agenten blev sämre. Koden är bit för bit densamma.
+>
+> **Och en obekväm siffra ska stå bredvid.** Utmanaren — modellens egen prioritet
+> genom samma golv och tak — steg 85,2 → **88,9 %**. Rättelsen flyttade alltså
+> facit MOT modellens svar, och avståndet mellan regel och modell krympte från
+> 4,4 till **1,8** procentenheter. Regeln vinner fortfarande, och bortkopplingen
+> står kvar; men marginalen är nu tunn nog att den ska mätas om vid nästa
+> ändring i stället för att antas.
+>
+> Att k23 rör sig mot modellens svar (den sa URGENT) betyder att den rättelsen
+> inte kan redovisas som neutral. Den gjordes ändå — argumentet hänger inte på
+> vad modellen svarade — men riktningen står här så att ingen läser 90,7 % som
+> en oberoende bekräftelse.
 >
 > Körning 1–3 mättes på 52 ärenden, 4–7 på 54: två ärenden lades till när två
 > facit rättades (se `korpus.json`:s RÄTTELSER — rättelsen står där och inte här,
@@ -283,12 +304,12 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 > **k19** träffas numera av regeln för fler än ett hushåll och landar på HIGH i
 > stället för URGENT — ett steg fel, inte ett missat ärende.
 >
-> **k23 och k25 är facitfrågor och ändras inte här.** k23:s facit säger HIGH och
-> modellen sa URGENT; en hiss ur funktion i tre dagar med en rörelsehindrad
-> boende på femte våningen är rimligen endera. k25:s facit säger NORMAL för en
-> okänd lukt, medan korpusens `k60` — också en okänd lukt — har facit LOW. Vilken
-> av dem som är rätt avgörs av en hyresvärd, inte av den här mätningen. **Ingen
-> facitrad har ändrats i den här omgången.**
+> **k23 och k25 var facitfrågor och är nu AVGJORDA av en människa** (k23 → URGENT,
+> k60 → NORMAL, k25 och k08 orörda). Utfallet för agenten: k23 är fortfarande en
+> miss — agenten svarade NORMAL, och både gammalt och nytt facit ligger över. k60
+> blev en NY miss: agenten svarade LOW, vilket var rätt mot gammalt facit och är
+> fel mot nytt. Rättelsen kostade alltså exakt ett ärende, och det är hela
+> skillnaden mellan 50/54 och 49/54.
 >
 > **k57 är R3:s kända pris.** Texten nämner "kranen", alltså ett PLUMBING-ord, men
 > är ingen felanmälan — den är en följdfråga. R3 lagade `k15` och kostade `k57`;
@@ -377,7 +398,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 7 | G2 delegationer + "Gör alltid detta" + preferenser | 6 | hyresvärden kan delegera och se vad systemet tror om hen | **KLAR** — preferensresten är löst genom produktionskod (etapp 8 PR 4). `AiMemory` bär `provenanceKind` (`HUMAN_CONFIRMED`/`DECISION_DERIVED`/`ANTAGANDE`), `sourceKind`/`sourceId` och `confirmedBy`/`confirmedAt`; `getMemories` filtrerar i `where` så ett ANTAGANDE aldrig når en agentprompt, och varje rad som når den bär sin grund i klartext. `/delegationer` fick sektionen **Antaganden** med Bekräfta och Avvisa — planens "se vad systemet tror om hen" med BÅDA halvorna: vad du gett bort, och vad systemet gissat men ingen sagt. Ett avvisat antagande raderas inte (Del 7: att säga nej är också lärande). Mätt mot riktig Postgres, med negativkontroll per del |
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | **KLAR** — alla tre delarna finns i produktionskod. **Observationslagret** (PR 4) är en FRÅGA och ingen tabell: `ObservationService.beslutsunderlag` svarar godkända/avvisade/delegerade/senaste ur inkorgens facit och delegationerna, och `kanBliDelegation` läser sin regel därifrån. **Delegationsförslagen** (PR 5a): tre godkännanden i obruten svit ger ETT förslag i inkorgen, idempotent per `<verktyg>\|<typ>\|<nivå>` under ett partiellt unikt index — systemet föreslår, det tar sig aldrig rätt. **Frågorna** (PR 5b): ett tredje utfall i skuggagenten, strukturerat (fält + 2–4 alternativ ur registret + vad svaret låser upp), högst en öppen fråga per ärende, ingen fråga vars svar redan finns, och svaret blir en `HUMAN_CONFIRMED`-minnespost som nästa förslag läser. **Kvar som en känd gräns, inte som en rest:** frågebara fält är `category` och `priority` — `assignedToId` saknar register tills etapp 10 ger det ett |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | **DELVIS** — **skarpt läge FINNS, och är påslaget för NOLL organisationer.** `Organization.agentExecutionEnabled` är `false` överallt, kräver att skuggan är på, är OWNER-grindad i tjänsten, och stängs automatiskt när skuggan stängs (varvid alla delegationer PAUSAS, inte återkallas). Utföraren kör bara de **fem** verktyg som är både delegerbara och uppdragsdugliga — mängden är härledd (`uppdragsdugliga ∩ delegerbara`), och de tre `DEDUPLICERBAR`-verktygen får en dom men aldrig en körning. Kriteriet "ärenden avslutas utan att hyresvärden rört dem" är alltså **omätt, inte uppfyllt**: det kräver en organisation som slår på växeln, och ingen har |
-| 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | — |
+| 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | **DELVIS — PR 1 av 2.** Modellen finns: `Contractor` (org-scopad, yrkeskategorier ur SAMMA `MaintenanceCategory` som ärendet) och `MaintenanceTicket.assignedContractorId` som riktig FK med `assignedAt` och `assignedByUserId`. **Mätt före bygget:** `assignedToId` hade NOLL skrivare i hela repot — ingen DTO, ingen endpoint, ingen webbyta — och noll rader med värde. Fältet gick alltså inte att sätta, och skuggagentens tredje jämförelsefält kunde aldrig mäta något: facit var alltid null. Kolumnen droppas INTE ännu; `ai/shadow` läser den fortfarande (TODO står vid fältet i schemat). Tilldelningen är en HÄNDELSE i historiken (`MAINTENANCE_ASSIGNED` på den befintliga `maintenance-ticket`-källan — `Contractor` är ingen relation på Tenant/Unit/Property, så en egen källa hade varit osynlig för registervakten OCH en andra uppräkning). Webb: `/hantverkare` och tilldelning på ärendets detaljvy. **Kvar för KLAR: bokningen (PR 2)** — arbetsorder, svarslänk, och ett db-spec-flöde som går hela vägen |
 | 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |
 
 ### Mätt status — etapp 1–2b mot `5f94360`, 3–4 mot `dbe12ff`, 5 mot `1278a9b`

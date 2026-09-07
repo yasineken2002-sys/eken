@@ -8,8 +8,8 @@
     },
     "prioritet": {
       "antal": 54,
-      "traffar": 50,
-      "andel": 0.9259259259259259
+      "traffar": 49,
+      "andel": 0.9074074074074074
     },
     "atgard": {
       "antal": 54,
@@ -24,8 +24,8 @@
       "fragaTvingadRatt": 2,
       "prioritetMedModell": {
         "antal": 54,
-        "traffar": 46,
-        "andel": 0.8518518518518519
+        "traffar": 48,
+        "andel": 0.8888888888888888
       }
     },
     "fraga": {
@@ -67,10 +67,10 @@
     ],
     "domWouldExecute": 33,
     "kostnad": {
-      "totalUsd": 0.2748170000000001,
-      "perArendeUsd": 0.005089203703703705,
+      "totalUsd": 0.274892,
+      "perArendeUsd": 0.005090592592592593,
       "inTokens": 204082,
-      "utTokens": 14147
+      "utTokens": 14162
     }
   },
   "poster": [
@@ -610,10 +610,10 @@
     {
       "facit": {
         "kategori": "COMMON_AREAS",
-        "prioritet": "HIGH",
+        "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Trasig hiss med rörelsehindrad boende på hög våning — hög prioritet."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som HIGH. En hiss ur funktion i tre dagar med en boende som har svårt att gå i trappor på femte våningen är inte ett ärende som tål att vänta — personen är i praktiken instängd."
       },
       "utfall": {
         "id": "k23",
@@ -829,11 +829,11 @@
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
-        "andraKategori": "FACADE",
+        "andraKategori": "HEATING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005026,
+        "kostnadUsd": 0.005001,
         "inTokens": 3786,
-        "utTokens": 248
+        "utTokens": 243
       }
     },
     {
@@ -1317,19 +1317,19 @@
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005082,
+        "kostnadUsd": 0.005182,
         "inTokens": 3777,
-        "utTokens": 261
+        "utTokens": 281
       }
     },
     {
       "facit": {
         "kategori": "OTHER",
-        "prioritet": "LOW",
+        "prioritet": "NORMAL",
         "atgard": "INGEN",
         "fragaRatt": true,
         "fragaFalt": "category",
-        "skal": "Lukt utan plats och utan karaktär. Frågan är var och hur det luktar."
+        "skal": "RÄTTAT 2026-09-07, se __doc__ RÄTTELSER. Stod som LOW. Lukt utan plats och utan karaktär. Frågan är var och hur det luktar — och en okänd lukt är samma sak här som i k25, alltså NORMAL. Att samma art av ärende hade två nivåer var en inkonsekvens i facit, inte en skillnad i sak."
       },
       "utfall": {
         "id": "k60",

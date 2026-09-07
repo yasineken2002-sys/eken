@@ -911,6 +911,7 @@ model Organization {
   deposits                  Deposit[]
   rentIncreases             RentIncrease[]
   customers                 Customer[]
+  contractors               Contractor[]
   closedPeriods             ClosedAccountingPeriod[]
   periodEvents              AccountingPeriodEvent[]
   fiscalYearCloses          FiscalYearClose[]
@@ -1004,14 +1005,15 @@ model User {
   aiConversations          AiConversation[]
   aiAttachments            AiAttachment[]
   aiMemories               AiMemory[]
-  aiMemoriesConfirmed       AiMemory[] @relation("AiMemoryConfirmer")
-  aiMemoriesRejected        AiMemory[] @relation("AiMemoryRejecter")
+  aiMemoriesConfirmed      AiMemory[]               @relation("AiMemoryConfirmer")
+  aiMemoriesRejected       AiMemory[]               @relation("AiMemoryRejecter")
   aiUsageLogs              AiUsageLog[]
   aiToolExecutions         AiToolExecution[]
   notifications            Notification[]
   newsPosts                NewsPost[]
   sentMessages             SentMessage[]
   tenantAnonymizationLogs  TenantAnonymizationLog[] @relation("TenantAnonymizationPerformedBy")
+  contractorAssignments    MaintenanceTicket[]      @relation("MaintenanceAssignedBy")
   impersonationLogs        ImpersonationLog[]       @relation("ImpersonationTargetUser")
   aiAssignmentsAssigned    AiAssignment[]           @relation("AiAssignmentAssignee")
   aiAssignmentsDecided     AiAssignment[]           @relation("AiAssignmentDecider")
@@ -2163,11 +2165,11 @@ model JournalEntry {
   eventDate DateTime? @db.Date
 
   // Bokföringslagen (1999:1078): journalposter är räkenskapsinformation, bevaras 7 år.
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   lateFiscalYearLog LateFiscalYearPosting?
-  createdBy       User?              @relation(fields: [createdById], references: [id])
-  lines           JournalEntryLine[]
-  fiscalYearClose FiscalYearClose?
+  createdBy         User?                  @relation(fields: [createdById], references: [id])
+  lines             JournalEntryLine[]
+  fiscalYearClose   FiscalYearClose?
 
   createdAt DateTime @default(now())
 
@@ -2213,9 +2215,9 @@ model LateFiscalYearPosting {
   /// Det VERKLIGA datumet för betalningen — samma värde som JournalEntry.eventDate.
   /// Dubblerat med flit: verifikatet ska kunna läsas ensamt (BFL 5 kap 7 §), och
   /// spåret ska kunna läsas utan att join:a verifikatet.
-  eventDate DateTime @db.Date
+  eventDate        DateTime @db.Date
   /// Datumet posten faktiskt bokfördes på — första öppna dag.
-  bookedDate DateTime @db.Date
+  bookedDate       DateTime @db.Date
   /// Räkenskapsåret som var stängt och därför orsakade flytten.
   closedFiscalYear Int
 
@@ -3529,7 +3531,7 @@ model AiMemory {
   /// gång sa ja, och den ska överleva att kontot raderas. Att spåret försvinner
   /// med sin upphovsman gör det obesvarbart precis när det behövs.
   confirmedByUserId String?
-  confirmedByUser   User?    @relation("AiMemoryConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  confirmedByUser   User?     @relation("AiMemoryConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
   confirmedAt       DateTime?
 
   /// ── ATT SÄGA NEJ ÄR OCKSÅ LÄRANDE ────────────────────────────────────────
@@ -3552,7 +3554,6 @@ model AiMemory {
 
   @@unique([organizationId, userId, key])
   @@index([organizationId, userId])
-
   /// Läsvägen frågar alltid på (org, användare, grund) — se `getMemories`.
   @@index([organizationId, userId, provenanceKind])
 }
@@ -4190,11 +4191,9 @@ model AiAssignment {
   @@index([organizationId, shadow, createdAt])
   /// Facitskrivningens fråga: hitta förslaget som hör till en domänpost.
   @@index([organizationId, sourceKind, sourceId])
-
   /// Torrlägets sveparcron letar rader UTAN dom. Utan indexet blir det en
   /// full scan var femtonde minut, och den växer med kön.
   @@index([organizationId, shadow, executionVerdict])
-
   /// Sveppasset frågar "finns ett ÖPPET delegationsförslag för det här mönstret".
   ///
   /// DEKLARERAD HÄR, inte i rå SQL: ett vanligt index KAN uttryckas i Prisma, och
@@ -4202,7 +4201,6 @@ model AiAssignment {
   /// föreslår att DROPPA. (Det partiella UNIKA indexet i samma migration kan
   /// däremot inte uttryckas — därför bor bara det i SQL.)
   @@index([organizationId, kind, status])
-
   /// `/delegationer` räknar "Skulle ha utlöst" per delegation, och
   /// frekvensvillkoret räknar förbrukning inom ett tidsfönster. Båda frågorna
   /// går genom de här två kolumnerna.
@@ -4515,6 +4513,72 @@ model ImportJob {
   @@index([organizationId])
 }
 
+// ─── Hantverkare (etapp 10) ───────────────────────────────────────────────────
+
+/// EN HANTVERKARE ÄR INTE EN KUND OCH INTE EN LEVERANTÖR.
+///
+/// De tre svarar på olika frågor, och att slå ihop dem hade varit en tyst
+/// betydelseglidning av precis den form CLAUDE.md varnar för:
+///
+///   Customer     vem FAKTURERAR vi?    `Invoice.customerId` pekar hit
+///   leverantör   vem är vi SKYLDIGA?   finns inte som modell — `SupplierInvoice
+///                                      .supplierName` är fritext med flit
+///   Contractor   vem UTFÖR arbetet, i vilka yrkeskategorier?
+///
+/// Värdemängderna liknar varandra — båda är företag eller personer med namn och
+/// kontaktuppgift — och det är fällan. Den mekaniska skillnaden: hade en
+/// hantverkare varit en `Customer` hade varje rörmokare dykt upp i kundväljaren
+/// när någon skapar en faktura, och en faktura TILL en rörmokare är en skuld de
+/// har till oss — motsatsen till vad en arbetsorder betyder.
+///
+/// En hantverkare och en framtida leverantör sammanfaller ofta. Den ärliga
+/// kopplingen är då en nullbar pekare mellan modellerna, inte en sammanslagning.
+///
+/// ── PERSONUPPGIFTER ────────────────────────────────────────────────────────
+///
+/// Modellen bär INGET personnummer, till skillnad från `Tenant` och `Customer`.
+/// Det är ett aktivt val: en hantverkare kontaktas i egenskap av näringsidkare,
+/// och ett personnummer hade dragit in modellen i krypteringen-i-vila och i
+/// anonymiseringsvägen utan att någon funktion behöver det. En enskild firma är
+/// visserligen en fysisk person, så `name`, `email` och `phone` ÄR
+/// personuppgifter — de raderas därför hårt av `DELETE /contractors/:id`, som
+/// är en riktig radering och inte en flaggsättning.
+///
+/// `isActive = false` är det MJUKA steget och betyder "anlitas inte längre" —
+/// raden finns kvar så att historiska ärenden kan visa vem som utförde arbetet.
+/// Den som vill bort ur registret helt raderas; ärendets FK är `SetNull`, så
+/// ärendet överlever med tilldelningen tömd.
+model Contractor {
+  id             String @id @default(uuid())
+  organizationId String
+
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  orgNumber     String?
+
+  /// Yrkeskategorier ur `MaintenanceCategory` — SAMMA enum som ärendet, aldrig
+  /// en egen lista. En andra uppräkning hade glidit isär första gången någon
+  /// lade till en kategori, och felet hade varit tyst: hantverkaren går inte
+  /// att filtrera fram för den nya kategorin, vilket ser ut som att ingen
+  /// hantverkare finns.
+  categories MaintenanceCategory[]
+
+  notes    String? @db.Text
+  isActive Boolean @default(true)
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  maintenanceTickets MaintenanceTicket[]
+
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+}
+
 // ─── Maintenance (Underhåll) ──────────────────────────────────────────────────
 
 model MaintenanceTicket {
@@ -4525,7 +4589,34 @@ model MaintenanceTicket {
   unitId         String?
   tenantId       String?
   reportedById   String?
-  assignedToId   String?
+
+  // ── UTFASAD (etapp 10, PR 1) ──────────────────────────────────────────────
+  //
+  // Naken `String?` utan relation. Uppmätt vid införandet av
+  // `assignedContractorId`: NOLL skrivare i hela repot — ingen DTO tar emot
+  // fältet, ingen endpoint sätter det, ingen webbyta rör det — och noll rader
+  // med värde. Skuggagenten LÄSER det som ett av tre jämförda fält, alltså har
+  // dess tredje jämförelse aldrig kunnat mäta något: facit var alltid null.
+  //
+  // TODO(terminal 2, ai/shadow): `ai/shadow/shadow-fields.ts:46` och
+  // `ai/shadow/maintenance-shadow.service.ts:644` läser fortfarande
+  // `assignedToId` och ska bytas till `assignedContractorId` när PR 1 är inne.
+  // Rörs INTE härifrån — ai/shadow är en annan ströms område.
+  //
+  // Fältet behålls läsbart tills det bytet är gjort. Att droppa det i samma
+  // migration hade brutit skuggagenten utan att något prov sagt ifrån.
+  assignedToId String?
+
+  // ── TILLDELAD HANTVERKARE (etapp 10) ──────────────────────────────────────
+  //
+  // Riktig FK, till skillnad från raden ovan. `SetNull`: en raderad hantverkare
+  // får inte ta ärendet med sig — ärendet är historik, hantverkarregistret är
+  // ett register. `assignedAt` och `assignedByUserId` gör tilldelningen till en
+  // HÄNDELSE som går att visa i historiken; utan dem vet man att någon är
+  // tilldelad men inte när eller av vem.
+  assignedContractorId String?
+  assignedAt           DateTime?
+  assignedByUserId     String?
 
   title       String
   description String              @db.Text
@@ -4560,11 +4651,13 @@ model MaintenanceTicket {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  property     Property     @relation(fields: [propertyId], references: [id])
-  unit         Unit?        @relation(fields: [unitId], references: [id])
-  tenant       Tenant?      @relation(fields: [tenantId], references: [id])
-  charge       MiscCharge?  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  organization       Organization @relation(fields: [organizationId], references: [id])
+  property           Property     @relation(fields: [propertyId], references: [id])
+  unit               Unit?        @relation(fields: [unitId], references: [id])
+  tenant             Tenant?      @relation(fields: [tenantId], references: [id])
+  charge             MiscCharge?  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  assignedContractor Contractor?  @relation(fields: [assignedContractorId], references: [id], onDelete: SetNull)
+  assignedBy         User?        @relation("MaintenanceAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
 
   // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
   //
@@ -4581,6 +4674,7 @@ model MaintenanceTicket {
   @@index([organizationId])
   @@index([propertyId])
   @@index([status])
+  @@index([assignedContractorId])
 }
 
 model MaintenanceImage {
@@ -6715,9 +6809,9 @@ model AiDelegation {
   /// Torrlägets domar som pekar hit (etapp 8). Egen relation, skild från
   /// `assignments`: den ena är vad som UTFÖRDES med rätten, den andra vad som
   /// HADE utförts. Se docblocket vid `AiAssignment.verdictDelegationId`.
-  dryRunVerdicts AiAssignment[] @relation("AiAssignmentDryRunVerdict")
-  executions   AiToolExecution[]
-  assignments  AiAssignment[]
+  dryRunVerdicts AiAssignment[]    @relation("AiAssignmentDryRunVerdict")
+  executions     AiToolExecution[]
+  assignments    AiAssignment[]
 
   /// Grindens fråga: organisationens delegationer för ett verktyg.
   @@index([organizationId, toolName])

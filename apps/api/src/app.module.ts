@@ -39,6 +39,7 @@ import { DocumentsModule } from './documents/documents.module'
 import { ImportModule } from './import/import.module'
 import { AiModule } from './ai/ai.module'
 import { MaintenanceModule } from './maintenance/maintenance.module'
+import { ContractorsModule } from './contractors/contractors.module'
 import { AviseringModule } from './avisering/avisering.module'
 import { InspectionsModule } from './inspections/inspections.module'
 import { MaintenancePlanModule } from './maintenance-plan/maintenance-plan.module'
@@ -217,6 +218,7 @@ import { Psd2Module } from './psd2/psd2.module'
     ImportModule,
     AiModule,
     MaintenanceModule,
+    ContractorsModule,
     AviseringModule,
     InspectionsModule,
     MaintenancePlanModule,
