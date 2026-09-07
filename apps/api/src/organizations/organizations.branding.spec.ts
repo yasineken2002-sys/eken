@@ -50,7 +50,17 @@ function makeService() {
   const update = jest
     .fn()
     .mockImplementation(({ data }) => Promise.resolve({ id: 'org-1', ...data }))
-  const prisma = { organization: { update } }
+  // ── `findUnique` MÅSTE FINNAS SEDAN ETAPP 9 ───────────────────────────────
+  //
+  // `update()` läser organisationens nuvarande flaggor ur DATABASEN för att
+  // upprätthålla invarianten "skarpt läge kräver skuggan" — en kontroll som
+  // bara tittade på DTO:t hade släppt igenom ett anrop som bara sätter skarpt
+  // läge. Attrappen svarar med båda flaggorna AV, vilket är det tillstånd varje
+  // organisation faktiskt är i.
+  const findUnique = jest
+    .fn()
+    .mockResolvedValue({ shadowAgentEnabled: false, agentExecutionEnabled: false })
+  const prisma = { organization: { update, findUnique } }
   const service = new OrganizationsService(prisma as never, {} as never, {} as never)
   return { service, update }
 }
