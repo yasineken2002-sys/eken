@@ -16,6 +16,15 @@ import {
   skuggverktygForFelanmalan,
 } from './shadow-tool-gate'
 import { FRAGEBARA_NYCKLAR, ärGiltigFråga } from '../questions/question-fields'
+import {
+  HANTVERKARRUTT,
+  LAGG_TILL_HANTVERKARE,
+  TOMT_REGISTER_ALTERNATIV,
+  godkandHantverkare,
+  hantverkarmeny,
+  type Hantverkarpost,
+  type Menypost,
+} from './contractor-menu'
 import { tillämpaRegler } from './triage-rules'
 import { QuestionService } from '../questions/question.service'
 
@@ -193,8 +202,31 @@ export class MaintenanceShadowService {
     await this.quota.checkOrgDailyCostCap(organizationId)
 
     const kontext = await this.byggKontext(organizationId, ticket)
-    const forslag = await this.fragaModellen(organizationId, ticket, kontext)
+    const { forslag, dynamisktRegister, meny } = await this.fragaModellen(
+      organizationId,
+      ticket,
+      kontext,
+    )
     if (!forslag) return { utfall: 'AVVISAT_FORSLAG', detalj: 'modellen svarade inte tolkbart' }
+
+    // ── HANTVERKAREN PRÖVAS MOT MENYN, FÖRE LAGRING ────────────────────────
+    //
+    // Schemats enum har redan gjort ett främmande id strukturellt omöjligt —
+    // men den spärren bor hos leverantören. Den här bor hos oss, och den är den
+    // som gäller den dag modellen, providern eller schemat byts.
+    //
+    // Fältet UTELÄMNAS när det inte håller; hela förslaget avvisas inte. Ett
+    // valfritt fält får inte kunna kasta bort en riktig kategori och prioritet.
+    const godkänd = godkandHantverkare(forslag.prediction['assignedContractorId'], meny)
+    if (forslag.prediction['assignedContractorId'] !== undefined && godkänd === undefined) {
+      this.logger.warn(
+        `[ai-shadow] ärende ${ticket.ticketNumber}: föreslagen hantverkare ` +
+          `${String(forslag.prediction['assignedContractorId'])} finns inte i menyn för ` +
+          `${ticket.category} i den här organisationen — fältet utelämnas.`,
+      )
+    }
+    if (godkänd === undefined) delete forslag.prediction['assignedContractorId']
+    else forslag.prediction['assignedContractorId'] = godkänd
 
     // ── DE DETERMINISTISKA REGLERNA, EFTER MODELLEN OCH FÖRE ALLT ANNAT ─────
     //
@@ -290,6 +322,9 @@ export class MaintenanceShadowService {
         propertyId: ticket.propertyId,
         unitId: ticket.unitId,
         tenantId: ticket.tenantId,
+        // SAMMA mängd som frågan prövades mot i `tolkaVerktygsanrop`. Ett andra
+        // uppslag här hade kunnat ge en annan mängd — se `fragaModellen`.
+        dynamisktRegister,
       })
       this.logger.log(`[ai-shadow] ärende ${ticket.ticketNumber}: FRÅGA — ${r.utfall}`)
       return r.utfall === 'STÄLLD'
@@ -455,9 +490,35 @@ export class MaintenanceShadowService {
       priority: MaintenancePriority
     },
     kontext: { historik: string[] },
-  ): Promise<ReturnType<typeof tolkaVerktygsanrop>> {
+    /**
+     * REGISTRET RETURNERAS MED, i stället för att slås upp en andra gång vid
+     * frågeskrivningen. Två uppslag av samma mängd kan ge olika svar om någon
+     * avaktiverar en hantverkare däremellan — och då hade frågan prövats mot en
+     * mängd och lagrats mot en annan.
+     */
+  ): Promise<{
+    forslag: ReturnType<typeof tolkaVerktygsanrop>
+    dynamisktRegister: string[]
+    meny: Menypost[]
+  }> {
     const verktyg = skuggverktygForFelanmalan()
-    const prompt = byggPrompt(ticket, kontext.historik, verktyg)
+    // ── REGISTRET LÄSES HÄR, ORG-AVGRÄNSAT I FRÅGAN ─────────────────────
+    //
+    // Bara AKTIVA hantverkare: en avaktiverad post är hyresvärdens sätt att säga
+    // "inte den här längre", och att föreslå hen ändå hade gjort avaktiveringen
+    // till en kosmetisk inställning.
+    //
+    // Kategorifiltret görs i `hantverkarmeny` och inte i frågan, därför att
+    // `categories` är en array-kolumn och filtret är enklare att PRÖVA som en
+    // ren funktion än som en Prisma-predikat. Mängden är liten (en organisations
+    // hantverkare), så kostnaden är noll.
+    const register = await this.prisma.contractor.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true, categories: true },
+      orderBy: { name: 'asc' },
+    })
+    const meny = hantverkarmeny(register as Hantverkarpost[], ticket.category)
+    const prompt = byggPrompt(ticket, kontext.historik, verktyg, meny)
 
     const response = await this.anthropic.messages.create({
       model: MODEL,
@@ -478,7 +539,7 @@ export class MaintenanceShadowService {
       // Med schema: 0 av 14. Och confidence, som låg platt i [0,92 · 0,95] för
       // allt från en trasig glödlampa till en vattenläcka, fick ett spann på
       // 0,45–0,95 — först då är fältet användbart för triage.
-      tools: [forslagsverktyg(verktyg)],
+      tools: [forslagsverktyg(verktyg, meny)],
       tool_choice: { type: 'tool', name: FORSLAG_VERKTYGSNAMN },
       messages: [{ role: 'user', content: prompt }],
     })
@@ -503,11 +564,22 @@ export class MaintenanceShadowService {
       this.logger.warn(
         `[ai-shadow] svaret trunkerades av max_tokens (${MAX_TOKENS}) — inget förslag skrivet.`,
       )
-      return null
+      return { forslag: null, dynamisktRegister: [], meny }
     }
     const block = response.content.find((b) => b.type === 'tool_use')
-    if (!block || block.type !== 'tool_use') return null
-    return tolkaVerktygsanrop(block.input)
+    if (!block || block.type !== 'tool_use') return { forslag: null, dynamisktRegister: [], meny }
+    // REGISTRET FÖLJER MED. Är menyn tom är de lagliga svaren de två
+    // sentinelerna ("lägg till en hantverkare" / "jag gör det själv"); annars
+    // är det organisationens id:n för den här kategorin. Att skicka BÅDA hade
+    // gjort "lägg till" till ett giltigt svar även när det finns hantverkare,
+    // alltså en utväg förbi ett val som gick att göra.
+    const dynamisktRegister =
+      meny.length > 0 ? meny.map((m) => m.id) : [...TOMT_REGISTER_ALTERNATIV]
+    return {
+      forslag: tolkaVerktygsanrop(block.input, dynamisktRegister),
+      dynamisktRegister,
+      meny,
+    }
   }
 }
 
@@ -545,7 +617,17 @@ export const FORSLAG_VERKTYGSNAMN = 'lamna_forslag'
  * fortsatt svara giltiga värden ur en föråldrad mängd, och `jamforSkuggfalt`
  * hade räknat dem som missar mot den nya.
  */
-export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
+export function forslagsverktyg(
+  verktyg: readonly string[],
+  /**
+   * Hantverkarmenyn för DET HÄR ärendets kategori. Tom lista = fältet utelämnas.
+   *
+   * Parametern har en default av EN anledning: riggen och proven ska kunna bygga
+   * schemat utan ett register. Att göra den obligatorisk hade tvingat varje
+   * anropare att skicka `[]`, vilket ser ut som ett val och är en formalitet.
+   */
+  meny: readonly Menypost[] = [],
+): Anthropic.Tool {
   return {
     name: FORSLAG_VERKTYGSNAMN,
     description:
@@ -660,10 +742,30 @@ export function forslagsverktyg(verktyg: readonly string[]): Anthropic.Tool {
           properties: {
             category: { type: 'string', enum: Object.values(MaintenanceCategory) },
             priority: { type: 'string', enum: Object.values(MaintenancePriority) },
-            assignedToId: {
-              type: 'string',
-              description: 'Ett id du SETT i historiken. UTELÄMNA om du inte har konkret stöd.',
-            },
+            // ── HANTVERKAREN VÄLJS UR REGISTRET, ALDRIG SOM FRITEXT ────
+            //
+            // Fältet var `assignedToId: { type: 'string' }` — alltså fritext med
+            // en uppmaning att låta bli att hitta på. En uppmaning är ingen
+            // spärr. Med en enum ur organisationens EGET register kan modellen
+            // strukturellt inte svara något annat än ett id som finns, i rätt
+            // organisation, för rätt kategori.
+            //
+            // UTELÄMNAT när menyn är tom: `enum: []` är ogiltigt i JSON Schema,
+            // och ett fritextfält hade återinfört exakt det som togs bort. Då
+            // får agenten fråga i stället — se `LAGG_TILL_HANTVERKARE`.
+            ...(meny.length > 0
+              ? {
+                  assignedContractorId: {
+                    type: 'string',
+                    enum: meny.map((m) => m.id),
+                    description:
+                      'Vem som ska göra jobbet. VÄLJ UR LISTAN — id:na nedan är ' +
+                      'organisationens egna hantverkare för just den här sortens ärende:\n' +
+                      meny.map((m) => `  ${m.id} = ${m.etikett}`).join('\n') +
+                      '\nUTELÄMNA fältet om ingen av dem passar.',
+                  },
+                }
+              : {}),
           },
           required: ['category', 'priority'],
         },
@@ -678,6 +780,8 @@ export function byggPrompt(
   ticket: { title: string; description: string; category: string; priority: string },
   historik: readonly string[],
   verktyg: readonly string[],
+  /** Hantverkarmenyn för ärendets kategori. Tom = ingen finns, och det syns. */
+  meny: readonly Menypost[] = [],
 ): string {
   return [
     'Du är en assistent åt en svensk hyresvärd. En felanmälan har REDAN registrerats.',
@@ -828,6 +932,34 @@ export function byggPrompt(
     'beskrivningen MOTSÄGER det registrerade värdet, eller inte räcker för att',
     'pröva det.',
     '',
+    // ── HANTVERKAREN: EN MENY, ELLER EN FRÅGA ───────────────────────────
+    //
+    // Två lägen, och de säger olika saker. Med ett register är valet en
+    // avgränsad mängd och står i schemats enum — prompten upprepar den bara så
+    // att modellen kan LÄSA vad id:na betyder. Utan register finns inget att
+    // välja mellan, och då är frågan det enda ärliga svaret: hyresvärden har
+    // inte lagt in någon som kan göra jobbet.
+    //
+    // Att i det läget låta fältet vara fritext hade gett ett påhittat id som
+    // ser ut som ett svar — precis den hallucination enumen finns för.
+    ...(meny.length > 0
+      ? [
+          '## Vem som ska göra jobbet',
+          'Organisationen har följande hantverkare för den här sortens ärende:',
+          ...meny.map((m) => `  ${m.id} = ${m.etikett}`),
+          'Sätt prediction.assignedContractorId till ETT av id:na ovan när någon av',
+          'dem passar. Passar ingen — utelämna fältet. Hitta ALDRIG på ett id.',
+          '',
+        ]
+      : [
+          '## Vem som ska göra jobbet',
+          'Organisationen har INGEN registrerad hantverkare för den här sortens',
+          'ärende. Fältet prediction.assignedContractorId finns därför inte, och du',
+          `kan inte tilldela någon. Behöver ärendet en hantverkare: ställ en ${FRAGA}`,
+          `om fältet assignedContractorId med alternativet ${LAGG_TILL_HANTVERKARE}`,
+          `— läsytan gör det till en länk till ${HANTVERKARRUTT}.`,
+          '',
+        ]),
     // ── DET REGISTRERADE VÄRDET ÄR ETT BÄTTRE ANKARE ÄN EN FRI BEDÖMNING ──
     //
     // Sista meningen sa tidigare "bedöm själv, och avvik när beskrivningen säger
@@ -911,7 +1043,19 @@ export function byggPrompt(
  * men det står här därför att etapp 8–9:s utförare annars läser fältet som
  * FÖRBEREDD INDATA. Det är det inte.
  */
-export function tolkaVerktygsanrop(input: unknown): {
+export function tolkaVerktygsanrop(
+  input: unknown,
+  /**
+   * De lagliga värdena för det DYNAMISKA frågefältet (`assignedContractorId`):
+   * organisationens hantverkar-id:n för ärendets kategori, plus sentinelerna när
+   * registret är tomt.
+   *
+   * Utelämnas den kan agenten inte fråga om hantverkare — `ärGiltigFråga` faller
+   * stängt. Det är rätt default: en anropare som inte vet vilka hantverkare som
+   * finns kan inte heller pröva ett svar mot dem.
+   */
+  dynamisktRegister?: readonly string[],
+): {
   toolName: string
   toolInput: Record<string, unknown>
   reasoning: string
@@ -965,7 +1109,7 @@ export function tolkaVerktygsanrop(input: unknown): {
             användsTill: (rå as Record<string, unknown>)['nytta'],
           }
         : rå
-    if (!ärGiltigFråga(f)) return null
+    if (!ärGiltigFråga(f, dynamisktRegister)) return null
     // PREDICTION BEHÅLLS ÄVEN VID FRÅGA. Schemat kräver den, och modellen
     // fyller i sin bästa gissning trots frågan — att kasta bort den hade tyst
     // tagit bort en datapunkt ur etapp 7:s träffgradsnämnare varje gång agenten

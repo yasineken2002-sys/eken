@@ -56,7 +56,7 @@ medDb('skuggfacit', () => {
         category: category as never,
         priority: priority as never,
       },
-      select: { id: true, category: true, priority: true, assignedToId: true },
+      select: { id: true, category: true, priority: true, assignedContractorId: true },
     })
     return t
   }
@@ -205,15 +205,56 @@ medDb('skuggfacit', () => {
   })
 
   it('ett fält som saknas i facit räknas varken som träff eller miss', async () => {
-    // `assignedToId` är null på ärendet — facit säger inget om tilldelning, och
-    // agentens gissning ska då varken belönas eller straffas.
+    // Ärendet har ingen tilldelad hantverkare — facit säger alltså inget om
+    // tilldelning, och agentens gissning ska varken belönas eller straffas.
     const t = await arende('PLUMBING', 'HIGH')
-    await forslag(t.id, { category: 'PLUMBING', assignedToId: 'nagon' })
+    await forslag(t.id, { category: 'PLUMBING', assignedContractorId: 'nagon' })
     await facit.skrivFacitForArende(orgId, t)
 
     const s = await uppdrag.sammanfattning(orgId, true)
     expect(s.traffgrad['category']?.andel).toBe(1)
-    expect(s.traffgrad['assignedToId']).toEqual({ besvarade: 0, traffar: 0, andel: null })
+    expect(s.traffgrad['assignedContractorId']).toEqual({
+      besvarade: 0,
+      traffar: 0,
+      andel: null,
+    })
+  })
+
+  // ── NEGATIVKONTROLLEN SOM SAKNADES I TRE ETAPPER ────────────────────────
+  //
+  // Provet ovan har funnits sedan etapp 6 och var grönt hela tiden — men det
+  // KUNDE inte bli något annat: `assignedToId` var en naken `String?` utan
+  // skrivväg, så facit var alltid null och nämnaren alltid noll. En nolla som
+  // aldrig kan bli något annat är inte ett mätvärde.
+  //
+  // Med `Contractor` (#833) finns en riktig relation, och det här provet visar
+  // att nämnaren FAKTISKT växer när facit säger något. Först nu betyder nollan
+  // ovan "facit saknas" i stället för "fältet går inte att mäta".
+  it('KANARIEFÅGEL: med en tilldelad hantverkare VÄXER nämnaren', async () => {
+    const hv = await prisma.contractor.create({
+      data: { organizationId: orgId, name: 'Rör AB', categories: ['PLUMBING'] as never },
+      select: { id: true },
+    })
+    const t = await prisma.maintenanceTicket.create({
+      data: {
+        organizationId: orgId,
+        propertyId,
+        ticketNumber: `T-${randomUUID().slice(0, 8)}`,
+        title: 'Ärende',
+        description: 'Beskrivning som är tillräckligt lång.',
+        category: 'PLUMBING' as never,
+        priority: 'HIGH' as never,
+        assignedContractorId: hv.id,
+      },
+      select: { id: true, category: true, priority: true, assignedContractorId: true },
+    })
+    await forslag(t.id, { category: 'PLUMBING', assignedContractorId: hv.id })
+    await facit.skrivFacitForArende(orgId, t)
+
+    const s = await uppdrag.sammanfattning(orgId, true)
+    const tg = s.traffgrad['assignedContractorId']
+    expect(tg?.besvarade).toBeGreaterThan(0)
+    expect(tg?.traffar).toBeGreaterThan(0)
   })
 
   it('utan facit är träffgraden NULL — inte noll procent', async () => {

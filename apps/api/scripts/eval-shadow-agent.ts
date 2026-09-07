@@ -39,6 +39,7 @@ import {
   tolkaVerktygsanrop,
 } from '../src/ai/shadow/maintenance-shadow.service'
 import { tillämpaRegler } from '../src/ai/shadow/triage-rules'
+import { TOMT_REGISTER_ALTERNATIV, hantverkarmeny } from '../src/ai/shadow/contractor-menu'
 import { INGEN_ATGARD, skuggverktygForFelanmalan } from '../src/ai/shadow/shadow-tool-gate'
 import { prövaDelegerbarhet } from '../src/ai/delegation/delegation-scope'
 import {
@@ -60,6 +61,12 @@ const MAX_TOKENS = 1024
  */
 const PRIS_IN_PER_MTOK = 1.0
 const PRIS_UT_PER_MTOK = 5.0
+
+interface Hantverkare {
+  id: string
+  name: string
+  categories: string[]
+}
 
 interface KorpusArende {
   id: string
@@ -92,7 +99,7 @@ async function main(): Promise<void> {
 
   const korpus = JSON.parse(
     readFileSync(join(__dirname, '../src/ai/shadow/eval/korpus.json'), 'utf8'),
-  ) as { arenden: KorpusArende[] }
+  ) as { arenden: KorpusArende[]; hantverkarregister: Hantverkare[] }
 
   const anthropic = new Anthropic({ apiKey: nyckel })
   const prisma = new PrismaClient()
@@ -123,6 +130,29 @@ async function main(): Promise<void> {
     select: { id: true },
   })
 
+  // ── HANTVERKARREGISTRET SKRIVS PÅ RIKTIGT ─────────────────────────────────
+  //
+  // Riggen bygger menyn ur samma väg som produktionen (`hantverkarmeny` över en
+  // Prisma-läsning), inte ur korpusens JSON direkt. Korpusens id:n (`h-ror` …)
+  // är därför FIXTURNYCKLAR som mappas till riktiga rad-id:n, och facit
+  // översätts på samma sätt. En rigg som skickade korpus-id:n rakt in hade mätt
+  // en meny produktionen aldrig bygger.
+  const idKarta = new Map<string, string>()
+  for (const h of korpus.hantverkarregister) {
+    const rad = await prisma.contractor.create({
+      data: {
+        organizationId: org.id,
+        name: h.name,
+        categories: h.categories as never,
+      },
+      select: { id: true },
+    })
+    idKarta.set(h.id, rad.id)
+  }
+  /** Facitens fixturnyckel → radens riktiga id. */
+  const riktigtId = (fixtur: string | undefined): string | undefined =>
+    fixtur === undefined ? undefined : idKarta.get(fixtur)
+
   const poster: Array<{ facit: Facit; utfall: Utfall }> = []
 
   try {
@@ -145,6 +175,14 @@ async function main(): Promise<void> {
         select: { id: true },
       })
 
+      // MENYN UR PRODUKTIONENS EGEN FUNKTION, byggd på ärendets kategori.
+      const register = await prisma.contractor.findMany({
+        where: { organizationId: org.id, isActive: true },
+        select: { id: true, name: true, categories: true },
+        orderBy: { name: 'asc' },
+      })
+      const meny = hantverkarmeny(register as never, a.registreradKategori as never)
+
       const prompt = byggPrompt(
         {
           title: a.titel,
@@ -156,6 +194,7 @@ async function main(): Promise<void> {
         // historik hade mätt hur bra agenten läser en historik jag skrev.
         [],
         verktyg,
+        meny,
       )
 
       const svar = await anthropic.messages.create({
@@ -166,13 +205,18 @@ async function main(): Promise<void> {
         // här — och verktyget heter `lamna_forslag`. Anropet hade fallit på ett
         // fel som ser ut att handla om modellen. En rigg som bygger sitt eget
         // schema eller sitt eget namn mäter inte produktionen.
-        tools: [forslagsverktyg(verktyg)],
+        tools: [forslagsverktyg(verktyg, meny)],
         tool_choice: { type: 'tool', name: FORSLAG_VERKTYGSNAMN },
         messages: [{ role: 'user', content: prompt }],
       })
 
       const block = svar.content.find((c) => c.type === 'tool_use')
-      const tolkat = block && block.type === 'tool_use' ? tolkaVerktygsanrop(block.input) : null
+      const dynamisktRegister =
+        meny.length > 0 ? meny.map((m) => m.id) : [...TOMT_REGISTER_ALTERNATIV]
+      const tolkat =
+        block && block.type === 'tool_use'
+          ? tolkaVerktygsanrop(block.input, dynamisktRegister)
+          : null
       const raTool =
         block && block.type === 'tool_use'
           ? ((block.input as Record<string, unknown>)['toolName'] as string | undefined)
@@ -266,13 +310,26 @@ async function main(): Promise<void> {
           ? prövaDelegerbarhet(atgard).delegerbar
           : false
 
+      // FACIT ÖVERSÄTTS till radens riktiga id, annars jämförs en fixturnyckel
+      // med ett UUID och tilldelningsträffen blir noll av en mätartefakt.
+      const facitMedRiktigtId: Facit = {
+        ...a.facit,
+        ...(a.facit.assignedContractorId
+          ? { assignedContractorId: riktigtId(a.facit.assignedContractorId) ?? '(okänd fixtur)' }
+          : {}),
+      }
+      const föreslagenHantverkare =
+        (tolkat?.prediction?.['assignedContractorId'] as string | undefined) ??
+        strängEllerNull(råPrediction['assignedContractorId'])
+
       poster.push({
-        facit: a.facit,
+        facit: facitMedRiktigtId,
         utfall: {
           id: a.id,
           atgard,
           kategori: kat,
           prioritet: pri,
+          ...(föreslagenHantverkare ? { assignedContractorId: föreslagenHantverkare } : {}),
           confidence: tolkat?.confidence ?? null,
           fragaFalt: regler.fråga?.fält ?? tolkat?.fraga?.fält ?? null,
           // VAD REGLERNA GJORDE, per ärende. Utan de två fälten går det inte att
@@ -297,12 +354,31 @@ async function main(): Promise<void> {
         },
       })
 
+      // ── OTOLKBART ÄR TVÅ FEL MED SAMMA NAMN ─────────────────────────────
+      //
+      // `tolkaVerktygsanrop` returnerar null både för ett struntsvar och för en
+      // fråga som `ärGiltigFråga` avvisade — och de kräver helt olika åtgärder.
+      // Uppmätt i körning 9: `k47` och `k57` gav båda giltiga FRÅGOR i körning 8
+      // och OTOLKBART i 9, och orsaken gick inte att avgöra i efterhand: riggen
+      // sparade bara etiketten.
+      //
+      // Det RÅA svaret skrivs därför ut när tolkningen faller. En rad i loggen
+      // kostar ingenting och är skillnaden mellan "vi vet inte" och ett svar.
+      if (atgardFöreRegler === 'OTOLKBART') {
+        process.stderr.write(
+          `   ↳ OTOLKBART råsvar: toolName=${JSON.stringify(raTool)} ` +
+            `fraga=${JSON.stringify((block as { input?: Record<string, unknown> })?.input?.['fraga'])} ` +
+            `toolInput=${JSON.stringify((block as { input?: Record<string, unknown> })?.input?.['toolInput'])}\n`,
+        )
+      }
+
       const märke = markeraTraff(a.facit, atgard)
       process.stderr.write(`${a.id} ${märke} ${atgard.padEnd(26)} ${kat ?? '-'}/${pri ?? '-'}\n`)
       await prisma.maintenanceTicket.delete({ where: { id: ticket.id } })
     }
   } finally {
     await prisma.maintenanceTicket.deleteMany({ where: { organizationId: org.id } })
+    await prisma.contractor.deleteMany({ where: { organizationId: org.id } })
     await prisma.property.deleteMany({ where: { organizationId: org.id } })
     await prisma.organization.deleteMany({ where: { id: org.id } })
     await prisma.$disconnect()

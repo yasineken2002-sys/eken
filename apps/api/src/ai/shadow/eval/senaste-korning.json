@@ -13,8 +13,13 @@
     },
     "atgard": {
       "antal": 54,
-      "traffar": 47,
-      "andel": 0.8703703703703703
+      "traffar": 45,
+      "andel": 0.8333333333333334
+    },
+    "tilldelning": {
+      "antal": 28,
+      "traffar": 28,
+      "andel": 1
     },
     "regler": {
       "golvHojde": 29,
@@ -24,14 +29,14 @@
       "fragaTvingadRatt": 2,
       "prioritetMedModell": {
         "antal": 54,
-        "traffar": 48,
-        "andel": 0.8888888888888888
+        "traffar": 47,
+        "andel": 0.8703703703703703
       }
     },
     "fraga": {
-      "rattFraga": 9,
+      "rattFraga": 8,
       "felFraga": 1,
-      "missadFraga": 1,
+      "missadFraga": 2,
       "felFragaAndel": 0.018518518518518517
     },
     "ingen": {
@@ -54,23 +59,23 @@
       },
       {
         "hink": "0.70–0.84",
-        "antal": 1,
-        "ratt": 1,
+        "antal": 2,
+        "ratt": 2,
         "andel": 1
       },
       {
         "hink": "0.85–1.00",
         "antal": 38,
-        "ratt": 33,
-        "andel": 0.868421052631579
+        "ratt": 32,
+        "andel": 0.8421052631578947
       }
     ],
-    "domWouldExecute": 33,
+    "domWouldExecute": 34,
     "kostnad": {
-      "totalUsd": 0.274892,
-      "perArendeUsd": 0.005090592592592593,
-      "inTokens": 204082,
-      "utTokens": 14162
+      "totalUsd": 0.31378100000000003,
+      "perArendeUsd": 0.0058107592592592594,
+      "inTokens": 236036,
+      "utTokens": 15549
     }
   },
   "poster": [
@@ -80,13 +85,15 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Tydligt VVS, ingen brådska — droppande kran, inte översvämning."
+        "skal": "Tydligt VVS, ingen brådska — droppande kran, inte översvämning.",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476"
       },
       "utfall": {
         "id": "k01",
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "NORMAL",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -95,9 +102,9 @@
         "registreradPrioritet": "NORMAL",
         "andraKategori": "APPLIANCES",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004991,
-        "inTokens": 3796,
-        "utTokens": 239
+        "kostnadUsd": 0.006378,
+        "inTokens": 4853,
+        "utTokens": 305
       }
     },
     {
@@ -120,11 +127,10 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
-        "andraKategori": "ROOF",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005477,
-        "inTokens": 3762,
-        "utTokens": 343
+        "kostnadUsd": 0.006524,
+        "inTokens": 4819,
+        "utTokens": 341
       }
     },
     {
@@ -133,13 +139,15 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Pågående vattenskada. Registrerad prioritet NORMAL är fel — texten motsäger den."
+        "skal": "Pågående vattenskada. Registrerad prioritet NORMAL är fel — texten motsäger den.",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476"
       },
       "utfall": {
         "id": "k03",
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "URGENT",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -147,9 +155,9 @@
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005052,
-        "inTokens": 3792,
-        "utTokens": 252
+        "kostnadUsd": 0.005746,
+        "inTokens": 4066,
+        "utTokens": 336
       }
     },
     {
@@ -158,13 +166,15 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "El som inte fungerar efter lampbyte är inte LOW — det kan vara armaturen eller kretsen."
+        "skal": "El som inte fungerar efter lampbyte är inte LOW — det kan vara armaturen eller kretsen.",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528"
       },
       "utfall": {
         "id": "k04",
         "atgard": "update_maintenance_status",
         "kategori": "ELECTRICAL",
         "prioritet": "NORMAL",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -172,9 +182,9 @@
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0050100000000000006,
-        "inTokens": 3780,
-        "utTokens": 246
+        "kostnadUsd": 0.005568999999999999,
+        "inTokens": 4044,
+        "utTokens": 305
       }
     },
     {
@@ -183,23 +193,25 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "17 grader är under vad som är godtagbart, ett konkret tal gör bedömningen möjlig."
+        "skal": "17 grader är under vad som är godtagbart, ett konkret tal gör bedömningen möjlig.",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a"
       },
       "utfall": {
         "id": "k05",
         "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "HIGH",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
-        "prioritetForeRegler": "NORMAL",
+        "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005259,
-        "inTokens": 3769,
-        "utTokens": 298
+        "kostnadUsd": 0.005507,
+        "inTokens": 4052,
+        "utTokens": 291
       }
     },
     {
@@ -216,16 +228,18 @@
         "atgard": "FRAGA",
         "kategori": "HEATING",
         "prioritet": "NORMAL",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a",
         "confidence": null,
         "fragaFalt": "category",
         "atgardForeRegler": "FRAGA",
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "WINDOWS_DOORS",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005218,
-        "inTokens": 3753,
-        "utTokens": 293
+        "kostnadUsd": 0.00692,
+        "inTokens": 4810,
+        "utTokens": 422
       }
     },
     {
@@ -234,23 +248,25 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Vitvara som låter men fungerar — normal prioritet."
+        "skal": "Vitvara som låter men fungerar — normal prioritet.",
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf"
       },
       "utfall": {
         "id": "k07",
         "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf",
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005104,
-        "inTokens": 3789,
-        "utTokens": 263
+        "kostnadUsd": 0.005464999999999999,
+        "inTokens": 4065,
+        "utTokens": 280
       }
     },
     {
@@ -259,13 +275,15 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Trasig frys med förstörd mat och vatten på golvet är inte LOW."
+        "skal": "Trasig frys med förstörd mat och vatten på golvet är inte LOW.",
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf"
       },
       "utfall": {
         "id": "k08",
         "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
         "prioritet": "HIGH",
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -273,9 +291,9 @@
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005142000000000001,
-        "inTokens": 3782,
-        "utTokens": 272
+        "kostnadUsd": 0.005603,
+        "inTokens": 4058,
+        "utTokens": 309
       }
     },
     {
@@ -284,13 +302,15 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Ett fönster som inte går att stänga är både värme- och säkerhetsfråga."
+        "skal": "Ett fönster som inte går att stänga är både värme- och säkerhetsfråga.",
+        "assignedContractorId": "1bc63475-13f5-4c45-93dd-60f8bcc6f9bb"
       },
       "utfall": {
         "id": "k09",
         "atgard": "update_maintenance_status",
         "kategori": "WINDOWS_DOORS",
         "prioritet": "HIGH",
+        "assignedContractorId": "1bc63475-13f5-4c45-93dd-60f8bcc6f9bb",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -298,9 +318,9 @@
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005086,
-        "inTokens": 3796,
-        "utTokens": 258
+        "kostnadUsd": 0.0055769999999999995,
+        "inTokens": 4077,
+        "utTokens": 300
       }
     },
     {
@@ -309,13 +329,15 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Fungerar men kärvar — normal, inte låg: ett lås som fastnar helt låser ute någon."
+        "skal": "Fungerar men kärvar — normal, inte låg: ett lås som fastnar helt låser ute någon.",
+        "assignedContractorId": "b5f69bc5-ca7e-4d98-ba11-bee6d9ae9ab8"
       },
       "utfall": {
         "id": "k10",
         "atgard": "update_maintenance_status",
         "kategori": "LOCKS",
         "prioritet": "NORMAL",
+        "assignedContractorId": "b5f69bc5-ca7e-4d98-ba11-bee6d9ae9ab8",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -323,9 +345,9 @@
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0049830000000000004,
-        "inTokens": 3788,
-        "utTokens": 239
+        "kostnadUsd": 0.005496,
+        "inTokens": 4066,
+        "utTokens": 286
       }
     },
     {
@@ -334,23 +356,26 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Utelåst hyresgäst är akut oavsett vad som registrerats."
+        "skal": "Utelåst hyresgäst är akut oavsett vad som registrerats.",
+        "assignedContractorId": "b5f69bc5-ca7e-4d98-ba11-bee6d9ae9ab8"
       },
       "utfall": {
         "id": "k11",
         "atgard": "update_maintenance_status",
         "kategori": "LOCKS",
         "prioritet": "URGENT",
+        "assignedContractorId": "b5f69bc5-ca7e-4d98-ba11-bee6d9ae9ab8",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "URGENT",
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "LOCKS",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005012000000000001,
-        "inTokens": 3782,
-        "utTokens": 246
+        "kostnadUsd": 0.00562,
+        "inTokens": 4060,
+        "utTokens": 312
       }
     },
     {
@@ -359,23 +384,25 @@
         "prioritet": "NORMAL",
         "atgard": "create_inspection",
         "fragaRatt": false,
-        "skal": "En fasadspricka går inte att bedöma på en beskrivning — den ska besiktigas."
+        "skal": "En fasadspricka går inte att bedöma på en beskrivning — den ska besiktigas.",
+        "assignedContractorId": "7128086b-7734-4aaf-96d5-1b1a2ad25ec8"
       },
       "utfall": {
         "id": "k12",
         "atgard": "create_inspection",
         "kategori": "FACADE",
         "prioritet": "NORMAL",
-        "confidence": 0.95,
+        "assignedContractorId": "7128086b-7734-4aaf-96d5-1b1a2ad25ec8",
+        "confidence": 0.9,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004905,
-        "inTokens": 3790,
-        "utTokens": 223
+        "kostnadUsd": 0.005369,
+        "inTokens": 4069,
+        "utTokens": 260
       }
     },
     {
@@ -384,13 +411,15 @@
         "prioritet": "HIGH",
         "atgard": "create_inspection",
         "fragaRatt": false,
-        "skal": "Växande fuktfläck vid regn tyder på takläckage — besiktning och hög prioritet."
+        "skal": "Växande fuktfläck vid regn tyder på takläckage — besiktning och hög prioritet.",
+        "assignedContractorId": "7128086b-7734-4aaf-96d5-1b1a2ad25ec8"
       },
       "utfall": {
         "id": "k13",
         "atgard": "create_inspection",
         "kategori": "ROOF",
         "prioritet": "HIGH",
+        "assignedContractorId": "7128086b-7734-4aaf-96d5-1b1a2ad25ec8",
         "confidence": 0.9,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
@@ -399,9 +428,9 @@
         "registreradPrioritet": "NORMAL",
         "andraKategori": "PLUMBING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0051210000000000006,
-        "inTokens": 3781,
-        "utTokens": 268
+        "kostnadUsd": 0.005520000000000001,
+        "inTokens": 4060,
+        "utTokens": 292
       }
     },
     {
@@ -410,13 +439,15 @@
         "prioritet": "LOW",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Städning, låg prioritet — rätt registrerat."
+        "skal": "Städning, låg prioritet — rätt registrerat.",
+        "assignedContractorId": "a2b6b43e-e2e7-4916-bdbc-c5028a28d8ff"
       },
       "utfall": {
         "id": "k14",
         "atgard": "update_maintenance_status",
         "kategori": "CLEANING",
         "prioritet": "LOW",
+        "assignedContractorId": "a2b6b43e-e2e7-4916-bdbc-c5028a28d8ff",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -424,9 +455,9 @@
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004859,
-        "inTokens": 3779,
-        "utTokens": 216
+        "kostnadUsd": 0.005308,
+        "inTokens": 4063,
+        "utTokens": 249
       }
     },
     {
@@ -442,16 +473,16 @@
         "atgard": "update_maintenance_status",
         "kategori": "COMMON_AREAS",
         "prioritet": "NORMAL",
-        "confidence": null,
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "LOW",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004983,
-        "inTokens": 3778,
-        "utTokens": 241
+        "kostnadUsd": 0.005005,
+        "inTokens": 3865,
+        "utTokens": 228
       }
     },
     {
@@ -460,24 +491,25 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Rinnande toalett slösar vatten men är ingen akut skada."
+        "skal": "Rinnande toalett slösar vatten men är ingen akut skada.",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476"
       },
       "utfall": {
         "id": "k16",
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "NORMAL",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "LOW",
-        "andraKategori": "APPLIANCES</anraKategori>\n</invoke>",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005593,
-        "inTokens": 3793,
-        "utTokens": 360
+        "kostnadUsd": 0.005622,
+        "inTokens": 4067,
+        "utTokens": 311
       }
     },
     {
@@ -486,23 +518,26 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Klassisk luft i elementet — tydlig kategori, ingen brådska."
+        "skal": "Klassisk luft i elementet — tydlig kategori, ingen brådska.",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a"
       },
       "utfall": {
         "id": "k18",
         "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "NORMAL",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "PLUMBING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004961999999999999,
-        "inTokens": 3777,
-        "utTokens": 237
+        "kostnadUsd": 0.00559,
+        "inTokens": 4060,
+        "utTokens": 306
       }
     },
     {
@@ -511,23 +546,25 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Varmvattenbortfall som rör flera lägenheter är akut."
+        "skal": "Varmvattenbortfall som rör flera lägenheter är akut.",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476"
       },
       "utfall": {
         "id": "k19",
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "URGENT",
-        "confidence": 0.9,
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005126,
-        "inTokens": 3781,
-        "utTokens": 269
+        "kostnadUsd": 0.0055899999999999995,
+        "inTokens": 4055,
+        "utTokens": 307
       }
     },
     {
@@ -536,13 +573,15 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Vitvara delvis trasig, normal."
+        "skal": "Vitvara delvis trasig, normal.",
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf"
       },
       "utfall": {
         "id": "k20",
         "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
         "prioritet": "NORMAL",
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -550,9 +589,9 @@
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005084,
-        "inTokens": 3779,
-        "utTokens": 261
+        "kostnadUsd": 0.005435,
+        "inTokens": 4055,
+        "utTokens": 276
       }
     },
     {
@@ -561,13 +600,15 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Bränd plastlukt utan synlig källa är nästan alltid el, och är akut."
+        "skal": "Bränd plastlukt utan synlig källa är nästan alltid el, och är akut.",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528"
       },
       "utfall": {
         "id": "k21",
         "atgard": "FRAGA",
         "kategori": "ELECTRICAL",
         "prioritet": "URGENT",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528",
         "confidence": 0.85,
         "fragaFalt": "category",
         "atgardForeRegler": "create_inspection",
@@ -576,9 +617,9 @@
         "registreradPrioritet": "NORMAL",
         "andraKategori": "HEATING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005405,
-        "inTokens": 3780,
-        "utTokens": 325
+        "kostnadUsd": 0.006372,
+        "inTokens": 4837,
+        "utTokens": 307
       }
     },
     {
@@ -592,19 +633,20 @@
       },
       "utfall": {
         "id": "k22",
-        "atgard": "OTOLKBART",
+        "atgard": "FRAGA",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
         "confidence": null,
-        "fragaFalt": null,
-        "atgardForeRegler": "OTOLKBART",
+        "fragaFalt": "category",
+        "atgardForeRegler": "FRAGA",
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005588,
-        "inTokens": 3768,
-        "utTokens": 364
+        "kostnadUsd": 0.00657,
+        "inTokens": 4825,
+        "utTokens": 349
       }
     },
     {
@@ -623,13 +665,13 @@
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
-        "prioritetForeRegler": "URGENT",
-        "prioritetMedModell": "URGENT",
+        "prioritetForeRegler": "HIGH",
+        "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.0052499999999999995,
-        "inTokens": 3790,
-        "utTokens": 292
+        "kostnadUsd": 0.005267,
+        "inTokens": 3877,
+        "utTokens": 278
       }
     },
     {
@@ -652,9 +694,9 @@
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004922,
-        "inTokens": 3772,
-        "utTokens": 230
+        "kostnadUsd": 0.004999,
+        "inTokens": 3859,
+        "utTokens": 228
       }
     },
     {
@@ -670,16 +712,17 @@
         "atgard": "update_maintenance_status",
         "kategori": "PLUMBING",
         "prioritet": "LOW",
-        "confidence": 0.95,
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
+        "confidence": 0.99,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "LOW",
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004758,
-        "inTokens": 3788,
-        "utTokens": 194
+        "kostnadUsd": 0.005272,
+        "inTokens": 4062,
+        "utTokens": 242
       }
     },
     {
@@ -702,9 +745,9 @@
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004787,
-        "inTokens": 3797,
-        "utTokens": 198
+        "kostnadUsd": 0.0058839999999999995,
+        "inTokens": 4854,
+        "utTokens": 206
       }
     },
     {
@@ -727,9 +770,9 @@
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004633,
-        "inTokens": 3753,
-        "utTokens": 176
+        "kostnadUsd": 0.005745,
+        "inTokens": 4810,
+        "utTokens": 187
       }
     },
     {
@@ -738,24 +781,25 @@
         "prioritet": "HIGH",
         "atgard": "compose_and_send_email",
         "fragaRatt": false,
-        "skal": "Dubbelanmälan där hyresgästen väntat — svaret till hyresgästen är åtgärden, och väntetiden höjer prioriteten."
+        "skal": "Dubbelanmälan där hyresgästen väntat — svaret till hyresgästen är åtgärden, och väntetiden höjer prioriteten.",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a"
       },
       "utfall": {
         "id": "k30",
-        "atgard": "compose_and_send_email",
+        "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "HIGH",
-        "confidence": 0.85,
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a",
+        "confidence": 0.95,
         "fragaFalt": null,
-        "atgardForeRegler": "compose_and_send_email",
+        "atgardForeRegler": "update_maintenance_status",
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
-        "andraKategori": "HEATING",
-        "domWouldExecute": false,
-        "kostnadUsd": 0.005084,
-        "inTokens": 3784,
-        "utTokens": 260
+        "domWouldExecute": true,
+        "kostnadUsd": 0.005627,
+        "inTokens": 4067,
+        "utTokens": 312
       }
     },
     {
@@ -771,16 +815,17 @@
         "atgard": "compose_and_send_email",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
-        "confidence": 0.85,
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "compose_and_send_email",
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "COMMON_AREAS",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004993,
-        "inTokens": 3773,
-        "utTokens": 244
+        "kostnadUsd": 0.006105,
+        "inTokens": 4830,
+        "utTokens": 255
       }
     },
     {
@@ -805,9 +850,9 @@
         "registreradPrioritet": "NORMAL",
         "andraKategori": "WINDOWS_DOORS",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005483,
-        "inTokens": 3778,
-        "utTokens": 341
+        "kostnadUsd": 0.006585,
+        "inTokens": 4835,
+        "utTokens": 350
       }
     },
     {
@@ -816,24 +861,26 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Återkommande vatten vid badrum är VVS och kan bli en fuktskada."
+        "skal": "Återkommande vatten vid badrum är VVS och kan bli en fuktskada.",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476"
       },
       "utfall": {
         "id": "k33",
         "atgard": "create_inspection",
         "kategori": "PLUMBING",
         "prioritet": "HIGH",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
         "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
-        "andraKategori": "HEATING",
+        "andraKategori": "COMMON_AREAS",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005001,
-        "inTokens": 3786,
-        "utTokens": 243
+        "kostnadUsd": 0.006198,
+        "inTokens": 4843,
+        "utTokens": 271
       }
     },
     {
@@ -842,23 +889,25 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Läckande vitvara mot golv och stomme — högre än det låter."
+        "skal": "Läckande vitvara mot golv och stomme — högre än det låter.",
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf"
       },
       "utfall": {
         "id": "k34",
         "atgard": "update_maintenance_status",
         "kategori": "APPLIANCES",
         "prioritet": "HIGH",
-        "confidence": 0.9,
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf",
+        "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
-        "prioritetForeRegler": "HIGH",
+        "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005014,
-        "inTokens": 3769,
-        "utTokens": 249
+        "kostnadUsd": 0.005515,
+        "inTokens": 4045,
+        "utTokens": 294
       }
     },
     {
@@ -867,13 +916,15 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Glasskärvor och obehörigt tillträde till huset — akut."
+        "skal": "Glasskärvor och obehörigt tillträde till huset — akut.",
+        "assignedContractorId": "1bc63475-13f5-4c45-93dd-60f8bcc6f9bb"
       },
       "utfall": {
         "id": "k35",
         "atgard": "update_maintenance_status",
         "kategori": "WINDOWS_DOORS",
         "prioritet": "URGENT",
+        "assignedContractorId": "1bc63475-13f5-4c45-93dd-60f8bcc6f9bb",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -881,9 +932,9 @@
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004897,
-        "inTokens": 3777,
-        "utTokens": 224
+        "kostnadUsd": 0.005568,
+        "inTokens": 4058,
+        "utTokens": 302
       }
     },
     {
@@ -892,13 +943,15 @@
         "prioritet": "NORMAL",
         "atgard": "create_inspection",
         "fragaRatt": false,
-        "skal": "Stående vatten på balkong är ett avvattningsfel i byggnaden — besiktning."
+        "skal": "Stående vatten på balkong är ett avvattningsfel i byggnaden — besiktning.",
+        "assignedContractorId": "7128086b-7734-4aaf-96d5-1b1a2ad25ec8"
       },
       "utfall": {
         "id": "k38",
         "atgard": "create_inspection",
         "kategori": "ROOF",
         "prioritet": "NORMAL",
+        "assignedContractorId": "7128086b-7734-4aaf-96d5-1b1a2ad25ec8",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
@@ -907,9 +960,9 @@
         "registreradPrioritet": "LOW",
         "andraKategori": "FACADE",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004975,
-        "inTokens": 3775,
-        "utTokens": 240
+        "kostnadUsd": 0.006357,
+        "inTokens": 4832,
+        "utTokens": 305
       }
     },
     {
@@ -932,9 +985,9 @@
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005339,
-        "inTokens": 3774,
-        "utTokens": 313
+        "kostnadUsd": 0.006171,
+        "inTokens": 4831,
+        "utTokens": 268
       }
     },
     {
@@ -956,10 +1009,11 @@
         "prioritetForeRegler": "LOW",
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
+        "andraKategori": "CLEANING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004901,
-        "inTokens": 3776,
-        "utTokens": 225
+        "kostnadUsd": 0.006163,
+        "inTokens": 4833,
+        "utTokens": 266
       }
     },
     {
@@ -976,17 +1030,17 @@
         "atgard": "FRAGA",
         "kategori": "OTHER",
         "prioritet": "LOW",
-        "confidence": 0.85,
+        "confidence": 0.75,
         "fragaFalt": "category",
         "atgardForeRegler": "create_inspection",
-        "prioritetForeRegler": "NORMAL",
-        "prioritetMedModell": "NORMAL",
+        "prioritetForeRegler": "LOW",
+        "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
         "andraKategori": "HEATING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005002,
-        "inTokens": 3772,
-        "utTokens": 246
+        "kostnadUsd": 0.006054,
+        "inTokens": 4829,
+        "utTokens": 245
       }
     },
     {
@@ -995,13 +1049,15 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Blinkning vid last tyder på glapp i elen — brandrisk, inte LOW."
+        "skal": "Blinkning vid last tyder på glapp i elen — brandrisk, inte LOW.",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528"
       },
       "utfall": {
         "id": "k42",
         "atgard": "update_maintenance_status",
         "kategori": "ELECTRICAL",
         "prioritet": "HIGH",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -1009,9 +1065,9 @@
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "LOW",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005013999999999999,
-        "inTokens": 3779,
-        "utTokens": 247
+        "kostnadUsd": 0.0053479999999999995,
+        "inTokens": 4043,
+        "utTokens": 261
       }
     },
     {
@@ -1020,13 +1076,15 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "En ytterdörr som står olåst är en säkerhetsfråga."
+        "skal": "En ytterdörr som står olåst är en säkerhetsfråga.",
+        "assignedContractorId": "1bc63475-13f5-4c45-93dd-60f8bcc6f9bb"
       },
       "utfall": {
         "id": "k43",
         "atgard": "update_maintenance_status",
         "kategori": "WINDOWS_DOORS",
         "prioritet": "HIGH",
+        "assignedContractorId": "1bc63475-13f5-4c45-93dd-60f8bcc6f9bb",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -1034,9 +1092,9 @@
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005077,
-        "inTokens": 3797,
-        "utTokens": 256
+        "kostnadUsd": 0.005383,
+        "inTokens": 4078,
+        "utTokens": 261
       }
     },
     {
@@ -1058,11 +1116,11 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
-        "andraKategori": "APPLIANCES",
+        "andraKategori": "PLUMBING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005171,
-        "inTokens": 3786,
-        "utTokens": 277
+        "kostnadUsd": 0.006158,
+        "inTokens": 4843,
+        "utTokens": 263
       }
     },
     {
@@ -1071,13 +1129,15 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Strömbortfall i hela huset är akut, inte HIGH."
+        "skal": "Strömbortfall i hela huset är akut, inte HIGH.",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528"
       },
       "utfall": {
         "id": "k45",
         "atgard": "update_maintenance_status",
         "kategori": "ELECTRICAL",
         "prioritet": "URGENT",
+        "assignedContractorId": "cfcd4402-af73-4392-9ffc-e36c2708f528",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -1085,9 +1145,9 @@
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "HIGH",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005022,
-        "inTokens": 3777,
-        "utTokens": 249
+        "kostnadUsd": 0.005466,
+        "inTokens": 4041,
+        "utTokens": 285
       }
     },
     {
@@ -1101,19 +1161,20 @@
       },
       "utfall": {
         "id": "k47",
-        "atgard": "FRAGA",
+        "atgard": "OTOLKBART",
         "kategori": "OTHER",
         "prioritet": "NORMAL",
         "confidence": null,
-        "fragaFalt": "category",
-        "atgardForeRegler": "FRAGA",
+        "fragaFalt": null,
+        "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005443,
-        "inTokens": 3768,
-        "utTokens": 335
+        "kostnadUsd": 0.006645,
+        "inTokens": 4825,
+        "utTokens": 364
       }
     },
     {
@@ -1137,9 +1198,9 @@
         "registreradPrioritet": "NORMAL",
         "andraKategori": "CLEANING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.00511,
-        "inTokens": 3780,
-        "utTokens": 266
+        "kostnadUsd": 0.005157,
+        "inTokens": 3867,
+        "utTokens": 258
       }
     },
     {
@@ -1148,13 +1209,15 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Vatten från lägenheten ovanför är en pågående skada — ledtråden om badkaret gör kategorin sluten."
+        "skal": "Vatten från lägenheten ovanför är en pågående skada — ledtråden om badkaret gör kategorin sluten.",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476"
       },
       "utfall": {
         "id": "k49",
         "atgard": "create_inspection",
         "kategori": "PLUMBING",
         "prioritet": "URGENT",
+        "assignedContractorId": "2edc730a-404b-46fe-8a25-891080d0e476",
         "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
@@ -1163,9 +1226,9 @@
         "registreradPrioritet": "NORMAL",
         "andraKategori": "ROOF",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005065999999999999,
-        "inTokens": 3776,
-        "utTokens": 258
+        "kostnadUsd": 0.006527999999999999,
+        "inTokens": 4833,
+        "utTokens": 339
       }
     },
     {
@@ -1189,9 +1252,9 @@
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "URGENT",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005439,
-        "inTokens": 3764,
-        "utTokens": 335
+        "kostnadUsd": 0.006640999999999999,
+        "inTokens": 4821,
+        "utTokens": 364
       }
     },
     {
@@ -1200,13 +1263,15 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Sanering i ett litet slutet utrymme — bör inte vänta."
+        "skal": "Sanering i ett litet slutet utrymme — bör inte vänta.",
+        "assignedContractorId": "a2b6b43e-e2e7-4916-bdbc-c5028a28d8ff"
       },
       "utfall": {
         "id": "k53",
         "atgard": "update_maintenance_status",
         "kategori": "CLEANING",
         "prioritet": "HIGH",
+        "assignedContractorId": "a2b6b43e-e2e7-4916-bdbc-c5028a28d8ff",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -1214,9 +1279,9 @@
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004961,
-        "inTokens": 3771,
-        "utTokens": 238
+        "kostnadUsd": 0.005455,
+        "inTokens": 4055,
+        "utTokens": 280
       }
     },
     {
@@ -1239,10 +1304,11 @@
         "prioritetForeRegler": "NORMAL",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "NORMAL",
+        "andraKategori": "APPLIANCES",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005313,
-        "inTokens": 3753,
-        "utTokens": 312
+        "kostnadUsd": 0.006585000000000001,
+        "inTokens": 4810,
+        "utTokens": 355
       }
     },
     {
@@ -1258,17 +1324,18 @@
         "atgard": "create_inspection",
         "kategori": "APPLIANCES",
         "prioritet": "URGENT",
-        "confidence": 0.95,
+        "assignedContractorId": "f96dd76e-48d3-4af7-b7bb-53d7f7671daf",
+        "confidence": 0.85,
         "fragaFalt": null,
         "atgardForeRegler": "create_inspection",
-        "prioritetForeRegler": "URGENT",
+        "prioritetForeRegler": "HIGH",
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
         "andraKategori": "HEATING",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005104,
-        "inTokens": 3774,
-        "utTokens": 266
+        "kostnadUsd": 0.005549999999999999,
+        "inTokens": 4050,
+        "utTokens": 300
       }
     },
     {
@@ -1282,19 +1349,19 @@
       },
       "utfall": {
         "id": "k57",
-        "atgard": "FRAGA",
+        "atgard": "OTOLKBART",
         "kategori": "PLUMBING",
         "prioritet": "NORMAL",
         "confidence": null,
-        "fragaFalt": "category",
-        "atgardForeRegler": "FRAGA",
+        "fragaFalt": null,
+        "atgardForeRegler": "OTOLKBART",
         "prioritetForeRegler": "LOW",
         "prioritetMedModell": "NORMAL",
         "registreradPrioritet": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.00551,
-        "inTokens": 3785,
-        "utTokens": 345
+        "kostnadUsd": 0.006617,
+        "inTokens": 4842,
+        "utTokens": 355
       }
     },
     {
@@ -1303,13 +1370,15 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Pågående vattenläcka från värmesystemet — akut trots hinken."
+        "skal": "Pågående vattenläcka från värmesystemet — akut trots hinken.",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a"
       },
       "utfall": {
         "id": "k59",
         "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "URGENT",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -1317,9 +1386,9 @@
         "prioritetMedModell": "URGENT",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.005182,
-        "inTokens": 3777,
-        "utTokens": 281
+        "kostnadUsd": 0.00555,
+        "inTokens": 4060,
+        "utTokens": 298
       }
     },
     {
@@ -1339,14 +1408,14 @@
         "confidence": 0.75,
         "fragaFalt": "category",
         "atgardForeRegler": "create_inspection",
-        "prioritetForeRegler": "NORMAL",
-        "prioritetMedModell": "NORMAL",
+        "prioritetForeRegler": "LOW",
+        "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
         "andraKategori": "HEATING",
         "domWouldExecute": false,
-        "kostnadUsd": 0.005051,
-        "inTokens": 3786,
-        "utTokens": 253
+        "kostnadUsd": 0.006148,
+        "inTokens": 4843,
+        "utTokens": 261
       }
     },
     {
@@ -1369,9 +1438,9 @@
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "LOW",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004861,
-        "inTokens": 3781,
-        "utTokens": 216
+        "kostnadUsd": 0.005913,
+        "inTokens": 4838,
+        "utTokens": 215
       }
     },
     {
@@ -1387,6 +1456,7 @@
         "atgard": "update_maintenance_status",
         "kategori": "HEATING",
         "prioritet": "LOW",
+        "assignedContractorId": "a25b58f2-eabb-47b5-b60b-89892e9efd3a",
         "confidence": 0.95,
         "fragaFalt": null,
         "atgardForeRegler": "update_maintenance_status",
@@ -1394,9 +1464,9 @@
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": true,
-        "kostnadUsd": 0.004771,
-        "inTokens": 3781,
-        "utTokens": 198
+        "kostnadUsd": 0.005353999999999999,
+        "inTokens": 4064,
+        "utTokens": 258
       }
     },
     {
@@ -1419,9 +1489,9 @@
         "prioritetMedModell": "HIGH",
         "registreradPrioritet": "HIGH",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004964,
-        "inTokens": 3804,
-        "utTokens": 232
+        "kostnadUsd": 0.005896,
+        "inTokens": 4861,
+        "utTokens": 207
       }
     },
     {
@@ -1444,9 +1514,9 @@
         "prioritetMedModell": "LOW",
         "registreradPrioritet": "NORMAL",
         "domWouldExecute": false,
-        "kostnadUsd": 0.004834,
-        "inTokens": 3784,
-        "utTokens": 210
+        "kostnadUsd": 0.005091,
+        "inTokens": 3871,
+        "utTokens": 244
       }
     }
   ]

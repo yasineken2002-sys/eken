@@ -19,6 +19,13 @@ export interface Facit {
   atgard: string
   fragaRatt: boolean
   fragaFalt?: string
+  /**
+   * Vilken hantverkare en människa hade satt. SAKNAS på de ärenden där ingen
+   * hantverkare ska tilldelas (felet är löst, rätt svar är en fråga, kategorin
+   * har ingen i registret) — och frånvaron är ett eget värde: raden räknas då
+   * varken som träff eller miss.
+   */
+  assignedContractorId?: string
 }
 
 /** Vad agenten svarade för ett ärende. */
@@ -28,6 +35,8 @@ export interface Utfall {
   atgard: string
   kategori: string | null
   prioritet: string | null
+  /** Vem agenten föreslog. Null när den utelämnade fältet — vilket är tillåtet. */
+  assignedContractorId?: string | null
   confidence: number | null
   /** Frågans fält, när `atgard` är FRAGA. */
   fragaFalt?: string | null
@@ -77,6 +86,20 @@ export interface Rapport {
   kategori: Rad
   prioritet: Rad
   atgard: Rad
+  /**
+   * ── DET FJÄRDE MÅTTET: TILLDELNING (etapp 10) ─────────────────────────────
+   *
+   * Fanns som ett `SKUGGFALT` sedan etapp 6 men kunde ALDRIG mäta något:
+   * `assignedToId` var en naken `String?` utan skrivväg, så facit var alltid
+   * null och nämnaren alltid noll. Med `Contractor` (#833) finns både en mängd
+   * att välja ur och en relation att läsa facit ur.
+   *
+   * NÄMNAREN ÄR INTE 54. Den är antalet ärenden där facit säger något — samma
+   * regel som kategori och prioritet, av samma skäl: att räkna ett uteblivet
+   * facit som en miss hade mätt hur fullständigt korpusen fyllts i, inte hur
+   * rätt agenten har.
+   */
+  tilldelning: Rad
   fraga: {
     rattFraga: number
     felFraga: number
@@ -193,6 +216,13 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
   // det inte. Att räkna ett uteblivet svar som en miss hade gjort träffgraden
   // till ett mått på hur ofta agenten svarar, inte på hur rätt den har — och då
   // hade en agent som gissar alltid slagit en som avstår.
+  // BÅDA SIDOR MÅSTE SVARA. Facit utan förslag är "agenten avstod", förslag utan
+  // facit är "vi vet inte vad som var rätt" — och ingendera är en miss.
+  const medTilldelning = poster.filter(
+    (p) =>
+      typeof p.facit.assignedContractorId === 'string' &&
+      typeof p.utfall.assignedContractorId === 'string',
+  )
   const medKategori = poster.filter((p) => p.utfall.kategori !== null)
   const medPrioritet = poster.filter((p) => p.utfall.prioritet !== null)
 
@@ -228,6 +258,11 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
       medPrioritet.filter((p) => p.utfall.prioritet === p.facit.prioritet).length,
     ),
     atgard: rad(antal, poster.filter((p) => atgardRatt(p.facit, p.utfall)).length),
+    tilldelning: rad(
+      medTilldelning.length,
+      medTilldelning.filter((p) => p.utfall.assignedContractorId === p.facit.assignedContractorId)
+        .length,
+    ),
     regler: {
       golvHojde: golvMätta ? golvHojde : null,
       golvRaddade: golvMätta ? golvRaddade : null,
@@ -277,6 +312,7 @@ export function formateraRapport(r: Rapport): string {
   rader.push(t('kategori', r.kategori))
   rader.push(t('prioritet', r.prioritet))
   rader.push(t('åtgärd', r.atgard))
+  rader.push(t('tilldelning', r.tilldelning))
   rader.push(t('inget förslag', r.ingen))
   rader.push('')
   rader.push('FRÅGOR')
