@@ -45,6 +45,12 @@ import {
   CreateSigningRequestSchema,
   InviteTenantsSchema,
   CreateContractorSchema,
+  LoginSchema,
+  RegisterSchema,
+  ChangePasswordRequestSchema,
+  ResetPasswordRequestSchema,
+  AcceptInviteRequestSchema,
+  ForgotPasswordRequestSchema,
   SendWorkOrderSchema,
   WorkOrderResponseSchema,
   CancelWorkOrderSchema,
@@ -111,6 +117,16 @@ import {
   ResetPasswordDto,
 } from '../../tenant-portal/dto/tenant-auth.dto'
 import { TenantChatDto, TenantConfirmDto } from '../../ai/dto/tenant-ai.dto'
+// Alias: portalens DTO:er heter likadant (LoginDto, ResetPasswordDto,
+// ForgotPasswordDto). Två olika klasser för två olika realm — operatörens och
+// hyresgästens — och att de delar namn är rätt, det är samma handling i skilda
+// världar. Aliaset gör skillnaden synlig här i stället för att dölja den.
+import { LoginDto as AuthLoginDto } from '../../auth/dto/login.dto'
+import { RegisterDto } from '../../auth/dto/register.dto'
+import { ChangePasswordDto } from '../../auth/dto/change-password.dto'
+import { ResetPasswordDto as AuthResetPasswordDto } from '../../auth/dto/reset-password.dto'
+import { AcceptInviteDto } from '../../auth/dto/accept-invite.dto'
+import { ForgotPasswordDto as AuthForgotPasswordDto } from '../../auth/dto/forgot-password.dto'
 import {
   AssignContractorDto,
   CreateContractorDto,
@@ -1079,5 +1095,83 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { skal: 'Hyresgästen löste det själv' },
     ogiltig: { skal: '' },
     ogiltigVarfor: 'ett angivet skäl får inte vara tomt',
+  },
+  // ─── AUTENTISERINGENS NYTTOLASTER ─────────────────────────────────────────
+  //
+  // Den yta där ett kontraktsfel inte är ett 400 utan en inloggning som inte
+  // fungerar — eller en som fungerar för fel person. `ogiltig`-fallen prövar
+  // därför det som bär hemligheten: lösenordets styrka och tokenets längd.
+  {
+    endpoint: 'POST /auth/login',
+    inputTyp: 'LoginInput',
+    schema: LoginSchema,
+    dto: AuthLoginDto,
+    giltig: { email: 'anna@foretag.se', password: 'kort' },
+    ogiltig: { email: 'anna@foretag.se', password: '' },
+    ogiltigVarfor:
+      'tomt lösenord — INGET styrkekrav här, se docblocket i login.dto.ts. ' +
+      'Det giltiga fallet skickar med flit ett KORT lösenord: gränsen togs bort ' +
+      'och provet ska falla om någon återinför den.',
+  },
+  {
+    endpoint: 'POST /auth/register',
+    inputTyp: 'RegisterInput',
+    schema: RegisterSchema,
+    dto: RegisterDto,
+    giltig: {
+      email: 'anna@foretag.se',
+      password: 'Hemligt123!',
+      firstName: 'Anna',
+      lastName: 'Andersson',
+      organizationName: 'Test AB',
+      acceptTerms: true,
+    },
+    ogiltig: {
+      email: 'anna@foretag.se',
+      password: 'Hemligt123!',
+      firstName: 'Anna',
+      lastName: 'Andersson',
+      organizationName: 'Test AB',
+      acceptTerms: false,
+    },
+    ogiltigVarfor:
+      'acceptTerms false — ett samtycke, där "nej" och "vet ej" är samma sak. ' +
+      'Fältet SAKNADES i RegisterSchema fram till 2026-09-07.',
+  },
+  {
+    endpoint: 'POST /auth/change-password',
+    inputTyp: 'ChangePasswordRequestInput',
+    schema: ChangePasswordRequestSchema,
+    dto: ChangePasswordDto,
+    giltig: { currentPassword: 'Gammalt123!', newPassword: 'Hemligt123!' },
+    ogiltig: { currentPassword: 'Gammalt123!', newPassword: 'svagt' },
+    ogiltigVarfor: 'det NYA lösenordet måste passera styrkekravet',
+  },
+  {
+    endpoint: 'POST /auth/reset-password',
+    inputTyp: 'ResetPasswordRequestInput',
+    schema: ResetPasswordRequestSchema,
+    dto: AuthResetPasswordDto,
+    giltig: { token: 't'.repeat(40), newPassword: 'Hemligt123!' },
+    ogiltig: { token: 'kort', newPassword: 'Hemligt123!' },
+    ogiltigVarfor: 'ett token under 32 tecken är inte ett av våra',
+  },
+  {
+    endpoint: 'POST /auth/accept-invite',
+    inputTyp: 'AcceptInviteRequestInput',
+    schema: AcceptInviteRequestSchema,
+    dto: AcceptInviteDto,
+    giltig: { token: 't'.repeat(40), newPassword: 'Hemligt123!' },
+    ogiltig: { token: 't'.repeat(40), newPassword: 'svagt' },
+    ogiltigVarfor: 'lösenordet som sätts första gången måste passera styrkekravet',
+  },
+  {
+    endpoint: 'POST /auth/forgot-password',
+    inputTyp: 'ForgotPasswordRequestInput',
+    schema: ForgotPasswordRequestSchema,
+    dto: AuthForgotPasswordDto,
+    giltig: { email: 'anna@foretag.se' },
+    ogiltig: { email: 'inte-en-adress' },
+    ogiltigVarfor: 'e-postadressen har inte adressform',
   },
 ]

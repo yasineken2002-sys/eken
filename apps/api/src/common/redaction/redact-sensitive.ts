@@ -60,6 +60,25 @@ export const SENSITIVE_FIELD_NAMES: ReadonlySet<string> = new Set([
   'magicLinkToken',
   'token', // PasswordResetToken / TenantSession / etc.
   'apiKey',
+
+  // ── RÅA LÖSENORD OCH BÄRARTOKEN (2026-09-07) ──────────────────────────────
+  //
+  // Listan hade `passwordHash` men INTE `password`. Skillnaden spelade roll:
+  // `deepScrub` släpper nycklar som står här, och den körs på `event.request`
+  // innan ett Sentry-event lämnar processen. Ett råt lösenord i en request-kropp
+  // passerade alltså orört, medan dess hash — den ofarliga av de två — togs bort.
+  //
+  // `sendDefaultPii: false` gör att kroppen normalt inte bifogas. Kodbasen
+  // skrubbar `event.request` defensivt ändå, alltså litar den inte på flaggan —
+  // och då ska listan täcka de fält autentiseringsytan faktiskt bär.
+  //
+  // Mätt av ett prov som matar ett HELT event genom `skrubbaEvent`, inte av att
+  // nyckeln står här: en lista är ett påstående, ett event är en mätning.
+  'password',
+  'newPassword',
+  'currentPassword',
+  // BankID:s kontovalstoken. Bärartoken: den som har den kan välja konto.
+  'chooseToken',
 ])
 
 export function redactSensitive<T>(value: T, depth = 0): T {

@@ -45,6 +45,22 @@ export const StrongPasswordSchema = z
   .regex(PASSWORD_SPECIAL_CHAR_REGEX, 'Lösenordet måste innehålla ett specialtecken')
   .max(128, 'Lösenordet är för långt')
 
+/**
+ * INLOGGNING VALIDERAR INTE LÖSENORDSSTYRKA — med flit.
+ *
+ * `password` kräver bara att fältet inte är tomt. Ett längdkrav här hade gett
+ * ett VALIDERINGSFEL i stället för ett autentiseringsfel, och det är fel på tre
+ * sätt: det avslöjar lösenordspolicyn för den som inte är inloggad, det stänger
+ * ute en användare vars äldre lösenord är kortare än dagens krav, och det gör
+ * svaret olika beroende på indata — vilket är ett orakel.
+ *
+ * Styrkekravet hör till REGISTRERING och BYTE, och där är det redan en källa
+ * (`StrongPasswordSchema` och `IsStrongPassword` härleds båda ur
+ * `PASSWORD_MIN_LENGTH` och `PASSWORD_SPECIAL_CHAR_REGEX`).
+ *
+ * `LoginDto` bar `@MinLength(8)` fram till 2026-09-07 och var alltså STRÄNGARE
+ * än schemat. Det rättades i DTO:n, inte i schemat — se docblocket där.
+ */
 export const LoginSchema = z.object({
   email: z.string().email('Ogiltig e-postadress'),
   password: z.string().min(1, 'Lösenord krävs'),
@@ -80,6 +96,21 @@ export const RegisterSchema = z
     fSkattApprovedDate: z.string().date().optional(),
     vatNumber: z.string().optional(),
     accountType: z.enum(['COMPANY', 'PRIVATE']).default('COMPANY'),
+
+    // ── SAKNADES HELT, OCH DET VAR EN LEVANDE GLIDNING ──────────────────────
+    //
+    // `RegisterDto` har krävt `acceptTerms` med `@Equals(true)` hela tiden.
+    // Schemat — den påstådda enda källan — hade inte fältet alls. Webben
+    // fungerade bara därför att `auth.api.ts` bar en EGEN `RegisterInput` med
+    // `acceptTerms: true`, alltså var den privata kopian mer korrekt än den
+    // delade. Hade någon bundit sig till schemat som det stod hade
+    // registreringen slutat fungera.
+    //
+    // `z.literal(true)` och inte `z.boolean()`: DTO:n säger `@Equals(true)`, och
+    // ett schema som godtar `false` hade beskrivit ett anrop servern avvisar.
+    // Det är ett SAMTYCKE — "vet ej" och "nej" är samma sak här, och båda ska
+    // nekas.
+    acceptTerms: z.literal(true),
   })
   // Kombinerad orgnummer-validering: orgnumret måste matcha vald form.
   // Tom orgnummer släpps igenom (valfritt fält); skrivet orgnummer
@@ -146,6 +177,80 @@ export const ResetPasswordSchema = z
     message: 'Lösenorden matchar inte',
     path: ['confirmPassword'],
   })
+
+// ─── Autentiseringens NYTTOLASTER (etapp: kontraktsbaslinjen) ────────────────
+//
+// ── VARFÖR NYA SCHEMAN OCH INTE `ChangePasswordSchema` OVAN ─────────────────
+//
+// De två som redan finns är FORMULÄRSCHEMAN. De bär `confirmPassword`, som är
+// en gränssnittsangelägenhet och aldrig går på tråden, och `ResetPasswordSchema`
+// saknar `token`, som är själva behörigheten i anropet.
+//
+// Att låna dem hade varit exakt den betydelseglidning CLAUDE.md varnar för:
+//
+//     ChangePasswordSchema         vad FORMULÄRET ska godta
+//     ChangePasswordRequestSchema  vad som SKICKAS till servern
+//
+// Värdemängderna överlappar, frågorna gör det inte. Ett lån hade dessutom gjort
+// `confirmPassword` till ett fält DTO:n avvisar som okänd nyckel.
+//
+// ── HEMLIGHETSBÄRANDE FÄLT MATCHAR DTO:N EXAKT ─────────────────────────────
+//
+// `newPassword` är `StrongPasswordSchema`, samma som `@IsStrongPassword()`
+// härleds ur. `token` är `.min(32)`, samma som DTO:ns `@MinLength(32)`. Ett
+// schema som är LÖSARE än DTO:n beskriver ett anrop servern avvisar; ett som är
+// strängare beskriver ett anrop klienten aldrig gör. Båda är fel — de ska vara
+// identiska, och paritetsprovet kräver det.
+
+/** POST /auth/change-password */
+export const ChangePasswordRequestSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    newPassword: StrongPasswordSchema,
+  })
+  .strict()
+
+/**
+ * POST /auth/reset-password
+ *
+ * `token` är 32+ tecken av samma skäl som DTO:n säger det: den är hela
+ * behörigheten i anropet, och ett kortare värde är inte ett av våra.
+ */
+export const ResetPasswordRequestSchema = z
+  .object({
+    token: z.string().min(32),
+    newPassword: StrongPasswordSchema,
+  })
+  .strict()
+
+/**
+ * POST /auth/accept-invite
+ *
+ * Samma form som återställningen, men ett ANNAT ärende: här sätts lösenordet
+ * första gången, och anropet loggar med flit INTE in användaren. Två scheman och
+ * inte ett delat, därför att de två kan börja skilja sig — en inbjudan kan få
+ * ett namnfält, en återställning aldrig.
+ */
+export const AcceptInviteRequestSchema = z
+  .object({
+    token: z.string().min(32),
+    newPassword: StrongPasswordSchema,
+  })
+  .strict()
+
+/**
+ * POST /auth/forgot-password
+ *
+ * Svaret är generiskt oavsett om adressen fanns — `.strict()` hör till den
+ * egenskapen: ett extra fält som organisationsval hade gjort svaret
+ * särskiljbart och därmed till en uppräkningskanal.
+ */
+export const ForgotPasswordRequestSchema = z.object({ email: z.string().email() }).strict()
+
+export type ChangePasswordRequestInput = z.infer<typeof ChangePasswordRequestSchema>
+export type ResetPasswordRequestInput = z.infer<typeof ResetPasswordRequestSchema>
+export type AcceptInviteRequestInput = z.infer<typeof AcceptInviteRequestSchema>
+export type ForgotPasswordRequestInput = z.infer<typeof ForgotPasswordRequestSchema>
 
 // ─── Address ─────────────────────────────────────────────────────────────────
 
@@ -698,7 +803,23 @@ export const CreateInvoiceSchema = z
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
 export type LoginInput = z.infer<typeof LoginSchema>
-export type RegisterInput = z.infer<typeof RegisterSchema>
+/**
+ * REGISTRERINGENS NYTTOLAST — `z.input`, INTE `z.infer`.
+ *
+ * `z.infer` är `z.output`: formen EFTER att Zod tillämpat sina defaults.
+ * `RegisterSchema` har tre (`companyForm`, `hasFSkatt`, `accountType`), och i
+ * utdatatypen är de därför OBLIGATORISKA — trots att en klient inte behöver
+ * skicka dem. Typen beskrev alltså serverns interna vy, inte tråden.
+ *
+ * Det syntes inte förrän DTO:n band sig till typen: `RegisterDto` har de tre
+ * som valfria, vilket är rätt, och `implements` föll. Webbens egen kopia hade
+ * också valfria fält — den beskrev tråden korrekt, den delade typen gjorde det
+ * inte.
+ *
+ * REGELN: en typ som beskriver vad en KLIENT SKICKAR ska vara `z.input` när
+ * schemat har defaults. `z.infer` är rätt för det servern arbetar med efteråt.
+ */
+export type RegisterInput = z.input<typeof RegisterSchema>
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>
 export type CreatePropertyInput = z.infer<typeof CreatePropertySchema>
