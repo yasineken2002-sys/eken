@@ -484,7 +484,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 8 | Agentens frågor + observationslager + delegationsförslag | 7 | den frågar innan du frågar, och föreslår i stället för att ta sig rätt | **KLAR** — alla tre delarna finns i produktionskod. **Observationslagret** (PR 4) är en FRÅGA och ingen tabell: `ObservationService.beslutsunderlag` svarar godkända/avvisade/delegerade/senaste ur inkorgens facit och delegationerna, och `kanBliDelegation` läser sin regel därifrån. **Delegationsförslagen** (PR 5a): tre godkännanden i obruten svit ger ETT förslag i inkorgen, idempotent per `<verktyg>\|<typ>\|<nivå>` under ett partiellt unikt index — systemet föreslår, det tar sig aldrig rätt. **Frågorna** (PR 5b): ett tredje utfall i skuggagenten, strukturerat (fält + 2–4 alternativ ur registret + vad svaret låser upp), högst en öppen fråga per ärende, ingen fråga vars svar redan finns, och svaret blir en `HUMAN_CONFIRMED`-minnespost som nästa förslag läser. **Kvar som en känd gräns, inte som en rest:** frågebara fält är `category` och `priority` — `assignedToId` saknar register tills etapp 10 ger det ett |
 | 9 | Agent 1 skarp på felanmälan | 8 | ärenden avslutas utan att hyresvärden rört dem | **DELVIS** — **skarpt läge FINNS, och är påslaget för NOLL organisationer.** `Organization.agentExecutionEnabled` är `false` överallt, kräver att skuggan är på, är OWNER-grindad i tjänsten, och stängs automatiskt när skuggan stängs (varvid alla delegationer PAUSAS, inte återkallas). Utföraren kör bara de **fem** verktyg som är både delegerbara och uppdragsdugliga — mängden är härledd (`uppdragsdugliga ∩ delegerbara`), och de tre `DEDUPLICERBAR`-verktygen får en dom men aldrig en körning. Kriteriet "ärenden avslutas utan att hyresvärden rört dem" är alltså **omätt, inte uppfyllt**: det kräver en organisation som slår på växeln, och ingen har |
 | 10 | Hantverkarmodell → bokningsflöde | 9 | `assignedToId` är en riktig relation | **KLAR** — båda kriterierna uppfyllda. **Relationen:** `Contractor` (org-scopad, yrkeskategorier ur SAMMA `MaintenanceCategory` som ärendet) och `MaintenanceTicket.assignedContractorId` som riktig FK med `assignedAt`/`assignedByUserId` (#833). Mätt före bygget: `assignedToId` hade NOLL skrivare i repot och noll rader med värde — skuggagentens tredje jämförelsefält kunde alltså aldrig mäta något. Kolumnen är utfasad men kvar tills `ai/shadow` bytt till det nya fältet (TODO i schemat). **Bokningen:** `ContractorWorkOrder` + arbetsorder via `MailService` med en svarslänk som är hashad, engångs och kortlivad; hantverkarens svar blir en händelse i historiken. Verktyget `book_contractor` är `MOT_TREDJE_PART`, `agentAllowlist: false`, `policyBeslutad: false` och **IRREVERSIBEL** — avbokningen är ett NYTT mejl, en kompenserande handling, inte en ångring (samma klassning som `prepare_contract_signing`). Vakt 7:s manifest uppdaterat avsiktligt: 9 → 10 verktyg med utåtriktad förmåga. **Bokningen går hela vägen i ett db-spec-flöde** (13 prov mot riktig Postgres: skicka → hantverkaren svarar via länken → historiken). **Hyresjuristens besked ändrade designen:** rättslig grund för att dela hyresgästens kontaktuppgift är avtalets fullgörande, INTE samtycke — ett samtyckesfält hade varit sämre, eftersom ett återkallat samtycke tar bort grunden medan avhjälpandeskyldigheten står kvar. Delningen är därför hyresvärdens val per bokning, default AV, och utlämnandet syns för hyresgästen i efterhand. **Öppet:** integritetspolicyn nämner inte hantverkare som mottagarkategori — egen PR, eftersom en ändring där utlöser omaccept för varje kund |
-| 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | — |
+| 11+ | Agent 2–5 | 9 | var och en enligt samma etappform | **FÖRSLAG finns för agent 2** — [Del 14b](#del-14b--förslag-agent-2-pengar-in) mäter pengaflödets 17 verktyg, pekar ut producentens söm (den omatchade betalningen) och föreslår etapperna A–E. Ingenting är byggt, och etapp D är i dag TOM: `match_bank_transaction` är `MOT_HYRESGAST` och därmed inte delegerbar. Agent 3–5: — |
 
 ### Mätt status — etapp 1–2b mot `5f94360`, 3–4 mot `dbe12ff`, 5 mot `1278a9b`
 
@@ -2009,6 +2009,317 @@ hur säker den var · vad som hade krävt godkännande.*
 
 Skuggläget körs mot **verkliga fall**, inte syntetiska happy paths. Det är också där
 observationslagret föds.
+
+---
+
+## Del 14b — FÖRSLAG: Agent 2 "Pengar in"
+
+> **FÖRSLAG, inte beslut.** Ingenting i det här avsnittet är byggt. Det är en
+> mätning av vad som redan finns och ett förslag på etappform — skrivet i samma
+> form som agent 1 (skugga → korpus → torrläge → skarpt bakom växel), så att
+> jämförelsen mellan de två går att göra. Mätpunkten är `85cbc72b`. Läs raderna
+> som ett spår och mät om innan du bygger på dem.
+
+### 1. Verktygen i pengaflödet
+
+Mängden är avgränsad på `HUMAN_PATHS`-rutten: de verktyg vars mänskliga väg går
+till `/reconciliation`, `/avisering`, `/collections`, `/invoices`, `/accounting`,
+`/reports` eller `/rent-increases`. **17 av katalogens 31.** Kolumnerna är lästa
+ur `EFFECT_DECLARATIONS` (`apps/api/src/ai/tools/effect-idempotency.ts`),
+`HUMAN_PATHS` (`apps/api/src/ai/tools/human-path.ts`) och vakt 7:s manifest
+(`apps/api/scripts/tool-outward-capabilities.json`).
+
+| verktyg | idempotens | authorityScope | allowlist | supportsUndo | utåtriktad | mänsklig väg | delegerbar i dag |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `import_bgmax_file` | IDEMPOTENT | EGEN_ORG | ja | VÄG | – | /reconciliation · Importera | **JA** |
+| `match_bank_transaction` | IDEMPOTENT | MOT_HYRESGAST | nej | VÄG | – | /reconciliation · Matcha transaktion | nej — FEL_SCOPE |
+| `unmatch_transaction` | IDEMPOTENT | MOT_HYRESGAST | nej | VÄG | – | /reconciliation · Häv matchning | nej — FEL_SCOPE |
+| `generate_rent_notices` | IDEMPOTENT | EGEN_ORG | ja | VÄG | – | /avisering · Generera hyresavier | **JA** |
+| `send_overdue_reminders` | IDEMPOTENT | MOT_HYRESGAST | nej | IRREVERSIBEL | **JA** | /avisering · Skicka påminnelser | nej — EJ_ALLOWLISTAD |
+| `pause_reminders` | IDEMPOTENT | MOT_HYRESGAST | nej | VÄG | – | /collections · Pausa | nej — EJ_ALLOWLISTAD |
+| `resume_reminders` | IDEMPOTENT | MOT_HYRESGAST | nej | VÄG | – | /collections · Återuppta | nej — EJ_ALLOWLISTAD |
+| `export_for_collection` | IDEMPOTENT | **MOT_TREDJE_PART** | nej | IRREVERSIBEL | **JA** | /collections · Exportera | **ALDRIG** |
+| `mark_sent_to_collection` | IDEMPOTENT | MOT_HYRESGAST | nej | IRREVERSIBEL | – | /collections · Markera som skickad | nej — EJ_ALLOWLISTAD |
+| `create_invoice` | DEDUPLICERBAR | EGEN_ORG | ja | VÄG | – | /invoices · Ny faktura | **JA** |
+| `send_invoice_email` | DEDUPLICERBAR | MOT_HYRESGAST | nej | IRREVERSIBEL | **JA** | /invoices · Skicka via e-post | nej — EJ_ALLOWLISTAD |
+| `mark_invoice_paid` | DEDUPLICERBAR | MOT_HYRESGAST | nej | VÄG | – | /invoices · Registrera betalning | nej — EJ_ALLOWLISTAD |
+| `create_journal_entry` | IDEMPOTENT | EGEN_ORG | nej | VÄG | – | /accounting · Ny verifikation | nej — EJ_ALLOWLISTAD |
+| `record_expense` | IDEMPOTENT | EGEN_ORG | nej | VÄG | – | /accounting · Registrera utgift | nej — EJ_ALLOWLISTAD |
+| `close_period` | IDEMPOTENT | EGEN_ORG | nej | VÄG | – | /accounting · Stäng period | nej — EJ_ALLOWLISTAD |
+| `export_sie4` | IDEMPOTENT | EGEN_ORG | ja | INGEN_EFFEKT | – | /reports · SIE4-export | nej — INGEN_EFFEKT |
+| `apply_rent_increase` | IDEMPOTENT | MOT_HYRESGAST | nej | VÄG | – | /rent-increases · Ny hyreshöjning | nej — EJ_ALLOWLISTAD |
+
+**Tre av de åtta delegerbara verktygen ligger i pengaflödet:**
+`import_bgmax_file`, `generate_rent_notices`, `create_invoice`. Skärningen mot de
+uppdragsdugliga (`uppdragsdugliga ∩ delegerbara`, de fem utföraren kör) ger
+**två**: `import_bgmax_file` och `generate_rent_notices`.
+
+**Ett verktyg är aldrig delegerbart:** `export_for_collection` är
+`MOT_TREDJE_PART`, och skälet är Del 6 — rätten kan bara ges i hyresvärdens egna
+register.
+
+**Ingen mänsklig väg saknas.** `saknas`-mängden i `HUMAN_PATHS` är tom sedan
+2026-09-05, så delmängdsregeln lägger inget hinder för agent 2.
+
+**Och ett hål som inte syns i tabellen: befarad kundförlust har inget verktyg
+alls.** Nedskrivningen 1510 → 1515 sker uteslutande i cronen
+`reclassifyProbableLosses` (`rent-bad-debt.service.ts:123`). Agenten kan alltså
+inte ens FÖRESLÅ en avskrivning — inte för att någon beslutat det, utan för att
+verktyget aldrig skrevs.
+
+### 2. Producentens söm — och vad den ger i beslut per månad
+
+Frågan är var agent 2 ska hakas på, som agent 1 hakades på
+`maintenance.service.create` (`maintenance.service.ts:307`, `enqueueSafely`).
+Fyra kandidater mättes.
+
+| kandidat | var i koden | beslut/mån, 10 lgh | varför |
+| --- | --- | --- | --- |
+| avi genererad | `avisering.scheduler.ts:41` (`0 7 1 * *`) | **0** | cron, ingen frågas; `generate_rent_notices` är bara den manuella vägen |
+| avi förfallen | `notifications.service.ts:357` (09:00) | **0** | ren statusändring SENT → OVERDUE |
+| bankfil importerad | `reconciliation.service.ts:697` (BgMax), `:577` (CSV), `:396` (API/PSD2), `bank-statement-import.service.ts` (PDF) | **≈10** | färskhetsgrinden kräver betalningsdata ≤ `paymentDataStaleDays` (default **3**) dygn gammal, annars pausas hela trappan |
+| **betalning omatchad** | `reconciliation.service.ts:1050` (OCR olöst) och `:1109` (fuzzy ger upp) | **0–13** | en rad per inbetalning som faller ur alla tre matchningsgrenar |
+| påminnelse skickas | `rent-reminder.service.ts:233` (10:00, dag 7) | **0** | automatisk |
+| inkasso-redo | `rent-reminder.service.ts:524` (11:00, dag 21) | **0** | automatisk |
+| befarad kundförlust | `rent-bad-debt.service.ts:123` (12:00) | **0** | automatisk, och saknar verktyg |
+| inkasso-export | `/collections`, `export_for_collection` | **0–1** | den enda mänskliga handlingen i hela trappan |
+| färskhetspaus | `payment-freshness.service.ts` | **≤1 larm per stale-period** | idempotent via `paymentDataStaleAlertedAt` |
+
+**Det viktigaste resultatet är en nolla, inte ett maxvärde: kravtrappan ställer
+inga frågor.** Alla fyra stegen — förfallomarkering, påminnelse, inkasso-redo och
+nedskrivning — körs av cron utan att någon människa tillfrågas. Det finns alltså
+ingen "föreslå påminnelse"-lucka att fylla: påminnelsen skickas redan. En agent
+som föreslog den hade föreslagit något som händer ändå.
+
+**Sömmen är därför den omatchade betalningen**, och den är strukturellt exakt
+parallell med agent 1:s: en enda punkt där systemet ger upp och lämnar ett
+ärende åt en människa. Punkten är `matchTransaction` som returnerar `false` —
+alla fyra ingest-vägarna löper ihop där.
+
+Volymen är bunden uppåt av antalet **inbetalningar**, inte av antalet rader i ett
+kontoutdrag: alla fyra vägarna avvisar icke-positiva belopp, på tre mätta ställen
+(`reconciliation.service.ts:409` `NON_POSITIVE`, `:631` `row.amount <= 0`,
+`bank-statement-import.service.ts:220` `amount > 0`). Uttag hamnar aldrig i
+kön.
+
+> **Talen ovan är en MODELL, inte en produktionsmätning.** Underlaget är
+> kadenserna i cron-uttrycken och tröskelvärdena i schemat
+> (`rentReminderDay` 7, `rentInkassoDaysAfterReminder` 14,
+> `paymentDataStaleDays` 3), plus antagandet 10 avier och ~10–13 inbetalningar i
+> månaden. Träffgraden i den befintliga automatiken är **omätt** — produktionen
+> har ingen trafik att mäta på. Spannet 0–13 är avsiktligt brett och ska ersättas
+> av en mätning innan någon bygger på det.
+
+**Färskhetsimporten är hög i dag och försvinner i morgon.** ~10 importtillfällen i
+månaden är ett artefakt av att betalningsdata matas för hand. `Psd2SyncService`
+matar `ingestFromApi` och därmed `paymentDataThrough` — när P3-adaptern landar är
+den sömmen borta. Att bygga en agent på den vore att bygga på en ställning.
+
+### 3. Vad "förslag" betyder för agent 2
+
+| # | förslaget | verktyg | vad som faktiskt skrivs | idempotens | ångring | får FÖRESLÅ | får UTFÖRAS utan människa |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | matcha en omatchad inbetalning mot en avi/faktura | `match_bank_transaction` | allokering (`RentNoticePayment`/`InvoicePayment`), avi → PAID/PARTIAL, `BankTransaction` → MATCHED, betalningsverifikat 1930/1510 — allt i en transaktion | IDEMPOTENT | VÄG (`unmatch_transaction`, som bokför ett MOTVERIFIKAT) | ja | **delvis** — ja för OCR/referens (identitet), **nej för fuzzy** |
+| 2 | häv en matchning som blev fel | `unmatch_transaction` | allokering bort, status tillbaka, motverifikat | IDEMPOTENT | VÄG | ja | nej |
+| 3 | importera bankfilen så betalningsdatan blir färsk | `import_bgmax_file` | `BankTransaction`-rader + `autoMatchAll` + `paymentDataThrough` framflyttad | IDEMPOTENT | VÄG | ja | ja för mottagandet — **ärver rad 1:s gräns** för de matchningar importen utlöser |
+| 4 | pausa kravtrappan vid inaktuell betalningsdata | `pause_reminders` | `Organization.remindersEnabled = false` | IDEMPOTENT | VÄG (`resume_reminders`) | ja | ja — skyddande, reversibel, och färskhetsgrinden gör redan samma sak obevakat |
+| 5 | skicka påminnelse | `send_overdue_reminders` | påminnelseavgift bokförs + mejl + `collectionStage` → REMINDED | IDEMPOTENT | **IRREVERSIBEL** | ja | **nej** när det är agentens val — se skälet nedan |
+| 6 | exportera ett krav till inkasso | `export_for_collection` | underlag till R2, kravsteg framåt | IDEMPOTENT | **IRREVERSIBEL** | ja | **aldrig** |
+| 7 | markera kravet som överlämnat | `mark_sent_to_collection` | `collectionStage` + pausar påminnelser | IDEMPOTENT | **IRREVERSIBEL** | ja | **aldrig** |
+| 8a | **befarad** kundförlust (1510 → 1515) | inget verktyg — cron `reclassifyProbableLosses` | omklassning i balansräkningen, ingen resultatpåverkan | — | — | ja, men onödigt | **ja** — cronen är rätt mekanism, bygg inget verktyg |
+| 8b | **konstaterad** kundförlust (1515 → 6352) | inget verktyg — `confirmLoss`, endast människa | resultatpåverkande avskrivning | — | — | **ja, och bör byggas** | **aldrig** |
+| 9 | registrera en betalning manuellt | `mark_invoice_paid` | betalningsverifikat | DEDUPLICERBAR | **deklarerad VÄG — men vägen finns inte, se nedan** | ja | **nej** |
+
+**Rad 4 och 5 är redan lösta av maskinen och ska inte bli förslag.**
+Färskhetsgrinden pausar redan per organisation (`evaluateAndAlert` i alla tre
+kravtrappe-cronarna), och påminnelsen skickas redan. Kvar som meningsfulla
+förslag är rad 1 och 2 — matchningen och dess ångring.
+
+**Rad 6 och 7 är bindande och alltid människans.** `export_for_collection` är
+`MOT_TREDJE_PART` och IRREVERSIBEL; `mark_sent_to_collection` är IRREVERSIBEL.
+De får föreslås, aldrig utföras utan ett ja per handling.
+
+#### Var automatiken ger upp — de tre grenarna
+
+`matchTransaction` (`reconciliation.service.ts:801`) har tre grenar, och bara den
+sista är en gissning:
+
+1. **OCR-match, deterministisk.** Identitetsgrinden (`ocr-identity.ts`) gör att
+   ett systemtilldelat nummer alltid vinner över fritext. Ingen agent behövs.
+2. **OCR satt men olöst → GER UPP MED FLIT** (`:1050`). Transaktionen förblir
+   UNMATCHED och orsaken loggas som en typad anledning. Fuzzy hoppas över
+   avsiktligt. **Det här är det renaste hålet: noll automatik i dag.**
+3. **Ingen OCR → fuzzy** (`:1067`): belopp inom **1,00 kr**, datumfönster
+   **±90 dagar**, och match bara om det finns **exakt en** kandidat över både
+   fakturor och avier (`invMatches.length + noticeMatches.length !== 1` →
+   `return false`). Aldrig delbetalning (`PARTIAL_ALDRIG_VID_GISSNING`).
+
+Gren 3 **skriver i dag automatiskt på en gissning**, och koden säger själv att
+frågan om det över huvud taget är rätt är ett produktbeslut i eget ärende
+(`:1147–1151`). Det gör gren 3 till den mest intressanta kandidaten för
+konvertering: från skrivning till förslag.
+
+#### Facit — och varför agent 2:s facit är hårdare än agent 1:s
+
+| fält | agentens förslag | facit |
+| --- | --- | --- |
+| `avi` (`rentNoticeId` \| `invoiceId`) | vilket dokument betalningen hör till | vad människan faktiskt matchade mot, eller INGET |
+| `belopp` | hela beloppet eller en delbetalning | vad allokeringen blev |
+| `motpart` (`tenantId`) | vilken hyresgäst | avins `tenantId` |
+
+Agent 1:s facit är en bedömning (kategori och prioritet kan diskuteras — tre av
+korpusens fall omprövades av just det skälet). Agent 2:s facit är ett **faktum**:
+en betalning hör till en avi eller inte. Det gör måttet skarpare — och
+kontamineringsrisken värre, eftersom förslaget kommer att stå bredvid raden när
+människan väljer. Samma förbehåll som i `shadow-outcome.service.ts` gäller, med
+större kraft.
+
+#### Deterministiska regler före modellen
+
+Agent 1:s tydligaste lärdom var att prioriteten blev **helt deterministisk**:
+registrerad + regler gav 50/54 och modellen bidrog noll åt båda hållen, varefter
+modellens inflytande togs bort strukturellt (`triage-rules.ts`). Agent 2 har
+samma form av regler redan i koden — OCR-identitet, tolerans 1,00 kr,
+90-dagarsfönster, entydighetskravet — och de ska formuleras som regler *före*
+modellen får något att göra, inte efter. Ablationen (regler ensamma mot regler +
+modell) är obligatorisk, av samma skäl som i #827.
+
+### 4. Vad som återanvänds och vad som måste vara nytt
+
+| del | läge |
+| --- | --- |
+| `AiAssignment` med `shadow`/`prediction`/`outcome`/`confidence`/`sourceKind`/`sourceId` | **ordagrant** — `sourceKind` är en `String`, inte en enum, och `@@index([organizationId, sourceKind, sourceId])` finns |
+| inkorgen, detaljvyn, godkännandekortet, "Gjort", `undoHint` | **ordagrant** |
+| `shadow-tool-gate.ts` (`provaSkuggDuglighet`, `skuggdugligaVerktyg`) | **ordagrant** — grinden är generisk |
+| delegationer, `DelegationProof`, `authorityKind`, `handlingAv` | **ordagrant** |
+| torrläget (`executionVerdict`, `verdictReason`, `verdictAt`, `verdictDelegationId`) | **ordagrant** — fälten finns redan på `AiAssignment` |
+| utföraren (`AgentExecutionService`, kön, svepet, reapern, DB-anspråket) | **ordagrant** |
+| mätriggens FORM (korpus-JSON, `rapport.ts`, `senaste-korning.json`, ablation, kostnad per körning) | **form, inte kod** — `eval-shadow-agent.ts` importerar `maintenance-shadow.service` |
+| producent + kö + worker | **nytt** — nyttolasten är `{organizationId, bankTransactionId}`, inte `ticketId` |
+| svepet | **nytt** — frågan är `BankTransaction` med `status: UNMATCHED, autoMatchExcludedAt: null`, inte `MaintenanceTicket` |
+| `SKUGGFALT` | **nytt** — avi, belopp, motpart i stället för kategori, prioritet, hantverkare |
+| korpusen | **nytt** — bankrader och avier; agent 1:s 54 fall säger ingenting här |
+| `RELEVANTA_FOR_FELANMALAN` | **nytt motstycke** — verktygsmängden för pengaflödet |
+| facitskrivningen | **nytt** — hakas på `manualMatch` och `unmatchTransaction`, inte på att ett ärende avslutas |
+
+Två saker att mäta innan man bygger, inte efter:
+
+- **`autoMatchExcludedAt` betyder redan något.** Fältet säger "automatiken hade
+  fel" och sätts av `unmatchTransaction`. Det är nästan, men inte riktigt, samma
+  fråga som "agenten föreslog fel". Att låna det är exakt det lån CLAUDE.md
+  varnar för — skriv de två frågorna bredvid varandra innan någon frestas.
+- **Registervakten (etapp 4) ser bara modeller som är relationsfält på
+  `Tenant`/`Unit`/`Property`.** En `BankTransaction` är ingen av dem. Kopplingen
+  får gå via den föreslagna avins `tenantId`, och det ska stå utskrivet — annars
+  ser tystnaden ut som en täckning.
+
+### 5. Risken, och var den skiljer sig från agent 1
+
+Agent 1 valdes först uttryckligen för att **ett misstag betyder fel hantverkare,
+inte fel siffror i en årsredovisning** (Del 14). Agent 2 har inte den egenskapen.
+En felmatchad betalning är ett **verifikat**, inte en anteckning: den bokförs
+1930/1510 i samma transaktion som statusändringen, och den enda vägen tillbaka är
+ett motverifikat — huvudboken raderar inte, den korrigerar. `supportsUndo: VÄG`
+är alltså sant i systemets mening och missvisande i bokföringens: ångringen
+lämnar två rader, inte noll.
+
+Följdverkan är värre än raden i sig. En betalning som matchas mot fel avi lämnar
+den rätta avins `ocrOutstanding` orörd, och kravtrappan går då vidare mot en
+hyresgäst som **har betalat** — förbi påminnelseavgift och inkasso-redo, med ett
+mejl och en avgift som inte skulle ha funnits. Det är samma felkedja som
+identitetsgrinden (`ocr-identity.ts`) byggdes för att stänga, och det är skälet
+till att agent 2 aldrig kan börja i skarpt läge.
+
+#### Vad bokförings-experten sa
+
+Tabellen ovan gick till `bokforings-expert` (auktoriserad redovisningskonsult,
+BFL 1999:1078, BAS 2024, inkassokostnadslagen 1981:739). Domen var **godkänd med
+två villkor**, och båda villkoren är fynd som inte fanns i frågan.
+
+**Villkor 1 — fuzzy-grenen bör bli ett förslag, inte en skrivning.** Skälet är
+inte att gissningen ofta blir fel, utan vad ett fel KOSTAR: en felmatchning
+reglerar fel fordran och lämnar den rätta orörd, varefter kravtrappan eskalerar
+mot någon som betalat medan den som är i dröjsmål ligger still. Experten pekar
+också på asymmetrin i koden — gren 2 vägrar uttryckligen gissa när ett OCR finns
+men inte löser ut (`:1050`), och samma resonemang gäller symmetriskt för gren 3,
+som bara skiljer sig i att inget OCR fanns att misslyckas med. BFL 5 kap 6 §
+kräver att en verifikation tydligt visar vad den avser; en fuzzy-träff utpekar
+inte fakturan, den gissar den.
+
+**Villkor 2 — `mark_invoice_paid.supportsUndo` är felklassad.** Deklarationen
+(`effect-idempotency.ts:1429`) säger `{ kind: 'VÄG', fil:
+'invoices/invoices.service.ts', symbol: 'update' }`. Efterkontrollerat:
+`update()` kastar `BadRequestException('Endast utkast kan redigeras')` för allt
+som inte är `DRAFT` (`invoices.service.ts:420–423`), och en manuellt betald
+faktura är per definition inte DRAFT. Den enda verkliga
+reverseringsmekanismen, `reverseJournalEntryForPayment`, har sina enda
+anropare i `unmatchTransaction` (`reconciliation.service.ts:2967`, `:2976`) —
+som bara verkar på en `BankTransaction`, och en manuell betalning har ingen.
+**Det finns alltså ingen fungerande väg att ångra en manuellt registrerad
+betalning.** Fältet borde säga `IRREVERSIBEL`. Det är precis den defekt
+CLAUDE.md beskriver: en mekanismdeklaration som ser trygg ut men inte håller —
+och den är värre än ett hål, eftersom nästa person läser `VÄG` som ett besked.
+
+**Två rader blev tre.** Rad 8 blandade ihop två bokföringshändelser, och
+distinktionen vänder svaret:
+
+- **Befarad** kundförlust (1510 → 1515) är en ren omklassning i balansräkningen
+  utan resultatpåverkan, gatad på hela genomgången kravtrappan, fail-closed mot
+  obokförd fordran och med spår i `RentNoticeEvent`. Att cronen sköter den
+  obevakat är rätt, och ett agentverktyg för den tillför ingenting: det finns
+  inget att fråga om.
+- **Konstaterad** kundförlust (1515 → 6352) är resultatpåverkande och kräver
+  redan i dag en människa (`confirmLoss`, `rent-bad-debt.service.ts:385`). Det
+  som saknas är att **ingen någonsin lyfter fram kandidaterna**: en fordran kan
+  ligga befarad i evighet utan att någon påminns om att ta ställning. Det är
+  exakt "föreslå det svåra", och expertens rekommendation är ett verktyg som
+  BARA föreslår — `agentAllowlist: false` och `resumptionPolicy:
+  KRÄVER_MÄNNISKA` permanent, inte provisoriskt.
+
+**Rad 5 fick en distinktion som är rättslig och inte bokföringsmässig.** Att
+cronen skickar påminnelser obevakat är rutinbokföring utan diskretion: samma
+regel varje gång, med avgiftstaket i 4 § inkassokostnadslagen. En AGENT som
+väljer *när* och *om* introducerar ett bedömningsmoment cronen inte har — och
+avgiften syns för en enskild person utanför systemet. Slutsatsen är alltså inte
+"cronen borde stoppas" utan "agentvägen ska hållas hårdare än cronvägen, trots
+att utfallet är identiskt".
+
+Experten kontrollerade också övriga `supportsUndo`-poster i pengaflödet
+(`match_bank_transaction` → `unmatchTransaction`, `pause_reminders` ↔
+`resume_reminders`, `close_period` → `reopenPeriod`) och fann dem korrekta.
+
+**Följduppgifter ur granskningen**, som förslag och inte som beslut:
+
+1. gör fuzzy-grenen till ett `AiAssignment`-förslag i stället för en direktbokning
+2. rätta `mark_invoice_paid.supportsUndo` till `IRREVERSIBEL` med skäl
+3. nytt verktyg för **konstaterad** kundförlust som bara får föreslå
+4. bygg **inget** verktyg för befarad kundförlust
+
+### Förslag till etappform
+
+Samma fyra steg som agent 1, med en femte rad som är ett **beslut** och inte ett
+bygge.
+
+| etapp | innehåll | grind vidare |
+| --- | --- | --- |
+| **A — skugga** | producent på `matchTransaction === false`, kö `ai-money-shadow` med härlett `jobId`, svep var 15:e minut som skyddsnät, `sourceKind = 'BANK_TRANSACTION'`, förslag i inkorgen. Ingen skrivning, ingen utförare. | flaggan på för minst en riktig organisation |
+| **B — korpus** | bankrader + avier som fixtur, facit på avi/belopp/motpart, ablation regler ensamma mot regler + modell, kostnad per körning redovisad | **≥ 80 % per fält** på en korpus vars nämnare är rader med facit |
+| **C — torrläge** | `executionVerdict` på förslagen: vad hade utföraren gjort, och hade delegationen räckt. Inga effekter. | domarna stämmer med människans beslut |
+| **D — skarpt bakom växel** | `agentExecutionEnabled`, OWNER-grindad, per organisation | se nedan — mängden är i dag **tom** |
+| **E — beslutet** | ska en matchning få utföras utan ett ja per handling? | Del 15, inte den här etappen |
+
+**Etapp D är i dag tom, och det ska stå utskrivet i stället för att upptäckas
+sent.** `match_bank_transaction` är `MOT_HYRESGAST` och därmed inte delegerbar;
+`import_bgmax_file` är delegerbar men behöver en fil agenten inte har, och
+försvinner som fråga när PSD2 P3 landar. Agent 2 slutar alltså vid etapp C om
+ingen fattar beslut E — och beslut E är inte en implementationsdetalj: det är
+frågan om en gissning får reglera en fordran. Att flytta `match_bank_transaction`
+till `EGEN_ORG` för att få etapp D att gå att bygga vore att besvara den frågan i
+förbifarten, och det är precis det Del 6 finns för att förhindra.
+
+**Värdet av agent 2 ligger därför i etapp A–C**, och det är inte ett litet värde:
+den omatchade betalningen är den enda återkommande frågan i pengaflödet där en
+människa i dag står utan förslag alls.
 
 ---
 
