@@ -46,14 +46,29 @@ describe('förutsättningar', () => {
     expect(HAR_DB).toBe(true)
   })
 
-  it('FRÅGEBARA FÄLT ÄR HÄRLEDDA — och `assignedToId` är INTE ett av dem', () => {
-    // Mängden kommer ur "har fältet ett register". `assignedToId` är en naken
-    // `String?` (hantverkarmodellen är etapp 10), så det finns inga knappar att
-    // bygga — och en fråga med fritext som enda väg ger ett svar som varken går
-    // att jämföra eller lagra maskinläsbart.
+  it('FRÅGEBARA FÄLT ÄR HÄRLEDDA — och sedan etapp 10 är de TRE', () => {
+    // ── DET HÄR PROVET SA MOTSATSEN, OCH VAR VACUÖST GRÖNT ────────────────
+    //
+    // Raden löd `expect(FRAGEBARA_NYCKLAR).not.toContain('assignedToId')`, med
+    // motiveringen att fältet var en naken `String?` utan register. Det var
+    // sant till #833. Efter bytet till `assignedContractorId` fortsatte
+    // assertionen vara grön — men av att den namngav ett fält som inte längre
+    // finns någonstans i mängden, alltså trivialt. En kontroll som inte kan
+    // falla mäter ingenting.
+    //
+    // Den prövar nu det som faktiskt gäller: mängden är TRE, och den tredje är
+    // DYNAMISK (organisationens hantverkare) i stället för statisk.
     expect(FRAGEBARA_NYCKLAR).toContain('category')
     expect(FRAGEBARA_NYCKLAR).toContain('priority')
+    expect(FRAGEBARA_NYCKLAR).toContain('assignedContractorId')
+    expect(FRAGEBARA_NYCKLAR).toHaveLength(3)
+    // …och det gamla namnet finns inte kvar någonstans i mängden.
     expect(FRAGEBARA_NYCKLAR).not.toContain('assignedToId')
+    // DYNAMISKT betyder TOM lista här och en mängd som följer med frågan —
+    // inte "inga lagliga värden". Utan flaggan hade tomheten betytt två saker.
+    const hv = FRAGEBARA_FALT.find((f) => f.nyckel === 'assignedContractorId')!
+    expect(hv.dynamiskt).toBe(true)
+    expect(hv.alternativ).toEqual([])
     // ALTERNATIVEN ÄR REGISTRETS, inte en lista: kategorierna är fler än en
     // handfull, och en skriven lista hade glidit vid första tillägget.
     expect(FRAGEBARA_FALT.find((f) => f.nyckel === 'category')!.alternativ.length).toBeGreaterThan(

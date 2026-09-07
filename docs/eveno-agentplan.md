@@ -146,7 +146,7 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 | 5 | Tool Catalog + allowlist + delmängdsregel + vakter | G1 | katalogen kastar; vakterna har setts falla | **KLAR** `1278a9b` — katalogen kastar i två oberoende byggare, alla sju fälten finns, vakt 1–11 har setts falla, och delmängdsbaslinjen är **TOM (30/30)** |
 | 6 | **Inkorgen** (vy + API) och **shadow mode** på felanmälan | 1–5 | den föreslår rätt i verkliga fall utan att göra något | **DELVIS** `e6401d6` — producent, inkorg och facit ([#796](https://github.com/yasineken2002-sys/eken/pull/796)) finns och träffgraden går att läsa; **inte prövat i verkliga fall** — `shadowAgentEnabled` är av för varje organisation |
 
-> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `bc9f09bb` + facit k8
+> ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-08, `94c6a456` + hantverkarregistret
 >
 > **TVÅ FACITRADER ÄNDRADES EFTER KÖRNING 7, av en människa.** k23 gick från
 > HIGH till URGENT och k60 från LOW till NORMAL — de två av tre diskutabla fall
@@ -171,15 +171,59 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 > kostar pengar varje gång. Korpusens form och rapportens summering har
 > däremot prov som går utan ett enda anrop.
 >
-> | | k1 | k2 | k3 | k4 | k5 | k6 | k7 | **k8** |
-> | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-> | kategori | 85,4 % | 88,2 % | 88,0 % | 88,9 % | 87,0 % | 87,0 % | 87,0 % | **87,0 %** |
-> | prioritet | 62,5 % | 58,8 % | 54,0 % | 79,6 % | 79,6 % | 72,2 % | 92,6 % | **90,7 %** |
-> | åtgärd | 38,0 % | 44,2 % | 55,8 % | 77,8 % | 74,1 % | 87,0 % | 87,0 % | **87,0 %** |
-> | inget förslag | 66,7 % (3) | 20,0 % (5) | 40,0 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** |
-> | fel fråga | 0,0 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** |
-> | missad fråga | 3 | 3 | 4 | 6 | 8 | 1 | 1 | **1** |
-> | kostnad | $0,1914 | $0,2000 | $0,2114 | $0,2704 | $0,2714 | $0,2747 | $0,2748 | **$0,2749** |
+> | | k4 | k5 | k6 | k7 | k8 | **k9** | mål |
+> | --- | --- | --- | --- | --- | --- | --- | --- |
+> | kategori | 88,9 % | 87,0 % | 87,0 % | 87,0 % | 87,0 % | **87,0 %** | ≥ 85 |
+> | prioritet | 79,6 % | 79,6 % | 72,2 % | 92,6 % | 90,7 % | **90,7 %** | ≥ 80 |
+> | åtgärd | 77,8 % | 74,1 % | 87,0 % | 87,0 % | 87,0 % | **83,3 %** | ≥ 80 |
+> | **tilldelning** | — | — | — | — | — | **100 % (28)** | — |
+> | inget förslag | 100 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | 100 % (5) | **100 % (5)** | ≥ 80 |
+> | fel fråga | 1,9 % | 1,9 % | 1,9 % | 1,9 % | 1,9 % | **1,9 %** | ≤ 10 |
+> | missad fråga | 6 | 8 | 1 | 1 | 1 | **2** | ≤ 2 |
+> | kostnad | $0,2704 | $0,2714 | $0,2747 | $0,2748 | $0,2749 | **$0,3138** | — |
+>
+> k1–k3 utelämnade ur tabellen (52 ärenden, annan nämnare); talen står i #827.
+>
+> ### Det fjärde måttet finns — och det mäter mindre än det ser ut att göra
+>
+> `assignedContractorId` har varit ett av tre `SKUGGFALT` sedan etapp 6 och har
+> **aldrig kunnat mäta något**: fältet hette `assignedToId`, var en naken
+> `String?` utan skrivväg, och facit var därför alltid null. Nämnaren var noll i
+> varje körning. Med `Contractor` (#833) finns både en mängd att välja ur och en
+> relation att läsa facit ur.
+>
+> **28 av 54 ärenden har tilldelningsfacit**, och agenten träffade alla 28. Men
+> talet ska läsas med den här uppdelningen:
+>
+> ```
+> 23 av 28   menyn hade EXAKT ETT alternativ — svaret var forcerat
+>  5 av 28   menyn hade HELA registret (åtta val) — ett riktigt val
+> ```
+>
+> Registret har en hantverkare per yrke, just för att facit ska vara entydigt.
+> Följden är att måttet på 23 av fallen inte kan falla: har modellen valt rätt
+> kategori är hantverkaren given. **100 % betyder alltså "agenten använde menyn",
+> inte "agenten valde rätt av flera".** Det som skulle ge måttet något att fela på
+> är två hantverkare i samma yrke som texten skiljer åt — en jourfirma och en
+> vanlig, till exempel — och den fixturen finns inte.
+>
+> ### Åtgärden föll, och det är promptens pris
+>
+> Åtgärd 87,0 → **83,3 %** och missad fråga 1 → **2**. Båda målen håller
+> fortfarande (≥ 80 respektive ≤ 2), men riktningen är nedåt och orsaken är den
+> nya promptsektionen: menyn är ~350 extra in-token (kostnaden steg $0,2749 →
+> $0,3138, +14 %), och den konkurrerar med triageringen om uppmärksamheten.
+>
+> **Två ärenden blev OTOLKBART som gav giltiga FRÅGOR i k8** — `k47` ("det är fel
+> på nåt") och `k57` ("kan ni titta på nåt när ni ändå är här"), båda registrerade
+> `OTHER` och båda med facit FRÅGA om `category`. Med `OTHER` visas hela registret,
+> så det är just de ärendena den nya sektionen är längst.
+>
+> **Orsaken är INTE fastställd.** `OTOLKBART` är två fel med samma namn — ett
+> struntsvar och en fråga `ärGiltigFråga` avvisade — och riggen sparade bara
+> etiketten. Jag hann inte mäta: dev-nyckelns krediter tog slut efter körning 9.
+> Riggen skriver nu ut det RÅA svaret vid OTOLKBART, så nästa körning kan skilja
+> de två åt utan att gissa.
 >
 > **k8: sex av sex mål håller fortfarande.** Prioriteten föll 92,6 → 90,7 %
 > (50/54 → 49/54) av facitändringen, alltså av att måttstocken flyttades — inte

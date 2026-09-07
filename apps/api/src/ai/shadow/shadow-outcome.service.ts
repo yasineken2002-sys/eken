@@ -47,7 +47,12 @@ export class ShadowOutcomeService {
    */
   async skrivFacitForArende(
     organizationId: string,
-    ticket: { id: string; category: string; priority: string; assignedToId?: string | null },
+    ticket: {
+      id: string
+      category: string
+      priority: string
+      assignedContractorId?: string | null
+    },
   ): Promise<number> {
     // BARA de fält som JÄMFÖRS. Att skriva hela ärendet hade gjort `outcome` till
     // en andra kopia av raden — en parallell sanningskälla, precis det planens
@@ -56,7 +61,7 @@ export class ShadowOutcomeService {
     const kalla: Record<string, unknown> = {
       category: ticket.category,
       priority: ticket.priority,
-      assignedToId: ticket.assignedToId ?? null,
+      assignedContractorId: ticket.assignedContractorId ?? null,
     }
     for (const { nyckel } of SKUGGFALT) {
       const v = kalla[nyckel]

@@ -101,10 +101,16 @@ export class QuestionService {
       propertyId?: string | null
       unitId?: string | null
       tenantId?: string | null
+      /**
+       * De lagliga värdena för ett DYNAMISKT frågefält
+       * (`assignedContractorId`). Utelämnas den kan en fråga om det fältet inte
+       * skapas — fail-closed, se `ärGiltigFråga`.
+       */
+      dynamisktRegister?: readonly string[]
     },
     nu: Date = new Date(),
   ): Promise<FragaUtfall> {
-    if (!ärGiltigFråga(opts.fråga)) {
+    if (!ärGiltigFråga(opts.fråga, opts.dynamisktRegister)) {
       // FAIL-CLOSED. En fråga som inte går att svara strukturerat på är inte en
       // fråga — den är fritext, och då kan svaret varken jämföras eller lagras
       // maskinläsbart.
@@ -185,7 +191,21 @@ export class QuestionService {
     if (!fråga) throw new NotFoundException('Frågan hittades inte.')
 
     const innehåll = fråga.toolInput as unknown
-    if (!ärGiltigFråga(innehåll)) {
+    // ── DEN LAGRADE FRÅGANS EGNA ALTERNATIV ÄR REGISTRET HÄR ──────────────
+    //
+    // Vid SVARSTILLFÄLLET prövas formen, inte mängden på nytt. Skälet är att
+    // det dynamiska registret kan ha ÄNDRATS sedan frågan ställdes — en
+    // hantverkare kan ha avaktiverats — och att då avvisa svaret hade straffat
+    // hyresvärden för något systemet gjorde. Frågan var giltig när den ställdes,
+    // och det är dess egna alternativ som gäller.
+    //
+    // Mängden prövas ändå, en rad ned: `innehåll.alternativ.includes(svar)` är
+    // den bärande grinden, och den läser exakt de värden hyresvärden fick se.
+    const lagrade =
+      typeof innehåll === 'object' && innehåll !== null
+        ? ((innehåll as Record<string, unknown>)['alternativ'] as string[] | undefined)
+        : undefined
+    if (!ärGiltigFråga(innehåll, lagrade)) {
       throw new BadRequestException('Frågan är felformad och kan inte besvaras.')
     }
     if (!innehåll.alternativ.includes(svar)) {

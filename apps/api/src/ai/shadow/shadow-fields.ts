@@ -20,11 +20,19 @@
  *
  *   kategori    `MaintenanceTicket.category`  — enum, jämförs exakt
  *   prioritet   `MaintenanceTicket.priority`  — enum, jämförs exakt
- *   tilldelad   `MaintenanceTicket.assignedToId` — naken `String?` utan
- *               relation; planen säger uttryckligen att hantverkarbokning inte
- *               ingår förrän den är utredd. Fältet jämförs ändå, som TEXT, och
- *               det är avsiktligt: det mäter om agenten gissar rätt person, inte
- *               om bokningen finns.
+ *   tilldelad   `MaintenanceTicket.assignedContractorId` — en RIKTIG relation
+ *               till `Contractor` sedan etapp 10 PR 1 (#833).
+ *
+ *               Fältet hette `assignedToId` till 2026-09-08 och var då en naken
+ *               `String?` utan relation. Det jämfördes ändå — men mätte
+ *               ingenting: uppmätt hade kolumnen NOLL skrivare i hela repot
+ *               (ingen DTO, ingen endpoint, ingen webbyta) och noll rader med
+ *               värde, så facit var ALLTID null och `jamforSkuggfalt` räknade
+ *               varken träff eller miss. Tredje jämförelsen var alltså en
+ *               nämnare som aldrig kunde växa.
+ *
+ *               Med relationen finns både en skrivväg och en mängd att välja ur,
+ *               och först nu betyder talet något.
  *
  * "Svar till hyresgäst" är MED FLIT inte ett jämförbart fält. Två olika men lika
  * goda svar är olika strängar, och en exakt jämförelse hade mätt formulering i
@@ -43,7 +51,7 @@ export interface Skuggfalt {
 export const SKUGGFALT: readonly Skuggfalt[] = [
   { nyckel: 'category', etikett: 'Kategori' },
   { nyckel: 'priority', etikett: 'Prioritet' },
-  { nyckel: 'assignedToId', etikett: 'Tilldelad' },
+  { nyckel: 'assignedContractorId', etikett: 'Hantverkare' },
 ] as const
 
 export const SKUGGFALT_NYCKLAR: readonly string[] = SKUGGFALT.map((f) => f.nyckel)

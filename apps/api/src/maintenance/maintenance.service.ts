@@ -476,7 +476,7 @@ export class MaintenanceService {
           id: result.id,
           category: result.category,
           priority: result.priority,
-          assignedToId: result.assignedToId,
+          assignedContractorId: result.assignedContractorId,
         })
         .catch((err) =>
           this.logger.error(

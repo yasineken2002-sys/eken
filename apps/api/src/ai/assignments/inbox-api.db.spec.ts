@@ -204,14 +204,35 @@ medDb('inkorgens läsyta', () => {
 
     it('ett fält som saknas i facit sänker inte träffgraden', async () => {
       await forslag(orgA, userA, {
-        prediction: { category: 'PLUMBING', assignedToId: 'x' },
+        prediction: { category: 'PLUMBING', assignedContractorId: 'x' },
         outcome: { category: 'PLUMBING' },
         outcomeAt: new Date(),
       })
       const s = await tjanst.sammanfattning(orgA)
       expect(s.traffgrad['category']?.andel).toBe(1)
       // Facit sa inget om tilldelning → varken träff eller miss.
-      expect(s.traffgrad['assignedToId']).toEqual({ besvarade: 0, traffar: 0, andel: null })
+      expect(s.traffgrad['assignedContractorId']).toEqual({
+        besvarade: 0,
+        traffar: 0,
+        andel: null,
+      })
+    })
+
+    // NEGATIVKONTROLLEN: med facit på BÅDA sidor växer nämnaren. Utan den kan
+    // nollan ovan inte skiljas från ett fält som inte går att mäta alls — och
+    // det var precis tillståndet i tre etapper, medan provet var grönt.
+    it('men med facit på BÅDA sidor RÄKNAS tilldelningen', async () => {
+      await forslag(orgA, userA, {
+        prediction: { category: 'PLUMBING', assignedContractorId: 'hv-1' },
+        outcome: { category: 'PLUMBING', assignedContractorId: 'hv-1' },
+        outcomeAt: new Date(),
+      })
+      const s = await tjanst.sammanfattning(orgA)
+      expect(s.traffgrad['assignedContractorId']).toEqual({
+        besvarade: 1,
+        traffar: 1,
+        andel: 1,
+      })
     })
   })
 

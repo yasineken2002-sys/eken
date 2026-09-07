@@ -60,7 +60,33 @@
     "om riktningen — k23 rör sig MOT modellens svar (den sa URGENT), så den",
     "rättelsen kan inte redovisas som neutral. k60 rör sig BORT från modellens svar",
     "i körning 7 (den sa NORMAL före reglerna men utfallet blev NORMAL, så där",
-    "sammanfaller de). Talen före och efter står i statusblocket, var för sig."
+    "sammanfaller de). Talen före och efter står i statusblocket, var för sig.",
+    "",
+    "2026-09-08: HANTVERKARREGISTER OCH TILLDELNINGSFACIT.",
+    "",
+    "`hantverkarregister` är åtta fixturer, en per yrke, och varje kategori pekar på",
+    "EXAKT en hantverkare. Det är avsiktligt: med två rörmokare vore facit inte",
+    "entydigt, och måttet hade mätt vilken av dem modellen råkade välja.",
+    "",
+    "`facit.assignedContractorId` är satt på 28 ärenden. Villkoren är alla",
+    "fyra: kategorin har en hantverkare, åtgärden är ett riktigt verktyg (inte",
+    "INGEN), rätt svar är inte en FRÅGA, och menyn för ärendets REGISTRERADE",
+    "kategori innehåller hantverkaren — annars kan agenten strukturellt inte svara,",
+    "och talet hade mätt portalens klassificering i stället för agentens.",
+    "",
+    "TRE ärenden är UNDANTAGNA trots att kategorin har en hantverkare:",
+    "  k26: felet är löst — inget att tilldela",
+    "  k56: gaslukt är ett larm till gasleverantör/räddningstjänst, inte en bokad vitvaruservice",
+    "  k62: felet är löst — inget att tilldela",
+    "",
+    "Och ETT är omöjligt av konstruktion: k15 (lysrör i tvättstugan) är registrerat",
+    "som COMMON_AREAS, som är en RIKTIG kategori utan hantverkare i registret.",
+    "Menyn är tom, och rätt svar är då att FRÅGA. Att sätta facit där hade krävt att",
+    "agenten gissade förbi en tom meny.",
+    "",
+    "Ärenden UTAN `assignedContractorId` räknas varken som träff eller miss —",
+    "`jamforSkuggfalt` kräver ett värde på BÅDA sidor. Nämnaren är alltså antalet",
+    "ärenden där facit säger något, inte 54."
   ],
   "arenden": [
     {
@@ -74,7 +100,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Tydligt VVS, ingen brådska — droppande kran, inte översvämning."
+        "skal": "Tydligt VVS, ingen brådska — droppande kran, inte översvämning.",
+        "assignedContractorId": "h-ror"
       }
     },
     {
@@ -103,7 +130,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Pågående vattenskada. Registrerad prioritet NORMAL är fel — texten motsäger den."
+        "skal": "Pågående vattenskada. Registrerad prioritet NORMAL är fel — texten motsäger den.",
+        "assignedContractorId": "h-ror"
       }
     },
     {
@@ -117,7 +145,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "El som inte fungerar efter lampbyte är inte LOW — det kan vara armaturen eller kretsen."
+        "skal": "El som inte fungerar efter lampbyte är inte LOW — det kan vara armaturen eller kretsen.",
+        "assignedContractorId": "h-el"
       }
     },
     {
@@ -131,7 +160,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "17 grader är under vad som är godtagbart, ett konkret tal gör bedömningen möjlig."
+        "skal": "17 grader är under vad som är godtagbart, ett konkret tal gör bedömningen möjlig.",
+        "assignedContractorId": "h-varme"
       }
     },
     {
@@ -160,7 +190,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Vitvara som låter men fungerar — normal prioritet."
+        "skal": "Vitvara som låter men fungerar — normal prioritet.",
+        "assignedContractorId": "h-vitvaror"
       }
     },
     {
@@ -174,7 +205,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Trasig frys med förstörd mat och vatten på golvet är inte LOW."
+        "skal": "Trasig frys med förstörd mat och vatten på golvet är inte LOW.",
+        "assignedContractorId": "h-vitvaror"
       }
     },
     {
@@ -188,7 +220,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Ett fönster som inte går att stänga är både värme- och säkerhetsfråga."
+        "skal": "Ett fönster som inte går att stänga är både värme- och säkerhetsfråga.",
+        "assignedContractorId": "h-snickare"
       }
     },
     {
@@ -202,7 +235,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Fungerar men kärvar — normal, inte låg: ett lås som fastnar helt låser ute någon."
+        "skal": "Fungerar men kärvar — normal, inte låg: ett lås som fastnar helt låser ute någon.",
+        "assignedContractorId": "h-las"
       }
     },
     {
@@ -216,7 +250,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Utelåst hyresgäst är akut oavsett vad som registrerats."
+        "skal": "Utelåst hyresgäst är akut oavsett vad som registrerats.",
+        "assignedContractorId": "h-las"
       }
     },
     {
@@ -230,7 +265,8 @@
         "prioritet": "NORMAL",
         "atgard": "create_inspection",
         "fragaRatt": false,
-        "skal": "En fasadspricka går inte att bedöma på en beskrivning — den ska besiktigas."
+        "skal": "En fasadspricka går inte att bedöma på en beskrivning — den ska besiktigas.",
+        "assignedContractorId": "h-tak"
       }
     },
     {
@@ -244,7 +280,8 @@
         "prioritet": "HIGH",
         "atgard": "create_inspection",
         "fragaRatt": false,
-        "skal": "Växande fuktfläck vid regn tyder på takläckage — besiktning och hög prioritet."
+        "skal": "Växande fuktfläck vid regn tyder på takläckage — besiktning och hög prioritet.",
+        "assignedContractorId": "h-tak"
       }
     },
     {
@@ -258,7 +295,8 @@
         "prioritet": "LOW",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Städning, låg prioritet — rätt registrerat."
+        "skal": "Städning, låg prioritet — rätt registrerat.",
+        "assignedContractorId": "h-stad"
       }
     },
     {
@@ -286,7 +324,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Rinnande toalett slösar vatten men är ingen akut skada."
+        "skal": "Rinnande toalett slösar vatten men är ingen akut skada.",
+        "assignedContractorId": "h-ror"
       }
     },
     {
@@ -300,7 +339,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Klassisk luft i elementet — tydlig kategori, ingen brådska."
+        "skal": "Klassisk luft i elementet — tydlig kategori, ingen brådska.",
+        "assignedContractorId": "h-varme"
       }
     },
     {
@@ -314,7 +354,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Varmvattenbortfall som rör flera lägenheter är akut."
+        "skal": "Varmvattenbortfall som rör flera lägenheter är akut.",
+        "assignedContractorId": "h-ror"
       }
     },
     {
@@ -328,7 +369,8 @@
         "prioritet": "NORMAL",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Vitvara delvis trasig, normal."
+        "skal": "Vitvara delvis trasig, normal.",
+        "assignedContractorId": "h-vitvaror"
       }
     },
     {
@@ -342,7 +384,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Bränd plastlukt utan synlig källa är nästan alltid el, och är akut."
+        "skal": "Bränd plastlukt utan synlig källa är nästan alltid el, och är akut.",
+        "assignedContractorId": "h-el"
       }
     },
     {
@@ -441,7 +484,8 @@
         "prioritet": "HIGH",
         "atgard": "compose_and_send_email",
         "fragaRatt": false,
-        "skal": "Dubbelanmälan där hyresgästen väntat — svaret till hyresgästen är åtgärden, och väntetiden höjer prioriteten."
+        "skal": "Dubbelanmälan där hyresgästen väntat — svaret till hyresgästen är åtgärden, och väntetiden höjer prioriteten.",
+        "assignedContractorId": "h-varme"
       }
     },
     {
@@ -484,7 +528,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Återkommande vatten vid badrum är VVS och kan bli en fuktskada."
+        "skal": "Återkommande vatten vid badrum är VVS och kan bli en fuktskada.",
+        "assignedContractorId": "h-ror"
       }
     },
     {
@@ -498,7 +543,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Läckande vitvara mot golv och stomme — högre än det låter."
+        "skal": "Läckande vitvara mot golv och stomme — högre än det låter.",
+        "assignedContractorId": "h-vitvaror"
       }
     },
     {
@@ -512,7 +558,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Glasskärvor och obehörigt tillträde till huset — akut."
+        "skal": "Glasskärvor och obehörigt tillträde till huset — akut.",
+        "assignedContractorId": "h-snickare"
       }
     },
     {
@@ -526,7 +573,8 @@
         "prioritet": "NORMAL",
         "atgard": "create_inspection",
         "fragaRatt": false,
-        "skal": "Stående vatten på balkong är ett avvattningsfel i byggnaden — besiktning."
+        "skal": "Stående vatten på balkong är ett avvattningsfel i byggnaden — besiktning.",
+        "assignedContractorId": "h-tak"
       }
     },
     {
@@ -583,7 +631,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Blinkning vid last tyder på glapp i elen — brandrisk, inte LOW."
+        "skal": "Blinkning vid last tyder på glapp i elen — brandrisk, inte LOW.",
+        "assignedContractorId": "h-el"
       }
     },
     {
@@ -597,7 +646,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "En ytterdörr som står olåst är en säkerhetsfråga."
+        "skal": "En ytterdörr som står olåst är en säkerhetsfråga.",
+        "assignedContractorId": "h-snickare"
       }
     },
     {
@@ -625,7 +675,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Strömbortfall i hela huset är akut, inte HIGH."
+        "skal": "Strömbortfall i hela huset är akut, inte HIGH.",
+        "assignedContractorId": "h-el"
       }
     },
     {
@@ -668,7 +719,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Vatten från lägenheten ovanför är en pågående skada — ledtråden om badkaret gör kategorin sluten."
+        "skal": "Vatten från lägenheten ovanför är en pågående skada — ledtråden om badkaret gör kategorin sluten.",
+        "assignedContractorId": "h-ror"
       }
     },
     {
@@ -697,7 +749,8 @@
         "prioritet": "HIGH",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Sanering i ett litet slutet utrymme — bör inte vänta."
+        "skal": "Sanering i ett litet slutet utrymme — bör inte vänta.",
+        "assignedContractorId": "h-stad"
       }
     },
     {
@@ -755,7 +808,8 @@
         "prioritet": "URGENT",
         "atgard": "update_maintenance_status",
         "fragaRatt": false,
-        "skal": "Pågående vattenläcka från värmesystemet — akut trots hinken."
+        "skal": "Pågående vattenläcka från värmesystemet — akut trots hinken.",
+        "assignedContractorId": "h-varme"
       }
     },
     {
@@ -828,6 +882,48 @@
         "fragaRatt": false,
         "skal": "Ingen felanmälan — en undran utan ärende. Inget att föreslå, inget att fråga om."
       }
+    }
+  ],
+  "hantverkarregister": [
+    {
+      "id": "h-ror",
+      "name": "Nilssons Rör AB",
+      "categories": ["PLUMBING"]
+    },
+    {
+      "id": "h-el",
+      "name": "Elfirman i Stan AB",
+      "categories": ["ELECTRICAL"]
+    },
+    {
+      "id": "h-varme",
+      "name": "Värmeteknik Syd AB",
+      "categories": ["HEATING"]
+    },
+    {
+      "id": "h-vitvaror",
+      "name": "Vitvaruservice Nord AB",
+      "categories": ["APPLIANCES"]
+    },
+    {
+      "id": "h-snickare",
+      "name": "Snickeri & Glas AB",
+      "categories": ["WINDOWS_DOORS"]
+    },
+    {
+      "id": "h-las",
+      "name": "Låsjouren AB",
+      "categories": ["LOCKS"]
+    },
+    {
+      "id": "h-stad",
+      "name": "Städbolaget Ren AB",
+      "categories": ["CLEANING"]
+    },
+    {
+      "id": "h-tak",
+      "name": "Tak & Fasad AB",
+      "categories": ["ROOF", "FACADE"]
     }
   ]
 }

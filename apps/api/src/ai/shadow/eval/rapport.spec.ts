@@ -30,6 +30,49 @@ const u = (över: Partial<Utfall> = {}): Utfall => ({
   ...över,
 })
 
+/**
+ * ── DET FJÄRDE MÅTTET: TILLDELNING ────────────────────────────────────────
+ *
+ * Nämnaren är antalet ärenden där BÅDA sidor svarat. Det är inte en detalj: före
+ * etapp 10 hade fältet noll skrivare, facit var alltid null, och nämnaren var
+ * alltid noll — måttet fanns men kunde inte mäta något. Proven nedan kräver att
+ * nämnaren växer bara av ett svar på båda sidor, och att den kan bli noll UTAN
+ * att det ser ut som ett fel.
+ */
+describe('tilldelningsmåttet', () => {
+  it('räknar bara ärenden där BÅDA sidor svarat', () => {
+    const r = byggRapport([
+      // träff
+      { facit: f({ assignedContractorId: 'h1' }), utfall: u({ assignedContractorId: 'h1' }) },
+      // miss
+      { facit: f({ assignedContractorId: 'h1' }), utfall: u({ assignedContractorId: 'h2' }) },
+      // facit saknas → räknas inte
+      { facit: f(), utfall: u({ assignedContractorId: 'h1' }) },
+      // agenten avstod → räknas inte
+      { facit: f({ assignedContractorId: 'h1' }), utfall: u() },
+    ])
+    expect(r.tilldelning).toEqual({ antal: 2, traffar: 1, andel: 0.5 })
+    // …och åtgärdsmåttet räknar fortfarande ALLA fyra. Nämnarna är olika, och
+    // det ska synas: en delad nämnare hade gjort tilldelningen till ett mått på
+    // hur ofta korpusen fyllts i.
+    expect(r.atgard.antal).toBe(4)
+  })
+
+  it('en körning UTAN tilldelningsfacit ger noll som NÄMNARE, inte som andel', () => {
+    const r = byggRapport([{ facit: f(), utfall: u() }])
+    // `andel: null` betyder "inte mätt". Vore den 0 hade en körning utan facit
+    // sett ut som en agent som alltid gissar fel.
+    expect(r.tilldelning).toEqual({ antal: 0, traffar: 0, andel: null })
+  })
+
+  it('formatet bär raden', () => {
+    const r = byggRapport([
+      { facit: f({ assignedContractorId: 'h1' }), utfall: u({ assignedContractorId: 'h1' }) },
+    ])
+    expect(formateraRapport(r)).toContain('tilldelning')
+  })
+})
+
 describe('byggRapport', () => {
   describe('reglernas bidrag', () => {
     // ── NULL BETYDER "INTE MÄTT", ALDRIG "NOLL" ────────────────────────────
