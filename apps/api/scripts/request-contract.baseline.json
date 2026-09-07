@@ -1,21 +1,6 @@
 {
-  "total": 52,
+  "total": 42,
   "poster": [
-    {
-      "fil": "apps/portal/src/api/portal.api.ts",
-      "medlemmar": [
-        "POST '/tenant-portal/activate' → OTYPAD",
-        "POST '/tenant-portal/ai/chat' → INLINE-LITERAL",
-        "POST '/tenant-portal/ai/confirm' → OTYPAD",
-        "POST '/tenant-portal/auth/bankid/choose' → INLINE-LITERAL",
-        "POST '/tenant-portal/auth/bankid/collect' → INLINE-LITERAL",
-        "POST '/tenant-portal/auth/bankid/start' → INLINE-LITERAL",
-        "POST '/tenant-portal/forgot-password' → INLINE-LITERAL",
-        "POST '/tenant-portal/login' → OTYPAD",
-        "POST '/tenant-portal/logout' → INLINE-LITERAL",
-        "POST '/tenant-portal/reset-password' → OTYPAD"
-      ]
-    },
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
       "medlemmar": [

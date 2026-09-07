@@ -5,6 +5,7 @@ import type {
   PauseRemindersInput,
   SammaNycklar,
 } from '@eken/shared'
+import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
 
 /**
  * INKASSOFLÖDETS KROPPAR.
@@ -26,6 +27,7 @@ export class BulkExportDto implements BulkExportInput {
 
 export class PauseRemindersDto implements PauseRemindersInput {
   @IsOptional()
+  @IngenKoercion()
   @IsString()
   reason?: string
 }

@@ -17,7 +17,6 @@ import {
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { Throttle } from '@nestjs/throttler'
-import { IsEmail, IsString, IsOptional, IsUUID, MinLength } from 'class-validator'
 import * as bcrypt from 'bcryptjs'
 import { Public } from '../common/decorators/public.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
@@ -40,90 +39,16 @@ import { readTenantWithCredentials } from './tenant-credential-read'
 import { TenantBankIdService } from './tenant-bankid.service'
 import { InviteTenantsDto, ResendInvitesDto } from './dto/invite-tenants.dto'
 import { AddTenantCommentDto, SubmitMaintenanceDto } from './dto/submit-maintenance.dto'
-
-// ── DTOs ──────────────────────────────────────────────────────────────────────
-
-class LoginDto {
-  @IsEmail()
-  email!: string
-
-  @IsString()
-  @MinLength(1)
-  password!: string
-
-  @IsOptional()
-  @IsUUID()
-  organizationId?: string
-}
-
-class ActivateDto {
-  @IsString()
-  @MinLength(1)
-  token!: string
-
-  // Lösenordsstyrkan kontrolleras i TenantAuthService.assertStrongPassword.
-  @IsString()
-  @MinLength(1)
-  password!: string
-
-  // Hyresgästens skrivna namnunderskrift vid digital signering. Sparas
-  // på Document-raden så signaturen blir spårbar separat från FK-länken
-  // till Tenant. VALFRI: rena portal-inbjudningar (massutskick för
-  // importerade hyresgäster utan kontrakts-PDF) signerar inget kontrakt och
-  // behöver ingen underskrift. Anges den ändå kräver vi minst 2 tecken.
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  signatureName?: string
-}
-
-/**
- * BankID-anropen bär ETT fält: providerns handtag. Ingen tenantId, inget
- * personnummer — servern avgör vem ordern gäller ur uppslaget, och en klient som
- * fick skicka med en identitet hade sett ut som om den bestämde den.
- */
-class BankIdCollectDto {
-  @IsString()
-  @MinLength(1)
-  orderRef!: string
-}
-
-class BankIdChooseDto {
-  @IsString()
-  @MinLength(1)
-  chooseToken!: string
-
-  /**
-   * Hyresgästraden användaren valde. Får BARA vara en av dem som signerades i
-   * `chooseToken` — kontrollen ligger i `TenantBankIdService.choose`, inte här:
-   * en DTO kan bara se formen, aldrig vilka id som var kandidater.
-   */
-  @IsUUID()
-  tenantId!: string
-}
-
-class DeleteAccountDto {
-  @IsString()
-  @MinLength(1)
-  password!: string
-}
-
-class ForgotPasswordDto {
-  @IsEmail()
-  email!: string
-}
-
-class ResetPasswordDto {
-  @IsString()
-  @MinLength(1)
-  token!: string
-
-  // Lösenordsstyrkan kontrolleras i TenantAuthService.assertStrongPassword.
-  @IsString()
-  @MinLength(1)
-  password!: string
-}
-
+import {
+  ActivateDto,
+  BankIdChooseDto,
+  BankIdCollectDto,
+  DeleteAccountDto,
+  ForgotPasswordDto,
+  LoginDto,
+  LogoutDto,
+  ResetPasswordDto,
+} from './dto/tenant-auth.dto'
 
 // ── Hjälpare ──────────────────────────────────────────────────────────────────
 
@@ -307,9 +232,9 @@ export class TenantAuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Body() body: { sessionToken?: string }): Promise<null> {
-    if (body.sessionToken) {
-      await this.tenantAuthService.logout(body.sessionToken)
+  async logout(@Body() dto: LogoutDto): Promise<null> {
+    if (dto.sessionToken) {
+      await this.tenantAuthService.logout(dto.sessionToken)
     }
     return null
   }

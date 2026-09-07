@@ -11,6 +11,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import helmet from '@fastify/helmet'
 import multipart from '@fastify/multipart'
 import { AppModule } from './app.module'
+import { VALIDATION_PIPE_OPTIONS } from './common/contract/validation-pipe-options'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { ActorInterceptor } from './common/actor/actor.interceptor'
 import { TransformInterceptor } from './common/interceptors/transform.interceptor'
@@ -147,14 +148,11 @@ async function bootstrap() {
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' })
 
   // Global pipes/filters/interceptors
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  )
+  // Inställningarna bor i VALIDATION_PIPE_OPTIONS, inte här: paritetsprovet
+  // bygger sin pipe ur SAMMA objekt. Skrevs de på två ställen mätte provet en
+  // pipe som inte finns — vilket det gjorde, och `enableImplicitConversion` var
+  // raden som saknades. Se filens egen kommentar.
+  app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS))
   app.useGlobalFilters(app.get(GlobalExceptionFilter))
   // ORDNINGEN SPELAR ROLL: ActorInterceptor måste ligga YTTERST av de två, så
   // att aktörskontexten är öppen medan hanteraren kör. Nest kör interceptors i

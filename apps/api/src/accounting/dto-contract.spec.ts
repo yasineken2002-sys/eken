@@ -44,9 +44,16 @@ import { MarkNoticePaidSchema } from '@eken/shared'
 import { MarkPaidDto } from '../avisering/dto/mark-paid.dto'
 import { CreateMeterDto } from '../consumption/dto/create-meter.dto'
 import { KONTRAKTSREGISTER } from '../common/contract/schema-dto-registry'
+import { VALIDATION_PIPE_OPTIONS } from '../common/contract/validation-pipe-options'
 import type { ZodType } from 'zod'
 
-const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })
+/**
+ * PRODUKTIONENS pipe, inte en egen. Raden ovan skrev tidigare fyra av `main.ts`
+ * fem inställningar och utelämnade `transformOptions` — provet mätte alltså en
+ * konfiguration som inte finns någonstans, och var grönt om en koercion som
+ * släpper igenom i skarp drift. Se `common/contract/validation-pipe-options.ts`.
+ */
+const pipe = new ValidationPipe(VALIDATION_PIPE_OPTIONS)
 
 async function pipenGodtar(metatype: unknown, kropp: unknown): Promise<boolean> {
   try {
@@ -268,6 +275,70 @@ describe('KONTRAKTSREGISTER — paritet för varje delat schema med en DTO', () 
     async (_endpoint, post) => {
       // Utan den kan "giltig godtas" vara grön av att pipen inte gör något alls.
       expect(await pipenGodtar(post.dto, { ...post.giltig, zzHittepa: 1 })).toBe(false)
+    },
+  )
+
+  // ── TYPKOERCION: DEN HALVA PARITETSPROVET INTE KUNDE SE ────────────────────
+  //
+  // De tre looparna ovan mäter FORM och OKÄNDA NYCKLAR. Ingen av dem kunde se
+  // att pipen KONVERTERAR ett värde innan validatorn får det: den globala
+  // `ValidationPipe` kör `transform: true` med `enableImplicitConversion: true`,
+  // så class-transformer läser TS-typen och kör `Boolean(värdet)` FÖRE
+  // `@IsBoolean()`. `Boolean('false')` är `true`.
+  //
+  // Uppmätt på `POST /tenant-portal/ai/confirm`, vars `confirmed` är ett
+  // uttryckligt ja till en AI-föreslagen handling:
+  //
+  //     confirmed="false"  zod=AVVISADE  dto=SLÄPPTE IGENOM → true
+  //
+  // Schemat sa nej, DTO:n sa ja, och paritetsprovet var grönt — alltså mätte
+  // det bara halva frågan utan att säga det. Fallen nedan HÄRLEDS ur registret
+  // (varje boolesk nyckel i `giltig`), så en ny post med ett booleskt fält får
+  // kontrollen utan att någon minns att lägga till den.
+  //
+  // ── AVGRÄNSAT TILL BOOLEANER, OCH SKÄLET ÄR RIKTNINGEN ─────────────────────
+  //
+  // Koercionen gäller varje skalär typ: `String(42)` blir `'42'`, så ett tal i
+  // ett textfält passerar `@IsString()` lika tyst. UPPMÄTT genom att köra samma
+  // härledning över strängfälten i stället:
+  //
+  //     97 strängfält i registret · 33 av dem koercerar tyst
+  //
+  // De 64 övriga fälls ändå, av `@IsEmail`/`@IsUUID`/`@IsDateString` — alltså
+  // av en tillfällighet i vilken validator fältet råkar bära, inte av något som
+  // skyddar. Det är en repo-omfattande avvikelse och hör hemma i ett eget
+  // ärende, inte i den här.
+  //
+  // Booleanerna tas ändå NU, därför att bara de har en farlig riktning:
+  // `Boolean('false')` är `true`, alltså blir ett NEJ ett JA. `String(42)` ger
+  // '42', vilket är fel men inte motsatsen till vad avsändaren menade.
+  const KOERCIONSFALL = KONTRAKTSREGISTER.flatMap((post) =>
+    Object.entries(post.giltig)
+      .filter(([, v]) => typeof v === 'boolean')
+      .map(([falt]) => [`${post.endpoint} · ${falt}`, post, falt, 'false'] as const),
+  )
+
+  it('KANARIEFÅGEL: provets pipe ÄR produktionens, koercionen inkluderad', () => {
+    // Utan den kan raden `transformOptions` tappas igen och varje prov nedan
+    // bli grönt av att pipen inte längre konverterar något. Det var precis så
+    // den här halvan av paritetsprovet var blind från början.
+    expect(VALIDATION_PIPE_OPTIONS.transformOptions?.enableImplicitConversion).toBe(true)
+    expect(VALIDATION_PIPE_OPTIONS.forbidNonWhitelisted).toBe(true)
+  })
+
+  it('KANARIEFÅGEL: härledningen hittade faktiskt fält att pröva', () => {
+    // En tom lista gör varje `it.each` nedan till noll prov — grönt av
+    // ingenting. Talet är en undre gräns, inte en sanning.
+    expect(KOERCIONSFALL.length).toBeGreaterThanOrEqual(6)
+  })
+
+  it.each(KOERCIONSFALL)(
+    '%s — strängen "false" avvisas av BÅDA (inget tyst NEJ som blir JA)',
+    async (_namn, post, falt, felVarde) => {
+      const kropp = { ...post.giltig, [falt]: felVarde }
+      const zod = schematGodtar(post.schema, kropp)
+      const dto = await pipenGodtar(post.dto, kropp)
+      expect({ falt, zod, dto }).toEqual({ falt, zod: false, dto: false })
     },
   )
 })

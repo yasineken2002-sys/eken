@@ -10,39 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler'
-import { IsBoolean, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 import type { Tenant } from '@prisma/client'
 import { Public } from '../common/decorators/public.decorator'
 import { TenantAuthGuard } from '../tenant-portal/tenant-auth.guard'
 import { CurrentTenant } from '../tenant-portal/current-tenant.decorator'
 import { TenantAiService } from './tenant-ai.service'
-
-class TenantChatDto {
-  @IsString()
-  @MinLength(1)
-  @MaxLength(2000)
-  message!: string
-
-  @IsOptional()
-  @IsString()
-  conversationId?: string
-}
-
-class TenantConfirmDto {
-  @IsString()
-  @MinLength(1)
-  toolName!: string
-
-  @IsObject()
-  toolInput!: Record<string, unknown>
-
-  @IsString()
-  @MinLength(1)
-  conversationId!: string
-
-  @IsBoolean()
-  confirmed!: boolean
-}
+import { TenantChatDto, TenantConfirmDto } from './dto/tenant-ai.dto'
 
 @Controller('tenant-portal/ai')
 @Public()

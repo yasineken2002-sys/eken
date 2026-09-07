@@ -1,6 +1,7 @@
 import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 
 import type { AddTicketCommentInput, SammaNycklar } from '@eken/shared'
+import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
 
 /**
  * POST /maintenance/:id/comments
@@ -22,6 +23,7 @@ export class AddTicketCommentDto {
 
   // Intern kommentar syns inte för hyresgästen i portalen.
   @IsBoolean()
+  @IngenKoercion()
   @IsOptional()
   isInternal?: boolean
 }
