@@ -158,6 +158,14 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
   // kunna läsas som att reglerna inte gjorde något.
   const medFöre = poster.filter((p) => p.utfall.atgardForeRegler !== undefined)
   const reglerMätta = medFöre.length > 0
+  // ── TVÅ VILLKOR, INTE ETT ────────────────────────────────────────────────
+  //
+  // Golv-fälten läser `registreradPrioritet`, som bara finns från körning 7;
+  // fråge-fälten läser `atgardForeRegler`, som finns från körning 4. En sparad
+  // körning 4–6 uppfyller det ena men inte det andra, och med ETT villkor blev
+  // de tre golv-fälten då `0` — precis det docblocket ovan förbjuder ("null
+  // betyder inte mätt, aldrig noll"). Uppmätt på en post utan fältet: `0,0,0`.
+  const golvMätta = poster.some((p) => p.utfall.registreradPrioritet !== undefined)
   let golvHojde = 0
   let golvRaddade = 0
   let golvForstorde = 0
@@ -221,9 +229,9 @@ export function byggRapport(poster: ReadonlyArray<{ facit: Facit; utfall: Utfall
     ),
     atgard: rad(antal, poster.filter((p) => atgardRatt(p.facit, p.utfall)).length),
     regler: {
-      golvHojde: reglerMätta ? golvHojde : null,
-      golvRaddade: reglerMätta ? golvRaddade : null,
-      golvForstorde: reglerMätta ? golvForstorde : null,
+      golvHojde: golvMätta ? golvHojde : null,
+      golvRaddade: golvMätta ? golvRaddade : null,
+      golvForstorde: golvMätta ? golvForstorde : null,
       fragaTvingad: reglerMätta ? fragaTvingad : null,
       fragaTvingadRatt: reglerMätta ? fragaTvingadRatt : null,
       prioritetMedModell:

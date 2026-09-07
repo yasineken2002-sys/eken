@@ -17,12 +17,17 @@ import { FRAGA } from './shadow-tool-gate'
  * vattenläcka är brådskande är dessutom inte ett omdöme — det är en regel, och
  * regler hör hemma i kod där de går att pröva utan att betala för ett modellsvar.
  *
- * ── MODELLEN FÅR HÖJA, ALDRIG SÄNKA ─────────────────────────────────────────
+ * ── MODELLEN HAR INGEN RÖST I PRIORITETEN ───────────────────────────────────
  *
- * Golvet är ett GOLV. Ser modellen i texten att ärendet är mer brådskande än
- * nyckelorden fångar ska den få säga det; ser den att det är mindre brådskande
- * får den inte. Asymmetrin är avsiktlig: en missad brådska kostar en vattenskada,
- * en överdriven kostar ett onödigt telefonsamtal.
+ * Stycket hette "MODELLEN FÅR HÖJA, ALDRIG SÄNKA" till och med körning 6, och
+ * beskrev då en asymmetri som inte längre finns: modellen fick höja golvet men
+ * aldrig sänka det. Sedan körning 7 matas ingen modellprioritet in alls — se
+ * docblocket vid `tillämpaRegler` för mätningen som avgjorde det.
+ *
+ * Asymmetrin lever kvar, men mellan REGLERNA: golvet höjer det registrerade
+ * värdet på nyckelord, taket sänker det bara när hyresgästen själv säger att
+ * det inte brådskar, och `högreAv` ligger sist så golvet alltid vinner. En
+ * missad brådska kostar en vattenskada, en överdriven ett onödigt telefonsamtal.
  *
  * ── VAD REGLERNA INTE KAN SE ────────────────────────────────────────────────
  *
@@ -34,8 +39,45 @@ import { FRAGA } from './shadow-tool-gate'
  *
  * Den kan inte heller se att ett ärende är en DUBBLETT av ett öppet ärende — det
  * kräver en sökning mot databasen, och någon sådan finns inte i kodbasen
- * (uppmätt: noll träffar på dubblett-/likhetslogik i `apps/api/src/maintenance/`).
+ * (`apps/api/src/maintenance/duplicate-ticket-window.ts` finns sedan #655, men
+ * den är IDEMPOTENS för AI-verktyget — ett fönster mot samma nyttolast — och
+ * inte en likhetssökning mot öppna ärenden. Påståendet stod tidigare som
+ * "noll träffar" i katalogen; det var sant när det skrevs och är det inte nu.)
  * Tystnaden på dubbletter ägs därför av prompten, inte av den här filen.
+ */
+
+/**
+ * ── ANKARET ÄR DET REGISTRERADE VÄRDET, OCH VEM SOM KAN SÄTTA DET ───────────
+ *
+ * Sedan prioriteten sätts av regel är `MaintenanceTicket.priority` reglernas
+ * indata. Vem kan skriva dit ett värde? Mätt, inte antaget:
+ *
+ *   portalformuläret   NEJ — `tenant-portal.service.ts` hårdkodar 'NORMAL'
+ *   hyresgäst-AI:n     JA  — `create_maintenance_ticket` exponerar `priority`
+ *                            som enum, och executorn skriver värdet rakt in
+ *
+ * En hyresgäst som skriver "det här är akut" i chatten kan alltså få ett
+ * `URGENT` som varken golv eller tak kan sänka. Kostnaden är larmtrötthet i
+ * inkorgen, inte en utförd åtgärd: vägen kräver en bekräftelse, skuggagenten
+ * föreslår bara, och en människa godkänner.
+ *
+ * ── OCH KORPUSEN KAN INTE HÄRDA MOT DET. DET ÄR MÄTT ───────────────────────
+ *
+ * Två ärenden har SAMMA form och MOTSATT facit:
+ *
+ *   k50  kat=OTHER reg=URGENT golv=LOW inget kategoriord  facit URGENT
+ *        "brådskande | Det här är brådskande, ni måste komma nu."
+ *   k63  kat=OTHER reg=HIGH   golv=LOW inget kategoriord  facit LOW
+ *        "FAKTURA FÖRFALLEN … Klicka pa lanken …"   (nätfiske)
+ *
+ * Facit BELÖNAR alltså att man litar på ett registrerat värde utan textstöd i
+ * det ena fallet och BESTRAFFAR det i det andra. Två härdningar prövades och
+ * kostade båda sex ärenden (50/54 → 44/54); varje regel som tar `k63` tar också
+ * `k50`. Det är ingen lucka i reglerna utan en gräns i särdragen — och den står
+ * här för att nästa person inte ska bygga om den.
+ *
+ * Ska något göras hör det hemma UPPSTRÖMS, där `priority` inte behöver vara ett
+ * fält hyresgästens modell får sätta alls.
  */
 
 /** Ordningen, från minst till mest brådskande. Enda uppräkningen av den. */
@@ -101,9 +143,21 @@ const URGENT_ORD: readonly string[] = [
   'grannen har ocksa',
   'grannarna har också',
   'grannarna har ocksa',
-  'flera lägenheter',
-  'flera lagenheter',
-  'flera i huset',
+  // 'flera lägenheter', 'flera lagenheter' och 'flera i huset' STOD HÄR och är
+  // strukna. De hade NOLL vittnen i korpusen — de lades till på ren
+  // generalisering — och producerade mätta falska URGENT på ärenden som inte
+  // ens är fel i huset:
+  //
+  //   "Flera i huset har klagat på att någon spelar hög musik"  → URGENT
+  //   "Flera lägenheter har fått fel namnskylt på brevlådan"    → URGENT
+  //
+  // 'flera' bär antalet men inte FELET. Fraserna som står kvar bär båda: att
+  // grannen säger SAMMA sak är det som gör det till ett fel i huset. Att stryka
+  // dem kostade 0/54 på korpusen.
+  //
+  // Var ärlig om vad som blir kvar: gruppen har då exakt ETT vittne (`k19`),
+  // precis som saneringsgruppen längre ned. Talet belägger inte gruppen, bara
+  // regeln gör det.
   'luktar gas',
   'gaslukt',
   'luktar bränt',
@@ -170,7 +224,10 @@ const HIGH_ORD: readonly string[] = [
   'går inte att stänga',
   'gar inte att stanga',
   'olåst',
-  'olast',
+  // 'olast' STOD HÄR och är struken: den är en delsträng av 'olastad'
+  // ("en olastad container står på gården" → HIGH), vilket är exakt det
+  // kriterium som strök 'ror', 'las', 'gard', 'stad' och 'tak' längre ned.
+  // 'olåst' täcker de allra flesta skrivsätt.
   'på glänt',
   'pa glant',
   'anmälde',
@@ -246,9 +303,16 @@ export const KALLGRANS_GRADER = 18
  * TECKNET FÅNGAS MED, och kastas sedan. Utan grupp 1 här hade `-5 grader`
  * matchat som `5` och lyft golvet på en UTOMHUStemperatur — regeln hade då gjort
  * motsatsen till vad stycket ovanför påstår, och ingenting hade sagt ifrån.
- * Både ASCII-bindestreck och det typografiska minustecknet räknas.
+ * ASCII-bindestreck, det typografiska minustecknet OCH ordet `minus` räknas;
+ * bara de två första gjorde det först, och `minus 5 grader` gick då igenom.
+ *
+ * SIFFERGRUPPEN ÄR ANKRAD i båda ändar. Utan det läser `\d{1,2}` SVANSEN av ett
+ * längre tal, och regeln blir som mest fel där den är som mest säker:
+ *
+ *   "100 grader ur kranen"   →  '00'  →  0 < 18   →  HIGH på skållhett vatten
+ *   "bastun håller 110 grader" → '10' → 10 < 18   →  HIGH på en fungerande bastu
  */
-const GRADTAL = /(-|\u2212)?\s*(\d{1,2})\s*(?:°|grader|grad)/giu
+const GRADTAL = /(-|\u2212|\bminus\s+)?(?<!\d)(\d{1,2})(?!\d)\s*(?:°|grader|grad)/giu
 
 /** Finns en angiven temperatur under `grans` i texten? */
 export function angivenTemperaturUnder(text: string, grans: number): boolean {
@@ -281,14 +345,45 @@ const RISKKATEGORIER: ReadonlySet<string> = new Set<string>([
  * asymmetri som resten av filen: en kategori som är fel åt det farliga hållet
  * ska inte kunna hålla nere ett ärende.
  *
- * Orden är INTE en ny lista. De är exakt `KATEGORIORD` för de tre
- * riskkategorierna, alltså samma uppräkning frågeregeln redan använder — två
- * listor som ska betyda samma sak är inte en lista.
+ * ── LÅNET FRÅN `KATEGORIORD`, OCH VARFÖR FELRIKTNINGEN VÄNDER ──────────────
+ *
+ * Orden är `KATEGORIORD` för de tre riskkategorierna — samma uppräkning
+ * frågeregeln redan använder. Men de två läsarna ställer olika frågor:
+ *
+ *   kategoriordFinns          pekar texten ut NÅGON kategori (så en fråga är onödig)?
+ *   textPekarPaRiskkategori   är felet av en RISKART (så golvet är NORMAL)?
+ *
+ * Och därmed vänder FELRIKTNINGEN. En falsk träff i frågeregeln gör den TYST;
+ * en falsk träff här HÖJER. Motiveringen längre ned, som förklarar vilka korta
+ * ASCII-former som ströks, argumenterar uttryckligen från den tysta riktningen
+ * — den täcker alltså bara den ena läsaren.
+ *
+ * ── DÄRFÖR HAR RISKLÄSNINGEN EGNA UNDANTAG ────────────────────────────────
+ *
+ * Två ord ur listorna är delsträngar av vanliga svenska ord. Det spelade ingen
+ * roll så länge bara frågeregeln läste dem; nu höjer de golvet. Uppmätt:
+ *
+ *   'lås' ⊂ 'blåser', 'blåst'   "Det blåser in kalluft genom fönsterkarmen" → NORMAL
+ *   'rör' ⊂ 'rörigt', 'berör'   "Det är rörigt och skräpigt i cykelrummet"  → NORMAL
+ *
+ * Samma familj som `'ror' ⊂ "beror"` som redan ströks — bara med å/ö, och
+ * därför missad av den genomgången. De byts därför mot längre former HÄR, i
+ * riskläsningen, medan frågeregeln behåller de korta: en kort form som gör en
+ * fråga onödig är ofarlig, en som höjer prioriteten är det inte.
  */
+const RISKORD_BYTEN: Readonly<Record<string, readonly string[]>> = {
+  lås: ['låset', 'låsen', 'låskolv'],
+  rör: ['röret', 'rören', 'rörmokar'],
+}
+
+function riskordFör(kategori: string): readonly string[] {
+  const ord = KATEGORIORD[kategori] ?? []
+  return ord.flatMap((o) => RISKORD_BYTEN[o] ?? [o])
+}
+
 function textPekarPaRiskkategori(text: string): boolean {
   for (const kategori of RISKKATEGORIER) {
-    const ord = KATEGORIORD[kategori]
-    if (ord && ord.some((o) => text.includes(o))) return true
+    if (riskordFör(kategori).some((o) => text.includes(o))) return true
   }
   return false
 }
@@ -336,8 +431,23 @@ const normalisera = (s: string): string => s.toLowerCase()
 const LOST_ORD: readonly string[] = [
   'är fixat',
   'ar fixat',
-  'är löst',
-  'ar lost',
+  // ── 'är löst' STOD HÄR OCH ÄR UTBYTT MOT HELA FRASEN ─────────────────────
+  //
+  // `löst` är neutrumformen av **lös** lika mycket som perfektparticipet av
+  // **lösa**, och i en felanmälan är den första betydelsen den vanligaste.
+  // Uppmätt — alla tre sänktes till LOW av taket, och taket släcker dessutom
+  // kategorigolvet, så riskkategorin slutade lyfta:
+  //
+  //   "Eluttaget i hallen är löst och gnistrar"   ELECTRICAL NORMAL → LOW
+  //   "Handtaget på ytterdörren är löst"          LOCKS      NORMAL → LOW
+  //   "Ett kakel i duschen är löst"               PLUMBING   NORMAL → LOW
+  //
+  // Det är det farliga hållet, och det är det enda i filen som kan gå åt det
+  // hållet. Frasen kräver därför subjektet: 'ärendet är löst' kan inte betyda
+  // att något sitter löst. Kostnad på korpusen: noll — `k62` heter ordagrant
+  // "Ärendet är löst".
+  'ärendet är löst',
+  'arendet ar lost',
   'är åtgärdat',
   'ar atgardat',
   'funkar nu',
@@ -580,9 +690,26 @@ export interface Triageutfall {
   prioritet: MaintenancePriority
   /** Satt endast när `frågaTvingad` är sann. */
   fråga?: { fält: string; alternativ: string[]; användsTill: string }
-  /** Höjde golvet den REGISTRERADE prioriteten? */
+  /**
+   * Ligger den slutliga prioriteten ÖVER den registrerade?
+   *
+   * ── BÅDA FÄLTEN JÄMFÖR MOT `registrerad`, INTE MOT `bas` ─────────────────
+   *
+   * Den första formen jämförde mot `bas`, som redan är sänkt av taket. Utfallet
+   * var att BÅDA flaggorna blev sanna samtidigt — och eftersom läsytan prövar
+   * höjningen först skrev den "Prioriteten HÖJDES" om en sänkning. Uppmätt:
+   *
+   *   reg=URGENT + "fuktfläck i taket men ingen brådska" → HIGH
+   *     läsytan: "Prioriteten HÖJDES till HIGH … registrerades som URGENT."
+   *   reg=URGENT + "det rinner vatten men ingen brådska" → URGENT
+   *     läsytan: samma mening, om ett ärende där ingenting ändrades alls.
+   *
+   * Mot `registrerad` blir de två ömsesidigt uteslutande, och if/else-ordningen
+   * i läsytan slutar spela roll. Rapporten jämförde redan mot det registrerade
+   * värdet — de två sa alltså olika saker om samma ärende.
+   */
   golvHöjde: boolean
-  /** Sänkte taket den registrerade prioriteten? */
+  /** Ligger den slutliga prioriteten UNDER den registrerade? */
   takSänkte: boolean
   /** Gjordes en besiktning om till en fråga? */
   frågaTvingad: boolean
@@ -650,11 +777,14 @@ export function tillämpaRegler(
     : MaintenancePriority.LOW
   // TAKET LIGGER PÅ INDATA, INTE PÅ GOLVET. `högreAv` ligger sist, så ett
   // nyckelord i texten vinner alltid över taket — se stycket vid `LOST_ORD`.
-  const takSänkte =
-    hyresgastenSagerIngenBradska(ärende.titel, ärende.beskrivning) &&
-    registrerad !== MaintenancePriority.LOW
-  const bas = takSänkte ? MaintenancePriority.LOW : registrerad
+  const bas = hyresgastenSagerIngenBradska(ärende.titel, ärende.beskrivning)
+    ? MaintenancePriority.LOW
+    : registrerad
   const prioritet = högreAv(bas, golv)
+  // FLAGGORNA MOT `registrerad`, aldrig mot `bas` — se docblocket vid dem.
+  const steg = PRIORITETSORDNING.indexOf(prioritet) - PRIORITETSORDNING.indexOf(registrerad)
+  const golvHöjde = steg > 0
+  const takSänkte = steg < 0
 
   const tvinga = kräverFråga(
     modell.atgärd,
@@ -666,7 +796,7 @@ export function tillämpaRegler(
     return {
       atgärd: modell.atgärd,
       prioritet,
-      golvHöjde: prioritet !== bas,
+      golvHöjde,
       takSänkte,
       frågaTvingad: false,
     }
@@ -703,7 +833,7 @@ export function tillämpaRegler(
     return {
       atgärd: modell.atgärd,
       prioritet,
-      golvHöjde: prioritet !== bas,
+      golvHöjde,
       takSänkte,
       frågaTvingad: false,
     }
@@ -720,7 +850,7 @@ export function tillämpaRegler(
         `${alternativ[1]} — kategorin avgör vem som skickas, och den går inte att ` +
         'avgöra ur texten.',
     },
-    golvHöjde: prioritet !== bas,
+    golvHöjde,
     takSänkte,
     frågaTvingad: true,
   }

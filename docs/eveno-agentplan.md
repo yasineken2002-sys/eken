@@ -148,6 +148,11 @@ läser. Bygger vi agenten först får den gissa om saker som redan står i datab
 
 > ### Statusblock: skuggagenten mätt mot en korpus — 2026-09-07, `5ee83e00`
 >
+> Sha:n är den körning 7 FAKTISKT kördes mot. En commit efter den lagade
+> minusgrader i temperaturregeln; den ändringen har **noll** effekt på
+> korpusen (50/54 före och efter, offline mot samma sparade svar), eftersom
+> inget ärende nämner en minusgrad. Talen nedan gäller alltså båda.
+>
 > **Kriteriet lyder "den föreslår rätt i VERKLIGA fall".** Det finns inga
 > verkliga fall: skuggagenten är påslagen i noll organisationer, och prod har
 > noll felanmälningar (mätt 2026-09-06). Den här mätningen ERSÄTTER inte

@@ -846,12 +846,36 @@ export function byggPrompt(
     // Prioriteten sätts av `triage-rules.ts` ur det REGISTRERADE värdet, golvet
     // och taket. Modellens `prediction.priority` läses inte av produkten.
     //
-    // Avsnittet står ändå kvar, oförändrat och med flit: modellens svar är
-    // KONTROLLEN som gör bortkopplingen omprövbar (`prioritetMedModell` i
-    // rapporten — körning 7: regeln 50/54, modellen genom samma regler 46/54).
-    // Att i stället skriva "din prioritet används inte" hade förstört
-    // kontrollen: en modell som blivit tillsagd att svaret inte räknas är inte
-    // längre samma jämförelsepunkt.
+    // Avsnittet står ändå kvar, oförändrat och med flit — men skälet är inte
+    // det som först stod här. Det sa att modellens svar "är KONTROLLEN". Det är
+    // sant i RIGGEN och falskt HÄR: några rader ned kastas svaret och sparas
+    // ingenstans, så i produktionen finns ingen kontroll att bevara.
+    //
+    // Det som faktiskt bär i produktionen är PROMPTPARITET. Riggen mäter genom
+    // `byggPrompt`, alltså genom exakt den här texten. Tas avsnittet bort här
+    // mäter riggen en annan prompt än den som körs skarpt, och kontrollen
+    // (`prioritetMedModell` — körning 7: regeln 50/54, modellen genom samma
+    // regler 46/54) slutar säga något om driften.
+    //
+    // Att i stället skriva "din prioritet används inte" vore sämre än båda: en
+    // modell som blivit tillsagd att svaret inte räknas är inte längre samma
+    // jämförelsepunkt.
+    //
+    // ── EN BIEFFEKT SOM ÄR VÄRD ATT VETA ─────────────────────────────────
+    //
+    // Beskrivningen går oescapad in i `<beskrivning>` nedan, så en hyresgäst kan
+    // stänga taggen och skriva instruktioner. Fram till bortkopplingen var
+    // `prediction.priority` en KANAL UT för en sådan injektion. Nu kastas den —
+    // angriparen når fortfarande kategori, åtgärd och `reasoning`, men inte
+    // prioriteten.
+    //
+    // ── OCH EN KOSTNAD SOM INTE ÄR MÄTT ──────────────────────────────────
+    //
+    // De två prioritetsavsnitten är ~110 in-token av knappt tusen, spenderade på
+    // det enda utfall som inte används — medan kategori (87 %) och åtgärd (87 %)
+    // ANVÄNDS och är sämre än prioriteten (93 %). Om uppmärksamheten kostar går
+    // att mäta för $0,28: en körning utan de två avsnitten, allt annat lika.
+    // Den mätningen är INTE gjord.
     //
     // Formuleringen nedan är därför fortfarande den bästa vi mätt, och den
     // ska ändras om och bara om kontrollen ska mätas om.

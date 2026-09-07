@@ -107,7 +107,6 @@ describe('triage-rules', () => {
         // FLER ÄN ETT HUSHÅLL — samma familj som 'hela huset'.
         ['grannen säger samma', MaintenancePriority.URGENT],
         ['grannen har också', MaintenancePriority.URGENT],
-        ['flera lägenheter', MaintenancePriority.URGENT],
         // VATTEN SOM LIGGER, inte vatten som kommer. Flyttat hit från URGENT.
         ['vatten på golvet', MaintenancePriority.HIGH],
         ['blött på golvet', MaintenancePriority.HIGH],
@@ -153,6 +152,32 @@ describe('triage-rules', () => {
           'Var ska jag slänga wellpapp, hittar inget kärl',
         ),
       ).toBe(MaintenancePriority.LOW)
+    })
+
+    // ── DE STRUKNA ORDEN ──────────────────────────────────────────────────
+    //
+    // Ett ord som tagits bort med en mätning ska inte kunna smyga tillbaka. Var
+    // och en av raderna nedan LYFTE golvet tidigare, och skälet står vid ordet
+    // i `triage-rules.ts`.
+    it('ord som strukits med mätning lyfter INTE', () => {
+      // KRAVET ÄR PER ORD, inte ett gemensamt LOW: raden om balkongen bär ordet
+      // 'vatten', som ÄR ett PLUMBING-kategoriord och därför lyfter till NORMAL
+      // med rätta — det är just det som gör `k38` rätt. Det som ska vara borta
+      // är den nivå det STRUKNA ordet gav, alltså URGENT.
+      const strukna: Array<[string, MaintenancePriority, string]> = [
+        ['flera lägenheter har fått fel namnskylt', MaintenancePriority.LOW, 'flera … utan felet'],
+        ['flera i huset har klagat på musiken', MaintenancePriority.LOW, 'flera … utan felet'],
+        ['en olastad container står på gården', MaintenancePriority.LOW, "'olast' ⊂ 'olastad'"],
+        [
+          'det står vatten på balkongen efter regn',
+          MaintenancePriority.NORMAL,
+          "'står vatten' saknade plats — kvar är kategoriordet 'vatten'",
+        ],
+      ]
+      const fel = strukna.filter(
+        ([t, väntat]) => prioritetsgolv(MaintenanceCategory.OTHER, '', t) !== väntat,
+      )
+      expect(fel).toEqual([])
     })
 
     it('"läcker" lyfter INTE — ordet är tvetydigt och togs bort med mätning', () => {
@@ -211,6 +236,11 @@ describe('triage-rules', () => {
       const ute = [
         'det var -5 grader ute i natt',
         'det var −12 grader ute', // typografiskt minustecken
+        'minus 5 grader ute i natt', // ordformen, inte symbolen
+        // TRESIFFRIGA TAL: utan ankring läser `\d{1,2}` SVANSEN av talet, och
+        // regeln blir som mest fel där den är som mest säker — '100' → '00' → 0.
+        'vattnet är skållhett, 100 grader ur kranen',
+        'bastun håller 110 grader',
       ]
       expect(ute.filter((t) => angivenTemperaturUnder(t, KALLGRANS_GRADER))).toEqual([])
 
@@ -225,6 +255,34 @@ describe('triage-rules', () => {
     //
     // Den registrerade kategorin kan vara fel — det är korpusens hela premiss.
     // `k15` är ett trasigt lysrör registrerat som COMMON_AREAS.
+    // ── RISKLÄSNINGENS EGNA UNDANTAG ──────────────────────────────────────
+    //
+    // 'lås' och 'rör' är delsträngar av vanliga svenska ord. Det var ofarligt så
+    // länge bara frågeregeln läste dem (en falsk träff gör den TYST); i golvet
+    // HÖJER en falsk träff. Provet kräver båda hållen: de fyra meningarna får
+    // inte lyfta, och de riktiga formerna måste fortfarande göra det — annars
+    // vore raden ovan grön av att orden slutat matcha något alls.
+    it('en delsträng i ett vanligt ord lyfter INTE riskgolvet', () => {
+      const fårInte = [
+        'Det blåser in kalluft genom fönsterkarmen',
+        'En ruta på balkongen har blåst sönder i stormen',
+        'Det är rörigt och skräpigt i cykelrummet',
+        'Frågan berör hela trapphusets belysning',
+      ]
+      expect(
+        fårInte.filter(
+          (t) => prioritetsgolv(MaintenanceCategory.OTHER, '', t) !== MaintenancePriority.LOW,
+        ),
+      ).toEqual([])
+
+      const måste = ['låset på ytterdörren kärvar', 'röret under handfatet är trasigt']
+      expect(
+        måste.filter(
+          (t) => prioritetsgolv(MaintenanceCategory.OTHER, '', t) !== MaintenancePriority.NORMAL,
+        ),
+      ).toEqual([])
+    })
+
     it('lyfter till NORMAL när TEXTEN pekar på en riskkategori', () => {
       expect(
         prioritetsgolv(
@@ -424,7 +482,21 @@ describe('triage-rules', () => {
       const stumma = utlöser.filter((t) => !hyresgastenSagerIngenBradska('', t))
       expect(stumma).toEqual([])
 
+      // ── DEN NEGATIVA MÄNGDEN MÅSTE BÄRA ORDEN I EN ANNAN BETYDELSE ──────
+      //
+      // Den första formen hade bara tre neutrala meningar (droppande kran, kallt
+      // sovrum, stillastående hiss). Ingen av dem innehåller någon av takets
+      // fraser, så provet kunde bara falla om predikatet blev ALLTID SANT — det
+      // skilde inte "predikatet är rätt" från "predikatet är för brett".
+      //
+      // De fyra första raderna nedan är den skillnaden. `löst` är neutrumformen
+      // av **lös** lika mycket som perfektparticipet av **lösa**, och med
+      // 'är löst' i listan sänktes ett gnistrande eluttag till LOW.
       const fårInte = [
+        'eluttaget i hallen är löst och gnistrar',
+        'handtaget på ytterdörren är löst',
+        'ett kakel i duschen är löst',
+        'en list i hallen har lossnat och är lös',
         'kranen droppar i badrummet',
         'det är kallt i sovrummet',
         'hissen står stilla sedan i tisdags',
