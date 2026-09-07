@@ -185,7 +185,30 @@ if (kanarieFel.length) {
   process.exit(1)
 }
 
-if (process.argv.includes('--self-test')) {
+/**
+ * SJÄLVTESTET — EGEN FUNKTION, INTE EN IF-KROPP.
+ *
+ * `check-self-tests-fail.mjs` härleder rapportvägen ur den FUNKTION dispatchen
+ * anropar och injicerar ett fel i den för att pröva att vakten faktiskt avslutar
+ * nollskilt. En självtestkropp som bara ligger i ett if-block går inte att mäta
+ * så — den här filen skrevs först på det viset, och metavakten fällde den med
+ * "ingen rapportmekanism kunde härledas ur självtestets kropp".
+ *
+ * Rapportvägen är därför en LISTA som exitbeslutet läser. Ett självtest som
+ * skriver ut ett fel men ändå avslutar med 0 gör sitt CI-steg grönt om en vakt
+ * som slutat mäta.
+ */
+function selfTest() {
+  const fel = []
+  // Sonderna mäter VAKTENS egen `oskyddade()`, inte en omskrivning av dess
+  // parser. En sond som skriver om logiken mäter sin egen rad och kan inte
+  // falla när vakten ändras.
+  for (const f of kanariefåglar()) fel.push(f)
+  if (fel.length) {
+    console.error('❌ StrictBoolean, självtestet föll\n')
+    for (const f of fel) console.error(`  ${f}`)
+    process.exit(1)
+  }
   console.warn('✅ StrictBoolean, självtest: 6 sonder gröna')
   console.warn('   1 POSITIV  ett påhittat oskyddat fält fälls')
   console.warn('   2 POSITIV  ENRADSFORMEN hittas (företrädaren missade den)')
@@ -194,6 +217,10 @@ if (process.argv.includes('--self-test')) {
   console.warn('   5 NEGATIV  `example:` i en objektliteral är inget fält')
   console.warn('   6 POSITIV  ett fältnamn på å/ä/ö hittas')
   process.exit(0)
+}
+
+if (process.argv.includes('--self-test')) {
+  selfTest()
 }
 
 const funna = oskyddade()
