@@ -1895,8 +1895,19 @@ export const TenantActivateSchema = z
  * uppslaget mot hyresvärdens registrerade personnummer. `.strict()` är därför
  * inte pedanteri: det är raden som gör att en klient som FÖRSÖKER skicka med en
  * identitet får nej i stället för att få den tyst bortstruken.
+ *
+ * ETT SCHEMA FÖR BÅDA REALMEN — operatörens `POST /auth/bankid/…/collect` och
+ * hyresgästens `POST /tenant-portal/auth/bankid/collect`. Frågan är densamma:
+ * är det här ett providerhandtag? De två realmen hålls isär av att ordern bär
+ * sitt `purpose` och av att väljar-token har skild kryptografisk kontext
+ * (#745), inte av att fältet beskrivs två gånger.
+ *
+ * TAKET 256 KOM FRÅN OPERATÖRSSIDAN. Hyresgästens DTO hade `@MinLength(1)` men
+ * INGET tak, operatörens `@MaxLength(256)` — samma fält, samma slagning mot
+ * providern, olika gränser. En obunden sträng når uppslaget lika gärna som en
+ * rimlig; taket är nu detsamma på båda hållen.
  */
-export const BankIdCollectSchema = z.object({ orderRef: z.string().min(1) }).strict()
+export const BankIdCollectSchema = z.object({ orderRef: z.string().min(1).max(256) }).strict()
 
 /**
  * Kontovalet är undantaget från regeln ovan — här VÄLJER användaren. Att
@@ -1973,7 +1984,29 @@ export const TenantConfirmSchema = z
 
 export type TenantLoginInput = z.infer<typeof TenantLoginSchema>
 export type TenantActivateInput = z.infer<typeof TenantActivateSchema>
+/**
+ * POST /auth/bankid/login/choose — OPERATÖRENS kontoval.
+ *
+ * Skild från `BankIdChooseSchema` (hyresgästens), och det är inte en dubblett:
+ * fälten är olika. Hyresgästen väljer en `tenantId`, operatören ett `userId` —
+ * två register, två föräldrar, två tabeller (`UserBankIdIdentity` respektive
+ * `TenantBankIdIdentity`). Ett delat schema hade beskrivit ett anrop som inte
+ * finns i någon av dem.
+ *
+ * `userId` är `.min(1).max(64)` och INTE `.uuid()`, därför att DTO:n säger så.
+ * Att skärpa den här hade gjort schemat strängare än servern — och att välja
+ * konto är den enda endpoint där klienten SKA skicka ett id: servern
+ * kontrollerar ändå att raden stod i den signerade kandidatlistan.
+ */
+export const BankIdUserChooseSchema = z
+  .object({
+    chooseToken: z.string().min(1).max(2048),
+    userId: z.string().min(1).max(64),
+  })
+  .strict()
+
 export type BankIdCollectInput = z.infer<typeof BankIdCollectSchema>
+export type BankIdUserChooseInput = z.infer<typeof BankIdUserChooseSchema>
 export type BankIdChooseInput = z.infer<typeof BankIdChooseSchema>
 export type TenantForgotPasswordInput = z.infer<typeof TenantForgotPasswordSchema>
 export type TenantResetPasswordInput = z.infer<typeof TenantResetPasswordSchema>

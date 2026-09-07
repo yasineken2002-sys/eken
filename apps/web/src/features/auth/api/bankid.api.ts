@@ -1,5 +1,6 @@
 import { del, get, post } from '@/lib/api'
 import type { AuthResponse } from '@/stores/auth.store'
+import type { BankIdCollectInput, BankIdUserChooseInput } from '@eken/shared'
 
 /**
  * BankID-anropen. Tunt lager: ingen logik, bara formen på det som skickas.
@@ -51,12 +52,17 @@ export interface BankIdIdentity {
 
 // ── Inloggning ──────────────────────────────────────────────────────────────
 
+/**
+ * INGEN KROPP — hanteraren har inget `@Body` och läser bara `req.ip`. Anropet
+ * skickade tidigare `{}`, vilket såg ut som en nyttolast utan att vara en.
+ */
 export async function bankIdLoginStart(): Promise<BankIdStart> {
-  return post<BankIdStart>('/auth/bankid/login/start', {})
+  return post<BankIdStart>('/auth/bankid/login/start')
 }
 
 export async function bankIdLoginCollect(orderRef: string): Promise<BankIdLoginCollect> {
-  return post<BankIdLoginCollect>('/auth/bankid/login/collect', { orderRef })
+  const kropp: BankIdCollectInput = { orderRef }
+  return post<BankIdLoginCollect>('/auth/bankid/login/collect', kropp)
 }
 
 export async function bankIdLoginChoose(
@@ -67,17 +73,20 @@ export async function bankIdLoginChoose(
   // endpointens uppgift: användaren VÄLJER vilket av sina egna konton hen vill
   // in på. Servern kontrollerar ändå att kontot hör till den identifierade
   // personen; valet är inte ett påstående om vem man är.
-  return post<AuthResponse>('/auth/bankid/login/choose', { chooseToken, userId })
+  const kropp: BankIdUserChooseInput = { chooseToken, userId }
+  return post<AuthResponse>('/auth/bankid/login/choose', kropp)
 }
 
 // ── Anslutning ──────────────────────────────────────────────────────────────
 
+/** Ingen kropp, samma skäl som `bankIdLoginStart`. */
 export async function bankIdEnrollStart(): Promise<BankIdStart> {
-  return post<BankIdStart>('/auth/bankid/enroll/start', {})
+  return post<BankIdStart>('/auth/bankid/enroll/start')
 }
 
 export async function bankIdEnrollCollect(orderRef: string): Promise<BankIdEnrollCollect> {
-  return post<BankIdEnrollCollect>('/auth/bankid/enroll/collect', { orderRef })
+  const kropp: BankIdCollectInput = { orderRef }
+  return post<BankIdEnrollCollect>('/auth/bankid/enroll/collect', kropp)
 }
 
 export async function bankIdIdentities(): Promise<BankIdIdentity[]> {

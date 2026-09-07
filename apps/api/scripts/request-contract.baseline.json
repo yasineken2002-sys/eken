@@ -1,5 +1,5 @@
 {
-  "total": 36,
+  "total": 31,
   "poster": [
     {
       "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
@@ -17,16 +17,6 @@
     {
       "fil": "apps/web/src/features/assignments/api/assignments.api.ts",
       "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
-    },
-    {
-      "fil": "apps/web/src/features/auth/api/bankid.api.ts",
-      "medlemmar": [
-        "POST '/auth/bankid/enroll/collect' → INLINE-LITERAL",
-        "POST '/auth/bankid/enroll/start' → INLINE-LITERAL",
-        "POST '/auth/bankid/login/choose' → INLINE-LITERAL",
-        "POST '/auth/bankid/login/collect' → INLINE-LITERAL",
-        "POST '/auth/bankid/login/start' → INLINE-LITERAL"
-      ]
     },
     {
       "fil": "apps/web/src/features/backfill/api/backfill.api.ts",

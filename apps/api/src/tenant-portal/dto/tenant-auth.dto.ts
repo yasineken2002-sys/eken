@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsUUID, MinLength } from 'class-validator'
+import { IsEmail, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator'
 
 import type {
   BankIdChooseInput,
@@ -70,8 +70,12 @@ export class ActivateDto implements TenantActivateInput {
  * fick skicka med en identitet hade sett ut som om den bestämde den.
  */
 export class BankIdCollectDto implements BankIdCollectInput {
+  // TAKET 256 saknades här men fanns på operatörssidan — samma fält, samma
+  // slagning mot providern, olika gränser. Utjämnat i samma PR som
+  // operatörsvägen bands till schemat.
   @IsString()
   @MinLength(1)
+  @MaxLength(256)
   orderRef!: string
 }
 

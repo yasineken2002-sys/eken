@@ -59,6 +59,7 @@ import {
   TenantLoginSchema,
   TenantActivateSchema,
   BankIdCollectSchema,
+  BankIdUserChooseSchema,
   BankIdChooseSchema,
   TenantForgotPasswordSchema,
   TenantResetPasswordSchema,
@@ -121,6 +122,12 @@ import { TenantChatDto, TenantConfirmDto } from '../../ai/dto/tenant-ai.dto'
 // ForgotPasswordDto). Två olika klasser för två olika realm — operatörens och
 // hyresgästens — och att de delar namn är rätt, det är samma handling i skilda
 // världar. Aliaset gör skillnaden synlig här i stället för att dölja den.
+// Bara choose-DTO:n registreras. `BankIdCollectInput` delas med
+// hyresgästportalen, och den posten står redan i registret med portalens DTO —
+// två poster för samma inputtyp hade gjort paritetsprovet till två prov på
+// samma sak. Att BÅDA klasserna uppfyller schemat bärs av var sin
+// `SammaNycklar`-rad, inte av registret.
+import { BankIdChooseDto as AuthBankIdChooseDto } from '../../bankid/dto/bankid.dto'
 import { LoginDto as AuthLoginDto } from '../../auth/dto/login.dto'
 import { RegisterDto } from '../../auth/dto/register.dto'
 import { ChangePasswordDto } from '../../auth/dto/change-password.dto'
@@ -1173,5 +1180,19 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { email: 'anna@foretag.se' },
     ogiltig: { email: 'inte-en-adress' },
     ogiltigVarfor: 'e-postadressen har inte adressform',
+  },
+  // ─── BANKID, OPERATÖRENS REALM ────────────────────────────────────────────
+  //
+  // `BankIdCollectInput` delas med hyresgästportalen — samma fråga, samma svar.
+  // Registret pekar på OPERATÖRENS DTO; att båda uppfyller samma schema bärs av
+  // var sin `SammaNycklar`-rad, och taket 256 är numera detsamma i båda.
+  {
+    endpoint: 'POST /auth/bankid/login/choose',
+    inputTyp: 'BankIdUserChooseInput',
+    schema: BankIdUserChooseSchema,
+    dto: AuthBankIdChooseDto,
+    giltig: { chooseToken: 'val-abc123', userId: '11111111-2222-4333-8444-555555555555' },
+    ogiltig: { chooseToken: 'val-abc123', userId: 'u'.repeat(65) },
+    ogiltigVarfor: 'userId över 64 tecken är inte ett av våra',
   },
 ]
