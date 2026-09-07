@@ -91,6 +91,12 @@ function makeService(opts: {
   }
 
   const prisma = {
+    // ── AGENT 2:S GRIND, MED FLAGGAN AV ────────────────────────────────
+    // `matchTransaction`s fuzzy-gren läser numera
+    // `Organization.shadowPaymentAgentEnabled`: är den PÅ slutar grenen
+    // bokföra och lämnar raden till ett förslag. `null` här betyder AV,
+    // alltså exakt det beteende proven nedan beskriver.
+    organization: { findUnique: jest.fn().mockResolvedValue(null) },
     bankTransaction: {
       findFirst: jest.fn().mockResolvedValue(opts.transaction ?? null),
       update: jest.fn().mockResolvedValue({}),
@@ -126,7 +132,16 @@ function makeService(opts: {
     events as never,
     accounting as never,
     {} as never, // PaymentFreshnessService — ej använd i matchnings-/unmatch-vägen,
-    rentNoticeEvents as never, // #326 C — RentNoticeEventsService
+    rentNoticeEvents as never, // #326 C — RentNoticeEventsService,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   return { service, prisma, txMock, createJournalEntryForRentNoticePayment, rentNoticeEvents }
 }

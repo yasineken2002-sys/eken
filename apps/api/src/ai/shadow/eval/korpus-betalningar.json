@@ -1,0 +1,770 @@
+{
+  "__doc__": [
+    "MÄTKORPUS FÖR AGENT 2 — 40 bankrader som en avstämning faktiskt ser dem.",
+    "",
+    "TESTDATA, INTE PROMPT. Ingen text här matas in som instruktion; varje rad går",
+    "genom samma väg som en riktig (provaKandidater → byggBetalningsprompt →",
+    "verktygsschemat). Facit läses ALDRIG av modellen — det jämförs efteråt.",
+    "",
+    "INGA RIKTIGA PERSONUPPGIFTER. Namn, OCR-nummer och belopp är påhittade.",
+    "",
+    "KANDIDATMÄNGDEN ÄR GEMENSAM. Alla 40 rader prövas mot SAMMA 14 öppna poster",
+    "(`poster` nedan). Det är avsiktligt och det är svårare än alternativet: en",
+    "korpus där varje rad har sin egen lilla kandidatlista mäter inte förmågan att",
+    "VÄLJA, bara att bekräfta.",
+    "",
+    "FÄLTEN PÅ EN BANKRAD:",
+    "  text        bankens beskrivning, ordagrant som den kommer i ett kontoutdrag",
+    "  belopp      inbetalt, i kronor. Alltid positivt — ingest avvisar övriga.",
+    "  rawOcr      OCR på raden, eller null",
+    "  facit.avi   postens id, eller INGEN när raden inte hör till någon post",
+    "  facit.belopp   FULL eller DEL",
+    "  facit.motpart  hyresgästens id, eller OKAND",
+    "  facit.regel    satt till INGEN_FRAGA för rader där den deterministiska",
+    "                 regeln ska svara 'automatiken tar den' och agenten aldrig",
+    "                 ska köras. De är KONTROLLER, inte modellfall.",
+    "  facit.grupp    vilken sorts fall raden är — rapporten redovisar per grupp",
+    "  facit.skal     varför, på svenska, för den som läser en miss",
+    "",
+    "GRUPPERNA OCH VARFÖR DE FINNS:",
+    "  exakt_ocr        4 st. KONTROLL: regeln ska ge INGEN_FRAGA utan modellanrop.",
+    "  ocr_sifferfel    8 st. En felskriven eller utelämnad siffra. Den vanligaste",
+    "                   riktiga orsaken till att en betalning inte matchar.",
+    "  belopp_och_namn  6 st. Inget OCR alls — hyresgästen har betalat med ett",
+    "                   vanligt bankgirouppdrag och skrivit sitt namn.",
+    "  delbetalning     5 st. Betalar mindre än det utestående. Facit är posten",
+    "                   OCH belopp = DEL; att svara FULL är en miss även om avin",
+    "                   är rätt.",
+    "  dubbelbetalning  4 st. Beloppet överstiger det utestående, eller posten är",
+    "                   redan reglerad. Rätt svar är INGEN — en andra betalning",
+    "                   mot samma avi är en överbetalning, inte en matchning.",
+    "  hyra_plus_avgift 4 st. EN inbetalning som täcker två poster (hyra + en",
+    "                   separat faktura). Systemet kan inte dela en rad på två",
+    "                   fordringar, så rätt svar är INGEN och en människa får",
+    "                   dela den. Att matcha mot hyresavin ensam hade lämnat",
+    "                   fakturan obetald och sett rätt ut.",
+    "  okand_avsandare  5 st. Ingen signal alls. Rätt svar är INGEN.",
+    "  retur            4 st. Återbetalningar, felaktiga inbetalningar och",
+    "                   inbetalningar från motparter som inte är hyresgäster.",
+    "                   Rätt svar är INGEN.",
+    "",
+    "TVÅ GRUPPER ÄR MED FLIT ÖVERREPRESENTERADE i förhållande till verkligheten:",
+    "dubbelbetalning och hyra_plus_avgift. Det är de fall där en felaktig matchning",
+    "KOSTAR mest — den reglerar fel fordran och lämnar den rätta obetald, varefter",
+    "kravtrappan eskalerar mot någon som har betalat. En korpus som speglade",
+    "verkligheten hade haft två sådana rader av fyrtio och inte kunnat mäta dem.",
+    "Talen ska alltså INTE läsas som en förväntad träffgrad i drift.",
+    "",
+    "NÄMNAREN ÄR RADER MED FACIT, per fält — samma regel som agent 1. En rad vars",
+    "facit.regel är INGEN_FRAGA räknas inte in i modellmåttet alls; den mäter",
+    "regeln, och redovisas separat."
+  ],
+  "poster": [
+    {
+      "id": "p01",
+      "sort": "AVI",
+      "nummer": "A-2026-0801",
+      "ocr": "10000000018",
+      "utestaende": 8450.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t1",
+      "motpartNamn": "Anna Lindqvist"
+    },
+    {
+      "id": "p02",
+      "sort": "AVI",
+      "nummer": "A-2026-0802",
+      "ocr": "10000000026",
+      "utestaende": 9200.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t2",
+      "motpartNamn": "Bengt Olofsson"
+    },
+    {
+      "id": "p03",
+      "sort": "AVI",
+      "nummer": "A-2026-0803",
+      "ocr": "10000000034",
+      "utestaende": 7150.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t3",
+      "motpartNamn": "Carina Ek"
+    },
+    {
+      "id": "p04",
+      "sort": "AVI",
+      "nummer": "A-2026-0804",
+      "ocr": "10000000042",
+      "utestaende": 11300.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t4",
+      "motpartNamn": "David Nyström"
+    },
+    {
+      "id": "p05",
+      "sort": "AVI",
+      "nummer": "A-2026-0805",
+      "ocr": "10000000059",
+      "utestaende": 6800.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t5",
+      "motpartNamn": "Elin Sandberg"
+    },
+    {
+      "id": "p06",
+      "sort": "AVI",
+      "nummer": "A-2026-0806",
+      "ocr": "10000000067",
+      "utestaende": 8450.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t6",
+      "motpartNamn": "Farid Haddad"
+    },
+    {
+      "id": "p07",
+      "sort": "AVI",
+      "nummer": "A-2026-0807",
+      "ocr": "10000000075",
+      "utestaende": 10250.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t7",
+      "motpartNamn": "Gunilla Persson"
+    },
+    {
+      "id": "p08",
+      "sort": "AVI",
+      "nummer": "A-2026-0808",
+      "ocr": "10000000083",
+      "utestaende": 9875.0,
+      "forfallodatum": "2026-08-31",
+      "motpartId": "t8",
+      "motpartNamn": "Hassan Yilmaz"
+    },
+    {
+      "id": "p09",
+      "sort": "AVI",
+      "nummer": "A-2026-0901",
+      "ocr": "10000000091",
+      "utestaende": 8450.0,
+      "forfallodatum": "2026-09-30",
+      "motpartId": "t1",
+      "motpartNamn": "Anna Lindqvist"
+    },
+    {
+      "id": "p10",
+      "sort": "AVI",
+      "nummer": "A-2026-0902",
+      "ocr": "10000000109",
+      "utestaende": 9200.0,
+      "forfallodatum": "2026-09-30",
+      "motpartId": "t2",
+      "motpartNamn": "Bengt Olofsson"
+    },
+    {
+      "id": "p11",
+      "sort": "FAKTURA",
+      "nummer": "F-2026-0141",
+      "ocr": "20000000015",
+      "utestaende": 1250.0,
+      "forfallodatum": "2026-08-20",
+      "motpartId": "t3",
+      "motpartNamn": "Carina Ek"
+    },
+    {
+      "id": "p12",
+      "sort": "FAKTURA",
+      "nummer": "F-2026-0142",
+      "ocr": "20000000023",
+      "utestaende": 480.0,
+      "forfallodatum": "2026-08-20",
+      "motpartId": "t1",
+      "motpartNamn": "Anna Lindqvist"
+    },
+    {
+      "id": "p13",
+      "sort": "FAKTURA",
+      "nummer": "F-2026-0143",
+      "ocr": "20000000031",
+      "utestaende": 3400.0,
+      "forfallodatum": "2026-08-15",
+      "motpartId": "t4",
+      "motpartNamn": "David Nyström"
+    },
+    {
+      "id": "p14",
+      "sort": "FAKTURA",
+      "nummer": "F-2026-0144",
+      "ocr": "20000000049",
+      "utestaende": 975.0,
+      "forfallodatum": "2026-08-25",
+      "motpartId": "t6",
+      "motpartNamn": "Farid Haddad"
+    }
+  ],
+  "bankrader": [
+    {
+      "id": "b01",
+      "datum": "2026-09-01",
+      "text": "BG INBETALNING ANNA LINDQVIST",
+      "belopp": 8450.0,
+      "rawOcr": "10000000018",
+      "facit": {
+        "avi": "p01",
+        "belopp": "FULL",
+        "motpart": "t1",
+        "grupp": "exakt_ocr",
+        "skal": "OCR:et löser ut exakt — avstämningens deterministiska gren tar raden och agenten ska aldrig köras.",
+        "regel": "INGEN_FRAGA"
+      }
+    },
+    {
+      "id": "b02",
+      "datum": "2026-09-01",
+      "text": "BG INBETALNING DAVID NYSTRÖM",
+      "belopp": 11300.0,
+      "rawOcr": "10000000042",
+      "facit": {
+        "avi": "p04",
+        "belopp": "FULL",
+        "motpart": "t4",
+        "grupp": "exakt_ocr",
+        "skal": "OCR:et löser ut exakt — avstämningens deterministiska gren tar raden och agenten ska aldrig köras.",
+        "regel": "INGEN_FRAGA"
+      }
+    },
+    {
+      "id": "b03",
+      "datum": "2026-09-01",
+      "text": "BG INBETALNING CARINA EK",
+      "belopp": 1250.0,
+      "rawOcr": "20000000015",
+      "facit": {
+        "avi": "p11",
+        "belopp": "FULL",
+        "motpart": "t3",
+        "grupp": "exakt_ocr",
+        "skal": "OCR:et löser ut exakt — avstämningens deterministiska gren tar raden och agenten ska aldrig köras.",
+        "regel": "INGEN_FRAGA"
+      }
+    },
+    {
+      "id": "b04",
+      "datum": "2026-09-01",
+      "text": "BG INBETALNING GUNILLA PERSSON",
+      "belopp": 10250.0,
+      "rawOcr": "10000000075",
+      "facit": {
+        "avi": "p07",
+        "belopp": "FULL",
+        "motpart": "t7",
+        "grupp": "exakt_ocr",
+        "skal": "OCR:et löser ut exakt — avstämningens deterministiska gren tar raden och agenten ska aldrig köras.",
+        "regel": "INGEN_FRAGA"
+      }
+    },
+    {
+      "id": "b05",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING BENGT OLOFSSON",
+      "belopp": 9200.0,
+      "rawOcr": "10000000027",
+      "facit": {
+        "avi": "p02",
+        "belopp": "FULL",
+        "motpart": "t2",
+        "grupp": "ocr_sifferfel",
+        "skal": "sista siffran feltryckt; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b06",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING CARINA EK",
+      "belopp": 7150.0,
+      "rawOcr": "10090000034",
+      "facit": {
+        "avi": "p03",
+        "belopp": "FULL",
+        "motpart": "t3",
+        "grupp": "ocr_sifferfel",
+        "skal": "en siffra mitt i feltryckt; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b07",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING ELIN SANDBERG",
+      "belopp": 6800.0,
+      "rawOcr": "10000000509",
+      "facit": {
+        "avi": "p05",
+        "belopp": "FULL",
+        "motpart": "t5",
+        "grupp": "ocr_sifferfel",
+        "skal": "två siffror har bytt plats; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b08",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING FARID HADDAD",
+      "belopp": 8450.0,
+      "rawOcr": "1000000067",
+      "facit": {
+        "avi": "p06",
+        "belopp": "FULL",
+        "motpart": "t6",
+        "grupp": "ocr_sifferfel",
+        "skal": "en siffra utelämnad; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b09",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING HASSAN YILMAZ",
+      "belopp": 9875.0,
+      "rawOcr": "11000000083",
+      "facit": {
+        "avi": "p08",
+        "belopp": "FULL",
+        "motpart": "t8",
+        "grupp": "ocr_sifferfel",
+        "skal": "en siffra feltryckt tidigt i numret; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b10",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING ANNA LINDQVIST",
+      "belopp": 8450.0,
+      "rawOcr": "10000000081",
+      "facit": {
+        "avi": "p09",
+        "belopp": "FULL",
+        "motpart": "t1",
+        "grupp": "ocr_sifferfel",
+        "skal": "näst sista siffran feltryckt; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b11",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING DAVID NYSTRÖM",
+      "belopp": 3400.0,
+      "rawOcr": "20000400031",
+      "facit": {
+        "avi": "p13",
+        "belopp": "FULL",
+        "motpart": "t4",
+        "grupp": "ocr_sifferfel",
+        "skal": "en siffra mitt i feltryckt; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b12",
+      "datum": "2026-09-02",
+      "text": "BG INBETALNING BENGT OLOFSSON",
+      "belopp": 9200.0,
+      "rawOcr": "100000001099",
+      "facit": {
+        "avi": "p10",
+        "belopp": "FULL",
+        "motpart": "t2",
+        "grupp": "ocr_sifferfel",
+        "skal": "en extra siffra inskriven; beloppet stämmer på öret och namnet står i texten."
+      }
+    },
+    {
+      "id": "b13",
+      "datum": "2026-09-03",
+      "text": "SWISH Anna Lindqvist",
+      "belopp": 8450.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p01",
+        "belopp": "FULL",
+        "motpart": "t1",
+        "grupp": "belopp_och_namn",
+        "skal": "Inget OCR, men beloppet stämmer på öret och motpartens namn står i banktexten."
+      }
+    },
+    {
+      "id": "b14",
+      "datum": "2026-09-03",
+      "text": "SWISH Carina Ek",
+      "belopp": 7150.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p03",
+        "belopp": "FULL",
+        "motpart": "t3",
+        "grupp": "belopp_och_namn",
+        "skal": "Inget OCR, men beloppet stämmer på öret och motpartens namn står i banktexten."
+      }
+    },
+    {
+      "id": "b15",
+      "datum": "2026-09-03",
+      "text": "SWISH Elin Sandberg",
+      "belopp": 6800.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p05",
+        "belopp": "FULL",
+        "motpart": "t5",
+        "grupp": "belopp_och_namn",
+        "skal": "Inget OCR, men beloppet stämmer på öret och motpartens namn står i banktexten."
+      }
+    },
+    {
+      "id": "b16",
+      "datum": "2026-09-03",
+      "text": "SWISH Gunilla Persson",
+      "belopp": 10250.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p07",
+        "belopp": "FULL",
+        "motpart": "t7",
+        "grupp": "belopp_och_namn",
+        "skal": "Inget OCR, men beloppet stämmer på öret och motpartens namn står i banktexten."
+      }
+    },
+    {
+      "id": "b17",
+      "datum": "2026-09-03",
+      "text": "SWISH Anna Lindqvist",
+      "belopp": 480.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p12",
+        "belopp": "FULL",
+        "motpart": "t1",
+        "grupp": "belopp_och_namn",
+        "skal": "Inget OCR, men beloppet stämmer på öret och motpartens namn står i banktexten."
+      }
+    },
+    {
+      "id": "b18",
+      "datum": "2026-09-03",
+      "text": "SWISH Farid Haddad",
+      "belopp": 975.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p14",
+        "belopp": "FULL",
+        "motpart": "t6",
+        "grupp": "belopp_och_namn",
+        "skal": "Inget OCR, men beloppet stämmer på öret och motpartens namn står i banktexten."
+      }
+    },
+    {
+      "id": "b19",
+      "datum": "2026-09-04",
+      "text": "BETALNING Bengt Olofsson",
+      "belopp": 5000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p02",
+        "belopp": "DEL",
+        "motpart": "t2",
+        "grupp": "delbetalning",
+        "skal": "Betalar 5000.00 kr av 9200.00 kr. Rätt post, men DEL — att svara FULL är en miss."
+      }
+    },
+    {
+      "id": "b20",
+      "datum": "2026-09-04",
+      "text": "BETALNING David Nyström",
+      "belopp": 6000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p04",
+        "belopp": "DEL",
+        "motpart": "t4",
+        "grupp": "delbetalning",
+        "skal": "Betalar 6000.00 kr av 11300.00 kr. Rätt post, men DEL — att svara FULL är en miss."
+      }
+    },
+    {
+      "id": "b21",
+      "datum": "2026-09-04",
+      "text": "BETALNING Hassan Yilmaz",
+      "belopp": 4000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p08",
+        "belopp": "DEL",
+        "motpart": "t8",
+        "grupp": "delbetalning",
+        "skal": "Betalar 4000.00 kr av 9875.00 kr. Rätt post, men DEL — att svara FULL är en miss."
+      }
+    },
+    {
+      "id": "b22",
+      "datum": "2026-09-04",
+      "text": "BETALNING David Nyström",
+      "belopp": 1700.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p13",
+        "belopp": "DEL",
+        "motpart": "t4",
+        "grupp": "delbetalning",
+        "skal": "Betalar 1700.00 kr av 3400.00 kr. Rätt post, men DEL — att svara FULL är en miss."
+      }
+    },
+    {
+      "id": "b23",
+      "datum": "2026-09-04",
+      "text": "BETALNING Farid Haddad",
+      "belopp": 8000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "p06",
+        "belopp": "DEL",
+        "motpart": "t6",
+        "grupp": "delbetalning",
+        "skal": "Betalar 8000.00 kr av 8450.00 kr. Rätt post, men DEL — att svara FULL är en miss."
+      }
+    },
+    {
+      "id": "b24",
+      "datum": "2026-09-05",
+      "text": "BG INBETALNING ANNA LINDQVIST",
+      "belopp": 16900.0,
+      "rawOcr": "10000000018",
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "dubbelbetalning",
+        "skal": "Beloppet är exakt dubbla det utestående — en andra betalning mot samma post är en överbetalning, inte en matchning. En människa ska avgöra om det ska återbetalas."
+      }
+    },
+    {
+      "id": "b25",
+      "datum": "2026-09-05",
+      "text": "BG INBETALNING CARINA EK",
+      "belopp": 14300.0,
+      "rawOcr": "10000000034",
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "dubbelbetalning",
+        "skal": "Beloppet är exakt dubbla det utestående — en andra betalning mot samma post är en överbetalning, inte en matchning. En människa ska avgöra om det ska återbetalas."
+      }
+    },
+    {
+      "id": "b26",
+      "datum": "2026-09-05",
+      "text": "BG INBETALNING GUNILLA PERSSON",
+      "belopp": 20500.0,
+      "rawOcr": "10000000075",
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "dubbelbetalning",
+        "skal": "Beloppet är exakt dubbla det utestående — en andra betalning mot samma post är en överbetalning, inte en matchning. En människa ska avgöra om det ska återbetalas."
+      }
+    },
+    {
+      "id": "b27",
+      "datum": "2026-09-05",
+      "text": "BG INBETALNING ELIN SANDBERG",
+      "belopp": 13600.0,
+      "rawOcr": "10000000059",
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "dubbelbetalning",
+        "skal": "Beloppet är exakt dubbla det utestående — en andra betalning mot samma post är en överbetalning, inte en matchning. En människa ska avgöra om det ska återbetalas."
+      }
+    },
+    {
+      "id": "b28",
+      "datum": "2026-09-06",
+      "text": "BG INBETALNING ANNA LINDQVIST",
+      "belopp": 8930.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "hyra_plus_avgift",
+        "skal": "Summan av A-2026-0801 (8450.00) och F-2026-0142 (480.00). Systemet kan inte dela en bankrad på två fordringar — matchning mot hyresavin ensam hade lämnat fakturan obetald och sett rätt ut."
+      }
+    },
+    {
+      "id": "b29",
+      "datum": "2026-09-06",
+      "text": "BG INBETALNING CARINA EK",
+      "belopp": 8400.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "hyra_plus_avgift",
+        "skal": "Summan av A-2026-0803 (7150.00) och F-2026-0141 (1250.00). Systemet kan inte dela en bankrad på två fordringar — matchning mot hyresavin ensam hade lämnat fakturan obetald och sett rätt ut."
+      }
+    },
+    {
+      "id": "b30",
+      "datum": "2026-09-06",
+      "text": "BG INBETALNING DAVID NYSTRÖM",
+      "belopp": 14700.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "hyra_plus_avgift",
+        "skal": "Summan av A-2026-0804 (11300.00) och F-2026-0143 (3400.00). Systemet kan inte dela en bankrad på två fordringar — matchning mot hyresavin ensam hade lämnat fakturan obetald och sett rätt ut."
+      }
+    },
+    {
+      "id": "b31",
+      "datum": "2026-09-06",
+      "text": "BG INBETALNING FARID HADDAD",
+      "belopp": 9425.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "hyra_plus_avgift",
+        "skal": "Summan av A-2026-0806 (8450.00) och F-2026-0144 (975.00). Systemet kan inte dela en bankrad på två fordringar — matchning mot hyresavin ensam hade lämnat fakturan obetald och sett rätt ut."
+      }
+    },
+    {
+      "id": "b32",
+      "datum": "2026-09-07",
+      "text": "INBETALNING NORDISK FASTIGHETSSERVICE AB",
+      "belopp": 4312.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "okand_avsandare",
+        "skal": "Ingen signal alls: inget OCR, inget namn som är en hyresgäst, och beloppet ligger inte nära någon öppen post."
+      }
+    },
+    {
+      "id": "b33",
+      "datum": "2026-09-07",
+      "text": "SWISH MARIA JOHANSSON",
+      "belopp": 1500.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "okand_avsandare",
+        "skal": "Ingen signal alls: inget OCR, inget namn som är en hyresgäst, och beloppet ligger inte nära någon öppen post."
+      }
+    },
+    {
+      "id": "b34",
+      "datum": "2026-09-07",
+      "text": "BG INBETALNING 5566-7788",
+      "belopp": 22000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "okand_avsandare",
+        "skal": "Ingen signal alls: inget OCR, inget namn som är en hyresgäst, och beloppet ligger inte nära någon öppen post."
+      }
+    },
+    {
+      "id": "b35",
+      "datum": "2026-09-07",
+      "text": "INSATTNING KONTANT",
+      "belopp": 3000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "okand_avsandare",
+        "skal": "Ingen signal alls: inget OCR, inget namn som är en hyresgäst, och beloppet ligger inte nära någon öppen post."
+      }
+    },
+    {
+      "id": "b36",
+      "datum": "2026-09-07",
+      "text": "OVERFORING FRAN SPARKONTO",
+      "belopp": 50000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "okand_avsandare",
+        "skal": "Ingen signal alls: inget OCR, inget namn som är en hyresgäst, och beloppet ligger inte nära någon öppen post."
+      }
+    },
+    {
+      "id": "b37",
+      "datum": "2026-09-08",
+      "text": "ATERBETALNING BG FELAKTIG INBETALNING",
+      "belopp": 8450.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "retur",
+        "skal": "En retur eller återbetalning, inte en hyresinbetalning. Att matcha den mot en öppen avi hade bokfört pengar som aldrig var en reglering."
+      }
+    },
+    {
+      "id": "b38",
+      "datum": "2026-09-08",
+      "text": "RETUR AVI A-2026-0801",
+      "belopp": 8450.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "retur",
+        "skal": "En retur eller återbetalning, inte en hyresinbetalning. Att matcha den mot en öppen avi hade bokfört pengar som aldrig var en reglering."
+      }
+    },
+    {
+      "id": "b39",
+      "datum": "2026-09-08",
+      "text": "ATERBETALD DEPOSITION LINDQVIST",
+      "belopp": 12000.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "retur",
+        "skal": "En retur eller återbetalning, inte en hyresinbetalning. Att matcha den mot en öppen avi hade bokfört pengar som aldrig var en reglering."
+      }
+    },
+    {
+      "id": "b40",
+      "datum": "2026-09-08",
+      "text": "KREDITERING LEVERANTOR VVS-JOUREN AB",
+      "belopp": 2400.0,
+      "rawOcr": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND",
+        "grupp": "retur",
+        "skal": "En retur eller återbetalning, inte en hyresinbetalning. Att matcha den mot en öppen avi hade bokfört pengar som aldrig var en reglering."
+      }
+    }
+  ]
+}

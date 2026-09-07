@@ -112,6 +112,15 @@ function rigg(opt: RiggOpt = {}) {
     { createJournalEntryForPayment: jest.fn().mockResolvedValue({ id: 'je-1' }) } as never,
     { recordPaymentDataThrough: jest.fn().mockResolvedValue({}) } as never,
     { record: jest.fn().mockResolvedValue({}) } as never,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   return { service, prisma, txMock, invoices }
 }

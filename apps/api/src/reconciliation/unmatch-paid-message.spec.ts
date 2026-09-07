@@ -89,6 +89,15 @@ function makeService(transaction: unknown) {
     { reverseJournalEntryForPayment: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
     { record: jest.fn().mockResolvedValue({}) } as never,
+    // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
+    // dem får kunna fälla en matchning, och det är just det de här proven
+    // mäter genom att inte konfigurera dem.
+    { enqueue: jest.fn().mockResolvedValue('jobb') } as never,
+    {
+      skrivFacitMatchad: jest.fn().mockResolvedValue(undefined),
+      skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
+      nollstallFacit: jest.fn().mockResolvedValue(undefined),
+    } as never,
   )
   return { service, tx, $transaction }
 }

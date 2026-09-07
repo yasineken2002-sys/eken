@@ -8,6 +8,8 @@ import { LockService } from '../../common/redis/lock.service'
 import { AiShadowQueue } from './shadow.queue'
 import { DelegationProposalService } from '../observation/delegation-proposal.service'
 import { SKUGGFALT, SKUGGKALLA_FELANMALAN } from './shadow-fields'
+import { AiPaymentShadowQueue } from './payment/payment-shadow.queue'
+import { SKUGGKALLA_BANKRAD } from './payment/payment-fields'
 
 /** Låsets livslängd. Passet köar jobb, det kör dem inte. */
 const LAS_TTL_SEC = 120
@@ -59,6 +61,7 @@ export class AiShadowSweepService {
     private readonly locks: LockService,
     private readonly cronErrors: CronErrorSink,
     private readonly förslag: DelegationProposalService,
+    private readonly betalningsKö: AiPaymentShadowQueue,
   ) {}
 
   @Cron('*/15 * * * *')
@@ -131,6 +134,67 @@ export class AiShadowSweepService {
       if (r.utfall === 'SKAPAT') skapade++
     }
     return skapade
+  }
+
+  /**
+   * SKYDDSNÄTET UNDER AGENT 2:S KÖ.
+   *
+   * Producenten hakar på `matchTransaction === false` via `enqueueSafely`, som
+   * aldrig kastar: ett Redis-avbrott larmar och släpper igenom importen. Följden
+   * är att förslaget tyst uteblir, och "agenten föreslog ingenting" ser då
+   * likadant ut som "agenten kördes aldrig". Passet plockar upp det.
+   *
+   * ── FÖNSTRET ÄR ETT ANNAT ÄN FELANMÄLANS, OCH DET ÄR AVSIKTLIGT ──────────
+   *
+   * Felanmälans svep tittar ett DYGN bakåt, för att en org som slår på flaggan
+   * inte ska få hela sin ärendehistorik skuggkörd på en gång. Här är mängden
+   * redan avgränsad av något bättre: en rad som fortfarande är UNMATCHED är per
+   * definition obesvarad, hur gammal den än är. En omatchad betalning från förra
+   * månaden är inte historik — den är en obesvarad fråga som ligger kvar, och
+   * den som slår på flaggan vill se just dem.
+   *
+   * Taket bär kostnaden i stället, och det SYNS i loggen.
+   */
+  private async svepBetalningar(nu: Date): Promise<number> {
+    void nu
+    const orgar = await this.prisma.organization.findMany({
+      where: { shadowPaymentAgentEnabled: true },
+      select: { id: true },
+    })
+    if (orgar.length === 0) return 0
+
+    let koade = 0
+    for (const org of orgar) {
+      const medForslag = await this.prisma.aiAssignment.findMany({
+        where: { organizationId: org.id, shadow: true, sourceKind: SKUGGKALLA_BANKRAD },
+        select: { sourceId: true },
+      })
+      const har = new Set(medForslag.map((r) => r.sourceId).filter((x): x is string => !!x))
+
+      // TAKET SYNS, DET KRYMPER INTE TYST — samma konstruktion som ovan.
+      const kandidater = await this.prisma.bankTransaction.count({
+        where: { organizationId: org.id, status: 'UNMATCHED', autoMatchExcludedAt: null },
+      })
+      const rader = await this.prisma.bankTransaction.findMany({
+        where: { organizationId: org.id, status: 'UNMATCHED', autoMatchExcludedAt: null },
+        orderBy: { date: 'desc' },
+        take: SVEP_BATCH,
+        select: { id: true },
+      })
+      if (kandidater > rader.length) {
+        this.logger.warn(
+          `[cron:ai-shadow-sweep] Taket ${SVEP_BATCH} slog i för org ${org.id}s bankrader — ` +
+            `${kandidater} omatchade, ${rader.length} lästa. Resten väntar till nästa pass.`,
+        )
+      }
+
+      for (const r of rader) {
+        if (har.has(r.id)) continue
+        await this.betalningsKö.enqueue({ organizationId: org.id, bankTransactionId: r.id })
+        koade++
+      }
+    }
+    return koade
   }
 
   /**
@@ -207,6 +271,30 @@ export class AiShadowSweepService {
           'resten väntar till nästa pass.',
       )
     if (koade > 0) this.logger.log(`[cron:ai-shadow-sweep] Köade ${koade} skuggkörningar.`)
+
+    // ── AGENT 2:S SKYDDSNÄT, I SAMMA LÅSTA PASS ───────────────────────────
+    //
+    // Egen cron hade betytt ett andra lås, ett andra hjärtslag och en andra
+    // uppräkning av "vilka organisationer har skuggan på" — samma skäl som
+    // delegationsförslagen står här. Passet är redan låst.
+    //
+    // KASTAR ALDRIG UT: ett fel i betalningsdelen får inte ta med sig
+    // felanmälans köande, som är passets huvuduppgift.
+    let betalningarKoade = 0
+    try {
+      betalningarKoade = await this.svepBetalningar(nu)
+    } catch (err) {
+      this.logger.error(
+        `[cron:ai-shadow-sweep] Betalningssvepet föll: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+    if (betalningarKoade > 0) {
+      this.logger.log(
+        `[cron:ai-shadow-sweep] Köade ${betalningarKoade} skuggkörningar på bankrader.`,
+      )
+    }
+
     return { koade, takNatt }
   }
 }
