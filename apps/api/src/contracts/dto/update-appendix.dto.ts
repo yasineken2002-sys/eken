@@ -1,7 +1,7 @@
 import { IsBoolean, IsEnum, IsInt, IsOptional, Min } from 'class-validator'
 
 import type { SammaNycklar, UpdateAppendixInput } from '@eken/shared'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /**
  * PATCH /contracts/:leaseId/appendices/:documentId
@@ -13,7 +13,7 @@ import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
  * därför aldrig krävas ha ett schema.
  */
 export class UpdateAppendixDto {
-  @IngenKoercion() @IsBoolean() @IsOptional() attachedToLeaseAsAppendix?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() attachedToLeaseAsAppendix?: boolean
 
   @IsEnum(['ENERGY_DECLARATION', 'HOUSE_RULES', 'INSPECTION_PROTOCOL', 'OTHER'])
   @IsOptional()

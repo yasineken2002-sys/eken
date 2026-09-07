@@ -8,6 +8,7 @@ import {
   IsBoolean,
 } from 'class-validator'
 import { MaintenanceCategory, MaintenancePriority, MaintenanceStatus } from '@prisma/client'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 export class UpdateMaintenanceTicketDto {
   @IsString()
@@ -52,5 +53,6 @@ export class UpdateMaintenanceTicketDto {
 
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   tenantNotified?: boolean
 }

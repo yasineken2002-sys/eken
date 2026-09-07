@@ -13,7 +13,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { CompanyForm } from '@prisma/client'
 import { IsStrongPassword } from './password.decorators'
 import type { SammaNycklar, RegisterInput } from '@eken/shared'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 const COMPANY_FORM_VALUES = Object.values(CompanyForm) as string[]
 
@@ -45,8 +45,8 @@ export class RegisterDto implements RegisterInput {
   // ─── F-skatt och moms (frivillig uppgift resp. momsnr på faktura, #392) ──
   @ApiPropertyOptional({ default: false })
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   hasFSkatt?: boolean
 
   @ApiPropertyOptional({ example: '2024-06-01' })
@@ -84,20 +84,26 @@ export class RegisterDto implements RegisterInput {
   // Typen är `true`, inte `boolean` — samma sak som `@Equals(true)` säger i
   // runtime. Ett samtycke har ett enda giltigt värde, och typen ska inte påstå
   // att `false` är en form servern accepterar.
-  // ── @IngenKoercion ÄR SPÄRREN — NÄRVARON, INTE PLACERINGEN ───────────────
+  // ── @StrictBoolean ÄR SPÄRREN — NÄRVARON, INTE PLACERINGEN ───────────────
   //
   // Funnet av koercionsgrinden i paritetsprovet (#830), inte av läsning.
   //
-  // Raden sa först att dekoratorn måste stå FÖRE `@IsBoolean()`. Det var ett
-  // obelagt mekanikpåstående, och koden nedan motsäger det redan — den står
-  // sist. Uppmätt mot den riktiga pipen, tre varianter:
+  // Fältet bar `@IngenKoercion()` fram till 2026-09-07 och bär nu
+  // `@StrictBoolean()`, som är EN mekanism för alla booleska fält.
+  // Skillnaden i utfall gäller bara strängformen: `@IngenKoercion` avvisade
+  // `"true"`, `@StrictBoolean` godtar den och läser den som `true`. Riktningen
+  // som betyder något är oförändrad — `"false"` blir `false`, aldrig `true`,
+  // och `@Equals(true)` nedan avvisar den då korrekt.
   //
-  //     @IngenKoercion före validatorerna   "false" → AVVISADE
-  //     @IngenKoercion efter validatorerna  "false" → AVVISADE
-  //     utan dekoratorn                     "false" → SLÄPPTE IGENOM
+  // Placeringen bland fältets övriga dekoratorer saknar betydelse. Uppmätt mot
+  // den riktiga pipen, tre varianter:
+  //
+  //     dekoratorn före validatorerna   "false" → false, sedan 400 av @Equals
+  //     dekoratorn efter validatorerna  "false" → false, sedan 400 av @Equals
+  //     utan dekoratorn                 "false" → true  ← samtycket kringgått
   //
   // Skälet: class-transformer kör HELA sin fas före class-validator, så var
-  // `@Transform` står bland fältets övriga dekoratorer saknar betydelse. Det
+  // transformen står bland fältets övriga dekoratorer saknar betydelse. Det
   // som avgör är att den finns.
   //
   // Den globala pipen kör `enableImplicitConversion`, så class-transformer
@@ -108,7 +114,7 @@ export class RegisterDto implements RegisterInput {
   //
   // Det här är villkorsacceptansen. Ett nej som blir ett ja är den enda
   // riktning som inte får finnas, och den fanns.
-  @IngenKoercion()
+  @StrictBoolean()
   acceptTerms!: true
 }
 

@@ -19,7 +19,7 @@ import type {
   UpdateContractorInput,
 } from '@eken/shared'
 import { MAINTENANCE_CATEGORIES } from '@eken/shared'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /**
  * HANTVERKARREGISTRET — formen bor i @eken/shared, gränserna här.
@@ -72,8 +72,8 @@ export class CreateContractorDto implements CreateContractorInput {
   // strängen "false" till `true`, och en hantverkare någon avaktiverade hade
   // blivit aktiv igen.
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   isActive?: boolean
 }
 
@@ -118,8 +118,8 @@ export class UpdateContractorDto implements UpdateContractorInput {
   notes?: string
 
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   isActive?: boolean
 }
 

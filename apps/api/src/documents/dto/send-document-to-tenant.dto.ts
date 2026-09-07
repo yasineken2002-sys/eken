@@ -1,7 +1,7 @@
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator'
 
 import type { SendDocumentToTenantInput, SammaNycklar } from '@eken/shared'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /**
  * Kroppen till POST /documents/:id/send-to-tenant.
@@ -34,8 +34,8 @@ export class SendDocumentToTenantDto implements SendDocumentToTenantInput {
    * varför hen inte fick veta.
    */
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   notify?: boolean
 }
 

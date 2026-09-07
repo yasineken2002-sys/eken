@@ -27,10 +27,21 @@ import type { ValidationPipeOptions } from '@nestjs/common'
  *
  * Att koercionen FINNS. `enableImplicitConversion` behövs för query- och
  * parameterbindning, där allt anländer som sträng, och att slå av den globalt
- * hade brutit den bindningen överallt. Skyddet mot en oavsiktlig konvertering i
- * en KROPP är `@Transform(({ value }) => value)` på det enskilda fältet — se
- * `ai/dto/tenant-ai.dto.ts`. Den här filen ser bara till att provet mäter samma
- * pipe som kunderna träffar.
+ * hade brutit den bindningen överallt. Skyddet ligger därför på det enskilda
+ * fältet:
+ *
+ *     BOOLEANER   `@StrictBoolean()` — godtar true/false och "true"/"false",
+ *                 avvisar allt annat med 400. Se
+ *                 `strict-boolean.decorator.ts`; `check-strict-boolean.mjs`
+ *                 kräver den på VARJE booleskt DTO-fält, utan baslinje.
+ *     STRÄNGAR    `@IngenKoercion()` — läser råvärdet, så `42` inte blir "42".
+ *                 Se `no-coercion.decorator.ts`.
+ *
+ * Raden pekade fram till 2026-09-07 på `@Transform(({ value }) => value)` som
+ * skyddet. Den formen fungerar INTE — `value` är redan konverterat när
+ * transformen körs — och båda dekoratorerna ovan läser därför `obj[key]`.
+ *
+ * Den här filen ser bara till att provet mäter samma pipe som kunderna träffar.
  */
 export const VALIDATION_PIPE_OPTIONS: ValidationPipeOptions = {
   whitelist: true,

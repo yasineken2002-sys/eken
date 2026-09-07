@@ -1,6 +1,7 @@
 import type { ConfirmImportInput, EditedTransactionInput, SammaNycklar } from '@eken/shared'
 import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 // Bekräftelse-payload från granskningsvyn. Användaren kan ha redigerat
 // rader (justerat OCR, ändrat belopp, tagit bort distraktioner) innan
@@ -21,6 +22,7 @@ export class EditedTransactionDto {
 
   @IsOptional()
   @IsBoolean()
+  @StrictBoolean()
   isIncoming?: boolean
 }
 

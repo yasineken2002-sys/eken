@@ -18,6 +18,7 @@ import {
   ValidateIf,
 } from 'class-validator'
 import { Type } from 'class-transformer'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 export class NewTenantDto implements NewTenantInLeaseInput {
   @IsEnum(['INDIVIDUAL', 'COMPANY'])
@@ -121,16 +122,18 @@ export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsOptional()
   noticePeriodMonths?: number
 
-  // ── Vad ingår ──────────────────────────────────────────────────────────
-  @IsBoolean() @IsOptional() includesHeating?: boolean
-  @IsBoolean() @IsOptional() includesWater?: boolean
-  @IsBoolean() @IsOptional() includesHotWater?: boolean
-  @IsBoolean() @IsOptional() includesElectricity?: boolean
-  @IsBoolean() @IsOptional() includesInternet?: boolean
-  @IsBoolean() @IsOptional() includesCleaning?: boolean
-  @IsBoolean() @IsOptional() includesParking?: boolean
-  @IsBoolean() @IsOptional() includesStorage?: boolean
-  @IsBoolean() @IsOptional() includesLaundry?: boolean
+  @StrictBoolean() // ── Vad ingår ──────────────────────────────────────────────────────────
+  @IsBoolean()
+  @IsOptional()
+  includesHeating?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesWater?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesHotWater?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesElectricity?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesInternet?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesCleaning?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesParking?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesStorage?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesLaundry?: boolean
 
   // ── Tilläggshyror ──────────────────────────────────────────────────────
   @IsNumber() @Min(0) @IsOptional() parkingFee?: number
@@ -143,8 +146,8 @@ export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsOptional()
   petsAllowed?: 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
   @IsString() @IsOptional() petsApprovalNotes?: string
-  @IsBoolean() @IsOptional() sublettingAllowed?: boolean
-  @IsBoolean() @IsOptional() requiresHomeInsurance?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() sublettingAllowed?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() requiresHomeInsurance?: boolean
 
   // ── Indexklausul ───────────────────────────────────────────────────────
   @IsEnum(['NONE', 'KPI', 'NEGOTIATED', 'MARKET_RENT'])
@@ -157,10 +160,12 @@ export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsString() @IsOptional() indexNotes?: string
   @IsString() @IsOptional() specialTerms?: string
 
-  // När `true` aktiveras kontraktet (DRAFT → ACTIVE) i samma anrop. Då
+  @StrictBoolean() // När `true` aktiveras kontraktet (DRAFT → ACTIVE) i samma anrop. Då
   // enqueueasr också välkomstmejlet med aktiveringslänk + PDF-genereringen.
   // Default false → spara som utkast.
-  @IsBoolean() @IsOptional() activate?: boolean
+  @IsBoolean()
+  @IsOptional()
+  activate?: boolean
 }
 
 /**

@@ -312,10 +312,22 @@ describe('KONTRAKTSREGISTER — paritet för varje delat schema med en DTO', () 
   // Booleanerna tas ändå NU, därför att bara de har en farlig riktning:
   // `Boolean('false')` är `true`, alltså blir ett NEJ ett JA. `String(42)` ger
   // '42', vilket är fel men inte motsatsen till vad avsändaren menade.
+  //
+  // ── SONDVÄRDET ÄR "yes", INTE "false" — OCH BYTET ÄR INTE EN UPPMJUKNING ──
+  //
+  // Med `@StrictBoolean()` (2026-09-07) är `"false"` en AVSIKTLIGT accepterad
+  // form på DTO-sidan: den betyder `false`, vilket är vad avsändaren menade.
+  // Zods `z.boolean()` avvisar den, så ett prov som kräver att BÅDA avvisar
+  // hade fällt den korrekta lagningen.
+  //
+  // `"yes"` är i stället ett värde ingen av halvorna får godta — det är inte ett
+  // booleskt värde i någon tolkning. Provet mäter alltså fortfarande exakt det
+  // det finns för: att pipen inte GISSAR åt en klient. Att `"false"` blir
+  // `false` och inte `true` bevisas av `strict-boolean.spec.ts`, mot samma pipe.
   const KOERCIONSFALL = KONTRAKTSREGISTER.flatMap((post) =>
     Object.entries(post.giltig)
       .filter(([, v]) => typeof v === 'boolean')
-      .map(([falt]) => [`${post.endpoint} · ${falt}`, post, falt, 'false'] as const),
+      .map(([falt]) => [`${post.endpoint} · ${falt}`, post, falt, 'yes'] as const),
   )
 
   it('KANARIEFÅGEL: provets pipe ÄR produktionens, koercionen inkluderad', () => {
@@ -333,7 +345,7 @@ describe('KONTRAKTSREGISTER — paritet för varje delat schema med en DTO', () 
   })
 
   it.each(KOERCIONSFALL)(
-    '%s — strängen "false" avvisas av BÅDA (inget tyst NEJ som blir JA)',
+    '%s — strängen "yes" avvisas av BÅDA (pipen gissar aldrig åt en klient)',
     async (_namn, post, falt, felVarde) => {
       const kropp = { ...post.giltig, [falt]: felVarde }
       const zod = schematGodtar(post.schema, kropp)

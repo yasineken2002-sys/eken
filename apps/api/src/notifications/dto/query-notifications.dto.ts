@@ -1,9 +1,24 @@
 import { IsOptional, IsBoolean } from 'class-validator'
-import { Transform } from 'class-transformer'
+
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 export class QueryNotificationsDto {
-  @IsBoolean()
+  /**
+   * `?unread=true` — en QUERY-parameter, alltså anländer värdet alltid som
+   * sträng. Det är precis fallet `@StrictBoolean()` är byggd för: den läser
+   * råvärdet och godtar `"true"`/`"false"`, medan `"1"` och `"yes"` ger 400.
+   *
+   * ── EN ÄLDRE @Transform TOGS BORT HÄR ─────────────────────────────────────
+   *
+   * Fältet bar tidigare `@Transform(({ value }) => value === 'true' || value
+   * === true)`. Den blev DÖD när `@StrictBoolean()` lades till — dess egen
+   * transform läser `obj[key]` och skriver över utfallet — men två transformer
+   * på samma fält gör beteendet ORDNINGSBEROENDE, och den gamla hade tolkat
+   * `"1"` som `false` i stället för att avvisa det. Att den råkade förlora var
+   * inte en egenskap att lita på.
+   */
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
+  @StrictBoolean()
+  @IsBoolean()
   unread?: boolean
 }
