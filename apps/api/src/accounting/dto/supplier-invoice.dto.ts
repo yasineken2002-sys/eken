@@ -11,7 +11,11 @@ import {
   MinLength,
 } from 'class-validator'
 import { Transform } from 'class-transformer'
-import type { CreateSupplierInvoiceInput, SammaNycklar } from '@eken/shared'
+import type {
+  CreateSupplierInvoiceInput,
+  PaySupplierInvoiceInput,
+  SammaNycklar,
+} from '@eken/shared'
 import { VAT_RATES } from '@eken/shared'
 
 /**
@@ -100,7 +104,7 @@ export class CreateSupplierInvoiceDto implements CreateSupplierInvoiceInput {
 }
 
 /** Kroppen till POST /accounting/supplier-invoices/:id/pay. */
-export class PaySupplierInvoiceDto {
+export class PaySupplierInvoiceDto implements PaySupplierInvoiceInput {
   /**
    * BETALNINGSDATUM — dagen pengarna lämnade kontot, inte i dag. Verifikatet
    * dateras hit, och fel datum lägger betalningen i fel period.
@@ -121,3 +125,6 @@ const _kontraktLeverantorsfaktura: SammaNycklar<
   CreateSupplierInvoiceInput
 > = true
 void _kontraktLeverantorsfaktura
+
+const _kontraktBetalning: SammaNycklar<PaySupplierInvoiceDto, PaySupplierInvoiceInput> = true
+void _kontraktBetalning

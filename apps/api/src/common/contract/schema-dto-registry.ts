@@ -1,5 +1,8 @@
 import {
   CreateExpenseSchema,
+  ReverseEntrySchema,
+  ReopenPeriodSchema,
+  PaySupplierInvoiceSchema,
   CreateJournalEntrySchema,
   CreateMeterSchema,
   CreatePropertySchema,
@@ -78,7 +81,12 @@ import {
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
-import { CreateSupplierInvoiceDto } from '../../accounting/dto/supplier-invoice.dto'
+import {
+  CreateSupplierInvoiceDto,
+  PaySupplierInvoiceDto,
+} from '../../accounting/dto/supplier-invoice.dto'
+import { ReverseEntryDto } from '../../accounting/dto/reverse-entry.dto'
+import { ReopenPeriodDto } from '../../accounting/dto/reopen-period.dto'
 import { CreatePropertyDto } from '../../properties/dto/create-property.dto'
 import { UpdatePropertyDto } from '../../properties/dto/update-property.dto'
 import { ApproveTerminationDto } from '../../terminations/dto/approve-termination.dto'
@@ -210,6 +218,33 @@ export interface KontraktsPost {
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  {
+    endpoint: 'POST /accounting/journal/:id/reverse',
+    inputTyp: 'ReverseEntryInput',
+    schema: ReverseEntrySchema,
+    dto: ReverseEntryDto,
+    giltig: { reason: 'Fel konto vid bokföring' },
+    ogiltig: { reason: 'x'.repeat(301) },
+    ogiltigVarfor: 'rättelsens beskrivning får vara högst 300 tecken',
+  },
+  {
+    endpoint: 'POST /accounting/periods/:year/:month/reopen',
+    inputTyp: 'ReopenPeriodInput',
+    schema: ReopenPeriodSchema,
+    dto: ReopenPeriodDto,
+    giltig: { reason: 'En betalning saknas', reasonCategory: 'MISSING_ENTRY' },
+    ogiltig: { reason: 'En betalning saknas', reasonCategory: 'OTHER' },
+    ogiltigVarfor: 'orsakskategorin måste vara en av de två befintliga kategorierna',
+  },
+  {
+    endpoint: 'POST /accounting/supplier-invoices/:id/pay',
+    inputTyp: 'PaySupplierInvoiceInput',
+    schema: PaySupplierInvoiceSchema,
+    dto: PaySupplierInvoiceDto,
+    giltig: { paidDate: '2026-09-01' },
+    ogiltig: {},
+    ogiltigVarfor: 'betalningsdatum är obligatoriskt och har ingen reserv i kontraktet',
+  },
   {
     endpoint: 'POST /accounting/journal-entries',
     inputTyp: 'CreateJournalEntryInput',

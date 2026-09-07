@@ -3,7 +3,9 @@ import { toast } from 'sonner'
 import { ArrowRightLeft, CircleAlert, Info } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { formatCurrency, formatDate, ReverseEntrySchema } from '@eken/shared'
+import type { ReverseEntryInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { extractApiError } from '@/lib/api'
 import { useReverseJournalEntry } from '../hooks/useAccounting'
 import type { JournalEntry } from '@eken/shared'
@@ -49,8 +51,14 @@ export function ReverseEntryModal({ entry, onClose, onDone }: Props) {
   const total = preview.reduce((sum, l) => sum + Number(l.debit ?? 0), 0)
 
   function handleReverse() {
+    const kropp: ReverseEntryInput = { reason: reason.trim() }
+    const kontrakt = kontraktsfel(ReverseEntrySchema, kropp)
+    if (kontrakt) {
+      toast.error(kontrakt)
+      return
+    }
     reverse.mutate(
-      { id: entry.id, reason: reason.trim() },
+      { id: entry.id, ...kropp },
       {
         onSuccess: (created) => {
           toast.success(`Rättelse bokförd som verifikat ${verLabel(created)}.`)

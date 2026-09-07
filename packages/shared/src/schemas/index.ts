@@ -1276,9 +1276,32 @@ export const CreateSupplierInvoiceSchema = z.object({
   attachmentUrl: z.string().max(500).optional(),
 })
 
-export const PaySupplierInvoiceSchema = z.object({
-  paidDate: z.string().date('Betalningsdatum måste anges som ÅÅÅÅ-MM-DD'),
-})
+// Period- och balansspärrar ligger kvar i tjänsterna. Ingen default:
+// betalningsdatumet väljs av människan och daterar verifikatet.
+export const PaySupplierInvoiceSchema = z.object({ paidDate: IsoDatumSchema }).strict()
+
+export const ReverseEntrySchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(10, 'Skälet måste vara minst 10 tecken')
+      .max(300, 'Skälet får vara högst 300 tecken'),
+  })
+  .strict()
+export type ReverseEntryInput = z.infer<typeof ReverseEntrySchema>
+
+export const ReopenPeriodSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(10, 'Skälet måste vara minst 10 tecken')
+      .max(500, 'Skälet får vara högst 500 tecken'),
+    reasonCategory: z.enum(['MISSING_ENTRY', 'EXISTING_ENTRY_INCORRECT']),
+  })
+  .strict()
+export type ReopenPeriodInput = z.infer<typeof ReopenPeriodSchema>
 
 export type JournalLineInput = z.infer<typeof JournalLineSchema>
 export type CreateJournalEntryInput = z.infer<typeof CreateJournalEntrySchema>

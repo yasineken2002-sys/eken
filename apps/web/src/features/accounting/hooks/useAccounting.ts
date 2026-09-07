@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { ReverseEntryInput } from '@eken/shared'
 import {
   fetchAccounts,
   seedAccounts,
@@ -110,7 +111,8 @@ export function useReopenPeriod() {
 export function useReverseJournalEntry() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => reverseJournalEntry(id, reason),
+    mutationFn: ({ id, ...input }: ReverseEntryInput & { id: string }) =>
+      reverseJournalEntry(id, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['accounting', 'journal'] })
       void qc.invalidateQueries({ queryKey: ['accounting', 'period-precheck'] })
