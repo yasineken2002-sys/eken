@@ -1,15 +1,6 @@
 {
-  "total": 31,
+  "total": 27,
   "poster": [
-    {
-      "fil": "apps/web/src/features/accounting/api/accounting.api.ts",
-      "medlemmar": [
-        "POST `/accounting/journal/${id}/reverse` → INLINE-LITERAL",
-        "POST `/accounting/periods/${args.year}/${args.month}/reopen` → INLINE-LITERAL",
-        "POST `/accounting/supplier-invoices/${input.id}/cancel` → INLINE-LITERAL",
-        "POST `/accounting/supplier-invoices/${input.id}/pay` → INLINE-LITERAL"
-      ]
-    },
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
       "medlemmar": ["POST '/ai/chat' → INLINE-LITERAL", "POST '/ai/confirm' → OTYPAD"]

@@ -46,6 +46,10 @@ import { CreateMeterDto } from '../consumption/dto/create-meter.dto'
 import { KONTRAKTSREGISTER } from '../common/contract/schema-dto-registry'
 import { VALIDATION_PIPE_OPTIONS } from '../common/contract/validation-pipe-options'
 import type { ZodType } from 'zod'
+import { ReverseEntrySchema, ReopenPeriodSchema, PaySupplierInvoiceSchema } from '@eken/shared'
+import { ReverseEntryDto } from './dto/reverse-entry.dto'
+import { ReopenPeriodDto } from './dto/reopen-period.dto'
+import { PaySupplierInvoiceDto } from './dto/supplier-invoice.dto'
 
 /**
  * PRODUKTIONENS pipe, inte en egen. Raden ovan skrev tidigare fyra av `main.ts`
@@ -65,6 +69,94 @@ async function pipenGodtar(metatype: unknown, kropp: unknown): Promise<boolean> 
 }
 
 const schematGodtar = (schema: ZodType<unknown>, kropp: unknown) => schema.safeParse(kropp).success
+
+describe('accounting — återstående begäranskontrakt', () => {
+  describe.each([
+    ['rättelse', ReverseEntrySchema, ReverseEntryDto, 300, {}],
+    ['återöppning', ReopenPeriodSchema, ReopenPeriodDto, 500, { reasonCategory: 'MISSING_ENTRY' }],
+  ] as const)('%s', (_namn, schema, dto, max, extra) => {
+    it.each([
+      ['saknas', undefined, false],
+      ['null', null, false],
+      ['tomt', '', false],
+      ['blanksteg', ' '.repeat(20), false],
+      ['under minimum', 'x'.repeat(9), false],
+      ['minimum', 'x'.repeat(10), true],
+      ['maximum', 'x'.repeat(max), true],
+      ['över maximum', 'x'.repeat(max + 1), false],
+      ['trimmas före längdkontroll', `  ${'x'.repeat(max)}  `, true],
+    ] as const)('%s', async (namn, reason, vantat) => {
+      await paritet(namn, schema, dto, { ...extra, reason }, vantat)
+    })
+
+    it('båda ger samma trimmade kropp', async () => {
+      const kropp = { ...extra, reason: '  En felaktig bokföring  ' }
+      expect(await pipe.transform(kropp, { type: 'body', metatype: dto })).toEqual(
+        schema.parse(kropp),
+      )
+    })
+
+    it('okända kroppsfält avvisas av båda', () =>
+      paritet(
+        'okänd nyckel',
+        schema,
+        dto,
+        { ...extra, reason: 'En felaktig bokföring', extra: true },
+        false,
+      ))
+
+    it('befintlig avvikelse: pipen konverterar tal till skäl, schemat kräver text', async () => {
+      const kropp = { ...extra, reason: 1234567890 }
+      expect(schematGodtar(schema, kropp)).toBe(false)
+      expect(await pipenGodtar(dto, kropp)).toBe(true)
+    })
+  })
+
+  it.each([
+    ['MISSING_ENTRY', true],
+    ['EXISTING_ENTRY_INCORRECT', true],
+    ['OTHER', false],
+    [undefined, false],
+    [null, false],
+  ] as const)(
+    'återöppningens kategori %s — tjänsten äger beslutet om återöppning',
+    (reasonCategory, vantat) =>
+      paritet(
+        'kategori',
+        ReopenPeriodSchema,
+        ReopenPeriodDto,
+        { reason: 'En betalning saknas', reasonCategory },
+        vantat,
+      ),
+  )
+
+  it.each([
+    ['2026-09-01', true],
+    ['2026-09-01T12:30:00Z', true],
+    ['2026-09-01T12:30:00+02:00', true],
+    ['', false],
+    ['i går', false],
+    [null, false],
+    [undefined, false],
+  ] as const)('betalningsdatum %s', (paidDate, vantat) =>
+    paritet('paidDate', PaySupplierInvoiceSchema, PaySupplierInvoiceDto, { paidDate }, vantat),
+  )
+
+  it('betalningen avvisar ett id i kroppen — det hör till URL:en', () =>
+    paritet(
+      'id i kroppen',
+      PaySupplierInvoiceSchema,
+      PaySupplierInvoiceDto,
+      { paidDate: '2026-09-01', id: 'invoice-id' },
+      false,
+    ))
+
+  it('befintlig datumavvikelse: IsISO8601 godtar enbart år, IsoDatumSchema kräver datum', async () => {
+    const kropp = { paidDate: '2026' }
+    expect(schematGodtar(PaySupplierInvoiceSchema, kropp)).toBe(false)
+    expect(await pipenGodtar(PaySupplierInvoiceDto, kropp)).toBe(true)
+  })
+})
 
 /**
  * Kärnan: kör kroppen genom båda och kräv samma svar. Meddelandet skriver ut

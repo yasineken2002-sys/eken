@@ -4,6 +4,9 @@ import { AlertTriangle, CircleAlert, FileMinus, FilePlus2, Info } from 'lucide-r
 import { Button } from '@/components/ui/Button'
 import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { extractApiError } from '@/lib/api'
+import { ReopenPeriodSchema } from '@eken/shared'
+import type { ReopenPeriodInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePeriodHistory, useReopenPeriod } from '../hooks/useAccounting'
 import { PeriodHistoryChain } from './PeriodHistoryChain'
@@ -57,8 +60,14 @@ export function ReopenPeriodModal({ period, onClose }: Props) {
 
   function handleReopen() {
     if (!category) return
+    const kropp: ReopenPeriodInput = { reason: reason.trim(), reasonCategory: category }
+    const kontrakt = kontraktsfel(ReopenPeriodSchema, kropp)
+    if (kontrakt) {
+      toast.error(kontrakt)
+      return
+    }
     reopen.mutate(
-      { year: period.year, month: period.month, reason: reason.trim(), reasonCategory: category },
+      { year: period.year, month: period.month, ...kropp },
       {
         onSuccess: () => {
           toast.success(`${periodLabel(period)} är öppen igen.`)

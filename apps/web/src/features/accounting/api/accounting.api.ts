@@ -5,6 +5,9 @@ import type {
   CreateJournalEntryInput,
   CreateSupplierInvoiceInput,
   JournalEntry,
+  ReverseEntryInput,
+  ReopenPeriodInput,
+  PaySupplierInvoiceInput,
 } from '@eken/shared'
 
 export const fetchAccounts = (): Promise<Account[]> => get<Account[]>('/accounting/accounts')
@@ -26,8 +29,8 @@ export const fetchJournalEntry = (id: string): Promise<JournalEntry> =>
  * Rättar ett verifikat: bokför dess motsats, daterad idag. Originalet rörs inte.
  * Svaret är det NYA rättelseverifikatet.
  */
-export const reverseJournalEntry = (id: string, reason: string): Promise<JournalEntry> =>
-  post<JournalEntry>(`/accounting/journal/${id}/reverse`, { reason })
+export const reverseJournalEntry = (id: string, input: ReverseEntryInput): Promise<JournalEntry> =>
+  post<JournalEntry>(`/accounting/journal/${id}/reverse`, input)
 
 // ── Bokföringsperioder (T5 PR1a) ─────────────────────────────────────────────
 // Stängningen fanns tidigare bara som AI-verktyg. Spärren mot att bokföra i en
@@ -49,7 +52,7 @@ export interface PeriodOverviewItem {
   reopenedCount: number
 }
 
-export type PeriodReasonCategory = 'MISSING_ENTRY' | 'EXISTING_ENTRY_INCORRECT'
+export type PeriodReasonCategory = ReopenPeriodInput['reasonCategory']
 
 /** En händelse i periodens kedja. `seq` är intern ordning och visas ALDRIG. */
 export interface PeriodHistoryEvent {
@@ -121,23 +124,25 @@ export const closePeriod = (
 export const fetchPeriodHistory = (year: number, month: number): Promise<PeriodDetail> =>
   get<PeriodDetail>(`/accounting/periods/${year}/${month}/history`)
 
-export const reopenPeriod = (args: {
-  year: number
-  month: number
-  reason: string
-  reasonCategory: PeriodReasonCategory
-}): Promise<{
+export const reopenPeriod = (
+  args: ReopenPeriodInput & {
+    year: number
+    month: number
+  },
+): Promise<{
   year: number
   month: number
   reopenedAt: string
   reason: string
   reasonCategory: PeriodReasonCategory
   previousSummary: PeriodSummary | null
-}> =>
-  post(`/accounting/periods/${args.year}/${args.month}/reopen`, {
+}> => {
+  const kropp: ReopenPeriodInput = {
     reason: args.reason,
     reasonCategory: args.reasonCategory,
-  })
+  }
+  return post(`/accounting/periods/${args.year}/${args.month}/reopen`, kropp)
+}
 
 // ── Årsstängning (#704 PR 3) ─────────────────────────────────────────────────
 // Ett räkenskapsår stängs genom att årets SISTA MÅNAD stängs: förutsättningen är
@@ -297,10 +302,12 @@ export const getSupplierInvoices = (status?: 'OPEN' | 'PAID' | 'CANCELLED') =>
 export const createSupplierInvoice = (input: CreateSupplierInvoiceInput) =>
   post<SupplierInvoice>('/accounting/supplier-invoices', input)
 
-export const paySupplierInvoice = (input: { id: string; paidDate: string }) =>
-  post<SupplierInvoice>(`/accounting/supplier-invoices/${input.id}/pay`, {
+export const paySupplierInvoice = (input: PaySupplierInvoiceInput & { id: string }) => {
+  const kropp: PaySupplierInvoiceInput = {
     paidDate: input.paidDate,
-  })
+  }
+  return post<SupplierInvoice>(`/accounting/supplier-invoices/${input.id}/pay`, kropp)
+}
 
 export const cancelSupplierInvoice = (input: { id: string }) =>
-  post<SupplierInvoice>(`/accounting/supplier-invoices/${input.id}/cancel`, {})
+  post<SupplierInvoice>(`/accounting/supplier-invoices/${input.id}/cancel`)

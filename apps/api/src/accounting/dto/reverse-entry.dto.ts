@@ -1,5 +1,6 @@
 import { IsString, MaxLength, MinLength } from 'class-validator'
 import { Transform } from 'class-transformer'
+import type { ReverseEntryInput, SammaNycklar } from '@eken/shared'
 
 /**
  * Kroppen till POST /accounting/journal/:id/reverse.
@@ -10,7 +11,7 @@ import { Transform } from 'class-transformer'
  * Valideringen här är bekvämlighet, inte skyddet: samma regel upprepas i
  * `AccountingService.reverseJournalEntry` (chokepunkten).
  */
-export class ReverseEntryDto {
+export class ReverseEntryDto implements ReverseEntryInput {
   /**
    * Varför verifikatet rättas. Blir rättelsens beskrivning i huvudboken och går
    * inte att ändra efteråt — därför en riktig mening, inte "fel".
@@ -23,3 +24,6 @@ export class ReverseEntryDto {
   @MaxLength(300, { message: 'Skälet får vara högst 300 tecken' })
   reason!: string
 }
+
+const _kontrakt: SammaNycklar<ReverseEntryDto, ReverseEntryInput> = true
+void _kontrakt

@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable'
 import { extractApiError } from '@/lib/api'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { formatCurrency, formatDate, PaySupplierInvoiceSchema } from '@eken/shared'
+import type { PaySupplierInvoiceInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import {
   useSupplierInvoices,
   usePaySupplierInvoice,
@@ -239,9 +241,15 @@ function BetalningsModal({ faktura, onClose }: { faktura: SupplierInvoice; onClo
       setFel('Välj ett betalningsdatum.')
       return
     }
+    const kropp: PaySupplierInvoiceInput = { paidDate: datum }
+    const kontrakt = kontraktsfel(PaySupplierInvoiceSchema, kropp)
+    if (kontrakt) {
+      setFel(kontrakt)
+      return
+    }
     setFel(null)
     mutation.mutate(
-      { id: faktura.id, paidDate: datum },
+      { id: faktura.id, ...kropp },
       {
         onSuccess: () => {
           toast.success(`${faktura.supplierName} markerad som betald`)

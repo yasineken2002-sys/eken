@@ -1,6 +1,7 @@
 import { IsEnum, IsString, MaxLength, MinLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { AccountingPeriodEventReasonCategory } from '@prisma/client'
+import type { ReopenPeriodInput, SammaNycklar } from '@eken/shared'
 
 /**
  * Kroppen till POST /accounting/periods/:year/:month/reopen.
@@ -14,7 +15,7 @@ import { AccountingPeriodEventReasonCategory } from '@prisma/client'
  * att en framtida intern anropare inte ska kunna smita förbi det som gör
  * händelsen läsbar i efterhand.
  */
-export class ReopenPeriodDto {
+export class ReopenPeriodDto implements ReopenPeriodInput {
   /**
    * Varför perioden öppnas igen, i klartext. Sparas i periodens historik och går
    * inte att ändra efteråt. Minst 10 tecken efter trimning — samma gräns som
@@ -39,3 +40,6 @@ export class ReopenPeriodDto {
   })
   reasonCategory!: AccountingPeriodEventReasonCategory
 }
+
+const _kontrakt: SammaNycklar<ReopenPeriodDto, ReopenPeriodInput> = true
+void _kontrakt
