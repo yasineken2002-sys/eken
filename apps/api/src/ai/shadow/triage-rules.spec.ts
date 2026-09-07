@@ -200,9 +200,25 @@ describe('triage-rules', () => {
       expect(angivenTemperaturUnder(över, KALLGRANS_GRADER)).toBe(false)
     })
 
-    it('läser inte ett minustecken som en innetemperatur', () => {
-      // "-5 grader" är med säkerhet utomhus. Regeln ska tiga, inte gissa.
-      expect(angivenTemperaturUnder('det var -5 grader ute i natt', KALLGRANS_GRADER)).toBe(true)
+    // ── PROVET SOM FÖRST PÅSTOD MOTSATSEN AV SITT EGET NAMN ───────────────
+    //
+    // Den första formen hette "läser inte ett minustecken" och krävde `true` —
+    // alltså exakt det den sa att den inte gjorde. Regexen fångade inte
+    // tecknet, så `-5 grader` lästes som `5`, provet skrevs efter utfallet i
+    // stället för efter regeln, och docblocket i `triage-rules.ts` påstod något
+    // koden inte gjorde. Koden gör det nu, och provet kräver det.
+    it('läser inte minusgrader som en innetemperatur', () => {
+      const ute = [
+        'det var -5 grader ute i natt',
+        'det var −12 grader ute', // typografiskt minustecken
+      ]
+      expect(ute.filter((t) => angivenTemperaturUnder(t, KALLGRANS_GRADER))).toEqual([])
+
+      // …men ett POSITIVT tal i samma mening ska fortfarande hittas, annars är
+      // provet ovan grönt av att funktionen slutat matcha något alls.
+      expect(
+        angivenTemperaturUnder('det var -5 grader ute och 16 grader inne', KALLGRANS_GRADER),
+      ).toBe(true)
     })
 
     // ── TEXTENS KATEGORIORD LYFTER OCKSÅ ──────────────────────────────────

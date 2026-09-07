@@ -240,15 +240,23 @@ const HIGH_ORD: readonly string[] = [
 export const KALLGRANS_GRADER = 18
 
 /**
- * Ett tal följt av grader eller gradtecken. Tar det LÄGSTA talet i texten —
+ * Ett tal följt av grader eller gradtecken. Vilket som helst av dem räcker —
  * skriver någon "det ska vara 21 men är 16" är det 16 som är felanmälan.
+ *
+ * TECKNET FÅNGAS MED, och kastas sedan. Utan grupp 1 här hade `-5 grader`
+ * matchat som `5` och lyft golvet på en UTOMHUStemperatur — regeln hade då gjort
+ * motsatsen till vad stycket ovanför påstår, och ingenting hade sagt ifrån.
+ * Både ASCII-bindestreck och det typografiska minustecknet räknas.
  */
-const GRADTAL = /(\d{1,2})\s*(?:°|grader|grade\b|grad\b)/giu
+const GRADTAL = /(-|\u2212)?\s*(\d{1,2})\s*(?:°|grader|grad)/giu
 
 /** Finns en angiven temperatur under `grans` i texten? */
 export function angivenTemperaturUnder(text: string, grans: number): boolean {
   for (const m of text.toLowerCase().matchAll(GRADTAL)) {
-    const tal = Number(m[1])
+    // MINUSGRADER ÄR MED SÄKERHET UTOMHUS. Regeln tiger hellre än gissar om
+    // inomhustemperaturen ur ett tal den vet är mätt någon annanstans.
+    if (m[1]) continue
+    const tal = Number(m[2])
     if (Number.isFinite(tal) && tal < grans) return true
   }
   return false
