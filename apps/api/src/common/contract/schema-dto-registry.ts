@@ -48,6 +48,10 @@ import {
   SubmitTicketSchema,
   AddTicketCommentSchema,
   AddTenantCommentSchema,
+  CreateInspectionSchema,
+  UpdateInspectionSchema,
+  UpdateInspectionItemSchema,
+  SendDocumentToTenantSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
 import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
@@ -87,6 +91,10 @@ import {
 } from '../../tenant-portal/dto/submit-maintenance.dto'
 import { CreateMaintenanceTicketDto } from '../../maintenance/dto/create-maintenance-ticket.dto'
 import { AddTicketCommentDto } from '../../maintenance/dto/add-ticket-comment.dto'
+import { CreateInspectionDto } from '../../inspections/dto/create-inspection.dto'
+import { UpdateInspectionDto } from '../../inspections/dto/update-inspection.dto'
+import { UpdateInspectionItemDto } from '../../inspections/dto/update-inspection-item.dto'
+import { SendDocumentToTenantDto } from '../../documents/dto/send-document-to-tenant.dto'
 import {
   BulkExportDto,
   MarkSentDto,
@@ -801,5 +809,65 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { svar: 'PLUMBING' },
     ogiltig: { svar: '' },
     ogiltigVarfor: 'ett tomt svar är inget val — frågan har alltid minst två alternativ',
+  },
+  // ─── Besiktningar ─────────────────────────────────────────────────────────
+  {
+    endpoint: 'POST /inspections',
+    inputTyp: 'CreateInspectionInput',
+    schema: CreateInspectionSchema,
+    dto: CreateInspectionDto,
+    giltig: {
+      type: 'MOVE_OUT',
+      scheduledDate: '2026-09-30',
+      propertyId: '11111111-2222-4333-8444-555555555555',
+      unitId: '22222222-3333-4444-8555-666666666666',
+    },
+    // Typen är den enda ingången ägar-AI:n fyller i ur fri text, och den
+    // castades tidigare `as never` hela vägen till Postgres.
+    ogiltig: {
+      type: 'RENOVATION',
+      scheduledDate: '2026-09-30',
+      propertyId: '11111111-2222-4333-8444-555555555555',
+      unitId: '22222222-3333-4444-8555-666666666666',
+    },
+    ogiltigVarfor:
+      'RENOVATION finns inte i InspectionType — ett värde som förr föll först i databasen',
+  },
+  {
+    endpoint: 'PATCH /inspections/:id',
+    inputTyp: 'UpdateInspectionInput',
+    schema: UpdateInspectionSchema,
+    dto: UpdateInspectionDto,
+    giltig: { status: 'COMPLETED', notes: 'Lägenheten återlämnad i gott skick.' },
+    // `completedAt` är BORTTAGET ur båda halvorna. Fallet står här för att
+    // avlägsnandet ska vara mätbart: skulle fältet återinföras i den ena
+    // beskrivningen men inte den andra faller paritetsprovet.
+    ogiltig: { status: 'COMPLETED', completedAt: '2020-01-01' },
+    ogiltigVarfor:
+      'slutförandets tidpunkt är serverns — klienten kunde tidigare datera protokollet fritt',
+  },
+  {
+    endpoint: 'PATCH /inspections/:id/items/:itemId',
+    inputTyp: 'UpdateInspectionItemInput',
+    schema: UpdateInspectionItemSchema,
+    dto: UpdateInspectionItemDto,
+    // `null` NOLLSTÄLLER och är en giltig kropp: webbens sifferfält skickar det
+    // när rutan töms. Fallet är med för att det är den kropp som skickas
+    // OFTAST och som en `@IsNumber()` utan `@IsOptional()` hade avvisat.
+    giltig: { condition: 'DAMAGED', repairCost: null },
+    ogiltig: { repairCost: 100_000_000 },
+    ogiltigVarfor:
+      'kolumnen är Decimal(10,2) — ett större tal föll förr som numeric field overflow, alltså ett 500',
+  },
+  // ─── Dokument ─────────────────────────────────────────────────────────────
+  {
+    endpoint: 'POST /documents/:id/send-to-tenant',
+    inputTyp: 'SendDocumentToTenantInput',
+    schema: SendDocumentToTenantSchema,
+    dto: SendDocumentToTenantDto,
+    giltig: { tenantId: '33333333-4444-4555-8666-777777777777', notify: true },
+    ogiltig: { tenantId: 'hyresgästen-i-trean' },
+    ogiltigVarfor:
+      'mottagaren pekas ut med id, inte med ett namn — vägen lägger en handling i en annan människas portal',
   },
 ]

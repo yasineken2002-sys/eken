@@ -1,5 +1,7 @@
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator'
 
+import type { SendDocumentToTenantInput, SammaNycklar } from '@eken/shared'
+
 /**
  * Kroppen till POST /documents/:id/send-to-tenant.
  *
@@ -12,7 +14,7 @@ import { IsBoolean, IsOptional, IsUUID } from 'class-validator'
  * `{ id, organizationId }` och kastar NotFound annars — org-scopingen ska bo på
  * ETT ställe, och det stället är den delade primitiven.
  */
-export class SendDocumentToTenantDto {
+export class SendDocumentToTenantDto implements SendDocumentToTenantInput {
   @IsUUID(undefined, { message: 'Välj vilken hyresgäst dokumentet ska skickas till' })
   tenantId!: string
 
@@ -34,3 +36,10 @@ export class SendDocumentToTenantDto {
   @IsBoolean()
   notify?: boolean
 }
+
+// NYCKELPARITET mot `SendDocumentToTenantSchema`. Webben skickade fram till nu
+// en INLINE-LITERAL på den här vägen — den enda där en hyresvärd med ett klick
+// lägger ett dokument i en annan människas portal och mejlar om det.
+const _kontraktSkickaDokument: SammaNycklar<SendDocumentToTenantDto, SendDocumentToTenantInput> =
+  true
+void _kontraktSkickaDokument

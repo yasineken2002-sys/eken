@@ -1,8 +1,23 @@
 import { get, post, patch, del, api } from '@/lib/api'
+import type {
+  CreateInspectionInput,
+  UpdateInspectionInput,
+  UpdateInspectionItemInput,
+  InspectionTypeValue,
+  InspectionStatusValue,
+  InspectionItemConditionValue,
+} from '@eken/shared'
 
-export type InspectionType = 'MOVE_IN' | 'MOVE_OUT' | 'PERIODIC' | 'DAMAGE'
-export type InspectionStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'SIGNED'
-export type InspectionItemCondition = 'GOOD' | 'ACCEPTABLE' | 'DAMAGED' | 'MISSING'
+/**
+ * De tre enum-typerna kommer nu ur `@eken/shared`, som är bunden till Prismas
+ * enums av `inspection-enum-source.spec.ts`. Här stod tre egna uppräkningar av
+ * samma värden — rätt när de skrevs, men kopior utan bindning, och det är
+ * precis den formen som gav felanmälan tre kategorier som inte finns i
+ * databasen. Namnen behålls: hela besiktningsvyn importerar dem härifrån.
+ */
+export type InspectionType = InspectionTypeValue
+export type InspectionStatus = InspectionStatusValue
+export type InspectionItemCondition = InspectionItemConditionValue
 
 export interface InspectionItem {
   id: string
@@ -75,29 +90,16 @@ export interface InspectionFilter {
   status?: InspectionStatus | ''
 }
 
-export interface CreateInspectionInput {
-  type: InspectionType
-  scheduledDate: string
-  propertyId: string
-  unitId: string
-  leaseId?: string
-  tenantId?: string
-}
-
-export interface UpdateInspectionInput {
-  status?: InspectionStatus
-  notes?: string
-  overallCondition?: string
-  signedAt?: string
-  tenantSignature?: string
-  landlordSignature?: string
-}
-
-export interface UpdateInspectionItemInput {
-  condition?: InspectionItemCondition
-  notes?: string
-  repairCost?: number | null
-}
+/**
+ * NYTTOLASTERNA ÄR DELADE — de tre interfacen som stod här är borta.
+ *
+ * De beskrev samma kroppar som API:ts DTO:er, utan att någon av beskrivningarna
+ * visste om den andra. `UpdateInspectionInput` saknade dessutom `completedAt`,
+ * som DTO:n tog emot och lät skriva över serverns egen tidsstämpel — glidningen
+ * fanns alltså på riktigt. Typerna re-exporteras för att vyerna importerar dem
+ * härifrån.
+ */
+export type { CreateInspectionInput, UpdateInspectionInput, UpdateInspectionItemInput }
 
 export function fetchInspections(filters?: InspectionFilter) {
   const params = new URLSearchParams()

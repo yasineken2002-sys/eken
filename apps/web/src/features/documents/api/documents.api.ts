@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import type { SendDocumentToTenantInput } from '@eken/shared'
 import { api, get, del, extractApiError, post } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { sanitizeFilename, openPresignedDownload } from '@/lib/download'
@@ -111,8 +112,10 @@ export async function sendDocumentToTenant(
   tenantId: string,
   notify: boolean,
 ): Promise<{ documentId: string }> {
-  return post<{ documentId: string }>(`/documents/${documentId}/send-to-tenant`, {
-    tenantId,
-    notify,
-  })
+  // Kroppen var en INLINE-LITERAL — ingen typ alls på den enda vägen där ett
+  // klick lägger ett dokument i en annan människas portal och mejlar om det.
+  // Nu `SendDocumentToTenantInput`, samma schema som `SendDocumentToTenantDto`
+  // härleds ur.
+  const kropp: SendDocumentToTenantInput = { tenantId, notify }
+  return post<{ documentId: string }>(`/documents/${documentId}/send-to-tenant`, kropp)
 }

@@ -215,8 +215,11 @@ export class InspectionsService {
         ...(dto.status ? { status: dto.status } : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
         ...(dto.overallCondition !== undefined ? { overallCondition: dto.overallCondition } : {}),
+        // TIDPUNKTEN ÄR SERVERNS. `dto.completedAt` fanns här på raden under och
+        // skrev över värdet ovan — alltså kunde klienten datera slutförandet av
+        // ett besiktningsprotokoll fritt. Fältet är borttaget ur DTO:n och ur
+        // det delade schemat; se `update-inspection.dto.ts`.
         ...(dto.status === InspectionStatus.COMPLETED ? { completedAt: new Date() } : {}),
-        ...(dto.completedAt ? { completedAt: new Date(dto.completedAt) } : {}),
         ...(dto.signedAt ? { signedAt: new Date(dto.signedAt) } : {}),
         ...(dto.tenantSignature !== undefined ? { tenantSignature: dto.tenantSignature } : {}),
         ...(dto.landlordSignature !== undefined

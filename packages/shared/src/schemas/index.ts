@@ -1512,3 +1512,141 @@ export const ConfirmImportSchema = z.object({
 export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
 export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
 export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>
+
+// ─── Besiktningar ─────────────────────────────────────────────────────────────
+
+/**
+ * BESIKTNINGENS ENUMS — kopior av Prismas, bundna av ett prov.
+ *
+ * Samma skäl som felanmälans (`MAINTENANCE_CATEGORIES` ovan): `@eken/shared`
+ * kan inte importera `@prisma/client`, eftersom paketet konsumeras av tre
+ * webbläsar-SPA:er. Bindningen är därför `inspection-enum-source.spec.ts`, som
+ * kräver LIKHET ÅT BÅDA HÅLLEN — en delmängdskontroll ser inte det som saknas.
+ *
+ * De tre listorna fanns redan i tre kopior: Prisma, webbens
+ * `inspections.api.ts` och ägar-AI:ns verktygsdefinition. De två senare läser
+ * nu de här.
+ */
+export const INSPECTION_TYPES = ['MOVE_IN', 'MOVE_OUT', 'PERIODIC', 'DAMAGE'] as const
+export const INSPECTION_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'SIGNED'] as const
+export const INSPECTION_ITEM_CONDITIONS = ['GOOD', 'ACCEPTABLE', 'DAMAGED', 'MISSING'] as const
+
+export type InspectionTypeValue = (typeof INSPECTION_TYPES)[number]
+export type InspectionStatusValue = (typeof INSPECTION_STATUSES)[number]
+export type InspectionItemConditionValue = (typeof INSPECTION_ITEM_CONDITIONS)[number]
+
+export const InspectionTypeEnum = z.enum(INSPECTION_TYPES)
+export const InspectionStatusEnum = z.enum(INSPECTION_STATUSES)
+export const InspectionItemConditionEnum = z.enum(INSPECTION_ITEM_CONDITIONS)
+
+/**
+ * TAKET PÅ BESIKTNINGENS FRITEXT.
+ *
+ * Ett tal, inte tre. Kolumnerna är `@db.Text`, alltså utan egen gräns, och
+ * Fastifys 1 MiB är då enda spärren — samma form som felanmälans `description`
+ * hade innan #828. Talet ÄR felanmälans: en anteckning i ett besiktnings-
+ * protokoll är samma sorts text som en felbeskrivning, och två närliggande tal
+ * utan skäl är två tal någon senare måste förklara.
+ */
+export const INSPECTION_TEXT_MAX = 4000
+
+/**
+ * REPARATIONSKOSTNADENS ÖVRE GRÄNS ÄR KOLUMNENS, INTE EN ÅSIKT.
+ *
+ * `InspectionItem.repairCost` är `Decimal(10, 2)` — tio siffror, två decimaler,
+ * alltså högst 99 999 999,99. DTO:n hade bara `@IsNumber()`, så ett större tal
+ * passerade valideringen och föll först i Postgres som `numeric field overflow`
+ * — ett 500-fel om ett värde en operatör skrev in i ett vanligt fält.
+ */
+export const REPAIR_COST_MAX = 99_999_999.99
+
+export const CreateInspectionSchema = z
+  .object({
+    type: InspectionTypeEnum,
+    scheduledDate: IsoDatumSchema,
+    propertyId: z.string().uuid(),
+    unitId: z.string().uuid(),
+    leaseId: z.string().uuid().optional(),
+    tenantId: z.string().uuid().optional(),
+  })
+  .strict()
+
+/**
+ * PATCH /inspections/:id — och det fält som INTE står här.
+ *
+ * `completedAt` fanns i DTO:n men i ingen klient. Tjänsten skriver
+ * `completedAt: new Date()` när status går till COMPLETED och lät sedan
+ * klientens värde skriva över det på raden efter — alltså kunde den som anropar
+ * endpointen datera slutförandet av ett besiktningsprotokoll fritt, bakåt eller
+ * framåt. Protokollet är ett bevismedel i en depositionstvist; tidpunkten ska
+ * komma från servern.
+ *
+ * SIGNATURFÄLTEN står kvar, med tak. Mätt: ingen kod SKRIVER dem (ingen UI,
+ * inget AI-verktyg, ingen portal) och ingen kod LÄSER dem — PDF:en ritar tomma
+ * linjer för signering på papper. De är alltså en accepterad men obrukad
+ * skrivväg, och taket 200 säger vad fältet är: ett NAMN, inte en bild. En ritad
+ * signatur hör hemma i `InspectionImage`, som redan finns och lagrar i R2.
+ *
+ * VAD SOM SKULLE ÄNDRA BESLUTET: att en signaturruta byggs i webben. Då är
+ * frågan var bilden bor, inte hur långt fältet får vara.
+ */
+export const UpdateInspectionSchema = z
+  .object({
+    status: InspectionStatusEnum.optional(),
+    notes: z.string().max(INSPECTION_TEXT_MAX).optional(),
+    overallCondition: z.string().max(INSPECTION_TEXT_MAX).optional(),
+    signedAt: IsoDatumSchema.optional(),
+    tenantSignature: z.string().max(200).optional(),
+    landlordSignature: z.string().max(200).optional(),
+  })
+  .strict()
+
+/**
+ * PATCH /inspections/:id/items/:itemId
+ *
+ * `repairCost` är NULLBAR med flit, och det är inte samma sak som utelämnad:
+ * fältet i webben är ett `<input type="number">` vars tomma värde skickas som
+ * `null` för att NOLLSTÄLLA en tidigare kostnad. `@IsOptional()` i
+ * class-validator hoppar över både `null` och `undefined`, så DTO:n släppte
+ * redan igenom det — schemat måste säga samma sak, annars beskriver det ett
+ * anrop webben gör varje gång någon tömmer rutan.
+ */
+export const UpdateInspectionItemSchema = z
+  .object({
+    condition: InspectionItemConditionEnum.optional(),
+    notes: z.string().max(INSPECTION_TEXT_MAX).optional(),
+    repairCost: z.number().min(0).max(REPAIR_COST_MAX).nullable().optional(),
+  })
+  .strict()
+
+export type CreateInspectionInput = z.infer<typeof CreateInspectionSchema>
+export type UpdateInspectionInput = z.infer<typeof UpdateInspectionSchema>
+export type UpdateInspectionItemInput = z.infer<typeof UpdateInspectionItemSchema>
+
+// ─── Dokument ─────────────────────────────────────────────────────────────────
+
+/**
+ * POST /documents/:id/send-to-tenant
+ *
+ * Webben skickade en INLINE-LITERAL `{ tenantId, notify }` — ingen typ alls, på
+ * den enda vägen där en hyresvärd med ett klick lägger ett dokument i en annan
+ * människas portal och skickar ett mejl om det.
+ *
+ * `notify` UTELÄMNAD BETYDER JA, normaliserat i controllern (`dto.notify !==
+ * false`) därför att leveransprimitiven själv läser `if (input.notify && …)` och
+ * alltså hade tolkat ett utelämnat fält som NEJ — medan AI-verktyget tolkade det
+ * som JA. Schemat beskriver formen; defaulten bor kvar i controllern, som är
+ * den som känner båda anroparna. Se `send-document-to-tenant.dto.ts`.
+ *
+ * Uppladdningen (`POST /documents`) står MEDVETET inte här: den är multipart,
+ * och dess fält är `FormData`-nycklar — inte en JSON-kropp ett Zod-schema kan
+ * beskriva. `UploadDocumentDto` validerar dem efter multipart-tolkningen.
+ */
+export const SendDocumentToTenantSchema = z
+  .object({
+    tenantId: z.string().uuid(),
+    notify: z.boolean().optional(),
+  })
+  .strict()
+
+export type SendDocumentToTenantInput = z.infer<typeof SendDocumentToTenantSchema>

@@ -13,7 +13,14 @@ import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
-import { PaymentMethodSchema } from '@eken/shared'
+import {
+  PaymentMethodSchema,
+  CreateInspectionSchema,
+  InspectionTypeEnum,
+  InspectionStatusEnum,
+  INSPECTION_TYPES,
+  INSPECTION_STATUSES,
+} from '@eken/shared'
 import { InvoicesService } from '../../invoices/invoices.service'
 import { PdfService } from '../../invoices/pdf.service'
 import { TenantsService } from '../../tenants/tenants.service'
@@ -3563,9 +3570,34 @@ export class ToolExecutorService {
             }
             return m[s] ?? s
           }
+          // ── FILTREN CASTAR INTE ──────────────────────────────────────────
+          //
+          // `as never` var ett påstående om ett värde modellen valt. Prismas
+          // where-sats avvisar ett okänt enum-värde i RUNTIME, alltså blev en
+          // felstavning ett 500-fel i stället för ett svar modellen kan rätta.
+          // Ett tyst bortfall av filtret vore värre än båda: modellen hade fått
+          // en LÄNGRE lista och trott att den var filtrerad.
+          const typFilter = toolInput.type
+            ? InspectionTypeEnum.safeParse(toolInput.type)
+            : undefined
+          if (typFilter && !typFilter.success) {
+            return {
+              success: false,
+              message: `Okänd besiktningstyp "${String(toolInput.type)}". Giltiga: ${INSPECTION_TYPES.join(', ')}.`,
+            }
+          }
+          const statusFilter = toolInput.status
+            ? InspectionStatusEnum.safeParse(toolInput.status)
+            : undefined
+          if (statusFilter && !statusFilter.success) {
+            return {
+              success: false,
+              message: `Okänd besiktningsstatus "${String(toolInput.status)}". Giltiga: ${INSPECTION_STATUSES.join(', ')}.`,
+            }
+          }
           const inspections = await this.inspectionsService.findAll(organizationId, {
-            ...(toolInput.type ? { type: toolInput.type as never } : {}),
-            ...(toolInput.status ? { status: toolInput.status as never } : {}),
+            ...(typFilter?.success ? { type: typFilter.data } : {}),
+            ...(statusFilter?.success ? { status: statusFilter.data } : {}),
             ...(toolInput.unitId ? { unitId: toolInput.unitId as string } : {}),
           })
 
@@ -3632,13 +3664,52 @@ export class ToolExecutorService {
           // effekt (en notis till hyresgästen), eller uppmätta dubbletter i
           // produktion. Mät då tiden mellan par med samma (enhet, typ, datum)
           // innan ett tal väljs.
+          // ── KROPPEN GÅR GENOM SAMMA SCHEMA SOM HTTP-VÄGEN ────────────────
+          //
+          // Verktyget anropar tjänsten DIREKT och passerar alltså aldrig
+          // `CreateInspectionDto` eller ValidationPipe. Fram till nu castades
+          // därför modellens svar: `type: toolInput.type as never` och
+          // `scheduledDate: … as string`. Båda är påståenden om värden en
+          // språkmodell valt, och båda föll först längre in — ett okänt
+          // enum-värde i Postgres, ett obegripligt datum som `Invalid Date` i
+          // `new Date(dto.scheduledDate)`. Utfallet var ett 500-fel; nu är det
+          // ett meddelande modellen kan rätta och försöka igen på.
+          //
+          // Till skillnad från felanmälans kategori finns ingen rimlig
+          // FALLBACK här: `OTHER` är ett svar på "vilken sorts fel", men en
+          // besiktning UTAN typ är ingen besiktning. Därför avslag, inte gissning.
+          const besiktningsKandidat = {
+            type: toolInput.type,
+            scheduledDate: toolInput.scheduledDate,
+            propertyId: toolInput.propertyId,
+            unitId: inspectionUnitResolved.unit.id,
+            ...(toolInput.tenantId ? { tenantId: toolInput.tenantId } : {}),
+          }
+          const besiktningsKropp = CreateInspectionSchema.safeParse(besiktningsKandidat)
+          if (!besiktningsKropp.success) {
+            return {
+              success: false,
+              message: `Besiktningen kunde inte skapas: ${besiktningsKropp.error.issues
+                .map((i) => `${i.path.join('.')} — ${i.message}`)
+                .join(
+                  '; ',
+                )}. Giltiga typer: ${INSPECTION_TYPES.join(', ')}. Datum anges som YYYY-MM-DD.`,
+            }
+          }
+
+          // `exactOptionalPropertyTypes`: zod ger `leaseId?: string | undefined`,
+          // DTO:n vill ha nyckeln BORTA när värdet saknas. Spridningen nedan är
+          // den skillnaden — inte en omvandling av värden.
+          const {
+            leaseId: besiktningsLease,
+            tenantId: besiktningsTenant,
+            ...besiktningsBas
+          } = besiktningsKropp.data
           const inspection = await this.inspectionsService.create(
             {
-              type: toolInput.type as never,
-              scheduledDate: toolInput.scheduledDate as string,
-              propertyId: toolInput.propertyId as string,
-              unitId: inspectionUnitResolved.unit.id,
-              ...(toolInput.tenantId ? { tenantId: toolInput.tenantId as string } : {}),
+              ...besiktningsBas,
+              ...(besiktningsLease ? { leaseId: besiktningsLease } : {}),
+              ...(besiktningsTenant ? { tenantId: besiktningsTenant } : {}),
             },
             organizationId,
             krävMänskligtSubjekt(userId, toolName),
