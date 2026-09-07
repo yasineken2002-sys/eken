@@ -51,6 +51,26 @@
  *      journalpost kvar. Det är en beteendefråga och hör hemma i ett prov mot
  *      riktig Postgres, inte i en källskanning — samma gräns som
  *      `check-effect-idempotency.mjs` drar för sina INNEHÅLLSHASH-mekanismer.
+ *
+ *      OCH EN SKARPARE FORM AV SAMMA GRÄNS, MÄTT 2026-09-07: symbolen kan vara
+ *      ONÅBAR för just det tillstånd verktyget lämnar efter sig. `VÄG` för
+ *      `mark_invoice_paid` pekade på `invoices.service.ts:update`, som kastar
+ *      `Endast utkast kan redigeras` för allt som inte är DRAFT — och en betald
+ *      faktura är aldrig DRAFT. Vägen fanns som funktion och saknades som väg.
+ *      R4 var GRÖN hela tiden, och kunde inte ha varit något annat: den frågar
+ *      "står namnet i filen", inte "går det att komma dit härifrån".
+ *
+ *      Skillnaden mot fallet ovan är värd att hålla isär. Där återställer vägen
+ *      för lite; här går den inte att gå alls. Den andra formen är farligare,
+ *      eftersom `undo-hint.ts` då visar hyresvärden en rutt och en åtgärd som
+ *      inte finns — ett svar som ser hjälpsamt ut och leder fel.
+ *
+ *      NÅBARHETEN ÄR INTE MÄTBAR HÄR. Att avgöra om ett anrop kan nå en gren
+ *      kräver att man vet vilket tillstånd raden har när verktyget körts, och
+ *      det vet bara databasen. Frågan ägs därför av ett prov mot riktig
+ *      Postgres — och tills det finns är det ENDA som bär den en människa som
+ *      läser deklarationen. Det är inte en betryggande ordning, och den ska
+ *      inte beskrivas som en.
  *   2. ATT EN DELEGATION EXISTERAR. `agentAllowlist: true` säger att verktyget
  *      FÅR delegeras, inte att någon delegerat det. Delegationerna är etapp 7,
  *      och tills de finns är fältet en förberedelse — ingen kodväg läser det för
