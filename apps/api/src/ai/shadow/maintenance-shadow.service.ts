@@ -840,6 +840,21 @@ export function byggPrompt(
     // En deterministisk rad slog alltså modellen med tre träffar och kostade
     // noll tokens. Ankaret flyttas därför till det registrerade värdet — för
     // PRIORITETEN. Kategorin ligger på 88 % och behåller "bedöm själv".
+    //
+    // ── OCH SEDAN KÖRNING 7 AVGÖR MODELLENS SVAR HÄR INGENTING ────────────
+    //
+    // Prioriteten sätts av `triage-rules.ts` ur det REGISTRERADE värdet, golvet
+    // och taket. Modellens `prediction.priority` läses inte av produkten.
+    //
+    // Avsnittet står ändå kvar, oförändrat och med flit: modellens svar är
+    // KONTROLLEN som gör bortkopplingen omprövbar (`prioritetMedModell` i
+    // rapporten — körning 7: regeln 50/54, modellen genom samma regler 46/54).
+    // Att i stället skriva "din prioritet används inte" hade förstört
+    // kontrollen: en modell som blivit tillsagd att svaret inte räknas är inte
+    // längre samma jämförelsepunkt.
+    //
+    // Formuleringen nedan är därför fortfarande den bästa vi mätt, och den
+    // ska ändras om och bara om kontrollen ska mätas om.
     '## Så här väljer du prioritet',
     'Utgå från den REGISTRERADE prioriteten. Höj den när beskrivningen visar att',
     'det brådskar mer. Sänk den bara när beskrivningen uttryckligen säger att det',
