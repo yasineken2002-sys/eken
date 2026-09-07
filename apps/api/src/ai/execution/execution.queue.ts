@@ -15,17 +15,23 @@ const JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000
  * kundens data. Delade de kö hade en enda backoff-kurva fått gälla för båda, och
  * ett omförsök av en dom hade sett likadant ut som ett omförsök av en effekt.
  *
- * ── ETT FÖRSÖK, INTE TRE ────────────────────────────────────────────────────
+ * ── TRE FÖRSÖK, OCH ANSPRÅKET ÄR DET SOM SKYDDAR ────────────────────────────
  *
- * Torrlägets kö gör tre försök, därför att en misslyckad läsning kan lyckas
- * nästa gång och ingenting har hänt under tiden. Här är det motsatt: ett jobb
- * som kastade kan mycket väl ha hunnit orsaka en HALV effekt, och ett automatiskt
- * omförsök är då en andra körning av något ingen vet utfallet av.
+ * Här stod först `attempts: 1`, med motiveringen att ett omförsök vore en andra
+ * körning av något ingen vet utfallet av, och att det vore fel att luta sig mot
+ * anspråket i en annan fil.
  *
- * Anspråket (`executionStartedAt`) skulle visserligen avvisa den — men att luta
- * sig mot det vore att låta köns inställning bero på en kolumn i en annan fil.
- * Ett försök, och sveparpasset plockar upp det som blev kvar och som fortfarande
- * saknar terminalstatus.
+ * `check-graceful-shutdown` R3 fällde det, och hade rätt av ett skäl som gjorde
+ * hela resonemanget ogiltigt: **`maxStalledCount` är GLOBAL** för alla köer
+ * (`app.module.ts`) och står på 3. Ett jobb som STALLAR — workern dog, låset
+ * gick ut — återlevereras alltså upp till tre gånger oavsett vad `attempts`
+ * säger. `attempts: 1` gav mig ingen extra säkerhet; den gav mig en ILLUSION av
+ * den, och gjorde dessutom stall-budgeten större än felbudgeten.
+ *
+ * Det som faktiskt hindrar en andra effekt är anspråket
+ * (`AiAssignment.executionStartedAt`, ett villkorat `updateMany`) — och det
+ * MÅSTE vara så, eftersom den globala inställningen redan kan återleverera.
+ * Talet följer därför minimum, och skyddet står där det hör hemma.
  */
 @Injectable()
 export class AiAgentExecutionQueue {
@@ -38,7 +44,10 @@ export class AiAgentExecutionQueue {
 
   async enqueue(payload: AiAgentExecutionJobPayload): Promise<string> {
     const jobOptions: JobOptions = {
-      attempts: 1,
+      // FÖLJER MINIMUM — se docblocket. Talet är bundet till den globala
+      // `maxStalledCount`, inte fritt valt.
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 60_000 },
       removeOnComplete: { age: JOB_TTL_MS / 1000, count: 1000 },
       removeOnFail: { age: JOB_TTL_MS / 1000, count: 1000 },
       // HÄRLETT JOB-ID, samma skäl som i de två andra köerna: sveparpasset och

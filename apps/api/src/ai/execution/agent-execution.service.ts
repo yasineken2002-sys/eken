@@ -72,6 +72,18 @@ const TERMINALA = ['EXECUTED', 'FAILED', 'LAPSED'] as const
  */
 const SPÅR_DEADLINE_MS = 3_000
 
+/**
+ * Hur länge ett anspråk får stå utan terminalstatus innan det räknas som DÖTT.
+ *
+ * Fem minuter är rejält tilltaget mot det som faktiskt tar tid i en körning
+ * (spåruppslaget väntar högst 3 sekunder). Ett kortare tal hade riskerat att
+ * stänga en körning som fortfarande pågår — och då hade uppdraget stått som
+ * FAILED medan effekten ändå inträffade, vilket är värre än att vänta.
+ *
+ * EGET tal, inte lånat: det mäter hur länge en körning rimligen kan pågå.
+ */
+export const DOTT_ANSPRAK_MS = 5 * 60 * 1000
+
 export type UtförandeUtfall =
   | { utfall: 'UTFÖRD'; aiToolExecutionId: string | null; delegationId: string }
   | { utfall: 'MISSLYCKADES'; fel: string }
@@ -182,7 +194,12 @@ export class AiAgentExecutionService {
         `Skulle ha utfört ${a.toolName} enligt din delegation — men förutsättningarna ` +
         `höll inte längre när det var dags: ${svar.text}`
       await this.prisma.aiAssignment.update({
-        where: { id: a.id },
+        // ORG MED I VARJE SKRIVNING, inte bara i läsningen som gav `a.id`.
+        // Värdet kan i dag inte peka fel — det kom ur den org-avgränsade
+        // `findFirst` ovan — men den garantin försvinner tyst den dag någon
+        // bryter ut skrivningen till en hjälpare eller lägger en andra
+        // anropsväg. Två lager skyddar bara så länge de är överens.
+        where: { id: a.id, organizationId },
         data: { status: 'LAPSED', statusReason: skäl, decidedAt: nu },
       })
       this.logger.log(`[ai-exec] assignment=${a.id} LAPSED — ${svar.text}`)
@@ -225,7 +242,7 @@ export class AiAgentExecutionService {
         // `ToolResult` bär `message`, inte `error` — fältet heter så för att
         // samma text används vid framgång. Vid `success: false` ÄR den felet.
         const fel = r.message.trim() !== '' ? r.message : 'Okänt verktygsfel.'
-        await this.skrivMisslyckande(a.id, fel, nu)
+        await this.skrivMisslyckande(a.id, organizationId, fel, nu)
         return { utfall: 'MISSLYCKADES', fel }
       }
 
@@ -247,7 +264,7 @@ export class AiAgentExecutionService {
       // blir bara "ännu inte skriven", och det svaret är NULL — vilket är sant.
       const spår = await this.slåUppSpår(organizationId, a.toolName, delegationId, start)
       await this.prisma.aiAssignment.update({
-        where: { id: a.id },
+        where: { id: a.id, organizationId },
         data: {
           status: 'EXECUTED',
           decidedAt: nu,
@@ -264,10 +281,94 @@ export class AiAgentExecutionService {
       )
       return { utfall: 'UTFÖRD', aiToolExecutionId: spår?.id ?? null, delegationId }
     } catch (e) {
-      const fel = e instanceof Error ? e.message : String(e)
-      await this.skrivMisslyckande(a.id, fel, nu)
-      return { utfall: 'MISSLYCKADES', fel }
+      // ── ETT OVÄNTAT KAST ÄR INTE ETT DOMÄNFEL, OCH SKA INTE SE UT SOM ETT ──
+      //
+      // Grenen ovan (`!r.success`) bär verktygets EGNA, användarvända text —
+      // den är skriven för att läsas och ska visas ordagrant. Här nere fångas
+      // vad som helst: en Prisma-konstraint, ett nullfel, ett trasigt anrop.
+      // Den texten skrevs tidigare rakt in i `statusReason`, som serveras till
+      // klienten och renderas ordagrant i "Gjort" — alltså en väg förbi den
+      // sanering `HttpExceptionFilter` gör på alla andra utgångar, och en väg
+      // där ett verktygs validering kan eka tillbaka personuppgifter.
+      //
+      // Detaljen loggas internt, hyresvärden får en text som är sann utan att
+      // vara ett läckage.
+      const detalj = e instanceof Error ? e.message : String(e)
+      this.logger.error(`[ai-exec] assignment=${a.id} oväntat fel: ${detalj}`)
+      await this.skrivMisslyckande(
+        a.id,
+        organizationId,
+        'Ett oväntat fel inträffade under körningen. Åtgärden utfördes troligen inte — ' +
+          'kontrollera innan du gör om den. Detaljerna finns i systemloggen.',
+        nu,
+      )
+      return { utfall: 'MISSLYCKADES', fel: detalj }
     }
+  }
+
+  /**
+   * ── ETT ANSPRÅK UTAN UTFALL ÄR EN KÖRNING SOM DOG ─────────────────────────
+   *
+   * Anspråket (`executionStartedAt`) skyddar mot dubbelkörning: den som förlorar
+   * kapplöpningen får `count: 0` och gör ingenting. Men det gör också att en rad
+   * som anspråkades och sedan aldrig nådde en terminalstatus — processen
+   * OOM-dödades, podden startades om mitt i `executeTool` — ALDRIG plockas upp
+   * igen: sveparpasset frågar efter `executionStartedAt: null`.
+   *
+   * Utfallet var ett uppdrag som fastnar för alltid, osynligt i både kön och
+   * "Gjort", utan larm. Det bryter mot planens Del 12 — en tyst uteblivelse är
+   * förbjuden — i just den PR som inför att en maskin skriver utan människa.
+   * Funnet av en säkerhetsgranskning, inte av mig.
+   *
+   * ── DEN SKRIVER FAILED, INTE LAPSED ───────────────────────────────────────
+   *
+   * `LAPSED` betyder att en FÖRUTSÄTTNING föll bort och att vi VET att
+   * ingenting utfördes. Här vet vi inte: körningen kan ha hunnit orsaka
+   * effekten innan processen dog. `FAILED` med en text som säger just det är
+   * det ärliga svaret — och raden blir synlig i "Gjort", där hyresvärden kan
+   * kontrollera vad som faktiskt hände.
+   *
+   * ── DEN TAR INTE ANSPRÅKET IFRÅN NÅGON ────────────────────────────────────
+   *
+   * `updateMany` med samma villkor som läsningen: en körning som lever och
+   * hinner skriva sin terminalstatus mellan läsning och skrivning matchar inte
+   * längre, och passet rör den inte.
+   */
+  async stängDöda(nu: Date): Promise<number> {
+    const gräns = new Date(nu.getTime() - DOTT_ANSPRAK_MS)
+    const döda = await this.prisma.aiAssignment.findMany({
+      where: {
+        executionStartedAt: { lt: gräns },
+        status: { notIn: [...TERMINALA] },
+      },
+      select: { id: true, organizationId: true, toolName: true },
+    })
+    let stängda = 0
+    for (const r of döda) {
+      const { count } = await this.prisma.aiAssignment.updateMany({
+        where: {
+          id: r.id,
+          organizationId: r.organizationId,
+          executionStartedAt: { lt: gräns },
+          status: { notIn: [...TERMINALA] },
+        },
+        data: {
+          status: 'FAILED',
+          statusReason:
+            'Körningen avbröts oväntat — troligen en omstart — och slutfördes aldrig. ' +
+            'Om åtgärden hann utföras syns den i systemet; kontrollera innan du gör om den.',
+          decidedAt: nu,
+        },
+      })
+      if (count === 1) {
+        stängda++
+        this.logger.warn(
+          `[ai-exec] uppdrag ${r.id} (${r.toolName}) hade ett anspråk utan ` +
+            'utfall och stängdes som FAILED.',
+        )
+      }
+    }
+    return stängda
   }
 
   /**
@@ -314,11 +415,16 @@ export class AiAgentExecutionService {
    * rätten — att pausa delegationen hade straffat hyresvärden för ett buggigt
    * verktyg, och hen hade fått ge tillbaka en rätt hen aldrig tog tillbaka.
    */
-  private async skrivMisslyckande(id: string, fel: string, nu: Date): Promise<void> {
+  private async skrivMisslyckande(
+    id: string,
+    organizationId: string,
+    text: string,
+    nu: Date,
+  ): Promise<void> {
     await this.prisma.aiAssignment.update({
-      where: { id },
-      data: { status: 'FAILED', statusReason: fel, decidedAt: nu },
+      where: { id, organizationId },
+      data: { status: 'FAILED', statusReason: text, decidedAt: nu },
     })
-    this.logger.warn(`[ai-exec] assignment=${id} FAILED — ${fel}`)
+    this.logger.warn(`[ai-exec] assignment=${id} FAILED`)
   }
 }

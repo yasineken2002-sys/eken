@@ -1,6 +1,10 @@
 import { get, patch, post } from '@/lib/api'
 
-import type { AnswerQuestionInput, CreateDelegationFromAssignmentInput } from '@eken/shared'
+import type {
+  AnswerQuestionInput,
+  CreateDelegationFromAssignmentInput,
+  RequestUndoInput,
+} from '@eken/shared'
 
 export type AssignmentStatus =
   | 'AWAITING_APPROVAL'
@@ -153,10 +157,15 @@ export const fetchGjorda = (params: { limit?: number; offset?: number } = {}) =>
  * Skälet står i API:ts `undo-hint.ts`: att anropa varje verktygs backningsväg
  * generiskt hade varit en andra utförandeväg utan någon av grindarna.
  */
-export const begarAngra = (params: { id: string; note?: string }) =>
-  post<{ ångra: Angravag }>(`/ai/assignments/${params.id}/undo`, {
+export const begarAngra = (params: { id: string; note?: string }) => {
+  // ANNOTERAD, inte inferrerad. Utan annoteringen är literalen en `const` och
+  // TypeScript kör då ingen överskottskontroll — ett fält som finns här men
+  // inte i kontraktet hade passerat tyst. Se CLAUDE.md, "Kontraktet webb↔API".
+  const kropp: RequestUndoInput = {
     ...(params.note ? { note: params.note } : {}),
-  })
+  }
+  return post<{ ångra: Angravag }>(`/ai/assignments/${params.id}/undo`, kropp)
+}
 
 export const decideInboxItem = (params: {
   id: string

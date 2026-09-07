@@ -38,7 +38,7 @@ import { AiAuditService } from '../audit/ai-audit.service'
 import { ObservationService } from '../observation/observation.service'
 import { DelegationService } from '../delegation/delegation.service'
 import { ToolExecutorService } from '../tools/tool-executor.service'
-import { AiAgentExecutionService } from './agent-execution.service'
+import { AiAgentExecutionService, DOTT_ANSPRAK_MS } from './agent-execution.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -469,6 +469,73 @@ medDb('skarpt läge', () => {
     expect((await execution.utför(annanOrgId, u.id)).utfall).toBe('UTFÖRD')
     expect(await antalFastigheter(annanOrgId)).toBe(före + 1)
   }, 30_000)
+
+  // ── REAPERN: ETT ANSPRÅK UTAN UTFALL ───────────────────────────────────
+  //
+  // Den här grenen fanns inte förrän en säkerhetsgranskning påpekade att en
+  // körning som dör mellan anspråket och terminalstatusen fastnar för alltid:
+  // sveparpasset frågar efter `executionStartedAt: null` och hittar den aldrig
+  // igen, "Gjort" visar den inte, och inget larmar. Provet är beviset för att
+  // luckan är stängd.
+  describe('reapern', () => {
+    it('stänger ett anspråk utan utfall som är ÄLDRE än gränsen', async () => {
+      const d = await nyDelegation(orgId)
+      await sättVäxel(orgId, true, true)
+      const u = await skapaUppdrag({ organizationId: orgId, delegationId: d })
+      // SIMULERAR EN DÖD KÖRNING: anspråket taget, ingen terminalstatus.
+      // Tidsstämpeln sätts BAKÅT i stället för att provet väntar fem minuter.
+      await prisma.aiAssignment.update({
+        where: { id: u.id },
+        data: { executionStartedAt: new Date(Date.now() - DOTT_ANSPRAK_MS - 60_000) },
+      })
+
+      const stängda = await execution.stängDöda(new Date())
+      expect(stängda).toBeGreaterThanOrEqual(1)
+
+      const efter = await prisma.aiAssignment.findUniqueOrThrow({ where: { id: u.id } })
+      // FAILED och inte LAPSED: vi VET inte att ingenting utfördes — körningen
+      // kan ha hunnit orsaka effekten innan processen dog. Texten säger det.
+      expect(efter.status).toBe('FAILED')
+      expect(efter.statusReason).toContain('avbröts oväntat')
+      expect(efter.statusReason).toContain('kontrollera')
+    }, 30_000)
+
+    // NEGATIVKONTROLL 1: ett FÄRSKT anspråk får INTE stängas. Utan den kan
+    // reapern vara "stänger allt den ser", vilket hade dödat levande körningar.
+    it('NEGATIVKONTROLL: ett FÄRSKT anspråk rörs inte', async () => {
+      const d = await nyDelegation(orgId)
+      await sättVäxel(orgId, true, true)
+      const u = await skapaUppdrag({ organizationId: orgId, delegationId: d })
+      await prisma.aiAssignment.update({
+        where: { id: u.id },
+        data: { executionStartedAt: new Date() },
+      })
+
+      await execution.stängDöda(new Date())
+      const efter = await prisma.aiAssignment.findUniqueOrThrow({ where: { id: u.id } })
+      expect(efter.status).toBe('AWAITING_APPROVAL')
+      expect(efter.statusReason).toBeNull()
+    }, 30_000)
+
+    // NEGATIVKONTROLL 2: en rad som redan NÅTT en terminalstatus skrivs inte
+    // om. En reaper som skrev över ett EXECUTED hade raderat beviset för att
+    // åtgärden faktiskt utfördes.
+    it('NEGATIVKONTROLL: en redan UTFÖRD rad skrivs inte om', async () => {
+      const d = await enbartEnDelegation(orgId)
+      await sättVäxel(orgId, true, true)
+      const u = await skapaUppdrag({ organizationId: orgId, delegationId: d })
+      expect((await execution.utför(orgId, u.id)).utfall).toBe('UTFÖRD')
+      // Åldra anspråket så bara terminalstatusen kan skydda raden.
+      await prisma.aiAssignment.update({
+        where: { id: u.id },
+        data: { executionStartedAt: new Date(Date.now() - DOTT_ANSPRAK_MS - 60_000) },
+      })
+
+      await execution.stängDöda(new Date())
+      const efter = await prisma.aiAssignment.findUniqueOrThrow({ where: { id: u.id } })
+      expect(efter.status).toBe('EXECUTED')
+    }, 30_000)
+  })
 
   // ── DE TRE SOM INTE FÅR KÖRAS OBEVAKAT ─────────────────────────────────
   it('ett DEDUPLICERBART verktyg får en dom men ingen körning', async () => {

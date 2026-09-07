@@ -65,3 +65,17 @@ export const AnswerQuestionSchema = z.object({
   svar: z.string().min(1).max(200),
 })
 export type AnswerQuestionInput = z.infer<typeof AnswerQuestionSchema>
+
+/**
+ * ÅNGRA-BEGÄRAN på en utförd åtgärd (etapp 9).
+ *
+ * Bara ett valfritt skäl — begäran gäller uppdraget i rutten. Skälet är
+ * VALFRITT till skillnad från avslagets, som är obligatoriskt: ett avslag formar
+ * nästa förslag och skälet är då minnesmat, medan en ångra-begäran är ett larm
+ * till en människa. Ett tvingande fält hade gjort det svårare att säga ifrån än
+ * att låta bli.
+ */
+export const RequestUndoSchema = z.object({
+  note: z.string().max(2000).optional(),
+})
+export type RequestUndoInput = z.infer<typeof RequestUndoSchema>

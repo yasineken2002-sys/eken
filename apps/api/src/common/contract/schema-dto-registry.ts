@@ -34,6 +34,7 @@ import {
   CreateDelegationFromAssignmentSchema,
   RevokeDelegationSchema,
   AnswerQuestionSchema,
+  RequestUndoSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
   CreateLeaseWithTenantSchema,
@@ -134,6 +135,7 @@ import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notic
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
 import { ConfirmImportDto } from '../../reconciliation/dto/confirm-import.dto'
 import { AnswerQuestionDto } from '../../ai/assignments/dto/answer-question.dto'
+import { RequestUndoDto } from '../../ai/assignments/dto/request-undo.dto'
 import { RevokeDelegationDto } from '../../ai/delegation/dto/revoke-delegation.dto'
 import { CreateFromAssignmentDto } from '../../ai/delegation/dto/create-from-assignment.dto'
 
@@ -836,6 +838,19 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { svar: 'PLUMBING' },
     ogiltig: { svar: '' },
     ogiltigVarfor: 'ett tomt svar är inget val — frågan har alltid minst två alternativ',
+  },
+  {
+    // Etapp 9. Ångra-begäran på en utförd åtgärd. Enda fältet är ett VALFRITT
+    // skäl, så pariteten prövar TAKET — det enda tal i nyttolasten som kan glida
+    // isär. Att bara en UTFÖRD åtgärd går att ångra prövas i TJÄNSTEN: schemat
+    // ser inte uppdragets status.
+    endpoint: 'POST /ai/assignments/:id/undo',
+    inputTyp: 'RequestUndoInput',
+    schema: RequestUndoSchema,
+    dto: RequestUndoDto,
+    giltig: { note: 'Fel fastighet — jag hade redan lagt upp den.' },
+    ogiltig: { note: 'x'.repeat(2001) },
+    ogiltigVarfor: 'taket är 2000 tecken; ett skäl längre än så är inte ett skäl',
   },
   // ─── Besiktningar ─────────────────────────────────────────────────────────
   {

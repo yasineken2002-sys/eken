@@ -6,6 +6,7 @@ import { CronErrorSink } from '../../common/cron/cron-error-sink'
 import { runCronSafely } from '../../common/cron/cron-safety'
 import { LockService } from '../../common/redis/lock.service'
 import { AiAgentExecutionQueue } from './execution.queue'
+import { AiAgentExecutionService } from './agent-execution.service'
 
 const LAS_TTL_SEC = 120
 
@@ -58,6 +59,10 @@ export class AiAgentExecutionSweepService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: AiAgentExecutionQueue,
+    // REAPERN BOR I TJÄNSTEN, inte här: `AiAssignment`s terminalstatusar sätts
+    // på EXAKT ETT ställe, och `check-assignment-status-writers` fäller en
+    // andra skrivare. Passet bestämmer NÄR, tjänsten VAD.
+    private readonly execution: AiAgentExecutionService,
     private readonly locks: LockService,
     private readonly cronErrors: CronErrorSink,
   ) {}
@@ -85,7 +90,17 @@ export class AiAgentExecutionSweepService {
     })
   }
 
-  async svep(): Promise<{ koade: number; takNatt: boolean; organisationer: number }> {
+  async svep(): Promise<{
+    koade: number
+    takNatt: boolean
+    organisationer: number
+    döda: number
+  }> {
+    // DÖDA ANSPRÅK FÖRST, och OBEROENDE av om någon organisation har växeln på.
+    // En organisation som stänger av skarpt läge medan en körning pågår ska inte
+    // lämna raden fastnagad för alltid.
+    const döda = await this.execution.stängDöda(new Date())
+
     const orgar = await this.prisma.organization.findMany({
       where: { agentExecutionEnabled: true, shadowAgentEnabled: true },
       select: { id: true },
@@ -94,7 +109,7 @@ export class AiAgentExecutionSweepService {
       // NOLL ÄR ETT SVAR. Skarpt läge är avstängt överallt tills någon slår på
       // det, och passet ska säga det i stället för att tiga.
       this.logger.log('[cron:ai-agent-execution] Ingen organisation har skarpt läge på.')
-      return { koade: 0, takNatt: false, organisationer: 0 }
+      return { koade: 0, takNatt: false, organisationer: 0, döda }
     }
 
     const where = {
@@ -126,6 +141,6 @@ export class AiAgentExecutionSweepService {
           'väntar, resten tas nästa pass.',
       )
     if (koade > 0) this.logger.log(`[cron:ai-agent-execution] Köade ${koade} utföranden.`)
-    return { koade, takNatt, organisationer: orgar.length }
+    return { koade, takNatt, organisationer: orgar.length, döda }
   }
 }
