@@ -1859,3 +1859,85 @@ export type TenantResetPasswordInput = z.infer<typeof TenantResetPasswordSchema>
 export type TenantLogoutInput = z.infer<typeof TenantLogoutSchema>
 export type TenantChatInput = z.infer<typeof TenantChatSchema>
 export type TenantConfirmInput = z.infer<typeof TenantConfirmSchema>
+
+// ─── Hantverkarregistret (etapp 10) ──────────────────────────────────────────
+//
+// Yrkeskategorierna ÄR `MAINTENANCE_CATEGORIES` — samma lista ärendet bär, inte
+// en egen. En andra uppräkning hade glidit isär första gången någon lade till en
+// kategori, och felet hade varit tyst: hantverkaren går inte att filtrera fram
+// för den nya kategorin, vilket ser ut som att ingen hantverkare finns.
+// `maintenance-enum-source.spec.ts` binder listan till Prismas enum.
+
+/**
+ * POST /contractors
+ *
+ * `name` är det enda obligatoriska. En hantverkare man just fått numret till
+ * ska gå att lägga in direkt — kravet på fullständiga uppgifter hör hemma vid
+ * BOKNINGEN (PR 2), som inte kan skicka en arbetsorder utan e-postadress, och
+ * inte vid registreringen. Att kräva allt här hade betytt att registret står
+ * tomt medan uppgifterna ligger på en lapp.
+ *
+ * INGET PERSONNUMMER, till skillnad från `Tenant` och `Customer`. En hantverkare
+ * kontaktas i egenskap av näringsidkare, och ett personnummer hade dragit in
+ * modellen i krypteringen-i-vila och i anonymiseringsvägen utan att någon
+ * funktion behöver det.
+ */
+export const CreateContractorSchema = z
+  .object({
+    name: z.string().min(2).max(200),
+    contactPerson: z.string().min(1).max(200).optional(),
+    email: z.string().email().optional(),
+    phone: z.string().min(1).max(40).optional(),
+    orgNumber: z.string().min(1).max(20).optional(),
+    categories: z.array(MaintenanceCategoryEnum).max(MAINTENANCE_CATEGORIES.length).optional(),
+    notes: z.string().max(4000).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict()
+
+/** PATCH /contractors/:id — samma form, allt valfritt. */
+export const UpdateContractorSchema = CreateContractorSchema.partial().strict()
+
+/**
+ * PATCH /maintenance/:id/assign
+ *
+ * `contractorId` NULL betyder "ta bort tilldelningen", och det är ett giltigt
+ * anrop — inte ett fel. Att kräva ett id hade gjort en felaktig tilldelning
+ * omöjlig att ångra annat än genom att tilldela någon annan.
+ *
+ * `assignedAt` och `assignedByUserId` står MED FLIT inte här: de sätts
+ * serverside. En klient som fick bestämma när något tilldelades och av vem hade
+ * kunnat skriva om sin egen historik.
+ */
+export const AssignContractorSchema = z
+  .object({
+    contractorId: z.string().uuid().nullable(),
+  })
+  .strict()
+
+export type CreateContractorInput = z.infer<typeof CreateContractorSchema>
+export type UpdateContractorInput = z.infer<typeof UpdateContractorSchema>
+export type AssignContractorInput = z.infer<typeof AssignContractorSchema>
+
+/**
+ * SVENSKA ETIKETTER FÖR YRKESKATEGORIERNA.
+ *
+ * `Record<MaintenanceCategoryValue, string>` — inte `Partial`, inte en lista.
+ * Typen kräver VARJE nyckel, så den dag Prisma får en tolfte kategori blir det
+ * ett kompileringsfel här i stället för en rå enum-sträng i hyresvärdens
+ * gränssnitt. Det är samma krav som `maintenance-enum-source.spec.ts` ställer
+ * på listan, fast buret av typcheckaren i stället för av ett prov.
+ */
+export const MAINTENANCE_CATEGORY_ETIKETT: Record<MaintenanceCategoryValue, string> = {
+  PLUMBING: 'VVS',
+  ELECTRICAL: 'El',
+  HEATING: 'Värme',
+  APPLIANCES: 'Vitvaror',
+  WINDOWS_DOORS: 'Fönster och dörrar',
+  LOCKS: 'Lås',
+  FACADE: 'Fasad',
+  ROOF: 'Tak',
+  COMMON_AREAS: 'Gemensamma utrymmen',
+  CLEANING: 'Städning',
+  OTHER: 'Övrigt',
+}

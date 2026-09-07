@@ -1,37 +1,38 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard,
-  Building2,
-  Home,
-  Users,
-  FileText,
-  DoorOpen,
-  Receipt,
-  BookOpen,
-  ChevronRight,
-  Menu,
-  Settings,
-  LogOut,
-  LayoutGrid,
   ArrowLeftRight,
-  FolderOpen,
-  Upload,
-  ScanText,
-  Sparkles,
-  Wrench,
-  ClipboardCheck,
-  CalendarRange,
-  Newspaper,
-  MessageSquare,
-  CreditCard,
-  TrendingUp,
-  Gavel,
   BarChart3,
+  BookOpen,
+  Building2,
+  CalendarRange,
+  ChevronRight,
+  ClipboardCheck,
+  CreditCard,
+  DoorOpen,
+  FileText,
+  FolderOpen,
   Gauge,
+  Gavel,
+  Hammer,
   History,
+  Home,
   Inbox,
+  LayoutDashboard,
+  LayoutGrid,
+  LogOut,
+  Menu,
+  MessageSquare,
+  Newspaper,
+  Receipt,
+  ScanText,
+  Settings,
   ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Upload,
+  Users,
+  Wrench,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
@@ -52,6 +53,7 @@ type AppPath =
   | '/units'
   | '/tenants'
   | '/customers'
+  | '/hantverkare'
   | '/leases'
   | '/invoices'
   | '/avisering'
@@ -121,6 +123,7 @@ const NAV_TOOLS: NavItem[] = [
   { to: '/inspections', label: 'Besiktningar', icon: ClipboardCheck },
   { to: '/maintenance', label: 'Underhåll', icon: Wrench },
   { to: '/maintenance-plan', label: 'Underhållsplan', icon: CalendarRange },
+  { to: '/hantverkare', label: 'Hantverkare', icon: Hammer },
   { to: '/documents', label: 'Dokument', icon: FolderOpen },
   { to: '/import', label: 'Importera', icon: Upload },
   { to: '/import/contract-batches', label: 'Kontraktsskanning', icon: ScanText },

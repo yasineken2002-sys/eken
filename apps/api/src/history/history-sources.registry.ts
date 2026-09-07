@@ -324,6 +324,16 @@ const maintenanceTickets: HistorySourceDefinition = {
         actualCost: true,
         reportedById: true,
         unitId: true,
+        // ── TILLDELNING (etapp 10) ───────────────────────────────────────
+        // Tilldelningen är historik PÅ ÄRENDET, inte en egen källa.
+        // `check-history-registry.mjs` kräver bara relationer på Tenant/Unit/
+        // Property, och `Contractor` är ingen sådan — den hänger på
+        // Organization och MaintenanceTicket. En egen källa hade därför varit
+        // osynlig för vakten OCH en andra uppräkning. Att lägga händelsen här
+        // gör att den ärver `maintenance-ticket`-postens tre dimensioner.
+        assignedAt: true,
+        assignedByUserId: true,
+        assignedContractor: { select: { name: true } },
       },
     })
     const out: HistoryEvent[] = []
@@ -339,6 +349,23 @@ const maintenanceTickets: HistorySourceDefinition = {
         severity: r.priority === 'URGENT' ? 'CRITICAL' : r.priority === 'HIGH' ? 'WARNING' : 'INFO',
         source: { table: 'MaintenanceTicket', id: r.id },
       })
+      // Tilldelningen syns bara när den FAKTISKT skett. `assignedAt` är
+      // nullbar och sätts av tilldelningsvägen; ett ärende utan tilldelning ger
+      // ingen händelse, i stället för en händelse som säger "ingen".
+      if (r.assignedAt) {
+        out.push({
+          at: r.assignedAt,
+          type: 'MAINTENANCE_ASSIGNED',
+          actor: humanOrUnknown(r.assignedByUserId),
+          subject,
+          description: r.assignedContractor
+            ? `Felanmälan ${r.ticketNumber} tilldelad ${r.assignedContractor.name}`
+            : `Felanmälan ${r.ticketNumber} tilldelad en hantverkare som sedan tagits bort`,
+          amount: null,
+          severity: 'INFO',
+          source: { table: 'MaintenanceTicket', id: r.id },
+        })
+      }
       if (r.completedAt) {
         out.push({
           at: r.completedAt,
