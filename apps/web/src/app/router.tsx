@@ -36,6 +36,7 @@ import { PropertiesPage } from '../features/properties/PropertiesPage'
 import { UnitsPage } from '../features/units/UnitsPage'
 import { TenantsPage } from '../features/tenants/TenantsPage'
 import { CustomersPage } from '../features/customers/CustomersPage'
+import { ContractorsPage } from '../features/contractors/ContractorsPage'
 import { LeasesPage } from '../features/leases/LeasesPage'
 import { InvoicesPage } from '../features/invoices/InvoicesPage'
 import { ConsumptionPage } from '../features/consumption/ConsumptionPage'
@@ -286,6 +287,7 @@ const propertiesRoute = appPage('/properties', PropertiesPage)
 const unitsRoute = appPage('/units', UnitsPage)
 const tenantsRoute = appPage('/tenants', TenantsPage)
 const customersRoute = appPage('/customers', CustomersPage)
+const contractorsRoute = appPage('/hantverkare', ContractorsPage)
 const leasesRoute = appPage('/leases', LeasesPage)
 const invoicesRoute = appPage('/invoices', InvoicesPage)
 const consumptionRoute = appPage('/consumption', ConsumptionPage)
@@ -409,6 +411,7 @@ const routeTree = rootRoute.addChildren([
     unitsRoute,
     tenantsRoute,
     customersRoute,
+    contractorsRoute,
     leasesRoute,
     invoicesRoute,
     consumptionRoute,

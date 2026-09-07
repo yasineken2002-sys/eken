@@ -9,6 +9,7 @@ import {
 } from './MaintenanceBadges'
 import { useUpdateTicket, useAddComment, useTicket } from '../hooks/useMaintenance'
 import { DebitTenantCard } from '@/features/misc-charges/components/DebitTenantCard'
+import { AssignContractorCard } from '@/features/contractors/components/AssignContractorCard'
 import { formatDate, formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { MaintenanceTicket } from '../api/maintenance.api'
@@ -216,6 +217,13 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
             </div>
           </div>
         )}
+
+        {/* Tilldela hantverkare (etapp 10) */}
+        <AssignContractorCard
+          ticketId={ticket.id}
+          category={ticket.category}
+          assigned={ticket.assignedContractor ?? null}
+        />
 
         {/* Debitera hyresgäst & bokför (teknisk förvaltning, Spår A) */}
         <DebitTenantCard

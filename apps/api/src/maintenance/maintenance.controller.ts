@@ -21,6 +21,7 @@ import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
 import type { MaintenanceStatus, MaintenancePriority, MaintenanceCategory } from '@prisma/client'
 import { AddTicketCommentDto } from './dto/add-ticket-comment.dto'
+import { AssignContractorDto } from '../contractors/dto/contractor.dto'
 
 @Controller('maintenance')
 @UseGuards(JwtAuthGuard)
@@ -63,6 +64,24 @@ export class MaintenanceController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.maintenanceService.create(dto, orgId, user.sub)
+  }
+
+  /**
+   * TILLDELA HANTVERKARE (etapp 10).
+   *
+   * Förvaltningsgränsen, samma som att skapa ärendet: `MANAGER, ADMIN, OWNER`
+   * (#269). En bokförare eller VIEWER ska kunna SE vem som är tilldelad men
+   * inte peka ut vem som ska göra jobbet.
+   */
+  @Patch(':id/assign')
+  @Roles('OWNER', 'ADMIN', 'MANAGER')
+  assignContractor(
+    @Param('id') id: string,
+    @Body() dto: AssignContractorDto,
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.maintenanceService.assignContractor(id, dto.contractorId, orgId, user.sub)
   }
 
   @Patch(':id')
