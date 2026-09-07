@@ -2,7 +2,19 @@ import { get, patch, post } from '@/lib/api'
 
 import type { AnswerQuestionInput, CreateDelegationFromAssignmentInput } from '@eken/shared'
 
-export type AssignmentStatus = 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
+export type AssignmentStatus =
+  | 'AWAITING_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  // ── DE TRE UTFÖRANDESTATUSARNA (etapp 9) ────────────────────────────────
+  //
+  // De fanns i enumen sedan etapp 8 men hade ingen skrivare. Nu har de en
+  // (`AiAgentExecutionService`), och en läsyta som inte känner till dem hade
+  // visat en tom status för varje utförd åtgärd.
+  | 'EXECUTED'
+  | 'FAILED'
+  | 'LAPSED'
 
 /** Klickbar data bakom motiveringen. Tom lista = ingen post att öppna. */
 export interface InboxEvidence {
@@ -97,6 +109,54 @@ export const fetchInbox = (params: {
 
 export const fetchInboxSummary = () =>
   get<InboxSummary>('/ai/assignments/summary', { shadow: 'true' })
+
+/**
+ * ÅNGRAVÄGEN, beräknad av SERVERN.
+ *
+ * Härledd ur `supportsUndo` och `HUMAN_PATHS`, som båda bor i API:t. Att räkna
+ * ut den här hade krävt en kopia av effektkatalogen i webben — en andra källa
+ * till samma regel, och den som syns för hyresvärden hade blivit den som ingen
+ * prövat.
+ */
+export type Angravag =
+  | { möjlig: true; rutt: string; atgard: string; text: string }
+  | { möjlig: false; text: string }
+
+/** En rad i "Gjort" — en åtgärd agenten faktiskt utförde, eller försökte. */
+export interface GjortItem extends InboxItem {
+  aiToolExecutionId: string | null
+  authorityKind: 'APPROVAL' | 'DELEGATION'
+  delegationId: string | null
+  delegation: { id: string; toolName: string; villkor: Record<string, unknown> | null } | null
+  ångra: Angravag
+  /** När någon senast begärde att åtgärden skulle backas. Null = ingen har. */
+  ångraBegärd: string | null
+}
+
+export interface GjortPage {
+  rader: GjortItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export const fetchGjorda = (params: { limit?: number; offset?: number } = {}) =>
+  get<GjortPage>('/ai/assignments/gjorda', {
+    ...(params.limit ? { limit: String(params.limit) } : {}),
+    ...(params.offset ? { offset: String(params.offset) } : {}),
+  })
+
+/**
+ * ÅNGRA — en BEGÄRAN, inte en backning.
+ *
+ * Servern skriver en händelse och svarar med vägen att göra det för hand.
+ * Skälet står i API:ts `undo-hint.ts`: att anropa varje verktygs backningsväg
+ * generiskt hade varit en andra utförandeväg utan någon av grindarna.
+ */
+export const begarAngra = (params: { id: string; note?: string }) =>
+  post<{ ångra: Angravag }>(`/ai/assignments/${params.id}/undo`, {
+    ...(params.note ? { note: params.note } : {}),
+  })
 
 export const decideInboxItem = (params: {
   id: string

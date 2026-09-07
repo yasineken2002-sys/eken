@@ -84,6 +84,7 @@ export const SAFE_ORGANIZATION_SELECT = {
   // inte en hemlighet. Växeln byggs med inkorgen; fältet är läsbart redan nu så
   // att läsytan kan säga OM skuggläget är på i stället för att gissa.
   shadowAgentEnabled: true,
+  agentExecutionEnabled: true,
   // Väsentlighetsgränsen för sen bokföring. Ingen hemlighet — den är en
   // policy operatören själv satt, och inställningssidan måste kunna visa
   // den för att kunna redigera den.

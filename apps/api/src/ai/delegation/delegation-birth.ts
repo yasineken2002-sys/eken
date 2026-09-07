@@ -14,10 +14,22 @@ import type { DelegationVillkor } from './delegation.service'
  * Konstanten läses av både API:t och webben. Den dag utföraren byggs sätts den
  * till `true` i samma PR som bygger den, och texten försvinner av sig själv.
  *
+ * ── OCH DET ÄR DEN HÄR PR:EN (etapp 9) ─────────────────────────────────────
+ *
+ * `AiAgentExecutionService` finns. Meningen om att agenten inte utför något
+ * skulle från och med nu ha varit osann i varje organisation som slår på
+ * växeln, så den försvinner — precis som konstanten skrevs för att den skulle.
+ *
+ * VAD FLAGGAN BETYDER, exakt: att det FINNS en kodväg som utför. Den säger
+ * ingenting om huruvida någon organisation slagit på den — det är
+ * `Organization.agentExecutionEnabled`, och den är `false` överallt. Att slå
+ * ihop dem hade varit att låna ett fält som svarar på en annan fråga: den ena är
+ * en egenskap hos systemet, den andra ett beslut hos kunden.
+ *
  * `check-delegation-scope.mjs` kan inte se det här — det är en flagga, inte en
  * form. Det som bär den är att den bor bredvid grinden och inte i en komponent.
  */
-export const UTFÖRARE_FINNS = false
+export const UTFÖRARE_FINNS = true
 
 /**
  * TYPEN ETT FÖRSLAG GÄLLER — och därmed vad "samma typ" betyder.

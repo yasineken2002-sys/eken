@@ -9,6 +9,7 @@ import { AiAssignmentsService } from './ai-assignments.service'
 import { DecideAssignmentDto } from './dto/decide-assignment.dto'
 import { QueryAssignmentsDto } from './dto/query-assignments.dto'
 import { AnswerQuestionDto } from './dto/answer-question.dto'
+import { RequestUndoDto } from './dto/request-undo.dto'
 import { QuestionService } from '../questions/question.service'
 
 import type { JwtPayload } from '@eken/shared'
@@ -64,6 +65,24 @@ export class AiAssignmentsController {
    * `:id` deklareras EFTER `summary`, annars fångar den strängen "summary" som
    * ett id och svarar 404 på KPI-anropet. Fastify matchar i deklarationsordning.
    */
+  /**
+   * "GJORT" — de utförda åtgärderna, med ångravägen per rad.
+   *
+   * EGEN RUTT och inte ett filter på `GET /` av samma skäl som metoden är egen:
+   * svaret bär andra fält (spår, delegation, ångraväg), och att smyga in dem i
+   * listsvaret hade tvingat varje väntande rad att beräkna en ångraväg den inte
+   * har.
+   *
+   * FÖRE `:id` i filen, annars fångar den dynamiska rutten "gjorda" som ett id.
+   */
+  @Get('gjorda')
+  async gjorda(@OrgId() organizationId: string, @Query() query: QueryAssignmentsDto) {
+    return this.service.gjorda(organizationId, {
+      ...(query.limit !== undefined ? { limit: query.limit } : {}),
+      ...(query.offset !== undefined ? { offset: query.offset } : {}),
+    })
+  }
+
   @Get(':id')
   async detail(@OrgId() organizationId: string, @Param('id') id: string) {
     return this.service.hamta(organizationId, id)
@@ -86,6 +105,23 @@ export class AiAssignmentsController {
   ) {
     await this.questions.svara(organizationId, id, user.sub, body.svar)
     return { ok: true }
+  }
+
+  /**
+   * ÅNGRA — en HÄNDELSE, inte en backning.
+   *
+   * `@Roles` är samma som resten av inkorgen: den som får besluta om ett uppdrag
+   * får också säga att det blev fel. Att kräva OWNER här hade gjort det svårare
+   * att säga ifrån än att låta bli, vilket är fel håll.
+   */
+  @Post(':id/undo')
+  async undo(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: RequestUndoDto,
+  ) {
+    return this.service.begärÅngra(organizationId, id, { userId: user.sub }, dto.note)
   }
 
   @Patch(':id/decision')

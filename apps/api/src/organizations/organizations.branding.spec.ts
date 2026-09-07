@@ -51,7 +51,7 @@ function makeService() {
     .fn()
     .mockImplementation(({ data }) => Promise.resolve({ id: 'org-1', ...data }))
   const prisma = { organization: { update } }
-  const service = new OrganizationsService(prisma as never, {} as never)
+  const service = new OrganizationsService(prisma as never, {} as never, {} as never)
   return { service, update }
 }
 

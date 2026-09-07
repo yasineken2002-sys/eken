@@ -9,7 +9,9 @@ export const INKORG_SIDSTORLEK_STANDARD = 25
 
 export class QueryAssignmentsDto {
   @IsOptional()
-  @IsIn(['AWAITING_APPROVAL', 'APPROVED', 'REJECTED', 'EXPIRED'])
+  // DE TRE UTFÖRANDESTATUSARNA MED. De fick en skrivare i etapp 9, och en
+  // läsyta som inte kan filtrera på dem hade gjort dem osynliga i inkorgen.
+  @IsIn(['AWAITING_APPROVAL', 'APPROVED', 'REJECTED', 'EXPIRED', 'EXECUTED', 'FAILED', 'LAPSED'])
   status?: AiAssignmentStatus
 
   /**

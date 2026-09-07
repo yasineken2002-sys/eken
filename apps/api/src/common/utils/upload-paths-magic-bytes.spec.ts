@@ -156,7 +156,11 @@ function makeOrganizations() {
     deleteFile: jest.fn().mockResolvedValue(undefined),
     getPresignedUrl: jest.fn().mockResolvedValue('https://r2/signed'),
   }
-  const service = new OrganizationsService(prisma as never, storage as never)
+  // Tredje argumentet är `DelegationService`, som bara `update()` rör — det här
+  // provet går via logotypvägen och når den aldrig. En attrapp som kastar hade
+  // varit ärligare, men konstruktorn körs för varje prov och en kastande stubb
+  // hade fällt dem alla.
+  const service = new OrganizationsService(prisma as never, storage as never, {} as never)
   return { service, prisma, storage }
 }
 

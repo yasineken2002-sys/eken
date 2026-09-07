@@ -662,6 +662,28 @@ model Organization {
   /// och det är inte så man prövar en agent mot verkliga fall.
   shadowAgentEnabled Boolean @default(false)
 
+  /// ── SKARPT LÄGE (etapp 9): AGENTEN UTFÖR SJÄLV ────────────────────────────
+  ///
+  /// EGEN FLAGGA, inte ett andra värde i `shadowAgentEnabled`. De två svarar på
+  /// olika frågor:
+  ///
+  ///     shadowAgentEnabled     får agenten FÖRESLÅ på riktiga ärenden?
+  ///     agentExecutionEnabled  får den UTFÖRA det den föreslagit, utan att
+  ///                            någon säger ja just då?
+  ///
+  /// Den andra är ett väsensskilt beslut — det är första gången en maskin
+  /// skriver i kundens data utan en människa i loopen — och det ska gå att
+  /// ångra utan att samtidigt stänga av mätningen.
+  ///
+  /// ── BEROENDET GÅR ÅT ETT HÅLL, OCH DET UPPRÄTTHÅLLS I TJÄNSTEN ───────────
+  ///
+  /// Skarpt läge kräver att skuggan är på: det finns ingenting att utföra utan
+  /// förslag. `OrganizationsService` avvisar därför ett påslag utan skugga, och
+  /// STÄNGER skarpt läge automatiskt när skuggan stängs — plus pausar alla
+  /// delegationer. Att lita på att en läsare kollar båda flaggorna hade gjort
+  /// invarianten till en vana.
+  agentExecutionEnabled Boolean @default(false)
+
   /// VÄSENTLIGHETSGRÄNS FÖR EN SENT BOKFÖRD BETALNING (#810), i ÖREN.
   ///
   /// ── VAD DEN STYR, MÄTT — OCH VAD DEN INTE GÖR ─────────────────────────────
@@ -3949,6 +3971,24 @@ model AiAssignment {
   /// som `JournalEntry.aiToolExecutionId`.
   aiToolExecutionId String?
 
+  /// ── ANSPRÅKET (etapp 9) — ETT LÅS I DATABASEN, INTE I REDIS ───────────────
+  ///
+  /// Utföraren tar uppdraget genom ett VILLKORAT `updateMany` som kräver att
+  /// fältet är NULL. Databasen avgör då vem som vann, och den andra körningen
+  /// får `count: 0` och gör ingenting.
+  ///
+  /// Varför inte ett Redis-lås: ett lås är ett ANSPRÅK med en livslängd, och
+  /// utgår det mitt i en körning har två processer samma rätt utan att någondera
+  /// vet om det. Kolumnen har ingen livslängd — den är satt eller inte.
+  ///
+  /// NULL betyder "ingen har tagit det". En rad med `executionStartedAt` men
+  /// utan terminalstatus är en körning som DOG mitt i, och den skillnaden går
+  /// bara att se när anspråket och utfallet är två fält.
+  executionStartedAt DateTime?
+
+  /// Händelser på uppdraget. I dag bara ångra-begäran — se AiAssignmentEvent.
+  events AiAssignmentEvent[]
+
   /// ── MED VILKEN RÄTT (G2, etapp 7) ─────────────────────────────────────────
   ///
   /// Planens Del 3: en skrivning ska inte kunna representeras som gjord av en
@@ -6692,6 +6732,48 @@ model AiDelegation {
 /// "hade agenten rätt när den gjorde detta i mars".
 ///
 /// Samma triggerskydd som de tio andra append-only-tabellerna (#585).
+/// Vad som hänt med ett uppdrag EFTER att det utförts.
+enum AiAssignmentEventType {
+  /// En människa har begärt att den utförda åtgärden backas.
+  ///
+  /// BEGÄRAN, INTE BACKNINGEN. Systemet backar ingenting av sig självt: varje
+  /// verktygs `supportsUndo` pekar ut en NAMNGIVEN metod i en namngiven fil, och
+  /// att anropa den generiskt hade varit en andra utförandeväg — med samma
+  /// behov av delegation, bevis och spår som den första, byggd i förbifarten.
+  ///
+  /// Händelsen är därför det den heter: hyresvärden säger "det här ville jag
+  /// inte", det blir stående i historiken, och läsytan visar vägen att göra det
+  /// för hand.
+  UNDO_REQUESTED
+}
+
+/// ── UPPDRAGETS HÄNDELSER (etapp 9) ─────────────────────────────────────────
+///
+/// APPEND-ONLY, samma form som `AiDelegationEvent` och `InvoiceEvent`: ingen
+/// `updatedAt`, aldrig UPDATE eller DELETE. En ångra-begäran som gick att
+/// redigera i efterhand hade varit ett sämre spår än inget spår.
+model AiAssignmentEvent {
+  id           String                @id @default(uuid())
+  assignmentId String
+  type         AiAssignmentEventType
+
+  /// Vem handlingen tillskrivs. Samma åtskillnad som i `AiDelegationEvent`:
+  /// `actorKind` är radens FÖRFATTARE (stämplad av extensionen), `handlingAv`
+  /// är den som tillskrivs handlingen raden beskriver. En ångra-begäran är
+  /// alltid en människas.
+  handlingAv  ActorKind
+  actorUserId String?
+
+  /// Hyresvärdens egna ord, när hen skrev några. Skälet är minnesmat.
+  note String?
+
+  createdAt DateTime @default(now())
+
+  assignment AiAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, createdAt])
+}
+
 model AiDelegationEvent {
   id           String                @id @default(uuid())
   delegationId String
