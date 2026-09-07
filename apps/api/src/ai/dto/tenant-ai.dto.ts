@@ -1,7 +1,7 @@
 import { IsBoolean, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
 
 import type { SammaNycklar, TenantChatInput, TenantConfirmInput } from '@eken/shared'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /**
  * HYRESGÄSTENS AI-YTA — två DTO:er, flyttade hit ur `tenant-ai.controller.ts`.
@@ -66,8 +66,8 @@ export class TenantConfirmDto implements TenantConfirmInput {
    * av `ogiltigKoercion`-fallet i KONTRAKTSREGISTER — utan det är fixen
    * obevisad nästa gång fältet flyttas.
    */
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   confirmed!: boolean
 }
 

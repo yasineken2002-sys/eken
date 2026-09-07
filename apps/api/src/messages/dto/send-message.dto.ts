@@ -1,4 +1,5 @@
 import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 export class SendMessageDto {
   @IsUUID()
@@ -7,6 +8,7 @@ export class SendMessageDto {
 
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   sendToAll?: boolean
 
   @IsString()

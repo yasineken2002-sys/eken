@@ -901,8 +901,8 @@ jobs:
       - name: Verify no new `as never` in production code
         run: node apps/api/scripts/check-as-never.mjs
 
-  boolean-coercion-guard:
-    name: Boolean coercion guard
+  strict-boolean-guard:
+    name: Strict boolean guard
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -911,30 +911,34 @@ jobs:
         with:
           node-version: 20
 
-      # ETT BOOLESKT DTO-FÄLT UTAN @IngenKoercion KAN LÄSA ETT NEJ SOM ETT JA.
+      # ETT BOOLESKT DTO-FÄLT SOM KAN LÄSA ETT NEJ SOM ETT JA.
       #
-      # Den globala pipen kör enableImplicitConversion, så class-transformer
-      # kör Boolean(värdet) INNAN validatorn ser något. Boolean('false') är
-      # true — strängen som betyder NEJ blir alltså ett JA, och @IsBoolean()
-      # prövar bara resultatet av konverteringen.
+      # Pipen kör enableImplicitConversion, så class-transformer kör
+      # Boolean(värdet) INNAN validatorn ser något. Boolean('false') är true.
+      # Uppmätt mot ConfirmActionDto — hyresvärdens ja till en AI-handling:
       #
-      # Formen har hittats TRE gånger, varje gång av en mekanism och aldrig av
-      # läsning: tenant-ai `confirmed` (#830), arbetsorderns fält (#835) och
-      # `acceptTerms` — samtycket till användarvillkoren. Tre gånger är ett
-      # mönster.
+      #     "false" → true    "yes" → true    "0" → true    1 → true
       #
-      # Paritetsprovet fångar bara fält som står i KONTRAKTSREGISTER. Den här
-      # läser ALLA *.dto.ts, och baslinjen (18 vid införandet) får bara krympa.
+      # ERSÄTTER boolean-coercion-guard, som mätte fel i BÅDA riktningar: den
+      # delade filen i block med en RADANKRAD regex och missade därför
+      # enradsformen `@IsBoolean() @IsOptional() falt?: boolean` helt — och
+      # tillskrev dess dekorator nästa fält, som därför rapporterades booleskt
+      # fast det var en strängunion. Baslinjen påstod 18 oskyddade; en riktig
+      # fältparser gav 37 av 49.
       #
-      # Vakten mäter att dekoratorn FINNS, inte att den gör något — det ägs av
-      # dto-contract.spec.ts:s koercionshalva.
+      # INGEN BASLINJE. Mängden är noll och regeln är absolut — det finns ingen
+      # nivå där "ett nej som blir ett ja" är acceptabelt.
+      #
+      # Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av
+      # strict-boolean.spec.ts, som kör den riktiga pipen och har en
+      # kanariefågel som visar att koercionen finns utan dekoratorn.
       #
       # fs-only, inga beroenden, ingen DB.
-      - name: Self-test the guard (positive, four negatives, derived total)
-        run: node apps/api/scripts/check-boolean-coercion.mjs --self-test
+      - name: Self-test the guard (three positives, three negatives)
+        run: node apps/api/scripts/check-strict-boolean.mjs --self-test
 
-      - name: Verify no new unprotected boolean DTO field
-        run: node apps/api/scripts/check-boolean-coercion.mjs
+      - name: Verify every boolean DTO field carries @StrictBoolean
+        run: node apps/api/scripts/check-strict-boolean.mjs
 
   self-tests-must-fail-guard:
     name: Self-tests must be able to fail
@@ -2406,7 +2410,7 @@ jobs:
       - request-contract-guard
       - dto-placement-guard
       - as-never-guard
-      - boolean-coercion-guard
+      - strict-boolean-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard

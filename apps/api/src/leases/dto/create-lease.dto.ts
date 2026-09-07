@@ -1,6 +1,7 @@
 import type { SammaNycklar, CreateLeaseInput } from '@eken/shared'
 import { CreateLeaseSchema } from '@eken/shared'
 import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import {
   IsUUID,
   IsDateString,
@@ -61,16 +62,18 @@ export class CreateLeaseDto implements CreateLeaseInput {
   @IsOptional()
   noticePeriodMonths?: number
 
-  // ── Vad ingår ──────────────────────────────────────────────────────────
-  @IsBoolean() @IsOptional() includesHeating?: boolean
-  @IsBoolean() @IsOptional() includesWater?: boolean
-  @IsBoolean() @IsOptional() includesHotWater?: boolean
-  @IsBoolean() @IsOptional() includesElectricity?: boolean
-  @IsBoolean() @IsOptional() includesInternet?: boolean
-  @IsBoolean() @IsOptional() includesCleaning?: boolean
-  @IsBoolean() @IsOptional() includesParking?: boolean
-  @IsBoolean() @IsOptional() includesStorage?: boolean
-  @IsBoolean() @IsOptional() includesLaundry?: boolean
+  @StrictBoolean() // ── Vad ingår ──────────────────────────────────────────────────────────
+  @IsBoolean()
+  @IsOptional()
+  includesHeating?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesWater?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesHotWater?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesElectricity?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesInternet?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesCleaning?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesParking?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesStorage?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() includesLaundry?: boolean
 
   // ── Tilläggshyror ──────────────────────────────────────────────────────
   @IsNumber() @Min(0) @IsOptional() parkingFee?: number
@@ -83,8 +86,8 @@ export class CreateLeaseDto implements CreateLeaseInput {
   @IsOptional()
   petsAllowed?: 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
   @IsString() @IsOptional() petsApprovalNotes?: string
-  @IsBoolean() @IsOptional() sublettingAllowed?: boolean
-  @IsBoolean() @IsOptional() requiresHomeInsurance?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() sublettingAllowed?: boolean
+  @StrictBoolean() @IsBoolean() @IsOptional() requiresHomeInsurance?: boolean
 
   // ── Indexklausul ───────────────────────────────────────────────────────
   @IsEnum(['NONE', 'KPI', 'NEGOTIATED', 'MARKET_RENT'])

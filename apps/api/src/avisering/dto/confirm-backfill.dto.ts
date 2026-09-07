@@ -1,4 +1,5 @@
 import { IsBoolean, IsOptional } from 'class-validator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /**
  * T1.4 PR2 — bekräftelse av efterdebitering. Bekräftelsen är den juridiskt
@@ -11,6 +12,7 @@ import { IsBoolean, IsOptional } from 'class-validator'
 export class ConfirmBackfillDto {
   @IsOptional()
   @IsBoolean()
+  @StrictBoolean()
   allowBeyondWarning?: boolean
 
   /**
@@ -22,5 +24,6 @@ export class ConfirmBackfillDto {
    */
   @IsOptional()
   @IsBoolean()
+  @StrictBoolean()
   vatDeclarationAcknowledged?: boolean
 }

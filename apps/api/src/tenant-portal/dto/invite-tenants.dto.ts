@@ -4,7 +4,7 @@ import type { InviteTenantsInput, ResendInvitesInput, SammaNycklar } from '@eken
 import { INVITE_BATCH_MAX, InviteTenantsSchema, ResendInvitesSchema } from '@eken/shared'
 
 import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /**
  * FLYTTADE HIT 2026-09-06 ur `tenant-portal.controller.ts`.
@@ -23,8 +23,8 @@ import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
 export class InviteTenantsDto {
   // Bjud in alla aktiva hyresgäster (≥1 ACTIVE-kontrakt).
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   all?: boolean
 
   // Eller ett explicit urval.
@@ -37,6 +37,7 @@ export class InviteTenantsDto {
   // Kringgå 24 h-dubbelklicks-skyddet (medveten omsändning).
   @IsOptional()
   @IsBoolean()
+  @StrictBoolean()
   force?: boolean
 }
 
@@ -51,8 +52,8 @@ export class ResendInvitesDto {
 
   // Skicka om till alla inbjudna men ej aktiverade.
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   onlyNotActivated?: boolean
 }
 

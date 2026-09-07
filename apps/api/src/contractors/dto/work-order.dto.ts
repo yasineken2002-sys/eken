@@ -14,7 +14,7 @@ import type {
   SendWorkOrderInput,
   WorkOrderResponseInput,
 } from '@eken/shared'
-import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 /** POST /maintenance/:id/work-orders */
 export class SendWorkOrderDto implements SendWorkOrderInput {
@@ -29,14 +29,14 @@ export class SendWorkOrderDto implements SendWorkOrderInput {
   /**
    * HYRESVÄRDENS VAL, inte hyresgästens samtycke.
    *
-   * `@IngenKoercion()` är inte pedanteri här: utan den gör pipens implicita
+   * `@StrictBoolean()` är inte pedanteri här: utan den gör pipens implicita
    * konvertering strängen `"false"` till `true`, och en klient som menade NEJ
    * hade delat hyresgästens kontaktuppgift med en utomstående. Det är den
    * farliga riktningen, och den enda anledningen att ta booleanerna först.
    */
   @IsOptional()
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   delaHyresgastKontakt?: boolean
 }
 
@@ -48,8 +48,8 @@ export class SendWorkOrderDto implements SendWorkOrderInput {
  * DTO:n ser bara formen på svaret.
  */
 export class WorkOrderResponseDto implements WorkOrderResponseInput {
-  @IngenKoercion()
   @IsBoolean()
+  @StrictBoolean()
   accepterar!: boolean
 
   @IsOptional()

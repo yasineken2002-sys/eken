@@ -12,6 +12,7 @@ import {
 } from 'class-validator'
 import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
 export class UpdateOrganizationDto {
   @IsString()
@@ -50,6 +51,7 @@ export class UpdateOrganizationDto {
 
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   morningReportEnabled?: boolean
 
   /**
@@ -70,6 +72,7 @@ export class UpdateOrganizationDto {
    */
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   shadowAgentEnabled?: boolean
 
   /**
@@ -86,6 +89,7 @@ export class UpdateOrganizationDto {
    */
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   agentExecutionEnabled?: boolean
 
   /**
@@ -110,6 +114,7 @@ export class UpdateOrganizationDto {
   // ── Påminnelse- och inkassoinställningar ───────────────────────────────
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   remindersEnabled?: boolean
 
   // Taket är lagstadgat och tvingande (4 § och 6 § 1 st lagen 1981:739) — även
@@ -143,6 +148,7 @@ export class UpdateOrganizationDto {
   // räkenskapsår skulle leda till blandade konton som inte balanserar.
   @IsBoolean()
   @IsOptional()
+  @StrictBoolean()
   hasFSkatt?: boolean
 
   @IsDateString()
