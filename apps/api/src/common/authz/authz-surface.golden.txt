@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (209 st)
+## 1. HTTP-endpoints med rollgrind (213 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -22,6 +22,7 @@ DELETE /ai/attachments/:id                                      ACCOUNTANT, ADMI
 DELETE /ai/conversations/:id                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 DELETE /ai/memory                                               ACCOUNTANT, ADMIN, MANAGER, OWNER
 DELETE /avisering/:id                                           ADMIN, OWNER
+DELETE /contractors/:id                                         ADMIN, OWNER
 DELETE /customers/:id                                           ADMIN, OWNER
 DELETE /documents/:id                                           ADMIN, OWNER
 DELETE /import/contract-batches/:id                             ADMIN, MANAGER, OWNER
@@ -96,6 +97,7 @@ PATCH /collections/reminders/:invoiceId/pause                   ACCOUNTANT, ADMI
 PATCH /collections/reminders/:invoiceId/resume                  ACCOUNTANT, ADMIN, MANAGER, OWNER
 PATCH /consumption/charges/:id/confirm                          ADMIN, MANAGER, OWNER
 PATCH /consumption/meters/:id                                   ADMIN, MANAGER, OWNER
+PATCH /contractors/:id                                          ADMIN, MANAGER, OWNER
 PATCH /contracts/:leaseId/appendices/:documentId                ADMIN, MANAGER, OWNER
 PATCH /customers/:id                                            ADMIN, MANAGER, OWNER
 PATCH /deposits/:id/pay                                         ADMIN, MANAGER, OWNER
@@ -112,6 +114,7 @@ PATCH /leases/:id/status                                        ADMIN, MANAGER, 
 PATCH /leases/:id/terminate                                     ADMIN, OWNER
 PATCH /leases/:id                                               ADMIN, MANAGER, OWNER
 PATCH /maintenance-plans/:id                                    ADMIN, MANAGER, OWNER
+PATCH /maintenance/:id/assign                                   ADMIN, MANAGER, OWNER
 PATCH /maintenance/:id                                          ADMIN, MANAGER, OWNER
 PATCH /news/:id                                                 ADMIN, MANAGER, OWNER
 PATCH /organizations/me/logo                                    ADMIN, OWNER
@@ -168,6 +171,7 @@ POST /consumption/meters                                        ADMIN, MANAGER, 
 POST /consumption/readings                                      ADMIN, MANAGER, OWNER
 POST /consumption/tariffs                                       ADMIN, MANAGER, OWNER
 POST /consumption/year-end-accrual                              ACCOUNTANT, ADMIN, MANAGER, OWNER
+POST /contractors                                               ADMIN, MANAGER, OWNER
 POST /contracts/generate/:leaseId                               ADMIN, MANAGER, OWNER
 POST /customers                                                 ADMIN, MANAGER, OWNER
 POST /deposits                                                  ADMIN, MANAGER, OWNER
@@ -229,7 +233,7 @@ POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (172 st)
+## 1b. HTTP-endpoints UTAN rollgrind (174 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -243,7 +247,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (72 st)
+### a) Org-inloggad, öppen för VARJE roll (74 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -257,7 +261,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (72 st)
+GRANSKADE — avsiktligt öppna, med skälet (74 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -350,6 +354,35 @@ GET /consumption/readings                                       consumption.cont
 
 GET /consumption/tariffs                                        consumption.controller.ts
     Domändata. Prisuppgifter per mätartyp och giltighetsperiod, ingen motpart.
+
+GET /contractors/:id                                            contractors.controller.ts
+    Samma läsning som `GET /contractors`, en rad i stället för listan, och
+    samma skäl. `findOne` bär organizationId i sitt where och kastar 404 —
+    inte en tom kropp — för en annan organisations id, så endpointen läcker
+    inte heller att raden finns.
+
+GET /contractors                                                contractors.controller.ts
+    Läser HANTVERKARREGISTRET. Ingen @Roles därför att varje roll i
+    organisationen ser tilldelningen på felanmälans detaljvy ändå — den står
+    i ärendets svar och i historiken (MAINTENANCE_ASSIGNED). Att grinda
+    listan men inte tilldelningen hade varit en grind som inte grindar något:
+    samma namn nås ett klick bort.
+
+    GRINDEN ÄR ORG-SCOPNINGEN, inte rollen: `findAll` lägger organizationId i
+    varje where, och ett id från en annan organisation ger 404 i `findOne` —
+    prövat mot riktig Postgres i contractor-assignment.db.spec.ts ("en
+    hantverkare i en ANNAN organisation går inte att tilldela"), med
+    systerraden att den egna organisationens hantverkare fungerar.
+
+    SKRIVVÄGARNA ÄR GRINDADE: POST och PATCH bär @Roles(MANAGER, ADMIN,
+    OWNER), DELETE bara (ADMIN, OWNER). Att välja vem som anlitas är en
+    förvaltningshandling; att se vem som är vald är det inte.
+
+    PERSONDATA: modellen bär INGET personnummer — det är ett aktivt val, se
+    docblocket på `model Contractor`. Kvar är företagsnamn, kontaktperson,
+    e-post och telefon, alltså näringsidkarens kontaktuppgifter. För en
+    enskild firma är de personuppgifter, och de raderas hårt av DELETE
+    (skilt från isActive = false). Ingen hyresgästdata i svaret.
 
 GET /contracts/:leaseId/appendices                              contracts.controller.ts
     Domändata. Ser ut som ett undantag — syskonen GET /contracts/download/:leaseId

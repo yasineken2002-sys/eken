@@ -519,6 +519,37 @@ const TOOL_COL = 32
  */
 const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   [
+    'GET /contractors',
+    'Läser HANTVERKARREGISTRET. Ingen @Roles därför att varje roll i\n' +
+      'organisationen ser tilldelningen på felanmälans detaljvy ändå — den står\n' +
+      'i ärendets svar och i historiken (MAINTENANCE_ASSIGNED). Att grinda\n' +
+      'listan men inte tilldelningen hade varit en grind som inte grindar något:\n' +
+      'samma namn nås ett klick bort.\n' +
+      '\n' +
+      'GRINDEN ÄR ORG-SCOPNINGEN, inte rollen: `findAll` lägger organizationId i\n' +
+      'varje where, och ett id från en annan organisation ger 404 i `findOne` —\n' +
+      'prövat mot riktig Postgres i contractor-assignment.db.spec.ts ("en\n' +
+      'hantverkare i en ANNAN organisation går inte att tilldela"), med\n' +
+      'systerraden att den egna organisationens hantverkare fungerar.\n' +
+      '\n' +
+      'SKRIVVÄGARNA ÄR GRINDADE: POST och PATCH bär @Roles(MANAGER, ADMIN,\n' +
+      'OWNER), DELETE bara (ADMIN, OWNER). Att välja vem som anlitas är en\n' +
+      'förvaltningshandling; att se vem som är vald är det inte.\n' +
+      '\n' +
+      'PERSONDATA: modellen bär INGET personnummer — det är ett aktivt val, se\n' +
+      'docblocket på `model Contractor`. Kvar är företagsnamn, kontaktperson,\n' +
+      'e-post och telefon, alltså näringsidkarens kontaktuppgifter. För en\n' +
+      'enskild firma är de personuppgifter, och de raderas hårt av DELETE\n' +
+      '(skilt från isActive = false). Ingen hyresgästdata i svaret.',
+  ],
+  [
+    'GET /contractors/:id',
+    'Samma läsning som `GET /contractors`, en rad i stället för listan, och\n' +
+      'samma skäl. `findOne` bär organizationId i sitt where och kastar 404 —\n' +
+      'inte en tom kropp — för en annan organisations id, så endpointen läcker\n' +
+      'inte heller att raden finns.',
+  ],
+  [
     'GET /equipment/unit/:unitId',
     'Läser utrustningen i EN lägenhet. Ingen @Roles därför att det är samma\n' +
       'slags läsning som `GET /units/:id`, som inte heller har någon — vad som\n' +
