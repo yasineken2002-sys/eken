@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, Clock, RotateCcw, X } from 'lucide-react'
+import { AlertTriangle, Check, Clock, RotateCcw, X } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatDate } from '@eken/shared'
@@ -32,6 +33,14 @@ interface Props {
  */
 export function AssignmentCard({ assignment: u, onDecide, isDeciding }: Props) {
   const väntar = u.status === 'AWAITING_APPROVAL'
+  // ── BEKRÄFTELSE FÖRE KLICKET, OCH BARA DÄR DEN BETYDER NÅGOT ────────────
+  //
+  // En betalningsmatchning BOKFÖRS vid ett ja. Varje annan sort är skuggläge,
+  // där ingenting händer — och en bekräftelseruta på ett omdöme hade lärt
+  // hyresvärden att klicka bort rutan, vilket gör den värdelös den gång den
+  // gäller pengar. Rutan finns därför bara för den sort som skriver.
+  const bokför = u.kind === 'PAYMENT_MATCH_PROPOSAL'
+  const [bekräftar, setBekräftar] = useState(false)
 
   return (
     <motion.div
@@ -78,7 +87,7 @@ export function AssignmentCard({ assignment: u, onDecide, isDeciding }: Props) {
             : (u.statusReason ?? `Beslutat ${formatDate(u.decidedAt ?? u.createdAt)}`)}
         </span>
 
-        {väntar && (
+        {väntar && !bekräftar && (
           <div className="flex gap-2">
             <Button
               variant="secondary"
@@ -93,7 +102,7 @@ export function AssignmentCard({ assignment: u, onDecide, isDeciding }: Props) {
               variant="primary"
               size="sm"
               disabled={isDeciding}
-              onClick={() => onDecide('APPROVED')}
+              onClick={() => (bokför ? setBekräftar(true) : onDecide('APPROVED'))}
             >
               <Check size={13} strokeWidth={2} />
               Godkänn
@@ -101,6 +110,46 @@ export function AssignmentCard({ assignment: u, onDecide, isDeciding }: Props) {
           </div>
         )}
       </div>
+
+      {väntar && bekräftar && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.15 }}
+          className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3"
+        >
+          <p className="flex items-start gap-2 text-[13px] font-medium text-amber-800">
+            <AlertTriangle size={14} strokeWidth={2} className="mt-0.5 flex-shrink-0" />
+            Det här bokförs när du säger ja
+          </p>
+          {/* KONSEKVENSTEXTEN ORDAGRANT, inte en omformulering. En andra
+              beskrivning av samma effekt hade blivit den som ingen prövat —
+              samma hållning som undo-hintens `skäl`. */}
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-amber-900">{u.consequence}</p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={isDeciding}
+              onClick={() => setBekräftar(false)}
+            >
+              Avbryt
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={isDeciding}
+              onClick={() => {
+                setBekräftar(false)
+                onDecide('APPROVED')
+              }}
+            >
+              <Check size={13} strokeWidth={2} />
+              Ja, matcha och bokför
+            </Button>
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   )
 }

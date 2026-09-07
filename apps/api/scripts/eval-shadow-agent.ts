@@ -269,7 +269,19 @@ async function körBetalningsläget(utanModell: boolean): Promise<void> {
   console.warn(`  regeln svarade INGEN (utan modellanrop) ${regelnej.length}`)
   console.warn(`  gick till modellen                      ${modellfall.length}`)
 
-  const medPost = utfall.filter((u) => u.rättPostIMängden !== null)
+  // ── NÄMNAREN UTESLUTER KONTROLLERNA, OCH DET ÄR EN RÄTTELSE ─────────────
+  //
+  // Första versionen räknade `rättPostIMängden !== null`, alltså varje rad vars
+  // facit pekar på en post. Det tog med de fyra `exakt_ocr`-KONTROLLERNA, som
+  // per konstruktion aldrig når kandidatmängden — regeln svarar INGEN_FRAGA och
+  // avstämningen tar raden. De räknades därför som recall-MISSAR, och riggen
+  // skrev 19/23 = 82,6 % när den verkliga recallen var 19/19.
+  //
+  // Felformen är värd att namnge: ett tal som ser lågt och trovärdigt ut. Ingen
+  // hade ifrågasatt 82,6 %. Det upptäcktes bara genom att provet i
+  // `korpus-betalningar.spec.ts` — som har rätt nämnare — sa 100 % samtidigt.
+  // Två uppräkningar av samma mängd är inte en uppräkning.
+  const medPost = utfall.filter((u) => u.rättPostIMängden !== null && u.regelTyp !== 'INGEN_FRAGA')
   const recall = medPost.filter((u) => u.rättPostIMängden === true).length
   console.warn('')
   console.warn(

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { Injectable, Logger } from '@nestjs/common'
+import { formatCurrency } from '@eken/shared'
 
 import { PrismaService } from '../../../common/prisma/prisma.service'
 import { AiUsageService } from '../../usage/ai-usage.service'
@@ -14,6 +15,8 @@ import {
   type Kandidat,
   type RankadKandidat,
 } from './payment-candidates'
+
+import { RentNoticeType } from '@prisma/client'
 
 import type { Prisma } from '@prisma/client'
 
@@ -233,7 +236,20 @@ export class PaymentShadowService {
     organizationId: string,
   ): Promise<{ kandidater: Kandidat[]; takNått: boolean }> {
     const avier = await this.prisma.rentNotice.findMany({
-      where: { organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+      // ── DEPOSITIONER ÄR UTE, OCH DET ÄR EN SÄKERHETSGRÄNS ────────────────
+      //
+      // En matchning mot en DEPOSIT-avi sätter också `Deposit.status = 'PAID'`
+      // (`reconciliation.service.ts:1683`) — men `unmatchTransaction` har ingen
+      // rad som synkar tillbaka den. En hävd depositionsmatchning lämnar alltså
+      // depositionen kvar som betald, och `refund()` nekar sedan i evighet.
+      // Det är en känd lucka i avstämningen, inte något den här agenten ska
+      // sprida till fler vägar. Funnet av bokförings-experten i granskningen av
+      // bekräftelsetexten.
+      where: {
+        organizationId,
+        status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+        type: RentNoticeType.RENT,
+      },
       select: {
         id: true,
         noticeNumber: true,
@@ -359,23 +375,48 @@ export class PaymentShadowService {
       vald?: RankadKandidat
     },
   ): Promise<BetalningsSkuggUtfall> {
+    // ── FORMEN ÄR `{ entityType, entityId, label }`, INTE `{ fält, värde }` ──
+    //
+    // Läsytan (`apps/web/src/features/assignments`) typar `evidence` som
+    // `{ entityType, entityId, label }` och renderar `label` i en chip. Den
+    // första versionen här skrev `{ fält, värde }` — vilket typcheckar (fältet
+    // är `Json`), går igenom API:et och renderar TOMMA chips med `undefined`
+    // som text. En felform som bara syns i webbläsaren.
+    //
+    // `entityId` är dessutom inte pynt: det är handtaget den dag chipsen blir
+    // klickbara. Ett `label` utan id hade blivit en återvändsgränd som ser
+    // färdig ut.
     const evidence: Array<Record<string, string>> = [
-      { fält: 'Bankrad', värde: `${rad.text} · ${rad.belopp.toFixed(2)} kr` },
-      { fält: 'Bokföringsdag', värde: rad.datum.toISOString().slice(0, 10) },
-      { fält: 'OCR på raden', värde: rad.rawOcr ?? 'saknas' },
+      {
+        entityType: 'BANK_TRANSACTION',
+        entityId: rad.id,
+        label: `${rad.text} · ${rad.belopp.toFixed(2)} kr · ${rad.datum
+          .toISOString()
+          .slice(0, 10)}`,
+      },
+      {
+        entityType: 'OCR',
+        entityId: rad.id,
+        label: rad.rawOcr ? `OCR på raden: ${rad.rawOcr}` : 'Ingen OCR på raden',
+      },
     ]
     for (const k of f.kandidater) {
       evidence.push({
-        fält: `Kandidat ${k.nummer}`,
-        värde:
-          `${k.utestaende.toFixed(2)} kr utestående, förfaller ` +
-          `${k.forfallodatum.toISOString().slice(0, 10)} · ${k.signaler.join('; ')}`,
+        entityType: k.sort === 'AVI' ? 'RENT_NOTICE' : 'INVOICE',
+        entityId: k.id,
+        label:
+          `${k.nummer}: ${k.utestaende.toFixed(2)} kr utestående, förfaller ` +
+          `${k.forfallodatum.toISOString().slice(0, 10)} — ${k.signaler.join('; ')}`,
       })
     }
     if (f.takNått) {
+      // TAKET SYNS FÖR HYRESVÄRDEN, inte bara i loggen. En beskuren
+      // kandidatmängd betyder att rätt avi KAN ha fallit ur, och den som
+      // godkänner ska veta att listan inte är uttömmande.
       evidence.push({
-        fält: 'Varning',
-        värde: `Kandidatmängden beskars av taket ${KANDIDATTAK} — en riktig avi kan ha fallit ur.`,
+        entityType: 'VARNING',
+        entityId: rad.id,
+        label: `Fler än ${KANDIDATTAK} öppna poster — listan ovan kan sakna rätt avi.`,
       })
     }
 
@@ -402,10 +443,7 @@ export class PaymentShadowService {
             .slice(0, 10)}`,
           reasoning: f.reasoning,
           consequence: konsekvenstext(f.vald, rad.belopp),
-          undoHint:
-            'Matchningen går att häva under Avstämning → Häv matchning. Hävningen bokför ett ' +
-            'MOTVERIFIKAT — huvudboken raderar inte, den korrigerar, så både betalningen och ' +
-            'rättelsen syns i efterhand.',
+          undoHint: angertext(f.vald, rad.belopp),
           evidence: evidence as unknown as Prisma.InputJsonArray,
           confidence: f.confidence,
           prediction: f.prediction as Prisma.InputJsonObject,
@@ -455,8 +493,30 @@ export class PaymentShadowService {
  * Planens femte krav ("vad som hade krävt godkännande") betyder något annat här
  * än i agent 1. Där utförs ingenting ens vid ett ja; här UTFÖRS matchningen, och
  * texten måste därför säga vad som bokförs innan hyresvärden trycker. Att visa
- * "godkänn" utan bokföringseffekten hade varit att be om ett samtycke till något
- * som inte står i frågan.
+ * "godkänn" utan bokföringseffekten hade varit att be om ett samtycke till
+ * något som inte står i frågan.
+ *
+ * ── TEXTEN SKILJER PÅ AVI OCH FAKTURA, OCH DET ÄR INGEN NYANS ───────────────
+ *
+ * Första versionen skrev "kravtrappan" för båda. Bokförings-experten fällde
+ * det, och efterkontrollen i källan gav honom rätt: `Invoice` har ingen
+ * `collectionStage`-stege alls. Påminnelsecronen läser
+ * `status: 'OVERDUE'` (`payment-reminder.service.ts:83`), en delbetalning sätter
+ * fakturan till `PARTIAL` (`invoice-payment-status.ts`), och
+ * `markOverdueInvoices` flippar BARA `SENT → OVERDUE`
+ * (`notifications.service.ts:331`). Det finns alltså ingen väg tillbaka från
+ * `PARTIAL` — en delbetald faktura lämnar automatpåminnelserna för gott.
+ *
+ * Att skriva "kravtrappan fortsätter på resten" om en faktura hade varit ett
+ * löfte systemet inte håller, i den mening som är värst: hyresvärden slutar
+ * bevaka något som ingen bevakar.
+ *
+ * ── BELOPPEN GÅR GENOM `formatCurrency` ─────────────────────────────────────
+ *
+ * `toFixed(2)` gav "8450.00 kr" — punkt som decimaltecken och ingen
+ * tusentalsavgränsare, i en text en svensk hyresvärd läser i en bekräftelseruta.
+ * CLAUDE.md kräver `formatCurrency` för alla SEK-belopp, och regeln slutar inte
+ * gälla för att strängen råkar byggas i API:et.
  */
 export function konsekvenstext(vald: RankadKandidat | undefined, belopp: number): string {
   if (!vald) {
@@ -466,17 +526,73 @@ export function konsekvenstext(vald: RankadKandidat | undefined, belopp: number)
     )
   }
   const del = beloppsutfall(belopp, vald.utestaende) === 'DEL'
-  return (
+  const kvar = vald.utestaende - belopp
+  const avi = vald.sort === 'AVI'
+
+  const inledning =
     `Ett ja MATCHAR inbetalningen mot ${vald.nummer} och BOKFÖR den: ` +
-    `${belopp.toFixed(2)} kr debiteras bankkontot (1930) och krediterar ` +
-    `kundfordran (1510). ` +
-    (del
-      ? `Beloppet räcker inte till hela ${vald.utestaende.toFixed(2)} kr — ` +
-        `${(vald.utestaende - belopp).toFixed(2)} kr står kvar som skuld, och ` +
-        'kravtrappan fortsätter på resten.'
-      : `${vald.nummer} blir därmed reglerad, och kravtrappan slutar räkna på den.`) +
-    ' Verifikationen får ett eget nummer och går inte att radera; en felaktig ' +
-    'matchning rättas med ett motverifikat under Avstämning → Häv matchning.'
+    `${formatCurrency(belopp)} debiteras bankkontot (1930) och krediterar ` +
+    'kundfordran (1510).'
+
+  let följd: string
+  if (del && avi) {
+    följd =
+      `Beloppet räcker inte till hela ${formatCurrency(vald.utestaende)} — ` +
+      `${formatCurrency(kvar)} står kvar som skuld, och kravtrappan fortsätter på resten.`
+  } else if (del) {
+    // FAKTURA + DELBETALNING. Se noten ovan: den här meningen är inte en
+    // omskrivning av avi-varianten, den säger motsatsen — och den är sann.
+    följd =
+      `Beloppet räcker inte till hela ${formatCurrency(vald.utestaende)} — ` +
+      `${formatCurrency(kvar)} står kvar som skuld på fakturan. OBSERVERA: en delbetald ` +
+      'faktura får INGA automatiska påminnelser längre. Du måste bevaka resten själv.'
+  } else if (avi) {
+    följd = `${vald.nummer} blir därmed reglerad, och kravtrappan slutar räkna på den.`
+  } else {
+    följd = `${vald.nummer} blir därmed reglerad.`
+  }
+
+  return `${inledning} ${följd} Verifikationen får ett eget nummer och går inte att radera.`
+}
+
+/**
+ * ÅNGERVÄGEN — VILLKORAD, ALDRIG KATEGORISK.
+ *
+ * Texten stod först som ett ovillkorat löfte: "matchningen går att häva under
+ * Avstämning → Häv matchning". Det är FALSKT för det vanligaste utfallet av ett
+ * ja på ett fakturaförslag. `unmatchTransaction` kastar uttryckligen för en
+ * faktura vars status är `PAID` (`reconciliation.service.ts:2632`) med
+ * motiveringen att Betald är ett slutläge och att kreditfakturan ännu inte är
+ * byggd. Ett löfte om en väg som inte finns är värre än ett nej — hyresvärden
+ * trycker ja i tron att misstaget går att rätta.
+ *
+ * Avi-vägen är en annan sak och där HÖLL löftet: en betald avi kan återöppnas
+ * (`reconciliation.service.ts:3053`) och hävningen bokför ett motverifikat.
+ *
+ * Men även den bär ett förbehåll som inte stod någonstans: kravsteget
+ * återställs ALDRIG till vad det var före matchningen, det nollställs till
+ * `NONE` (medvetet, se kommentaren vid rad 3048). En avi som stod på
+ * INKASSO_READY börjar alltså om från "ingen påminnelse skickad".
+ */
+export function angertext(vald: RankadKandidat | undefined, belopp: number): string {
+  if (!vald) return 'Inget att ångra — ingen matchning görs.'
+  const del = beloppsutfall(belopp, vald.utestaende) === 'DEL'
+  if (vald.sort === 'FAKTURA' && !del) {
+    return (
+      'GÅR INTE ATT ÅNGRA. En faktura som blivit helt betald kan inte avmatchas — Betald är ' +
+      'ett slutläge i fakturans statusmaskin, och kreditfaktura är ännu inte byggt. En ' +
+      'felaktig matchning måste rättas för hand i bokföringen. Kontrollera fakturanumret ' +
+      'innan du säger ja.'
+    )
+  }
+  return (
+    'Matchningen går att häva under Avstämning → Häv matchning. Hävningen bokför ett ' +
+    'MOTVERIFIKAT — huvudboken raderar inte, den korrigerar, så både betalningen och ' +
+    'rättelsen syns i efterhand. ' +
+    (vald.sort === 'AVI'
+      ? 'Observera att avins kravsteg INTE återställs till vad det var före matchningen: ' +
+        'avin börjar om från "ingen påminnelse skickad".'
+      : 'Fakturan går tillbaka till sin tidigare status.')
   )
 }
 

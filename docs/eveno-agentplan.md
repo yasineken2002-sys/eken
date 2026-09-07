@@ -2352,6 +2352,123 @@ förbifarten, och det är precis det Del 6 finns för att förhindra.
 den omatchade betalningen är den enda återkommande frågan i pengaflödet där en
 människa i dag står utan förslag alls.
 
+### Läge 2026-09-08 — ETAPP A ÄR BYGGD, mätt mot `4eb856ca`
+
+Raden ovan sa "ingenting i det här avsnittet är byggt". Det gäller inte längre
+för etapp A, och de övriga etapperna är fortfarande orörda.
+
+**Producenten.** `apps/api/src/ai/shadow/payment/`: kö (`ai-payment-shadow`,
+härlett `jobId`), worker, `PaymentShadowService` och de deterministiska reglerna
+i `payment-candidates.ts`. Sömmen är `matchTransaction === false`, hakad på tre
+ställen — fil-ingesten, API-ingesten och `autoMatchAll` — med `enqueueSafely`,
+som aldrig kastar. Svepet i `AiShadowSweepService` är skyddsnätet, i samma
+låsta pass som felanmälans.
+
+**Reglerna går före modellen, strukturellt.** `provaKandidater` avgör exakt-OCR
+(ingen fråga alls) och tomma kandidatmängder (`INGEN`) utan ett modellanrop.
+Modellen får bara välja bland kandidater regeln tagit fram — enumen i
+verktygsschemat gör fritext omöjlig, och en grind i tjänsten är andra spärren
+för den dag providern byts. Det är agent 1:s lärdom tillämpad i förväg i
+stället för i efterhand.
+
+**Egen flagga.** `Organization.shadowPaymentAgentEnabled`, default av. En
+hyresvärd ska kunna pröva agent 1 utan att därmed ha sagt ja till agent 2 — ett
+misstag i den första betyder fel hantverkare, i den andra fel fordran.
+
+**BETEENDEÄNDRINGEN, och det är den enda.** Är flaggan PÅ slutar avstämningens
+fuzzy-gren bokföra och lämnar raden till ett förslag. Det är
+bokförings-expertens villkor 1. Beslutet är medvetet DELVIS: att stänga grenen
+för alla i samma ändring som inför agenten hade tagit bort en fungerande
+automatik från någon som inte bett om ett alternativ. Det generella
+avskaffandet är Del 15:s fråga.
+
+**Ett ja UTFÖR matchningen**, till skillnad från agent 1 där ett godkännande
+inte gör något. Därför en egen sort (`PAYMENT_MATCH_PROPOSAL`) och inte ett
+`TOOL_PROPOSAL`: två rader som betyder olika saker vid samma knapptryck måste gå
+att skilja åt i databasen. Utförandet går genom avstämningens EGEN
+`manualMatch`, med människan som aktör — ingen andra skrivväg. Kortet visar
+bokföringseffekten i klartext i en bekräftelseruta före klicket, och bara för
+den här sorten.
+
+**Facit** skrivs av `manualMatch` (matchad) och `ignoreTransaction` (`INGEN`),
+och NOLLSTÄLLS av `unmatchTransaction`. En hävning säger att den förra
+matchningen var fel, inte vad som var rätt — att skriva `INGEN` hade räknat ett
+okänt svar som ett facit. Träffgraden är en fråga med en EGEN rad för
+betalningar (`SKUGGFALT_BETALNING`: avi, belopp, motpart).
+
+#### Mätt — regelhalvan, 40 bankrader mot 14 poster
+
+Modellhalvan är INTE körd: dev-nyckeln saknar krediter. Talen nedan är
+`provaKandidater` ensam, och de är mätta med `pnpm --filter @eken/api exec tsx
+scripts/eval-shadow-agent.ts --betalningar --utan-modell` — noll API-anrop.
+
+| mått | utfall |
+| --- | --- |
+| regeln svarade `INGEN_FRAGA` (kontroll) | 4 av 40 |
+| regeln svarade `INGEN` utan modellanrop | 10 av 40 |
+| gick vidare till modellen | 26 av 40 |
+| **recall** — rätt post fanns bland kandidaterna | **19/19 · 100 %** |
+| regeln ensam rätt på sina `INGEN` | 10/10 · 100 % |
+
+**Korpusen ändrade koden två gånger, och båda gångerna åt rätt håll.** Det är
+skälet till att den byggdes före mätningen och inte efter:
+
+1. **Exakt OCR räckte inte.** Regeln stod som "exakt OCR → automatiken tar
+   den". En DUBBELBETALNING bär ett KORREKT OCR — hyresgästen betalar samma avi
+   två gånger — och avstämningen avvisar den som en överbetalning. Raden blev
+   UNMATCHED och agenten föreslog aldrig något. Tystnad med pengar på kontot.
+   Villkoret är nu att beloppet också ska rymmas i det utestående.
+2. **Namnet måste bära ensamt, men bara nedåt.** Regeln krävde namn OCH belopp
+   inom en bred tolerans, och missade fyra av fem DELBETALNINGAR — en
+   delbetalning kan vara hur liten som helst. Asymmetrin är hela poängen: under
+   det utestående är normalt, över är misstänkt. Utan takgränsen uppåt blir en
+   återbetald deposition en kandidat mot mottagarens egen hyresavi.
+
+**Två grupper är med flit överrepresenterade** — dubbelbetalning och
+hyra + avgift i en rad. Det är de fall där ett fel kostar mest. Talen ska
+alltså inte läsas som en förväntad träffgrad i drift.
+
+#### Vad bokförings-experten fällde i bekräftelsetexten
+
+Texten som visas FÖRE klicket gick till granskning, och två fynd var CRITICAL.
+Båda efterkontrollerade i källan, båda lagade.
+
+**1. Ett ovillkorat löfte om en ångerväg som inte finns.** Ångertexten sa att
+matchningen alltid går att häva. `unmatchTransaction` kastar uttryckligen för en
+faktura vars status är `PAID` (`reconciliation.service.ts:2632`): *"Betald är
+ett slutläge … Det finns i dag ingen väg att häva en betald faktura."* Det
+vanligaste utfallet av ett ja på ett fakturaförslag hade alltså varit
+oåterkalleligt, med ett löfte om motsatsen på skärmen. Texten är nu villkorad
+och säger GÅR INTE ATT ÅNGRA i just det fallet.
+
+**2. "Kravtrappan" betyder inte samma sak för en faktura.** `Invoice` har ingen
+`collectionStage`-stege. Påminnelsecronen läser `status: 'OVERDUE'`
+(`payment-reminder.service.ts:83`), en delbetalning sätter fakturan till
+`PARTIAL`, och `markOverdueInvoices` flippar bara `SENT → OVERDUE`
+(`notifications.service.ts:331`) — det finns ingen väg tillbaka. En delbetald
+faktura lämnar automatpåminnelserna **för gott**. Texten sa "kravtrappan
+fortsätter på resten" för båda kandidattyperna; för fakturor var det ett löfte
+systemet inte håller, i den värsta meningen — hyresvärden slutar bevaka något
+ingen bevakar. De fyra varianterna är nu åtskilda.
+
+**Ett tredje fynd ändrade koden, inte texten.** Depositioner togs UT ur
+kandidatmängden. En matchning mot en `DEPOSIT`-avi sätter `Deposit.status =
+'PAID'`, men `unmatchTransaction` synkar aldrig tillbaka den — en hävd
+depositionsmatchning lämnar depositionen betald och `refund()` nekar sedan i
+evighet. Det är en känd lucka i avstämningen, och agenten ska inte sprida den
+till fler vägar.
+
+Ett fjärde, mindre: beloppen gick genom `toFixed(2)` och blev "8450.00 kr" i en
+text en svensk hyresvärd läser. De går nu genom `formatCurrency`.
+
+#### Vad som INTE är byggt
+
+Etapp B (korpus ≥ 80 % med modellen), C (torrläge) och D (skarpt läge) står
+orörda. Etapp D är fortfarande **tom** av samma skäl som ovan:
+`match_bank_transaction` är `MOT_HYRESGAST` och inte delegerbar. Att ett
+godkännande utför matchningen ÄR inte skarpt läge — det är en människas ja per
+handling, startat från en annan skärm.
+
 ---
 
 ## Del 15 — Öppna beslut
