@@ -1,3 +1,4 @@
+import { BetalningskorpusSchema } from './betalningsrapport'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -27,33 +28,9 @@ import { INGEN_AVI } from '../payment/payment-fields'
  * hur bra den är. Den siffran hör hemma i statusblocket i planen, där den kan
  * bära ett datum och en sha.
  */
-const korpus = JSON.parse(readFileSync(join(__dirname, 'korpus-betalningar.json'), 'utf8')) as {
-  poster: Array<{
-    id: string
-    sort: 'AVI' | 'FAKTURA'
-    nummer: string
-    ocr: string
-    utestaende: number
-    forfallodatum: string
-    motpartId: string
-    motpartNamn: string
-  }>
-  bankrader: Array<{
-    id: string
-    datum: string
-    text: string
-    belopp: number
-    rawOcr: string | null
-    facit: {
-      avi: string
-      belopp: 'FULL' | 'DEL'
-      motpart: string
-      grupp: string
-      skal: string
-      regel?: string
-    }
-  }>
-}
+const korpus = BetalningskorpusSchema.parse(
+  JSON.parse(readFileSync(join(__dirname, 'korpus-betalningar.json'), 'utf8')),
+)
 
 const kandidater: Kandidat[] = korpus.poster.map((p) => ({
   id: p.id,
@@ -90,7 +67,7 @@ describe('mätkorpus för agent 2 — formen', () => {
   it('varje facit.avi är antingen INGEN eller ett id som finns bland posterna', () => {
     const ids = new Set(korpus.poster.map((p) => p.id))
     for (const r of korpus.bankrader) {
-      if (r.facit.avi === INGEN_AVI) continue
+      if (r.facit.avi === null || r.facit.avi === INGEN_AVI) continue
       expect(ids.has(r.facit.avi)).toBe(true)
     }
   })
@@ -120,7 +97,7 @@ describe('mätkorpus för agent 2 — formen', () => {
     // eller facit fel. Att låta facit beräknas av funktionen hade gjort provet
     // till en tautologi.
     for (const r of korpus.bankrader) {
-      if (r.facit.avi === INGEN_AVI) continue
+      if (r.facit.avi === null || r.facit.avi === INGEN_AVI) continue
       const post = korpus.poster.find((p) => p.id === r.facit.avi)!
       expect(beloppsutfall(r.belopp, post.utestaende)).toBe(r.facit.belopp)
     }
@@ -152,7 +129,7 @@ describe('vad de deterministiska reglerna klarar UTAN modellen', () => {
 
   it('rätt post finns bland kandidaterna för varje rad som har en (recall)', () => {
     const medPost = korpus.bankrader.filter(
-      (r) => r.facit.avi !== INGEN_AVI && r.facit.regel !== 'INGEN_FRAGA',
+      (r) => r.facit.avi !== null && r.facit.avi !== INGEN_AVI && r.facit.regel !== 'INGEN_FRAGA',
     )
     const missade: string[] = []
     for (const r of medPost) {

@@ -21,8 +21,8 @@ import { RentNoticeType } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 
 /** Samma modell som agent 1. Billig, och uppgiften är ett val ur en meny. */
-const MODEL = 'claude-haiku-4-5-20251001'
-const MAX_TOKENS = 1024
+export const BETALNINGSMODELL = 'claude-haiku-4-5-20251001'
+export const BETALNING_MAX_TOKENS = 1024
 const FORSLAG_VERKTYGSNAMN = 'valj_avi'
 
 /** Verktyget förslaget gäller. Aldrig delegerbart — `MOT_HYRESGAST`, Del 6. */
@@ -327,8 +327,8 @@ export class PaymentShadowService {
     kandidater: readonly RankadKandidat[],
   ): Promise<{ avi: string; confidence: number; reasoning: string } | null> {
     const response = await this.anthropic.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
+      model: BETALNINGSMODELL,
+      max_tokens: BETALNING_MAX_TOKENS,
       // Temperatur 0 av samma mätskäl som agent 1: samplingsvarians lägger sig
       // ovanpå modellfelet i träffgraden, och de går inte att skilja åt sedan.
       temperature: 0,
@@ -341,7 +341,7 @@ export class PaymentShadowService {
       .logUsage({
         organizationId,
         endpoint: 'analysis',
-        model: MODEL,
+        model: BETALNINGSMODELL,
         usage: response.usage,
         isAutomated: true,
         source: 'payment_shadow',
@@ -352,7 +352,7 @@ export class PaymentShadowService {
     // annars fått samma behandling, och ingen kunde skilja dem åt i efterhand.
     if (response.stop_reason === 'max_tokens') {
       this.logger.warn(
-        `[ai-payment-shadow] svaret trunkerades av max_tokens (${MAX_TOKENS}) — inget förslag.`,
+        `[ai-payment-shadow] svaret trunkerades av max_tokens (${BETALNING_MAX_TOKENS}) — inget förslag.`,
       )
       return null
     }

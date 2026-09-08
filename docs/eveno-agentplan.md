@@ -128,6 +128,38 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ## Del 3 — Byggordningen
 
+### Fortsättning 2026-09-08 — Agent 2, etapp B
+
+Agent 2:s **etapp A är implementerad i #846**. Den äldre lägesbilden nedan som
+säger att agent 2 inte påbörjats är därmed passerad. Etapp A:s driftkriterium
+(flaggan på för en riktig organisation) har inte verifierats i detta arbete.
+
+Nästa bygge är **etapp B:s mätning**. Riggen har rättats: tidigare försvann
+avvisade modellsvar ur nämnaren, motparten mättes inte och ett aktivt `INGEN`
+saknade beloppsutfall. Båda armarna mäts nu på samma facitfall, för samtliga
+fält i `SKUGGFALT_BETALNING`. Bara saknat facit och förväntade OCR-kontroller
+undantas; saknade svar ligger kvar. Felaktigt bortsorterade kontrollfall fäller.
+
+Regelkörningen ger **19/19 kandidat-recall**, fyra kontroller och **10/36 rätt
+per fält**, med 26 obesvarade fall. Det är reglernas täckning och riktighet
+över hela bedömningsmängden, inte modellens träffgrad. Korpus och facit är
+oförändrade.
+
+**Etapp B är fortfarande BLOCKERAT för godkännande:** en riktig modellkörning
+med utvecklingsnyckel och krediter måste nå minst 80 % på avi, belopp OCH
+motpart. Den lokala miljön saknar utvecklingsnyckel. Simulerade modellsvar i
+prov är bevis för mätriggen, aldrig för modellens kvalitet. C och D har inte
+byggts i denna fortsättning.
+
+Kör från `apps/api`: `pnpm eval:shadow --betalningar --utan-modell` för den
+kostnadsfria armen, eller `pnpm eval:shadow --betalningar` med dev-nyckel.
+Rapporterna sparas separat som `senaste-betalningskorning.utan-modell.json`
+och `senaste-betalningskorning.modell.json` i `src/ai/shadow/eval/`, med SHA,
+markering av ändrad arbetskopia, korpushash, modell, tokenförbrukning och
+kostnadsuppskattning. Ett underkänt modellresultat ger exitkod 1. API-fel
+stoppar vidare anrop men lämnar kvar samtliga facitfall och markerar kostnaden
+som ofullständig.
+
 ### Läge `e9227ee4` — 2026-09-08
 
 **Mätt mot koden, inte mot minnet av den.** Raderna nedan är samma spår-regel som
