@@ -96,6 +96,18 @@ export class StrictStringConstraint implements ValidatorConstraintInterface {
  * kontroll strängen klarar. En negativ kanariefågel i vakten håller mängden
  * smal; glider den till TS-typen krävs dekoratorn på 118 fält i onödan.
  *
+ * ── SÄTT DEN ALDRIG PÅ ETT ARRAYFÄLT ────────────────────────────────────────
+ *
+ * `@IsString({ each: true })` prövar varje ELEMENT; den här dekoratorn prövar
+ * `typeof` på HELA värdet och avvisar därför varje array. Ett arrayfält som får
+ * `@StrictString()` slutar fungera helt — det är inte en skärpning utan ett
+ * sönderslaget fält.
+ *
+ * Det behövs inte heller, och det är mätt: `enableImplicitConversion` konverterar
+ * inte arrayELEMENT. `["a", { b: 1 }, 5]` kom ut oförändrad genom pipen, så
+ * `each: true` prövar redan det klienten skickade. Vakten undantar formen
+ * uttryckligen, och kanariefågel 15 kräver att undantaget står kvar.
+ *
  * Ordningen bland fältets övriga dekoratorer saknar betydelse —
  * class-transformer kör hela sin fas före class-validator. Uppmätt i #842.
  */

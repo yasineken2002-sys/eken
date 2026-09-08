@@ -54,6 +54,28 @@
  *
  * Den ser heller inte ett fält vars TS-typ bär en form men som saknar validator
  * helt — de valideras inte alls, vilket är ett annat problem.
+ *
+ * ── TVÅ SYNTAXFORMER PARSERN ÄR BLIND FÖR ──────────────────────────────────
+ *
+ * Båda uppmätta mot `oskyddade()`, båda med NOLL förekomster i dag. De står här
+ * därför att en vakt som inte skriver ut sin gräns läses som mer än den är:
+ *
+ *     export const AnonDto = class {          ← ANONYMT KLASSUTTRYCK
+ *       @IsString() zzOskyddad!: string       ← hittas INTE
+ *     }
+ *
+ *     export class CtorDto {                            ← PARAMETEREGENSKAP
+ *       constructor(@IsString() public falt: string) {} ← hittas INTE
+ *     }
+ *
+ * `KLASS` kräver ett namn efter `class` och är ankrad till satsens början, så
+ * ett klassuttryck efter `=` matchar aldrig. Parameteregenskapen faller på
+ * djupspärren `d2 !== 0`, som finns för att utesluta `example:` inne i
+ * `@ApiProperty({ … })` och inte kan skilja de två fallen åt.
+ *
+ * Ingen av formerna används i repot (`= class` respektive `constructor(` med en
+ * validator: noll träffar i `*.dto.ts`). Börjar de användas är det HÄR luckan
+ * sitter — inte i FORMER-tabellen.
  */
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -67,6 +89,9 @@ const TRAD = 'apps/api/src'
 
 /** `@Namn(` — literalt namn, ingen teckenklass. Se CLAUDE.md om `\w`/`\b`. */
 const dek = (namn) => new RegExp(`@${namn}\\s*\\(`)
+
+/** `@IsString({ each: true })` — arrayformen. Inget `\b`: se CLAUDE.md. */
+const ARRAYFORM = /@IsString\s*\(\s*\{[^}]*each\s*:\s*true/
 
 /**
  * FORMERNA. Ett fält som `tillhor` en form ska bära `dekorator`.
@@ -86,7 +111,14 @@ export const FORMER = [
   {
     dekorator: 'StrictString',
     modul: 'common/contract/strict-string.decorator',
-    tillhor: (f) => dek('IsString').test(f.dekoratorer),
+    // `@IsString({ each: true })` är UNDANTAGET, och det är mätt: pipen
+    // konverterar inte arrayELEMENT — `["a", { b: 1 }, 5]` kom ut oförändrad
+    // genom `enableImplicitConversion`. `each: true` prövar alltså varje element
+    // mot det värde klienten skickade, vilket är precis vad dekoratorn finns
+    // för. Att kräva den här hade dessutom SÖNDRAT fältet: StrictString prövar
+    // `typeof varde === 'string'` på HELA värdet, så en array avvisas alltid.
+    // Utan undantaget blir vakten en instruktion att göra fältet trasigt.
+    tillhor: (f) => dek('IsString').test(f.dekoratorer) && !ARRAYFORM.test(f.dekoratorer),
     skada:
       'Pipen kör String(värdet) före validatorn, så { "a": 1 } blir "[object Object]". ' +
       'Strängen SER UT som data, passerar varje längdkontroll, och lagras.',
@@ -266,6 +298,10 @@ function kanariefåglar() {
   //     Faller den har medlemskapet glidit från @IsString() till TS-typen, och
   //     vakten kräver plötsligt dekoratorn på 118 fält som inte behöver den.
   lagg('m.dto.ts', `export class M {\n  @IsUUID()\n  zzIdentitet!: string\n}\n`)
+  // 15. NEGATIV — @IsString({ each: true }) på en array får INTE krävas bära
+  //     dekoratorn. Faller den är vakten en instruktion att söndra fältet:
+  //     StrictString prövar typeof på HELA värdet, så en array avvisas alltid.
+  lagg('p.dto.ts', `export class P {\n  @IsString({ each: true })\n  zzLista!: string[]\n}\n`)
 
   // ── FÖRBJUDNA DATUMVALIDATORER ──────────────────────────────────────────
   // 10. POSITIV — @IsDateString(), aliaset som stod kvar på 36 fält.
@@ -312,6 +348,10 @@ function kanariefåglar() {
       'KANARIEFÅGEL 13: ett @IsUUID()-fält krävdes bära @StrictString() — medlemskapet har glidit från @IsString() till TS-typen.',
     ],
     [
+      !saknas('zzLista'),
+      'KANARIEFÅGEL 15: @IsString({ each: true }) krävdes bära @StrictString() — vakten instruerar nu att söndra arrayfält.',
+    ],
+    [
       saknas('zzProsaskyddad'),
       'KANARIEFÅGEL 14a: en KOMMENTAR som nämner @StrictString() frikände ett oskyddat fält — vakten läser prosa som kod.',
     ],
@@ -356,7 +396,7 @@ function selfTest() {
     for (const f of fel) console.error(`  ${f}`)
     process.exit(1)
   }
-  console.warn('✅ Strikt koercion, självtest: 15 sonder gröna')
+  console.warn('✅ Strikt koercion, självtest: 16 sonder gröna')
   console.warn('   BOOLESK FORM')
   console.warn('    1 POSITIV  ett påhittat oskyddat fält fälls')
   console.warn('    2 POSITIV  ENRADSFORMEN hittas (företrädaren missade den)')
@@ -369,6 +409,7 @@ function selfTest() {
   console.warn('    8 NEGATIV  ett skyddat strängfält fälls inte')
   console.warn('    9 POSITIV  strängformens ENRADSFORM hittas')
   console.warn('   13 NEGATIV  @IsUUID() på ett strängTYPAT fält krävs INTE bära dekoratorn')
+  console.warn('   15 NEGATIV  @IsString({ each: true }) krävs INTE bära den — arrayelement koerceras ej')
   console.warn('   FÖRBJUDNA DATUMVALIDATORER')
   console.warn('   10 POSITIV  @IsDateString() fälls')
   console.warn('   11 POSITIV  @IsISO8601() fälls')
