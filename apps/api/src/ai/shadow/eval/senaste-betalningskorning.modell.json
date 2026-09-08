@@ -1,13 +1,13 @@
 {
-  "skapad": "2026-09-08T15:17:29.732Z",
-  "sha": "c524bd58fe08f0b656c9f2c9efc97b716f7e26f9",
-  "arbetskopiaAndrad": false,
+  "skapad": "2026-09-08T15:22:51.016Z",
+  "sha": "48fe4a5de605988e5735df57b4c3f46eb9e4739a",
+  "arbetskopiaAndrad": true,
   "korpusSha256": "4dea0f990fe0e3e8a78ca689f374eec00f681865da4b03989320afa6087d168a",
   "lage": "MED_MODELL",
   "modell": "claude-haiku-4-5-20251001",
   "maxTokens": 1024,
   "kostnad": {
-    "usd": 0.06884,
+    "usd": 0.078262,
     "komplett": true,
     "prisInPerMtok": 1,
     "prisUtPerMtok": 5,
@@ -55,43 +55,43 @@
     {
       "falt": "avi",
       "etikett": "Avi eller faktura",
-      "ratt": 31,
+      "ratt": 35,
       "antal": 36,
       "besvarade": 36,
       "saknadeSvar": 0,
-      "procent": 86.11111111111111
+      "procent": 97.22222222222223
     },
     {
       "falt": "belopp",
       "etikett": "Belopp",
-      "ratt": 33,
+      "ratt": 36,
       "antal": 36,
       "besvarade": 36,
       "saknadeSvar": 0,
-      "procent": 91.66666666666667
+      "procent": 100
     },
     {
       "falt": "motpart",
       "etikett": "Motpart",
-      "ratt": 32,
+      "ratt": 35,
       "antal": 36,
       "besvarade": 36,
       "saknadeSvar": 0,
-      "procent": 88.88888888888889
+      "procent": 97.22222222222223
     }
   ],
   "skillnadProcentenheter": [
     {
       "falt": "avi",
-      "skillnad": 58.333333333333336
+      "skillnad": 69.44444444444446
     },
     {
       "falt": "belopp",
-      "skillnad": 63.88888888888889
+      "skillnad": 72.22222222222223
     },
     {
       "falt": "motpart",
-      "skillnad": 61.11111111111111
+      "skillnad": 69.44444444444446
     }
   ],
   "tekniskaFel": [],
@@ -132,11 +132,11 @@
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 5,
+          "ratt": 6,
           "antal": 6,
           "besvarade": 6,
           "saknadeSvar": 0,
-          "procent": 83.33333333333333
+          "procent": 100
         },
         {
           "falt": "belopp",
@@ -193,29 +193,29 @@
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 2,
+          "ratt": 5,
           "antal": 5,
           "besvarade": 5,
           "saknadeSvar": 0,
-          "procent": 40
+          "procent": 100
         },
         {
           "falt": "belopp",
           "etikett": "Belopp",
-          "ratt": 2,
+          "ratt": 5,
           "antal": 5,
           "besvarade": 5,
           "saknadeSvar": 0,
-          "procent": 40
+          "procent": 100
         },
         {
           "falt": "motpart",
           "etikett": "Motpart",
-          "ratt": 2,
+          "ratt": 5,
           "antal": 5,
           "besvarade": 5,
           "saknadeSvar": 0,
-          "procent": 40
+          "procent": 100
         }
       ]
     },
@@ -376,11 +376,11 @@
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
           "besvarade": 4,
           "saknadeSvar": 0,
-          "procent": 100
+          "procent": 75
         },
         {
           "falt": "belopp",
@@ -394,11 +394,11 @@
         {
           "falt": "motpart",
           "etikett": "Motpart",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
           "besvarade": 4,
           "saknadeSvar": 0,
-          "procent": 100
+          "procent": 75
         }
       ]
     },
@@ -559,11 +559,11 @@
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 3,
+          "ratt": 4,
           "antal": 4,
           "besvarade": 4,
           "saknadeSvar": 0,
-          "procent": 75
+          "procent": 100
         },
         {
           "falt": "belopp",
@@ -577,11 +577,11 @@
         {
           "falt": "motpart",
           "etikett": "Motpart",
-          "ratt": 3,
+          "ratt": 4,
           "antal": 4,
           "besvarade": 4,
           "saknadeSvar": 0,
-          "procent": 75
+          "procent": 100
         }
       ]
     }
@@ -825,7 +825,7 @@
       },
       "regler": null,
       "kombinerat": {
-        "avi": "p09",
+        "avi": "p01",
         "belopp": "FULL",
         "motpart": "t1"
       },
@@ -945,9 +945,9 @@
       },
       "regler": null,
       "kombinerat": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
+        "avi": "p02",
+        "belopp": "DEL",
+        "motpart": "t2"
       },
       "modellstatus": "SVAR"
     },
@@ -965,9 +965,9 @@
       },
       "regler": null,
       "kombinerat": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
+        "avi": "p04",
+        "belopp": "DEL",
+        "motpart": "t4"
       },
       "modellstatus": "SVAR"
     },
@@ -985,9 +985,9 @@
       },
       "regler": null,
       "kombinerat": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
+        "avi": "p08",
+        "belopp": "DEL",
+        "motpart": "t8"
       },
       "modellstatus": "SVAR"
     },
@@ -1125,9 +1125,9 @@
       },
       "regler": null,
       "kombinerat": {
-        "avi": "INGEN",
+        "avi": "p09",
         "belopp": "FULL",
-        "motpart": "OKAND"
+        "motpart": "t1"
       },
       "modellstatus": "SVAR"
     },
@@ -1357,9 +1357,9 @@
       },
       "regler": null,
       "kombinerat": {
-        "avi": "p01",
+        "avi": "INGEN",
         "belopp": "FULL",
-        "motpart": "t1"
+        "motpart": "OKAND"
       },
       "modellstatus": "SVAR"
     },
@@ -1413,8 +1413,8 @@
     }
   ],
   "usage": {
-    "tokensIn": 42505,
-    "tokensUt": 5267,
+    "tokensIn": 49837,
+    "tokensUt": 5685,
     "modellanrop": 26,
     "komplett": true
   }

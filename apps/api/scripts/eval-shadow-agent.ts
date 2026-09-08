@@ -109,8 +109,13 @@ interface KorpusArende {
  * körningar. Regelhalvan mäts dessutom i CI av `korpus-betalningar.spec.ts`.
  */
 async function körBetalningsläget(utanModell: boolean): Promise<void> {
+  const kontroll = process.argv.includes('--betalningskontroll')
   const kalltext = readFileSync(
-    join(__dirname, '../src/ai/shadow/eval/korpus-betalningar.json'),
+    join(
+      __dirname,
+      '../src/ai/shadow/eval/',
+      kontroll ? 'korpus-betalningar-kontroll.json' : 'korpus-betalningar.json',
+    ),
     'utf8',
   )
   const korpus = BetalningskorpusSchema.parse(JSON.parse(kalltext))
@@ -168,9 +173,11 @@ async function körBetalningsläget(utanModell: boolean): Promise<void> {
   const fil = join(
     __dirname,
     '../src/ai/shadow/eval/',
-    utanModell
-      ? 'senaste-betalningskorning.utan-modell.json'
-      : 'senaste-betalningskorning.modell.json',
+    kontroll
+      ? `senaste-betalningskontroll.${utanModell ? 'utan-modell' : 'modell'}.json`
+      : utanModell
+        ? 'senaste-betalningskorning.utan-modell.json'
+        : 'senaste-betalningskorning.modell.json',
   )
   writeFileSync(fil, JSON.stringify(sparad, null, 2) + '\n')
   console.warn(`KORPUS: ${rapport.antal} bankrader, ${rapport.kontroller.antal} kontroller`)
