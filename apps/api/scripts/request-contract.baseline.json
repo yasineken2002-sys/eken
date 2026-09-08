@@ -1,5 +1,5 @@
 {
-  "total": 27,
+  "total": 23,
   "poster": [
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
@@ -71,20 +71,8 @@
       ]
     },
     {
-      "fil": "apps/web/src/features/settings/api/plan.api.ts",
-      "medlemmar": ["POST '/ai-usage/buy-credits' → INLINE-LITERAL"]
-    },
-    {
       "fil": "apps/web/src/features/settings/api/settings.api.ts",
       "medlemmar": ["PATCH '/organizations/me' → UpdateOrganizationInput"]
-    },
-    {
-      "fil": "apps/web/src/features/users/api/users.api.ts",
-      "medlemmar": [
-        "PATCH `/users/${id}/role` → INLINE-LITERAL",
-        "POST '/users/invite' → InviteUserInput",
-        "POST `/users/${id}/reactivate` → INLINE-LITERAL"
-      ]
     }
   ]
 }

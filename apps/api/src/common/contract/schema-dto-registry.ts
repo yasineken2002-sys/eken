@@ -1,3 +1,7 @@
+import { InviteUserSchema, UpdateUserRoleSchema, BuyCreditsSchema } from '@eken/shared'
+import { InviteUserDto } from '../../users/dto/invite-user.dto'
+import { UpdateUserRoleDto } from '../../users/dto/update-user-role.dto'
+import { BuyCreditsDto } from '../../ai-usage/dto/buy-credits.dto'
 import {
   CreateExpenseSchema,
   ReverseEntrySchema,
@@ -1229,5 +1233,32 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { chooseToken: 'val-abc123', userId: '11111111-2222-4333-8444-555555555555' },
     ogiltig: { chooseToken: 'val-abc123', userId: 'u'.repeat(65) },
     ogiltigVarfor: 'userId över 64 tecken är inte ett av våra',
+  },
+  {
+    endpoint: 'POST /users/invite',
+    inputTyp: 'InviteUserInput',
+    schema: InviteUserSchema,
+    dto: InviteUserDto,
+    giltig: { email: 'anna@example.se', firstName: 'Anna', lastName: 'Andersson', role: 'MANAGER' },
+    ogiltig: { email: 'anna@example.se', firstName: 'Anna', lastName: 'Andersson', role: 'OWNER' },
+    ogiltigVarfor: 'OWNER kan inte tilldelas via inbjudan',
+  },
+  {
+    endpoint: 'PATCH /users/:id/role',
+    inputTyp: 'UpdateUserRoleInput',
+    schema: UpdateUserRoleSchema,
+    dto: UpdateUserRoleDto,
+    giltig: { role: 'ACCOUNTANT' },
+    ogiltig: { role: 'OWNER' },
+    ogiltigVarfor: 'OWNER kan inte tilldelas via rollbyte',
+  },
+  {
+    endpoint: 'POST /ai-usage/buy-credits',
+    inputTyp: 'BuyCreditsInput',
+    schema: BuyCreditsSchema,
+    dto: BuyCreditsDto,
+    giltig: { amount: 500 },
+    ogiltig: { amount: 101 },
+    ogiltigVarfor: 'bara paketen 100, 500 och 1000 kan köpas; mellanliggande belopp avvisas',
   },
 ]

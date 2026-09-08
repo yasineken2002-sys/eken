@@ -1,3 +1,12 @@
+import {
+  ASSIGNABLE_ROLES,
+  InviteUserSchema,
+  UpdateUserRoleSchema,
+  BuyCreditsSchema,
+} from '@eken/shared'
+import { InviteUserDto } from '../users/dto/invite-user.dto'
+import { UpdateUserRoleDto } from '../users/dto/update-user-role.dto'
+import { BuyCreditsDto } from '../ai-usage/dto/buy-credits.dto'
 /**
  * KONTRAKTET I RUNTIME — schemat och DTO:n ska säga SAMMA SAK.
  *
@@ -647,4 +656,101 @@ describe('G3: betalsättet betyder samma sak på båda pengavägarna', () => {
     expect(schematGodtar(MarkNoticePaidSchema, utan.avi)).toBe(false)
     expect(await pipenGodtar(MarkPaidDto, utan.avi)).toBe(false)
   })
+})
+
+describe('users och kreditköp — kontrakt genom produktionspipen', () => {
+  const inbjudan = { email: 'anna@example.se', firstName: 'Anna', lastName: 'Andersson' }
+
+  describe.each([
+    ['inbjudan', InviteUserSchema, InviteUserDto, inbjudan],
+    ['rollbyte', UpdateUserRoleSchema, UpdateUserRoleDto, {}],
+  ] as const)('%s', (_namn, schema, dto, grund) => {
+    it.each(ASSIGNABLE_ROLES)('%s godtas av båda', (role) =>
+      paritet('tilldelningsbar roll', schema, dto, { ...grund, role }, true),
+    )
+    it.each(['OWNER', 'owner', 'SUPERADMIN', '', 'ADMIN ', undefined, null])(
+      'rollen %s avvisas av båda',
+      (role) => paritet('otillåten roll', schema, dto, { ...grund, role }, false),
+    )
+  })
+
+  it.each([
+    ['firstName', 0, false],
+    ['firstName', 1, true],
+    ['firstName', 100, true],
+    ['firstName', 101, false],
+    ['lastName', 0, false],
+    ['lastName', 1, true],
+    ['lastName', 100, true],
+    ['lastName', 101, false],
+  ] as const)('inbjudan %s längd %s', (falt, langd, vantat) =>
+    paritet(
+      'namngräns',
+      InviteUserSchema,
+      InviteUserDto,
+      { ...inbjudan, role: ASSIGNABLE_ROLES[0], [falt]: 'x'.repeat(langd) },
+      vantat,
+    ),
+  )
+
+  it.each([
+    ['anna@example.se', true],
+    ['anna+tag@example.se', true],
+    ['anna@xn--vxj-loa0j.se', true],
+    ['', false],
+    ['inte-en-adress', false],
+    ['anna@', false],
+  ] as const)('inbjudan email %s', (email, vantat) =>
+    paritet(
+      'e-postform',
+      InviteUserSchema,
+      InviteUserDto,
+      { ...inbjudan, role: ASSIGNABLE_ROLES[0], email },
+      vantat,
+    ),
+  )
+
+  // #851: samma form som övriga kontrakt, men biblioteken godtar olika adresser.
+  // Skillnaden mäts uttryckligen; detta prov väljer ingen ny valideringspolicy.
+  it.each(['anna@växjö.se', 'anna@örebro.se', 'användare@example.se'])(
+    'befintlig e-postskillnad: pipen godtar %s, Zod avvisar',
+    async (email) => {
+      const kropp = { ...inbjudan, role: ASSIGNABLE_ROLES[0], email }
+      expect(schematGodtar(InviteUserSchema, kropp)).toBe(false)
+      expect(await pipenGodtar(InviteUserDto, kropp)).toBe(true)
+    },
+  )
+
+  it.each([
+    [-1, false],
+    [0, false],
+    [99, false],
+    [100, true],
+    [100.5, false],
+    [101, false],
+    [499, false],
+    [500, true],
+    [501, false],
+    [999, false],
+    [1000, true],
+    [1001, false],
+    [undefined, false],
+    [null, false],
+  ] as const)('kreditpaketet %s', (amount, vantat) =>
+    paritet('paketgräns', BuyCreditsSchema, BuyCreditsDto, { amount }, vantat),
+  )
+
+  it('kreditköpet godtar inte klientstyrda fakturafält', () =>
+    paritet('okänt prisfält', BuyCreditsSchema, BuyCreditsDto, { amount: 100, price: 1 }, false))
+
+  it.each(['100', '500', '1000'])(
+    'befintlig skillnad: pipen konverterar amount %s till tal, Zod kräver tal',
+    async (amount) => {
+      const kropp = { amount }
+      expect(schematGodtar(BuyCreditsSchema, kropp)).toBe(false)
+      expect(await pipe.transform(kropp, { type: 'body', metatype: BuyCreditsDto })).toEqual({
+        amount: Number(amount),
+      })
+    },
+  )
 })

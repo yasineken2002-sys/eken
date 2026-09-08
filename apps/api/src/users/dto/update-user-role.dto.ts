@@ -1,3 +1,4 @@
+import type { UpdateUserRoleInput, SammaNycklar } from '@eken/shared'
 import { IsIn } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 import { ASSIGNABLE_ROLES } from '@eken/shared'
@@ -9,8 +10,11 @@ import { ASSIGNABLE_ROLES } from '@eken/shared'
  */
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number]
 
-export class UpdateUserRoleDto {
+export class UpdateUserRoleDto implements UpdateUserRoleInput {
   @ApiProperty({ enum: ASSIGNABLE_ROLES })
   @IsIn(ASSIGNABLE_ROLES)
   role!: AssignableRole
 }
+
+const _kontrakt: SammaNycklar<UpdateUserRoleDto, UpdateUserRoleInput> = true
+void _kontrakt
