@@ -9,6 +9,20 @@ export interface ReadingFinding {
   meterId: string
   code: 'DATA' | 'OVERLAP' | 'DECREASE' | 'HIGH_RATE'
   explanation: string
+  sourceReadings: readonly ReviewReading[]
+  trend?: {
+    current: ReadingRate
+    comparison: readonly ReadingRate[]
+    median: number
+    threshold: number
+  }
+}
+export interface ReadingRate {
+  reading: ReviewReading
+  previousReading?: ReviewReading
+  quantity: number
+  days: number
+  perDay: number
 }
 const DAY = 86400000
 const format = (value: number) => value.toLocaleString('sv-SE', { maximumFractionDigits: 2 })
@@ -29,19 +43,33 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
       (a, b) =>
         (Date.parse(a.periodEnd) || 0) - (Date.parse(b.periodEnd) || 0) || a.id.localeCompare(b.id),
     )
-    const endCounts = new Map<number, number>()
+    const readingsByEnd = new Map<number, ReviewReading[]>()
     for (const r of sorted) {
       const end = Date.parse(r.periodEnd)
-      endCounts.set(end, (endCounts.get(end) ?? 0) + 1)
+      const sameEnd = readingsByEnd.get(end) ?? []
+      sameEnd.push(r)
+      readingsByEnd.set(end, sameEnd)
     }
-    let previous: { end: number; value: number; type: string } | undefined
-    let rates: number[] = []
+    let previous: { end: number; value: number; type: string; reading: ReviewReading } | undefined
+    let rates: ReadingRate[] = []
     for (const r of sorted) {
       const start = Date.parse(r.periodStart)
       const end = Date.parse(r.periodEnd)
       const value = typeof r.value === 'string' && !r.value.trim() ? NaN : Number(r.value)
-      const add = (code: ReadingFinding['code'], explanation: string) =>
-        findings.push({ readingId: r.id, meterId: r.meterId, code, explanation })
+      const add = (
+        code: ReadingFinding['code'],
+        explanation: string,
+        sourceReadings: readonly ReviewReading[] = [r],
+        trend?: ReadingFinding['trend'],
+      ) =>
+        findings.push({
+          readingId: r.id,
+          meterId: r.meterId,
+          code,
+          explanation,
+          sourceReadings,
+          ...(trend ? { trend } : {}),
+        })
       if (
         !Number.isFinite(start) ||
         !Number.isFinite(end) ||
@@ -57,16 +85,18 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         rates = []
         continue
       }
-      if ((endCounts.get(end) ?? 0) > 1) {
+      const sameEnd = readingsByEnd.get(end) ?? []
+      if (sameEnd.length > 1) {
         add(
           'OVERLAP',
           'Flera avläsningar för samma mätare har samma periodslut. Det går inte att välja en säker jämförelse.',
+          sameEnd,
         )
         previous = undefined
         rates = []
         continue
       }
-      const current = { end, value, type: r.readingType }
+      const current = { end, value, type: r.readingType, reading: r }
       if (
         previous &&
         (start < previous.end || (r.readingType === 'PERIOD_VOLUME' && start === previous.end))
@@ -74,6 +104,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         add(
           'OVERLAP',
           'Mätperioden överlappar föregående period. Kontrollera perioderna innan du bedömer förbrukningen.',
+          [previous.reading, r],
         )
         previous = current
         rates = []
@@ -87,6 +118,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         add(
           'DECREASE',
           'Mätarställningen är lägre än föregående avläsning. Kontrollera värdet och om mätaren har bytts.',
+          [previous.reading, r],
         )
         previous = current
         rates = []
@@ -106,6 +138,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         quantity = value - previous.value
         days = (end - previous.end) / DAY
       }
+      const previousReading = previous?.reading
       previous = current
       if (quantity === undefined || days === undefined || days <= 0) continue
       const rate = quantity / days
@@ -113,18 +146,37 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         rates = []
         continue
       }
+      const measured: ReadingRate = {
+        reading: r,
+        ...(r.readingType === 'CUMULATIVE' && previousReading ? { previousReading } : {}),
+        quantity,
+        days,
+        perDay: rate,
+      }
       if (rates.length >= 3) {
-        const baseline = [...rates.slice(-3)].sort((a, b) => a - b)[1]!
+        const comparison = rates.slice(-3)
+        const baseline = comparison.map((entry) => entry.perDay).sort((a, b) => a - b)[1]!
         if (baseline > 0) {
           trendAssessed++
           if (rate >= baseline * 3)
             add(
               'HIGH_RATE',
               `Förbrukningen per dag är ${format(rate / baseline)} gånger medianen för de tre föregående jämförbara perioderna (${format(rate)} mot ${format(baseline)} mätenheter/dag). Kontrollera avläsning och användning; ökningen kan ha en naturlig förklaring.`,
+              [
+                ...new Map(
+                  [...comparison, measured]
+                    .flatMap((entry) => [
+                      ...(entry.previousReading ? [entry.previousReading] : []),
+                      entry.reading,
+                    ])
+                    .map((reading) => [reading.id, reading]),
+                ).values(),
+              ],
+              { current: measured, comparison, median: baseline, threshold: baseline * 3 },
             )
         }
       }
-      rates.push(rate)
+      rates.push(measured)
     }
   }
   return {
