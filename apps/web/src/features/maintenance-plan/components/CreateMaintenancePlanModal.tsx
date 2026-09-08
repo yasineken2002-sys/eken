@@ -1,3 +1,7 @@
+import { CreateMaintenancePlanSchema } from '@eken/shared'
+import type { CreateMaintenancePlanInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -47,7 +51,7 @@ export function CreateMaintenancePlanModal({ open, onClose }: Props) {
   })
 
   const onSubmit = async (values: FormValues) => {
-    await create.mutateAsync({
+    const kropp: CreateMaintenancePlanInput = {
       title: values.title,
       propertyId: values.propertyId,
       category: values.category as MaintenancePlanCategory,
@@ -57,7 +61,13 @@ export function CreateMaintenancePlanModal({ open, onClose }: Props) {
       ...(values.interval ? { interval: values.interval } : {}),
       ...(values.lastDoneYear ? { lastDoneYear: values.lastDoneYear } : {}),
       ...(values.description ? { description: values.description } : {}),
-    })
+    }
+    const fel = kontraktsfel(CreateMaintenancePlanSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    await create.mutateAsync(kropp)
     reset()
     onClose()
   }

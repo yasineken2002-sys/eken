@@ -1,3 +1,7 @@
+import { UpdateMaintenancePlanSchema } from '@eken/shared'
+import type { UpdateMaintenancePlanInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import { X, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -31,7 +35,13 @@ export function MaintenancePlanDetailPanel({ plan, onClose }: Props) {
   const deletePlan = useDeletePlan()
 
   const handleStatus = (status: MaintenancePlan['status']) => {
-    void update.mutateAsync({ id: plan.id, dto: { status } })
+    const kropp: UpdateMaintenancePlanInput = { status }
+    const fel = kontraktsfel(UpdateMaintenancePlanSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    void update.mutateAsync({ id: plan.id, dto: kropp })
   }
 
   const handleDelete = async () => {

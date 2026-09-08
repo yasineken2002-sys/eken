@@ -1,5 +1,5 @@
 {
-  "total": 16,
+  "total": 9,
   "poster": [
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
@@ -8,18 +8,6 @@
     {
       "fil": "apps/web/src/features/assignments/api/assignments.api.ts",
       "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
-    },
-    {
-      "fil": "apps/web/src/features/backfill/api/backfill.api.ts",
-      "medlemmar": ["POST `/avisering/backfill/${leaseId}/confirm` → OTYPAD"]
-    },
-    {
-      "fil": "apps/web/src/features/contract-batch/api/contractBatch.api.ts",
-      "medlemmar": [
-        "POST `/import/contract-batches/${batchId}/confirm-safe` → INLINE-LITERAL",
-        "POST `/import/contract-batches/${batchId}/rows/${rowId}/confirm` → ConfirmRowBody",
-        "POST `/import/contract-batches/${batchId}/rows/${rowId}/skip` → INLINE-LITERAL"
-      ]
     },
     {
       "fil": "apps/web/src/features/inbox/api/inbox.api.ts",
@@ -34,19 +22,8 @@
       ]
     },
     {
-      "fil": "apps/web/src/features/maintenance-plan/api/maintenance-plan.api.ts",
-      "medlemmar": [
-        "PATCH `/maintenance-plans/${id}` → UpdateMaintenancePlanInput",
-        "POST '/maintenance-plans' → CreateMaintenancePlanInput"
-      ]
-    },
-    {
       "fil": "apps/web/src/features/maintenance/api/maintenance.api.ts",
       "medlemmar": ["PATCH `/maintenance/${id}` → UpdateTicketInput"]
-    },
-    {
-      "fil": "apps/web/src/features/misc-charges/api/misc-charges.api.ts",
-      "medlemmar": ["POST '/misc-charges' → CreateMiscChargeBody"]
     },
     {
       "fil": "apps/web/src/features/settings/api/settings.api.ts",
