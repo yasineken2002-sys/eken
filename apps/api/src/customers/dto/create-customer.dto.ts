@@ -1,8 +1,9 @@
+import type { CreateCustomerInput, SammaNycklar } from '@eken/shared'
 import { IsEnum, IsString, IsEmail, IsOptional } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 
-export class CreateCustomerDto {
+export class CreateCustomerDto implements CreateCustomerInput {
   @ApiProperty({ enum: ['INDIVIDUAL', 'COMPANY'] })
   @IsEnum(['INDIVIDUAL', 'COMPANY'])
   type!: 'INDIVIDUAL' | 'COMPANY'
@@ -90,3 +91,6 @@ export class CreateCustomerDto {
   @StrictString()
   notes?: string
 }
+
+const _kontrakt: SammaNycklar<CreateCustomerDto, CreateCustomerInput> = true
+void _kontrakt

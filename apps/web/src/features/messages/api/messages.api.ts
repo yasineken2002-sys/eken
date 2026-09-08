@@ -1,3 +1,5 @@
+import type { SendMessageInput } from '@eken/shared'
+export type SendMessagePayload = SendMessageInput
 import { get, post } from '@/lib/api'
 
 export interface SentMessage {
@@ -35,17 +37,10 @@ export interface MessageStats {
   totalRecipients: number
 }
 
-export interface SendMessagePayload {
-  tenantId?: string
-  sendToAll?: boolean
-  subject: string
-  content: string
-}
-
-export const sendMessage = (payload: SendMessagePayload) =>
+export const sendMessage = (payload: SendMessageInput) =>
   post<SentMessage>('/messages/send', payload)
 
-export const retryMessage = (id: string) => post<SentMessage>(`/messages/${id}/retry`, {})
+export const retryMessage = (id: string) => post<SentMessage>(`/messages/${id}/retry`)
 
 export const getMessages = () => get<SentMessage[]>('/messages')
 
