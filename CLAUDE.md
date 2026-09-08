@@ -369,6 +369,39 @@ Lokalt gäller därför shardat, och det ska SKRIVAS UT: `--shard=i/4` gav
 det är en svit och tjugo tester FÄRRE än CI:s tal — skillnaden är miljöberoende
 specar och är inte spårad; ett lokalt tal är alltså inte ens samma mängd.
 
+**Mätt 2026-09-08: fyra shards räcker inte längre — och ett SÄNKT tak är det som
+gör att den ryms.** Sviten är nu **471 sviter / 5347 tester**. Fyra shards med
+Nodes default-heap gav **SIGTERM i alla fyra**, två av dem utan att hinna skriva
+en enda rad. Åtta shards med ett BUNDET tak gick igenom:
+
+```
+--shard=i/4, default-heap                     4 av 4 SIGTERM (exit 143)
+--shard=i/8, --max-old-space-size=1400        7 av 8 gröna
+                                              shard 8: FATAL heap OOM (exit 134)
+--shard=8/8, --max-old-space-size=2000        grön
+```
+
+Det ser ut att motsäga raden ovan och gör det inte. Raden ovan mäter ett HÖJT
+tak (3200) mot maskinens fria minne: processen får växa fortare än maskinen har
+kvar och dödas UTIFRÅN. Ett SÄNKT tak gör tvärtom — det tvingar V8 att städa i
+stället för att växa, så processen håller sig under kärnans gräns. De två
+riktningarna är alltså inte samma ratt: **taket ska ligga under det maskinen kan
+avvara, inte över det den behöver.**
+
+Priset står i shard 8: under taket blir en tung shard i stället dödad INIFRÅN
+(exit 134, `FATAL … heap out of memory`). De två exitkoderna säger vilket håll
+man skjutit över på — **143 = sänk taket eller dela mer, 134 = höj det för just
+den sharden.**
+
+Samma grepp räddar `pnpm typecheck`, som också SIGTERM:ade här (exit 143, med
+`Terminated` och noll typfel utskrivna — alltså ett resursfel som ser ut som ett
+byggfel):
+
+```
+pnpm typecheck                                       SIGTERM (exit 143)
+node --max-old-space-size=1800 tsc --noEmit -p …     exit 0, noll fel
+```
+
 **Beviset är CI**, som kör hela sviten i en process på en ren runner:
 **416/416 sviter, 4218/4218 tester, 172 s.** Att öppna PR:en för att få den
 körningen är rätt åtgärd när maskinen inte räcker — det är inte att kringgå
