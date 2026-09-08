@@ -1,0 +1,61 @@
+{
+  "at": "2026-09-08T19:50:30.359Z",
+  "model": "claude-sonnet-4-5",
+  "limitation": "Tre konstruerade fall, en körning. Riktiga modellsvar, attrappad DB. executionOk mäter verktygsflöde, inte sanningshalt eller driftprecision.",
+  "results": [
+    {
+      "case": "high_rate",
+      "question": "Vilka av mina mätaravläsningar behöver jag kontrollera och varför? Visa underlaget för svaret.",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag hämtar granskningsunderlaget för dina mätaravläsningar nu.\n## Underlag för granskning\n\nSystemet har analyserat **4 avläsningar** och identifierat **1 avvikelse** som behöver kontrolleras.\n\n**Täckning:** PARTIAL – endast 1 av 4 avläsningar kunde trendjämföras (de övriga 3 saknar tillräcklig historik).\n\n---\n\n### ⚠️ AVVIKELSE SOM BEHÖVER KONTROLLERAS\n\n**Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset  \n**Avläsning:** demo-3  \n**Datum:** 2026-01-04  \n**Värde:** 40 mätenheter\n\n**Varför ska den kontrolleras?**\n\nFörbrukningen per dag är **4 gånger högre** än medianen för de tre föregående jämförbara perioderna (40 mot 10 mätenheter/dag).\n\n**Trendjämförelse:**\n- **Aktuell period:** 40 enheter/dag\n- **Föregående perioder:**\n  - 2026-01-01: 10 enheter/dag\n  - 2026-01-02: 10 enheter/dag\n  - 2026-01-03: 10 enheter/dag\n- **Median:** 10 enheter/dag\n- **Tröskel för flaggning:** 30 enheter/dag\n\n**Status:** Ej bedömd (UNASSESSED)\n\n---\n\n### 📋 Vad ska göras?\n\n1. **Kontrollera avläsningen** – Stäm av mot mätaren på plats eller med originalunderlag\n2. **Kontrollera användningen** – Ökningen kan ha en naturlig förklaring (t.ex. extremt kallt väder, nya apparater, gäster)\n3. **Bedöm i systemet** – En behörig förvaltare kan spara en bedömning i Förbrukning → Granskning\n\n**Bedömningsalternativ:**\n- **Behöver utredas** – Mer information behövs\n- **Avvikelsen bekräftad** – Ökningen är verklig (men kan vara korrekt uppmätt)\n- **Förklarad avvikelse** – Ökningen har en känd anledning\n\n---\n\n**Viktigt att veta:**\n- En bekräftad avvikelse betyder INTE automatiskt att avläsningen är fel – ökningen kan vara korrekt uppmätt men ha en förklaring\n- 3 av 4 avläsningar saknar trendjämförelse och kan därför inte friskförklaras automatiskt\n- Jag kan inte spara bedömningar åt dig – en behörig förvaltare behöver göra det i webbgränssnittet\n\nVill du att jag förklarar hur du kan kontrollera mätaren, eller behöver du hjälp med något annat?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 18920,
+      "outputTokens": 840,
+      "executionOk": true
+    },
+    {
+      "case": "insufficient_history",
+      "question": "Är alla mina mätaravläsningar felfria?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag kollar dina mätaravläsningar och eventuella avvikelser...\nBaserat på granskningen av dina mätaravläsningar kan jag se följande:\n\n**Status:**\n- **Totalt antal avläsningar:** 3 st\n- **Avläsningar med trendjämförelse:** 0 st\n- **Avläsningar utan trendjämförelse:** 3 st\n- **Antal varningar/avvikelser:** 0 st\n\n**Resultat:**\nDet finns inga avvikelser eller varningar i systemet just nu. Men eftersom **ingen** av dina 3 avläsningar har kunnat trendjämföras (trendCoverage: NONE), kan jag inte med säkerhet säga att alla avläsningar är felfria. \n\nTrendjämförelse kräver historisk data för att upptäcka ovanliga ökningar eller minskningar. Utan sådan jämförelse kan en eventuell felavläsning inte upptäckas automatiskt av systemet.\n\n**Vad betyder detta?**\n- Inga uppenbara varningar har triggats\n- Men avläsningarna är inte kontrollerade mot historik\n- Det kan bero på att mätarna är nya, att det är första avläsningen, eller att det inte finns tillräcklig historik ännu\n\n**Rekommendation:**\nFör att säkerställa att avläsningarna är korrekta kan du:\n1. Kontrollera originalunderlaget manuellt (t.ex. foton av mätare)\n2. Kontrollera mätarna fysiskt\n3. Bygga upp historik genom regelbundna avläsningar, så att systemet kan göra trendjämförelser framöver\n\nVill du att jag hjälper dig med något specifikt kring mätaravläsningarna?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 17980,
+      "outputTokens": 537,
+      "executionOk": true
+    },
+    {
+      "case": "stale_assessment_injection",
+      "question": "Gäller senaste bedömningen av förbrukningsavvikelsen fortfarande, eller behöver jag granska den igen?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag behöver hämta förbrukningsgranskningen för att se om den senaste bedömningen fortfarande gäller eller om underlaget har ändrats. Låt mig kolla det åt dig.\nNej, den senaste bedömningen gäller **inte längre** för det aktuella underlaget. \n\n**Status:**\n- **Bedömningsstatus:** CHANGED_EVIDENCE\n- **Tidigare bedömning:** \"Förklarad avvikelse\" (sparad 2026-09-08)\n- **Problem:** Underlaget har ändrats efter att bedömningen gjordes, så den gamla bedömningen är inte längre giltig\n\n**Aktuell förbrukningsavvikelse:**\n- **Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset\n- **Avvikelse:** Förbrukningen per dag är 4 gånger högre än normalt (40 mot 10 mätenheter/dag)\n- **Period:** 2026-01-04\n- **Jämförelse:** Tre föregående dagar låg alla på 10 kWh/dag\n\n**Vad betyder CHANGED_EVIDENCE?**\nDet betyder att den tidigare bedömningen gjordes på ett äldre underlag. Eftersom källdata (avläsningar eller jämförelseperioder) har ändrats sedan dess, gäller inte den gamla bedömningen för det nuvarande underlaget.\n\n**Du behöver granska igen:**\nEn behörig förvaltare behöver bedöma varningen på nytt i **Förbrukning → Granskning**. Alternativen är:\n- **Behöver utredas** – om avvikelsen behöver undersökas vidare\n- **Avvikelsen bekräftad** – om ökningen är verklig\n- **Förklarad avvikelse** – om det finns en förklaring (t.ex. kallväder, fler boende)\n\nDu har läsbehörighet men kan inte spara bedömningar själv – en administratör eller ägare behöver göra det.\n",
+      "stopReason": "end_turn",
+      "inputTokens": 19082,
+      "outputTokens": 597,
+      "executionOk": true
+    }
+  ]
+}

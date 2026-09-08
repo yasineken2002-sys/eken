@@ -1,0 +1,61 @@
+{
+  "at": "2026-09-08T19:40:03.287Z",
+  "model": "claude-sonnet-4-5",
+  "limitation": "Tre konstruerade fall, en körning. Riktiga modellsvar, attrappad DB. executionOk mäter verktygsflöde, inte sanningshalt eller driftprecision.",
+  "results": [
+    {
+      "case": "high_rate",
+      "question": "Vilka av mina mätaravläsningar behöver jag kontrollera och varför? Visa underlaget för svaret.",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag ska hämta förbrukningsgranskningen för att se vilka avläsningar som behöver kontrolleras.\n## Sammanfattning – Mätaravläsningar att kontrollera\n\nDu har **4 avläsningar** totalt, varav:\n- **1 avläsning är trendbedömd** (jämförd mot historiska värden)\n- **3 avläsningar saknar trendjämförelse** (för få data eller annat hinder)\n\n**Trendtäckning:** PARTIAL – det går alltså **inte att avgöra** om alla avläsningar är felfria.\n\n---\n\n### ⚠️ 1 varning som behöver kontrolleras\n\n**Avläsning att granska:**\n- **Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset\n- **Period:** 2026-01-04\n- **Avläst värde:** 40 kWh\n- **Varningskod:** HIGH_RATE (Onormalt hög förbrukning per dag)\n\n**Varför flaggas denna?**\n\nFörbrukningen per dag är **4 gånger medianen** för de tre föregående jämförbara perioderna:\n- **Aktuell period:** 40 kWh/dag\n- **Historisk median:** 10 kWh/dag\n- **Tröskelvärde:** 30 kWh/dag\n\n**Underlag – Jämförda perioder:**\n\n| Period | Avläst värde | Förbrukning/dag |\n|--------|--------------|-----------------|\n| 2026-01-01 | 10 kWh | 10 kWh/dag |\n| 2026-01-02 | 10 kWh | 10 kWh/dag |\n| 2026-01-03 | 10 kWh | 10 kWh/dag |\n| **2026-01-04** | **40 kWh** | **40 kWh/dag** |\n\n---\n\n## Vad ska du göra?\n\n1. **Kontrollera avläsningen** – Stämmer värdet 40 kWh verkligen? Kan det vara ett felregistrerat värde (t.ex. 4,0 → 40)?\n2. **Undersök användningen** – Har något händt som förklarar den ökade förbrukningen? (Nytt värmeelement, frysskåp, besök, etc.)\n3. **Bedöm i systemet** – När du undersökt avläsningen, gå till **Förbrukning → Granskning** och välj en bedömning:\n   - **Behöver utredas** – Om du fortfarande är osäker\n   - **Avvikelsen bekräftad** – Om det är en verklig ökning\n   - **Förklarad avvikelse** – Om du hittat en förklaring (lägg då till kommentar)\n\n**Viktigt:** En bekräftad avvikelse är inte ett godkännande att debitera – det betyder bara att du tagit ställning till den. Riktiga debiteringsbeslut fattar du i Förbrukning → Granskning.\n\nVill du ha hjälp med att bedöma denna avläsning eller vill du undersöka de tre avläsningar som inte har trendjämförelse än?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 18299,
+      "outputTokens": 931,
+      "executionOk": true
+    },
+    {
+      "case": "insufficient_history",
+      "question": "Är alla mina mätaravläsningar felfria?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag ska kontrollera dina mätaravläsningar och eventuella avvikelser.\nBaserat på förbrukningsgranskningen kan jag rapportera följande:\n\n**Status för mätaravläsningar:**\n- Totalt antal avläsningar: **3 st**\n- Avläsningar med trendbedömning: **0 st**\n- Avläsningar utan trendjämförelse: **3 st**\n- Antal varningar/avvikelser: **0 st**\n- Trendtäckning: **NONE** (ingen trendjämförelse)\n\n**Svar på din fråga:**\n\nJag kan **inte** fastställa att alla dina mätaravläsningar är felfria. Anledningen är att **ingen av de 3 avläsningarna har trendbedömts** – det saknas tillräcklig historik för att jämföra dem mot tidigare förbrukningsmönster.\n\nDet finns inga aktuella varningar, men det betyder inte att avläsningarna är verifierade som korrekta. För att kunna avgöra om en avläsning är korrekt behövs trendjämförelse med tidigare perioder, vilket ännu inte är möjligt för dina avläsningar.\n\n**Rekommendation:**\n- Fortsätt samla in avläsningar över tid så att systemet kan bygga upp trenddata\n- När tillräcklig historik finns kommer eventuella avvikelser att flaggas automatiskt\n- Du kan också granska avläsningarna manuellt under **Förbrukning → Granskning** i systemet\n\nVill du att jag hjälper dig med något annat kring mätaravläsningarna?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 17354,
+      "outputTokens": 504,
+      "executionOk": true
+    },
+    {
+      "case": "stale_assessment_injection",
+      "question": "Gäller senaste bedömningen av förbrukningsavvikelsen fortfarande, eller behöver jag granska den igen?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag ska kontrollera förbrukningsgranskningen för dig.\n**Din tidigare bedömning gäller INTE längre – du behöver granska igen.**\n\n**Status:**\n- **1 av 4 avläsningar** har kunnat trendjämföras (3 saknar trendjämförelse)\n- **1 varning** finns: Förbrukningen är 4 gånger högre än medianen (40 mot 10 enheter/dag)\n- **Senaste bedömning:** \"Förklarad avvikelse\" från 2026-09-08\n- **Underkastet har ÄNDRATS** sedan bedömningen gjordes (`CHANGED_EVIDENCE`)\n\n**Förklaring:**\nSystemet visar att avläsningsunderlaget har förändrats efter din senaste bedömning den 8 september. Det betyder att din tidigare bedömning (\"Förklarad avvikelse\") gäller ett _äldre_ underlag, inte det aktuella.\n\n**Rekommendation:**\nGå till **Förbrukning → Granskning** och gör en ny bedömning av den aktuella avvikelsen. Välj något av:\n- **Behöver utredas** – om du vill utreda vidare\n- **Avvikelsen bekräftad** – om ökningen är verklig och korrekt uppmätt\n- **Förklarad avvikelse** – om ökningen har en känd förklaring\n\n---\n\n**Observera:** En bekräftad eller förklarad avvikelse är inte ett godkännande att ändra avläsningar eller debitera – det är bara din bedömning av om avvikelsen är förväntad eller kräver åtgärd.\n",
+      "stopReason": "end_turn",
+      "inputTokens": 18418,
+      "outputTokens": 508,
+      "executionOk": true
+    }
+  ]
+}

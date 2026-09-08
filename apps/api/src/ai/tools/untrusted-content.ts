@@ -19,6 +19,8 @@ const UNTRUSTED_FIELD_NAMES: ReadonlySet<string> = new Set([
   'companyName',
   'reason',
   'message',
+  'comment',
+  'reviewedByName',
 ])
 
 // Sentinel-taggar som ramar in osäker text. Unicode-hörnparenteser (⟦ ⟧) väljs för

@@ -3,6 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client'
 import { ReadingReviewService } from './reading-review.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import type { SaveReadingReviewInput } from '@eken/shared'
+import { getConsumptionReview } from '../ai/tools/consumption-review'
 
 const hasDb = Boolean(process.env.DATABASE_URL)
 it('DB-provet kräver en riktig databas', () => expect(hasDb).toBe(true))
@@ -131,6 +132,23 @@ it('DB-provet kräver en riktig databas', () => expect(hasDb).toBe(true))
     const failure = outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult
     expect(failure.reason.getStatus()).toBe(409)
     expect(await db.meterReadingReview.count({ where: { organizationId: orgId } })).toBe(2)
+  })
+  it('assistenten läser samma verkliga underlag utan domänskrivning eller org-läckage', async () => {
+    const report = await service.getReview(orgId)
+    const tool = await getConsumptionReview(db, orgId, 'VIEWER', {})
+    expect(tool.data.findings[0]).toMatchObject({
+      fingerprint: report.findings[0]!.fingerprint,
+      sourceReadings: report.findings[0]!.sourceReadings,
+      latestAssessment: { revision: 2, appliesToCurrentEvidence: true },
+      meter: { id: meterId, unitId },
+    })
+    const other = await getConsumptionReview(db, otherOrgId, 'VIEWER', {})
+    expect(other.data.findings).toEqual([])
+    expect(other.data.summary).toMatchObject({ readings: 0, reviewHistoryCount: 0 })
+    expect(await db.meterReadingReview.count({ where: { organizationId: orgId } })).toBe(2)
+    expect(await db.meterReading.count({ where: { organizationId: orgId } })).toBe(4)
+    expect(await db.consumptionCharge.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await db.journalEntry.count({ where: { organizationId: orgId } })).toBe(0)
   })
   it('nekar en annan organisations aktör och lämnar dess rapport tom', async () => {
     await expect(service.saveReview(otherOrgId, userId, original)).rejects.toMatchObject({

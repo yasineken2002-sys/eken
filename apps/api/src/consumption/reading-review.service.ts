@@ -1,114 +1,21 @@
-import { createHash } from 'node:crypto'
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { MeterReadingReview } from '@prisma/client'
-import { READING_REVIEW_RULE_VERSION, reviewReadings } from '@eken/shared'
 import type {
-  ReadingFinding,
   ReadingReviewSnapshot,
-  ReviewReading,
   ReadingReviewDecision,
   SaveReadingReviewInput,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { loadReadingReview, presentReadingReviewDecision } from './reading-review.query'
+export { readingFindingFingerprint } from './reading-review.query'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
-
-/** Binder underlaget till regelversionen; är ingen behörighet eller ett godkännande. */
-export function readingFindingFingerprint(finding: ReadingFinding): string {
-  // Explicit fältlista och ordning. Etiketter, språk och annan presentationsdata
-  // ska inte ge en annan identitet; originalvärden och källrader ska göra det.
-  const sources = [...finding.sourceReadings]
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .map((r) => ({
-      id: r.id,
-      organizationId: r.organizationId,
-      meterId: r.meterId,
-      value: r.value,
-      readingType: r.readingType,
-      periodStart: r.periodStart,
-      periodEnd: r.periodEnd,
-    }))
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        ruleVersion: READING_REVIEW_RULE_VERSION,
-        readingId: finding.readingId,
-        meterId: finding.meterId,
-        code: finding.code,
-        sources,
-      }),
-    )
-    .digest('hex')
-}
 
 @Injectable()
 export class ReadingReviewService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getReview(organizationId: string): Promise<ReadingReviewSnapshot> {
-    return this.loadReview(organizationId, this.prisma)
-  }
-
-  private async loadReview(
-    organizationId: string,
-    db: Pick<Prisma.TransactionClient, 'meterReading' | 'meterReadingReview'>,
-  ): Promise<ReadingReviewSnapshot> {
-    // Samma ofiltrerade organisationshistorik som GET readings. Ingen klientstyrd
-    // org, mätare eller datumgräns får klippa jämförelseperioderna.
-    const rows = await db.meterReading.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        organizationId: true,
-        meterId: true,
-        value: true,
-        readingType: true,
-        periodStart: true,
-        periodEnd: true,
-      },
-    })
-    const readings: ReviewReading[] = rows.map((r) => ({
-      ...r,
-      value: r.value.toString(),
-      periodStart: r.periodStart.toISOString(),
-      periodEnd: r.periodEnd.toISOString(),
-    }))
-    const report = reviewReadings(readings)
-    const history = await db.meterReadingReview.findMany({
-      where: { organizationId },
-      orderBy: [{ createdAt: 'desc' }, { revision: 'desc' }],
-    })
-    const byFinding = new Map<string, ReadingReviewDecision[]>()
-    for (const row of history) {
-      const key = JSON.stringify([row.readingId, row.findingCode])
-      const reviews = byFinding.get(key) ?? []
-      reviews.push(this.presentDecision(row))
-      reviews.sort((a, b) => b.revision - a.revision)
-      byFinding.set(key, reviews)
-    }
-    return {
-      ...report,
-      history: history.map((row) => this.presentDecision(row)),
-      ruleVersion: READING_REVIEW_RULE_VERSION,
-      findings: report.findings.map((f) => ({
-        ...f,
-        fingerprint: readingFindingFingerprint(f),
-        reviews: byFinding.get(JSON.stringify([f.readingId, f.code])) ?? [],
-      })),
-    }
-  }
-
-  private presentDecision(row: MeterReadingReview): ReadingReviewDecision {
-    return {
-      id: row.id,
-      fingerprint: row.fingerprint,
-      revision: row.revision,
-      assessment: row.assessment,
-      comment: row.comment,
-      reviewedByName: row.reviewedByName,
-      createdAt: row.createdAt.toISOString(),
-      evidence: row.evidence as unknown as ReadingFinding,
-    }
+    return loadReadingReview(organizationId, this.prisma)
   }
 
   async saveReview(
@@ -126,7 +33,7 @@ export class ReadingReviewService {
           })
           if (!actor || !['OWNER', 'ADMIN', 'MANAGER'].includes(actor.role))
             throw new ForbiddenException('Din roll får inte spara bedömningar.')
-          const report = await this.loadReview(organizationId, tx)
+          const report = await loadReadingReview(organizationId, tx)
           const finding = report.findings.find(
             (f) => f.readingId === dto.readingId && f.code === dto.findingCode,
           )
@@ -153,7 +60,7 @@ export class ReadingReviewService {
               evidence: JSON.parse(JSON.stringify(evidence)) as Prisma.InputJsonValue,
             },
           })
-          return this.presentDecision(row)
+          return presentReadingReviewDecision(row)
         },
         {
           ...PRISMA_DEFAULT_TX_LIMITS,

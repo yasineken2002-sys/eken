@@ -1992,6 +1992,11 @@ beständiga mänskliga bedömningar med revisionshistorik. Verkligt oberoende
 granskat jämförelsematerial och agentens vidare uppföljning återstår. Inga flaggor eller
 automatiska debiteringsåtgärder har aktiverats av dessa byggen.
 
+[agent3-assistent-underlag.md](./agent3-assistent-underlag.md) kopplar samma
+granskningsfråga till operatörsassistenten som ett läsverktyg. Verktyget visar
+trendtäckning, aktuella källor och senaste bedömning. Det är ännu ingen autonom
+uppföljningsloop och ger inte något uppmätt driftfacit.
+
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och

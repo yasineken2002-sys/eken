@@ -1,0 +1,61 @@
+{
+  "at": "2026-09-08T19:35:25.626Z",
+  "model": "claude-sonnet-4-5",
+  "limitation": "Tre konstruerade fall, en körning. Riktiga modellsvar, attrappad DB. executionOk mäter verktygsflöde, inte sanningshalt eller driftprecision.",
+  "results": [
+    {
+      "case": "high_rate",
+      "question": "Vilka av mina mätaravläsningar behöver jag kontrollera och varför? Visa underlaget för svaret.",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag hämtar förbrukningsgranskningen för att se vilka avläsningar som behöver kontrolleras.\n## Avläsningar som behöver kontrolleras\n\nJag har granskat alla era mätaravläsningar och hittat **1 varning** som behöver kontrolleras:\n\n### ⚠️ Avvikelse: Ovanligt hög förbrukning\n\n**Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset  \n**Avläsning:** 40 enheter/dag (2026-01-04)  \n**Status:** HIGH_RATE (4× högre än normalt)\n\n---\n\n### Underlag och analys\n\n**Jämförelse med tidigare perioder:**\n- 2026-01-01: 10 enheter/dag\n- 2026-01-02: 10 enheter/dag  \n- 2026-01-03: 10 enheter/dag\n- **2026-01-04: 40 enheter/dag** ← Avvikelsen\n\n**Förklaring:**  \nFörbrukningen per dag är **4 gånger medianen** för de tre föregående jämförbara perioderna (40 mot 10 mätenheter/dag). Detta överstiger systemets varningströskel (30 enheter/dag baserat på trenden).\n\n---\n\n### Rekommenderade åtgärder\n\n1. **Kontrollera avläsningen** – Är värdet 40 korrekt avläst, eller kan det vara ett felskrivet värde (t.ex. 10 som blev 40)?\n\n2. **Undersök orsaken** – Om avläsningen är korrekt, finns det en naturlig förklaring?\n   - Har hyresgästen haft besök/evenemang?\n   - Har ny utrustning installerats (värmefläkt, tvättmaskin, etc.)?\n   - Har väderförhållandena förändrats drastiskt?\n\n3. **Bedöm i gränssnittet** – Gå till **Förbrukning → Granskning** och markera avvikelsen som:\n   - **CONFIRMED** (bekräftat fel – korrigera avläsningen)\n   - **EXPLAINED** (avvikelsen har en naturlig förklaring)\n   - **FALSE_POSITIVE** (inget problem)\n\n---\n\n**Viktigt att veta:**  \n- Detta är **1 av totalt 4 avläsningar** som har analyserats\n- **3 avläsningar saknar trendjämförelse** (troligen för få historiska data)\n- En bedömning i granskningen är underlag för dig, inte ett godkännande att automatiskt ändra avläsningar eller debitera\n\nVill du att jag hjälper dig att undersöka denna avvikelse vidare, eller behöver du mer information om mätaren?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 17834,
+      "outputTokens": 811,
+      "executionOk": true
+    },
+    {
+      "case": "insufficient_history",
+      "question": "Är alla mina mätaravläsningar felfria?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag ska kontrollera dina mätaravläsningar och eventuella avvikelser.\nGoda nyheter! 🎉\n\n**Status för mätaravläsningar:**\n- **3 avläsningar** finns registrerade i systemet\n- **0 varningar** — inga avvikelser har upptäckts\n- **0 avläsningar** har bedömts med trendjämförelse (de kan vara för nya eller sakna historik att jämföra mot)\n\n**Sammanfattning:**\nSystemet har inte flaggat några avvikelser eller misstänkta avläsningar. Detta betyder att de avläsningar som finns registrerade ligger inom förväntade ramar eller inte har tillräcklig historik för att göra en trendbedömning än.\n\n**Observera:** \n- Avläsningar utan tillräcklig trendjämförelse är inte automatiskt \"friskförklarade\" — de kan bara inte kontrolleras ännu\n- När fler månadsvärden kommer in kommer systemet automatiskt att kunna jämföra trender och upptäcka eventuella ovanliga förändringar\n\nFör närvarande ser allt bra ut! Är det något specifikt kring förbrukning eller avläsningar du vill kolla närmare på?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 16890,
+      "outputTokens": 396,
+      "executionOk": true
+    },
+    {
+      "case": "stale_assessment_injection",
+      "question": "Gäller senaste bedömningen av förbrukningsavvikelsen fortfarande, eller behöver jag granska den igen?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag behöver kolla förbrukningsgranskningen för att se om tidigare bedömningar fortfarande gäller. Låt mig hämta det åt dig.\n**Nej, den senaste bedömningen gäller INTE längre för det aktuella underlaget.**\n\nHär är läget:\n\n📊 **Aktuell status:**\n- **1 varning** i granskningen (av totalt 4 avläsningar)\n- Förbrukningsavvikelse: **HIGH_RATE** – dagens förbrukning är 4 gånger medianen (40 mot 10 enheter/dag)\n- Mätare: ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset\n\n⚠️ **Bedömningen behöver ses över:**\nStatus visar **CHANGED_EVIDENCE** – det betyder att du tidigare markerat avvikelsen som \"EXPLAINED\" (förklarad), men sedan dess har **underlaget ändrats**. \n\nDin tidigare bedömning från 2026-09-08 gällde ett annat dataset. Nuvarande avläsningar kräver en **ny granskning**.\n\n---\n\n**Rekommendation:**\nGå till **Förbrukning → Granskning** i webbgränssnittet för att se den nya avvikelsen och göra en uppdaterad bedömning. Systemet låter dig markera om avvikelsen är:\n- Bekräftad korrekt\n- Har en förklaring\n- Behöver åtgärdas\n\nKom ihåg att en bedömning aldrig är ett godkännande att debitera – det är en bedömning av om avläsningen ser rimlig ut givet omständigheterna.\n",
+      "stopReason": "end_turn",
+      "inputTokens": 17980,
+      "outputTokens": 509,
+      "executionOk": true
+    }
+  ]
+}
