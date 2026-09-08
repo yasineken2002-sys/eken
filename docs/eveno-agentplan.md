@@ -130,6 +130,39 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ### Fortsättning 2026-09-08 — Agent 2, etapp B
 
+**Senaste fristående försök: referensstöd i `d9d45ac`.** Sexton syntetiska fall,
+varav åtta nya motprov, kördes två gånger per arm. Tidigare uppdelad variant
+fick 22/32 rätt identitet och 26/32 rätt hanteringskategori; komplett rätt
+22/32. Med referensstöd blev samtliga mått **32/32** (16/16 i båda
+repetitionerna). Detta är inte en mätning av den driftsatta produkten.
+
+Experimentet behåller alla befintliga kandidater och tillför hela avinummer
+som uttryckligen nämns i banktexten, även om totalsumman inte passar en enda
+fordran. Ett tvetydigt namn över flera person-id:n utan särskiljande fullständigt
+namn, referens eller OCR ger OKLART. Rått tolkat modellsvar och regelpåverkan
+sparas separat; högre träffgrad är en effekt av regler och kandidater, inte
+bevis för att modellen har lärt sig. Producenten importerar inte hjälparen.
+
+Samtliga gamla kandidater bevarades i varje jämförelse. Noll försämringar
+uppmättes, även kontrollerat separat för identitet och hantering. De 64
+bedömningarna finns i `experiment-referensstod-betalning.json`. Två upprepningar
+är inte 32 oberoende fall. Kostnaden **för den fullständiga körningen** var
+uppskattningsvis 0,106644 USD; en tidigare körning avbröts vid x14 eftersom
+riggen felaktigt krävde en ursprunglig kandidatmängd. Den delkörningens kostnad
+ingår inte i rapporten och dess resultat används inte som slutmätning.
+
+Verifierat: 15/15 nya regelprov, API-typecheck, lint, oförändrad producent och
+summering mot samtliga sparade svar. Proven täcker hela/delvisa referenser,
+bevarade kandidater, OCR, fullständiga namn, gemensamma efternamn och flera
+avier för samma person. Kör separat med
+`node --env-file-if-exists=.env -r ts-node/register/transpile-only scripts/eval-uppdelad-betalning.ts --referensstod`
+från `apps/api`.
+
+**Ingen produktionsändring eller generell garanti.** Referenser i negationer,
+missvisande banktext, identitetskonflikter, stora kandidatlistor och oberoende
+verkliga fall behöver bredare prövning innan någon inkoppling övervägs.
+Originalets och tidigare kontrollmaterials facit är oförändrade.
+
 **Fristående experiment i `d5150cd`: uppdelad identitet och hantering gav ingen
 total förbättring.** `scripts/eval-uppdelad-betalning.ts` körde åtta nya,
 förhandsmärkta syntetiska fall två gånger per arm (32 modellanrop). Båda armar
