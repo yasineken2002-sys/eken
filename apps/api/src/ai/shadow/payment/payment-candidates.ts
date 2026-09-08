@@ -28,13 +28,22 @@
  *     avstämningens tolerans   får det här bokföras AUTOMATISKT?
  *     kandidatfiltrets         är det här värt att VISA för en människa?
  *
- * Kandidatfönstret får vara bredare, men det nuvarande förslaget kan bara
- * matcha hela bankraden mot en fordran. Belopp över dess utestående utesluts
- * därför även här. Detta gör inte förslaget till en automatisk bokföring.
+ * Den andra ska kunna vara bredare — en betalning som ligger 50 kr fel är en
+ * usel automatisk match och en utmärkt kandidat att fråga om. Delar de konstant
+ * flyttar en justering av det ena tyst det andra, och ingendera blir röd. Två
+ * gränser som ska kunna ändras var för sig är inte en gräns (CLAUDE.md).
  */
 
 /** Beloppet stämmer på öret — signalen bär ensam. Speglar avstämningens tolerans. */
 export const TOLERANS_KR = 1
+
+/**
+ * Den BREDA toleransen, som bara gäller när en ANNAN signal redan pekar
+ * någonstans (OCR-närhet eller namnträff). Ensam skulle den ge var och varannan
+ * avi som kandidat; tillsammans med ett namn är den skillnaden mellan att hitta
+ * en delbetalning och att inte göra det.
+ */
+export const BRED_TOLERANS_KR = 500
 
 /** Samma bredd som avstämningens fuzzy-fönster — men av eget skäl, se ovan. */
 export const FONSTER_DAGAR = 90
@@ -213,11 +222,6 @@ export function provaKandidater(
 
   const rankade: RankadKandidat[] = []
   for (const k of inomFonstret) {
-    // Ett förslag matchar hela bankraden mot EN fordran. OCR och namn kan
-    // identifiera en post, men kan inte göra plats för ett överskjutande belopp.
-    // Filtrera före rangordning och tak så att omöjliga val inte tränger ut
-    // giltiga kandidater. Delbetalningar har ingen motsvarande nedre gräns.
-    if (k.utestaende <= 0 || rad.belopp > k.utestaende + TOLERANS_KR) continue
     const avstånd = ocrAvstand(rad.rawOcr, k.ocr)
     const avvikelse = Math.abs(k.utestaende - rad.belopp)
     const namn = namnTraff(rad.text, k.motpartNamn)
@@ -230,9 +234,22 @@ export function provaKandidater(
       signaler.push(`beloppet stämmer inom ${TOLERANS_KR} kr`)
     }
 
-    // Namnet kan föra fram även en mycket liten delbetalning. Att kandidaten
-    // finns här är inte ett beslut om identitet; modellen kan fortfarande avstå.
-    if (namn) {
+    // ── NAMNET BÄR ENSAMT, MEN BARA NEDÅT ─────────────────────────────────
+    //
+    // Regeln stod först som "namn OCH belopp inom den breda toleransen". Den
+    // föll på mätkorpusen: FYRA av fem DELBETALNINGAR missades, eftersom en
+    // delbetalning kan vara hur liten som helst — 5 000 kr på en avi om 9 200
+    // ligger 4 200 kr ifrån, och ingen tolerans som är rimlig uppåt är rimlig
+    // nedåt.
+    //
+    // Asymmetrin är hela poängen. Ett belopp UNDER det utestående är en
+    // fullständigt normal delbetalning och ska bli en kandidat oavsett hur
+    // långt under. Ett belopp ÖVER är misstänkt: en betalning som överstiger
+    // fordran är inte en reglering av den, och att släppa in den på ett namn
+    // hade gjort varje återbetalning till en kandidat mot den man betalar
+    // tillbaka till. Uppmätt på korpusen: utan takgränsen blir en återbetald
+    // deposition en kandidat mot betalningsmottagarens egen hyresavi.
+    if (namn && rad.belopp <= k.utestaende + BRED_TOLERANS_KR) {
       signaler.push(
         avvikelse <= TOLERANS_KR
           ? 'motpartens namn står i banktexten'
@@ -256,7 +273,7 @@ export function provaKandidater(
     return {
       typ: 'INGEN',
       skäl:
-        'ingen öppen avi eller faktura som rymmer hela betalningen inom fönstret bär ett närliggande OCR, ett belopp ' +
+        'ingen öppen avi eller faktura inom fönstret bär ett närliggande OCR, ett belopp ' +
         `inom ${TOLERANS_KR} kr eller ett namn som står i banktexten.`,
     }
   }
