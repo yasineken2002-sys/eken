@@ -1,4 +1,14 @@
+import { CreateMaintenancePlanDto } from '../../maintenance-plan/dto/create-maintenance-plan.dto'
+import { UpdateMaintenancePlanDto } from '../../maintenance-plan/dto/update-maintenance-plan.dto'
+import { CreateMiscChargeDto } from '../../misc-charges/dto/create-misc-charge.dto'
+import { ConfirmBackfillDto } from '../../avisering/dto/confirm-backfill.dto'
+import { ConfirmContractRowDto } from '../../import/dto/confirm-contract-row.dto'
 import {
+  CreateMaintenancePlanSchema,
+  UpdateMaintenancePlanSchema,
+  CreateMiscChargeSchema,
+  ConfirmBackfillSchema,
+  ConfirmContractRowSchema,
   CreateExpenseSchema,
   ReverseEntrySchema,
   ReopenPeriodSchema,
@@ -1229,5 +1239,76 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { chooseToken: 'val-abc123', userId: '11111111-2222-4333-8444-555555555555' },
     ogiltig: { chooseToken: 'val-abc123', userId: 'u'.repeat(65) },
     ogiltigVarfor: 'userId över 64 tecken är inte ett av våra',
+  },
+  {
+    endpoint: 'POST /maintenance-plans',
+    inputTyp: 'CreateMaintenancePlanInput',
+    schema: CreateMaintenancePlanSchema,
+    dto: CreateMaintenancePlanDto,
+    giltig: {
+      title: 'Tak',
+      propertyId: '00000000-0000-4000-8000-000000000001',
+      plannedYear: 2020,
+      estimatedCost: 0,
+    },
+    ogiltig: {
+      title: 'Ta',
+      propertyId: '00000000-0000-4000-8000-000000000001',
+      plannedYear: 2020,
+      estimatedCost: 0,
+    },
+    ogiltigVarfor: 'titeln kräver minst tre tecken',
+  },
+  {
+    endpoint: 'PATCH /maintenance-plans/:id',
+    inputTyp: 'UpdateMaintenancePlanInput',
+    schema: UpdateMaintenancePlanSchema,
+    dto: UpdateMaintenancePlanDto,
+    giltig: { title: '', status: 'COMPLETED', actualCost: 0 },
+    ogiltig: { plannedYear: 2061 },
+    ogiltigVarfor: 'planerat år får inte överstiga 2060',
+  },
+  {
+    endpoint: 'POST /misc-charges',
+    inputTyp: 'CreateMiscChargeInput',
+    schema: CreateMiscChargeSchema,
+    dto: CreateMiscChargeDto,
+    giltig: {
+      leaseId: '00000000-0000-4000-8000-000000000001',
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      sourceType: 'KEY_LOSS',
+      sourceRefId: '',
+      description: '',
+      incidentDate: '2026-09-08',
+      netAmount: 0.01,
+    },
+    ogiltig: {
+      leaseId: '00000000-0000-4000-8000-000000000001',
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      sourceType: 'KEY_LOSS',
+      sourceRefId: '',
+      description: '',
+      incidentDate: '2026-09-08',
+      netAmount: 0,
+    },
+    ogiltigVarfor: 'netto måste vara minst 0.01',
+  },
+  {
+    endpoint: 'POST /avisering/backfill/:leaseId/confirm',
+    inputTyp: 'ConfirmBackfillInput',
+    schema: ConfirmBackfillSchema,
+    dto: ConfirmBackfillDto,
+    giltig: { allowBeyondWarning: false, vatDeclarationAcknowledged: true },
+    ogiltig: { allowBeyondWarning: 'yes' },
+    ogiltigVarfor: 'godtyckliga strängar är inte booleska värden',
+  },
+  {
+    endpoint: 'POST /import/contract-batches/:id/rows/:rowId/confirm',
+    inputTyp: 'ConfirmContractRowInput',
+    schema: ConfirmContractRowSchema,
+    dto: ConfirmContractRowDto,
+    giltig: { reviewedData: { monthlyRent: 5000 } },
+    ogiltig: { reviewedData: [] },
+    ogiltigVarfor: 'reviewedData måste vara ett objekt, inte en array',
   },
 ]

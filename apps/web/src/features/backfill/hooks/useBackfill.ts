@@ -1,3 +1,4 @@
+import type { ConfirmBackfillInput } from '@eken/shared'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchBackfillQueue, fetchBackfillPreview, confirmBackfill } from '../api/backfill.api'
 
@@ -21,15 +22,8 @@ export function useBackfillPreview(leaseId: string | null) {
 export function useConfirmBackfill() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      leaseId,
-      allowBeyondWarning,
-      vatDeclarationAcknowledged,
-    }: {
-      leaseId: string
-      allowBeyondWarning: boolean
-      vatDeclarationAcknowledged: boolean
-    }) => confirmBackfill(leaseId, { allowBeyondWarning, vatDeclarationAcknowledged }),
+    mutationFn: ({ leaseId, ...opts }: ConfirmBackfillInput & { leaseId: string }) =>
+      confirmBackfill(leaseId, opts),
     onSuccess: () => {
       // Kön krymper när ett kontrakt efterdebiterats; avilistan får nya avier.
       void qc.invalidateQueries({ queryKey: ['backfill'] })

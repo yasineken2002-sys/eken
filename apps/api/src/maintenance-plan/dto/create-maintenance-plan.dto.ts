@@ -1,3 +1,4 @@
+import type { CreateMaintenancePlanInput, SammaNycklar } from '@eken/shared'
 import {
   IsEnum,
   IsInt,
@@ -11,7 +12,7 @@ import {
 } from 'class-validator'
 import { MaintenancePlanCategory } from '@prisma/client'
 
-export class CreateMaintenancePlanDto {
+export class CreateMaintenancePlanDto implements CreateMaintenancePlanInput {
   @IsString()
   @MinLength(3)
   title!: string
@@ -54,3 +55,6 @@ export class CreateMaintenancePlanDto {
   @IsOptional()
   notes?: string
 }
+
+const _kontrakt: SammaNycklar<CreateMaintenancePlanDto, CreateMaintenancePlanInput> = true
+void _kontrakt

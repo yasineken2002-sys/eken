@@ -1,3 +1,4 @@
+import type { ConfirmBackfillInput } from '@eken/shared'
 import { get, post } from '@/lib/api'
 
 // T1.4 / #44 — efterdebitering (bakdaterad debitering). Speglar backendens
@@ -72,9 +73,6 @@ export function fetchBackfillPreview(leaseId: string) {
   return get<BackfillPreview>(`/avisering/backfill/${leaseId}/preview`)
 }
 
-export function confirmBackfill(
-  leaseId: string,
-  opts: { allowBeyondWarning: boolean; vatDeclarationAcknowledged: boolean },
-) {
+export function confirmBackfill(leaseId: string, opts: ConfirmBackfillInput) {
   return post<BackfillResult>(`/avisering/backfill/${leaseId}/confirm`, opts)
 }
