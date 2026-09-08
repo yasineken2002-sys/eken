@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ASSIGNABLE_ROLES } from '../constants'
 
 export * from './contract'
 export * from './agent-delegation'
@@ -2299,6 +2300,32 @@ export const UpdateCustomerSchema = CreateCustomerSchema.partial().extend({
 })
 export type CreateCustomerInput = z.infer<typeof CreateCustomerSchema>
 export type UpdateCustomerInput = z.infer<typeof UpdateCustomerSchema>
+
+// Användarroller tilldelas från samma lista som DTO:ernas @IsIn.
+export const InviteUserSchema = z
+  .object({
+    email: z.string().email('Ogiltig e-postadress'),
+    firstName: z.string().min(1, 'Förnamn krävs').max(100),
+    lastName: z.string().min(1, 'Efternamn krävs').max(100),
+    role: z.enum(ASSIGNABLE_ROLES),
+  })
+  .strict()
+export type InviteUserInput = z.infer<typeof InviteUserSchema>
+
+export const UpdateUserRoleSchema = z
+  .object({
+    role: z.enum(ASSIGNABLE_ROLES),
+  })
+  .strict()
+export type UpdateUserRoleInput = z.infer<typeof UpdateUserRoleSchema>
+
+// BuyCreditsDto tillåter tre paket, inte alla belopp mellan 100 och 1000.
+export const BuyCreditsSchema = z
+  .object({
+    amount: z.union([z.literal(100), z.literal(500), z.literal(1000)]),
+  })
+  .strict()
+export type BuyCreditsInput = z.infer<typeof BuyCreditsSchema>
 
 // Nyckelkvittens: gränserna kommer från de befintliga keys-DTO:erna.
 const KeyTypeSchema = z.enum([

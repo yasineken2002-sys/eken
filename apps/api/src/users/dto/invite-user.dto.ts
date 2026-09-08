@@ -1,3 +1,4 @@
+import type { InviteUserInput, SammaNycklar } from '@eken/shared'
 import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 import { ASSIGNABLE_ROLES } from '@eken/shared'
@@ -8,7 +9,7 @@ import { StrictString } from '../../common/contract/strict-string.decorator'
  * Inbjudan tilldelar en roll — därför samma lista som rollbytet (R3).
  * Historiken och beslutet står vid `ASSIGNABLE_ROLES` i @eken/shared.
  */
-export class InviteUserDto {
+export class InviteUserDto implements InviteUserInput {
   @ApiProperty()
   @IsEmail({}, { message: 'Ogiltig e-postadress' })
   email!: string
@@ -31,3 +32,6 @@ export class InviteUserDto {
   @IsIn(ASSIGNABLE_ROLES)
   role!: AssignableRole
 }
+
+const _kontrakt: SammaNycklar<InviteUserDto, InviteUserInput> = true
+void _kontrakt

@@ -1,3 +1,4 @@
+import type { BuyCreditsInput } from '@eken/shared'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   buyAiCredits,
@@ -24,8 +25,8 @@ export function useAiUsageHistory(days = 30) {
 
 export function useBuyAiCredits() {
   const qc = useQueryClient()
-  return useMutation<BuyCreditsResult, Error, 100 | 500 | 1000>({
-    mutationFn: (amount) => buyAiCredits(amount),
+  return useMutation<BuyCreditsResult, Error, BuyCreditsInput>({
+    mutationFn: (input) => buyAiCredits(input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['ai-usage'] })
     },

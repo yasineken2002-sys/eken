@@ -1,3 +1,6 @@
+import { BuyCreditsSchema } from '@eken/shared'
+import type { BuyCreditsInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Brain, Check, Clock, CreditCard, Info, Sparkles, TrendingUp, Zap } from 'lucide-react'
@@ -308,7 +311,13 @@ export function PlanPanel() {
                 )}
                 disabled={buyCredits.isPending}
                 onClick={async () => {
-                  const result = await buyCredits.mutateAsync(pkg.amount)
+                  const input: BuyCreditsInput = { amount: pkg.amount }
+                  const fel = kontraktsfel(BuyCreditsSchema, input)
+                  if (fel) {
+                    toast.error(fel)
+                    return
+                  }
+                  const result = await buyCredits.mutateAsync(input)
                   setPurchaseResult({
                     invoiceNumber: result.invoiceNumber,
                     amountGrossSek: result.amountGrossSek,
