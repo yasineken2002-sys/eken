@@ -1,9 +1,13 @@
+import { CreateCustomerSchema, UpdateCustomerSchema } from '@eken/shared'
+import type { CreateCustomerInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useForm, Controller } from 'react-hook-form'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { ModalFooter } from '@/components/ui/Modal'
 import { cn } from '@/lib/cn'
-import type { Customer, CreateCustomerInput, CustomerType } from '../api/customers.api'
+import type { Customer, CustomerType } from '../api/customers.api'
 
 interface CustomerFormProps {
   defaultValues?: Partial<Customer>
@@ -91,6 +95,11 @@ export function CustomerForm({
       ...(data.postalCode ? { postalCode: data.postalCode } : {}),
       ...(data.reference ? { reference: data.reference } : {}),
       ...(data.notes ? { notes: data.notes } : {}),
+    }
+    const fel = kontraktsfel(defaultValues?.id ? UpdateCustomerSchema : CreateCustomerSchema, input)
+    if (fel) {
+      toast.error(fel)
+      return
     }
     onSubmit(input)
   }
