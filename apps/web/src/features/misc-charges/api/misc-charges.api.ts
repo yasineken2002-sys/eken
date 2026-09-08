@@ -1,5 +1,5 @@
 import { get, post } from '@/lib/api'
-import type { MiscCharge, MiscChargeStatus, MiscChargeSource } from '@eken/shared'
+import type { MiscCharge, MiscChargeStatus, CreateMiscChargeInput } from '@eken/shared'
 
 // Tunna helpers mot /v1/misc-charges (teknisk förvaltning, Spår A). Hyresvärds-
 // sidan. Frontend bygger INGEN bokföringslogik och räknar INGA belopp — confirm
@@ -13,17 +13,7 @@ export interface MiscChargeFilters {
   sourceRefId?: string
 }
 
-export interface CreateMiscChargeBody {
-  leaseId: string
-  tenantId: string
-  sourceType: MiscChargeSource
-  sourceRefId: string
-  description: string
-  // ISO-datum (YYYY-MM-DD) — bokföringsdatum (när skadan/förlusten konstaterades).
-  incidentDate: string
-  // Netto. Moms snapshotas i backend (EXEMPT v1). Frontend räknar aldrig om.
-  netAmount: number
-}
+export type CreateMiscChargeBody = CreateMiscChargeInput
 
 export function fetchMiscCharges(filters?: MiscChargeFilters): Promise<MiscCharge[]> {
   return get<MiscCharge[]>('/misc-charges', filters as Record<string, unknown> | undefined)
@@ -34,7 +24,7 @@ export function fetchMiscCharge(id: string): Promise<MiscCharge> {
 }
 
 // DRAFT — skapar posten + fryser momssnapshot i backend.
-export function createMiscCharge(body: CreateMiscChargeBody): Promise<MiscCharge> {
+export function createMiscCharge(body: CreateMiscChargeInput): Promise<MiscCharge> {
   return post<MiscCharge>('/misc-charges', body)
 }
 

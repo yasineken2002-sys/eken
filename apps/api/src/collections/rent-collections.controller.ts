@@ -1,3 +1,4 @@
+import { RentBulkExportDto } from './dto/rent-bulk-export.dto'
 import {
   BadRequestException,
   Body,
@@ -9,21 +10,11 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common'
-import { ArrayMaxSize, IsArray, IsUUID } from 'class-validator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { RentCollectionExportService } from './rent-collection-export.service'
-
-class RentBulkExportDto {
-  @IsArray()
-  // Tak mot resursuttömning (säkerhetsgranskning LOW): N avier ⇒ N Puppeteer-
-  // renderingar i ett jobb. 200 inkasso-redo avier i en batch är redan extremt.
-  @ArrayMaxSize(200)
-  @IsUUID('4', { each: true })
-  noticeIds!: string[]
-}
 
 /**
  * Inkasso PR 4b — steg 3. Read-only export av inkasso-redo hyresavier. Samma

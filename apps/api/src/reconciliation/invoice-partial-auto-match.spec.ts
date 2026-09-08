@@ -66,8 +66,15 @@ function rigg(opt: RiggOpt = {}) {
       findMany: jest.fn().mockResolvedValue([]), // inga kreditnotor
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    rentNoticePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoicePayment: {
-      findMany: jest.fn().mockResolvedValue((opt.tidigare ?? []).map((a) => ({ amount: dec(a) }))),
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { bankTransactionId?: string } }) =>
+          Promise.resolve(
+            where.bankTransactionId ? [] : (opt.tidigare ?? []).map((a) => ({ amount: dec(a) })),
+          ),
+        ),
       create: jest.fn().mockResolvedValue({ id: 'alloc-1' }),
     },
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },

@@ -1,3 +1,7 @@
+import { IssueKeysDto } from '../keys/dto/issue-keys.dto'
+import { ReturnKeyDto } from '../keys/dto/return-key.dto'
+import { UpdateKeyDto } from '../keys/dto/update-key.dto'
+import { IssueKeysSchema, ReturnKeySchema, UpdateKeySchema } from '@eken/shared'
 import {
   CreateNewsPostSchema,
   UpdateNewsPostSchema,
@@ -10,9 +14,11 @@ import { UpdateNewsPostDto } from '../news/dto/update-news-post.dto'
 import { SendMessageDto } from '../messages/dto/send-message.dto'
 import { CreateCustomerDto } from '../customers/dto/create-customer.dto'
 import { UpdateCustomerDto } from '../customers/dto/update-customer.dto'
-import { IssueKeysDto } from '../keys/dto/issue-keys.dto'
-import { ReturnKeyDto } from '../keys/dto/return-key.dto'
-import { UpdateKeyDto } from '../keys/dto/update-key.dto'
+import { CreateMaintenancePlanDto } from '../maintenance-plan/dto/create-maintenance-plan.dto'
+import { UpdateMaintenancePlanDto } from '../maintenance-plan/dto/update-maintenance-plan.dto'
+import { CreateMiscChargeDto } from '../misc-charges/dto/create-misc-charge.dto'
+import { ConfirmBackfillDto } from '../avisering/dto/confirm-backfill.dto'
+import { ConfirmContractRowDto } from '../import/dto/confirm-contract-row.dto'
 /**
  * KONTRAKTET I RUNTIME — schemat och DTO:n ska säga SAMMA SAK.
  *
@@ -46,9 +52,11 @@ import { UpdateKeyDto } from '../keys/dto/update-key.dto'
 
 import { ValidationPipe } from '@nestjs/common'
 import {
-  IssueKeysSchema,
-  ReturnKeySchema,
-  UpdateKeySchema,
+  CreateMaintenancePlanSchema,
+  UpdateMaintenancePlanSchema,
+  CreateMiscChargeSchema,
+  ConfirmBackfillSchema,
+  ConfirmContractRowSchema,
   CreateExpenseSchema,
   CreateJournalEntrySchema,
   CreateSupplierInvoiceSchema,
@@ -667,86 +675,183 @@ describe('G3: betalsättet betyder samma sak på båda pengavägarna', () => {
   })
 })
 
-describe('keys — samma DTO-gränser före webbens anrop', () => {
-  const issue = { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 }
+describe('underhållsplan, övrig debitering, backfill och kontraktsrad — DTO-gränser', () => {
+  const plan = {
+    title: 'Tak',
+    propertyId: '00000000-0000-4000-8000-000000000001',
+    plannedYear: 2020,
+    estimatedCost: 0,
+  }
+  const charge = {
+    leaseId: '00000000-0000-4000-8000-000000000001',
+    tenantId: '00000000-0000-4000-8000-000000000002',
+    sourceType: 'KEY_LOSS',
+    sourceRefId: '',
+    description: '',
+    incidentDate: '2026-09-08',
+    netAmount: 0.01,
+  }
 
   it.each([
-    [0, false],
-    [1, true],
-    [1.5, false],
-    [50, true],
-    [51, false],
-  ] as const)('quantity %s: decimaltal stoppas före anropet', (quantity, vantat) =>
-    paritet('antal', IssueKeysSchema, IssueKeysDto, { ...issue, quantity }, vantat),
+    ['title', 'Ta', false],
+    ['title', 'Tak', true],
+    ['title', 'x'.repeat(6000), true],
+    ['propertyId', 'fel', false],
+    ['category', 'ROOF', true],
+    ['category', 'fel', false],
+    ['plannedYear', 2019, false],
+    ['plannedYear', 2020, true],
+    ['plannedYear', 2060, true],
+    ['plannedYear', 2061, false],
+    ['plannedYear', 2020.5, false],
+    ['estimatedCost', -0.01, false],
+    ['estimatedCost', 0, true],
+    ['estimatedCost', 0.01, true],
+    ['priority', 0, false],
+    ['priority', 1, true],
+    ['priority', 3, true],
+    ['priority', 4, false],
+    ['priority', 1.5, false],
+    ['interval', -1, true],
+    ['interval', 1.5, false],
+    ['lastDoneYear', -1, true],
+    ['lastDoneYear', 1.5, false],
+  ] as const)('skapa underhåll: %s = %s', (falt, value, vantat) =>
+    paritet(
+      'skapa underhåll',
+      CreateMaintenancePlanSchema,
+      CreateMaintenancePlanDto,
+      { ...plan, [falt]: value },
+      vantat,
+    ),
   )
-  it('ogiltigt leaseId avvisas', () =>
-    paritet('leaseId', IssueKeysSchema, IssueKeysDto, { ...issue, leaseId: 'fel' }, false))
 
-  describe.each([
-    ['utlämning', IssueKeysSchema, IssueKeysDto, issue],
-    ['uppdatering', UpdateKeySchema, UpdateKeyDto, {}],
-  ] as const)('%s', (_namn, schema, dto, grund) => {
-    it.each([
-      'APARTMENT',
-      'ENTRANCE',
-      'MAILBOX',
-      'LAUNDRY_TAG',
-      'GARAGE',
-      'STORAGE',
-      'FOB_TAG',
-      'OTHER',
-    ])('nyckeltyp %s', (type) => paritet('typ', schema, dto, { ...grund, type }, true))
-    it('okänd nyckeltyp avvisas', () =>
-      paritet('typ', schema, dto, { ...grund, type: 'fel' }, false))
-    describe.each(['label', 'issuedToName'])('%s', (falt) => {
-      // Bara syntetiska tecken: inga verkliga namn i prov eller logg.
-      it.each([
-        [0, true],
-        [120, true],
-        [121, false],
-      ] as const)('längd %s', (langd, vantat) =>
-        paritet('textgräns', schema, dto, { ...grund, [falt]: 'x'.repeat(langd) }, vantat),
-      )
-    })
-  })
-
-  describe.each([
-    ['utlämning', IssueKeysSchema, IssueKeysDto, issue],
-    ['retur', ReturnKeySchema, ReturnKeyDto, {}],
-    ['uppdatering', UpdateKeySchema, UpdateKeyDto, {}],
-  ] as const)('%s: notes', (_namn, schema, dto, grund) => {
-    it.each([
-      [0, true],
-      [1000, true],
-      [1001, false],
-    ] as const)('längd %s', (langd, vantat) =>
-      paritet('notes', schema, dto, { ...grund, notes: 'x'.repeat(langd) }, vantat),
+  it('uppdatering kan vara tom och tillåter tom titel', async () => {
+    await paritet(
+      'tom uppdatering',
+      UpdateMaintenancePlanSchema,
+      UpdateMaintenancePlanDto,
+      {},
+      true,
     )
-    it('valfria fält får utelämnas', () => paritet('minimal kropp', schema, dto, grund, true))
+    await paritet(
+      'tom titel',
+      UpdateMaintenancePlanSchema,
+      UpdateMaintenancePlanDto,
+      { title: '' },
+      true,
+    )
   })
+  it.each([
+    ['plannedYear', 2019, false],
+    ['plannedYear', 2020, true],
+    ['plannedYear', 2060, true],
+    ['plannedYear', 2061, false],
+    ['plannedYear', 2020.5, false],
+    ['estimatedCost', -0.01, false],
+    ['estimatedCost', 0, true],
+    ['actualCost', -0.01, false],
+    ['actualCost', 0, true],
+    ['priority', 0, false],
+    ['priority', 1, true],
+    ['priority', 3, true],
+    ['priority', 4, false],
+    ['priority', 1.5, false],
+    ['interval', -1, true],
+    ['interval', 1.5, false],
+    ['lastDoneYear', -1, true],
+    ['lastDoneYear', 1.5, false],
+    ['status', 'COMPLETED', true],
+    ['status', 'fel', false],
+    ['completedAt', '2026-09-08', true],
+    ['completedAt', '2026-09-08T12:00:00Z', true],
+    ['completedAt', 'fel', false],
+    ['propertyId', '00000000-0000-4000-8000-000000000001', false],
+  ] as const)('uppdatera underhåll: %s = %s', (falt, value, vantat) =>
+    paritet(
+      'uppdatera underhåll',
+      UpdateMaintenancePlanSchema,
+      UpdateMaintenancePlanDto,
+      { [falt]: value },
+      vantat,
+    ),
+  )
 
-  describe.each([
-    ['issuedAt', IssueKeysSchema, IssueKeysDto, issue],
-    ['returnedAt', ReturnKeySchema, ReturnKeyDto, {}],
-  ] as const)('%s behålls även utan UI-fält', (falt, schema, dto, grund) => {
-    it.each([
-      ['2026-09-08', true],
-      ['2026-09-08T12:00:00Z', true],
-      ['2026-09-08T12:00:00+02:00', true],
-      ['fel', false],
-      ['', false],
-    ] as const)('%s', (datum, vantat) =>
-      paritet('datum', schema, dto, { ...grund, [falt]: datum }, vantat),
+  it.each([
+    ['sourceRefId', '', true],
+    ['sourceRefId', 'x'.repeat(64), true],
+    ['sourceRefId', 'x'.repeat(65), false],
+    ['description', '', true],
+    ['description', 'x'.repeat(500), true],
+    ['description', 'x'.repeat(501), false],
+    ['netAmount', 0, false],
+    ['netAmount', 0.009, false],
+    ['netAmount', 0.01, true],
+    ['incidentDate', '2026-09-08T12:00:00Z', true],
+    ['incidentDate', 'fel', false],
+    ['sourceType', 'INSPECTION_ITEM', true],
+    ['sourceType', 'fel', false],
+    ['leaseId', 'fel', false],
+    ['tenantId', 'fel', false],
+  ] as const)('övrig debitering: %s = %s', (falt, value, vantat) =>
+    paritet(
+      'övrig debitering',
+      CreateMiscChargeSchema,
+      CreateMiscChargeDto,
+      { ...charge, [falt]: value },
+      vantat,
+    ),
+  )
+
+  it('avi-radens XOR-fält hör inte till skapande-DTO:n: inga godtas, båda är okända', async () => {
+    // Detta prövar whitelist, inte service-lagrets XOR. En XOR-refine här skulle
+    // felaktigt avvisa varje giltig skapandekropp, som inte bär något av fälten.
+    await paritet('utan avi-radsfält', CreateMiscChargeSchema, CreateMiscChargeDto, charge, true)
+    await paritet(
+      'okända avi-radsfält',
+      CreateMiscChargeSchema,
+      CreateMiscChargeDto,
+      { ...charge, consumptionChargeId: charge.leaseId, miscChargeId: charge.tenantId },
+      false,
     )
   })
 
   it.each([
-    ['LOST', true],
-    ['REPLACED', true],
-    ['ISSUED', false],
-    ['RETURNED', false],
-  ] as const)('uppdateringsstatus %s', (status, vantat) =>
-    paritet('status', UpdateKeySchema, UpdateKeyDto, { status }, vantat),
+    {},
+    { allowBeyondWarning: false },
+    { vatDeclarationAcknowledged: true },
+    { allowBeyondWarning: true, vatDeclarationAcknowledged: false },
+  ])('backfill godtar %j', (kropp) =>
+    paritet('backfill', ConfirmBackfillSchema, ConfirmBackfillDto, kropp, true),
+  )
+  it.each(['allowBeyondWarning', 'vatDeclarationAcknowledged'])(
+    'backfill avvisar godtycklig sträng i %s',
+    (falt) =>
+      paritet('backfill', ConfirmBackfillSchema, ConfirmBackfillDto, { [falt]: 'yes' }, false),
+  )
+  it.each(['true', 'false'])(
+    'befintlig koercion: backfill normaliserar %s i pipen',
+    async (value) => {
+      const kropp = { allowBeyondWarning: value }
+      expect(schematGodtar(ConfirmBackfillSchema, kropp)).toBe(false)
+      expect(await pipe.transform(kropp, { type: 'body', metatype: ConfirmBackfillDto })).toEqual({
+        allowBeyondWarning: value === 'true',
+      })
+    },
+  )
+
+  it.each([
+    {},
+    { reviewedData: {} },
+    { reviewedData: { arbitrary: [1, null, 'text'] } },
+    { unitId: '00000000-0000-4000-8000-000000000001' },
+  ])('kontraktsrad godtar %j', (kropp) =>
+    paritet('kontraktsrad', ConfirmContractRowSchema, ConfirmContractRowDto, kropp, true),
+  )
+  it.each([{ unitId: 'fel' }, { reviewedData: [] }, { reviewedData: 'text' }])(
+    'kontraktsrad avvisar %j',
+    (kropp) =>
+      paritet('kontraktsrad', ConfirmContractRowSchema, ConfirmContractRowDto, kropp, false),
   )
 })
 
@@ -828,4 +933,87 @@ describe('news, messages och customers — befintliga gränser genom produktions
       ))
     it('tom e-post avvisas', () => paritet('email', schema, dto, { ...grund, email: '' }, false))
   })
+})
+
+describe('keys — samma DTO-gränser före webbens anrop', () => {
+  const issue = { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 }
+
+  it.each([
+    [0, false],
+    [1, true],
+    [1.5, false],
+    [50, true],
+    [51, false],
+  ] as const)('quantity %s: decimaltal stoppas före anropet', (quantity, vantat) =>
+    paritet('antal', IssueKeysSchema, IssueKeysDto, { ...issue, quantity }, vantat),
+  )
+  it('ogiltigt leaseId avvisas', () =>
+    paritet('leaseId', IssueKeysSchema, IssueKeysDto, { ...issue, leaseId: 'fel' }, false))
+
+  describe.each([
+    ['utlämning', IssueKeysSchema, IssueKeysDto, issue],
+    ['uppdatering', UpdateKeySchema, UpdateKeyDto, {}],
+  ] as const)('%s', (_namn, schema, dto, grund) => {
+    it.each([
+      'APARTMENT',
+      'ENTRANCE',
+      'MAILBOX',
+      'LAUNDRY_TAG',
+      'GARAGE',
+      'STORAGE',
+      'FOB_TAG',
+      'OTHER',
+    ])('nyckeltyp %s', (type) => paritet('typ', schema, dto, { ...grund, type }, true))
+    it('okänd nyckeltyp avvisas', () =>
+      paritet('typ', schema, dto, { ...grund, type: 'fel' }, false))
+    describe.each(['label', 'issuedToName'])('%s', (falt) => {
+      // Bara syntetiska tecken: inga verkliga namn i prov eller logg.
+      it.each([
+        [0, true],
+        [120, true],
+        [121, false],
+      ] as const)('längd %s', (langd, vantat) =>
+        paritet('textgräns', schema, dto, { ...grund, [falt]: 'x'.repeat(langd) }, vantat),
+      )
+    })
+  })
+
+  describe.each([
+    ['utlämning', IssueKeysSchema, IssueKeysDto, issue],
+    ['retur', ReturnKeySchema, ReturnKeyDto, {}],
+    ['uppdatering', UpdateKeySchema, UpdateKeyDto, {}],
+  ] as const)('%s: notes', (_namn, schema, dto, grund) => {
+    it.each([
+      [0, true],
+      [1000, true],
+      [1001, false],
+    ] as const)('längd %s', (langd, vantat) =>
+      paritet('notes', schema, dto, { ...grund, notes: 'x'.repeat(langd) }, vantat),
+    )
+    it('valfria fält får utelämnas', () => paritet('minimal kropp', schema, dto, grund, true))
+  })
+
+  describe.each([
+    ['issuedAt', IssueKeysSchema, IssueKeysDto, issue],
+    ['returnedAt', ReturnKeySchema, ReturnKeyDto, {}],
+  ] as const)('%s behålls även utan UI-fält', (falt, schema, dto, grund) => {
+    it.each([
+      ['2026-09-08', true],
+      ['2026-09-08T12:00:00Z', true],
+      ['2026-09-08T12:00:00+02:00', true],
+      ['fel', false],
+      ['', false],
+    ] as const)('%s', (datum, vantat) =>
+      paritet('datum', schema, dto, { ...grund, [falt]: datum }, vantat),
+    )
+  })
+
+  it.each([
+    ['LOST', true],
+    ['REPLACED', true],
+    ['ISSUED', false],
+    ['RETURNED', false],
+  ] as const)('uppdateringsstatus %s', (status, vantat) =>
+    paritet('status', UpdateKeySchema, UpdateKeyDto, { status }, vantat),
+  )
 })

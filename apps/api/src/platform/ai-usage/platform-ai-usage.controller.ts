@@ -1,29 +1,10 @@
+import { ChangePlanDto } from './dto/change-plan.dto'
+import { AddCreditsDto } from './dto/add-credits.dto'
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common'
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { ApiProperty } from '@nestjs/swagger'
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator'
 import { Public } from '../../common/decorators/public.decorator'
 import { PlatformGuard } from '../auth/platform.guard'
 import { PlatformAiUsageService } from './platform-ai-usage.service'
-import type { SubscriptionPlan } from '@eken/shared'
-
-class AddCreditsDto {
-  @ApiProperty()
-  @IsInt()
-  @Min(1)
-  amount!: number
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString()
-  note?: string
-}
-
-class ChangePlanDto {
-  @ApiProperty({ enum: ['TRIAL', 'STARTER', 'MINI', 'STANDARD', 'PLUS', 'PRO'] })
-  @IsEnum(['TRIAL', 'STARTER', 'MINI', 'STANDARD', 'PLUS', 'PRO'])
-  plan!: SubscriptionPlan
-}
 
 @ApiTags('Platform / AI-usage')
 @ApiBearerAuth()

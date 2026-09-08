@@ -1,3 +1,4 @@
+import type { ConfirmBackfillInput, SammaNycklar } from '@eken/shared'
 import { IsBoolean, IsOptional } from 'class-validator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
@@ -9,7 +10,7 @@ import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
  * grinden (>12 mån bakåt = sannolikt datafel). Utan flaggan hoppas de månaderna
  * över; med flaggan skapas de och godkännandet loggas i audit-spåret.
  */
-export class ConfirmBackfillDto {
+export class ConfirmBackfillDto implements ConfirmBackfillInput {
   @IsOptional()
   @IsBoolean()
   @StrictBoolean()
@@ -27,3 +28,6 @@ export class ConfirmBackfillDto {
   @StrictBoolean()
   vatDeclarationAcknowledged?: boolean
 }
+
+const _kontrakt: SammaNycklar<ConfirmBackfillDto, ConfirmBackfillInput> = true
+void _kontrakt

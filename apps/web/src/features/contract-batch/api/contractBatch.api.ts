@@ -1,3 +1,4 @@
+import type { ConfirmContractRowInput } from '@eken/shared'
 import { api, get, post, del } from '@/lib/api'
 
 export type ContractRowStatus =
@@ -86,10 +87,7 @@ export interface BulkConfirmResult {
   skipped: number
 }
 
-export interface ConfirmRowBody {
-  unitId?: string
-  reviewedData?: Partial<ScannedContractData>
-}
+export type ConfirmRowBody = ConfirmContractRowInput
 
 export async function createContractBatch(files: File[]): Promise<CreateBatchResult> {
   const form = new FormData()
@@ -100,16 +98,15 @@ export async function createContractBatch(files: File[]): Promise<CreateBatchRes
 
 export const getContractBatch = (id: string) => get<ContractBatch>(`/import/contract-batches/${id}`)
 
-export const confirmContractRow = (batchId: string, rowId: string, body: ConfirmRowBody) =>
+export const confirmContractRow = (batchId: string, rowId: string, body: ConfirmContractRowInput) =>
   post<ConfirmRowResult>(`/import/contract-batches/${batchId}/rows/${rowId}/confirm`, body)
 
 export const confirmSafeRows = (batchId: string) =>
-  post<BulkConfirmResult>(`/import/contract-batches/${batchId}/confirm-safe`, {})
+  post<BulkConfirmResult>(`/import/contract-batches/${batchId}/confirm-safe`)
 
 export const skipContractRow = (batchId: string, rowId: string) =>
   post<{ rowId: string; rowStatus: string }>(
     `/import/contract-batches/${batchId}/rows/${rowId}/skip`,
-    {},
   )
 
 export const cancelContractBatch = (id: string) => del(`/import/contract-batches/${id}`)

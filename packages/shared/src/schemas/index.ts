@@ -1177,16 +1177,20 @@ export type CreateReadingInput = z.infer<typeof CreateReadingSchema>
 
 export const MiscChargeSourceEnum = z.enum(['MAINTENANCE_TICKET', 'INSPECTION_ITEM', 'KEY_LOSS'])
 
-export const CreateMiscChargeSchema = z.object({
-  leaseId: z.string().uuid({ message: 'Välj ett hyresavtal' }),
-  tenantId: z.string().uuid({ message: 'Välj en hyresgäst' }),
-  sourceType: MiscChargeSourceEnum,
-  sourceRefId: z.string().min(1, 'Källreferens krävs'),
-  description: z.string().min(1, 'Ange en beskrivning').max(500, 'Högst 500 tecken'),
-  // När skadan/förlusten konstaterades — styr bokföringsdatum (PR 2).
-  incidentDate: z.string().date(),
-  netAmount: z.number().min(0, 'Beloppet kan inte vara negativt'),
-})
+// DTO:n äger gränserna: tom referens/beskrivning tillåts, netto minst 0.01.
+// Avi-radens XOR gäller consumptionChargeId/miscChargeId i service-lagret;
+// dessa fält ingår inte i skapandekontraktet.
+export const CreateMiscChargeSchema = z
+  .object({
+    leaseId: z.string().uuid({ message: 'Välj ett hyresavtal' }),
+    tenantId: z.string().uuid({ message: 'Välj en hyresgäst' }),
+    sourceType: MiscChargeSourceEnum,
+    sourceRefId: z.string().max(64),
+    description: z.string().max(500, 'Högst 500 tecken'),
+    incidentDate: IsoDatumSchema,
+    netAmount: z.number().finite().min(0.01, 'Beloppet måste vara minst 0,01'),
+  })
+  .strict()
 
 export type CreateMiscChargeInput = z.infer<typeof CreateMiscChargeSchema>
 
@@ -2181,46 +2185,70 @@ export type SendWorkOrderInput = z.infer<typeof SendWorkOrderSchema>
 export type WorkOrderResponseInput = z.infer<typeof WorkOrderResponseSchema>
 export type CancelWorkOrderInput = z.infer<typeof CancelWorkOrderSchema>
 
-// Nyckelkvittens: gränserna kommer från de befintliga keys-DTO:erna.
-const KeyTypeSchema = z.enum([
-  'APARTMENT',
-  'ENTRANCE',
-  'MAILBOX',
-  'LAUNDRY_TAG',
-  'GARAGE',
-  'STORAGE',
-  'FOB_TAG',
+// Underhållsplaner: uppdatering har avsiktligt inget minimikrav på titeln
+// och inget propertyId; den är därför inte en partial av skapandeschemat.
+const MaintenancePlanCategorySchema = z.enum([
+  'ROOF',
+  'FACADE',
+  'WINDOWS',
+  'PLUMBING',
+  'ELECTRICAL',
+  'HEATING',
+  'ELEVATOR',
+  'COMMON_AREAS',
+  'PAINTING',
+  'FLOORING',
   'OTHER',
 ])
-export const IssueKeysSchema = z
+export const CreateMaintenancePlanSchema = z
   .object({
-    leaseId: z.string().uuid(),
-    type: KeyTypeSchema,
-    quantity: z.number().int('Antalet måste vara ett heltal').min(1).max(50),
-    label: z.string().max(120).optional(),
-    issuedToName: z.string().max(120).optional(),
-    issuedAt: IsoDatumSchema.optional(),
-    notes: z.string().max(1000).optional(),
+    title: z.string().min(3),
+    propertyId: z.string().uuid(),
+    category: MaintenancePlanCategorySchema.optional(),
+    plannedYear: z.number().int().min(2020).max(2060),
+    estimatedCost: z.number().finite().min(0),
+    priority: z.number().int().min(1).max(3).optional(),
+    interval: z.number().int().optional(),
+    lastDoneYear: z.number().int().optional(),
+    description: z.string().optional(),
+    notes: z.string().optional(),
   })
   .strict()
-export const ReturnKeySchema = z
+export const UpdateMaintenancePlanSchema = z
   .object({
-    returnedAt: IsoDatumSchema.optional(),
-    notes: z.string().max(1000).optional(),
+    title: z.string().optional(),
+    category: MaintenancePlanCategorySchema.optional(),
+    status: z.enum(['PLANNED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    plannedYear: z.number().int().min(2020).max(2060).optional(),
+    estimatedCost: z.number().finite().min(0).optional(),
+    actualCost: z.number().finite().min(0).optional(),
+    priority: z.number().int().min(1).max(3).optional(),
+    interval: z.number().int().optional(),
+    lastDoneYear: z.number().int().optional(),
+    description: z.string().optional(),
+    notes: z.string().optional(),
+    completedAt: IsoDatumSchema.optional(),
   })
   .strict()
-export const UpdateKeySchema = z
+export type CreateMaintenancePlanInput = z.infer<typeof CreateMaintenancePlanSchema>
+export type UpdateMaintenancePlanInput = z.infer<typeof UpdateMaintenancePlanSchema>
+
+export const ConfirmBackfillSchema = z
   .object({
-    status: z.enum(['LOST', 'REPLACED']).optional(),
-    type: KeyTypeSchema.optional(),
-    label: z.string().max(120).optional(),
-    issuedToName: z.string().max(120).optional(),
-    notes: z.string().max(1000).optional(),
+    allowBeyondWarning: z.boolean().optional(),
+    vatDeclarationAcknowledged: z.boolean().optional(),
   })
   .strict()
-export type IssueKeysInput = z.infer<typeof IssueKeysSchema>
-export type ReturnKeyInput = z.infer<typeof ReturnKeySchema>
-export type UpdateKeyInput = z.infer<typeof UpdateKeySchema>
+export type ConfirmBackfillInput = z.infer<typeof ConfirmBackfillSchema>
+
+// reviewedData valideras vidare i importservicen, precis som före typkopplingen.
+export const ConfirmContractRowSchema = z
+  .object({
+    unitId: z.string().uuid().optional(),
+    reviewedData: z.record(z.unknown()).optional(),
+  })
+  .strict()
+export type ConfirmContractRowInput = z.infer<typeof ConfirmContractRowSchema>
 
 // Nyheter, meddelanden och kunder: samma form som API:ts befintliga DTO:er.
 // News har inga längdgränser. null på propertyId avlägsnar fastighetsriktningen.
@@ -2271,3 +2299,44 @@ export const UpdateCustomerSchema = CreateCustomerSchema.partial().extend({
 })
 export type CreateCustomerInput = z.infer<typeof CreateCustomerSchema>
 export type UpdateCustomerInput = z.infer<typeof UpdateCustomerSchema>
+
+// Nyckelkvittens: gränserna kommer från de befintliga keys-DTO:erna.
+const KeyTypeSchema = z.enum([
+  'APARTMENT',
+  'ENTRANCE',
+  'MAILBOX',
+  'LAUNDRY_TAG',
+  'GARAGE',
+  'STORAGE',
+  'FOB_TAG',
+  'OTHER',
+])
+export const IssueKeysSchema = z
+  .object({
+    leaseId: z.string().uuid(),
+    type: KeyTypeSchema,
+    quantity: z.number().int('Antalet måste vara ett heltal').min(1).max(50),
+    label: z.string().max(120).optional(),
+    issuedToName: z.string().max(120).optional(),
+    issuedAt: IsoDatumSchema.optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+export const ReturnKeySchema = z
+  .object({
+    returnedAt: IsoDatumSchema.optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+export const UpdateKeySchema = z
+  .object({
+    status: z.enum(['LOST', 'REPLACED']).optional(),
+    type: KeyTypeSchema.optional(),
+    label: z.string().max(120).optional(),
+    issuedToName: z.string().max(120).optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+export type IssueKeysInput = z.infer<typeof IssueKeysSchema>
+export type ReturnKeyInput = z.infer<typeof ReturnKeySchema>
+export type UpdateKeyInput = z.infer<typeof UpdateKeySchema>

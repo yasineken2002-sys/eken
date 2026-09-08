@@ -1,3 +1,6 @@
+import { CreateMiscChargeSchema } from '@eken/shared'
+import type { CreateMiscChargeInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -70,7 +73,7 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
   // och visas då i kortet med en "Bekräfta och bokför"-knapp för omförsök.
   const onSubmit = async (values: FormValues) => {
     if (!ticket.leaseId || !ticket.tenantId) return
-    const created = await createMutation.mutateAsync({
+    const kropp: CreateMiscChargeInput = {
       leaseId: ticket.leaseId,
       tenantId: ticket.tenantId,
       sourceType: 'MAINTENANCE_TICKET',
@@ -78,7 +81,13 @@ export function DebitTenantCard({ ticket }: { ticket: TicketRef }) {
       description: values.description,
       incidentDate: values.incidentDate,
       netAmount: Number(values.netAmount),
-    })
+    }
+    const fel = kontraktsfel(CreateMiscChargeSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    const created = await createMutation.mutateAsync(kropp)
     setModalOpen(false)
     reset({ incidentDate: todayIso() })
     try {

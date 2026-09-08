@@ -1,3 +1,7 @@
+import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
+import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
+import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
+import { IssueKeysSchema, ReturnKeySchema, UpdateKeySchema } from '@eken/shared'
 import {
   CreateNewsPostSchema,
   UpdateNewsPostSchema,
@@ -10,13 +14,17 @@ import { UpdateNewsPostDto } from '../../news/dto/update-news-post.dto'
 import { SendMessageDto } from '../../messages/dto/send-message.dto'
 import { CreateCustomerDto } from '../../customers/dto/create-customer.dto'
 import { UpdateCustomerDto } from '../../customers/dto/update-customer.dto'
-import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
-import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
-import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
+import { CreateMaintenancePlanDto } from '../../maintenance-plan/dto/create-maintenance-plan.dto'
+import { UpdateMaintenancePlanDto } from '../../maintenance-plan/dto/update-maintenance-plan.dto'
+import { CreateMiscChargeDto } from '../../misc-charges/dto/create-misc-charge.dto'
+import { ConfirmBackfillDto } from '../../avisering/dto/confirm-backfill.dto'
+import { ConfirmContractRowDto } from '../../import/dto/confirm-contract-row.dto'
 import {
-  IssueKeysSchema,
-  ReturnKeySchema,
-  UpdateKeySchema,
+  CreateMaintenancePlanSchema,
+  UpdateMaintenancePlanSchema,
+  CreateMiscChargeSchema,
+  ConfirmBackfillSchema,
+  ConfirmContractRowSchema,
   CreateExpenseSchema,
   ReverseEntrySchema,
   ReopenPeriodSchema,
@@ -1249,31 +1257,75 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     ogiltigVarfor: 'userId över 64 tecken är inte ett av våra',
   },
   {
-    endpoint: 'POST /keys',
-    inputTyp: 'IssueKeysInput',
-    schema: IssueKeysSchema,
-    dto: IssueKeysDto,
-    giltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 },
-    ogiltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1.5 },
-    ogiltigVarfor: 'quantity måste vara ett heltal',
+    endpoint: 'POST /maintenance-plans',
+    inputTyp: 'CreateMaintenancePlanInput',
+    schema: CreateMaintenancePlanSchema,
+    dto: CreateMaintenancePlanDto,
+    giltig: {
+      title: 'Tak',
+      propertyId: '00000000-0000-4000-8000-000000000001',
+      plannedYear: 2020,
+      estimatedCost: 0,
+    },
+    ogiltig: {
+      title: 'Ta',
+      propertyId: '00000000-0000-4000-8000-000000000001',
+      plannedYear: 2020,
+      estimatedCost: 0,
+    },
+    ogiltigVarfor: 'titeln kräver minst tre tecken',
   },
   {
-    endpoint: 'PATCH /keys/:id/return',
-    inputTyp: 'ReturnKeyInput',
-    schema: ReturnKeySchema,
-    dto: ReturnKeyDto,
-    giltig: {},
-    ogiltig: { returnedAt: 'fel' },
-    ogiltigVarfor: 'returnedAt måste vara ett ISO-datum',
+    endpoint: 'PATCH /maintenance-plans/:id',
+    inputTyp: 'UpdateMaintenancePlanInput',
+    schema: UpdateMaintenancePlanSchema,
+    dto: UpdateMaintenancePlanDto,
+    giltig: { title: '', status: 'COMPLETED', actualCost: 0 },
+    ogiltig: { plannedYear: 2061 },
+    ogiltigVarfor: 'planerat år får inte överstiga 2060',
   },
   {
-    endpoint: 'PATCH /keys/:id',
-    inputTyp: 'UpdateKeyInput',
-    schema: UpdateKeySchema,
-    dto: UpdateKeyDto,
-    giltig: { status: 'REPLACED' },
-    ogiltig: { status: 'RETURNED' },
-    ogiltigVarfor: 'återlämning har en egen endpoint',
+    endpoint: 'POST /misc-charges',
+    inputTyp: 'CreateMiscChargeInput',
+    schema: CreateMiscChargeSchema,
+    dto: CreateMiscChargeDto,
+    giltig: {
+      leaseId: '00000000-0000-4000-8000-000000000001',
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      sourceType: 'KEY_LOSS',
+      sourceRefId: '',
+      description: '',
+      incidentDate: '2026-09-08',
+      netAmount: 0.01,
+    },
+    ogiltig: {
+      leaseId: '00000000-0000-4000-8000-000000000001',
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      sourceType: 'KEY_LOSS',
+      sourceRefId: '',
+      description: '',
+      incidentDate: '2026-09-08',
+      netAmount: 0,
+    },
+    ogiltigVarfor: 'netto måste vara minst 0.01',
+  },
+  {
+    endpoint: 'POST /avisering/backfill/:leaseId/confirm',
+    inputTyp: 'ConfirmBackfillInput',
+    schema: ConfirmBackfillSchema,
+    dto: ConfirmBackfillDto,
+    giltig: { allowBeyondWarning: false, vatDeclarationAcknowledged: true },
+    ogiltig: { allowBeyondWarning: 'yes' },
+    ogiltigVarfor: 'godtyckliga strängar är inte booleska värden',
+  },
+  {
+    endpoint: 'POST /import/contract-batches/:id/rows/:rowId/confirm',
+    inputTyp: 'ConfirmContractRowInput',
+    schema: ConfirmContractRowSchema,
+    dto: ConfirmContractRowDto,
+    giltig: { reviewedData: { monthlyRent: 5000 } },
+    ogiltig: { reviewedData: [] },
+    ogiltigVarfor: 'reviewedData måste vara ett objekt, inte en array',
   },
   {
     endpoint: 'POST /news',
@@ -1319,5 +1371,32 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { isActive: false },
     ogiltig: { email: 'inte-en-adress' },
     ogiltigVarfor: 'e-postadressen måste ha adressform',
+  },
+  {
+    endpoint: 'POST /keys',
+    inputTyp: 'IssueKeysInput',
+    schema: IssueKeysSchema,
+    dto: IssueKeysDto,
+    giltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 },
+    ogiltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1.5 },
+    ogiltigVarfor: 'quantity måste vara ett heltal',
+  },
+  {
+    endpoint: 'PATCH /keys/:id/return',
+    inputTyp: 'ReturnKeyInput',
+    schema: ReturnKeySchema,
+    dto: ReturnKeyDto,
+    giltig: {},
+    ogiltig: { returnedAt: 'fel' },
+    ogiltigVarfor: 'returnedAt måste vara ett ISO-datum',
+  },
+  {
+    endpoint: 'PATCH /keys/:id',
+    inputTyp: 'UpdateKeyInput',
+    schema: UpdateKeySchema,
+    dto: UpdateKeyDto,
+    giltig: { status: 'REPLACED' },
+    ogiltig: { status: 'RETURNED' },
+    ogiltigVarfor: 'återlämning har en egen endpoint',
   },
 ]

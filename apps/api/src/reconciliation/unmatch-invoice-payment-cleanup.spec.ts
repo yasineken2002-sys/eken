@@ -36,8 +36,8 @@ function makeService(
     opts.allocation === undefined ? { invoiceId: INVOICE_ID, amount: 3000 } : opts.allocation
 
   const tx = {
-    $queryRaw: jest.fn(() => {
-      order.push('lock:invoice')
+    $queryRaw: jest.fn((sql: TemplateStringsArray) => {
+      order.push(sql.join('').includes('"BankTransaction"') ? 'lock:bank' : 'lock:invoice')
       return Promise.resolve([])
     }),
     invoice: {
@@ -162,7 +162,7 @@ describe('#326 B — allokeringen raderas, och i rätt ordning', () => {
 
   it('SEKVENS: lås → radera allokering → statusrättelse → händelse → bank-länk → motverifikat', async () => {
     // Ordningen är lastbärande, inte kosmetisk:
-    //  • låset först — låsordningen Invoice → BankTransaction (ingen ABBA)
+    //  • banklåset först — BankTransaction → Invoice → Deposit
     //  • raderingen FÖRE reverseringen — annars kan en fallerad reversering
     //    lämna allokeringen borta men verifikatet kvar
     //  • händelsen i samma transaktion som raderingen (BFL 5 kap 11 §)
@@ -170,6 +170,7 @@ describe('#326 B — allokeringen raderas, och i rätt ordning', () => {
     await service.unmatchTransaction(TX_ID, 'org-1', 'user-1')
 
     expect(order).toEqual([
+      'lock:bank',
       'lock:invoice',
       'delete:invoicePayment',
       'write:invoice.status',

@@ -1,3 +1,4 @@
+import type { ConfirmContractRowInput, SammaNycklar } from '@eken/shared'
 import { IsObject, IsOptional, IsUUID } from 'class-validator'
 
 /**
@@ -7,7 +8,7 @@ import { IsObject, IsOptional, IsUUID } from 'class-validator'
  *   servicen (buildLeaseDtoFromScan) innan avtalet skapas — inget förlitande på
  *   att klienten skickar giltiga fält.
  */
-export class ConfirmContractRowDto {
+export class ConfirmContractRowDto implements ConfirmContractRowInput {
   @IsUUID()
   @IsOptional()
   unitId?: string
@@ -16,3 +17,6 @@ export class ConfirmContractRowDto {
   @IsOptional()
   reviewedData?: Record<string, unknown>
 }
+
+const _kontrakt: SammaNycklar<ConfirmContractRowDto, ConfirmContractRowInput> = true
+void _kontrakt
