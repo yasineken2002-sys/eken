@@ -145,6 +145,11 @@ per fält**, med 26 obesvarade fall. Det är reglernas täckning och riktighet
 över hela bedömningsmängden, inte modellens träffgrad. Korpus och facit är
 oförändrade.
 
+Verifierat på `a973e53`: 24/24 prov, sedan en avsiktlig regression som tog bort
+otolkbara svar ur nämnaren. Provet föll på 100 % i stället för förväntade 50 %.
+Efter återställning: 24/24 gröna igen. Den sparade regelkörningen är gjord på
+samma commit med ren arbetskopia, noll modellanrop och kostnad 0 USD.
+
 **Etapp B är fortfarande BLOCKERAT för godkännande:** en riktig modellkörning
 med utvecklingsnyckel och krediter måste nå minst 80 % på avi, belopp OCH
 motpart. Den lokala miljön saknar utvecklingsnyckel. Simulerade modellsvar i
