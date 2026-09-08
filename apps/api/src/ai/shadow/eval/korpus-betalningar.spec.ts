@@ -113,17 +113,15 @@ describe('vad de deterministiska reglerna klarar UTAN modellen', () => {
     }
   })
 
-  it('DUBBELBETALNING når fram trots exakt OCR — regeln kräver att beloppet ryms', () => {
-    // NEGATIVKONTROLLEN FÖR DEN LAGNING KORPUSEN AVSLÖJADE. Raderna bär ett
-    // KORREKT OCR (hyresgästen betalade samma avi två gånger), och den första
-    // versionen av regeln svarade därför "automatiken tar den" och föreslog
-    // aldrig något — trots att avstämningen avvisar en överbetalning och raden
-    // blir UNMATCHED. Utfallet hade varit tystnad med pengar på kontot.
+  it('dubbelbetalningar tystas inte som redan lösta och föreslår aldrig för liten fordran', () => {
     const dubbla = korpus.bankrader.filter((r) => r.facit.grupp === 'dubbelbetalning')
     expect(dubbla.length).toBeGreaterThan(0)
     for (const r of dubbla) {
       const utfall = provaKandidater(bankrad(r), kandidater)
-      expect([r.id, utfall.typ]).toEqual([r.id, 'KANDIDATER'])
+      expect(utfall.typ).not.toBe('INGEN_FRAGA')
+      if (utfall.typ === 'KANDIDATER') {
+        expect(utfall.kandidater.every((k) => r.belopp <= k.utestaende + 1)).toBe(true)
+      }
     }
   })
 

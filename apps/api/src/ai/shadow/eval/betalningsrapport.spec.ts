@@ -87,14 +87,14 @@ describe('betalningsrapport — nämnaren ägs av facit', () => {
 })
 
 describe('betalningsriggens produktionsregler och modellsvar', () => {
-  it('mäter regelarmen utan modell: fyra kontroller och 10/36 per fält', async () => {
+  it('mäter regelarmen utan modell: fyra kontroller och 15/36 per fält', async () => {
     const rapport = await mataBetalningar(korpus)
     expect(rapport.kontroller).toEqual({ antal: 4, fel: [] })
     expect(rapport.recall).toEqual({ ratt: 19, antal: 19 })
     expect(rapport.regler.map((m) => [m.ratt, m.antal])).toEqual([
-      [10, 36],
-      [10, 36],
-      [10, 36],
+      [15, 36],
+      [15, 36],
+      [15, 36],
     ])
     expect(rapport.usage).toEqual({ tokensIn: 0, tokensUt: 0, modellanrop: 0, komplett: true })
     expect(rapport.etappB).toBe('BLOCKERAT')
@@ -103,13 +103,13 @@ describe('betalningsriggens produktionsregler och modellsvar', () => {
   it('ett aktivt INGEN ger FULL/OKAND, precis som producenten, och facit når inte modellen', async () => {
     const modell = jest.fn(async () => nej)
     const rapport = await mataBetalningar(korpus, modell)
-    expect(modell).toHaveBeenCalledTimes(26)
+    expect(modell).toHaveBeenCalledTimes(21)
     expect(rapport.kombinerat.map((m) => m.antal)).toEqual([36, 36, 36])
     expect(rapport.kombinerat.map((m) => m.saknadeSvar)).toEqual([0, 0, 0])
     expect(rapport.usage).toEqual({
-      tokensIn: 2600,
-      tokensUt: 260,
-      modellanrop: 26,
+      tokensIn: 2100,
+      tokensUt: 210,
+      modellanrop: 21,
       komplett: true,
     })
     for (const rad of rapport.rader.filter((r) => !r.kontroll)) {
@@ -130,11 +130,11 @@ describe('betalningsriggens produktionsregler och modellsvar', () => {
   ])('%s svar försvinner inte ur nämnaren', async (_namn, svar) => {
     const rapport = await mataBetalningar(korpus, async () => svar)
     expect(rapport.kombinerat.map((m) => [m.ratt, m.antal, m.saknadeSvar])).toEqual([
-      [10, 36, 26],
-      [10, 36, 26],
-      [10, 36, 26],
+      [15, 36, 21],
+      [15, 36, 21],
+      [15, 36, 21],
     ])
-    expect(rapport.tekniskaFel).toHaveLength(26)
+    expect(rapport.tekniskaFel).toHaveLength(21)
     expect(rapport.etappB).toBe('UNDERKAND')
   })
 
@@ -145,7 +145,7 @@ describe('betalningsriggens produktionsregler och modellsvar', () => {
     const rapport = await mataBetalningar(korpus, modell)
     expect(modell).toHaveBeenCalledTimes(1)
     expect(rapport.rader).toHaveLength(korpus.bankrader.length)
-    expect(rapport.rader.filter((r) => r.modellstatus === 'EJ_KORD')).toHaveLength(25)
+    expect(rapport.rader.filter((r) => r.modellstatus === 'EJ_KORD')).toHaveLength(20)
     expect(rapport.usage.komplett).toBe(false)
     expect(JSON.stringify(rapport)).not.toContain('hemlig råtext')
     expect(rapport.etappB).toBe('UNDERKAND')
