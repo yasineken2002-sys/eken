@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useInviteUser } from '../hooks/useUsers'
 import { readErrorMessage } from '@/features/auth/lib/password-schema'
-import { ASSIGNABLE_ROLES } from '@eken/shared'
+import { ASSIGNABLE_ROLES, InviteUserSchema } from '@eken/shared'
+import type { InviteUserInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import type { AssignableRole } from '../api/users.api'
 
 /**
@@ -24,14 +25,6 @@ const ROLE_DESCRIPTIONS: Record<AssignableRole, string> = {
   VIEWER: 'Läsbehörighet — kan se, men inte ändra',
 }
 
-const schema = z.object({
-  email: z.string().email('Ogiltig e-postadress'),
-  firstName: z.string().min(1, 'Förnamn krävs').max(100),
-  lastName: z.string().min(1, 'Efternamn krävs').max(100),
-  role: z.enum(ASSIGNABLE_ROLES),
-})
-type FormValues = z.infer<typeof schema>
-
 interface Props {
   open: boolean
   onClose: () => void
@@ -46,8 +39,8 @@ export function InviteUserModal({ open, onClose }: Props) {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+  } = useForm<InviteUserInput>({
+    resolver: zodResolver(InviteUserSchema),
     defaultValues: { role: 'MANAGER' },
   })
 
@@ -57,9 +50,20 @@ export function InviteUserModal({ open, onClose }: Props) {
     onClose()
   }
 
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = (data: InviteUserInput) => {
     setApiError(null)
-    invite.mutate(data, {
+    const input: InviteUserInput = {
+      email: data.email,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      role: data.role,
+    }
+    const fel = kontraktsfel(InviteUserSchema, input)
+    if (fel) {
+      setApiError(fel)
+      return
+    }
+    invite.mutate(input, {
       onSuccess: () => handleClose(),
       onError: (err) => setApiError(readErrorMessage(err, 'Kunde inte skicka inbjudan')),
     })

@@ -1,5 +1,5 @@
 import { api, get, post, patch } from '@/lib/api'
-import type { UserRole, ASSIGNABLE_ROLES } from '@eken/shared'
+import type { UserRole, ASSIGNABLE_ROLES, InviteUserInput, UpdateUserRoleInput } from '@eken/shared'
 
 export interface OrgUser {
   id: string
@@ -13,13 +13,6 @@ export interface OrgUser {
   avatarUrl: string | null
   createdAt: string
   updatedAt: string
-}
-
-export interface InviteUserInput {
-  email: string
-  firstName: string
-  lastName: string
-  role: AssignableRole
 }
 
 /**
@@ -36,8 +29,8 @@ export function inviteUser(dto: InviteUserInput): Promise<OrgUser> {
   return post<OrgUser>('/users/invite', dto)
 }
 
-export function updateUserRole(id: string, role: AssignableRole): Promise<OrgUser> {
-  return patch<OrgUser>(`/users/${id}/role`, { role })
+export function updateUserRole(id: string, input: UpdateUserRoleInput): Promise<OrgUser> {
+  return patch<OrgUser>(`/users/${id}/role`, input)
 }
 
 export async function deactivateUser(id: string): Promise<OrgUser> {
@@ -46,5 +39,5 @@ export async function deactivateUser(id: string): Promise<OrgUser> {
 }
 
 export function reactivateUser(id: string): Promise<OrgUser> {
-  return post<OrgUser>(`/users/${id}/reactivate`, {})
+  return post<OrgUser>(`/users/${id}/reactivate`)
 }

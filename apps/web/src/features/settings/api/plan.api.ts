@@ -1,5 +1,5 @@
 import { get, post } from '@/lib/api'
-import type { SubscriptionPlan, OrgStatus } from '@eken/shared'
+import type { SubscriptionPlan, OrgStatus, BuyCreditsInput } from '@eken/shared'
 
 export interface AiUsageCurrent {
   plan: SubscriptionPlan
@@ -42,6 +42,6 @@ export function getAiUsageHistory(days = 30): Promise<AiUsageHistoryRow[]> {
   return get<AiUsageHistoryRow[]>(`/ai-usage/history?days=${days}`)
 }
 
-export function buyAiCredits(amount: 100 | 500 | 1000): Promise<BuyCreditsResult> {
-  return post<BuyCreditsResult>('/ai-usage/buy-credits', { amount })
+export function buyAiCredits(input: BuyCreditsInput): Promise<BuyCreditsResult> {
+  return post<BuyCreditsResult>('/ai-usage/buy-credits', input)
 }

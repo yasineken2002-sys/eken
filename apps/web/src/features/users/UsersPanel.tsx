@@ -1,3 +1,7 @@
+import { UpdateUserRoleSchema } from '@eken/shared'
+import type { UpdateUserRoleInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { UserPlus, ShieldCheck, Mail, Clock, Power, RotateCw, Lock } from 'lucide-react'
@@ -156,9 +160,15 @@ function UserRow({ user, isOwner, isSelf }: UserRowProps) {
           <select
             value={user.role}
             disabled={updateRole.isPending}
-            onChange={(e) =>
-              updateRole.mutate({ id: user.id, role: e.target.value as AssignableRole })
-            }
+            onChange={(e) => {
+              const input: UpdateUserRoleInput = { role: e.target.value as AssignableRole }
+              const fel = kontraktsfel(UpdateUserRoleSchema, input)
+              if (fel) {
+                toast.error(fel)
+                return
+              }
+              updateRole.mutate({ id: user.id, input })
+            }}
             className="border-input h-8 rounded-lg border bg-white px-2.5 text-[12.5px] font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           >
             {ROLE_OPTIONS.map((r) => (

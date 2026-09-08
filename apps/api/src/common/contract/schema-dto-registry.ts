@@ -2,6 +2,10 @@ import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
 import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
 import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
 import { IssueKeysSchema, ReturnKeySchema, UpdateKeySchema } from '@eken/shared'
+import { InviteUserSchema, UpdateUserRoleSchema, BuyCreditsSchema } from '@eken/shared'
+import { InviteUserDto } from '../../users/dto/invite-user.dto'
+import { UpdateUserRoleDto } from '../../users/dto/update-user-role.dto'
+import { BuyCreditsDto } from '../../ai-usage/dto/buy-credits.dto'
 import {
   CreateNewsPostSchema,
   UpdateNewsPostSchema,
@@ -1371,6 +1375,33 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { isActive: false },
     ogiltig: { email: 'inte-en-adress' },
     ogiltigVarfor: 'e-postadressen måste ha adressform',
+  },
+  {
+    endpoint: 'POST /users/invite',
+    inputTyp: 'InviteUserInput',
+    schema: InviteUserSchema,
+    dto: InviteUserDto,
+    giltig: { email: 'anna@example.se', firstName: 'Anna', lastName: 'Andersson', role: 'MANAGER' },
+    ogiltig: { email: 'anna@example.se', firstName: 'Anna', lastName: 'Andersson', role: 'OWNER' },
+    ogiltigVarfor: 'OWNER kan inte tilldelas via inbjudan',
+  },
+  {
+    endpoint: 'PATCH /users/:id/role',
+    inputTyp: 'UpdateUserRoleInput',
+    schema: UpdateUserRoleSchema,
+    dto: UpdateUserRoleDto,
+    giltig: { role: 'ACCOUNTANT' },
+    ogiltig: { role: 'OWNER' },
+    ogiltigVarfor: 'OWNER kan inte tilldelas via rollbyte',
+  },
+  {
+    endpoint: 'POST /ai-usage/buy-credits',
+    inputTyp: 'BuyCreditsInput',
+    schema: BuyCreditsSchema,
+    dto: BuyCreditsDto,
+    giltig: { amount: 500 },
+    ogiltig: { amount: 101 },
+    ogiltigVarfor: 'bara paketen 100, 500 och 1000 kan köpas; mellanliggande belopp avvisas',
   },
   {
     endpoint: 'POST /keys',

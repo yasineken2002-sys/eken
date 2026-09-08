@@ -6,7 +6,7 @@ import {
   reactivateUser,
   updateUserRole,
 } from '../api/users.api'
-import type { AssignableRole, InviteUserInput } from '../api/users.api'
+import type { InviteUserInput, UpdateUserRoleInput } from '@eken/shared'
 
 const USERS_LIST = ['users', 'list'] as const
 
@@ -30,7 +30,8 @@ export function useInviteUser() {
 export function useUpdateUserRole() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, role }: { id: string; role: AssignableRole }) => updateUserRole(id, role),
+    mutationFn: ({ id, input }: { id: string; input: UpdateUserRoleInput }) =>
+      updateUserRole(id, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: USERS_LIST })
     },
