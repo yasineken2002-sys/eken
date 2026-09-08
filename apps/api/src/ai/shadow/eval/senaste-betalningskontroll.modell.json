@@ -1,13 +1,13 @@
 {
-  "skapad": "2026-09-08T15:23:49.323Z",
-  "sha": "48fe4a5de605988e5735df57b4c3f46eb9e4739a",
-  "arbetskopiaAndrad": true,
+  "skapad": "2026-09-08T15:48:41.790Z",
+  "sha": "86bf2473267ec9e13b6111f648e18be4e7877a70",
+  "arbetskopiaAndrad": false,
   "korpusSha256": "64a7a824b231b273fe5ccd5c5267b5332faba048e08c80cd4b58c9889c18ab57",
   "lage": "MED_MODELL",
   "modell": "claude-haiku-4-5-20251001",
   "maxTokens": 1024,
   "kostnad": {
-    "usd": 0.032854,
+    "usd": 0.032849,
     "komplett": true,
     "prisInPerMtok": 1,
     "prisUtPerMtok": 5,
@@ -773,7 +773,7 @@
   ],
   "usage": {
     "tokensIn": 21269,
-    "tokensUt": 2317,
+    "tokensUt": 2316,
     "modellanrop": 11,
     "komplett": true
   }

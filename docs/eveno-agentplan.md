@@ -130,6 +130,32 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ### Fortsättning 2026-09-08 — Agent 2, etapp B
 
+**Senaste mätning, kandidatregel i `86bf247`: 36/36 rätt på samtliga tre fält
+i originalmaterialet, 10/12 på samtliga fält i kontrollmaterialet.** Ingen
+98-procentig träffgrad i drift är därmed visad. Kontrollmissarna `c2` och `c4`
+är fortfarande avvisade små delbetalningar; ingen namnregel tvingar fram val.
+
+Före rangordning och kandidattak utesluts nu poster som inte rymmer hela
+bankraden (befintlig tolerans 1 kr), samt slutbetalda poster. Ett förslag kan
+bara matcha hela raden mot en fordran. Även ett närliggande OCR eller ett namn
+måste uppfylla denna beloppsgräns; exakt OCR med belopp som ryms har kvar sin
+tidigare väg. Delbetalningar behålls utan ny minsta beloppsandel. Inga
+avstämningsfiler, befogenheter eller facit ändras.
+
+Reglernas täckning på originalet ökar från 10/36 till 15/36 och behovet av
+modellanrop minskar från 26 till 21. Kandidat-recall är fortsatt 19/19 och
+alla fyra OCR-kontroller passerar. Den senaste modellkörningen kostade
+uppskattningsvis 0,063126 USD, kontrollkörningen 0,032849 USD.
+`senaste-betalningskorning.modell.json` och `senaste-betalningskontroll.modell.json`
+bär dessa resultat och kod-SHA; äldre resultat nedan finns i git-historiken.
+Arbetskopiemarkeringen kan vara sann eftersom den andra rapporten sparades
+medan körningen pågick; produktionskoden ändrades inte under mätningen.
+
+Verifierat: API-typecheck, lint och 37/37 avgränsade prov. Utan beloppsgrinden
+föll 7 av de 13 nya gränsproven; återställd grind gav 37/37 gröna igen. Lint
+kraschade först med exit 139 under samtidig typkontroll, men passerade vid
+separat omkörning. Produktionsdatabasen har inte använts.
+
 Agent 2:s **etapp A är implementerad i #846**. Den äldre lägesbilden nedan som
 säger att agent 2 inte påbörjats är därmed passerad. Etapp A:s driftkriterium
 (flaggan på för en riktig organisation) har inte verifierats i detta arbete.
