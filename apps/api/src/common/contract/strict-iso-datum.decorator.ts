@@ -20,8 +20,32 @@ import {
  *     20260907                GODTAR       avvisar        ← basformat
  *     2026-W12                GODTAR       avvisar        ← veckoformat
  *
- * Fem former som DTO:n godtog och schemat avvisade. Det var en dokumenterad
- * avvikelse i paritetsprovet; den är nu en PARITET.
+ * Fem former som DTO:n godtog och schemat avvisade. Den avvikelsen är stängd.
+ *
+ * ── MEN DET ÄR INGEN FULL PARITET, OCH DET SKA INTE PÅSTÅS ─────────────────
+ *
+ * Här stod "den är nu en PARITET". Det var för starkt. Uppmätt mot samma
+ * Zod-mängd (`z.string().date()` ∪ `z.string().datetime({ offset: true })`,
+ * zod 3.25.76) återstår TVÅ avvikelser, båda åt det SÄKRA hållet:
+ *
+ *     värde                        dekorator   Zod
+ *     2026-09-07T12:00:00+99:99    avvisar     GODTAR
+ *     2026-09-07T12:00:00+00:60    avvisar     GODTAR
+ *
+ * Zods regex sätter ingen gräns på offsetens siffror och har inget
+ * `Date.parse`-fallback; det har den här. Riktningen är den man vill ha — en
+ * kropp som passerar DTO:n passerar alltid schemat, aldrig tvärtom — men
+ * paritetsprovet prövar inte de två värdena, så påståendet "paritet" hade
+ * vilat på att ingen mätte efter.
+ *
+ * ── OCH EN GRÄNS INGEN AV DEM SÄTTER ───────────────────────────────────────
+ *
+ * Båda godtar `+23:59` och `-23:59`. De är giltiga enligt ISO 8601 men finns
+ * inte som verkliga tidszoner (spannet är -12:00..+14:00), och de skiftar den
+ * effektiva UTC-tiden nästan ett helt dygn — alltså exakt den skada den här
+ * dekoratorn finns för att stänga. Att bara skärpa HÄR hade öppnat en tredje
+ * avvikelse mot schemat, så gränsen hör hemma i BÅDA lagren och i en egen
+ * ändring. Funnen i säkerhetsgranskningen av #847.
  *
  * ── VARFÖR TIDSZONEN ÄR DEN ALLVARLIGA ──────────────────────────────────────
  *
