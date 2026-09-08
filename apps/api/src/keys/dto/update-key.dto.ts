@@ -1,3 +1,4 @@
+import type { UpdateKeyInput, SammaNycklar } from '@eken/shared'
 import { IsEnum, IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
 import { KeyStatus, KeyType } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
@@ -6,7 +7,7 @@ import { StrictString } from '../../common/contract/strict-string.decorator'
 // PATCH /keys/:id/return (sätter returnedAt). En RETURNED nyckel är låst.
 const PATCHABLE_STATUSES = ['LOST', 'REPLACED'] as const
 
-export class UpdateKeyDto {
+export class UpdateKeyDto implements UpdateKeyInput {
   @IsIn(PATCHABLE_STATUSES)
   @IsOptional()
   status?: Extract<KeyStatus, 'LOST' | 'REPLACED'>
@@ -33,3 +34,6 @@ export class UpdateKeyDto {
   @StrictString()
   notes?: string
 }
+
+const _kontrakt: SammaNycklar<UpdateKeyDto, UpdateKeyInput> = true
+void _kontrakt

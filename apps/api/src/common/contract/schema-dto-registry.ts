@@ -1,3 +1,7 @@
+import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
+import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
+import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
+import { IssueKeysSchema, ReturnKeySchema, UpdateKeySchema } from '@eken/shared'
 import {
   CreateNewsPostSchema,
   UpdateNewsPostSchema,
@@ -1367,5 +1371,32 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { isActive: false },
     ogiltig: { email: 'inte-en-adress' },
     ogiltigVarfor: 'e-postadressen måste ha adressform',
+  },
+  {
+    endpoint: 'POST /keys',
+    inputTyp: 'IssueKeysInput',
+    schema: IssueKeysSchema,
+    dto: IssueKeysDto,
+    giltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 },
+    ogiltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1.5 },
+    ogiltigVarfor: 'quantity måste vara ett heltal',
+  },
+  {
+    endpoint: 'PATCH /keys/:id/return',
+    inputTyp: 'ReturnKeyInput',
+    schema: ReturnKeySchema,
+    dto: ReturnKeyDto,
+    giltig: {},
+    ogiltig: { returnedAt: 'fel' },
+    ogiltigVarfor: 'returnedAt måste vara ett ISO-datum',
+  },
+  {
+    endpoint: 'PATCH /keys/:id',
+    inputTyp: 'UpdateKeyInput',
+    schema: UpdateKeySchema,
+    dto: UpdateKeyDto,
+    giltig: { status: 'REPLACED' },
+    ogiltig: { status: 'RETURNED' },
+    ogiltigVarfor: 'återlämning har en egen endpoint',
   },
 ]

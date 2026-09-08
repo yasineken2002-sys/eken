@@ -1,9 +1,10 @@
+import type { IssueKeysInput, SammaNycklar } from '@eken/shared'
 import { KeyType } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
 
-export class IssueKeysDto {
+export class IssueKeysDto implements IssueKeysInput {
   @IsUUID()
   leaseId!: string
 
@@ -41,3 +42,6 @@ export class IssueKeysDto {
   @StrictString()
   notes?: string
 }
+
+const _kontrakt: SammaNycklar<IssueKeysDto, IssueKeysInput> = true
+void _kontrakt
