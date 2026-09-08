@@ -11,6 +11,7 @@ import type {
   SaveReadingReviewInput,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 /** Binder underlaget till regelversionen; är ingen behörighet eller ett godkännande. */
 export function readingFindingFingerprint(finding: ReadingFinding): string {
@@ -154,7 +155,10 @@ export class ReadingReviewService {
           })
           return this.presentDecision(row)
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        {
+          ...PRISMA_DEFAULT_TX_LIMITS,
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
       )
     } catch (error) {
       // Unik revision skyddar även mot samtidiga första beslut; serialisering

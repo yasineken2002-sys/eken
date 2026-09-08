@@ -78,7 +78,7 @@ describe('spara bedömning', () => {
       evidence: { readingId: dto.readingId, code: 'HIGH_RATE' },
     })
     expect(db.meterReadingReview.create.mock.calls[0]![0].data.evidence.reviews).toBeUndefined()
-    expect(transaction.mock.calls[0]![1]).toEqual({ isolationLevel: 'Serializable' })
+    expect(transaction.mock.calls[0]![1]).toMatchObject({ isolationLevel: 'Serializable' })
   })
   it('behåller förra revisionen och visar historik efter omläsning', async () => {
     const { service, input, history } = setup()

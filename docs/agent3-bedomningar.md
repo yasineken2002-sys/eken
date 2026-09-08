@@ -21,7 +21,9 @@ tidpunkt eller eget underlag. Kroppen binds till ett delat Zod-schema/DTO.
 
 Kontroll och INSERT sker i en serialiserbar transaktion. En unik nyckel över
 organisation, avläsning, varningskod och revision skyddar även två samtidiga
-första beslut. P2002/P2034 och ändrat underlag/revision ger 409; användaren behöver
+första beslut. Transaktionen använder modulens gemensamma `PRISMA_DEFAULT_TX_LIMITS`
+(timeout 5 s, maxWait 2 s), uttryckligt utan att höja Prismas standardgränser.
+P2002/P2034 och ändrat underlag/revision ger 409; användaren behöver
 läsa om. Ingen automatisk omskrivning eller omförsök med ny revision sker.
 
 Org-bindningen finns även i en sammansatt FK till MeterReading. DELETE tillåts
