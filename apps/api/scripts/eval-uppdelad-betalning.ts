@@ -84,14 +84,20 @@ async function main() {
         rawOcr: r.rawOcr,
       }
       const regel = provaKandidater(rad, poster)
-      if (regel.typ !== 'KANDIDATER') throw new Error('Experimentets fall måste nå kandidatsteget')
-      const stod = berikaReferenser(rad, poster, regel.kandidater)
+      if (regel.typ === 'INGEN_FRAGA')
+        throw new Error('Exakt OCR ingår inte i detta modelljämförelsetest')
+      const ursprungliga = regel.typ === 'KANDIDATER' ? regel.kandidater : []
+      const stod = berikaReferenser(rad, poster, ursprungliga)
       for (const arm of armar) {
-        const kandidater = arm === 'referensstod' ? stod.kandidater : regel.kandidater
+        const kandidater = arm === 'referensstod' ? stod.kandidater : ursprungliga
         let modellSvar: z.infer<typeof Svar> | null = null
         let svar: z.infer<typeof Svar> | null = null
         let status = 'EJ_KORD'
-        if (!fel) {
+        if (kandidater.length === 0) {
+          svar = { avier: [], hantering: 'OKLART' }
+          status = 'SVAR'
+        }
+        if (!fel && kandidater.length > 0) {
           try {
             const tool: Anthropic.Tool =
               arm === 'befintlig'
