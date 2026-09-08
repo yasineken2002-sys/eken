@@ -1,4 +1,10 @@
+import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
+import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
+import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
 import {
+  IssueKeysSchema,
+  ReturnKeySchema,
+  UpdateKeySchema,
   CreateExpenseSchema,
   ReverseEntrySchema,
   ReopenPeriodSchema,
@@ -1229,5 +1235,32 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { chooseToken: 'val-abc123', userId: '11111111-2222-4333-8444-555555555555' },
     ogiltig: { chooseToken: 'val-abc123', userId: 'u'.repeat(65) },
     ogiltigVarfor: 'userId över 64 tecken är inte ett av våra',
+  },
+  {
+    endpoint: 'POST /keys',
+    inputTyp: 'IssueKeysInput',
+    schema: IssueKeysSchema,
+    dto: IssueKeysDto,
+    giltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 },
+    ogiltig: { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1.5 },
+    ogiltigVarfor: 'quantity måste vara ett heltal',
+  },
+  {
+    endpoint: 'PATCH /keys/:id/return',
+    inputTyp: 'ReturnKeyInput',
+    schema: ReturnKeySchema,
+    dto: ReturnKeyDto,
+    giltig: {},
+    ogiltig: { returnedAt: 'fel' },
+    ogiltigVarfor: 'returnedAt måste vara ett ISO-datum',
+  },
+  {
+    endpoint: 'PATCH /keys/:id',
+    inputTyp: 'UpdateKeyInput',
+    schema: UpdateKeySchema,
+    dto: UpdateKeyDto,
+    giltig: { status: 'REPLACED' },
+    ogiltig: { status: 'RETURNED' },
+    ogiltigVarfor: 'återlämning har en egen endpoint',
   },
 ]
