@@ -96,7 +96,9 @@ export function CustomerForm({
       ...(data.reference ? { reference: data.reference } : {}),
       ...(data.notes ? { notes: data.notes } : {}),
     }
-    const fel = kontraktsfel(defaultValues?.id ? UpdateCustomerSchema : CreateCustomerSchema, input)
+    const fel = defaultValues?.id
+      ? kontraktsfel(UpdateCustomerSchema, input)
+      : kontraktsfel(CreateCustomerSchema, input)
     if (fel) {
       toast.error(fel)
       return
