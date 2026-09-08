@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { IsInt, IsOptional, IsString, Min } from 'class-validator'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 export class AddCreditsDto {
   @ApiProperty()
@@ -10,5 +11,6 @@ export class AddCreditsDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  @StrictString()
   note?: string
 }
