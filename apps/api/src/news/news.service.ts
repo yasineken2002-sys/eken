@@ -1,40 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { IsString, IsOptional, IsBoolean, IsUUID } from 'class-validator'
+import { CreateNewsPostDto } from './dto/create-news-post.dto'
+import { UpdateNewsPostDto } from './dto/update-news-post.dto'
 import { PrismaService } from '../common/prisma/prisma.service'
-
-export class CreateNewsPostDto {
-  @IsString()
-  title!: string
-
-  @IsString()
-  content!: string
-
-  @IsBoolean()
-  @IsOptional()
-  targetAll?: boolean
-
-  @IsUUID()
-  @IsOptional()
-  propertyId?: string
-}
-
-export class UpdateNewsPostDto {
-  @IsString()
-  @IsOptional()
-  title?: string
-
-  @IsString()
-  @IsOptional()
-  content?: string
-
-  @IsBoolean()
-  @IsOptional()
-  targetAll?: boolean
-
-  @IsUUID()
-  @IsOptional()
-  propertyId?: string
-}
 
 @Injectable()
 export class NewsService {

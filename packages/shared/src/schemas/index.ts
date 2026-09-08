@@ -2249,3 +2249,53 @@ export const ConfirmContractRowSchema = z
   })
   .strict()
 export type ConfirmContractRowInput = z.infer<typeof ConfirmContractRowSchema>
+
+// Nyheter, meddelanden och kunder: samma form som API:ts befintliga DTO:er.
+// News har inga längdgränser. null på propertyId avlägsnar fastighetsriktningen.
+export const CreateNewsPostSchema = z
+  .object({
+    title: z.string(),
+    content: z.string(),
+    targetAll: z.boolean().optional(),
+    propertyId: z.string().uuid().nullish(),
+  })
+  .strict()
+export const UpdateNewsPostSchema = CreateNewsPostSchema.partial()
+export type CreateNewsPostInput = z.infer<typeof CreateNewsPostSchema>
+export type UpdateNewsPostInput = z.infer<typeof UpdateNewsPostSchema>
+
+export const SendMessageSchema = z
+  .object({
+    tenantId: z.string().uuid().optional(),
+    sendToAll: z.boolean().optional(),
+    subject: z.string().min(1).max(200),
+    content: z.string().min(1).max(5000),
+  })
+  .strict()
+export type SendMessageInput = z.infer<typeof SendMessageSchema>
+
+// personalNumber är fortsatt en valfri sträng utan nya innehållsregler.
+export const CreateCustomerSchema = z
+  .object({
+    type: z.enum(['INDIVIDUAL', 'COMPANY']),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    personalNumber: z.string().optional(),
+    companyName: z.string().optional(),
+    orgNumber: z.string().optional(),
+    contactPerson: z.string().optional(),
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    street: z.string().optional(),
+    city: z.string().optional(),
+    postalCode: z.string().optional(),
+    country: z.string().optional(),
+    reference: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .strict()
+export const UpdateCustomerSchema = CreateCustomerSchema.partial().extend({
+  isActive: z.boolean().optional(),
+})
+export type CreateCustomerInput = z.infer<typeof CreateCustomerSchema>
+export type UpdateCustomerInput = z.infer<typeof UpdateCustomerSchema>

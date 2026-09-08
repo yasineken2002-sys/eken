@@ -1,5 +1,5 @@
 {
-  "total": 20,
+  "total": 13,
   "poster": [
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
@@ -8,13 +8,6 @@
     {
       "fil": "apps/web/src/features/assignments/api/assignments.api.ts",
       "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
-    },
-    {
-      "fil": "apps/web/src/features/customers/api/customers.api.ts",
-      "medlemmar": [
-        "PATCH `/customers/${id}` → UpdateCustomerInput",
-        "POST '/customers' → CreateCustomerInput"
-      ]
     },
     {
       "fil": "apps/web/src/features/inbox/api/inbox.api.ts",
@@ -31,21 +24,6 @@
     {
       "fil": "apps/web/src/features/maintenance/api/maintenance.api.ts",
       "medlemmar": ["PATCH `/maintenance/${id}` → UpdateTicketInput"]
-    },
-    {
-      "fil": "apps/web/src/features/messages/api/messages.api.ts",
-      "medlemmar": [
-        "POST '/messages/send' → SendMessagePayload",
-        "POST `/messages/${id}/retry` → INLINE-LITERAL"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/news/api/news.api.ts",
-      "medlemmar": [
-        "PATCH `/news/${id}` → UpdateNewsPostDto",
-        "POST '/news' → CreateNewsPostDto",
-        "POST `/news/${id}/publish` → INLINE-LITERAL"
-      ]
     },
     {
       "fil": "apps/web/src/features/settings/api/plan.api.ts",
