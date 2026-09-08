@@ -1,7 +1,8 @@
 import { Test } from '@nestjs/testing'
 import { Reflector } from '@nestjs/core'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
-import type { ExecutionContext } from '@nestjs/common'
+import { ValidationPipe, type ExecutionContext } from '@nestjs/common'
+import { VALIDATION_PIPE_OPTIONS } from '../common/contract/validation-pipe-options'
 import { Prisma } from '@prisma/client'
 import { ReadingReviewController } from './reading-review.controller'
 import { ReadingReviewService } from './reading-review.service'
@@ -15,19 +16,30 @@ import { TransformInterceptor } from '../common/interceptors/transform.intercept
 describe('GET consumption/reading-review', () => {
   let app: NestFastifyApplication
   const findMany = jest.fn()
+  const save = jest.fn()
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [ReadingReviewController],
       providers: [
         ReadingReviewService,
-        { provide: PrismaService, useValue: { meterReading: { findMany } } },
+        {
+          provide: PrismaService,
+          useValue: {
+            meterReading: { findMany },
+            meterReadingReview: { findMany: jest.fn().mockResolvedValue([]) },
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
         canActivate(context: ExecutionContext) {
           const request = context.switchToHttp().getRequest()
-          request.user = { organizationId: 'session-org', role: request.headers['x-test-role'] }
+          request.user = {
+            sub: 'session-user',
+            organizationId: 'session-org',
+            role: request.headers['x-test-role'],
+          }
           return true
         },
       })
@@ -38,6 +50,8 @@ describe('GET consumption/reading-review', () => {
     // Samma ordning som AuthModule: identitet först, rollgrind sedan.
     app.useGlobalGuards(app.get(JwtAuthGuard), new RolesGuard(new Reflector()))
     app.useGlobalInterceptors(new TransformInterceptor())
+    app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS))
+    jest.spyOn(module.get(ReadingReviewService), 'saveReview').mockImplementation(save)
     await app.init()
     await app.getHttpAdapter().getInstance().ready()
   })
@@ -46,6 +60,7 @@ describe('GET consumption/reading-review', () => {
   })
   beforeEach(() => {
     findMany.mockReset().mockResolvedValue([])
+    save.mockReset().mockResolvedValue({ id: 'saved' })
   })
   it.each(['OWNER', 'ADMIN', 'MANAGER', 'ACCOUNTANT', 'VIEWER'])(
     'låter %s läsa men tar organisationen ur sessionen',
@@ -104,5 +119,50 @@ describe('GET consumption/reading-review', () => {
     })
     expect(response.statusCode).toBe(500)
     expect(response.json().success).not.toBe(true)
+  })
+  const body = {
+    readingId: '11111111-1111-4111-8111-111111111111',
+    findingCode: 'HIGH_RATE',
+    fingerprint: 'a'.repeat(64),
+    expectedRevision: 0,
+    assessment: 'EXPLAINED',
+    comment: 'Kontrollerat',
+  }
+  it.each(['OWNER', 'ADMIN', 'MANAGER'])(
+    'POST släpper in %s och tar aktör/organisation ur session',
+    async (role) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/consumption/reading-review/decisions',
+        headers: { 'x-test-role': role },
+        payload: body,
+      })
+      expect(response.statusCode).toBe(201)
+      expect(save).toHaveBeenCalledWith(
+        'session-org',
+        'session-user',
+        expect.objectContaining(body),
+      )
+    },
+  )
+  it.each(['VIEWER', 'ACCOUNTANT', 'UNKNOWN'])('POST nekar %s före sparande', async (role) => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/consumption/reading-review/decisions',
+      headers: { 'x-test-role': role },
+      payload: body,
+    })
+    expect(response.statusCode).toBe(403)
+    expect(save).not.toHaveBeenCalled()
+  })
+  it('POST avvisar förfalskad aktör i kroppen före sparande', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/consumption/reading-review/decisions',
+      headers: { 'x-test-role': 'MANAGER' },
+      payload: { ...body, reviewedById: 'other' },
+    })
+    expect(response.statusCode).toBe(400)
+    expect(save).not.toHaveBeenCalled()
   })
 })

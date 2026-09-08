@@ -941,6 +941,7 @@ model Organization {
   meters                    Meter[]
   unitEquipment             UnitEquipment[]
   meterReadings             MeterReading[]
+  meterReadingReviews       MeterReadingReview[]
   consumptionTariffs        ConsumptionTariff[]
   consumptionCharges        ConsumptionCharge[]
   miscCharges               MiscCharge[]
@@ -6183,6 +6184,7 @@ model MeterReading {
   organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   meter        Meter               @relation(fields: [meterId], references: [id], onDelete: Restrict)
   charges      ConsumptionCharge[]
+  reviews      MeterReadingReview[]
 
   // Idempotens för API-/import-ingest: samma (mätare, externt avläsnings-id) får
   // inte skapa två rader. MANUAL har null externalId → ej begränsad.
@@ -6199,6 +6201,7 @@ model MeterReading {
   actorKind ActorKind?
 
   @@unique([meterId, externalId])
+  @@unique([organizationId, id])
   @@index([organizationId])
   @@index([meterId])
   @@index([periodEnd])
@@ -7048,4 +7051,36 @@ model AiDelegationEvent {
   delegation AiDelegation @relation(fields: [delegationId], references: [id], onDelete: Cascade)
 
   @@index([delegationId, createdAt])
+}
+
+
+enum ReadingReviewAssessment {
+  NEEDS_INVESTIGATION
+  CONFIRMED
+  EXPLAINED
+}
+
+/// Människans bedömningshistorik, append-only. En rättelse är en ny revision.
+/// DELETE tillåts vid organisations-/underlagsradering; UPDATE spärras i DB.
+model MeterReadingReview {
+  id              String @id @default(uuid())
+  organizationId  String
+  readingId       String
+  findingCode     String
+  fingerprint     String @db.VarChar(64)
+  ruleVersion     String
+  revision        Int
+  assessment      ReadingReviewAssessment
+  comment         String @db.VarChar(1000)
+  // Historisk aktör: ingen SET NULL-kaskad som skulle skriva om spåret.
+  reviewedById    String
+  reviewedByName  String
+  evidence        Json
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reading MeterReading @relation(fields: [organizationId, readingId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([organizationId, readingId, findingCode, revision], map: "MeterReadingReview_revision_key")
+  @@index([organizationId, readingId])
 }

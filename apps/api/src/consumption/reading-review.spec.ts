@@ -20,6 +20,7 @@ function setup(rows = [10, 10, 10, 40].map((v, i) => row(i + 1, v))) {
   const findMany = jest.fn().mockResolvedValue(rows)
   const service = new ReadingReviewService({
     meterReading: { findMany },
+    meterReadingReview: { findMany: jest.fn().mockResolvedValue([]) },
   } as unknown as PrismaService)
   return { service, findMany, rows }
 }
@@ -71,6 +72,7 @@ describe('Granskningsunderlag från API', () => {
       trendAssessed: 0,
       notTrendAssessed: 0,
       findings: [],
+      history: [],
       ruleVersion: READING_REVIEW_RULE_VERSION,
     })
   })
