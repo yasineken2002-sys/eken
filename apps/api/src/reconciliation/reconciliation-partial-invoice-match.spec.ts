@@ -32,8 +32,13 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
     $queryRaw: jest.fn().mockResolvedValue([]),
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    rentNoticePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoicePayment: {
-      findMany: jest.fn().mockResolvedValue(priors.map((a) => ({ amount: dec(a) }))),
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { bankTransactionId?: string } }) =>
+          Promise.resolve(where.bankTransactionId ? [] : priors.map((a) => ({ amount: dec(a) }))),
+        ),
       create: jest.fn().mockResolvedValue({}),
     },
     invoice: {

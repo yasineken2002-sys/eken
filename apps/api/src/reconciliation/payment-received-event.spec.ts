@@ -43,6 +43,7 @@ function makeService(opts: { payable?: number; prior?: number[] } = {}) {
     },
     // #518 — krediteringarna läses på samma vägar som allokeringarna.
     rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue((opts.prior ?? []).map((n) => ({ amount: dec(n) }))),
       create: jest.fn().mockResolvedValue({ id: 'rnp-42' }),

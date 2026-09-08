@@ -73,6 +73,7 @@ function makeService(opts: {
     },
     // #518 — krediteringarna läses på samma vägar som allokeringarna.
     rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       // Äldre delbetalningar på avin kommer från ANDRA bankrader.
       findMany: jest
@@ -96,6 +97,8 @@ function makeService(opts: {
   }
 
   const prisma = {
+    rentNoticePayment: { findMany: jest.fn().mockResolvedValue([]) },
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     // ── AGENT 2:S GRIND, MED FLAGGAN AV ────────────────────────────────
     // `matchTransaction`s fuzzy-gren läser numera
     // `Organization.shadowPaymentAgentEnabled`: är den PÅ slutar grenen
