@@ -4,7 +4,6 @@ import {
   IsOptional,
   IsIn,
   IsBoolean,
-  IsDateString,
   MinLength,
   MaxLength,
   Equals,
@@ -15,6 +14,7 @@ import { IsStrongPassword } from './password.decorators'
 import type { SammaNycklar, RegisterInput } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 const COMPANY_FORM_VALUES = Object.values(CompanyForm) as string[]
 
@@ -69,7 +69,7 @@ export class RegisterDto implements RegisterInput {
 
   @ApiPropertyOptional({ example: '2024-06-01' })
   @IsOptional()
-  @IsDateString()
+  @StrictIsoDatum()
   fSkattApprovedDate?: string
 
   @ApiPropertyOptional({ example: '556123456701' })

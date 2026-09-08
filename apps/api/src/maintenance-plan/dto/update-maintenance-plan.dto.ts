@@ -1,15 +1,7 @@
-import {
-  IsDateString,
-  IsEnum,
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator'
+import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 import { MaintenancePlanCategory, MaintenancePlanStatus } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class UpdateMaintenancePlanDto {
   @IsString()
@@ -65,7 +57,7 @@ export class UpdateMaintenancePlanDto {
   @StrictString()
   notes?: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   completedAt?: string
 }

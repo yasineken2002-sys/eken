@@ -6,7 +6,6 @@ import {
   IsNumber,
   MinLength,
   MaxLength,
-  IsDateString,
 } from 'class-validator'
 import { MaintenanceCategory, MaintenancePriority } from '@prisma/client'
 
@@ -15,6 +14,7 @@ import { CreateTicketSchema } from '@eken/shared'
 
 import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * ÄGARENS väg — supermängden. Tjänstens `create()` tar den här formen, och
@@ -65,7 +65,7 @@ export class CreateMaintenanceTicketDto {
   @IsOptional()
   priority?: MaintenancePriority
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   scheduledDate?: string
 

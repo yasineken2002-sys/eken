@@ -1,6 +1,7 @@
 import type { SammaNycklar, ApproveTerminationInput } from '@eken/shared'
-import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class ApproveTerminationDto implements ApproveTerminationInput {
   // Bindande slutdatum, bekräftat av hyresvärden. Utelämnas det beräknar
@@ -8,7 +9,7 @@ export class ApproveTerminationDto implements ApproveTerminationInput {
   // uppsägningstid, JB 12 kap 5 §). Hyresvärden ska normalt alltid skicka
   // ett bekräftat datum från dialogen — vi auto-applicerar aldrig enbart
   // hyresgästens önskemål.
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   effectiveDate?: string
 

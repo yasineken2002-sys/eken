@@ -5,7 +5,6 @@ import {
   IsNumber,
   IsBoolean,
   IsEnum,
-  IsDateString,
   Matches,
   Min,
   Max,
@@ -14,6 +13,7 @@ import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class UpdateOrganizationDto {
   @IsString()
@@ -31,6 +31,7 @@ export class UpdateOrganizationDto {
   @Matches(/^#[0-9A-Fa-f]{6}$/, {
     message: `invoiceColor måste vara en giltig hex-färg, t.ex. ${DEFAULT_BRAND_COLOR}`,
   })
+  @StrictString()
   invoiceColor?: string
 
   @IsOptional()
@@ -49,6 +50,7 @@ export class UpdateOrganizationDto {
   @Matches(/^#[0-9A-Fa-f]{6}$/, {
     message: 'brandSecondaryColor måste vara en giltig hex-färg, t.ex. #2563EB',
   })
+  @StrictString()
   brandSecondaryColor?: string
 
   @IsBoolean()
@@ -154,7 +156,7 @@ export class UpdateOrganizationDto {
   @StrictBoolean()
   hasFSkatt?: boolean
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   fSkattApprovedDate?: string
 

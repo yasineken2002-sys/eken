@@ -901,8 +901,8 @@ jobs:
       - name: Verify no new `as never` in production code
         run: node apps/api/scripts/check-as-never.mjs
 
-  strict-boolean-guard:
-    name: Strict boolean guard
+  strict-koercion-guard:
+    name: Strict coercion guard
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -911,34 +911,40 @@ jobs:
         with:
           node-version: 20
 
-      # ETT BOOLESKT DTO-FÄLT SOM KAN LÄSA ETT NEJ SOM ETT JA.
+      # ETT DTO-FÄLT SOM LÄSER NÅGOT ANNAT ÄN DET KLIENTEN SKICKADE.
       #
-      # Pipen kör enableImplicitConversion, så class-transformer kör
-      # Boolean(värdet) INNAN validatorn ser något. Boolean('false') är true.
-      # Uppmätt mot ConfirmActionDto — hyresvärdens ja till en AI-handling:
+      # Pipen kör enableImplicitConversion, så class-transformer konverterar
+      # INNAN validatorn ser något. Validatorn prövar konverteringens resultat:
       #
-      #     "false" → true    "yes" → true    "0" → true    1 → true
+      #     Boolean('false')  -> true                ett NEJ blir ett JA
+      #     String({ a: 1 })  -> "[object Object]"   ett objekt blir data
       #
-      # ERSÄTTER boolean-coercion-guard, som mätte fel i BÅDA riktningar: den
-      # delade filen i block med en RADANKRAD regex och missade därför
-      # enradsformen `@IsBoolean() @IsOptional() falt?: boolean` helt — och
-      # tillskrev dess dekorator nästa fält, som därför rapporterades booleskt
-      # fast det var en strängunion. Baslinjen påstod 18 oskyddade; en riktig
-      # fältparser gav 37 av 49.
+      # TRE FORMER, EN VAKT. Hette strict-boolean-guard och mätte en form.
+      # FORMER ("fältet SKA bära dekoratorn") täcker boolesk och sträng.
+      # FORBJUDNA ("dekoratorn får inte förekomma") täcker datum, där
+      # medlemskapet inte går att avgöra ur en DTO: vilka fält som är
+      # datumfält syns inte, och en namnheuristik hade tigit vid `forfallodag`.
       #
-      # INGEN BASLINJE. Mängden är noll och regeln är absolut — det finns ingen
-      # nivå där "ett nej som blir ett ja" är acceptabelt.
+      # @IsDateString är i class-validator 0.14.4 en ren ALIAS för isISO8601 —
+      # uppmätt. Båda godtar "2026-09-07T12:00:00" UTAN tidszon, som new Date()
+      # tolkar i SERVERNS lokaltid. För paidAt/dueDate/effectiveDate kan en
+      # betalning då hamna i fel bokföringsperiod. Regeln kunde därför inte
+      # skrivas som "inget @IsISO8601 kvar": den formen var uppfylld efter tio
+      # fältbyten medan 36 fält med samma defekt stod kvar under annat namn.
+      #
+      # INGEN BASLINJE. Mängden är noll och regeln är absolut.
       #
       # Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av
-      # strict-boolean.spec.ts, som kör den riktiga pipen och har en
-      # kanariefågel som visar att koercionen finns utan dekoratorn.
+      # strict-boolean.spec.ts, strict-string.spec.ts och strict-iso-datum.spec.ts,
+      # som kör den riktiga pipen och var och en har en kanariefågel som visar
+      # att koercionen finns utan dekoratorn.
       #
       # fs-only, inga beroenden, ingen DB.
-      - name: Self-test the guard (three positives, three negatives)
-        run: node apps/api/scripts/check-strict-boolean.mjs --self-test
+      - name: Self-test the guard (15 probes across three forms)
+        run: node apps/api/scripts/check-strict-koercion.mjs --self-test
 
-      - name: Verify every boolean DTO field carries @StrictBoolean
-        run: node apps/api/scripts/check-strict-boolean.mjs
+      - name: Verify every coercible DTO field carries its strict decorator
+        run: node apps/api/scripts/check-strict-koercion.mjs
 
   self-tests-must-fail-guard:
     name: Self-tests must be able to fail
@@ -2410,7 +2416,7 @@ jobs:
       - request-contract-guard
       - dto-placement-guard
       - as-never-guard
-      - strict-boolean-guard
+      - strict-koercion-guard
       - cron-error-sink-guard
       - mail-id-provenance-guard
       - enqueue-cron-context-guard

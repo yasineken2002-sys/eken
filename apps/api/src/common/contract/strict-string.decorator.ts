@@ -86,8 +86,15 @@ export class StrictStringConstraint implements ValidatorConstraintInterface {
 }
 
 /**
- * Använd på VARJE strängfält i en DTO. `check-strict-boolean.mjs` fäller ett
- * som saknar den (vakten mäter båda formerna sedan #847).
+ * Använd på VARJE strängfält i en DTO — närmare bestämt varje fält som bär
+ * `@IsString()`. `check-strict-koercion.mjs` fäller ett som saknar den.
+ *
+ * Medlemskapet är `@IsString()` och inte TS-typen `string`, och det är mätt:
+ * 118 strängtypade fält bär i stället `@IsUUID`, `@IsEmail`, `@StrictIsoDatum`
+ * eller `@IsBooleanString` — validatorer som alla AVVISAR `"[object Object]"`.
+ * Farlig är kombinationen som SLÄPPER IGENOM den, alltså `@IsString()` med en
+ * kontroll strängen klarar. En negativ kanariefågel i vakten håller mängden
+ * smal; glider den till TS-typen krävs dekoratorn på 118 fält i onödan.
  *
  * Ordningen bland fältets övriga dekoratorer saknar betydelse —
  * class-transformer kör hela sin fas före class-validator. Uppmätt i #842.

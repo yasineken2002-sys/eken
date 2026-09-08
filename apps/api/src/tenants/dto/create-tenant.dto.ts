@@ -4,7 +4,6 @@ import {
   IsEmail,
   IsOptional,
   IsUUID,
-  IsDateString,
   IsNumber,
   IsDefined,
   IsObject,
@@ -14,6 +13,7 @@ import {
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // Hyresgäst kan inte längre skapas fristående – ett kontrakt mot en enhet
 // är obligatoriskt. Datamodellen är: Org → Property → Unit → Lease → Tenant.
@@ -23,11 +23,11 @@ export class CreateTenantLeaseDto {
   unitId!: string
 
   @ApiProperty()
-  @IsDateString()
+  @StrictIsoDatum()
   startDate!: string
 
   @ApiProperty({ required: false })
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   endDate?: string
 

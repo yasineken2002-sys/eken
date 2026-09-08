@@ -1,4 +1,5 @@
 import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 /**
  * Beslutet om ett uppdrag: ja eller nej, och vid nej ett skäl.
@@ -17,5 +18,6 @@ export class DecideAssignmentDto {
   @IsString()
   @MinLength(3)
   @MaxLength(500)
+  @StrictString()
   reason?: string
 }

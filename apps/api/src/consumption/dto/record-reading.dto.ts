@@ -1,15 +1,8 @@
 import type { CreateReadingInput, SammaNycklar } from '@eken/shared'
-import {
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  IsDateString,
-  MaxLength,
-} from 'class-validator'
+import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
 import { ReadingSource, ReadingType } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // EN källagnostisk väg in: MANUAL, IMPORT och framtida API skickar samma DTO
 // till recordReading(). source skiljer enbart ursprung; logiken är identisk.
@@ -40,14 +33,14 @@ export class RecordReadingDto implements CreateReadingInput {
   source!: ReadingSource
 
   // När mätaren lästes.
-  @IsDateString()
+  @StrictIsoDatum()
   readingDate!: string
 
   // Mätperioden (skild från fakturadatum) — styr räkenskapsåret.
-  @IsDateString()
+  @StrictIsoDatum()
   periodStart!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   periodEnd!: string
 
   // Datakällans avläsnings-id. Idempotensnyckel (meterId + externalId): samma

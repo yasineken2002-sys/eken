@@ -2,19 +2,23 @@ import type { ConfirmImportInput, EditedTransactionInput, SammaNycklar } from '@
 import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 // Bekräftelse-payload från granskningsvyn. Användaren kan ha redigerat
 // rader (justerat OCR, ändrat belopp, tagit bort distraktioner) innan
 // commit — vi accepterar hela arrayen och skriver om parsedData.
 export class EditedTransactionDto {
   @IsString()
+  @StrictString()
   date!: string // YYYY-MM-DD
 
   @IsString()
+  @StrictString()
   description!: string
 
   @IsOptional()
   @IsString()
+  @StrictString()
   ocr?: string | null
 
   @IsNumber()

@@ -3,9 +3,9 @@ import { CreateLeaseSchema } from '@eken/shared'
 import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 import {
   IsUUID,
-  IsDateString,
   IsNumber,
   IsOptional,
   IsEnum,
@@ -24,10 +24,10 @@ export class CreateLeaseDto implements CreateLeaseInput {
   @IsUUID()
   tenantId!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   startDate!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   endDate?: string
 

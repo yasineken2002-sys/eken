@@ -4,7 +4,6 @@ import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decora
 import type { SammaNycklar, CreateLeaseWithTenantInput, NewTenantInLeaseInput } from '@eken/shared'
 import {
   IsUUID,
-  IsDateString,
   IsNumber,
   IsOptional,
   IsEnum,
@@ -20,6 +19,7 @@ import {
 import { Type } from 'class-transformer'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class NewTenantDto implements NewTenantInLeaseInput {
   @IsEnum(['INDIVIDUAL', 'COMPANY'])
@@ -103,10 +103,10 @@ export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsOptional()
   depositAmount?: number
 
-  @IsDateString()
+  @StrictIsoDatum()
   startDate!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   endDate?: string
 

@@ -1,6 +1,7 @@
 import type { SammaNycklar, TerminateLeaseInput } from '@eken/shared'
-import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class TerminateLeaseDto implements TerminateLeaseInput {
   @IsString()
@@ -10,7 +11,7 @@ export class TerminateLeaseDto implements TerminateLeaseInput {
   terminationReason?: string
 
   // Frivilligt slutdatum. Om utelämnat: idag + noticePeriodMonths.
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   effectiveDate?: string
 }

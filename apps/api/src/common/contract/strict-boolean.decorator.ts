@@ -88,7 +88,7 @@ export class StrictBooleanConstraint implements ValidatorConstraintInterface {
 }
 
 /**
- * Använd på VARJE booleskt DTO-fält. `check-strict-boolean.mjs` fäller ett som
+ * Använd på VARJE booleskt DTO-fält. `check-strict-koercion.mjs` fäller ett som
  * saknar den.
  *
  * Ordningen bland fältets övriga dekoratorer saknar betydelse —

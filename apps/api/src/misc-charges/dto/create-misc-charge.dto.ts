@@ -1,6 +1,7 @@
-import { IsDateString, IsEnum, IsNumber, IsString, IsUUID, MaxLength, Min } from 'class-validator'
+import { IsEnum, IsNumber, IsString, IsUUID, MaxLength, Min } from 'class-validator'
 import { MiscChargeSource } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // Speglar CreateMiscChargeSchema i @eken/shared (PR 1). Belopp anges NETTO
 // (netAmount) — moms snapshotas i servicen (EXEMPT v1, momsbeslutet dokumenterat
@@ -27,7 +28,7 @@ export class CreateMiscChargeDto {
   description!: string
 
   // När skadan/förlusten konstaterades — styr bokföringsdatum (PR 2).
-  @IsDateString()
+  @StrictIsoDatum()
   incidentDate!: string
 
   // Min 0.01: ett nollbelopp skapar en DRAFT som aldrig kan bekräftas (confirm →

@@ -1,7 +1,8 @@
 import type { UpdateMeterInput, SammaNycklar } from '@eken/shared'
-import { IsEnum, IsOptional, IsString, IsDateString, MaxLength } from 'class-validator'
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator'
 import { MeterStatus } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -39,7 +40,7 @@ export class UpdateMeterDto implements UpdateMeterInput {
   // Sätts vid mätarbyte: den gamla mätaren markeras REMOVED + removedAt. Dess
   // sista avläsning är slutvärdet; den nya mätarens första avläsning blir
   // baslinje (ingen debitering) — så att differensen aldrig blir negativ.
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   removedAt?: string
 }

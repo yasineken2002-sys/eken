@@ -1,7 +1,6 @@
 import type { RegisterPaymentInput, SammaNycklar } from '@eken/shared'
 import { SEN_BOKFORING_MIN_SKAL, SEN_BOKFORING_MAX_SKAL } from '@eken/shared'
 import {
-  IsDateString,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -14,6 +13,7 @@ import { Transform } from 'class-transformer'
 import { PaymentMethod } from '@prisma/client'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * Manuell betalningsregistrering på en faktura. Till skillnad från den generiska
@@ -74,7 +74,7 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
 
   @ApiPropertyOptional({ description: 'Betalningsdatum (ISO 8601). Standard: nu.' })
   @IsOptional()
-  @IsDateString()
+  @StrictIsoDatum()
   paidAt?: string
 
   /**

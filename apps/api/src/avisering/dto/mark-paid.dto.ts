@@ -1,18 +1,10 @@
 import type { MarkNoticePaidInput, SammaNycklar } from '@eken/shared'
 import { SEN_BOKFORING_MIN_SKAL, SEN_BOKFORING_MAX_SKAL } from '@eken/shared'
-import {
-  IsNumber,
-  IsDateString,
-  IsOptional,
-  IsEnum,
-  IsString,
-  MaxLength,
-  Min,
-  MinLength,
-} from 'class-validator'
+import { IsNumber, IsOptional, IsEnum, IsString, MaxLength, Min, MinLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { PaymentMethod } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -34,7 +26,7 @@ export class MarkPaidDto implements MarkNoticePaidInput {
   @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   paidAt?: string
 

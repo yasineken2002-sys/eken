@@ -1,15 +1,8 @@
-import {
-  IsString,
-  IsUUID,
-  IsOptional,
-  IsEnum,
-  IsNumber,
-  IsDateString,
-  IsBoolean,
-} from 'class-validator'
+import { IsString, IsUUID, IsOptional, IsEnum, IsNumber, IsBoolean } from 'class-validator'
 import { MaintenanceCategory, MaintenancePriority, MaintenanceStatus } from '@prisma/client'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class UpdateMaintenanceTicketDto {
   @IsString()
@@ -42,7 +35,7 @@ export class UpdateMaintenanceTicketDto {
   @IsOptional()
   status?: MaintenanceStatus
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   scheduledDate?: string
 
