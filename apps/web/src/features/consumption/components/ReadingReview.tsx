@@ -1,6 +1,8 @@
+import { useCanWrite } from '@/hooks/useCanWrite'
+import { ReadingReviewAssessment, ReadingReviewHistory } from './ReadingReviewAssessment'
 import { ReadingReviewEvidence } from './ReadingReviewEvidence'
 import { useReadingReview } from '../hooks/useReadingReview'
-import type { ReadingReviewReport } from '@eken/shared'
+import type { ReadingReviewSnapshot } from '@eken/shared'
 import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { isForbidden } from '@/lib/api'
@@ -8,8 +10,10 @@ import { isForbidden } from '@/lib/api'
 export function ReadingReviewContent({
   report,
   meterLabel,
+  canAssess = false,
 }: {
-  report: ReadingReviewReport
+  canAssess?: boolean
+  report: ReadingReviewSnapshot
   meterLabel: (id: string) => string
 }) {
   return (
@@ -61,10 +65,12 @@ export function ReadingReviewContent({
                 {f.sourceReadings.find((r) => r.id === f.readingId)?.periodEnd.slice(0, 10)}
               </p>
               <ReadingReviewEvidence finding={f} />
+              <ReadingReviewAssessment finding={f} canAssess={canAssess} />
             </li>
           ))}
         </ul>
       )}
+      <ReadingReviewHistory history={report.history} meterLabel={meterLabel} />
     </section>
   )
 }
@@ -72,6 +78,7 @@ export function ReadingReviewContent({
 export function ReadingReview({ meterLabel }: { meterLabel: (id: string) => string }) {
   // API:t äger underlaget. Listflikens datumfilter får inte klippa trendhistoriken.
   const query = useReadingReview()
+  const canAssess = useCanWrite()
   if (query.isError)
     return isForbidden(query.error) ? (
       <PermissionDeniedState vad="avläsningarna" />
@@ -84,5 +91,5 @@ export function ReadingReview({ meterLabel }: { meterLabel: (id: string) => stri
         Hämtar avläsningar för granskning…
       </p>
     )
-  return <ReadingReviewContent report={query.data} meterLabel={meterLabel} />
+  return <ReadingReviewContent report={query.data} meterLabel={meterLabel} canAssess={canAssess} />
 }

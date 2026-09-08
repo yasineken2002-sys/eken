@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { ReadingReview, ReadingReviewContent as ReportContent } from './ReadingReview'
 const state = vi.hoisted(() => ({ query: vi.fn() }))
 vi.mock('../hooks/useReadingReview', () => ({ useReadingReview: state.query }))
-vi.mock('@/hooks/useCanWrite', () => ({ useCurrentRole: () => 'VIEWER' }))
+vi.mock('@/hooks/useCanWrite', () => ({ useCurrentRole: () => 'VIEWER', useCanWrite: () => false }))
 afterEach(cleanup)
 beforeEach(() => state.query.mockReset())
 const label = () => 'Vatten – Lägenhet 101'
@@ -15,7 +15,9 @@ it('visar laddning och hämtar ofiltrerad historik', () => {
   expect(state.query).toHaveBeenCalledWith()
 })
 it('visar tomhet först efter lyckad hämtning', () => {
-  state.query.mockReturnValue({ data: reviewReadings([]) })
+  state.query.mockReturnValue({
+    data: { ...reviewReadings([]), history: [], ruleVersion: 'consumption-review-v1' },
+  })
   render(<ReadingReview meterLabel={label} />)
   expect(screen.getByText('Inga avläsningar att granska ännu.')).toBeTruthy()
 })
@@ -88,5 +90,19 @@ function ReadingReviewContent({
   readings: readonly ReviewReading[]
   meterLabel: (id: string) => string
 }) {
-  return <ReportContent report={reviewReadings(readings)} meterLabel={meterLabel} />
+  return (
+    <ReportContent
+      report={{
+        ...reviewReadings(readings),
+        history: [],
+        ruleVersion: 'consumption-review-v1',
+        findings: reviewReadings(readings).findings.map((f) => ({
+          ...f,
+          fingerprint: 'a'.repeat(64),
+          reviews: [],
+        })),
+      }}
+      meterLabel={meterLabel}
+    />
+  )
 }

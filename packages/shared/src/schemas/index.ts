@@ -2367,3 +2367,18 @@ export const UpdateKeySchema = z
 export type IssueKeysInput = z.infer<typeof IssueKeysSchema>
 export type ReturnKeyInput = z.infer<typeof ReturnKeySchema>
 export type UpdateKeyInput = z.infer<typeof UpdateKeySchema>
+
+export const SaveReadingReviewSchema = z
+  .object({
+    readingId: z.string().uuid(),
+    findingCode: z.enum(['DATA', 'OVERLAP', 'DECREASE', 'HIGH_RATE']),
+    fingerprint: z
+      .string()
+      .length(64)
+      .regex(/^[a-f0-9]{64}$/),
+    expectedRevision: z.number().int().min(0).max(2147483646),
+    assessment: z.enum(['NEEDS_INVESTIGATION', 'CONFIRMED', 'EXPLAINED']),
+    comment: z.string().min(1, 'Ange en motivering').max(1000).regex(/\S/, 'Ange en motivering'),
+  })
+  .strict()
+export type SaveReadingReviewInput = z.infer<typeof SaveReadingReviewSchema>

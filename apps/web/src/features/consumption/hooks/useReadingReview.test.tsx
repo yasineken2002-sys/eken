@@ -11,7 +11,7 @@ afterEach(() => {
 })
 it('hämtar API-rapporten och invalideras tillsammans med nya avläsningar', async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const data = { ...reviewReadings([]), ruleVersion: READING_REVIEW_RULE_VERSION }
+  const data = { ...reviewReadings([]), history: [], ruleVersion: READING_REVIEW_RULE_VERSION }
   api.get.mockResolvedValue(data)
   render(
     <QueryClientProvider client={qc}>
@@ -33,6 +33,7 @@ it('visar API:ts varning och räknare utan en ny klientberäkning', async () => 
     total: 123,
     trendAssessed: 7,
     notTrendAssessed: 116,
+    history: [],
     ruleVersion: READING_REVIEW_RULE_VERSION,
     findings: [
       {
@@ -40,6 +41,7 @@ it('visar API:ts varning och räknare utan en ny klientberäkning', async () => 
         meterId: 'm',
         code: 'DATA',
         fingerprint: 'a'.repeat(64),
+        reviews: [],
         explanation: 'Förklaring från API',
         sourceReadings: [
           {

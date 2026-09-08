@@ -43,6 +43,7 @@ describe('förutsättningar', () => {
  * krympa samtidigt utan att något blev rött.
  */
 const SKYDDADE = [
+  'MeterReadingReview',
   'AccountingPeriodEvent',
   // Etapp 9. Uppdragets händelser — i dag bara ångra-begäran, som är
   // hyresvärdens enda spår av att en agent-utförd åtgärd blev fel. En begäran

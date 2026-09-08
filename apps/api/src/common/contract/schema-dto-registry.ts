@@ -1,3 +1,5 @@
+import { SaveReadingReviewSchema } from '@eken/shared'
+import { SaveReadingReviewDto } from '../../consumption/dto/save-reading-review.dto'
 import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
 import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
 import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
@@ -248,6 +250,29 @@ export interface KontraktsPost {
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  {
+    endpoint: 'POST /consumption/reading-review/decisions',
+    inputTyp: 'SaveReadingReviewInput',
+    schema: SaveReadingReviewSchema,
+    dto: SaveReadingReviewDto,
+    giltig: {
+      readingId: '11111111-1111-4111-8111-111111111111',
+      findingCode: 'HIGH_RATE',
+      fingerprint: 'a'.repeat(64),
+      expectedRevision: 0,
+      assessment: 'NEEDS_INVESTIGATION',
+      comment: 'Kontrollera originalavläsningen',
+    },
+    ogiltig: {
+      readingId: '11111111-1111-4111-8111-111111111111',
+      findingCode: 'HIGH_RATE',
+      fingerprint: 'a'.repeat(64),
+      expectedRevision: '0',
+      assessment: 'NEEDS_INVESTIGATION',
+      comment: 'Kontrollera originalavläsningen',
+    },
+    ogiltigVarfor: 'revisionen måste vara ett tal, inte en sträng',
+  },
   {
     endpoint: 'POST /accounting/journal/:id/reverse',
     inputTyp: 'ReverseEntryInput',

@@ -86,5 +86,19 @@ function ReadingReviewContent({
   readings: readonly ReviewReading[]
   meterLabel: (id: string) => string
 }) {
-  return <ReportContent report={reviewReadings(readings)} meterLabel={meterLabel} />
+  return (
+    <ReportContent
+      report={{
+        ...reviewReadings(readings),
+        history: [],
+        ruleVersion: 'consumption-review-v1',
+        findings: reviewReadings(readings).findings.map((f) => ({
+          ...f,
+          fingerprint: 'a'.repeat(64),
+          reviews: [],
+        })),
+      }}
+      meterLabel={meterLabel}
+    />
+  )
 }

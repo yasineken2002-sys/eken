@@ -1987,8 +1987,9 @@ Hantverkarbokning ingår **inte** förrän `MaintenanceTicket.assignedToId` är 
 #858 bygger en läsande avvikelsevy, #859 visar beräkningens källor.
 Fortsättningen i [agent3-api-underlag.md](./agent3-api-underlag.md) flyttar
 rapporten till API:t och binder varje varning till regelversion och källrader.
-Detta är fortfarande förberedelse: beständiga mänskliga bedömningar, verkligt
-godkänt jämförelsematerial och agentens uppföljning återstår. Inga flaggor eller
+Fortsättningen i [agent3-bedomningar.md](./agent3-bedomningar.md) bygger
+beständiga mänskliga bedömningar med revisionshistorik. Verkligt oberoende
+granskat jämförelsematerial och agentens vidare uppföljning återstår. Inga flaggor eller
 automatiska debiteringsåtgärder har aktiverats av dessa byggen.
 
 ### Shadow mode

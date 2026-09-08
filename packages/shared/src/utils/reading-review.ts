@@ -1,4 +1,5 @@
 import type { MeterReading } from '../types'
+import type { SaveReadingReviewInput } from '../schemas'
 
 export type ReviewReading = Pick<
   MeterReading,
@@ -191,6 +192,26 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
 export const READING_REVIEW_RULE_VERSION = 'consumption-review-v1'
 export type ReadingReviewReport = ReturnType<typeof reviewReadings>
 export interface ReadingReviewSnapshot extends Omit<ReadingReviewReport, 'findings'> {
+  history: ReadingReviewDecision[]
   ruleVersion: string
-  findings: (ReadingFinding & { fingerprint: string })[]
+  findings: (ReadingFinding & { fingerprint: string; reviews: ReadingReviewDecision[] })[]
+}
+
+export interface ReadingReviewDecision {
+  id: string
+  fingerprint: string
+  revision: number
+  assessment: SaveReadingReviewInput['assessment']
+  comment: string
+  reviewedByName: string
+  createdAt: string
+  evidence: ReadingFinding
+}
+export const READING_REVIEW_ASSESSMENT_LABELS: Record<
+  SaveReadingReviewInput['assessment'],
+  string
+> = {
+  NEEDS_INVESTIGATION: 'Behöver utredas',
+  CONFIRMED: 'Avvikelsen bekräftad',
+  EXPLAINED: 'Förklarad avvikelse',
 }
