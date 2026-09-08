@@ -147,3 +147,72 @@ it('gammal bedömning får inget klartecken för ändrat underlag', () => {
   expect(screen.getByText('Ändrat underlag – behöver bedömas på nytt')).toBeTruthy()
   expect(screen.queryByText('Senaste bedömning: Förklarad avvikelse')).toBeNull()
 })
+
+it('urval räknar varningar och döljer aldrig historiken eller likställer bedömt med åtgärdat', () => {
+  const r = report()
+  const saved = decision(r)
+  mount(
+    { ...r, findings: r.findings.map((f) => ({ ...f, reviews: [saved] })), history: [saved] },
+    false,
+  )
+  fireEvent.change(screen.getByLabelText('Visa varningar'), { target: { value: 'TO_ASSESS' } })
+  expect(screen.getByText(/Inga varningar i detta urval/)).toBeTruthy()
+  expect(screen.getByRole('status').textContent).toContain('Visar 0 av 1 varningar')
+  expect(screen.getByText(/En bedömd avvikelse är inte automatiskt åtgärdad/)).toBeTruthy()
+  expect(screen.getByText('Bedömningshistorik (1)')).toBeTruthy()
+  expect(screen.queryByRole('button')).toBeNull()
+  fireEvent.change(screen.getByLabelText('Visa varningar'), { target: { value: 'EXPLAINED' } })
+  expect(screen.getByText('Senaste bedömning: Förklarad avvikelse')).toBeTruthy()
+  expect(screen.getByRole('status').textContent).toContain('Visar 1 av 1 varningar')
+  expect(api.save).not.toHaveBeenCalled()
+})
+
+it('ändrat underlag återkommer automatiskt i bedömningskön utan att en ny bedömning skrivs', () => {
+  const r = report()
+  const saved = decision(r)
+  const { update } = mount(
+    { ...r, findings: r.findings.map((f) => ({ ...f, reviews: [saved] })) },
+    false,
+  )
+  fireEvent.change(screen.getByLabelText('Visa varningar'), { target: { value: 'TO_ASSESS' } })
+  expect(screen.getByText(/Inga varningar i detta urval/)).toBeTruthy()
+  update({
+    ...r,
+    findings: r.findings.map((f) => ({ ...f, fingerprint: 'b'.repeat(64), reviews: [saved] })),
+  })
+  expect(screen.getByText('Ändrat underlag – behöver bedömas på nytt')).toBeTruthy()
+  expect(screen.getByRole('status').textContent).toContain('Visar 1 av 1 varningar')
+  expect(api.save).not.toHaveBeenCalled()
+})
+
+it('bevarar en öppen motivering när ny bedömning flyttar raden ut ur urvalet', () => {
+  const r = report()
+  const { update } = mount(r)
+  fireEvent.change(screen.getByLabelText('Visa varningar'), { target: { value: 'TO_ASSESS' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Bedöm varningen' }))
+  fireEvent.change(screen.getByLabelText('Motivering'), {
+    target: { value: 'Min osparade utredning' },
+  })
+  const saved = decision(r)
+  update({ ...r, findings: r.findings.map((f) => ({ ...f, reviews: [saved] })), history: [saved] })
+  expect(screen.getByText(/Utanför urvalet – formuläret är kvar/)).toBeTruthy()
+  expect((screen.getByLabelText('Motivering') as HTMLTextAreaElement).value).toBe(
+    'Min osparade utredning',
+  )
+  expect(
+    (screen.getByRole('button', { name: 'Spara bedömning' }) as HTMLButtonElement).disabled,
+  ).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }))
+  expect(screen.queryByLabelText('Motivering')).toBeNull()
+  expect(screen.getByText(/Inga varningar i detta urval/)).toBeTruthy()
+  expect(api.save).not.toHaveBeenCalled()
+})
+
+it('behåller formuläret även vid användarens eget filterbyte', () => {
+  mount()
+  fireEvent.click(screen.getByRole('button', { name: 'Bedöm varningen' }))
+  fireEvent.change(screen.getByLabelText('Motivering'), { target: { value: 'Behåll' } })
+  fireEvent.change(screen.getByLabelText('Visa varningar'), { target: { value: 'EXPLAINED' } })
+  expect((screen.getByLabelText('Motivering') as HTMLTextAreaElement).value).toBe('Behåll')
+  expect(api.save).not.toHaveBeenCalled()
+})

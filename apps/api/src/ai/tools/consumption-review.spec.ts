@@ -143,12 +143,14 @@ it.each(['NEEDS_INVESTIGATION', 'CONFIRMED', 'EXPLAINED'])(
       status: 409,
     })
     const current = await f.run()
-    expect(current.data.findings[0]).toMatchObject({
+    expect(current.data.findings.find((row) => row.readingId === finding.readingId)).toMatchObject({
       assessmentState: assessment,
       latestAssessment: { appliesToCurrentEvidence: true, revision: 1 },
     })
     f.rows[3]!.value = 80
-    expect((await f.run()).data.findings[0]).toMatchObject({
+    expect(
+      (await f.run()).data.findings.find((row) => row.readingId === finding.readingId),
+    ).toMatchObject({
       assessmentState: 'CHANGED_EVIDENCE',
       latestAssessment: { appliesToCurrentEvidence: false, assessment },
     })
@@ -195,6 +197,8 @@ it('okänd roll nekas före läsning', async () => {
 
 it.each([
   { organizationId: 'other' },
+  { reviewFilter: 'RESOLVED' },
+  { reviewFilter: true },
   { limit: 0 },
   { limit: 21 },
   { limit: '1' },
@@ -224,6 +228,67 @@ it('verktyget är valbart, läsande och saknas i hyresgästportalens verktyg', (
     offset: { type: 'integer' },
   })
   expect(ConsumptionReviewToolSchema.parse({ limit: REVIEW_PAGE_MAX }).limit).toBe(REVIEW_PAGE_MAX)
+})
+
+it('filtrerar efter hel analys och binder sidföljden till urvalet', async () => {
+  const f = setup(5)
+  const report = await f.api.getReview('org')
+  for (const [i, finding] of report.findings.entries()) {
+    if (i === 0) continue
+    f.history.push({
+      id: `review-${i}`,
+      readingId: finding.readingId,
+      findingCode: finding.code,
+      fingerprint: i === 2 ? 'old' : finding.fingerprint,
+      revision: 1,
+      assessment: i === 1 ? 'NEEDS_INVESTIGATION' : i === 3 ? 'CONFIRMED' : 'EXPLAINED',
+      comment: 'Bedömt',
+      reviewedByName: 'Ada',
+      createdAt: new Date(),
+      evidence: finding,
+    })
+  }
+  const first = await f.run({ reviewFilter: 'TO_ASSESS', limit: 1 })
+  expect(first.data.reviewQueue.counts).toEqual({
+    ALL: 5,
+    TO_ASSESS: 3,
+    UNASSESSED: 1,
+    NEEDS_INVESTIGATION: 1,
+    CHANGED_EVIDENCE: 1,
+    CONFIRMED: 1,
+    EXPLAINED: 1,
+  })
+  expect(first.data.findings[0]!.readingId).toBe('reading-2-3')
+  expect(first.data.findings[0]!.sourceReadings).toEqual(report.findings[2]!.sourceReadings)
+  expect(first.data.summary).toMatchObject({
+    readings: 20,
+    totalFindings: 5,
+    trendAssessed: 5,
+    notTrendAssessed: 15,
+  })
+  expect(first.data.page).toMatchObject({ totalInFilter: 3, nextOffset: 1 })
+  const second = await f.run({
+    reviewFilter: 'TO_ASSESS',
+    offset: 1,
+    snapshot: first.data.page.snapshot,
+  })
+  expect(second.data.findings.map((row) => row.readingId)).toEqual(['reading-1-3', 'reading-0-3'])
+  expect(second.data.page.nextOffset).toBeNull()
+  await expect(
+    f.run({ reviewFilter: 'ALL', offset: 1, snapshot: first.data.page.snapshot }),
+  ).rejects.toMatchObject({ status: 409 })
+  const confirmed = await f.run({ reviewFilter: 'CONFIRMED' })
+  expect(confirmed.data.findings.map((row) => row.readingId)).toEqual(['reading-3-3'])
+  expect(confirmed.data.findings[0]!.assessmentState).toBe('CONFIRMED')
+})
+
+it('tomt urval skiljs från noll varningar i organisationen', async () => {
+  const f = setup(1)
+  const result = await f.run({ reviewFilter: 'EXPLAINED' })
+  expect(result.data.findings).toEqual([])
+  expect(result.data.summary.totalFindings).toBe(1)
+  expect(result.data.page).toMatchObject({ totalInFilter: 0, returned: 0, nextOffset: null })
+  expect(result.message).toContain('totalt finns 1 varningar')
 })
 
 it('hela exekveringsvägen skyddar motivering, namn och etiketter innan modellen ser dem', async () => {

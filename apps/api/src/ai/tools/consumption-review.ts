@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto'
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
-import { READING_REVIEW_ASSESSMENT_LABELS } from '@eken/shared'
+import {
+  READING_REVIEW_ASSESSMENT_LABELS,
+  readingReviewQueue,
+  readingReviewState,
+  latestReadingReview,
+} from '@eken/shared'
 import { loadReadingReview } from '../../consumption/reading-review.query'
 import { ConsumptionReviewToolSchema } from './consumption-review.input'
 
@@ -20,33 +25,38 @@ export async function getConsumptionReview(
   const parsed = ConsumptionReviewToolSchema.safeParse(input)
   if (!parsed.success)
     throw new BadRequestException(
-      'Ogiltig sidindelning. Använd offset, limit och snapshot från svaret.',
+      'Ogiltigt urval eller sidindelning. Använd reviewFilter, offset, limit och snapshot från svaret.',
     )
-  const { offset, limit, snapshot: requestedSnapshot } = parsed.data
+  const { offset, limit, reviewFilter, snapshot: requestedSnapshot } = parsed.data
   const report = await loadReadingReview(organizationId, db)
-  const all = [...report.findings].sort((a, b) =>
-    `${a.readingId}:${a.code}`.localeCompare(`${b.readingId}:${b.code}`),
-  )
+  const all = readingReviewQueue(report.findings).findings
+  const queue = readingReviewQueue(all, reviewFilter)
   // Binder sidföljden till både underlag och bedömningar. En ändring kräver omstart,
   // annars kunde samma offset hoppa över en nytillkommen varning.
   const snapshot = createHash('sha256')
     .update(
       JSON.stringify({
         organizationId,
+        reviewFilter,
         ruleVersion: report.ruleVersion,
         total: report.total,
         trendAssessed: report.trendAssessed,
         notTrendAssessed: report.notTrendAssessed,
-        findings: all.map((f) => [f.readingId, f.code, f.fingerprint, f.reviews[0]?.id ?? null]),
+        findings: all.map((f) => [
+          f.readingId,
+          f.code,
+          f.fingerprint,
+          latestReadingReview(f)?.id ?? null,
+        ]),
       }),
     )
     .digest('hex')
   if (requestedSnapshot && requestedSnapshot !== snapshot)
     throw new ConflictException('Granskningen har ändrats. Börja om med offset 0 utan snapshot.')
-  if (offset > 0 && offset >= all.length)
+  if (offset > 0 && offset >= queue.findings.length)
     throw new BadRequestException('Sidan finns inte. Börja om med offset 0 utan snapshot.')
 
-  const page = all.slice(offset, offset + limit)
+  const page = queue.findings.slice(offset, offset + limit)
   const meters = page.length
     ? await db.meter.findMany({
         where: {
@@ -70,14 +80,14 @@ export async function getConsumptionReview(
       })
     : []
   const byMeter = new Map(meters.map((meter) => [meter.id, meter]))
-  const nextOffset = offset + page.length < all.length ? offset + page.length : null
+  const nextOffset = offset + page.length < queue.findings.length ? offset + page.length : null
   const canSaveAssessment = ['OWNER', 'ADMIN', 'MANAGER'].includes(role)
   const assessmentAccess = canSaveAssessment
     ? 'Du kan själv spara en bedömning i Förbrukning → Granskning. Assistenten kan endast läsa underlaget.'
     : 'Du har läsbehörighet och kan inte spara bedömningar. En behörig förvaltare behöver göra det i Förbrukning → Granskning. Assistenten kan endast läsa underlaget.'
   return {
     success: true,
-    message: `${page.length} av ${all.length} varningar visas. ${nextOffset === null ? 'Inga fler sidor.' : 'Fler varningar finns; hämta nextOffset med samma snapshot.'} ${assessmentAccess}`,
+    message: `${page.length} av ${queue.findings.length} varningar i urvalet visas; totalt finns ${all.length} varningar. ${nextOffset === null ? 'Inga fler sidor i urvalet.' : 'Fler varningar finns i urvalet; hämta nextOffset med samma snapshot och reviewFilter.'} En bedömd avvikelse är inte automatiskt åtgärdad. ${assessmentAccess}`,
     data: {
       humanPath: {
         route: '/consumption',
@@ -92,6 +102,7 @@ export async function getConsumptionReview(
         label,
       })),
       ruleVersion: report.ruleVersion,
+      reviewQueue: { filter: reviewFilter, counts: queue.counts },
       summary: {
         readings: report.total,
         trendAssessed: report.trendAssessed,
@@ -107,9 +118,18 @@ export async function getConsumptionReview(
                 ? 'PARTIAL'
                 : 'ALL',
       },
-      page: { offset, limit, returned: page.length, nextOffset, snapshot },
-      findings: page.map(({ reviews, ...finding }) => {
-        const latest = reviews[0]
+      page: {
+        offset,
+        limit,
+        returned: page.length,
+        totalInFilter: queue.findings.length,
+        nextOffset,
+        snapshot,
+      },
+      findings: page.map((entry) => {
+        const latest = latestReadingReview(entry)
+        const { reviews, ...finding } = entry
+        void reviews
         const meter = byMeter.get(finding.meterId)
         return {
           ...finding,
@@ -122,11 +142,7 @@ export async function getConsumptionReview(
                 propertyId: meter.unit.property.id,
               }
             : null,
-          assessmentState: !latest
-            ? 'UNASSESSED'
-            : latest.fingerprint !== finding.fingerprint
-              ? 'CHANGED_EVIDENCE'
-              : latest.assessment,
+          assessmentState: readingReviewState(entry),
           latestAssessment: latest
             ? {
                 id: latest.id,

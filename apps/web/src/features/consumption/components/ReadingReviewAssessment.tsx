@@ -3,7 +3,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { SaveReadingReviewSchema, READING_REVIEW_ASSESSMENT_LABELS } from '@eken/shared'
+import {
+  SaveReadingReviewSchema,
+  READING_REVIEW_ASSESSMENT_LABELS,
+  latestReadingReview,
+  readingReviewState,
+  READING_REVIEW_STATE_LABELS,
+} from '@eken/shared'
 import type {
   ReadingReviewSnapshot,
   SaveReadingReviewInput,
@@ -29,11 +35,11 @@ function AssessmentForm({ finding, onClose, onSaved }: AssessmentFormProps) {
   const formId = useId()
   const [basis] = useState({
     fingerprint: finding.fingerprint,
-    revision: finding.reviews[0]?.revision ?? 0,
+    revision: latestReadingReview(finding)?.revision ?? 0,
   })
   const stale =
     basis.fingerprint !== finding.fingerprint ||
-    basis.revision !== (finding.reviews[0]?.revision ?? 0)
+    basis.revision !== (latestReadingReview(finding)?.revision ?? 0)
   const form = useForm<SaveReadingReviewInput>({
     resolver: zodResolver(SaveReadingReviewSchema),
     defaultValues: {
@@ -143,19 +149,21 @@ function AssessmentForm({ finding, onClose, onSaved }: AssessmentFormProps) {
 interface ReadingReviewAssessmentProps {
   finding: Finding
   canAssess: boolean
+  onEditingChange?: (editing: boolean) => void
 }
-export function ReadingReviewAssessment({ finding, canAssess }: ReadingReviewAssessmentProps) {
+export function ReadingReviewAssessment({
+  finding,
+  canAssess,
+  onEditingChange,
+}: ReadingReviewAssessmentProps) {
   const [editing, setEditing] = useState(false)
   const [saved, setSaved] = useState(false)
-  const latest = finding.reviews[0]
+  const latest = latestReadingReview(finding)
   return (
     <div className="mt-4 text-sm">
       <p className="font-medium">
-        {latest?.fingerprint === finding.fingerprint
-          ? `Senaste bedömning: ${READING_REVIEW_ASSESSMENT_LABELS[latest.assessment]}`
-          : latest
-            ? 'Ändrat underlag – behöver bedömas på nytt'
-            : 'Ingen bedömning sparad'}
+        {latest?.fingerprint === finding.fingerprint ? 'Senaste bedömning: ' : ''}
+        {READING_REVIEW_STATE_LABELS[readingReviewState(finding)]}
       </p>
       {saved && (
         <p role="status" className="mt-1 text-gray-600">
@@ -171,6 +179,7 @@ export function ReadingReviewAssessment({ finding, canAssess }: ReadingReviewAss
           onClick={() => {
             setSaved(false)
             setEditing(true)
+            onEditingChange?.(true)
           }}
         >
           {latest ? 'Lägg till ny bedömning' : 'Bedöm varningen'}
@@ -179,10 +188,14 @@ export function ReadingReviewAssessment({ finding, canAssess }: ReadingReviewAss
       {canAssess && editing && (
         <AssessmentForm
           finding={finding}
-          onClose={() => setEditing(false)}
+          onClose={() => {
+            setEditing(false)
+            onEditingChange?.(false)
+          }}
           onSaved={() => {
             setEditing(false)
             setSaved(true)
+            onEditingChange?.(false)
           }}
         />
       )}
