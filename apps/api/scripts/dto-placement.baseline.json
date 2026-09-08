@@ -1,17 +1,4 @@
 {
-  "total": 3,
-  "poster": [
-    {
-      "fil": "apps/api/src/collections/rent-collections.controller.ts",
-      "klass": "RentBulkExportDto"
-    },
-    {
-      "fil": "apps/api/src/platform/ai-usage/platform-ai-usage.controller.ts",
-      "klass": "AddCreditsDto"
-    },
-    {
-      "fil": "apps/api/src/platform/ai-usage/platform-ai-usage.controller.ts",
-      "klass": "ChangePlanDto"
-    }
-  ]
+  "total": 0,
+  "poster": []
 }
