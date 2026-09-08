@@ -1,8 +1,9 @@
+import { reviewReadings, type ReviewReading } from '@eken/shared'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { ReadingReview, ReadingReviewContent } from './ReadingReview'
+import { ReadingReview, ReadingReviewContent as ReportContent } from './ReadingReview'
 const state = vi.hoisted(() => ({ query: vi.fn() }))
-vi.mock('../hooks/useReadingQueries', () => ({ useReadings: state.query }))
+vi.mock('../hooks/useReadingReview', () => ({ useReadingReview: state.query }))
 vi.mock('@/hooks/useCanWrite', () => ({ useCurrentRole: () => 'VIEWER' }))
 afterEach(cleanup)
 beforeEach(() => state.query.mockReset())
@@ -14,7 +15,7 @@ it('visar laddning och hämtar ofiltrerad historik', () => {
   expect(state.query).toHaveBeenCalledWith()
 })
 it('visar tomhet först efter lyckad hämtning', () => {
-  state.query.mockReturnValue({ data: [] })
+  state.query.mockReturnValue({ data: reviewReadings([]) })
   render(<ReadingReview meterLabel={label} />)
   expect(screen.getByText('Inga avläsningar att granska ännu.')).toBeTruthy()
 })
@@ -79,3 +80,13 @@ it('skiljer behörighetsfel från tom data och serverfel', () => {
   expect(screen.queryByRole('button')).toBeNull()
   expect(screen.queryByText('Inga avläsningar att granska ännu.')).toBeNull()
 })
+
+function ReadingReviewContent({
+  readings,
+  meterLabel,
+}: {
+  readings: readonly ReviewReading[]
+  meterLabel: (id: string) => string
+}) {
+  return <ReportContent report={reviewReadings(readings)} meterLabel={meterLabel} />
+}
