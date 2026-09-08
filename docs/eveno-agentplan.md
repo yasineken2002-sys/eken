@@ -130,6 +130,30 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ### Fortsättning 2026-09-08 — Agent 2, etapp B
 
+**Fristående experiment i `d5150cd`: uppdelad identitet och hantering gav ingen
+total förbättring.** `scripts/eval-uppdelad-betalning.ts` körde åtta nya,
+förhandsmärkta syntetiska fall två gånger per arm (32 modellanrop). Båda armar
+fick **12/16 rätt identitet**. Uppdelad hanteringskategori var rätt 14/16, men
+det betyder inte rätt samlat förslag: kategorin FLERA kan vara rätt samtidigt
+som en av de utpekade fordringarna är fel. Alla svar var tolkbara och båda
+repetitionerna gav samma bedömningar. Uppskattad kostnad: **0,076016 USD**.
+
+Måttet gäller refererad identitet, även vid retur/överskott. Det är inte det
+tidigare en-avi-facitet och procenttalen ska inte jämföras med dess 97,2 %.
+Befintlig arm saknar separat hanteringsfält och får därför inget sådant mått.
+Resultatet är sparat i `experiment-uppdelad-betalning.json`, med facit,
+kandidat-id:n, svar och båda repetitionerna. Facit skickades inte till modellen.
+
+Två observationer återkom: i `x4` saknades den uttryckligen refererade fakturan
+FA-602 i kandidatmängden, och uppdelad modell valde en annan persons avi i dess
+ställe. I `x5` gissade den på en faktura trots gemensamt efternamn och avsaknad
+av identifierande referens. Uppdelningen behöll däremot referensen vid retur.
+Experimentet är **inte inkopplat i producenten**. Nästa designarbete bör
+pröva att bevara explicita referenser i kandidatsökningen och upptäcka
+identitetskonflikter; ingen ny begränsning av produktionskandidater införs här.
+Typecheck, lint och rapportens summering är verifierade. Åtta konstruerade
+fall med två upprepningar bevisar inte 98 % i drift.
+
 Agent 2:s **etapp A är implementerad i #846**. Den äldre lägesbilden nedan som
 säger att agent 2 inte påbörjats är därmed passerad. Etapp A:s driftkriterium
 (flaggan på för en riktig organisation) har inte verifierats i detta arbete.
