@@ -2326,3 +2326,44 @@ export const BuyCreditsSchema = z
   })
   .strict()
 export type BuyCreditsInput = z.infer<typeof BuyCreditsSchema>
+
+// Nyckelkvittens: gränserna kommer från de befintliga keys-DTO:erna.
+const KeyTypeSchema = z.enum([
+  'APARTMENT',
+  'ENTRANCE',
+  'MAILBOX',
+  'LAUNDRY_TAG',
+  'GARAGE',
+  'STORAGE',
+  'FOB_TAG',
+  'OTHER',
+])
+export const IssueKeysSchema = z
+  .object({
+    leaseId: z.string().uuid(),
+    type: KeyTypeSchema,
+    quantity: z.number().int('Antalet måste vara ett heltal').min(1).max(50),
+    label: z.string().max(120).optional(),
+    issuedToName: z.string().max(120).optional(),
+    issuedAt: IsoDatumSchema.optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+export const ReturnKeySchema = z
+  .object({
+    returnedAt: IsoDatumSchema.optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+export const UpdateKeySchema = z
+  .object({
+    status: z.enum(['LOST', 'REPLACED']).optional(),
+    type: KeyTypeSchema.optional(),
+    label: z.string().max(120).optional(),
+    issuedToName: z.string().max(120).optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+export type IssueKeysInput = z.infer<typeof IssueKeysSchema>
+export type ReturnKeyInput = z.infer<typeof ReturnKeySchema>
+export type UpdateKeyInput = z.infer<typeof UpdateKeySchema>

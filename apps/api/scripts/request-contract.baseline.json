@@ -1,5 +1,5 @@
 {
-  "total": 9,
+  "total": 6,
   "poster": [
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
@@ -12,14 +12,6 @@
     {
       "fil": "apps/web/src/features/inbox/api/inbox.api.ts",
       "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
-    },
-    {
-      "fil": "apps/web/src/features/keys/api/keys.api.ts",
-      "medlemmar": [
-        "PATCH `/keys/${id}/return` → ReturnKeyInput",
-        "PATCH `/keys/${id}` → UpdateKeyInput",
-        "POST '/keys' → IssueKeysInput"
-      ]
     },
     {
       "fil": "apps/web/src/features/maintenance/api/maintenance.api.ts",

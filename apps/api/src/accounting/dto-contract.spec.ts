@@ -1,3 +1,7 @@
+import { IssueKeysDto } from '../keys/dto/issue-keys.dto'
+import { ReturnKeyDto } from '../keys/dto/return-key.dto'
+import { UpdateKeyDto } from '../keys/dto/update-key.dto'
+import { IssueKeysSchema, ReturnKeySchema, UpdateKeySchema } from '@eken/shared'
 import {
   ASSIGNABLE_ROLES,
   InviteUserSchema,
@@ -1034,5 +1038,88 @@ describe('users och kreditköp — kontrakt genom produktionspipen', () => {
         amount: Number(amount),
       })
     },
+  )
+})
+
+describe('keys — samma DTO-gränser före webbens anrop', () => {
+  const issue = { leaseId: '00000000-0000-4000-8000-000000000001', type: 'APARTMENT', quantity: 1 }
+
+  it.each([
+    [0, false],
+    [1, true],
+    [1.5, false],
+    [50, true],
+    [51, false],
+  ] as const)('quantity %s: decimaltal stoppas före anropet', (quantity, vantat) =>
+    paritet('antal', IssueKeysSchema, IssueKeysDto, { ...issue, quantity }, vantat),
+  )
+  it('ogiltigt leaseId avvisas', () =>
+    paritet('leaseId', IssueKeysSchema, IssueKeysDto, { ...issue, leaseId: 'fel' }, false))
+
+  describe.each([
+    ['utlämning', IssueKeysSchema, IssueKeysDto, issue],
+    ['uppdatering', UpdateKeySchema, UpdateKeyDto, {}],
+  ] as const)('%s', (_namn, schema, dto, grund) => {
+    it.each([
+      'APARTMENT',
+      'ENTRANCE',
+      'MAILBOX',
+      'LAUNDRY_TAG',
+      'GARAGE',
+      'STORAGE',
+      'FOB_TAG',
+      'OTHER',
+    ])('nyckeltyp %s', (type) => paritet('typ', schema, dto, { ...grund, type }, true))
+    it('okänd nyckeltyp avvisas', () =>
+      paritet('typ', schema, dto, { ...grund, type: 'fel' }, false))
+    describe.each(['label', 'issuedToName'])('%s', (falt) => {
+      // Bara syntetiska tecken: inga verkliga namn i prov eller logg.
+      it.each([
+        [0, true],
+        [120, true],
+        [121, false],
+      ] as const)('längd %s', (langd, vantat) =>
+        paritet('textgräns', schema, dto, { ...grund, [falt]: 'x'.repeat(langd) }, vantat),
+      )
+    })
+  })
+
+  describe.each([
+    ['utlämning', IssueKeysSchema, IssueKeysDto, issue],
+    ['retur', ReturnKeySchema, ReturnKeyDto, {}],
+    ['uppdatering', UpdateKeySchema, UpdateKeyDto, {}],
+  ] as const)('%s: notes', (_namn, schema, dto, grund) => {
+    it.each([
+      [0, true],
+      [1000, true],
+      [1001, false],
+    ] as const)('längd %s', (langd, vantat) =>
+      paritet('notes', schema, dto, { ...grund, notes: 'x'.repeat(langd) }, vantat),
+    )
+    it('valfria fält får utelämnas', () => paritet('minimal kropp', schema, dto, grund, true))
+  })
+
+  describe.each([
+    ['issuedAt', IssueKeysSchema, IssueKeysDto, issue],
+    ['returnedAt', ReturnKeySchema, ReturnKeyDto, {}],
+  ] as const)('%s behålls även utan UI-fält', (falt, schema, dto, grund) => {
+    it.each([
+      ['2026-09-08', true],
+      ['2026-09-08T12:00:00Z', true],
+      ['2026-09-08T12:00:00+02:00', true],
+      ['fel', false],
+      ['', false],
+    ] as const)('%s', (datum, vantat) =>
+      paritet('datum', schema, dto, { ...grund, [falt]: datum }, vantat),
+    )
+  })
+
+  it.each([
+    ['LOST', true],
+    ['REPLACED', true],
+    ['ISSUED', false],
+    ['RETURNED', false],
+  ] as const)('uppdateringsstatus %s', (status, vantat) =>
+    paritet('status', UpdateKeySchema, UpdateKeyDto, { status }, vantat),
   )
 })
