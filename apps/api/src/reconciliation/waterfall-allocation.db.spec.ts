@@ -31,7 +31,7 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: async () => ''
  *
  * ── VAD DEN HÄR INTE KAN SE ─────────────────────────────────────────────────
  *
- * Samtidighet. Låsen tas här av EN körning; att svält uteblir under last mäts av
+ * Svält under bred last. Här mäts två samtidiga manualMatch med banklås; last mäts av
  * `waterfall-lock-order.concurrency.spec.ts`, som äger den frågan.
  *
  * ── FÖRUTSÄTTNINGARNA ÄR RIGGENS EGNA ───────────────────────────────────────
@@ -41,10 +41,14 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: async () => ''
  * samtidiga körningar inte kan ta varandras rader.
  */
 import { PrismaClient, Prisma } from '@prisma/client'
+import { InvoicesService } from '../invoices/invoices.service'
+import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { ReconciliationService } from './reconciliation.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
+import { BadRequestException } from '@nestjs/common'
+import { assertPeriodOpen } from '../accounting/closed-period'
 import type { PrismaService } from '../common/prisma/prisma.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -88,6 +92,9 @@ describe('förutsättningar', () => {
 medDb('vattenfallet mot riktig Postgres', () => {
   let prisma: PrismaClient
   let service: ReconciliationService
+  let accounting: AccountingService
+  let operatorId: string
+  let kontoBank = ''
   let kontoFordran = ''
   let kontoIntakt = ''
   // Riggens egna accrual-verifikat får inte krocka med
@@ -97,8 +104,7 @@ medDb('vattenfallet mot riktig Postgres', () => {
   beforeAll(async () => {
     prisma = new PrismaClient()
     const p = prisma as unknown as PrismaService
-    // Riktig Prisma, riktig bokföring. Stubben kastar om vattenfallsvägen skulle
-    // röra fakturagrenen — en tyst returnerad `undefined` hade dolt det.
+    // Riktig Prisma, bokföring och fakturahändelser. Oanvända beroenden kastar.
     const stub = (namn: string) =>
       new Proxy(
         {},
@@ -110,11 +116,23 @@ medDb('vattenfallet mot riktig Postgres', () => {
           },
         },
       )
+    accounting = new AccountingService(p, new VerifikationsnummerService(p))
+    const invoiceEvents = new InvoiceEventsService(p)
+    const invoices = new InvoicesService(
+      p,
+      invoiceEvents,
+      stub('PdfService') as never,
+      stub('MailService') as never,
+      accounting,
+      { createForAllOrgUsers: async () => undefined } as never,
+      stub('OcrService') as never,
+      stub('PdfQueue') as never,
+    )
     service = new ReconciliationService(
       p,
-      stub('InvoicesService') as never,
-      stub('InvoiceEventsService') as never,
-      new AccountingService(p, new VerifikationsnummerService(p)),
+      invoices,
+      invoiceEvents,
+      accounting,
       { markPaymentDataThrough: async () => undefined } as never,
       new RentNoticeEventsService(p),
       // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
@@ -138,6 +156,20 @@ medDb('vattenfallet mot riktig Postgres', () => {
         postalCode: '12345',
       },
     })
+    const operator = await prisma.user.create({
+      data: {
+        organizationId: ORG,
+        email: `${KORNING}-operator@example.invalid`,
+        passwordHash: 'synthetic-test-only',
+        firstName: 'Test',
+        lastName: 'Operator',
+        role: 'OWNER',
+      },
+      select: { id: true },
+    })
+    operatorId = operator.id
+    // Ingen periodhändelse innebär öppen period i produktionsmodellen.
+    await assertPeriodOpen(prisma, ORG, new Date('2026-03-01'))
     await prisma.property.create({
       data: {
         id: PROPERTY,
@@ -159,6 +191,7 @@ medDb('vattenfallet mot riktig Postgres', () => {
       const konto = await prisma.account.create({
         data: { organizationId: ORG, number, name, type },
       })
+      if (number === 1930) kontoBank = konto.id
       if (number === 1510) kontoFordran = konto.id
       if (number === 3011) kontoIntakt = konto.id
     }
@@ -176,6 +209,13 @@ medDb('vattenfallet mot riktig Postgres', () => {
       )
       await prisma.journalEntry.deleteMany({ where: { organizationId: ORG } })
       await prisma.journalEntrySequence.deleteMany({ where: { organizationId: ORG } })
+      await prisma.invoicePayment.deleteMany({ where: { invoice: { organizationId: ORG } } })
+      await prisma.invoiceEvent.deleteMany({ where: { invoice: { organizationId: ORG } } })
+      await prisma.bankTransaction.updateMany({
+        where: { organizationId: ORG },
+        data: { invoiceId: null },
+      })
+      await prisma.invoice.deleteMany({ where: { organizationId: ORG } })
       await prisma.rentNoticePayment.deleteMany({ where: { rentNotice: { organizationId: ORG } } })
       await prisma.rentNoticeEvent.deleteMany({ where: { rentNotice: { organizationId: ORG } } })
       await prisma.rentNotice.deleteMany({ where: { organizationId: ORG } })
@@ -185,6 +225,7 @@ medDb('vattenfallet mot riktig Postgres', () => {
       await prisma.unit.deleteMany({ where: { propertyId: PROPERTY } })
       await prisma.property.deleteMany({ where: { organizationId: ORG } })
       await prisma.tenant.deleteMany({ where: { organizationId: ORG } })
+      await prisma.user.deleteMany({ where: { organizationId: ORG } })
       await prisma.organization.deleteMany({ where: { id: ORG } })
     } finally {
       await prisma.$disconnect()
@@ -244,7 +285,11 @@ medDb('vattenfallet mot riktig Postgres', () => {
     return f
   }
 
-  async function riggaTvaAvier(prefix: string, f: Fallfixtur): Promise<{ a: string; b: string }> {
+  async function riggaTvaAvier(
+    prefix: string,
+    f: Fallfixtur,
+    belopp: [number, number] = [AVI_A, AVI_B],
+  ): Promise<{ a: string; b: string }> {
     const skapa = async (
       suffix: string,
       status: 'OVERDUE' | 'SENT',
@@ -298,8 +343,8 @@ medDb('vattenfallet mot riktig Postgres', () => {
       return avi.id
     }
     return {
-      a: await skapa('A', 'OVERDUE', 1, '2026-01-27', AVI_A),
-      b: await skapa('B', 'SENT', 2, '2026-02-27', AVI_B),
+      a: await skapa('A', 'OVERDUE', 1, '2026-01-27', belopp[0]),
+      b: await skapa('B', 'SENT', 2, '2026-02-27', belopp[1]),
     }
   }
 
@@ -510,5 +555,419 @@ medDb('vattenfallet mot riktig Postgres', () => {
     expect(verifikat[0]!.lines.find((l) => l.account.number === 1510)?.credit?.toString()).toBe(
       '3000',
     )
+  })
+
+  it('REGRESSION — samma bankrad får inte betala två avier', async () => {
+    const f = await riggaFall('MAN', 5)
+    const { a, b } = await riggaTvaAvier('MAN', f, [9000, 9000])
+    const txId = await skapaTransaktion('9000', f.ocr)
+
+    await service.manualMatch(txId, { rentNoticeId: a }, ORG, operatorId)
+
+    const before = await economicState(txId, [a, b])
+    await expect(
+      service.manualMatch(txId, { rentNoticeId: b }, ORG, operatorId),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(await economicState(txId, [a, b])).toEqual(before)
+
+    const allocations = await allokeringar(txId)
+    expect(allocations).toEqual([{ avi: 'MAN-A', belopp: '9000', id: allocations[0]!.id }])
+    expect(await avistatus([a, b])).toEqual([
+      { avi: 'MAN-A', status: 'PAID', betalt: '9000' },
+      { avi: 'MAN-B', status: 'SENT', betalt: '0' },
+    ])
+    const entries = await betalverifikat(allocations.map((row) => row.id))
+    expect(entries).toHaveLength(1)
+    expect(entries[0]!.lines.find((line) => line.account.number === 1930)?.debit?.toString()).toBe(
+      '9000',
+    )
+    expect(entries[0]!.lines.find((line) => line.account.number === 1510)?.credit?.toString()).toBe(
+      '9000',
+    )
+    await expect(
+      prisma.bankTransaction.findUniqueOrThrow({ where: { id: txId } }),
+    ).resolves.toMatchObject({ status: 'MATCHED', matchedRentNoticeId: a })
+  })
+
+  // Hela ekonomiska tillståndet, inklusive verifikat som saknar en kvarvarande
+  // allokering. Bara att söka på allokerings-id:n skulle missa sådana orphans.
+  async function economicState(txId: string, ids: string[]) {
+    return {
+      bank: await prisma.bankTransaction.findUniqueOrThrow({ where: { id: txId } }),
+      invoices: await prisma.invoice.findMany({
+        where: { organizationId: ORG },
+        orderBy: { id: 'asc' },
+      }),
+      invoiceAllocations: await prisma.invoicePayment.findMany({
+        where: { bankTransactionId: txId },
+        orderBy: { id: 'asc' },
+      }),
+      invoiceEvents: await prisma.invoiceEvent.findMany({
+        where: { invoice: { organizationId: ORG } },
+        orderBy: { id: 'asc' },
+      }),
+      notices: await prisma.rentNotice.findMany({
+        where: { id: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+      allocations: await prisma.rentNoticePayment.findMany({
+        where: { bankTransactionId: txId },
+        orderBy: { id: 'asc' },
+      }),
+      events: await prisma.rentNoticeEvent.findMany({
+        where: { rentNoticeId: { in: ids } },
+        orderBy: { id: 'asc' },
+      }),
+      journals: await prisma.journalEntry.findMany({
+        where: { organizationId: ORG },
+        orderBy: { id: 'asc' },
+        include: { lines: { orderBy: { id: 'asc' } } },
+      }),
+      sequence: await prisma.journalEntrySequence.findMany({
+        where: { organizationId: ORG },
+        orderBy: [{ fiscalYear: 'asc' }, { series: 'asc' }],
+      }),
+    }
+  }
+
+  it('BUDGET — 9000 fördelas genom produktionsvattenfallet på 4500 + 4500', async () => {
+    const f = await riggaFall('SPLIT', 6)
+    const { a, b } = await riggaTvaAvier('SPLIT', f, [4500, 4500])
+    const txId = await skapaTransaktion('9000', f.ocr)
+    expect(await kor(txId)).toBe(true)
+    const alloc = await allokeringar(txId)
+    expect(alloc.map(({ belopp }) => belopp)).toEqual(['4500', '4500'])
+    expect((await avistatus([a, b])).map(({ status }) => status)).toEqual(['PAID', 'PAID'])
+    const entries = await betalverifikat(alloc.map(({ id }) => id))
+    expect(entries).toHaveLength(2)
+    expect(
+      entries.map((entry) =>
+        entry.lines.find((line) => line.account.number === 1930)?.debit?.toString(),
+      ),
+    ).toEqual(['4500', '4500'])
+    expect(await prisma.bankTransaction.findUniqueOrThrow({ where: { id: txId } })).toMatchObject({
+      status: 'MATCHED',
+      matchedRentNoticeId: a,
+    })
+    const before = await economicState(txId, [a, b])
+    expect(await kor(txId)).toBe(false)
+    expect(await economicState(txId, [a, b])).toEqual(before)
+
+    // Verklig avmatchning motverifierar båda delarna och frigör bankraden.
+    await service.unmatchTransaction(txId, ORG, operatorId, 'Syntetisk felmatchning')
+    expect(await allokeringar(txId)).toHaveLength(0)
+    expect((await avistatus([a, b])).map(({ status, betalt }) => ({ status, betalt }))).toEqual([
+      { status: 'SENT', betalt: '0' },
+      { status: 'SENT', betalt: '0' },
+    ])
+    expect(await kor(txId)).toBe(true)
+    expect(await allokeringar(txId)).toHaveLength(2)
+    const bankLines = await prisma.journalEntryLine.findMany({
+      where: {
+        journalEntry: { organizationId: ORG, source: 'PAYMENT' },
+        account: { number: 1930 },
+      },
+    })
+    // Andra testfall finns i organisationen: jämför nettot med innan detta
+    // falls avmatchning. Återföring + ny matchning ska vara penganeutralt.
+    const beforeNet = before.journals
+      .flatMap((entry) => entry.lines)
+      .filter((line) => line.accountId === kontoBank)
+      .reduce(
+        (sum, line) => sum.plus(line.debit ?? 0).minus(line.credit ?? 0),
+        new Prisma.Decimal(0),
+      )
+    expect(
+      bankLines
+        .reduce(
+          (sum, line) => sum.plus(line.debit ?? 0).minus(line.credit ?? 0),
+          new Prisma.Decimal(0),
+        )
+        .toString(),
+    ).toBe(beforeNet.toString())
+  })
+
+  it('BUDGET — återförsök på samma bankrad och delbetalda avi saknar extra effekt', async () => {
+    const f = await riggaFall('RETRY', 7)
+    const { a, b } = await riggaTvaAvier('RETRY', f, [18000, 9000])
+    const txId = await skapaTransaktion('9000', f.ocr)
+    await service.manualMatch(txId, { rentNoticeId: a }, ORG, operatorId)
+    const before = await economicState(txId, [a, b])
+    await expect(
+      service.manualMatch(txId, { rentNoticeId: a }, ORG, operatorId),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(await economicState(txId, [a, b])).toEqual(before)
+  })
+
+  async function riggaFaktura(prefix: string, f: Fallfixtur) {
+    // Delbetalning lämnar fakturan avmatchningsbar enligt befintlig PAID-spärr.
+    const invoice = await prisma.invoice.create({
+      data: {
+        organizationId: ORG,
+        invoiceNumber: prefix,
+        type: 'RENT',
+        status: 'SENT',
+        tenantId: f.tenant,
+        subtotal: 18000,
+        vatTotal: 0,
+        total: 18000,
+        issueDate: new Date('2026-01-01'),
+        dueDate: new Date('2026-02-27'),
+      },
+    })
+    await prisma.journalEntry.create({
+      data: {
+        organizationId: ORG,
+        date: new Date('2026-01-01'),
+        fiscalYear: 2026,
+        verNumber: verLopnummer++,
+        description: 'Fakturans bokförda fordran',
+        source: 'INVOICE',
+        sourceId: invoice.id,
+        lines: {
+          create: [
+            { accountId: kontoFordran, debit: 18000, credit: 0 },
+            { accountId: kontoIntakt, debit: 0, credit: 18000 },
+          ],
+        },
+      },
+    })
+    return invoice.id
+  }
+
+  it.each([
+    ['PROV 1', 'avi', 'faktura'],
+    ['PROV 2', 'faktura', 'avi'],
+    ['PROV 3', 'faktura', 'faktura'],
+  ])(
+    '%s — %s-matchad bankrad avvisas mot %s med 400 och oförändrad ekonomi',
+    async (prefix, from, to) => {
+      const f = await riggaFall(prefix, 20 + Number(prefix.slice(-1)))
+      const { a, b } = await riggaTvaAvier(prefix, f, [18000, 18000])
+      const invoiceA = await riggaFaktura(`${prefix}-A`, f)
+      const invoiceB = await riggaFaktura(`${prefix}-B`, f)
+      const txId = await skapaTransaktion('9000', f.ocr)
+      const initial = await economicState(txId, [a, b])
+      await service.manualMatch(
+        txId,
+        from === 'avi' ? { rentNoticeId: a } : { invoiceId: invoiceA },
+        ORG,
+        operatorId,
+      )
+      const before = await economicState(txId, [a, b])
+      expect(before.journals.filter((entry) => entry.source === 'PAYMENT')).toHaveLength(
+        initial.journals.filter((entry) => entry.source === 'PAYMENT').length + 1,
+      )
+      await expect(
+        service.manualMatch(
+          txId,
+          to === 'avi' ? { rentNoticeId: b } : { invoiceId: invoiceB },
+          ORG,
+          operatorId,
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: 'Bankraden är redan matchad. Avmatcha den först.',
+      })
+      expect(await economicState(txId, [a, b])).toEqual(before)
+      const payment = before.journals.filter(
+        (entry) => !initial.journals.some((old) => old.id === entry.id),
+      )
+      expect(payment).toHaveLength(1)
+      expect(
+        payment[0]!.lines.find((line) => line.accountId === kontoBank)?.debit?.toString(),
+      ).toBe('9000')
+      expect(
+        payment[0]!.lines.find((line) => line.accountId === kontoFordran)?.credit?.toString(),
+      ).toBe('9000')
+
+      // PROV 4: avslaget får inte skapa XOR-drift som gör bankraden oavmatchbar.
+      await service.unmatchTransaction(txId, ORG, operatorId, 'Syntetisk felmatchning')
+      const after = await economicState(txId, [a, b])
+      expect(after.bank).toMatchObject({
+        status: 'UNMATCHED',
+        invoiceId: null,
+        matchedRentNoticeId: null,
+      })
+      expect(after.allocations).toHaveLength(0)
+      expect(after.invoiceAllocations).toHaveLength(0)
+    },
+  )
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((done) => {
+      resolve = done
+    })
+    return { promise, resolve }
+  }
+
+  it('BUDGET — konkurrerande manualMatch väntar på banklåset och kan inte dubbelbetala', async () => {
+    const f = await riggaFall('RACE', 8)
+    const { a, b } = await riggaTvaAvier('RACE', f, [9000, 9000])
+    const txId = await skapaTransaktion('9000', f.ocr)
+    const before = await economicState(txId, [a, b])
+    const booked = deferred<number>()
+    const release = deferred<void>()
+    const original = accounting.createJournalEntryForRentNoticePayment.bind(accounting)
+    // Kör HELA riktiga bokföringen; håll bara dess transaktion före commit.
+    const hook = jest
+      .spyOn(accounting, 'createJournalEntryForRentNoticePayment')
+      .mockImplementationOnce(async (...args) => {
+        const entry = await original(...args)
+        const rows = await args[4]!.$queryRaw<
+          Array<{ pid: number }>
+        >`SELECT pg_backend_pid() AS pid`
+        booked.resolve(rows[0]!.pid)
+        await release.promise
+        return entry
+      })
+    const first = service.manualMatch(txId, { rentNoticeId: a }, ORG, operatorId)
+    let second: Promise<unknown> | undefined
+    try {
+      const pid = await Promise.race([
+        booked.promise,
+        first.then(() => {
+          throw new Error('Bokföringsbarriären nåddes inte')
+        }),
+      ])
+      second = service.manualMatch(txId, { rentNoticeId: b }, ORG, operatorId).then(
+        () => null,
+        (error: unknown) => error,
+      )
+      // Beviset är PostgreSQL:s blockeringsgraf, inte en godtycklig sleep.
+      const deadline = Date.now() + 5000
+      let waiting = false
+      while (Date.now() < deadline && !waiting) {
+        const rows = await prisma.$queryRaw<
+          Array<{ waiting: boolean }>
+        >`SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE ${pid} = ANY(pg_blocking_pids(pid)) AND query LIKE '%BankTransaction%' AND query LIKE '%FOR UPDATE%') AS waiting`
+        waiting = rows[0]!.waiting
+        if (!waiting) await new Promise<void>((done) => setImmediate(done))
+      }
+      expect(waiting).toBe(true)
+      release.resolve()
+      await first
+      expect(await second).toBeInstanceOf(BadRequestException)
+      const after = await economicState(txId, [a, b])
+      expect(after.journals).toHaveLength(before.journals.length + 1)
+      expect(after.notices.find((notice) => notice.id === b)).toEqual(
+        before.notices.find((notice) => notice.id === b),
+      )
+      expect(after.events.filter((event) => event.rentNoticeId === b)).toEqual(
+        before.events.filter((event) => event.rentNoticeId === b),
+      )
+      const alloc = await allokeringar(txId)
+      expect(alloc.map(({ belopp }) => belopp)).toEqual(['9000'])
+      expect((await avistatus([a, b])).map(({ status }) => status)).toEqual(['PAID', 'SENT'])
+      const entries = await betalverifikat(alloc.map(({ id }) => id))
+      expect(entries).toHaveLength(1)
+      expect(
+        entries[0]!.lines.find((line) => line.account.number === 1930)?.debit?.toString(),
+      ).toBe('9000')
+      expect(await prisma.bankTransaction.findUniqueOrThrow({ where: { id: txId } })).toMatchObject(
+        { status: 'MATCHED', matchedRentNoticeId: a },
+      )
+    } finally {
+      release.resolve()
+      await Promise.allSettled([first, ...(second ? [second] : [])])
+      hook.mockRestore()
+    }
+  }, 15000)
+
+  it('PROV 5 — samtidiga fakturamatchningar väntar på banklåset och ger exakt en allokering', async () => {
+    const f = await riggaFall('INV-RACE', 25)
+    const a = await riggaFaktura('INV-RACE-A', f)
+    const b = await riggaFaktura('INV-RACE-B', f)
+    const txId = await skapaTransaktion('9000', f.ocr)
+    const before = await economicState(txId, [a, b])
+    const booked = deferred<number>()
+    const release = deferred<void>()
+    const original = accounting.createJournalEntryForPayment.bind(accounting)
+    // Kör HELA riktiga bokföringen; håll bara dess transaktion före commit.
+    const hook = jest
+      .spyOn(accounting, 'createJournalEntryForPayment')
+      .mockImplementationOnce(async (...args) => {
+        const entry = await original(...args)
+        const rows = await args[5]!.$queryRaw<
+          Array<{ pid: number }>
+        >`SELECT pg_backend_pid() AS pid`
+        booked.resolve(rows[0]!.pid)
+        await release.promise
+        return entry
+      })
+    const first = service.manualMatch(txId, { invoiceId: a }, ORG, operatorId)
+    let second: Promise<unknown> | undefined
+    try {
+      const pid = await Promise.race([
+        booked.promise,
+        first.then(() => {
+          throw new Error('Bokföringsbarriären nåddes inte')
+        }),
+      ])
+      second = service.manualMatch(txId, { invoiceId: b }, ORG, operatorId).then(
+        () => null,
+        (error: unknown) => error,
+      )
+      // Beviset är PostgreSQL:s blockeringsgraf, inte en godtycklig sleep.
+      const deadline = Date.now() + 5000
+      let waiting = false
+      while (Date.now() < deadline && !waiting) {
+        const rows = await prisma.$queryRaw<
+          Array<{ waiting: boolean }>
+        >`SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE ${pid} = ANY(pg_blocking_pids(pid)) AND query LIKE '%BankTransaction%' AND query LIKE '%FOR UPDATE%') AS waiting`
+        waiting = rows[0]!.waiting
+        if (!waiting) await new Promise<void>((done) => setImmediate(done))
+      }
+      expect(waiting).toBe(true)
+      release.resolve()
+      await first
+      expect(await second).toBeInstanceOf(BadRequestException)
+      const after = await economicState(txId, [a, b])
+      expect(after.journals).toHaveLength(before.journals.length + 1)
+      expect(after.invoices.find((invoice) => invoice.id === b)).toEqual(
+        before.invoices.find((invoice) => invoice.id === b),
+      )
+      expect(after.invoiceEvents.filter((event) => event.invoiceId === b)).toEqual([])
+      expect(after.invoiceAllocations).toHaveLength(1)
+      expect(after.invoiceAllocations[0]).toMatchObject({ invoiceId: a })
+      expect(after.invoiceAllocations[0]!.amount.toString()).toBe('9000')
+      expect(after.allocations).toHaveLength(0)
+      expect(after.bank).toMatchObject({
+        status: 'MATCHED',
+        invoiceId: a,
+        matchedRentNoticeId: null,
+      })
+    } finally {
+      release.resolve()
+      await Promise.allSettled([first, ...(second ? [second] : [])])
+      hook.mockRestore()
+    }
+  }, 15000)
+
+  it('BUDGET — fel efter verklig bokföring rullar tillbaka allt och tillåter nytt försök', async () => {
+    const f = await riggaFall('ROLLBACK', 9)
+    const { a, b } = await riggaTvaAvier('ROLLBACK', f, [9000, 9000])
+    const txId = await skapaTransaktion('9000', f.ocr)
+    const before = await economicState(txId, [a, b])
+    const original = accounting.createJournalEntryForRentNoticePayment.bind(accounting)
+    const hook = jest
+      .spyOn(accounting, 'createJournalEntryForRentNoticePayment')
+      .mockImplementationOnce(async (...args) => {
+        const entry = await original(...args)
+        expect(entry).not.toBeNull()
+        throw new Error('INJICERAT FEL EFTER BOKFÖRING')
+      })
+    try {
+      await expect(service.manualMatch(txId, { rentNoticeId: a }, ORG, operatorId)).rejects.toThrow(
+        'INJICERAT FEL EFTER BOKFÖRING',
+      )
+    } finally {
+      hook.mockRestore()
+    }
+    expect(await economicState(txId, [a, b])).toEqual(before)
+    await service.manualMatch(txId, { rentNoticeId: a }, ORG, operatorId)
+    expect(await allokeringar(txId)).toHaveLength(1)
+    expect((await avistatus([a, b]))[0]).toMatchObject({ status: 'PAID', betalt: '9000' })
   })
 })

@@ -70,6 +70,7 @@ function rigg() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),

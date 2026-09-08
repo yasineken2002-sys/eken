@@ -69,6 +69,7 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
     },
     // #518 — krediteringarna läses på samma vägar som allokeringarna.
     rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
