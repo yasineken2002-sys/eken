@@ -1,5 +1,5 @@
 {
-  "total": 23,
+  "total": 16,
   "poster": [
     {
       "fil": "apps/web/src/features/ai/api/ai.api.ts",
@@ -19,13 +19,6 @@
         "POST `/import/contract-batches/${batchId}/confirm-safe` → INLINE-LITERAL",
         "POST `/import/contract-batches/${batchId}/rows/${rowId}/confirm` → ConfirmRowBody",
         "POST `/import/contract-batches/${batchId}/rows/${rowId}/skip` → INLINE-LITERAL"
-      ]
-    },
-    {
-      "fil": "apps/web/src/features/customers/api/customers.api.ts",
-      "medlemmar": [
-        "PATCH `/customers/${id}` → UpdateCustomerInput",
-        "POST '/customers' → CreateCustomerInput"
       ]
     },
     {
@@ -52,23 +45,8 @@
       "medlemmar": ["PATCH `/maintenance/${id}` → UpdateTicketInput"]
     },
     {
-      "fil": "apps/web/src/features/messages/api/messages.api.ts",
-      "medlemmar": [
-        "POST '/messages/send' → SendMessagePayload",
-        "POST `/messages/${id}/retry` → INLINE-LITERAL"
-      ]
-    },
-    {
       "fil": "apps/web/src/features/misc-charges/api/misc-charges.api.ts",
       "medlemmar": ["POST '/misc-charges' → CreateMiscChargeBody"]
-    },
-    {
-      "fil": "apps/web/src/features/news/api/news.api.ts",
-      "medlemmar": [
-        "PATCH `/news/${id}` → UpdateNewsPostDto",
-        "POST '/news' → CreateNewsPostDto",
-        "POST `/news/${id}/publish` → INLINE-LITERAL"
-      ]
     },
     {
       "fil": "apps/web/src/features/settings/api/settings.api.ts",

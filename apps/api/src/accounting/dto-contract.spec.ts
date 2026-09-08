@@ -7,6 +7,18 @@ import {
 import { InviteUserDto } from '../users/dto/invite-user.dto'
 import { UpdateUserRoleDto } from '../users/dto/update-user-role.dto'
 import { BuyCreditsDto } from '../ai-usage/dto/buy-credits.dto'
+import {
+  CreateNewsPostSchema,
+  UpdateNewsPostSchema,
+  SendMessageSchema,
+  CreateCustomerSchema,
+  UpdateCustomerSchema,
+} from '@eken/shared'
+import { CreateNewsPostDto } from '../news/dto/create-news-post.dto'
+import { UpdateNewsPostDto } from '../news/dto/update-news-post.dto'
+import { SendMessageDto } from '../messages/dto/send-message.dto'
+import { CreateCustomerDto } from '../customers/dto/create-customer.dto'
+import { UpdateCustomerDto } from '../customers/dto/update-customer.dto'
 /**
  * KONTRAKTET I RUNTIME — schemat och DTO:n ska säga SAMMA SAK.
  *
@@ -655,6 +667,86 @@ describe('G3: betalsättet betyder samma sak på båda pengavägarna', () => {
     expect(await pipenGodtar(RegisterPaymentDto, utan.faktura)).toBe(true)
     expect(schematGodtar(MarkNoticePaidSchema, utan.avi)).toBe(false)
     expect(await pipenGodtar(MarkPaidDto, utan.avi)).toBe(false)
+  })
+})
+
+describe('news, messages och customers — befintliga gränser genom produktionspipen', () => {
+  describe.each([
+    ['skapa nyhet', CreateNewsPostSchema, CreateNewsPostDto, { title: '', content: '' }],
+    ['uppdatera nyhet', UpdateNewsPostSchema, UpdateNewsPostDto, {}],
+  ] as const)('%s', (_namn, schema, dto, grund) => {
+    it.each([false, true])('booleskt targetAll %s godtas', (targetAll) =>
+      paritet('targetAll', schema, dto, { ...grund, targetAll }, true),
+    )
+    it('tom text och utelämnade valfria fält godtas', () =>
+      paritet('minimal kropp', schema, dto, grund, true))
+    it('news saknar längdtak', () =>
+      paritet(
+        'långa texter',
+        schema,
+        dto,
+        { title: 'x'.repeat(6000), content: 'x'.repeat(6000) },
+        true,
+      ))
+    it('ogiltigt uuid avvisas', () =>
+      paritet('propertyId', schema, dto, { ...grund, propertyId: 'fel' }, false))
+    it('null avlägsnar fastighetsriktningen', () =>
+      paritet('propertyId null', schema, dto, { ...grund, propertyId: null }, true))
+    it.each(['true', 'false'])(
+      'befintlig skillnad: StrictBoolean normaliserar %s, Zod kräver boolean',
+      async (targetAll) => {
+        const kropp = { ...grund, targetAll }
+        expect(schematGodtar(schema, kropp)).toBe(false)
+        expect(await pipe.transform(kropp, { type: 'body', metatype: dto })).toEqual({
+          ...grund,
+          targetAll: targetAll === 'true',
+        })
+      },
+    )
+  })
+
+  it.each([
+    ['subject', 0, false],
+    ['subject', 1, true],
+    ['subject', 200, true],
+    ['subject', 201, false],
+    ['content', 0, false],
+    ['content', 1, true],
+    ['content', 5000, true],
+    ['content', 5001, false],
+  ] as const)('messages %s längd %s', (falt, langd, vantat) =>
+    paritet(
+      'meddelandegräns',
+      SendMessageSchema,
+      SendMessageDto,
+      { subject: 'Hej', content: 'Hej', [falt]: 'x'.repeat(langd) },
+      vantat,
+    ),
+  )
+
+  it('messages kräver uuid för angiven tenantId', () =>
+    paritet(
+      'tenantId',
+      SendMessageSchema,
+      SendMessageDto,
+      { subject: 'Hej', content: 'Hej', tenantId: 'fel' },
+      false,
+    ))
+
+  describe.each([
+    ['skapa kund', CreateCustomerSchema, CreateCustomerDto, { type: 'INDIVIDUAL' }],
+    ['uppdatera kund', UpdateCustomerSchema, UpdateCustomerDto, {}],
+  ] as const)('%s', (_namn, schema, dto, grund) => {
+    it('minimal kropp godtas', () => paritet('minimal kund', schema, dto, grund, true))
+    it('valfria textfält saknar längd- och innehållskrav', () =>
+      paritet(
+        'kundtext',
+        schema,
+        dto,
+        { ...grund, firstName: '', notes: 'x'.repeat(6000), personalNumber: 'syntetisk-testtext' },
+        true,
+      ))
+    it('tom e-post avvisas', () => paritet('email', schema, dto, { ...grund, email: '' }, false))
   })
 })
 

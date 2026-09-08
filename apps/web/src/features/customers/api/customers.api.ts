@@ -1,3 +1,5 @@
+import type { CreateCustomerInput, UpdateCustomerInput } from '@eken/shared'
+export type { CreateCustomerInput, UpdateCustomerInput } from '@eken/shared'
 import { api, get, post, patch } from '@/lib/api'
 
 export type CustomerType = 'INDIVIDUAL' | 'COMPANY'
@@ -27,28 +29,6 @@ export interface Customer {
 
 export interface CustomerWithCount extends Customer {
   _count: { invoices: number }
-}
-
-export interface CreateCustomerInput {
-  type: CustomerType
-  firstName?: string
-  lastName?: string
-  personalNumber?: string
-  companyName?: string
-  orgNumber?: string
-  contactPerson?: string
-  email?: string
-  phone?: string
-  street?: string
-  city?: string
-  postalCode?: string
-  country?: string
-  reference?: string
-  notes?: string
-}
-
-export interface UpdateCustomerInput extends Partial<CreateCustomerInput> {
-  isActive?: boolean
 }
 
 export interface CustomerFilters {

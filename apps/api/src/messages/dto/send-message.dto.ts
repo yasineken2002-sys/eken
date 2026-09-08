@@ -1,7 +1,8 @@
+import type { SendMessageInput, SammaNycklar } from '@eken/shared'
 import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
-export class SendMessageDto {
+export class SendMessageDto implements SendMessageInput {
   @IsUUID()
   @IsOptional()
   tenantId?: string
@@ -21,3 +22,6 @@ export class SendMessageDto {
   @MaxLength(5000)
   content!: string
 }
+
+const _kontrakt: SammaNycklar<SendMessageDto, SendMessageInput> = true
+void _kontrakt

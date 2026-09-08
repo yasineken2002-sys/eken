@@ -3,6 +3,18 @@ import { InviteUserDto } from '../../users/dto/invite-user.dto'
 import { UpdateUserRoleDto } from '../../users/dto/update-user-role.dto'
 import { BuyCreditsDto } from '../../ai-usage/dto/buy-credits.dto'
 import {
+  CreateNewsPostSchema,
+  UpdateNewsPostSchema,
+  SendMessageSchema,
+  CreateCustomerSchema,
+  UpdateCustomerSchema,
+} from '@eken/shared'
+import { CreateNewsPostDto } from '../../news/dto/create-news-post.dto'
+import { UpdateNewsPostDto } from '../../news/dto/update-news-post.dto'
+import { SendMessageDto } from '../../messages/dto/send-message.dto'
+import { CreateCustomerDto } from '../../customers/dto/create-customer.dto'
+import { UpdateCustomerDto } from '../../customers/dto/update-customer.dto'
+import {
   CreateExpenseSchema,
   ReverseEntrySchema,
   ReopenPeriodSchema,
@@ -1233,6 +1245,51 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { chooseToken: 'val-abc123', userId: '11111111-2222-4333-8444-555555555555' },
     ogiltig: { chooseToken: 'val-abc123', userId: 'u'.repeat(65) },
     ogiltigVarfor: 'userId över 64 tecken är inte ett av våra',
+  },
+  {
+    endpoint: 'POST /news',
+    inputTyp: 'CreateNewsPostInput',
+    schema: CreateNewsPostSchema,
+    dto: CreateNewsPostDto,
+    giltig: { title: '', content: '', targetAll: false, propertyId: null },
+    ogiltig: { title: '', content: '', targetAll: 'yes' },
+    ogiltigVarfor: 'targetAll får inte vara en godtycklig sträng',
+  },
+  {
+    endpoint: 'PATCH /news/:id',
+    inputTyp: 'UpdateNewsPostInput',
+    schema: UpdateNewsPostSchema,
+    dto: UpdateNewsPostDto,
+    giltig: { targetAll: false, propertyId: null },
+    ogiltig: { targetAll: 'yes' },
+    ogiltigVarfor: 'targetAll får inte vara en godtycklig sträng',
+  },
+  {
+    endpoint: 'POST /messages/send',
+    inputTyp: 'SendMessageInput',
+    schema: SendMessageSchema,
+    dto: SendMessageDto,
+    giltig: { subject: 'Hej', content: 'Välkommen', sendToAll: true },
+    ogiltig: { subject: '', content: 'Välkommen' },
+    ogiltigVarfor: 'subject måste innehålla minst ett tecken',
+  },
+  {
+    endpoint: 'POST /customers',
+    inputTyp: 'CreateCustomerInput',
+    schema: CreateCustomerSchema,
+    dto: CreateCustomerDto,
+    giltig: { type: 'COMPANY', companyName: '' },
+    ogiltig: { type: 'OTHER' },
+    ogiltigVarfor: 'kundtypen måste vara INDIVIDUAL eller COMPANY',
+  },
+  {
+    endpoint: 'PATCH /customers/:id',
+    inputTyp: 'UpdateCustomerInput',
+    schema: UpdateCustomerSchema,
+    dto: UpdateCustomerDto,
+    giltig: { isActive: false },
+    ogiltig: { email: 'inte-en-adress' },
+    ogiltigVarfor: 'e-postadressen måste ha adressform',
   },
   {
     endpoint: 'POST /users/invite',
