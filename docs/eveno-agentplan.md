@@ -1982,6 +1982,15 @@ Hantverkarbokning ingår **inte** förrän `MaintenanceTicket.assignedToId` är 
 | 4 | Bokföring | kontering, periodavslut |
 | 5 | Affärsögat | avvikelser, kostnadsproblem, möjligheter — byggs sist, kräver att resten är tillförlitligt |
 
+### Agent 3 — första granskningsdelarna (utkast, ej driftgodkännande)
+
+#858 bygger en läsande avvikelsevy, #859 visar beräkningens källor.
+Fortsättningen i [agent3-api-underlag.md](./agent3-api-underlag.md) flyttar
+rapporten till API:t och binder varje varning till regelversion och källrader.
+Detta är fortfarande förberedelse: beständiga mänskliga bedömningar, verkligt
+godkänt jämförelsematerial och agentens uppföljning återstår. Inga flaggor eller
+automatiska debiteringsåtgärder har aktiverats av dessa byggen.
+
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och

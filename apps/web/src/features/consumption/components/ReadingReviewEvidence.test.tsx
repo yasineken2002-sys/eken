@@ -1,6 +1,7 @@
+import { reviewReadings } from '@eken/shared'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
-import { ReadingReviewContent } from './ReadingReview'
+import { ReadingReviewContent as ReportContent } from './ReadingReview'
 import type { ReviewReading } from '../lib/reading-review'
 afterEach(cleanup)
 const row = (
@@ -77,3 +78,13 @@ it('gammalt underlag försvinner när hämtade data byts', () => {
   expect(screen.queryByText('Visa underlag och kontrollsteg')).toBeNull()
   expect(screen.queryByText('Så räknades jämförelsen')).toBeNull()
 })
+
+function ReadingReviewContent({
+  readings,
+  meterLabel,
+}: {
+  readings: readonly ReviewReading[]
+  meterLabel: (id: string) => string
+}) {
+  return <ReportContent report={reviewReadings(readings)} meterLabel={meterLabel} />
+}

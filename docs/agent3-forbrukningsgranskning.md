@@ -4,9 +4,10 @@ Första delen är en läsande, regelbaserad granskning i Förbrukning → Gransk
 Den fungerar utan agentflaggor och utan modellnyckel. Den är inte hela agent 3.
 Befintliga registrerings- och debiteringsflöden används som tidigare.
 
-Granskningen hämtar alla tillgängliga avläsningar via befintlig organisationsscopad
-GET /consumption/readings, oberoende av avläsningsflikens filter. Den sparar inget.
-Ingen API-, databas-, bokförings- eller reconciliation-kod ändras.
+Den första PR:en hämtade alla avläsningar via GET /consumption/readings.
+Fortsättningen i `agent3-api-underlag.md` flyttar beräkningen till en egen
+organisationsscopad GET /consumption/reading-review. Avläsningsflikens filter
+klipper fortfarande inte underlaget, och ingen granskning sparas ännu.
 
 Kontrollerna visar ogiltig data, överlappande perioder, dubbla periodslut,
 minskande kumulativ mätarställning och förbrukning per dag som är minst tre gånger

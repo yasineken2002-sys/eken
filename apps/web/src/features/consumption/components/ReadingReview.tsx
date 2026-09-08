@@ -1,19 +1,17 @@
 import { ReadingReviewEvidence } from './ReadingReviewEvidence'
-import { useReadings } from '../hooks/useReadingQueries'
-import { reviewReadings, type ReviewReading } from '../lib/reading-review'
+import { useReadingReview } from '../hooks/useReadingReview'
+import type { ReadingReviewReport } from '@eken/shared'
 import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { isForbidden } from '@/lib/api'
 
 export function ReadingReviewContent({
-  readings,
+  report,
   meterLabel,
 }: {
-  readings: readonly ReviewReading[]
+  report: ReadingReviewReport
   meterLabel: (id: string) => string
 }) {
-  const report = reviewReadings(readings)
-  const readingsById = new Map(readings.map((r) => [r.id, r]))
   return (
     <section className="mt-6 space-y-4" aria-label="Granskning av avläsningar">
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
@@ -58,8 +56,9 @@ export function ReadingReviewContent({
               <h3 className="font-medium text-gray-900">{meterLabel(f.meterId)}</h3>
               <p className="mt-1 text-sm text-gray-700">{f.explanation}</p>
               <p className="mt-2 text-xs text-gray-600">
-                Period: {readingsById.get(f.readingId)?.periodStart.slice(0, 10)} –{' '}
-                {readingsById.get(f.readingId)?.periodEnd.slice(0, 10)}
+                Period:{' '}
+                {f.sourceReadings.find((r) => r.id === f.readingId)?.periodStart.slice(0, 10)} –{' '}
+                {f.sourceReadings.find((r) => r.id === f.readingId)?.periodEnd.slice(0, 10)}
               </p>
               <ReadingReviewEvidence finding={f} />
             </li>
@@ -71,19 +70,19 @@ export function ReadingReviewContent({
 }
 
 export function ReadingReview({ meterLabel }: { meterLabel: (id: string) => string }) {
-  // Egen ofiltrerad läsning: listflikens datumfilter får inte klippa trendens historik.
-  const query = useReadings()
+  // API:t äger underlaget. Listflikens datumfilter får inte klippa trendhistoriken.
+  const query = useReadingReview()
   if (query.isError)
     return isForbidden(query.error) ? (
       <PermissionDeniedState vad="avläsningarna" />
     ) : (
       <LoadErrorState vad="avläsningarna" onRetry={() => void query.refetch()} />
     )
-  if (query.isLoading)
+  if (query.isLoading || !query.data)
     return (
       <p className="py-10 text-sm text-gray-500" role="status">
         Hämtar avläsningar för granskning…
       </p>
     )
-  return <ReadingReviewContent readings={query.data ?? []} meterLabel={meterLabel} />
+  return <ReadingReviewContent report={query.data} meterLabel={meterLabel} />
 }
