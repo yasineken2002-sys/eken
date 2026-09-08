@@ -1,3 +1,10 @@
+import {
+  ChatSchema,
+  ConfirmActionSchema,
+  type ChatInput,
+  type ConfirmActionInput,
+} from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { useState, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
@@ -107,6 +114,16 @@ export function AiPage() {
     // Läs id:na FÖRE nollställningen: `attach.clear()` nedan tömmer brickan,
     // och de här id:na är det enda sättet servern hittar bilagorna.
     const attachmentIds = attach.readyIds
+    const kropp: ChatInput = {
+      message: msg,
+      ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+    }
+    const fel = kontraktsfel(ChatSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
 
     setInput('')
     resetTextareaHeight()
@@ -137,11 +154,7 @@ export function AiPage() {
     if (isActionMessage) {
       setIsThinking(true)
       try {
-        const res = await sendMutation.mutateAsync({
-          message: msg,
-          ...(activeConversationId ? { conversationId: activeConversationId } : {}),
-          ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-        })
+        const res = await sendMutation.mutateAsync(kropp)
 
         if (!activeConversationId) {
           setActiveConversationId(res.conversationId)
@@ -253,13 +266,20 @@ export function AiPage() {
   const handleConfirm = async () => {
     if (!pendingAction || !activeConversationId) return
 
+    const kropp: ConfirmActionInput = {
+      toolName: pendingAction.toolName,
+      toolInput: pendingAction.toolInput,
+      conversationId: activeConversationId,
+      confirmed: true,
+    }
+    const fel = kontraktsfel(ConfirmActionSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+
     try {
-      const res = await confirmMutation.mutateAsync({
-        toolName: pendingAction.toolName,
-        toolInput: pendingAction.toolInput,
-        conversationId: activeConversationId,
-        confirmed: true,
-      })
+      const res = await confirmMutation.mutateAsync(kropp)
 
       // Double-confirm: server returned a new pendingAction (high-risk second check)
       if (res.pendingAction) {
@@ -297,13 +317,20 @@ export function AiPage() {
       return
     }
 
+    const kropp: ConfirmActionInput = {
+      toolName: pendingAction.toolName,
+      toolInput: pendingAction.toolInput,
+      conversationId: activeConversationId,
+      confirmed: false,
+    }
+    const fel = kontraktsfel(ConfirmActionSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+
     try {
-      await confirmMutation.mutateAsync({
-        toolName: pendingAction.toolName,
-        toolInput: pendingAction.toolInput,
-        conversationId: activeConversationId,
-        confirmed: false,
-      })
+      await confirmMutation.mutateAsync(kropp)
     } finally {
       setPendingAction(null)
     }

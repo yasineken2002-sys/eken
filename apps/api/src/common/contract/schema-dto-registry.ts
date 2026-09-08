@@ -1,3 +1,15 @@
+import {
+  ChatSchema,
+  ConfirmActionSchema,
+  DecideAssignmentSchema,
+  UpdateTicketSchema,
+  UpdateOrganizationSchema,
+} from '@eken/shared'
+import { ChatDto } from '../../ai/dto/chat.dto'
+import { ConfirmActionDto } from '../../ai/dto/confirm-action.dto'
+import { DecideAssignmentDto } from '../../ai/assignments/dto/decide-assignment.dto'
+import { UpdateMaintenanceTicketDto } from '../../maintenance/dto/update-maintenance-ticket.dto'
+import { UpdateOrganizationDto } from '../../organizations/dto/update-organization.dto'
 import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
 import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
 import { UpdateKeyDto } from '../../keys/dto/update-key.dto'
@@ -1429,5 +1441,98 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { status: 'REPLACED' },
     ogiltig: { status: 'RETURNED' },
     ogiltigVarfor: 'återlämning har en egen endpoint',
+  },
+  {
+    endpoint: 'POST /ai/chat',
+    inputTyp: 'ChatInput',
+    schema: ChatSchema,
+    dto: ChatDto,
+    giltig: {
+      message: 'Hej',
+      conversationId: '00000000-0000-4000-8000-000000000001',
+      attachmentIds: ['00000000-0000-4000-8000-000000000002'],
+    },
+    ogiltig: { message: '' },
+    ogiltigVarfor: 'ett chattmeddelande får inte vara tomt',
+  },
+  {
+    endpoint: 'POST /ai/confirm',
+    inputTyp: 'ConfirmActionInput',
+    schema: ConfirmActionSchema,
+    dto: ConfirmActionDto,
+    giltig: {
+      toolName: '',
+      toolInput: {},
+      conversationId: '00000000-0000-4000-8000-000000000001',
+      confirmed: false,
+    },
+    ogiltig: {
+      toolName: '',
+      toolInput: {},
+      conversationId: '00000000-0000-4000-8000-000000000001',
+      confirmed: 'yes',
+    },
+    ogiltigVarfor: 'bekräftelse får inte gissas från godtycklig text',
+  },
+  {
+    endpoint: 'PATCH /ai/assignments/:id/decision',
+    inputTyp: 'DecideAssignmentInput',
+    schema: DecideAssignmentSchema,
+    dto: DecideAssignmentDto,
+    giltig: { decision: 'REJECTED', reason: 'Fel' },
+    ogiltig: { decision: 'REJECTED', reason: 'ab' },
+    ogiltigVarfor: 'ett angivet skäl måste vara minst tre tecken',
+  },
+  {
+    endpoint: 'PATCH /maintenance/:id',
+    inputTyp: 'UpdateTicketInput',
+    schema: UpdateTicketSchema,
+    dto: UpdateMaintenanceTicketDto,
+    giltig: {
+      title: '',
+      description: '',
+      unitId: '00000000-0000-4000-8000-000000000001',
+      tenantId: '00000000-0000-4000-8000-000000000002',
+      category: 'OTHER',
+      priority: 'NORMAL',
+      status: 'IN_PROGRESS',
+      scheduledDate: '2026-09-08',
+      estimatedCost: -1.5,
+      actualCost: 0,
+      tenantNotified: false,
+    },
+    ogiltig: { status: 'UNKNOWN' },
+    ogiltigVarfor: 'status måste ingå i MaintenanceStatus',
+  },
+  {
+    endpoint: 'PATCH /organizations/me',
+    inputTyp: 'UpdateOrganizationInput',
+    schema: UpdateOrganizationSchema,
+    dto: UpdateOrganizationDto,
+    giltig: {
+      bankgiro: '',
+      paymentTermsDays: 1.5,
+      invoiceColor: '#aB12ef',
+      invoiceTemplate: 'classic',
+      brandFont: 'SYSTEM_SANS',
+      brandSecondaryColor: '#123456',
+      morningReportEnabled: false,
+      shadowAgentEnabled: false,
+      agentExecutionEnabled: false,
+      lateBookingMaterialityThreshold: 0,
+      remindersEnabled: false,
+      reminderFeeSek: 0,
+      reminderFormalDay: 1.5,
+      reminderCollectionDay: 1.5,
+      collectionAgencyName: '',
+      hasFSkatt: false,
+      fSkattApprovedDate: '2026-09-08',
+      vatNumber: '',
+      vatReportingPeriod: 'QUARTERLY',
+      daysBeforeMoveInForFirstPayment: 1.5,
+      maxBankTxAmount: 1,
+    },
+    ogiltig: { maxBankTxAmount: 50_000_001 },
+    ogiltigVarfor: 'banktransaktionsgränsen får inte överstiga 50 MSEK',
   },
 ]

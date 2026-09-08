@@ -1,3 +1,4 @@
+import type { UpdateOrganizationInput, SammaNycklar } from '@eken/shared'
 import {
   IsString,
   IsOptional,
@@ -14,7 +15,7 @@ import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
-export class UpdateOrganizationDto {
+export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @IsString()
   @IsOptional()
   bankgiro?: string
@@ -184,3 +185,6 @@ export class UpdateOrganizationDto {
   @Max(50_000_000)
   maxBankTxAmount?: number
 }
+
+const _kontrakt: SammaNycklar<UpdateOrganizationDto, UpdateOrganizationInput> = true
+void _kontrakt

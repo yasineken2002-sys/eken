@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ASSIGNABLE_ROLES } from '../constants'
+import { ASSIGNABLE_ROLES, BRAND_FONTS, REMINDER_FEE_MAX_SEK } from '../constants'
 
 export * from './contract'
 export * from './agent-delegation'
@@ -2367,3 +2367,97 @@ export const UpdateKeySchema = z
 export type IssueKeysInput = z.infer<typeof IssueKeysSchema>
 export type ReturnKeyInput = z.infer<typeof ReturnKeySchema>
 export type UpdateKeyInput = z.infer<typeof UpdateKeySchema>
+
+// ─── Webbkontrakt: assistent, uppdragsbeslut, felanmälan och organisation ──────
+// Samma gränser som DTO:erna. Rollkrav och krav på skäl vid avslag ägs av
+// tjänsterna. IsoDatumSchema följer repo-kontraktet; äldre pipens bredare
+// datumformat och skalärkoercion mäts separat i dto-contract.spec.ts.
+export const CHAT_MESSAGE_MAX_LENGTH = 4000
+export const CHAT_MAX_ATTACHMENTS = 5
+export const ChatSchema = z
+  .object({
+    message: z.string().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
+    conversationId: z.string().uuid().optional(),
+    attachmentIds: z
+      .array(
+        z
+          .string()
+          .uuid()
+          .regex(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+            'Bilagans id måste vara UUID v4',
+          ),
+      )
+      .max(CHAT_MAX_ATTACHMENTS)
+      .optional(),
+  })
+  .strict()
+export type ChatInput = z.infer<typeof ChatSchema>
+
+export const ConfirmActionSchema = z
+  .object({
+    toolName: z.string(),
+    toolInput: z.record(z.unknown()),
+    conversationId: z.string().uuid(),
+    confirmed: z.boolean(),
+  })
+  .strict()
+export type ConfirmActionInput = z.infer<typeof ConfirmActionSchema>
+
+export const DecideAssignmentSchema = z
+  .object({
+    decision: z.enum(['APPROVED', 'REJECTED']),
+    reason: z.string().min(3).max(500).optional(),
+  })
+  .strict()
+export type DecideAssignmentInput = z.infer<typeof DecideAssignmentSchema>
+
+export const UpdateTicketSchema = z
+  .object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    unitId: z.string().uuid().optional(),
+    tenantId: z.string().uuid().optional(),
+    category: MaintenanceCategoryEnum.optional(),
+    priority: MaintenancePriorityEnum.optional(),
+    status: MaintenanceStatusEnum.optional(),
+    scheduledDate: IsoDatumSchema.optional(),
+    estimatedCost: z.number().optional(),
+    actualCost: z.number().optional(),
+    tenantNotified: z.boolean().optional(),
+  })
+  .strict()
+export type UpdateTicketInput = z.infer<typeof UpdateTicketSchema>
+
+export const UpdateOrganizationSchema = z
+  .object({
+    bankgiro: z.string().optional(),
+    paymentTermsDays: z.number().min(1).optional(),
+    invoiceColor: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/)
+      .optional(),
+    invoiceTemplate: z.enum(['classic', 'modern', 'minimal']).optional(),
+    brandFont: z.enum(BRAND_FONTS).optional(),
+    brandSecondaryColor: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/)
+      .optional(),
+    morningReportEnabled: z.boolean().optional(),
+    shadowAgentEnabled: z.boolean().optional(),
+    agentExecutionEnabled: z.boolean().optional(),
+    lateBookingMaterialityThreshold: z.number().int().min(0).max(1_000_000_000).optional(),
+    remindersEnabled: z.boolean().optional(),
+    reminderFeeSek: z.number().min(0).max(REMINDER_FEE_MAX_SEK).optional(),
+    reminderFormalDay: z.number().min(1).optional(),
+    reminderCollectionDay: z.number().min(1).optional(),
+    collectionAgencyName: z.string().optional(),
+    hasFSkatt: z.boolean().optional(),
+    fSkattApprovedDate: IsoDatumSchema.optional(),
+    vatNumber: z.string().optional(),
+    vatReportingPeriod: z.enum(['MONTHLY', 'QUARTERLY', 'YEARLY']).optional(),
+    daysBeforeMoveInForFirstPayment: z.number().min(1).optional(),
+    maxBankTxAmount: z.number().min(1).max(50_000_000).optional(),
+  })
+  .strict()
+export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>

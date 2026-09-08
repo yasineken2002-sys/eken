@@ -1,3 +1,4 @@
+import type { UpdateTicketInput } from '@eken/shared'
 import { get, post, patch, del } from '@/lib/api'
 import type {
   AddTicketCommentInput,
@@ -95,19 +96,7 @@ export interface MaintenanceStats {
   openCosts: number
 }
 
-export interface UpdateTicketInput {
-  title?: string
-  description?: string
-  unitId?: string
-  tenantId?: string
-  category?: MaintenanceCategory
-  priority?: MaintenancePriority
-  status?: MaintenanceStatus
-  scheduledDate?: string
-  estimatedCost?: number
-  actualCost?: number
-  tenantNotified?: boolean
-}
+export type { UpdateTicketInput } from '@eken/shared'
 
 export interface TicketFilters {
   status?: MaintenanceStatus

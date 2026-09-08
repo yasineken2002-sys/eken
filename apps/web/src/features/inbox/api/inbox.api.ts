@@ -1,3 +1,4 @@
+import type { DecideAssignmentInput } from '@eken/shared'
 import { get, patch, post } from '@/lib/api'
 
 import type {
@@ -167,15 +168,13 @@ export const begarAngra = (params: { id: string; note?: string }) => {
   return post<{ ångra: Angravag }>(`/ai/assignments/${params.id}/undo`, kropp)
 }
 
-export const decideInboxItem = (params: {
-  id: string
-  decision: 'APPROVED' | 'REJECTED'
-  reason?: string
-}) =>
-  patch<InboxItem>(`/ai/assignments/${params.id}/decision`, {
+export const decideInboxItem = (params: { id: string } & DecideAssignmentInput) => {
+  const kropp: DecideAssignmentInput = {
     decision: params.decision,
     ...(params.reason ? { reason: params.reason } : {}),
-  })
+  }
+  return patch<InboxItem>(`/ai/assignments/${params.id}/decision`, kropp)
+}
 
 /** Svaret på "kan det här förslaget bli en delegation?". */
 export interface KanDelegera {

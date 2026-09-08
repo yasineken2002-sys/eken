@@ -1,7 +1,8 @@
+import type { ConfirmActionInput, SammaNycklar } from '@eken/shared'
 import { IsString, IsBoolean, IsUUID, IsObject } from 'class-validator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
-export class ConfirmActionDto {
+export class ConfirmActionDto implements ConfirmActionInput {
   @IsString()
   toolName!: string
 
@@ -15,3 +16,6 @@ export class ConfirmActionDto {
   @StrictBoolean()
   confirmed!: boolean
 }
+
+const _kontrakt: SammaNycklar<ConfirmActionDto, ConfirmActionInput> = true
+void _kontrakt

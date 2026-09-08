@@ -1,3 +1,18 @@
+import {
+  ChatSchema,
+  ConfirmActionSchema,
+  DecideAssignmentSchema,
+  UpdateTicketSchema,
+  UpdateOrganizationSchema,
+  CHAT_MESSAGE_MAX_LENGTH,
+  CHAT_MAX_ATTACHMENTS,
+  REMINDER_FEE_MAX_SEK,
+} from '@eken/shared'
+import { ChatDto } from '../ai/dto/chat.dto'
+import { ConfirmActionDto } from '../ai/dto/confirm-action.dto'
+import { DecideAssignmentDto } from '../ai/assignments/dto/decide-assignment.dto'
+import { UpdateMaintenanceTicketDto } from '../maintenance/dto/update-maintenance-ticket.dto'
+import { UpdateOrganizationDto } from '../organizations/dto/update-organization.dto'
 import { IssueKeysDto } from '../keys/dto/issue-keys.dto'
 import { ReturnKeyDto } from '../keys/dto/return-key.dto'
 import { UpdateKeyDto } from '../keys/dto/update-key.dto'
@@ -1122,4 +1137,117 @@ describe('keys — samma DTO-gränser före webbens anrop', () => {
   ] as const)('uppdateringsstatus %s', (status, vantat) =>
     paritet('status', UpdateKeySchema, UpdateKeyDto, { status }, vantat),
   )
+})
+
+// De sex sista webbanropen delar fem DTO:er; båda beslutssidorna använder samma.
+describe('Sista webbkontrakten — gränser genom produktionspipen', () => {
+  const uuid = '00000000-0000-4000-8000-000000000001'
+  it.each([
+    ['maximal text', { message: 'a'.repeat(CHAT_MESSAGE_MAX_LENGTH) }, true],
+    ['för lång text', { message: 'a'.repeat(CHAT_MESSAGE_MAX_LENGTH + 1) }, false],
+    [
+      'fem bilagor',
+      { message: 'Hej', attachmentIds: Array(CHAT_MAX_ATTACHMENTS).fill(uuid) },
+      true,
+    ],
+    [
+      'sex bilagor',
+      { message: 'Hej', attachmentIds: Array(CHAT_MAX_ATTACHMENTS + 1).fill(uuid) },
+      false,
+    ],
+    ['tom bilagelista', { message: 'Hej', attachmentIds: [] }, true],
+    [
+      'UUID v1 som bilaga',
+      { message: 'Hej', attachmentIds: ['00000000-0000-1000-8000-000000000001'] },
+      false,
+    ],
+    [
+      'fel UUID-variant som bilaga',
+      { message: 'Hej', attachmentIds: ['00000000-0000-4000-0000-000000000001'] },
+      false,
+    ],
+    ['ogiltigt samtals-id', { message: 'Hej', conversationId: 'fel' }, false],
+  ] as const)('%s', async (namn, kropp, ok) => paritet(namn, ChatSchema, ChatDto, kropp, ok))
+
+  it.each([
+    [
+      'tomt verktygsnamn är tillåtet i DTO',
+      { toolName: '', toolInput: {}, conversationId: uuid, confirmed: false },
+      true,
+    ],
+    [
+      'lista är inte verktygsobjekt',
+      { toolName: '', toolInput: [], conversationId: uuid, confirmed: true },
+      false,
+    ],
+    ['bekräftelse saknas', { toolName: '', toolInput: {}, conversationId: uuid }, false],
+  ] as const)('%s', async (namn, kropp, ok) =>
+    paritet(namn, ConfirmActionSchema, ConfirmActionDto, kropp, ok),
+  )
+
+  it.each([
+    ['avslag utan skäl: tjänsten äger kravet', { decision: 'REJECTED' }, true],
+    ['500 tecken', { decision: 'REJECTED', reason: 'a'.repeat(500) }, true],
+    ['501 tecken', { decision: 'REJECTED', reason: 'a'.repeat(501) }, false],
+    ['ogiltigt beslut', { decision: 'PENDING' }, false],
+  ] as const)('%s', async (namn, kropp, ok) =>
+    paritet(namn, DecideAssignmentSchema, DecideAssignmentDto, kropp, ok),
+  )
+
+  it.each([
+    ['tom uppdatering', {}, true],
+    ['inget nytt kostnadsgolv', { estimatedCost: -1.5, actualCost: -2 }, true],
+    ['ogiltig kategori', { category: 'UNKNOWN' }, false],
+    ['ogiltigt datum', { scheduledDate: 'fel' }, false],
+    ['ogiltig boolean', { tenantNotified: 'yes' }, false],
+  ] as const)('%s', async (namn, kropp, ok) =>
+    paritet(namn, UpdateTicketSchema, UpdateMaintenanceTicketDto, kropp, ok),
+  )
+
+  it.each([
+    ['tom organisation', {}, true],
+    [
+      'tillåtna tak',
+      {
+        lateBookingMaterialityThreshold: 1_000_000_000,
+        maxBankTxAmount: 50_000_000,
+        reminderFeeSek: REMINDER_FEE_MAX_SEK,
+      },
+      true,
+    ],
+    ['väsentlighet över taket', { lateBookingMaterialityThreshold: 1_000_000_001 }, false],
+    ['väsentlighet kräver heltal', { lateBookingMaterialityThreshold: 0.5 }, false],
+    ['påminnelseavgift över taket', { reminderFeeSek: REMINDER_FEE_MAX_SEK + 1 }, false],
+    ['negativ påminnelseavgift', { reminderFeeSek: -1 }, false],
+    ['betalningsvillkor under ett', { paymentTermsDays: 0 }, false],
+    ['bankgräns under ett', { maxBankTxAmount: 0 }, false],
+    ['fel färgformat', { invoiceColor: '#abc' }, false],
+    ['fel sekundärfärg', { brandSecondaryColor: 'red' }, false],
+    ['fel mall', { invoiceTemplate: 'OTHER' }, false],
+    ['fel typsnitt', { brandFont: 'OTHER' }, false],
+    ['fel momsperiod', { vatReportingPeriod: 'WEEKLY' }, false],
+    ['agentinställning gissas inte', { agentExecutionEnabled: 'yes' }, false],
+  ] as const)('%s', async (namn, kropp, ok) =>
+    paritet(namn, UpdateOrganizationSchema, UpdateOrganizationDto, kropp, ok),
+  )
+
+  // Befintlig avvikelse på main, samma som BuyCredits och PaySupplierInvoice
+  // ovan. Denna PR ändrar formen; #850 äger sträng- och datumkoercionen.
+  it.each([
+    [
+      'kostnad som sträng',
+      UpdateTicketSchema,
+      UpdateMaintenanceTicketDto,
+      { estimatedCost: '1.5' },
+    ],
+    [
+      'dagar som sträng',
+      UpdateOrganizationSchema,
+      UpdateOrganizationDto,
+      { paymentTermsDays: '30' },
+    ],
+  ] as const)('uppmätt tal-koercion: %s', async (_namn, schema, dto, kropp) => {
+    expect(schematGodtar(schema, kropp)).toBe(false)
+    expect(await pipenGodtar(dto, kropp)).toBe(true)
+  })
 })

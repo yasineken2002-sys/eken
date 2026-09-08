@@ -1,3 +1,6 @@
+import { DecideAssignmentSchema, type DecideAssignmentInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import React, { useEffect, useState } from 'react'
 
 import { Inbox as InboxIcon } from 'lucide-react'
@@ -208,7 +211,16 @@ export function InboxPage({ forslag }: { forslag?: string | undefined } = {}) {
           })
         }}
         onDecide={(p) => {
-          beslut.mutate(p, { onSuccess: () => setVald(null) })
+          const kropp: DecideAssignmentInput = {
+            decision: p.decision,
+            ...(p.reason !== undefined ? { reason: p.reason } : {}),
+          }
+          const fel = kontraktsfel(DecideAssignmentSchema, kropp)
+          if (fel) {
+            toast.error(fel)
+            return
+          }
+          beslut.mutate({ id: p.id, ...kropp }, { onSuccess: () => setVald(null) })
         }}
       />
 

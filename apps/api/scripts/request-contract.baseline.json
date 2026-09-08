@@ -1,25 +1,4 @@
 {
-  "total": 6,
-  "poster": [
-    {
-      "fil": "apps/web/src/features/ai/api/ai.api.ts",
-      "medlemmar": ["POST '/ai/chat' → INLINE-LITERAL", "POST '/ai/confirm' → OTYPAD"]
-    },
-    {
-      "fil": "apps/web/src/features/assignments/api/assignments.api.ts",
-      "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
-    },
-    {
-      "fil": "apps/web/src/features/inbox/api/inbox.api.ts",
-      "medlemmar": ["PATCH `/ai/assignments/${params.id}/decision` → INLINE-LITERAL"]
-    },
-    {
-      "fil": "apps/web/src/features/maintenance/api/maintenance.api.ts",
-      "medlemmar": ["PATCH `/maintenance/${id}` → UpdateTicketInput"]
-    },
-    {
-      "fil": "apps/web/src/features/settings/api/settings.api.ts",
-      "medlemmar": ["PATCH '/organizations/me' → UpdateOrganizationInput"]
-    }
-  ]
+  "total": 0,
+  "poster": []
 }

@@ -1,3 +1,4 @@
+import type { DecideAssignmentInput, SammaNycklar } from '@eken/shared'
 import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 
 /**
@@ -9,7 +10,7 @@ import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validato
  * plats där bara HTTP-vägen ser den. Tjänsten är den enda ingången som alla
  * anropare passerar.
  */
-export class DecideAssignmentDto {
+export class DecideAssignmentDto implements DecideAssignmentInput {
   @IsIn(['APPROVED', 'REJECTED'])
   decision!: 'APPROVED' | 'REJECTED'
 
@@ -19,3 +20,6 @@ export class DecideAssignmentDto {
   @MaxLength(500)
   reason?: string
 }
+
+const _kontrakt: SammaNycklar<DecideAssignmentDto, DecideAssignmentInput> = true
+void _kontrakt

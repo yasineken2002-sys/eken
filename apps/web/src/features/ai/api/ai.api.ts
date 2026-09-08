@@ -1,3 +1,4 @@
+import { CHAT_MAX_ATTACHMENTS, type ChatInput, type ConfirmActionInput } from '@eken/shared'
 import { api, get, post, del } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -60,7 +61,7 @@ export interface AiAttachment {
  * bara till för att slippa skicka en fil som ändå kommer avvisas.
  */
 export const ATTACHMENT_LIMITS = {
-  maxPerMessage: 5,
+  maxPerMessage: CHAT_MAX_ATTACHMENTS,
   maxImageBytes: 5 * 1024 * 1024,
   maxDocumentBytes: 20 * 1024 * 1024,
   /** Samma allowlist som serverns DETECTED_AI_CHAT_TYPES. */
@@ -95,21 +96,17 @@ export async function sendMessage(
   conversationId?: string,
   attachmentIds?: string[],
 ): Promise<ChatResponse> {
-  return post<ChatResponse>('/ai/chat', {
+  const kropp: ChatInput = {
     message,
     ...(conversationId ? { conversationId } : {}),
     // Utelämnas helt när inget är bifogat — text-only-vägen ska se exakt ut
     // som före spår B.
     ...(attachmentIds?.length ? { attachmentIds } : {}),
-  })
+  }
+  return post<ChatResponse>('/ai/chat', kropp)
 }
 
-export async function confirmAction(params: {
-  toolName: string
-  toolInput: Record<string, unknown>
-  conversationId: string
-  confirmed: boolean
-}): Promise<ChatResponse> {
+export async function confirmAction(params: ConfirmActionInput): Promise<ChatResponse> {
   return post<ChatResponse>('/ai/confirm', params)
 }
 

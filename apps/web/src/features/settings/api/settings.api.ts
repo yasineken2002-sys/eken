@@ -1,31 +1,8 @@
+import type { UpdateOrganizationInput } from '@eken/shared'
 import { get, patch, api } from '@/lib/api'
 import type { Organization } from '@eken/shared'
 
-export interface UpdateOrganizationInput {
-  bankgiro?: string
-  paymentTermsDays?: number
-  invoiceColor?: string
-  invoiceTemplate?: string
-  brandFont?: string
-  brandSecondaryColor?: string
-  morningReportEnabled?: boolean
-  /** Skuggagenten på felanmälningar (etapp 6). Skrivning är OWNER-only i API:t. */
-  shadowAgentEnabled?: boolean
-  /** Skarpt läge (etapp 9) — agenten utför delegerade åtgärder själv. */
-  agentExecutionEnabled?: boolean
-  /** Väsentlighetsgräns för sen bokföring, i ÖREN. Se schemats docblock. */
-  lateBookingMaterialityThreshold?: number
-  remindersEnabled?: boolean
-  reminderFeeSek?: number
-  reminderFormalDay?: number
-  reminderCollectionDay?: number
-  collectionAgencyName?: string
-  hasFSkatt?: boolean
-  fSkattApprovedDate?: string
-  vatNumber?: string
-  vatReportingPeriod?: 'MONTHLY' | 'QUARTERLY' | 'YEARLY'
-  daysBeforeMoveInForFirstPayment?: number
-}
+export type { UpdateOrganizationInput } from '@eken/shared'
 
 export function getOrganization(): Promise<Organization> {
   return get<Organization>('/organizations/me')

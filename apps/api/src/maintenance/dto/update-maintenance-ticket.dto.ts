@@ -1,3 +1,4 @@
+import type { UpdateTicketInput, SammaNycklar } from '@eken/shared'
 import {
   IsString,
   IsUUID,
@@ -10,7 +11,7 @@ import {
 import { MaintenanceCategory, MaintenancePriority, MaintenanceStatus } from '@prisma/client'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 
-export class UpdateMaintenanceTicketDto {
+export class UpdateMaintenanceTicketDto implements UpdateTicketInput {
   @IsString()
   @IsOptional()
   title?: string
@@ -56,3 +57,6 @@ export class UpdateMaintenanceTicketDto {
   @StrictBoolean()
   tenantNotified?: boolean
 }
+
+const _kontrakt: SammaNycklar<UpdateMaintenanceTicketDto, UpdateTicketInput> = true
+void _kontrakt

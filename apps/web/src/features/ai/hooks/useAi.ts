@@ -1,3 +1,4 @@
+import type { ChatInput } from '@eken/shared'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchConversations,
@@ -46,15 +47,8 @@ export function useSendMessage() {
     // och allt som ser ut som en åtgärd går dit). TypeScript fångade det inte:
     // ett villkorat spread i anropet gör att excess-property-kontrollen inte
     // slår till.
-    mutationFn: ({
-      message,
-      conversationId,
-      attachmentIds,
-    }: {
-      message: string
-      conversationId?: string
-      attachmentIds?: string[]
-    }) => sendMessage(message, conversationId, attachmentIds),
+    mutationFn: ({ message, conversationId, attachmentIds }: ChatInput) =>
+      sendMessage(message, conversationId, attachmentIds),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
       if (data.conversationId) {

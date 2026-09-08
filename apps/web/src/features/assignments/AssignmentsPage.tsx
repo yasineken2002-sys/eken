@@ -1,3 +1,6 @@
+import { DecideAssignmentSchema, type DecideAssignmentInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { Inbox } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
@@ -96,15 +99,20 @@ export function AssignmentsPage() {
                 onDecide={(decision) => {
                   // Avslagets skäl är minnesmat (planens Del 11) och krävs av
                   // servern. v1 frågar rakt ut; etapp 6 gör det till ett kort.
+                  const kropp: DecideAssignmentInput = { decision }
                   if (decision === 'REJECTED') {
                     const reason = window.prompt('Varför avslår du uppdraget?')?.trim() ?? ''
                     // Tomt skäl = avbryt. Servern hade avvisat det ändå, men ett
                     // avbrutet prompt ska inte se ut som ett misslyckat anrop.
                     if (!reason) return
-                    besluta.mutate({ id: u.id, decision, reason })
+                    kropp.reason = reason
+                  }
+                  const fel = kontraktsfel(DecideAssignmentSchema, kropp)
+                  if (fel) {
+                    toast.error(fel)
                     return
                   }
-                  besluta.mutate({ id: u.id, decision })
+                  besluta.mutate({ id: u.id, ...kropp })
                 }}
               />
             ))}
