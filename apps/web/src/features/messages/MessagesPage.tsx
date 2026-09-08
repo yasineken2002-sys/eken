@@ -1,3 +1,7 @@
+import { SendMessageSchema } from '@eken/shared'
+import type { SendMessageInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -321,8 +325,14 @@ export function MessagesPage() {
   const doSend = async () => {
     setConfirmOpen(false)
     setSendResult(null)
-    const payload =
+    const payload: SendMessageInput =
       mode === 'all' ? { sendToAll: true, subject, content } : { tenantId, subject, content }
+
+    const fel = kontraktsfel(SendMessageSchema, payload)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
 
     try {
       const msg = await sendMutation.mutateAsync(payload)

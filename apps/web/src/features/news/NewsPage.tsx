@@ -30,7 +30,11 @@ import { fetchProperties } from '@/features/properties/api/properties.api'
 import { formatDate } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import { useCanWrite, useCanDelete } from '@/hooks/useCanWrite'
-import type { NewsPost, CreateNewsPostDto } from './api/news.api'
+import type { NewsPost } from './api/news.api'
+import type { CreateNewsPostInput, UpdateNewsPostInput } from '@eken/shared'
+import { CreateNewsPostSchema, UpdateNewsPostSchema } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.05 } } }
 const itemAnim = {
@@ -211,11 +215,16 @@ export function NewsPage() {
 
   async function handleCreate(publish: boolean) {
     if (!createForm.title.trim() || !createForm.content.trim()) return
-    const dto: CreateNewsPostDto = {
+    const dto: CreateNewsPostInput = {
       title: createForm.title,
       content: createForm.content,
       targetAll: createForm.targetAll,
       propertyId: createForm.targetAll ? null : createForm.propertyId || null,
+    }
+    const fel = kontraktsfel(CreateNewsPostSchema, dto)
+    if (fel) {
+      toast.error(fel)
+      return
     }
     const created = await createMutation.mutateAsync(dto)
     if (publish) {
@@ -227,29 +236,35 @@ export function NewsPage() {
 
   async function handleSaveEdit() {
     if (!selectedPost) return
-    await updateMutation.mutateAsync({
-      id: selectedPost.id,
-      dto: {
-        title: editForm.title,
-        content: editForm.content,
-        targetAll: editForm.targetAll,
-        propertyId: editForm.targetAll ? null : editForm.propertyId || null,
-      },
-    })
+    const dto: UpdateNewsPostInput = {
+      title: editForm.title,
+      content: editForm.content,
+      targetAll: editForm.targetAll,
+      propertyId: editForm.targetAll ? null : editForm.propertyId || null,
+    }
+    const fel = kontraktsfel(UpdateNewsPostSchema, dto)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    await updateMutation.mutateAsync({ id: selectedPost.id, dto })
     closeEdit()
   }
 
   async function handlePublishEdit() {
     if (!selectedPost) return
-    await updateMutation.mutateAsync({
-      id: selectedPost.id,
-      dto: {
-        title: editForm.title,
-        content: editForm.content,
-        targetAll: editForm.targetAll,
-        propertyId: editForm.targetAll ? null : editForm.propertyId || null,
-      },
-    })
+    const dto: UpdateNewsPostInput = {
+      title: editForm.title,
+      content: editForm.content,
+      targetAll: editForm.targetAll,
+      propertyId: editForm.targetAll ? null : editForm.propertyId || null,
+    }
+    const fel = kontraktsfel(UpdateNewsPostSchema, dto)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    await updateMutation.mutateAsync({ id: selectedPost.id, dto })
     await publishMutation.mutateAsync(selectedPost.id)
     closeEdit()
   }
