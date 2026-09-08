@@ -1,3 +1,7 @@
+import { ConfirmBackfillSchema } from '@eken/shared'
+import type { ConfirmBackfillInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, AlertTriangle, ReceiptText, CheckCircle2, AlertCircle, Info } from 'lucide-react'
@@ -60,11 +64,16 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
   const canConfirm = selectedCount > 0 && !needsVatAck && !confirm.isPending
 
   const handleConfirm = async () => {
-    const res = await confirm.mutateAsync({
-      leaseId: item.leaseId,
+    const kropp: ConfirmBackfillInput = {
       allowBeyondWarning: allowBeyond,
       vatDeclarationAcknowledged: vatAck,
-    })
+    }
+    const fel = kontraktsfel(ConfirmBackfillSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    const res = await confirm.mutateAsync({ leaseId: item.leaseId, ...kropp })
     setResult(res)
   }
 

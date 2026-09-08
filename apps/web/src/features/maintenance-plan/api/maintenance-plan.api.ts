@@ -1,3 +1,5 @@
+import type { CreateMaintenancePlanInput, UpdateMaintenancePlanInput } from '@eken/shared'
+export type { CreateMaintenancePlanInput, UpdateMaintenancePlanInput } from '@eken/shared'
 import { get, post, patch, del } from '@/lib/api'
 
 export type MaintenancePlanStatus =
@@ -53,34 +55,6 @@ export interface MaintenancePlanFilter {
   year?: number
   status?: MaintenancePlanStatus | ''
   category?: MaintenancePlanCategory | ''
-}
-
-export interface CreateMaintenancePlanInput {
-  title: string
-  propertyId: string
-  category?: MaintenancePlanCategory
-  plannedYear: number
-  estimatedCost: number
-  priority?: number
-  interval?: number
-  lastDoneYear?: number
-  description?: string
-  notes?: string
-}
-
-export interface UpdateMaintenancePlanInput {
-  title?: string
-  category?: MaintenancePlanCategory
-  status?: MaintenancePlanStatus
-  plannedYear?: number
-  estimatedCost?: number
-  actualCost?: number
-  priority?: number
-  interval?: number
-  lastDoneYear?: number
-  description?: string
-  notes?: string
-  completedAt?: string
 }
 
 export function fetchPlans(filters?: MaintenancePlanFilter) {

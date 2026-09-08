@@ -1,3 +1,4 @@
+import type { UpdateMaintenancePlanInput, SammaNycklar } from '@eken/shared'
 import {
   IsDateString,
   IsEnum,
@@ -10,7 +11,7 @@ import {
 } from 'class-validator'
 import { MaintenancePlanCategory, MaintenancePlanStatus } from '@prisma/client'
 
-export class UpdateMaintenancePlanDto {
+export class UpdateMaintenancePlanDto implements UpdateMaintenancePlanInput {
   @IsString()
   @IsOptional()
   title?: string
@@ -65,3 +66,6 @@ export class UpdateMaintenancePlanDto {
   @IsOptional()
   completedAt?: string
 }
+
+const _kontrakt: SammaNycklar<UpdateMaintenancePlanDto, UpdateMaintenancePlanInput> = true
+void _kontrakt

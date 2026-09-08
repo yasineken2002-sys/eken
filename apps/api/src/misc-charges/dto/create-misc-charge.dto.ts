@@ -1,3 +1,4 @@
+import type { CreateMiscChargeInput, SammaNycklar } from '@eken/shared'
 import { IsDateString, IsEnum, IsNumber, IsString, IsUUID, MaxLength, Min } from 'class-validator'
 import { MiscChargeSource } from '@prisma/client'
 
@@ -5,7 +6,7 @@ import { MiscChargeSource } from '@prisma/client'
 // (netAmount) — moms snapshotas i servicen (EXEMPT v1, momsbeslutet dokumenterat
 // i PR 2), därför ingår inga vat*-fält här. sourceRefId = ärendets id när
 // sourceType = MAINTENANCE_TICKET.
-export class CreateMiscChargeDto {
+export class CreateMiscChargeDto implements CreateMiscChargeInput {
   @IsUUID()
   leaseId!: string
 
@@ -34,3 +35,6 @@ export class CreateMiscChargeDto {
   @Min(0.01)
   netAmount!: number
 }
+
+const _kontrakt: SammaNycklar<CreateMiscChargeDto, CreateMiscChargeInput> = true
+void _kontrakt
