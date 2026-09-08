@@ -1,8 +1,14 @@
+import { useId, useState } from 'react'
+import {
+  readingReviewQueue,
+  ReadingReviewFilterSchema,
+  READING_REVIEW_FILTER_LABELS,
+} from '@eken/shared'
+import type { ReadingReviewFilter, ReadingReviewSnapshot } from '@eken/shared'
 import { useCanWrite } from '@/hooks/useCanWrite'
 import { ReadingReviewAssessment, ReadingReviewHistory } from './ReadingReviewAssessment'
 import { ReadingReviewEvidence } from './ReadingReviewEvidence'
 import { useReadingReview } from '../hooks/useReadingReview'
-import type { ReadingReviewSnapshot } from '@eken/shared'
 import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { isForbidden } from '@/lib/api'
@@ -16,6 +22,16 @@ export function ReadingReviewContent({
   report: ReadingReviewSnapshot
   meterLabel: (id: string) => string
 }) {
+  const filterId = useId()
+  const [filter, setFilter] = useState<ReadingReviewFilter>('ALL')
+  const [editing, setEditing] = useState<string[]>([])
+  const queue = readingReviewQueue(report.findings, filter)
+  const key = (f: ReadingReviewSnapshot['findings'][number]) => `${f.readingId}-${f.code}`
+  const selected = new Set(queue.findings.map(key))
+  // En bakgrundsuppdatering får inte kasta bort en påbörjad motivering när
+  // någon annans bedömning flyttar raden ut ur det valda urvalet.
+  const outside = report.findings.filter((f) => editing.includes(key(f)) && !selected.has(key(f)))
+  const visible = [...queue.findings, ...outside]
   return (
     <section className="mt-6 space-y-4" aria-label="Granskning av avläsningar">
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
@@ -40,6 +56,36 @@ export function ReadingReviewContent({
             </div>
           ))}
         </dl>
+        <div className="mt-5 border-t border-gray-200 pt-4">
+          <label htmlFor={filterId} className="block text-sm font-medium text-gray-900">
+            Visa varningar
+          </label>
+          <select
+            id={filterId}
+            value={filter}
+            className="mt-2 w-full rounded-lg border border-gray-300 bg-white p-2 text-sm sm:max-w-sm"
+            onChange={(event) => {
+              const parsed = ReadingReviewFilterSchema.safeParse(event.target.value)
+              if (parsed.success) setFilter(parsed.data)
+            }}
+          >
+            {ReadingReviewFilterSchema.options.map((value) => (
+              <option key={value} value={value}>
+                {READING_REVIEW_FILTER_LABELS[value]} ({queue.counts[value]})
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-sm text-gray-600" role="status">
+            Visar {queue.findings.length} av {queue.counts.ALL} varningar. {queue.counts.TO_ASSESS}{' '}
+            behöver bedömas.
+            {outside.length > 0 &&
+              ` Dessutom visas ${outside.length} öppet formulär utanför urvalet.`}
+          </p>
+          <p className="mt-2 text-xs text-gray-600">
+            Ändrat underlag visas först. Behöver bedömas omfattar även varningar som behöver
+            utredas. En bedömd avvikelse är inte automatiskt åtgärdad eller godkänd för debitering.
+          </p>
+        </div>
       </div>
       {report.total === 0 ? (
         <p className="rounded-xl bg-white p-5 text-sm text-gray-600">
@@ -50,14 +96,23 @@ export function ReadingReviewContent({
           Inga avvikelser hittades av dessa kontroller. Avläsningar utan tillräcklig historik har
           inte trendbedömts.
         </p>
+      ) : visible.length === 0 ? (
+        <p className="rounded-xl bg-white p-5 text-sm text-gray-600">
+          Inga varningar i detta urval. Övriga varningar finns under Alla varningar.
+        </p>
       ) : (
         <ul className="space-y-3">
-          {report.findings.map((f) => (
+          {visible.map((f) => (
             <li
               key={`${f.readingId}-${f.code}`}
               className="rounded-xl border border-amber-200 bg-amber-50 p-5"
             >
               <h3 className="font-medium text-gray-900">{meterLabel(f.meterId)}</h3>
+              {!selected.has(key(f)) && (
+                <p className="mt-2 text-sm font-medium text-amber-900">
+                  Utanför urvalet – formuläret är kvar så att din motivering inte försvinner.
+                </p>
+              )}
               <p className="mt-1 text-sm text-gray-700">{f.explanation}</p>
               <p className="mt-2 text-xs text-gray-600">
                 Period:{' '}
@@ -65,7 +120,17 @@ export function ReadingReviewContent({
                 {f.sourceReadings.find((r) => r.id === f.readingId)?.periodEnd.slice(0, 10)}
               </p>
               <ReadingReviewEvidence finding={f} />
-              <ReadingReviewAssessment finding={f} canAssess={canAssess} />
+              <ReadingReviewAssessment
+                finding={f}
+                canAssess={canAssess}
+                onEditingChange={(open) =>
+                  setEditing((current) =>
+                    open
+                      ? [...new Set([...current, key(f)])]
+                      : current.filter((id) => id !== key(f)),
+                  )
+                }
+              />
             </li>
           ))}
         </ul>

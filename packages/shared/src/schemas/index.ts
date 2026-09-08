@@ -2382,3 +2382,14 @@ export const SaveReadingReviewSchema = z
   })
   .strict()
 export type SaveReadingReviewInput = z.infer<typeof SaveReadingReviewSchema>
+
+export const ReadingReviewFilterSchema = z.enum([
+  'ALL',
+  'TO_ASSESS',
+  'UNASSESSED',
+  'NEEDS_INVESTIGATION',
+  'CHANGED_EVIDENCE',
+  'CONFIRMED',
+  'EXPLAINED',
+])
+export type ReadingReviewFilter = z.infer<typeof ReadingReviewFilterSchema>

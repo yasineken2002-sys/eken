@@ -1997,6 +1997,11 @@ granskningsfråga till operatörsassistenten som ett läsverktyg. Verktyget visa
 trendtäckning, aktuella källor och senaste bedömning. Det är ännu ingen autonom
 uppföljningsloop och ger inte något uppmätt driftfacit.
 
+[agent3-granskningsko.md](./agent3-granskningsko.md) ger webben och assistenten
+samma urval och prioritering av bedömningsarbete. Ändrat underlag återkommer
+vid nästa rapportläsning. Bedömd betyder inte åtgärdad; automatiska jobb,
+notifieringar och oberoende verkligt facit återstår.
+
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och

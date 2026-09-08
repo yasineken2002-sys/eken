@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { REVIEW_PAGE_DEFAULT, REVIEW_PAGE_MAX } from './consumption-review.input'
 import {
+  ReadingReviewFilterSchema,
   PaymentMethodSchema,
   INSPECTION_TYPES,
   INSPECTION_STATUSES,
@@ -40,6 +41,12 @@ export const TOOLS: Anthropic.Tool[] = [
       type: 'object',
       additionalProperties: false,
       properties: {
+        reviewFilter: {
+          type: 'string',
+          enum: [...ReadingReviewFilterSchema.options],
+          description:
+            'Urval, standard ALL. TO_ASSESS omfattar utan bedömning, behöver utredas och ändrat underlag. CONFIRMED och EXPLAINED är bedömningar, inte åtgärdade fel. Använd samma urval vid fortsatt sidläsning; byte kräver offset 0 utan snapshot.',
+        },
         offset: {
           type: 'integer',
           minimum: 0,

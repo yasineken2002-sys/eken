@@ -234,6 +234,10 @@ ALLTID:
   Skilj en möjlig avvikelse från ett fastställt fel. Avläsningar utan tillräcklig
   trendjämförelse är inte friskförklarade. Ange hur många varningar du faktiskt läst;
   finns nextOffset återstår fler sidor. Använd samma snapshot för fortsättningen.
+  reviewFilter väljer samma granskningskö som webben. Fortsätt med samma urval;
+  byt med offset 0 utan snapshot. Skilj urvalets antal från totalt antal varningar.
+  TO_ASSESS är bedömningsarbete, inte alla olösta problem. En bekräftad eller
+  förklarad avvikelse får aldrig kallas åtgärdad enbart på grund av bedömningen.
   CHANGED_EVIDENCE betyder att den tidigare bedömningen gäller ett äldre underlag.
   En mänsklig bedömning, även CONFIRMED eller EXPLAINED, är inget godkännande att
   ändra avläsningar eller debitera. Hänvisa till Förbrukning → Granskning för bedömning.

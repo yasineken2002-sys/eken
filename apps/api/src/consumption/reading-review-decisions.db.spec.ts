@@ -142,6 +142,11 @@ it('DB-provet kräver en riktig databas', () => expect(hasDb).toBe(true))
       latestAssessment: { revision: 2, appliesToCurrentEvidence: true },
       meter: { id: meterId, unitId },
     })
+    const pending = await getConsumptionReview(db, orgId, 'VIEWER', { reviewFilter: 'TO_ASSESS' })
+    expect(pending.data.findings).toEqual([])
+    expect(pending.data.reviewQueue.counts).toMatchObject({ ALL: 1, TO_ASSESS: 0, EXPLAINED: 1 })
+    const explained = await getConsumptionReview(db, orgId, 'VIEWER', { reviewFilter: 'EXPLAINED' })
+    expect(explained.data.findings.map((f) => f.readingId)).toEqual([original.readingId])
     const other = await getConsumptionReview(db, otherOrgId, 'VIEWER', {})
     expect(other.data.findings).toEqual([])
     expect(other.data.summary).toMatchObject({ readings: 0, reviewHistoryCount: 0 })
