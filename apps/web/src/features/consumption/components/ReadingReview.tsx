@@ -1,3 +1,4 @@
+import { ReadingReviewEvidence } from './ReadingReviewEvidence'
 import { useReadings } from '../hooks/useReadingQueries'
 import { reviewReadings, type ReviewReading } from '../lib/reading-review'
 import { LoadErrorState } from '@/components/ui/LoadErrorState'
@@ -60,6 +61,7 @@ export function ReadingReviewContent({
                 Period: {readingsById.get(f.readingId)?.periodStart.slice(0, 10)} –{' '}
                 {readingsById.get(f.readingId)?.periodEnd.slice(0, 10)}
               </p>
+              <ReadingReviewEvidence finding={f} />
             </li>
           ))}
         </ul>
