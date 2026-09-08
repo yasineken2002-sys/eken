@@ -106,6 +106,7 @@ function makeReconciliation(opts: { status: InvoiceStatus; priorAllocations?: nu
     $queryRaw: jest.fn().mockResolvedValue([]),
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    rentNoticePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoicePayment: {
       // Dubblettfönstret (duplicate-payment-window.ts) frågar här. `null` =
       // "ingen nyligen registrerad identisk betalning", så fönstret aldrig
@@ -113,9 +114,16 @@ function makeReconciliation(opts: { status: InvoiceStatus; priorAllocations?: nu
       // fönstret har sitt eget prov mot riktig Postgres
       // (invoices.duplicate-window.db.spec.ts). En spec, en mekanism.
       findFirst: jest.fn().mockResolvedValue(null),
+      // Banktransaktionen är oanvänd; tidigare betalningar hör till fakturan.
       findMany: jest
         .fn()
-        .mockResolvedValue((opts.priorAllocations ?? []).map((a) => ({ amount: dec(a) }))),
+        .mockImplementation(({ where }: { where: { bankTransactionId?: string } }) =>
+          Promise.resolve(
+            where.bankTransactionId
+              ? []
+              : (opts.priorAllocations ?? []).map((a) => ({ amount: dec(a) })),
+          ),
+        ),
       create: jest.fn().mockResolvedValue({}),
     },
     invoice: {

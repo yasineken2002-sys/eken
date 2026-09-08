@@ -43,8 +43,13 @@ function makeService(
     // C4: allokeringsmodellen. Tom lista = inga tidigare betalningar → hela
     // totalen är restskuld. OCR_TX.amount är lika med INVOICE.total, så dessa
     // tester exercerar FULL reglering (delbetalning täcks av egen svit).
+    rentNoticePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoicePayment: {
-      findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { bankTransactionId?: string } }) =>
+          Promise.resolve(where.bankTransactionId ? [] : (opts.priorAllocations ?? [])),
+        ),
       // MÅSTE returnera ett id. `create → {}` är #290:s fälla: allokerings-id:t
       // blir `undefined` och verifikatets nyckel `...:undefined` — attrappen
       // utplånar då just den distinktion testet bygger på.

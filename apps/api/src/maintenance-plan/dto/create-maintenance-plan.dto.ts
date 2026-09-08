@@ -1,3 +1,4 @@
+import type { CreateMaintenancePlanInput, SammaNycklar } from '@eken/shared'
 import {
   IsEnum,
   IsInt,
@@ -12,7 +13,7 @@ import {
 import { MaintenancePlanCategory } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 
-export class CreateMaintenancePlanDto {
+export class CreateMaintenancePlanDto implements CreateMaintenancePlanInput {
   @IsString()
   @MinLength(3)
   @StrictString()
@@ -58,3 +59,6 @@ export class CreateMaintenancePlanDto {
   @StrictString()
   notes?: string
 }
+
+const _kontrakt: SammaNycklar<CreateMaintenancePlanDto, CreateMaintenancePlanInput> = true
+void _kontrakt

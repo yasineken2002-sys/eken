@@ -80,7 +80,7 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     // Radlåset + omprövningen (#326 A).
-    $queryRaw: jest.fn().mockResolvedValue([]),
+    $queryRaw: jest.fn((_sql: TemplateStringsArray) => Promise.resolve([])),
     invoice: {
       findFirst: jest.fn().mockResolvedValue(
         outerInvoice
@@ -225,17 +225,17 @@ describe('#326 A — omprövningen innanför radlåset är den lastbärande', ()
     // Transaktionen ÖPPNAS här (till skillnad från förkontrollen) — och rullas
     // tillbaka av kastet. Ingen skrivning hann ske innan omprövningen.
     expect($transaction).toHaveBeenCalledTimes(1)
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1) // radlåset togs
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2) // bankrad, sedan faktura
     expect(tx.rentNoticePayment.deleteMany).not.toHaveBeenCalled()
     expect(tx.bankTransaction.updateMany).not.toHaveBeenCalled()
     expect(reverseJournalEntryForPayment).not.toHaveBeenCalled()
   })
 
-  it('radlåset tas FÖRE bank-skrivningen — låsordningen Invoice → BankTransaction hålls', async () => {
+  it('bankrad och faktura låses i ordning före bank-skrivningen', async () => {
     const { service, tx } = makeService(PARTIAL_TX)
     const order: string[] = []
-    tx.$queryRaw.mockImplementation(() => {
-      order.push('lock:invoice')
+    tx.$queryRaw.mockImplementation((sql: TemplateStringsArray) => {
+      order.push(sql.join('').includes('"BankTransaction"') ? 'lock:bank' : 'lock:invoice')
       return Promise.resolve([])
     })
     tx.bankTransaction.updateMany.mockImplementation(() => {
@@ -245,7 +245,7 @@ describe('#326 A — omprövningen innanför radlåset är den lastbärande', ()
 
     await service.unmatchTransaction('tx-partial', 'org-1', 'user-1')
 
-    expect(order).toEqual(['lock:invoice', 'write:bankTransaction'])
+    expect(order).toEqual(['lock:bank', 'lock:invoice', 'write:bankTransaction'])
   })
 })
 

@@ -1,9 +1,10 @@
+import type { UpdateMaintenancePlanInput, SammaNycklar } from '@eken/shared'
 import { IsEnum, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 import { MaintenancePlanCategory, MaintenancePlanStatus } from '@prisma/client'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
-export class UpdateMaintenancePlanDto {
+export class UpdateMaintenancePlanDto implements UpdateMaintenancePlanInput {
   @IsString()
   @IsOptional()
   @StrictString()
@@ -61,3 +62,6 @@ export class UpdateMaintenancePlanDto {
   @IsOptional()
   completedAt?: string
 }
+
+const _kontrakt: SammaNycklar<UpdateMaintenancePlanDto, UpdateMaintenancePlanInput> = true
+void _kontrakt

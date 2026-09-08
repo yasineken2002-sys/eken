@@ -1,3 +1,7 @@
+import { ConfirmContractRowSchema } from '@eken/shared'
+import type { ConfirmContractRowInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import React, { useMemo, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
@@ -194,6 +198,16 @@ function RowItem({
   const d = row.reviewedData
   const canQuickConfirm = row.matchStatus === 'AUTO_MATCHED'
 
+  function quickConfirm() {
+    const kropp: ConfirmContractRowInput = {}
+    const fel = kontraktsfel(ConfirmContractRowSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    confirm.mutate({ rowId: row.id, body: kropp })
+  }
+
   return (
     <tr className="border-line border-b last:border-0 hover:bg-gray-50/80">
       {/*
@@ -235,12 +249,7 @@ function RowItem({
       <Td className="text-right">
         <div className="flex justify-end gap-1.5">
           {canQuickConfirm && (
-            <Button
-              variant="primary"
-              size="xs"
-              disabled={confirm.isPending}
-              onClick={() => confirm.mutate({ rowId: row.id, body: {} })}
-            >
+            <Button variant="primary" size="xs" disabled={confirm.isPending} onClick={quickConfirm}>
               Godkänn
             </Button>
           )}
@@ -289,10 +298,13 @@ function EditRowModal({
       monthlyRent: monthlyRent.trim() ? Number(monthlyRent) : null,
       startDate: startDate.trim() || null,
     }
-    await confirm.mutateAsync({
-      rowId: row.id,
-      body: { ...(unitId ? { unitId } : {}), reviewedData },
-    })
+    const kropp: ConfirmContractRowInput = { ...(unitId ? { unitId } : {}), reviewedData }
+    const fel = kontraktsfel(ConfirmContractRowSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    await confirm.mutateAsync({ rowId: row.id, body: kropp })
     onClose()
   }
 

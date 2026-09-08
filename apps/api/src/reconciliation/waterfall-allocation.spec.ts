@@ -91,6 +91,7 @@ function makeService(
     },
     // #518 — krediteringarna läses på samma vägar som allokeringarna.
     rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
+    invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
       findMany: jest.fn((args: { where: { rentNoticeId: string } }) =>
         Promise.resolve(

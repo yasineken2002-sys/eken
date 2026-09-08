@@ -1324,6 +1324,15 @@ export class ReconciliationService {
     matchType?: 'fuzzy',
   ): Promise<boolean> {
     const claimedNumber = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      const priorBankAllocations = await tx.rentNoticePayment.findMany({
+        where: { bankTransactionId: transactionId },
+      })
+      const priorBankInvoiceAllocations = await tx.invoicePayment.findMany({
+        where: { bankTransactionId: transactionId },
+      })
+      if (priorBankAllocations.length > 0 || priorBankInvoiceAllocations.length > 0) return false
+
       // ── RADLÅS FÖRST (#307 C) ──────────────────────────────────────────────
       //
       // Låset är LASTBÄRANDE för statusrättningen, inte en allmän härdning: både
@@ -1339,11 +1348,7 @@ export class ReconciliationService {
       // grund vid samtidiga matchningar. Att flytta upp låset stänger den luckan på
       // köpet. Att ta det två gånger i den fulla grenen är en no-op (samma tx).
       //
-      // LÅSORDNING OFÖRÄNDRAD: Invoice → BankTransaction → Deposit. Låset tas
-      // tidigare i transaktionen, men Invoice låg först i BÅDA grenarna redan
-      // (updateMany respektive claimPaidWithinTx föregick `bankTransaction.update`).
-      // `unmatchTransaction` rör aldrig Invoice-status → ingen väg tar den motsatta
-      // ordningen. Ingen ABBA.
+      // BankTransaction → Invoice/RentNotice → Deposit i alla bankvägar.
       await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${invoiceId} AND "organizationId" = ${organizationId} FOR UPDATE`
 
       const invoiceRow = await tx.invoice.findFirst({
@@ -1528,7 +1533,7 @@ export class ReconciliationService {
       return completesInvoice ? invoiceNumber : ''
     }, PAYMENT_TX_LIMITS)
 
-    if (claimedNumber === null) return false
+    if (claimedNumber === null || claimedNumber === false) return false
 
     // Notis bara när fakturan faktiskt blev betald (tom sträng = delbetalning).
     if (claimedNumber !== '') {
@@ -1581,14 +1586,32 @@ export class ReconciliationService {
     const tolerance = new Decimal('1.00')
 
     return this.prisma.$transaction(async (tx) => {
-      // Rad-lås FÖRST: serialiserar samtidiga delbetalningar på samma avi.
+      // Lås bankraden före avin. Det gör tillgängliga bankmedel och den nya
+      // allokeringen atomiska även när samma inbetalning matchas samtidigt.
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+
+      // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
+      // får därför allokeras bara inom SAMMA vattenfallstransaktion. En redan
+      // allokerad bankrad måste avmatchas innan den kan användas igen.
+      // Ingen tolerans adderas till budgeten: befintlig örespolicy för den
+      // första matchningen behålls utan att tillåta ett andra uttag (fynd H).
+      const priorBankAllocations = await tx.rentNoticePayment.findMany({
+        where: { bankTransactionId: transactionId },
+      })
+      const priorBankInvoiceAllocations = await tx.invoicePayment.findMany({
+        where: { bankTransactionId: transactionId },
+      })
+      if (priorBankAllocations.length > 0 || priorBankInvoiceAllocations.length > 0) return false
+
+      // Avilåset serialiserar samtidiga delbetalningar från olika bankrader.
       //
       // ⚠️ LÅSORDNINGEN ÄR EN SPÄRR, INTE BARA SERIALISERING (#296, #298).
       //
       // Det här låset är det ENDA som hindrar DEPOSIT-grenen nedan från att
       // dubbelbokföra mot en samtidig DepositsService.markPaid. Ordningen är:
       //
-      //   denna väg:  RentNotice (lås här)  →  ...  →  Deposit (updateMany)
+      //   bankvägar: BankTransaction → Invoice/RentNotice → Deposit
+      //   denna väg: BankTransaction → RentNotice (lås här) → Deposit (updateMany)
       //   markPaid:   Deposit (claim)       →  ...  →  RentNotice (updateMany)
       //
       // Motsatta riktningar. Krockar de sluts cirkeln och Postgres dödar en av
@@ -1759,7 +1782,7 @@ export class ReconciliationService {
         return false
       }
 
-      // Allokeringen (bankTransactionId @unique skyddar mot dubbel-allokering).
+      // Det sammansatta indexet skyddar paret bankrad/avi.
       // #326 D: id:t bär verifikatets idempotensnyckel.
       const noticeAllocation = await tx.rentNoticePayment.create({
         data: {
@@ -2128,6 +2151,18 @@ export class ReconciliationService {
     const tolerance = new Decimal('1.00')
 
     return this.prisma.$transaction(async (tx) => {
+      // Samma bankradslåsning används av både waterfall och enskild matchning.
+      // Efter låset får endast den första transaktionen skapa allokeringar;
+      // samtidiga försök ser då den redan förbrukade bankbudgeten.
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      const priorBankAllocations = await tx.rentNoticePayment.findMany({
+        where: { bankTransactionId: transactionId },
+      })
+      const priorBankInvoiceAllocations = await tx.invoicePayment.findMany({
+        where: { bankTransactionId: transactionId },
+      })
+      if (priorBankAllocations.length > 0 || priorBankInvoiceAllocations.length > 0) return false
+
       // ORDNINGEN ÄR ALLOKERINGSREGELN, inte en presentationsdetalj: den avgör
       // vilka avier som blir betalda när pengarna tar slut. Identisk med
       // enskildvägens `orderBy` — dueDate först, createdAt som tie-break — så att
@@ -2412,6 +2447,18 @@ export class ReconciliationService {
       where: { id: transactionId, organizationId },
     })
     if (!transaction) throw new NotFoundException('Transaktion hittades inte')
+
+    // Den olåsta läsningen är bara till för feltexten. Spärren inne i
+    // matchningstransaktionen, under banklåset, är den lastbärande kontrollen.
+    const noticeAllocations = await this.prisma.rentNoticePayment.findMany({
+      where: { bankTransactionId: transactionId },
+    })
+    const invoiceAllocations = await this.prisma.invoicePayment.findMany({
+      where: { bankTransactionId: transactionId },
+    })
+    if (noticeAllocations.length > 0 || invoiceAllocations.length > 0) {
+      throw new BadRequestException('Bankraden är redan matchad. Avmatcha den först.')
+    }
 
     if (target.invoiceId) {
       const invoice = await this.prisma.invoice.findFirst({
@@ -2721,6 +2768,9 @@ export class ReconciliationService {
     let reversalSourceIds: string[] = []
 
     await this.prisma.$transaction(async (tx) => {
+      // Samma yttersta lås i båda avmatchningsgrenarna som vid matchning:
+      // BankTransaction → Invoice/RentNotice → Deposit.
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
       // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
       //
       // Förkontrollen ovan läser statusen OLÅST, utanför transaktionen. Den är
@@ -2735,12 +2785,6 @@ export class ReconciliationService {
       // Samma resonemang som #307 C:s radlås i `applyMatchToInvoice`: statusen
       // ett beslut fattas på måste läsas under det lås som skrivningen håller,
       // annars uttalar sig grinden om ett tillstånd som redan passerat.
-      //
-      // LÅSORDNING OFÖRÄNDRAD: Invoice → BankTransaction → Deposit. Invoice tas
-      // som FÖRSTA sats i transaktionen, före `bankTransaction.updateMany` längre
-      // ned. `claimForExport` och `markSentToCollection` rör aldrig
-      // BankTransaction, och Invoice/RentNotice är ömsesidigt uteslutande (XOR)
-      // på en banktransaktion — ingen väg tar den motsatta ordningen. Ingen ABBA.
       //
       // PAID-SPÄRREN RÖRS INTE. Den har samma teoretiska fönster (en samtidig
       // betalning kan flippa till PAID), men att stänga det ändrar beteendet på
