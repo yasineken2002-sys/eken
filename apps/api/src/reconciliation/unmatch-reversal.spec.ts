@@ -35,6 +35,7 @@ function makeService(opts: {
   noticeRow?: Record<string, unknown> | null
 }) {
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     // #326 C — behandlingshistoriken på avi-sidan.
     rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
 

@@ -1585,7 +1585,18 @@ export class ReconciliationService {
       // allokeringen atomiska även när samma inbetalning matchas samtidigt.
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
 
-      // Rad-lås FÖRST: serialiserar samtidiga delbetalningar på samma avi.
+      // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
+      // får därför allokeras bara inom SAMMA vattenfallstransaktion. En redan
+      // allokerad bankrad måste avmatchas innan den kan användas igen.
+      // Ingen tolerans adderas till budgeten: befintlig örespolicy för den
+      // första matchningen behålls utan att tillåta ett andra uttag (fynd H).
+      const priorBankAllocations = await tx.rentNoticePayment.findMany({
+        where: { bankTransactionId: transactionId },
+        select: { amount: true },
+      })
+      if (priorBankAllocations.length > 0) return false
+
+      // Avilåset serialiserar samtidiga delbetalningar från olika bankrader.
       //
       // ⚠️ LÅSORDNINGEN ÄR EN SPÄRR, INTE BARA SERIALISERING (#296, #298).
       //
@@ -1654,18 +1665,6 @@ export class ReconciliationService {
         if (remainingDep.lte(0)) return false
         // Deposition betalas i sin helhet (allt-eller-inget) — delbetalning ej meningsfull.
         if (transactionAmount.minus(remainingDep).abs().gt(tolerance)) return false
-
-        const priorBankAllocations = await tx.rentNoticePayment.findMany({
-          where: { bankTransactionId: transactionId },
-          select: { amount: true },
-        })
-        const allocatedFromBank = priorBankAllocations.reduce(
-          (sum, allocation) => sum.plus(new Decimal(allocation.amount)),
-          new Decimal(0),
-        )
-        if (allocatedFromBank.plus(remainingDep).gt(transactionAmount)) {
-          return false
-        }
 
         // #326 D: id:t bär verifikatets idempotensnyckel.
         const depAllocation = await tx.rentNoticePayment.create({
@@ -1775,22 +1774,7 @@ export class ReconciliationService {
         return false
       }
 
-      // En bankrad får fördelas över flera avier, men summan av allokeringarna
-      // får aldrig överstiga bankradens belopp. Bankraden är låst ovan, så
-      // kontrollen och INSERT:en utgör en enda serialiserad operation.
-      const priorBankAllocations = await tx.rentNoticePayment.findMany({
-        where: { bankTransactionId: transactionId },
-        select: { amount: true },
-      })
-      const allocatedFromBank = priorBankAllocations.reduce(
-        (sum, allocation) => sum.plus(new Decimal(allocation.amount)),
-        new Decimal(0),
-      )
-      if (allocatedFromBank.plus(allocationAmount).gt(transactionAmount)) {
-        return false
-      }
-
-      // Allokeringen (bankTransactionId @unique skyddar mot dubbel-allokering).
+      // Det sammansatta indexet skyddar paret bankrad/avi.
       // #326 D: id:t bär verifikatets idempotensnyckel.
       const noticeAllocation = await tx.rentNoticePayment.create({
         data: {
@@ -2167,11 +2151,7 @@ export class ReconciliationService {
         where: { bankTransactionId: transactionId },
         select: { amount: true },
       })
-      const allocatedFromBank = priorBankAllocations.reduce(
-        (sum, allocation) => sum.plus(new Decimal(allocation.amount)),
-        new Decimal(0),
-      )
-      if (allocatedFromBank.gt(0)) return false
+      if (priorBankAllocations.length > 0) return false
 
       // ORDNINGEN ÄR ALLOKERINGSREGELN, inte en presentationsdetalj: den avgör
       // vilka avier som blir betalda när pengarna tar slut. Identisk med
@@ -2766,6 +2746,12 @@ export class ReconciliationService {
     let reversalSourceIds: string[] = []
 
     await this.prisma.$transaction(async (tx) => {
+      // Avi-matchning och avi-avmatchning: BankTransaction → RentNotice.
+      // Hindrar att en ny matchning läser allokeringar mitt i återföringen,
+      // och undviker motsatt låsordning när båda uppdaterar samma bankrad.
+      if (!transaction.invoice) {
+        await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      }
       // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
       //
       // Förkontrollen ovan läser statusen OLÅST, utanför transaktionen. Den är

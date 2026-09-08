@@ -74,7 +74,12 @@ function makeService(opts: {
     // #518 — krediteringarna läses på samma vägar som allokeringarna.
     rentNoticeCredit: { findMany: jest.fn().mockResolvedValue([]) },
     rentNoticePayment: {
-      findMany: jest.fn().mockResolvedValue(opts.priorAllocations ?? []),
+      // Äldre delbetalningar på avin kommer från ANDRA bankrader.
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }: { where: { bankTransactionId?: string } }) =>
+          Promise.resolve(where.bankTransactionId ? [] : (opts.priorAllocations ?? [])),
+        ),
       create: jest.fn().mockResolvedValue({ id: 'rnp-x' }),
     },
     bankTransaction: { update: jest.fn().mockResolvedValue({}) },
