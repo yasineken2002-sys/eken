@@ -14,7 +14,9 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import type { JwtPayload } from '@eken/shared'
-import { NewsService, CreateNewsPostDto, UpdateNewsPostDto } from './news.service'
+import { NewsService } from './news.service'
+import { CreateNewsPostDto } from './dto/create-news-post.dto'
+import { UpdateNewsPostDto } from './dto/update-news-post.dto'
 
 @Controller('news')
 export class NewsController {

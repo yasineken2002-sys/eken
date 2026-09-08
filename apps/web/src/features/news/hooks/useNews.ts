@@ -6,7 +6,7 @@ import {
   publishNewsPost,
   deleteNewsPost,
 } from '../api/news.api'
-import type { CreateNewsPostDto, UpdateNewsPostDto } from '../api/news.api'
+import type { CreateNewsPostInput, UpdateNewsPostInput } from '@eken/shared'
 
 export function useNewsPosts() {
   return useQuery({
@@ -19,7 +19,7 @@ export function useNewsPosts() {
 export function useCreateNewsPost() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (dto: CreateNewsPostDto) => createNewsPost(dto),
+    mutationFn: (dto: CreateNewsPostInput) => createNewsPost(dto),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['news'] })
     },
@@ -29,7 +29,7 @@ export function useCreateNewsPost() {
 export function useUpdateNewsPost() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, dto }: { id: string; dto: UpdateNewsPostDto }) => updateNewsPost(id, dto),
+    mutationFn: ({ id, dto }: { id: string; dto: UpdateNewsPostInput }) => updateNewsPost(id, dto),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['news'] })
     },

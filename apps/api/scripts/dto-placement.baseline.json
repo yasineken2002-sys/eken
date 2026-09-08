@@ -1,17 +1,9 @@
 {
-  "total": 5,
+  "total": 3,
   "poster": [
     {
       "fil": "apps/api/src/collections/rent-collections.controller.ts",
       "klass": "RentBulkExportDto"
-    },
-    {
-      "fil": "apps/api/src/news/news.service.ts",
-      "klass": "CreateNewsPostDto"
-    },
-    {
-      "fil": "apps/api/src/news/news.service.ts",
-      "klass": "UpdateNewsPostDto"
     },
     {
       "fil": "apps/api/src/platform/ai-usage/platform-ai-usage.controller.ts",
