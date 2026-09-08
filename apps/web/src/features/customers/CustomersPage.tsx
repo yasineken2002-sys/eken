@@ -1,3 +1,7 @@
+import { UpdateCustomerSchema } from '@eken/shared'
+import type { UpdateCustomerInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Plus, Search, Users, User, Building2, Mail, Phone, FileText } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
@@ -339,12 +343,18 @@ export function CustomersPage() {
             ) : (
               <Button
                 size="sm"
-                onClick={() =>
+                onClick={() => {
+                  const input: UpdateCustomerInput = { isActive: true }
+                  const fel = kontraktsfel(UpdateCustomerSchema, input)
+                  if (fel) {
+                    toast.error(fel)
+                    return
+                  }
                   updateMutation.mutate(
-                    { id: selected.id, isActive: true },
+                    { id: selected.id, ...input },
                     { onSuccess: () => setSelected(null) },
                   )
-                }
+                }}
               >
                 Återaktivera
               </Button>

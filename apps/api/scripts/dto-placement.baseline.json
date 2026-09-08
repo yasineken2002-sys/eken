@@ -1,13 +1,4 @@
 {
-  "total": 2,
-  "poster": [
-    {
-      "fil": "apps/api/src/news/news.service.ts",
-      "klass": "CreateNewsPostDto"
-    },
-    {
-      "fil": "apps/api/src/news/news.service.ts",
-      "klass": "UpdateNewsPostDto"
-    }
-  ]
+  "total": 0,
+  "poster": []
 }
