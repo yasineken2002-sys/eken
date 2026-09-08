@@ -175,7 +175,7 @@ dess rapporter finns som `avvisad-prompt-betalnings*.modell.json`, mätta mot
 `29e69f6`. Den första promptförbättringen behålls för granskning. Dess rapporter
 markerar ändrad arbetskopia; de är gjorda före det avvisade tillägget, inte mot
 hela `29e69f6`. Alla fyra körningar bevaras, även försämringen. Sammanlagd
-uppskattad kostnad för förbättringsförsöken: **0,2292 USD**.
+uppskattad kostnad för förbättringsförsöken: **0,2290 USD**.
 
 Nästa kvalitetsgrind kräver fler i förväg märkta fall och upprepade körningar;
 ett bra utfall på 36 fall bevisar inte 98 % i drift. Kontrollmaterialet får nu
