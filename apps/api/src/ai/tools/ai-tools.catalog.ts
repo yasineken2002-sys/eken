@@ -53,6 +53,11 @@ export interface ToolCatalogEntry {
  * `menuLabel` (se ToolMenu.tsx) — den har ingen egen lista.
  */
 const TOOL_META: Record<string, { label: string; menuLabel: string; group: ToolGroup }> = {
+  get_consumption_review: {
+    label: 'Läser förbrukningsgranskning',
+    menuLabel: 'Granska förbrukningsavvikelser',
+    group: 'Fastigheter & underhåll',
+  },
   // ── Ekonomi & avier ────────────────────────────────────────────────────────
   get_dashboard_stats: {
     label: 'Hämtar översikt',

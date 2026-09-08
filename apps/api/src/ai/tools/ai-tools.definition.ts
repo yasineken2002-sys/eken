@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { REVIEW_PAGE_DEFAULT, REVIEW_PAGE_MAX } from './consumption-review.input'
 import {
   PaymentMethodSchema,
   INSPECTION_TYPES,
@@ -30,6 +31,39 @@ const BESIKTNINGSSTATUSAR = [...INSPECTION_STATUSES]
 
 export const TOOLS: Anthropic.Tool[] = [
   // ── READ TOOLS (no confirmation needed) ──────────────────────────────────
+
+  {
+    name: 'get_consumption_review',
+    description:
+      'Läser förbrukningsgranskningen: avläsningar att kontrollera, exakta källor och senaste mänskliga bedömning. Samma underlag som Förbrukning → Granskning. Inga debiteringar eller ändringar görs. Resultatet är sidindelat; hämta nextOffset med samma snapshot tills nästa sida är null innan du sammanfattar alla varningar. En bekräftad avvikelse är inte ett godkännande för debitering.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        offset: {
+          type: 'integer',
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+          description: 'Startposition, standard 0.',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: REVIEW_PAGE_MAX,
+          description: `Antal varningar per sida, standard ${REVIEW_PAGE_DEFAULT}.`,
+        },
+        snapshot: {
+          type: 'string',
+          minLength: 64,
+          maxLength: 64,
+          pattern: '^[a-f0-9]{64}$',
+          description:
+            'Krävs efter första sidan: kopiera snapshot från föregående svar. Ändrat underlag kräver omstart på offset 0 utan snapshot.',
+        },
+      },
+      required: [],
+    },
+  },
 
   {
     name: 'get_dashboard_stats',

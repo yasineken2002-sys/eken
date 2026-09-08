@@ -76,6 +76,7 @@ import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 import { redactSensitive } from '../../common/redaction/redact-sensitive'
+import { getConsumptionReview } from './consumption-review'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
 // Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
@@ -967,6 +968,10 @@ export class ToolExecutorService {
     try {
       switch (toolName) {
         // ── READ TOOLS ──────────────────────────────────────────────────────
+
+        case 'get_consumption_review': {
+          return await getConsumptionReview(this.prisma, organizationId, userRole, toolInput)
+        }
 
         case 'get_dashboard_stats': {
           const [invoiceCounts, tenantCount, propertyCount, leaseCounts, paidRevenue] =
