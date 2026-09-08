@@ -1,12 +1,4 @@
-import {
-  IsBoolean,
-  IsDateString,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  MinLength,
-} from 'class-validator'
+import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator'
 
 import type {
   CancelWorkOrderInput,
@@ -15,6 +7,8 @@ import type {
   WorkOrderResponseInput,
 } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /** POST /maintenance/:id/work-orders */
 export class SendWorkOrderDto implements SendWorkOrderInput {
@@ -24,6 +18,7 @@ export class SendWorkOrderDto implements SendWorkOrderInput {
   @IsOptional()
   @IsString()
   @MaxLength(2000)
+  @StrictString()
   meddelande?: string
 
   /**
@@ -53,12 +48,13 @@ export class WorkOrderResponseDto implements WorkOrderResponseInput {
   accepterar!: boolean
 
   @IsOptional()
-  @IsDateString()
+  @StrictIsoDatum()
   proposedAt?: string
 
   @IsOptional()
   @IsString()
   @MaxLength(1000)
+  @StrictString()
   note?: string
 }
 
@@ -68,6 +64,7 @@ export class CancelWorkOrderDto implements CancelWorkOrderInput {
   @IsString()
   @MinLength(1)
   @MaxLength(1000)
+  @StrictString()
   skal?: string
 }
 

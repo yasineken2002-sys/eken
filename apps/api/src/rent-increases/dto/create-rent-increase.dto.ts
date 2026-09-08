@@ -1,13 +1,7 @@
 import type { SammaNycklar, CreateRentIncreaseInput } from '@eken/shared'
-import {
-  IsDateString,
-  IsNumber,
-  IsString,
-  IsUUID,
-  MaxLength,
-  Min,
-  MinLength,
-} from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
+import { IsNumber, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator'
 
 export class CreateRentIncreaseDto implements CreateRentIncreaseInput {
   @IsUUID()
@@ -20,9 +14,10 @@ export class CreateRentIncreaseDto implements CreateRentIncreaseInput {
   @IsString()
   @MinLength(3)
   @MaxLength(500)
+  @StrictString()
   reason!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   effectiveDate!: string
 }
 

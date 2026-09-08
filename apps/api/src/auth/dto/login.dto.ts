@@ -2,6 +2,7 @@ import { IsEmail, IsString, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 
 import type { LoginInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * INLOGGNING VALIDERAR INTE LÖSENORDSSTYRKA — AVSIKTLIG BETEENDEÄNDRING.
@@ -59,6 +60,7 @@ export class LoginDto implements LoginInput {
   @ApiProperty({ description: 'Prövas som det är — ingen styrkevalidering, se docblocket.' })
   @IsString()
   @MinLength(1)
+  @StrictString()
   password!: string
 }
 

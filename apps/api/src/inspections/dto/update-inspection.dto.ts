@@ -1,8 +1,10 @@
-import { IsEnum, IsString, IsDateString, IsOptional, MaxLength } from 'class-validator'
+import { IsEnum, IsString, IsOptional, MaxLength } from 'class-validator'
 import { InspectionStatus } from '@prisma/client'
 
 import type { UpdateInspectionInput, SammaNycklar } from '@eken/shared'
 import { INSPECTION_TEXT_MAX } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * PATCH /inspections/:id
@@ -37,25 +39,29 @@ export class UpdateInspectionDto implements UpdateInspectionInput {
   @IsString()
   @MaxLength(INSPECTION_TEXT_MAX)
   @IsOptional()
+  @StrictString()
   notes?: string
 
   @IsString()
   @MaxLength(INSPECTION_TEXT_MAX)
   @IsOptional()
+  @StrictString()
   overallCondition?: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   signedAt?: string
 
   @IsString()
   @MaxLength(200)
   @IsOptional()
+  @StrictString()
   tenantSignature?: string
 
   @IsString()
   @MaxLength(200)
   @IsOptional()
+  @StrictString()
   landlordSignature?: string
 }
 

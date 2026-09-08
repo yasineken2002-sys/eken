@@ -1,6 +1,7 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator'
 
 import type { RequestUndoInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 /**
  * Ångra-begäran. Bara ett valfritt skäl — begäran gäller uppdraget i rutten.
@@ -15,6 +16,7 @@ export class RequestUndoDto implements RequestUndoInput {
   @IsOptional()
   @IsString()
   @MaxLength(2000)
+  @StrictString()
   note?: string
 }
 

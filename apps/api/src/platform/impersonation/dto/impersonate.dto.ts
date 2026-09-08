@@ -1,5 +1,6 @@
 import { IsOptional, IsString, IsUUID } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 export class ImpersonateDto {
   @ApiProperty() @IsUUID() organizationId!: string
@@ -11,6 +12,7 @@ export class ImpersonateDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   reason?: string
 }
 

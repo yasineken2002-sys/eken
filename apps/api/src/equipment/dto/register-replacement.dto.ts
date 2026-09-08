@@ -2,7 +2,6 @@ import type { SammaNycklar, RegisterReplacementInput } from '@eken/shared'
 import {
   IsEnum,
   IsInt,
-  IsISO8601,
   IsNumber,
   IsOptional,
   IsString,
@@ -11,6 +10,8 @@ import {
   Min,
 } from 'class-validator'
 import { EQUIPMENT_KINDS } from './create-equipment.dto'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * ETT BYTE ÄR EN HÄNDELSE, INTE EN UPPDATERING.
@@ -38,10 +39,11 @@ export class RegisterReplacementDto implements RegisterReplacementInput {
   @IsString()
   @IsOptional()
   @MaxLength(120)
+  @StrictString()
   label?: string
 
   /** NÄR bytet skedde. Blir efterträdarens `installedAt` och föregångarens `removedAt`. */
-  @IsISO8601()
+  @StrictIsoDatum()
   occurredAt!: string
 
   /** AV VEM. Vilken MÄNNISKA som utförde arbetet — inte vem som registrerar det. */
@@ -59,11 +61,13 @@ export class RegisterReplacementDto implements RegisterReplacementInput {
   @IsString()
   @IsOptional()
   @MaxLength(500)
+  @StrictString()
   attachmentUrl?: string
 
   @IsString()
   @IsOptional()
   @MaxLength(1000)
+  @StrictString()
   note?: string
 
   @IsUUID()

@@ -1,6 +1,7 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator'
 
 import type { RevokeDelegationInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 /**
  * Skälet till ett återkallande.
@@ -13,6 +14,7 @@ export class RevokeDelegationDto implements RevokeDelegationInput {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @StrictString()
   skäl?: string
 }
 

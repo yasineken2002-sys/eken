@@ -2,6 +2,7 @@ import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-valida
 import { MaintenanceCategory } from '@prisma/client'
 
 import type { AddTenantCommentInput, SammaNycklar, SubmitTicketInput } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * HYRESGÄSTENS väg — BASEN, inte en egen form.
@@ -23,6 +24,7 @@ export class SubmitMaintenanceDto {
   @IsString()
   @MinLength(3)
   @MaxLength(200)
+  @StrictString()
   title!: string
 
   // ── TAK PÅ DET SOM BETALAS PER TOKEN ────────────────────────────────────
@@ -32,6 +34,7 @@ export class SubmitMaintenanceDto {
   @IsString()
   @MinLength(10)
   @MaxLength(4000)
+  @StrictString()
   description!: string
 
   @IsEnum(MaintenanceCategory)
@@ -50,6 +53,7 @@ export class AddTenantCommentDto {
   @IsString()
   @MinLength(1)
   @MaxLength(4000)
+  @StrictString()
   content!: string
 }
 

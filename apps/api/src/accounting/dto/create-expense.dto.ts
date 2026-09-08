@@ -1,7 +1,6 @@
 import {
   IsIn,
   IsInt,
-  IsISO8601,
   IsNumber,
   IsOptional,
   IsString,
@@ -13,6 +12,8 @@ import {
 import { Transform } from 'class-transformer'
 import type { CreateExpenseInput, SammaNycklar } from '@eken/shared'
 import { VAT_RATES } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * Kroppen till POST /accounting/expenses — människans väg till en bokförd
@@ -48,13 +49,14 @@ import { VAT_RATES } from '@eken/shared'
 // måste fortsätta importeras som VÄRDE i controllern — `import type` raderar den
 // och ValidationPipe tappar all metadata. Se CLAUDE.md:s DTO-regel.
 export class CreateExpenseDto implements CreateExpenseInput {
-  @IsISO8601({}, { message: 'Datum måste anges som ÅÅÅÅ-MM-DD' })
+  @StrictIsoDatum()
   date!: string
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({ message: 'Ange vad utgiften avser' })
   @MinLength(3, { message: 'Beskrivningen måste vara minst 3 tecken' })
   @MaxLength(300, { message: 'Beskrivningen får vara högst 300 tecken' })
+  @StrictString()
   description!: string
 
   /** Leverantör/motpart. Skrivs in i verifikatets beskrivning, inte i en relation. */
@@ -62,6 +64,7 @@ export class CreateExpenseDto implements CreateExpenseInput {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(200, { message: 'Leverantörsnamnet får vara högst 200 tecken' })
+  @StrictString()
   supplier?: string
 
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Beloppet anges med högst två decimaler' })
@@ -88,11 +91,13 @@ export class CreateExpenseDto implements CreateExpenseInput {
   @IsOptional()
   @IsString()
   @MaxLength(120, { message: 'Idempotensnyckeln får vara högst 120 tecken' })
+  @StrictString()
   idempotencyKey?: string
 
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @StrictString()
   attachmentUrl?: string
 }
 

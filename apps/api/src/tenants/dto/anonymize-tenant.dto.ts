@@ -1,5 +1,6 @@
 import type { SammaNycklar, AnonymizeTenantInput } from '@eken/shared'
 import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class AnonymizeTenantDto implements AnonymizeTenantInput {
   /**
@@ -11,6 +12,7 @@ export class AnonymizeTenantDto implements AnonymizeTenantInput {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @StrictString()
   reason?: string
 }
 

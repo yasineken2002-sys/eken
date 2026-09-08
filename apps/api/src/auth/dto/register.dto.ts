@@ -4,7 +4,6 @@ import {
   IsOptional,
   IsIn,
   IsBoolean,
-  IsDateString,
   MinLength,
   MaxLength,
   Equals,
@@ -14,6 +13,8 @@ import { CompanyForm } from '@prisma/client'
 import { IsStrongPassword } from './password.decorators'
 import type { SammaNycklar, RegisterInput } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 const COMPANY_FORM_VALUES = Object.values(CompanyForm) as string[]
 
@@ -22,11 +23,27 @@ export class RegisterDto implements RegisterInput {
 
   @ApiProperty({ minLength: 10 })
   @IsStrongPassword()
+  @StrictString()
   password!: string
 
-  @ApiProperty() @IsString() @MinLength(1) @MaxLength(100) firstName!: string
-  @ApiProperty() @IsString() @MinLength(1) @MaxLength(100) lastName!: string
-  @ApiProperty() @IsString() @MinLength(1) @MaxLength(200) organizationName!: string
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  @StrictString()
+  firstName!: string
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  @StrictString()
+  lastName!: string
+  @ApiProperty()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  @StrictString()
+  organizationName!: string
 
   // ─── Företagsform och organisationsnummer ────────────────────────────────
   // Validering av att orgNumber faktiskt matchar companyForm görs i
@@ -40,6 +57,7 @@ export class RegisterDto implements RegisterInput {
   @ApiPropertyOptional({ example: '556123-4567 (AB) eller 198512251234 (Enskild firma)' })
   @IsOptional()
   @IsString()
+  @StrictString()
   orgNumber?: string
 
   // ─── F-skatt och moms (frivillig uppgift resp. momsnr på faktura, #392) ──
@@ -51,12 +69,13 @@ export class RegisterDto implements RegisterInput {
 
   @ApiPropertyOptional({ example: '2024-06-01' })
   @IsOptional()
-  @IsDateString()
+  @StrictIsoDatum()
   fSkattApprovedDate?: string
 
   @ApiPropertyOptional({ example: '556123456701' })
   @IsOptional()
   @IsString()
+  @StrictString()
   vatNumber?: string
 
   // ─── Bakåtkompatibilitet ─────────────────────────────────────────────────

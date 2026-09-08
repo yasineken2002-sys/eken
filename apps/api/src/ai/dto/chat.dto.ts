@@ -1,3 +1,4 @@
+import { StrictString } from '../../common/contract/strict-string.decorator'
 import {
   IsString,
   IsOptional,
@@ -24,6 +25,7 @@ export class ChatDto {
   @IsString()
   @MinLength(1)
   @MaxLength(CHAT_MESSAGE_MAX_LENGTH)
+  @StrictString()
   message!: string
 
   @IsUUID()

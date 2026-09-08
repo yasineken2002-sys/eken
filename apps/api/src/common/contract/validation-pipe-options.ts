@@ -32,7 +32,7 @@ import type { ValidationPipeOptions } from '@nestjs/common'
  *
  *     BOOLEANER   `@StrictBoolean()` — godtar true/false och "true"/"false",
  *                 avvisar allt annat med 400. Se
- *                 `strict-boolean.decorator.ts`; `check-strict-boolean.mjs`
+ *                 `strict-boolean.decorator.ts`; `check-strict-koercion.mjs`
  *                 kräver den på VARJE booleskt DTO-fält, utan baslinje.
  *     STRÄNGAR    `@IngenKoercion()` — läser råvärdet, så `42` inte blir "42".
  *                 Se `no-coercion.decorator.ts`.

@@ -2,6 +2,7 @@ import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-val
 
 import type { AddTicketCommentInput, SammaNycklar } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * POST /maintenance/:id/comments
@@ -19,6 +20,7 @@ export class AddTicketCommentDto {
   @IsString()
   @MinLength(1)
   @MaxLength(4000)
+  @StrictString()
   content!: string
 
   // Intern kommentar syns inte för hyresgästen i portalen.

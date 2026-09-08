@@ -1,8 +1,9 @@
 import type { SammaNycklar, RenewLeaseInput } from '@eken/shared'
-import { IsDateString, IsNumber, IsOptional, Min } from 'class-validator'
+import { IsNumber, IsOptional, Min } from 'class-validator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class RenewLeaseDto implements RenewLeaseInput {
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   newEndDate?: string
 

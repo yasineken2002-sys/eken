@@ -1,15 +1,8 @@
 import type { SammaNycklar, CreateEquipmentInput } from '@eken/shared'
 import { EQUIPMENT_KINDS } from '@eken/shared'
-import {
-  IsEnum,
-  IsInt,
-  IsISO8601,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MaxLength,
-  Min,
-} from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator'
 
 /**
  * Enumvärdena speglar `UnitEquipmentKind` i schemat. De står som en `as const`
@@ -30,10 +23,11 @@ export class CreateEquipmentDto implements CreateEquipmentInput {
   @IsString()
   @IsOptional()
   @MaxLength(120)
+  @StrictString()
   label?: string
 
   /** NÄR-halvan av frågan. Obligatorisk — se kolumnens docblock i schemat. */
-  @IsISO8601()
+  @StrictIsoDatum()
   installedAt!: string
 
   /**

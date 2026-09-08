@@ -5,6 +5,7 @@ import type {
 } from '@eken/shared'
 import { ApiProperty } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 import {
   ArrayMinSize,
   IsArray,
@@ -74,6 +75,7 @@ export class CreateRentNoticeCreditDto implements CreateRentNoticeCreditInput {
   @ApiProperty({ description: 'Varför avin krediteras' })
   @IsString()
   @MinLength(5, { message: 'Ange ett skäl till krediteringen (minst 5 tecken)' })
+  @StrictString()
   reason!: string
 }
 

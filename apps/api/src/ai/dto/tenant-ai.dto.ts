@@ -2,6 +2,7 @@ import { IsBoolean, IsObject, IsOptional, IsString, MaxLength, MinLength } from 
 
 import type { SammaNycklar, TenantChatInput, TenantConfirmInput } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * HYRESGÄSTENS AI-YTA — två DTO:er, flyttade hit ur `tenant-ai.controller.ts`.
@@ -18,16 +19,19 @@ export class TenantChatDto implements TenantChatInput {
   @IsString()
   @MinLength(1)
   @MaxLength(2000)
+  @StrictString()
   message!: string
 
   @IsOptional()
   @IsString()
+  @StrictString()
   conversationId?: string
 }
 
 export class TenantConfirmDto implements TenantConfirmInput {
   @IsString()
   @MinLength(1)
+  @StrictString()
   toolName!: string
 
   /**
@@ -40,6 +44,7 @@ export class TenantConfirmDto implements TenantConfirmInput {
 
   @IsString()
   @MinLength(1)
+  @StrictString()
   conversationId!: string
 
   /**

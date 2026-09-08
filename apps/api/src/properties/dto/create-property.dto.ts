@@ -11,18 +11,32 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 class AddressDto {
-  @ApiProperty() @IsString() street!: string
-  @ApiProperty() @IsString() city!: string
-  @ApiProperty() @IsString() postalCode!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  street!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  city!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  postalCode!: string
   // DEFAULTEN LIGGER HÄR, inte bara i schemat. `AddressSchema.country` har
   // `.default('SE')`, så `z.infer` säger att fältet ALLTID finns efter parsning
   // — och `properties.service.ts` tar emot `CreatePropertyInput`, alltså den
   // utparsade formen. Utan initieraren nedan var det ett påstående utan täckning:
   // en kropp utan `country` gav `undefined` i en tjänst vars typ sa `string`.
   // Fältet är fortsatt VALFRITT på tråden (@IsOptional); initieraren fyller i.
-  @ApiProperty({ default: 'SE' }) @IsString() @IsOptional() country: string = 'SE'
+  @ApiProperty({ default: 'SE' })
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  country: string = 'SE'
 }
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
@@ -36,8 +50,14 @@ class AddressDto {
 // Klassen måste fortsätta importeras som VÄRDE i controllern — `import type`
 // raderar den och ValidationPipe tappar all metadata (CLAUDE.md:s DTO-regel).
 export class CreatePropertyDto implements CreatePropertyInput {
-  @ApiProperty() @IsString() name!: string
-  @ApiProperty() @IsString() propertyDesignation!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  name!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  propertyDesignation!: string
   @ApiProperty({ enum: ['RESIDENTIAL', 'COMMERCIAL', 'MIXED', 'INDUSTRIAL', 'LAND'] })
   @IsEnum(['RESIDENTIAL', 'COMMERCIAL', 'MIXED', 'INDUSTRIAL', 'LAND'])
   type!: 'RESIDENTIAL' | 'COMMERCIAL' | 'MIXED' | 'INDUSTRIAL' | 'LAND'

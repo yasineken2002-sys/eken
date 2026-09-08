@@ -1,7 +1,8 @@
-import { IsEnum, IsDateString, IsUUID, IsOptional } from 'class-validator'
+import { IsEnum, IsUUID, IsOptional } from 'class-validator'
 import { InspectionType } from '@prisma/client'
 
 import type { CreateInspectionInput, SammaNycklar } from '@eken/shared'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * POST /inspections
@@ -16,7 +17,7 @@ export class CreateInspectionDto implements CreateInspectionInput {
   @IsEnum(InspectionType)
   type!: InspectionType
 
-  @IsDateString()
+  @StrictIsoDatum()
   scheduledDate!: string
 
   @IsUUID()

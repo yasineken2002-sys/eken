@@ -1,5 +1,4 @@
 import {
-  IsDateString,
   IsEnum,
   IsIn,
   IsInt,
@@ -11,6 +10,8 @@ import {
   Min,
 } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../../common/contract/strict-iso-datum.decorator'
 
 const INVOICE_TYPES = ['PLAN_FEE', 'AI_CREDITS', 'OTHER'] as const
 const INVOICE_STATUSES = ['DRAFT', 'SENT', 'PENDING', 'PAID', 'OVERDUE', 'VOID'] as const
@@ -29,14 +30,22 @@ export class CreatePlatformInvoiceDto {
   amountNetSek!: number
 
   @ApiProperty({ required: false })
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   dueDate?: string
 
-  @ApiProperty({ required: false }) @IsString() @IsOptional() description?: string
-  @ApiProperty({ required: false }) @IsDateString() @IsOptional() planPeriodStart?: string
-  @ApiProperty({ required: false }) @IsDateString() @IsOptional() planPeriodEnd?: string
-  @ApiProperty({ required: false }) @IsString() @IsOptional() notes?: string
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  description?: string
+  @ApiProperty({ required: false }) @StrictIsoDatum() @IsOptional() planPeriodStart?: string
+  @ApiProperty({ required: false }) @StrictIsoDatum() @IsOptional() planPeriodEnd?: string
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  notes?: string
 }
 
 export class UpdatePlatformInvoiceDto {
@@ -46,11 +55,19 @@ export class UpdatePlatformInvoiceDto {
   type?: (typeof INVOICE_TYPES)[number]
 
   @ApiProperty({ required: false }) @IsNumber() @Min(0.01) @IsOptional() amountNetSek?: number
-  @ApiProperty({ required: false }) @IsDateString() @IsOptional() dueDate?: string
-  @ApiProperty({ required: false }) @IsString() @IsOptional() description?: string
-  @ApiProperty({ required: false }) @IsDateString() @IsOptional() planPeriodStart?: string
-  @ApiProperty({ required: false }) @IsDateString() @IsOptional() planPeriodEnd?: string
-  @ApiProperty({ required: false }) @IsString() @IsOptional() notes?: string
+  @ApiProperty({ required: false }) @StrictIsoDatum() @IsOptional() dueDate?: string
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  description?: string
+  @ApiProperty({ required: false }) @StrictIsoDatum() @IsOptional() planPeriodStart?: string
+  @ApiProperty({ required: false }) @StrictIsoDatum() @IsOptional() planPeriodEnd?: string
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  notes?: string
 }
 
 export class UpdatePlatformInvoiceStatusDto {
@@ -78,12 +95,13 @@ export class MarkPaidDto {
   paymentMethod!: (typeof PAYMENT_METHODS)[number]
 
   @ApiProperty({ required: false })
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   paidAt?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   paymentReference?: string
 }

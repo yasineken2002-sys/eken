@@ -1,5 +1,6 @@
 import type { SammaNycklar, RejectTerminationInput } from '@eken/shared'
 import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class RejectTerminationDto implements RejectTerminationInput {
   // Frivillig motivering till avslag. Mejlas till hyresgästen. Persisteras inte
@@ -9,6 +10,7 @@ export class RejectTerminationDto implements RejectTerminationInput {
   @IsString()
   @IsOptional()
   @MaxLength(500)
+  @StrictString()
   reason?: string
 }
 
