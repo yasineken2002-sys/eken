@@ -155,10 +155,32 @@ ren `c524bd5` med `claude-haiku-4-5-20251001`: avi **31/36 (86,1 %)**,
 belopp **33/36 (91,7 %)** och motpart **32/36 (88,9 %)**. Alla tre når minst
 80 %. De fyra kontrollerna passerar, inga svar saknas och kandidat-recall är
 19/19. Körningen gjorde 26 modellanrop: 42 505 in- och 5 267 ut-token,
-uppskattad kostnad **0,06884 USD**. Resultatet finns i
-`senaste-betalningskorning.modell.json`; korpus och facit är oförändrade.
+uppskattad kostnad **0,06884 USD**. Originalrapporten finns i commit `48fe4a5`;
+korpus och facit är oförändrade.
 Detta mäter konstruerade fall, inte verklig drift. C och D har inte byggts i
 denna fortsättning och inga betalningar har ändrats.
+
+**Fortsatt kvalitetsarbete samma dag: 98 % är INTE visat.** Förtydligad prompt
+om returer, fullständiga namn, delbetalningar och förfallen respektive kommande
+avi gav 35/36 på avi och motpart (**97,2 %**) samt 36/36 på belopp. De rapporterna
+ligger i `senaste-betalningskorning.modell.json` och
+`senaste-betalningskontroll.modell.json`. Tolv nya konstruerade kontrollfall med
+nya identiteter, referenser, namnkonflikter och instruktioner i banktext gav
+10/12 (**83,3 %**) per fält. De lades till efter att originalets missar hade
+analyserats och är inte ett oberoende representativt driftprov.
+
+Ett ytterligare promptförsök gav bara 32/36 avi, 36/36 belopp och 33/36 motpart
+på originalet, och 9/12, 10/12, 9/12 på kontrollfallen. Det försöket **avvisades**;
+dess rapporter finns som `avvisad-prompt-betalnings*.modell.json`, mätta mot
+`29e69f6`. Den första promptförbättringen behålls för granskning. Dess rapporter
+markerar ändrad arbetskopia; de är gjorda före det avvisade tillägget, inte mot
+hela `29e69f6`. Alla fyra körningar bevaras, även försämringen. Sammanlagd
+uppskattad kostnad för förbättringsförsöken: **0,2292 USD**.
+
+Nästa kvalitetsgrind kräver fler i förväg märkta fall och upprepade körningar;
+ett bra utfall på 36 fall bevisar inte 98 % i drift. Kontrollmaterialet får nu
+räknas som utvecklingsmaterial eftersom dess missar har använts i ett försök.
+Kör det separat med `pnpm eval:shadow --betalningar --betalningskontroll`.
 
 Kör från `apps/api`: `pnpm eval:shadow --betalningar --utan-modell` för den
 kostnadsfria armen, eller `pnpm eval:shadow --betalningar` med dev-nyckel.
