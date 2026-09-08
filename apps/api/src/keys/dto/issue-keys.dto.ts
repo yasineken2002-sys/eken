@@ -1,3 +1,4 @@
+import type { IssueKeysInput, SammaNycklar } from '@eken/shared'
 import { KeyType } from '@prisma/client'
 import {
   IsEnum,
@@ -11,7 +12,7 @@ import {
   Min,
 } from 'class-validator'
 
-export class IssueKeysDto {
+export class IssueKeysDto implements IssueKeysInput {
   @IsUUID()
   leaseId!: string
 
@@ -46,3 +47,6 @@ export class IssueKeysDto {
   @MaxLength(1000)
   notes?: string
 }
+
+const _kontrakt: SammaNycklar<IssueKeysDto, IssueKeysInput> = true
+void _kontrakt

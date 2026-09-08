@@ -1,3 +1,7 @@
+import { IssueKeysSchema, ReturnKeySchema, UpdateKeySchema } from '@eken/shared'
+import type { IssueKeysInput, ReturnKeyInput, UpdateKeyInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { KeyRound, Plus, RotateCcw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -106,6 +110,26 @@ function KeyRow({ keyItem, canWrite }: { keyItem: KeyHandoverDetail; canWrite: b
   const returnMutation = useReturnKey()
   const updateMutation = useUpdateKey()
 
+  function returnKey() {
+    const kropp: ReturnKeyInput = {}
+    const fel = kontraktsfel(ReturnKeySchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    returnMutation.mutate({ id: keyItem.id, ...kropp })
+  }
+
+  function markLost() {
+    const kropp: UpdateKeyInput = { status: 'LOST' }
+    const fel = kontraktsfel(UpdateKeySchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    updateMutation.mutate({ id: keyItem.id, ...kropp })
+  }
+
   return (
     <li className="flex items-center justify-between gap-3 px-3 py-2.5">
       <div className="min-w-0">
@@ -130,7 +154,7 @@ function KeyRow({ keyItem, canWrite }: { keyItem: KeyHandoverDetail; canWrite: b
               size="xs"
               variant="secondary"
               loading={returnMutation.isPending}
-              onClick={() => returnMutation.mutate({ id: keyItem.id })}
+              onClick={returnKey}
             >
               <RotateCcw size={11} strokeWidth={1.8} />
               Återlämna
@@ -139,7 +163,7 @@ function KeyRow({ keyItem, canWrite }: { keyItem: KeyHandoverDetail; canWrite: b
               type="button"
               title="Markera förlorad"
               disabled={updateMutation.isPending}
-              onClick={() => updateMutation.mutate({ id: keyItem.id, status: 'LOST' })}
+              onClick={markLost}
               className="border-input flex h-7 w-7 items-center justify-center rounded-lg border text-gray-400 hover:border-red-200 hover:text-red-500"
             >
               <AlertTriangle size={12} strokeWidth={1.8} />
@@ -166,17 +190,20 @@ function IssueKeyForm({ leaseId, onClose }: { leaseId: string; onClose: () => vo
 
   const submit = () => {
     if (!valid) return
-    issueMutation.mutate(
-      {
-        leaseId,
-        type,
-        quantity: qty,
-        ...(label.trim() ? { label: label.trim() } : {}),
-        ...(issuedToName.trim() ? { issuedToName: issuedToName.trim() } : {}),
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
-      },
-      { onSuccess: onClose },
-    )
+    const kropp: IssueKeysInput = {
+      leaseId,
+      type,
+      quantity: qty,
+      ...(label.trim() ? { label: label.trim() } : {}),
+      ...(issuedToName.trim() ? { issuedToName: issuedToName.trim() } : {}),
+      ...(notes.trim() ? { notes: notes.trim() } : {}),
+    }
+    const fel = kontraktsfel(IssueKeysSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    issueMutation.mutate(kropp, { onSuccess: onClose })
   }
 
   return (

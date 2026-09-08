@@ -1,31 +1,15 @@
+export type { IssueKeysInput, ReturnKeyInput, UpdateKeyInput } from '@eken/shared'
 import { get, patch, post } from '@/lib/api'
-import type { KeyHandover, KeyStatus, KeyType } from '@eken/shared'
+import type {
+  KeyHandover,
+  KeyStatus,
+  IssueKeysInput,
+  ReturnKeyInput,
+  UpdateKeyInput,
+} from '@eken/shared'
 
 export type KeyHandoverDetail = KeyHandover & {
   unit?: { id: string; name: string; unitNumber: string }
-}
-
-export interface IssueKeysInput {
-  leaseId: string
-  type: KeyType
-  quantity: number
-  label?: string
-  issuedToName?: string
-  issuedAt?: string
-  notes?: string
-}
-
-export interface ReturnKeyInput {
-  returnedAt?: string
-  notes?: string
-}
-
-export interface UpdateKeyInput {
-  status?: Extract<KeyStatus, 'LOST' | 'REPLACED'>
-  type?: KeyType
-  label?: string
-  issuedToName?: string
-  notes?: string
 }
 
 export function fetchKeys(filters?: {
