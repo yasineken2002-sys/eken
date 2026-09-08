@@ -150,11 +150,15 @@ otolkbara svar ur nämnaren. Provet föll på 100 % i stället för förväntade
 Efter återställning: 24/24 gröna igen. Den sparade regelkörningen är gjord på
 samma commit med ren arbetskopia, noll modellanrop och kostnad 0 USD.
 
-**Etapp B är fortfarande BLOCKERAT för godkännande:** en riktig modellkörning
-med utvecklingsnyckel och krediter måste nå minst 80 % på avi, belopp OCH
-motpart. Den lokala miljön saknar utvecklingsnyckel. Simulerade modellsvar i
-prov är bevis för mätriggen, aldrig för modellens kvalitet. C och D har inte
-byggts i denna fortsättning.
+**Etapp B:s korpusgräns är GODKÄND i en riktig modellkörning 2026-09-08**, på
+ren `c524bd5` med `claude-haiku-4-5-20251001`: avi **31/36 (86,1 %)**,
+belopp **33/36 (91,7 %)** och motpart **32/36 (88,9 %)**. Alla tre når minst
+80 %. De fyra kontrollerna passerar, inga svar saknas och kandidat-recall är
+19/19. Körningen gjorde 26 modellanrop: 42 505 in- och 5 267 ut-token,
+uppskattad kostnad **0,06884 USD**. Resultatet finns i
+`senaste-betalningskorning.modell.json`; korpus och facit är oförändrade.
+Detta mäter konstruerade fall, inte verklig drift. C och D har inte byggts i
+denna fortsättning och inga betalningar har ändrats.
 
 Kör från `apps/api`: `pnpm eval:shadow --betalningar --utan-modell` för den
 kostnadsfria armen, eller `pnpm eval:shadow --betalningar` med dev-nyckel.

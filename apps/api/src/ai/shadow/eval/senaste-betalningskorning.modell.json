@@ -1,0 +1,1421 @@
+{
+  "skapad": "2026-09-08T15:17:29.732Z",
+  "sha": "c524bd58fe08f0b656c9f2c9efc97b716f7e26f9",
+  "arbetskopiaAndrad": false,
+  "korpusSha256": "4dea0f990fe0e3e8a78ca689f374eec00f681865da4b03989320afa6087d168a",
+  "lage": "MED_MODELL",
+  "modell": "claude-haiku-4-5-20251001",
+  "maxTokens": 1024,
+  "kostnad": {
+    "usd": 0.06884,
+    "komplett": true,
+    "prisInPerMtok": 1,
+    "prisUtPerMtok": 5,
+    "prisdatum": "2026-09"
+  },
+  "antal": 40,
+  "kontroller": {
+    "antal": 4,
+    "fel": []
+  },
+  "recall": {
+    "ratt": 19,
+    "antal": 19
+  },
+  "regler": [
+    {
+      "falt": "avi",
+      "etikett": "Avi eller faktura",
+      "ratt": 10,
+      "antal": 36,
+      "besvarade": 10,
+      "saknadeSvar": 26,
+      "procent": 27.77777777777778
+    },
+    {
+      "falt": "belopp",
+      "etikett": "Belopp",
+      "ratt": 10,
+      "antal": 36,
+      "besvarade": 10,
+      "saknadeSvar": 26,
+      "procent": 27.77777777777778
+    },
+    {
+      "falt": "motpart",
+      "etikett": "Motpart",
+      "ratt": 10,
+      "antal": 36,
+      "besvarade": 10,
+      "saknadeSvar": 26,
+      "procent": 27.77777777777778
+    }
+  ],
+  "kombinerat": [
+    {
+      "falt": "avi",
+      "etikett": "Avi eller faktura",
+      "ratt": 31,
+      "antal": 36,
+      "besvarade": 36,
+      "saknadeSvar": 0,
+      "procent": 86.11111111111111
+    },
+    {
+      "falt": "belopp",
+      "etikett": "Belopp",
+      "ratt": 33,
+      "antal": 36,
+      "besvarade": 36,
+      "saknadeSvar": 0,
+      "procent": 91.66666666666667
+    },
+    {
+      "falt": "motpart",
+      "etikett": "Motpart",
+      "ratt": 32,
+      "antal": 36,
+      "besvarade": 36,
+      "saknadeSvar": 0,
+      "procent": 88.88888888888889
+    }
+  ],
+  "skillnadProcentenheter": [
+    {
+      "falt": "avi",
+      "skillnad": 58.333333333333336
+    },
+    {
+      "falt": "belopp",
+      "skillnad": 63.88888888888889
+    },
+    {
+      "falt": "motpart",
+      "skillnad": 61.11111111111111
+    }
+  ],
+  "tekniskaFel": [],
+  "etappB": "GODKAND",
+  "grupper": [
+    {
+      "grupp": "belopp_och_namn",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 6,
+          "besvarade": 0,
+          "saknadeSvar": 6,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 6,
+          "besvarade": 0,
+          "saknadeSvar": 6,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 6,
+          "besvarade": 0,
+          "saknadeSvar": 6,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 5,
+          "antal": 6,
+          "besvarade": 6,
+          "saknadeSvar": 0,
+          "procent": 83.33333333333333
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 6,
+          "antal": 6,
+          "besvarade": 6,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 6,
+          "antal": 6,
+          "besvarade": 6,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "delbetalning",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 5,
+          "besvarade": 0,
+          "saknadeSvar": 5,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 5,
+          "besvarade": 0,
+          "saknadeSvar": 5,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 5,
+          "besvarade": 0,
+          "saknadeSvar": 5,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 2,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 40
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 2,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 40
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 2,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 40
+        }
+      ]
+    },
+    {
+      "grupp": "dubbelbetalning",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 4,
+          "besvarade": 0,
+          "saknadeSvar": 4,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 4,
+          "besvarade": 0,
+          "saknadeSvar": 4,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 4,
+          "besvarade": 0,
+          "saknadeSvar": 4,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "exakt_ocr",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 0,
+          "besvarade": 0,
+          "saknadeSvar": 0,
+          "procent": null
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 0,
+          "besvarade": 0,
+          "saknadeSvar": 0,
+          "procent": null
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 0,
+          "besvarade": 0,
+          "saknadeSvar": 0,
+          "procent": null
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 0,
+          "besvarade": 0,
+          "saknadeSvar": 0,
+          "procent": null
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 0,
+          "besvarade": 0,
+          "saknadeSvar": 0,
+          "procent": null
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 0,
+          "besvarade": 0,
+          "saknadeSvar": 0,
+          "procent": null
+        }
+      ]
+    },
+    {
+      "grupp": "hyra_plus_avgift",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 3,
+          "antal": 4,
+          "besvarade": 3,
+          "saknadeSvar": 1,
+          "procent": 75
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 3,
+          "antal": 4,
+          "besvarade": 3,
+          "saknadeSvar": 1,
+          "procent": 75
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 3,
+          "antal": 4,
+          "besvarade": 3,
+          "saknadeSvar": 1,
+          "procent": 75
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "ocr_sifferfel",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 8,
+          "besvarade": 0,
+          "saknadeSvar": 8,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 8,
+          "besvarade": 0,
+          "saknadeSvar": 8,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 8,
+          "besvarade": 0,
+          "saknadeSvar": 8,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 8,
+          "antal": 8,
+          "besvarade": 8,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 8,
+          "antal": 8,
+          "besvarade": 8,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 8,
+          "antal": 8,
+          "besvarade": 8,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "okand_avsandare",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 5,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 5,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 5,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 5,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 5,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 5,
+          "antal": 5,
+          "besvarade": 5,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "retur",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 2,
+          "antal": 4,
+          "besvarade": 2,
+          "saknadeSvar": 2,
+          "procent": 50
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 2,
+          "antal": 4,
+          "besvarade": 2,
+          "saknadeSvar": 2,
+          "procent": 50
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 2,
+          "antal": 4,
+          "besvarade": 2,
+          "saknadeSvar": 2,
+          "procent": 50
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 3,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 75
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 4,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 3,
+          "antal": 4,
+          "besvarade": 4,
+          "saknadeSvar": 0,
+          "procent": 75
+        }
+      ]
+    }
+  ],
+  "rader": [
+    {
+      "id": "b01",
+      "grupp": "exakt_ocr",
+      "kontroll": true,
+      "regelTyp": "INGEN_FRAGA",
+      "antalKandidater": 0,
+      "rattPostIMangden": false,
+      "facit": {
+        "avi": "p01",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "regler": null,
+      "kombinerat": null,
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b02",
+      "grupp": "exakt_ocr",
+      "kontroll": true,
+      "regelTyp": "INGEN_FRAGA",
+      "antalKandidater": 0,
+      "rattPostIMangden": false,
+      "facit": {
+        "avi": "p04",
+        "belopp": "FULL",
+        "motpart": "t4"
+      },
+      "regler": null,
+      "kombinerat": null,
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b03",
+      "grupp": "exakt_ocr",
+      "kontroll": true,
+      "regelTyp": "INGEN_FRAGA",
+      "antalKandidater": 0,
+      "rattPostIMangden": false,
+      "facit": {
+        "avi": "p11",
+        "belopp": "FULL",
+        "motpart": "t3"
+      },
+      "regler": null,
+      "kombinerat": null,
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b04",
+      "grupp": "exakt_ocr",
+      "kontroll": true,
+      "regelTyp": "INGEN_FRAGA",
+      "antalKandidater": 0,
+      "rattPostIMangden": false,
+      "facit": {
+        "avi": "p07",
+        "belopp": "FULL",
+        "motpart": "t7"
+      },
+      "regler": null,
+      "kombinerat": null,
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b05",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p02",
+        "belopp": "FULL",
+        "motpart": "t2"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p02",
+        "belopp": "FULL",
+        "motpart": "t2"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b06",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p03",
+        "belopp": "FULL",
+        "motpart": "t3"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p03",
+        "belopp": "FULL",
+        "motpart": "t3"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b07",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p05",
+        "belopp": "FULL",
+        "motpart": "t5"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p05",
+        "belopp": "FULL",
+        "motpart": "t5"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b08",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p06",
+        "belopp": "FULL",
+        "motpart": "t6"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p06",
+        "belopp": "FULL",
+        "motpart": "t6"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b09",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p08",
+        "belopp": "FULL",
+        "motpart": "t8"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p08",
+        "belopp": "FULL",
+        "motpart": "t8"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b10",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 4,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p09",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p09",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b11",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p13",
+        "belopp": "FULL",
+        "motpart": "t4"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p13",
+        "belopp": "FULL",
+        "motpart": "t4"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b12",
+      "grupp": "ocr_sifferfel",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p10",
+        "belopp": "FULL",
+        "motpart": "t2"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p10",
+        "belopp": "FULL",
+        "motpart": "t2"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b13",
+      "grupp": "belopp_och_namn",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p01",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p09",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b14",
+      "grupp": "belopp_och_namn",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p03",
+        "belopp": "FULL",
+        "motpart": "t3"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p03",
+        "belopp": "FULL",
+        "motpart": "t3"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b15",
+      "grupp": "belopp_och_namn",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p05",
+        "belopp": "FULL",
+        "motpart": "t5"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p05",
+        "belopp": "FULL",
+        "motpart": "t5"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b16",
+      "grupp": "belopp_och_namn",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p07",
+        "belopp": "FULL",
+        "motpart": "t7"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p07",
+        "belopp": "FULL",
+        "motpart": "t7"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b17",
+      "grupp": "belopp_och_namn",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p12",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p12",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b18",
+      "grupp": "belopp_och_namn",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p14",
+        "belopp": "FULL",
+        "motpart": "t6"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p14",
+        "belopp": "FULL",
+        "motpart": "t6"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b19",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p02",
+        "belopp": "DEL",
+        "motpart": "t2"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b20",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p04",
+        "belopp": "DEL",
+        "motpart": "t4"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b21",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p08",
+        "belopp": "DEL",
+        "motpart": "t8"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b22",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p13",
+        "belopp": "DEL",
+        "motpart": "t4"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p13",
+        "belopp": "DEL",
+        "motpart": "t4"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b23",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "p06",
+        "belopp": "DEL",
+        "motpart": "t6"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p06",
+        "belopp": "DEL",
+        "motpart": "t6"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b24",
+      "grupp": "dubbelbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b25",
+      "grupp": "dubbelbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b26",
+      "grupp": "dubbelbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b27",
+      "grupp": "dubbelbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b28",
+      "grupp": "hyra_plus_avgift",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b29",
+      "grupp": "hyra_plus_avgift",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b30",
+      "grupp": "hyra_plus_avgift",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b31",
+      "grupp": "hyra_plus_avgift",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b32",
+      "grupp": "okand_avsandare",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b33",
+      "grupp": "okand_avsandare",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b34",
+      "grupp": "okand_avsandare",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b35",
+      "grupp": "okand_avsandare",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b36",
+      "grupp": "okand_avsandare",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b37",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b38",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "p01",
+        "belopp": "FULL",
+        "motpart": "t1"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "b39",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "b40",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    }
+  ],
+  "usage": {
+    "tokensIn": 42505,
+    "tokensUt": 5267,
+    "modellanrop": 26,
+    "komplett": true
+  }
+}
