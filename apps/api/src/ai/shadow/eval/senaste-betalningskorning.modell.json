@@ -1,13 +1,13 @@
 {
-  "skapad": "2026-09-08T15:49:08.652Z",
-  "sha": "86bf2473267ec9e13b6111f648e18be4e7877a70",
+  "skapad": "2026-09-08T15:22:51.016Z",
+  "sha": "48fe4a5de605988e5735df57b4c3f46eb9e4739a",
   "arbetskopiaAndrad": true,
   "korpusSha256": "4dea0f990fe0e3e8a78ca689f374eec00f681865da4b03989320afa6087d168a",
   "lage": "MED_MODELL",
   "modell": "claude-haiku-4-5-20251001",
   "maxTokens": 1024,
   "kostnad": {
-    "usd": 0.063126,
+    "usd": 0.078262,
     "komplett": true,
     "prisInPerMtok": 1,
     "prisUtPerMtok": 5,
@@ -26,40 +26,40 @@
     {
       "falt": "avi",
       "etikett": "Avi eller faktura",
-      "ratt": 15,
+      "ratt": 10,
       "antal": 36,
-      "besvarade": 15,
-      "saknadeSvar": 21,
-      "procent": 41.666666666666664
+      "besvarade": 10,
+      "saknadeSvar": 26,
+      "procent": 27.77777777777778
     },
     {
       "falt": "belopp",
       "etikett": "Belopp",
-      "ratt": 15,
+      "ratt": 10,
       "antal": 36,
-      "besvarade": 15,
-      "saknadeSvar": 21,
-      "procent": 41.666666666666664
+      "besvarade": 10,
+      "saknadeSvar": 26,
+      "procent": 27.77777777777778
     },
     {
       "falt": "motpart",
       "etikett": "Motpart",
-      "ratt": 15,
+      "ratt": 10,
       "antal": 36,
-      "besvarade": 15,
-      "saknadeSvar": 21,
-      "procent": 41.666666666666664
+      "besvarade": 10,
+      "saknadeSvar": 26,
+      "procent": 27.77777777777778
     }
   ],
   "kombinerat": [
     {
       "falt": "avi",
       "etikett": "Avi eller faktura",
-      "ratt": 36,
+      "ratt": 35,
       "antal": 36,
       "besvarade": 36,
       "saknadeSvar": 0,
-      "procent": 100
+      "procent": 97.22222222222223
     },
     {
       "falt": "belopp",
@@ -73,25 +73,25 @@
     {
       "falt": "motpart",
       "etikett": "Motpart",
-      "ratt": 36,
+      "ratt": 35,
       "antal": 36,
       "besvarade": 36,
       "saknadeSvar": 0,
-      "procent": 100
+      "procent": 97.22222222222223
     }
   ],
   "skillnadProcentenheter": [
     {
       "falt": "avi",
-      "skillnad": 58.333333333333336
+      "skillnad": 69.44444444444446
     },
     {
       "falt": "belopp",
-      "skillnad": 58.333333333333336
+      "skillnad": 72.22222222222223
     },
     {
       "falt": "motpart",
-      "skillnad": 58.333333333333336
+      "skillnad": 69.44444444444446
     }
   ],
   "tekniskaFel": [],
@@ -225,29 +225,29 @@
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 4,
+          "ratt": 0,
           "antal": 4,
-          "besvarade": 4,
-          "saknadeSvar": 0,
-          "procent": 100
+          "besvarade": 0,
+          "saknadeSvar": 4,
+          "procent": 0
         },
         {
           "falt": "belopp",
           "etikett": "Belopp",
-          "ratt": 4,
+          "ratt": 0,
           "antal": 4,
-          "besvarade": 4,
-          "saknadeSvar": 0,
-          "procent": 100
+          "besvarade": 0,
+          "saknadeSvar": 4,
+          "procent": 0
         },
         {
           "falt": "motpart",
           "etikett": "Motpart",
-          "ratt": 4,
+          "ratt": 0,
           "antal": 4,
-          "besvarade": 4,
-          "saknadeSvar": 0,
-          "procent": 100
+          "besvarade": 0,
+          "saknadeSvar": 4,
+          "procent": 0
         }
       ],
       "kombinerat": [
@@ -347,40 +347,40 @@
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
-          "besvarade": 4,
-          "saknadeSvar": 0,
-          "procent": 100
+          "besvarade": 3,
+          "saknadeSvar": 1,
+          "procent": 75
         },
         {
           "falt": "belopp",
           "etikett": "Belopp",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
-          "besvarade": 4,
-          "saknadeSvar": 0,
-          "procent": 100
+          "besvarade": 3,
+          "saknadeSvar": 1,
+          "procent": 75
         },
         {
           "falt": "motpart",
           "etikett": "Motpart",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
-          "besvarade": 4,
-          "saknadeSvar": 0,
-          "procent": 100
+          "besvarade": 3,
+          "saknadeSvar": 1,
+          "procent": 75
         }
       ],
       "kombinerat": [
         {
           "falt": "avi",
           "etikett": "Avi eller faktura",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
           "besvarade": 4,
           "saknadeSvar": 0,
-          "procent": 100
+          "procent": 75
         },
         {
           "falt": "belopp",
@@ -394,11 +394,11 @@
         {
           "falt": "motpart",
           "etikett": "Motpart",
-          "ratt": 4,
+          "ratt": 3,
           "antal": 4,
           "besvarade": 4,
           "saknadeSvar": 0,
-          "procent": 100
+          "procent": 75
         }
       ]
     },
@@ -656,7 +656,7 @@
       "grupp": "ocr_sifferfel",
       "kontroll": false,
       "regelTyp": "KANDIDATER",
-      "antalKandidater": 2,
+      "antalKandidater": 3,
       "rattPostIMangden": true,
       "facit": {
         "avi": "p02",
@@ -1035,121 +1035,101 @@
       "id": "b24",
       "grupp": "dubbelbetalning",
       "kontroll": false,
-      "regelTyp": "INGEN",
-      "antalKandidater": 0,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
       "rattPostIMangden": null,
       "facit": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "regler": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
-      },
+      "regler": null,
       "kombinerat": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "modellstatus": "EJ_BEHOV"
+      "modellstatus": "SVAR"
     },
     {
       "id": "b25",
       "grupp": "dubbelbetalning",
       "kontroll": false,
-      "regelTyp": "INGEN",
-      "antalKandidater": 0,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
       "rattPostIMangden": null,
       "facit": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "regler": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
-      },
+      "regler": null,
       "kombinerat": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "modellstatus": "EJ_BEHOV"
+      "modellstatus": "SVAR"
     },
     {
       "id": "b26",
       "grupp": "dubbelbetalning",
       "kontroll": false,
-      "regelTyp": "INGEN",
-      "antalKandidater": 0,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
       "rattPostIMangden": null,
       "facit": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "regler": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
-      },
+      "regler": null,
       "kombinerat": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "modellstatus": "EJ_BEHOV"
+      "modellstatus": "SVAR"
     },
     {
       "id": "b27",
       "grupp": "dubbelbetalning",
       "kontroll": false,
-      "regelTyp": "INGEN",
-      "antalKandidater": 0,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
       "rattPostIMangden": null,
       "facit": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "regler": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
-      },
+      "regler": null,
       "kombinerat": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "modellstatus": "EJ_BEHOV"
+      "modellstatus": "SVAR"
     },
     {
       "id": "b28",
       "grupp": "hyra_plus_avgift",
       "kontroll": false,
-      "regelTyp": "INGEN",
-      "antalKandidater": 0,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
       "rattPostIMangden": null,
       "facit": {
         "avi": "INGEN",
         "belopp": "FULL",
         "motpart": "OKAND"
       },
-      "regler": {
-        "avi": "INGEN",
-        "belopp": "FULL",
-        "motpart": "OKAND"
-      },
+      "regler": null,
       "kombinerat": {
-        "avi": "INGEN",
+        "avi": "p09",
         "belopp": "FULL",
-        "motpart": "OKAND"
+        "motpart": "t1"
       },
-      "modellstatus": "EJ_BEHOV"
+      "modellstatus": "SVAR"
     },
     {
       "id": "b29",
@@ -1433,9 +1413,9 @@
     }
   ],
   "usage": {
-    "tokensIn": 40476,
-    "tokensUt": 4530,
-    "modellanrop": 21,
+    "tokensIn": 49837,
+    "tokensUt": 5685,
+    "modellanrop": 26,
     "komplett": true
   }
 }
