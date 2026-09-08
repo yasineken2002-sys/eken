@@ -15,6 +15,8 @@ import {
   tolkaBetalningssvar,
 } from '../src/ai/shadow/payment/payment-shadow.service'
 
+import { berikaReferenser } from '../src/ai/shadow/eval/experiment-betalningsreferenser'
+
 const Hantering = z.enum(['FULL', 'DEL', 'OVERSKOTT', 'FLERA', 'RETUR', 'OKLART'])
 const Svar = z.object({ avier: z.array(z.string()), hantering: Hantering }).strict()
 const Korpus = z.object({
@@ -33,7 +35,17 @@ const Korpus = z.object({
 
 async function main() {
   const dir = join(__dirname, '../src/ai/shadow/eval')
-  const raw = readFileSync(join(dir, 'korpus-uppdelad-betalning.json'), 'utf8')
+  const referensstod = process.argv.includes('--referensstod')
+  const armar = referensstod
+    ? (['uppdelad', 'referensstod'] as const)
+    : (['befintlig', 'uppdelad'] as const)
+  const raw = readFileSync(
+    join(
+      dir,
+      referensstod ? 'korpus-referensstod-betalning.json' : 'korpus-uppdelad-betalning.json',
+    ),
+    'utf8',
+  )
   const korpus = Korpus.parse(JSON.parse(raw))
   const poster = korpus.poster.map((p) => ({ ...p, forfallodatum: new Date(p.forfallodatum) }))
   const key = requireApiKey({
@@ -48,9 +60,11 @@ async function main() {
     allaFacitReferenserFinns: boolean
     id: string
     repetition: number
-    arm: 'befintlig' | 'uppdelad'
+    arm: 'befintlig' | 'uppdelad' | 'referensstod'
     facit: z.infer<typeof Svar>
     svar: z.infer<typeof Svar> | null
+    modellSvar: z.infer<typeof Svar> | null
+    regel: string | null
     status: string
     identitetRatt: boolean
     hanteringRatt: boolean | null
@@ -71,8 +85,10 @@ async function main() {
       }
       const regel = provaKandidater(rad, poster)
       if (regel.typ !== 'KANDIDATER') throw new Error('Experimentets fall måste nå kandidatsteget')
-      const kandidater = regel.kandidater
-      for (const arm of ['befintlig', 'uppdelad'] as const) {
+      const stod = berikaReferenser(rad, poster, regel.kandidater)
+      for (const arm of armar) {
+        const kandidater = arm === 'referensstod' ? stod.kandidater : regel.kandidater
+        let modellSvar: z.infer<typeof Svar> | null = null
         let svar: z.infer<typeof Svar> | null = null
         let status = 'EJ_KORD'
         if (!fel) {
@@ -137,6 +153,9 @@ async function main() {
                 )
                   svar = parsed.data
               }
+              modellSvar = svar
+              if (svar && arm === 'referensstod' && stod.tvetydigtNamn)
+                svar = { avier: [], hantering: 'OKLART' }
               if (svar) status = 'SVAR'
             }
           } catch {
@@ -158,8 +177,10 @@ async function main() {
           facit: r.facit,
           svar,
           status,
+          modellSvar,
+          regel: arm === 'referensstod' && stod.tvetydigtNamn ? 'TVETYDIGT_NAMN' : null,
           identitetRatt,
-          hanteringRatt: arm === 'uppdelad' ? svar?.hantering === r.facit.hantering : null,
+          hanteringRatt: arm !== 'befintlig' ? svar?.hantering === r.facit.hantering : null,
         })
         console.warn(
           `${repetition}/2 ${r.id} ${arm}: ${status}, identitet ${identitetRatt ? 'rätt' : 'fel'}`,
@@ -167,17 +188,34 @@ async function main() {
       }
     }
   }
-  const sammanfattning = ['befintlig', 'uppdelad'].map((arm) => {
+  const sammanfattning = armar.map((arm) => {
     const rows = rader.filter((r) => r.arm === arm)
     return {
       arm,
       antal: rows.length,
       identitetRatt: rows.filter((r) => r.identitetRatt).length,
-      hanteringRatt: arm === 'uppdelad' ? rows.filter((r) => r.hanteringRatt).length : null,
+      hanteringRatt: arm !== 'befintlig' ? rows.filter((r) => r.hanteringRatt).length : null,
+      heltRatt: rows.filter((r) => r.identitetRatt && r.hanteringRatt).length,
       bortfall: rows.filter((r) => r.status !== 'SVAR').length,
     }
   })
   const rapport = {
+    regressioner: referensstod
+      ? rader
+          .filter((r) => r.arm === 'uppdelad' && r.identitetRatt && r.hanteringRatt)
+          .filter(
+            (fore) =>
+              !rader.some(
+                (efter) =>
+                  efter.arm === 'referensstod' &&
+                  efter.id === fore.id &&
+                  efter.repetition === fore.repetition &&
+                  efter.identitetRatt &&
+                  efter.hanteringRatt,
+              ),
+          )
+          .map((r) => ({ id: r.id, repetition: r.repetition }))
+      : [],
     sha,
     korpusSha256: createHash('sha256').update(raw).digest('hex'),
     skapad: new Date().toISOString(),
@@ -192,7 +230,12 @@ async function main() {
     rader,
   }
   writeFileSync(
-    join(dir, 'experiment-uppdelad-betalning.json'),
+    join(
+      dir,
+      referensstod
+        ? 'experiment-referensstod-betalning.json'
+        : 'experiment-uppdelad-betalning.json',
+    ),
     JSON.stringify(rapport, null, 2) + '\n',
   )
   console.warn(JSON.stringify(sammanfattning, null, 2))
