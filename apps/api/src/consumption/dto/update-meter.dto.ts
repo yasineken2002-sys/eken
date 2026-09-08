@@ -1,6 +1,7 @@
 import type { UpdateMeterInput, SammaNycklar } from '@eken/shared'
 import { IsEnum, IsOptional, IsString, IsDateString, MaxLength } from 'class-validator'
 import { MeterStatus } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -20,16 +21,19 @@ export class UpdateMeterDto implements UpdateMeterInput {
   @IsString()
   @IsOptional()
   @MaxLength(64)
+  @StrictString()
   serialNumber?: string
 
   @IsString()
   @IsOptional()
   @MaxLength(64)
+  @StrictString()
   provider?: string
 
   @IsString()
   @IsOptional()
   @MaxLength(128)
+  @StrictString()
   externalId?: string
 
   // Sätts vid mätarbyte: den gamla mätaren markeras REMOVED + removedAt. Dess

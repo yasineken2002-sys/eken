@@ -1,5 +1,6 @@
 import { IsEnum, IsObject, IsOptional, IsString } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 /**
  * #612: `organizationId` är BORTTAGET ur kontraktet.
@@ -22,7 +23,14 @@ export class CreateFrontendErrorDto {
   @IsEnum(['WEB', 'PORTAL', 'ADMIN'])
   source!: 'WEB' | 'PORTAL' | 'ADMIN'
 
-  @ApiProperty() @IsString() message!: string
-  @ApiProperty({ required: false }) @IsString() @IsOptional() stack?: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  message!: string
+  @ApiProperty({ required: false })
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  stack?: string
   @ApiProperty({ required: false }) @IsObject() @IsOptional() context?: Record<string, unknown>
 }

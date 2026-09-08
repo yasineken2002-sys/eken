@@ -14,6 +14,7 @@ import type { CreateTicketInput, SammaNycklar } from '@eken/shared'
 import { CreateTicketSchema } from '@eken/shared'
 
 import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * ÄGARENS väg — supermängden. Tjänstens `create()` tar den här formen, och
@@ -30,6 +31,7 @@ export class CreateMaintenanceTicketDto {
   @IsString()
   @MinLength(3)
   @MaxLength(200)
+  @StrictString()
   title!: string
 
   // ── TAK PÅ DET SOM BETALAS PER TOKEN ────────────────────────────────────
@@ -41,6 +43,7 @@ export class CreateMaintenanceTicketDto {
   @IsString()
   @MinLength(10)
   @MaxLength(4000)
+  @StrictString()
   description!: string
 
   @IsUUID()

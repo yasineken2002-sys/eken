@@ -1,4 +1,5 @@
 import { IsEmail, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 import type {
   BankIdChooseInput,
@@ -36,6 +37,7 @@ export class LoginDto implements TenantLoginInput {
 
   @IsString()
   @MinLength(1)
+  @StrictString()
   password!: string
 
   @IsOptional()
@@ -46,11 +48,13 @@ export class LoginDto implements TenantLoginInput {
 export class ActivateDto implements TenantActivateInput {
   @IsString()
   @MinLength(1)
+  @StrictString()
   token!: string
 
   // Lösenordsstyrkan kontrolleras i TenantAuthService.assertStrongPassword.
   @IsString()
   @MinLength(1)
+  @StrictString()
   password!: string
 
   // Hyresgästens skrivna namnunderskrift vid digital signering. Sparas
@@ -61,6 +65,7 @@ export class ActivateDto implements TenantActivateInput {
   @IsOptional()
   @IsString()
   @MinLength(2)
+  @StrictString()
   signatureName?: string
 }
 
@@ -76,12 +81,14 @@ export class BankIdCollectDto implements BankIdCollectInput {
   @IsString()
   @MinLength(1)
   @MaxLength(256)
+  @StrictString()
   orderRef!: string
 }
 
 export class BankIdChooseDto implements BankIdChooseInput {
   @IsString()
   @MinLength(1)
+  @StrictString()
   chooseToken!: string
 
   /**
@@ -96,6 +103,7 @@ export class BankIdChooseDto implements BankIdChooseInput {
 export class DeleteAccountDto {
   @IsString()
   @MinLength(1)
+  @StrictString()
   password!: string
 }
 
@@ -107,11 +115,13 @@ export class ForgotPasswordDto implements TenantForgotPasswordInput {
 export class ResetPasswordDto implements TenantResetPasswordInput {
   @IsString()
   @MinLength(1)
+  @StrictString()
   token!: string
 
   // Lösenordsstyrkan kontrolleras i TenantAuthService.assertStrongPassword.
   @IsString()
   @MinLength(1)
+  @StrictString()
   password!: string
 }
 
@@ -131,6 +141,7 @@ export class LogoutDto implements TenantLogoutInput {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @StrictString()
   sessionToken?: string
 }
 

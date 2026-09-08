@@ -105,11 +105,26 @@ describe('accounting — återstående begäranskontrakt', () => {
         false,
       ))
 
-    it('befintlig avvikelse: pipen konverterar tal till skäl, schemat kräver text', async () => {
-      const kropp = { ...extra, reason: 1234567890 }
-      expect(schematGodtar(schema, kropp)).toBe(false)
-      expect(await pipenGodtar(dto, kropp)).toBe(true)
-    })
+    /**
+     * VAR EN DOKUMENTERAD AVVIKELSE, ÄR NU PARITET (#847).
+     *
+     * Provet krävde tidigare att pipen SLÄPPTE IGENOM ett tal — `1234567890`
+     * blev `"1234567890"` av `enableImplicitConversion`, medan schemat avvisade
+     * det. Avvikelsen var mätt och ärlig, men den var också ett hål: ett skäl
+     * som klienten skickade som tal lagrades som text utan att någon sa ifrån.
+     *
+     * `@StrictString()` läser råvärdet, så båda sidor avvisar nu. Provet är
+     * skrivet som paritet i stället för som två separata påståenden, så det
+     * blir rött om någon av sidorna ändrar sig — inte bara pipen.
+     */
+    it.each([
+      ['tal', 1234567890],
+      ['objekt', { a: 1 }],
+      ['lista', ['abc']],
+      ['boolean', true],
+    ] as const)('%s avvisas av BÅDA — skälet ska vara text', (namn, reason) =>
+      paritet(namn, schema, dto, { ...extra, reason }, false),
+    )
   })
 
   it.each([
@@ -151,11 +166,27 @@ describe('accounting — återstående begäranskontrakt', () => {
       false,
     ))
 
-  it('befintlig datumavvikelse: IsISO8601 godtar enbart år, IsoDatumSchema kräver datum', async () => {
-    const kropp = { paidDate: '2026' }
-    expect(schematGodtar(PaySupplierInvoiceSchema, kropp)).toBe(false)
-    expect(await pipenGodtar(PaySupplierInvoiceDto, kropp)).toBe(true)
-  })
+  /**
+   * VAR EN DOKUMENTERAD AVVIKELSE, ÄR NU PARITET (#847).
+   *
+   * `@IsISO8601()` godtar varje form ISO 8601 tillåter, inte bara en DAG.
+   * Uppmätt mot `IsoDatumSchema` gled fem former isär — det är formerna nedan.
+   * `'2026'` var den som stod här; de fyra andra hittades först när mängden
+   * räknades upp i stället för att beskrivas.
+   *
+   * `@StrictIsoDatum()` bär samma krav som schemat, så båda avvisar nu. Att de
+   * ÖVERENSSTÄMMER, inte bara att de avvisar, ägs av `strict-iso-datum.spec.ts`,
+   * som kör alla formerna genom båda sidor.
+   */
+  it.each([
+    ['enbart år', '2026'],
+    ['år och månad', '2026-09'],
+    ['tidsstämpel utan tidszon', '2026-09-07T12:00:00'],
+    ['kompakt form', '20260907'],
+    ['veckoform', '2026-W12'],
+  ] as const)('%s avvisas av BÅDA — betalningsdatum ska vara en dag', (namn, paidDate) =>
+    paritet(namn, PaySupplierInvoiceSchema, PaySupplierInvoiceDto, { paidDate }, false),
+  )
 })
 
 /**

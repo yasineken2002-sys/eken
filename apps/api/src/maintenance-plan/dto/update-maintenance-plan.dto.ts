@@ -9,10 +9,12 @@ import {
   Min,
 } from 'class-validator'
 import { MaintenancePlanCategory, MaintenancePlanStatus } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class UpdateMaintenancePlanDto {
   @IsString()
   @IsOptional()
+  @StrictString()
   title?: string
 
   @IsEnum(MaintenancePlanCategory)
@@ -55,10 +57,12 @@ export class UpdateMaintenancePlanDto {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   description?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   notes?: string
 
   @IsDateString()

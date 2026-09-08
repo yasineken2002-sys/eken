@@ -13,6 +13,7 @@ import {
 import { Transform } from 'class-transformer'
 import { PaymentMethod } from '@prisma/client'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * Manuell betalningsregistrering på en faktura. Till skillnad från den generiska
@@ -62,11 +63,13 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   @IsOptional()
   @IsString()
   @MaxLength(60)
+  @StrictString()
   paymentMethodRaw?: string
 
   @ApiPropertyOptional({ description: 'OCR/referens' })
   @IsOptional()
   @IsString()
+  @StrictString()
   reference?: string
 
   @ApiPropertyOptional({ description: 'Betalningsdatum (ISO 8601). Standard: nu.' })
@@ -96,6 +99,7 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
       'Skälet måste vara minst 10 tecken — det sparas i verifikatets spår och ska gå att förstå i efterhand',
   })
   @MaxLength(SEN_BOKFORING_MAX_SKAL, { message: 'Skälet får vara högst 500 tecken' })
+  @StrictString()
   senBokforingSkal?: string
 }
 

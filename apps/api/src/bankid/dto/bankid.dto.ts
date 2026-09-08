@@ -1,6 +1,7 @@
 import { IsString, IsNotEmpty, MaxLength } from 'class-validator'
 
 import type { BankIdCollectInput, BankIdUserChooseInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * DTO:erna importeras som VÄRDEN i controllern, aldrig med `import type`:
@@ -13,6 +14,7 @@ export class BankIdCollectDto implements BankIdCollectInput {
   @IsString()
   @IsNotEmpty()
   @MaxLength(256)
+  @StrictString()
   orderRef!: string
 }
 
@@ -20,11 +22,13 @@ export class BankIdChooseDto implements BankIdUserChooseInput {
   @IsString()
   @IsNotEmpty()
   @MaxLength(2048)
+  @StrictString()
   chooseToken!: string
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(64)
+  @StrictString()
   userId!: string
 }
 

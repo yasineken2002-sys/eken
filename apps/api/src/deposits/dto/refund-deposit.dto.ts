@@ -1,5 +1,6 @@
 import type { DepositDeductionInput, RefundDepositInput, SammaNycklar } from '@eken/shared'
 import { Type } from 'class-transformer'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 import {
   IsArray,
   IsNumber,
@@ -13,6 +14,7 @@ import {
 export class DeductionDto {
   @IsString()
   @MaxLength(200)
+  @StrictString()
   reason!: string
 
   @IsNumber()
@@ -46,6 +48,7 @@ export class RefundDepositDto implements RefundDepositInput {
   @IsString()
   @IsOptional()
   @MaxLength(1000)
+  @StrictString()
   notes?: string
 }
 

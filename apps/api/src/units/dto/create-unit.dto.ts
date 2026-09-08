@@ -1,5 +1,6 @@
 import type { SammaNycklar, CreateUnitInput } from '@eken/shared'
 import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, Min, MinLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 const UNIT_TYPES = ['APARTMENT', 'OFFICE', 'RETAIL', 'STORAGE', 'PARKING', 'OTHER'] as const
 const UNIT_STATUSES = ['VACANT', 'OCCUPIED', 'UNDER_RENOVATION', 'RESERVED'] as const
@@ -10,10 +11,12 @@ export class CreateUnitDto implements CreateUnitInput {
 
   @IsString()
   @MinLength(1)
+  @StrictString()
   name!: string
 
   @IsString()
   @MinLength(1)
+  @StrictString()
   unitNumber!: string
 
   @IsEnum(UNIT_TYPES)

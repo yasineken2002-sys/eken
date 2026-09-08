@@ -11,9 +11,13 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class InvoiceLineDto {
-  @ApiProperty() @IsString() description!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  description!: string
   @ApiProperty() @IsNumber() quantity!: number
   @ApiProperty() @IsNumber() unitPrice!: number
   @ApiProperty({ enum: [0, 6, 12, 25] }) @IsIn([0, 6, 12, 25]) vatRate!: number
@@ -55,10 +59,12 @@ export class CreateInvoiceDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   reference?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   notes?: string
 }

@@ -2,6 +2,7 @@ import { IsEmail, IsIn, IsString, MaxLength, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 import { ASSIGNABLE_ROLES } from '@eken/shared'
 import type { AssignableRole } from './update-user-role.dto'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * Inbjudan tilldelar en roll — därför samma lista som rollbytet (R3).
@@ -16,12 +17,14 @@ export class InviteUserDto {
   @IsString()
   @MinLength(1)
   @MaxLength(100)
+  @StrictString()
   firstName!: string
 
   @ApiProperty()
   @IsString()
   @MinLength(1)
   @MaxLength(100)
+  @StrictString()
   lastName!: string
 
   @ApiProperty({ enum: ASSIGNABLE_ROLES })

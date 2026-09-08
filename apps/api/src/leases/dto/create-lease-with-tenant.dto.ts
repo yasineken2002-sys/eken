@@ -19,6 +19,7 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class NewTenantDto implements NewTenantInLeaseInput {
   @IsEnum(['INDIVIDUAL', 'COMPANY'])
@@ -26,14 +27,17 @@ export class NewTenantDto implements NewTenantInLeaseInput {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   firstName?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   lastName?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   companyName?: string
 
   @IsEmail()
@@ -41,30 +45,37 @@ export class NewTenantDto implements NewTenantInLeaseInput {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   phone?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   personalNumber?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   orgNumber?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   street?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   city?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   postalCode?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   country?: string
 }
 
@@ -141,11 +152,17 @@ export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsNumber() @Min(0) @IsOptional() garageFee?: number
 
   // ── Användning, husdjur, andrahand, försäkring ─────────────────────────
-  @IsString() @IsOptional() usagePurpose?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  usagePurpose?: string
   @IsEnum(['ALLOWED', 'REQUIRES_APPROVAL', 'NOT_ALLOWED'])
   @IsOptional()
   petsAllowed?: 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
-  @IsString() @IsOptional() petsApprovalNotes?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  petsApprovalNotes?: string
   @StrictBoolean() @IsBoolean() @IsOptional() sublettingAllowed?: boolean
   @StrictBoolean() @IsBoolean() @IsOptional() requiresHomeInsurance?: boolean
 
@@ -154,11 +171,20 @@ export class CreateLeaseWithTenantDto implements CreateLeaseWithTenantInput {
   @IsOptional()
   indexClauseType?: 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT'
   @IsInt() @Min(1900) @Max(2100) @IsOptional() indexBaseYear?: number
-  @IsString() @IsOptional() indexAdjustmentDate?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  indexAdjustmentDate?: string
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMaxIncrease?: number
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMinIncrease?: number
-  @IsString() @IsOptional() indexNotes?: string
-  @IsString() @IsOptional() specialTerms?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  indexNotes?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  specialTerms?: string
 
   @StrictBoolean() // När `true` aktiveras kontraktet (DRAFT → ACTIVE) i samma anrop. Då
   // enqueueasr också välkomstmejlet med aktiveringslänk + PDF-genereringen.

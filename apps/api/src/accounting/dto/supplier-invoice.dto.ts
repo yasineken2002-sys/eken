@@ -1,7 +1,6 @@
 import {
   IsIn,
   IsInt,
-  IsISO8601,
   IsNumber,
   IsOptional,
   IsString,
@@ -17,6 +16,8 @@ import type {
   SammaNycklar,
 } from '@eken/shared'
 import { VAT_RATES } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * Kroppen till POST /accounting/supplier-invoices.
@@ -48,6 +49,7 @@ export class CreateSupplierInvoiceDto implements CreateSupplierInvoiceInput {
   @IsString({ message: 'Ange leverantörens namn' })
   @MinLength(2, { message: 'Leverantörsnamnet måste vara minst 2 tecken' })
   @MaxLength(200, { message: 'Leverantörsnamnet får vara högst 200 tecken' })
+  @StrictString()
   supplierName!: string
 
   /** Leverantörens EGET fakturanummer. Vårt verifikationsnummer är ett annat. */
@@ -55,18 +57,20 @@ export class CreateSupplierInvoiceDto implements CreateSupplierInvoiceInput {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(60, { message: 'Fakturanumret får vara högst 60 tecken' })
+  @StrictString()
   invoiceNumber?: string
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({ message: 'Ange vad fakturan avser' })
   @MinLength(3, { message: 'Beskrivningen måste vara minst 3 tecken' })
   @MaxLength(300, { message: 'Beskrivningen får vara högst 300 tecken' })
+  @StrictString()
   description!: string
 
-  @IsISO8601({}, { message: 'Fakturadatum måste anges som ÅÅÅÅ-MM-DD' })
+  @StrictIsoDatum()
   invoiceDate!: string
 
-  @IsISO8601({}, { message: 'Förfallodatum måste anges som ÅÅÅÅ-MM-DD' })
+  @StrictIsoDatum()
   dueDate!: string
 
   @IsInt({ message: 'Kontonummer måste vara ett heltal' })
@@ -100,6 +104,7 @@ export class CreateSupplierInvoiceDto implements CreateSupplierInvoiceInput {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @StrictString()
   attachmentUrl?: string
 }
 
@@ -109,7 +114,7 @@ export class PaySupplierInvoiceDto implements PaySupplierInvoiceInput {
    * BETALNINGSDATUM — dagen pengarna lämnade kontot, inte i dag. Verifikatet
    * dateras hit, och fel datum lägger betalningen i fel period.
    */
-  @IsISO8601({}, { message: 'Betalningsdatum måste anges som ÅÅÅÅ-MM-DD' })
+  @StrictIsoDatum()
   paidDate!: string
 }
 

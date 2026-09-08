@@ -3,6 +3,7 @@ import { IsArray, IsNumber, IsOptional, IsString, IsUUID, MinLength, Min } from 
 import { ArrayMinSize, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * En rad att kreditera (#517).
@@ -21,6 +22,7 @@ export class CreditNoteLineDto {
   @ApiProperty({ required: false, description: 'Egen radtext. Utelämnad ärvs originalets.' })
   @IsOptional()
   @IsString()
+  @StrictString()
   description?: string
 
   @ApiProperty({ description: 'Antal enheter som krediteras' })
@@ -58,6 +60,7 @@ export class CreateCreditNoteDto implements CreateCreditNoteInput {
   @ApiProperty({ description: 'Varför fakturan krediteras' })
   @IsString()
   @MinLength(5, { message: 'Ange ett skäl till krediteringen (minst 5 tecken)' })
+  @StrictString()
   reason!: string
 }
 

@@ -1,5 +1,6 @@
 import type { SammaNycklar, ApproveTerminationInput } from '@eken/shared'
 import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class ApproveTerminationDto implements ApproveTerminationInput {
   // Bindande slutdatum, bekräftat av hyresvärden. Utelämnas det beräknar
@@ -14,6 +15,7 @@ export class ApproveTerminationDto implements ApproveTerminationInput {
   @IsString()
   @IsOptional()
   @MaxLength(500)
+  @StrictString()
   terminationReason?: string
 }
 

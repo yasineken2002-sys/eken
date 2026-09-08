@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator'
 import { MeterType, TariffScope } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -59,6 +60,7 @@ export class CreateTariffDto implements CreateTariffInput {
   @IsString()
   @IsOptional()
   @MaxLength(2000)
+  @StrictString()
   calculationBasis?: string
 }
 

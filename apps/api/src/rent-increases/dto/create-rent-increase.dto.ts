@@ -1,4 +1,5 @@
 import type { SammaNycklar, CreateRentIncreaseInput } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 import {
   IsDateString,
   IsNumber,
@@ -20,6 +21,7 @@ export class CreateRentIncreaseDto implements CreateRentIncreaseInput {
   @IsString()
   @MinLength(3)
   @MaxLength(500)
+  @StrictString()
   reason!: string
 
   @IsDateString()

@@ -13,10 +13,12 @@ import {
 import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class UpdateOrganizationDto {
   @IsString()
   @IsOptional()
+  @StrictString()
   bankgiro?: string
 
   @IsNumber()
@@ -139,6 +141,7 @@ export class UpdateOrganizationDto {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   collectionAgencyName?: string
 
   // ── Skatteinformation (F-skatt + moms) ──────────────────────────────────
@@ -157,6 +160,7 @@ export class UpdateOrganizationDto {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   vatNumber?: string
 
   // Momsredovisningsperiod (SFL 26 kap). Styr enbart hur berörda momsperioder

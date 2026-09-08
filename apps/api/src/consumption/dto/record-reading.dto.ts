@@ -9,6 +9,7 @@ import {
   MaxLength,
 } from 'class-validator'
 import { ReadingSource, ReadingType } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 // EN källagnostisk väg in: MANUAL, IMPORT och framtida API skickar samma DTO
 // till recordReading(). source skiljer enbart ursprung; logiken är identisk.
@@ -54,6 +55,7 @@ export class RecordReadingDto implements CreateReadingInput {
   @IsString()
   @IsOptional()
   @MaxLength(128)
+  @StrictString()
   externalId?: string
 
   // Valfritt: bind avläsningen till ett specifikt hyresavtal. Utelämnat → det
@@ -65,6 +67,7 @@ export class RecordReadingDto implements CreateReadingInput {
   @IsString()
   @IsOptional()
   @MaxLength(1000)
+  @StrictString()
   notes?: string
 }
 
