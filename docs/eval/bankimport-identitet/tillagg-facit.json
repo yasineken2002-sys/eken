@@ -1,0 +1,27 @@
+{
+  "kind": "DESIRED_CONTRACT_NOT_OBSERVED_OUTPUT",
+  "cases": {
+    "S-reimport-account-pages": {
+      "distinctEvents": 2,
+      "amountOre": 30000,
+      "imported": 2,
+      "duplicates": 4,
+      "rejected": 0,
+      "downstreamCalls": 2,
+      "queueCalls": 2,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL compatible shared watermark with exact repeated pages on two accounts: six deliveries denote two events, no extra downstream effect."
+    },
+    "S-overlapping-pages": {
+      "distinctEvents": 2,
+      "amountOre": 40000,
+      "imported": 2,
+      "duplicates": 1,
+      "rejected": 0,
+      "downstreamCalls": 2,
+      "queueCalls": 2,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL one-account next-page cursor with overlap: page 2 repeats A-1 and adds A-2; third page empty. Same event namespace and immutable payload."
+    }
+  }
+}
