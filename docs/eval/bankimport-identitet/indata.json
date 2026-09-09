@@ -1,0 +1,1132 @@
+{
+  "kind": "SYNTHETIC_OFFLINE_INPUTS",
+  "cases": [
+    {
+      "id": "I01-distinct-same-fields",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "one",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "two",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I02-exact-reimport",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I03-distinct-without-ocr",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "one",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "two",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I04-organization-isolation",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-B",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I05-changed-content",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 120,
+            "description": "SYNTETISK inbetalning"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I06-pending-then-booked",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": false,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I07-explicit-negative-status",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": -100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I08-reference-fallback",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "reference": "Referens 00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I09-conflicting-references",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK AVI-OTHER",
+            "ocr": "00123459",
+            "reference": "00999999"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I10-empty-ocr-with-reference",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "",
+            "reference": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I11-prose-is-not-intent",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "Inbetalning 20260601"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I12-same-id-different-providers",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning"
+          }
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 200,
+            "description": "SYNTETISK inbetalning"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I13-matching-error-reimport",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          },
+          "downstream": "throw"
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "I14-non-sek",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "EUR",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "F-file-api-same-event",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "file",
+          "org": "test-org-A",
+          "date": "2026-09-01",
+          "amountOre": 10000,
+          "description": "SYNTETISK inbetalning",
+          "reference": "00123459",
+          "rawOcr": "00123459"
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "F-file-api-different-events",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "file",
+          "org": "test-org-A",
+          "date": "2026-09-01",
+          "amountOre": 10000,
+          "description": "SYNTETISK inbetalning",
+          "reference": "00123459",
+          "rawOcr": "00123459"
+        },
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        }
+      ]
+    },
+    {
+      "id": "F-api-file-same-event",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "file",
+          "org": "test-org-A",
+          "date": "2026-09-01",
+          "amountOre": 10000,
+          "description": "SYNTETISK inbetalning",
+          "reference": "00123459",
+          "rawOcr": "00123459"
+        }
+      ]
+    },
+    {
+      "id": "F-api-file-different-events",
+      "kind": "ingest",
+      "steps": [
+        {
+          "kind": "api",
+          "org": "test-org-A",
+          "externalId": "external-1",
+          "raw": {
+            "bookingDate": "2026-09-01T09:00:00Z",
+            "booked": true,
+            "currency": "SEK",
+            "amount": 100,
+            "description": "SYNTETISK inbetalning",
+            "ocr": "00123459"
+          }
+        },
+        {
+          "kind": "file",
+          "org": "test-org-A",
+          "date": "2026-09-01",
+          "amountOre": 10000,
+          "description": "SYNTETISK inbetalning",
+          "reference": "00123459",
+          "rawOcr": "00123459"
+        }
+      ]
+    },
+    {
+      "id": "S-account-cursors-AB",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:1"
+          },
+          "A:1": {
+            "transactions": [
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:2"
+          },
+          "A:2": {
+            "transactions": [],
+            "cursor": "A:2"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "B:1"
+          },
+          "B:1": {
+            "transactions": [
+              {
+                "externalId": "B-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 400,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "B:2"
+          },
+          "B:2": {
+            "transactions": [],
+            "cursor": "B:2"
+          }
+        }
+      },
+      "rounds": 2,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-account-cursors-BA",
+      "kind": "sync",
+      "accounts": [
+        "B",
+        "A"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:1"
+          },
+          "A:1": {
+            "transactions": [
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:2"
+          },
+          "A:2": {
+            "transactions": [],
+            "cursor": "A:2"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "B:1"
+          },
+          "B:1": {
+            "transactions": [
+              {
+                "externalId": "B-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 400,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "B:2"
+          },
+          "B:2": {
+            "transactions": [],
+            "cursor": "B:2"
+          }
+        }
+      },
+      "rounds": 2,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-shared-cursor-AB",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G2"
+          },
+          "G2": {
+            "transactions": [],
+            "cursor": "G2"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [
+              {
+                "externalId": "B-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 400,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G2"
+          },
+          "G2": {
+            "transactions": [],
+            "cursor": "G2"
+          }
+        }
+      },
+      "rounds": 3,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-shared-cursor-BA",
+      "kind": "sync",
+      "accounts": [
+        "B",
+        "A"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G2"
+          },
+          "G2": {
+            "transactions": [],
+            "cursor": "G2"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [
+              {
+                "externalId": "B-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 400,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G2"
+          },
+          "G2": {
+            "transactions": [],
+            "cursor": "G2"
+          }
+        }
+      },
+      "rounds": 3,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-account-local-id",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "local-id",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "local-id",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          }
+        }
+      },
+      "rounds": 1,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-two-accounts-equal-signals",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning",
+                "ocr": "00123459"
+              }
+            ],
+            "cursor": "G1"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning",
+                "ocr": "00123459"
+              }
+            ],
+            "cursor": "G1"
+          }
+        }
+      },
+      "rounds": 1,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-next-page-1-rounds",
+      "kind": "sync",
+      "accounts": [
+        "A"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:1"
+          },
+          "A:1": {
+            "transactions": [
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:2"
+          },
+          "A:2": {
+            "transactions": [],
+            "cursor": "A:2"
+          }
+        }
+      },
+      "rounds": 1,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-next-page-3-rounds",
+      "kind": "sync",
+      "accounts": [
+        "A"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:1"
+          },
+          "A:1": {
+            "transactions": [
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:2"
+          },
+          "A:2": {
+            "transactions": [],
+            "cursor": "A:2"
+          }
+        }
+      },
+      "rounds": 3,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-empty-account-page",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [],
+            "cursor": "A:empty"
+          },
+          "A:empty": {
+            "transactions": [
+              {
+                "externalId": "A-after-empty",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "A:1"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "B:1"
+          },
+          "B:1": {
+            "transactions": [],
+            "cursor": "B:1"
+          }
+        }
+      },
+      "rounds": 2,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-failed-account-retry",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [],
+            "cursor": "G1"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [],
+            "cursor": "G1"
+          }
+        }
+      },
+      "rounds": 3,
+      "failOnce": "B",
+      "organizations": [
+        "test-org-A"
+      ]
+    },
+    {
+      "id": "S-sync-organization-scope",
+      "kind": "sync",
+      "accounts": [
+        "A"
+      ],
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "same-id",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK inbetalning"
+              }
+            ],
+            "cursor": "G1"
+          }
+        }
+      },
+      "rounds": 1,
+      "failOnce": null,
+      "organizations": [
+        "test-org-A",
+        "test-org-B"
+      ]
+    }
+  ]
+}

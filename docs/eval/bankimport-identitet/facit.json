@@ -1,0 +1,233 @@
+{
+  "kind": "DESIRED_CONTRACT_NOT_OBSERVED_OUTPUT",
+  "sourceBase": "c6457aa00f027baa685d7e9b6ec28e8aa264c8e4",
+  "cases": {
+    "I01-distinct-same-fields": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "imported": 2,
+      "duplicates": 0,
+      "rejected": 0,
+      "downstreamCalls": 2,
+      "contract": "Different IDs identify different events in ONE stipulated synthetic namespace."
+    },
+    "I02-exact-reimport": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "duplicates": 1,
+      "rejected": 0,
+      "downstreamCalls": 1
+    },
+    "I03-distinct-without-ocr": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "imported": 2,
+      "duplicates": 0,
+      "rejected": 0,
+      "downstreamCalls": 2
+    },
+    "I04-organization-isolation": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "imported": 2,
+      "duplicates": 0,
+      "rejected": 0,
+      "downstreamCalls": 2,
+      "organizations": [
+        "test-org-A",
+        "test-org-B"
+      ]
+    },
+    "I05-changed-content": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "downstreamCalls": 1,
+      "requiresChangeSignal": true,
+      "contract": "One event, changed reported amount: retain original 10000 ore pending EXPLICIT review; do not auto-update money."
+    },
+    "I06-pending-then-booked": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "duplicates": 0,
+      "rejected": 1,
+      "downstreamCalls": 1
+    },
+    "I07-explicit-negative-status": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "duplicates": 0,
+      "rejected": 1,
+      "downstreamCalls": 1,
+      "contract": "Negative update explicitly rejected, no automatic reversal; further handling remains outside this test."
+    },
+    "I08-reference-fallback": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "rawOcr": [
+        "00123459"
+      ],
+      "references": [
+        "Referens 00123459"
+      ]
+    },
+    "I09-conflicting-references": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "rawOcr": [
+        "00123459"
+      ],
+      "references": [
+        "00999999"
+      ],
+      "contract": "Both original signals must reach the downstream observer; no matching/intent decision is tested."
+    },
+    "I10-empty-ocr-with-reference": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "references": [
+        "00123459"
+      ],
+      "contract": "Observe empty-ocr precedence separately; reference must remain stored."
+    },
+    "I11-prose-is-not-intent": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "rawOcr": [
+        null
+      ]
+    },
+    "I12-same-id-different-providers": {
+      "distinctEvents": 2,
+      "amountOre": 30000,
+      "imported": 2,
+      "duplicates": 0,
+      "downstreamCalls": 2,
+      "contract": "HYPOTHETICAL provider-local ID namespace. API lacks provider argument; no verified real provider contract.",
+      "hypotheticalSources": [
+        {
+          "provider": "P",
+          "account": "A"
+        },
+        {
+          "provider": "Q",
+          "account": "A"
+        }
+      ]
+    },
+    "I13-matching-error-reimport": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "imported": 1,
+      "duplicates": 1,
+      "downstreamCalls": 1,
+      "queueCalls": 0,
+      "contract": "Saved import with explicit synthetic matchError; repeat does not run match again. Not complete payment handling."
+    },
+    "I14-non-sek": {
+      "distinctEvents": 0,
+      "amountOre": 0,
+      "imported": 0,
+      "duplicates": 0,
+      "rejected": 1,
+      "downstreamCalls": 0
+    },
+    "F-file-api-same-event": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "requiresSourceUncertainty": true,
+      "contract": "Identical production arguments across same/different-event gold. No bank identity bridge exists; date/amount/OCR alone cannot decide."
+    },
+    "F-file-api-different-events": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "requiresSourceUncertainty": true,
+      "contract": "Identical production arguments across same/different-event gold. No bank identity bridge exists; date/amount/OCR alone cannot decide."
+    },
+    "F-api-file-same-event": {
+      "distinctEvents": 1,
+      "amountOre": 10000,
+      "requiresSourceUncertainty": true,
+      "contract": "Identical production arguments across same/different-event gold. No bank identity bridge exists; date/amount/OCR alone cannot decide."
+    },
+    "F-api-file-different-events": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "requiresSourceUncertainty": true,
+      "contract": "Identical production arguments across same/different-event gold. No bank identity bridge exists; date/amount/OCR alone cannot decide."
+    },
+    "S-account-cursors-AB": {
+      "distinctEvents": 4,
+      "amountOre": 100000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL strict per-account resumable cursor; two successful rounds cover four events."
+    },
+    "S-account-cursors-BA": {
+      "distinctEvents": 4,
+      "amountOre": 100000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL strict per-account resumable cursor; two successful rounds cover four events."
+    },
+    "S-shared-cursor-AB": {
+      "distinctEvents": 4,
+      "amountOre": 100000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL compatible consent-global cursor. Every account returns same watermark, empty third round; event counts should pass."
+    },
+    "S-shared-cursor-BA": {
+      "distinctEvents": 4,
+      "amountOre": 100000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL compatible consent-global cursor. Every account returns same watermark, empty third round; event counts should pass."
+    },
+    "S-account-local-id": {
+      "distinctEvents": 2,
+      "amountOre": 30000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL account-local IDs; same ID on two accounts denotes two events. Actual namespace unknown."
+    },
+    "S-two-accounts-equal-signals": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "requireAccountContext": true,
+      "contract": "Stipulated globally distinct IDs, two accounts. No real provider claim."
+    },
+    "S-next-page-1-rounds": {
+      "distinctEvents": 2,
+      "amountOre": 40000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL next-page token. A complete feed has two pages; observe one sync versus later scheduled syncs."
+    },
+    "S-next-page-3-rounds": {
+      "distinctEvents": 2,
+      "amountOre": 40000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL next-page token. A complete feed has two pages; observe one sync versus later scheduled syncs."
+    },
+    "S-empty-account-page": {
+      "distinctEvents": 2,
+      "amountOre": 30000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL account cursor; empty first page advances only its own account."
+    },
+    "S-failed-account-retry": {
+      "distinctEvents": 2,
+      "amountOre": 30000,
+      "requireAccountContext": true,
+      "contract": "HYPOTHETICAL shared resumable cursor. B transport fails once; retry returns both first pages, final empty round."
+    },
+    "S-sync-organization-scope": {
+      "distinctEvents": 2,
+      "amountOre": 20000,
+      "requireAccountContext": true,
+      "contract": "Two stored consents in different orgs; each actual sync must see only its org."
+    }
+  }
+}
