@@ -91,6 +91,13 @@ const same = (a: { avi: string; beloppOre: number }[], b: { avi: string; beloppO
   )
 
 async function main() {
+  const omvandInomDag = process.argv.includes('--omvand-inom-dag')
+  // Samma händelser och facit. Stressa bara bankens ospecificerade ordning inom dagen.
+  const betalningar = [...world.betalningar].sort(
+    (a, b) =>
+      a.datum.localeCompare(b.datum) ||
+      (omvandInomDag ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id)),
+  )
   const url = new URL(process.env.DATABASE_URL ?? '')
   if (
     process.env.ALLOW_SYNTHETIC_BANK_WRITES !== '1' ||
@@ -128,6 +135,7 @@ async function main() {
     ),
     datamixUppmattHosKund: false,
     modellAnrop: 0,
+    ordningInomDag: omvandInomDag ? 'OMVAND_ID' : 'ID',
     fullstandigtHttpE2e: false,
     testdatabas: url.pathname.slice(1),
     kund: {
@@ -318,7 +326,7 @@ async function main() {
               { timeout: 15000 },
             )
           }
-          for (const payment of world.betalningar.filter((p) => p.period === period)) {
+          for (const payment of betalningar.filter((p) => p.period === period)) {
             const row = byId.get(payment.id)!
             const underlag = await readCandidates(orgId)
             let reference =
