@@ -1,0 +1,27 @@
+Frozen review commit 36b046d5ad5dbe4ed27cc85a90da6f0ffdfaac4c versus #873
+ apps/api/scripts/audit_bankimport.py               |  246 +++++
+ apps/api/scripts/bankimport_loader.cjs             |  122 +++
+ apps/api/scripts/bankimport_repository.cjs         |  137 +++
+ apps/api/scripts/eval_bankimport.cjs               |  102 ++
+ apps/api/scripts/freeze_bankimport_cases.py        |  127 +++
+ apps/api/scripts/run_bankimport.py                 |   68 ++
+ apps/api/scripts/test_bankimport_harness.cjs       |   45 +
+ docs/agent2-bankimport-identitet.md                |  153 +++
+ docs/eval/bankimport-identitet/facit.json          |  233 ++++
+ docs/eval/bankimport-identitet/granskning.md       |   32 +
+ docs/eval/bankimport-identitet/indata.json         | 1132 +++++++++++++++++++
+ docs/eval/bankimport-identitet/jamforelse.json     |   15 +
+ .../bankimport-identitet/korning-1/falltabell.md   |   36 +
+ .../bankimport-identitet/korning-1/korning.txt     |   33 +
+ .../bankimport-identitet/korning-1/manifest.json   |  112 ++
+ .../korning-1/observationer.json.gz                |  Bin 0 -> 5943 bytes
+ .../bankimport-identitet/korning-1/omrakning.json  | 1059 ++++++++++++++++++
+ .../bankimport-identitet/korning-2/falltabell.md   |   38 +
+ .../bankimport-identitet/korning-2/korning.txt     |   35 +
+ .../bankimport-identitet/korning-2/manifest.json   |  114 ++
+ .../korning-2/observationer.json.gz                |  Bin 0 -> 6662 bytes
+ .../bankimport-identitet/korning-2/omrakning.json  | 1134 ++++++++++++++++++++
+ docs/eval/bankimport-identitet/provplan.md         |   70 ++
+ docs/eval/bankimport-identitet/tillagg-facit.json  |   27 +
+ docs/eval/bankimport-identitet/tillagg-indata.json |  130 +++
+ 25 files changed, 5200 insertions(+)

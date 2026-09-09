@@ -44,7 +44,7 @@ def normalize_raw(raw):
     return x
 
 
-def audit(observed):
+def audit(observed,allow_legacy=False):
     fixture=json.loads((DATA/'indata.json').read_text())
     expected=json.loads((DATA/'facit.json').read_text())['cases']
     if 'supplementSha256' in observed:
@@ -54,8 +54,8 @@ def audit(observed):
     inputs={c['id']:c for c in fixture['cases']}
     assert observed['inputSha256']==sha((DATA/'indata.json').read_bytes())
     assert observed['forbidden']==[]
-    assert observed.get('evidenceVersion') in (None,2)
-    extended=observed.get('evidenceVersion')==2
+    assert observed.get('evidenceVersion')==(None if allow_legacy else 2),'Explicit legacy mode required for archived evidence; version 2 required by default'
+    extended=not allow_legacy
     if extended:assert observed['boundaryControls']['nullIdentity']=={'rows':2,'nullIds':2,'nullKeys':2,'ore':300}
     assert len(observed['cases'])==len(inputs)==len(expected)==(31 if 'supplementSha256' in observed else 29)
     assert {c['id'] for c in observed['cases']}==set(inputs)
@@ -207,6 +207,7 @@ def audit(observed):
                         assert p['since']==cursor_by_org[r['org']],(k,'cursor not from stored consent')
                     if 'error' in r:
                         assert ps and 'error' in ps[-1] and ing==[]
+                        assert r['error']==ps[-1]['error'],(k,'round error differs from provider failure')
                         assert r['snapshot']==previous_state,(k,'failed round changed stored state')
                     else:
                         assert len(ps)==len(inp['accounts']) and all('result' in p for p in ps)
@@ -263,7 +264,7 @@ def audit(observed):
     return results
 
 
-def negatives(observed):
+def negatives(observed,allow_legacy=False):
     def case(x,k):return next(c for c in x['cases'] if c['id']==k)
     changes={
         'lost_saved_row':lambda x:case(x,'I01-distinct-same-fields')['snapshot']['rows'].clear(),
@@ -285,10 +286,12 @@ def negatives(observed):
             'missing_provider_delivery':lambda x:case(x,'S-shared-cursor-AB')['providerCalls'].pop(0),
             'valid_cursor_claimed_invalid':lambda x:case(x,'S-account-cursors-AB')['providerCalls'][-1].update(since='A:1'),
             'changed_both_file_pair_inputs':lambda x:[case(x,k)['calls'][0]['input']['data'].update(description='changed') for k in ('F-file-api-same-event','F-file-api-different-events')],
+            'changed_round_failure_reason':lambda x:case(x,'S-account-cursors-AB')['rounds'][-1].update(error='unrelated failure'),
+            'downgraded_evidence_with_missing_delivery':lambda x:(x.pop('evidenceVersion'),case(x,'S-shared-cursor-AB')['providerCalls'].pop(0)),
         })
     for name,mutate in changes.items():
         changed=copy.deepcopy(observed);mutate(changed)
-        try:audit(changed)
+        try:audit(changed,allow_legacy=allow_legacy)
         except (AssertionError,StopIteration):continue
         raise AssertionError('Negative control escaped: '+name)
     return list(changes)
@@ -297,6 +300,7 @@ def negatives(observed):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('observations',type=Path);parser.add_argument('--out',type=Path)
     parser.add_argument('--evidence-commit',help='Explicit archived harness source commit, read with git show; no checkout')
+    parser.add_argument('--legacy-evidence',action='store_true',help='Explicit weaker archive mode for captures before evidence version 2')
     a=parser.parse_args()
     raw=a.observations.read_bytes();decoded=gzip.decompress(raw) if a.observations.suffix=='.gz' else raw
     manifest=json.loads((a.observations.parent/'manifest.json').read_text())
@@ -306,13 +310,15 @@ def main():
     for group in ('sourceHashes','harnessHashes','historicalHashes'):
         for file,digest in manifest[group].items():
             p=(ROOT/file).resolve();assert p.is_relative_to(ROOT)
-            content=(subprocess.check_output(['git','show',a.evidence_commit+':'+file],cwd=ROOT)
-                     if a.evidence_commit and group=='harnessHashes' else p.read_bytes())
+            content=p.read_bytes()
+            if sha(content)!=digest and a.evidence_commit and group=='harnessHashes':
+                content=subprocess.check_output(['git','show',a.evidence_commit+':'+file],cwd=ROOT)
             assert sha(content)==digest,(group,file)
             verified+=1
     observed=json.loads(decoded)
-    rows=audit(observed);rejected=negatives(observed)
+    rows=audit(observed,allow_legacy=a.legacy_evidence);rejected=negatives(observed,allow_legacy=a.legacy_evidence)
     report={'harnessRecount':'PASS','verifiedFileHashes':verified,'archivedHarnessCommit':a.evidence_commit,
+        'legacyEvidence':a.legacy_evidence,'auditorSha256':sha(Path(__file__).read_bytes()),
         'negativeControlsRejected':rejected,'productCaseRequirements':{
         'PASS':sum(r['requirements']=='PASS' for r in rows),'FAIL':sum(r['requirements']=='FAIL' for r in rows)},'cases':rows}
     if a.out:

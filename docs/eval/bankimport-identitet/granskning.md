@@ -27,6 +27,44 @@ på körbarhet eller verklig banksemantik; det senare är fortfarande okänt.
 
 ## Slutgranskningar
 
-Två självständiga läsande slutgranskningar beställs på samma frysta commit efter
-körning och rapport. Deras slutsatser och eventuella korrigeringar förs in här
-innan PR-utkastet lämnas till Claude.
+Separata agenter `/root/bankimport_tidig_sakerhet` (säkerhet) och
+`/root/bankimport_slut_pengar_kod` (bokförings-/kodtestperspektiv) läste samma
+frysta `36b046d5ad5dbe4ed27cc85a90da6f0ffdfaac4c`. Den senare använde
+`.claude/agents/bokforings-expert.md` och `code-reviewer.md` som ämnesbakgrund.
+De gav självständiga slutsatser innan de fick se den andres svar. Alla fynd
+nedan var statiskt härledda; granskarna körde inga mutationer eller databaser.
+Säkerhetsgranskaren kontrollerade dessutom manifestets 88 filhashar och två
+observationshashar mot den frysta commiten.
+
+| Granskare och konkret fynd i 36b046d5 | Root:s åtgärd och verifiering |
+| --- | --- |
+| Säkerhet: `eval_bankimport.cjs:62`, `audit_bankimport.py:150` accepterade fel consent-ID vid rätt konto; gemensam syntetisk token räckte inte för org-kopplingen. | Scope binds nu till aktiv organisation även för status/kontolista; audit kontrollerar omgång och consent. Mutation med fel consent nekas. |
+| Båda: `audit_bankimport.py:124,150` band inte providersvar till importargument. Borttagen leverans kunde fortfarande ge fyra sparade poster; ändrade filargument jämfördes bara på org. | Kedjan provider → import → SQL-data kontrolleras med omgångsintervall, org, ID, belopp och referenser. Mutationer med borttagen leverans, ändrat importargument och ändrade argument i båda F-par nekas. |
+| Kodtest: `audit_bankimport.py:136,150` kunde godta ett påstått cursorfel efter att anropet ändrats till giltig cursor. | Varje anrop binds till föregående lagrad cursor; felorsak prövas mot frysta sidor; misslyckad omgång måste bevara hela DB-snapshot. Motsvarande negativa prov nekas. |
+| Säkerhet: `bankimport_repository.cjs:93` gjorde explicit null till texten 'null'. De frysta filfallen utelämnade ID och berördes inte. | Korrigerad SQL-NULL-semantik, egen Node-kontroll samt separat riktig PG-kontroll: två rader med två null-ID/null-nycklar och 300 öre. Inte två extra bankfall. |
+| Båda: `audit_bankimport.py:102,169` bevakade inte I13:s explicita `matchError`. | Injicerat fel måste ge exakt observerad felmarkering och inget köanrop; borttagen markering nekas. Host-Error får VM-prefixet `Error:` vid produktens fångst. |
+
+Båda granskare fann att ursprungliga observationer stöder huvudrapportens
+belopp och 11/20-fördelning. Inget fynd visar felaktig kundbetalning eller
+kundförlust. Samtliga relevanta fynd tillämpades; inga avvisades som oviktiga.
+
+## Återkontroll och root:s slutprov
+
+Båda läste därefter samma korrigeringscommit
+`ebc87b85c095e627988912e4b92c42401523570a` och bedömde sina ursprungliga fynd
+åtgärdade för bevisversion 2. Två ytterligare kontrolluckor återstod:
+
+- Säkerhet, `audit_bankimport.py:208`: omgångens feltext jämfördes inte med
+  providerfelet. Root lade till likhetskontroll och en nekad feltextmutation.
+- Kodtest, `audit_bankimport.py:57,190,279`: borttagen versionsmarkering kunde
+  stänga av de nya länkkontrollerna. Root kräver nu version 2 som standard;
+  äldre fångster kräver explicit CLI-arkivläge. Kombinerad nedgradering och
+  borttagen leverans nekas av den nya kontrollen.
+
+Root körde de oförändrade 31 fallen igen i en ny isolerad PostgreSQL samt
+den separata null-kontrollen. Resultatet blev samma 11 PASS/20 FAIL för
+produktkraven. 5/5 Node-kontroller och 18/18 negativa omräkningskontroller
+passerade. De sista två auditändringarna återanvänder den hashfrysta SQL-fångsten;
+ingen fjärde identisk databaskörning behövs för att kontrollera dessa mutationer.
+Kvarstående begränsningar: testfasad för Prisma, ersatt matchning/kö/provider,
+sekventiellt prov och obekräftade verkliga bankkontrakt. Ingen produktionsfix.

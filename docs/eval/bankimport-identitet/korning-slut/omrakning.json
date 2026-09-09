@@ -1,6 +1,9 @@
 {
   "harnessRecount": "PASS",
-  "verifiedFileHashes": 86,
+  "verifiedFileHashes": 90,
+  "archivedHarnessCommit": "ebc87b85",
+  "legacyEvidence": false,
+  "auditorSha256": "6e73749db26860abc83ba7d2b84358a1851cb91b07bd51da82342e3a2f22c084",
   "negativeControlsRejected": [
     "lost_saved_row",
     "invented_second_event",
@@ -9,11 +12,21 @@
     "missing_downstream_call",
     "wrong_organization",
     "cursor_reconstructed_from_label",
-    "hidden_forbidden_call"
+    "hidden_forbidden_call",
+    "missing_explicit_match_error",
+    "wrong_provider_consent",
+    "changed_provider_to_ingest_link",
+    "wrong_sync_duplicate_counter",
+    "explicit_null_collapses",
+    "missing_provider_delivery",
+    "valid_cursor_claimed_invalid",
+    "changed_both_file_pair_inputs",
+    "changed_round_failure_reason",
+    "downgraded_evidence_with_missing_delivery"
   ],
   "productCaseRequirements": {
     "PASS": 11,
-    "FAIL": 18
+    "FAIL": 20
   }
 ,
   "cases": [
@@ -45,6 +58,8 @@
     {"id":"S-next-page-3-rounds","intendedDistinct":2,"intendedOre":40000,"saved":2,"savedOre":40000,"imported":2,"duplicates":0,"rejected":0,"unmatchedStored":2,"downstreamCalls":2,"queueCalls":2,"syncErrors":0,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null,null],"rawOcr":[null,null],"providerCalls":3,"providerReturnedTransactions":2,"apiCalls":2,"fileCalls":0,"viaDedupKey":0,"viaExternalId":0,"organizations":["test-org-A"],"requirements":"FAIL","violations":["ACCOUNT_CONTEXT_NOT_STORED"]},
     {"id":"S-empty-account-page","intendedDistinct":2,"intendedOre":30000,"saved":1,"savedOre":20000,"imported":1,"duplicates":0,"rejected":0,"unmatchedStored":1,"downstreamCalls":1,"queueCalls":1,"syncErrors":1,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null],"rawOcr":[null],"providerCalls":3,"providerReturnedTransactions":1,"apiCalls":1,"fileCalls":0,"viaDedupKey":0,"viaExternalId":0,"organizations":["test-org-A"],"requirements":"FAIL","violations":["distinctEvents: expected 2, observed 1","amountOre: expected 30000, observed 20000","ACCOUNT_CONTEXT_NOT_STORED"]},
     {"id":"S-failed-account-retry","intendedDistinct":2,"intendedOre":30000,"saved":2,"savedOre":30000,"imported":2,"duplicates":0,"rejected":0,"unmatchedStored":2,"downstreamCalls":2,"queueCalls":2,"syncErrors":1,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null,null],"rawOcr":[null,null],"providerCalls":6,"providerReturnedTransactions":3,"apiCalls":2,"fileCalls":0,"viaDedupKey":0,"viaExternalId":0,"organizations":["test-org-A"],"requirements":"FAIL","violations":["ACCOUNT_CONTEXT_NOT_STORED"]},
-    {"id":"S-sync-organization-scope","intendedDistinct":2,"intendedOre":20000,"saved":2,"savedOre":20000,"imported":2,"duplicates":0,"rejected":0,"unmatchedStored":2,"downstreamCalls":2,"queueCalls":2,"syncErrors":0,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null,null],"rawOcr":[null,null],"providerCalls":2,"providerReturnedTransactions":2,"apiCalls":2,"fileCalls":0,"viaDedupKey":0,"viaExternalId":0,"organizations":["test-org-A","test-org-B"],"requirements":"FAIL","violations":["ACCOUNT_CONTEXT_NOT_STORED"]}
+    {"id":"S-sync-organization-scope","intendedDistinct":2,"intendedOre":20000,"saved":2,"savedOre":20000,"imported":2,"duplicates":0,"rejected":0,"unmatchedStored":2,"downstreamCalls":2,"queueCalls":2,"syncErrors":0,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null,null],"rawOcr":[null,null],"providerCalls":2,"providerReturnedTransactions":2,"apiCalls":2,"fileCalls":0,"viaDedupKey":0,"viaExternalId":0,"organizations":["test-org-A","test-org-B"],"requirements":"FAIL","violations":["ACCOUNT_CONTEXT_NOT_STORED"]},
+    {"id":"S-reimport-account-pages","intendedDistinct":2,"intendedOre":30000,"saved":2,"savedOre":30000,"imported":2,"duplicates":4,"rejected":0,"unmatchedStored":2,"downstreamCalls":2,"queueCalls":2,"syncErrors":0,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null,null],"rawOcr":[null,null],"providerCalls":6,"providerReturnedTransactions":6,"apiCalls":6,"fileCalls":0,"viaDedupKey":0,"viaExternalId":4,"organizations":["test-org-A"],"requirements":"FAIL","violations":["ACCOUNT_CONTEXT_NOT_STORED"]},
+    {"id":"S-overlapping-pages","intendedDistinct":2,"intendedOre":40000,"saved":2,"savedOre":40000,"imported":2,"duplicates":1,"rejected":0,"unmatchedStored":2,"downstreamCalls":2,"queueCalls":2,"syncErrors":0,"rowsWithAccount":0,"rowsWithProvider":0,"references":[null,null],"rawOcr":[null,null],"providerCalls":3,"providerReturnedTransactions":3,"apiCalls":3,"fileCalls":0,"viaDedupKey":0,"viaExternalId":1,"organizations":["test-org-A"],"requirements":"FAIL","violations":["ACCOUNT_CONTEXT_NOT_STORED"]}
   ]
 }

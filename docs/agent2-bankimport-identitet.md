@@ -31,17 +31,22 @@ bevis på tappade riktiga betalningar eller kundförlust.
 ## Resultat och tolkning
 
 31 fall körda: **11 PASS och 20 FAIL** mot frysta produktkrav. Själva harnessen
-och oberoende omräkning är godkända; 4/4 harnesskontroller och 8/8 negativa
+och oberoende omräkning är godkända; 5/5 harnesskontroller och 18/18 negativa
 kontroller passerar. De första 29 har exakt samma fallmått i två separata
 PostgreSQL-körningar; se [jämförelsen](eval/bankimport-identitet/jamforelse.json).
-88 filhashar verifieras, däribland 67 historiska underlag och 9 produktkällor.
+90 filhashar verifieras, däribland 67 historiska underlag och 9 produktkällor.
 Kontroll av syntax och `git diff --check` passerade. Inga Jest/tsc-jobb startades;
 full appsvit, Prisma och full bankintegration verifieras inte av dessa prov.
+Befintliga OCR-proveniens- och testkopplingsvakter passerade med sina självtest.
+En separat SQL-kontroll sparade två uttryckliga null-ID:n, sammanlagt 300 öre;
+den är ett prov av repository-fasaden och ingår inte i de 31 bankfallen.
+De 31 bankfallens mått är oförändrade efter granskningens korrigeringar.
+Se [slutverifiering och hashar](eval/bankimport-identitet/verifiering-slut.md).
 
-[Falltabellen](eval/bankimport-identitet/korning-2/falltabell.md) har exakt en
+[Falltabellen](eval/bankimport-identitet/korning-slut/falltabell.md) har exakt en
 rad per fall med distinkta händelser, poster, heltalsören, import/dubblett/avvisat,
 olösta sparade poster, anrop, synkfel och kontofält.
-[Omräkningen](eval/bankimport-identitet/korning-2/omrakning.json) innehåller även
+[Omräkningen](eval/bankimport-identitet/korning-slut/omrakning.json) innehåller även
 bevarade referenser/OCR, provider-/API-/filanrop och varje kravavvikelse.
 `PASS` gäller bara fallens uttryckliga krav. Det betyder aldrig färdig betalning.
 Alla sparade poster är `UNMATCHED` eftersom riktig matchning inte körs.
@@ -115,22 +120,31 @@ utkatalog för varje databaskörning. Kör sekventiellt. Kontrollera först disk
 node --experimental-vm-modules apps/api/scripts/test_bankimport_harness.cjs
 PYTHONDONTWRITEBYTECODE=1 python3 apps/api/scripts/run_bankimport.py --out /tmp/eveno-bankimport-ny-korning
 python3 -B apps/api/scripts/audit_bankimport.py /tmp/eveno-bankimport-ny-korning/observationer.json.gz --out /tmp/eveno-bankimport-ny-korning
-python3 -B apps/api/scripts/audit_bankimport.py docs/eval/bankimport-identitet/korning-2/observationer.json.gz
+python3 -B apps/api/scripts/audit_bankimport.py docs/eval/bankimport-identitet/korning-slut/observationer.json.gz --evidence-commit ebc87b85
 git diff --check
 ```
 
 Omräkningen använder endast Python-standardbibliotek, inga produktions-/loader-
 importer. Den bygger om poster från lyckade SQL-skrivningar, kontrollerar faktiska
-predikat, org/ID/belopp, anrop och cursors. Åtta separata mutationer måste nekas:
+predikat, org/ID/belopp, anrop och cursors. Arton separata mutationer måste nekas, bland annat:
 tappad post, påhittad andra import, dold bred SQL-träff, påhittat kontofält,
-saknat matchanrop, fel organisation, påhittad cursor och dolt förbjudet anrop.
+saknat matchanrop, fel organisation/samtycke, påhittad cursor/felorsak, bruten
+leverans/importkedja, tappad felsignal, dolt förbjudet anrop och nedgraderad
+bevisversion. Version 2 krävs som standard; äldre format kräver ett uttryckligt
+`--legacy-evidence` och får inte beskrivas som den starkare slutkontrollen.
 Filerna `observationer.json.gz`, `manifest.json`, `omrakning.json`, `falltabell.md`
 och kort `korning.txt` ger komprimerat underlag utan tusentals utskrivna loggrader.
 
 Första 29-fallskörningen sparas separat i `korning-1`; dess exakta harness finns
 i `5dfe1e17`. Den kan räknas om med samma auditkommando, den katalogens observationer
-och `--evidence-commit 5dfe1e17` (läser arkiverade harnessfiler med `git show`,
-ingen checkout). Den ersätts inte i historiken av den utökade körningen.
+och `--legacy-evidence --evidence-commit 5dfe1e17` (läser arkiverade harnessfiler med `git show`,
+ingen checkout). Den ersätts inte i historiken av den utökade körningen. `korning-2` avser
+31 fall före granskningskorrigeringarna och kräver `--legacy-evidence
+--evidence-commit 36b046d5`. `korning-slut` är den starkare version 2.
+Slutfångstens körda harness ligger i `ebc87b85c095e627988912e4b92c42401523570a`;
+den efterföljande omräkningens egen SHA-256 sparas i `omrakning.json`.
+`--evidence-commit` verifierar förändrade, arkiverade harnessfiler med `git show`;
+observationernas hash ändras inte när omräkningen förstärks.
 
 ## Minsta nästa produktionsändring att föreslå
 
