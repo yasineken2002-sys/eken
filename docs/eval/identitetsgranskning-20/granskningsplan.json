@@ -1,0 +1,28 @@
+{
+  "kind": "READ_ONLY_REVIEW_NOT_NEW_DECISION_POLICY",
+  "baseCommit": "6c2f06f071ff19d2bd994c8ee09ba4af8c94b5c2",
+  "selection": "Exact members whose saved #871 reason is IDENTITETSKONFLIKT or OTILLRACKLIG_IDENTIFIERING; same set in all four saved runs.",
+  "expectedCases": 20,
+  "expectedReasons": {"IDENTITETSKONFLIKT": 10, "OTILLRACKLIG_IDENTIFIERING": 10},
+  "bankEvidence": "Frozen generator CSV fields and hash-bound public projection, checked against observed bank rows in four historical dumps. No physical CSV archive exists in the saved evidence; reconstruct it explicitly. DB reference is absent from dump schema and must be labelled code-derived, not observed.",
+  "intentRule": "Checksum, name, bank account, amount, chronological proximity or elimination of other open debts do not establish payment intent. Paid owners remain identity evidence. A relative may pay and one person may have multiple leases.",
+  "categoriesInPriorityOrder": [
+    "existingVerifiedInformation: only if an existing verified field establishes a safe resolution without new input",
+    "verifiedIntegrationOrPaymentFlowOnly: only if a demonstrated existing source or non-human flow supplies sufficient evidence; a possible provider field is insufficient",
+    "humanEvidenceRequired: verified ambiguity/missing intent requires customer or staff evidence under current facts; customer confirmation counts as human",
+    "insufficientEvidenceToClassify: only if the case cannot be placed in the above categories from available evidence"
+  ],
+  "unknownProviderAvailabilityIsNotAnExtraCaseCategory": true,
+  "lastCredit": "betalning-57-9 remains separate: A outstanding 25000 ore; B outstanding 2500 ore; saved #871 has 21 review payments.",
+  "controls": [
+    "Verify hashes of all original manifest files and #870 public input and #871 results/sources",
+    "Exactly one row per actual selected ID; counts AND members",
+    "Four historical DB observations preserve date/text/amount/rawOcr on all 20",
+    "Observe competing scopes and paid-owner debt at the time from saved #871 operations; no new decision replay",
+    "Gold/scenario metadata poisoning leaves inventory unchanged",
+    "Reject missing, duplicated and substituted cases, invented bank reference, hidden conflicting owner, false resolution and hidden final credit",
+    "Independent count and table/file hash check; original Python controls remain unchanged"
+  ],
+  "externalAccess": "Only public official documentation and GitHub PR/CI metadata. No bank endpoints, DSN, environment secrets, real person data, model calls or production writes.",
+  "productionImplementation": false
+}
