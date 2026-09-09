@@ -1,4 +1,5 @@
 {
+  "allocationGateSourceNegativeControls": 3,
   "kind": "UNAPPLIED_PATCH_SYNTAX_NOT_TYPES_OR_IMPORT_EXECUTION",
   "base": "fa15d0d9f3eae17d04afc4d46165cb45205373fa",
   "targetFiles": 11,
@@ -16,5 +17,5 @@
   "gitApplyCheck": true,
   "productionTargetsUnchanged": true,
   "originalMatchingAndAllocationBodiesPreservedApartFromIdentityGate": true,
-  "patchSha256": "5e3cda870f758765bb763c8f08b5af3e89a8d081f8718b528289d65aec1c1ca1"
+  "patchSha256": "3465e224b55766d2082f144349efb4da282e9feddcccebf7342719d77b1f2a9e"
 }

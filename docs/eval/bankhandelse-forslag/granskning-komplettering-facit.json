@@ -1,0 +1,15 @@
+{
+  "kind": "FROZEN_REVIEW_REQUIREMENTS_BEFORE_EXECUTION",
+  "checks": {
+    "description_conflict_blocks_pending": "Samma ID med F-2026-001 respektive F-2026-002 i beskrivningen: två observationer, en oförändrad hundralapp, konflikt, inget anspråk.",
+    "legacy_conflict_blocks_unmatched": "Verifierad E1-brygga till äldre UNMATCHED 100 kr och ny observation 120 kr: bind konflikten till äldre raden och neka automatik; ändra inte äldre raden.",
+    "legacy_description_conflict_visible": "V2-fall 15 innehåller olika äldre och ny beskrivning. Strikt jämförelse av hela matchningsbärande beskrivningen ska hålla båda återobservationerna och spärra äldre raden. Gamla facitet och gamla resultat behålls separat.",
+    "legacy_identical_complete_content_replays": "Separat märkt nytt syntetiskt exempel: äldre beskrivning exakt samma som bankobservationen och verifierad brygga ger återimport utan ny betalning.",
+    "oversized_money_preserved_rejected": "1 000 000 000 000 öre ryms inte i befintlig numeric(12,2). Bevara observationen som avvisad, skapa ingen betalning.",
+    "guard_text_cast": "Organisationslåset kan projiceras till text. Detta är ett PostgreSQL-typkonverteringsprov, inte Prisma-bevis."
+  },
+  "componentExpectationDelta": {
+    "15-legacy-verified-link": {"held": 2, "openIdentity": true}
+  },
+  "unchanged": "indata-v2.json och facit.json ändras inte. Den enda avvikelsen mot det äldre komponentfacitet redovisas separat; #874:s 31 fall/facit lämnas helt orörda."
+}

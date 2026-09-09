@@ -159,7 +159,7 @@ def main():
             results.append(run_case(pg,case,index));print('Captured SQL component:',case['id'],flush=True)
         raw=json.dumps({'kind':'PROPOSED_SQL_COMPONENT_NOT_PRODUCTION_IMPORT','cases':results},ensure_ascii=False,separators=(',',':')).encode()
         (out/'observationer.json.gz').write_bytes(gzip.compress(raw,mtime=0))
-        files=[p for p in HERE.iterdir() if p.is_file()]+[DATA/'indata.json',DATA/'indata-v2.json',DATA/'facit.json',HERE.parent/'tillgodo_pg.py']
+        files=[p for p in HERE.iterdir() if p.is_file()]+[DATA/'indata.json',DATA/'indata-v2.json',DATA/'facit.json',DATA/'granskning-komplettering-facit.json',HERE.parent/'tillgodo_pg.py']
         manifest={'base':BASE,'headAtRun':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'database':pg.identity,'sourceHashes':{p.relative_to(ROOT).as_posix():sha(p.read_bytes()) for p in files},
             'preservedHashes':historic,'observationSha256':sha(raw),'gzipSha256':sha((out/'observationer.json.gz').read_bytes())}

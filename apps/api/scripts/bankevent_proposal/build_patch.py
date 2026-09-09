@@ -18,9 +18,10 @@ def part(text,start,end,new):
     a=text.index(start);b=text.index(end,a);return text[:a]+new+text[b:]
 def save(path,text):changes[path]=text
 P='apps/api/src/reconciliation/reconciliation.service.ts';s=read(P)
-s="import { ingestIdentity, identityAllowed, identitySummary, identityObservations, blockedBankIds, lockIdentity, type BankOrigin, type IdentityImportResult } from './bank-event-gate'\n"+s
+s="import { ingestIdentity, identityAllowed, identitySummary, identityObservations, blockedBankIds, lockIdentity, type BankOrigin, type IdentityImportResult, type IdentitySummary } from './bank-event-gate'\n"+s
+s=replace(s,'export interface ReconciliationStats {','export interface ReconciliationStats {\n  bankIdentity?: IdentitySummary')
 s=replace(s,'  duplicates: number\n','  duplicates: number\n  identityHeld?: number\n  resumed?: number\n',1)
-s=replace(s,"  dedup: Prisma.BankTransactionWhereInput", "  // Compatibility input only: similarity is NOT identity evidence.\n  dedup: Prisma.BankTransactionWhereInput\n  // Reserved server adapter metadata; never exposed in the upload DTO.\n  identity?: { origin: BankOrigin; externalId: string }")
+s=replace(s,"  dedup: Prisma.BankTransactionWhereInput", "  // Compatibility input only: similarity is NOT identity evidence.\n  dedup: Prisma.BankTransactionWhereInput\n  // Reserved server adapter metadata; never exposed in the upload DTO.\n  identity?: { origin: BankOrigin; externalId: string }\n  observationSource?: Record<string, unknown>")
 s=part(s,'export type FileIngestResult =','/**\n * PSD2 P1', '''export type FileIngestResult =
   | { held: true; reason: string; observationId: string }
   | { held?: false; duplicate: true }
@@ -30,7 +31,7 @@ s=part(s,'export type FileIngestResult =','/**\n * PSD2 P1', '''export type File
 a=s.index('export type ApiIngestResult =');b=s.index('\n\n',a);s=s[:a]+'export type ApiIngestResult = IdentityImportResult'+s[b:]
 s=part(s,'  async ingestFromFile(', '  // ── Parse CSV', '''  async ingestFromFile(organizationId: string, input: FileIngestInput): Promise<FileIngestResult> {
     const data = input.data
-    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin,
+    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin ?? { kind: 'file', ...input.observationSource },
       input.identity?.externalId ?? null, {
         amountOre: new Decimal(data.amount.toString()).mul(100).toNumber(),
         day: normalizeToStockholmDay(new Date(data.date)).toISOString().slice(0, 10),
@@ -55,7 +56,7 @@ s=part(s,'  async ingestFromFile(', '  // ── Parse CSV', '''  async ingestFr
   ): Promise<ApiIngestResult> {
     const date = normalizeToStockholmDay(raw.bookingDate)
     const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? null
-    return ingestIdentity(this.prisma, organizationId, origin, externalId, {
+    return ingestIdentity(this.prisma, organizationId, origin ?? { kind: 'api' }, externalId, {
       amountOre: new Decimal(raw.amount).mul(100).toNumber(),
       day: date.toISOString().slice(0, 10), booked: raw.booked, currency: raw.currency,
       rawOcr, reference: raw.reference ?? null, description: raw.description,
@@ -68,6 +69,12 @@ s=part(s,'  async ingestFromFile(', '  // ── Parse CSV', '''  async ingestFr
   }
 
 ''')
+s=replace(s,'    const rows = parsed.rows', "    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')\n    const rows = parsed.rows")
+s=replace(s,'          dedup: { date: row.date, description: row.description, amount: amountDecimal },',
+  "          observationSource: { format: ext, bank, fileName, fileSha256, parsedRowIndex: i },\n          dedup: { date: row.date, description: row.description, amount: amountDecimal },")
+s=replace(s,'    for (const line of lines) {', "    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')\n    for (const [parsedRowIndex, line] of lines.entries()) {")
+s=replace(s,'          dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },',
+  "          observationSource: { format: 'bgmax', fileName, fileSha256, parsedRowIndex },\n          dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },")
 s=replace(s,'        if (outcome.duplicate) {', '''        if (outcome.held) {
           result.identityHeld = (result.identityHeld ?? 0) + 1
           result.errors.push(`Bankidentitet kräver granskning: ${outcome.reason}, observation ${outcome.observationId}`)
@@ -85,12 +92,14 @@ s=replace(s,'    const db = prismaClient ?? this.prisma\n    const tolerance', '
 # Gates INSIDE both monetary allocation transactions, not just a precheck.
 needle='      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`'
 assert s.count(needle)==4
-# Four include reversal paths. Do not block a needed explicit reversal: restrict
-# insertion to the two allocation kernels, whose ranges end at the next method.
-for begin,end in [('  private async applyMatchToInvoice(', '  private async applyMatchToRentNotice('),('  private async applyMatchToRentNotice(', '  // ── List')]:
-    # End marker for the second range is resolved by method boundary below.
-    a=s.index(begin);b=s.index('  async getTransactions(',a) if 'RentNotice' in begin else s.index(end,a)
-    chunk=s[a:b];assert chunk.count(needle)==1
+# Exactly three allocation kernels and one explicit reversal. Reversal must
+# remain available for correction; it is not a new allocation permission.
+for begin,end in [
+    ('  private async applyMatchToInvoice(', '  private async applyMatchToRentNotice('),
+    ('  private async applyMatchToRentNotice(', '  async getTransactions('),
+    ('  private async applyWaterfallToRentNotices(', '  async manualMatch('),
+]:
+    a=s.index(begin);b=s.index(end,a);chunk=s[a:b];assert chunk.count(needle)==1
     s=s[:a]+chunk.replace(needle,'      await lockIdentity(tx, organizationId, transactionId)\n'+needle)+s[b:]
 s=replace(s,'    return stats\n', '    return { ...stats, bankIdentity: await identitySummary(this.prisma, organizationId) }\n')
 s=replace(s,'''  async autoMatchAll(organizationId: string): Promise<AutoMatchResult> {
@@ -114,6 +123,9 @@ s=replace(s,"  @Post('import')",'''  @Get('bank-observations')
   @Post('import')''');save(P,s)
 P='apps/api/src/reconciliation/bank-statement-import.service.ts';s=read(P)
 s=replace(s,'export interface ImportCommitResult {', 'export interface ImportCommitResult {\n  identityHeld: number\n  identityObservations: string[]\n  resumed: number')
+s=replace(s,'    for (const t of incoming) {', '    for (const [parsedRowIndex, t] of incoming.entries()) {')
+s=replace(s,'        dedup: { date, description: t.description, amount: amountDecimal },',
+  "        observationSource: { format: 'pdf', fileName: draft.fileName, importId: id, parsedRowIndex },\n        dedup: { date, description: t.description, amount: amountDecimal },")
 s=replace(s,'    let duplicates = 0','    let duplicates = 0\n    let identityHeld = 0\n    let resumed = 0\n    const identityObservations: string[] = []')
 s=replace(s,'      if (outcome.duplicate) {','''      if (outcome.held) {
         identityHeld++
@@ -127,16 +139,16 @@ s=replace(s,'return { importId: id, created, duplicates, autoMatched, unmatched 
 save(P,s)
 P='apps/api/src/psd2/psd2-sync.service.ts';s=read(P)
 s="import type { BankOrigin } from '../reconciliation/bank-event-gate'\n"+s
-s=replace(s,'  rejected: number','  rejected: number\n  identityHeld: number\n  resumed: number')
-s=replace(s,'      rejected: 0,','      rejected: 0,\n      identityHeld: 0,\n      resumed: 0,')
+s=replace(s,'  rejected: number','  rejected: number\n  identityHeld: number\n  resumed: number\n  resumedMatched: number\n  resumedUnmatched: number')
+s=replace(s,'      rejected: 0,','      rejected: 0,\n      identityHeld: 0,\n      resumed: 0,\n      resumedMatched: 0,\n      resumedUnmatched: 0,')
 s=replace(s,'const rawTxs: ProviderRawTx[] = []','const rawTxs: Array<{ transaction: ProviderRawTx; origin: BankOrigin }> = []')
 s=replace(s,'        rawTxs.push(...page.transactions)', '''        rawTxs.push(...page.transactions.map(transaction => ({ transaction, origin: {
           kind: 'api' as const, provider: this.provider.name, consent: consent.consentId, account: account.accountId,
         } })))''')
 s=replace(s,'for (const tx of rawTxs)', 'for (const { transaction: tx, origin } of rawTxs)')
 s=replace(s,'          this.toApiRaw(tx),','          this.toApiRaw(tx),\n          origin,')
-s=replace(s,"        } else {\n          result.rejected++", "        } else if (outcome.outcome === 'held') {\n          result.identityHeld++\n        } else if (outcome.outcome === 'resumed') {\n          result.resumed++\n        } else {\n          result.rejected++")
-s=replace(s,"        unmatchedCount: result.imported - result.matched,", "        unmatchedCount: result.imported - result.matched,\n        confirmedData: { identityHeld: result.identityHeld, resumed: result.resumed, fetched: result.fetched, rejected: result.rejected, duplicates: result.duplicates },")
+s=replace(s,"        } else {\n          result.rejected++", "        } else if (outcome.outcome === 'held') {\n          result.identityHeld++\n        } else if (outcome.outcome === 'resumed') {\n          result.resumed++\n          if (outcome.matched) result.resumedMatched++\n          else result.resumedUnmatched++\n        } else {\n          result.rejected++")
+s=replace(s,"        unmatchedCount: result.imported - result.matched,", "        unmatchedCount: result.imported - result.matched,\n        confirmedData: { identityHeld: result.identityHeld, resumed: result.resumed, resumedMatched: result.resumedMatched, resumedUnmatched: result.resumedUnmatched, fetched: result.fetched, rejected: result.rejected, duplicates: result.duplicates },")
 save(P,s)
 P='apps/api/src/ai/shadow/shadow-sweep.service.ts';s=read(P)
 s="import { blockedBankIds } from '../../reconciliation/bank-event-gate'\n"+s

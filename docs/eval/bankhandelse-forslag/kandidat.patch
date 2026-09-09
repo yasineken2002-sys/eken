@@ -1,7 +1,7 @@
 --- a/apps/api/src/reconciliation/reconciliation.service.ts
 +++ b/apps/api/src/reconciliation/reconciliation.service.ts
 @@ -1,3 +1,4 @@
-+import { ingestIdentity, identityAllowed, identitySummary, identityObservations, blockedBankIds, lockIdentity, type BankOrigin, type IdentityImportResult } from './bank-event-gate'
++import { ingestIdentity, identityAllowed, identitySummary, identityObservations, blockedBankIds, lockIdentity, type BankOrigin, type IdentityImportResult, type IdentitySummary } from './bank-event-gate'
  import {
    Injectable,
    Logger,
@@ -14,7 +14,7 @@
    autoMatched: number
    unmatched: number
    errors: string[]
-@@ -93,7 +96,10 @@
+@@ -93,7 +96,11 @@
  export interface FileIngestInput {
    // Fält-dedup, bevarad EXAKT per källa (CSV/PDF: description, BgMax: rawOcr).
    // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
@@ -22,10 +22,11 @@
    dedup: Prisma.BankTransactionWhereInput
 +  // Reserved server adapter metadata; never exposed in the upload DTO.
 +  identity?: { origin: BankOrigin; externalId: string }
++  observationSource?: Record<string, unknown>
    data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
    // PSD2 P1 — fält för cross-source dedupKey (Stockholm-dag + belopp + OCR). Saknas
    // OCR → ingen dedupKey (betalning utan referens kan inte matchas cross-source).
-@@ -104,8 +110,9 @@
+@@ -104,8 +111,9 @@
  // matchTransaction kastade — varje källa mappar det till sitt eget felbeteende
  // (CSV/BgMax: radfel; PDF: logga + unmatched), precis som före refaktorn.
  export type FileIngestResult =
@@ -37,7 +38,7 @@
  
  /**
   * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
-@@ -126,10 +133,7 @@
+@@ -126,12 +134,10 @@
  // Explicit utfall för API-ingest — INGET tyst bortfall. `rejected` med typad
  // anledning gör att P2:s sync-lager kan agera (t.ex. återförd betalning → framtida
  // reverserings-hantering) istället för att en transaktion försvinner spårlöst.
@@ -48,8 +49,11 @@
 +export type ApiIngestResult = IdentityImportResult
  
  export interface ReconciliationStats {
++  bankIdentity?: IdentitySummary
    total: number
-@@ -386,139 +390,42 @@
+   matched: number
+   unmatched: number
+@@ -386,139 +392,42 @@
    // matchTransaction-fel fångas och returneras som `matchError` så att varje källa
    // behåller sitt exakta räknar-/felbeteende.
    async ingestFromFile(organizationId: string, input: FileIngestInput): Promise<FileIngestResult> {
@@ -67,7 +71,7 @@
 -        where: { organizationId, dedupKey, externalId: { not: null } },
 -        select: { id: true },
 +    const data = input.data
-+    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin,
++    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin ?? { kind: 'file', ...input.observationSource },
 +      input.identity?.externalId ?? null, {
 +        amountOre: new Decimal(data.amount.toString()).mul(100).toNumber(),
 +        day: normalizeToStockholmDay(new Date(data.date)).toISOString().slice(0, 10),
@@ -98,7 +102,7 @@
 +  ): Promise<ApiIngestResult> {
 +    const date = normalizeToStockholmDay(raw.bookingDate)
 +    const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? null
-+    return ingestIdentity(this.prisma, organizationId, origin, externalId, {
++    return ingestIdentity(this.prisma, organizationId, origin ?? { kind: 'api' }, externalId, {
 +      amountOre: new Decimal(raw.amount).mul(100).toNumber(),
 +      day: date.toISOString().slice(0, 10), booked: raw.booked, currency: raw.currency,
 +      rawOcr, reference: raw.reference ?? null, description: raw.description,
@@ -223,7 +227,23 @@
    }
  
    // ── Parse CSV ───────────────────────────────────────────────────────────────
-@@ -708,11 +615,17 @@
+@@ -651,6 +560,7 @@
+       throw new BadRequestException('Endast CSV och Excel-filer (.csv, .xlsx, .xls) stöds')
+     }
+ 
++    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')
+     const rows = parsed.rows
+     const bank: BankFormat = bankOverride ?? parsed.bank
+ 
+@@ -693,6 +603,7 @@
+ 
+         // Delad ingest-kärna: fält-dedup (org, date, description, amount) → create → match.
+         const outcome = await this.ingestFromFile(organizationId, {
++          observationSource: { format: ext, bank, fileName, fileSha256, parsedRowIndex: i },
+           dedup: { date: row.date, description: row.description, amount: amountDecimal },
+           data: {
+             date: row.date,
+@@ -708,11 +619,17 @@
              ...(rawOcr ? { ocr: rawOcr } : {}),
            },
          })
@@ -242,7 +262,25 @@
          // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
          if (outcome.matchError) throw outcome.matchError
          if (outcome.matched) {
-@@ -820,11 +733,17 @@
+@@ -773,7 +690,8 @@
+ 
+     let sectionDate: Date | null = null
+     let latestCoverage: Date | null = null
+-    for (const line of lines) {
++    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')
++    for (const [parsedRowIndex, line] of lines.entries()) {
+       const tc = line.slice(0, 2)
+ 
+       // TC 05: 0-1=tc, 2-11=BG(10), 12-21=PG(10), 22-29=date(8 YYYYMMDD)
+@@ -811,6 +729,7 @@
+ 
+         // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) → create → match.
+         const outcome = await this.ingestFromFile(organizationId, {
++          observationSource: { format: 'bgmax', fileName, fileSha256, parsedRowIndex },
+           dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },
+           data: {
+             date: txDate,
+@@ -820,11 +739,17 @@
            },
            crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
          })
@@ -261,7 +299,7 @@
          // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
          if (outcome.matchError) throw outcome.matchError
          if (outcome.matched) result.autoMatched++
-@@ -835,7 +754,7 @@
+@@ -835,7 +760,7 @@
        }
      }
  
@@ -270,7 +308,7 @@
        throw new BadRequestException(
          'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
        )
-@@ -855,6 +774,9 @@
+@@ -855,6 +780,9 @@
      prismaClient?: Prisma.TransactionClient,
    ): Promise<boolean> {
      const db = prismaClient ?? this.prisma
@@ -280,7 +318,7 @@
      const tolerance = new Decimal('1.00')
  
      // ── 1. OCR-match (deterministisk) ────────────────────────────────────
-@@ -1324,6 +1246,7 @@
+@@ -1324,6 +1252,7 @@
      matchType?: 'fuzzy',
    ): Promise<boolean> {
      const claimedNumber = await this.prisma.$transaction(async (tx) => {
@@ -288,7 +326,7 @@
        await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
        const priorBankAllocations = await tx.rentNoticePayment.findMany({
          where: { bankTransactionId: transactionId },
-@@ -1588,6 +1511,7 @@
+@@ -1588,6 +1517,7 @@
      return this.prisma.$transaction(async (tx) => {
        // Lås bankraden före avin. Det gör tillgängliga bankmedel och den nya
        // allokeringen atomiska även när samma inbetalning matchas samtidigt.
@@ -296,7 +334,7 @@
        await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
  
        // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
-@@ -1938,6 +1862,10 @@
+@@ -1938,6 +1868,10 @@
  
    // ── Stats ────────────────────────────────────────────────────────────────────
  
@@ -307,7 +345,7 @@
    async getStats(organizationId: string): Promise<ReconciliationStats> {
      const grouped = await this.prisma.bankTransaction.groupBy({
        by: ['status'],
-@@ -1970,16 +1898,18 @@
+@@ -1970,16 +1904,18 @@
        }
      }
  
@@ -327,6 +365,14 @@
          // ── EN MÄNNISKAS AVMATCHNING ÖVERLEVER NÄSTA AUTOKÖRNING ────────────
          //
          // `unmatchTransaction` sätter raden tillbaka till UNMATCHED och nollar
+@@ -2154,6 +2090,7 @@
+       // Samma bankradslåsning används av både waterfall och enskild matchning.
+       // Efter låset får endast den första transaktionen skapa allokeringar;
+       // samtidiga försök ser då den redan förbrukade bankbudgeten.
++      await lockIdentity(tx, organizationId, transactionId)
+       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+       const priorBankAllocations = await tx.rentNoticePayment.findMany({
+         where: { bankTransactionId: transactionId },
 --- a/apps/api/src/reconciliation/reconciliation.controller.ts
 +++ b/apps/api/src/reconciliation/reconciliation.controller.ts
 @@ -35,6 +35,12 @@
@@ -354,7 +400,7 @@
    importId: string
    created: number
    duplicates: number
-@@ -221,6 +224,9 @@
+@@ -221,16 +224,20 @@
  
      let created = 0
      let duplicates = 0
@@ -364,7 +410,19 @@
      let autoMatched = 0
      let unmatched = 0
  
-@@ -240,11 +246,17 @@
+-    for (const t of incoming) {
++    for (const [parsedRowIndex, t] of incoming.entries()) {
+       const amountDecimal = new Decimal(t.amount.toFixed(2))
+       const date = new Date(t.date)
+ 
+       // Delad ingest-kärna (samma pipeline som CSV/BgMax): fält-dedup identisk med
+       // CSV-importen (org, date, description, amount) → create → matchTransaction.
+       const outcome = await this.reconciliation.ingestFromFile(organizationId, {
++        observationSource: { format: 'pdf', fileName: draft.fileName, importId: id, parsedRowIndex },
+         dedup: { date, description: t.description, amount: amountDecimal },
+         data: {
+           date,
+@@ -240,11 +247,17 @@
          },
          crossSource: { date, amount: amountDecimal, ...(t.ocr ? { ocr: t.ocr } : {}) },
        })
@@ -383,7 +441,7 @@
  
        if (outcome.matchError) {
          // Matchning kan kasta vid kantfall (t.ex. korrupt journal-state).
-@@ -271,7 +283,7 @@
+@@ -271,7 +284,7 @@
          status: 'CONFIRMED',
          confirmedAt: new Date(),
          ...(userId ? { confirmedById: userId } : {}),
@@ -392,7 +450,7 @@
          transactionCount: finalTx.length,
          matchedCount: autoMatched,
          unmatchedCount: unmatched + duplicates,
-@@ -297,7 +309,7 @@
+@@ -297,7 +310,7 @@
        }
      }
  
@@ -408,25 +466,29 @@
  import { Inject, Injectable, Logger } from '@nestjs/common'
  import { PrismaService } from '../common/prisma/prisma.service'
  import { ReconciliationService } from '../reconciliation/reconciliation.service'
-@@ -11,6 +12,8 @@
+@@ -11,6 +12,10 @@
    imported: number
    duplicates: number
    rejected: number
 +  identityHeld: number
 +  resumed: number
++  resumedMatched: number
++  resumedUnmatched: number
    matched: number
  }
  
-@@ -56,6 +59,8 @@
+@@ -56,6 +61,10 @@
        imported: 0,
        duplicates: 0,
        rejected: 0,
 +      identityHeld: 0,
 +      resumed: 0,
++      resumedMatched: 0,
++      resumedUnmatched: 0,
        matched: 0,
      }
  
-@@ -115,7 +120,7 @@
+@@ -115,7 +124,7 @@
        })
  
        let latestCursor = consent.syncCursor ?? undefined
@@ -435,7 +497,7 @@
        for (const account of accounts) {
          const page = await this.provider.fetchTransactions({
            consentId: consent.consentId,
-@@ -123,12 +128,14 @@
+@@ -123,12 +132,14 @@
            accountId: account.accountId,
            since: consent.syncCursor ?? undefined,
          })
@@ -452,7 +514,7 @@
          // Den härdade vägen in. externalId = bankens id (idempotent). booked-only,
          // valuta, storno/negativa och cross-source-dedup hanteras EXPLICIT i
          // ingestFromApi — inget tyst bortfall.
-@@ -136,12 +143,17 @@
+@@ -136,12 +147,19 @@
            organizationId,
            tx.externalId,
            this.toApiRaw(tx),
@@ -467,14 +529,16 @@
 +          result.identityHeld++
 +        } else if (outcome.outcome === 'resumed') {
 +          result.resumed++
++          if (outcome.matched) result.resumedMatched++
++          else result.resumedUnmatched++
          } else {
            result.rejected++
          }
-@@ -164,6 +176,7 @@
+@@ -164,6 +182,7 @@
          transactionCount: result.imported,
          matchedCount: result.matched,
          unmatchedCount: result.imported - result.matched,
-+        confirmedData: { identityHeld: result.identityHeld, resumed: result.resumed, fetched: result.fetched, rejected: result.rejected, duplicates: result.duplicates },
++        confirmedData: { identityHeld: result.identityHeld, resumed: result.resumed, resumedMatched: result.resumedMatched, resumedUnmatched: result.resumedUnmatched, fetched: result.fetched, rejected: result.rejected, duplicates: result.duplicates },
        },
      })
  
@@ -584,7 +648,7 @@
      from: Date,
 --- /dev/null
 +++ b/apps/api/src/reconciliation/bank-event-gate.ts
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,110 @@
 +/** UNAPPLIED PROPOSAL. No provider contract is registered by this code. */
 +import { AsyncLocalStorage } from 'node:async_hooks'
 +import { randomUUID } from 'node:crypto'
@@ -594,6 +658,7 @@
 +
 +type Db = Pick<Prisma.TransactionClient, '$queryRaw'>
 +export type BankOrigin = { kind: 'api' | 'file'; provider: string; consent: string; account: string }
++export type IdentitySummary = { observations: number; heldObservations: number; pendingEvents: number; uncertainEvents: number; conflictedEvents: number; identityOpen: boolean }
 +export type BankObservationBody = {
 +  amountOre: number; day: string; booked: boolean; currency: string;
 +  rawOcr: string | null; reference: string | null; description: string;
@@ -624,7 +689,7 @@
 + * It does not make queues atomic with allocation. Never holds this lock across
 + * a separate transaction or an external operation. */
 +export async function lockIdentity(db: Db, org: string, bankId: string): Promise<void> {
-+  await db.$queryRaw`SELECT bank_event_guard(${org})`
++  await db.$queryRaw`SELECT bank_event_guard(${org})::text AS guard`
 +  if (!await identityAllowed(db, org, bankId)) throw new Error('BANK_IDENTITY_REVIEW_REQUIRED')
 +}
 +export async function blockedBankIds(db: Db, org: string): Promise<string[]> {
@@ -634,7 +699,7 @@
 +  return rows.map(row => row.id)
 +}
 +export async function identitySummary(db: Db, org: string) {
-+  const rows = await db.$queryRaw<Array<{ summary: Record<string, unknown> }>>`
++  const rows = await db.$queryRaw<Array<{ summary: IdentitySummary }>>`
 +    SELECT jsonb_build_object(
 +      'observations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org}),
 +      'heldObservations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org} AND outcome='HELD'),
@@ -642,7 +707,8 @@
 +      'uncertainEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND state IN ('STARTED','UNCERTAIN')),
 +      'conflictedEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND conflict),
 +      'identityOpen',bank_identity_open(${org})) AS summary`
-+  return rows[0]?.summary
++  if (!rows[0]) throw new Error('BANK_IDENTITY_SUMMARY_MISSING')
++  return rows[0].summary
 +}
 +/** Observations are a separate authenticated staff surface, never a tenant view.
 + * Cursor ordering is stable; original observations are append-only. */
@@ -652,7 +718,7 @@
 +}
 +
 +export async function ingestIdentity(
-+  prisma: PrismaService, org: string, origin: BankOrigin | undefined, externalId: string | null,
++  prisma: PrismaService, org: string, origin: BankOrigin | Record<string, unknown> | undefined, externalId: string | null,
 +  body: BankObservationBody, handle: (bank: BankTransaction) => Promise<boolean>,
 +): Promise<IdentityImportResult> {
 +  // Registry lookup is server-side. Missing origin cannot acquire verified status.
@@ -695,7 +761,7 @@
 +}
 --- /dev/null
 +++ b/apps/api/prisma/migrations/20260909180000_bank_event_identity_proposal/migration.sql
-@@ -0,0 +1,174 @@
+@@ -0,0 +1,180 @@
 +-- PROPOSED storage, NOT installed in the application. Executed only in an
 +-- empty exp_* test schema with a synthetic BankTransaction boundary table.
 +-- Registry rows represent separately supplied synthetic administrative proof;
@@ -767,13 +833,13 @@
 + IF p_actor IS NOT NULL AND p_actor NOT IN ('HUMAN','SYSTEM','AGENT') THEN RAISE EXCEPTION 'INVALID_ACTOR'; END IF;
 + PERFORM bank_event_guard(p_org);
 + -- Keep ALL original fields in the observation. Canonical content only uses
-+ -- the explicit, frozen payment fields; prose stays available separately.
++ -- all matching-bearing payment fields, including description (F-/AVI refs).
 + canonical:=jsonb_build_object('amountOre',p_body->'amountOre','day',p_body->'day',
 +   'booked',p_body->'booked','currency',p_body->'currency',
-+   'rawOcr',p_body->'rawOcr','reference',p_body->'reference');
++   'rawOcr',p_body->'rawOcr','reference',p_body->'reference','description',p_body->'description');
 + BEGIN
 +   money:=(p_body->>'amountOre')::bigint; day:=(p_body->>'day')::date;
-+   valid:=money>0 AND jsonb_typeof(p_body->'amountOre')='number'
++   valid:=money>0 AND money<=999999999999 AND jsonb_typeof(p_body->'amountOre')='number'
 +     AND (p_body->>'amountOre')::numeric=money AND p_body->>'booked'='true'
 +     AND p_body->>'currency'='SEK' AND day IS NOT NULL;
 + EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR datetime_field_overflow THEN
@@ -800,12 +866,18 @@
 +       WHERE "organizationId"=p_org AND "scopeId"=s.id AND "externalId"=p_external;
 +     IF bridge_id IS NOT NULL THEN
 +       SELECT * INTO old FROM "BankTransaction" WHERE id=bridge_id AND "organizationId"=p_org;
-+       IF old.amount*100<>money OR old.date::date<>day OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr' OR old.reference IS DISTINCT FROM p_body->>'reference' THEN
++       -- The bridge verifies the bank-event link even when content conflicts.
++       -- Persist that link as blocked; never rewrite the historical payment.
++       eid:=gen_random_uuid()::text;bid:=bridge_id;
++       INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
++         VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
++       IF old.amount*100<>money OR old.date::date<>day
++         OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr'
++         OR old.reference IS DISTINCT FROM p_body->>'reference'
++         OR old.description IS DISTINCT FROM p_body->>'description' THEN
++         UPDATE "BankEvent" SET conflict=true WHERE id=eid;
 +         why:='LEGACY_CONTENT_CONFLICT';
 +       ELSE
-+         eid:=gen_random_uuid()::text;bid:=bridge_id;
-+         INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
-+           VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
 +         decision:='REPLAY';why:='VERIFIED_LEGACY_BRIDGE';
 +       END IF;
 +     ELSIF EXISTS(SELECT 1 FROM "BankTransaction" b WHERE b."organizationId"=p_org

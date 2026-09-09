@@ -69,13 +69,13 @@ BEGIN
  IF p_actor IS NOT NULL AND p_actor NOT IN ('HUMAN','SYSTEM','AGENT') THEN RAISE EXCEPTION 'INVALID_ACTOR'; END IF;
  PERFORM bank_event_guard(p_org);
  -- Keep ALL original fields in the observation. Canonical content only uses
- -- the explicit, frozen payment fields; prose stays available separately.
+ -- all matching-bearing payment fields, including description (F-/AVI refs).
  canonical:=jsonb_build_object('amountOre',p_body->'amountOre','day',p_body->'day',
    'booked',p_body->'booked','currency',p_body->'currency',
-   'rawOcr',p_body->'rawOcr','reference',p_body->'reference');
+   'rawOcr',p_body->'rawOcr','reference',p_body->'reference','description',p_body->'description');
  BEGIN
    money:=(p_body->>'amountOre')::bigint; day:=(p_body->>'day')::date;
-   valid:=money>0 AND jsonb_typeof(p_body->'amountOre')='number'
+   valid:=money>0 AND money<=999999999999 AND jsonb_typeof(p_body->'amountOre')='number'
      AND (p_body->>'amountOre')::numeric=money AND p_body->>'booked'='true'
      AND p_body->>'currency'='SEK' AND day IS NOT NULL;
  EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR datetime_field_overflow THEN
@@ -102,12 +102,18 @@ BEGIN
        WHERE "organizationId"=p_org AND "scopeId"=s.id AND "externalId"=p_external;
      IF bridge_id IS NOT NULL THEN
        SELECT * INTO old FROM "BankTransaction" WHERE id=bridge_id AND "organizationId"=p_org;
-       IF old.amount*100<>money OR old.date::date<>day OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr' OR old.reference IS DISTINCT FROM p_body->>'reference' THEN
+       -- The bridge verifies the bank-event link even when content conflicts.
+       -- Persist that link as blocked; never rewrite the historical payment.
+       eid:=gen_random_uuid()::text;bid:=bridge_id;
+       INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
+         VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
+       IF old.amount*100<>money OR old.date::date<>day
+         OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr'
+         OR old.reference IS DISTINCT FROM p_body->>'reference'
+         OR old.description IS DISTINCT FROM p_body->>'description' THEN
+         UPDATE "BankEvent" SET conflict=true WHERE id=eid;
          why:='LEGACY_CONTENT_CONFLICT';
        ELSE
-         eid:=gen_random_uuid()::text;bid:=bridge_id;
-         INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
-           VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
          decision:='REPLAY';why:='VERIFIED_LEGACY_BRIDGE';
        END IF;
      ELSIF EXISTS(SELECT 1 FROM "BankTransaction" b WHERE b."organizationId"=p_org

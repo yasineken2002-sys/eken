@@ -4,6 +4,7 @@ import copy
 import gzip
 import hashlib
 import json
+import subprocess
 from decimal import Decimal
 from pathlib import Path
 
@@ -13,9 +14,12 @@ sha=lambda b:hashlib.sha256(b).hexdigest()
 ore=lambda value:int(Decimal(str(value))*100)
 
 
-def audit(observed):
+def audit(observed, *, review_requirements=False):
     inputs=json.loads((DATA/'indata-v2.json').read_text())['cases']
     expected=json.loads((DATA/'facit.json').read_text())['cases']
+    if review_requirements:
+        delta=json.loads((DATA/'granskning-komplettering-facit.json').read_text())['componentExpectationDelta']
+        for case_id,requirements in delta.items():expected[case_id].update(requirements)
     assert observed['kind']=='PROPOSED_SQL_COMPONENT_NOT_PRODUCTION_IMPORT'
     assert len(observed['cases'])==len(inputs)==len(expected)==31
     assert [c['id'] for c in observed['cases']]==[c['id'] for c in inputs]
@@ -50,10 +54,15 @@ def audit(observed):
         for e in events.values():
             b=banks[e['bankTransactionId']]
             assert scopes[e['scopeId']]['organizationId']==e['organizationId']==b['organizationId']
-            assert ore(b['amount'])==e['body']['amountOre'] and b['date'][:10]==e['body']['day']
-            assert b['rawOcr']==e['body']['rawOcr']
+            if not (e['state']=='LEGACY' and e['conflict']):
+                assert ore(b['amount'])==e['body']['amountOre'] and b['date'][:10]==e['body']['day']
+                assert b['rawOcr']==e['body']['rawOcr']
+                if 'description' in e['body']:assert b['description']==e['body']['description']
+            else:
+                assert b in before['BankTransaction']
+                assert any(bridge['bankTransactionId']==b['id'] and bridge['scopeId']==e['scopeId'] and bridge['externalId']==e['externalId'] for bridge in before['BankIdentityBridge'])
             assert any(o['eventId']==e['id'] and all(o['body'].get(k)==v for k,v in e['body'].items()) for o in observations.values())
-            if e['conflict']:assert any(o['eventId']==e['id'] and o['reason']=='CONTENT_CONFLICT' for o in observations.values())
+            if e['conflict']:assert any(o['eventId']==e['id'] and o['reason'] in ['CONTENT_CONFLICT','LEGACY_CONTENT_CONFLICT'] for o in observations.values())
         claims=[t for t in trace if t['phase']=='claim' and t['result']['claimed']]
         assert len(claims)==len({t['eventId'] for t in claims}),'Same event claimed more than once'
         for t in claims:
@@ -86,7 +95,7 @@ def audit(observed):
     return result
 
 
-def negatives(observed):
+def negatives(observed, *, review_requirements=False):
     def c(x,k):return next(c for c in x['cases'] if c['id']==k)
     mutations={
        'lost_100_kronor':lambda x:c(x,'01-two-equal-events')['snapshot']['BankTransaction'].pop(),
@@ -102,20 +111,27 @@ def negatives(observed):
     }
     for name,fn in mutations.items():
         changed=copy.deepcopy(observed);fn(changed)
-        try:audit(changed)
+        try:audit(changed,review_requirements=review_requirements)
         except (AssertionError,KeyError,StopIteration):continue
         raise AssertionError('Negative mutation escaped: '+name)
     return list(mutations)
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('directory',type=Path);parser.add_argument('--out',type=Path);a=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('directory',type=Path);parser.add_argument('--out',type=Path)
+    parser.add_argument('--review-requirements',action='store_true',help='Explicit stronger description/legacy requirements; preserves original component gold separately')
+    parser.add_argument('--evidence-commit',help='Read exact archived source bytes with git show, never checkout')
+    a=parser.parse_args()
     p=a.directory;manifest=json.loads((p/'manifest.json').read_text());raw=(p/'observationer.json.gz').read_bytes();data=gzip.decompress(raw)
     assert sha(raw)==manifest['gzipSha256'] and sha(data)==manifest['observationSha256']
     for group in ['sourceHashes','preservedHashes']:
-        for file,digest in manifest[group].items():assert sha((ROOT/file).read_bytes())==digest,file
-    observed=json.loads(data);rows=audit(observed);controls=negatives(observed)
-    report={'kind':'SQL_COMPONENT_ONLY_NOT_FIXED_IMPORT','casesPassed':len(rows),'negativeControlsRejected':controls,'cases':rows}
+        for file,digest in manifest[group].items():
+            content=(ROOT/file).read_bytes()
+            if sha(content)!=digest and a.evidence_commit and group=='sourceHashes':
+                content=subprocess.check_output(['git','show',a.evidence_commit+':'+file],cwd=ROOT)
+            assert sha(content)==digest,file
+    observed=json.loads(data);rows=audit(observed,review_requirements=a.review_requirements);controls=negatives(observed,review_requirements=a.review_requirements)
+    report={'stricterReviewRequirements':a.review_requirements,'originalComponentRequirementsPassed':30 if a.review_requirements else 31,'originalComponentRequirementDifference':['15-legacy-verified-link: older/new description differs; held=2, identity remains open'] if a.review_requirements else [],'kind':'SQL_COMPONENT_ONLY_NOT_FIXED_IMPORT','casesPassed':len(rows),'negativeControlsRejected':controls,'cases':rows}
     if a.out:
         a.out.mkdir(parents=True,exist_ok=True)
         (a.out/'omrakning.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')

@@ -4,7 +4,7 @@
   "files": {
     "apps/api/src/reconciliation/reconciliation.service.ts": {
       "baseSha256": "eb3be6f0f30752c4cabdc0123221d4e33701ca53a331ef7751bb63391822f111",
-      "proposedSha256": "412540469092df13cc2f19ae1cc284a92abdebb5b30a0ae51eeca248e21dcd8f",
+      "proposedSha256": "631e07e3c6126b4e18adbfc63e6b2ab3b42246695d63d351458d576ca09e4360",
       "protected": true
     },
     "apps/api/src/reconciliation/reconciliation.controller.ts": {
@@ -14,12 +14,12 @@
     },
     "apps/api/src/reconciliation/bank-statement-import.service.ts": {
       "baseSha256": "b0c8bec81ab53262ca26617870b7b59e54b723b01711cd03f2f22a79f877861b",
-      "proposedSha256": "5ee8446da9759c40398bfda0f69c3295cda01faea404421bb02c5cc07399c8f7",
+      "proposedSha256": "74a0397607c09f478cf5caca3f7ba41eed99e29dfa5a7c2302641d93fbca0ea6",
       "protected": true
     },
     "apps/api/src/psd2/psd2-sync.service.ts": {
       "baseSha256": "359e6943354276d4ed03e3f729f512e09a1adec7ce870ceb027b45707153096e",
-      "proposedSha256": "783b3548f6bfaedcfeb68da81d273a7a2d6304d3f6dbc6baa61a0f1d3404295a",
+      "proposedSha256": "408a02404d7ce8120209ef3c1a4f28062f83188584ae1e35a7aca0d72fd70a3f",
       "protected": false
     },
     "apps/api/src/ai/shadow/shadow-sweep.service.ts": {
@@ -44,12 +44,12 @@
     },
     "apps/api/src/reconciliation/bank-event-gate.ts": {
       "baseSha256": null,
-      "proposedSha256": "2f28631758ed667e673a78415fe83e383806e3cfc33a99ba5eb7c4a7dca89c72",
+      "proposedSha256": "56f46c21da667bd2e54c68d958c677e27d7fd2a7364923f78bc1251d76030251",
       "protected": true
     },
     "apps/api/prisma/migrations/20260909180000_bank_event_identity_proposal/migration.sql": {
       "baseSha256": null,
-      "proposedSha256": "677540b5413d8deefa913235a5dcf69ba98ad30ad34fa51ff5fcb57ecd150bad",
+      "proposedSha256": "af78fcc3566a676a0cb188e287c16d56d5c8b50106384eba2cbf6b008e6e3620",
       "protected": false
     },
     "apps/api/prisma/schema.prisma": {
@@ -58,5 +58,5 @@
       "protected": false
     }
   },
-  "patchSha256": "5e3cda870f758765bb763c8f08b5af3e89a8d081f8718b528289d65aec1c1ca1"
+  "patchSha256": "3465e224b55766d2082f144349efb4da282e9feddcccebf7342719d77b1f2a9e"
 }

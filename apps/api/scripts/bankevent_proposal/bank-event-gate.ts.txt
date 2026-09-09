@@ -7,6 +7,7 @@ import { currentActor } from '../common/actor/actor.context'
 
 type Db = Pick<Prisma.TransactionClient, '$queryRaw'>
 export type BankOrigin = { kind: 'api' | 'file'; provider: string; consent: string; account: string }
+export type IdentitySummary = { observations: number; heldObservations: number; pendingEvents: number; uncertainEvents: number; conflictedEvents: number; identityOpen: boolean }
 export type BankObservationBody = {
   amountOre: number; day: string; booked: boolean; currency: string;
   rawOcr: string | null; reference: string | null; description: string;
@@ -37,7 +38,7 @@ export async function identityAllowed(db: Db, org: string, bankId: string): Prom
  * It does not make queues atomic with allocation. Never holds this lock across
  * a separate transaction or an external operation. */
 export async function lockIdentity(db: Db, org: string, bankId: string): Promise<void> {
-  await db.$queryRaw`SELECT bank_event_guard(${org})`
+  await db.$queryRaw`SELECT bank_event_guard(${org})::text AS guard`
   if (!await identityAllowed(db, org, bankId)) throw new Error('BANK_IDENTITY_REVIEW_REQUIRED')
 }
 export async function blockedBankIds(db: Db, org: string): Promise<string[]> {
@@ -47,7 +48,7 @@ export async function blockedBankIds(db: Db, org: string): Promise<string[]> {
   return rows.map(row => row.id)
 }
 export async function identitySummary(db: Db, org: string) {
-  const rows = await db.$queryRaw<Array<{ summary: Record<string, unknown> }>>`
+  const rows = await db.$queryRaw<Array<{ summary: IdentitySummary }>>`
     SELECT jsonb_build_object(
       'observations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org}),
       'heldObservations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org} AND outcome='HELD'),
@@ -55,7 +56,8 @@ export async function identitySummary(db: Db, org: string) {
       'uncertainEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND state IN ('STARTED','UNCERTAIN')),
       'conflictedEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND conflict),
       'identityOpen',bank_identity_open(${org})) AS summary`
-  return rows[0]?.summary
+  if (!rows[0]) throw new Error('BANK_IDENTITY_SUMMARY_MISSING')
+  return rows[0].summary
 }
 /** Observations are a separate authenticated staff surface, never a tenant view.
  * Cursor ordering is stable; original observations are append-only. */
@@ -65,7 +67,7 @@ export async function identityObservations(db: Db, org: string, after: string = 
 }
 
 export async function ingestIdentity(
-  prisma: PrismaService, org: string, origin: BankOrigin | undefined, externalId: string | null,
+  prisma: PrismaService, org: string, origin: BankOrigin | Record<string, unknown> | undefined, externalId: string | null,
   body: BankObservationBody, handle: (bank: BankTransaction) => Promise<boolean>,
 ): Promise<IdentityImportResult> {
   // Registry lookup is server-side. Missing origin cannot acquire verified status.

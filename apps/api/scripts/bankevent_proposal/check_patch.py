@@ -20,12 +20,33 @@ for path,source in module['changes'].items():
     assert result.returncode==0,(path,result.stderr)
     results.append(path)
 old=module['old']['apps/api/src/reconciliation/reconciliation.service.ts'];new=module['changes']['apps/api/src/reconciliation/reconciliation.service.ts']
-# Existing OCR matching body and both allocation kernels unchanged except the
+# Existing OCR matching body and all three allocation kernels unchanged except the
 # explicit entry/transaction gates. No new target-selection or money algorithm.
 a=old.index('    const tolerance =');b=old.index('  async getTransactions(',a)
 na=new.index('    const tolerance =');nb=new.index('  async getTransactions(',na)
 assert old[a:b]==new[na:nb].replace('      await lockIdentity(tx, organizationId, transactionId)\n','')
-report={'kind':'UNAPPLIED_PATCH_SYNTAX_NOT_TYPES_OR_IMPORT_EXECUTION','base':BASE,
+# The waterfall was missing in review v1. Require every money-allocation entry,
+# plus prove this source check rejects a lost gate in EACH of the three paths.
+def gates(text):
+    assert text.count('await lockIdentity(tx, organizationId, transactionId)')==3
+    for start,end in [
+      ('  private async applyMatchToInvoice(', '  private async applyMatchToRentNotice('),
+      ('  private async applyMatchToRentNotice(', '  async getTransactions('),
+      ('  private async applyWaterfallToRentNotices(', '  async manualMatch('),
+    ]:
+        a=text.index(start);b=text.index(end,a);part=text[a:b]
+        assert part.count('await lockIdentity(tx, organizationId, transactionId)')==1
+        assert part.index('await lockIdentity(')<part.index('SELECT id FROM "BankTransaction"')
+        old_part=old[old.index(start):old.index(end,old.index(start))]
+        assert old_part==part.replace('      await lockIdentity(tx, organizationId, transactionId)\n','')
+gates(new)
+for start in ['applyMatchToInvoice','applyMatchToRentNotice','applyWaterfallToRentNotices']:
+    a=new.index('  private async '+start+'(');b=new.index('      await lockIdentity(',a)
+    mutated=new[:b]+new[b:].replace('      await lockIdentity(tx, organizationId, transactionId)\n','',1)
+    try:gates(mutated)
+    except AssertionError:pass
+    else:raise AssertionError('Missing gate not caught: '+start)
+report={'allocationGateSourceNegativeControls':3,'kind':'UNAPPLIED_PATCH_SYNTAX_NOT_TYPES_OR_IMPORT_EXECUTION','base':BASE,
  'targetFiles':len(module['changes']),'typeSyntaxParsed':results,'gitApplyCheck':True,
  'productionTargetsUnchanged':True,'originalMatchingAndAllocationBodiesPreservedApartFromIdentityGate':True,
  'patchSha256':hashlib.sha256((OUT/'kandidat.patch').read_bytes()).hexdigest()}
