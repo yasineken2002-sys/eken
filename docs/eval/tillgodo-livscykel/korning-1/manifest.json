@@ -1,0 +1,16 @@
+{
+  "sourceHashes": {
+    "apps/api/scripts/audit_tillgodo_lifecycle.py": "de2b81b001e2c7035208c4df9246c135b8737ca39f724a85587299ef72a9419c",
+    "apps/api/scripts/eval_tillgodo_lifecycle.py": "436f0c480342c514ad7a194c079660d75ea55286a9b80b1553b61f735101edab",
+    "apps/api/scripts/overskottsprov_policy.py": "383990b70fba5076f0b8d63a818ca88572ca8ec63b08fd0aa39e50de6f8b10d4",
+    "apps/api/scripts/referensprov_policy.py": "74d7c3fe8d5f927ac90db27b3b91cf4ef1474d4ec8ff7a861c3d0d5bba666d08",
+    "apps/api/scripts/test_tillgodo_lifecycle.py": "569185e0a18fedc228552204daec531ddf4d0a46724f9bf9c73601a085c165e1",
+    "apps/api/scripts/tillgodo_experiment.sql": "2fe985bd41aa6603983438b49eb834e6f651240f0b0c467de89ab62be5408648",
+    "apps/api/scripts/tillgodo_lifecycle.py": "d2a9185e2d608e90d4cc7f9b2251754eaa16c9c8cf6c777e57c67c5d07e1c77d",
+    "apps/api/scripts/tillgodo_pg.py": "de88b82390b82c9373f4886fe01ec4448c3379778a4c119d01c6cd4c387565ed",
+    "docs/eval/kundflode-2000/grund/kund-och-facit.json.gz": "3875998329bc3d07e9dec3fcbdf8a25955100e1b68ff3363fdac4d506eacb5ca",
+    "docs/eval/overskottsprov/korning-1/public-input.json.gz": "2f72961cac30b17900a769d5721ded529072c1ac4582e45dce81c64a0f0f814f",
+    "docs/eval/tillgodo-livscykel/policy-v1.json": "1a90695a5bfb51f0990142a266269865053b625852acaf8fb11da6c47f33b154"
+  },
+  "uncompressedSha256": "e2419979b86bc4582285034a28db1435c109cb3ccbeef9fde879765f9bbf6fd4"
+}

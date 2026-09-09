@@ -1,0 +1,38 @@
+{
+  "baseCommit": "8d8063a6b42a2a410847a73244e017cf79c97d44",
+  "baseBranch": "codex/agent2-overskottsprov",
+  "policyCommit": "9c03df2f2424b298773807107a4fa360048efd36",
+  "implementationCommit": "3a568de61017f9e6ed2d409331f25b943a4373c1",
+  "branch": "codex/agent2-tillgodo-livscykel",
+  "regressionsPassed": 57,
+  "newPythonTestsPassed": 11,
+  "actualPostgresProofsPassed": 19,
+  "actualPostgresProofsRepeatedPassed": 19,
+  "independentNegativeControlsRejected": 8,
+  "fullReplays": 4,
+  "eventsPerReplay": 2000,
+  "originalFixturesAnd57TestsUnchanged": true,
+  "resources": {
+    "workspaceAvailable": "2.2G",
+    "tmpAvailable": "37G",
+    "jestTscProcessesBeforeRun": 0,
+    "installedPackages": 0,
+    "imagePulls": 0,
+    "ownDatabaseContainersAfterRun": 0
+  },
+  "sourceHashManifest": "korning-1/manifest.json",
+  "resultSha256Uncompressed": "e2419979b86bc4582285034a28db1435c109cb3ccbeef9fde879765f9bbf6fd4",
+  "filesSha256": {
+    "docs/agent2-tillgodo-livscykel.md": "811246548fb82e59237362f60b9188bf1e4a440043d175f4f4aa067d6c114b9b",
+    "docs/eval/tillgodo-livscykel/bas-870-ci.json": "5b20b82932a704699325920108dfd51a601b7796e196d255867e42bf8a361090",
+    "docs/eval/tillgodo-livscykel/db-pilot-startfel.txt": "10bda10577df398ac58d2639ad057c36541548d17eec06673c6291be89e15706",
+    "docs/eval/tillgodo-livscykel/db-pilot.json": "f2fe75460182a333da8e8d2bddcd727b142b1e7ecf25a3836839a6b514dc92aa",
+    "docs/eval/tillgodo-livscykel/diff-stat.txt": "4888781c40d02e9aa5215ca2c753596751a57636f6ddfc9aba3f3667fa8918d0",
+    "docs/eval/tillgodo-livscykel/korning-1/manifest.json": "f33a624c233903a88b27cd834c3a13e8bf6be8c3a1e3dc08753558e6383c2dd7",
+    "docs/eval/tillgodo-livscykel/korning-1/resultat.json.gz": "322ef2676961599edff2554a663f426c03a2e7cb85fd4584bcaaac8758fd78ef",
+    "docs/eval/tillgodo-livscykel/livscykel-11.txt": "ff7e3f4ba4cfe2c95df3e298d033b68f310d8cb53112b004f0dbed0c3260502e",
+    "docs/eval/tillgodo-livscykel/oberoende-omrakning.json": "37d55a8a1970592611cb108231073073775da50f7b6bb650385af49c6ff5d588",
+    "docs/eval/tillgodo-livscykel/policy-v1.json": "1a90695a5bfb51f0990142a266269865053b625852acaf8fb11da6c47f33b154",
+    "docs/eval/tillgodo-livscykel/regression-57.txt": "50a3b427dbb110231237c75b5e98537c3fe9519644f3c34b4e8006a5faed8996"
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "version": "tillgodo-livscykel-v1",
+  "kind": "PROPOSED_EXPERIMENT_POLICY_NOT_PRODUCTION_APPROVAL",
+  "baseCommit": "8d8063a6b42a2a410847a73244e017cf79c97d44",
+  "assumptions": [
+    "Synthetic lease is active and has explicit experiment-only standing consent for credit against the immediately next calendar-month notice on that SAME organization, tenant and lease.",
+    "Consent covers only credit shown at original issuance of the next notice; no silent adjustment of issued notices, no transfer to other scopes, no refund execution.",
+    "Notice issue dates use the unchanged #869/#870 public projection: first day of rental month. These are experiment assumptions, not verified delivery dates.",
+    "Full economic completion is conditional on these assumptions and on verified experiment test vouchers; never means production accounting integration.",
+    "Fees, interest, tax changes, cancellation and legal validity of consent are outside scope. Refund request, inactive lease, ambiguity or no eligible next notice leaves credit pending.",
+    "Reversal is explicit and traced, never an automatic retry that discards history. Reversing applied credit flags the already issued target notice for human correction; its original displayed amount is retained."
+  ],
+  "A": {
+    "input": "All 2000 original bank events unchanged; same public projection as #870.",
+    "expectedCreditCreatedOre": [
+      2500,
+      5000,
+      7500,
+      10000,
+      12500,
+      15000,
+      17500,
+      20000,
+      22500,
+      25000
+    ],
+    "expectedCreditUsedOre": 112500,
+    "expectedCreditOutstandingOre": 25000,
+    "expectedCreditLots": 10,
+    "expectedOutstandingLots": 1,
+    "expectedChangedBankEvents": 0
+  },
+  "B": {
+    "input": "COUNTERFACTUAL: retain first and last overpayment; eight intermediate events on the enrolled lease pay the displayed notice amount exactly.",
+    "changedBankEvents": {
+      "betalning-57-1": 975000,
+      "betalning-57-2": 977500,
+      "betalning-57-3": 977500,
+      "betalning-57-4": 977500,
+      "betalning-57-5": 977500,
+      "betalning-57-6": 977500,
+      "betalning-57-7": 977500,
+      "betalning-57-8": 977500
+    },
+    "expectedCreditCreatedOre": [
+      2500,
+      2500
+    ],
+    "expectedCreditUsedOre": 2500,
+    "expectedCreditOutstandingOre": 2500,
+    "expectedCreditLots": 2,
+    "expectedOutstandingLots": 1,
+    "expectedChangedBankEvents": 8
+  },
+  "expectedCommon": {
+    "bankEvents": 2000,
+    "correctAllocationPayments": 1980,
+    "wrongDecisions": 0,
+    "fullyHandledPaymentsUnderAssumptions": 1979,
+    "humanReviewPayments": 21,
+    "conflicts": 10,
+    "unidentified": 10,
+    "outstandingCreditCustomerCases": 1,
+    "unresolvedPaymentCases": 20,
+    "reviewCases": 21,
+    "max20WithinOriginalHorizon": false
+  },
+  "completionRule": "Payment has correct bank allocation and test voucher, and every credit lot created by it is fully applied through a verified trace to an eligible next notice, with no reversal, unresolved identity, refund request or pending correction. Count pending credit by source payment, not merely by customer case. Ordinary partial payments can be fully accounted for while invoice remains partly unpaid.",
+  "nextNoticeRule": "Exactly one notice for same scope and immediately next month; source payment date strictly before issue date; issue must not already have occurred. At issue lock scope/notice/credit, consume min(remaining credit, gross notice debt), record use+test voucher+displayed deduction atomically.",
+  "extraMonth": {
+    "separateFromOriginal2000": true,
+    "period": "2026-08",
+    "A": {
+      "creditAppliedOre": 25000,
+      "customerBankPaymentOre": 952500
+    },
+    "B": {
+      "creditAppliedOre": 2500,
+      "customerBankPaymentOre": 975000
+    },
+    "expectedOutstandingOre": 0,
+    "expectedOriginalSubsetFullyHandled": 1980,
+    "expectedOriginalSubsetReview": 20,
+    "expectedTotalEventsIncludingExtra": 2001,
+    "expectedTotalFullyHandledIncludingExtra": 1981,
+    "requiresNewNoticeAndAssumedConsent": true
+  },
+  "negativeControls": [
+    "Already issued target unchanged",
+    "Missing next notice and terminated lease remain pending",
+    "Refund request prevents use and creates no payout",
+    "No organization/tenant/lease crossing; multiple leases never aggregate",
+    "Conflicting OCR and notice including paid conflicting identity",
+    "Rollback after debt update, credit update, use update, and voucher creation",
+    "Same event retry and full reimport: no duplicate allocation, credit, use or voucher",
+    "Two concurrent SQL sessions compete for same credit/notice; observe real blocking and only one effect",
+    "Explicit reverse use then reverse originating payment, repeated reversal and invalid order",
+    "Independent audit rejects missing ore, wrong source/scope, duplicate credit use, altered bank input labels, hidden pending credit, unbalanced vouchers and false completion"
+  ],
+  "databaseBoundary": "Dedicated network-none local Docker PostgreSQL, no published ports, tmpfs capped data, only own schemas/tables. Verify container identity, current database, loopback/Unix socket, data directory and empty non-system schema before writes. TEST_* roles only; no production schema/account imports.",
+  "originalEvidence": "Original fixtures, original gold and 57 tests unchanged. New contract overrides only experiment scoring; no gold/scenario data enters decisions."
+}
