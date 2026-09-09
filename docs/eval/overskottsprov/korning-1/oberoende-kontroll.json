@@ -1,0 +1,98 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "reverseWithinDay": false,
+      "metrics": {
+        "correctAllocationPayments": 1980,
+        "wrongAllocationPayments": 0,
+        "allocationReviewPayments": 20,
+        "creditReviewPayments": 10,
+        "humanReviewPayments": 30,
+        "identityConflicts": 10,
+        "unidentifiedPayments": 10,
+        "creditEntries": 10,
+        "creditTotalOre": 25000,
+        "creditOwners": 1,
+        "knownCreditCustomerCases": 1,
+        "unresolvedPaymentCases": 20,
+        "reviewWorkItems": 21,
+        "max20HumanReviewPayments": false
+      },
+      "allocationRows": 2055,
+      "allocatedOre": 1522999000,
+      "settledNotices": 1980,
+      "remainingDebtOre": 19550750,
+      "unallocatedOre": 19550750
+    },
+    {
+      "reverseWithinDay": true,
+      "metrics": {
+        "correctAllocationPayments": 1980,
+        "wrongAllocationPayments": 0,
+        "allocationReviewPayments": 20,
+        "creditReviewPayments": 10,
+        "humanReviewPayments": 30,
+        "identityConflicts": 10,
+        "unidentifiedPayments": 10,
+        "creditEntries": 10,
+        "creditTotalOre": 25000,
+        "creditOwners": 1,
+        "knownCreditCustomerCases": 1,
+        "unresolvedPaymentCases": 20,
+        "reviewWorkItems": 21,
+        "max20HumanReviewPayments": false
+      },
+      "allocationRows": 2055,
+      "allocatedOre": 1522999000,
+      "settledNotices": 1980,
+      "remainingDebtOre": 19550750,
+      "unallocatedOre": 19550750
+    }
+  ],
+  "decisionAndFinalStateOrderParity": true,
+  "rowsChecked": 4000,
+  "uniquePayments": 2000,
+  "databaseAtomicityVerified": false,
+  "realImportDedupVerified": false,
+  "negativeControls": [
+    {
+      "mutation": "missing_ore",
+      "rejected": true
+    },
+    {
+      "mutation": "wrong_owner",
+      "rejected": true
+    },
+    {
+      "mutation": "wrong_notice",
+      "rejected": true
+    },
+    {
+      "mutation": "duplicate_credit",
+      "rejected": true
+    },
+    {
+      "mutation": "queue_as_success",
+      "rejected": true
+    },
+    {
+      "mutation": "hidden_credit_review",
+      "rejected": true
+    },
+    {
+      "mutation": "wrong_summary",
+      "rejected": true
+    },
+    {
+      "mutation": "missing_event",
+      "rejected": true
+    },
+    {
+      "mutation": "spent_old_credit",
+      "rejected": true
+    }
+  ],
+  "reportUncompressedSha256": "caeda8ea2039f492ee680e7f8538c6cf9934d28bdafffb37f82dad90dcfb6d0d",
+  "auditorSha256": "2a429c7cf099bd9006029971b2cf794bf4fb14904d9fee19b604862f316abed0"
+}
