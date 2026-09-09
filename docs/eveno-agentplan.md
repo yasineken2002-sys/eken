@@ -128,6 +128,24 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ## Del 3 — Byggordningen
 
+### Fortsättning 2026-09-09 — Agent 2, kontroll av identitet och belopp
+
+Ett fristående experiment räknar beloppsklassning med heltalsören och markerar
+motstridiga/okända referenser, tvetydiga avier och OCR för manuell granskning.
+Den ursprungliga AI-bedömningen och alla kandidater bevaras. En separat
+provkandidat kräver särskiljande identifierare, enkelt textinnehåll, positivt
+belopp inom skuld och känt komplett underlag. Det är inget verkställighetstillstånd.
+
+Återspel på de kända felen: **40/52 → 52/52**, äldre material **32/32 → 32/32**,
+utan tappade tidigare korrekta bedömningar. Materialet användes i utvecklingen.
+32 nya förhandsmärkta fall är förberedda för två modellrepetitioner men ännu
+inte körda; användargodkännande för ytterligare API-anrop inväntas.
+
+**99,1 procent i drift är inte belagt.** Mät både precision och manuell andel
+på oberoende representativa bankrader före skarp automatik. Matchningsprodukten
+och reconciliation är oförändrade, inga flaggor är aktiverade. Läs
+`docs/agent2-betalningsgrind.md` för metod, återspel och statistikens antaganden.
+
 ### Fortsättning 2026-09-09 — Agent 2, bredare syntetiskt prov
 
 28 nya syntetiska organisationsvyer, varav två OCR-kontroller, kördes i tre
