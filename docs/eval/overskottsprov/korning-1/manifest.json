@@ -1,0 +1,18 @@
+{
+  "publicInputUncompressedSha256": "627d7a67af7bfbdbf52e6e9465f6f73502d80c70863936aec28471a536d2120d",
+  "reportUncompressedBytes": 20206484,
+  "reportUncompressedSha256": "caeda8ea2039f492ee680e7f8538c6cf9934d28bdafffb37f82dad90dcfb6d0d",
+  "sourceHashes": {
+    "apps/api/scripts/audit_overskottsprov.py": "2a429c7cf099bd9006029971b2cf794bf4fb14904d9fee19b604862f316abed0",
+    "apps/api/scripts/eval_overskottsprov.py": "b1c4d56309b3c9c6783f70c13ebde14b4023cd65cb70ad64d173e64dffb66d68",
+    "apps/api/scripts/eval_referensprov.py": "375947f629a684e9ba13765c0145bfe7fbf93561638c6001baf9f72b42f3a1ee",
+    "apps/api/scripts/overskottsprov_policy.py": "383990b70fba5076f0b8d63a818ca88572ca8ec63b08fd0aa39e50de6f8b10d4",
+    "apps/api/scripts/referensprov_policy.py": "74d7c3fe8d5f927ac90db27b3b91cf4ef1474d4ec8ff7a861c3d0d5bba666d08",
+    "apps/api/scripts/test_overskottsprov.py": "a2a071ecdc9ad4487c03bbe56daee90e1061474201afdb3cbd7ece8a07b9fc36",
+    "apps/api/scripts/test_referensprov.py": "e83e1cf49c2bb17f20f6c7111f9930a6f72f9902744694e972031af6ccc83f5b",
+    "docs/eval/kundflode-2000/grund/AGENT_PA.json.gz": "08316f00ea7e2b527a4850427ab30a925359a8a0125ff04ca34c9ae0059fa002",
+    "docs/eval/kundflode-2000/grund/kund-och-facit.json.gz": "3875998329bc3d07e9dec3fcbdf8a25955100e1b68ff3363fdac4d506eacb5ca",
+    "docs/eval/kundflode-2000/manifest.json": "b77b3ba26faa0f2f7de4dd20cdc9dc8fad7b97855a1aa7443a4198dd8c5e3e89",
+    "docs/eval/overskottsprov/policy-v1.json": "4c254d7a1e53adc5c5812c0938845a0e6efab75718d7f2dca8592710c76a3282"
+  }
+}

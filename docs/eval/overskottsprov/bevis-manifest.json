@@ -1,0 +1,25 @@
+{
+  "python": "3.12.1",
+  "inventoryCommit": "aefa21b07c6579c6c67d9b8eda50d78724c106e4",
+  "predeclaredPolicyCommit": "e30b85188dba4d5536515a7c7f3e98a182650018",
+  "experimentCodeCommit": "a6dcb141f8a6190d9c71acddfa1a65beec32212f",
+  "baseCommit": "ca29554ae4033b9546d3fb42687a7ad2a8414fdb",
+  "tests": {
+    "original": 28,
+    "new": 29,
+    "passed": 57
+  },
+  "auditorNegativeControls": {
+    "expectedRejected": 9,
+    "observedRejected": 9
+  },
+  "artifactSha256": {
+    "docs/agent2-overskottsprov.md": "9f6059321cf37dcf4de006d0990795586ad6fcc596cb43cf428dca3b60876e10",
+    "docs/eval/overskottsprov/kontrollprov.txt": "3c081fb0f2f5988a2d52cc83ccdf7c18364d88f8da262fadf9ac3f7af1de4e25",
+    "docs/eval/overskottsprov/policy-v1.json": "4c254d7a1e53adc5c5812c0938845a0e6efab75718d7f2dca8592710c76a3282",
+    "docs/eval/overskottsprov/korning-1/manifest.json": "d2e6a75d99a635c2acd0876f438dd50ab3155693661fd2746316a9ffed3fd2c8",
+    "docs/eval/overskottsprov/korning-1/oberoende-kontroll.json": "ba5e2053a127a6a9bf47665704babf937c73040a59a96fb81ca717694e4c7df0",
+    "docs/eval/overskottsprov/korning-1/public-input.json.gz": "2f72961cac30b17900a769d5721ded529072c1ac4582e45dce81c64a0f0f814f",
+    "docs/eval/overskottsprov/korning-1/resultat.json.gz": "d4162b4474b9173f916ff247e3e8a73e11563ae0ff4530e15b41103b9b9b4841"
+  }
+}
