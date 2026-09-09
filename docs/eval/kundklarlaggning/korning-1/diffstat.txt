@@ -1,0 +1,19 @@
+ apps/api/scripts/audit_kundklarlaggning.py         | 167 +++++++++++
+ apps/api/scripts/demo_kundklarlaggning.py          | 186 ++++++++++++
+ apps/api/scripts/eval_kundklarlaggning.py          |  50 ++++
+ apps/api/scripts/kundklarlaggning.py               | 284 ++++++++++++++++++
+ apps/api/scripts/kundklarlaggning.sql              | 188 ++++++++++++
+ apps/api/scripts/kundklarlaggning_demo/app.js      |  44 +++
+ apps/api/scripts/kundklarlaggning_demo/index.html  |   9 +
+ apps/api/scripts/kundklarlaggning_demo/style.css   |   1 +
+ apps/api/scripts/test_kundklarlaggning.py          | 333 +++++++++++++++++++++
+ apps/api/scripts/test_kundklarlaggning_ui.cjs      |  43 +++
+ docs/agent2-kundklarlaggning-granskning.md         |  80 +++++
+ docs/agent2-kundklarlaggning.md                    | 198 ++++++++++++
+ docs/eval/kundklarlaggning/korning-1/diffstat.txt  |  19 ++
+ .../eval/kundklarlaggning/korning-1/kontroller.txt | 107 +++++++
+ docs/eval/kundklarlaggning/korning-1/manifest.json |  23 ++
+ .../kundklarlaggning/korning-1/resultat.json.gz    | Bin 0 -> 9748 bytes
+ docs/eval/kundklarlaggning/policy-v1.json          |  56 ++++
+ .../kundklarlaggning/review-expectations-v1.json   |  14 +
+ 18 files changed, 1802 insertions(+)

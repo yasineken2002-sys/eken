@@ -18,7 +18,7 @@ def main():
         # Random invitation hashes are never needed for recount or publication.
         for invitation in snapshot['cf_invitation']:
             invitation['token_hash']='OMITTED_RANDOM_SECRET_HASH'
-        paths=[POLICY.relative_to(ROOT).as_posix()]
+        paths=[POLICY.relative_to(ROOT).as_posix(),'docs/eval/kundklarlaggning/review-expectations-v1.json']
         paths += [p.relative_to(ROOT).as_posix() for p in (ROOT/'apps/api/scripts').glob('*kundklarlaggning*') if p.is_file()]
         paths += [p.relative_to(ROOT).as_posix() for p in (ROOT/'apps/api/scripts/kundklarlaggning_demo').iterdir()]
         paths += ['apps/api/scripts/tillgodo_pg.py','apps/api/scripts/tillgodo_experiment.sql',

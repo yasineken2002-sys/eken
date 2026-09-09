@@ -31,6 +31,8 @@ Ingen säker mottagare innebär inget utkast, ingen kundlänk och ingen visning
 för gissade kunder. Banktext som kan nämna andra kunder visas inte i kundvyn.
 Kvarvarande motstridiga identifierare går alltid till personal, även med
 intyg och bekräftelse. OCR-checksiffran bevisar inte betalningsavsikten.
+En icke tom kundkommentar kräver också personalgranskning: den är inget
+behörighetsbevis, men kan innehålla en invändning som inte får ignoreras.
 
 Kunden anger uttryckliga heltalsören på egna tillåtna avier. Delbetalning och
 flera avier inom samma avtal stöds. Kunden kan uttryckligen välja ett annat
@@ -49,7 +51,8 @@ avifält. Ingen ny helåterspelning av 2 000 har gjorts.
 **B:** 13 helt nya transaktions-ID:n `B-*`, med små testbelopp och separata
 syntetiska avier. De innehåller nya antaganden om betalningsbehörighet,
 mottagare, simulerad inloggning och svar. Det är aldrig originaltestet med
-förbättrad matchning. Förväntningarna är:
+förbättrad matchning. De frysta förväntningarna verifierades i verklig
+isolerad PostgreSQL och separat omräkning:
 
 | Ömsesidigt uteslutande betalningskategori | A: original 20 | B: nya 13 |
 | --- | ---: | ---: |
@@ -65,7 +68,7 @@ förfalskat underlag, saknad behörighet över pengarna, referenskonflikt,
 motstridigt svar, ändrad skuld, väntan och osänt utkast. Varje kundsvar är
 mänsklig medverkan; väntan och personalplacering är aldrig lyckat avslut.
 
-Förhandsbestämd penningkontroll för B: fyra testbetalningar, fem
+Verifierad penningkontroll för B: fyra testbetalningar, fem
 allokeringsrader, 405 kr bank = 380 kr allokerat + 25 kr utestående tillgodo.
 Tillgodot gäller `B-credit`, ett av de åtta personalärendena; det räknas inte
 en gång till. `B-debt-changed` får en särskilt märkt felinjektion på minus ett
@@ -93,8 +96,11 @@ Servern binder enbart `127.0.0.1:8873`. Använd en **privat lokal tunnel** från
 Codespaces till datorns `127.0.0.1:8873`, med oförändrad Host/Origin. Öppna
 startlänken som skrivs i terminalen. Gör aldrig porten publik. En Codespaces
 proxy med annat värdnamn avvisas avsiktligt; ändra inte spärren för att kringgå
-det. VS Code Desktop med privat portvidarebefordran till localhost passar
-detta upplägg; tunnel/visuell webbläsarkörning verifieras separat från HTTP.
+det. Använd en lokal tunnel som bevarar localhost-adressen. Ingen installerad
+webbläsare fanns i denna arbetsyta; visuell rendering och faktisk tunnel från
+användarens dator är därför **inte verifierade**. Loopback-HTTP, session,
+projektion, svar och statiska resurser är körda, och JavaScript-syntaxen är
+kontrollerad. Ingen demoprocess lämnas körande efter proven.
 
 Startnyckeln är demonstratörens privata kontroll för att växla mellan
 simulerade personer, **ingen riktig kundinloggning**. Börja som `staff`, fånga
@@ -139,16 +145,32 @@ PYTHONDONTWRITEBYTECODE=1 python3 apps/api/scripts/test_kundklarlaggning.py
 PYTHONDONTWRITEBYTECODE=1 python3 apps/api/scripts/eval_kundklarlaggning.py --out /tmp/kundklarlaggning-egen-korning
 PYTHONDONTWRITEBYTECODE=1 python3 apps/api/scripts/audit_kundklarlaggning.py /tmp/kundklarlaggning-egen-korning/resultat.json.gz
 node --check apps/api/scripts/kundklarlaggning_demo/app.js
+node apps/api/scripts/test_kundklarlaggning_ui.cjs
 ```
 
 Omräkningen importerar inte server, SQL-adapter eller beslutsmodell. Den
 kontrollerar originalrader, statuskedjor, kundmedverkan, intygens bindning,
 ägarskap, varje allokering/tillgodo och exakt balanserade testverifikationer.
-Åtta separata mutationer ska avvisas, bland annat falskt avslut, tappat öre,
+Fjorton separata mutationer ska avvisas, bland annat falskt avslut, tappat öre,
 fel avtal, dold kredit, ändrat original, saknad behörighet och saknad audit.
 Körskriptet jämför samtliga sparade original-/facitfiler byte för byte mot
-#872 och sparar deras hashvärden. Reproducerbara resultat och slutligt
-kontrollutfall läggs till efter avslutad verifiering.
+#872 och sparar deras hashvärden.
+
+Körning 1: **57/57 oförändrade originalprov + 11/11 oförändrade
+livscykelprov + 25/25 nya PostgreSQL-/HTTP-prov passerade**. Node-syntaxkontroll,
+ett separat prov av faktiska app.js med simulerad DOM, omräkning och fjorton
+negativa mutationer passerade. 56 balanserade
+testverifikationer kontrollerades: 52 utfärdanden i den nya B-testuppsättningen
+och fyra betalningsverifikationer. Noll felaktiga beslut mot det frysta
+experimentkontraktet observerades. Ingen extrapolering till verkliga kunder.
+
+Underlag: [kontrollutfall](eval/kundklarlaggning/korning-1/kontroller.txt),
+[manifest och källhashar](eval/kundklarlaggning/korning-1/manifest.json),
+[kompakt databassnapshot](eval/kundklarlaggning/korning-1/resultat.json.gz).
+Samtliga **51 tidigare data-/facit-/rapportfiler** i de fyra historiska
+eval-katalogerna var byteidentiska med #872. Underlaget är cirka 99 kB före
+komprimering; slumpmässiga
+länktoken och deras hashvärden publiceras inte.
 
 ## Före en produktionsändring
 
@@ -165,7 +187,12 @@ prov. Personalen kan inte avsluta ärenden genom ett enkelt överskrivnings-
 kommando i denna demo. Ingen juridisk giltighet eller professionell
 certifiering följer av att en AI-granskare läser prototypen.
 
-Separata läsande specialistgranskningar görs mot samma frysta commit, högst
+Separata läsande specialistgranskningar gjordes mot samma frysta commit, högst
 två samtidigt. Rolldefinitionerna används som bakgrund; deras påstådda
 meriter, Claude-specifika verktyg och motstridiga dokumentuppgifter är inte
-auktoritet. Fynd och bedömningar sparas separat för Claude.
+auktoritet. **Fyra separata granskningar genomfördes**: säkerhet, pengarnas
+spårbarhet, kod/testmått och kundbekräftelsens innebörd. Se
+[granskningar och tillämpade fynd](agent2-kundklarlaggning-granskning.md).
+Intygsbyte, auditens behörighetskedja/historiska kredit, fritextinvändning,
+timeoutåterhämtning och avböjande är rättade och kontrollerade. Kundens eget
+registrerade tillgodo visas även efter att länken förbrukats.

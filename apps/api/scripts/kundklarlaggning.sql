@@ -19,7 +19,7 @@ CREATE FUNCTION cf_bump() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
  END IF; RETURN NEW; END $$;
 CREATE TRIGGER cf_debt_revision AFTER UPDATE ON notice FOR EACH ROW EXECUTE FUNCTION cf_bump();
 CREATE TABLE cf_invitation(org text,event text,person text NOT NULL,token_hash text NOT NULL,
-  expires timestamptz NOT NULL,debts jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,
+  expires timestamptz NOT NULL,debts jsonb NOT NULL,binding jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,
   request_key text,payload jsonb,result jsonb,PRIMARY KEY(org,event),UNIQUE(token_hash),
   FOREIGN KEY(org,event) REFERENCES cf_case,FOREIGN KEY(org,person) REFERENCES cf_person);
 CREATE TABLE cf_outbox(org text,event text,person text NOT NULL,body jsonb NOT NULL,
@@ -78,8 +78,8 @@ BEGIN
  IF debts='{}'::jsonb THEN
    PERFORM cf_transition(c,who,moment,'STAFF_NO_NOTICE','NO_ELIGIBLE_OWN_NOTICE','{}');RETURN 'STAFF_NO_NOTICE';
  END IF;
- INSERT INTO cf_invitation(org,event,person,token_hash,expires,debts)
- VALUES(o,k,e.person,token,least(moment+interval '30 minutes',e.expires),debts);
+ INSERT INTO cf_invitation(org,event,person,token_hash,expires,debts,binding)
+ VALUES(o,k,e.person,token,least(moment+interval '30 minutes',e.expires),debts,to_jsonb(e));
  UPDATE cf_case SET recipient=e.person WHERE org=o AND id=k;
  PERFORM cf_transition(c,who,moment,'DRAFT','INDEPENDENT_TEST_BINDING',to_jsonb(e));
  RETURN 'DRAFT';
@@ -92,7 +92,9 @@ BEGIN
  SELECT * INTO STRICT c FROM cf_case WHERE org=o AND id=k FOR UPDATE;
  IF c.status='WAITING' THEN RETURN 'WAITING'; END IF;
  SELECT * INTO STRICT i FROM cf_invitation WHERE org=o AND event=k;
- IF c.status<>'DRAFT' OR NOT cf_valid(c,moment) OR i.expires<=moment THEN RAISE EXCEPTION 'CF_DENIED'; END IF;
+ IF c.status<>'DRAFT' OR NOT cf_valid(c,moment) OR i.expires<=moment
+ OR i.binding IS DISTINCT FROM (SELECT to_jsonb(e) FROM cf_attestation e WHERE e.org=o AND e.id=c.attestation)
+ THEN RAISE EXCEPTION 'CF_DENIED'; END IF;
  INSERT INTO cf_outbox VALUES(o,k,i.person,jsonb_build_object('subject','TEST: fråga om inbetalning',
  'date',c.bank->>'date','amountOre',c.bank->'amount','text','Ange avsedd avi eller säg att betalningen inte är din. Endast lokal fångst.'));
  PERFORM cf_transition(c,who,moment,'WAITING','LOCAL_CAPTURE_ONLY',jsonb_build_object('recipient',i.person));
@@ -128,11 +130,14 @@ BEGIN
  END IF;
  IF c.status<>'WAITING' THEN RAISE EXCEPTION 'CF_DENIED'; END IF;
  SELECT * INTO e FROM cf_attestation WHERE org=o AND id=c.attestation FOR UPDATE;
- IF NOT cf_valid(c,moment) THEN next:='STAFF_EVIDENCE_INVALID';why:='ATTESTATION_NO_LONGER_VALID';
+ IF NOT cf_valid(c,moment) OR i.binding IS DISTINCT FROM to_jsonb(e) OR i.person IS DISTINCT FROM e.person
+ THEN next:='STAFF_EVIDENCE_INVALID';why:='ATTESTATION_NO_LONGER_VALID_OR_CHANGED';
  ELSIF p->>'action'='decline' THEN next:='STAFF_DECLINED';why:='CUSTOMER_DENIES_PAYMENT';
  ELSIF p->>'action' IS DISTINCT FROM 'confirm' OR p->>'claim' IS DISTINCT FROM 'mine' THEN
    next:='STAFF_CONTRADICTORY';why:='NO_CONSISTENT_INSTRUCTION';
  ELSIF c.conflict THEN next:='STAFF_CONFLICT';why:='ORIGINAL_IDENTIFIER_CONFLICT_REMAINS';
+ ELSIF nullif(btrim(p->>'note'),'') IS NOT NULL THEN
+   next:='STAFF_CUSTOMER_NOTE';why:='FREE_TEXT_INSTRUCTION_REQUIRES_REVIEW';
  ELSE
    IF jsonb_typeof(p->'allocations') IS DISTINCT FROM 'object' OR p->'allocations'='{}'::jsonb THEN RAISE EXCEPTION 'CF_DENIED'; END IF;
    -- Lock all allowed scopes in a consistent order before reading current debts.

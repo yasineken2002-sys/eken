@@ -212,7 +212,8 @@ class Service:
             "JOIN cf_attestation e ON e.org=c.org AND e.id=c.attestation "
             f"WHERE c.org={literal(org)} AND c.id={literal(k)} AND i.person={literal(person)} "
             f"AND i.token_hash={literal(sha(token.encode()))} AND i.expires>{literal(self.now().isoformat())} "
-            f"AND NOT i.consumed AND c.status='WAITING' AND cf_valid(c,{literal(self.now().isoformat())})), 'null');")
+            f"AND NOT i.consumed AND c.status='WAITING' AND i.binding=to_jsonb(e) AND i.person=e.person "
+            f"AND cf_valid(c,{literal(self.now().isoformat())})), 'null');")
         if result is None:
             raise Denied()
         return result
@@ -224,11 +225,23 @@ class Service:
         rows = self.value("SELECT coalesce(jsonb_agg(jsonb_build_object('payment',c.id)),'[]') "
             "FROM cf_outbox b JOIN cf_case c ON c.org=b.org AND c.id=b.event "
             "JOIN cf_invitation i ON i.org=c.org AND i.event=c.id "
+            "JOIN cf_attestation e ON e.org=c.org AND e.id=c.attestation "
             f"WHERE b.org={literal(org)} AND b.person={literal(person)} AND NOT i.consumed "
             f"AND c.status='WAITING' AND i.expires>{literal(self.now().isoformat())} "
-            f"AND cf_valid(c,{literal(self.now().isoformat())});")
+            f"AND i.binding=to_jsonb(e) AND i.person=e.person AND cf_valid(c,{literal(self.now().isoformat())});")
         return [{'payment': r['payment'], 'token': self.tokens[(org, r['payment'])]} for r in rows
                 if (org, r['payment']) in self.tokens]
+
+    def customer_credits(self, actor):
+        org, person, role = actor
+        if role != 'customer':
+            raise Denied()
+        # Already recorded own credit remains visible after consuming a question.
+        return self.value("SELECT coalesce(jsonb_agg(jsonb_build_object('id',x.id,'lease',x.lease,"
+            "'payment',x.bank_event,'remainingOre',x.remaining)),'[]') FROM credit x "
+            "JOIN cf_person p ON p.org=x.org AND p.tenant=x.tenant "
+            f"WHERE p.org={literal(org)} AND p.id={literal(person)} AND p.active AND p.role='customer' "
+            "AND x.remaining>0 AND NOT x.reversed;")
 
     def staff(self, actor):
         org, person, role = actor

@@ -10,7 +10,7 @@ from datetime import timedelta
 
 from audit_kundklarlaggning import audit, negative_controls
 from demo_kundklarlaggning import Demo
-from kundklarlaggning import (Denied, FIXED, ORG, PRINCIPALS, Postgres, Service,
+from kundklarlaggning import (Denied, FIXED, ORG, POLICY, PRINCIPALS, Postgres, Service,
                             answer, b_inputs, originals, run_scenarios)
 
 
@@ -51,11 +51,12 @@ class FlowTests(unittest.TestCase):
 
     def test_frozen_A_B_and_independent_recount(self):
         run_scenarios(self.s)
-        report = {'snapshot': self.s.snapshot()}
+        report = {'snapshot': self.s.snapshot(), 'whole2000Replay':False,
+                  'separateHistoricalCredit':json.loads(POLICY.read_text())['originalMetricsRemainHistorical']}
         result = audit(report)
         self.assertEqual(result['B']['resolvedWithCustomer'], 3)
         self.assertEqual(result['A']['staffRequired'], 20)
-        self.assertEqual(len(negative_controls(report)), 8)
+        self.assertEqual(len(negative_controls(report)), 14)
 
     def test_originals_no_recipient_no_customer_disclosure(self):
         for k in originals():
@@ -123,6 +124,20 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(self.s.mailbox(PRINCIPALS['alice']),[])
         self.assertEqual(self.reply('B-partial')['status'],'STAFF_EVIDENCE_INVALID')
 
+    def test_changed_attestation_person_scope_and_draft_invalidates_old_link(self):
+        for k, change in [('B-full',"person='bob',tenant='bob-tenant'"),
+                          ('B-partial',"leases=ARRAY['B-partial-garage']")]:
+            token = self.ready(k)
+            self.s.sql(f"UPDATE cf_attestation SET {change} WHERE id='proof:{k}';")
+            self.denied(lambda:self.s.customer(k,token,PRINCIPALS['alice']))
+            self.assertNotIn(k,[r['payment'] for r in self.s.mailbox(PRINCIPALS['alice'])])
+            p=answer(k);p['action']='decline'
+            self.assertEqual(self.reply(k,payload=p)['status'],'STAFF_EVIDENCE_INVALID')
+        self.s.route('B-draft')
+        self.s.sql("UPDATE cf_attestation SET person='bob',tenant='bob-tenant' WHERE id='proof:B-draft';")
+        self.denied(lambda:self.s.capture('B-draft'))
+        self.assertEqual(self.s.snapshot()['bank'],[])
+
     def test_reference_conflict_customer_cannot_override(self):
         self.ready('B-conflict')
         self.assertEqual(self.reply('B-conflict')['status'],'STAFF_CONFLICT')
@@ -170,6 +185,10 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(snap['credit'][0]['remaining'],2500)
         self.assertIsNone(snap['credit'][0]['target'])
         self.assertEqual(self.s.sql("SELECT debt FROM notice WHERE id='B-partial-avi-1';"),'6000')
+        credits=self.s.customer_credits(PRINCIPALS['alice'])
+        self.assertEqual(len(credits),1);self.assertEqual(credits[0]['remainingOre'],2500)
+        self.assertEqual(self.s.customer_credits(PRINCIPALS['bob']),[])
+        self.assertEqual(self.s.customer_credits(PRINCIPALS['other-org']),[])
 
     def test_integer_amounts_unexplained_remainder_and_untrusted_note(self):
         self.ready()
@@ -179,7 +198,35 @@ class FlowTests(unittest.TestCase):
         self.ready('B-credit');p=answer('B-credit');p['retainCredit']=False
         self.assertEqual(self.reply('B-credit',payload=p)['status'],'STAFF_AMOUNT_UNEXPLAINED')
         p=answer('B-full');p['note']='<script>self claimed verification</script>'
-        self.assertEqual(self.reply(payload=p)['status'],'RESOLVED_CUSTOMER')
+        self.assertEqual(self.reply(payload=p)['status'],'STAFF_CUSTOMER_NOTE')
+
+    def test_free_comment_may_contradict_even_structured_confirmation(self):
+        self.ready()
+        p=answer('B-full');p['note']='Min mamma betalade. Hon säger att pengarna gäller min brors hyra.'
+        self.assertEqual(self.reply(payload=p)['status'],'STAFF_CUSTOMER_NOTE')
+        self.assertEqual(self.s.snapshot()['bank'],[])
+        self.ready('B-partial');p=answer('B-partial');p.update(action='decline',allocations={},note='Fel betalning')
+        self.assertEqual(self.reply('B-partial',payload=p)['status'],'STAFF_DECLINED')
+
+    def test_expiry_worker_retries_transient_transport_failure(self):
+        self.ready();self.s.moment+=timedelta(minutes=31)
+        original=self.s.expire
+        attempts=[]
+        def flaky():
+            attempts.append(1)
+            if len(attempts)==1:raise RuntimeError('INJECTED_LOCAL_TRANSPORT_FAILURE')
+            return original()
+        self.s.expire=flaky
+        server=Demo(self.s,0);stop=threading.Event()
+        thread=threading.Thread(target=server.run_expiry,args=(stop,.01));thread.start()
+        try:
+            until=time.monotonic()+5
+            while server.expiry_health['status']!='OK' and time.monotonic()<until:time.sleep(.02)
+            self.assertEqual(server.expiry_health,{'status':'OK','errors':1})
+            self.assertGreaterEqual(len(attempts),2)
+            self.assertEqual(self.s.sql("SELECT status FROM cf_case WHERE id='B-full';"),'STAFF_TIMEOUT')
+            self.assertEqual(self.s.snapshot()['bank'],[])
+        finally:stop.set();thread.join();server.server_close()
 
     def test_reimport_does_not_reset_link_or_duplicate_credit(self):
         self.ready('B-credit');self.reply('B-credit');snap=self.s.snapshot()
@@ -270,8 +317,13 @@ class FlowTests(unittest.TestCase):
             first=request('/api/reply',p);self.assertEqual(first[0],200)
             self.assertEqual(json.loads(first[2])['status'],'RESOLVED_CUSTOMER')
             self.assertEqual(request('/api/reply',p)[2],first[2])
+            self.ready('B-credit')
+            credit_reply={'case':'B-credit','token':self.s.tokens[ORG,'B-credit'],'request':'http-credit','answer':answer('B-credit')}
+            self.assertEqual(json.loads(request('/api/reply',credit_reply)[2])['status'],'STAFF_CREDIT')
+            self.assertEqual(json.loads(request('/api/credits')[2])[0]['remainingOre'],2500)
             code,headers,_=request('/api/demo-login',{'key':server.boot_key,'persona':'bob'});cookie=headers['Set-Cookie'].split(';')[0]
             self.assertEqual(json.loads(request('/api/mailbox')[2]),[])
+            self.assertEqual(json.loads(request('/api/credits')[2]),[])
             denied=request('/api/customer?case=B-conflict&token='+token)
             self.assertEqual(denied[0],403);self.assertNotIn(b'B-conflict',denied[2])
         finally:

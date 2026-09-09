@@ -33,6 +33,17 @@ class Demo(ThreadingHTTPServer):
         self.boot_key = secrets.token_urlsafe(32)
         self.sessions = {}
         self.session_lock = threading.Lock()
+        self.expiry_health = {'status':'NOT_STARTED','errors':0}
+
+    def run_expiry(self, stop, interval=10):
+        while not stop.wait(interval):
+            try:
+                self.service.expire()
+                self.expiry_health = {'status':'OK','errors':self.expiry_health['errors']}
+            except (RuntimeError, OSError):
+                # Never expose database error text. Retry after the next interval;
+                # the request checks still reject expired links independently.
+                self.expiry_health = {'status':'RETRY_PENDING','errors':self.expiry_health['errors']+1}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -110,8 +121,11 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'person': actor[1], 'organization': actor[0], 'role': actor[2], 'csrf': session['csrf'], 'authentication': 'SIMULATED'}
             elif not post and url.path == '/api/mailbox':
                 result = s.mailbox(actor)
+            elif not post and url.path == '/api/credits':
+                result = s.customer_credits(actor)
             elif not post and url.path == '/api/staff':
                 result = s.staff(actor)
+                result['expiryWorker'] = dict(self.server.expiry_health)
             elif not post and url.path == '/api/customer':
                 if set(query) != {'case', 'token'} or any(len(v) != 1 or len(v[0]) > 200 for v in query.values()):
                     raise Denied()
@@ -150,10 +164,8 @@ def main():
         for k in [*originals(), *b_inputs()]:
             service.route(k)
         server = Demo(service, args.port)
-        def expire():
-            while not stop.wait(10):
-                service.expire()
-        threading.Thread(target=expire, daemon=True).start()
+        worker = threading.Thread(target=server.run_expiry, args=(stop,), daemon=True)
+        worker.start()
         print('ENDAST TESTDATA. Simulerad inloggning och beviskälla. Inga riktiga utskick.', flush=True)
         print('Öppna via privat lokal tunnel (gör INTE porten publik):', flush=True)
         print(server.origin+'/demo?key='+server.boot_key, flush=True)
@@ -163,6 +175,8 @@ def main():
         pass
     finally:
         stop.set()
+        if 'worker' in locals():
+            worker.join(timeout=15)
         if server:
             server.server_close()
         pg.close()
