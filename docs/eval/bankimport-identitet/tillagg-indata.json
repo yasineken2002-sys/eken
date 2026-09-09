@@ -1,0 +1,130 @@
+{
+  "kind": "SYNTHETIC_OFFLINE_INPUTS_SEPARATE_FROZEN_SUPPLEMENT",
+  "cases": [
+    {
+      "id": "S-reimport-account-pages",
+      "kind": "sync",
+      "accounts": [
+        "A",
+        "B"
+      ],
+      "rounds": 3,
+      "organizations": [
+        "test-org-A"
+      ],
+      "failOnce": null,
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK återleverans"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK återleverans"
+              }
+            ],
+            "cursor": "G1"
+          }
+        },
+        "B": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK återleverans"
+              }
+            ],
+            "cursor": "G1"
+          },
+          "G1": {
+            "transactions": [
+              {
+                "externalId": "B-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 200,
+                "description": "SYNTETISK återleverans"
+              }
+            ],
+            "cursor": "G1"
+          }
+        }
+      }
+    },
+    {
+      "id": "S-overlapping-pages",
+      "kind": "sync",
+      "accounts": [
+        "A"
+      ],
+      "rounds": 3,
+      "organizations": [
+        "test-org-A"
+      ],
+      "failOnce": null,
+      "pages": {
+        "A": {
+          "START": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK återleverans"
+              }
+            ],
+            "cursor": "A:1"
+          },
+          "A:1": {
+            "transactions": [
+              {
+                "externalId": "A-1",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 100,
+                "description": "SYNTETISK återleverans"
+              },
+              {
+                "externalId": "A-2",
+                "bookingDate": "2026-09-01T09:00:00Z",
+                "booked": true,
+                "currency": "SEK",
+                "amount": 300,
+                "description": "SYNTETISK återleverans"
+              }
+            ],
+            "cursor": "A:2"
+          },
+          "A:2": {
+            "transactions": [],
+            "cursor": "A:2"
+          }
+        }
+      }
+    }
+  ]
+}

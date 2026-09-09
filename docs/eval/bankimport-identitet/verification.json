@@ -1,0 +1,48 @@
+{
+  "reviewCommit": "36b046d5ad5dbe4ed27cc85a90da6f0ffdfaac4c",
+  "basePr": 873,
+  "baseHead": "c6457aa00f027baa685d7e9b6ec28e8aa264c8e4",
+  "baseCi": "https://github.com/yasineken2002-sys/eken/actions/runs/34407313659",
+  "baseChecks": {
+    "success": 61,
+    "other": 0
+  },
+  "mainObserved": "27a720d4b6fb194fed83c760ce713c6aa70a0ad5",
+  "externalObservationReportSha256": "5d31fd93b8c28c5cbf1b044c65c4951cabcb10555ba23032040ad63ceaed50af",
+  "checks": {
+    "nodeHarness": {
+      "command": "node --experimental-vm-modules apps/api/scripts/test_bankimport_harness.cjs",
+      "passed": 4,
+      "failed": 0
+    },
+    "independentAudit": {
+      "cases": 31,
+      "negativeMutationsRejected": 8,
+      "verifiedFiles": 88,
+      "harness": "PASS",
+      "productRequirements": {
+        "PASS": 11,
+        "FAIL": 20
+      }
+    },
+    "checkOcrProvenance": {
+      "selfTest": "PASS",
+      "actualSource": "PASS"
+    },
+    "checkTestRunnerWiring": {
+      "selfTest": "PASS",
+      "actualSource": "PASS"
+    },
+    "syntaxPythonAndCjs": "PASS",
+    "diffCheck": "PASS",
+    "jestTscStarted": false,
+    "original2000Replayed": false
+  },
+  "resources": {
+    "workspaceAvailable": "2.2 GiB",
+    "tmpAvailable": "36 GiB",
+    "newInstallations": 0,
+    "onePostgresContainerAtATime": true
+  },
+  "limitations": "CI does not run the 31 diagnostic cases automatically. Manual commands and saved PostgreSQL evidence are separate from ordinary CI."
+}
