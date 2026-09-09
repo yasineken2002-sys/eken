@@ -5,6 +5,12 @@ debitering. Utkasten bygger en sammanhängande **läsande granskning och mänskl
 bedömning** kring de befintliga manuella förbrukningsfunktionerna. De är inte
 en delegerad agent som själv ändrar avläsningar eller debiterar hyresgäster.
 
+Senaste tillägg: [18 verklighetslika syntetiska fall](agent3-verklighetslika-prov.md)
+hittade ett gränsfel i decimaljämförelsen. Det är rättat och täcks av 79 nya
+lokala prov. Regelversion v2 gör äldre bedömningsfingeravtryck inaktuella.
+De nya modellproven väntar på godkännande för utvecklingsnyckelns användning;
+det tidigare språkfelet och avsaknaden av verkligt facit kvarstår.
+
 | Del                                               | Underlag                                        | Status                                                 |
 | ------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------ |
 | Regelbaserad granskning av avläsningar            | #858                                            | Byggd och testad med konstruerade data                 |

@@ -1,5 +1,10 @@
 import type { MeterReading } from '../types'
 import type { SaveReadingReviewInput } from '../schemas'
+import {
+  compareReadingRates,
+  readingRatePerDay,
+  readingValueDifference,
+} from './reading-rate-comparison'
 
 export type ReviewReading = Pick<
   MeterReading,
@@ -138,13 +143,13 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         quantity = value
         days = (end - start) / DAY + 1
       } else if (previous) {
-        quantity = value - previous.value
+        quantity = readingValueDifference(value, previous.value)
         days = (end - previous.end) / DAY
       }
       const previousReading = previous?.reading
       previous = current
       if (quantity === undefined || days === undefined || days <= 0) continue
-      const rate = quantity / days
+      let rate = quantity / days
       if (!Number.isFinite(rate)) {
         rates = []
         continue
@@ -156,12 +161,18 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         days,
         perDay: rate,
       }
+      rate = readingRatePerDay(measured)
+      measured.perDay = rate
       if (rates.length >= READING_REVIEW_TREND_RULE.comparisonPeriods) {
         const comparison = rates.slice(-READING_REVIEW_TREND_RULE.comparisonPeriods)
-        const baseline = comparison.map((entry) => entry.perDay).sort((a, b) => a - b)[1]!
+        const medianRate = [...comparison].sort((a, b) => compareReadingRates(a, b))[1]!
+        const baseline = medianRate.perDay
         if (baseline > 0) {
           trendAssessed++
-          if (rate >= baseline * READING_REVIEW_TREND_RULE.thresholdFactor)
+          if (
+            compareReadingRates(measured, medianRate, READING_REVIEW_TREND_RULE.thresholdFactor) >=
+            0
+          )
             add(
               'HIGH_RATE',
               `Förbrukningen per dag är ${format(rate / baseline)} gånger medianen för de tre föregående jämförbara perioderna (${format(rate)} mot ${format(baseline)} mätenheter/dag). Kontrollera avläsning och användning; ökningen kan ha en naturlig förklaring.`,
@@ -179,7 +190,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
                 current: measured,
                 comparison,
                 median: baseline,
-                threshold: baseline * READING_REVIEW_TREND_RULE.thresholdFactor,
+                threshold: readingRatePerDay(medianRate, READING_REVIEW_TREND_RULE.thresholdFactor),
               },
             )
         }
@@ -196,7 +207,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
 }
 
 /** Byt version när reglers eller underlagets betydelse ändras. */
-export const READING_REVIEW_RULE_VERSION = 'consumption-review-v1'
+export const READING_REVIEW_RULE_VERSION = 'consumption-review-v2'
 export type ReadingReviewReport = ReturnType<typeof reviewReadings>
 export interface ReadingReviewSnapshot extends Omit<ReadingReviewReport, 'findings'> {
   history: ReadingReviewDecision[]

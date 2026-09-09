@@ -1,0 +1,102 @@
+[15:18:24] /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node node_modules/jest/bin/jest.js --runInBand --runTestsByPath src/ai/consumption-realistic.spec.ts src/consumption/reading-review.spec.ts src/consumption/reading-review-decisions.spec.ts src/consumption/reading-review-follow-up.spec.ts src/ai/tools/consumption-review.spec.ts src/ai/consumption-reply-guard.spec.ts src/ai/consumption-follow-up-chat.spec.ts
+
+[15:18:26] /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node -
+{"at":"2026-09-09T13:18:26.357Z","base":"42a2afd0f6ac00e3af6f20364c6205225efe0174","rows":6000,"limitation":"Tre lokala omgångar per implementation, samtidigt annat avgränsat testjobb. Ingen driftlatens eller prestandagaranti.","before":[{"elapsedMs":86.3,"findings":500,"trendAssessed":5850},{"elapsedMs":39.18,"findings":500,"trendAssessed":5850},{"elapsedMs":37.38,"findings":500,"trendAssessed":5850}],"after":[{"elapsedMs":84.2,"findings":500,"trendAssessed":5850},{"elapsedMs":100.41,"findings":500,"trendAssessed":5850},{"elapsedMs":84.61,"findings":500,"trendAssessed":5850}]}
+[Exitkod: 0]
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/schemas/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/constants/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/constants/platform.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/utils/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/utils/reading-review.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/utils/reading-rate-comparison.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-agent3-svarsgrind/packages/shared/dist/cjs/utils/reading-review-queue.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+PASS src/ai/consumption-realistic.spec.ts
+PASS src/ai/tools/consumption-review.spec.ts
+[Nest] 85126  - 09/09/2026, 3:18:31 PM   ERROR [ReadingReviewFollowUpService] [cron:consumption-review-follow-up] item misslyckades (org org): first
+Error: first
+    at Object.<anonymous> (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/apps/api/src/consumption/reading-review-follow-up.spec.ts:165:28)
+    at Promise.then.completed (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:298:28)
+    at new Promise (<anonymous>)
+    at callAsyncCircusFn (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:231:10)
+    at _callCircusTest (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:316:40)
+    at async _runTest (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:252:3)
+    at async _runTestsForDescribeBlock (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:126:9)
+    at async run (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:71:3)
+    at async runAndTransformResultsToJestFormat (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+    at async jestAdapter (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+    at async runTestInternal (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:367:16)
+    at async runTest (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:444:34)
+[Nest] 85126  - 09/09/2026, 3:18:31 PM   ERROR [ReadingReviewFollowUpService] [cron:consumption-review-follow-up] MISSLYCKADES: start
+Error: start
+    at Object.<anonymous> (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/apps/api/src/consumption/reading-review-follow-up.spec.ts:179:46)
+    at Promise.then.completed (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:298:28)
+    at new Promise (<anonymous>)
+    at callAsyncCircusFn (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:231:10)
+    at _callCircusTest (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:316:40)
+    at async _runTest (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:252:3)
+    at async _runTestsForDescribeBlock (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:126:9)
+    at async run (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:71:3)
+    at async runAndTransformResultsToJestFormat (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+    at async jestAdapter (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+    at async runTestInternal (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:367:16)
+    at async runTest (/Users/test/Desktop/eveno/eken-agent3-svarsgrind/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:444:34)
+PASS src/consumption/reading-review-follow-up.spec.ts
+PASS src/ai/consumption-follow-up-chat.spec.ts
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM    WARN [AiAssistantService] Förbrukningskontrollen var inte tillgänglig; visar reservsvar.
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+[Nest] 85126  - 09/09/2026, 3:18:32 PM    WARN [AiAssistantService] Förbrukningskontrollen var inte tillgänglig; visar reservsvar.
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM    WARN [AiAssistantService] [ai] turtaket nått (3 omgångar) i chat för org org, konversation c1 — svaret är OFULLSTÄNDIGT och markeras för användaren.
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM    WARN [AiAssistantService] Förbrukningskontrollen var inte tillgänglig; visar reservsvar.
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+[Nest] 85126  - 09/09/2026, 3:18:32 PM    WARN [AiAssistantService] Förbrukningskontrollen var inte tillgänglig; visar reservsvar.
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: filtered
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: allowed
+[Nest] 85126  - 09/09/2026, 3:18:32 PM     LOG [AiAssistantService] Förbrukningskontroll: unavailable
+PASS src/consumption/reading-review-decisions.spec.ts
+PASS src/consumption/reading-review.spec.ts
+PASS src/ai/consumption-reply-guard.spec.ts
+
+Test Suites: 7 passed, 7 total
+Tests:       210 passed, 210 total
+Snapshots:   0 total
+Time:        6.606 s, estimated 8 s
+Ran all test suites within paths "src/ai/consumption-realistic.spec.ts", "src/consumption/reading-review.spec.ts", "src/consumption/reading-review-decisions.spec.ts", "src/consumption/reading-review-follow-up.spec.ts", "src/ai/tools/consumption-review.spec.ts", "src/ai/consumption-reply-guard.spec.ts", "src/ai/consumption-follow-up-chat.spec.ts".
+[Exitkod: 0]

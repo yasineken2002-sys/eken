@@ -1,0 +1,157 @@
+[15:07:17] /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node node_modules/jest/bin/jest.js --runInBand --runTestsByPath src/ai/consumption-realistic.spec.ts
+FAIL src/ai/consumption-realistic.spec.ts
+  Agent 3: förhandsbestämt facit för fiktiva månadsavläsningar
+    ✓ original: olika-manadslangd (3 ms)
+    ✓ original: lackliknande-hopp (13 ms)
+    ✓ original: borttappat-decimaltecken (1 ms)
+    ✕ original: exakt-troskel (2 ms)
+    ✓ original: strax-under-troskel (1 ms)
+    ✓ original: tom-lagenhet
+    ✓ original: nollhistorik
+    ✓ original: nyinstallationen (1 ms)
+    ✓ original: saknade-manader
+    ✓ original: overlappande-import
+    ✓ original: negativt-importvarde (1 ms)
+    ✓ original: omvanda-datum
+    ✓ original: kumulativ-okning (1 ms)
+    ✓ original: matarbyte-samma-id (1 ms)
+    ✓ original: matarbyte-nytt-id
+    ✓ original: gradvis-sasongsokning
+    ✓ original: dubbelregistrerad-manad
+    ✓ original: tva-lagenheter (1 ms)
+    ✓ omvand-ordning: olika-manadslangd
+    ✓ omvand-ordning: lackliknande-hopp (1 ms)
+    ✓ omvand-ordning: borttappat-decimaltecken
+    ✕ omvand-ordning: exakt-troskel
+    ✓ omvand-ordning: strax-under-troskel
+    ✓ omvand-ordning: tom-lagenhet
+    ✓ omvand-ordning: nollhistorik
+    ✓ omvand-ordning: nyinstallationen
+    ✓ omvand-ordning: saknade-manader (1 ms)
+    ✓ omvand-ordning: overlappande-import
+    ✓ omvand-ordning: negativt-importvarde
+    ✓ omvand-ordning: omvanda-datum
+    ✓ omvand-ordning: kumulativ-okning (1 ms)
+    ✓ omvand-ordning: matarbyte-samma-id
+    ✓ omvand-ordning: matarbyte-nytt-id
+    ✓ omvand-ordning: gradvis-sasongsokning
+    ✓ omvand-ordning: dubbelregistrerad-manad (1 ms)
+    ✓ omvand-ordning: tva-lagenheter
+    ✓ annan-volymenhet: olika-manadslangd
+    ✓ annan-volymenhet: lackliknande-hopp (1 ms)
+    ✓ annan-volymenhet: borttappat-decimaltecken
+    ✓ annan-volymenhet: exakt-troskel (1 ms)
+    ✓ annan-volymenhet: strax-under-troskel
+    ✓ annan-volymenhet: tom-lagenhet
+    ✓ annan-volymenhet: nollhistorik
+    ✓ annan-volymenhet: nyinstallationen
+    ✓ annan-volymenhet: saknade-manader (1 ms)
+    ✓ annan-volymenhet: overlappande-import
+    ✓ annan-volymenhet: negativt-importvarde
+    ✓ annan-volymenhet: omvanda-datum
+    ✓ annan-volymenhet: kumulativ-okning (1 ms)
+    ✓ annan-volymenhet: matarbyte-samma-id
+    ✓ annan-volymenhet: matarbyte-nytt-id
+    ✓ annan-volymenhet: gradvis-sasongsokning
+    ✓ annan-volymenhet: dubbelregistrerad-manad (1 ms)
+    ✓ annan-volymenhet: tva-lagenheter
+    ✓ andra-datum: olika-manadslangd
+    ✓ andra-datum: lackliknande-hopp (1 ms)
+    ✓ andra-datum: borttappat-decimaltecken
+    ✕ andra-datum: exakt-troskel (1 ms)
+    ✓ andra-datum: strax-under-troskel
+    ✓ andra-datum: tom-lagenhet
+    ✓ andra-datum: nollhistorik
+    ✓ andra-datum: nyinstallationen (1 ms)
+    ✓ andra-datum: saknade-manader
+    ✓ andra-datum: overlappande-import
+    ✓ andra-datum: negativt-importvarde
+    ✓ andra-datum: omvanda-datum (1 ms)
+    ✓ andra-datum: kumulativ-okning
+    ✓ andra-datum: matarbyte-samma-id (6 ms)
+    ✓ andra-datum: matarbyte-nytt-id (1 ms)
+    ✓ andra-datum: gradvis-sasongsokning
+    ✓ andra-datum: dubbelregistrerad-manad
+    ✓ andra-datum: tva-lagenheter (1 ms)
+
+  ● Agent 3: förhandsbestämt facit för fiktiva månadsavläsningar › original: exakt-troskel
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+        "notTrendAssessed": 3,
+        "readings": 4,
+    -   "totalFindings": 1,
+    +   "totalFindings": 0,
+        "trendAssessed": 1,
+      }
+
+      37 |       const { db, queries } = syntheticConsumptionDb(rows)
+      38 |       const result = await getConsumptionReview(db, SYNTHETIC_ORG, 'MANAGER', {})
+    > 39 |       expect(result.data.summary).toMatchObject({
+         |                                   ^
+      40 |         readings: item.rows.length,
+      41 |         trendAssessed: item.expected.trendAssessed,
+      42 |         notTrendAssessed: item.rows.length - item.expected.trendAssessed,
+
+      at ai/consumption-realistic.spec.ts:39:35
+
+  ● Agent 3: förhandsbestämt facit för fiktiva månadsavläsningar › omvand-ordning: exakt-troskel
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+        "notTrendAssessed": 3,
+        "readings": 4,
+    -   "totalFindings": 1,
+    +   "totalFindings": 0,
+        "trendAssessed": 1,
+      }
+
+      37 |       const { db, queries } = syntheticConsumptionDb(rows)
+      38 |       const result = await getConsumptionReview(db, SYNTHETIC_ORG, 'MANAGER', {})
+    > 39 |       expect(result.data.summary).toMatchObject({
+         |                                   ^
+      40 |         readings: item.rows.length,
+      41 |         trendAssessed: item.expected.trendAssessed,
+      42 |         notTrendAssessed: item.rows.length - item.expected.trendAssessed,
+
+      at ai/consumption-realistic.spec.ts:39:35
+
+  ● Agent 3: förhandsbestämt facit för fiktiva månadsavläsningar › andra-datum: exakt-troskel
+
+    expect(received).toMatchObject(expected)
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+        "notTrendAssessed": 3,
+        "readings": 4,
+    -   "totalFindings": 1,
+    +   "totalFindings": 0,
+        "trendAssessed": 1,
+      }
+
+      37 |       const { db, queries } = syntheticConsumptionDb(rows)
+      38 |       const result = await getConsumptionReview(db, SYNTHETIC_ORG, 'MANAGER', {})
+    > 39 |       expect(result.data.summary).toMatchObject({
+         |                                   ^
+      40 |         readings: item.rows.length,
+      41 |         trendAssessed: item.expected.trendAssessed,
+      42 |         notTrendAssessed: item.rows.length - item.expected.trendAssessed,
+
+      at ai/consumption-realistic.spec.ts:39:35
+
+Test Suites: 1 failed, 1 total
+Tests:       3 failed, 69 passed, 72 total
+Snapshots:   0 total
+Time:        4.376 s
+Ran all test suites within paths "src/ai/consumption-realistic.spec.ts".
+[Exitkod: 1]

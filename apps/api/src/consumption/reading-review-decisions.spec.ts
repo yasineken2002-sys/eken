@@ -74,7 +74,7 @@ describe('spara bedömning', () => {
     expect(db.meterReadingReview.create.mock.calls[0]![0].data).toMatchObject({
       organizationId: 'org',
       reviewedById: 'user',
-      ruleVersion: 'consumption-review-v1',
+      ruleVersion: 'consumption-review-v2',
       evidence: { readingId: dto.readingId, code: 'HIGH_RATE' },
     })
     expect(db.meterReadingReview.create.mock.calls[0]![0].data.evidence.reviews).toBeUndefined()

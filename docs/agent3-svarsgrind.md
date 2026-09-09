@@ -1,5 +1,10 @@
 # Agent 3: kontroll av svaret före visning och lagring
 
+Tillägg 2026-09-09: [verklighetslika syntetiska avläsningar](agent3-verklighetslika-prov.md)
+hittade ett avrundningsfel vid trendgränsen. Det är rättat med exakt jämförelse
+och regelversion v2. Modellmätningarna nedan är tidigare körningar; inga nya
+modellresultat på det nya materialet har tillkommit ännu.
+
 Bygger på #866. Där kunde modellen säga ”ingen notis betyder inga varningar”
 och först därefter visa ett korrekt faktablock. Nu passerar svaret en gemensam
 kontroll innan vanlig chatt eller SSE visar det. Verktygsstatus skickas löpande;
