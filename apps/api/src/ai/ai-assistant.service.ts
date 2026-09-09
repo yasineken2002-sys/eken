@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { followUpFactsFromRound } from './consumption-follow-up-facts'
 import Anthropic from '@anthropic-ai/sdk'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -807,6 +808,7 @@ export class AiAssistantService {
     // Taket bor i tool-iteration-cap.ts. Se den filen för semantiken:
     // N = verktygsomgångar modellen får ANVÄNDA (N+1 modellanrop, N körningar).
     let iterations = 0
+    let followUpFacts: string | undefined
     let currentMessages = messages
     let response = await this.callClaude(
       currentMessages,
@@ -902,6 +904,8 @@ export class AiAssistantService {
         }),
       )
 
+      followUpFacts = followUpFactsFromRound(toolUses, toolResultBlocks) ?? followUpFacts
+
       currentMessages = [
         ...currentMessages,
         { role: 'assistant' as const, content: response.content },
@@ -958,6 +962,7 @@ export class AiAssistantService {
       grounding,
       { blocks: userBlocks, ids: attached.ids },
       { capReached, toolRounds: iterations },
+      followUpFacts,
     )
   }
 
@@ -1787,6 +1792,7 @@ export class AiAssistantService {
     },
     /** Turtaket: nåddes det, och hur många omgångar förbrukades? */
     cap: { capReached: boolean; toolRounds: number } = { capReached: false, toolRounds: 0 },
+    followUpFacts?: string,
   ): Promise<ChatResponse> {
     // CITAT-INTEGRITET (gap A): på ett grundat svar appendar KODEN den
     // auktoritativa källhänvisningen, byggd ur de hämtade chunkarnas metadata
@@ -1800,7 +1806,8 @@ export class AiAssistantService {
     // avbrott ofta en inledning ("Jag ska bara kolla ..."), och den låter i sig
     // som att arbete pågår. Markeringen måste stå efter den för att kunna läsas
     // som en rättelse av allt ovanför.
-    const reply = cap.capReached ? grundadText + TOOL_ITERATION_CAP_NOTICE : grundadText
+    const withFacts = grundadText + (followUpFacts ?? '')
+    const reply = cap.capReached ? withFacts + TOOL_ITERATION_CAP_NOTICE : withFacts
 
     // Spara user + assistant separat så assistant-raden kan få `blocks`
     // (Anthropic ContentBlock[] från final-turn). Backwards-compatible:
@@ -1819,7 +1826,18 @@ export class AiAssistantService {
     // tool_use blir därför ett obesvarat anrop som 400:ar VARJE följande
     // meddelande i konversationen. Det inträffade när tool-loopen tog slut på
     // iterationer med stop_reason fortfarande 'tool_use'.
-    const assistantBlocks = sanitizeBlocksForPersistence(response.content)
+    const assistantBlocks = sanitizeBlocksForPersistence([
+      ...response.content,
+      ...(followUpFacts
+        ? [
+            {
+              type: 'text' as const,
+              text: followUpFacts + (cap.capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
+              citations: null,
+            },
+          ]
+        : []),
+    ])
     await createAiMessageWithSubjects(this.prisma, {
       conversationId,
       role: 'assistant',

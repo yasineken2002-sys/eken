@@ -2397,9 +2397,10 @@ export type ReadingReviewFilter = z.infer<typeof ReadingReviewFilterSchema>
 export const UpdateReadingReviewFollowUpSchema = z.object({ enabled: z.boolean() }).strict()
 export type UpdateReadingReviewFollowUpInput = z.infer<typeof UpdateReadingReviewFollowUpSchema>
 
-export interface ReadingReviewFollowUpStatus {
-  enabled: boolean
-  enabledAt: string | null
-  lastCheckedAt: string | null
-  lastFailedAt: string | null
-}
+export const ReadingReviewFollowUpStatusSchema = z.object({
+  enabled: z.boolean(),
+  enabledAt: z.string().datetime().nullable(),
+  lastCheckedAt: z.string().datetime().nullable(),
+  lastFailedAt: z.string().datetime().nullable(),
+})
+export type ReadingReviewFollowUpStatus = z.infer<typeof ReadingReviewFollowUpStatusSchema>

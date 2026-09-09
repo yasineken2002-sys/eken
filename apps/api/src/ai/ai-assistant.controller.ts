@@ -13,6 +13,7 @@ import {
   Logger,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { followUpFactsFromRound } from './consumption-follow-up-facts'
 import { Throttle } from '@nestjs/throttler'
 import type { FastifyReply } from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
@@ -300,6 +301,7 @@ export class AiAssistantController {
       const anthropic = new Anthropic({ apiKey })
 
       let assistantText = ''
+      let followUpFacts: string | undefined
       let pendingAction: {
         toolName: string
         toolInput: Record<string, unknown>
@@ -459,6 +461,8 @@ export class AiAssistantController {
           }),
         )
 
+        followUpFacts = followUpFactsFromRound(toolUses, toolResultBlocks) ?? followUpFacts
+
         currentMessages = [
           ...currentMessages,
           { role: 'assistant', content: assistantContent },
@@ -476,6 +480,13 @@ export class AiAssistantController {
         const sourceSuffix = formatSourceSuffix(grounding)
         assistantText += sourceSuffix
         send('delta', { text: sourceSuffix })
+      }
+
+      // Eget kodbundet faktablock, även för äldre klienter som bara läser delta.
+      // Det granskar eller ersätter inte modelltexten som redan har strömmats.
+      if (!pendingAction && followUpFacts) {
+        assistantText += followUpFacts
+        send('delta', { text: followUpFacts })
       }
 
       // ── TURTAKET SYNS HELA VÄGEN UT ────────────────────────────────────────
@@ -561,7 +572,18 @@ export class AiAssistantController {
         // Aldrig ett halvt par i historiken — se sanitizeBlocksForPersistence.
         // Träffas när tool-loopen tog slut på iterationer med stop_reason
         // fortfarande 'tool_use': den turen bar då tool_use utan resultat.
-        const persistedBlocks = sanitizeBlocksForPersistence(assistantContent)
+        const persistedBlocks = sanitizeBlocksForPersistence([
+          ...assistantContent,
+          ...(followUpFacts
+            ? [
+                {
+                  type: 'text' as const,
+                  text: followUpFacts + (capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
+                  citations: null,
+                },
+              ]
+            : []),
+        ])
         await createAiMessageWithSubjects(this.prisma, {
           conversationId: conversation.id,
           role: 'assistant',

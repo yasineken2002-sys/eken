@@ -2012,6 +2012,11 @@ lokaltider och schema som granskningsvyn; inga skrivverktyg tillkommer. Modellpr
 mäter förklaringar av status, tidsstämplar, trendtäckning och roller. Det är
 konstruerat utvecklingsmaterial, inte bevis för verklig driftprecision.
 
+[agent3-statusfakta.md](./agent3-statusfakta.md) lägger kodbundna statusfakta i
+både synligt och sparat chattsvar. Modellens fritext kan fortfarande vara fel;
+faktablocket är ingen driftvalidering. [Aktuell bygglista](./agentplan-aterstaende.md)
+sammanfattar utkast, kvarvarande kodarbete och kriterier som kräver verkliga fall.
+
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och
