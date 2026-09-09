@@ -115,3 +115,21 @@ att saknat automatikfacit visas som noll fel, och två OCR-gränsfall. Tre
 tidigare återspelsrapporter finns kvar lokalt i arbetsytans rot. De använder
 åldrade källhashar och ersätts som slutmätning av den länkade rapporten. Inget
 scenariofacit eller sparat modellsvar ändrades.
+
+## CI fann ett tidigare slumpberoende nyckeltest
+
+Första CI på 8bb4ef2 passerade 474/475 API-sviter och 5793/5794 tester.
+Alla nya bankprov passerade. Det enda felet var env-placeholders.spec.ts: en
+slumpad base64-fixture råkade innehålla både xxx och jwt och avvisades av den
+befintliga tvåordsheuristiken. E2E och övriga jobb passerade.
+
+Acceptansprovet använder nu 200 fasta SHA-512-baserade syntetiska bytevärden
+i samma tre format, utan filtrering eller omförsök. Ett uttryckligt motprov
+visar att giltig base64 med två indikatorord faktiskt avvisas. Säkerhetsregeln
+är oförändrad och den möjliga falska positiva avvisningen kvarstår; detta är
+inte en rättning av nyckelheuristiken. Testets namn lovar därför inte längre
+att alla slumpade hemligheter saknar falsklarm.
+
+Första körningens fulla fel finns i den historiska
+[CI-körningen](https://github.com/yasineken2002-sys/eken/actions/runs/34367416361/attempts/1).
+Slutlig CI ska verifieras på uppföljningscommittens HEAD före merge.
