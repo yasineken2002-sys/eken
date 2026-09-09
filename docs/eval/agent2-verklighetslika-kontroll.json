@@ -1,0 +1,93 @@
+{
+  "rapport": "apps/api/src/ai/shadow/eval/verklighetslika-betalningar.modell.json",
+  "antalMatpunkter": 168,
+  "antalGrundfall": 28,
+  "allaSexKallhasharStammer": true,
+  "oberoendeOmrakningStammer": true,
+  "forandringarUppdeladTillReferensstod": [
+    {
+      "id": "gemensamt-efternamn",
+      "repetition": 1,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "identiska-fullnamn",
+      "repetition": 1,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "overskott",
+      "repetition": 1,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "hyra-och-faktura",
+      "repetition": 1,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "referens-efter-kandidattak",
+      "repetition": 1,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "gammal-skuld-med-referens",
+      "repetition": 1,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "gemensamt-efternamn",
+      "repetition": 2,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "identiska-fullnamn",
+      "repetition": 2,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "overskott",
+      "repetition": 2,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "hyra-och-faktura",
+      "repetition": 2,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "referens-efter-kandidattak",
+      "repetition": 2,
+      "fran": false,
+      "till": true
+    },
+    {
+      "id": "gammal-skuld-med-referens",
+      "repetition": 2,
+      "fran": false,
+      "till": true
+    }
+  ],
+  "forsamringar": {
+    "heltRatt": [],
+    "identitetRatt": [],
+    "hanteringRatt": []
+  },
+  "andradeSvarMellanRepetitioner": [],
+  "usage": {
+    "inputTokens": 232290,
+    "outputTokens": 16277,
+    "callsWithUsage": 146,
+    "complete": true
+  }
+}

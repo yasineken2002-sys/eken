@@ -128,9 +128,30 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ## Del 3 — Byggordningen
 
+### Fortsättning 2026-09-09 — Agent 2, bredare syntetiskt prov
+
+28 nya syntetiska organisationsvyer, varav två OCR-kontroller, kördes i tre
+varianter och två repetitioner. På de 26 bedömda grundfallen gav tidigare
+uppdelad bedömning 28/52 helt rätt, referensstöd **40/52**. Rätt hantering var
+36/52 respektive 40/52. Noll försämringar mellan dessa experiment på materialet,
+men sex feltyper kvarstår i båda repetitionerna: tvetydiga avier, överskott på
+redan delbetald skuld, OCR/text-konflikt, okänd referens, delsträng och öresgräns.
+
+Den befintliga en-avi-förslagsvägen fick 34/52 rätt, 12 felaktiga och 6 missade
+förslag; dess facit är en annan fråga än experimentens identitet/hantering.
+146 modellanrop, noll tekniska bortfall, 12/12 OCR-kontroller. Det äldre
+**81,25 %** avser 26/32 rätt hanteringskategori på det tidigare mindre materialet,
+inte driftprecision eller sannolikheten för en enskild matchning.
+
+Provet är komplett men kvalitetsmässigt rött. Ingen aktivering eller ändring av
+produktens matchning görs av detta tillägg. Läs `docs/agent2-verklighetslika-prov.md`
+och den fullständiga `verklighetslika-betalningar.modell.json`. Nästa förbättring
+bör pröva exakt beloppsberäkning och kontroller av identitetskonflikter utan att
+dölja relevanta avier, försvaga OCR eller blockera människans manuella väg.
+
 ### Fortsättning 2026-09-08 — Agent 2, etapp B
 
-**Senaste fristående försök: referensstöd i `d9d45ac`.** Sexton syntetiska fall,
+**Tidigare fristående försök: referensstöd i `d9d45ac`.** Sexton syntetiska fall,
 varav åtta nya motprov, kördes två gånger per arm. Tidigare uppdelad variant
 fick 22/32 rätt identitet och 26/32 rätt hanteringskategori; komplett rätt
 22/32. Med referensstöd blev samtliga mått **32/32** (16/16 i båda
