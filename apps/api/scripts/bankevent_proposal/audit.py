@@ -131,7 +131,12 @@ def main():
                 content=subprocess.check_output(['git','show',a.evidence_commit+':'+file],cwd=ROOT)
             assert sha(content)==digest,file
     observed=json.loads(data);rows=audit(observed,review_requirements=a.review_requirements);controls=negatives(observed,review_requirements=a.review_requirements)
-    report={'stricterReviewRequirements':a.review_requirements,'originalComponentRequirementsPassed':30 if a.review_requirements else 31,'originalComponentRequirementDifference':['15-legacy-verified-link: older/new description differs; held=2, identity remains open'] if a.review_requirements else [],'kind':'SQL_COMPONENT_ONLY_NOT_FIXED_IMPORT','casesPassed':len(rows),'negativeControlsRejected':controls,'cases':rows}
+    original=json.loads((DATA/'facit.json').read_text())['cases']
+    differences=[]
+    for row in rows:
+        mismatches={key:{'expected':original[row['id']][key],'observed':row[key]} for key in ['newPayments','newPaymentOre','dispatchMarkers','held','openIdentity'] if row[key]!=original[row['id']][key]}
+        if mismatches:differences.append({'id':row['id'],'differences':mismatches})
+    report={'stricterReviewRequirements':a.review_requirements,'originalComponentRequirementsPassed':len(rows)-len(differences),'originalComponentRequirementDifference':differences,'kind':'SQL_COMPONENT_ONLY_NOT_FIXED_IMPORT','casesPassed':len(rows),'negativeControlsRejected':controls,'cases':rows}
     if a.out:
         a.out.mkdir(parents=True,exist_ok=True)
         (a.out/'omrakning.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
