@@ -1,0 +1,2068 @@
+{
+  "regressioner": [],
+  "sha": "d9d45aca6edd63d2fc3e18a36ba53947b57f08f6",
+  "korpusSha256": "465c1a1d04db98998700b124e8b89ea5ccd3cedf41e60184aa62b952e1a05ba0",
+  "skapad": "2026-09-08T16:36:02.764Z",
+  "modell": "claude-haiku-4-5-20251001",
+  "input": 88944,
+  "output": 3540,
+  "uppskattadUsd": 0.106644,
+  "kostnadKomplett": true,
+  "kommentar": "Nytt identitetsmått. Inte jämförbart med originalets exekverbara en-avi-facit. Befintlig arm saknar hanteringsfält.",
+  "sammanfattning": [
+    {
+      "arm": "uppdelad",
+      "antal": 32,
+      "identitetRatt": 22,
+      "hanteringRatt": 26,
+      "heltRatt": 22,
+      "bortfall": 0
+    },
+    {
+      "arm": "referensstod",
+      "antal": 32,
+      "identitetRatt": 32,
+      "hanteringRatt": 32,
+      "heltRatt": 32,
+      "bortfall": 0
+    }
+  ],
+  "rader": [
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": false,
+      "id": "x4",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "FLERA"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3",
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x4",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": "TVETYDIGT_NAMN",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x9",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x9",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x10",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "OKLART"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x10",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "OKLART"
+      },
+      "regel": "TVETYDIGT_NAMN",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x11",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x11",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e3",
+        "e1"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x12",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e3",
+        "e1"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x12",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x13",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x13",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [],
+      "allaFacitReferenserFinns": false,
+      "id": "x14",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": null,
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x14",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x15",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x15",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x16",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x16",
+      "repetition": 1,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": "TVETYDIGT_NAMN",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": false,
+      "id": "x4",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "FLERA"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3",
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x4",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "regel": "TVETYDIGT_NAMN",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x9",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x9",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x10",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "OKLART"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x10",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "OKLART"
+      },
+      "regel": "TVETYDIGT_NAMN",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x11",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x11",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "DEL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e3",
+        "e1"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x12",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e3",
+        "e1"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x12",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x13",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x13",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e3"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [],
+      "allaFacitReferenserFinns": false,
+      "id": "x14",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": null,
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x14",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x15",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x15",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "RETUR"
+      },
+      "regel": null,
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x16",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": null,
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x16",
+      "repetition": 2,
+      "arm": "referensstod",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "modellSvar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "FULL"
+      },
+      "regel": "TVETYDIGT_NAMN",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    }
+  ]
+}

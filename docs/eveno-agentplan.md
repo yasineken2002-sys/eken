@@ -128,6 +128,170 @@ den, och ett system man inte kan gå förbi är ett system man inte litar på.
 
 ## Del 3 — Byggordningen
 
+### Fortsättning 2026-09-09 — Agent 2, kontroll av identitet och belopp
+
+Ett fristående experiment räknar beloppsklassning med heltalsören och markerar
+motstridiga/okända referenser, tvetydiga avier och OCR för manuell granskning.
+Den ursprungliga AI-bedömningen och alla kandidater bevaras. En separat
+provkandidat kräver särskiljande identifierare, enkelt textinnehåll, positivt
+belopp inom skuld och känt komplett underlag. Det är inget verkställighetstillstånd.
+
+Återspel på de kända felen: **40/52 → 52/52**, äldre material **32/32 → 32/32**,
+utan tappade tidigare korrekta bedömningar. Materialet användes i utvecklingen.
+32 nya förhandsmärkta fall är nu körda i två modellrepetitioner efter uttryckligt
+användargodkännande: **40/64 → 64/64** rätt på samma modellobservationer, noll
+tappade tidigare korrekta bedömningar. 62 faktiska anrop och två regelutfall,
+noll tekniska bortfall. 16/16 provmatchningar rätt enligt syntetiskt facit,
+men det är åtta unika fall: täckning 25 %, manuell andel 75 %. Inga förväntade
+provmatchningar missades. Alla kandidater bevarades. Kod, prompt och facit var
+oförändrade på `60565a5`. Full rapport: `docs/eval/agent2-betalningsgrind-modell.json`.
+
+**99,1 procent i drift är inte belagt.** Mät både precision och manuell andel
+på oberoende representativa bankrader före skarp automatik. Matchningsprodukten
+och reconciliation är oförändrade, inga flaggor är aktiverade. Läs
+`docs/agent2-betalningsgrind.md` för metod, återspel och statistikens antaganden.
+
+### Fortsättning 2026-09-09 — Agent 2, bredare syntetiskt prov
+
+28 nya syntetiska organisationsvyer, varav två OCR-kontroller, kördes i tre
+varianter och två repetitioner. På de 26 bedömda grundfallen gav tidigare
+uppdelad bedömning 28/52 helt rätt, referensstöd **40/52**. Rätt hantering var
+36/52 respektive 40/52. Noll försämringar mellan dessa experiment på materialet,
+men sex feltyper kvarstår i båda repetitionerna: tvetydiga avier, överskott på
+redan delbetald skuld, OCR/text-konflikt, okänd referens, delsträng och öresgräns.
+
+Den befintliga en-avi-förslagsvägen fick 34/52 rätt, 12 felaktiga och 6 missade
+förslag; dess facit är en annan fråga än experimentens identitet/hantering.
+146 modellanrop, noll tekniska bortfall, 12/12 OCR-kontroller. Det äldre
+**81,25 %** avser 26/32 rätt hanteringskategori på det tidigare mindre materialet,
+inte driftprecision eller sannolikheten för en enskild matchning.
+
+Provet är komplett men kvalitetsmässigt rött. Ingen aktivering eller ändring av
+produktens matchning görs av detta tillägg. Läs `docs/agent2-verklighetslika-prov.md`
+och den fullständiga `verklighetslika-betalningar.modell.json`. Nästa förbättring
+bör pröva exakt beloppsberäkning och kontroller av identitetskonflikter utan att
+dölja relevanta avier, försvaga OCR eller blockera människans manuella väg.
+
+### Fortsättning 2026-09-08 — Agent 2, etapp B
+
+**Tidigare fristående försök: referensstöd i `d9d45ac`.** Sexton syntetiska fall,
+varav åtta nya motprov, kördes två gånger per arm. Tidigare uppdelad variant
+fick 22/32 rätt identitet och 26/32 rätt hanteringskategori; komplett rätt
+22/32. Med referensstöd blev samtliga mått **32/32** (16/16 i båda
+repetitionerna). Detta är inte en mätning av den driftsatta produkten.
+
+Experimentet behåller alla befintliga kandidater och tillför hela avinummer
+som uttryckligen nämns i banktexten, även om totalsumman inte passar en enda
+fordran. Ett tvetydigt namn över flera person-id:n utan särskiljande fullständigt
+namn, referens eller OCR ger OKLART. Rått tolkat modellsvar och regelpåverkan
+sparas separat; högre träffgrad är en effekt av regler och kandidater, inte
+bevis för att modellen har lärt sig. Producenten importerar inte hjälparen.
+
+Samtliga gamla kandidater bevarades i varje jämförelse. Noll försämringar
+uppmättes, även kontrollerat separat för identitet och hantering. De 64
+bedömningarna finns i `experiment-referensstod-betalning.json`. Två upprepningar
+är inte 32 oberoende fall. Kostnaden **för den fullständiga körningen** var
+uppskattningsvis 0,106644 USD; en tidigare körning avbröts vid x14 eftersom
+riggen felaktigt krävde en ursprunglig kandidatmängd. Den delkörningens kostnad
+ingår inte i rapporten och dess resultat används inte som slutmätning.
+
+Verifierat: 15/15 nya regelprov, API-typecheck, lint, oförändrad producent och
+summering mot samtliga sparade svar. Proven täcker hela/delvisa referenser,
+bevarade kandidater, OCR, fullständiga namn, gemensamma efternamn och flera
+avier för samma person. Kör separat med
+`node --env-file-if-exists=.env -r ts-node/register/transpile-only scripts/eval-uppdelad-betalning.ts --referensstod`
+från `apps/api`.
+
+**Ingen produktionsändring eller generell garanti.** Referenser i negationer,
+missvisande banktext, identitetskonflikter, stora kandidatlistor och oberoende
+verkliga fall behöver bredare prövning innan någon inkoppling övervägs.
+Originalets och tidigare kontrollmaterials facit är oförändrade.
+
+**Fristående experiment i `d5150cd`: uppdelad identitet och hantering gav ingen
+total förbättring.** `scripts/eval-uppdelad-betalning.ts` körde åtta nya,
+förhandsmärkta syntetiska fall två gånger per arm (32 modellanrop). Båda armar
+fick **12/16 rätt identitet**. Uppdelad hanteringskategori var rätt 14/16, men
+det betyder inte rätt samlat förslag: kategorin FLERA kan vara rätt samtidigt
+som en av de utpekade fordringarna är fel. Alla svar var tolkbara och båda
+repetitionerna gav samma bedömningar. Uppskattad kostnad: **0,076016 USD**.
+
+Måttet gäller refererad identitet, även vid retur/överskott. Det är inte det
+tidigare en-avi-facitet och procenttalen ska inte jämföras med dess 97,2 %.
+Befintlig arm saknar separat hanteringsfält och får därför inget sådant mått.
+Resultatet är sparat i `experiment-uppdelad-betalning.json`, med facit,
+kandidat-id:n, svar och båda repetitionerna. Facit skickades inte till modellen.
+
+Två observationer återkom: i `x4` saknades den uttryckligen refererade fakturan
+FA-602 i kandidatmängden, och uppdelad modell valde en annan persons avi i dess
+ställe. I `x5` gissade den på en faktura trots gemensamt efternamn och avsaknad
+av identifierande referens. Uppdelningen behöll däremot referensen vid retur.
+Experimentet är **inte inkopplat i producenten**. Nästa designarbete bör
+pröva att bevara explicita referenser i kandidatsökningen och upptäcka
+identitetskonflikter; ingen ny begränsning av produktionskandidater införs här.
+Typecheck, lint och rapportens summering är verifierade. Åtta konstruerade
+fall med två upprepningar bevisar inte 98 % i drift.
+
+Agent 2:s **etapp A är implementerad i #846**. Den äldre lägesbilden nedan som
+säger att agent 2 inte påbörjats är därmed passerad. Etapp A:s driftkriterium
+(flaggan på för en riktig organisation) har inte verifierats i detta arbete.
+
+Nästa bygge är **etapp B:s mätning**. Riggen har rättats: tidigare försvann
+avvisade modellsvar ur nämnaren, motparten mättes inte och ett aktivt `INGEN`
+saknade beloppsutfall. Båda armarna mäts nu på samma facitfall, för samtliga
+fält i `SKUGGFALT_BETALNING`. Bara saknat facit och förväntade OCR-kontroller
+undantas; saknade svar ligger kvar. Felaktigt bortsorterade kontrollfall fäller.
+
+Regelkörningen ger **19/19 kandidat-recall**, fyra kontroller och **10/36 rätt
+per fält**, med 26 obesvarade fall. Det är reglernas täckning och riktighet
+över hela bedömningsmängden, inte modellens träffgrad. Korpus och facit är
+oförändrade.
+
+Verifierat på `a973e53`: 24/24 prov, sedan en avsiktlig regression som tog bort
+otolkbara svar ur nämnaren. Provet föll på 100 % i stället för förväntade 50 %.
+Efter återställning: 24/24 gröna igen. Den sparade regelkörningen är gjord på
+samma commit med ren arbetskopia, noll modellanrop och kostnad 0 USD.
+
+**Etapp B:s korpusgräns är GODKÄND i en riktig modellkörning 2026-09-08**, på
+ren `c524bd5` med `claude-haiku-4-5-20251001`: avi **31/36 (86,1 %)**,
+belopp **33/36 (91,7 %)** och motpart **32/36 (88,9 %)**. Alla tre når minst
+80 %. De fyra kontrollerna passerar, inga svar saknas och kandidat-recall är
+19/19. Körningen gjorde 26 modellanrop: 42 505 in- och 5 267 ut-token,
+uppskattad kostnad **0,06884 USD**. Originalrapporten finns i commit `48fe4a5`;
+korpus och facit är oförändrade.
+Detta mäter konstruerade fall, inte verklig drift. C och D har inte byggts i
+denna fortsättning och inga betalningar har ändrats.
+
+**Fortsatt kvalitetsarbete samma dag: 98 % är INTE visat.** Förtydligad prompt
+om returer, fullständiga namn, delbetalningar och förfallen respektive kommande
+avi gav 35/36 på avi och motpart (**97,2 %**) samt 36/36 på belopp. De rapporterna
+ligger i `senaste-betalningskorning.modell.json` och
+`senaste-betalningskontroll.modell.json`. Tolv nya konstruerade kontrollfall med
+nya identiteter, referenser, namnkonflikter och instruktioner i banktext gav
+10/12 (**83,3 %**) per fält. De lades till efter att originalets missar hade
+analyserats och är inte ett oberoende representativt driftprov.
+
+Ett ytterligare promptförsök gav bara 32/36 avi, 36/36 belopp och 33/36 motpart
+på originalet, och 9/12, 10/12, 9/12 på kontrollfallen. Det försöket **avvisades**;
+dess rapporter finns som `avvisad-prompt-betalnings*.modell.json`, mätta mot
+`29e69f6`. Den första promptförbättringen behålls för granskning. Dess rapporter
+markerar ändrad arbetskopia; de är gjorda före det avvisade tillägget, inte mot
+hela `29e69f6`. Alla fyra körningar bevaras, även försämringen. Sammanlagd
+uppskattad kostnad för förbättringsförsöken: **0,2290 USD**.
+
+Nästa kvalitetsgrind kräver fler i förväg märkta fall och upprepade körningar;
+ett bra utfall på 36 fall bevisar inte 98 % i drift. Kontrollmaterialet får nu
+räknas som utvecklingsmaterial eftersom dess missar har använts i ett försök.
+Kör det separat med `pnpm eval:shadow --betalningar --betalningskontroll`.
+
+Kör från `apps/api`: `pnpm eval:shadow --betalningar --utan-modell` för den
+kostnadsfria armen, eller `pnpm eval:shadow --betalningar` med dev-nyckel.
+Rapporterna sparas separat som `senaste-betalningskorning.utan-modell.json`
+och `senaste-betalningskorning.modell.json` i `src/ai/shadow/eval/`, med SHA,
+markering av ändrad arbetskopia, korpushash, modell, tokenförbrukning och
+kostnadsuppskattning. Ett underkänt modellresultat ger exitkod 1. API-fel
+stoppar vidare anrop men lämnar kvar samtliga facitfall och markerar kostnaden
+som ofullständig.
+
 ### Läge `e9227ee4` — 2026-09-08
 
 **Mätt mot koden, inte mot minnet av den.** Raderna nedan är samma spår-regel som

@@ -1,0 +1,780 @@
+{
+  "skapad": "2026-09-08T15:23:49.323Z",
+  "sha": "48fe4a5de605988e5735df57b4c3f46eb9e4739a",
+  "arbetskopiaAndrad": true,
+  "korpusSha256": "64a7a824b231b273fe5ccd5c5267b5332faba048e08c80cd4b58c9889c18ab57",
+  "lage": "MED_MODELL",
+  "modell": "claude-haiku-4-5-20251001",
+  "maxTokens": 1024,
+  "kostnad": {
+    "usd": 0.032854,
+    "komplett": true,
+    "prisInPerMtok": 1,
+    "prisUtPerMtok": 5,
+    "prisdatum": "2026-09"
+  },
+  "antal": 12,
+  "kontroller": {
+    "antal": 0,
+    "fel": []
+  },
+  "recall": {
+    "ratt": 6,
+    "antal": 6
+  },
+  "regler": [
+    {
+      "falt": "avi",
+      "etikett": "Avi eller faktura",
+      "ratt": 1,
+      "antal": 12,
+      "besvarade": 1,
+      "saknadeSvar": 11,
+      "procent": 8.333333333333334
+    },
+    {
+      "falt": "belopp",
+      "etikett": "Belopp",
+      "ratt": 1,
+      "antal": 12,
+      "besvarade": 1,
+      "saknadeSvar": 11,
+      "procent": 8.333333333333334
+    },
+    {
+      "falt": "motpart",
+      "etikett": "Motpart",
+      "ratt": 1,
+      "antal": 12,
+      "besvarade": 1,
+      "saknadeSvar": 11,
+      "procent": 8.333333333333334
+    }
+  ],
+  "kombinerat": [
+    {
+      "falt": "avi",
+      "etikett": "Avi eller faktura",
+      "ratt": 10,
+      "antal": 12,
+      "besvarade": 12,
+      "saknadeSvar": 0,
+      "procent": 83.33333333333333
+    },
+    {
+      "falt": "belopp",
+      "etikett": "Belopp",
+      "ratt": 10,
+      "antal": 12,
+      "besvarade": 12,
+      "saknadeSvar": 0,
+      "procent": 83.33333333333333
+    },
+    {
+      "falt": "motpart",
+      "etikett": "Motpart",
+      "ratt": 10,
+      "antal": 12,
+      "besvarade": 12,
+      "saknadeSvar": 0,
+      "procent": 83.33333333333333
+    }
+  ],
+  "skillnadProcentenheter": [
+    {
+      "falt": "avi",
+      "skillnad": 75
+    },
+    {
+      "falt": "belopp",
+      "skillnad": 75
+    },
+    {
+      "falt": "motpart",
+      "skillnad": 75
+    }
+  ],
+  "tekniskaFel": [],
+  "etappB": "GODKAND",
+  "grupper": [
+    {
+      "grupp": "delbetalning",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 3,
+          "besvarade": 0,
+          "saknadeSvar": 3,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 3,
+          "besvarade": 0,
+          "saknadeSvar": 3,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 3,
+          "besvarade": 0,
+          "saknadeSvar": 3,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 1,
+          "antal": 3,
+          "besvarade": 3,
+          "saknadeSvar": 0,
+          "procent": 33.333333333333336
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 1,
+          "antal": 3,
+          "besvarade": 3,
+          "saknadeSvar": 0,
+          "procent": 33.333333333333336
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 1,
+          "antal": 3,
+          "besvarade": 3,
+          "saknadeSvar": 0,
+          "procent": 33.333333333333336
+        }
+      ]
+    },
+    {
+      "grupp": "forfallen",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "instruktion",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 2,
+          "besvarade": 0,
+          "saknadeSvar": 2,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 2,
+          "besvarade": 0,
+          "saknadeSvar": 2,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 2,
+          "besvarade": 0,
+          "saknadeSvar": 2,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 2,
+          "antal": 2,
+          "besvarade": 2,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 2,
+          "antal": 2,
+          "besvarade": 2,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 2,
+          "antal": 2,
+          "besvarade": 2,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "overbetalning",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "referens",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "retur",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 3,
+          "besvarade": 0,
+          "saknadeSvar": 3,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 3,
+          "besvarade": 0,
+          "saknadeSvar": 3,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 3,
+          "besvarade": 0,
+          "saknadeSvar": 3,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 3,
+          "antal": 3,
+          "besvarade": 3,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 3,
+          "antal": 3,
+          "besvarade": 3,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 3,
+          "antal": 3,
+          "besvarade": 3,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    },
+    {
+      "grupp": "tvetydig",
+      "regler": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 0,
+          "antal": 1,
+          "besvarade": 0,
+          "saknadeSvar": 1,
+          "procent": 0
+        }
+      ],
+      "kombinerat": [
+        {
+          "falt": "avi",
+          "etikett": "Avi eller faktura",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "belopp",
+          "etikett": "Belopp",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        },
+        {
+          "falt": "motpart",
+          "etikett": "Motpart",
+          "ratt": 1,
+          "antal": 1,
+          "besvarade": 1,
+          "saknadeSvar": 0,
+          "procent": 100
+        }
+      ]
+    }
+  ],
+  "rader": [
+    {
+      "id": "c1",
+      "grupp": "forfallen",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "k1",
+        "belopp": "FULL",
+        "motpart": "u1"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "k1",
+        "belopp": "FULL",
+        "motpart": "u1"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c2",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "k1",
+        "belopp": "DEL",
+        "motpart": "u1"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c3",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "k3",
+        "belopp": "DEL",
+        "motpart": "u2"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "k3",
+        "belopp": "DEL",
+        "motpart": "u2"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c4",
+      "grupp": "delbetalning",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "k4",
+        "belopp": "DEL",
+        "motpart": "u3"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c5",
+      "grupp": "referens",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "k2",
+        "belopp": "FULL",
+        "motpart": "u1"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "k2",
+        "belopp": "FULL",
+        "motpart": "u1"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c6",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c7",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c8",
+      "grupp": "retur",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c9",
+      "grupp": "tvetydig",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 3,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c10",
+      "grupp": "overbetalning",
+      "kontroll": false,
+      "regelTyp": "INGEN",
+      "antalKandidater": 0,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "EJ_BEHOV"
+    },
+    {
+      "id": "c11",
+      "grupp": "instruktion",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 1,
+      "rattPostIMangden": true,
+      "facit": {
+        "avi": "k4",
+        "belopp": "FULL",
+        "motpart": "u3"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "k4",
+        "belopp": "FULL",
+        "motpart": "u3"
+      },
+      "modellstatus": "SVAR"
+    },
+    {
+      "id": "c12",
+      "grupp": "instruktion",
+      "kontroll": false,
+      "regelTyp": "KANDIDATER",
+      "antalKandidater": 2,
+      "rattPostIMangden": null,
+      "facit": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "regler": null,
+      "kombinerat": {
+        "avi": "INGEN",
+        "belopp": "FULL",
+        "motpart": "OKAND"
+      },
+      "modellstatus": "SVAR"
+    }
+  ],
+  "usage": {
+    "tokensIn": 21269,
+    "tokensUt": 2317,
+    "modellanrop": 11,
+    "komplett": true
+  }
+}

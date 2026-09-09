@@ -24,9 +24,10 @@
  *
  * Kör:  cd apps/api && DATABASE_URL=…/eken_tom pnpm eval:shadow
  */
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 import Anthropic from '@anthropic-ai/sdk'
 import { PrismaClient } from '@prisma/client'
@@ -43,16 +44,16 @@ import { TOMT_REGISTER_ALTERNATIV, hantverkarmeny } from '../src/ai/shadow/contr
 import { INGEN_ATGARD, skuggverktygForFelanmalan } from '../src/ai/shadow/shadow-tool-gate'
 import { prövaDelegerbarhet } from '../src/ai/delegation/delegation-scope'
 import {
-  provaKandidater,
-  beloppsutfall,
-  type Kandidat,
-} from '../src/ai/shadow/payment/payment-candidates'
-import {
   betalningsverktyg,
   byggBetalningsprompt,
-  tolkaBetalningssvar,
+  BETALNINGSMODELL,
+  BETALNING_MAX_TOKENS,
 } from '../src/ai/shadow/payment/payment-shadow.service'
-import { INGEN_AVI } from '../src/ai/shadow/payment/payment-fields'
+import {
+  BetalningskorpusSchema,
+  mataBetalningar,
+  type Betalningsmodell,
+} from '../src/ai/shadow/eval/betalningsrapport'
 import {
   byggRapport,
   formateraRapport,
@@ -108,48 +109,17 @@ interface KorpusArende {
  * körningar. Regelhalvan mäts dessutom i CI av `korpus-betalningar.spec.ts`.
  */
 async function körBetalningsläget(utanModell: boolean): Promise<void> {
-  const korpus = JSON.parse(
-    readFileSync(join(__dirname, '../src/ai/shadow/eval/korpus-betalningar.json'), 'utf8'),
-  ) as {
-    poster: Array<{
-      id: string
-      sort: 'AVI' | 'FAKTURA'
-      nummer: string
-      ocr: string
-      utestaende: number
-      forfallodatum: string
-      motpartId: string
-      motpartNamn: string
-    }>
-    bankrader: Array<{
-      id: string
-      datum: string
-      text: string
-      belopp: number
-      rawOcr: string | null
-      facit: {
-        avi: string
-        belopp: 'FULL' | 'DEL'
-        motpart: string
-        grupp: string
-        skal: string
-        regel?: string
-      }
-    }>
-  }
-
-  const kandidater: Kandidat[] = korpus.poster.map((p) => ({
-    id: p.id,
-    sort: p.sort,
-    nummer: p.nummer,
-    ocr: p.ocr,
-    utestaende: p.utestaende,
-    forfallodatum: new Date(p.forfallodatum),
-    motpartId: p.motpartId,
-    motpartNamn: p.motpartNamn,
-  }))
-
-  let anthropic: Anthropic | null = null
+  const kontroll = process.argv.includes('--betalningskontroll')
+  const kalltext = readFileSync(
+    join(
+      __dirname,
+      '../src/ai/shadow/eval/',
+      kontroll ? 'korpus-betalningar-kontroll.json' : 'korpus-betalningar.json',
+    ),
+    'utf8',
+  )
+  const korpus = BetalningskorpusSchema.parse(JSON.parse(kalltext))
+  let modell: Betalningsmodell | undefined
   if (!utanModell) {
     const nyckel = requireApiKey({
       envVar: 'ANTHROPIC_API_KEY',
@@ -157,186 +127,74 @@ async function körBetalningsläget(utanModell: boolean): Promise<void> {
       expectedPrefix: 'sk-ant-',
     })
     await verifyAnthropicKey(nyckel)
-    anthropic = new Anthropic({ apiKey: nyckel })
-  }
-
-  type Utfall = {
-    id: string
-    grupp: string
-    regelTyp: string
-    antalKandidater: number
-    rättPostIMängden: boolean | null
-    svar: string | null
-    facitAvi: string
-    träff: boolean | null
-    beloppSvar: string | null
-    beloppTräff: boolean | null
-  }
-  const utfall: Utfall[] = []
-  let tokensIn = 0
-  let tokensUt = 0
-
-  for (const r of korpus.bankrader) {
-    const rad = {
-      id: r.id,
-      datum: new Date(r.datum),
-      text: r.text,
-      belopp: r.belopp,
-      rawOcr: r.rawOcr,
-    }
-    const regel = provaKandidater(rad, kandidater)
-    const iMängden =
-      r.facit.avi === INGEN_AVI
-        ? null
-        : regel.typ === 'KANDIDATER' && regel.kandidater.some((k) => k.id === r.facit.avi)
-
-    if (regel.typ !== 'KANDIDATER') {
-      // REGELN AVGJORDE. Ett INGEN_FRAGA är en kontroll; ett INGEN är ett svar.
-      const svar = regel.typ === 'INGEN' ? INGEN_AVI : null
-      utfall.push({
-        id: r.id,
-        grupp: r.facit.grupp,
-        regelTyp: regel.typ,
-        antalKandidater: 0,
-        rättPostIMängden: iMängden,
-        svar,
-        facitAvi: r.facit.avi,
-        träff: svar === null ? null : svar === r.facit.avi,
-        beloppSvar: null,
-        beloppTräff: null,
+    const anthropic = new Anthropic({ apiKey: nyckel, maxRetries: 0 })
+    modell = async (rad, kandidater) => {
+      const response = await anthropic.messages.create({
+        model: BETALNINGSMODELL,
+        max_tokens: BETALNING_MAX_TOKENS,
+        temperature: 0,
+        tools: [betalningsverktyg(kandidater)],
+        tool_choice: { type: 'tool', name: 'valj_avi' },
+        messages: [{ role: 'user', content: byggBetalningsprompt(rad, kandidater) }],
       })
-      continue
+      const block = response.content.find((b) => b.type === 'tool_use')
+      return {
+        input: block?.type === 'tool_use' ? block.input : null,
+        stopReason: response.stop_reason,
+        tokensIn: response.usage.input_tokens,
+        tokensUt: response.usage.output_tokens,
+      }
     }
-
-    if (!anthropic) {
-      utfall.push({
-        id: r.id,
-        grupp: r.facit.grupp,
-        regelTyp: regel.typ,
-        antalKandidater: regel.kandidater.length,
-        rättPostIMängden: iMängden,
-        svar: null,
-        facitAvi: r.facit.avi,
-        träff: null,
-        beloppSvar: null,
-        beloppTräff: null,
-      })
-      continue
-    }
-
-    const svarM = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      temperature: 0,
-      tools: [betalningsverktyg(regel.kandidater)],
-      tool_choice: { type: 'tool', name: 'valj_avi' },
-      messages: [{ role: 'user', content: byggBetalningsprompt(rad, regel.kandidater) }],
-    })
-    tokensIn += svarM.usage.input_tokens
-    tokensUt += svarM.usage.output_tokens
-    const block = svarM.content.find((b) => b.type === 'tool_use')
-    const tolkat =
-      block && block.type === 'tool_use' ? tolkaBetalningssvar(block.input, regel.kandidater) : null
-    // OTOLKBART SKRIVS UT RÅTT — samma lärdom som felanmälans läge: utan
-    // råsvaret går det inte att avgöra VARFÖR nästa gång det händer.
-    if (!tolkat && block && block.type === 'tool_use') {
-      console.warn(`  OTOLKBART ${r.id}: ${JSON.stringify(block.input)}`)
-    }
-    const vald = tolkat ? regel.kandidater.find((k) => k.id === tolkat.avi) : undefined
-    const beloppSvar = vald ? beloppsutfall(rad.belopp, vald.utestaende) : null
-    utfall.push({
-      id: r.id,
-      grupp: r.facit.grupp,
-      regelTyp: regel.typ,
-      antalKandidater: regel.kandidater.length,
-      rättPostIMängden: iMängden,
-      svar: tolkat ? tolkat.avi : null,
-      facitAvi: r.facit.avi,
-      träff: tolkat ? tolkat.avi === r.facit.avi : null,
-      beloppSvar,
-      beloppTräff: beloppSvar === null ? null : beloppSvar === r.facit.belopp,
-    })
   }
-
-  // ── RAPPORTEN ─────────────────────────────────────────────────────────────
-  const kontroller = utfall.filter((u) => u.regelTyp === 'INGEN_FRAGA')
-  const modellfall = utfall.filter((u) => u.regelTyp === 'KANDIDATER')
-  const regelnej = utfall.filter((u) => u.regelTyp === 'INGEN')
-
-  console.warn('')
-  console.warn(`KORPUS: ${korpus.bankrader.length} bankrader mot ${korpus.poster.length} poster`)
-  console.warn(`  regeln svarade INGEN_FRAGA (kontroll)   ${kontroller.length}`)
-  console.warn(`  regeln svarade INGEN (utan modellanrop) ${regelnej.length}`)
-  console.warn(`  gick till modellen                      ${modellfall.length}`)
-
-  // ── NÄMNAREN UTESLUTER KONTROLLERNA, OCH DET ÄR EN RÄTTELSE ─────────────
-  //
-  // Första versionen räknade `rättPostIMängden !== null`, alltså varje rad vars
-  // facit pekar på en post. Det tog med de fyra `exakt_ocr`-KONTROLLERNA, som
-  // per konstruktion aldrig når kandidatmängden — regeln svarar INGEN_FRAGA och
-  // avstämningen tar raden. De räknades därför som recall-MISSAR, och riggen
-  // skrev 19/23 = 82,6 % när den verkliga recallen var 19/19.
-  //
-  // Felformen är värd att namnge: ett tal som ser lågt och trovärdigt ut. Ingen
-  // hade ifrågasatt 82,6 %. Det upptäcktes bara genom att provet i
-  // `korpus-betalningar.spec.ts` — som har rätt nämnare — sa 100 % samtidigt.
-  // Två uppräkningar av samma mängd är inte en uppräkning.
-  const medPost = utfall.filter((u) => u.rättPostIMängden !== null && u.regelTyp !== 'INGEN_FRAGA')
-  const recall = medPost.filter((u) => u.rättPostIMängden === true).length
-  console.warn('')
-  console.warn(
-    `RECALL (rätt post fanns bland kandidaterna): ${recall}/${medPost.length}` +
-      ` — ${((100 * recall) / Math.max(1, medPost.length)).toFixed(1)} %`,
+  const rapport = await mataBetalningar(korpus, modell)
+  const rot = resolve(__dirname, '../../..')
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { cwd: rot, encoding: 'utf8' }).trim()
+  const sparad = {
+    skapad: new Date().toISOString(),
+    sha: git('rev-parse', 'HEAD'),
+    arbetskopiaAndrad: git('status', '--porcelain').length > 0,
+    korpusSha256: createHash('sha256').update(kalltext).digest('hex'),
+    lage: utanModell ? 'UTAN_MODELL' : 'MED_MODELL',
+    modell: utanModell ? null : BETALNINGSMODELL,
+    maxTokens: BETALNING_MAX_TOKENS,
+    kostnad: {
+      usd:
+        (rapport.usage.tokensIn * PRIS_IN_PER_MTOK + rapport.usage.tokensUt * PRIS_UT_PER_MTOK) /
+        1e6,
+      komplett: rapport.usage.komplett,
+      prisInPerMtok: PRIS_IN_PER_MTOK,
+      prisUtPerMtok: PRIS_UT_PER_MTOK,
+      prisdatum: '2026-09',
+    },
+    ...rapport,
+  }
+  // Skilda filer: en gratis regelkörning får aldrig skriva över modellmätningen.
+  const fil = join(
+    __dirname,
+    '../src/ai/shadow/eval/',
+    kontroll
+      ? `senaste-betalningskontroll.${utanModell ? 'utan-modell' : 'modell'}.json`
+      : utanModell
+        ? 'senaste-betalningskorning.utan-modell.json'
+        : 'senaste-betalningskorning.modell.json',
   )
-
-  const regelnejRätt = regelnej.filter((u) => u.träff === true).length
+  writeFileSync(fil, JSON.stringify(sparad, null, 2) + '\n')
+  console.warn(`KORPUS: ${rapport.antal} bankrader, ${rapport.kontroller.antal} kontroller`)
+  console.warn(`RECALL: ${rapport.recall.ratt}/${rapport.recall.antal}`)
+  for (const arm of ['regler', 'kombinerat'] as const) {
+    for (const m of rapport[arm]) {
+      console.warn(
+        `${arm} · ${m.etikett}: ${m.ratt}/${m.antal} — ${m.procent?.toFixed(1) ?? 'OMÄTT'} %, ${m.saknadeSvar} saknade svar`,
+      )
+    }
+  }
+  console.warn(`ETAPP B: ${rapport.etappB}${utanModell ? ' — modellhalvan är inte körd' : ''}`)
   console.warn(
-    `REGELN ENSAM (INGEN utan modellanrop): ${regelnejRätt}/${regelnej.length} rätt` +
-      ` — ${((100 * regelnejRätt) / Math.max(1, regelnej.length)).toFixed(1)} %`,
+    `KOSTNAD: ${rapport.usage.tokensIn} in + ${rapport.usage.tokensUt} ut ≈ $${sparad.kostnad.usd.toFixed(4)}${sparad.kostnad.komplett ? '' : ' (ofullständig vid API-fel)'}`,
   )
-
-  if (anthropic) {
-    const besvarade = modellfall.filter((u) => u.träff !== null)
-    const rätt = besvarade.filter((u) => u.träff).length
-    const belopp = modellfall.filter((u) => u.beloppTräff !== null)
-    const beloppRätt = belopp.filter((u) => u.beloppTräff).length
-    console.warn('')
-    console.warn(
-      `MODELLEN (avi): ${rätt}/${besvarade.length}` +
-        ` — ${((100 * rätt) / Math.max(1, besvarade.length)).toFixed(1)} %`,
-    )
-    console.warn(
-      `MODELLEN (belopp FULL/DEL): ${beloppRätt}/${belopp.length}` +
-        ` — ${((100 * beloppRätt) / Math.max(1, belopp.length)).toFixed(1)} %`,
-    )
-    const helaKedjan = utfall.filter((u) => u.svar !== null)
-    const kedjaRätt = helaKedjan.filter((u) => u.träff).length
-    console.warn(
-      `HELA KEDJAN (regel + modell): ${kedjaRätt}/${helaKedjan.length}` +
-        ` — ${((100 * kedjaRätt) / Math.max(1, helaKedjan.length)).toFixed(1)} %`,
-    )
-    const kostnad = (tokensIn / 1e6) * PRIS_IN_PER_MTOK + (tokensUt / 1e6) * PRIS_UT_PER_MTOK
-    console.warn('')
-    console.warn(`KOSTNAD: ${tokensIn} in + ${tokensUt} ut ≈ $${kostnad.toFixed(4)}`)
-  } else {
-    console.warn('')
-    console.warn('MODELLHALVAN HOPPADES ÖVER (--utan-modell). Talen ovan är regelhalvan ensam.')
-  }
-
-  console.warn('')
-  console.warn('PER GRUPP')
-  const grupper = [...new Set(utfall.map((u) => u.grupp))].sort()
-  for (const g of grupper) {
-    const rader = utfall.filter((u) => u.grupp === g)
-    const svarade = rader.filter((u) => u.träff !== null)
-    const rätt = svarade.filter((u) => u.träff).length
-    console.warn(
-      `  ${g.padEnd(18)} ${String(rader.length).padStart(2)} rader · ` +
-        (svarade.length === 0
-          ? 'inget svar (kontroll eller modellhalvan avstängd)'
-          : `${rätt}/${svarade.length} rätt`),
-    )
-  }
+  console.warn(`Rapport: ${fil}`)
+  if (!utanModell && rapport.etappB !== 'GODKAND') process.exitCode = 1
 }
 
 async function main(): Promise<void> {
