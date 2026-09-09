@@ -1,0 +1,15 @@
+{
+  "repeatedOriginalCases": 29,
+  "samePerCaseMetrics": true,
+  "extraFrozenCases": 2,
+  "historicalFilesUnchanged": 67,
+  "sourceFilesUnchanged": 9,
+  "hashes": {
+    "korning-1/observationer.json.gz": "90a1b7790706f701c0a5480c8d2d4c9c6e5b6d78e3c97fc325f50fd025fad67a",
+    "korning-2/observationer.json.gz": "d9e30daa5ba78eed6b0f30025b8eb07d6c82829a44abc0ff664ff691acf326ac",
+    "indata.json": "a53ac8816adc22f97ff445cd5edd10048f728a94139d6d9882587f8948961606",
+    "facit.json": "98f50388588c7f76320fa6001b619e595ce76fcfd443456194c4f1fe299fc4bb",
+    "tillagg-indata.json": "14590107f70af891896b6ffc6101e0f417030ba4bd66f6bf8e30520ec1a9f4c2",
+    "tillagg-facit.json": "c16793e23c86a1332785f8e0b151e0fe67bcd1617f5e974b3f367a0465bfe968"
+  }
+}

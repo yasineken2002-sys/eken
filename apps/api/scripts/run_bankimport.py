@@ -27,6 +27,9 @@ def main():
     for file in ('indata.json','facit.json'):
         p='docs/eval/bankimport-identitet/'+file
         assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show','9cd60f8d:'+p],cwd=ROOT),p
+    for file in ('tillagg-indata.json','tillagg-facit.json'):
+        p='docs/eval/bankimport-identitet/'+file
+        assert (ROOT/p).read_bytes()==subprocess.check_output(['git','show','004407e4:'+p],cwd=ROOT),p
     # Exact immutable source baseline before invoking a production method.
     for path in SOURCE:
         assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT),path

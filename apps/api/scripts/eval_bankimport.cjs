@@ -11,6 +11,8 @@ async function main() {
   assert.deepEqual(Object.keys(config).sort(),['container','output']);
   const rawInputs=fs.readFileSync(path.join(ROOT,'docs/eval/bankimport-identitet/indata.json'));
   const inputs=JSON.parse(rawInputs);
+  const supplement=fs.readFileSync(path.join(ROOT,'docs/eval/bankimport-identitet/tillagg-indata.json'));
+  inputs.cases.push(...JSON.parse(supplement).cases);
   // This executable NEVER opens facit.json or reads expected case outcomes.
   const prod=await loadProduction();const cases=[];
   for(const scenario of inputs.cases) {
@@ -86,7 +88,7 @@ async function main() {
   const day=prod.normalizeToStockholmDay(new Date('2026-09-01T22:30:00Z'));
   const key=prod.computeBankDedupKey(day,new CentDecimal('100.00'),'00123459');
   const result={kind:'ACTUAL_PRODUCTION_METHOD_DIAGNOSTIC_WITH_REPLACED_BOUNDARIES',
-    node:process.version,inputSha256:hash(rawInputs),sourceModules:prod.sources,forbidden:prod.forbidden,
+    node:process.version,inputSha256:hash(rawInputs),supplementSha256:hash(supplement),sourceModules:prod.sources,forbidden:prod.forbidden,
     dedupProbe:{instant:'2026-09-01T22:30:00Z',stockholmDay:day.toISOString(),amount:'100.00',ocr:'00123459',key},
     layers:{actual:['TypeScript production methods','OCR helpers','Mock provider account/status methods','PostgreSQL predicates and UNIQUE'],
       replaced:['Nest decorators/DI','Prisma client repository mapping','Decimal cent facade','SQL 23505 to P2002 class facade',

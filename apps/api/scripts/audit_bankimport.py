@@ -8,6 +8,7 @@ import copy
 import gzip
 import hashlib
 import json
+import subprocess
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -45,10 +46,14 @@ def normalize_raw(raw):
 def audit(observed):
     fixture=json.loads((DATA/'indata.json').read_text())
     expected=json.loads((DATA/'facit.json').read_text())['cases']
+    if 'supplementSha256' in observed:
+        assert observed['supplementSha256']==sha((DATA/'tillagg-indata.json').read_bytes())
+        fixture['cases']+=json.loads((DATA/'tillagg-indata.json').read_text())['cases']
+        expected.update(json.loads((DATA/'tillagg-facit.json').read_text())['cases'])
     inputs={c['id']:c for c in fixture['cases']}
     assert observed['inputSha256']==sha((DATA/'indata.json').read_bytes())
     assert observed['forbidden']==[]
-    assert len(observed['cases'])==len(inputs)==len(expected)==29
+    assert len(observed['cases'])==len(inputs)==len(expected)==(31 if 'supplementSha256' in observed else 29)
     assert {c['id'] for c in observed['cases']}==set(inputs)
     for file,details in observed['sourceModules'].items():
         assert sha((ROOT/file).read_bytes())==details['sha256'],file
@@ -205,7 +210,9 @@ def negatives(observed):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('observations',type=Path);parser.add_argument('--out',type=Path);a=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('observations',type=Path);parser.add_argument('--out',type=Path)
+    parser.add_argument('--evidence-commit',help='Explicit archived harness source commit, read with git show; no checkout')
+    a=parser.parse_args()
     raw=a.observations.read_bytes();decoded=gzip.decompress(raw) if a.observations.suffix=='.gz' else raw
     manifest=json.loads((a.observations.parent/'manifest.json').read_text())
     assert sha(decoded)==manifest['observationsUncompressedSha256']
@@ -214,11 +221,14 @@ def main():
     for group in ('sourceHashes','harnessHashes','historicalHashes'):
         for file,digest in manifest[group].items():
             p=(ROOT/file).resolve();assert p.is_relative_to(ROOT)
-            assert sha(p.read_bytes())==digest,(group,file)
+            content=(subprocess.check_output(['git','show',a.evidence_commit+':'+file],cwd=ROOT)
+                     if a.evidence_commit and group=='harnessHashes' else p.read_bytes())
+            assert sha(content)==digest,(group,file)
             verified+=1
     observed=json.loads(decoded)
     rows=audit(observed);rejected=negatives(observed)
-    report={'harnessRecount':'PASS','verifiedFileHashes':verified,'negativeControlsRejected':rejected,'productCaseRequirements':{
+    report={'harnessRecount':'PASS','verifiedFileHashes':verified,'archivedHarnessCommit':a.evidence_commit,
+        'negativeControlsRejected':rejected,'productCaseRequirements':{
         'PASS':sum(r['requirements']=='PASS' for r in rows),'FAIL':sum(r['requirements']=='FAIL' for r in rows)},'cases':rows}
     if a.out:
         a.out.mkdir(parents=True,exist_ok=True)
