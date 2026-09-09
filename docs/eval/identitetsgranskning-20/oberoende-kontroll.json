@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "exactCaseIds": [
+    "betalning-56-0",
+    "betalning-56-1",
+    "betalning-56-2",
+    "betalning-56-3",
+    "betalning-56-4",
+    "betalning-56-5",
+    "betalning-56-6",
+    "betalning-56-7",
+    "betalning-56-8",
+    "betalning-56-9",
+    "betalning-58-0",
+    "betalning-58-1",
+    "betalning-58-2",
+    "betalning-58-3",
+    "betalning-58-4",
+    "betalning-58-5",
+    "betalning-58-6",
+    "betalning-58-7",
+    "betalning-58-8",
+    "betalning-58-9"
+  ],
+  "caseCount": 20,
+  "historicalBankObservationsChecked": 80,
+  "disjointCategories": [
+    0,
+    0,
+    20,
+    0
+  ],
+  "tableMembersMatch": true,
+  "goldAfterCheck": 20,
+  "lastCreditVisibleSeparately": true,
+  "newDecisionReplay": false,
+  "checkerSha256": "b99b88277a5e24a2f88da953b2fef58efe2a305c44fe2e5d9bb5f5c5ffccdf2e"
+}

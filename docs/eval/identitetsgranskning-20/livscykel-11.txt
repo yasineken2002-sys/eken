@@ -1,0 +1,16 @@
+test_adjusted_payment_consumes_credit_without_creating_new (test_tillgodo_lifecycle.LifecycleTests.test_adjusted_payment_consumes_credit_without_creating_new) ... ok
+test_already_issued_never_adjusted_silently (test_tillgodo_lifecycle.LifecycleTests.test_already_issued_never_adjusted_silently) ... ok
+test_conflicting_reference_even_with_paid_owner (test_tillgodo_lifecycle.LifecycleTests.test_conflicting_reference_even_with_paid_owner) ... ok
+test_full_payment_recreates_larger_credit (test_tillgodo_lifecycle.LifecycleTests.test_full_payment_recreates_larger_credit) ... ok
+test_full_rent_not_original_overpayment_still_creates_credit (test_tillgodo_lifecycle.LifecycleTests.test_full_rent_not_original_overpayment_still_creates_credit) ... ok
+test_inactive_no_consent_or_refund_never_use_credit (test_tillgodo_lifecycle.LifecycleTests.test_inactive_no_consent_or_refund_never_use_credit) ... ok
+test_missing_next_and_final_credit_remain_visible (test_tillgodo_lifecycle.LifecycleTests.test_missing_next_and_final_credit_remain_visible) ... ok
+test_multiple_contracts_same_person_choose_only_explicit_contract (test_tillgodo_lifecycle.LifecycleTests.test_multiple_contracts_same_person_choose_only_explicit_contract) ... ok
+test_multiple_next_notices_are_ambiguous (test_tillgodo_lifecycle.LifecycleTests.test_multiple_next_notices_are_ambiguous) ... ok
+test_org_tenant_and_lease_boundaries (test_tillgodo_lifecycle.LifecycleTests.test_org_tenant_and_lease_boundaries) ... ok
+test_reimport_is_inert_and_changed_payload_rejected (test_tillgodo_lifecycle.LifecycleTests.test_reimport_is_inert_and_changed_payload_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.007s
+
+OK
