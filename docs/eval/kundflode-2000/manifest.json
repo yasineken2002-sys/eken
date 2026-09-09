@@ -1,0 +1,80 @@
+{
+  "shaFrysning": "e36ff6ece6924e05f5457a940edff272f464c24f",
+  "shaOrdningsprov": "d39911769f39e8bfc301c848fad679c03dfce1d9",
+  "sammaKundOchFacit": true,
+  "andradeKallor": [
+    "scripts/eval-kundflode-2000.ts"
+  ],
+  "filer": {
+    "grund/AGENT_AV-kontroller.json": {
+      "originalSha256": "1c0e8e3ff5d63722c39198aeff78b6645978e9f8c80a0d0f8438277bcb4fca5b",
+      "originalBytes": 276,
+      "sparadeBytes": 276
+    },
+    "grund/AGENT_AV.json.gz": {
+      "originalSha256": "9e8e2cf244d8f7851c19fc422271dc54c34d484600358ec670b570f564628c78",
+      "originalBytes": 9147572,
+      "sparadeBytes": 1161669
+    },
+    "grund/AGENT_PA-kontroller.json": {
+      "originalSha256": "1c0e8e3ff5d63722c39198aeff78b6645978e9f8c80a0d0f8438277bcb4fca5b",
+      "originalBytes": 276,
+      "sparadeBytes": 276
+    },
+    "grund/AGENT_PA.json.gz": {
+      "originalSha256": "2041deaeed79068a6405e1ebadcf033b7e6f4e8f8288cf54c31bf0004369f117",
+      "originalBytes": 9147582,
+      "sparadeBytes": 1164231
+    },
+    "grund/kund-och-facit.json.gz": {
+      "originalSha256": "3118bcbac637f5b56698a9b18961a8dd949c84749fba9d7fb04f2e893e1b8b47",
+      "originalBytes": 1631624,
+      "sparadeBytes": 76869
+    },
+    "grund/miljo.json": {
+      "originalSha256": "75df4980c1fe054ed1ed6533296a88b293f63dfab43c2572d3a20587936413ad",
+      "originalBytes": 1894,
+      "sparadeBytes": 1894
+    },
+    "grund/sammanfattning.json": {
+      "originalSha256": "f9413d75162cf141eb1121cb9b4e1e6673fb66f20a6c2a74b870d3b86c8d4ae3",
+      "originalBytes": 6318,
+      "sparadeBytes": 6318
+    },
+    "omvand-inom-dag/AGENT_AV-kontroller.json": {
+      "originalSha256": "3069083ca21c888e37c83674a1a01054fe4949c5aa4af9b30cb933453e4d4075",
+      "originalBytes": 277,
+      "sparadeBytes": 277
+    },
+    "omvand-inom-dag/AGENT_AV.json.gz": {
+      "originalSha256": "7f7311c17376af5cf2fb6b523de660d683d291877476386afbc1cc3b87d05795",
+      "originalBytes": 10766320,
+      "sparadeBytes": 1409353
+    },
+    "omvand-inom-dag/AGENT_PA-kontroller.json": {
+      "originalSha256": "3069083ca21c888e37c83674a1a01054fe4949c5aa4af9b30cb933453e4d4075",
+      "originalBytes": 277,
+      "sparadeBytes": 277
+    },
+    "omvand-inom-dag/AGENT_PA.json.gz": {
+      "originalSha256": "d3b2c0b0f663aaee51374605b392aaa5d42077e3dba590d41325754cd0e7eab4",
+      "originalBytes": 10766317,
+      "sparadeBytes": 1409585
+    },
+    "omvand-inom-dag/kund-och-facit.json.gz": {
+      "originalSha256": "3118bcbac637f5b56698a9b18961a8dd949c84749fba9d7fb04f2e893e1b8b47",
+      "originalBytes": 1631624,
+      "sparadeBytes": 76869
+    },
+    "omvand-inom-dag/miljo.json": {
+      "originalSha256": "a02e6f384e75fc7fec5d3d42a8a580587708ef1b2bc6edc0b0d388e9741ad83b",
+      "originalBytes": 1927,
+      "sparadeBytes": 1927
+    },
+    "omvand-inom-dag/sammanfattning.json": {
+      "originalSha256": "ee4e972b3c146714699616be48b746c1aaf784363de7116fb7dda32909b268a4",
+      "originalBytes": 6355,
+      "sparadeBytes": 6355
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "counts": {
+    "bank": 2000,
+    "allocations": 1993,
+    "entries": 3993,
+    "properties": 10,
+    "units": 200,
+    "tenants": 200,
+    "leases": 200,
+    "notices": 2000
+  },
+  "allaVerifikatBalanserar": true,
+  "aterimportIdempotent": true,
+  "koadeSkuggjobb": 91
+}

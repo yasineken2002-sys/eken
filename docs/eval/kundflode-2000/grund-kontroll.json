@@ -1,0 +1,710 @@
+{
+  "indata": {
+    "AGENT_AV-kontroller.json": "1c0e8e3ff5d63722c39198aeff78b6645978e9f8c80a0d0f8438277bcb4fca5b",
+    "AGENT_AV.json": "9e8e2cf244d8f7851c19fc422271dc54c34d484600358ec670b570f564628c78",
+    "AGENT_PA-kontroller.json": "1c0e8e3ff5d63722c39198aeff78b6645978e9f8c80a0d0f8438277bcb4fca5b",
+    "AGENT_PA.json": "2041deaeed79068a6405e1ebadcf033b7e6f4e8f8288cf54c31bf0004369f117",
+    "kund-och-facit.json": "3118bcbac637f5b56698a9b18961a8dd949c84749fba9d7fb04f2e893e1b8b47",
+    "miljo.json": "75df4980c1fe054ed1ed6533296a88b293f63dfab43c2572d3a20587936413ad",
+    "sammanfattning.json": "f9413d75162cf141eb1121cb9b4e1e6673fb66f20a6c2a74b870d3b86c8d4ae3"
+  },
+  "resultat": {
+    "AGENT_AV": {
+      "matning": {
+        "betalningar": 2000,
+        "godkanda_automatiska": 1890,
+        "omatchade": 91,
+        "fel_hushall": 0,
+        "annan_period_an_angiven": 9,
+        "avsedd_avi_trots_konflikt": 10,
+        "automatisk_med_kontrollbrist": 19,
+        "artal_som_ocr": 168,
+        "unik_namn_period_belopp": 80,
+        "unik_namn_period_belopp_ratt": 80,
+        "avsedd_avi_i_kandidater": 80,
+        "betalningar_med_granskningsbehov": 110
+      },
+      "exempel": [
+        {
+          "id": "betalning-58-0",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-0",
+          "allokeringar": [
+            {
+              "avi": "avi-58-0",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-1",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-1",
+          "allokeringar": [
+            {
+              "avi": "avi-57-1",
+              "beloppOre": 2500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-0",
+              "beloppOre": 977500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-1",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-1",
+          "allokeringar": [
+            {
+              "avi": "avi-58-1",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-2",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-2",
+          "allokeringar": [
+            {
+              "avi": "avi-57-1",
+              "beloppOre": 975000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-2",
+              "beloppOre": 5000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-2",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-2",
+          "allokeringar": [
+            {
+              "avi": "avi-58-2",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-3",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-3",
+          "allokeringar": [
+            {
+              "avi": "avi-57-2",
+              "beloppOre": 972500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-3",
+              "beloppOre": 7500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-3",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-3",
+          "allokeringar": [
+            {
+              "avi": "avi-58-3",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-4",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-4",
+          "allokeringar": [
+            {
+              "avi": "avi-57-3",
+              "beloppOre": 970000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-4",
+              "beloppOre": 10000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-4",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-4",
+          "allokeringar": [
+            {
+              "avi": "avi-58-4",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-5",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-5",
+          "allokeringar": [
+            {
+              "avi": "avi-57-4",
+              "beloppOre": 967500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-5",
+              "beloppOre": 12500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-5",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-5",
+          "allokeringar": [
+            {
+              "avi": "avi-58-5",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-6",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-6",
+          "allokeringar": [
+            {
+              "avi": "avi-57-6",
+              "beloppOre": 15000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-5",
+              "beloppOre": 965000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-6",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-6",
+          "allokeringar": [
+            {
+              "avi": "avi-58-6",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-7",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-7",
+          "allokeringar": [
+            {
+              "avi": "avi-57-6",
+              "beloppOre": 962500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-7",
+              "beloppOre": 17500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-7",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-7",
+          "allokeringar": [
+            {
+              "avi": "avi-58-7",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-8",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-8",
+          "allokeringar": [
+            {
+              "avi": "avi-57-7",
+              "beloppOre": 960000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-8",
+              "beloppOre": 20000,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-8",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-8",
+          "allokeringar": [
+            {
+              "avi": "avi-58-8",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-9",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-9",
+          "allokeringar": [
+            {
+              "avi": "avi-57-9",
+              "beloppOre": 22500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            },
+            {
+              "avi": "avi-57-8",
+              "beloppOre": 957500,
+              "tenantId": "ad36ab3b-0725-40e8-a574-fbee0a1a7745"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-9",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-9",
+          "allokeringar": [
+            {
+              "avi": "avi-58-9",
+              "beloppOre": 1005025,
+              "tenantId": "b6e069b1-72a5-481e-a37b-827818d9dcb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        }
+      ]
+    },
+    "AGENT_PA": {
+      "matning": {
+        "betalningar": 2000,
+        "godkanda_automatiska": 1890,
+        "omatchade": 91,
+        "fel_hushall": 0,
+        "annan_period_an_angiven": 9,
+        "avsedd_avi_trots_konflikt": 10,
+        "automatisk_med_kontrollbrist": 19,
+        "artal_som_ocr": 168,
+        "unik_namn_period_belopp": 80,
+        "unik_namn_period_belopp_ratt": 80,
+        "avsedd_avi_i_kandidater": 80,
+        "betalningar_med_granskningsbehov": 110
+      },
+      "exempel": [
+        {
+          "id": "betalning-58-0",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-0",
+          "allokeringar": [
+            {
+              "avi": "avi-58-0",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-1",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-1",
+          "allokeringar": [
+            {
+              "avi": "avi-57-0",
+              "beloppOre": 977500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-1",
+              "beloppOre": 2500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-1",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-1",
+          "allokeringar": [
+            {
+              "avi": "avi-58-1",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-2",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-2",
+          "allokeringar": [
+            {
+              "avi": "avi-57-2",
+              "beloppOre": 5000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-1",
+              "beloppOre": 975000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-2",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-2",
+          "allokeringar": [
+            {
+              "avi": "avi-58-2",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-3",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-3",
+          "allokeringar": [
+            {
+              "avi": "avi-57-3",
+              "beloppOre": 7500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-2",
+              "beloppOre": 972500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-3",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-3",
+          "allokeringar": [
+            {
+              "avi": "avi-58-3",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-4",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-4",
+          "allokeringar": [
+            {
+              "avi": "avi-57-3",
+              "beloppOre": 970000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-4",
+              "beloppOre": 10000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-4",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-4",
+          "allokeringar": [
+            {
+              "avi": "avi-58-4",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-5",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-5",
+          "allokeringar": [
+            {
+              "avi": "avi-57-4",
+              "beloppOre": 967500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-5",
+              "beloppOre": 12500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-5",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-5",
+          "allokeringar": [
+            {
+              "avi": "avi-58-5",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-6",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-6",
+          "allokeringar": [
+            {
+              "avi": "avi-57-6",
+              "beloppOre": 15000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-5",
+              "beloppOre": 965000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-6",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-6",
+          "allokeringar": [
+            {
+              "avi": "avi-58-6",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-7",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-7",
+          "allokeringar": [
+            {
+              "avi": "avi-57-7",
+              "beloppOre": 17500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-6",
+              "beloppOre": 962500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-7",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-7",
+          "allokeringar": [
+            {
+              "avi": "avi-58-7",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-8",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-8",
+          "allokeringar": [
+            {
+              "avi": "avi-57-7",
+              "beloppOre": 960000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-8",
+              "beloppOre": 20000,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-8",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-8",
+          "allokeringar": [
+            {
+              "avi": "avi-58-8",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        },
+        {
+          "id": "betalning-57-9",
+          "typ": "OVERBETALNING",
+          "avseddAvi": "avi-57-9",
+          "allokeringar": [
+            {
+              "avi": "avi-57-8",
+              "beloppOre": 957500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            },
+            {
+              "avi": "avi-57-9",
+              "beloppOre": 22500,
+              "tenantId": "a4e7d6a1-40b0-493e-afc6-a3bb4482a359"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": true,
+          "konfliktMenAvseddAvi": false
+        },
+        {
+          "id": "betalning-58-9",
+          "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+          "avseddAvi": "avi-58-9",
+          "allokeringar": [
+            {
+              "avi": "avi-58-9",
+              "beloppOre": 1005025,
+              "tenantId": "c94afac6-299c-411f-a9be-bded8465ebb0"
+            }
+          ],
+          "felHushall": false,
+          "felPeriod": false,
+          "konfliktMenAvseddAvi": true
+        }
+      ]
+    }
+  },
+  "begransning": "Syntetisk efterhandsdiagnostik. Ingen ny matcher eller bokföringsåtgärd. Namn/period-auditen är utvecklingsdata, inte bevisad träffsäkerhet. Två kundkopior är samma 2 000 grundfall."
+}

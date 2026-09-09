@@ -1,0 +1,225 @@
+{
+  "at": "2026-09-09T16:34:42.581Z",
+  "sha": "d39911769f39e8bfc301c848fad679c03dfce1d9",
+  "workingTreeChanged": false,
+  "sourceHashes": {
+    "scripts/eval-kundflode-2000.ts": "3dcffcf465c8438a77f6d411da18183e5c10a5da6b3a66b2979d4e0f96a15dc0",
+    "src/ai/shadow/eval/kundflode-2000.ts": "46c6def5a50e1cbc0ad88453d065bb6da096a300833f848d862fd9c1990dbd7c",
+    "src/reconciliation/reconciliation.service.ts": "eb3be6f0f30752c4cabdc0123221d4e33701ca53a331ef7751bb63391822f111",
+    "src/reconciliation/ocr-proveniens.ts": "093c8ded44a8b80f39cf05b4ed85b14097beec0ba021aa9ba37aa36b277d2733",
+    "src/ai/shadow/payment/payment-shadow.service.ts": "63227fa2752037a830e033b6b1462843395b42dbd7ceac2a38f5a6304069147e",
+    "src/ai/shadow/payment/payment-candidates.ts": "26248e10a2111d21334e7e83637bd0e4b244fc71627bdd13e83d70ea68162d12",
+    "src/ai/shadow/eval/experiment-betalningsreferenser.ts": "57cf2ea9c14b629ad0949426a8cf1d17c2b83e5178920850bc06f79fa785481f",
+    "src/ai/shadow/eval/experiment-betalningsgrind.ts": "9dcb84b4ea035163526c631183cf7b5ad384ebaaadbc87a994649aff8ca4d3d2",
+    "src/accounting/accounting.service.ts": "281e62012c28e73730a96d3b1eb26757f2f2ad6529ecbb9497ba98811a6a1be3",
+    "src/avisering/rent-debt.service.ts": "18bda6cd88e8d7f0668ac14bd7b2987a8ecb3b3661fd2bc57323defa0329adab",
+    "prisma/schema.prisma": "f0653f3ad5bc310337c163138785681815df9a289307e56834349b7efa35005e"
+  },
+  "datamixUppmattHosKund": false,
+  "modellAnrop": 0,
+  "ordningInomDag": "OMVAND_ID",
+  "fullstandigtHttpE2e": false,
+  "testdatabas": "eveno_bank2000_20260909",
+  "kund": {
+    "fastigheter": 10,
+    "lagenheter": 200,
+    "hyresgaster": 200,
+    "avtal": 200,
+    "avier": 2000,
+    "betalningar": 2000
+  },
+  "resultat": {
+    "AGENT_AV": {
+      "sammanfattning": {
+        "antal": 2000,
+        "korrektAutomatiska": 1880,
+        "felaktigtAutomatiska": 19,
+        "omatchade": 101,
+        "tekniskaFel": 0,
+        "ejKorda": 0,
+        "behovAvManskligInsats": 120,
+        "korrektAutomatiskAndel": 0.94,
+        "precisionAutomatisk": 0.9899947340705635,
+        "malMax20": false,
+        "beloppsinvariantFel": 0,
+        "underlagMedTak": 0,
+        "perTyp": [
+          {
+            "typ": "DELBETALNING",
+            "antal": 150,
+            "ratt": 150,
+            "fel": 0,
+            "omatchade": 0
+          },
+          {
+            "typ": "OCR",
+            "antal": 1485,
+            "ratt": 1475,
+            "fel": 0,
+            "omatchade": 10
+          },
+          {
+            "typ": "AVINUMMER",
+            "antal": 180,
+            "ratt": 180,
+            "fel": 0,
+            "omatchade": 0
+          },
+          {
+            "typ": "NAMN_OCH_PERIOD",
+            "antal": 60,
+            "ratt": 0,
+            "fel": 0,
+            "omatchade": 60
+          },
+          {
+            "typ": "INGEN_IDENTIFIERARE",
+            "antal": 10,
+            "ratt": 0,
+            "fel": 0,
+            "omatchade": 10
+          },
+          {
+            "typ": "OVERBETALNING",
+            "antal": 10,
+            "ratt": 0,
+            "fel": 9,
+            "omatchade": 1
+          },
+          {
+            "typ": "FELSKRIVEN_OCR",
+            "antal": 20,
+            "ratt": 0,
+            "fel": 0,
+            "omatchade": 20
+          },
+          {
+            "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+            "antal": 10,
+            "ratt": 0,
+            "fel": 10,
+            "omatchade": 0
+          },
+          {
+            "typ": "SAMLINGSBETALNING",
+            "antal": 75,
+            "ratt": 75,
+            "fel": 0,
+            "omatchade": 0
+          }
+        ]
+      },
+      "kontroller": {
+        "counts": {
+          "bank": 2000,
+          "allocations": 1983,
+          "entries": 3983,
+          "properties": 10,
+          "units": 200,
+          "tenants": 200,
+          "leases": 200,
+          "notices": 2000
+        },
+        "allaVerifikatBalanserar": true,
+        "aterimportIdempotent": true,
+        "koadeSkuggjobb": 101
+      }
+    },
+    "AGENT_PA": {
+      "sammanfattning": {
+        "antal": 2000,
+        "korrektAutomatiska": 1880,
+        "felaktigtAutomatiska": 19,
+        "omatchade": 101,
+        "tekniskaFel": 0,
+        "ejKorda": 0,
+        "behovAvManskligInsats": 120,
+        "korrektAutomatiskAndel": 0.94,
+        "precisionAutomatisk": 0.9899947340705635,
+        "malMax20": false,
+        "beloppsinvariantFel": 0,
+        "underlagMedTak": 0,
+        "perTyp": [
+          {
+            "typ": "DELBETALNING",
+            "antal": 150,
+            "ratt": 150,
+            "fel": 0,
+            "omatchade": 0
+          },
+          {
+            "typ": "OCR",
+            "antal": 1485,
+            "ratt": 1475,
+            "fel": 0,
+            "omatchade": 10
+          },
+          {
+            "typ": "AVINUMMER",
+            "antal": 180,
+            "ratt": 180,
+            "fel": 0,
+            "omatchade": 0
+          },
+          {
+            "typ": "NAMN_OCH_PERIOD",
+            "antal": 60,
+            "ratt": 0,
+            "fel": 0,
+            "omatchade": 60
+          },
+          {
+            "typ": "INGEN_IDENTIFIERARE",
+            "antal": 10,
+            "ratt": 0,
+            "fel": 0,
+            "omatchade": 10
+          },
+          {
+            "typ": "OVERBETALNING",
+            "antal": 10,
+            "ratt": 0,
+            "fel": 9,
+            "omatchade": 1
+          },
+          {
+            "typ": "FELSKRIVEN_OCR",
+            "antal": 20,
+            "ratt": 0,
+            "fel": 0,
+            "omatchade": 20
+          },
+          {
+            "typ": "MOTSTRIDIGA_IDENTIFIERARE",
+            "antal": 10,
+            "ratt": 0,
+            "fel": 10,
+            "omatchade": 0
+          },
+          {
+            "typ": "SAMLINGSBETALNING",
+            "antal": 75,
+            "ratt": 75,
+            "fel": 0,
+            "omatchade": 0
+          }
+        ]
+      },
+      "kontroller": {
+        "counts": {
+          "bank": 2000,
+          "allocations": 1983,
+          "entries": 3983,
+          "properties": 10,
+          "units": 200,
+          "tenants": 200,
+          "leases": 200,
+          "notices": 2000
+        },
+        "allaVerifikatBalanserar": true,
+        "aterimportIdempotent": true,
+        "koadeSkuggjobb": 101
+      }
+    }
+  }
+}
