@@ -2,7 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ReadingReviewFollowUpStatus } from '@eken/shared'
-import { ReadingReviewFollowUp, followUpState } from './ReadingReviewFollowUp'
+import { ReadingReviewFollowUp } from './ReadingReviewFollowUp'
+import { readingReviewFollowUpState as followUpState } from '@eken/shared'
 import {
   getReadingReviewFollowUp,
   updateReadingReviewFollowUp,
@@ -55,6 +56,7 @@ it('visar inte påslaget förrän servern har bekräftat och stoppar dubbelklick
       }),
   )
   mount()
+  expect(screen.getByText(/Kontrollerar granskningskön/).textContent).toContain('07.15 svensk tid')
   fireEvent.click(await screen.findByRole('button', { name: 'Slå på automatisk uppföljning' }))
   await waitFor(() => expect(updateReadingReviewFollowUp).toHaveBeenCalledOnce())
   expect(updateReadingReviewFollowUp).toHaveBeenCalledWith({ enabled: true }, expect.anything())

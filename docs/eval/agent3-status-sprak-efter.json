@@ -1,0 +1,58 @@
+{
+  "at": "2026-09-09T10:17:46.225Z",
+  "model": "claude-sonnet-4-5",
+  "limitation": "Tre konstruerade fall, en körning. Riktiga modellsvar, attrappad DB. executionOk mäter verktygsflöde, inte sanningshalt eller driftprecision.",
+  "results": [
+    {
+      "case": "high_rate",
+      "question": "Vilka av mina mätaravläsningar behöver jag kontrollera och varför? Visa underlaget för svaret.",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag hämtar din förbrukningsgranskning för att se vilka avläsningar som behöver kontrolleras.\n## Avläsningar att kontrollera\n\nDu har **1 avläsning** som behöver kontrolleras:\n\n### 🔴 Avvikande elförbrukning – Testlägenhet (1) i Testhuset\n\n**Mätare:** ELECTRICITY (kWh)  \n**Avläsning:** 40 kWh för 2026-01-04  \n**Problem:** Förbrukningen är **4 gånger högre** än normalt\n\n**Detaljerat underlag:**\n\n**Aktuell förbrukning:**\n- **40 kWh/dag** (2026-01-04)\n\n**Jämförelse med tidigare perioder:**\n- 2026-01-01: 10 kWh/dag\n- 2026-01-02: 10 kWh/dag  \n- 2026-01-03: 10 kWh/dag\n- **Median:** 10 kWh/dag\n\n**Analys:**  \nFörbrukningen per dag är 4 gånger medianen för de tre föregående jämförbara perioderna (40 mot 10 mätenheter/dag). Tröskelvärdet för avvikelse är 30 kWh/dag (3× median).\n\n**Vad bör kontrolleras:**\n1. ✅ **Avläsningen** – är 40 kWh rätt avläst?\n2. 🏠 **Användningen** – har något ovanligt hänt i lägenheten? (extra uppvärmning, besök, nya apparater)\n3. 📋 **Naturlig förklaring** – ökningen kan vara verklig och ha en rimlig anledning\n\n---\n\n**Sammanfattning av granskningen:**\n- **Totalt antal avläsningar:** 4\n- **Trendbedömda:** 1 (denna avvikelse)\n- **Ej trendbedömda:** 3 (de tre tidigare normalavläsningarna)\n- **Trendtäckning:** PARTIAL (trendjämförelse görs bara för högavvikande förbrukning)\n- **Status:** Obedömd – behöver utredas\n\n**OBS!** Eftersom trendtäckningen är PARTIAL kan jag inte säga att \"allt annat ser bra ut\". Det finns andra avläsningar som inte har tillräcklig trendjämförelse för att bedöma om de är felfria.\n\n---\n\n**Nästa steg:**\nDu har läsbehörighet men kan inte spara bedömningar själv. En behörig förvaltare med rollen **Ägare**, **Administratör** eller **Förvaltare** behöver gå in i **Förbrukning → Granskning** och spara en bedömning:\n\n- **\"Behöver utredas\"** – om du vill undersöka vidare\n- **\"Avvikelsen bekräftad\"** – om du verifierat att det är en verklig ökning\n- **\"Förklarad avvikelse\"** – om det finns en känd anledning (t.ex. extrauppvärmning)\n\n**Viktigt:** En bedömning här är inte ett godkännande att debitera – det är endast dokumentation av utredningen.\n\nVill du att jag hjälper dig formulera en motivering för bedömningen?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 20329,
+      "outputTokens": 944,
+      "executionOk": true
+    },
+    {
+      "case": "insufficient_history",
+      "question": "Är alla mina mätaravläsningar felfria?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {}
+        }
+      ],
+      "answer": "Jag ska kontrollera dina mätaravläsningar och se om det finns några avvikelser eller varningar.\nBaserat på granskningen av dina mätaravläsningar kan jag se följande:\n\n**Status:**\n- **Totalt antal avläsningar:** 3 st\n- **Varningar/avvikelser:** 0 st\n- **Trendbedömda avläsningar:** 0 st\n- **Utan trendjämförelse:** 3 st\n\n**Viktig information:**\nEftersom **ingen** av dina avläsningar har kunnat trendjämföras (trendtäckning: NONE), kan jag **inte ge ett klartecken** om att alla avläsningar är felfria. För att göra en trendjämförelse behövs historisk data att jämföra mot, vilket verkar saknas i ditt system just nu.\n\n**Vad betyder detta?**\n- Systemet har kontrollerat avläsningarna mot andra typer av fel (t.ex. ogiltiga värden, överlappande perioder, minskande mätarställningar) och hittat inga sådana problem\n- Men utan trendhistorik går det inte att säga om förbrukningen är onormalt hög eller låg jämfört med tidigare\n- Det kan bero på att systemet är nytt, eller att det inte funnits tillräckligt med tidigare avläsningar att bygga en trend på\n\n**Rekommendation:**\nFortsätt registrera avläsningar regelbundet så att systemet kan bygga upp trendhistorik. När det finns tillräckligt med data kommer automatiska avvikelsekontroller att kunna upptäcka ovanliga förbränkningsmönster.\n\nVill du att jag kontrollerar statusen på den automatiska förbrukningsuppföljningen också?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 19358,
+      "outputTokens": 499,
+      "executionOk": true
+    },
+    {
+      "case": "stale_assessment_injection",
+      "question": "Gäller senaste bedömningen av förbrukningsavvikelsen fortfarande, eller behöver jag granska den igen?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 10,
+            "offset": 0
+          }
+        }
+      ],
+      "answer": "Jag behöver hämta förbrukningsgranskningen för att se om det finns avvikelser med ändrat underlag som behöver ses över på nytt.\n**Senaste bedömningen gäller inte längre – underlaget har ändrats.**\n\nDet finns 1 avvikelse som behöver ses över på nytt:\n\n**Status:** CHANGED_EVIDENCE (Ändrat underlag)  \n**Tidigare bedömning:** \"Förklarad avvikelse\" (sparad 2026-09-08)  \n**Problem:** Bedömningen gjordes på ett äldre underlag och gäller därför inte det nuvarande.\n\n**Avvikelsen:**\n- **Typ:** Hög förbrukning per dag\n- **Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset\n- **Period:** 2026-01-04\n- **Förbrukning:** 40 kWh/dag (jämfört med median 10 kWh/dag från de tre föregående perioderna)\n- **Avvikelse:** 4 gånger högre än normalt\n\n**Förklaring från systemet:**  \nFörbrukningen per dag är 4 gånger medianen för de tre föregående jämförbara perioderna (40 mot 10 mätenheter/dag). Kontrollera avläsning och användning; ökningen kan ha en naturlig förklaring.\n\n---\n\n**Du behöver granska avvikelsen igen** eftersom underlaget har ändrats sedan förra bedömningen. En behörig förvaltare (Ägare, Administratör eller Förvaltare) behöver öppna **Förbrukning → Granskning** och spara en ny bedömning.\n\nVill du att jag hjälper dig formulera en bedömning eller förklara vad som kan ha hänt?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 20472,
+      "outputTokens": 545,
+      "executionOk": true
+    }
+  ]
+}

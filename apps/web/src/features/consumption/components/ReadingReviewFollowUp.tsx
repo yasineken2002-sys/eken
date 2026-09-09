@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { UpdateReadingReviewFollowUpSchema } from '@eken/shared'
-import type { ReadingReviewFollowUpStatus, UpdateReadingReviewFollowUpInput } from '@eken/shared'
+import {
+  UpdateReadingReviewFollowUpSchema,
+  readingReviewFollowUpState,
+  readingReviewFollowUpTime,
+  READING_REVIEW_FOLLOW_UP_SCHEDULE,
+  READING_REVIEW_FOLLOW_UP_STATE_LABELS,
+} from '@eken/shared'
+import type { UpdateReadingReviewFollowUpInput } from '@eken/shared'
 import { Button } from '@/components/ui/Button'
 import { useCurrentRole } from '@/hooks/useCanWrite'
 import { kontraktsfel } from '@/lib/contract-gate'
@@ -11,27 +17,6 @@ import {
 } from '../api/reading-review-follow-up.api'
 
 const QUERY_KEY = ['reading-review-follow-up'] as const
-const time = (value: string) =>
-  new Intl.DateTimeFormat('sv-SE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Europe/Stockholm',
-  }).format(new Date(value))
-
-export function followUpState(
-  status: ReadingReviewFollowUpStatus,
-  now: number,
-): 'off' | 'failed' | 'overdue' | 'waiting' | 'checked' {
-  if (!status.enabled) return 'off'
-  const checked = status.lastCheckedAt ? Date.parse(status.lastCheckedAt) : 0
-  const failed = status.lastFailedAt ? Date.parse(status.lastFailedAt) : 0
-  if (failed && failed >= checked) return 'failed'
-  const latest = Math.max(checked, status.enabledAt ? Date.parse(status.enabledAt) : 0)
-  // 26 timmar rymmer även höstens 25-timmarsdygn och mindre schemadröjsmål.
-  if (!latest || now - latest > 26 * 60 * 60 * 1000) return 'overdue'
-  return checked ? 'checked' : 'waiting'
-}
-
 export function ReadingReviewFollowUp() {
   const owner = useCurrentRole() === 'OWNER'
   const [now, setNow] = useState(Date.now)
@@ -59,7 +44,7 @@ export function ReadingReviewFollowUp() {
     },
   })
   const status = query.data
-  const state = status ? followUpState(status, now) : null
+  const state = status ? readingReviewFollowUpState(status, now) : null
   function toggle() {
     if (!status || save.isPending) return
     const dto: UpdateReadingReviewFollowUpInput = { enabled: !status.enabled }
@@ -74,8 +59,10 @@ export function ReadingReviewFollowUp() {
     >
       <h2 className="text-lg font-semibold text-gray-900">Automatisk uppföljning</h2>
       <p className="mt-2 text-sm text-gray-600">
-        Kontrollerar granskningskön varje dag kl. 07.15 svensk tid. Ägare, administratörer och
-        förvaltare får en samlad notis i appen när varningar behöver bedömas.
+        Kontrollerar granskningskön varje dag kl.{' '}
+        {String(READING_REVIEW_FOLLOW_UP_SCHEDULE.hour).padStart(2, '0')}.
+        {String(READING_REVIEW_FOLLOW_UP_SCHEDULE.minute).padStart(2, '0')} svensk tid. Ägare,
+        administratörer och förvaltare får en samlad notis i appen när varningar behöver bedömas.
       </p>
       {query.isError ? (
         <div role="alert" className="mt-3 text-sm text-red-700">
@@ -91,24 +78,16 @@ export function ReadingReviewFollowUp() {
       ) : (
         <>
           <p className="mt-3 text-sm font-medium text-gray-900" role="status">
-            {state === 'off'
-              ? 'Automatisk uppföljning är avstängd.'
-              : state === 'waiting'
-                ? 'Påslagen – väntar på första automatiska kontrollen.'
-                : state === 'checked'
-                  ? 'Automatisk uppföljning är påslagen.'
-                  : state === 'failed'
-                    ? 'Den senaste automatiska kontrollen misslyckades. Kontrollera underlaget här nedanför.'
-                    : 'Den automatiska kontrollen är försenad. Senaste resultatet kan vara inaktuellt.'}
+            {state && READING_REVIEW_FOLLOW_UP_STATE_LABELS[state]}
           </p>
           {status.lastCheckedAt && (
             <p className="mt-2 text-sm text-gray-600">
-              Senast genomförd: {time(status.lastCheckedAt)} (svensk tid).
+              Senast genomförd: {readingReviewFollowUpTime(status.lastCheckedAt)}.
             </p>
           )}
           {status.lastFailedAt && (
             <p className="mt-2 text-sm text-gray-600">
-              Senast misslyckad: {time(status.lastFailedAt)} (svensk tid).
+              Senast misslyckad: {readingReviewFollowUpTime(status.lastFailedAt)}.
             </p>
           )}
           {owner ? (

@@ -77,6 +77,7 @@ import { neutralizeUntrusted } from './untrusted-content'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 import { redactSensitive } from '../../common/redaction/redact-sensitive'
 import { getConsumptionReview } from './consumption-review'
+import { getConsumptionFollowUp } from './consumption-follow-up'
 
 // ─── Mass-mejl säkerhetsgränser ──────────────────────────────────────────────
 // Skyddar mot oavsiktliga eller AI-hallucinerade massutskick. Tre lager:
@@ -968,6 +969,10 @@ export class ToolExecutorService {
     try {
       switch (toolName) {
         // ── READ TOOLS ──────────────────────────────────────────────────────
+
+        case 'get_consumption_follow_up': {
+          return await getConsumptionFollowUp(this.prisma, organizationId, userRole, toolInput)
+        }
 
         case 'get_consumption_review': {
           return await getConsumptionReview(this.prisma, organizationId, userRole, toolInput)

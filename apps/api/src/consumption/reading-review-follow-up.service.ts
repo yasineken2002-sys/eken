@@ -2,32 +2,26 @@ import { createHash } from 'node:crypto'
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { Prisma } from '@prisma/client'
-import { readingReviewQueue } from '@eken/shared'
+import { readingReviewQueue, READING_REVIEW_FOLLOW_UP_SCHEDULE } from '@eken/shared'
 import type { ReadingReviewFollowUpStatus, UpdateReadingReviewFollowUpInput } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { forEachOrgSafely, runCronSafely } from '../common/cron/cron-safety'
 import { loadReadingReview } from './reading-review.query'
+import {
+  loadReadingReviewFollowUp,
+  presentReadingReviewFollowUp as present,
+  READING_REVIEW_FOLLOW_UP_STATUS_SELECT,
+} from './reading-review-follow-up.query'
 
 const CRON_NAME = 'consumption-review-follow-up'
 const STATUS_SELECT = {
-  consumptionReviewFollowUpEnabled: true,
-  consumptionReviewFollowUpEnabledAt: true,
-  consumptionReviewFollowUpCheckedAt: true,
-  consumptionReviewFollowUpErrorAt: true,
+  ...READING_REVIEW_FOLLOW_UP_STATUS_SELECT,
   consumptionReviewFollowUpRevision: true,
 } satisfies Prisma.OrganizationSelect
 
 type State = Prisma.OrganizationGetPayload<{ select: typeof STATUS_SELECT }>
-function present(row: State): ReadingReviewFollowUpStatus {
-  return {
-    enabled: row.consumptionReviewFollowUpEnabled,
-    enabledAt: row.consumptionReviewFollowUpEnabledAt?.toISOString() ?? null,
-    lastCheckedAt: row.consumptionReviewFollowUpCheckedAt?.toISOString() ?? null,
-    lastFailedAt: row.consumptionReviewFollowUpErrorAt?.toISOString() ?? null,
-  }
-}
 
 export function followUpNotificationId(
   orgId: string,
@@ -53,12 +47,7 @@ export class ReadingReviewFollowUpService {
   ) {}
 
   async getStatus(organizationId: string): Promise<ReadingReviewFollowUpStatus> {
-    const row = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: STATUS_SELECT,
-    })
-    if (!row) throw new NotFoundException('Organisationen finns inte.')
-    return present(row)
+    return loadReadingReviewFollowUp(organizationId, this.prisma)
   }
 
   async update(organizationId: string, userId: string, dto: UpdateReadingReviewFollowUpInput) {
@@ -94,7 +83,10 @@ export class ReadingReviewFollowUpService {
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
-  @Cron('15 7 * * *', { timeZone: 'Europe/Stockholm', name: CRON_NAME })
+  @Cron(
+    `${READING_REVIEW_FOLLOW_UP_SCHEDULE.minute} ${READING_REVIEW_FOLLOW_UP_SCHEDULE.hour} * * *`,
+    { timeZone: READING_REVIEW_FOLLOW_UP_SCHEDULE.timeZone, name: CRON_NAME },
+  )
   async followUpDaily() {
     // KLASSIFICERING: B — Notification.id är @id över hash(org, user, Stockholmsdag, typ).
     // createMany(skipDuplicates) och status skrivs i samma transaktion. Inga externa anrop.

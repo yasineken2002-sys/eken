@@ -3,6 +3,7 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import type { Prisma } from '@prisma/client'
 import {
   READING_REVIEW_ASSESSMENT_LABELS,
+  READING_REVIEW_TREND_RULE,
   readingReviewQueue,
   readingReviewState,
   latestReadingReview,
@@ -93,6 +94,11 @@ export async function getConsumptionReview(
         route: '/consumption',
         tab: 'Granskning',
         canSaveAssessment,
+        assessmentRoles: [
+          { role: 'OWNER', label: 'Ägare' },
+          { role: 'ADMIN', label: 'Administratör' },
+          { role: 'MANAGER', label: 'Förvaltare' },
+        ],
         canAssistantSaveAssessment: false,
         canChangeReadings: false,
         canMakeBillingDecisions: false,
@@ -101,6 +107,19 @@ export async function getConsumptionReview(
         value,
         label,
       })),
+      analysisScope: {
+        trendComparison: {
+          ...READING_REVIEW_TREND_RULE,
+          method:
+            'Förbrukning per dag jämförs med medianen av de tre föregående jämförbara perioderna. Medianen måste vara positiv. Perioderna behöver inte vara månader; inga årsjämförelser görs.',
+          findingCode: 'HIGH_RATE',
+          direction: 'INCREASE',
+          countsIncludeReadingsWithoutFindings: true,
+        },
+        otherFindingCodes: ['DATA', 'OVERLAP', 'DECREASE'],
+        hasPhysicalMaximumCheck: false,
+        automaticallyApprovesReadings: false,
+      },
       ruleVersion: report.ruleVersion,
       reviewQueue: { filter: reviewFilter, counts: queue.counts },
       summary: {

@@ -25,6 +25,8 @@ export interface ReadingRate {
   days: number
   perDay: number
 }
+export const READING_REVIEW_TREND_RULE = { comparisonPeriods: 3, thresholdFactor: 3 } as const
+
 const DAY = 86400000
 const format = (value: number) => value.toLocaleString('sv-SE', { maximumFractionDigits: 2 })
 
@@ -154,12 +156,12 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         days,
         perDay: rate,
       }
-      if (rates.length >= 3) {
-        const comparison = rates.slice(-3)
+      if (rates.length >= READING_REVIEW_TREND_RULE.comparisonPeriods) {
+        const comparison = rates.slice(-READING_REVIEW_TREND_RULE.comparisonPeriods)
         const baseline = comparison.map((entry) => entry.perDay).sort((a, b) => a - b)[1]!
         if (baseline > 0) {
           trendAssessed++
-          if (rate >= baseline * 3)
+          if (rate >= baseline * READING_REVIEW_TREND_RULE.thresholdFactor)
             add(
               'HIGH_RATE',
               `Förbrukningen per dag är ${format(rate / baseline)} gånger medianen för de tre föregående jämförbara perioderna (${format(rate)} mot ${format(baseline)} mätenheter/dag). Kontrollera avläsning och användning; ökningen kan ha en naturlig förklaring.`,
@@ -173,7 +175,12 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
                     .map((reading) => [reading.id, reading]),
                 ).values(),
               ],
-              { current: measured, comparison, median: baseline, threshold: baseline * 3 },
+              {
+                current: measured,
+                comparison,
+                median: baseline,
+                threshold: baseline * READING_REVIEW_TREND_RULE.thresholdFactor,
+              },
             )
         }
       }
