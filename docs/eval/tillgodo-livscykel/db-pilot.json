@@ -1,0 +1,385 @@
+{
+  "identity": {
+    "database": "eveno_tillgodo_test",
+    "address": null,
+    "dataDirectory": "/var/lib/postgresql/data",
+    "listen": "",
+    "version": "PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "fsync": "on",
+    "synchronousCommit": "on",
+    "userTables": 0,
+    "network": "none",
+    "ports": [],
+    "memoryLimitBytes": 536870912,
+    "dataStorage": "isolated tmpfs; not host-crash durability proof"
+  },
+  "proofs": [
+    {
+      "test": "payment_rollback_after_debt",
+      "passed": true,
+      "error": "ERROR:  INJECTED_after_debt"
+    },
+    {
+      "test": "payment_rollback_after_credit",
+      "passed": true,
+      "error": "ERROR:  INJECTED_after_credit"
+    },
+    {
+      "test": "payment_rollback_after_bank_voucher",
+      "passed": true,
+      "error": "ERROR:  INJECTED_after_bank_voucher"
+    },
+    {
+      "test": "use_rollback_after_debt",
+      "passed": true,
+      "error": "ERROR:  INJECTED_after_debt"
+    },
+    {
+      "test": "use_rollback_after_credit",
+      "passed": true,
+      "error": "ERROR:  INJECTED_after_credit"
+    },
+    {
+      "test": "use_rollback_after_use_voucher",
+      "passed": true,
+      "error": "ERROR:  INJECTED_after_use_voucher"
+    },
+    {
+      "test": "permission_{'active': False, 'consent': True, 'refund': False}",
+      "passed": true,
+      "error": "ERROR:  NO_USE_PERMISSION"
+    },
+    {
+      "test": "permission_{'active': True, 'consent': False, 'refund': False}",
+      "passed": true,
+      "error": "ERROR:  NO_USE_PERMISSION"
+    },
+    {
+      "test": "permission_{'active': True, 'consent': True, 'refund': True}",
+      "passed": true,
+      "error": "ERROR:  NO_USE_PERMISSION"
+    },
+    {
+      "test": "cross_org",
+      "passed": true,
+      "error": "ERROR:  query returned no rows"
+    },
+    {
+      "test": "cross_tenant",
+      "passed": true,
+      "error": "ERROR:  WRONG_CREDIT_SCOPE_OR_TARGET"
+    },
+    {
+      "test": "cross_lease",
+      "passed": true,
+      "error": "ERROR:  WRONG_CREDIT_SCOPE_OR_TARGET"
+    },
+    {
+      "test": "concurrent_credit_use",
+      "passed": true,
+      "observedPostgresLockWait": true,
+      "committedUses": 1,
+      "loserError": "ERROR:  ALREADY_ISSUED"
+    },
+    {
+      "test": "already_issued_and_changed_reimport",
+      "passed": true
+    },
+    {
+      "test": "reverse_use_then_bank_and_repeated_reversal",
+      "passed": true,
+      "finalSnapshot": {
+        "bank": [
+          {
+            "id": "p1",
+            "org": "org",
+            "amount": 12500,
+            "status": "REVERSED",
+            "payload": {
+              "org": "org",
+              "date": "2026-09-25",
+              "text": "AVI-2026-09-0001 Sara Svensson",
+              "amount": 12500,
+              "reference": "00000000019"
+            }
+          }
+        ],
+        "scope": [
+          {
+            "org": "org",
+            "lease": "lease",
+            "active": true,
+            "refund": false,
+            "tenant": "person",
+            "consent": true
+          }
+        ],
+        "credit": [
+          {
+            "id": "credit:p1",
+            "org": "org",
+            "held": true,
+            "lease": "lease",
+            "total": 2500,
+            "target": "n2",
+            "tenant": "person",
+            "reversed": true,
+            "remaining": 0,
+            "bank_event": "p1",
+            "created_date": "2026-09-25",
+            "source_notice": "n1"
+          }
+        ],
+        "notice": [
+          {
+            "id": "n1",
+            "org": "org",
+            "debt": 10000,
+            "gross": 10000,
+            "lease": "lease",
+            "issued": true,
+            "period": 24320,
+            "tenant": "person",
+            "issue_date": "2026-09-01",
+            "display_due": 10000,
+            "amendment_required": true
+          },
+          {
+            "id": "n2",
+            "org": "org",
+            "debt": 10000,
+            "gross": 10000,
+            "lease": "lease",
+            "issued": true,
+            "period": 24321,
+            "tenant": "person",
+            "issue_date": "2026-10-01",
+            "display_due": 7500,
+            "amendment_required": true
+          }
+        ],
+        "voucher": [
+          {
+            "id": "bank:p1",
+            "org": "org",
+            "lines": [
+              [
+                "TEST_BANK",
+                12500,
+                0
+              ],
+              [
+                "TEST_RECEIVABLE",
+                0,
+                10000
+              ],
+              [
+                "TEST_CREDIT",
+                0,
+                2500
+              ]
+            ],
+            "reversal_of": null
+          },
+          {
+            "id": "issue:n1",
+            "org": "org",
+            "lines": [
+              [
+                "TEST_RECEIVABLE",
+                10000,
+                0
+              ],
+              [
+                "TEST_RENT",
+                0,
+                10000
+              ]
+            ],
+            "reversal_of": null
+          },
+          {
+            "id": "issue:n2",
+            "org": "org",
+            "lines": [
+              [
+                "TEST_RECEIVABLE",
+                10000,
+                0
+              ],
+              [
+                "TEST_RENT",
+                0,
+                10000
+              ]
+            ],
+            "reversal_of": null
+          },
+          {
+            "id": "issue:n2:credit:p1",
+            "org": "org",
+            "lines": [
+              [
+                "TEST_CREDIT",
+                2500,
+                0
+              ],
+              [
+                "TEST_RECEIVABLE",
+                0,
+                2500
+              ]
+            ],
+            "reversal_of": null
+          },
+          {
+            "id": "reverse-bank-p1",
+            "org": "org",
+            "lines": [
+              [
+                "TEST_BANK",
+                0,
+                12500
+              ],
+              [
+                "TEST_RECEIVABLE",
+                10000,
+                0
+              ],
+              [
+                "TEST_CREDIT",
+                2500,
+                0
+              ]
+            ],
+            "reversal_of": "bank:p1"
+          },
+          {
+            "id": "reverse-use-p1",
+            "org": "org",
+            "lines": [
+              [
+                "TEST_CREDIT",
+                0,
+                2500
+              ],
+              [
+                "TEST_RECEIVABLE",
+                2500,
+                0
+              ]
+            ],
+            "reversal_of": "issue:n2:credit:p1"
+          }
+        ],
+        "operation": [
+          {
+            "id": "bank:p1",
+            "org": "org",
+            "payload": {
+              "id": "bank:p1",
+              "org": "org",
+              "bank": {
+                "org": "org",
+                "date": "2026-09-25",
+                "text": "AVI-2026-09-0001 Sara Svensson",
+                "amount": 12500,
+                "reference": "00000000019"
+              },
+              "kind": "PAYMENT",
+              "event": "p1",
+              "credit": {
+                "id": "credit:p1",
+                "org": "org",
+                "date": "2026-09-25",
+                "lease": "lease",
+                "target": "n2",
+                "tenant": "person",
+                "created": 2500,
+                "remaining": 2500,
+                "bank_event": "p1",
+                "source_notice": "n1",
+                "pending_reason": "NEXT_NOTICE"
+              },
+              "allocations": {
+                "n1": 10000
+              }
+            }
+          },
+          {
+            "id": "issue:n1",
+            "org": "org",
+            "payload": {
+              "id": "issue:n1",
+              "org": "org",
+              "date": "2026-09-01",
+              "kind": "ISSUE",
+              "uses": [],
+              "notice": "n1"
+            }
+          },
+          {
+            "id": "issue:n2",
+            "org": "org",
+            "payload": {
+              "id": "issue:n2",
+              "org": "org",
+              "date": "2026-10-01",
+              "kind": "ISSUE",
+              "uses": [
+                {
+                  "amount": 2500,
+                  "credit": "credit:p1"
+                }
+              ],
+              "notice": "n2"
+            }
+          },
+          {
+            "id": "reverse-bank-p1",
+            "org": "org",
+            "payload": {
+              "id": "reverse-bank-p1",
+              "org": "org",
+              "kind": "REVERSE_BANK",
+              "event": "p1"
+            }
+          },
+          {
+            "id": "reverse-use-p1",
+            "org": "org",
+            "payload": {
+              "id": "reverse-use-p1",
+              "org": "org",
+              "use": "issue:n2:credit:p1",
+              "kind": "REVERSE_USE"
+            }
+          }
+        ],
+        "allocation": [
+          {
+            "org": "org",
+            "amount": 10000,
+            "notice": "n1",
+            "reversed": true,
+            "bank_event": "p1"
+          }
+        ],
+        "credit_use": [
+          {
+            "id": "issue:n2:credit:p1",
+            "org": "org",
+            "amount": 2500,
+            "credit": "credit:p1",
+            "notice": "n2",
+            "reversed": true
+          }
+        ]
+      }
+    },
+    {
+      "test": "unbalanced_voucher_rejected",
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+Första lokala DB-piloten, före experimenttabellernas skapande: psql FATAL: database "eveno_tillgodo_test" does not exist.
+Orsak: pg_isready accepterade entrypointens tillfälliga initserver. Hjälparen väntar nu dessutom tills PID 1 är slutliga postgres-processen. Containern stoppades i finally; inget produktionssystem användes.

@@ -1,0 +1,20 @@
+Diff mot #870, kod + policy + rapport + provutfall.
+Undantar denna diff-stat.txt och bevismanifest.json för att undvika självreferens.
+
+ apps/api/scripts/audit_tillgodo_lifecycle.py       | 251 ++++++++++++++
+ apps/api/scripts/eval_tillgodo_lifecycle.py        | 167 +++++++++
+ apps/api/scripts/test_tillgodo_lifecycle.py        | 208 +++++++++++
+ apps/api/scripts/tillgodo_experiment.sql           | 177 ++++++++++
+ apps/api/scripts/tillgodo_lifecycle.py             | 101 ++++++
+ apps/api/scripts/tillgodo_pg.py                    | 113 ++++++
+ docs/agent2-tillgodo-livscykel.md                  | 275 +++++++++++++++
+ docs/eval/tillgodo-livscykel/bas-870-ci.json       |   1 +
+ docs/eval/tillgodo-livscykel/db-pilot-startfel.txt |   2 +
+ docs/eval/tillgodo-livscykel/db-pilot.json         | 385 +++++++++++++++++++++
+ .../tillgodo-livscykel/korning-1/manifest.json     |  16 +
+ .../tillgodo-livscykel/korning-1/resultat.json.gz  | Bin 0 -> 1808365 bytes
+ docs/eval/tillgodo-livscykel/livscykel-11.txt      |  16 +
+ .../tillgodo-livscykel/oberoende-omrakning.json    | 277 +++++++++++++++
+ docs/eval/tillgodo-livscykel/policy-v1.json        | 102 ++++++
+ docs/eval/tillgodo-livscykel/regression-57.txt     |  62 ++++
+ 16 files changed, 2153 insertions(+)

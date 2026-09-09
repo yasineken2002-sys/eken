@@ -1,0 +1,277 @@
+{
+  "passed": true,
+  "runs": [
+    {
+      "variant": "A",
+      "reverseWithinDay": false,
+      "correctAllocationPayments": 1980,
+      "wrongDecisions": 0,
+      "metrics": {
+        "bankEvents": 2000,
+        "allocationPayments": 1980,
+        "fullyHandledPaymentsUnderAssumptions": 1979,
+        "humanReviewPayments": 21,
+        "conflicts": 10,
+        "unidentified": 10,
+        "creditLots": 10,
+        "createdCreditOre": 137500,
+        "outstandingCreditOre": 25000,
+        "outstandingCreditLots": 1,
+        "usedCreditOre": 112500,
+        "outstandingCreditCustomerCases": 1,
+        "unresolvedPaymentCases": 20,
+        "reviewCases": 21,
+        "reviewPaymentIds": [
+          "betalning-56-0",
+          "betalning-56-1",
+          "betalning-56-2",
+          "betalning-56-3",
+          "betalning-56-4",
+          "betalning-56-5",
+          "betalning-56-6",
+          "betalning-56-7",
+          "betalning-56-8",
+          "betalning-56-9",
+          "betalning-57-9",
+          "betalning-58-0",
+          "betalning-58-1",
+          "betalning-58-2",
+          "betalning-58-3",
+          "betalning-58-4",
+          "betalning-58-5",
+          "betalning-58-6",
+          "betalning-58-7",
+          "betalning-58-8",
+          "betalning-58-9"
+        ],
+        "max20WithinHorizon": false
+      },
+      "totalsOre": {
+        "bankOre": 1542574750,
+        "bankAllocationOre": 1522886500,
+        "creditCreatedOre": 137500,
+        "creditUsedOre": 112500,
+        "creditOutstandingOre": 25000,
+        "unallocatedOre": 19550750
+      },
+      "databaseVouchersChecked": 4009,
+      "extraMonthOriginalSubsetReview": 20,
+      "originalHorizonMax20": false,
+      "extraMonthMax20ConditionalOnAssumptionsAndNewInput": true
+    },
+    {
+      "variant": "A",
+      "reverseWithinDay": true,
+      "correctAllocationPayments": 1980,
+      "wrongDecisions": 0,
+      "metrics": {
+        "bankEvents": 2000,
+        "allocationPayments": 1980,
+        "fullyHandledPaymentsUnderAssumptions": 1979,
+        "humanReviewPayments": 21,
+        "conflicts": 10,
+        "unidentified": 10,
+        "creditLots": 10,
+        "createdCreditOre": 137500,
+        "outstandingCreditOre": 25000,
+        "outstandingCreditLots": 1,
+        "usedCreditOre": 112500,
+        "outstandingCreditCustomerCases": 1,
+        "unresolvedPaymentCases": 20,
+        "reviewCases": 21,
+        "reviewPaymentIds": [
+          "betalning-56-0",
+          "betalning-56-1",
+          "betalning-56-2",
+          "betalning-56-3",
+          "betalning-56-4",
+          "betalning-56-5",
+          "betalning-56-6",
+          "betalning-56-7",
+          "betalning-56-8",
+          "betalning-56-9",
+          "betalning-57-9",
+          "betalning-58-0",
+          "betalning-58-1",
+          "betalning-58-2",
+          "betalning-58-3",
+          "betalning-58-4",
+          "betalning-58-5",
+          "betalning-58-6",
+          "betalning-58-7",
+          "betalning-58-8",
+          "betalning-58-9"
+        ],
+        "max20WithinHorizon": false
+      },
+      "totalsOre": {
+        "bankOre": 1542574750,
+        "bankAllocationOre": 1522886500,
+        "creditCreatedOre": 137500,
+        "creditUsedOre": 112500,
+        "creditOutstandingOre": 25000,
+        "unallocatedOre": 19550750
+      },
+      "databaseVouchersChecked": 4009,
+      "extraMonthOriginalSubsetReview": 20,
+      "originalHorizonMax20": false,
+      "extraMonthMax20ConditionalOnAssumptionsAndNewInput": true
+    },
+    {
+      "variant": "B",
+      "reverseWithinDay": false,
+      "correctAllocationPayments": 1980,
+      "wrongDecisions": 0,
+      "metrics": {
+        "bankEvents": 2000,
+        "allocationPayments": 1980,
+        "fullyHandledPaymentsUnderAssumptions": 1979,
+        "humanReviewPayments": 21,
+        "conflicts": 10,
+        "unidentified": 10,
+        "creditLots": 2,
+        "createdCreditOre": 5000,
+        "outstandingCreditOre": 2500,
+        "outstandingCreditLots": 1,
+        "usedCreditOre": 2500,
+        "outstandingCreditCustomerCases": 1,
+        "unresolvedPaymentCases": 20,
+        "reviewCases": 21,
+        "reviewPaymentIds": [
+          "betalning-56-0",
+          "betalning-56-1",
+          "betalning-56-2",
+          "betalning-56-3",
+          "betalning-56-4",
+          "betalning-56-5",
+          "betalning-56-6",
+          "betalning-56-7",
+          "betalning-56-8",
+          "betalning-56-9",
+          "betalning-57-9",
+          "betalning-58-0",
+          "betalning-58-1",
+          "betalning-58-2",
+          "betalning-58-3",
+          "betalning-58-4",
+          "betalning-58-5",
+          "betalning-58-6",
+          "betalning-58-7",
+          "betalning-58-8",
+          "betalning-58-9"
+        ],
+        "max20WithinHorizon": false
+      },
+      "totalsOre": {
+        "bankOre": 1542552250,
+        "bankAllocationOre": 1522996500,
+        "creditCreatedOre": 5000,
+        "creditUsedOre": 2500,
+        "creditOutstandingOre": 2500,
+        "unallocatedOre": 19550750
+      },
+      "databaseVouchersChecked": 4001,
+      "extraMonthOriginalSubsetReview": 20,
+      "originalHorizonMax20": false,
+      "extraMonthMax20ConditionalOnAssumptionsAndNewInput": true
+    },
+    {
+      "variant": "B",
+      "reverseWithinDay": true,
+      "correctAllocationPayments": 1980,
+      "wrongDecisions": 0,
+      "metrics": {
+        "bankEvents": 2000,
+        "allocationPayments": 1980,
+        "fullyHandledPaymentsUnderAssumptions": 1979,
+        "humanReviewPayments": 21,
+        "conflicts": 10,
+        "unidentified": 10,
+        "creditLots": 2,
+        "createdCreditOre": 5000,
+        "outstandingCreditOre": 2500,
+        "outstandingCreditLots": 1,
+        "usedCreditOre": 2500,
+        "outstandingCreditCustomerCases": 1,
+        "unresolvedPaymentCases": 20,
+        "reviewCases": 21,
+        "reviewPaymentIds": [
+          "betalning-56-0",
+          "betalning-56-1",
+          "betalning-56-2",
+          "betalning-56-3",
+          "betalning-56-4",
+          "betalning-56-5",
+          "betalning-56-6",
+          "betalning-56-7",
+          "betalning-56-8",
+          "betalning-56-9",
+          "betalning-57-9",
+          "betalning-58-0",
+          "betalning-58-1",
+          "betalning-58-2",
+          "betalning-58-3",
+          "betalning-58-4",
+          "betalning-58-5",
+          "betalning-58-6",
+          "betalning-58-7",
+          "betalning-58-8",
+          "betalning-58-9"
+        ],
+        "max20WithinHorizon": false
+      },
+      "totalsOre": {
+        "bankOre": 1542552250,
+        "bankAllocationOre": 1522996500,
+        "creditCreatedOre": 5000,
+        "creditUsedOre": 2500,
+        "creditOutstandingOre": 2500,
+        "unallocatedOre": 19550750
+      },
+      "databaseVouchersChecked": 4001,
+      "extraMonthOriginalSubsetReview": 20,
+      "originalHorizonMax20": false,
+      "extraMonthMax20ConditionalOnAssumptionsAndNewInput": true
+    }
+  ],
+  "databaseVerified": true,
+  "uniqueOriginalBankEvents": 2000,
+  "originalBankEventReplaysChecked": 8000,
+  "newAndOldDataKeptSeparate": true,
+  "orderParity": true,
+  "negativeControls": [
+    {
+      "mutation": "missing_ore",
+      "rejected": true
+    },
+    {
+      "mutation": "wrong_source_scope",
+      "rejected": true
+    },
+    {
+      "mutation": "duplicate_use",
+      "rejected": true
+    },
+    {
+      "mutation": "changed_input_hidden",
+      "rejected": true
+    },
+    {
+      "mutation": "false_completion",
+      "rejected": true
+    },
+    {
+      "mutation": "unbalanced_voucher",
+      "rejected": true
+    },
+    {
+      "mutation": "hidden_final_credit",
+      "rejected": true
+    },
+    {
+      "mutation": "use_before_creation",
+      "rejected": true
+    }
+  ],
+  "reportUncompressedSha256": "e2419979b86bc4582285034a28db1435c109cb3ccbeef9fde879765f9bbf6fd4"
+}
