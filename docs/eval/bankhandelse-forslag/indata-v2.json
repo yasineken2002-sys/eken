@@ -1,0 +1,1369 @@
+{
+  "kind": "NEW_SYNTHETIC_SQL_COMPONENT_INPUT_NOT_874_REPLAY",
+  "cases": [
+    {
+      "id": "01-two-equal-events",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E2",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "02-exact-reimport",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "03-concurrent-reimport",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "concurrent",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "04-concurrent-distinct",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E2",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "concurrent",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "05-account-local-id",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "B"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 20000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "06-organization-isolation",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-B",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "07-verified-provider-bridge",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "Q",
+            "consent": "CQ",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "08-unbound-new-consent",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "NEW",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "09-client-asserted-proof",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "NEW",
+            "account": "A",
+            "scopeId": "scope-A",
+            "verified": true
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "10-unproven-api-file",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "file",
+            "provider": "UNBOUND",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "11-proven-same-api-file",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "file",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "12-proven-distinct-api-file",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "file",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E2",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "10-unproven-file-api",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "file",
+            "provider": "UNBOUND",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "11-proven-same-file-api",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "file",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "12-proven-distinct-file-api",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "file",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E2",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "13-no-source-proof",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "UNBOUND",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "14-legacy-unproven",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": true,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "15-legacy-verified-link",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": true,
+      "bridge": true,
+      "cutover": false
+    },
+    {
+      "id": "16-verified-transition",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "NEW-EVENT",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": true,
+      "bridge": false,
+      "cutover": true
+    },
+    {
+      "id": "17-before-transition",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-09",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": true,
+      "bridge": false,
+      "cutover": true
+    },
+    {
+      "id": "18-changed-content",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 12000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "19-conflict-before-claim",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 12000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "defer",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "20-status-conflict",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": false,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": -10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "21-rollback-save",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "rollback_save",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "22-crash-before-claim",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "crash_pending",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "23-crash-before-effect",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "crash_started",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "24-crash-after-effect",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "crash_effect",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "25-wrong-claim-org",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "wrong_org",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "26-wrong-finish-token",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "wrong_token",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "27-old-ocr-amount-passthrough",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "PART-1",
+          "body": {
+            "amountOre": 4000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "1234",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "PART-2",
+          "body": {
+            "amountOre": 6000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "1234",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    },
+    {
+      "id": "28-noneligible-recorded",
+      "steps": [
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "E1",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": false,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "EUR",
+          "body": {
+            "amountOre": 10000,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "EUR",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        },
+        {
+          "org": "org-A",
+          "origin": {
+            "kind": "api",
+            "provider": "P",
+            "consent": "C",
+            "account": "A"
+          },
+          "externalId": "ZERO",
+          "body": {
+            "amountOre": 0,
+            "day": "2026-09-10",
+            "booked": true,
+            "currency": "SEK",
+            "rawOcr": "00123459",
+            "reference": null,
+            "description": "SYNTETISK"
+          }
+        }
+      ],
+      "mode": "normal",
+      "legacy": false,
+      "bridge": false,
+      "cutover": false
+    }
+  ]
+}

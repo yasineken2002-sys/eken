@@ -16,7 +16,7 @@ def delivery(ext='E1',org='org-A',account='A',kind='api',provider='P',consent='C
 def main():
     cases=[];gold={}
     def add(k,steps,new,ore,markers,*,mode='normal',legacy=False,bridge=False,cutover=False,held=0,open_state=False,**extra):
-        cases.append(dict(id=k,steps=steps,mode=mode,legacy=legacy,bridge=bridge,cutover=cutover))
+        cases.append(dict(id=k,steps=copy.deepcopy(steps),mode=mode,legacy=legacy,bridge=bridge,cutover=cutover))
         gold[k]=dict(newPayments=new,newPaymentOre=ore,dispatchMarkers=markers,held=held,openIdentity=open_state,**extra)
     add('01-two-equal-events',[delivery('E1'),delivery('E2')],2,20000,2)
     add('02-exact-reimport',[delivery(),delivery()],1,10000,1)
@@ -55,9 +55,12 @@ def main():
         limitation='Only preservation of reference and payment amounts, no invoice allocation/partial/waterfall algorithm is executed.')
     add('28-noneligible-recorded',[delivery(booked=False),delivery('EUR',currency='EUR'),delivery('ZERO',amount=0)],0,0,0,rejected=3)
     assert len(cases)==31 and len(gold)==31
-    for name,obj in [('indata.json',{'kind':'NEW_SYNTHETIC_SQL_COMPONENT_INPUT_NOT_874_REPLAY','cases':cases}),
+    for name,obj in [('indata-v2.json',{'kind':'NEW_SYNTHETIC_SQL_COMPONENT_INPUT_NOT_874_REPLAY','cases':cases}),
                      ('facit.json',{'kind':'PREDEFINED_REQUIREMENTS_NOT_OBSERVED','cases':gold})]:
-        target=OUT/name;assert not target.exists();target.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n')
+        target=OUT/name
+        if name=='facit.json':assert json.loads(target.read_text())==obj
+        else:
+            assert not target.exists();target.write_text(json.dumps(obj,ensure_ascii=False,indent=2)+'\n')
 
 
 if __name__=='__main__':main()
