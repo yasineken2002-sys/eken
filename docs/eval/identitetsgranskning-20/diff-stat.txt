@@ -1,0 +1,16 @@
+Diff mot #871; undantar denna fil och bevismanifest.json för att undvika självreferens.
+
+ apps/api/scripts/audit_identitetsfall_20.py        |   242 +
+ docs/agent2-identitetsgranskning-20.md             |   252 +
+ docs/eval/identitetsgranskning-20/bas-871-ci.json  |     1 +
+ docs/eval/identitetsgranskning-20/bas-871-pr.json  |     1 +
+ .../identitetsgranskning-20/granskningsplan.json   |    28 +
+ docs/eval/identitetsgranskning-20/kallor.json      |    45 +
+ .../identitetsgranskning-20/kontrollera-rapport.py |    68 +
+ .../identitetsgranskning-20/korning-1/fall.json    | 18745 +++++++++++++++++++
+ .../korning-1/falltabell.md                        |    27 +
+ .../korning-1/manifest.json                        |     6 +
+ docs/eval/identitetsgranskning-20/livscykel-11.txt |    16 +
+ .../oberoende-kontroll.json                        |    38 +
+ .../eval/identitetsgranskning-20/regression-57.txt |    62 +
+ 13 files changed, 19531 insertions(+)

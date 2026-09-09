@@ -1,0 +1,37 @@
+{
+  "baseCommit": "6c2f06f071ff19d2bd994c8ee09ba4af8c94b5c2",
+  "baseBranch": "codex/agent2-tillgodo-livscykel",
+  "inventoryCodeAndPlanCommit": "13db0d975469b3932a76671a2695e605fb8ac666",
+  "caseCount": 20,
+  "historicalBankObservationsChecked": 80,
+  "categories": [
+    0,
+    0,
+    20,
+    0
+  ],
+  "negativeControlsRejected": 7,
+  "originalManifestFileHashesVerified": 15,
+  "originalSourceHashesUnchangedAtBase": 24,
+  "existingPythonTestsPassed": 57,
+  "lifecyclePythonTestsPassed": 11,
+  "newDecisionReplay": false,
+  "bankCalls": 0,
+  "modelCalls": 0,
+  "filesSha256": {
+    "docs/agent2-identitetsgranskning-20.md": "4990cbad24273d39e4fb2ed28ab15289183ee0968c791cf7bd2d189cca3d8e55",
+    "apps/api/scripts/audit_identitetsfall_20.py": "b12e8d1b0d0dc4ad362de8a2cd5d312775462b456159f6205f7814c1942e9e6b",
+    "docs/eval/identitetsgranskning-20/bas-871-ci.json": "d6168b9ec0cf95dfbdeedab0036fb7e104783c766080d235b9a0e2f6be3bc97b",
+    "docs/eval/identitetsgranskning-20/bas-871-pr.json": "76699cc435514a7e3d029114cec839d811333cd74079bf5d2fca5d27d9401d2d",
+    "docs/eval/identitetsgranskning-20/diff-stat.txt": "68cf3ff7ce69040f47c33e996163191bfcf14360ddb9b6b67903393b5f27fad4",
+    "docs/eval/identitetsgranskning-20/granskningsplan.json": "f95ac5453a8a7980b187d828be9a43af2d6a9feb963daa22c3b30067b96ed2c4",
+    "docs/eval/identitetsgranskning-20/kallor.json": "2510d01856ee0f31d884b9cde08e8f3f09dbd48c71da508e926dacc5ddde70b7",
+    "docs/eval/identitetsgranskning-20/kontrollera-rapport.py": "b99b88277a5e24a2f88da953b2fef58efe2a305c44fe2e5d9bb5f5c5ffccdf2e",
+    "docs/eval/identitetsgranskning-20/korning-1/fall.json": "fc3603497849ec738e0d8ec31394b4f404f5b816842f099081ca099da4fae1f1",
+    "docs/eval/identitetsgranskning-20/korning-1/falltabell.md": "5093561f064970c2c44376009611728b324dbc1d5c6f5730e22d8e553e957047",
+    "docs/eval/identitetsgranskning-20/korning-1/manifest.json": "7fe0d26f21cf639e9dbebaa3c2d29f1743994f2d40c79fed3295083d192ddfe7",
+    "docs/eval/identitetsgranskning-20/livscykel-11.txt": "f05de7f23371ab93631dd7165f424d72a4aa26b5dce0176d95fdf55368335494",
+    "docs/eval/identitetsgranskning-20/oberoende-kontroll.json": "e1e5606d5a8335c8c07b4644168edbb0d4e78b49a15e55eac32a1ad561cf5e3e",
+    "docs/eval/identitetsgranskning-20/regression-57.txt": "06b820bbaf4ecd62a0752aeee935967de61ac9ab71cdc338c0446b3046cb53f3"
+  }
+}

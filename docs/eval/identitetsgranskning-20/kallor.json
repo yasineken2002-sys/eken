@@ -1,0 +1,45 @@
+{
+  "baseCommit": "6c2f06f071ff19d2bd994c8ee09ba4af8c94b5c2",
+  "mode": "READ_ONLY_SOURCE_INSPECTION",
+  "filesSha256": {
+    "CLAUDE.md": "f90444b5a3aca244940188a29a4a61143a7d8045261eb533b27390d9fb3ad3b4",
+    "apps/api/src/ai/shadow/eval/kundflode-2000.ts": "46c6def5a50e1cbc0ad88453d065bb6da096a300833f848d862fd9c1990dbd7c",
+    "apps/api/scripts/eval-kundflode-2000.ts": "3dcffcf465c8438a77f6d411da18183e5c10a5da6b3a66b2979d4e0f96a15dc0",
+    "apps/api/src/common/ocr/ocr.service.ts": "e721ec9e7d89cd78cc6e5381c745c649ddfaef5b18d04668c5afb242f0c3e5f0",
+    "packages/shared/src/utils/index.ts": "a7984abdd80029c4aba5a62c2ecfb02e953640f34355775d25142d93766b5c0a",
+    "apps/api/src/reconciliation/reconciliation.service.ts": "eb3be6f0f30752c4cabdc0123221d4e33701ca53a331ef7751bb63391822f111",
+    "apps/api/src/reconciliation/ocr-proveniens.ts": "093c8ded44a8b80f39cf05b4ed85b14097beec0ba021aa9ba37aa36b277d2733",
+    "apps/api/src/reconciliation/bank-transaction-views.ts": "08821335b13b339e5c9d556db1a8aba68fd64c8219a02296f3b485a4c99a3f2d",
+    "apps/api/src/reconciliation/bank-statement-import.service.ts": "b0c8bec81ab53262ca26617870b7b59e54b723b01711cd03f2f22a79f877861b",
+    "apps/api/src/reconciliation/pdf-statement-parser.service.ts": "0af38048a953a03659f214a7cd4f2d8da31803e871787d484238adc73c35a635",
+    "apps/api/prisma/schema.prisma": "f0653f3ad5bc310337c163138785681815df9a289307e56834349b7efa35005e",
+    "apps/api/src/ai/shadow/payment/payment-shadow.service.ts": "63227fa2752037a830e033b6b1462843395b42dbd7ceac2a38f5a6304069147e",
+    "apps/api/src/ai/shadow/payment/payment-candidates.ts": "26248e10a2111d21334e7e83637bd0e4b244fc71627bdd13e83d70ea68162d12",
+    "apps/api/src/ai/tools/tool-executor.service.ts": "8696b73667cb4f2555380159f6e351183fca4139b4b102075ffc10acd2b1979a",
+    "apps/api/src/psd2/psd2.types.ts": "792daf85f1ee0ebae38aa0d479bb8a11446668943031948159bfaa644ae37f7d",
+    "apps/api/src/psd2/psd2-sync.service.ts": "359e6943354276d4ed03e3f729f512e09a1adec7ce870ceb027b45707153096e",
+    "apps/api/src/psd2/psd2-provider.factory.ts": "59c5d5e6db42296a728763440342dfa76521310c2a1dd179a14ba23c1cd46dd4",
+    "apps/api/src/psd2/providers/mock-bank-data.provider.ts": "88aa6c060eb2d8eeb3d7f14a77b01203cc782c73cef2a2306a6d27fccec4857f",
+    "apps/api/scripts/eval_referensprov.py": "375947f629a684e9ba13765c0145bfe7fbf93561638c6001baf9f72b42f3a1ee",
+    "apps/api/scripts/referensprov_policy.py": "74d7c3fe8d5f927ac90db27b3b91cf4ef1474d4ec8ff7a861c3d0d5bba666d08",
+    "apps/api/scripts/eval_tillgodo_lifecycle.py": "436f0c480342c514ad7a194c079660d75ea55286a9b80b1553b61f735101edab",
+    "docs/agent2-referensprov.md": "90d7d876260219ab28622051ebda685506ede20f8e3c8a74d24842dd914c7303",
+    "docs/agent2-overskottsprov.md": "9f6059321cf37dcf4de006d0990795586ad6fcc596cb43cf428dca3b60876e10",
+    "docs/agent2-tillgodo-livscykel.md": "811246548fb82e59237362f60b9188bf1e4a440043d175f4f4aa067d6c114b9b"
+  },
+  "officialDocumentation": {
+    "url": "https://enablebanking.com/docs/api/reference/#transaction",
+    "checkedOn": "2026-09-09",
+    "fieldsObservedOptional": [
+      "debtor",
+      "debtor_account",
+      "reference_number",
+      "remittance_information",
+      "entry_reference",
+      "transaction_id"
+    ],
+    "liveBankAvailabilityVerified": false,
+    "access": "Public documentation only; no bank API endpoints or credentials"
+  },
+  "noEnvironmentOrLiveBankPayloadRead": true
+}
