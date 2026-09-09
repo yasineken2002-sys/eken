@@ -68,3 +68,12 @@ passerade. De sista två auditändringarna återanvänder den hashfrysta SQL-få
 ingen fjärde identisk databaskörning behövs för att kontrollera dessa mutationer.
 Kvarstående begränsningar: testfasad för Prisma, ersatt matchning/kö/provider,
 sekventiellt prov och obekräftade verkliga bankkontrakt. Ingen produktionsfix.
+
+Båda granskare gjorde en sista läsande kontroll på samma frysta
+`74491a695b87abac83e75ca3eecd90e79b242b70`. Säkerhetsgranskaren bekräftade
+feltextkontrollen (`audit_bankimport.py:210`) och hade inga kvarstående fynd.
+Kodtestgranskaren bekräftade externt styrt arkivläge (`:57,303,319`),
+nedgraderingskontrollen (`:290,294`) och separat auditorhash (`:321`); inget
+kvarstående hinder från de granskade fynden. Körningsutfallet verifierades av
+root, inte genom påstådda testkörningar hos granskarna. Därefter tillkom enbart
+denna dokumentation av deras slutsatser.
