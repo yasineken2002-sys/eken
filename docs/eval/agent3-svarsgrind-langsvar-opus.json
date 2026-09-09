@@ -1,0 +1,489 @@
+{
+  "at": "2026-09-09T12:08:39.505Z",
+  "model": "claude-opus-5",
+  "promptSha256": "d7693b469d76f6290b9eba75e5d7aa92b0deb270b343795a9fa4f150b3a61962",
+  "sourceSha256": "efc63e6629b98ebeabf9d8ec203e6465e2203056ddabf29363f006d8f1a7c1ef",
+  "limitation": "Samma gamla syntetiska underlag och modellsvar. Facit gäller bara de utpekade styckena; omärkta stycken är inte granskade. Inte oberoende pilot eller driftprecision.",
+  "passed": 7,
+  "total": 10,
+  "results": [
+    {
+      "id": "off_with_history",
+      "expected": {
+        "reject": [
+          1,
+          3
+        ],
+        "keep": [
+          0,
+          2,
+          4
+        ]
+      },
+      "actual": [
+        true,
+        false,
+        true,
+        false,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"SUPPORTED\"],[1,\"UNSUPPORTED\"],[2,\"SUPPORTED\"],[3,\"UNSUPPORTED\"],[4,\"OTHER\"]]",
+      "elapsedMs": 6135,
+      "usage": {
+        "input_tokens": 3487,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 295,
+        "output_tokens_details": {
+          "thinking_tokens": 225
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag kollar statusen för den automatiska förbrukningsuppföljningen åt dig.\n**Nej, den automatiska förbrukningsuppföljningen är för närvarande avstängd.**\n\nNär uppföljningen är avstängd finns ingen nästa planerad kontroll. Schemat är annars fast: varje dag kl. **07:15** (svensk tid).\n\nVill du att jag kontrollerar vilka avläsningar och varningar som finns i dagsläget? Då kan jag läsa granskningen åt dig.\n\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "81b77a64af77f2563d64192feb6f92354cf2b7d338b137dff1a112154fa2e442"
+    },
+    {
+      "id": "waiting_owner",
+      "expected": {
+        "reject": [],
+        "keep": [
+          0,
+          3,
+          4
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        false,
+        true
+      ],
+      "passed": false,
+      "rawVerdict": "[[0,\"SUPPORTED\"],[1,\"SUPPORTED\"],[2,\"SUPPORTED\"],[3,\"UNSUPPORTED\"],[4,\"OTHER\"]]",
+      "elapsedMs": 3871,
+      "usage": {
+        "input_tokens": 3508,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 68,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag kontrollerar status för automatisk förbrukningsuppföljning...\nBra nytt! Den automatiska förbrukningsuppföljningen **är redan påslagen**. \n\n**Status:**\n- ✅ **Påslagen** sedan 9 sep. 2026 12:37 (svensk tid)\n- ⏳ **Väntar på första kontrollen** – ingen kontroll har körts ännu sedan påslag\n- 📅 **Nästa schemalagda kontroll:** 10 sep. 2026 07:15 (svensk tid)\n\n**Om att köra kontrollen nu:**\nDet finns tyvärr ingen funktion för att starta en manuell omkörning – varken för mig eller för dig i systemet. Den schemalagda kontrollen körs automatiskt klockan 07:15 varje morgon (svensk tid) och det schemat kan inte ändras.\n\nSka jag visa dig nuvarande granskningsstatus med eventuella varningar?\n\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "a49d37727ebf1a253ad05e63772019e00d3214d9b50d623d4b93cba7ace87e8e"
+    },
+    {
+      "id": "checked_no_notice",
+      "expected": {
+        "reject": [
+          3
+        ],
+        "keep": [
+          0,
+          1,
+          4
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        false,
+        false,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"SUPPORTED\"],[1,\"SUPPORTED\"],[2,\"UNSUPPORTED\"],[3,\"UNSUPPORTED\"],[4,\"SUPPORTED\"]]",
+      "elapsedMs": 3153,
+      "usage": {
+        "input_tokens": 3635,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 73,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag kollar statusen för den automatiska förbrukningsuppföljningen åt dig.\nJag kan se att den automatiska förbrukningsuppföljningen **är påslagen** och att den senaste lyckade kontrollen genomfördes **9 sep. 2026 kl. 11:37 (svensk tid)** – alltså tidigare idag.\n\n**Nästa planerade kontroll:** 10 sep. 2026 kl. 07:15\n\n**Vill du se det faktiska granskningsunderlaget?**\nFör att se aktuella avläsningar, eventuella varningar och hur många som kunde trendbedömas kan jag läsa **Förbrukning → Granskning** åt dig. Vill du att jag gör det?\n\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "867e03a2934b47815a979fe106efdd1d393bac57b92fb11a166bca6af8ccc541"
+    },
+    {
+      "id": "failed_unknown_cause",
+      "expected": {
+        "reject": [
+          6,
+          11
+        ],
+        "keep": [
+          1,
+          2,
+          3,
+          7,
+          12,
+          14
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"OTHER\"],[1,\"SUPPORTED\"],[2,\"SUPPORTED\"],[3,\"SUPPORTED\"],[4,\"OTHER\"],[5,\"OTHER\"],[6,\"UNSUPPORTED\"],[7,\"SUPPORTED\"],[8,\"SUPPORTED\"],[9,\"OTHER\"],[10,\"OTHER\"],[11,\"UNSUPPORTED\"],[12,\"SUPPORTED\"],[13,\"OTHER\"],[14,\"OTHER\"]]",
+      "elapsedMs": 8675,
+      "usage": {
+        "input_tokens": 4053,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 533,
+        "output_tokens_details": {
+          "thinking_tokens": 351
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag kollar statusen för den automatiska förbrukningsuppföljningen just nu.\n**Status för automatisk förbrukningsuppföljning:**\n\n✅ **Reglaget är PÅSLAGET** (sedan 6 sep. 2026 12:37)\n\n⚠️ **Senaste kontroll: MISSLYCKAD** (9 sep. 2026 12:07)  \nDen senaste lyckade kontrollen var 9 sep. 2026 11:37.\n\n**Schema:**  \nNästa planerade kontroll: 10 sep. 2026 07:15 (svensk tid)\n\n---\n\n### Vad du behöver veta:\n\n2. **Vad statusen INTE visar:**  \n   - Om det finns aktuella varningar i granskningskön  \n   - Varför kontrollen misslyckades  \n   - Om något meddelande skickats till dig\n\n3. **Misslyckad kontroll betyder inte att alla avläsningar är felaktiga** — det betyder att systemet inte kunde genomföra den schemalagda kontrollen som planerat.\n\n---\n\n### Vad du ska göra:\n\n**Obs!** Din roll (Viewer) kan inte ändra reglaget, starta en manuell omkörning eller spara bedömningar. En behörig förvaltare (Ägare) måste hantera inställningen om den behöver justeras.\n\n---\n\nVill du att jag läser de aktuella avläsningarna och varningarna i granskningskön åt dig?\n\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "4e936c22a824c65080e4f40c86991cc4a6662a53d6bbab28a885bb7c8a3db731"
+    },
+    {
+      "id": "overdue",
+      "expected": {
+        "reject": [],
+        "keep": [
+          0,
+          1,
+          2,
+          3,
+          5,
+          6
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"OTHER\"],[1,\"SUPPORTED\"],[2,\"SUPPORTED\"],[3,\"SUPPORTED\"],[4,\"SUPPORTED\"],[5,\"SUPPORTED\"],[6,\"OTHER\"]]",
+      "elapsedMs": 4191,
+      "usage": {
+        "input_tokens": 3708,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 89,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag hämtar statusen för den automatiska förbrukningskontrollen åt dig.\n**Status för automatisk förbrukningskontroll:**\n\n📊 **Aktuellt läge (9 sep. 2026 12:38):**\n- Uppföljningen är **påslagen**\n- Senast påslagen: 6 sep. 2026 12:38 (svensk tid)\n- Status: **Försenad** ⚠️\n\n🕐 **Senaste kontroll:**\n- Senaste lyckade kontroll: **8 sep. 2026 09:38** (svensk tid)\n- Ingen misslyckad kontroll registrerad efter det\n\n📅 **Nästa planerade kontroll:**\n- **10 sep. 2026 07:15** (svensk tid)\n- Schemat är fast och kan inte ändras av någon roll\n\n**Vad betyder \"försenad\"?**\nDet har gått mer än 26 timmar sedan senaste lyckade kontroll, vilket är längre än normalt schema. Nästa schemalagda körning är imorgon morgon kl. 07:15.\n\n**OBS:** Denna status visar bara när kontrollen senast kördes – den visar inte varför en körning eventuellt uteblev, inte om det finns aktuella varningar och inte om alla avläsningar är korrekta. För att se aktuella avläsningsvarningar och trendtäckning behöver du öppna **Förbrukning → Granskning** i systemet.\n\nVill du att jag kollar om det finns några aktuella varningar i granskningskön?\n",
+        "outcome": "allowed"
+      },
+      "inputSha256": "f01492f3fc8c3b1d6b6e7bc8a1e9a2600385e45970d051070363656568d08bc7"
+    },
+    {
+      "id": "status_unavailable",
+      "expected": {
+        "reject": [],
+        "keep": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"SUPPORTED\"],[1,\"SUPPORTED\"],[2,\"SUPPORTED\"],[3,\"OTHER\"]]",
+      "elapsedMs": 2647,
+      "usage": {
+        "input_tokens": 2557,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 53,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag kollar det aktuella läget för den automatiska förbrukningsuppföljningen.\nJag kunde tyvärr inte läsa det aktuella läget för förbrukningsuppföljningen just nu — läsningen misslyckades och statusen är därför okänd.\n\nVad gäller att slå på uppföljningen: jag kan inte ändra det reglaget. Endast organisationens Ägare (OWNER) kan aktivera eller inaktivera den automatiska förbrukningsuppföljningen, och det görs i webbgränssnittet under **Förbrukning → Granskning**.\n\nOm du har Ägare-rollen kan du göra det själv där. Annars behöver du kontakta er kontoägare för att sätta på den.\n\nVill du att jag försöker läsa statusen igen, eller kan jag hjälpa dig med något annat?\n",
+        "outcome": "allowed"
+      },
+      "inputSha256": "ec7ed54b6349adf9a7206f10dc0d58c389a6b73124a504713efe5cc8ab237ac9"
+    },
+    {
+      "id": "no_trend_other_checks",
+      "expected": {
+        "reject": [
+          10,
+          13
+        ],
+        "keep": [
+          1,
+          3,
+          6,
+          7,
+          8
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false
+      ],
+      "passed": false,
+      "rawVerdict": "[[0,\"OTHER\"],[1,\"SUPPORTED\"],[2,\"OTHER\"],[3,\"SUPPORTED\"],[4,\"OTHER\"],[5,\"SUPPORTED\"],[6,\"SUPPORTED\"],[7,\"SUPPORTED\"],[8,\"SUPPORTED\"],[9,\"OTHER\"],[10,\"SUPPORTED\"],[11,\"OTHER\"],[12,\"SUPPORTED\"],[13,\"UNSUPPORTED\"]]",
+      "elapsedMs": 3527,
+      "usage": {
+        "input_tokens": 3943,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 173,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag hämtar den aktuella förbrukningsgranskningen för att se status på dina mätaravläsningar.\n**Sammanfattning av era mätaravläsningar:**\n\nNi har **3 avläsningar** registrerade i systemet. Den automatiska granskningen visar **0 varningar**.\n\n**Viktigt att förstå:**\n\n**Trendjämförelse:** Ingen av de 3 avläsningarna har kunnat trendjämföras (trendCoverage: NONE), vilket betyder att det inte finns tillräcklig historik för att jämföra förbrukningen över tid. Detta begränsar möjligheten att upptäcka kraftiga ökningar i förbrukningen.\n\n**Men – andra kontroller fungerar:**\n\nJa, systemet kan fortfarande hitta flera typer av fel även utan trendhistorik:\n\n1. **DATA-kontroller** – upptäcker:\n   - Negativa värden\n   - Icke-ändliga värden (Infinity, NaN)\n   - Ogiltiga perioder\n\n2. **OVERLAP-kontroller** – upptäcker:\n   - Överlappande tidsperioder för samma mätare\n\n3. **DECREASE-kontroller** – upptäcker:\n   - Minskande mätarställningar (mätaren går bakåt)\n\n**Vad trendjämförelsen kräver:**\n\nFör att kunna göra trendjämförelse behövs tre föregående jämförbara perioder för varje avläsning. När fler avläsningar registreras över tid kommer systemet automatiskt att kunna jämföra förbrukning per dag mot medianen av de tre föregående perioderna och varna vid minst tre gånger medianenökningen.\n\n**Slutsats:**\n\nDe befintliga kontrollerna gav inga utslag, men **det går inte att avgöra om alla avläsningar är felfria** eftersom trendjämförelsen inte kunde göras. Systemet har kontrollerat datakvalitet, överlappningar och minskningar – men inte kunnat bedöma om förbrukningstakten är onormalt hög.\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 3 avläsningar, 0 varningar.\nTrendbedömda: 0. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "6aae2063a9c9024f071c522e61e123b698b404b94a2a62613d3946ce506560e0"
+    },
+    {
+      "id": "assessment_and_setting_roles",
+      "expected": {
+        "reject": [],
+        "keep": [
+          2,
+          3,
+          5,
+          6,
+          8,
+          9
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"OTHER\"],[1,\"OTHER\"],[2,\"SUPPORTED\"],[3,\"SUPPORTED\"],[4,\"OTHER\"],[5,\"SUPPORTED\"],[6,\"SUPPORTED\"],[7,\"OTHER\"],[8,\"SUPPORTED\"],[9,\"SUPPORTED\"],[10,\"OTHER\"]]",
+      "elapsedMs": 4499,
+      "usage": {
+        "input_tokens": 4796,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 132,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag ska hjälpa dig förstå behörigheterna för förbrukningsgranskningen.\nBaserat på den aktuella statusen kan jag svara på dina frågor:\n\n## Roller som kan spara bedömningar av förbrukningsavvikelser:\n\nFöljande roller kan spara bedömningar i Förbrukning → Granskning:\n- **Ägare (OWNER)**\n- **Administratör (ADMIN)**\n- **Förvaltare (MANAGER)**\n\nDin nuvarande roll är **Läsare (VIEWER)**, vilket innebär att du kan granska underlaget men inte spara bedömningar.\n\n## Roller som kan slå på automatisk uppföljning:\n\nEndast **Ägare (OWNER)** kan aktivera eller inaktivera reglaget för automatisk förbrukningsuppföljning i Förbrukning → Granskning.\n\nJust nu är den automatiska uppföljningen **avstängd**. Den senaste kontrollen kördes den 9 september 2026 kl. 11:39 (svensk tid).\n\n## Kan jag göra det åt dig?\n\n**Nej, jag kan tyvärr inte:**\n- ❌ Jag kan varken slå på/av automatisk uppföljning eller ändra schemat\n- ❌ Jag kan inte spara bedömningar av avvikelser\n- ❌ Jag kan inte starta en manuell omkörning av kontrollen (den knappen finns inte)\n- ✅ Jag kan bara **läsa** aktuella varningar och underlag för att hjälpa dig förstå dem\n\nFör att aktivera automatisk uppföljning eller spara bedömningar behöver du kontakta någon med rätt behörighet i er organisation (Ägare för reglaget, Ägare/Administratör/Förvaltare för bedömningar).\n\nVill du att jag förklarar vad den automatiska uppföljningen gör, eller hjälper dig med något annat kring förbrukningsgranskningen?\n",
+        "outcome": "allowed"
+      },
+      "inputSha256": "7d2525917dd69c97eefdea4069a5ac00eb379537d8aca87dbaba0d365d909163"
+    },
+    {
+      "id": "normal_trend_no_finding",
+      "expected": {
+        "reject": [
+          5,
+          7
+        ],
+        "keep": [
+          0,
+          2,
+          8
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true
+      ],
+      "passed": false,
+      "rawVerdict": "[[0,\"SUPPORTED\"],[1,\"OTHER\"],[2,\"SUPPORTED\"],[3,\"OTHER\"],[4,\"SUPPORTED\"],[5,\"UNSUPPORTED\"],[6,\"OTHER\"],[7,\"SUPPORTED\"],[8,\"SUPPORTED\"]]",
+      "elapsedMs": 4013,
+      "usage": {
+        "input_tokens": 2734,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 114,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Nej, \"trendbedömd\" betyder **inte** att avläsningen är misstänkt!\n\n**Vad \"trendbedömd\" betyder:**\n\nEn trendbedömd avläsning är en avläsning som **har kunnat jämföras** med tidigare jämförbara perioder (medianen av exakt tre föregående perioder). Trendkontrollen söker efter kraftiga **ökningar** i förbrukningen – specifikt om förbrukningen per dag är minst tre gånger högre än medianen.\n\n**Varför inga varningar trots trendbedömning:**\n\nAtt en avläsning är trendbedömd men **inte** genererar varning betyder att:\n- Systemet **har** hittat tillräckligt med historik för att jämföra\n- Jämförelsen **genomfördes**\n- Resultatet visade **ingen kraftig ökning** (dvs. förbrukningen ligger under trefaldig median)\n\n**Viktigt att komma ihåg:**\n\nÄven om en trendbedömning inte gav varning betyder det **inte** automatiskt att avläsningen är \"godkänd\" eller \"normal\". Trendkontrollen är bara en av flera möjliga kontroller. Det finns också DATA-kontroller (ogiltiga värden, överlappande perioder, minskande mätarställning) och möjlighet till manuell granskning av originalunderlag eller mätaren.\n\n**Vill du se aktuella avläsningar och varningar?**  \nJag kan hämta förbrukningsgranskningen för dig om du vill se det exakta underlaget.\n\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "872d4f9c590e8869824a01ec3ac159013fcd80f11ead9b1a171bb4f28e669808"
+    },
+    {
+      "id": "low_rate_no_warning",
+      "expected": {
+        "reject": [
+          5
+        ],
+        "keep": [
+          3,
+          7,
+          8,
+          10,
+          11
+        ]
+      },
+      "actual": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "passed": true,
+      "rawVerdict": "[[0,\"SUPPORTED\"],[1,\"SUPPORTED\"],[2,\"OTHER\"],[3,\"SUPPORTED\"],[4,\"SUPPORTED\"],[5,\"UNSUPPORTED\"],[6,\"OTHER\"],[7,\"SUPPORTED\"],[8,\"SUPPORTED\"],[9,\"OTHER\"],[10,\"SUPPORTED\"],[11,\"OTHER\"]]",
+      "elapsedMs": 5197,
+      "usage": {
+        "input_tokens": 3856,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 150,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "guarded": {
+        "text": "Jag ska kontrollera ditt förbrukningsunderlag och förklara hur granskningen fungerar.\nBra fråga! **Nej, trendjämförelsen fångar INTE båda riktningarna:**\n\n## Vad din granskning visar just nu:\n- **4 avläsningar** totalt\n- **1 trendbedömd** (kunde jämföras med tidigare perioder)\n- **3 utan trendjämförelse** (saknar tillräcklig historik)\n- **0 varningar** – inga kraftiga ökningar hittades\n- **Trendtäckning: PARTIAL** – alla avläsningar kan inte bedömas än\n\n## Så fungerar trendjämförelsen:\n\n**Riktning:** Kontrollen söker endast efter kraftiga **ÖKNINGAR** i förbrukningen.\n\n- Jämför förbrukning per dag med medianen av de tre föregående jämförbara perioderna\n- Varnar när ökningen är **minst tre gånger medianen** (och medianen är positiv)\n- Onormalt **låg** förbrukning flaggas INTE av trendkontrollen\n\n## Andra kontroller som finns:\n\nFörutom trendkontrollen har systemet även kontroller för:\n- **DATA** – negativa värden, icke-ändliga tal, ogiltiga perioder\n- **OVERLAP** – överlappande perioder\n- **DECREASE** – minskande mätarställning\n\nDessa fungerar även när trendhistorik saknas.\n\n## Din situation:\n\nMed bara 1 av 4 avläsningar trendbedömd finns ännu inte tillräckligt underlag för att avgöra om alla avläsningar är felfria. Fler framtida avläsningar kan göra nya perioder jämförbara, men de tidigare perioderna friskförklaras inte retroaktivt.\n\nVill du att jag kollar statusen på den automatiska uppföljningen också?\n\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 4 avläsningar, 0 varningar.\nTrendbedömda: 1. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "0a45b745185a0e127b74bfdb373ecf883d8efd2569d9d30cd7dafd95e52dc364"
+    }
+  ],
+  "inputFile": "agent3-svarsgrind-underlag.json"
+}

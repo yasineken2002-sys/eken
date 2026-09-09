@@ -8,6 +8,16 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { followUpFactsFromRound } from './consumption-follow-up-facts'
+import {
+  consumptionReadsFromRound,
+  needsConsumptionGuard,
+  consumptionJudgePrompt,
+  CONSUMPTION_JUDGE_OPTIONS,
+  CONSUMPTION_JUDGE_REQUEST_OPTIONS,
+  applyConsumptionVerdict,
+  type ConsumptionRead,
+  type ConsumptionJudgeInput,
+} from './consumption-reply-guard'
 import Anthropic from '@anthropic-ai/sdk'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -809,6 +819,7 @@ export class AiAssistantService {
     // N = verktygsomgångar modellen får ANVÄNDA (N+1 modellanrop, N körningar).
     let iterations = 0
     let followUpFacts: string | undefined
+    const consumptionReads: ConsumptionRead[] = []
     let currentMessages = messages
     let response = await this.callClaude(
       currentMessages,
@@ -905,6 +916,7 @@ export class AiAssistantService {
       )
 
       followUpFacts = followUpFactsFromRound(toolUses, toolResultBlocks) ?? followUpFacts
+      consumptionReads.push(...consumptionReadsFromRound(toolUses, toolResultBlocks, iterations))
 
       currentMessages = [
         ...currentMessages,
@@ -963,6 +975,8 @@ export class AiAssistantService {
       { blocks: userBlocks, ids: attached.ids },
       { capReached, toolRounds: iterations },
       followUpFacts,
+      consumptionReads,
+      userRole,
     )
   }
 
@@ -1777,6 +1791,56 @@ export class AiAssistantService {
     return block?.text ?? 'Inget svar från AI.'
   }
 
+  /** Samma grind före visning, historik och minne i chat och SSE. Ingen ny tur/credit. */
+  async guardConsumptionReply(
+    input: ConsumptionJudgeInput,
+    history: readonly { content: unknown }[],
+    organizationId: string,
+    userId: string,
+  ): Promise<{ text: string; checked: boolean }> {
+    if (!needsConsumptionGuard(input, history)) return { text: input.draft, checked: false }
+    const prompt = consumptionJudgePrompt(input)
+    let verdict: string | null = null
+    if (prompt && input.draft.trim()) {
+      try {
+        // Kontrollen får inte dra en extra meddelande-credit. Kostnadstaken gäller ändå.
+        await this.quota.checkOrgDailyCostCap(organizationId)
+        await this.quota.checkUserDailyCostCap(organizationId, userId)
+        const response = await this.client.messages.create(
+          {
+            ...CONSUMPTION_JUDGE_OPTIONS,
+            messages: [{ role: 'user', content: prompt }],
+          },
+          CONSUMPTION_JUDGE_REQUEST_OPTIONS,
+        )
+        void this.usage
+          .logUsage({
+            organizationId,
+            userId,
+            endpoint: 'consumption-judge',
+            model: CONSUMPTION_JUDGE_OPTIONS.model,
+            usage: response.usage,
+            isAutomated: false,
+            source: 'consumption_judge',
+          })
+          .catch(() =>
+            this.logger.warn('Kostnadsloggning för förbrukningskontrollen misslyckades.'),
+          )
+        if (response.stop_reason === 'end_turn')
+          verdict = response.content
+            .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+            .map((b) => b.text)
+            .join('')
+      } catch {
+        // Inga råfel eller underlag loggas. Otillgänglig domare släpper inte ut utkastet.
+        this.logger.warn('Förbrukningskontrollen var inte tillgänglig; visar reservsvar.')
+      }
+    }
+    const result = applyConsumptionVerdict(input.draft, verdict, input.reads)
+    this.logger.log(`Förbrukningskontroll: ${result.outcome}`)
+    return { text: result.text, checked: true }
+  }
+
   private async handleTextResponse(
     response: Anthropic.Message,
     _messages: Anthropic.MessageParam[],
@@ -1793,13 +1857,27 @@ export class AiAssistantService {
     /** Turtaket: nåddes det, och hur många omgångar förbrukades? */
     cap: { capReached: boolean; toolRounds: number } = { capReached: false, toolRounds: 0 },
     followUpFacts?: string,
+    consumptionReads: readonly ConsumptionRead[] = [],
+    authenticatedRole = 'UNKNOWN',
   ): Promise<ChatResponse> {
     // CITAT-INTEGRITET (gap A): på ett grundat svar appendar KODEN den
     // auktoritativa källhänvisningen, byggd ur de hämtade chunkarnas metadata
     // INNAN AI:n svarade. AI:ns text kan aldrig påverka källraden — ett
     // hallucinerat lagrum i prosan blir aldrig en källa. Vid MISS (gap B)
     // sätts INGEN källrad — det fanns inget att grunda i.
-    const aiText = this.extractText(response)
+    const guarded = await this.guardConsumptionReply(
+      {
+        draft: this.extractText(response),
+        question: userMessage,
+        role: authenticatedRole,
+        reads: consumptionReads,
+        statusFacts: followUpFacts,
+      },
+      _messages,
+      organizationId,
+      userId,
+    )
+    const aiText = guarded.text
     const grundadText =
       grounding?.outcome === 'grounded' ? appendCodeBoundSource(aiText, grounding) : aiText
     // Markeringen läggs SIST, efter källraden: modellens egen text är vid ett
@@ -1826,18 +1904,20 @@ export class AiAssistantService {
     // tool_use blir därför ett obesvarat anrop som 400:ar VARJE följande
     // meddelande i konversationen. Det inträffade när tool-loopen tog slut på
     // iterationer med stop_reason fortfarande 'tool_use'.
-    const assistantBlocks = sanitizeBlocksForPersistence([
-      ...response.content,
-      ...(followUpFacts
-        ? [
-            {
-              type: 'text' as const,
-              text: followUpFacts + (cap.capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
-              citations: null,
-            },
-          ]
-        : []),
-    ])
+    const assistantBlocks = guarded.checked
+      ? [{ type: 'text' as const, text: reply, citations: null }]
+      : sanitizeBlocksForPersistence([
+          ...response.content,
+          ...(followUpFacts
+            ? [
+                {
+                  type: 'text' as const,
+                  text: followUpFacts + (cap.capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
+                  citations: null,
+                },
+              ]
+            : []),
+        ])
     await createAiMessageWithSubjects(this.prisma, {
       conversationId,
       role: 'assistant',

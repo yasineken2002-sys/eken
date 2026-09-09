@@ -41,6 +41,8 @@ export const AI_MODELS = {
   CHAT_VISION: 'claude-opus-5',
   ANALYSIS: 'claude-sonnet-4-5',
   MEMORY: 'claude-haiku-4-5-20251001',
+  /** Förbrukningssvar: de billigare domarna missade fel i de långa återspelen. */
+  CONSUMPTION_JUDGE: 'claude-opus-5',
   /** Hyresgästportalens assistent — se kommentaren ovan, rörs inte. */
   TENANT_CHAT: 'claude-sonnet-4-5',
   VISION_CONTRACT: 'claude-sonnet-4-5',

@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common'
+import { MANUAL_AI_CALL_WHERE } from '../../common/ai-usage/manual-ai-call'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { PLAN_LIMITS, getMonthStart, getNextResetAt } from '@eken/shared'
 import type { SubscriptionPlan } from '@eken/shared'
@@ -151,7 +152,7 @@ export class AiQuotaService {
     return this.prisma.aiUsageLog.count({
       where: {
         organizationId,
-        isAutomated: false,
+        ...MANUAL_AI_CALL_WHERE,
         createdAt: { gte: getMonthStart() },
       },
     })

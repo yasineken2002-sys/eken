@@ -2017,6 +2017,11 @@ både synligt och sparat chattsvar. Modellens fritext kan fortfarande vara fel;
 faktablocket är ingen driftvalidering. [Aktuell bygglista](./agentplan-aterstaende.md)
 sammanfattar utkast, kvarvarande kodarbete och kriterier som kräver verkliga fall.
 
+[agent3-svarsgrind.md](./agent3-svarsgrind.md) beskriver kontrollen före visning
+och lagring. Den stoppar uppmätta sakfel men har också avvisat ett korrekt stycke.
+[agent3-slutkontroll.md](./agent3-slutkontroll.md) samlar hela byggkedjan och
+kraven före drift; verkligt granskat underlag saknas fortfarande.
+
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och

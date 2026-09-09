@@ -1,0 +1,38 @@
+{
+  "at": "2026-09-09T11:54:46.423Z",
+  "model": "claude-haiku-4-5-20251001",
+  "promptSha256": "58ed06eda30970b586fd2a142d988c7ba77f108c4bf5b3050df89a7c112ba021",
+  "sourceSha256": "efc63e6629b98ebeabf9d8ec203e6465e2203056ddabf29363f006d8f1a7c1ef",
+  "limitation": "Konstruerade påståenden med förhandsbestämt facit och sparade syntetiska verktygsresultat. Inte driftprecision eller en oberoende granskning. Inget produktionsunderlag eller skrivande verktyg.",
+  "passed": 0,
+  "total": 1,
+  "results": [
+    {
+      "id": "notis-falsk-slutsats",
+      "expected": [
+        false
+      ],
+      "actual": "```json\n[false]\n```",
+      "passed": false,
+      "elapsedMs": 1131,
+      "usage": {
+        "input_tokens": 1963,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 11,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "unavailable"
+      },
+      "inputSha256": "548f9e5eb2e7e09ca2787505e4101f922351bf4dff8d6699431e8ef7585f00fa"
+    }
+  ],
+  "inputFile": "agent3-svarsgrind-underlag.json"
+}

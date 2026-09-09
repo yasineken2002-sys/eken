@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
+import { MANUAL_AI_CALL_WHERE, countsAsManualAiCall } from '../common/ai-usage/manual-ai-call'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { allocatePlatformInvoiceNumber } from '../platform/invoices/platform-invoice-number'
 import { PLAN_LIMITS, getMonthStart, getNextResetAt, CREDIT_PACKAGES } from '@eken/shared'
@@ -36,7 +37,7 @@ export class AiUsagePageService {
     const used = await this.prisma.aiUsageLog.count({
       where: {
         organizationId,
-        isAutomated: false,
+        ...MANUAL_AI_CALL_WHERE,
         createdAt: { gte: getMonthStart() },
       },
     })
@@ -75,6 +76,7 @@ export class AiUsagePageService {
       select: {
         createdAt: true,
         isAutomated: true,
+        endpoint: true,
         costUsd: true,
       },
     })
@@ -96,7 +98,7 @@ export class AiUsagePageService {
       const bucket = buckets.get(key)
       if (!bucket) continue
       if (row.isAutomated) bucket.automatedCalls += 1
-      else bucket.manualCalls += 1
+      else if (countsAsManualAiCall(row)) bucket.manualCalls += 1
       bucket.costUsd += Number(row.costUsd)
     }
 

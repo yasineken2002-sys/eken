@@ -1,0 +1,78 @@
+check-request-contract (exit 0)
+✅ Kontraktet webb↔API: 6 kända överträdelser i 5 filer, inga nya och inga stale.
+✅ Regel 2: 97 delade nyttolasttyper, alla härledda i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.
+   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av SammaNycklar-raden i DTO:n (Typecheck) och av dto.spec-provet — inte av den här.
+
+check-dto-placement (exit 0)
+✅ DTO-placering: 0 kända felplacerade klasser, inga nya och inga stale.
+   Regeln gör check-request-contracts premiss sann: när talet är 0 är "gå igenom *.dto.ts" uttömmande per konstruktion.
+
+check-strict-koercion (exit 0)
+✅ Strikt koercion: varje DTO-fält bär sin dekorator — 0 oskyddade.
+   Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av strict-boolean.spec.ts, strict-string.spec.ts och strict-iso-datum.spec.ts, som kör den riktiga pipen.
+
+check-strict-boolean (exit 1)
+node:internal/modules/cjs/loader:1520
+  throw err;
+  ^
+
+Error: Cannot find module '/Users/test/Desktop/eveno/eken-agent3-svarsgrind/apps/api/scripts/check-strict-boolean.mjs'
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1517:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1071:27)
+    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1095:10)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1122:12)
+    at Module._load (node:internal/modules/cjs/loader:1294:5)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: []
+}
+
+Node.js v24.19.0
+
+check-tool-authority (exit 0)
+✅ 31 verktyg: agentAllowlist true för 9 — create_inspection, create_invoice, create_maintenance_ticket, create_property, create_unit, export_sie4, generate_rent_notices, import_bgmax_file, update_maintenance_status.
+   authorityScope: 12 EGEN_ORG · 16 MOT_HYRESGAST · 3 MOT_TREDJE_PART. Tröskel för IRREVERSIBEL-skäl: 80 tecken.
+
+check-tool-human-path (exit 0)
+✅ Delmängdsregeln: 31 verktyg, 31 med en verifierad mänsklig väg (rutt finns i router.tsx, åtgärden finns i sidans katalog), 0 utan — alla 0 står i tool-human-path.baseline.json med skäl och ärendeplats. 49 rutter lästa.
+
+check-tool-outward-capabilities (exit 0)
+✅ 10 verktyg med utåtriktad förmåga, alla i manifestet — 59 case-block, 25 injektioner klassade.
+   book_contractor (MAIL) · compose_and_send_email (MAIL) · create_tenant_and_lease (KÖ) · export_for_collection (LAGRING_R2) · generate_lease_contract (LAGRING_R2) · prepare_contract_signing (SIGNERING) · send_document_to_tenant (LAGRING_R2+MAIL) · send_invoice_email (KÖ) · send_overdue_reminders (MAIL) · transition_lease_status (KÖ)
+
+check-ai-tool-effects (exit 0)
+✅ utfallskopplingen är påkopplad; 31 ACTION_TOOLS ställningstagna (30 producerar effekter, 1 kvitterade).
+
+check-ai-display-masking (exit 0)
+✅ AI-maskering: varje läsväg maskerar eller är kvitterad (3 kvitterade läsningar)
+
+check-effect-idempotency (exit 0)
+✅ Effektklassificeringen håller: 31 deklarationer för 31 bindande verktyg.
+
+check-effect-trace (exit 0)
+✅ Effektspåret är påkopplat: 4 anropare av logToolExecution, 0 utan effects (kvitterade med skäl).
+
+check-actor-stamping (exit 0)
+✅ aktörsstämplingen är påkopplad; modellmängden härleds ur schemat, tre gränser satta, inga handpåläggningar. (4 referenser i extensionen)
+
+check-module-cycles (exit 0)
+✅ 64 moduler, 231 hårda kanter — inga odeklarerade cykler (3 forwardRef-kanter, alltså deklarerade och tillåtna).
+
+check-cron-classification (exit 0)
+✅ 35 @Cron-jobb, alla klassificerade — 13 låsta (A), 22 med namngiven invariant (B).
+
+check-cron-error-sink (exit 0)
+✅ 35 @Cron-jobb — 35 når den varaktiga felsänkan, 0 kvitterade (rapportmetod härledd: report).
+
+check-transaction-limits (exit 0)
+✅ Transaktionsgränser: varje $transaction har en medveten gräns eller en kvittering (3 kvitterade i 2 filer)
+
+check-spread-where före typförtydligande (exit 1)
+skannade 597 filer · 106 modeller, 64 med organizationId
+2 where-satser: ai/testing/consumption-realistic.fixtures.ts:276 och :291, bar X = unknown
+
+check-spread-where efter typförtydligande (exit 0)
+skannade 597 filer · 106 modeller, 64 med organizationId
+✅ inga where-satser där organizationId kan falla bort tyst

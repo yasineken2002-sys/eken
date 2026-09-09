@@ -1,0 +1,40 @@
+{
+  "at": "2026-09-09T13:18:26.357Z",
+  "base": "42a2afd0f6ac00e3af6f20364c6205225efe0174",
+  "rows": 6000,
+  "limitation": "Tre lokala omgångar per implementation, samtidigt annat avgränsat testjobb. Ingen driftlatens eller prestandagaranti.",
+  "before": [
+    {
+      "elapsedMs": 86.3,
+      "findings": 500,
+      "trendAssessed": 5850
+    },
+    {
+      "elapsedMs": 39.18,
+      "findings": 500,
+      "trendAssessed": 5850
+    },
+    {
+      "elapsedMs": 37.38,
+      "findings": 500,
+      "trendAssessed": 5850
+    }
+  ],
+  "after": [
+    {
+      "elapsedMs": 84.2,
+      "findings": 500,
+      "trendAssessed": 5850
+    },
+    {
+      "elapsedMs": 100.41,
+      "findings": 500,
+      "trendAssessed": 5850
+    },
+    {
+      "elapsedMs": 84.61,
+      "findings": 500,
+      "trendAssessed": 5850
+    }
+  ]
+}
