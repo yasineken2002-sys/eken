@@ -11,6 +11,7 @@ jest.mock('@anthropic-ai/sdk', () => ({
 
 import { AiAssistantService } from './ai-assistant.service'
 import { AiAssistantController } from './ai-assistant.controller'
+import { CONSUMPTION_JUDGE_SYSTEM, CONSUMPTION_REPLY_NOTICE } from './consumption-reply-guard'
 import { consumptionFollowUpFacts } from './consumption-follow-up-facts'
 import { MAX_TOOL_ROUNDS, TOOL_ITERATION_CAP_NOTICE } from './tool-iteration-cap'
 
@@ -37,11 +38,19 @@ const read = (name = 'get_consumption_follow_up', id = 'status') => ({
   content: [{ type: 'tool_use', id, name, input: {} }],
 })
 
-function setup(responses: unknown[], execute = jest.fn().mockResolvedValue(data)) {
+function setup(
+  responses: unknown[],
+  execute = jest.fn().mockResolvedValue(data),
+  judge = jest.fn().mockReturnValue('[[0,"SUPPORTED"]]'),
+) {
   mockCreate.mockReset()
   mockStream.mockReset()
+  const chatResponses = [...responses]
+  mockCreate.mockImplementation(async (request) => {
+    if (request.system === CONSUMPTION_JUDGE_SYSTEM) return final(await judge(request))
+    return chatResponses.shift()
+  })
   for (const response of responses) {
-    mockCreate.mockResolvedValueOnce(response)
     mockStream.mockImplementationOnce(() => ({
       on: (event: string, cb: (text: string) => void) => {
         if (event === 'text')
@@ -81,6 +90,7 @@ function setup(responses: unknown[], execute = jest.fn().mockResolvedValue(data)
   const usage = { logUsage: jest.fn().mockResolvedValue(undefined) }
   const quota = {
     checkQuota: jest.fn().mockResolvedValue(undefined),
+    checkOrgDailyCostCap: jest.fn().mockResolvedValue(undefined),
     checkUserDailyCostCap: jest.fn().mockResolvedValue(undefined),
   }
   const attachments = {
@@ -156,20 +166,19 @@ function setup(responses: unknown[], execute = jest.fn().mockResolvedValue(data)
     prisma.aiMessage.create.mock.calls
       .map(([args]) => args.data)
       .find((row) => row.role === 'assistant')
-  return { run, assistant, prisma, service, execute, usage }
+  return { run, assistant, prisma, service, execute, usage, judge, quota, reply }
 }
 
 describe.each(['chat', 'SSE'])('%s — faktablock genom produktionsvägen', (mode) => {
   it('ger samma kontrollerade fakta trots ett falskt modellsvar, sparat även i återspelad historik', async () => {
-    const f = setup([read(), final()])
+    const f = setup([read(), final()], undefined, jest.fn().mockReturnValue('[[0,"UNSUPPORTED"]]'))
     const answer = await f.run(mode)
     const facts = consumptionFollowUpFacts(data)
-    // AVGRÄNSNING: modellens felaktiga text finns kvar. Detta prov bevisar
-    // faktablocket, inte att fritexten blivit korrekt eller säker för drift.
-    expect(answer.reply).toContain('Utebliven notis betyder inga varningar.')
+    expect(answer.reply).not.toContain('Utebliven notis betyder inga varningar.')
+    expect(answer.reply).toContain(CONSUMPTION_REPLY_NOTICE)
     expect(answer.reply.endsWith(facts)).toBe(true)
     expect(f.assistant().content).toBe(answer.reply)
-    expect(f.assistant().blocks.at(-1).text).toBe(facts)
+    expect(f.assistant().blocks.at(-1).text).toBe(answer.reply)
     expect(f.assistant().blocks.some((b: { type: string }) => b.type === 'tool_use')).toBe(false)
     const history = await f.service.buildMessageHistoryForClaude({
       id: 'c1',
@@ -188,6 +197,13 @@ describe.each(['chat', 'SSE'])('%s — faktablock genom produktionsvägen', (mod
       ],
     } as never)
     expect(JSON.stringify(history)).toContain('En utebliven notis bevisar inte')
+    expect(JSON.stringify(history)).not.toContain('Utebliven notis betyder inga varningar.')
+    expect(f.service.extractMemoriesInBackground).toHaveBeenCalledWith(
+      expect.any(String),
+      answer.reply,
+      'org',
+      'user',
+    )
   })
 
   it('behåller andra verktyg och svar utan att blanda in deras data i statusfakta', async () => {
@@ -209,6 +225,98 @@ describe.each(['chat', 'SSE'])('%s — faktablock genom produktionsvägen', (mod
     expect(answer.reply.endsWith(consumptionFollowUpFacts(data))).toBe(true)
   })
 
+  it('tar bara bort det avvisade stycket i ett blandat svar, innan visning och lagring', async () => {
+    const judge = jest.fn().mockReturnValue('[[0,"OTHER"],[1,"UNSUPPORTED"],[2,"OTHER"]]')
+    const f = setup(
+      [
+        read(),
+        final(
+          'Det finns två fastigheter.\n\nInga notiser betyder inga varningar.\n\nÖppna fastighetslistan.',
+        ),
+      ],
+      undefined,
+      judge,
+    )
+    const answer = await f.run(mode)
+    expect(answer.reply).toContain('Det finns två fastigheter.\n\nÖppna fastighetslistan.')
+    expect(answer.reply).not.toContain('Inga notiser betyder inga varningar.')
+    expect(JSON.stringify(f.prisma.aiMessage.create.mock.calls)).not.toContain(
+      'Inga notiser betyder inga varningar.',
+    )
+    expect(JSON.stringify(f.reply.raw.write.mock.calls)).not.toContain(
+      'Inga notiser betyder inga varningar.',
+    )
+  })
+
+  it.each(['timeout', 'invalid', 'cap'])(
+    'stänger grinden vid %s utan att röja utkast eller råfel',
+    async (failure) => {
+      const judge =
+        failure === 'timeout'
+          ? jest.fn().mockRejectedValue(new Error('privat anslutningsfel'))
+          : jest.fn().mockReturnValue('JA')
+      const f = setup([read(), final()], undefined, judge)
+      if (failure === 'cap')
+        f.quota.checkOrgDailyCostCap.mockRejectedValue(new Error('kostnadstak'))
+      const answer = await f.run(mode)
+      expect(answer.reply).toContain(CONSUMPTION_REPLY_NOTICE)
+      expect(answer.reply).toContain(consumptionFollowUpFacts(data))
+      expect(answer.reply).not.toMatch(/Utebliven notis betyder|privat anslutningsfel|kostnadstak/)
+      if (failure === 'cap') expect(judge).not.toHaveBeenCalled()
+    },
+  )
+
+  it('bokför domarkostnaden på samma organisation och användare utan en extra credit-kontroll', async () => {
+    const f = setup([read(), final('Statusen kunde läsas.')])
+    await f.run(mode)
+    expect(f.quota.checkQuota).toHaveBeenCalledTimes(1)
+    expect(f.usage.logUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org',
+        userId: 'user',
+        endpoint: 'consumption-judge',
+        isAutomated: false,
+        source: 'consumption_judge',
+      }),
+    )
+    const call = mockCreate.mock.calls.find(
+      ([request]) => request.system === CONSUMPTION_JUDGE_SYSTEM,
+    )
+    expect(call![1]).toEqual({ timeout: 30_000, maxRetries: 0 })
+    expect(call![0]).toMatchObject({
+      model: 'claude-opus-5',
+      max_tokens: 4096,
+      output_config: { effort: 'low' },
+    })
+    expect(call![0]).not.toHaveProperty('temperature')
+    expect(JSON.parse(call![0].messages[0].content).authenticatedRole).toBe('ADMIN')
+  })
+
+  it('inväntar domen innan första synliga texten och innan assistenten sparas', async () => {
+    let release!: (value: string) => void
+    let entered!: () => void
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const verdict = new Promise<string>((resolve) => {
+      release = resolve
+    })
+    const judge = jest.fn().mockImplementation(() => {
+      entered()
+      return verdict
+    })
+    const f = setup([read(), final()], undefined, judge)
+    const pending = f.run(mode)
+    await started
+    expect(f.assistant()).toBeUndefined()
+    expect(f.reply.raw.write.mock.calls.some(([raw]) => raw.startsWith('event: delta\n'))).toBe(
+      false,
+    )
+    release('[[0,"UNSUPPORTED"]]')
+    const answer = await pending
+    expect(answer.reply).not.toContain('Utebliven notis betyder inga varningar.')
+  })
+
   it('ett nytt läsfel ersätter äldre lyckad status och röjer ingen rå feltext', async () => {
     const execute = jest
       .fn()
@@ -223,17 +331,20 @@ describe.each(['chat', 'SSE'])('%s — faktablock genom produktionsvägen', (mod
     expect(section).toContain('Statusen kunde inte läsas')
     expect(section).not.toContain('är påslagen')
     expect(section).not.toContain('intern anslutningshemlighet')
-    expect(f.assistant().blocks.at(-1).text).toBe(consumptionFollowUpFacts(undefined))
+    expect(f.assistant().blocks.at(-1).text).toBe(answer.reply)
   })
 
   it('ett påstående om läsning utan verktygsanrop tilldelas aldrig ett faktablock', async () => {
-    const f = setup([final('Jag har kontrollerat statusen, den är påslagen.')])
+    const f = setup(
+      [final('Jag har kontrollerat statusen, den är påslagen.')],
+      undefined,
+      jest.fn().mockReturnValue('[[0,"UNSUPPORTED"]]'),
+    )
     const answer = await f.run(mode)
     expect(f.execute).not.toHaveBeenCalled()
     expect(answer.reply).not.toContain('Uppföljningsstatus från systemet')
-    expect(f.assistant().blocks).toEqual(
-      final('Jag har kontrollerat statusen, den är påslagen.').content,
-    )
+    expect(f.assistant().content).not.toContain('den är påslagen')
+    expect(f.assistant().blocks[0].text).toBe(answer.reply)
   })
 
   it('en efterföljande tur utan ny statusläsning får inte återanvända gamla fakta som nya', async () => {

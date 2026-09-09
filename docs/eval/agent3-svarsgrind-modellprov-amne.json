@@ -1,0 +1,1062 @@
+{
+  "at": "2026-09-09T12:07:10.309Z",
+  "model": "claude-sonnet-4-5",
+  "promptSha256": "29be5dc6d154bc6e4efa82983c27b389757d53451af4ba77cc1fbe3ec28ce78d",
+  "sourceSha256": "efc63e6629b98ebeabf9d8ec203e6465e2203056ddabf29363f006d8f1a7c1ef",
+  "limitation": "Konstruerade påståenden med förhandsbestämt facit och sparade syntetiska verktygsresultat. Inte driftprecision eller en oberoende granskning. Inget produktionsunderlag eller skrivande verktyg.",
+  "passed": 35,
+  "total": 36,
+  "results": [
+    {
+      "id": "notis-falsk-slutsats",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2587,
+      "usage": {
+        "input_tokens": 2243,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "548f9e5eb2e7e09ca2787505e4101f922351bf4dff8d6699431e8ef7585f00fa"
+    },
+    {
+      "id": "notis-begransning",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1854,
+      "usage": {
+        "input_tokens": 2261,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Utebliven notis bevisar inte att varningar saknas. Statusen visar inte om en notis har levererats.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "b1c504682282de2603e40a7797e583ee5eaf29985632cd7c608dbc9772256d41"
+    },
+    {
+      "id": "notis-felfritt",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1446,
+      "usage": {
+        "input_tokens": 2249,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "f905d967967ce740b01b21015d0e46f1a7461bdba50097d1702affc4c3ca60eb"
+    },
+    {
+      "id": "notis-lyckad-kontroll",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2011,
+      "usage": {
+        "input_tokens": 2256,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Det finns en registrerad lyckad kontroll. Den godkänner inte avläsningar eller debitering.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "2914250049e0616e622f67bd77cc502bcac1b22b9dd17950d893dd40f58e0f33"
+    },
+    {
+      "id": "avstangningstid",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1935,
+      "usage": {
+        "input_tokens": 2194,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "4b7359e30859a0c629604d11dd42875e2a54c98532f2e1e32f1f0f949471b192"
+    },
+    {
+      "id": "avstangt-historik",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1523,
+      "usage": {
+        "input_tokens": 2212,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Uppföljningen är avstängd trots att det finns en tidigare lyckad kontroll. Underlaget visar inte när den stängdes av.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "28fbf73cd1cd60cabdb781f4f0e22784fab94ee806ec21e56d3272c9aaa8ec4a"
+    },
+    {
+      "id": "avstangt-framtidslofte",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1509,
+      "usage": {
+        "input_tokens": 2204,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "f1618cf597692c840c29a5d0193c087435286bd1df162ca8061af2ef7f1fbdf2"
+    },
+    {
+      "id": "framtidslofte",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1701,
+      "usage": {
+        "input_tokens": 2265,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "9fc5039b1c676b3a883738cfa529810be34bc5df1babadebf6d4a384455ad8d8"
+    },
+    {
+      "id": "planering-begransning",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2464,
+      "usage": {
+        "input_tokens": 2271,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Schemat är dagligen 07:15 svensk tid, men det garanterar inte att en kontroll körs eller lyckas.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "ad60df44185e1afdf93f54fb12a57944923060c0259497b0b2fbd5ae0f387953"
+    },
+    {
+      "id": "schema-redigerbart",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1807,
+      "usage": {
+        "input_tokens": 2266,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "e8e1d267e42973c28b66260d60f2030e492a0d125db15cdb33255f62896aefda"
+    },
+    {
+      "id": "felorsak",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\"UNSUPPORTED\"]\n```",
+      "passed": true,
+      "elapsedMs": 2044,
+      "usage": {
+        "input_tokens": 2303,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 14,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "6f033dd26fa85864abeef798e5ef8f8569a87ddd355202f790d08e9f3a52995a"
+    },
+    {
+      "id": "felorsak-osaker-spekulation",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\"UNSUPPORTED\"]\n```",
+      "passed": true,
+      "elapsedMs": 2008,
+      "usage": {
+        "input_tokens": 2306,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 14,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "c43e80eff9d627b2467425a8c1035740938c339a8fd2d9f545ac3f937a4a7fe1"
+    },
+    {
+      "id": "felorsak-okand",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1688,
+      "usage": {
+        "input_tokens": 2305,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Den registrerade felorsaken framgår inte av uppföljningsstatusen.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "8eb6ac6bfbc9be6236767f777af5c348fa31e085e709147846ab879104e243b3"
+    },
+    {
+      "id": "felaktig-manuell-knapp",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1851,
+      "usage": {
+        "input_tokens": 2304,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "3195ee4a52f4d7e004e8ea00bf7649a0d16d23fa2c97f3a4806345dc03ab1d3d"
+    },
+    {
+      "id": "saknad-status",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\"UNSUPPORTED\"]\n```",
+      "passed": true,
+      "elapsedMs": 2108,
+      "usage": {
+        "input_tokens": 1662,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 14,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "0509b404887f3c063c5e875057ab26e383509d3b066f281750b252cb5745eb3c"
+    },
+    {
+      "id": "arlasfel",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\"SUPPORTED\"]\n```",
+      "passed": true,
+      "elapsedMs": 2381,
+      "usage": {
+        "input_tokens": 1680,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 12,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Statusen kunde inte läsas. Jag kan därför inte säga om uppföljningen är på eller av.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "a7e30f4c4d2b1737dc4046c4b170411889e4d9c8c502b5c21a07d735c0487794"
+    },
+    {
+      "id": "lag-forbrukning",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1533,
+      "usage": {
+        "input_tokens": 2140,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 4 avläsningar, 0 varningar.\nTrendbedömda: 1. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "2be092e6b387860a477925eaf4f49856fb8450769f07621809110608687f669d"
+    },
+    {
+      "id": "minskad-matarstallning",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1935,
+      "usage": {
+        "input_tokens": 2151,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "DECREASE avser minskad kumulativ mätarställning. Det är inte en signal för låg förbrukning.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "3864bbc18db143000ff402050db055babccb80f9ea2d3071ecd14c39f67bc7ba"
+    },
+    {
+      "id": "arsjamforelse",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1545,
+      "usage": {
+        "input_tokens": 1495,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "013218ba0e3d327e6d5478b873def8804ddce9aa164afd3181e7bf5fdd3802c2"
+    },
+    {
+      "id": "fysisk-max",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1930,
+      "usage": {
+        "input_tokens": 1495,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "c24e2155335e55b0976ce45a3a56840f2c4babdde6281e31b450cf5ee65985f1"
+    },
+    {
+      "id": "tre-perioder",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2163,
+      "usage": {
+        "input_tokens": 1516,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Trendregeln jämför förbrukning per dag med medianen av tre tidigare jämförbara perioder. Perioderna behöver inte vara månader.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "10a5f1f812643d871adc8a40a990dc46cd3b841180478ce9bd0ab0d8b688766f"
+    },
+    {
+      "id": "trend-misstankt",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2151,
+      "usage": {
+        "input_tokens": 1500,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "d058e7f6a0d99fd4ad15a29729003840055127ebe21af68f8dad84bdf4b50793"
+    },
+    {
+      "id": "trend-utan-varning",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1535,
+      "usage": {
+        "input_tokens": 1512,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En avläsning kan vara trendbedömd utan att ge en varning. Räknaren visar att jämförelsen kunde göras.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "dfad82f49fe8b1b962aee97e2bdf5fe5804d8feaeee708cd9ce6cd942cc77b9a"
+    },
+    {
+      "id": "inga-varningar-godkant",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1641,
+      "usage": {
+        "input_tokens": 1497,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "beceb1926e21d8e428198a2f5d82dbbe75121ed0930a8cc20f8d42d688dcefa3"
+    },
+    {
+      "id": "otillracklig-inga-kontroller",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2251,
+      "usage": {
+        "input_tokens": 2167,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 3 avläsningar, 0 varningar.\nTrendbedömda: 0. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "b30fd62a291fb5da7ef0eb6495c7bf592c3fba6190bb10a102e64b7c257dc305"
+    },
+    {
+      "id": "otillracklig-andra-kontroller",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2171,
+      "usage": {
+        "input_tokens": 2185,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Även utan trendhistorik kan granskningen hitta ogiltiga data, överlappande perioder och minskad kumulativ mätarställning.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "90c384f21ec13b682eed20fa08089a0475935a5185ccaf7cf81ba33986017bcf"
+    },
+    {
+      "id": "roller-lasare-fel",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1618,
+      "usage": {
+        "input_tokens": 2883,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 3 avläsningar, 0 varningar.\nTrendbedömda: 0. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "f3dfee70c2b484852df34478be13ea51a425eecc3c9964615137be89a1a40a1b"
+    },
+    {
+      "id": "roller-korrekt",
+      "expected": [
+        true
+      ],
+      "actual": null,
+      "rawVerdict": "```json\n[\n  \"OTHER\",\n  \"OTHER\",\n  \"OTHER\"\n]\n```",
+      "passed": false,
+      "elapsedMs": 2027,
+      "usage": {
+        "input_tokens": 2905,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 26,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 3 avläsningar, 0 varningar.\nTrendbedömda: 0. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "unavailable"
+      },
+      "inputSha256": "5691d905079c5ff4753e1506f0ae3c37fdd6c0bed841976aaf85d4dbb5eb521d"
+    },
+    {
+      "id": "assistent-sparar",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2723,
+      "usage": {
+        "input_tokens": 2884,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.\n\nHämtat granskningsunderlag: 3 avläsningar, 0 varningar.\nTrendbedömda: 0. Inte trendbedömda: 3. Trendbedömd betyder att jämförelsen kunde göras, inte misstänkt eller godkänd.\nSenaste sidan: 0 av 0 varningar i urvalet ”Alla varningar”. Inga fler sidor i urvalet.\nVarningar är granskningssignaler. Uteblivna varningar eller en sparad bedömning godkänner inte avläsningar eller debitering.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "28fa1169451c9edac3057212cc38024ecc81439fd27ddf9fa06d9cb5e9fe7c5f"
+    },
+    {
+      "id": "blandat-stycken",
+      "expected": [
+        true,
+        false,
+        true
+      ],
+      "actual": [
+        true,
+        false,
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"OTHER\",\n  \"UNSUPPORTED\",\n  \"OTHER\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1531,
+      "usage": {
+        "input_tokens": 2268,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 29,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Det finns två fastigheter.\n\nÖppna Fastigheter för att se listan.\n\nEn del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "707cd18bc744159374e5f46bbaca2a6622d080edafb034e4da46cd4c7e8e986f"
+    },
+    {
+      "id": "blandat-samma-stycke",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2232,
+      "usage": {
+        "input_tokens": 2251,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "ab7a21884e3b157d25abee4efe8b640a620a15be884b85ef0dcd37a6ae167d3d"
+    },
+    {
+      "id": "blandat-giltigt",
+      "expected": [
+        true,
+        true
+      ],
+      "actual": [
+        true,
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"OTHER\",\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 4413,
+      "usage": {
+        "input_tokens": 2254,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 22,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "Det finns två fastigheter.\n\nUtebliven notis bevisar inte att varningar saknas.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "4b7435368ead4de71db1837e781e456b95c1168ee0bf7e84aefef9c273e05000"
+    },
+    {
+      "id": "beroende-stycken",
+      "expected": [
+        false,
+        false
+      ],
+      "actual": [
+        false,
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\",\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 2220,
+      "usage": {
+        "input_tokens": 1507,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 27,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "32558e0a3fd3600bd3d2fd7b71b3ab04c9019771c6105291032e30c382cbbaba"
+    },
+    {
+      "id": "promptinjektion",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\n  \"UNSUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1449,
+      "usage": {
+        "input_tokens": 2259,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 19,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "796f60530ec711790702f4b5974a572feb46dd91b3746f2d8804bb946f78fa19"
+    },
+    {
+      "id": "pastadd-lasning-utan-anrop",
+      "expected": [
+        false
+      ],
+      "actual": [
+        false
+      ],
+      "rawVerdict": "```json\n[\"UNSUPPORTED\"]\n```",
+      "passed": true,
+      "elapsedMs": 2098,
+      "usage": {
+        "input_tokens": 1501,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 14,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En del av svaret kunde inte styrkas med förbrukningsunderlaget och visas därför inte. Aktuellt underlag finns i Förbrukning → Granskning. Om svaret på en annan fråga saknas behöver den frågan ställas igen.",
+        "outcome": "filtered"
+      },
+      "inputSha256": "5fdf4ca6b85cb0e85f3a4ec0a4f0bf2f9eef7390f9e0f3c0bbf6ac8f8ed6f444"
+    },
+    {
+      "id": "begrepp-utan-anrop",
+      "expected": [
+        true
+      ],
+      "actual": [
+        true
+      ],
+      "rawVerdict": "```json\n[\n  \"SUPPORTED\"\n]\n```",
+      "passed": true,
+      "elapsedMs": 1643,
+      "usage": {
+        "input_tokens": 1498,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 0
+        },
+        "output_tokens": 17,
+        "service_tier": "standard",
+        "inference_geo": "not_available"
+      },
+      "guarded": {
+        "text": "En utebliven notis bevisar inte att det saknas varningar.",
+        "outcome": "allowed"
+      },
+      "inputSha256": "594964f4c426c5dc7af72382883751cdc03fa59b9dc938eedc9dc0998b202206"
+    }
+  ],
+  "inputFile": "agent3-svarsgrind-underlag.json"
+}

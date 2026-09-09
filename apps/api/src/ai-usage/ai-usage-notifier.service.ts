@@ -1,3 +1,4 @@
+import { MANUAL_AI_CALL_WHERE } from '../common/ai-usage/manual-ai-call'
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -121,7 +122,7 @@ export class AiUsageNotifierService {
         const used = await this.prisma.aiUsageLog.count({
           where: {
             organizationId: org.id,
-            isAutomated: false,
+            ...MANUAL_AI_CALL_WHERE,
             createdAt: { gte: monthStart },
           },
         })

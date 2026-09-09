@@ -1,5 +1,8 @@
 # Agent 3: statusfakta som visas och sparas i chatten
 
+Detta dokument beskriver #866. [Nästa utkast](agent3-svarsgrind.md) lägger en
+svarsgrind före visning; begränsningarna nedan är mätningen före den ändringen.
+
 Fortsättning efter #865. Ett separat faktablock sammanställs i kod från det
 faktiskt körda verktyget `get_consumption_follow_up`. Blocket når både vanlig
 chat och SSE via befintlig textkanal, utan ett nytt klientprotokoll.

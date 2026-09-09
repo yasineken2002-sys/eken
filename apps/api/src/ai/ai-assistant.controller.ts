@@ -14,6 +14,11 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { followUpFactsFromRound } from './consumption-follow-up-facts'
+import {
+  consumptionReadsFromRound,
+  needsConsumptionGuard,
+  type ConsumptionRead,
+} from './consumption-reply-guard'
 import { Throttle } from '@nestjs/throttler'
 import type { FastifyReply } from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
@@ -302,6 +307,8 @@ export class AiAssistantController {
 
       let assistantText = ''
       let followUpFacts: string | undefined
+      const consumptionReads: ConsumptionRead[] = []
+      let consumptionChecked = false
       let pendingAction: {
         toolName: string
         toolInput: Record<string, unknown>
@@ -357,11 +364,11 @@ export class AiAssistantController {
           messages: safeMessages,
         })
 
-        // Stream textdeltan direkt till klienten
+        // Buffra text tills läsningarna och svarsgrinden är klara. Verktygens
+        // status visas löpande; ett ostyrkt påstående får aldrig hinna visas först.
         stream.on('text', (delta: string) => {
           if (delta) {
             assistantText += delta
-            send('delta', { text: delta })
           }
         })
 
@@ -462,6 +469,7 @@ export class AiAssistantController {
         )
 
         followUpFacts = followUpFactsFromRound(toolUses, toolResultBlocks) ?? followUpFacts
+        consumptionReads.push(...consumptionReadsFromRound(toolUses, toolResultBlocks, iterations))
 
         currentMessages = [
           ...currentMessages,
@@ -469,6 +477,27 @@ export class AiAssistantController {
           { role: 'user', content: toolResultBlocks },
         ]
         iterations++
+      }
+
+      if (!pendingAction) {
+        const input = {
+          draft: assistantText,
+          question: message,
+          role: user.role,
+          reads: consumptionReads,
+          statusFacts: followUpFacts,
+        }
+        if (needsConsumptionGuard(input, currentMessages)) {
+          const guarded = await this.aiService.guardConsumptionReply(
+            input,
+            currentMessages,
+            organizationId,
+            user.sub,
+          )
+          assistantText = guarded.text
+          consumptionChecked = guarded.checked
+        }
+        if (assistantText) send('delta', { text: assistantText })
       }
 
       // CITAT-INTEGRITET (gap A): på ett avslutat, grundat textsvar appendar
@@ -483,7 +512,7 @@ export class AiAssistantController {
       }
 
       // Eget kodbundet faktablock, även för äldre klienter som bara läser delta.
-      // Det granskar eller ersätter inte modelltexten som redan har strömmats.
+      // Modelltexten har nu passerat samma svarsgrind som non-stream-vägen.
       if (!pendingAction && followUpFacts) {
         assistantText += followUpFacts
         send('delta', { text: followUpFacts })
@@ -572,18 +601,20 @@ export class AiAssistantController {
         // Aldrig ett halvt par i historiken — se sanitizeBlocksForPersistence.
         // Träffas när tool-loopen tog slut på iterationer med stop_reason
         // fortfarande 'tool_use': den turen bar då tool_use utan resultat.
-        const persistedBlocks = sanitizeBlocksForPersistence([
-          ...assistantContent,
-          ...(followUpFacts
-            ? [
-                {
-                  type: 'text' as const,
-                  text: followUpFacts + (capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
-                  citations: null,
-                },
-              ]
-            : []),
-        ])
+        const persistedBlocks = consumptionChecked
+          ? [{ type: 'text' as const, text: assistantText, citations: null }]
+          : sanitizeBlocksForPersistence([
+              ...assistantContent,
+              ...(followUpFacts
+                ? [
+                    {
+                      type: 'text' as const,
+                      text: followUpFacts + (capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
+                      citations: null,
+                    },
+                  ]
+                : []),
+            ])
         await createAiMessageWithSubjects(this.prisma, {
           conversationId: conversation.id,
           role: 'assistant',
