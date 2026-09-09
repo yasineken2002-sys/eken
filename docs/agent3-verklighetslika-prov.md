@@ -71,6 +71,10 @@ och ingå i en redan aktiverad uppföljning. Ingen uppföljning aktiveras här.
 - Ett extra försök med det gamla namnet `check-strict-boolean.mjs` gav
   MODULE_NOT_FOUND. CI visar att den ersatts av `check-strict-koercion.mjs`,
   som passerade. Den saknade filen har inte redovisats som en grön kontroll.
+- Första CI-körningen föll i `check-spread-where`: två `where: unknown` i
+  testdatabasens typer tolkades som obundna organisationsvillkor. Båda typerna
+  kräver nu `organizationId: string`. Läsningarnas befintliga org-filter och
+  vakten ändras inte; inga undantag läggs till. Vakten passerar efter rättningen.
 
 Modellriggen har två avgränsade lägen: `assertions` med 18 par av korrekta
 och felaktiga påståenden, samt `conversations` med åtta fria frågor. Ordningen

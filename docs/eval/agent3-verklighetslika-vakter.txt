@@ -68,3 +68,11 @@ check-cron-error-sink (exit 0)
 
 check-transaction-limits (exit 0)
 ✅ Transaktionsgränser: varje $transaction har en medveten gräns eller en kvittering (3 kvitterade i 2 filer)
+
+check-spread-where före typförtydligande (exit 1)
+skannade 597 filer · 106 modeller, 64 med organizationId
+2 where-satser: ai/testing/consumption-realistic.fixtures.ts:276 och :291, bar X = unknown
+
+check-spread-where efter typförtydligande (exit 0)
+skannade 597 filer · 106 modeller, 64 med organizationId
+✅ inga where-satser där organizationId kan falla bort tyst

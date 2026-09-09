@@ -273,7 +273,7 @@ export function realisticConsumptionCases(): RealisticConsumptionCase[] {
 
 /** Endast läsmetoder, ingen Prisma-klient, anslutning eller skrivmetod skapas. */
 export function syntheticConsumptionDb(rows: readonly ReviewReading[]) {
-  const queries: { table: string; where: unknown }[] = []
+  const queries: { table: string; where: { organizationId: string } }[] = []
   const db = {
     meterReading: {
       findMany: async ({ where }: { where: { organizationId: string } }) => {
@@ -288,7 +288,7 @@ export function syntheticConsumptionDb(rows: readonly ReviewReading[]) {
       },
     },
     meterReadingReview: {
-      findMany: async ({ where }: { where: unknown }) => {
+      findMany: async ({ where }: { where: { organizationId: string } }) => {
         queries.push({ table: 'meterReadingReview', where })
         return []
       },
