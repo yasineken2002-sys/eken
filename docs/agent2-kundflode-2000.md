@@ -44,6 +44,9 @@ Fastigheter, lägenheter och avtal seedas som förutsättningar. Import/parsing,
 matchning, allokering, händelser och verifikat går genom befintliga tjänster.
 Detta är en integration på tjänste-/databasnivå, inte ett webbläsarprov,
 bankanslutning eller test av hela appens inloggning och CRUD-validering.
+Populationen gäller positiva hyresinbetalningar via det generiska CSV-formatet.
+Den mäter inte återbetalningar, negativa bankrader, samtidiga importer,
+bankleverantörernas anslutningar eller kundernas verkliga frekvens av avvikelser.
 
 Inga filer under `apps/api/src/reconciliation/` ändras. Endast testkundernas
 växlar kan ändras. Inga mejl eller externa köjobb skickas. AI-anrop görs bara
@@ -92,6 +95,8 @@ gav en dubblett utan extra bankrad, allokering eller verifikat i alla fyra kopio
 Oberoende SQL-kontroll av grundprovet: noll allokeringar över organisationsgränsen,
 noll konton från fel organisation, noll avvikelser mellan betald spegel och
 allokeringar och noll överbetalda avier. Balans är inte bevis för rätt hyresgäst.
+Samma SQL-kontroll efter ordningsprovet gav åter noll fel över alla fyra
+organisationer och 8 000 bankrader; se `databaskontroll-alla-kopior.json`.
 
 ## Konkreta orsaker
 
@@ -181,3 +186,21 @@ Utdata skrivs aldrig över. Nya körningar får egna organisations-id:n härledd
 ur utmatningskatalogen; ingen återanvänder den förra kundens tillstånd.
 AI-skriptet har separat opt-in `EVAL_BANK2000_LIVE=1` efter kostnadsgodkännande.
 Det accepterar bara det frysta syntetiska grundmaterialet och de 110 problemfallen.
+
+## Kodkontroller
+
+- Jest: 1/1 svit, 4/4 prov; noll överhoppade eller todo-prov.
+- API-typkontroll (`tsconfig.typecheck.json`, inklusive scripts): grön.
+- ESLint för de fyra nya/berörda TypeScript-filerna: noll fel/varningar.
+- Oberoende Python-omräkning: båda körningarna stämmer, varje allokering i ören
+  kontrollerad. Negativkontroll efter commit `6cae79e`: ett extra öre i en
+  **kopierad** allokering avvisas, ingen godkänd rapport skapas.
+- Alla 14 arkiverade råfiler verifierade med SHA-256 efter uppackning.
+- Vakter: OCR-proveniens (4 anrop), OCR-uppslagsfält (4 uppslag),
+  delbetalningsidentitet (8 anrop/4 skrivningar), aktörsstämpling,
+  AI-utfallskoppling (31 verktyg) och noll överhoppade prov: gröna.
+
+Vakter som är gröna trots det uppmätta ordningsfelet bevisar inte att matchningen
+är rätt. De mäter klassning/inkoppling, inte överensstämmelse mellan samtliga
+betalningsidentifierare. Fulla API-sviten lämnas till CI enligt användarens
+begränsning för den delade datorn. Ingen produktionsfil under reconciliation ändrad.

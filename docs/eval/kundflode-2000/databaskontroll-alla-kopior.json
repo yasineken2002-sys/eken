@@ -1,0 +1,9 @@
+{
+  "bankrader": 8000,
+  "organisationer": 4,
+  "fel_organisation_i_allokering": 0,
+  "fel_organisation_i_konto": 0,
+  "betald_avi_skiljer_fran_allokeringar": 0,
+  "overbetald_avi": 0,
+  "verifikat_obalans": 0
+}
