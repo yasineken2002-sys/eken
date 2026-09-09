@@ -1828,7 +1828,15 @@ export class AiAssistantService {
     // iterationer med stop_reason fortfarande 'tool_use'.
     const assistantBlocks = sanitizeBlocksForPersistence([
       ...response.content,
-      ...(followUpFacts ? [{ type: 'text' as const, text: followUpFacts, citations: null }] : []),
+      ...(followUpFacts
+        ? [
+            {
+              type: 'text' as const,
+              text: followUpFacts + (cap.capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
+              citations: null,
+            },
+          ]
+        : []),
     ])
     await createAiMessageWithSubjects(this.prisma, {
       conversationId,

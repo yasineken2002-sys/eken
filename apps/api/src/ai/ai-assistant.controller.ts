@@ -575,7 +575,13 @@ export class AiAssistantController {
         const persistedBlocks = sanitizeBlocksForPersistence([
           ...assistantContent,
           ...(followUpFacts
-            ? [{ type: 'text' as const, text: followUpFacts, citations: null }]
+            ? [
+                {
+                  type: 'text' as const,
+                  text: followUpFacts + (capReached ? TOOL_ITERATION_CAP_NOTICE : ''),
+                  citations: null,
+                },
+              ]
             : []),
         ])
         await createAiMessageWithSubjects(this.prisma, {

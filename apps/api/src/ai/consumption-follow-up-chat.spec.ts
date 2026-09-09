@@ -253,6 +253,7 @@ describe.each(['chat', 'SSE'])('%s — faktablock genom produktionsvägen', (mod
     expect(f.execute).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS)
     expect(answer.reply).toContain(consumptionFollowUpFacts(data))
     expect(answer.reply.endsWith(TOOL_ITERATION_CAP_NOTICE)).toBe(true)
+    expect(f.assistant().blocks.at(-1).text.endsWith(TOOL_ITERATION_CAP_NOTICE)).toBe(true)
   })
 
   it('bekräftelsevägen bevaras; inget skrivverktyg utförs och inget falskt avslutat svar sparas', async () => {

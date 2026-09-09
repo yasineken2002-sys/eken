@@ -28,7 +28,11 @@ chattmeddelanden.
 Samma faktablock sparas i `AiMessage.content` och som vanligt textblock i
 `AiMessage.blocks`. Omladdad chatt och modellens nästa historikläsning får
 alltså också underlaget. Inga nya blocktyper eller DB-kolumner införs.
-`tool_use` och tankeblock saneras fortfarande bort före sparandet.
+`tool_use` och tankeblock saneras fortfarande bort före sparandet. När turen
+når sitt tak sparas även avbrottsmarkeringen i textblocken. Annars hade ett
+nytt faktablock gjort att historiken slutade falla tillbaka på den synliga
+texten och tappade beskedet om avbrott. Detta regressionstest har setts falla
+i båda chattvägarna före rättningen.
 
 ## Vad bygget inte löser
 
