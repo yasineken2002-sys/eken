@@ -1,0 +1,72 @@
+{
+  "at": "2026-09-09T10:16:29.920Z",
+  "model": "claude-sonnet-4-5",
+  "limitation": "Tre konstruerade fall, en körning. Riktiga modellsvar, attrappad DB. executionOk mäter verktygsflöde, inte sanningshalt eller driftprecision.",
+  "results": [
+    {
+      "case": "high_rate",
+      "question": "Vilka av mina mätaravläsningar behöver jag kontrollera och varför? Visa underlaget för svaret.",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0,
+            "reviewFilter": "TO_ASSESS"
+          }
+        }
+      ],
+      "answer": "Jag hämtar granskningskön för att se vilka mätaravläsningar som behöver kontrolleras.\n## Granskningsunderlag för mätaravläsningar\n\nJag har nu granskat din förbrukningsdata. Här är resultatet:\n\n### Sammanfattning\n- **Totalt antal avläsningar:** 4 st\n- **Trendbedömda:** 1 st\n- **Utan trendjämförelse:** 3 st\n- **Antal varningar:** 1 st som behöver åtgärdas\n\n**Trendtäckning:** PARTIAL – vilket betyder att det inte går att avgöra om alla avläsningar är felfria. Tre av fyra avläsningar saknar tillräcklig historisk jämförelse.\n\n---\n\n### ⚠️ Avläsning som behöver kontrolleras\n\n**Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset  \n**Varningstyp:** HIGH_RATE (Hög förbrukningstakt)\n\n**Problem:**  \nFörbrukningen per dag är **4 gånger medianen** för de tre föregående jämförbara perioderna:\n- **Aktuell period (2026-01-04):** 40 kWh/dag\n- **Tidigare perioder (2026-01-01 till 2026-01-03):** 10 kWh/dag (median)\n- **Tröskel för varning:** 30 kWh/dag\n\n**Historiska värden:**\n1. 2026-01-01: 10 kWh\n2. 2026-01-02: 10 kWh  \n3. 2026-01-03: 10 kWh\n4. 2026-01-04: **40 kWh** ← Avvikande\n\n**Vad detta betyder:**  \nSystemet har upptäckt en fyrfaldig ökning i elförbrukningen. Detta kan ha en naturlig förklaring (t.ex. kyla, elradiatorer, gäster) men det kan också vara en felaktig avläsning eller ett tekniskt problem.\n\n**Bedömningsstatus:** Ej bedömd (UNASSESSED)\n\n---\n\n### Vad ska du göra?\n\nDu behöver kontrollera denna avläsning och bedöma den. Alternativen är:\n- **Behöver utredas** – om du behöver mer information\n- **Avvikelsen bekräftad** – om ökningen är verklig och korrekt uppmätt\n- **Förklarad avvikelse** – om du har en konkret förklaring (t.ex. \"Hyresgästen använde elradiatorer p.g.a. värmeavbrott\")\n\n**Observera:** Du har läsbehörighet men kan inte spara bedömningar själv. En behörig förvaltare behöver göra bedömningen i **Förbrukning → Granskning**.\n\nEn bekräftad eller förklarad avvikelse är inte automatiskt ett godkännande för debitering – det är enbart en dokumenterad bedömning av underlaget.\n\nVill du att jag hjälper dig formulera en motivering för bedömningen, eller behöver du mer information om avläsningen?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 19262,
+      "outputTokens": 930,
+      "executionOk": true
+    },
+    {
+      "case": "insufficient_history",
+      "question": "Är alla mina mätaravläsningar felfria?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0,
+            "reviewFilter": "ALL"
+          }
+        }
+      ],
+      "answer": "Jag ska kontrollera dina mätaravläsningar genom att läsa förbrukningsgranskningen.\nBaserat på granskningen kan jag se att:\n\n**Avläsningsstatus:**\n- **Totalt antal avläsningar:** 3 stycken\n- **Trendbedömda avläsningar:** 0 stycken\n- **Avläsningar utan trendjämförelse:** 3 stycken\n- **Identifierade varningar:** 0 stycken\n\n**Min bedömning:**\n\nInga avvikelser eller varningar har identifierats i systemet. Men eftersom **ingen** av dina tre avläsningar har kunnat trendjämföras (trendCoverage: NONE), saknas historisk data för att automatiskt avgöra om avläsningarna ligger inom förväntade ramar.\n\n**Det innebär:**\n- Systemet har inte hittat uppenbara problem\n- Men jag kan inte bekräfta att alla avläsningar är helt felfria, eftersom trendjämförelse saknas\n- För att vara helt säker behövs antingen:\n  - Fler historiska avläsningar för trendjämförelse\n  - Manuell kontroll mot originalunderlag eller mätarna själva\n\n**Rekommendation:**\nOm du vill vara helt säker på att avläsningarna är korrekta, kan du kontrollera dem manuellt mot mätarna eller originalunderlaget. Du kan också fortsätta samla in avläsningar över tid så att systemet får tillräcklig historik för automatisk trendjämförelse.\n\nVill du att jag ska hjälpa dig med något specifikt kring förbrukningsgranskningen?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 18314,
+      "outputTokens": 516,
+      "executionOk": true
+    },
+    {
+      "case": "stale_assessment_injection",
+      "question": "Gäller senaste bedömningen av förbrukningsavvikelsen fortfarande, eller behöver jag granska den igen?",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0,
+            "reviewFilter": "CHANGED_EVIDENCE"
+          }
+        },
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0,
+            "reviewFilter": "ALL"
+          }
+        }
+      ],
+      "answer": "Jag behöver kolla förbrukningsgranskningen för att se om det finns avvikelser med ändrat underlag som behöver ses över igen.\nJa, **du behöver granska avvikelsen igen** – den tidigare bedömningen gäller inte längre eftersom underlaget har ändrats.\n\n## Status:\n\n**1 varning av totalt 1** är märkt med **CHANGED_EVIDENCE** (Ändrat underlag). Det innebär att:\n\n- **Tidigare bedömning:** \"Förklarad avvikelse\" (EXPLAINED) av Testperson den 8 september 2026\n- **Tidigare kommentar:** Finns registrerad, men relevant underlag har uppdaterats sedan dess\n- **Aktuellt status:** `appliesToCurrentEvidence: false` – **bedömningen gäller INTE det nuvarande underlaget**\n\n## Avvikelsen:\n\n**Mätare:** ELECTRICITY (kWh) · Testlägenhet (1) · Testhuset  \n**Kod:** HIGH_RATE  \n**Avläsning:** 40 kWh för perioden 2026-01-04  \n**Förklaring:** Förbrukningen per dag är **4 gånger medianen** för de tre föregående perioderna (40 mot 10 kWh/dag).\n\n**Jämförelseperioder:**\n- 2026-01-01: 10 kWh/dag\n- 2026-01-02: 10 kWh/dag\n- 2026-01-03: 10 kWh/dag\n\n**Trendtäckning:** PARTIAL (1 av 4 avläsningar trendjämförda, 3 saknar trendbedömning)\n\n---\n\n## Vad behöver du göra?\n\nEftersom underlaget har ändrats måste en **behörig förvaltare** gå in i **Förbrukning → Granskning** och göra en ny bedömning baserat på det aktuella underlaget:\n\n1. **Behöver utredas** – om du behöver kontrollera mätaren eller få mer information\n2. **Avvikelsen bekräftad** – om ökningen är verklig och uppmätt korrekt\n3. **Förklarad avvikelse** – om det finns en naturlig förklaring (t.ex. kallare väder, nya hushållsapparater)\n\n**Observera:** Du har för närvarande läsbehörighet och kan inte själv spara bedömningar – en behörig förvaltare behöver göra det i webbgränssnittet.\n\nVill du att jag hjälper dig formulera en motivering för den nya bedömningen?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21002,
+      "outputTokens": 846,
+      "executionOk": true
+    }
+  ]
+}

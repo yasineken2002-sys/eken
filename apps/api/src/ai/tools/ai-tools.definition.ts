@@ -34,6 +34,18 @@ export const TOOLS: Anthropic.Tool[] = [
   // ── READ TOOLS (no confirmation needed) ──────────────────────────────────
 
   {
+    name: 'get_consumption_follow_up',
+    description:
+      'Läser om automatisk förbrukningsuppföljning är på, när kontrollen senast lyckades eller misslyckades och om den är försenad. Samma status som Förbrukning → Granskning, även om avläsningsrapporten inte kan hämtas. Läser enbart: kan inte ändra reglaget, köra kontrollen eller bekräfta att en notis levererats. För aktuella varningar och underlag används get_consumption_review.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+      required: [],
+    },
+  },
+
+  {
     name: 'get_consumption_review',
     description:
       'Läser förbrukningsgranskningen: avläsningar att kontrollera, exakta källor och senaste mänskliga bedömning. Samma underlag som Förbrukning → Granskning. Inga debiteringar eller ändringar görs. Resultatet är sidindelat; hämta nextOffset med samma snapshot tills nästa sida är null innan du sammanfattar alla varningar. En bekräftad avvikelse är inte ett godkännande för debitering.',

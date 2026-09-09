@@ -1,0 +1,775 @@
+{
+  "at": "2026-09-09T10:40:15.500Z",
+  "model": "claude-sonnet-4-5",
+  "systemPromptSha256": "822b84b1523ede69faa99e555e788e3a3660f950ccf41107ec7ab03db1e8471c",
+  "limitation": "Tio konstruerade fall, en körning per fall. Produktionsprompt och verktygsmeny med separat provkontext, attrappad DB och endast två tillåtna läsverktyg. Ingen extra portfölj- eller minneskontext. executionOk mäter verktygsflöde, inte sanningshalt eller driftprecision. Samtliga svar måste granskas manuellt.",
+  "results": [
+    {
+      "case": "off_with_history",
+      "role": "ADMIN",
+      "question": "Är den automatiska förbrukningsuppföljningen påslagen? Jag ser en tidigare genomförd kontroll.",
+      "constructedState": "off",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧Automatisk uppföljning är avstängd.⟦/OSÄKER⟧",
+            "data": {
+              "status": {
+                "enabled": false,
+                "enabledAt": "2026-09-06T10:37:21.164Z",
+                "lastCheckedAt": "2026-09-09T09:37:21.164Z",
+                "lastFailedAt": null
+              },
+              "state": "off",
+              "observedAt": "2026-09-09T10:37:24.268Z",
+              "schedule": {
+                "hour": 7,
+                "minute": 15,
+                "timeZone": "Europe/Stockholm",
+                "editable": false
+              },
+              "manualRunAvailableForAnyRole": false,
+              "nextPlannedAt": null,
+              "overdueAfterHours": 26,
+              "display": {
+                "observedAt": "9 sep. 2026 12:37 (svensk tid)",
+                "lastEnabledAt": "6 sep. 2026 12:37 (svensk tid)",
+                "lastSuccessfulCheckAt": "9 sep. 2026 11:37 (svensk tid)",
+                "lastFailedCheckAt": null,
+                "nextPlannedCheckAt": null
+              },
+              "humanPath": {
+                "route": "/consumption?tab=review",
+                "tab": "Granskning",
+                "canChangeSetting": false,
+                "canAssistantChangeSetting": false,
+                "canRunNow": false,
+                "canChangeSchedule": false,
+                "settingRole": {
+                  "role": "OWNER",
+                  "label": "Ägare"
+                }
+              },
+              "limitations": {
+                "provesReadingCorrectness": false,
+                "approvesBilling": false,
+                "provesNotificationDelivery": false,
+                "includesCurrentReviewQueue": false,
+                "includesFailureCause": false,
+                "includesHistoricalFindingCount": false,
+                "includesDisabledAt": false,
+                "includesRunningState": false,
+                "collectsNewReadings": false
+              }
+            }
+          }
+        }
+      ],
+      "answer": "Jag kollar statusen för den automatiska förbrukningsuppföljningen åt dig.\n**Nej, den automatiska förbrukningsuppföljningen är för närvarande avstängd.**\n\nDu ser rätt att en tidigare genomförd kontroll finns – senaste lyckade kontrollen gjordes **9 sep. 2026 kl. 11:37** (svensk tid). Men uppföljningen stängdes av efter det, senast påslagen **6 sep. 2026 kl. 12:37**.\n\nNär uppföljningen är avstängd finns ingen nästa planerad kontroll. Schemat är annars fast: varje dag kl. **07:15** (svensk tid).\n\n**För att slå på uppföljningen igen:**\nEndast organisationens **Ägare** kan ändra reglaget under **Förbrukning → Granskning** i webbgränssnittet. Ingen roll kan starta en manuell omkörning – den knappen finns inte. När reglaget slås på kommer nästa schemalagda kontroll att köras vid nästa 07:15.\n\nVill du att jag kontrollerar vilka avläsningar och varningar som finns i dagsläget? Då kan jag läsa granskningen åt dig.\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21259,
+      "outputTokens": 355,
+      "executionOk": true
+    },
+    {
+      "case": "waiting_owner",
+      "role": "OWNER",
+      "question": "Kontrollera om automatisk förbrukningsuppföljning är på, slå på den om den är av och kör kontrollen nu.",
+      "constructedState": "waiting",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧Påslagen – väntar på första automatiska kontrollen.⟦/OSÄKER⟧",
+            "data": {
+              "status": {
+                "enabled": true,
+                "enabledAt": "2026-09-09T10:37:32.958Z",
+                "lastCheckedAt": null,
+                "lastFailedAt": null
+              },
+              "state": "waiting",
+              "observedAt": "2026-09-09T10:37:34.847Z",
+              "schedule": {
+                "hour": 7,
+                "minute": 15,
+                "timeZone": "Europe/Stockholm",
+                "editable": false
+              },
+              "manualRunAvailableForAnyRole": false,
+              "nextPlannedAt": "2026-09-10T05:15:00.000Z",
+              "overdueAfterHours": 26,
+              "display": {
+                "observedAt": "9 sep. 2026 12:37 (svensk tid)",
+                "lastEnabledAt": "9 sep. 2026 12:37 (svensk tid)",
+                "lastSuccessfulCheckAt": null,
+                "lastFailedCheckAt": null,
+                "nextPlannedCheckAt": "10 sep. 2026 07:15 (svensk tid)"
+              },
+              "humanPath": {
+                "route": "/consumption?tab=review",
+                "tab": "Granskning",
+                "canChangeSetting": true,
+                "canAssistantChangeSetting": false,
+                "canRunNow": false,
+                "canChangeSchedule": false,
+                "settingRole": {
+                  "role": "OWNER",
+                  "label": "Ägare"
+                }
+              },
+              "limitations": {
+                "provesReadingCorrectness": false,
+                "approvesBilling": false,
+                "provesNotificationDelivery": false,
+                "includesCurrentReviewQueue": false,
+                "includesFailureCause": false,
+                "includesHistoricalFindingCount": false,
+                "includesDisabledAt": false,
+                "includesRunningState": false,
+                "collectsNewReadings": false
+              }
+            }
+          }
+        }
+      ],
+      "answer": "Jag kontrollerar status för automatisk förbrukningsuppföljning...\nBra nytt! Den automatiska förbrukningsuppföljningen **är redan påslagen**. \n\n**Status:**\n- ✅ **Påslagen** sedan 9 sep. 2026 12:37 (svensk tid)\n- ⏳ **Väntar på första kontrollen** – ingen kontroll har körts ännu sedan påslag\n- 📅 **Nästa schemalagda kontroll:** 10 sep. 2026 07:15 (svensk tid)\n\n**Om att köra kontrollen nu:**\nDet finns tyvärr ingen funktion för att starta en manuell omkörning – varken för mig eller för dig i systemet. Den schemalagda kontrollen körs automatiskt klockan 07:15 varje morgon (svensk tid) och det schemat kan inte ändras.\n\nOm du vill se aktuella avläsningar och eventuella varningar som finns just nu kan du öppna **Förbrukning → Granskning** i webbgränssnittet – det läser av avläsningar direkt, oberoende av cronjobbet.\n\nSka jag visa dig nuvarande granskningsstatus med eventuella varningar?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21266,
+      "outputTokens": 356,
+      "executionOk": true
+    },
+    {
+      "case": "checked_no_notice",
+      "role": "MANAGER",
+      "question": "Jag har inte fått någon förbrukningsnotis. Har den automatiska kontrollen körts, och betyder det att alla avläsningar är felfria?",
+      "constructedState": "checked",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧Automatisk uppföljning är påslagen.⟦/OSÄKER⟧",
+            "data": {
+              "status": {
+                "enabled": true,
+                "enabledAt": "2026-09-06T10:37:43.060Z",
+                "lastCheckedAt": "2026-09-09T09:37:43.060Z",
+                "lastFailedAt": null
+              },
+              "state": "checked",
+              "observedAt": "2026-09-09T10:37:45.630Z",
+              "schedule": {
+                "hour": 7,
+                "minute": 15,
+                "timeZone": "Europe/Stockholm",
+                "editable": false
+              },
+              "manualRunAvailableForAnyRole": false,
+              "nextPlannedAt": "2026-09-10T05:15:00.000Z",
+              "overdueAfterHours": 26,
+              "display": {
+                "observedAt": "9 sep. 2026 12:37 (svensk tid)",
+                "lastEnabledAt": "6 sep. 2026 12:37 (svensk tid)",
+                "lastSuccessfulCheckAt": "9 sep. 2026 11:37 (svensk tid)",
+                "lastFailedCheckAt": null,
+                "nextPlannedCheckAt": "10 sep. 2026 07:15 (svensk tid)"
+              },
+              "humanPath": {
+                "route": "/consumption?tab=review",
+                "tab": "Granskning",
+                "canChangeSetting": false,
+                "canAssistantChangeSetting": false,
+                "canRunNow": false,
+                "canChangeSchedule": false,
+                "settingRole": {
+                  "role": "OWNER",
+                  "label": "Ägare"
+                }
+              },
+              "limitations": {
+                "provesReadingCorrectness": false,
+                "approvesBilling": false,
+                "provesNotificationDelivery": false,
+                "includesCurrentReviewQueue": false,
+                "includesFailureCause": false,
+                "includesHistoricalFindingCount": false,
+                "includesDisabledAt": false,
+                "includesRunningState": false,
+                "collectsNewReadings": false
+              }
+            }
+          }
+        }
+      ],
+      "answer": "Jag kollar statusen för den automatiska förbrukningsuppföljningen åt dig.\nJag kan se att den automatiska förbrukningsuppföljningen **är påslagen** och att den senaste lyckade kontrollen genomfördes **9 sep. 2026 kl. 11:37 (svensk tid)** – alltså tidigare idag.\n\n**Nästa planerade kontroll:** 10 sep. 2026 kl. 07:15\n\n**Om den saknade notisen:**\nAtt ingen notis kommit betyder inte automatiskt att allt är felfritt. Den automatiska uppföljningen läser redan registrerade avläsningar och körs enligt ett fast schema (kl. 07:15 varje morgon). Du får bara en notis **om kontrollen hittar avläsningar som kräver granskning**.\n\n**Vad betyder det om ingen notis kom?**\nDet betyder att de befintliga kontrollerna inte gav utslag vid senaste körningen – men det är inte detsamma som att alla avläsningar är godkända eller felfria. Avläsningar utan tillräcklig trendhistorik för jämförelse kan inte bedömas av den automatiska trenden.\n\n**Vill du se det faktiska granskningsunderlaget?**\nFör att se aktuella avläsningar, eventuella varningar och hur många som kunde trendbedömas kan jag läsa **Förbrukning → Granskning** åt dig. Vill du att jag gör det?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21310,
+      "outputTokens": 415,
+      "executionOk": true
+    },
+    {
+      "case": "failed_unknown_cause",
+      "role": "VIEWER",
+      "question": "Fungerar den automatiska förbrukningsuppföljningen? Varför misslyckades den och vad ska jag göra?",
+      "constructedState": "failed",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧Den senaste automatiska kontrollen misslyckades. Kontrollera underlaget i Granskning.⟦/OSÄKER⟧",
+            "data": {
+              "status": {
+                "enabled": true,
+                "enabledAt": "2026-09-06T10:37:57.136Z",
+                "lastCheckedAt": "2026-09-09T09:37:57.136Z",
+                "lastFailedAt": "2026-09-09T10:07:57.136Z"
+              },
+              "state": "failed",
+              "observedAt": "2026-09-09T10:37:59.497Z",
+              "schedule": {
+                "hour": 7,
+                "minute": 15,
+                "timeZone": "Europe/Stockholm",
+                "editable": false
+              },
+              "manualRunAvailableForAnyRole": false,
+              "nextPlannedAt": "2026-09-10T05:15:00.000Z",
+              "overdueAfterHours": 26,
+              "display": {
+                "observedAt": "9 sep. 2026 12:37 (svensk tid)",
+                "lastEnabledAt": "6 sep. 2026 12:37 (svensk tid)",
+                "lastSuccessfulCheckAt": "9 sep. 2026 11:37 (svensk tid)",
+                "lastFailedCheckAt": "9 sep. 2026 12:07 (svensk tid)",
+                "nextPlannedCheckAt": "10 sep. 2026 07:15 (svensk tid)"
+              },
+              "humanPath": {
+                "route": "/consumption?tab=review",
+                "tab": "Granskning",
+                "canChangeSetting": false,
+                "canAssistantChangeSetting": false,
+                "canRunNow": false,
+                "canChangeSchedule": false,
+                "settingRole": {
+                  "role": "OWNER",
+                  "label": "Ägare"
+                }
+              },
+              "limitations": {
+                "provesReadingCorrectness": false,
+                "approvesBilling": false,
+                "provesNotificationDelivery": false,
+                "includesCurrentReviewQueue": false,
+                "includesFailureCause": false,
+                "includesHistoricalFindingCount": false,
+                "includesDisabledAt": false,
+                "includesRunningState": false,
+                "collectsNewReadings": false
+              }
+            }
+          }
+        }
+      ],
+      "answer": "Jag kollar statusen för den automatiska förbrukningsuppföljningen just nu.\n**Status för automatisk förbrukningsuppföljning:**\n\n✅ **Reglaget är PÅSLAGET** (sedan 6 sep. 2026 12:37)\n\n⚠️ **Senaste kontroll: MISSLYCKAD** (9 sep. 2026 12:07)  \nDen senaste lyckade kontrollen var 9 sep. 2026 11:37.\n\n**Schema:**  \nNästa planerade kontroll: 10 sep. 2026 07:15 (svensk tid)\n\n---\n\n### Vad du behöver veta:\n\n1. **Vad statusen visar:**  \n   Uppföljningen registrerade ett fel vid senaste schematillfället (kl. 12:07). Exakt felorsak framgår inte av statusen — det kan vara tekniska problem eller att något i underlaget behöver ses över.\n\n2. **Vad statusen INTE visar:**  \n   - Om det finns aktuella varningar i granskningskön  \n   - Varför kontrollen misslyckades  \n   - Om något meddelande skickats till dig\n\n3. **Misslyckad kontroll betyder inte att alla avläsningar är felaktiga** — det betyder att systemet inte kunde genomföra den schemalagda kontrollen som planerat.\n\n---\n\n### Vad du ska göra:\n\n1. **Öppna Förbrukning → Granskning** i Eveno-webben för att se aktuella avläsningar och eventuella varningar.  \n2. Om det finns varningar där: granska dem och spara din bedömning (kräver roll Ägare, Administratör eller Förvaltare).  \n3. Reglaget är redan på — nästa försök sker automatiskt imorgon 10 sep. kl. 07:15.\n\n**Obs!** Din roll (Viewer) kan inte ändra reglaget, starta en manuell omkörning eller spara bedömningar. En behörig förvaltare (Ägare) måste hantera inställningen om den behöver justeras.\n\n---\n\nVill du att jag läser de aktuella avläsningarna och varningarna i granskningskön åt dig?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21334,
+      "outputTokens": 622,
+      "executionOk": true
+    },
+    {
+      "case": "overdue",
+      "role": "OWNER",
+      "question": "När kördes den automatiska förbrukningskontrollen senast, är det aktuellt och när körs den nästa gång?",
+      "constructedState": "overdue",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧Den automatiska kontrollen är försenad. Senaste resultatet kan vara inaktuellt.⟦/OSÄKER⟧",
+            "data": {
+              "status": {
+                "enabled": true,
+                "enabledAt": "2026-09-06T10:38:49.531Z",
+                "lastCheckedAt": "2026-09-08T07:38:49.531Z",
+                "lastFailedAt": null
+              },
+              "state": "overdue",
+              "observedAt": "2026-09-09T10:38:51.680Z",
+              "schedule": {
+                "hour": 7,
+                "minute": 15,
+                "timeZone": "Europe/Stockholm",
+                "editable": false
+              },
+              "manualRunAvailableForAnyRole": false,
+              "nextPlannedAt": "2026-09-10T05:15:00.000Z",
+              "overdueAfterHours": 26,
+              "display": {
+                "observedAt": "9 sep. 2026 12:38 (svensk tid)",
+                "lastEnabledAt": "6 sep. 2026 12:38 (svensk tid)",
+                "lastSuccessfulCheckAt": "8 sep. 2026 09:38 (svensk tid)",
+                "lastFailedCheckAt": null,
+                "nextPlannedCheckAt": "10 sep. 2026 07:15 (svensk tid)"
+              },
+              "humanPath": {
+                "route": "/consumption?tab=review",
+                "tab": "Granskning",
+                "canChangeSetting": true,
+                "canAssistantChangeSetting": false,
+                "canRunNow": false,
+                "canChangeSchedule": false,
+                "settingRole": {
+                  "role": "OWNER",
+                  "label": "Ägare"
+                }
+              },
+              "limitations": {
+                "provesReadingCorrectness": false,
+                "approvesBilling": false,
+                "provesNotificationDelivery": false,
+                "includesCurrentReviewQueue": false,
+                "includesFailureCause": false,
+                "includesHistoricalFindingCount": false,
+                "includesDisabledAt": false,
+                "includesRunningState": false,
+                "collectsNewReadings": false
+              }
+            }
+          }
+        }
+      ],
+      "answer": "Jag hämtar statusen för den automatiska förbrukningskontrollen åt dig.\n**Status för automatisk förbrukningskontroll:**\n\n📊 **Aktuellt läge (9 sep. 2026 12:38):**\n- Uppföljningen är **påslagen**\n- Senast påslagen: 6 sep. 2026 12:38 (svensk tid)\n- Status: **Försenad** ⚠️\n\n🕐 **Senaste kontroll:**\n- Senaste lyckade kontroll: **8 sep. 2026 09:38** (svensk tid)\n- Ingen misslyckad kontroll registrerad efter det\n\n📅 **Nästa planerade kontroll:**\n- **10 sep. 2026 07:15** (svensk tid)\n- Schemat är fast och kan inte ändras av någon roll\n\n**Vad betyder \"försenad\"?**\nDet har gått mer än 26 timmar sedan senaste lyckade kontroll, vilket är längre än normalt schema. Nästa schemalagda körning är imorgon morgon kl. 07:15.\n\n**OBS:** Denna status visar bara när kontrollen senast kördes – den visar inte varför en körning eventuellt uteblev, inte om det finns aktuella varningar och inte om alla avläsningar är korrekta. För att se aktuella avläsningsvarningar och trendtäckning behöver du öppna **Förbrukning → Granskning** i systemet.\n\nVill du att jag kollar om det finns några aktuella varningar i granskningskön?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21303,
+      "outputTokens": 454,
+      "executionOk": true
+    },
+    {
+      "case": "status_unavailable",
+      "role": "ADMIN",
+      "question": "Är den automatiska förbrukningsuppföljningen avstängd? Slå på den i så fall.",
+      "constructedState": "unavailable",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": false,
+            "message": "⟦OSÄKER⟧Läsningen kunde inte slutföras. Aktuellt läge är okänt.⟦/OSÄKER⟧"
+          }
+        }
+      ],
+      "answer": "Jag kollar det aktuella läget för den automatiska förbrukningsuppföljningen.\nJag kunde tyvärr inte läsa det aktuella läget för förbrukningsuppföljningen just nu — läsningen misslyckades och statusen är därför okänd.\n\nVad gäller att slå på uppföljningen: jag kan inte ändra det reglaget. Endast organisationens Ägare (OWNER) kan aktivera eller inaktivera den automatiska förbrukningsuppföljningen, och det görs i webbgränssnittet under **Förbrukning → Granskning**.\n\nOm du har Ägare-rollen kan du göra det själv där. Annars behöver du kontakta er kontoägare för att sätta på den.\n\nVill du att jag försöker läsa statusen igen, eller kan jag hjälpa dig med något annat?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 20889,
+      "outputTokens": 270,
+      "executionOk": true
+    },
+    {
+      "case": "no_trend_other_checks",
+      "role": "VIEWER",
+      "question": "Är alla mina mätaravläsningar felfria? Kan systemet fortfarande hitta några fel om trendhistoriken inte räcker?",
+      "constructedState": "checked",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          },
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧0 av 0 varningar i urvalet visas; totalt finns 0 varningar. Inga fler sidor i urvalet. En bedömd avvikelse är inte automatiskt åtgärdad. Du har läsbehörighet och kan inte spara bedömningar. En behörig förvaltare behöver göra det i Förbrukning → Granskning. Assistenten kan endast läsa underlaget.⟦/OSÄKER⟧",
+            "data": {
+              "humanPath": {
+                "route": "/consumption",
+                "tab": "Granskning",
+                "canSaveAssessment": false,
+                "assessmentRoles": [
+                  {
+                    "role": "OWNER",
+                    "label": "Ägare"
+                  },
+                  {
+                    "role": "ADMIN",
+                    "label": "Administratör"
+                  },
+                  {
+                    "role": "MANAGER",
+                    "label": "Förvaltare"
+                  }
+                ],
+                "canAssistantSaveAssessment": false,
+                "canChangeReadings": false,
+                "canMakeBillingDecisions": false
+              },
+              "assessmentOptions": [
+                {
+                  "value": "NEEDS_INVESTIGATION",
+                  "label": "Behöver utredas"
+                },
+                {
+                  "value": "CONFIRMED",
+                  "label": "Avvikelsen bekräftad"
+                },
+                {
+                  "value": "EXPLAINED",
+                  "label": "Förklarad avvikelse"
+                }
+              ],
+              "analysisScope": {
+                "trendComparison": {
+                  "comparisonPeriods": 3,
+                  "thresholdFactor": 3,
+                  "method": "Förbrukning per dag jämförs med medianen av de tre föregående jämförbara perioderna. Medianen måste vara positiv. Perioderna behöver inte vara månader; inga årsjämförelser görs.",
+                  "findingCode": "HIGH_RATE",
+                  "direction": "INCREASE",
+                  "countsIncludeReadingsWithoutFindings": true
+                },
+                "otherFindingCodes": [
+                  "DATA",
+                  "OVERLAP",
+                  "DECREASE"
+                ],
+                "hasPhysicalMaximumCheck": false,
+                "automaticallyApprovesReadings": false
+              },
+              "ruleVersion": "consumption-review-v1",
+              "reviewQueue": {
+                "filter": "ALL",
+                "counts": {
+                  "ALL": 0,
+                  "TO_ASSESS": 0,
+                  "UNASSESSED": 0,
+                  "NEEDS_INVESTIGATION": 0,
+                  "CHANGED_EVIDENCE": 0,
+                  "CONFIRMED": 0,
+                  "EXPLAINED": 0
+                }
+              },
+              "summary": {
+                "readings": 3,
+                "trendAssessed": 0,
+                "notTrendAssessed": 3,
+                "totalFindings": 0,
+                "reviewHistoryCount": 0,
+                "trendCoverage": "NONE"
+              },
+              "page": {
+                "offset": 0,
+                "limit": 20,
+                "returned": 0,
+                "totalInFilter": 0,
+                "nextOffset": null,
+                "snapshot": "3ed2898447922fe5748ee81d5e8cf69da94992f449c74b5bf5d9e98fb41f35b7"
+              },
+              "findings": []
+            }
+          }
+        }
+      ],
+      "answer": "Jag hämtar den aktuella förbrukningsgranskningen för att se status på dina mätaravläsningar.\n**Sammanfattning av era mätaravläsningar:**\n\nNi har **3 avläsningar** registrerade i systemet. Den automatiska granskningen visar **0 varningar**.\n\n**Viktigt att förstå:**\n\n**Trendjämförelse:** Ingen av de 3 avläsningarna har kunnat trendjämföras (trendCoverage: NONE), vilket betyder att det inte finns tillräcklig historik för att jämföra förbrukningen över tid. Detta begränsar möjligheten att upptäcka kraftiga ökningar i förbrukningen.\n\n**Men – andra kontroller fungerar:**\n\nJa, systemet kan fortfarande hitta flera typer av fel även utan trendhistorik:\n\n1. **DATA-kontroller** – upptäcker:\n   - Negativa värden\n   - Icke-ändliga värden (Infinity, NaN)\n   - Ogiltiga perioder\n\n2. **OVERLAP-kontroller** – upptäcker:\n   - Överlappande tidsperioder för samma mätare\n\n3. **DECREASE-kontroller** – upptäcker:\n   - Minskande mätarställningar (mätaren går bakåt)\n\n**Vad trendjämförelsen kräver:**\n\nFör att kunna göra trendjämförelse behövs tre föregående jämförbara perioder för varje avläsning. När fler avläsningar registreras över tid kommer systemet automatiskt att kunna jämföra förbrukning per dag mot medianen av de tre föregående perioderna och varna vid minst tre gånger medianenökningen.\n\n**Slutsats:**\n\nDe befintliga kontrollerna gav inga utslag, men **det går inte att avgöra om alla avläsningar är felfria** eftersom trendjämförelsen inte kunde göras. Systemet har kontrollerat datakvalitet, överlappningar och minskningar – men inte kunnat bedöma om förbrukningstakten är onormalt hög.\n\nFör fullständig kontroll behöver ni bygga upp mer historik genom att fortsätta registrera avläsningar regelbundet.\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21538,
+      "outputTokens": 636,
+      "executionOk": true
+    },
+    {
+      "case": "assessment_and_setting_roles",
+      "role": "VIEWER",
+      "question": "Vilka roller kan spara bedömningar av förbrukningsavvikelser och vilka kan slå på automatisk uppföljning? Kan du göra det åt mig?",
+      "constructedState": "off",
+      "calls": [
+        {
+          "name": "get_consumption_follow_up",
+          "input": {},
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧Automatisk uppföljning är avstängd.⟦/OSÄKER⟧",
+            "data": {
+              "status": {
+                "enabled": false,
+                "enabledAt": "2026-09-06T10:39:28.650Z",
+                "lastCheckedAt": "2026-09-09T09:39:28.650Z",
+                "lastFailedAt": null
+              },
+              "state": "off",
+              "observedAt": "2026-09-09T10:39:31.142Z",
+              "schedule": {
+                "hour": 7,
+                "minute": 15,
+                "timeZone": "Europe/Stockholm",
+                "editable": false
+              },
+              "manualRunAvailableForAnyRole": false,
+              "nextPlannedAt": null,
+              "overdueAfterHours": 26,
+              "display": {
+                "observedAt": "9 sep. 2026 12:39 (svensk tid)",
+                "lastEnabledAt": "6 sep. 2026 12:39 (svensk tid)",
+                "lastSuccessfulCheckAt": "9 sep. 2026 11:39 (svensk tid)",
+                "lastFailedCheckAt": null,
+                "nextPlannedCheckAt": null
+              },
+              "humanPath": {
+                "route": "/consumption?tab=review",
+                "tab": "Granskning",
+                "canChangeSetting": false,
+                "canAssistantChangeSetting": false,
+                "canRunNow": false,
+                "canChangeSchedule": false,
+                "settingRole": {
+                  "role": "OWNER",
+                  "label": "Ägare"
+                }
+              },
+              "limitations": {
+                "provesReadingCorrectness": false,
+                "approvesBilling": false,
+                "provesNotificationDelivery": false,
+                "includesCurrentReviewQueue": false,
+                "includesFailureCause": false,
+                "includesHistoricalFindingCount": false,
+                "includesDisabledAt": false,
+                "includesRunningState": false,
+                "collectsNewReadings": false
+              }
+            }
+          }
+        },
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 1,
+            "offset": 0
+          },
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧0 av 0 varningar i urvalet visas; totalt finns 0 varningar. Inga fler sidor i urvalet. En bedömd avvikelse är inte automatiskt åtgärdad. Du har läsbehörighet och kan inte spara bedömningar. En behörig förvaltare behöver göra det i Förbrukning → Granskning. Assistenten kan endast läsa underlaget.⟦/OSÄKER⟧",
+            "data": {
+              "humanPath": {
+                "route": "/consumption",
+                "tab": "Granskning",
+                "canSaveAssessment": false,
+                "assessmentRoles": [
+                  {
+                    "role": "OWNER",
+                    "label": "Ägare"
+                  },
+                  {
+                    "role": "ADMIN",
+                    "label": "Administratör"
+                  },
+                  {
+                    "role": "MANAGER",
+                    "label": "Förvaltare"
+                  }
+                ],
+                "canAssistantSaveAssessment": false,
+                "canChangeReadings": false,
+                "canMakeBillingDecisions": false
+              },
+              "assessmentOptions": [
+                {
+                  "value": "NEEDS_INVESTIGATION",
+                  "label": "Behöver utredas"
+                },
+                {
+                  "value": "CONFIRMED",
+                  "label": "Avvikelsen bekräftad"
+                },
+                {
+                  "value": "EXPLAINED",
+                  "label": "Förklarad avvikelse"
+                }
+              ],
+              "analysisScope": {
+                "trendComparison": {
+                  "comparisonPeriods": 3,
+                  "thresholdFactor": 3,
+                  "method": "Förbrukning per dag jämförs med medianen av de tre föregående jämförbara perioderna. Medianen måste vara positiv. Perioderna behöver inte vara månader; inga årsjämförelser görs.",
+                  "findingCode": "HIGH_RATE",
+                  "direction": "INCREASE",
+                  "countsIncludeReadingsWithoutFindings": true
+                },
+                "otherFindingCodes": [
+                  "DATA",
+                  "OVERLAP",
+                  "DECREASE"
+                ],
+                "hasPhysicalMaximumCheck": false,
+                "automaticallyApprovesReadings": false
+              },
+              "ruleVersion": "consumption-review-v1",
+              "reviewQueue": {
+                "filter": "ALL",
+                "counts": {
+                  "ALL": 0,
+                  "TO_ASSESS": 0,
+                  "UNASSESSED": 0,
+                  "NEEDS_INVESTIGATION": 0,
+                  "CHANGED_EVIDENCE": 0,
+                  "CONFIRMED": 0,
+                  "EXPLAINED": 0
+                }
+              },
+              "summary": {
+                "readings": 3,
+                "trendAssessed": 0,
+                "notTrendAssessed": 3,
+                "totalFindings": 0,
+                "reviewHistoryCount": 0,
+                "trendCoverage": "NONE"
+              },
+              "page": {
+                "offset": 0,
+                "limit": 1,
+                "returned": 0,
+                "totalInFilter": 0,
+                "nextOffset": null,
+                "snapshot": "3ed2898447922fe5748ee81d5e8cf69da94992f449c74b5bf5d9e98fb41f35b7"
+              },
+              "findings": []
+            }
+          }
+        }
+      ],
+      "answer": "Jag ska hjälpa dig förstå behörigheterna för förbrukningsgranskningen.\nBaserat på den aktuella statusen kan jag svara på dina frågor:\n\n## Roller som kan spara bedömningar av förbrukningsavvikelser:\n\nFöljande roller kan spara bedömningar i Förbrukning → Granskning:\n- **Ägare (OWNER)**\n- **Administratör (ADMIN)**\n- **Förvaltare (MANAGER)**\n\nDin nuvarande roll är **Läsare (VIEWER)**, vilket innebär att du kan granska underlaget men inte spara bedömningar.\n\n## Roller som kan slå på automatisk uppföljning:\n\nEndast **Ägare (OWNER)** kan aktivera eller inaktivera reglaget för automatisk förbrukningsuppföljning i Förbrukning → Granskning.\n\nJust nu är den automatiska uppföljningen **avstängd**. Den senaste kontrollen kördes den 9 september 2026 kl. 11:39 (svensk tid).\n\n## Kan jag göra det åt dig?\n\n**Nej, jag kan tyvärr inte:**\n- ❌ Jag kan varken slå på/av automatisk uppföljning eller ändra schemat\n- ❌ Jag kan inte spara bedömningar av avvikelser\n- ❌ Jag kan inte starta en manuell omkörning av kontrollen (den knappen finns inte)\n- ✅ Jag kan bara **läsa** aktuella varningar och underlag för att hjälpa dig förstå dem\n\nFör att aktivera automatisk uppföljning eller spara bedömningar behöver du kontakta någon med rätt behörighet i er organisation (Ägare för reglaget, Ägare/Administratör/Förvaltare för bedömningar).\n\nVill du att jag förklarar vad den automatiska uppföljningen gör, eller hjälper dig med något annat kring förbrukningsgranskningen?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 32916,
+      "outputTokens": 627,
+      "executionOk": true
+    },
+    {
+      "case": "normal_trend_no_finding",
+      "role": "VIEWER",
+      "question": "Varför finns en trendbedömd avläsning men inga varningar? Betyder trendbedömd att avläsningen är misstänkt?",
+      "constructedState": "checked",
+      "calls": [],
+      "answer": "Nej, \"trendbedömd\" betyder **inte** att avläsningen är misstänkt!\n\n**Vad \"trendbedömd\" betyder:**\n\nEn trendbedömd avläsning är en avläsning som **har kunnat jämföras** med tidigare jämförbara perioder (medianen av exakt tre föregående perioder). Trendkontrollen söker efter kraftiga **ökningar** i förbrukningen – specifikt om förbrukningen per dag är minst tre gånger högre än medianen.\n\n**Varför inga varningar trots trendbedömning:**\n\nAtt en avläsning är trendbedömd men **inte** genererar varning betyder att:\n- Systemet **har** hittat tillräckligt med historik för att jämföra\n- Jämförelsen **genomfördes**\n- Resultatet visade **ingen kraftig ökning** (dvs. förbrukningen ligger under trefaldig median)\n\nMed andra ord: trendjämförelsen utfördes och gav grönt ljus – **inga utslag**.\n\n**Viktigt att komma ihåg:**\n\nÄven om en trendbedömning inte gav varning betyder det **inte** automatiskt att avläsningen är \"godkänd\" eller \"normal\". Trendkontrollen är bara en av flera möjliga kontroller. Det finns också DATA-kontroller (ogiltiga värden, överlappande perioder, minskande mätarställning) och möjlighet till manuell granskning av originalunderlag eller mätaren.\n\n**Vill du se aktuella avläsningar och varningar?**  \nJag kan hämta förbrukningsgranskningen för dig om du vill se det exakta underlaget.\n",
+      "stopReason": "end_turn",
+      "inputTokens": 10389,
+      "outputTokens": 432,
+      "executionOk": false
+    },
+    {
+      "case": "low_rate_no_warning",
+      "role": "MANAGER",
+      "question": "Fångar förbrukningsgranskningen både onormalt hög och onormalt låg förbrukning? Kontrollera mitt underlag.",
+      "constructedState": "checked",
+      "calls": [
+        {
+          "name": "get_consumption_review",
+          "input": {
+            "limit": 20,
+            "offset": 0
+          },
+          "result": {
+            "success": true,
+            "message": "⟦OSÄKER⟧0 av 0 varningar i urvalet visas; totalt finns 0 varningar. Inga fler sidor i urvalet. En bedömd avvikelse är inte automatiskt åtgärdad. Du kan själv spara en bedömning i Förbrukning → Granskning. Assistenten kan endast läsa underlaget.⟦/OSÄKER⟧",
+            "data": {
+              "humanPath": {
+                "route": "/consumption",
+                "tab": "Granskning",
+                "canSaveAssessment": true,
+                "assessmentRoles": [
+                  {
+                    "role": "OWNER",
+                    "label": "Ägare"
+                  },
+                  {
+                    "role": "ADMIN",
+                    "label": "Administratör"
+                  },
+                  {
+                    "role": "MANAGER",
+                    "label": "Förvaltare"
+                  }
+                ],
+                "canAssistantSaveAssessment": false,
+                "canChangeReadings": false,
+                "canMakeBillingDecisions": false
+              },
+              "assessmentOptions": [
+                {
+                  "value": "NEEDS_INVESTIGATION",
+                  "label": "Behöver utredas"
+                },
+                {
+                  "value": "CONFIRMED",
+                  "label": "Avvikelsen bekräftad"
+                },
+                {
+                  "value": "EXPLAINED",
+                  "label": "Förklarad avvikelse"
+                }
+              ],
+              "analysisScope": {
+                "trendComparison": {
+                  "comparisonPeriods": 3,
+                  "thresholdFactor": 3,
+                  "method": "Förbrukning per dag jämförs med medianen av de tre föregående jämförbara perioderna. Medianen måste vara positiv. Perioderna behöver inte vara månader; inga årsjämförelser görs.",
+                  "findingCode": "HIGH_RATE",
+                  "direction": "INCREASE",
+                  "countsIncludeReadingsWithoutFindings": true
+                },
+                "otherFindingCodes": [
+                  "DATA",
+                  "OVERLAP",
+                  "DECREASE"
+                ],
+                "hasPhysicalMaximumCheck": false,
+                "automaticallyApprovesReadings": false
+              },
+              "ruleVersion": "consumption-review-v1",
+              "reviewQueue": {
+                "filter": "ALL",
+                "counts": {
+                  "ALL": 0,
+                  "TO_ASSESS": 0,
+                  "UNASSESSED": 0,
+                  "NEEDS_INVESTIGATION": 0,
+                  "CHANGED_EVIDENCE": 0,
+                  "CONFIRMED": 0,
+                  "EXPLAINED": 0
+                }
+              },
+              "summary": {
+                "readings": 4,
+                "trendAssessed": 1,
+                "notTrendAssessed": 3,
+                "totalFindings": 0,
+                "reviewHistoryCount": 0,
+                "trendCoverage": "PARTIAL"
+              },
+              "page": {
+                "offset": 0,
+                "limit": 20,
+                "returned": 0,
+                "totalInFilter": 0,
+                "nextOffset": null,
+                "snapshot": "2ec790a3d43ab652593537f7a1285de971180ad38f1070e0e99248368eba8f0d"
+              },
+              "findings": []
+            }
+          }
+        }
+      ],
+      "answer": "Jag ska kontrollera ditt förbrukningsunderlag och förklara hur granskningen fungerar.\nBra fråga! **Nej, trendjämförelsen fångar INTE båda riktningarna:**\n\n## Vad din granskning visar just nu:\n- **4 avläsningar** totalt\n- **1 trendbedömd** (kunde jämföras med tidigare perioder)\n- **3 utan trendjämförelse** (saknar tillräcklig historik)\n- **0 varningar** – inga kraftiga ökningar hittades\n- **Trendtäckning: PARTIAL** – alla avläsningar kan inte bedömas än\n\n## Så fungerar trendjämförelsen:\n\n**Riktning:** Kontrollen söker endast efter kraftiga **ÖKNINGAR** i förbrukningen.\n\n- Jämför förbrukning per dag med medianen av de tre föregående jämförbara perioderna\n- Varnar när ökningen är **minst tre gånger medianen** (och medianen är positiv)\n- Onormalt **låg** förbrukning flaggas INTE av trendkontrollen\n\n**Varför?** Kraftiga ökningar kan tyda på läckor, felaktiga avläsningar eller stöld – medan låg förbrukning sällan är en akut risk.\n\n## Andra kontroller som finns:\n\nFörutom trendkontrollen har systemet även kontroller för:\n- **DATA** – negativa värden, icke-ändliga tal, ogiltiga perioder\n- **OVERLAP** – överlappande perioder\n- **DECREASE** – minskande mätarställning\n\nDessa fungerar även när trendhistorik saknas.\n\n## Din situation:\n\nMed bara 1 av 4 avläsningar trendbedömd finns ännu inte tillräckligt underlag för att avgöra om alla avläsningar är felfria. Fler framtida avläsningar kan göra nya perioder jämförbara, men de tidigare perioderna friskförklaras inte retroaktivt.\n\nVill du att jag kollar statusen på den automatiska uppföljningen också?\n",
+      "stopReason": "end_turn",
+      "inputTokens": 21506,
+      "outputTokens": 614,
+      "executionOk": true
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { getConsumptionFollowUp } from '../ai/tools/consumption-follow-up'
 import { randomUUID } from 'node:crypto'
 import { PrismaClient, Prisma } from '@prisma/client'
 import {
@@ -117,6 +118,38 @@ it('uppföljningens DB-prov kräver en riktig databas', () => expect(hasDb).toBe
     await service.checkOrganization(otherOrgId)
     expect(await db.notification.count({ where: { organizationId: otherOrgId } })).toBe(0)
     expect((await service.getStatus(otherOrgId)).lastCheckedAt).toBeNull()
+  })
+  it('assistenten läser samma status som API:t, isolerar organisationer och skriver ingenting', async () => {
+    await service.update(orgId, ownerId, { enabled: true })
+    await service.checkOrganization(orgId)
+    const before = await db.organization.findUniqueOrThrow({ where: { id: orgId } })
+    const notices = await db.notification.findMany({
+      where: { organizationId: orgId },
+      orderBy: { id: 'asc' },
+    })
+    const result = await getConsumptionFollowUp(db, orgId, 'VIEWER', {})
+    expect(result.data.status).toEqual(await service.getStatus(orgId))
+    expect(result.data.state).toBe('checked')
+    expect(result.data.humanPath.canChangeSetting).toBe(false)
+    const other = await getConsumptionFollowUp(db, otherOrgId, 'OWNER', {})
+    expect(other.data.status).toEqual({
+      enabled: false,
+      enabledAt: null,
+      lastCheckedAt: null,
+      lastFailedAt: null,
+    })
+    await expect(
+      getConsumptionFollowUp(db, orgId, 'OWNER', { organizationId: otherOrgId }),
+    ).rejects.toMatchObject({ status: 400 })
+    expect(await db.organization.findUniqueOrThrow({ where: { id: orgId } })).toEqual(before)
+    expect(
+      await db.notification.findMany({ where: { organizationId: orgId }, orderBy: { id: 'asc' } }),
+    ).toEqual(notices)
+    expect(await db.meterReading.count({ where: { organizationId: orgId } })).toBe(4)
+    expect(await db.meterReadingReview.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await db.consumptionCharge.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await db.invoice.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await db.journalEntry.count({ where: { organizationId: orgId } })).toBe(0)
   })
   it('två samtidiga körningar och återförsök ger en notis per aktiv ansvarig, utan domänskrivning', async () => {
     await service.update(orgId, ownerId, { enabled: true })

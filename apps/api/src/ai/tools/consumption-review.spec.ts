@@ -3,6 +3,8 @@ import { getConsumptionReview } from './consumption-review'
 import { TOOLS, ACTION_TOOLS } from './ai-tools.definition'
 import { TENANT_TOOLS } from './tenant-ai-tools.definition'
 import { buildToolCatalog } from './ai-tools.catalog'
+import { ReadingReviewController } from '../../consumption/reading-review.controller'
+import { ROLES_KEY } from '../../common/guards/roles.guard'
 import { ReadingReviewService } from '../../consumption/reading-review.service'
 import { PrismaService } from '../../common/prisma/prisma.service'
 import { ToolExecutorService } from './tool-executor.service'
@@ -336,4 +338,58 @@ it('hela exekveringsvägen skyddar motivering, namn och etiketter innan modellen
   } finally {
     await module.close()
   }
+})
+
+it('rollerna modellen räknar upp är exakt de som sparendpunktens rollgrind tillåter', async () => {
+  const result = await setup().run()
+  expect(result.data.humanPath.assessmentRoles.map((entry) => entry.role).sort()).toEqual(
+    [...Reflect.getMetadata(ROLES_KEY, ReadingReviewController.prototype.saveReview)].sort(),
+  )
+})
+
+it.each(['DATA', 'OVERLAP', 'DECREASE'] as const)(
+  '%s kan hittas utan tillräcklig trendhistorik',
+  async (code) => {
+    const f = setup(1)
+    f.rows.splice(2)
+    if (code === 'DATA') f.rows[0]!.value = -1
+    if (code === 'OVERLAP') f.rows[1]!.periodEnd = f.rows[0]!.periodEnd
+    if (code === 'DECREASE') {
+      f.rows.forEach((row) => {
+        row.readingType = 'CUMULATIVE'
+      })
+      f.rows[0]!.value = 100
+      f.rows[1]!.value = 90
+    }
+    const result = await f.run()
+    expect(result.data.summary.trendCoverage).toBe('NONE')
+    expect(result.data.summary.trendAssessed).toBe(0)
+    expect(result.data.findings.some((finding) => finding.code === code)).toBe(true)
+    expect(result.data.analysisScope).toEqual({
+      trendComparison: {
+        comparisonPeriods: 3,
+        thresholdFactor: 3,
+        method: expect.stringContaining('medianen av de tre föregående jämförbara perioderna'),
+        findingCode: 'HIGH_RATE',
+        direction: 'INCREASE',
+        countsIncludeReadingsWithoutFindings: true,
+      },
+      otherFindingCodes: ['DATA', 'OVERLAP', 'DECREASE'],
+      hasPhysicalMaximumCheck: false,
+      automaticallyApprovesReadings: false,
+    })
+  },
+)
+
+it.each([10, 1])('en trendjämförelse utan varning räknas även med slutvärde %s', async (value) => {
+  const f = setup(1)
+  f.rows[3]!.value = value
+  const result = await f.run()
+  expect(result.data.summary).toMatchObject({
+    readings: 4,
+    trendAssessed: 1,
+    notTrendAssessed: 3,
+    totalFindings: 0,
+  })
+  expect(result.data.findings).toEqual([])
 })

@@ -2006,6 +2006,12 @@ utkast: daglig kontroll av samma kö, intern samlad notis och synlig kontrollsta
 Egen ägarstyrd flagga med default AV; inga domän- eller ekonomiska åtgärder.
 Oberoende verkligt facit, driftmätning och vidare agentfunktioner återstår.
 
+[agent3-assistent-status.md](./agent3-assistent-status.md) kopplar den automatiska
+uppföljningens status till assistenten via en separat läsning. Samma tillstånd,
+lokaltider och schema som granskningsvyn; inga skrivverktyg tillkommer. Modellprov
+mäter förklaringar av status, tidsstämplar, trendtäckning och roller. Det är
+konstruerat utvecklingsmaterial, inte bevis för verklig driftprecision.
+
 ### Shadow mode
 
 **BYGGT 2026-09-05** (etapp 6), i två PR:er: producenten ([#790](https://github.com/yasineken2002-sys/eken/pull/790)) och
