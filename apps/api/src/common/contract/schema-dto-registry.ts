@@ -1,4 +1,5 @@
-import { SaveReadingReviewSchema } from '@eken/shared'
+import { UpdateReadingReviewFollowUpDto } from '../../consumption/dto/update-reading-review-follow-up.dto'
+import { UpdateReadingReviewFollowUpSchema, SaveReadingReviewSchema } from '@eken/shared'
 import { SaveReadingReviewDto } from '../../consumption/dto/save-reading-review.dto'
 import { IssueKeysDto } from '../../keys/dto/issue-keys.dto'
 import { ReturnKeyDto } from '../../keys/dto/return-key.dto'
@@ -250,6 +251,15 @@ export interface KontraktsPost {
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  {
+    endpoint: 'PATCH /consumption/reading-review/follow-up',
+    inputTyp: 'UpdateReadingReviewFollowUpInput',
+    schema: UpdateReadingReviewFollowUpSchema,
+    dto: UpdateReadingReviewFollowUpDto,
+    giltig: { enabled: false },
+    ogiltig: { enabled: 'yes' },
+    ogiltigVarfor: 'ett gissat ja får inte aktivera automatisk uppföljning',
+  },
   {
     endpoint: 'POST /consumption/reading-review/decisions',
     inputTyp: 'SaveReadingReviewInput',

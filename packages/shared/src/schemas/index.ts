@@ -2393,3 +2393,13 @@ export const ReadingReviewFilterSchema = z.enum([
   'EXPLAINED',
 ])
 export type ReadingReviewFilter = z.infer<typeof ReadingReviewFilterSchema>
+
+export const UpdateReadingReviewFollowUpSchema = z.object({ enabled: z.boolean() }).strict()
+export type UpdateReadingReviewFollowUpInput = z.infer<typeof UpdateReadingReviewFollowUpSchema>
+
+export interface ReadingReviewFollowUpStatus {
+  enabled: boolean
+  enabledAt: string | null
+  lastCheckedAt: string | null
+  lastFailedAt: string | null
+}

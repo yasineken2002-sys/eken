@@ -11,6 +11,8 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { MeterForm } from './components/MeterForm'
 import { TariffForm } from './components/TariffForm'
 import { ReadingReview } from './components/ReadingReview'
+import { ReadingReviewFollowUp } from './components/ReadingReviewFollowUp'
+import type { ConsumptionTab } from './lib/consumption-tab'
 import { ReadingForm } from './components/ReadingForm'
 import { useMeters, useCreateMeter, useUpdateMeter } from './hooks/useMeterQueries'
 import { useTariffs, useCreateTariff } from './hooks/useTariffQueries'
@@ -130,7 +132,7 @@ const CHARGE_FILTERS: { id: 'ALL' | ConsumptionChargeStatus; label: string }[] =
 // 1.3/1.4/1.5 — de visas som låsta platshållare så strukturen är på plats och
 // routern/navet inte behöver röras igen.
 
-type TabId = 'meters' | 'tariffs' | 'readings' | 'charges' | 'review'
+type TabId = ConsumptionTab
 const TABS: { id: TabId; label: string; ready: boolean }[] = [
   { id: 'meters', label: 'Mätare', ready: true },
   { id: 'tariffs', label: 'Tariffer', ready: true },
@@ -206,9 +208,15 @@ function MeterEditForm({
 
 // ─── Huvudkomponent ───────────────────────────────────────────────────────────
 
-export function ConsumptionPage() {
+export function ConsumptionPage({
+  tab = 'meters',
+  onTabChange,
+}: {
+  tab?: ConsumptionTab
+  onTabChange: (tab: ConsumptionTab) => void
+}) {
   const canWrite = useCanWrite()
-  const [tab, setTab] = useState<TabId>('meters')
+  const setTab = onTabChange
   const [showCreate, setShowCreate] = useState(false)
   const [showCreateTariff, setShowCreateTariff] = useState(false)
   const [showCreateReading, setShowCreateReading] = useState(false)
@@ -431,7 +439,10 @@ export function ConsumptionPage() {
 
       {/* Innehåll per flik */}
       {tab === 'review' ? (
-        <ReadingReview meterLabel={meterLabel} />
+        <>
+          <ReadingReviewFollowUp />
+          <ReadingReview meterLabel={meterLabel} />
+        </>
       ) : tab === 'meters' ? (
         <div className="mt-4">
           {!isLoading && meters.length === 0 ? (

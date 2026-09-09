@@ -80,6 +80,16 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   excludeFromBilling: 'Intern flagga: undantas från plattformsfaktureringen.',
   transactionalEmailsDisabled:
     'Intern driftflagga: strypventil för utgående post. Inte en kundinställning.',
+  consumptionReviewFollowUpEnabled:
+    'Ägarens reglage läses via den rollstyrda GET /consumption/reading-review/follow-up.',
+  consumptionReviewFollowUpEnabledAt:
+    'Aktiveringstid läses som enabledAt i uppföljningens separata statuskontrakt.',
+  consumptionReviewFollowUpCheckedAt:
+    'Senaste lyckade kontroll läses som lastCheckedAt i uppföljningens statuskontrakt.',
+  consumptionReviewFollowUpErrorAt:
+    'Aktuell felstatus läses som lastFailedAt i uppföljningens statuskontrakt.',
+  consumptionReviewFollowUpRevision:
+    'Intern samtidighetsmarkör som stoppar en äldre körning efter av- eller påslag.',
 }
 
 describe('SAFE_ORGANIZATION_SELECT', () => {

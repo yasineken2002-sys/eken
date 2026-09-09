@@ -1989,7 +1989,7 @@ Fortsättningen i [agent3-api-underlag.md](./agent3-api-underlag.md) flyttar
 rapporten till API:t och binder varje varning till regelversion och källrader.
 Fortsättningen i [agent3-bedomningar.md](./agent3-bedomningar.md) bygger
 beständiga mänskliga bedömningar med revisionshistorik. Verkligt oberoende
-granskat jämförelsematerial och agentens vidare uppföljning återstår. Inga flaggor eller
+granskat jämförelsematerial och vidare agentfunktioner återstår. Inga flaggor eller
 automatiska debiteringsåtgärder har aktiverats av dessa byggen.
 
 [agent3-assistent-underlag.md](./agent3-assistent-underlag.md) kopplar samma
@@ -1999,8 +1999,12 @@ uppföljningsloop och ger inte något uppmätt driftfacit.
 
 [agent3-granskningsko.md](./agent3-granskningsko.md) ger webben och assistenten
 samma urval och prioritering av bedömningsarbete. Ändrat underlag återkommer
-vid nästa rapportläsning. Bedömd betyder inte åtgärdad; automatiska jobb,
-notifieringar och oberoende verkligt facit återstår.
+vid nästa rapportläsning. Bedömd betyder inte åtgärdad.
+
+[agent3-automatisk-uppfoljning.md](./agent3-automatisk-uppfoljning.md) bygger nästa
+utkast: daglig kontroll av samma kö, intern samlad notis och synlig kontrollstatus.
+Egen ägarstyrd flagga med default AV; inga domän- eller ekonomiska åtgärder.
+Oberoende verkligt facit, driftmätning och vidare agentfunktioner återstår.
 
 ### Shadow mode
 

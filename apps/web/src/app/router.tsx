@@ -1,3 +1,4 @@
+import { consumptionSearch } from '@/features/consumption/lib/consumption-tab'
 // URL-baserad routing för Eveno-webben (FIX 4).
 //
 // Ersätter den tidigare useState<Route>-routningen. URL:en speglar appens
@@ -304,7 +305,23 @@ const customersRoute = appPage('/customers', CustomersPage)
 const contractorsRoute = appPage('/hantverkare', ContractorsPage)
 const leasesRoute = appPage('/leases', LeasesPage)
 const invoicesRoute = appPage('/invoices', InvoicesPage)
-const consumptionRoute = appPage('/consumption', ConsumptionPage)
+const consumptionRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/consumption',
+  validateSearch: consumptionSearch,
+  component: function ConsumptionRoute() {
+    const { tab } = consumptionRoute.useSearch()
+    const navigate = consumptionRoute.useNavigate()
+    return (
+      <ConsumptionPage
+        tab={tab ?? 'meters'}
+        onTabChange={(next) => {
+          void navigate({ search: { tab: next } })
+        }}
+      />
+    )
+  },
+})
 const depositsRoute = appPage('/deposits', DepositsPage)
 const rentIncreasesRoute = appPage('/rent-increases', RentIncreasesPage)
 const assignmentsRoute = appPage('/uppdrag', AssignmentsPage)

@@ -114,3 +114,14 @@ describe('notificationLinkToPath', () => {
     expect(notificationLinkToPath('/')).toBeNull()
   })
 })
+
+it('öppnar granskningsfliken utan att tillåta fria omdirigeringar', () => {
+  expect(notificationLinkToPath('/consumption?tab=review')).toBe('/consumption?tab=review')
+  for (const link of [
+    'https://example.test/consumption?tab=review',
+    '//example.test/consumption?tab=review',
+    '/consumption?tab=review&redirect=other',
+    '/consumption?tab=other',
+  ])
+    expect(notificationLinkToPath(link)).toBeNull()
+})
