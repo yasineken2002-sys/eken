@@ -656,6 +656,14 @@ model Organization {
 
   morningReportEnabled Boolean @default(false)
 
+  /// Agent 3: endast daglig läsning och intern notis. Ingen rätt att debitera.
+  consumptionReviewFollowUpEnabled Boolean @default(false)
+  consumptionReviewFollowUpEnabledAt DateTime?
+  consumptionReviewFollowUpCheckedAt DateTime?
+  consumptionReviewFollowUpErrorAt DateTime?
+  /// En av/på-cykel ogiltigförklarar redan pågående kontroller.
+  consumptionReviewFollowUpRevision Int @default(0)
+
   /// SKUGGAGENTEN PÅ FELANMÄLAN (etapp 6). Default AV, och per organisation —
   /// skuggläget ska kunna slås på för EN kund i taget och stängas av utan en
   /// deploy. En global flagga hade gjort det till ett allt-eller-inget-beslut,

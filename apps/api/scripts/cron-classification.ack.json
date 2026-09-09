@@ -138,6 +138,10 @@
     "ai/execution/execution-sweep.service.ts::svepPass": {
       "class": "A",
       "lockKey": "cron:ai-agent-execution"
+    },
+    "consumption/reading-review-follow-up.service.ts::followUpDaily": {
+      "class": "B",
+      "invariant": "Notification.id @id över hash(organisation, mottagare, Stockholmsdag, typ) och createMany(skipDuplicates) skyddar notisen. Organisationens status och notis skrivs atomiskt under samma radlås som av/på. Inga externa sidoeffekter."
     }
   }
 }

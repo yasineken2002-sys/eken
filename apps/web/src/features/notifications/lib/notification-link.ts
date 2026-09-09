@@ -63,6 +63,8 @@ const LINK_SEGMENT_PATH = {
 const LINK_SEGMENT_WITH_DETAIL: ReadonlySet<string> = new Set(['avisering'])
 
 export function notificationLinkToPath(link: string) {
+  // Fast djuplänk till den registrerade granskningsfliken. Öppna inte en fri URL.
+  if (link === '/consumption?tab=review') return '/consumption?tab=review'
   const segments = link.replace(/^\/+/, '').split('/')
   const head = segments[0]
   if (head === undefined) return null
