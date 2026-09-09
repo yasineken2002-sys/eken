@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {loadProduction,CentDecimal}=require('./bankimport_loader.cjs');
-const {Repository}=require('./bankimport_repository.cjs');
+const {Repository,nullableText}=require('./bankimport_repository.cjs');
 
 test('actual method modules load with only exact decorator removal',async()=>{
   const p=await loadProduction();
@@ -42,4 +42,11 @@ test('test Decimal facade cannot silently accept unsupported precision',()=>{
   assert.throws(()=>new CentDecimal('100.001'));
   assert.throws(()=>new CentDecimal('NaN'));
   assert.throws(()=>new CentDecimal('1.00').toFixed(3));
+});
+
+test('nullable SQL text distinguishes absent ID from literal null ID',()=>{
+  assert.equal(nullableText(null),'NULL');
+  assert.equal(nullableText(undefined),'NULL');
+  assert.equal(nullableText('null'),"'null'");
+  assert.equal(nullableText("id'quoted"),"'id''quoted'");
 });

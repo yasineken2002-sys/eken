@@ -6,6 +6,7 @@ const crypto=require('node:crypto');
 const {CentDecimal,SqlUniqueError}=require('./bankimport_loader.cjs');
 const DB='eveno_tillgodo_test';
 const literal=x=>"'"+String(x).replaceAll("'","''")+"'";
+const nullableText=x=>x==null?'NULL':literal(x);
 const json=x=>literal(JSON.stringify(x))+'::jsonb';
 const plain=x=>JSON.parse(JSON.stringify(x));
 const ownSchemas=new Set();
@@ -90,7 +91,7 @@ class Repository {
     const payload={id,externalId:null,dedupKey:null,reference:null,rawOcr:null,balance:null,status:'UNMATCHED',...d};
     try {
       this.sql('INSERT INTO bank VALUES('+[literal(id),literal(d.organizationId),
-        d.externalId===undefined?'NULL':literal(d.externalId),d.dedupKey===undefined?'NULL':literal(d.dedupKey),
+        nullableText(d.externalId),nullableText(d.dedupKey),
         literal(d.date)+'::timestamptz',literal(d.amount)+'::numeric',json(payload)].join(',')+');');
       trace.createdId=id;return {...payload,date:new Date(d.date),amount:new CentDecimal(d.amount)};
     }catch(error) {
@@ -134,4 +135,4 @@ class Repository {
       +"'imports',(SELECT coalesce(jsonb_agg(payload ORDER BY id),'[]') FROM imports));");
   }
 }
-module.exports={Repository,plain};
+module.exports={Repository,plain,nullableText};

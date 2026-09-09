@@ -17,7 +17,7 @@ async function main() {
   const prod=await loadProduction();const cases=[];
   for(const scenario of inputs.cases) {
     const repo=new Repository(config.container,prod.forbidden);
-    const downstream=[],queue=[],calls=[],providerCalls=[],rounds=[];
+    const downstream=[],queue=[],calls=[],providerCalls=[],rounds=[],providerSetup=[];
     const unused=new Proxy({}, {get:(_target,key)=>prod.deny('unused dependency:'+String(key))});
     const service=new prod.ReconciliationService(repo,unused,unused,unused,unused,unused,unused,unused);
     let fault='none';
@@ -56,11 +56,22 @@ async function main() {
       repo.seedConsents(scenario.organizations);
       const provider=new prod.MockBankDataProvider();
       provider.accounts=scenario.accounts.map(accountId=>({accountId,currency:'SEK'}));
+      let activeOrg;
+      const scope=input=>{
+        assert.equal(input.accessToken,'SYNTHETIC_NO_SECRET');
+        assert.equal(input.consentId,'synthetic-consent-'+scenario.organizations.indexOf(activeOrg));
+      };
+      for(const method of ['getConsentStatus','listAccounts']) {
+        const original=provider[method].bind(provider);
+        provider[method]=async input=>{
+          scope(input);providerSetup.push({method,consentId:input.consentId});return original(input);
+        };
+      }
       let failureRemaining=scenario.failOnce?1:0;
       // Current Mock's account/status functions run. Fetch is replaced by this
       // contract interpreter; it responds to actual since/account arguments.
       provider.fetchTransactions=async(input)=>{
-        assert.equal(input.accessToken,'SYNTHETIC_NO_SECRET');
+        scope(input);
         const call={consentId:input.consentId,accountId:input.accountId,since:input.since??null};providerCalls.push(call);
         if(input.accountId===scenario.failOnce&&failureRemaining>0) {
           failureRemaining--;call.error='INJECTED_ACCOUNT_TRANSPORT_ERROR';throw Error(call.error);
@@ -73,22 +84,33 @@ async function main() {
       const crypto={decrypt:value=>{assert.equal(value,'SYNTHETIC_NO_SECRET');return 'SYNTHETIC_NO_SECRET';}};
       const sync=new prod.Psd2SyncService(repo,service,crypto,provider);
       for(let round=0;round<scenario.rounds;round++)for(const org of scenario.organizations) {
-        const observation={round:round+1,org};rounds.push(observation);
+        activeOrg=org;
+        const observation={round:round+1,org,providerStart:providerCalls.length,ingestStart:calls.length};rounds.push(observation);
         try {observation.result=plain(await sync.syncOrganization(org));}
         catch(error) {observation.error=String(error.message);}
+        observation.providerEnd=providerCalls.length;observation.ingestEnd=calls.length;
         // Includes partial state after a thrown sync, not invented zero counters.
         observation.snapshot=repo.snapshot();
       }
     }
     assert.deepEqual(prod.forbidden,[],'Forbidden calls cannot be hidden by product catch blocks');
-    cases.push({id:scenario.id,calls,providerCalls,rounds,downstream,queue,
+    cases.push({id:scenario.id,calls,providerCalls,providerSetup,rounds,downstream,queue,
       repositoryTrace:repo.trace,snapshot:repo.snapshot()});
     process.stderr.write('Captured '+scenario.id+' (product compliance not asserted here)\n');
   }
+  // Separate repository-boundary control, not an extra bank-import scenario.
+  // Predefined requirement: two explicit null IDs are not one literal 'null'.
+  const nullRepo=new Repository(config.container,prod.forbidden);
+  for(const amount of ['1.00','2.00'])await nullRepo.bankTransaction.create({data:{
+    organizationId:'test-org-null-control',externalId:null,dedupKey:null,
+    date:new Date('2026-09-01'),description:'SYNTHETIC repository control',amount:new CentDecimal(amount)}});
+  const nullIdentity=nullRepo.sql("SELECT jsonb_build_object('rows',count(*),'nullIds',count(*) FILTER (WHERE external_id IS NULL),'nullKeys',count(*) FILTER (WHERE dedup_key IS NULL),'ore',sum(amount*100)) FROM bank;");
+  assert.deepEqual(nullIdentity,{rows:2,nullIds:2,nullKeys:2,ore:300});
   const day=prod.normalizeToStockholmDay(new Date('2026-09-01T22:30:00Z'));
   const key=prod.computeBankDedupKey(day,new CentDecimal('100.00'),'00123459');
-  const result={kind:'ACTUAL_PRODUCTION_METHOD_DIAGNOSTIC_WITH_REPLACED_BOUNDARIES',
+  const result={kind:'ACTUAL_PRODUCTION_METHOD_DIAGNOSTIC_WITH_REPLACED_BOUNDARIES',evidenceVersion:2,
     node:process.version,inputSha256:hash(rawInputs),supplementSha256:hash(supplement),sourceModules:prod.sources,forbidden:prod.forbidden,
+    boundaryControls:{nullIdentity},
     dedupProbe:{instant:'2026-09-01T22:30:00Z',stockholmDay:day.toISOString(),amount:'100.00',ocr:'00123459',key},
     layers:{actual:['TypeScript production methods','OCR helpers','Mock provider account/status methods','PostgreSQL predicates and UNIQUE'],
       replaced:['Nest decorators/DI','Prisma client repository mapping','Decimal cent facade','SQL 23505 to P2002 class facade',

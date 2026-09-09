@@ -12,6 +12,7 @@ import subprocess
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT=Path(__file__).resolve().parents[3]
 DATA=ROOT/'docs/eval/bankimport-identitet'
@@ -53,6 +54,9 @@ def audit(observed):
     inputs={c['id']:c for c in fixture['cases']}
     assert observed['inputSha256']==sha((DATA/'indata.json').read_bytes())
     assert observed['forbidden']==[]
+    assert observed.get('evidenceVersion') in (None,2)
+    extended=observed.get('evidenceVersion')==2
+    if extended:assert observed['boundaryControls']['nullIdentity']=={'rows':2,'nullIds':2,'nullKeys':2,'ore':300}
     assert len(observed['cases'])==len(inputs)==len(expected)==(31 if 'supplementSha256' in observed else 29)
     assert {c['id'] for c in observed['cases']}==set(inputs)
     for file,details in observed['sourceModules'].items():
@@ -111,7 +115,24 @@ def audit(observed):
             else:
                 assert call['method']=='ingestFromFile';dup=r['duplicate'];imp=not dup;rej=False
             imported+=imp;duplicates+=dup;rejected+=rej
-            if imp:import_ids.append(r['transactionId'])
+            if imp:
+                import_ids.append(r['transactionId'])
+                d=next(d for d in case['downstream'] if d['row']['id']==r['transactionId'])
+                # Observer throws a host-realm Error; the VM's catch wraps its
+                # String(error), retaining the explicit synthetic failure marker.
+                if d['injectedError']:assert r.get('matchError')=='Error: INJECTED_SYNTHETIC_MATCH_ERROR',(k,'missing explicit matchError')
+                else:assert not r.get('matchError'),(k,'unexpected matchError')
+                stored=saved[r['transactionId']]
+                if call['method']=='ingestFromApi':
+                    raw=call['raw']
+                    assert stored['externalId']==call['externalId']
+                    assert stored['description']==raw['description']
+                    assert Decimal(stored['amount'])==Decimal(str(raw['amount']))
+                    assert stored['date'][:10]==instant(raw['bookingDate']).astimezone(ZoneInfo('Europe/Stockholm')).date().isoformat()
+                    assert stored['reference']==(raw.get('reference') or None)
+                    if raw.get('ocr'):assert stored['rawOcr']==raw['ocr']
+                else:
+                    for field,value in call['input']['data'].items():assert stored[field]==value
         assert imported==len(rows) and len(set(import_ids))==imported
         assert len(case['downstream'])==imported
         assert {d['row']['id'] for d in case['downstream']}==set(import_ids)
@@ -127,6 +148,13 @@ def audit(observed):
                 assert call['org']==step['org']
                 if step['kind']=='api':
                     assert call['externalId']==step['externalId'] and normalize_raw(call['raw'])==normalize_raw(step['raw'])
+                else:
+                    day=step['date']+'T00:00:00.000Z';amount=f"{Decimal(step['amountOre'])/100:.2f}"
+                    assert call['method']=='ingestFromFile'
+                    assert call['input']=={
+                        'dedup':{'date':day,'description':step['description'],'amount':amount},
+                        'data':{'date':day,'description':step['description'],'amount':amount,'reference':step['reference'],'rawOcr':step['rawOcr']},
+                        'crossSource':{'date':day,'amount':amount,'ocr':step['rawOcr']}},(k,'file input differs from frozen step')
         else:
             assert len(case['rounds'])==inp['rounds']*len(inp['organizations'])
             by_id={c['id']:c for c in case['snapshot']['consents']}
@@ -147,12 +175,58 @@ def audit(observed):
             for r in case['rounds']:
                 if 'error' in r:assert r['snapshot']['rows']==previous
                 previous=r['snapshot']['rows']
+            transport_errors=0
             for p in case['providerCalls']:
                 assert p['accountId'] in inp['accounts']
                 if 'result' in p:
                     want=inp['pages'][p['accountId']][p['since'] or 'START']
                     assert p['result']['cursor']==want['cursor']
                     assert [normalize_raw(t) for t in p['result']['transactions']]==[normalize_raw(t) for t in want['transactions']]
+                elif p['error']=='HYPOTHETICAL_CURSOR_SCOPE_MISMATCH':
+                    assert (p['since'] or 'START') not in inp['pages'][p['accountId']]
+                else:
+                    transport_errors+=1
+                    assert p['error']=='INJECTED_ACCOUNT_TRANSPORT_ERROR' and p['accountId']==inp['failOnce'] and transport_errors==1
+            if extended:
+                provider_end=ingest_end=0;cursor_by_org={org:None for org in inp['organizations']}
+                setup=[]
+                previous_state={'rows':[],'imports':[],'consents':[{
+                    'id':'consent-'+str(i),'organizationId':org,'consentId':'synthetic-consent-'+str(i),
+                    'status':'ACTIVE','accessTokenEnc':'SYNTHETIC_NO_SECRET','syncCursor':None
+                    } for i,org in enumerate(inp['organizations'])]}
+                for r in case['rounds']:
+                    assert r['providerStart']==provider_end and r['ingestStart']==ingest_end
+                    provider_end=r['providerEnd'];ingest_end=r['ingestEnd']
+                    ps=case['providerCalls'][r['providerStart']:provider_end]
+                    ing=calls[r['ingestStart']:ingest_end]
+                    cid='synthetic-consent-'+str(inp['organizations'].index(r['org']))
+                    setup += [{'method':method,'consentId':cid} for method in ('getConsentStatus','listAccounts')]
+                    assert [p['accountId'] for p in ps]==inp['accounts'][:len(ps)]
+                    for p in ps:
+                        assert p['consentId']==cid,(k,'wrong consent for organization')
+                        assert p['since']==cursor_by_org[r['org']],(k,'cursor not from stored consent')
+                    if 'error' in r:
+                        assert ps and 'error' in ps[-1] and ing==[]
+                        assert r['snapshot']==previous_state,(k,'failed round changed stored state')
+                    else:
+                        assert len(ps)==len(inp['accounts']) and all('result' in p for p in ps)
+                        delivered=[tx for p in ps for tx in p['result']['transactions']]
+                        assert len(delivered)==len(ing)
+                        for tx,call in zip(delivered,ing):
+                            assert call['method']=='ingestFromApi' and call['org']==r['org']
+                            assert call['externalId']==tx['externalId']
+                            want={key:tx[key] for key in ('bookingDate','booked','currency','amount','description')}
+                            for key in ('ocr','reference'):
+                                if tx.get(key):want[key]=tx[key]
+                            assert normalize_raw(call['raw'])==normalize_raw(want),(k,'provider delivery changed before ingest')
+                        counts={key:sum(c['result']['outcome']==value for c in ing) for key,value in [('imported','imported'),('duplicates','duplicate'),('rejected','rejected')]}
+                        assert r['result']['fetched']==len(delivered)
+                        for key,value in counts.items():assert r['result'][key]==value
+                    current=next(c for c in r['snapshot']['consents'] if c['organizationId']==r['org'])
+                    cursor_by_org[r['org']]=current['syncCursor']
+                    previous_state=r['snapshot']
+                assert provider_end==len(case['providerCalls']) and ingest_end==len(calls)
+                assert case['providerSetup']==setup,(k,'wrong account/status consent scope')
         totals=dict(saved=len(rows),savedOre=sum(ore(r['amount']) for r in rows),imported=imported,duplicates=duplicates,
                     rejected=rejected,unmatchedStored=sum(r['status']=='UNMATCHED' for r in rows),
                     downstreamCalls=len(case['downstream']),queueCalls=len(case['queue']),
@@ -200,11 +274,22 @@ def negatives(observed):
         'wrong_organization':lambda x:case(x,'I04-organization-isolation')['snapshot']['rows'][0].update(organizationId='test-org-X'),
         'cursor_reconstructed_from_label':lambda x:case(x,'S-account-cursors-AB')['snapshot']['consents'][0].update(syncCursor='A:1'),
         'hidden_forbidden_call':lambda x:x['forbidden'].append('unexpected bank/network dependency'),
+        'missing_explicit_match_error':lambda x:case(x,'I13-matching-error-reimport')['calls'][0]['result'].pop('matchError'),
     }
+    if observed.get('evidenceVersion')==2:
+        changes.update({
+            'wrong_provider_consent':lambda x:case(x,'S-sync-organization-scope')['providerCalls'][0].update(consentId='synthetic-consent-1'),
+            'changed_provider_to_ingest_link':lambda x:case(x,'S-reimport-account-pages')['calls'][-1]['raw'].update(description='unproven replacement'),
+            'wrong_sync_duplicate_counter':lambda x:case(x,'S-reimport-account-pages')['rounds'][1]['result'].update(duplicates=1,rejected=1),
+            'explicit_null_collapses':lambda x:x['boundaryControls']['nullIdentity'].update(rows=1),
+            'missing_provider_delivery':lambda x:case(x,'S-shared-cursor-AB')['providerCalls'].pop(0),
+            'valid_cursor_claimed_invalid':lambda x:case(x,'S-account-cursors-AB')['providerCalls'][-1].update(since='A:1'),
+            'changed_both_file_pair_inputs':lambda x:[case(x,k)['calls'][0]['input']['data'].update(description='changed') for k in ('F-file-api-same-event','F-file-api-different-events')],
+        })
     for name,mutate in changes.items():
         changed=copy.deepcopy(observed);mutate(changed)
         try:audit(changed)
-        except AssertionError:continue
+        except (AssertionError,StopIteration):continue
         raise AssertionError('Negative control escaped: '+name)
     return list(changes)
 
