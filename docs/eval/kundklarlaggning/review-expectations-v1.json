@@ -1,0 +1,14 @@
+{
+  "kind": "ADDITIONAL_NEGATIVE_CONTROLS_DEFINED_BEFORE_CORRECTION_RUN",
+  "reviewedCommit": "61e6df3768e1f7f338fd10af3c3fcd021312bc1d",
+  "originalPolicyUnchanged": true,
+  "AandBExpectedMetricsUnchanged": true,
+  "expectations": [
+    "A confirmed response with any nonblank free comment remains STAFF_CUSTOMER_NOTE. Comment is not independent authority evidence and may contain a contradiction; no automatic interpretation or allocation is allowed.",
+    "A structured decline still becomes STAFF_DECLINED, and a structured contradictory claim or original identifier conflict remains staff. No free comment can override a conflict.",
+    "Changing an attestation after invitation invalidates capture, projection, mailbox and financial response. Invalid response becomes STAFF_EVIDENCE_INVALID without money effects.",
+    "Transient expiry worker database error is caught with a generic local health status and retried on the next tick. Expired links remain denied independently; after recovery overdue cases reach STAFF_TIMEOUT.",
+    "Independent recount rejects missing permitted leases, changed person registry, foreign voucher organization, expired attestation, changed invitation binding and hidden historical last credit.",
+    "Customer's own recorded credit remains visible after link consumption; another person or organization sees none."
+  ]
+}

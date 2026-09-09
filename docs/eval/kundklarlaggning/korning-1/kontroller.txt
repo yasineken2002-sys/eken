@@ -1,0 +1,107 @@
+$ python3 -m unittest discover -s apps/api/scripts -p test_*prov.py
+.........................................................
+----------------------------------------------------------------------
+Ran 57 tests in 0.602s
+
+OK
+
+$ python3 apps/api/scripts/test_tillgodo_lifecycle.py
+test_adjusted_payment_consumes_credit_without_creating_new (__main__.LifecycleTests.test_adjusted_payment_consumes_credit_without_creating_new) ... ok
+test_already_issued_never_adjusted_silently (__main__.LifecycleTests.test_already_issued_never_adjusted_silently) ... ok
+test_conflicting_reference_even_with_paid_owner (__main__.LifecycleTests.test_conflicting_reference_even_with_paid_owner) ... ok
+test_full_payment_recreates_larger_credit (__main__.LifecycleTests.test_full_payment_recreates_larger_credit) ... ok
+test_full_rent_not_original_overpayment_still_creates_credit (__main__.LifecycleTests.test_full_rent_not_original_overpayment_still_creates_credit) ... ok
+test_inactive_no_consent_or_refund_never_use_credit (__main__.LifecycleTests.test_inactive_no_consent_or_refund_never_use_credit) ... ok
+test_missing_next_and_final_credit_remain_visible (__main__.LifecycleTests.test_missing_next_and_final_credit_remain_visible) ... ok
+test_multiple_contracts_same_person_choose_only_explicit_contract (__main__.LifecycleTests.test_multiple_contracts_same_person_choose_only_explicit_contract) ... ok
+test_multiple_next_notices_are_ambiguous (__main__.LifecycleTests.test_multiple_next_notices_are_ambiguous) ... ok
+test_org_tenant_and_lease_boundaries (__main__.LifecycleTests.test_org_tenant_and_lease_boundaries) ... ok
+test_reimport_is_inert_and_changed_payload_rejected (__main__.LifecycleTests.test_reimport_is_inert_and_changed_payload_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.006s
+
+OK
+
+$ python3 apps/api/scripts/test_kundklarlaggning.py
+test_atomic_rollback_at_five_boundaries_then_retry (__main__.FlowTests.test_atomic_rollback_at_five_boundaries_then_retry) ... ok
+test_attestation_binding_mismatch_and_revocation (__main__.FlowTests.test_attestation_binding_mismatch_and_revocation) ... ok
+test_audit_cannot_be_mutated (__main__.FlowTests.test_audit_cannot_be_mutated) ... ok
+test_changed_attestation_person_scope_and_draft_invalidates_old_link (__main__.FlowTests.test_changed_attestation_person_scope_and_draft_invalidates_old_link) ... ok
+test_customer_projection_and_staff_role (__main__.FlowTests.test_customer_projection_and_staff_role) ... ok
+test_debt_changed_and_changed_back (__main__.FlowTests.test_debt_changed_and_changed_back) ... ok
+test_decline_and_contradictory_reply (__main__.FlowTests.test_decline_and_contradictory_reply) ... ok
+test_expired_reused_and_exact_retry (__main__.FlowTests.test_expired_reused_and_exact_retry) ... ok
+test_expiry_worker_retries_transient_transport_failure (__main__.FlowTests.test_expiry_worker_retries_transient_transport_failure) ... ok
+test_explicit_choice_own_other_contract_and_no_cross_contract_transfer (__main__.FlowTests.test_explicit_choice_own_other_contract_and_no_cross_contract_transfer) ... ok
+test_forged_and_missing_authority_no_links (__main__.FlowTests.test_forged_and_missing_authority_no_links) ... ok
+test_free_comment_may_contradict_even_structured_confirmation (__main__.FlowTests.test_free_comment_may_contradict_even_structured_confirmation) ... ok
+test_frozen_A_B_and_independent_recount (__main__.FlowTests.test_frozen_A_B_and_independent_recount) ... ok
+test_http_auth_csrf_origin_private_projection_and_reply (__main__.FlowTests.test_http_auth_csrf_origin_private_projection_and_reply) ... ok
+test_inactive_lease_and_unissued_notice (__main__.FlowTests.test_inactive_lease_and_unissued_notice) ... ok
+test_integer_amounts_unexplained_remainder_and_untrusted_note (__main__.FlowTests.test_integer_amounts_unexplained_remainder_and_untrusted_note) ... ok
+test_invoice_other_customer_unknown_or_wrong_contract (__main__.FlowTests.test_invoice_other_customer_unknown_or_wrong_contract) ... ok
+test_no_response_and_draft_are_unresolved (__main__.FlowTests.test_no_response_and_draft_are_unresolved) ... ok
+test_originals_no_recipient_no_customer_disclosure (__main__.FlowTests.test_originals_no_recipient_no_customer_disclosure) ... ok
+test_partial_combined_and_outstanding_credit (__main__.FlowTests.test_partial_combined_and_outstanding_credit) ... ok
+test_real_concurrent_duplicate_and_different_request_lock (__main__.FlowTests.test_real_concurrent_duplicate_and_different_request_lock) ... ok
+test_recipient_removed_and_bank_payload_mismatch (__main__.FlowTests.test_recipient_removed_and_bank_payload_mismatch) ... ok
+test_reference_conflict_customer_cannot_override (__main__.FlowTests.test_reference_conflict_customer_cannot_override) ... ok
+test_reimport_does_not_reset_link_or_duplicate_credit (__main__.FlowTests.test_reimport_does_not_reset_link_or_duplicate_credit) ... ok
+test_wrong_person_organization_case_and_payment (__main__.FlowTests.test_wrong_person_organization_case_and_payment) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 83.189s
+
+OK
+
+$ node --check apps/api/scripts/kundklarlaggning_demo/app.js
+
+$ python3 apps/api/scripts/eval_kundklarlaggning.py --out docs/eval/kundklarlaggning/korning-1
+Saved isolated PostgreSQL evidence: docs/eval/kundklarlaggning/korning-1 bytes: 98668
+
+$ python3 apps/api/scripts/audit_kundklarlaggning.py docs/eval/kundklarlaggning/korning-1/resultat.json.gz
+{
+  "recount": {
+    "A": {
+      "cases": 20,
+      "automaticWithoutHuman": 0,
+      "resolvedWithCustomer": 0,
+      "staffRequired": 20,
+      "waitingUnresolved": 0
+    },
+    "B": {
+      "cases": 13,
+      "automaticWithoutHuman": 0,
+      "resolvedWithCustomer": 3,
+      "staffRequired": 8,
+      "waitingUnresolved": 2
+    },
+    "bankOre": 40500,
+    "allocatedOre": 38000,
+    "outstandingCreditOre": 2500,
+    "allocationRows": 5,
+    "ledgerBankPayments": 4,
+    "balancedTestVouchers": 56,
+    "wrongDecisionsAgainstFrozenContract": 0
+  },
+  "rejectedMutations": [
+    "false_original_completion",
+    "lost_ore",
+    "wrong_lease",
+    "hidden_credit",
+    "unbalanced_voucher",
+    "missing_authority",
+    "missing_audit",
+    "altered_original_bank",
+    "missing_permitted_lease",
+    "wrong_recipient_registry",
+    "foreign_voucher_org",
+    "expired_attestation",
+    "changed_invitation_binding",
+    "hidden_historical_credit"
+  ]
+}
+
+$ node apps/api/scripts/test_kundklarlaggning_ui.cjs
+PASS: actual app.js decline ignores abandoned fractional amount and refreshes own credit (fake DOM, no browser rendering).

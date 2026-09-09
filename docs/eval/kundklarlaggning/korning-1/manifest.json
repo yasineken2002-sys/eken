@@ -1,0 +1,23 @@
+{
+  "uncompressedSha256": "8f0c203cfd16f199f835553eec469de1afe753f6db305d9e7131e80bd2d26874",
+  "bytesUncompressed": 98668,
+  "originalFilesUnchanged": 51,
+  "sourceHashes": {
+    "apps/api/scripts/audit_kundklarlaggning.py": "a03fc175a4bfe17461ffb5d8de1f11eca9bbafcb44b50c377d28aad56eb37870",
+    "apps/api/scripts/demo_kundklarlaggning.py": "80d745ea8697663bf0014376c09f63f5d93222f5978f291f0fc3301ba8651ef4",
+    "apps/api/scripts/eval_kundklarlaggning.py": "294c6dfdd4ac4c32b9ca4ba64570cdca476425efcac4816a5e6d2dcf52760851",
+    "apps/api/scripts/kundklarlaggning.py": "9213289cc9c64d78904454060a407674dbf85b38eb6f93d008ef85a27eba8362",
+    "apps/api/scripts/kundklarlaggning.sql": "51d284639f5b442952db12ffac2fb6df992abfd282c7576581be628f32b252fd",
+    "apps/api/scripts/kundklarlaggning_demo/app.js": "48618785e51545d9b2096e7ce90ff92b01c4a6488254c9ad04328877762396ef",
+    "apps/api/scripts/kundklarlaggning_demo/index.html": "ffd7482ceb7a509864d83a0d9091d6b08342378269b8378002e3b953b10e889d",
+    "apps/api/scripts/kundklarlaggning_demo/style.css": "5fe25201fa975b0a7055c678059d62f94bdf79c61746adeb65275b69dd91f228",
+    "apps/api/scripts/test_kundklarlaggning.py": "32e864150a773c815b9429b850dc0aa936a813b6a4382ac69c313984d11e2861",
+    "apps/api/scripts/test_kundklarlaggning_ui.cjs": "b44015c73be686e064c004a17315ab3c345b2b572b6d8b93e3e9187c4e6a477f",
+    "apps/api/scripts/tillgodo_experiment.sql": "2fe985bd41aa6603983438b49eb834e6f651240f0b0c467de89ab62be5408648",
+    "apps/api/scripts/tillgodo_pg.py": "de88b82390b82c9373f4886fe01ec4448c3379778a4c119d01c6cd4c387565ed",
+    "docs/eval/identitetsgranskning-20/korning-1/fall.json": "fc3603497849ec738e0d8ec31394b4f404f5b816842f099081ca099da4fae1f1",
+    "docs/eval/kundklarlaggning/policy-v1.json": "7c2c44e3bc097010ab351a6dd88e2d6a48b5e9a0e50f6810ad65946610deda73",
+    "docs/eval/kundklarlaggning/review-expectations-v1.json": "9e30cc27fdd28e795b92a70cbe43c038a75e8bc23701a932678725d2c022c4d6",
+    "docs/eval/overskottsprov/korning-1/public-input.json.gz": "2f72961cac30b17900a769d5721ded529072c1ac4582e45dce81c64a0f0f814f"
+  }
+}

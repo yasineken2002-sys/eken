@@ -1,0 +1,56 @@
+{
+  "kind": "ISOLATED_CUSTOMER_CLARIFICATION_PROTOTYPE_NOT_PRODUCTION_POLICY",
+  "baseCommit": "e4a72d3002c195e78c01baac4704a7326973547e",
+  "evidenceRequirements": [
+    "Separate server-owned attestation binds exact immutable bank payload and stable event ID, organization, person, tenant and permitted leases. It must establish authority to dispose of THIS transfer, not merely ownership of an account or recognition of a name.",
+    "A separately verified recipient directory and authenticated person must agree with that binding. Login and invoice ownership alone never establish ownership/authority over funds.",
+    "The customer supplies explicit invoice IDs and integer-ore amounts within attested leases. One payment may partially settle an invoice or explicitly pay several invoices in the same lease. Cross-lease allocation is held for staff, never implicit.",
+    "All known conflicting references remain recorded. Customer confirmation cannot override them; this prototype always sends a remaining identity conflict to staff, even with a valid funds attestation.",
+    "Unknown recipient means no draft, invitation, customer-visible payment or guessed outreach. No extra evidence exists for original cases.",
+    "Customer-provided receipt IDs, references, notes, clicks, uploaded files or claims of verification cannot create authority. No evidence upload/import endpoint is provided.",
+    "Attestations and recipient verification are SIMULATED_INDEPENDENT_ATTESTOR fixtures, installed only by demo bootstrap. Their factual trust, actual identity authentication and production authorization are NOT proven. The HTTP demo login is explicitly simulated."
+  ],
+  "workflow": ["IMPORTED", "STAFF_NO_RECIPIENT or DRAFT", "LOCAL_CAPTURE_WAITING", "customer response", "server evidence/debt/permission checks", "RESOLVED_CUSTOMER or STAFF or WAITING"],
+  "transactions": "Reuse #871 isolated local network-none PostgreSQL helper and TEST-account ledger in new own schemas. Response, ledger allocation/credit/voucher, case state, link consumption and audit event commit or roll back together. No production schema or real accounts.",
+  "privacy": "Bind loopback only; no public ports. Customer projection excludes original bank prose/reference and foreign customer/notice details. Links are hashed, person/org/payment-bound, expire and are consumed once. Only exact authenticated same-request retry returns its saved result; other reuse fails generically.",
+  "A": {
+    "input": "Exact 20 original public bank records selected by #872, no new identity or authority evidence, no invented recipient.",
+    "cases": 20, "automaticWithoutHuman": 0, "resolvedWithCustomer": 0, "staffRequired": 20, "waitingUnresolved": 0,
+    "drafts": 0, "localInvitations": 0, "ledgerBankPayments": 0
+  },
+  "B": {
+    "input": "Thirteen new synthetic bank cases, different IDs from original. Independent attestation, recipient directory, simulated login and replies are added assumptions, not original bank fields.",
+    "expectations": {
+      "B-full": "RESOLVED_CUSTOMER",
+      "B-partial": "RESOLVED_CUSTOMER",
+      "B-combined": "RESOLVED_CUSTOMER",
+      "B-credit": "STAFF_CREDIT",
+      "B-decline": "STAFF_DECLINED",
+      "B-no-response": "WAITING",
+      "B-expired": "STAFF_TIMEOUT",
+      "B-forged": "STAFF_NO_RECIPIENT",
+      "B-no-authority": "STAFF_NO_RECIPIENT",
+      "B-conflict": "STAFF_CONFLICT",
+      "B-contradictory": "STAFF_CONTRADICTORY",
+      "B-debt-changed": "STAFF_DEBT_CHANGED",
+      "B-draft": "DRAFT"
+    },
+    "cases": 13, "automaticWithoutHuman": 0, "resolvedWithCustomer": 3, "staffRequired": 8, "waitingUnresolved": 2,
+    "ledgerBankPayments": 4, "allocationRows": 5, "bankOre": 40500, "allocatedOre": 38000,
+    "outstandingCreditOre": 2500, "creditCases": 1
+  },
+  "completionRule": "Exclusive payment categories. RESOLVED_CUSTOMER requires customer participation, verified test authority, no conflict, all bank money allocated and corresponding balanced test voucher committed, with no outstanding credit. Partial invoice debt may remain. STAFF_CREDIT is staff-required, never complete. DRAFT and WAITING are unresolved. Do not infer actual staff effort from case counts.",
+  "originalMetricsRemainHistorical": {"baseline": "1970/0/30", "871": "1980 allocated, 1979 complete under assumptions, 0 wrong, 21 review", "lastCreditPayment": "betalning-57-9", "outstandingA_Ore": 25000, "outstandingB_Ore": 2500},
+  "controls": [
+    "Wrong customer, organization and contract; manipulated case/transaction/invoice/evidence IDs; forged evidence or free receipt cannot grant authority",
+    "No recipient causes no customer disclosure; other-customer data never appears in denial responses or customer projection",
+    "Outstanding reference conflict remains staff even with confirmation; contradictory and declined replies do not allocate",
+    "Expired/reused links, identical retry, changed retry payload, duplicate and simultaneous reply; observe actual PostgreSQL lock wait",
+    "Reimport same immutable event is inert; changed payload rejected; attestation mismatch/revocation invalidates link",
+    "Debt changed after question goes to staff; partial and combined same-lease payment explicit; multi-lease transfer never silent",
+    "Rollback after ledger debt/credit/voucher, after case update, after audit and link consumption; retry commits exactly once",
+    "No response and unsent draft remain unresolved; overdue link transitions to staff; final original credit remains separate",
+    "Actual local HTTP request tests for session, CSRF/origin, projection and response paths; no external services",
+    "Original fixture/source hashes and existing 57 plus 11 regressions unchanged; independent compact recount of cases, ledger and balanced vouchers"
+  ]
+}
