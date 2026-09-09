@@ -150,6 +150,25 @@ facit för att få grönt. Ett annat kundunderlag kan ha andra andelar.
 
 ## Förberedd, ännu ej körd AI-jämförelse
 
+**Kostnadsfri orakelkontroll, körd efter integrationen:** vi matade medvetet
+den befintliga fristående kontrollen med förhandsfacit som ett hypotetiskt
+perfekt förslag. Resultat: **0/110 provmatchningar**, inklusive 0/80 av de
+identifierbara namn/period-fallen. Noll modellanrop. Detta mäter kontrollens
+begränsning, inte AI:ns träffsäkerhet. Ingen sådan observation får räknas som
+ett riktigt modellsvar.
+
+Kontrollens redovisade skäl: flera förfallna utan uttrycklig referens (49),
+tvetydig OCR (29), oklart enligt facit (20), saknad särskiljande identifierare
+(11), text som kräver manuell tolkning (11), belopp över skuld (1). Skälen kan
+överlappa. Samma hyresgästs OCR på flera öppna avier behandlas som tvetydigt;
+uttrycklig månad i fritext kan inte lösa det i nuvarande kontroll.
+Rårapport: `eval/kundflode-2000/orakelkontroll.json.gz`.
+
+Fler modellförfrågningar räcker därför inte för att göra det nuvarande
+kontrollflödet automatiskt. Rekommendationen är att först diskutera och bygga
+kontrollens period-/identitetsunderlag och överskottshanteringen, därefter testa
+förslagen och hela återkopplade flödet. Ingen betald körning har startats.
+
 `scripts/eval-kundflode-modell.ts` planerar högst **220 anrop**: de 110
 problemfallen från grundkörningen, befintligt en-avi-förslag jämfört med det
 redan byggda referensstödet. Grundprovet ger 220 kompletta begäranden i PLAN
@@ -180,12 +199,15 @@ node -r ts-node/register/transpile-only scripts/eval-kundflode-2000.ts /ny/utkat
 node -r ts-node/register/transpile-only scripts/eval-kundflode-2000.ts /annan/ny/katalog --omvand-inom-dag
 python3 scripts/analysera-kundflode-2000.py /ny/utkatalog /ny/kontroll.json
 node -r ts-node/register/transpile-only scripts/eval-kundflode-modell.ts /ny/utkatalog /ny/ai-plan.json
+node -r ts-node/register/transpile-only scripts/eval-kundflode-modell.ts /ny/utkatalog /ny/orakel.json --orakelkontroll
 ```
 
 Utdata skrivs aldrig över. Nya körningar får egna organisations-id:n härledda
 ur utmatningskatalogen; ingen återanvänder den förra kundens tillstånd.
 AI-skriptet har separat opt-in `EVAL_BANK2000_LIVE=1` efter kostnadsgodkännande.
 Det accepterar bara det frysta syntetiska grundmaterialet och de 110 problemfallen.
+`--orakelkontroll` är endast lokal hypotetisk granskning; den kan inte
+kombineras med modellkörning. Facit skickas aldrig i en nätverksbegäran.
 
 ## Kodkontroller
 

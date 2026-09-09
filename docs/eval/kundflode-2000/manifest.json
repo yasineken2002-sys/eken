@@ -75,6 +75,11 @@
       "originalSha256": "ee4e972b3c146714699616be48b746c1aaf784363de7116fb7dda32909b268a4",
       "originalBytes": 6355,
       "sparadeBytes": 6355
+    },
+    "orakelkontroll.json.gz": {
+      "originalSha256": "fb005594808c51c0749c4fb8a60f4e4325e70941b0f8f2d5a02c420d16a29115",
+      "originalBytes": 1389031,
+      "sparadeBytes": 77910
     }
   }
 }

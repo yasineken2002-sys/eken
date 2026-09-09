@@ -43,6 +43,9 @@ async function main() {
   const source = resolve(process.argv[2] ?? '')
   const output = resolve(process.argv[3] ?? '/tmp/kundflode-modell-plan.json')
   const live = process.env.EVAL_BANK2000_LIVE === '1'
+  const orakel = process.argv.includes('--orakelkontroll')
+  // Facit får bara matas till den lokala kontrollen, aldrig till ett modellanrop.
+  if (live && orakel) throw new Error('Orakelkontroll får inte kombineras med modellkörning')
   if (existsSync(output)) throw new Error('Rapporten finns redan')
   if (live && !process.env.ANTHROPIC_API_KEY) throw new Error('Utvecklingsnyckel saknas')
   const saved = JSON.parse(readFileSync(resolve(source, 'AGENT_PA.json'), 'utf8')) as {
@@ -120,7 +123,8 @@ async function main() {
     planeradeObservationer: cases.length * ARMAR.length,
     syntetiskt: true,
     automatiskVerkstallning: false,
-    lage: live ? 'MODELL' : 'PLAN',
+    lage: orakel ? 'ORAKELKONTROLL' : live ? 'MODELL' : 'PLAN',
+    hypotetisktPerfektForslag: orakel,
     begransning:
       'Frysta underlag före import. Inga framtida data. Fristående förslagsmätning; kö, skuggjobbsbehörighet och återkopplad bokföring körs inte. En modellbedömning är inte en automatisk betalning. Facit eller scenario ingår aldrig i request.',
   }
@@ -210,7 +214,7 @@ async function main() {
           item.rad,
           item.poster,
           kandidater,
-          row.bedomning,
+          orakel ? item.bedomning : row.bedomning,
           true,
         )
         guards.push({
