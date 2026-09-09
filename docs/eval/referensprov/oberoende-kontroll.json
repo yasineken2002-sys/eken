@@ -1,0 +1,9 @@
+{
+  "armsVerified": 6,
+  "paymentsPerArm": 2000,
+  "sourceHashesMatch": true,
+  "partialPaymentsCorrectPerArm": 150,
+  "combinedPaymentsCorrectPerArm": 75,
+  "independentRecount": "PASS",
+  "rawReportSha256": "cee3b24282a8e124e3f787cecc2c6c08858e7432a955cc82d871d957d518672b"
+}
