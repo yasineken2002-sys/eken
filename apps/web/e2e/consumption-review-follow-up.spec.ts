@@ -28,7 +28,7 @@ test('uppföljning: djuplänk, ägarens reglage, omladdning och notis tillbaka t
   // Bara notislistan är attrapp: cronets skrivning bevisas separat mot Postgres.
   // Här prövas den verkliga klickvägen, routern och flikvalet.
   await page.route(
-    (url) => url.pathname === '/v1/notifications',
+    (url) => url.pathname === '/api/v1/notifications',
     async (route) => {
       await route.fulfill({
         json: {
