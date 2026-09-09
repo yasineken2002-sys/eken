@@ -1,0 +1,108 @@
+/** UNAPPLIED PROPOSAL. No provider contract is registered by this code. */
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { randomUUID } from 'node:crypto'
+import { Prisma, type BankTransaction } from '@prisma/client'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { currentActor } from '../common/actor/actor.context'
+
+type Db = Pick<Prisma.TransactionClient, '$queryRaw'>
+export type BankOrigin = { kind: 'api' | 'file'; provider: string; consent: string; account: string }
+export type BankObservationBody = {
+  amountOre: number; day: string; booked: boolean; currency: string;
+  rawOcr: string | null; reference: string | null; description: string;
+  [field: string]: unknown;
+}
+export type IdentityImportResult =
+  | { outcome: 'imported' | 'resumed'; transactionId: string; matched: boolean; observationId: string }
+  | { outcome: 'duplicate'; transactionId: string; via: 'verifiedIdentity'; observationId: string }
+  | { outcome: 'held' | 'rejected'; reason: string; observationId: string }
+
+type Observation = { observationId: string; eventId: string | null;
+  bankTransactionId: string | null; outcome: 'READY' | 'REPLAY' | 'HELD' | 'REJECTED'; reason: string }
+const attempt = new AsyncLocalStorage<{ organizationId: string; bankId: string; token: string }>()
+
+export async function identityOpen(db: Db, org: string): Promise<boolean> {
+  const rows = await db.$queryRaw<Array<{ open: boolean }>>`SELECT bank_identity_open(${org}) AS open`
+  return rows[0]?.open !== false // Missing result fails closed.
+}
+export async function identityAllowed(db: Db, org: string, bankId: string): Promise<boolean> {
+  const ctx = attempt.getStore()
+  const token = ctx?.organizationId === org && ctx.bankId === bankId ? ctx.token : null
+  const rows = await db.$queryRaw<Array<{ allowed: boolean }>>`
+    SELECT bank_event_authorized_attempt(${org},${bankId},${token}) AS allowed`
+  return rows[0]?.allowed === true
+}
+/** Inside the existing allocation transaction, BEFORE its bank row lock.
+ * Same org guard as observe/claim prevents a committed conflict being bypassed.
+ * It does not make queues atomic with allocation. Never holds this lock across
+ * a separate transaction or an external operation. */
+export async function lockIdentity(db: Db, org: string, bankId: string): Promise<void> {
+  await db.$queryRaw`SELECT bank_event_guard(${org})`
+  if (!await identityAllowed(db, org, bankId)) throw new Error('BANK_IDENTITY_REVIEW_REQUIRED')
+}
+export async function blockedBankIds(db: Db, org: string): Promise<string[]> {
+  const rows = await db.$queryRaw<Array<{ id: string }>>`
+    SELECT "bankTransactionId" AS id FROM "BankEvent" WHERE "organizationId"=${org}
+    AND "bankTransactionId" IS NOT NULL AND (conflict OR state IN ('PENDING','STARTED','UNCERTAIN'))`
+  return rows.map(row => row.id)
+}
+export async function identitySummary(db: Db, org: string) {
+  const rows = await db.$queryRaw<Array<{ summary: Record<string, unknown> }>>`
+    SELECT jsonb_build_object(
+      'observations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org}),
+      'heldObservations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org} AND outcome='HELD'),
+      'pendingEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND state='PENDING'),
+      'uncertainEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND state IN ('STARTED','UNCERTAIN')),
+      'conflictedEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND conflict),
+      'identityOpen',bank_identity_open(${org})) AS summary`
+  return rows[0]?.summary
+}
+/** Observations are a separate authenticated staff surface, never a tenant view.
+ * Cursor ordering is stable; original observations are append-only. */
+export async function identityObservations(db: Db, org: string, after: string = '') {
+  return db.$queryRaw<unknown[]>`SELECT id,origin,"externalId",body,"eventId",outcome,reason,"createdAt"
+    FROM "BankObservation" WHERE "organizationId"=${org} AND id>${after} ORDER BY id LIMIT 100`
+}
+
+export async function ingestIdentity(
+  prisma: PrismaService, org: string, origin: BankOrigin | undefined, externalId: string | null,
+  body: BankObservationBody, handle: (bank: BankTransaction) => Promise<boolean>,
+): Promise<IdentityImportResult> {
+  // Registry lookup is server-side. Missing origin cannot acquire verified status.
+  // This central raw-SQL adapter transports the EXISTING actor context; it never
+  // invents a new HUMAN/SYSTEM boundary. Prisma extensions do not see this insert.
+  const actor = currentActor() ?? null
+  const rows = await prisma.$queryRaw<Array<{ result: Observation }>>`
+    SELECT bank_event_observe(${org},${JSON.stringify(origin ?? {})}::jsonb,${externalId},
+      ${JSON.stringify(body)}::jsonb,${actor}) AS result`
+  const observation = rows[0]?.result
+  if (!observation) throw new Error('BANK_OBSERVATION_RESULT_MISSING')
+  const { observationId, eventId, bankTransactionId } = observation
+  if (observation.outcome === 'HELD' || observation.outcome === 'REJECTED') {
+    return { outcome: observation.outcome === 'HELD' ? 'held' : 'rejected', reason: observation.reason, observationId }
+  }
+  if (!eventId || !bankTransactionId) throw new Error('BANK_EVENT_LINK_MISSING')
+  const token = randomUUID()
+  const claims = await prisma.$queryRaw<Array<{ result: { claimed: boolean; reason?: string } }>>`
+    SELECT bank_event_claim(${org},${eventId},${token}) AS result`
+  const claim = claims[0]?.result
+  if (!claim?.claimed) {
+    if (claim?.reason === 'DONE' || claim?.reason === 'LEGACY') {
+      return { outcome: 'duplicate', transactionId: bankTransactionId, via: 'verifiedIdentity', observationId }
+    }
+    return { outcome: 'held', reason: claim?.reason ?? 'CLAIM_RESULT_MISSING', observationId }
+  }
+  try {
+    const bank = await prisma.bankTransaction.findFirstOrThrow({ where: { id: bankTransactionId, organizationId: org } })
+    const matched = await attempt.run({ organizationId: org, bankId: bankTransactionId, token }, () => handle(bank))
+    const finish = await prisma.$queryRaw<Array<{ done: boolean }>>`
+      SELECT bank_event_finish(${org},${eventId},${token},true) AS done`
+    if (finish[0]?.done !== true) throw new Error('BANK_ATTEMPT_FINISH_UNCERTAIN')
+    return { outcome: observation.outcome === 'READY' ? 'imported' : 'resumed', transactionId: bank.id, matched, observationId }
+  } catch {
+    // Persist uncertainty, including a possible partial success. No automatic
+    // retry of this attempt; completion is not inferred from an existing row.
+    await prisma.$queryRaw`SELECT bank_event_finish(${org},${eventId},${token},false)`
+    return { outcome: 'held', reason: 'HANDLING_UNCERTAIN', observationId }
+  }
+}

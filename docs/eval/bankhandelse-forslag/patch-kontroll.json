@@ -1,0 +1,20 @@
+{
+  "kind": "UNAPPLIED_PATCH_SYNTAX_NOT_TYPES_OR_IMPORT_EXECUTION",
+  "base": "fa15d0d9f3eae17d04afc4d46165cb45205373fa",
+  "targetFiles": 11,
+  "typeSyntaxParsed": [
+    "apps/api/src/reconciliation/reconciliation.service.ts",
+    "apps/api/src/reconciliation/reconciliation.controller.ts",
+    "apps/api/src/reconciliation/bank-statement-import.service.ts",
+    "apps/api/src/psd2/psd2-sync.service.ts",
+    "apps/api/src/ai/shadow/shadow-sweep.service.ts",
+    "apps/api/src/ai/shadow/payment/payment-shadow.service.ts",
+    "apps/api/src/payment-freshness/payment-freshness.service.ts",
+    "apps/api/src/accounting/accounting-period.service.ts",
+    "apps/api/src/reconciliation/bank-event-gate.ts"
+  ],
+  "gitApplyCheck": true,
+  "productionTargetsUnchanged": true,
+  "originalMatchingAndAllocationBodiesPreservedApartFromIdentityGate": true,
+  "patchSha256": "5e3cda870f758765bb763c8f08b5af3e89a8d081f8718b528289d65aec1c1ca1"
+}

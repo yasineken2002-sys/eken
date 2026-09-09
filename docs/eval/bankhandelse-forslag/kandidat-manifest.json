@@ -1,0 +1,62 @@
+{
+  "base": "fa15d0d9f3eae17d04afc4d46165cb45205373fa",
+  "applied": false,
+  "files": {
+    "apps/api/src/reconciliation/reconciliation.service.ts": {
+      "baseSha256": "eb3be6f0f30752c4cabdc0123221d4e33701ca53a331ef7751bb63391822f111",
+      "proposedSha256": "412540469092df13cc2f19ae1cc284a92abdebb5b30a0ae51eeca248e21dcd8f",
+      "protected": true
+    },
+    "apps/api/src/reconciliation/reconciliation.controller.ts": {
+      "baseSha256": "e870913c18b4dc82ce448fcc01dc6418927e882e2f03cb375a1c29f549117fcc",
+      "proposedSha256": "a323c9f50f9d5b3c9e729fcf92577fe7d94dedc1385f329487abca34be78e32d",
+      "protected": true
+    },
+    "apps/api/src/reconciliation/bank-statement-import.service.ts": {
+      "baseSha256": "b0c8bec81ab53262ca26617870b7b59e54b723b01711cd03f2f22a79f877861b",
+      "proposedSha256": "5ee8446da9759c40398bfda0f69c3295cda01faea404421bb02c5cc07399c8f7",
+      "protected": true
+    },
+    "apps/api/src/psd2/psd2-sync.service.ts": {
+      "baseSha256": "359e6943354276d4ed03e3f729f512e09a1adec7ce870ceb027b45707153096e",
+      "proposedSha256": "783b3548f6bfaedcfeb68da81d273a7a2d6304d3f6dbc6baa61a0f1d3404295a",
+      "protected": false
+    },
+    "apps/api/src/ai/shadow/shadow-sweep.service.ts": {
+      "baseSha256": "b68ff8542925307b4ba36d229b4663a663aa1a2d0f22a61f9a8d24e14d8d189a",
+      "proposedSha256": "3a75c5956bce7ae23fdd3cfdceb83b9a340e5d5cb3ea5129425f697d073a7499",
+      "protected": false
+    },
+    "apps/api/src/ai/shadow/payment/payment-shadow.service.ts": {
+      "baseSha256": "63227fa2752037a830e033b6b1462843395b42dbd7ceac2a38f5a6304069147e",
+      "proposedSha256": "61f7d83738ffc1da2eeade1ac72c67f1c9fd1f81cf4817eafc7b43e70e9c4429",
+      "protected": false
+    },
+    "apps/api/src/payment-freshness/payment-freshness.service.ts": {
+      "baseSha256": "7333293e4c90d866ae8cb9ddbc7706a61e263556795f8402a6efd9f920e438dc",
+      "proposedSha256": "55164ad7dfa52540af129fec0e3d37fdf98066202c3325c2d940ee026eb75489",
+      "protected": false
+    },
+    "apps/api/src/accounting/accounting-period.service.ts": {
+      "baseSha256": "06dc5f1e9df612b5032a1c0e372f2d56a0edd81f51da021af7014f6e5b865df6",
+      "proposedSha256": "eb837b0bc0b446f9223580bb7ce7c6526ee8995a1f52c011ad5c95a64dd0225e",
+      "protected": false
+    },
+    "apps/api/src/reconciliation/bank-event-gate.ts": {
+      "baseSha256": null,
+      "proposedSha256": "2f28631758ed667e673a78415fe83e383806e3cfc33a99ba5eb7c4a7dca89c72",
+      "protected": true
+    },
+    "apps/api/prisma/migrations/20260909180000_bank_event_identity_proposal/migration.sql": {
+      "baseSha256": null,
+      "proposedSha256": "677540b5413d8deefa913235a5dcf69ba98ad30ad34fa51ff5fcb57ecd150bad",
+      "protected": false
+    },
+    "apps/api/prisma/schema.prisma": {
+      "baseSha256": "f0653f3ad5bc310337c163138785681815df9a289307e56834349b7efa35005e",
+      "proposedSha256": "576dd6a18425efc1aab387ea20aeaeb146793221482f75afd1cc2cd13db03737",
+      "protected": false
+    }
+  },
+  "patchSha256": "5e3cda870f758765bb763c8f08b5af3e89a8d081f8718b528289d65aec1c1ca1"
+}

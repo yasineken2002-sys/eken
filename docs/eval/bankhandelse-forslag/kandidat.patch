@@ -1,0 +1,973 @@
+--- a/apps/api/src/reconciliation/reconciliation.service.ts
++++ b/apps/api/src/reconciliation/reconciliation.service.ts
+@@ -1,3 +1,4 @@
++import { ingestIdentity, identityAllowed, identitySummary, identityObservations, blockedBankIds, lockIdentity, type BankOrigin, type IdentityImportResult } from './bank-event-gate'
+ import {
+   Injectable,
+   Logger,
+@@ -50,6 +51,8 @@
+ export interface ImportResult {
+   imported: number
+   duplicates: number
++  identityHeld?: number
++  resumed?: number
+   autoMatched: number
+   unmatched: number
+   errors: string[]
+@@ -93,7 +96,10 @@
+ export interface FileIngestInput {
+   // Fält-dedup, bevarad EXAKT per källa (CSV/PDF: description, BgMax: rawOcr).
+   // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
++  // Compatibility input only: similarity is NOT identity evidence.
+   dedup: Prisma.BankTransactionWhereInput
++  // Reserved server adapter metadata; never exposed in the upload DTO.
++  identity?: { origin: BankOrigin; externalId: string }
+   data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
+   // PSD2 P1 — fält för cross-source dedupKey (Stockholm-dag + belopp + OCR). Saknas
+   // OCR → ingen dedupKey (betalning utan referens kan inte matchas cross-source).
+@@ -104,8 +110,9 @@
+ // matchTransaction kastade — varje källa mappar det till sitt eget felbeteende
+ // (CSV/BgMax: radfel; PDF: logga + unmatched), precis som före refaktorn.
+ export type FileIngestResult =
+-  | { duplicate: true }
+-  | { duplicate: false; transactionId: string; matched: boolean; matchError?: Error }
++  | { held: true; reason: string; observationId: string }
++  | { held?: false; duplicate: true }
++  | { held?: false; duplicate: false; resumed: boolean; transactionId: string; matched: boolean; matchError?: Error }
+ 
+ /**
+  * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
+@@ -126,10 +133,7 @@
+ // Explicit utfall för API-ingest — INGET tyst bortfall. `rejected` med typad
+ // anledning gör att P2:s sync-lager kan agera (t.ex. återförd betalning → framtida
+ // reverserings-hantering) istället för att en transaktion försvinner spårlöst.
+-export type ApiIngestResult =
+-  | { outcome: 'imported'; transactionId: string; matched: boolean; matchError?: Error }
+-  | { outcome: 'duplicate'; transactionId: string; via: 'externalId' | 'dedupKey' }
+-  | { outcome: 'rejected'; reason: 'NOT_BOOKED' | 'NON_SEK' | 'NON_POSITIVE' }
++export type ApiIngestResult = IdentityImportResult
+ 
+ export interface ReconciliationStats {
+   total: number
+@@ -386,139 +390,42 @@
+   // matchTransaction-fel fångas och returneras som `matchError` så att varje källa
+   // behåller sitt exakta räknar-/felbeteende.
+   async ingestFromFile(organizationId: string, input: FileIngestInput): Promise<FileIngestResult> {
+-    // PSD2 P1 — cross-source-nyckel (fil OCH API stämplar likadant).
+-    const dedupKey = input.crossSource?.ocr
+-      ? computeBankDedupKey(input.crossSource.date, input.crossSource.amount, input.crossSource.ocr)
+-      : null
+-
+-    // Migrationsöverlapp: en betalning som REDAN ingestats via PSD2-API (externalId
+-    // != null) får inte skapa en andra fil-rad → dubbel-allokering (#162-klassen).
+-    // Riktad ENBART mot API-rader, så fil-mot-fil-dedupen nedan är byte-identisk med
+-    // förr. No-op tills P2 börjar skapa API-rader (då finns inga → inget beteendeskifte).
+-    if (dedupKey) {
+-      const apiRow = await this.prisma.bankTransaction.findFirst({
+-        where: { organizationId, dedupKey, externalId: { not: null } },
+-        select: { id: true },
++    const data = input.data
++    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin,
++      input.identity?.externalId ?? null, {
++        amountOre: new Decimal(data.amount.toString()).mul(100).toNumber(),
++        day: normalizeToStockholmDay(new Date(data.date)).toISOString().slice(0, 10),
++        booked: true, currency: 'SEK', description: data.description,
++        rawOcr: data.rawOcr ?? null, reference: data.reference ?? null,
++        ...(data.balance != null ? { balance: data.balance.toString() } : {}),
++        originalFileFields: data,
++      }, async tx => {
++        const matched = await this.matchTransaction(tx, organizationId)
++        if (!matched) await this.köaSkuggförslag(organizationId, tx.id)
++        return matched
+       })
+-      if (apiRow) return { duplicate: true }
+-    }
+-
+-    // Fält-dedup — OFÖRÄNDRAD per källa (CSV/PDF: description, BgMax: rawOcr).
+-    const existing = await this.prisma.bankTransaction.findFirst({
+-      where: { organizationId, ...input.dedup },
++    if (result.outcome === 'held' || result.outcome === 'rejected') {
++      return { held: true, reason: result.reason, observationId: result.observationId }
++    }
++    if (result.outcome === 'duplicate') return { duplicate: true }
++    return { duplicate: false, resumed: result.outcome === 'resumed', transactionId: result.transactionId, matched: result.matched }
++  }
++
++  async ingestFromApi(
++    organizationId: string, externalId: string, raw: ApiRawTransaction, origin?: BankOrigin,
++  ): Promise<ApiIngestResult> {
++    const date = normalizeToStockholmDay(raw.bookingDate)
++    const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? null
++    return ingestIdentity(this.prisma, organizationId, origin, externalId, {
++      amountOre: new Decimal(raw.amount).mul(100).toNumber(),
++      day: date.toISOString().slice(0, 10), booked: raw.booked, currency: raw.currency,
++      rawOcr, reference: raw.reference ?? null, description: raw.description,
++      originalApiFields: raw,
++    }, async tx => {
++      const matched = await this.matchTransaction(tx, organizationId)
++      if (!matched) await this.köaSkuggförslag(organizationId, tx.id)
++      return matched
+     })
+-    if (existing) return { duplicate: true }
+-
+-    const tx = await this.prisma.bankTransaction.create({
+-      data: { organizationId, ...input.data, ...(dedupKey ? { dedupKey } : {}) },
+-    })
+-
+-    try {
+-      const matched = await this.matchTransaction(tx, organizationId)
+-      // ── AGENT 2:S SÖM (etapp A) ───────────────────────────────────────
+-      //
+-      // `matchTransaction` som returnerar false ÄR sömmen — den enda punkt i
+-      // pengaflödet där systemet ger upp och lämnar frågan åt en människa. Alla
+-      // fyra ingest-vägarna löper ihop här och i `ingestFromApi`.
+-      //
+-      // `enqueueSafely` KASTAR ALDRIG: ett Redis-avbrott larmar till Sentry och
+-      // släpper igenom importen, vilket är rätt — bankraden får inte falla för
+-      // att skuggläget är nere. Följden är att förslaget då tyst uteblir, och
+-      // det är precis vad sveparcronen finns för.
+-      if (!matched) await this.köaSkuggförslag(organizationId, tx.id)
+-      return { duplicate: false, transactionId: tx.id, matched }
+-    } catch (err) {
+-      return {
+-        duplicate: false,
+-        transactionId: tx.id,
+-        matched: false,
+-        matchError: err instanceof Error ? err : new Error(String(err)),
+-      }
+-    }
+-  }
+-
+-  // ── PSD2-API-ingest (P1: väg byggd, ingen skarp källa förrän P2) ─────────────
+-  // Typad ingång för bank-API-källor. `externalId` är OBLIGATORISKT (till skillnad
+-  // från fil-vägen) → idempotens är strukturellt garanterad, inte disciplin.
+-  // `organizationId` sätts av anroparen från VÅR DB (BankConsent i P2), aldrig ur
+-  // aggregatorns råsvar. Rör ALDRIG matchTransaction/bokföringen — bara vägen in.
+-  async ingestFromApi(
+-    organizationId: string,
+-    externalId: string,
+-    raw: ApiRawTransaction,
+-  ): Promise<ApiIngestResult> {
+-    // Booked-only: pending kan byta id/belopp och kringgå externalId — matchning
+-    // förutsätter finaliserade fakta.
+-    if (!raw.booked) return { outcome: 'rejected', reason: 'NOT_BOOKED' }
+-    // Valuta: BankTransaction saknar valutafält; ett icke-SEK-belopp skulle
+-    // felmatcha tyst i 1-krons-toleransen. Avvisa EXPLICIT (aldrig felkonvertera).
+-    if (raw.currency !== 'SEK') return { outcome: 'rejected', reason: 'NON_SEK' }
+-    // Storno/negativa: får ALDRIG tyst droppas (tyst drop → felaktig PAID mot BFL).
+-    // Avvisas explicit så P2:s sync-lager kan agera (framtida reverserings-hantering).
+-    if (!(raw.amount > 0)) return { outcome: 'rejected', reason: 'NON_POSITIVE' }
+-
+-    const date = normalizeToStockholmDay(raw.bookingDate)
+-    const amount = new Decimal(raw.amount.toFixed(2))
+-    const rawOcr =
+-      raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? undefined
+-    const dedupKey = rawOcr ? computeBankDedupKey(date, amount, rawOcr) : null
+-
+-    // Steg 1 (cross-source): en betalning som redan ingestats via FIL fångas här,
+-    // så API inte skapar en andra rad → dubbel-allokering (#162-klassen).
+-    if (dedupKey) {
+-      const crossSource = await this.prisma.bankTransaction.findFirst({
+-        where: { organizationId, dedupKey },
+-        select: { id: true },
+-      })
+-      if (crossSource)
+-        return { outcome: 'duplicate', transactionId: crossSource.id, via: 'dedupKey' }
+-    }
+-
+-    // Steg 2 (atomär, API-vs-API): create-och-fånga-P2002 på @@unique(org, externalId).
+-    // ALDRIG findFirst-först — två samtidiga synkar skulle båda passera en förkontroll
+-    // och dubbel-dispatcha (TOCTOU, samma läxa som #162).
+-    let tx
+-    try {
+-      tx = await this.prisma.bankTransaction.create({
+-        data: {
+-          organizationId,
+-          externalId,
+-          date,
+-          description: raw.description,
+-          amount,
+-          ...(rawOcr ? { rawOcr } : {}),
+-          ...(raw.reference ? { reference: raw.reference } : {}),
+-          ...(dedupKey ? { dedupKey } : {}),
+-        },
+-      })
+-    } catch (err) {
+-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+-        const existing = await this.prisma.bankTransaction.findFirst({
+-          where: { organizationId, externalId },
+-          select: { id: true },
+-        })
+-        return {
+-          outcome: 'duplicate',
+-          transactionId: existing?.id ?? externalId,
+-          via: 'externalId',
+-        }
+-      }
+-      throw err
+-    }
+-
+-    try {
+-      const matched = await this.matchTransaction(tx, organizationId)
+-      // Agent 2:s söm — samma som i `ingestFromFile`. Se noten där.
+-      if (!matched) await this.köaSkuggförslag(organizationId, tx.id)
+-      return { outcome: 'imported', transactionId: tx.id, matched }
+-    } catch (err) {
+-      return {
+-        outcome: 'imported',
+-        transactionId: tx.id,
+-        matched: false,
+-        matchError: err instanceof Error ? err : new Error(String(err)),
+-      }
+-    }
+   }
+ 
+   // ── Parse CSV ───────────────────────────────────────────────────────────────
+@@ -708,11 +615,17 @@
+             ...(rawOcr ? { ocr: rawOcr } : {}),
+           },
+         })
++        if (outcome.held) {
++          result.identityHeld = (result.identityHeld ?? 0) + 1
++          result.errors.push(`Bankidentitet kräver granskning: ${outcome.reason}, observation ${outcome.observationId}`)
++          continue
++        }
+         if (outcome.duplicate) {
+           result.duplicates++
+           continue
+         }
+-        result.imported++
++        if (outcome.resumed) result.resumed = (result.resumed ?? 0) + 1
++        else result.imported++
+         // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
+         if (outcome.matchError) throw outcome.matchError
+         if (outcome.matched) {
+@@ -820,11 +733,17 @@
+           },
+           crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
+         })
++        if (outcome.held) {
++          result.identityHeld = (result.identityHeld ?? 0) + 1
++          result.errors.push(`Bankidentitet kräver granskning: ${outcome.reason}, observation ${outcome.observationId}`)
++          continue
++        }
+         if (outcome.duplicate) {
+           result.duplicates++
+           continue
+         }
+-        result.imported++
++        if (outcome.resumed) result.resumed = (result.resumed ?? 0) + 1
++        else result.imported++
+         // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
+         if (outcome.matchError) throw outcome.matchError
+         if (outcome.matched) result.autoMatched++
+@@ -835,7 +754,7 @@
+       }
+     }
+ 
+-    if (result.imported === 0 && result.duplicates === 0) {
++    if (result.imported === 0 && result.duplicates === 0 && !result.identityHeld && !result.resumed) {
+       throw new BadRequestException(
+         'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
+       )
+@@ -855,6 +774,9 @@
+     prismaClient?: Prisma.TransactionClient,
+   ): Promise<boolean> {
+     const db = prismaClient ?? this.prisma
++    if (!await identityAllowed(db, organizationId, transaction.id)) {
++      throw new BadRequestException('Bankidentitet eller tidigare hanteringsförsök kräver granskning')
++    }
+     const tolerance = new Decimal('1.00')
+ 
+     // ── 1. OCR-match (deterministisk) ────────────────────────────────────
+@@ -1324,6 +1246,7 @@
+     matchType?: 'fuzzy',
+   ): Promise<boolean> {
+     const claimedNumber = await this.prisma.$transaction(async (tx) => {
++      await lockIdentity(tx, organizationId, transactionId)
+       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+       const priorBankAllocations = await tx.rentNoticePayment.findMany({
+         where: { bankTransactionId: transactionId },
+@@ -1588,6 +1511,7 @@
+     return this.prisma.$transaction(async (tx) => {
+       // Lås bankraden före avin. Det gör tillgängliga bankmedel och den nya
+       // allokeringen atomiska även när samma inbetalning matchas samtidigt.
++      await lockIdentity(tx, organizationId, transactionId)
+       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+ 
+       // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
+@@ -1938,6 +1862,10 @@
+ 
+   // ── Stats ────────────────────────────────────────────────────────────────────
+ 
++  async getIdentityObservations(organizationId: string, after?: string) {
++    return identityObservations(this.prisma, organizationId, after)
++  }
++
+   async getStats(organizationId: string): Promise<ReconciliationStats> {
+     const grouped = await this.prisma.bankTransaction.groupBy({
+       by: ['status'],
+@@ -1970,16 +1898,18 @@
+       }
+     }
+ 
+-    return stats
++    return { ...stats, bankIdentity: await identitySummary(this.prisma, organizationId) }
+   }
+ 
+   // ── Bulk auto-match (kör matchTransaction på alla UNMATCHED) ────────────────
+ 
+   async autoMatchAll(organizationId: string): Promise<AutoMatchResult> {
++    const identityBlocked = await blockedBankIds(this.prisma, organizationId)
+     const candidates = await this.prisma.bankTransaction.findMany({
+       where: {
+         organizationId,
+         status: 'UNMATCHED',
++        id: { notIn: identityBlocked },
+         // ── EN MÄNNISKAS AVMATCHNING ÖVERLEVER NÄSTA AUTOKÖRNING ────────────
+         //
+         // `unmatchTransaction` sätter raden tillbaka till UNMATCHED och nollar
+--- a/apps/api/src/reconciliation/reconciliation.controller.ts
++++ b/apps/api/src/reconciliation/reconciliation.controller.ts
+@@ -35,6 +35,12 @@
+    * Multipart form upload, field: "statement"
+    * Accepts: .csv, .xlsx, .xls (max 10MB)
+    */
++  @Get('bank-observations')
++  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
++  getBankObservations(@OrgId() organizationId: string, @Query('after') after?: string) {
++    return this.reconciliationService.getIdentityObservations(organizationId, after)
++  }
++
+   @Post('import')
+   @Roles('MANAGER', 'ADMIN', 'OWNER')
+   async importStatement(
+--- a/apps/api/src/reconciliation/bank-statement-import.service.ts
++++ b/apps/api/src/reconciliation/bank-statement-import.service.ts
+@@ -26,6 +26,9 @@
+ import type { BankStatementImportStatus } from '@prisma/client'
+ 
+ export interface ImportCommitResult {
++  identityHeld: number
++  identityObservations: string[]
++  resumed: number
+   importId: string
+   created: number
+   duplicates: number
+@@ -221,6 +224,9 @@
+ 
+     let created = 0
+     let duplicates = 0
++    let identityHeld = 0
++    let resumed = 0
++    const identityObservations: string[] = []
+     let autoMatched = 0
+     let unmatched = 0
+ 
+@@ -240,11 +246,17 @@
+         },
+         crossSource: { date, amount: amountDecimal, ...(t.ocr ? { ocr: t.ocr } : {}) },
+       })
++      if (outcome.held) {
++        identityHeld++
++        identityObservations.push(outcome.observationId)
++        continue
++      }
+       if (outcome.duplicate) {
+         duplicates++
+         continue
+       }
+-      created++
++      if (outcome.resumed) resumed++
++      else created++
+ 
+       if (outcome.matchError) {
+         // Matchning kan kasta vid kantfall (t.ex. korrupt journal-state).
+@@ -271,7 +283,7 @@
+         status: 'CONFIRMED',
+         confirmedAt: new Date(),
+         ...(userId ? { confirmedById: userId } : {}),
+-        confirmedData: { transactions: finalTx } as unknown as Prisma.InputJsonValue,
++        confirmedData: { transactions: finalTx, identityHeld, identityObservations, resumed } as unknown as Prisma.InputJsonValue,
+         transactionCount: finalTx.length,
+         matchedCount: autoMatched,
+         unmatchedCount: unmatched + duplicates,
+@@ -297,7 +309,7 @@
+       }
+     }
+ 
+-    return { importId: id, created, duplicates, autoMatched, unmatched }
++    return { importId: id, created, duplicates, autoMatched, unmatched, identityHeld, identityObservations, resumed }
+   }
+ 
+   async cancelImport(id: string, organizationId: string): Promise<void> {
+--- a/apps/api/src/psd2/psd2-sync.service.ts
++++ b/apps/api/src/psd2/psd2-sync.service.ts
+@@ -1,3 +1,4 @@
++import type { BankOrigin } from '../reconciliation/bank-event-gate'
+ import { Inject, Injectable, Logger } from '@nestjs/common'
+ import { PrismaService } from '../common/prisma/prisma.service'
+ import { ReconciliationService } from '../reconciliation/reconciliation.service'
+@@ -11,6 +12,8 @@
+   imported: number
+   duplicates: number
+   rejected: number
++  identityHeld: number
++  resumed: number
+   matched: number
+ }
+ 
+@@ -56,6 +59,8 @@
+       imported: 0,
+       duplicates: 0,
+       rejected: 0,
++      identityHeld: 0,
++      resumed: 0,
+       matched: 0,
+     }
+ 
+@@ -115,7 +120,7 @@
+       })
+ 
+       let latestCursor = consent.syncCursor ?? undefined
+-      const rawTxs: ProviderRawTx[] = []
++      const rawTxs: Array<{ transaction: ProviderRawTx; origin: BankOrigin }> = []
+       for (const account of accounts) {
+         const page = await this.provider.fetchTransactions({
+           consentId: consent.consentId,
+@@ -123,12 +128,14 @@
+           accountId: account.accountId,
+           since: consent.syncCursor ?? undefined,
+         })
+-        rawTxs.push(...page.transactions)
++        rawTxs.push(...page.transactions.map(transaction => ({ transaction, origin: {
++          kind: 'api' as const, provider: this.provider.name, consent: consent.consentId, account: account.accountId,
++        } })))
+         if (page.cursor) latestCursor = page.cursor
+       }
+       result.fetched += rawTxs.length
+ 
+-      for (const tx of rawTxs) {
++      for (const { transaction: tx, origin } of rawTxs) {
+         // Den härdade vägen in. externalId = bankens id (idempotent). booked-only,
+         // valuta, storno/negativa och cross-source-dedup hanteras EXPLICIT i
+         // ingestFromApi — inget tyst bortfall.
+@@ -136,12 +143,17 @@
+           organizationId,
+           tx.externalId,
+           this.toApiRaw(tx),
++          origin,
+         )
+         if (outcome.outcome === 'imported') {
+           result.imported++
+           if (outcome.matched) result.matched++
+         } else if (outcome.outcome === 'duplicate') {
+           result.duplicates++
++        } else if (outcome.outcome === 'held') {
++          result.identityHeld++
++        } else if (outcome.outcome === 'resumed') {
++          result.resumed++
+         } else {
+           result.rejected++
+         }
+@@ -164,6 +176,7 @@
+         transactionCount: result.imported,
+         matchedCount: result.matched,
+         unmatchedCount: result.imported - result.matched,
++        confirmedData: { identityHeld: result.identityHeld, resumed: result.resumed, fetched: result.fetched, rejected: result.rejected, duplicates: result.duplicates },
+       },
+     })
+ 
+--- a/apps/api/src/ai/shadow/shadow-sweep.service.ts
++++ b/apps/api/src/ai/shadow/shadow-sweep.service.ts
+@@ -1,3 +1,4 @@
++import { blockedBankIds } from '../../reconciliation/bank-event-gate'
+ import { Injectable, Logger } from '@nestjs/common'
+ import { Cron } from '@nestjs/schedule'
+ 
+@@ -172,11 +173,12 @@
+       const har = new Set(medForslag.map((r) => r.sourceId).filter((x): x is string => !!x))
+ 
+       // TAKET SYNS, DET KRYMPER INTE TYST — samma konstruktion som ovan.
++      const identityBlocked = await blockedBankIds(this.prisma, org.id)
+       const kandidater = await this.prisma.bankTransaction.count({
+-        where: { organizationId: org.id, status: 'UNMATCHED', autoMatchExcludedAt: null },
++        where: { organizationId: org.id, status: 'UNMATCHED', autoMatchExcludedAt: null, id: { notIn: identityBlocked } },
+       })
+       const rader = await this.prisma.bankTransaction.findMany({
+-        where: { organizationId: org.id, status: 'UNMATCHED', autoMatchExcludedAt: null },
++        where: { organizationId: org.id, status: 'UNMATCHED', autoMatchExcludedAt: null, id: { notIn: identityBlocked } },
+         orderBy: { date: 'desc' },
+         take: SVEP_BATCH,
+         select: { id: true },
+--- a/apps/api/src/ai/shadow/payment/payment-shadow.service.ts
++++ b/apps/api/src/ai/shadow/payment/payment-shadow.service.ts
+@@ -1,3 +1,4 @@
++import { identityAllowed } from '../../../reconciliation/bank-event-gate'
+ import Anthropic from '@anthropic-ai/sdk'
+ import { Injectable, Logger } from '@nestjs/common'
+ import { formatCurrency } from '@eken/shared'
+@@ -128,6 +129,9 @@
+       },
+     })
+     if (!tx) return { utfall: 'SAKNAS' }
++    if (!await identityAllowed(this.prisma, organizationId, bankTransactionId)) {
++      return { utfall: 'INGEN_FRAGA', detalj: 'bankidentitet kräver granskning' }
++    }
+ 
+     // ── EN REDAN MATCHAD RAD HAR INGEN FRÅGA ────────────────────────────────
+     //
+--- a/apps/api/src/payment-freshness/payment-freshness.service.ts
++++ b/apps/api/src/payment-freshness/payment-freshness.service.ts
+@@ -1,3 +1,4 @@
++import { identityOpen } from '../reconciliation/bank-event-gate'
+ import { Injectable, Logger } from '@nestjs/common'
+ import { Prisma, UserRole } from '@prisma/client'
+ import { PrismaService } from '../common/prisma/prisma.service'
+@@ -139,7 +140,8 @@
+       where: { id: organizationId },
+       select: { paymentDataThrough: true, paymentDataStaleDays: true },
+     })
+-    return this.evaluate(org, now)
++    const evaluation = this.evaluate(org, now)
++    return await identityOpen(this.prisma, organizationId) ? { ...evaluation, stale: true } : evaluation
+   }
+ 
+   async recordPaymentDataThrough(
+@@ -148,6 +150,7 @@
+     tx?: Prisma.TransactionClient,
+   ): Promise<void> {
+     const db = tx ?? this.prisma
++    if (await identityOpen(db, organizationId)) return
+     const now = new Date()
+     // Dygnsgranulärt + klampa bort orimliga FRAMTIDA datum (en CSV med en rad daterad
+     // 2099 får aldrig sätta datan "färsk i 70 år" och därmed avaktivera grinden).
+@@ -205,6 +208,11 @@
+     })
+ 
+     for (const org of orgs) {
++      if (await identityOpen(this.prisma, org.id)) {
++        stale.add(org.id)
++        this.logger.warn(`Bankidentitet/hanteringsförsök kräver granskning för org ${org.id}`)
++        continue // Existing age-based email is not a truthful identity alert.
++      }
+       const result = this.evaluate(org, now)
+       if (!result.stale) continue
+       stale.add(org.id)
+--- a/apps/api/src/accounting/accounting-period.service.ts
++++ b/apps/api/src/accounting/accounting-period.service.ts
+@@ -1,3 +1,4 @@
++import { identityOpen } from '../reconciliation/bank-event-gate'
+ import {
+   BadRequestException,
+   ConflictException,
+@@ -426,6 +427,7 @@
+         this.checkInvoicesWithoutEntry(organizationId, dagFrom, dagTill),
+         this.checkUnbilledLeases(organizationId, year, month),
+         this.checkUnmatchedBankTransactions(organizationId, from, to),
++      this.checkBankIdentity(organizationId),
+         this.checkVerificationNumberGaps(organizationId, from),
+       ])
+     ).filter((c): c is PeriodCheck => c != null)
+@@ -1061,6 +1063,12 @@
+   }
+ 
+   /** Omatchade banktransaktioner i perioden = möjliga obokförda affärshändelser. */
++  private async checkBankIdentity(organizationId: string): Promise<PeriodCheck | null> {
++    if (!await identityOpen(this.prisma, organizationId)) return null
++    return { code: 'open-bank-identity', severity: 'blocking',
++      message: 'Bankobservationer eller hanteringsförsök kräver granskning. Periodtillhörighet är inte styrkt.' }
++  }
++
+   private async checkUnmatchedBankTransactions(
+     organizationId: string,
+     from: Date,
+--- /dev/null
++++ b/apps/api/src/reconciliation/bank-event-gate.ts
+@@ -0,0 +1,108 @@
++/** UNAPPLIED PROPOSAL. No provider contract is registered by this code. */
++import { AsyncLocalStorage } from 'node:async_hooks'
++import { randomUUID } from 'node:crypto'
++import { Prisma, type BankTransaction } from '@prisma/client'
++import { PrismaService } from '../common/prisma/prisma.service'
++import { currentActor } from '../common/actor/actor.context'
++
++type Db = Pick<Prisma.TransactionClient, '$queryRaw'>
++export type BankOrigin = { kind: 'api' | 'file'; provider: string; consent: string; account: string }
++export type BankObservationBody = {
++  amountOre: number; day: string; booked: boolean; currency: string;
++  rawOcr: string | null; reference: string | null; description: string;
++  [field: string]: unknown;
++}
++export type IdentityImportResult =
++  | { outcome: 'imported' | 'resumed'; transactionId: string; matched: boolean; observationId: string }
++  | { outcome: 'duplicate'; transactionId: string; via: 'verifiedIdentity'; observationId: string }
++  | { outcome: 'held' | 'rejected'; reason: string; observationId: string }
++
++type Observation = { observationId: string; eventId: string | null;
++  bankTransactionId: string | null; outcome: 'READY' | 'REPLAY' | 'HELD' | 'REJECTED'; reason: string }
++const attempt = new AsyncLocalStorage<{ organizationId: string; bankId: string; token: string }>()
++
++export async function identityOpen(db: Db, org: string): Promise<boolean> {
++  const rows = await db.$queryRaw<Array<{ open: boolean }>>`SELECT bank_identity_open(${org}) AS open`
++  return rows[0]?.open !== false // Missing result fails closed.
++}
++export async function identityAllowed(db: Db, org: string, bankId: string): Promise<boolean> {
++  const ctx = attempt.getStore()
++  const token = ctx?.organizationId === org && ctx.bankId === bankId ? ctx.token : null
++  const rows = await db.$queryRaw<Array<{ allowed: boolean }>>`
++    SELECT bank_event_authorized_attempt(${org},${bankId},${token}) AS allowed`
++  return rows[0]?.allowed === true
++}
++/** Inside the existing allocation transaction, BEFORE its bank row lock.
++ * Same org guard as observe/claim prevents a committed conflict being bypassed.
++ * It does not make queues atomic with allocation. Never holds this lock across
++ * a separate transaction or an external operation. */
++export async function lockIdentity(db: Db, org: string, bankId: string): Promise<void> {
++  await db.$queryRaw`SELECT bank_event_guard(${org})`
++  if (!await identityAllowed(db, org, bankId)) throw new Error('BANK_IDENTITY_REVIEW_REQUIRED')
++}
++export async function blockedBankIds(db: Db, org: string): Promise<string[]> {
++  const rows = await db.$queryRaw<Array<{ id: string }>>`
++    SELECT "bankTransactionId" AS id FROM "BankEvent" WHERE "organizationId"=${org}
++    AND "bankTransactionId" IS NOT NULL AND (conflict OR state IN ('PENDING','STARTED','UNCERTAIN'))`
++  return rows.map(row => row.id)
++}
++export async function identitySummary(db: Db, org: string) {
++  const rows = await db.$queryRaw<Array<{ summary: Record<string, unknown> }>>`
++    SELECT jsonb_build_object(
++      'observations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org}),
++      'heldObservations',(SELECT count(*) FROM "BankObservation" WHERE "organizationId"=${org} AND outcome='HELD'),
++      'pendingEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND state='PENDING'),
++      'uncertainEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND state IN ('STARTED','UNCERTAIN')),
++      'conflictedEvents',(SELECT count(*) FROM "BankEvent" WHERE "organizationId"=${org} AND conflict),
++      'identityOpen',bank_identity_open(${org})) AS summary`
++  return rows[0]?.summary
++}
++/** Observations are a separate authenticated staff surface, never a tenant view.
++ * Cursor ordering is stable; original observations are append-only. */
++export async function identityObservations(db: Db, org: string, after: string = '') {
++  return db.$queryRaw<unknown[]>`SELECT id,origin,"externalId",body,"eventId",outcome,reason,"createdAt"
++    FROM "BankObservation" WHERE "organizationId"=${org} AND id>${after} ORDER BY id LIMIT 100`
++}
++
++export async function ingestIdentity(
++  prisma: PrismaService, org: string, origin: BankOrigin | undefined, externalId: string | null,
++  body: BankObservationBody, handle: (bank: BankTransaction) => Promise<boolean>,
++): Promise<IdentityImportResult> {
++  // Registry lookup is server-side. Missing origin cannot acquire verified status.
++  // This central raw-SQL adapter transports the EXISTING actor context; it never
++  // invents a new HUMAN/SYSTEM boundary. Prisma extensions do not see this insert.
++  const actor = currentActor() ?? null
++  const rows = await prisma.$queryRaw<Array<{ result: Observation }>>`
++    SELECT bank_event_observe(${org},${JSON.stringify(origin ?? {})}::jsonb,${externalId},
++      ${JSON.stringify(body)}::jsonb,${actor}) AS result`
++  const observation = rows[0]?.result
++  if (!observation) throw new Error('BANK_OBSERVATION_RESULT_MISSING')
++  const { observationId, eventId, bankTransactionId } = observation
++  if (observation.outcome === 'HELD' || observation.outcome === 'REJECTED') {
++    return { outcome: observation.outcome === 'HELD' ? 'held' : 'rejected', reason: observation.reason, observationId }
++  }
++  if (!eventId || !bankTransactionId) throw new Error('BANK_EVENT_LINK_MISSING')
++  const token = randomUUID()
++  const claims = await prisma.$queryRaw<Array<{ result: { claimed: boolean; reason?: string } }>>`
++    SELECT bank_event_claim(${org},${eventId},${token}) AS result`
++  const claim = claims[0]?.result
++  if (!claim?.claimed) {
++    if (claim?.reason === 'DONE' || claim?.reason === 'LEGACY') {
++      return { outcome: 'duplicate', transactionId: bankTransactionId, via: 'verifiedIdentity', observationId }
++    }
++    return { outcome: 'held', reason: claim?.reason ?? 'CLAIM_RESULT_MISSING', observationId }
++  }
++  try {
++    const bank = await prisma.bankTransaction.findFirstOrThrow({ where: { id: bankTransactionId, organizationId: org } })
++    const matched = await attempt.run({ organizationId: org, bankId: bankTransactionId, token }, () => handle(bank))
++    const finish = await prisma.$queryRaw<Array<{ done: boolean }>>`
++      SELECT bank_event_finish(${org},${eventId},${token},true) AS done`
++    if (finish[0]?.done !== true) throw new Error('BANK_ATTEMPT_FINISH_UNCERTAIN')
++    return { outcome: observation.outcome === 'READY' ? 'imported' : 'resumed', transactionId: bank.id, matched, observationId }
++  } catch {
++    // Persist uncertainty, including a possible partial success. No automatic
++    // retry of this attempt; completion is not inferred from an existing row.
++    await prisma.$queryRaw`SELECT bank_event_finish(${org},${eventId},${token},false)`
++    return { outcome: 'held', reason: 'HANDLING_UNCERTAIN', observationId }
++  }
++}
+--- /dev/null
++++ b/apps/api/prisma/migrations/20260909180000_bank_event_identity_proposal/migration.sql
+@@ -0,0 +1,174 @@
++-- PROPOSED storage, NOT installed in the application. Executed only in an
++-- empty exp_* test schema with a synthetic BankTransaction boundary table.
++-- Registry rows represent separately supplied synthetic administrative proof;
++-- these constraints cannot verify a bank's actual contractual guarantees.
++CREATE UNIQUE INDEX "BankTransaction_id_org_identity_key" ON "BankTransaction"(id,"organizationId");
++CREATE TABLE "BankIdentityScope" (
++ id text PRIMARY KEY, "organizationId" text NOT NULL REFERENCES "Organization"(id) ON DELETE RESTRICT,
++ "bankAccountAnchor" text NOT NULL, "idContract" text NOT NULL,
++ "proofRef" text NOT NULL CHECK(length("proofRef")>0),
++ "legacyThrough" date, "transitionProof" text,
++ UNIQUE(id,"organizationId"), UNIQUE("organizationId","bankAccountAnchor"),
++ CHECK (("legacyThrough" IS NULL)=("transitionProof" IS NULL))
++);
++CREATE TABLE "BankIdentityBinding" (
++ "organizationId" text NOT NULL, provider text NOT NULL, consent text NOT NULL,
++ account text NOT NULL, kind text NOT NULL CHECK(kind IN ('api','file')),
++ "scopeId" text NOT NULL, "proofRef" text NOT NULL CHECK(length("proofRef")>0),
++ PRIMARY KEY("organizationId",provider,consent,account,kind),
++ FOREIGN KEY("scopeId","organizationId") REFERENCES "BankIdentityScope"(id,"organizationId") ON DELETE RESTRICT
++);
++CREATE TABLE "BankIdentityBridge" (
++ "organizationId" text NOT NULL, "scopeId" text NOT NULL, "externalId" text NOT NULL,
++ "bankTransactionId" text NOT NULL UNIQUE, "proofRef" text NOT NULL CHECK(length("proofRef")>0),
++ PRIMARY KEY("scopeId","externalId"),
++ FOREIGN KEY("scopeId","organizationId") REFERENCES "BankIdentityScope"(id,"organizationId") ON DELETE RESTRICT,
++ FOREIGN KEY("bankTransactionId","organizationId") REFERENCES "BankTransaction"(id,"organizationId") ON DELETE RESTRICT
++);
++CREATE TABLE "BankImportGuard" ("organizationId" text PRIMARY KEY REFERENCES "Organization"(id) ON DELETE RESTRICT);
++CREATE TABLE "BankEvent" (
++ id text PRIMARY KEY, "organizationId" text NOT NULL, "scopeId" text NOT NULL,
++ "externalId" text NOT NULL CHECK(length("externalId")>0), body jsonb NOT NULL,
++ "bankTransactionId" text UNIQUE,
++ state text NOT NULL CHECK(state IN ('PENDING','STARTED','DONE','UNCERTAIN','LEGACY')),
++ conflict boolean NOT NULL DEFAULT false,
++ "attemptToken" text, "startedAt" timestamptz, "finishedAt" timestamptz,
++ UNIQUE("scopeId","externalId"), UNIQUE(id,"organizationId"),
++ FOREIGN KEY("scopeId","organizationId") REFERENCES "BankIdentityScope"(id,"organizationId") ON DELETE RESTRICT,
++ FOREIGN KEY("bankTransactionId","organizationId") REFERENCES "BankTransaction"(id,"organizationId") ON DELETE RESTRICT
++);
++CREATE TABLE "BankObservation" (
++ id text PRIMARY KEY, "organizationId" text NOT NULL REFERENCES "Organization"(id) ON DELETE RESTRICT, origin jsonb NOT NULL,
++ "externalId" text, body jsonb NOT NULL, "eventId" text,
++ outcome text NOT NULL, reason text NOT NULL, "createdAt" timestamptz NOT NULL DEFAULT clock_timestamp(),
++ FOREIGN KEY("eventId","organizationId") REFERENCES "BankEvent"(id,"organizationId") ON DELETE RESTRICT
++);
++CREATE INDEX "BankObservation_org_outcome" ON "BankObservation"("organizationId",outcome);
++CREATE FUNCTION bank_observation_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN RAISE EXCEPTION 'BANK_OBSERVATION_APPEND_ONLY'; END $$;
++CREATE TRIGGER bank_observation_append_only BEFORE UPDATE OR DELETE ON "BankObservation"
++ FOR EACH ROW EXECUTE FUNCTION bank_observation_immutable();
++
++-- All event decisions/claims use the SAME org guard. This deliberately coarse
++-- lock protects both uniqueness and the absence-of-legacy-row predicate.
++-- Rollout still requires stopping old writers: they do not take this new lock.
++CREATE FUNCTION bank_event_guard(p_org text) RETURNS void LANGUAGE plpgsql AS $$
++BEGIN
++ INSERT INTO "BankImportGuard" VALUES(p_org) ON CONFLICT DO NOTHING;
++ PERFORM 1 FROM "BankImportGuard" WHERE "organizationId"=p_org FOR UPDATE;
++END $$;
++
++CREATE FUNCTION bank_event_observe(p_org text,p_origin jsonb,p_external text,p_body jsonb,p_actor text DEFAULT NULL)
++RETURNS jsonb LANGUAGE plpgsql AS $$
++DECLARE
++ s "BankIdentityScope"; e "BankEvent"; old "BankTransaction";
++ bridge_id text; obs text:=gen_random_uuid()::text; eid text; bid text;
++ decision text:='HELD'; why text:='UNVERIFIED_SOURCE'; money bigint; day date;
++ valid boolean:=false; canonical jsonb;
++BEGIN
++ IF p_actor IS NOT NULL AND p_actor NOT IN ('HUMAN','SYSTEM','AGENT') THEN RAISE EXCEPTION 'INVALID_ACTOR'; END IF;
++ PERFORM bank_event_guard(p_org);
++ -- Keep ALL original fields in the observation. Canonical content only uses
++ -- the explicit, frozen payment fields; prose stays available separately.
++ canonical:=jsonb_build_object('amountOre',p_body->'amountOre','day',p_body->'day',
++   'booked',p_body->'booked','currency',p_body->'currency',
++   'rawOcr',p_body->'rawOcr','reference',p_body->'reference');
++ BEGIN
++   money:=(p_body->>'amountOre')::bigint; day:=(p_body->>'day')::date;
++   valid:=money>0 AND jsonb_typeof(p_body->'amountOre')='number'
++     AND (p_body->>'amountOre')::numeric=money AND p_body->>'booked'='true'
++     AND p_body->>'currency'='SEK' AND day IS NOT NULL;
++ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR datetime_field_overflow THEN
++   valid:=false;
++ END;
++ SELECT sc.* INTO s FROM "BankIdentityBinding" b JOIN "BankIdentityScope" sc
++   ON sc.id=b."scopeId" AND sc."organizationId"=b."organizationId"
++   WHERE b."organizationId"=p_org AND b.provider=p_origin->>'provider'
++   AND b.consent=p_origin->>'consent' AND b.account=p_origin->>'account'
++   AND b.kind=p_origin->>'kind';
++ IF s.id IS NOT NULL AND coalesce(p_external,'')<>'' THEN
++   SELECT * INTO e FROM "BankEvent" WHERE "scopeId"=s.id AND "externalId"=p_external FOR UPDATE;
++   IF e.id IS NOT NULL THEN
++     eid:=e.id;bid:=e."bankTransactionId";
++     IF e.body<>canonical THEN
++       UPDATE "BankEvent" SET conflict=true WHERE id=e.id;
++       why:='CONTENT_CONFLICT';
++     ELSIF e.conflict THEN why:='PRIOR_CONTENT_CONFLICT';
++     ELSE decision:='REPLAY';why:=e.state;
++     END IF;
++   ELSIF NOT coalesce(valid,false) THEN decision:='REJECTED';why:='NOT_ELIGIBLE_PAYMENT';
++   ELSE
++     SELECT "bankTransactionId" INTO bridge_id FROM "BankIdentityBridge"
++       WHERE "organizationId"=p_org AND "scopeId"=s.id AND "externalId"=p_external;
++     IF bridge_id IS NOT NULL THEN
++       SELECT * INTO old FROM "BankTransaction" WHERE id=bridge_id AND "organizationId"=p_org;
++       IF old.amount*100<>money OR old.date::date<>day OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr' OR old.reference IS DISTINCT FROM p_body->>'reference' THEN
++         why:='LEGACY_CONTENT_CONFLICT';
++       ELSE
++         eid:=gen_random_uuid()::text;bid:=bridge_id;
++         INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
++           VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
++         decision:='REPLAY';why:='VERIFIED_LEGACY_BRIDGE';
++       END IF;
++     ELSIF EXISTS(SELECT 1 FROM "BankTransaction" b WHERE b."organizationId"=p_org
++           AND NOT EXISTS(SELECT 1 FROM "BankEvent" x WHERE x."bankTransactionId"=b.id))
++           AND NOT (s."legacyThrough" IS NOT NULL AND day>s."legacyThrough" AND length(s."transitionProof")>0
++             AND NOT EXISTS(SELECT 1 FROM "BankTransaction" later WHERE later."organizationId"=p_org
++               AND later.date::date>s."legacyThrough"
++               AND NOT EXISTS(SELECT 1 FROM "BankEvent" le WHERE le."bankTransactionId"=later.id))) THEN
++       why:='LEGACY_CONTINUITY_UNPROVEN';
++     ELSE
++       eid:=gen_random_uuid()::text;bid:=gen_random_uuid()::text;
++       INSERT INTO "BankTransaction"(id,"organizationId",date,description,amount,"rawOcr",reference,balance,"actorKind")
++         VALUES(bid,p_org,day,coalesce(p_body->>'description',''),money::numeric/100,
++           p_body->>'rawOcr',p_body->>'reference',(p_body->>'balance')::numeric,p_actor::"ActorKind");
++       INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
++         VALUES(eid,p_org,s.id,p_external,canonical,bid,'PENDING');
++       decision:='READY';why:='VERIFIED_NEW_EVENT';
++     END IF;
++   END IF;
++ ELSIF NOT coalesce(valid,false) THEN decision:='REJECTED';why:='NOT_ELIGIBLE_PAYMENT';
++ END IF;
++ INSERT INTO "BankObservation"(id,"organizationId",origin,"externalId",body,"eventId",outcome,reason)
++   VALUES(obs,p_org,p_origin,p_external,p_body,eid,decision,why);
++ RETURN jsonb_build_object('observationId',obs,'eventId',eid,'bankTransactionId',bid,'outcome',decision,'reason',why);
++END $$;
++
++CREATE FUNCTION bank_event_claim(p_org text,p_event text,p_token text) RETURNS jsonb LANGUAGE plpgsql AS $$
++DECLARE e "BankEvent";
++BEGIN
++ PERFORM bank_event_guard(p_org);
++ SELECT * INTO e FROM "BankEvent" WHERE id=p_event AND "organizationId"=p_org FOR UPDATE;
++ IF e.id IS NULL THEN RETURN jsonb_build_object('claimed',false,'reason','NOT_FOUND'); END IF;
++ IF e.state<>'PENDING' OR e.conflict THEN RETURN jsonb_build_object('claimed',false,'reason',CASE WHEN e.conflict THEN 'CONFLICT' ELSE e.state END); END IF;
++ IF coalesce(p_token,'')='' THEN RAISE EXCEPTION 'ATTEMPT_TOKEN_REQUIRED'; END IF;
++ UPDATE "BankEvent" SET state='STARTED',"attemptToken"=p_token,"startedAt"=clock_timestamp() WHERE id=e.id;
++ RETURN jsonb_build_object('claimed',true,'bankTransactionId',e."bankTransactionId",'token',p_token);
++END $$;
++
++CREATE FUNCTION bank_event_finish(p_org text,p_event text,p_token text,p_success boolean) RETURNS boolean LANGUAGE plpgsql AS $$
++DECLARE changed integer;
++BEGIN
++ PERFORM bank_event_guard(p_org);
++ UPDATE "BankEvent" SET state=CASE WHEN p_success THEN 'DONE' ELSE 'UNCERTAIN' END,"finishedAt"=clock_timestamp()
++   WHERE id=p_event AND "organizationId"=p_org AND state='STARTED' AND "attemptToken"=p_token;
++ GET DIAGNOSTICS changed=ROW_COUNT;
++ RETURN changed=1;
++END $$;
++
++-- Read gates for automatic rematching, shadow work and collection/period checks.
++CREATE FUNCTION bank_identity_open(p_org text) RETURNS boolean LANGUAGE sql STABLE AS $$
++ SELECT EXISTS(SELECT 1 FROM "BankObservation" WHERE "organizationId"=p_org AND outcome='HELD')
++ OR EXISTS(SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND (state IN ('PENDING','STARTED','UNCERTAIN') OR conflict))
++$$;
++CREATE FUNCTION bank_event_allows_automatic(p_org text,p_bank text) RETURNS boolean LANGUAGE sql STABLE AS $$
++ SELECT EXISTS(SELECT 1 FROM "BankTransaction" WHERE "organizationId"=p_org AND id=p_bank)
++ AND NOT EXISTS(SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND "bankTransactionId"=p_bank
++   AND (state IN ('PENDING','STARTED','UNCERTAIN') OR conflict))
++$$;
++
++CREATE FUNCTION bank_event_authorized_attempt(p_org text,p_bank text,p_token text) RETURNS boolean LANGUAGE sql STABLE AS $$
++ SELECT bank_event_allows_automatic(p_org,p_bank) OR EXISTS(
++  SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND "bankTransactionId"=p_bank
++  AND state='STARTED' AND NOT conflict AND "attemptToken"=p_token AND p_token IS NOT NULL)
++$$;
+--- a/apps/api/prisma/schema.prisma
++++ b/apps/api/prisma/schema.prisma
+@@ -598,6 +598,9 @@
+ // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
+ 
+ model Organization {
++  bankIdentityScopes BankIdentityScope[]
++  bankImportGuard BankImportGuard?
++  bankObservations BankObservation[]
+   id                   String             @id @default(uuid())
+   name                 String
+   orgNumber            String?            @unique
+@@ -2514,6 +2517,9 @@
+ // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
+ 
+ model BankTransaction {
++  identityEvent BankEvent?
++  identityBridge BankIdentityBridge?
++  @@unique([id, organizationId], map: "BankTransaction_id_org_identity_key")
+   id                  String                @id @default(uuid())
+   organizationId      String
+   date                DateTime
+@@ -7049,3 +7055,78 @@
+ 
+   @@index([delegationId, createdAt])
+ }
++
++// Proposed registry tables. Empty on deployment; proof strings are audit links,
++// not a machine verification of the underlying bank contract.
++model BankIdentityScope {
++  id String @id
++  organizationId String
++  bankAccountAnchor String
++  idContract String
++  proofRef String
++  legacyThrough DateTime? @db.Date
++  transitionProof String?
++  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
++  bindings BankIdentityBinding[]
++  bridges BankIdentityBridge[]
++  events BankEvent[]
++  @@unique([id, organizationId])
++  @@unique([organizationId, bankAccountAnchor])
++}
++model BankIdentityBinding {
++  organizationId String
++  provider String
++  consent String
++  account String
++  kind String
++  scopeId String
++  proofRef String
++  scope BankIdentityScope @relation(fields: [scopeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
++  @@id([organizationId, provider, consent, account, kind])
++}
++model BankIdentityBridge {
++  organizationId String
++  scopeId String
++  externalId String
++  bankTransactionId String @unique
++  proofRef String
++  scope BankIdentityScope @relation(fields: [scopeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
++  bankTransaction BankTransaction @relation(fields: [bankTransactionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
++  @@id([scopeId, externalId])
++}
++model BankImportGuard {
++  organizationId String @id
++  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
++}
++model BankEvent {
++  id String @id
++  organizationId String
++  scopeId String
++  externalId String
++  body Json
++  bankTransactionId String? @unique
++  state String
++  conflict Boolean @default(false)
++  attemptToken String?
++  startedAt DateTime? @db.Timestamptz
++  finishedAt DateTime? @db.Timestamptz
++  scope BankIdentityScope @relation(fields: [scopeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
++  bankTransaction BankTransaction? @relation(fields: [bankTransactionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
++  observations BankObservation[]
++  @@unique([scopeId, externalId])
++  @@unique([id, organizationId])
++}
++model BankObservation {
++  id String @id
++  organizationId String
++  origin Json
++  externalId String?
++  body Json
++  eventId String?
++  outcome String
++  reason String
++  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz
++  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
++  event BankEvent? @relation(fields: [eventId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
++  @@index([organizationId, outcome], map: "BankObservation_org_outcome")
++}

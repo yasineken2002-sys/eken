@@ -1,0 +1,43 @@
+{
+  "kind": "ACTUAL_POSTGRES_SQL_ONLY",
+  "passed": [
+    "concurrent_claim_one_winner",
+    "only_winning_internal_token",
+    "wrong_org_denied",
+    "absent_bank_denied",
+    "conflict_commits_before_claim_denies",
+    "observation_update_denied",
+    "observation_delete_denied",
+    "second_namespace_same_account_denied",
+    "binding_cross_org_denied",
+    "trusted_actor_balance_preserved",
+    "contradictory_cutover_denied"
+  ],
+  "count": 11,
+  "claimContentionWitness": {
+    "separateSessions": 2,
+    "secondSessionLockWaitObserved": true
+  },
+  "database": {
+    "database": "eveno_tillgodo_test",
+    "address": null,
+    "dataDirectory": "/var/lib/postgresql/data",
+    "listen": "",
+    "version": "PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "fsync": "on",
+    "synchronousCommit": "on",
+    "userTables": 0,
+    "network": "none",
+    "ports": [],
+    "memoryLimitBytes": 536870912,
+    "dataStorage": "isolated tmpfs; not host-crash durability proof"
+  },
+  "headAtRun": "695b539fb8f25a2df8ed1d339d0bfc4135b76acd",
+  "sourceHashes": {
+    "apps/api/scripts/bankevent_proposal/controls.py": "d3886a3c893437bd741826e0c3cb1941e92a8d0b72d4add84e330bf4ba78c90f",
+    "apps/api/scripts/bankevent_proposal/run.py": "4bd275b8785faa051ceaa5ef48b4374dc838d27c21333654f779de0f403d4ffa",
+    "apps/api/scripts/bankevent_proposal/storage.sql": "677540b5413d8deefa913235a5dcf69ba98ad30ad34fa51ff5fcb57ecd150bad",
+    "apps/api/scripts/tillgodo_pg.py": "de88b82390b82c9373f4886fe01ec4448c3379778a4c119d01c6cd4c387565ed",
+    "docs/eval/bankhandelse-forslag/sql-kontroller-facit.json": "bf8357caf03a1bb32d8b08afb89cae13083e4c7d186efc5af886d1670644c191"
+  }
+}
