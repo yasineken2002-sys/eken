@@ -58,7 +58,7 @@ BEGIN
  PERFORM 1 FROM "BankImportGuard" WHERE "organizationId"=p_org FOR UPDATE;
 END $$;
 
-CREATE FUNCTION bank_event_observe(p_org text,p_origin jsonb,p_external text,p_body jsonb)
+CREATE FUNCTION bank_event_observe(p_org text,p_origin jsonb,p_external text,p_body jsonb,p_actor text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
  s "BankIdentityScope"; e "BankEvent"; old "BankTransaction";
@@ -66,6 +66,7 @@ DECLARE
  decision text:='HELD'; why text:='UNVERIFIED_SOURCE'; money bigint; day date;
  valid boolean:=false; canonical jsonb;
 BEGIN
+ IF p_actor IS NOT NULL AND p_actor NOT IN ('HUMAN','SYSTEM','AGENT') THEN RAISE EXCEPTION 'INVALID_ACTOR'; END IF;
  PERFORM bank_event_guard(p_org);
  -- Keep ALL original fields in the observation. Canonical content only uses
  -- the explicit, frozen payment fields; prose stays available separately.
@@ -101,7 +102,7 @@ BEGIN
        WHERE "organizationId"=p_org AND "scopeId"=s.id AND "externalId"=p_external;
      IF bridge_id IS NOT NULL THEN
        SELECT * INTO old FROM "BankTransaction" WHERE id=bridge_id AND "organizationId"=p_org;
-       IF old.amount*100<>money OR old.date::date<>day OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr' THEN
+       IF old.amount*100<>money OR old.date::date<>day OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr' OR old.reference IS DISTINCT FROM p_body->>'reference' THEN
          why:='LEGACY_CONTENT_CONFLICT';
        ELSE
          eid:=gen_random_uuid()::text;bid:=bridge_id;
@@ -111,13 +112,16 @@ BEGIN
        END IF;
      ELSIF EXISTS(SELECT 1 FROM "BankTransaction" b WHERE b."organizationId"=p_org
            AND NOT EXISTS(SELECT 1 FROM "BankEvent" x WHERE x."bankTransactionId"=b.id))
-           AND NOT (s."legacyThrough" IS NOT NULL AND day>s."legacyThrough" AND length(s."transitionProof")>0) THEN
+           AND NOT (s."legacyThrough" IS NOT NULL AND day>s."legacyThrough" AND length(s."transitionProof")>0
+             AND NOT EXISTS(SELECT 1 FROM "BankTransaction" later WHERE later."organizationId"=p_org
+               AND later.date::date>s."legacyThrough"
+               AND NOT EXISTS(SELECT 1 FROM "BankEvent" le WHERE le."bankTransactionId"=later.id))) THEN
        why:='LEGACY_CONTINUITY_UNPROVEN';
      ELSE
        eid:=gen_random_uuid()::text;bid:=gen_random_uuid()::text;
-       INSERT INTO "BankTransaction"(id,"organizationId",date,description,amount,"rawOcr",reference)
+       INSERT INTO "BankTransaction"(id,"organizationId",date,description,amount,"rawOcr",reference,balance,"actorKind")
          VALUES(bid,p_org,day,coalesce(p_body->>'description',''),money::numeric/100,
-           p_body->>'rawOcr',p_body->>'reference');
+           p_body->>'rawOcr',p_body->>'reference',(p_body->>'balance')::numeric,p_actor::"ActorKind");
        INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
          VALUES(eid,p_org,s.id,p_external,canonical,bid,'PENDING');
        decision:='READY';why:='VERIFIED_NEW_EVENT';
@@ -158,6 +162,13 @@ CREATE FUNCTION bank_identity_open(p_org text) RETURNS boolean LANGUAGE sql STAB
  OR EXISTS(SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND (state IN ('PENDING','STARTED','UNCERTAIN') OR conflict))
 $$;
 CREATE FUNCTION bank_event_allows_automatic(p_org text,p_bank text) RETURNS boolean LANGUAGE sql STABLE AS $$
- SELECT NOT EXISTS(SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND "bankTransactionId"=p_bank
+ SELECT EXISTS(SELECT 1 FROM "BankTransaction" WHERE "organizationId"=p_org AND id=p_bank)
+ AND NOT EXISTS(SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND "bankTransactionId"=p_bank
    AND (state IN ('PENDING','STARTED','UNCERTAIN') OR conflict))
+$$;
+
+CREATE FUNCTION bank_event_authorized_attempt(p_org text,p_bank text,p_token text) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT bank_event_allows_automatic(p_org,p_bank) OR EXISTS(
+  SELECT 1 FROM "BankEvent" WHERE "organizationId"=p_org AND "bankTransactionId"=p_bank
+  AND state='STARTED' AND NOT conflict AND "attemptToken"=p_token AND p_token IS NOT NULL)
 $$;

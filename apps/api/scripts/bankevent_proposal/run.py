@@ -21,11 +21,12 @@ TABLES=['BankIdentityScope','BankIdentityBinding','BankIdentityBridge','BankEven
 
 def setup(pg,schema,case):
     pg.sql('CREATE SCHEMA '+schema+';')
-    pg.sql('''CREATE TABLE "Organization"(id text PRIMARY KEY);
+    pg.sql('''CREATE TYPE "ActorKind" AS ENUM ('HUMAN','SYSTEM','AGENT');
+      CREATE TABLE "Organization"(id text PRIMARY KEY);
       INSERT INTO "Organization" VALUES ('org-A'),('org-B');
       CREATE TABLE "BankTransaction"(id text PRIMARY KEY,"organizationId" text NOT NULL REFERENCES "Organization"(id),
        date timestamp NOT NULL, description text NOT NULL, amount numeric(12,2) NOT NULL,
-       "rawOcr" text, reference text, "externalId" text, status text NOT NULL DEFAULT 'UNMATCHED',
+       "rawOcr" text, reference text, balance numeric(12,2), "actorKind" "ActorKind", "externalId" text, status text NOT NULL DEFAULT 'UNMATCHED',
        UNIQUE("organizationId","externalId"));
       -- Deliberately NO uniqueness/balance constraint on simulated downstream
       -- markers: it must be possible for a broken claim to show extra calls/money.
@@ -61,12 +62,12 @@ def snapshot(pg,schema):
     return json.loads(pg.sql('SELECT jsonb_build_object('+','.join(parts)+');',schema))
 
 
-def race(pg,schema,steps):
+def race_sql(pg,schema,statements):
     commands=[];children=[]
     try:
-        for index,step in enumerate(steps):
+        for index,statement in enumerate(statements):
             prefix='SET search_path TO '+schema+',pg_catalog; BEGIN;\n'
-            sql=prefix+query(step)+('\nSELECT pg_sleep(2);' if index==0 else '')+'\nCOMMIT;'
+            sql=prefix+statement+('\nSELECT pg_sleep(2);' if index==0 else '')+'\nCOMMIT;'
             p=subprocess.Popen(pg.command('bankevent-race-'+str(index)),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             children.append(p);p.stdin.write(sql);p.stdin.close();p.stdin=None
             if index==0:
@@ -113,7 +114,7 @@ def run_case(pg,case,index):
         assert done=='t';trace.append({'phase':'finish','eventId':outcome['eventId'],'result':done})
     outcomes=[]
     if case['mode']=='concurrent':
-        outcomes,overlap=race(pg,schema,case['steps'])
+        outcomes,overlap=race_sql(pg,schema,[query(step) for step in case['steps']])
         for step,outcome in zip(case['steps'],outcomes):
             trace.append({'phase':'observe','input':step,'result':outcome});dispatch(step,outcome)
     else:
@@ -143,12 +144,14 @@ def main():
     for name in ['indata.json','facit.json']:
         file='docs/eval/bankhandelse-forslag/'+name
         assert (ROOT/file).read_bytes()==subprocess.check_output(['git','show','9f9b692b:'+file],cwd=ROOT)
+    corrected='docs/eval/bankhandelse-forslag/indata-v2.json'
+    assert (ROOT/corrected).read_bytes()==subprocess.check_output(['git','show','215a606d:'+corrected],cwd=ROOT)
     historic={}
     paths=subprocess.check_output(['git','ls-tree','-r','--name-only',BASE,'--','docs/eval','apps/api/src/reconciliation','apps/api/src/psd2','apps/api/prisma/schema.prisma'],cwd=ROOT,text=True).splitlines()
     for file in paths:
         old=subprocess.check_output(['git','show',BASE+':'+file],cwd=ROOT)
         assert (ROOT/file).read_bytes()==old,file;historic[file]=sha(old)
-    inputs=json.loads((DATA/'indata.json').read_text()) # facit bytes checked, never consumed as decisions
+    inputs=json.loads((DATA/'indata-v2.json').read_text()) # facit bytes checked, never consumed as decisions
     pg=Postgres();results=[]
     try:
         pg.start()
@@ -156,7 +159,7 @@ def main():
             results.append(run_case(pg,case,index));print('Captured SQL component:',case['id'],flush=True)
         raw=json.dumps({'kind':'PROPOSED_SQL_COMPONENT_NOT_PRODUCTION_IMPORT','cases':results},ensure_ascii=False,separators=(',',':')).encode()
         (out/'observationer.json.gz').write_bytes(gzip.compress(raw,mtime=0))
-        files=[p for p in HERE.iterdir() if p.is_file()]+[DATA/'indata.json',DATA/'facit.json',HERE.parent/'tillgodo_pg.py']
+        files=[p for p in HERE.iterdir() if p.is_file()]+[DATA/'indata.json',DATA/'indata-v2.json',DATA/'facit.json',HERE.parent/'tillgodo_pg.py']
         manifest={'base':BASE,'headAtRun':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'database':pg.identity,'sourceHashes':{p.relative_to(ROOT).as_posix():sha(p.read_bytes()) for p in files},
             'preservedHashes':historic,'observationSha256':sha(raw),'gzipSha256':sha((out/'observationer.json.gz').read_bytes())}

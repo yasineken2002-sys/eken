@@ -1,0 +1,13 @@
+{
+  "concurrent_claim_one_winner": "Två riktiga överlappande PostgreSQL-sessioner, observerad låsväntan, exakt ett vunnet anspråk.",
+  "only_winning_internal_token": "Endast det serverinterna vinnande försöket får passera STARTED-grinden.",
+  "wrong_org_denied": "Vunnen token ger ingen rätt i annan organisation.",
+  "absent_bank_denied": "Saknad betalningsrad får inte ge godkänd grind.",
+  "conflict_commits_before_claim_denies": "En konflikt som får organisationslåset först blockerar ett samtidigt anspråk.",
+  "observation_update_denied": "Ursprunglig observation kan inte skrivas om.",
+  "observation_delete_denied": "Ursprunglig observation kan inte raderas.",
+  "second_namespace_same_account_denied": "Samma kanoniska konto får inte registreras som två oberoende namespaces i samma organisation.",
+  "binding_cross_org_denied": "En kontobindning får inte peka till annan organisations namespace.",
+  "trusted_actor_balance_preserved": "Separat syntetisk betrodd SYSTEM-kontext och ingående saldouppgift bevaras. Inte prov av riktig AsyncLocalStorage/Prisma-extension.",
+  "contradictory_cutover_denied": "Äldre okopplad rad efter granskad datumgräns blockerar övergångsantagandet. Inga historiska rader ändras av beslutsfunktionen."
+}

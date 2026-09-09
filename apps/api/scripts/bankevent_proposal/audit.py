@@ -14,7 +14,7 @@ ore=lambda value:int(Decimal(str(value))*100)
 
 
 def audit(observed):
-    inputs=json.loads((DATA/'indata.json').read_text())['cases']
+    inputs=json.loads((DATA/'indata-v2.json').read_text())['cases']
     expected=json.loads((DATA/'facit.json').read_text())['cases']
     assert observed['kind']=='PROPOSED_SQL_COMPONENT_NOT_PRODUCTION_IMPORT'
     assert len(observed['cases'])==len(inputs)==len(expected)==31
