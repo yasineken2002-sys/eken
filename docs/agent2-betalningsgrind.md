@@ -1,13 +1,49 @@
 # Agent 2: prövbar kontroll före en möjlig framtida automatisk matchning
 
 Kontrollen är byggd som ett fristående experiment i utkast #856.
-Nya modellprov är förberedda men väntar på användarens godkännande av högst
-64 ytterligare anrop med den sparade utvecklingsnyckeln. Inga nya API-anrop
-har gjorts i detta tillägg.
+Den nya modellkörningen 2026-09-09 är genomförd efter användarens uttryckliga
+godkännande av högst 64 ytterligare anrop. 62 Anthropic-anrop gav 64
+observationer: ett fall utan kandidater avgjordes av regler i båda omgångarna.
+Körd kod: `60565a5bcbc62f7f2fbf81da7e551b17923129e8`, oförändrad under provet.
 
 Kontrollen rättar alla sex tidigare kända feltyper i återspel: 40/52 → 52/52
 korrekta bedömningar. Ett äldre material förblir 32/32. Detta är utvecklings-
 material som har påverkat lösningen. Det är inte bevis för 99,1 procent i drift.
+
+## Ny modellkörning: 32 fall i två omgångar
+
+| Mått | Före kontroll | Efter kontroll |
+| --- | --- | --- |
+| Rätt identitet och hantering, samma 64 observationer | 40/64 (62,5 %) | 64/64 (100 %) |
+| Rätt per omgång | 20/32 | 32/32 |
+
+- 16 provmatchningar av 64 observationer, motsvarande **8 unika grundfall**.
+  Samtliga stämmer med det förhandsbestämda automatikfacitet: noll felaktiga
+  provmatchningar och noll missade förväntade provmatchningar.
+- Täckning **25 %**, manuell andel **75 %**. Fördelningen gäller det avsiktligt
+  svåra syntetiska materialet, inte en prognos för riktiga bankflöden.
+- Noll tidigare korrekta bedömningar förlorades. Ursprungliga bedömningar och
+  alla kandidater bevarades. Tolv grundfall rättades i båda repetitionerna.
+- Bedömningar, kontrollutfall och val av provkandidat var identiska mellan
+  repetitionerna. Två upprepningar är fortfarande bara 32 konstruerade fall;
+  precisionen på valda matchningar bygger på åtta unika fall.
+- 62 tolkbara modellsvar, två regelutfall, noll tekniska bortfall. Modell
+  `claude-haiku-4-5-20251001`, 85 676 in-token och 3 648 ut-token. Inga återförsök.
+- Äldre återspel förblir 52/52 respektive 32/32. Ingen kod, prompt eller facit
+  ändrades för denna körning och inget verkställdes.
+
+Full rapport med anrop, råa svar och facit:
+[`agent2-betalningsgrind-modell.json`](./eval/agent2-betalningsgrind-modell.json).
+Separat omräkning:
+[`agent2-betalningsgrind-modell-kontroll.json`](./eval/agent2-betalningsgrind-modell-kontroll.json).
+Alla 13 källhashar verifierades mot körd kod. Separat kontroll med Python
+räknade om resultaten, jämförde facit, ursprungliga svar och kandidater, samt
+kontrollerade provmatchningarnas ören mot betalning och skuld med Decimal.
+Rapportens SHA-256 finns i kontrollfilen. Kodproven nedan gäller den redan
+verifierade implementationen; denna uppföljning tillför bara mätdata och text.
+
+**99,1 procent i drift är fortfarande inte belagt.** Resultatet motiverar
+fortsatt granskning och oberoende representativ mätning, inte aktivering.
 
 ## Lösningen som prövas
 

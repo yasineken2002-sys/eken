@@ -138,8 +138,13 @@ belopp inom skuld och känt komplett underlag. Det är inget verkställighetstil
 
 Återspel på de kända felen: **40/52 → 52/52**, äldre material **32/32 → 32/32**,
 utan tappade tidigare korrekta bedömningar. Materialet användes i utvecklingen.
-32 nya förhandsmärkta fall är förberedda för två modellrepetitioner men ännu
-inte körda; användargodkännande för ytterligare API-anrop inväntas.
+32 nya förhandsmärkta fall är nu körda i två modellrepetitioner efter uttryckligt
+användargodkännande: **40/64 → 64/64** rätt på samma modellobservationer, noll
+tappade tidigare korrekta bedömningar. 62 faktiska anrop och två regelutfall,
+noll tekniska bortfall. 16/16 provmatchningar rätt enligt syntetiskt facit,
+men det är åtta unika fall: täckning 25 %, manuell andel 75 %. Inga förväntade
+provmatchningar missades. Alla kandidater bevarades. Kod, prompt och facit var
+oförändrade på `60565a5`. Full rapport: `docs/eval/agent2-betalningsgrind-modell.json`.
 
 **99,1 procent i drift är inte belagt.** Mät både precision och manuell andel
 på oberoende representativa bankrader före skarp automatik. Matchningsprodukten

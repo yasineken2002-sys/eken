@@ -1,0 +1,80 @@
+{
+  "rapportSha256": "0d8dd2943d90c0f349cf20226e528157688a11f2b2401047e77d5c5a6e00dddc",
+  "kordKodSha": "60565a5bcbc62f7f2fbf81da7e551b17923129e8",
+  "kallhasharVerifierade": 13,
+  "oberoendeOmrakning": {
+    "antal": 64,
+    "grundfall": 32,
+    "foreRatt": 40,
+    "efterRatt": 64,
+    "tidigareKorrektForlorat": 0,
+    "bortfall": 0,
+    "provmatchningar": 16,
+    "felaktigaProvmatchningar": 0,
+    "missadeProvmatchningar": 0
+  },
+  "status": {
+    "SVAR": 62,
+    "REGEL": 2
+  },
+  "anrop": 62,
+  "usage": {
+    "inputTokens": 85676,
+    "outputTokens": 3648
+  },
+  "manuellAndel": 0.75,
+  "olikaBedomningarMellanRepetitioner": [],
+  "rattadeGrundfall": [
+    "101-ore-under",
+    "en-krona-over",
+    "101-ore-over",
+    "samma-person-tva-skulder",
+    "ocr-konflikt-referens",
+    "ocr-konflikt-fullnamn",
+    "okand-referens-med-namn",
+    "referens-med-suffix",
+    "referens-med-bokstav",
+    "kand-plus-okand",
+    "dubbel-referens-i-registret",
+    "dubbel-ocr-nara"
+  ],
+  "allKandidaterOchUrsprungsbedomningarBevarade": true,
+  "pengarVerifieradeMedDecimal": true,
+  "historiskaAterspel": {
+    "nyare": {
+      "antal": 52,
+      "grundfall": 26,
+      "foreRatt": 40,
+      "efterRatt": 52,
+      "tidigareKorrektForlorat": 0,
+      "bortfall": 0,
+      "provmatchningar": 8,
+      "provmatchningarMedFacit": 0,
+      "felaktigaProvmatchningar": null,
+      "missadeProvmatchningar": null,
+      "precisionPaValda": null,
+      "tackning": null,
+      "underlag": "SYNTETISKT",
+      "mal99_1BelagtIDrift": false,
+      "automatiskVerkstallning": false
+    },
+    "aldre": {
+      "antal": 32,
+      "grundfall": 16,
+      "foreRatt": 32,
+      "efterRatt": 32,
+      "tidigareKorrektForlorat": 0,
+      "bortfall": 0,
+      "provmatchningar": 8,
+      "provmatchningarMedFacit": 0,
+      "felaktigaProvmatchningar": null,
+      "missadeProvmatchningar": null,
+      "precisionPaValda": null,
+      "tackning": null,
+      "underlag": "SYNTETISKT",
+      "mal99_1BelagtIDrift": false,
+      "automatiskVerkstallning": false
+    }
+  },
+  "ingenAutomatiskVerkstallning": true
+}
