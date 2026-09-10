@@ -35,5 +35,29 @@ Slutsatserna grundas på läsning, inte egen körning av tester eller bankintegr
 
 ## Slutgranskning
 
-Fylls med de två separata granskarnas frysta SHA, konkreta fynd och huvudagentens
-bedömning innan PR-leverans. Ingen godkänd produktionsfix påstås av underlaget.
+Två självständiga granskningar av **samma frysta**
+`6264d3ad74997d4db97c62d7c6407b686b1d46ca` genomfördes via Git-objekt.
+`/root/bankhandelse_integritet` och `/root/bankhandelse_pengar_slut`, båda
+GPT-6 Astra xhigh. Den andra läste bokforings-expert/code-reviewer som bakgrund.
+Båda begärde ändringar; deras slutsatser kom före att de såg varandras svar.
+
+| Fynd och fryst fil:rad | Konkret scenario/bevis | Huvudagentens bedömning |
+| --- | --- | --- |
+| Integritet HIGH: build_patch.py:85–94, kandidat.patch:287/295 | Vattenfallet efter misslyckad enskild avimatch saknar grinden; en emellan committad konflikt kan passeras. Härlett ur aktuell metod :2143–2157, inte kört. | Accepterat. Tredje allokeringskärnan får samma lås. Textkontrollen täcker alla tre och tre borttagna grindar måste nekas. Ingen faktisk allokering påstås körd. |
+| Integritet HIGH: storage.sql:73–75 | Samma ID ändrar F-2026-001 till F-2026-002 i description, men den gamla kanoniska jämförelsen såg ingen konflikt. Matchningen använder description på :1008–1010. | Accepterat. Hela description jämförs även för legacy; separat negativt scenarios krav frystes före körning. |
+| Båda HIGH/P1: storage.sql:103–107, :164–167 | Styrkt brygga till äldre UNMATCHED 100 kr, ny observation 120 kr: HELD utan eventlänk lämnade bankraden tillåten. Tidigare legacyfixture alltid MATCHED dolde detta. | Accepterat. Skapa beständig konfliktlänk till äldre rad, aldrig omskrivning av den. Extra prov använder uttryckligen syntetisk UNMATCHED-rad och kräver nekad automatik. |
+| Båda MEDIUM/P2: kandidat.patch:69–77, helper:76 | Filcallers saknar identity och sparar origin={}, trots känt filnamn/format. | Accepterat. Känd proveniens transporteras separat; okänt bankkonto/namespace lämnas okänt. SQL-fixturernas färdiga origin är inte adapterbevis. |
+| Integritet MEDIUM: kandidat.patch:307/315 | Ny bankIdentity-egenskap saknas i ReconciliationStats-returkontrakt. | Accepterat. Explicit IdentitySummary-typ och tillägg i returtypen. Syntax kontrolleras, full typkontroll återstår. |
+| Pengar P2: kandidat.patch:468–477 | PENDING återupptas och matchas, men bara resumed ökar; utfallet försvinner ur historik. | Accepterat. Separata resumedMatched/resumedUnmatched och samma metadata i synkhistoriken. Nya och återupptagna räknas separat, inget imported-minus-totalmatched-fel. Adapterkörning återstår. |
+| Pengar, osäkerhet: helper:40 | Prisma kan inte antas deserialisera RETURNS void eftersom riggen saknar Prisma. | Accepterat som bevislucka. Projicera till text; separat PG-kontroll, fortfarande inget Prisma-bevis. |
+
+Ingen av granskarna belade tappad eller dubbel betalningsrad i de faktiskt
+körda komponentfallen. Båda betonade att syntetiska markörer inte är ekonomisk
+färdighantering och att gröna komponentprov inte täckte de hittade kringvägarna.
+Samtliga fynd har hanterats i **artefakten**, inga har avvisats för att slippa
+rättelse. Inget juridiskt auktoritetspåstående, ingen produktionsacceptans.
+
+Huvudagenten korrigerade även main-jämförelsens för snäva formulering samt
+beloppsgränsen i SQL: över numeric(12,2)-kapacitet bevaras observationen avvisad,
+istället för att insättningen ska kasta och rulla tillbaka observationsspåret.
+Slutlig återgranskning av rättelser och provutfall tillkommer före PR-leverans.

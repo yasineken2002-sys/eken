@@ -17,8 +17,11 @@ Detta bevisar varken ändrad faktisk import eller exakt en bokförings-/köeffek
   är avslutad **grön på exakt denna SHA**, 61 lyckade kontroller.
 - Egen gren: `codex/agent2-bankhandelse-forslag`, skapad från ren verifierad bas.
   Main `27a720d4b6fb194fed83c760ce713c6aa70a0ad5` kontrollerad igen, inte integrerad.
-  Enda relevanta skillnaden är fyra StrictString-rader i `confirm-import.dto.ts`;
-  ingen av kandidatens elva målfiler skiljer från main i sakområdet.
+  I ursprungligt granskade import-/PSD2-/schemaområdet skiljer endast fyra
+  StrictString-rader i `confirm-import.dto.ts`. I kandidatens utökade målområde
+  skiljer även `payment-shadow.service.ts`: main har äldre konstantnamn och
+  mindre prompttext (6 tillagda/16 borttagna rader jämfört med basen). Kandidaten
+  behåller #874-versionen; ändrar bara identitetsgrinden, inga modellinställningar.
 - CLAUDE.md läst; inga tillämpliga AGENTS.md hittades i arbetsytans föräldrar,
   rot eller berörda underkataloger. Tidigare överlämning och #874:s faktiska
   rapport, falltabell, resultat och kod lästa. Mac-kopiorna används inte som bygge.
@@ -69,13 +72,14 @@ ett **ändringsförslag**, inte en installationsklar eller typkontrollerad produ
    ser även observationer utan betalningsrad. `CONFIRMED` i PDF-avser fortfarande
    bekräftat importunderlag; extra utfall behövs för dess ekonomiska hantering.
 5. Automatisk ommatchning och skuggurval/utförande respekterar spärrade händelser.
-   Allokeringskärnorna tar samma organisationslås innan banklåset. Token för det
+   Samtliga tre allokeringskärnor, även samlingsbetalningens vattenfall, tar samma
+   organisationslås innan banklåset. Token för det
    vinnande försöket kommer endast från serverns interna körningskontext.
    Normal köplacering är aldrig färdighantering; köens verkliga leverans körs inte här.
 
 ## Verifierat kontra kvarstående per krav
 
-[Separat eftertabell för SQL-komponenten](eval/bankhandelse-forslag/korning-v2/falltabell.md)
+[Separat eftertabell för rättad SQL-komponent](eval/bankhandelse-forslag/korning-v3/falltabell.md)
 innehåller exakt en rad per nytt fall. Den är **inte en efterkörning av #874**.
 
 | Krav | #874 före / oförändrad produktion | Separat SQL-komponent efter |
@@ -86,13 +90,22 @@ innehåller exakt en rad per nytt fall. Den är **inte en efterkörning av #874*
 | Organisation/konto/provider | Org provad, konto/namespace tappas eller är okänt | Fall 05–09: org/konto skilda, styrkt providerbrygga återanvänder händelse; obundet samtycke eller klientens verified-flagga ger ingen effekt. |
 | Fil/API, båda ordningar | Likhet kan tappa skilda händelser | Fall 10: obestyrkt observation hålls; fall 11/12: styrkt samma ger 1 rad, styrkt olika ger 2. Nytt syntetiskt bevis, inte originalindata. |
 | Spara/krascha/återförsöka | #874 bevisar inte atomisk fortsatt hantering | Fall 21: rollback av observation+händelse+betalning; 22: PENDING återupptas en gång; 23/24: STARTED kvarstår öppet med 0/1 markör, inget nytt försök. |
-| Äldre rader | Okänt konto/namespace kan inte rekonstrueras | Fall 14–17: ingen backfill/ändring; oklar kontinuitet hålls, separat styrkt brygga skapar ingen ny betalning. |
+| Äldre rader | Okänt konto/namespace kan inte rekonstrueras | Fall 14–17: ingen backfill/ändring; oklar kontinuitet hålls. Fall 15 har olika beskrivningar och hålls nu också. Separat helt innehållslikt bryggprov skapar ingen ny betalning. |
 | Ändrat innehåll/status | I05 kallas dubblett utan ändringssignal | Fall 18–20: bevarad konflikt; ingen ny eller omskriven betalning. Konflikt före anspråk stoppar det. |
 | Äldre OCR/del-/samlingsbetalning | Historiska metoder och krav bevarade | Fall 27 provar belopps-/OCR-bevarande. Matchkroppars textparitet kontrollerad; inga nya verkliga del-/samlingsallokeringar påstås verifierade. |
 | Cursors, tom sida, konto-fel, sidindelning | Kända #874-avvikelser | Inte åtgärdade eller omprovade av SQL-komponenten. |
 
-31/31 komponentkrav, 10/10 negativa omräkningskontroller och 11/11 extra
-SQL-kontroller godkända. De negativa kontrollerna fångar tappad hundralapp,
+Före slutgranskning: 31/31 komponentkrav, 10/10 negativa omräkningskontroller
+och 11/11 extra SQL-kontroller godkända. Den körningen bevaras i `korning-v2`. Efter rättelser kördes
+samma 31 komponentindata igen på `4b3e9eee`, med oförändrad fil/facit.
+**31/31 skärpta krav**, **10/10 negativa kontroller**, **11/11 tidigare SQL-kontroller
+plus 6/6 granskarfall** passerar. Mot det äldre komponentfacitet uppfylls
+**30/31**: endast fall 15 ändras från 0 till 2 held-observationer och öppen
+identitet. Denna striktare spärr är en redovisad kravändring, ingen förbättring
+av oförändrat gammalt mått. Resultat/hashes: [korning-v3](eval/bankhandelse-forslag/korning-v3/omrakning.json)
+och [granskarfall](eval/bankhandelse-forslag/granskning-komplettering-resultat.json).
+Tre negativa textkontroller fångar var sin borttagen allokeringsgrind.
+Riktig import/Prisma/kö körs fortfarande inte av dessa efterprov. De negativa kontrollerna fångar tappad hundralapp,
 dubbelt anrop/belopp, fel summa, förlorad observation, förfalskad kontolänk,
 fel organisation, ändrad äldre rad, dold osäkerhet och påhittad samtidighet.
 #874:s 5/5 harnesskontroller passerar igen; ny oberoende omräkning av dess
@@ -144,9 +157,10 @@ Kommandona ändrar endast egen ny utkatalog/testcontainer eller patchartefakten.
 
 ```sh
 python3 -B apps/api/scripts/bankevent_proposal/run.py --out /tmp/bankevent-new-run
-python3 -B apps/api/scripts/bankevent_proposal/audit.py /tmp/bankevent-new-run --out /tmp/bankevent-new-run
-python3 -B apps/api/scripts/bankevent_proposal/controls.py --out /tmp/bankevent-new-controls.json
-python3 -B apps/api/scripts/bankevent_proposal/audit.py docs/eval/bankhandelse-forslag/korning-v2
+python3 -B apps/api/scripts/bankevent_proposal/audit.py /tmp/bankevent-new-run --review-requirements --out /tmp/bankevent-new-run
+python3 -B apps/api/scripts/bankevent_proposal/review_controls.py --out /tmp/bankevent-new-controls.json
+python3 -B apps/api/scripts/bankevent_proposal/audit.py docs/eval/bankhandelse-forslag/korning-v2 --evidence-commit 6264d3ad
+python3 -B apps/api/scripts/bankevent_proposal/audit.py docs/eval/bankhandelse-forslag/korning-v3 --review-requirements
 python3 -B apps/api/scripts/bankevent_proposal/check_patch.py
 node --experimental-vm-modules apps/api/scripts/test_bankimport_harness.cjs
 python3 -B apps/api/scripts/audit_bankimport.py docs/eval/bankimport-identitet/korning-slut/observationer.json.gz --evidence-commit ebc87b85
@@ -159,5 +173,41 @@ utan körning och bytekontroll av orörda målfiler. Det är ingen typkontroll e
 körning av kandidatens importmetoder. Vanlig CI provar den oförändrade appkoden,
 inte innehållet i en oapplicerad patch. Inga Jest/tsc-jobb startades lokalt.
 
+Efter granskning frystes starkare krav i `fe9142c5`, utan ändring av
+`indata-v2.json` eller `facit.json`. Hela beskrivningen är matchningsbärande,
+liksom OCR/reference. Komponentfall 15 hade äldre beskrivning `SYNTHETIC LEGACY`
+men ny `SYNTETISK`: enligt skärpt regel ska båda återobservationerna hållas.
+Den äldre förväntningen om noll held ligger kvar oförändrad. Nya kontrollkrav
+anger uttryckligen denna enda förväntningsskillnad och provas separat. Ett
+kompletterande exempel med **ändrad syntetisk äldre beskrivning** visar hur en
+helt innehållslik verifierad brygga kan återimporteras; det är inte originalfallet.
+
+Granskningsrättelserna omfattar också beständig spärrlänk vid legacykonflikt,
+filproveniens separat från bankbevis (format, filhash/import-ID, index i den
+parsade listan — inte påstått ursprungligt radnummer), uttryckliga resultatmått
+för återupptagna PSD2-försök och typad statistik. Void-låsanropet projiceras till
+text för Prisma-adaptern; riktig Prisma-runtime är fortfarande oprövad.
+
 Se [granskningsunderlaget](eval/bankhandelse-forslag/granskning.md) för självständiga
 AI-granskningar och hanterade fynd. Claude granskar och mergar senare.
+
+
+## Exakt samordningsgräns
+
+Föreslagen diff omfattar elva målfiler; samtliga ligger fortfarande enbart i
+patchtexten. Följande fyra mål ligger inom användarens uttryckligt skyddade
+katalog och kräver uttrycklig frigivning innan de får införas här:
+
+- `apps/api/src/reconciliation/reconciliation.service.ts`
+- `apps/api/src/reconciliation/reconciliation.controller.ts`
+- `apps/api/src/reconciliation/bank-statement-import.service.ts`
+- `apps/api/src/reconciliation/bank-event-gate.ts` (ny fil)
+
+Övriga sju mål är PSD2-synk, två skuggvägar, färskhet, periodkontroll,
+Prisma-schema och en separat föreslagen migration. Inte heller dessa är
+applicerade: leveransen innehåller ingen halv produktionsfix. Kontoplan,
+originaldata och allokeringsregler ändras inte. Minsta nästa tillåtna steg efter
+frigivning är att införa kandidaten samordnat på egen gren, validera full
+Prisma-/typkoppling och köra de faktiska import-/allokeringsvägarna isolerat.
+Aktivering och verifierade bank-/övergångsbevis är därefter separata krav;
+ingen produktionsskrivning eller driftsättning är godkänd av denna rapport.
