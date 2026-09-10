@@ -1,5 +1,15 @@
 # Integritetspolicy för Eveno
 
+> ⚠️ **DEN HÄR FILEN BINDER INTE.** Mätt i #576: det kunden ser och accepterar är
+> de renderade sidorna (`apps/web/src/features/legal/`, `apps/portal/src/pages/legal/`).
+> Registreringen länkar dit, och `auth.service.ts` snapshot:ar deras version.
+> `docs/legal` deployas ingenstans och når ingen användare.
+>
+> Filen underhålls som arbetsmaterial tills #576:s riktning är byggd — antingen
+> blir den KÄLLAN och sidorna genereras ur den, eller så genereras den ur dem.
+> Tills dess kan den avvika från det bindande, och den har gjort det: rubriken
+> säger 1.0 medan manifestet säger 1.1.
+
 **Version:** 1.0
 **Senast uppdaterad:** 2026-05-12
 **Ikraftträdande:** 2026-05-12
@@ -123,10 +133,31 @@ Vi delar personuppgifter med följande kategorier av mottagare:
 | **Resend, Inc.**                | Transaktionella mejl (välkomst, fakturor, påminnelser) | USA / EU                                | E-postadress, namn, mejl-innehåll     |
 | **Stripe Payments Europe Ltd.** | Kortbetalning av abonnemang (om aktiverat)             | Irland                                  | Betalningsuppgifter                   |
 | **Sentry, Inc.**                | Felspårning och prestandaövervakning                   | EU (Frankfurt-region)                   | Stack-traces, anonymiserade events    |
-| **Google Cloud Storage**        | Säkerhetskopiering av databas och uppladdade dokument  | EU                                      | All Kunddata, krypterad               |
+| **Cloudflare, Inc.**            | Objektlagring av dokument och databasbackuper          | ej fastställd — verifieras av människa  | Dokument, kontrakt, avi-PDF:er        |
+| **Voyage AI**                   | Vektorisering av söktext för juridiska uppslag         | ej fastställd — verifieras av människa  | Användarens fritextfråga              |
 
 Samtliga underleverantörer är bundna av personuppgiftsbiträdesavtal som
 uppfyller artikel 28 GDPR.
+
+<!--
+  FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE (#576).
+
+  BORTTAGET: "Google Cloud Storage — säkerhetskopiering (EU)". Tjänsten
+  används inte. Mätt i apps/api/src: ingen GCS-SDK, inget värdnamn, ingen
+  env-nyckel. Fillagring och backup går till Cloudflare R2
+  (storage.service.ts, backup.service.ts).
+
+  TILLAGT: Cloudflare (dokument + backup) och Voyage AI (fritextfråga).
+  Ingen region anges för någon av dem — dokument-bucketen ligger i R2:s
+  DEFAULT-jurisdiktion (uppmätt 2026-08-27) och var Voyage kör går inte att
+  läsa ur repot. Att skriva "EU" där vore ett påstående vi inte kan belägga.
+
+  KVAR MED FRÅGETECKEN: "Stripe Payments Europe Ltd." Mätt: ingen
+  Stripe-SDK, inget värdnamn, ingen env-nyckel i apps/api/src. Raden är
+  ANTINGEN felaktig ELLER förberedande för plattformsfaktureringen
+  (PlatformInvoice finns i schemat). Den frågan kan bara en människa svara
+  på, och därför är raden inte rörd.
+-->
 
 ### 4.2 Myndigheter
 

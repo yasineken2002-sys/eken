@@ -1,5 +1,15 @@
 # Användarvillkor för Eveno
 
+> ⚠️ **DEN HÄR FILEN BINDER INTE.** Mätt i #576: det kunden ser och accepterar är
+> de renderade sidorna (`apps/web/src/features/legal/`, `apps/portal/src/pages/legal/`).
+> Registreringen länkar dit, och `auth.service.ts` snapshot:ar deras version.
+> `docs/legal` deployas ingenstans och når ingen användare.
+>
+> Filen underhålls som arbetsmaterial tills #576:s riktning är byggd — antingen
+> blir den KÄLLAN och sidorna genereras ur den, eller så genereras den ur dem.
+> Tills dess kan den avvika från det bindande, och den har gjort det: rubriken
+> säger 1.0 medan manifestet säger 1.1.
+
 **Version:** 1.0
 **Senast uppdaterad:** 2026-05-12
 **Ikraftträdande:** 2026-05-12

@@ -106,7 +106,12 @@ export const LEGAL_DOCUMENT_VERSIONS = {
   terms: '1.1',
   // 1.0 → 1.1 (samma ändring): säkerhetsavsnittets backup-punkt skrevs om och
   // "säkerhetskopior" ströks ur kryptering-i-vila-punkten.
-  privacy: '1.1',
+  // 1.1 → 1.2 (#576): underbiträdesregistret rättat mot en mätning av koden.
+  // Voyage AI TILLAGD (aktiv i prod, tar emot användarens fritextfråga),
+  // Cloudflare tillagd i portalens lista, Google Cloud Storage borttagen ur
+  // docs/legal. Ett ändrat underbiträdesregister är MATERIELLT — det ändrar
+  // vem som får personuppgifterna — alltså bump, inte bara ny hash.
+  privacy: '1.2',
   // Orörd av #574 — cookie-texten ändrades inte.
   cookies: '1.0',
 } as const
@@ -122,6 +127,7 @@ export const LEGAL_DOCUMENT_VERSIONS = {
 export const LEGAL_DOCUMENT_VERSION_HISTORY = [
   { doc: 'terms', version: '1.0', retiredAt: '2026-08-28' },
   { doc: 'privacy', version: '1.0', retiredAt: '2026-08-28' },
+  { doc: 'privacy', version: '1.1', retiredAt: '2026-09-04' },
 ] as const
 
 // ─── INNEHÅLLSHASH PER DOKUMENT ─────────────────────────────────────────────
@@ -148,8 +154,8 @@ export const LEGAL_DOCUMENT_HASHES = {
   // exakt den mekanism re-acceptansen finns för. Versionen betecknar den text
   // kunden ser; den texten är densamma idag som igår.
   privacy: {
-    version: '1.1',
-    sha256: 'dcf9e6cfca4849ed70b0c19d493bbb98e918a419a502b8d2a9c25999940e3a9e',
+    version: '1.2',
+    sha256: '62dfca200f26b6193d49833f26c1dff3aaf998c9b9ab926e3a70c7c265cbcaaf',
   },
   cookies: {
     version: '1.0',
