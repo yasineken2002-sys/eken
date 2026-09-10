@@ -487,7 +487,7 @@ Den körningen är **röd totalt**: E2E 15/16; ett äldre portaltest skickade to
 konfirmeringsbody och ignorerade HTTP-felet. Därför låg dess tre charges kvar
 som DRAFT. Sparad Playwright-trace visar tre PATCH med HTTP 400. Båda
 charge-E2E-proven passerade, inklusive den nya riktiga grinden.
-Portalfixturen anpassas till GET kontroll → förväntat fingerprint → HTTP 200 och
+Portalfixturen har anpassats till GET kontroll → förväntat fingerprint → HTTP 200 och
 CONFIRMED. Det befintliga facit med tre synliga kort och en röd markering är
 oförändrat; ingen produktionsregel har ändrats. Kodgranskaren har granskat
 den separat och anger Approve med 0 must-fix/should-fix; inga prov kördes av
@@ -501,7 +501,83 @@ bekräftar noll. CI-discovery är därmed verifierad i en verklig körning, inte
 slutsatsen av ett filnamn. Typecheck, lint och övriga vakter är också gröna;
 hela körningen benämns ändå inte grön.
 
-Den efterföljande commiten tillför leveransrapport och portalfixturens
-kontraktsanpassning. Dess egen SHA kan inte skrivas in i samma commit utan att ändra
-SHA:n; PR-beskrivningen och slutbeskedet ska därför ange slutlig levererad HEAD
-med CI-länk för exakt den HEAD:en, separat från implementationsbeviset ovan.
+### Grön kod- och test-HEAD efter CI-fyndet
+
+Exakt HEAD: **`862632b6232647e052014befcc57c4dbed16b1a6`**.
+[Verifierad grön CI](https://github.com/yasineken2002-sys/eken/actions/runs/34533250462):
+**61/61 jobb success**, workflow completed/success, verifierat genom körningens
+`headSha` (inte PR:ns eventuellt äldre sammanställning).
+E2E **16/16**, inga retries, 1,4 min. Även det tidigare röda portalprovet
+passerade nu med oförändrat presentationsfacit. API **6020/6020 i 487 sviter**;
+DB-specens **44 genomförda prov** bekräftades åter av det särskilda CI-steget,
+liksom noll hoppade tester. Samtliga typecheck-, lint-, webb-/portaltest- och
+kontrakts-/säkerhetsvaktjobb är success. Inga produktionsändringar tillkom efter
+negativkontrollen; skillnaden mot `3b6f8109` är rapporten och portalens testfixture.
+
+Exakta kommandon för CI-verifieringen, från worktreens rot:
+
+```sh
+gh run list --repo yasineken2002-sys/eken --workflow ci.yml --commit 862632b6232647e052014befcc57c4dbed16b1a6 --json databaseId,headSha,status,conclusion,url
+gh run view 34533250462 --repo yasineken2002-sys/eken --json status,conclusion,headSha,jobs
+gh run view 34533250462 --repo yasineken2002-sys/eken --job 103058779589 --log
+gh run view 34533250462 --repo yasineken2002-sys/eken --job 103058780040 --log
+```
+
+Diffstat inklusive portalfixturen och den första leveransrapporten:
+
+```sh
+git diff --stat=180 3fa4b55128143d5bd70f696178679f2a99f22f29..862632b6232647e052014befcc57c4dbed16b1a6
+```
+
+```text
+ .github/workflows/ci.yml                                                           |   14 +-
+ apps/api/prisma/migrations/20260910160000_consumption_charge_gate/migration.sql    |   39 ++++
+ apps/api/prisma/migrations/20260910170000_consumption_check_identity/migration.sql |   13 ++
+ apps/api/prisma/schema.prisma                                                      |   28 +++
+ apps/api/prisma/seed-history.ts                                                    |    1 +
+ apps/api/src/accounting/accounting.consumption.spec.ts                             |   35 ++-
+ apps/api/src/accounting/accounting.service.ts                                      |  259 ++++++++++++----------
+ apps/api/src/common/authz/authz-surface.golden.txt                                 |    9 +-
+ apps/api/src/common/authz/authz-surface.ts                                         |    4 +
+ apps/api/src/common/contract/schema-dto-registry.ts                                |   11 +
+ apps/api/src/consumption/charge-gate.db.spec.ts                                    | 1046 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ apps/api/src/consumption/charge-gate.spec.ts                                       |   89 ++++++++
+ apps/api/src/consumption/charge-gate.ts                                            |  269 +++++++++++++++++++++++
+ apps/api/src/consumption/consumption.compliance.spec.ts                            |   62 +++++-
+ apps/api/src/consumption/consumption.controller.ts                                 |    9 +-
+ apps/api/src/consumption/consumption.service.ts                                    |  895 +++++++++++++++++++++++++++++++++++++++++----------------------------------
+ apps/api/src/consumption/dto/confirm-consumption-charge.dto.ts                     |   12 +
+ apps/api/src/consumption/dto/save-reading-review.dto.ts                            |   17 +-
+ apps/api/src/consumption/reading-review-decisions.spec.ts                          |    3 +-
+ apps/api/src/consumption/reading-review.query.ts                                   |   11 +-
+ apps/api/src/consumption/reading-review.service.ts                                 |    8 +-
+ apps/api/src/scripts/delete-organization.ts                                        |    1 +
+ apps/web/e2e/consumption-charge-confirm.spec.ts                                    |    6 +-
+ apps/web/e2e/consumption-charge-gate.spec.ts                                       |  217 +++++++++++++++++++
+ apps/web/e2e/portal-consumption.spec.ts                                            |   18 +-
+ apps/web/src/features/consumption/ConsumptionPage.tsx                              |   41 +---
+ apps/web/src/features/consumption/api/charges.api.ts                               |   20 +-
+ apps/web/src/features/consumption/components/ChargeControlPanel.test.tsx           |   95 ++++++++
+ apps/web/src/features/consumption/components/ChargeControlPanel.tsx                |  111 ++++++++++
+ apps/web/src/features/consumption/components/ReadingReview.test.tsx                |    9 +-
+ apps/web/src/features/consumption/components/ReadingReview.tsx                     |   48 +++-
+ apps/web/src/features/consumption/components/ReadingReviewAssessment.test.tsx      |   60 ++++-
+ apps/web/src/features/consumption/components/ReadingReviewAssessment.tsx           |   89 +++++++-
+ apps/web/src/features/consumption/hooks/useChargeQueries.ts                        |    7 +-
+ docs/granskning/agent3-debiteringsgrind-webb.png                                   |  Bin 0 -> 124961 bytes
+ docs/granskning/agent3-debiteringsgrind.md                                         |  507 +++++++++++++++++++++++++++++++++++++++++++
+ packages/shared/src/schemas/index.ts                                               |   11 +
+ packages/shared/src/utils/reading-review.ts                                        |   73 ++++++-
+ 38 files changed, 3531 insertions(+), 616 deletions(-)
+```
+
+Den sista dokumentationscommiten kompletterar endast denna rapport med dessa
+resultat. Dess egen SHA kan inte skrivas in i samma commit utan att ändra SHA:n.
+**Slutlig levererad HEAD och dess exakta CI-länk finns därför i
+[PR #877:s leveranskvitto](https://github.com/yasineken2002-sys/eken/pull/877)**,
+och redovisas även i slutbeskedet. Ovanstående gröna kod-/test-HEAD får inte
+användas som ett antagande om dokumentationscommitens CI; även den körningen
+verifieras innan grön leveransstatus anges.
+
+PR:n förblir utkast. Inget är mergat eller driftsatt. Kvarstående HIGH för
+utskick av redan ATTACHED dokument är ett verkligt leveranshinder trots grön CI.
