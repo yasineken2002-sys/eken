@@ -848,22 +848,7 @@ export class TenantPortalService {
       '',
     )
 
-    const tenantName = lease.tenant.firstName
-      ? `${lease.tenant.firstName} ${lease.tenant.lastName ?? ''}`.trim()
-      : (lease.tenant.companyName ?? lease.tenant.email)
-
-    void this.notificationsService
-      .createForAllOrgUsers(
-        lease.organizationId,
-        'MAINTENANCE_NEW',
-        '🔔 Ny felanmälan från hyresgäst',
-        `${tenantName} har anmält: ${dto.title}`,
-        { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
-      )
-      .catch((err) =>
-        this.logger.error('Notification error', err instanceof Error ? err.stack : String(err)),
-      )
-
+    // MaintenanceService äger skapandenotisen även för den manuella vägen.
     // SECURITY (PR 5a): MaintenanceService.create() returnerar hela ärenderaden
     // (organizationId, tenantToken, reportedById …). Strippa via mapTicket innan
     // den når hyresgästen.

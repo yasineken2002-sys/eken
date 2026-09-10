@@ -506,24 +506,11 @@ export class TenantToolExecutorService {
             '',
           )
 
-          const tenantName = lease.tenant.firstName
-            ? `${lease.tenant.firstName} ${lease.tenant.lastName ?? ''}`.trim()
-            : (lease.tenant.companyName ?? lease.tenant.email)
-
-          void this.notificationsService
-            .createForAllOrgUsers(
-              organizationId,
-              'MAINTENANCE_NEW',
-              '🔔 Ny felanmälan från hyresgäst',
-              `${tenantName} har anmält: ${title}`,
-              { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
-            )
-            .catch(() => undefined)
-
+          // MaintenanceService äger skapandenotisen för alla ingångar.
           return {
             success: true,
             data: { id: ticket.id, ticketNumber: ticket.ticketNumber },
-            message: `Felanmälan skapad (#${ticket.ticketNumber}). Hyresvärden har fått en notifiering och hör av sig så snart som möjligt.`,
+            message: `Felanmälan skapad (#${ticket.ticketNumber}). Du kan följa ärendet under Mina felanmälningar i portalen.`,
             nextSteps: [
               'Du kan följa ärendet under Felanmälan-fliken',
               'Lägg till bilder eller kommentarer där om något ändras',
