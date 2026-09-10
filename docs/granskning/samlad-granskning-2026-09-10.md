@@ -753,3 +753,17 @@ reviderade ordningen i §7 blir:
    separat facit för identifierat överskott, utan att skriva om gamla mätningar.
 6. Namnbyte på #870/#871. Inventering före JSON-gallring. BÖR-2 (de två taken),
    BÖR-4 (confidence), BÖR-5, BÖR-6, BÖR-8.
+
+## R8 — EN STAPEL ÄR INGEN SPÄRR (rättelse av mitt eget råd i byggordern)
+
+Jag skrev i byggordern för debiteringsgrinden att grinden som elfte PR i stapeln
+gör att "inget kan nå main utan grinden". **Det är fel, och Codex fångade det.**
+
+En stapel är en beroendeordning, inte en grind. `#858` har bas `main` och kan
+mergas ensam, oavsett vad som ligger ovanpå. **Mergar man #858 utan resten hamnar
+ett granskningslager på main som inte kan stoppa en enda debitering** — alltså
+exakt MÅSTE-1, fast nu i produktion och med en UI-yta som ser ut att göra något.
+
+Det finns ingen mekanisk spärr mot det. Skyddet är en överenskommelse: Agent 3
+levereras samordnat, grinden inkluderad, eller inte alls. Skriv det i PR-texten
+på #858 så den som mergar ser det där och inte här.
