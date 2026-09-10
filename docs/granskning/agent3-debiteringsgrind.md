@@ -124,7 +124,9 @@ bygge. Ingen bankmatchning eller ändring av beloppsregler ingår. Agentgranskni
 
 ## Genomförande och verifiering
 
-Pågår. Inga test- eller leveransresultat påstås innan de har mätts.
+Implementationen och den lokala verifieringen är genomförda. Utskicksflödet har
+ett kvarstående leveranshinder; avsnitten nedan skiljer det från verifierade
+konfirmerings-, kopplings- och bokföringsvägar.
 
 ### Omgranskning och kvarstående leveranshinder
 
@@ -334,3 +336,172 @@ exit 134; därefter användes 2600 MB. Det var diagnostiserat heapfel, inte en
 slutsats från SIGTERM. Tidiga DB-fel var testimport/fixturtypning och FK-städning;
 fixturens invoice events/rader lades i rätt raderingsordning. Alla slutliga
 DB-körningar ovan städade rent. Inga timeouter i produktionen höjdes.
+
+### Negativkontroll och återställning
+
+Fungerande, ren commit före mutationen:
+`3b6f8109d388bd1ccaac708b9abf38dd51f1433a`.
+Endast `apps/api/src/consumption/charge-gate.ts` ändrades tillfälligt:
+`findingAllowsCharge` fick `if (Boolean('NEGATIVE_CONTROL_ONLY')) return true`.
+Status kontrollerades: exakt denna enda egna fil var ändrad.
+
+Från `apps/api` kördes före och efter återställning:
+
+```sh
+python3 /tmp/agent3-db-run.py pnpm exec jest src/consumption/charge-gate.db.spec.ts --runInBand -t 'varning utan bedömning blockerar konfirmering utan DB-effekter'
+```
+
+Med förbikoppling: **exit 1, 1 beteendetest föll**, 43 uttryckligen bortfiltrerade,
+14,523 s. Förväntningen `.rejects.toMatchObject({ status: 409 })` på rad 296 föll
+med **Received promise resolved instead of rejected**. Produktionsmetoden
+returnerade faktisk `CONFIRMED`. Detta var varken kompileringsfel eller trasig
+databas. Fixturstädningen lämnade samtliga tio mätta tabeller på 0 rader.
+Logg: `/tmp/agent3-negative.log`.
+
+Återställningen kördes från worktreens rot, på endast den namngivna filen:
+
+```sh
+git restore --source=3b6f8109d388bd1ccaac708b9abf38dd51f1433a -- apps/api/src/consumption/charge-gate.ts
+git status --short
+git diff --check
+```
+
+Status/diff var tomma, HEAD var oförändrad. Det identiska beteendeprovet blev
+**grönt: 1/1, exit 0**, 43 bortfiltrerade, 14,138 s. Tio tabellantal var åter 0
+före och efter. Logg: `/tmp/agent3-negative-restored.log`. Förbikopplingen har
+aldrig committats eller pushats.
+
+### Ändringar per fil
+
+Sökvägarna nedan avser repositoryts rot. Efterföljande rapportuppdateringar
+innehåller endast leveransbevis; implementationsdiffen är den noterade commiten. Ett äldre portaltest har dessutom
+anpassats till det nya konfirmeringskontraktet efter första CI-körningen.
+
+| Fil                                                                                  | Ändring och syfte                                                                                    |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`                                                           | Kräver att nya DB-specens samtliga prov faktiskt körts; E2E-discovery 16.                            |
+| `apps/api/prisma/migrations/20260910160000_consumption_charge_gate/migration.sql`    | Additivt intyg, kontrolltabell och låstriggers.                                                      |
+| `apps/api/prisma/migrations/20260910170000_consumption_check_identity/migration.sql` | Kontrollrevision, sammansatt identitet/FK och lås för kontrollspår.                                  |
+| `apps/api/prisma/schema.prisma`                                                      | Nullable intyg och relationer för beständigt kontrollspår.                                           |
+| `apps/api/prisma/seed-history.ts`                                                    | Syntetisk städning tar spår före charges; inte körd.                                                 |
+| `apps/api/src/accounting/accounting.consumption.spec.ts`                             | Anpassade anropskontrakt, befintligt självständigt beloppsfacit.                                     |
+| `apps/api/src/accounting/accounting.service.ts`                                      | Samma grind och transaktion för direkt förbrukningsbokföring och periodisering.                      |
+| `apps/api/src/common/authz/authz-surface.golden.txt`                                 | Registrerar nya kontrolläsningen.                                                                    |
+| `apps/api/src/common/authz/authz-surface.ts`                                         | Motiverar organisationsscopad läsning.                                                               |
+| `apps/api/src/common/contract/schema-dto-registry.ts`                                | DTO-/Zod-paritet för nya payloadfält och konfirmering.                                               |
+| `apps/api/src/consumption/charge-gate.db.spec.ts`                                    | 44 prov mot riktig DB, överlappning och verkliga bokföringseffekter.                                 |
+| `apps/api/src/consumption/charge-gate.spec.ts`                                       | Oberoende beslutstabell och uttömmande enum-/kodtäckning.                                            |
+| `apps/api/src/consumption/charge-gate.ts`                                            | Gemensam produktionsmappning, aktuellt underlag, spår, behörighet och lås.                           |
+| `apps/api/src/consumption/consumption.compliance.spec.ts`                            | Anpassade transaktionsmockar; inga nya beloppsregler.                                                |
+| `apps/api/src/consumption/consumption.controller.ts`                                 | Kontrolläsning och strikt konfirmerings-DTO.                                                         |
+| `apps/api/src/consumption/consumption.service.ts`                                    | Atomisk intake/konfirmering/koppling/faktura/periodiseringskontroll.                                 |
+| `apps/api/src/consumption/dto/confirm-consumption-charge.dto.ts`                     | Kräver exakt förväntat fingerprint.                                                                  |
+| `apps/api/src/consumption/dto/save-reading-review.dto.ts`                            | Separat validerat underlagsintyg.                                                                    |
+| `apps/api/src/consumption/reading-review-decisions.spec.ts`                          | Anpassning för lås/aktör vid revisionssparande.                                                      |
+| `apps/api/src/consumption/reading-review.query.ts`                                   | Delad aktuell analys; valfri servervald mätaravgränsning.                                            |
+| `apps/api/src/consumption/reading-review.service.ts`                                 | Intyg sparas på ny revision under gemensamt lås; tydlig konflikt.                                    |
+| `apps/api/src/scripts/delete-organization.ts`                                        | Explicit organisationsstädning raderar kontrollspår före charges.                                    |
+| `apps/web/e2e/consumption-charge-confirm.spec.ts`                                    | Normalfallet använder kontrollpanelens fingerprintbundna bekräftelse.                                |
+| `apps/web/e2e/consumption-charge-gate.spec.ts`                                       | Fullt nytt syntetiskt Chromium/API/DB-prov.                                                          |
+| `apps/web/src/features/consumption/ConsumptionPage.tsx`                              | Befintlig konfirmeringsdialog använder kontrollpanelen.                                              |
+| `apps/web/src/features/consumption/api/charges.api.ts`                               | Delat kontrakt för kontrolläsning och konfirmering.                                                  |
+| `apps/web/src/features/consumption/components/ChargeControlPanel.test.tsx`           | Spärr, omläsning, fingerprint och sparfel.                                                           |
+| `apps/web/src/features/consumption/components/ChargeControlPanel.tsx`                | Svensk orsak, väg till bedömning, uttrycklig bekräftelse och spår.                                   |
+| `apps/web/src/features/consumption/components/ReadingReview.test.tsx`                | Uppdaterat beteendekontrakt för bedömningen.                                                         |
+| `apps/web/src/features/consumption/components/ReadingReview.tsx`                     | Behåller öppna formulär vid ändrad/saknad finding och läsfel.                                        |
+| `apps/web/src/features/consumption/components/ReadingReviewAssessment.test.tsx`      | Separat intyg, konflikt och bevarad formulärdata.                                                    |
+| `apps/web/src/features/consumption/components/ReadingReviewAssessment.tsx`           | Intygets innebörd, nytt strukturerat val och historik.                                               |
+| `apps/web/src/features/consumption/hooks/useChargeQueries.ts`                        | Payload och invalidering efter konfirmering.                                                         |
+| `docs/granskning/agent3-debiteringsgrind-webb.png`                                   | Verifierat slutläge från riktiga webbprovet.                                                         |
+| `docs/granskning/agent3-debiteringsgrind.md`                                         | Beslut före kodning, inventering, testbevis och leveranshinder.                                      |
+| `packages/shared/src/schemas/index.ts`                                               | Delade Zod-scheman och kontrollens svarstyp.                                                         |
+| `packages/shared/src/utils/reading-review.ts`                                        | Delad identifiering av jämförelseunderlag samt nya spårfält, oförändrade finding-regler.             |
+| `apps/web/e2e/portal-consumption.spec.ts`                                            | Fixturen läser kontroll, skickar fingerprint och kräver HTTP 200/CONFIRMED; oförändrat portal-facit. |
+
+### Diffstat för testad implementation
+
+Exakt kommando från worktreens rot:
+
+```sh
+git diff --stat=180 3fa4b55128143d5bd70f696178679f2a99f22f29..3b6f8109d388bd1ccaac708b9abf38dd51f1433a
+```
+
+```text
+ .github/workflows/ci.yml                                                           |   14 +-
+ apps/api/prisma/migrations/20260910160000_consumption_charge_gate/migration.sql    |   39 ++++
+ apps/api/prisma/migrations/20260910170000_consumption_check_identity/migration.sql |   13 ++
+ apps/api/prisma/schema.prisma                                                      |   28 +++
+ apps/api/prisma/seed-history.ts                                                    |    1 +
+ apps/api/src/accounting/accounting.consumption.spec.ts                             |   35 ++-
+ apps/api/src/accounting/accounting.service.ts                                      |  259 ++++++++++++----------
+ apps/api/src/common/authz/authz-surface.golden.txt                                 |    9 +-
+ apps/api/src/common/authz/authz-surface.ts                                         |    4 +
+ apps/api/src/common/contract/schema-dto-registry.ts                                |   11 +
+ apps/api/src/consumption/charge-gate.db.spec.ts                                    | 1046 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ apps/api/src/consumption/charge-gate.spec.ts                                       |   89 ++++++++
+ apps/api/src/consumption/charge-gate.ts                                            |  269 +++++++++++++++++++++++
+ apps/api/src/consumption/consumption.compliance.spec.ts                            |   62 +++++-
+ apps/api/src/consumption/consumption.controller.ts                                 |    9 +-
+ apps/api/src/consumption/consumption.service.ts                                    |  895 +++++++++++++++++++++++++++++++++++++++++----------------------------------
+ apps/api/src/consumption/dto/confirm-consumption-charge.dto.ts                     |   12 +
+ apps/api/src/consumption/dto/save-reading-review.dto.ts                            |   17 +-
+ apps/api/src/consumption/reading-review-decisions.spec.ts                          |    3 +-
+ apps/api/src/consumption/reading-review.query.ts                                   |   11 +-
+ apps/api/src/consumption/reading-review.service.ts                                 |    8 +-
+ apps/api/src/scripts/delete-organization.ts                                        |    1 +
+ apps/web/e2e/consumption-charge-confirm.spec.ts                                    |    6 +-
+ apps/web/e2e/consumption-charge-gate.spec.ts                                       |  217 +++++++++++++++++++
+ apps/web/src/features/consumption/ConsumptionPage.tsx                              |   41 +---
+ apps/web/src/features/consumption/api/charges.api.ts                               |   20 +-
+ apps/web/src/features/consumption/components/ChargeControlPanel.test.tsx           |   95 ++++++++
+ apps/web/src/features/consumption/components/ChargeControlPanel.tsx                |  111 ++++++++++
+ apps/web/src/features/consumption/components/ReadingReview.test.tsx                |    9 +-
+ apps/web/src/features/consumption/components/ReadingReview.tsx                     |   48 +++-
+ apps/web/src/features/consumption/components/ReadingReviewAssessment.test.tsx      |   60 ++++-
+ apps/web/src/features/consumption/components/ReadingReviewAssessment.tsx           |   89 +++++++-
+ apps/web/src/features/consumption/hooks/useChargeQueries.ts                        |    7 +-
+ docs/granskning/agent3-debiteringsgrind-webb.png                                   |  Bin 0 -> 124961 bytes
+ docs/granskning/agent3-debiteringsgrind.md                                         |  336 ++++++++++++++++++++++++++++
+ packages/shared/src/schemas/index.ts                                               |   11 +
+ packages/shared/src/utils/reading-review.ts                                        |   73 ++++++-
+ 37 files changed, 3345 insertions(+), 613 deletions(-)
+```
+
+### Leverans och verifieringsgräns
+
+- **Implementerat:** gemensam grind, separat intyg, beständigt spår, additiv migration,
+  serverbehörighet, lås, skydd vid ny koppling/bokföring och befintlig webbvy.
+- **Verifierat lokalt:** beteende, riktig isolerad DB, samtidighet, rollback,
+  radstädning, två DB-körningar, negativkontroll och verklig webbhantering enligt ovan.
+- **Granskat:** tre oberoende agentroller; kvarstående utskickshinder är gemensamt känt.
+- **Ogranskat/inte verifierat:** mänskliga intygs sanningshalt, mätarens riktighet,
+  last med stora organisationer, produktionsdata och faktisk mejlleverans.
+- **Kvarstående arbete:** atomiskt leveransbeslut även för redan ATTACHED dokument
+  före utskick. Hela förbrukningsleveransen får inte kallas färdig innan detta lösts.
+
+Utkast-PR: [#877](https://github.com/yasineken2002-sys/eken/pull/877),
+bas `codex/agent3-svarsgrind`, egen gren `codex/agent3-debiteringsgrind`.
+Exakt testad implementations-HEAD: `3b6f8109d388bd1ccaac708b9abf38dd51f1433a`.
+[CI för denna HEAD](https://github.com/yasineken2002-sys/eken/actions/runs/34532408377).
+Den körningen är **röd totalt**: E2E 15/16; ett äldre portaltest skickade tom
+konfirmeringsbody och ignorerade HTTP-felet. Därför låg dess tre charges kvar
+som DRAFT. Sparad Playwright-trace visar tre PATCH med HTTP 400. Båda
+charge-E2E-proven passerade, inklusive den nya riktiga grinden.
+Portalfixturen anpassas till GET kontroll → förväntat fingerprint → HTTP 200 och
+CONFIRMED. Det befintliga facit med tre synliga kort och en röd markering är
+oförändrat; ingen produktionsregel har ändrats. Kodgranskaren har granskat
+den separat och anger Approve med 0 must-fix/should-fix; inga prov kördes av
+granskaren. Denna komplettering har lintats, men hela portalprovet körs
+i CI eftersom dess befintliga fixture är bunden till CI:s eken_dev.
+
+API-jobbet är **grönt: 6020/6020 i 487 sviter**. Det separata CI-steget
+`Verify consumption gate DB tests actually ran` loggar ordagrant
+`charge-gate.db.spec.ts: 44 genomförda DB-prov` och vakten för överhoppade tester
+bekräftar noll. CI-discovery är därmed verifierad i en verklig körning, inte
+slutsatsen av ett filnamn. Typecheck, lint och övriga vakter är också gröna;
+hela körningen benämns ändå inte grön.
+
+Den efterföljande commiten tillför leveransrapport och portalfixturens
+kontraktsanpassning. Dess egen SHA kan inte skrivas in i samma commit utan att ändra
+SHA:n; PR-beskrivningen och slutbeskedet ska därför ange slutlig levererad HEAD
+med CI-länk för exakt den HEAD:en, separat från implementationsbeviset ovan.

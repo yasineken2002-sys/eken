@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { createHash, randomBytes } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import type { ChargeControl, ConfirmConsumptionChargeInput } from '@eken/shared'
 
 /**
  * IMD Etapp 1, PR 1.6 — browser-bevis för hyresgästens förbrukningsvy (portal).
@@ -82,6 +83,7 @@ test('portal: förbruknings-kort renderas + röd hög-markering', async ({ page,
   })
   async function getJson<T>(path: string): Promise<T> {
     const r = await request.get(`${API}${path}`, { headers })
+    expect(r.ok(), `GET ${path}`).toBeTruthy()
     return ((await r.json()) as { data: T }).data
   }
   const leases = await getJson<Array<{ id: string }>>('/leases')
@@ -119,9 +121,19 @@ test('portal: förbruknings-kort renderas + röd hög-markering', async ({ page,
       periodStart,
       periodEnd,
     })
-    // Bekräfta charge:n så att hyresgästen ser den (portalen döljer DRAFT).
-    if (res.charge)
-      await request.patch(`${API}/consumption/charges/${res.charge.id}/confirm`, { headers })
+    // Fixturen ska gå genom samma kontroll som produkten. Tre perioder ger
+    // ännu ingen HIGH_RATE-trend; portalens egen visningsmarkering provas nedan.
+    expect(res.charge).not.toBeNull()
+    const chargeId = res.charge!.id
+    const control = await getJson<ChargeControl>(`/consumption/charges/${chargeId}/control`)
+    expect(control.allowed).toBe(true)
+    const data: ConfirmConsumptionChargeInput = { expectedFingerprint: control.fingerprint }
+    const confirmed = await request.patch(`${API}/consumption/charges/${chargeId}/confirm`, {
+      headers,
+      data,
+    })
+    expect(confirmed.status()).toBe(200)
+    expect((await confirmed.json()).data.status).toBe('CONFIRMED')
   }
 
   // Aktivera portal-kontot (token-hash i DB → /tenant-portal/activate).
