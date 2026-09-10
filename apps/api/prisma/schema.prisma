@@ -6303,6 +6303,9 @@ model ConsumptionCharge {
   meterReading   MeterReading    @relation(fields: [meterReadingId], references: [id], onDelete: Restrict)
   invoice        Invoice?        @relation(fields: [invoiceId], references: [id])
   rentNoticeLine RentNoticeLine?
+  checks ConsumptionChargeCheck[]
+
+  @@unique([organizationId, id, meterReadingId], map: "ConsumptionCharge_control_identity_key")
 
   // ── VEM UTFÖRDE (G1 steg 3) ───────────────────────────────────────────────
   //
@@ -7078,6 +7081,7 @@ model MeterReadingReview {
   fingerprint     String @db.VarChar(64)
   ruleVersion     String
   revision        Int
+  billingBasisDecision BillingBasisDecision?
   assessment      ReadingReviewAssessment
   comment         String @db.VarChar(1000)
   // Historisk aktör: ingen SET NULL-kaskad som skulle skriva om spåret.
@@ -7091,4 +7095,28 @@ model MeterReadingReview {
 
   @@unique([organizationId, readingId, findingCode, revision], map: "MeterReadingReview_revision_key")
   @@index([organizationId, readingId])
+}
+
+// Ingen backfill: äldre bedömningar är inte intyg om korrekt underlag.
+enum BillingBasisDecision {
+  VERIFIED_CORRECT_REAL_INCREASE
+  INCORRECT
+}
+
+// Historisk kontroll, aldrig ett generellt framtida tillstånd på debiteringen.
+model ConsumptionChargeCheck {
+  id String @id @default(uuid())
+  chargeId String
+  organizationId String
+  readingId String
+  fingerprint String @db.VarChar(64)
+  revision Int
+  ruleVersion String
+  evidence Json
+  checkedById String
+  checkedByName String
+  createdAt DateTime @default(now())
+  charge ConsumptionCharge @relation(fields: [organizationId, chargeId, readingId], references: [organizationId, id, meterReadingId], onDelete: Restrict)
+  @@unique([organizationId, chargeId, revision])
+  @@index([organizationId, chargeId, createdAt])
 }

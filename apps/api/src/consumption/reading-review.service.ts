@@ -8,6 +8,7 @@ import type {
 import { PrismaService } from '../common/prisma/prisma.service'
 import { loadReadingReview, presentReadingReviewDecision } from './reading-review.query'
 export { readingFindingFingerprint } from './reading-review.query'
+import { lockConsumptionEvidence, consumptionConflict } from './charge-gate'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 @Injectable()
@@ -26,6 +27,8 @@ export class ReadingReviewService {
     try {
       return await this.prisma.$transaction(
         async (tx) => {
+          await lockConsumptionEvidence(tx, organizationId)
+          await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} AND "organizationId" = ${organizationId} FOR SHARE`
           // Roll och aktör hämtas på nytt, inte från kropp eller en gammal JWT-roll.
           const actor = await tx.user.findFirst({
             where: { id: userId, organizationId, isActive: true },
@@ -54,6 +57,7 @@ export class ReadingReviewService {
               ruleVersion: report.ruleVersion,
               revision: dto.expectedRevision + 1,
               assessment: dto.assessment,
+              billingBasisDecision: dto.billingBasisDecision ?? null,
               comment: dto.comment,
               reviewedById: userId,
               reviewedByName: `${actor.firstName} ${actor.lastName}`.trim(),
@@ -64,7 +68,7 @@ export class ReadingReviewService {
         },
         {
           ...PRISMA_DEFAULT_TX_LIMITS,
-          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
         },
       )
     } catch (error) {
@@ -78,7 +82,7 @@ export class ReadingReviewService {
           'Underlaget eller bedömningen har ändrats. Läs om innan du sparar.',
         )
       }
-      throw error
+      consumptionConflict(error)
     }
   }
 }

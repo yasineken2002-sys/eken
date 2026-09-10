@@ -35,6 +35,62 @@ export const READING_REVIEW_TREND_RULE = { comparisonPeriods: 3, thresholdFactor
 const DAY = 86400000
 const format = (value: number) => value.toLocaleString('sv-SE', { maximumFractionDigits: 2 })
 
+// Samma seriegräns används av trendanalysen och identifieringen av möjligt
+// jämförelseunderlag. Strukturella fel är hinder, inte en ny ren serie.
+function breaksReadingSeries(
+  previous: { end: number; type: string },
+  current: { start: number; type: string },
+) {
+  return previous.type !== current.type || current.start > previous.end + DAY
+}
+
+/**
+ * Närmaste möjliga jämförelseunderlag, även om DATA/OVERLAP/DECREASE hindrade
+ * trendberäkningen. Färre perioder är tillåtna. Samma periodslut räknas som en
+ * möjlig period men ALLA dess rader tas med så en dubblett inte döljer ett fel.
+ */
+export function readingComparisonCandidates(
+  readings: readonly ReviewReading[],
+  target: ReviewReading,
+): readonly ReviewReading[] {
+  const groups = new Map<number, ReviewReading[]>()
+  for (const row of readings) {
+    const end = Date.parse(row.periodEnd)
+    if (
+      row.organizationId !== target.organizationId ||
+      row.meterId !== target.meterId ||
+      end > Date.parse(target.periodEnd)
+    )
+      continue
+    groups.set(end, [...(groups.get(end) ?? []), row])
+  }
+  const ends = [...groups.keys()].sort((a, b) => b - a)
+  const sources: ReviewReading[] = []
+  let next = [target]
+  // Tre periodvolymer, eller tre differenser med deras föregångare.
+  const previousPeriods =
+    READING_REVIEW_TREND_RULE.comparisonPeriods + (target.readingType === 'CUMULATIVE' ? 1 : 0)
+  for (const [index, end] of ends.entries()) {
+    if (index > previousPeriods) break
+    const group = groups.get(end)!
+    if (
+      index > 0 &&
+      group.every((previous) =>
+        next.every((current) =>
+          breaksReadingSeries(
+            { end, type: previous.readingType },
+            { start: Date.parse(current.periodStart), type: current.readingType },
+          ),
+        ),
+      )
+    )
+      break
+    sources.push(...group)
+    next = group
+  }
+  return sources
+}
+
 /** Läsanalys, aldrig debiteringsunderlag. Inga ändringar av indata eller sparade belopp. */
 export function reviewReadings(readings: readonly ReviewReading[]) {
   const findings: ReadingFinding[] = []
@@ -132,7 +188,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         rates = []
         continue
       }
-      if (previous && (previous.type !== r.readingType || start > previous.end + DAY)) {
+      if (previous && breaksReadingSeries(previous, { start, type: r.readingType })) {
         // Blanda inte mätarställning med periodvolym eller jämför över luckor.
         previous = undefined
         rates = []
@@ -220,6 +276,8 @@ export interface ReadingReviewDecision {
   fingerprint: string
   revision: number
   assessment: SaveReadingReviewInput['assessment']
+  billingBasisDecision?: SaveReadingReviewInput['billingBasisDecision']
+  ruleVersion?: string
   comment: string
   reviewedByName: string
   createdAt: string
@@ -232,4 +290,17 @@ export const READING_REVIEW_ASSESSMENT_LABELS: Record<
   NEEDS_INVESTIGATION: 'Behöver utredas',
   CONFIRMED: 'Avvikelsen bekräftad',
   EXPLAINED: 'Förklarad avvikelse',
+}
+
+export interface ChargeControl {
+  chargeId: string
+  readingId: string
+  fingerprint: string
+  ruleVersion: string
+  allowed: boolean
+  problems: string[]
+  hasCurrentCheck: boolean
+  findingCount: number
+  checkedAt?: string
+  checkedByName?: string
 }

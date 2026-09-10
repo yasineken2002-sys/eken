@@ -19,6 +19,7 @@ function setup() {
     periodEnd: new Date(Date.UTC(2026, 0, i + 1)),
   }))
   const db = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     user: {
       findFirst: jest
         .fn()
@@ -78,7 +79,7 @@ describe('spara bedömning', () => {
       evidence: { readingId: dto.readingId, code: 'HIGH_RATE' },
     })
     expect(db.meterReadingReview.create.mock.calls[0]![0].data.evidence.reviews).toBeUndefined()
-    expect(transaction.mock.calls[0]![1]).toMatchObject({ isolationLevel: 'Serializable' })
+    expect(transaction.mock.calls[0]![1]).toMatchObject({ isolationLevel: 'ReadCommitted' })
   })
   it('behåller förra revisionen och visar historik efter omläsning', async () => {
     const { service, input, history } = setup()

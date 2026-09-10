@@ -1,3 +1,4 @@
+import { ChargeControlPanel } from './components/ChargeControlPanel'
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Gauge, Lock, Pencil, Coins, Activity, FileText, BookCheck } from 'lucide-react'
@@ -17,7 +18,7 @@ import { ReadingForm } from './components/ReadingForm'
 import { useMeters, useCreateMeter, useUpdateMeter } from './hooks/useMeterQueries'
 import { useTariffs, useCreateTariff } from './hooks/useTariffQueries'
 import { useReadings, useCreateReading } from './hooks/useReadingQueries'
-import { useCharges, useCharge, useConfirmCharge } from './hooks/useChargeQueries'
+import { useCharges, useCharge } from './hooks/useChargeQueries'
 import { useUnits } from '@/features/units/hooks/useUnits'
 import { useProperties } from '@/features/properties/hooks/useProperties'
 import { useCanWrite } from '@/hooks/useCanWrite'
@@ -250,7 +251,6 @@ export function ConsumptionPage({
   const updateMutation = useUpdateMeter()
   const createTariffMutation = useCreateTariff()
   const createReadingMutation = useCreateReading()
-  const confirmChargeMutation = useConfirmCharge()
 
   function unitLabel(unitId: string): string {
     const u = units.find((u) => u.id === unitId)
@@ -319,10 +319,6 @@ export function ConsumptionPage({
 
   // Bekräfta + bokför en DRAFT-charge. Anropar den befintliga endpointen som
   // skapar verifikatet — frontend bygger ingen bokföringslogik.
-  function handleConfirmCharge() {
-    if (!selectedCharge) return
-    confirmChargeMutation.mutate(selectedCharge.id)
-  }
 
   function handleUpdate(dto: UpdateMeterInput) {
     if (!selected) return
@@ -917,34 +913,21 @@ export function ConsumptionPage({
                 </div>
               )}
 
-              {/* Bekräfta + bokför — endast DRAFT, bokföringsåtgärd */}
-              {selectedCharge.status === 'DRAFT' && canWrite && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5">
-                  <p className="text-[13px] font-semibold text-amber-800">
-                    Att bekräfta innebär att bokföra
-                  </p>
-                  <p className="mt-1 text-[12px] text-amber-700">
-                    Ett periodiserat verifikat skapas (kundfordran 1510 + intäkt, samt moms vid
-                    momspliktig post). Åtgärden kan inte ångras härifrån.
-                  </p>
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      loading={confirmChargeMutation.isPending}
-                      onClick={handleConfirmCharge}
-                    >
-                      <BookCheck size={14} strokeWidth={1.9} />
-                      Bekräfta och bokför
-                    </Button>
-                  </div>
-                </div>
+              {selectedCharge.status !== 'CANCELLED' && canWrite && (
+                <ChargeControlPanel
+                  key={selectedCharge.id}
+                  chargeId={selectedCharge.id}
+                  onReview={() => {
+                    setSelectedChargeId(null)
+                    setTab('review')
+                  }}
+                />
               )}
 
               {selectedCharge.status !== 'DRAFT' && (
                 <div className="border-line flex items-center gap-2 rounded-xl border bg-gray-50 p-3 text-[12px] text-gray-500">
                   <BookCheck size={14} strokeWidth={1.9} className="text-emerald-600" />
-                  Posten är bokförd (verifikat skapat).
+                  Posten har konfirmerats. Aktuellt kontrollspår visas i kontrollen ovan.
                 </div>
               )}
             </div>

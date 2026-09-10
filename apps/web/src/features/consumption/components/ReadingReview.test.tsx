@@ -23,9 +23,14 @@ it('visar tomhet först efter lyckad hämtning', () => {
 })
 it('ger omläsning vid fel, även när tidigare data finns', () => {
   const refetch = vi.fn()
-  state.query.mockReturnValue({ isError: true, error: new Error('offline'), data: [], refetch })
+  state.query.mockReturnValue({
+    isError: true,
+    error: new Error('offline'),
+    data: { ...reviewReadings([]), history: [], ruleVersion: 'consumption-review-v2' },
+    refetch,
+  })
   render(<ReadingReview meterLabel={label} />)
-  expect(screen.queryByText('Inga avläsningar att granska ännu.')).toBeNull()
+  expect(screen.getByText(/ditt utkast finns kvar/)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Försök igen' }))
   expect(refetch).toHaveBeenCalledOnce()
 })

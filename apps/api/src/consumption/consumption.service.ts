@@ -1,4 +1,20 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import type { ConfirmConsumptionChargeInput } from '@eken/shared'
+import {
+  lockConsumptionEvidence,
+  loadChargeControl,
+  requireChargeActor,
+  requireChargeCheck,
+  consumptionConflict,
+  chargeConflict,
+} from './charge-gate'
 import type {
   Meter,
   MeterStatus,
@@ -203,8 +219,9 @@ export class ConsumptionService {
     propertyId: string,
     meterType: ConsumptionTariff['meterType'],
     atDate: Date,
+    db: Prisma.TransactionClient = this.prisma,
   ): Promise<ConsumptionTariff | null> {
-    const tariffs = await this.prisma.consumptionTariff.findMany({
+    const tariffs = await db.consumptionTariff.findMany({
       where: {
         organizationId,
         meterType,
@@ -231,161 +248,172 @@ export class ConsumptionService {
     organizationId: string,
     userId: string,
   ): Promise<{ reading: MeterReading; charge: ConsumptionCharge | null; idempotent: boolean }> {
-    const meter = await this.prisma.meter.findFirst({
-      where: { id: dto.meterId, organizationId },
-      include: {
-        unit: {
-          select: {
-            id: true,
-            type: true,
-            voluntaryTaxLiability: true,
-            propertyId: true,
-            property: { select: { consumptionBillingMode: true } },
+    return this.prisma
+      .$transaction(async (tx) => {
+        await lockConsumptionEvidence(tx, organizationId)
+        const meter = await tx.meter.findFirst({
+          where: { id: dto.meterId, organizationId },
+          include: {
+            unit: {
+              select: {
+                id: true,
+                type: true,
+                voluntaryTaxLiability: true,
+                propertyId: true,
+                property: { select: { consumptionBillingMode: true } },
+              },
+            },
           },
-        },
-      },
-    })
-    if (!meter) throw new NotFoundException('Mätaren hittades inte')
-
-    // Idempotens (meterId + externalId): samma avläsning från API/import skapar
-    // aldrig en dubblett — returnera den befintliga + dess ev. charge.
-    if (dto.externalId) {
-      const existing = await this.prisma.meterReading.findUnique({
-        where: { meterId_externalId: { meterId: dto.meterId, externalId: dto.externalId } },
-      })
-      if (existing) {
-        const charge = await this.prisma.consumptionCharge.findFirst({
-          where: { meterReadingId: existing.id },
         })
-        return { reading: existing, charge, idempotent: true }
-      }
-    }
+        if (!meter) throw new NotFoundException('Mätaren hittades inte')
 
-    if (meter.status !== 'ACTIVE') {
-      throw new BadRequestException('Mätaren är inte aktiv – avläsning kan inte registreras')
-    }
+        // Idempotens (meterId + externalId): samma avläsning från API/import skapar
+        // aldrig en dubblett — returnera den befintliga + dess ev. charge.
+        if (dto.externalId) {
+          const existing = await tx.meterReading.findUnique({
+            where: { meterId_externalId: { meterId: dto.meterId, externalId: dto.externalId } },
+          })
+          if (existing) {
+            const charge = await tx.consumptionCharge.findFirst({
+              where: { meterReadingId: existing.id },
+            })
+            return { reading: existing, charge, idempotent: true }
+          }
+        }
 
-    const readingType: ReadingType = dto.readingType ?? 'CUMULATIVE'
-    const periodStart = new Date(dto.periodStart)
-    const periodEnd = new Date(dto.periodEnd)
-    if (periodEnd < periodStart) {
-      throw new BadRequestException('periodEnd får inte vara före periodStart')
-    }
+        if (meter.status !== 'ACTIVE') {
+          throw new BadRequestException('Mätaren är inte aktiv – avläsning kan inte registreras')
+        }
 
-    // ── Förbrukningsberäkning ────────────────────────────────────────────────
-    // quantity = null betyder "ingen debiterbar förbrukning" (öppningsavläsning).
-    const quantity = await this.computeQuantity(dto.meterId, readingType, dto.value, periodEnd)
+        const readingType: ReadingType = dto.readingType ?? 'CUMULATIVE'
+        const periodStart = new Date(dto.periodStart)
+        const periodEnd = new Date(dto.periodEnd)
+        if (periodEnd < periodStart) {
+          throw new BadRequestException('periodEnd får inte vara före periodStart')
+        }
 
-    // Aktivt hyresförhållande för perioden (eller explicit angivet).
-    const lease = await this.resolveLease(
-      meter.unitId,
-      organizationId,
-      dto.leaseId,
-      periodStart,
-      periodEnd,
-    )
-
-    // Leveranssätt: lease-override → fastighetens default.
-    const deliveryMode: ConsumptionBillingMode | null = lease
-      ? (lease.consumptionBillingMode ?? meter.unit.property.consumptionBillingMode)
-      : null
-
-    const billable =
-      quantity !== null &&
-      quantity > 0 &&
-      lease !== null &&
-      deliveryMode !== null &&
-      deliveryMode !== 'NONE'
-
-    // Tariff + moms-snapshot beräknas FÖRE transaktionen. Saknas tariff för en
-    // debiterbar avläsning är det ett konfigurationsfel → avvisa (inget skapas);
-    // priset måste konfigureras innan en debiterbar förbrukning registreras.
-    let chargeData: {
-      pricePerUnit: number
-      netAmount: number
-      vatStatus: ConsumptionVatStatus
-      vatRate: number
-      vatAmount: number
-      totalAmount: number
-    } | null = null
-
-    if (billable) {
-      const tariff = await this.resolveTariff(
-        organizationId,
-        meter.unitId,
-        meter.unit.propertyId,
-        meter.type,
-        periodEnd,
-      )
-      if (!tariff) {
-        throw new BadRequestException(
-          `Ingen gällande tariff för ${meter.type} vid ${dto.periodEnd}. Konfigurera en tariff innan debiterbar förbrukning registreras.`,
-        )
-      }
-      // Moms = snapshot från unit-config (typ + frivillig skattskyldighet).
-      // ALDRIG hårdkodat "bostad = momsfri" — vatRateForRent äger den regeln.
-      const vatRate = vatRateForRent(meter.unit.type, meter.unit.voluntaryTaxLiability)
-      const vatStatus: ConsumptionVatStatus = vatRate === 25 ? 'TAXABLE_25' : 'EXEMPT'
-      const pricePerUnit = Number(tariff.pricePerUnit)
-      const netAmount = round2((quantity as number) * pricePerUnit)
-      const vatAmount = round2((netAmount * vatRate) / 100)
-      chargeData = {
-        pricePerUnit,
-        netAmount,
-        vatStatus,
-        vatRate,
-        vatAmount,
-        totalAmount: round2(netAmount + vatAmount),
-      }
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const reading = await tx.meterReading.create({
-        data: {
-          organizationId,
-          meterId: dto.meterId,
-          unitId: meter.unitId,
-          value: dto.value,
+        // ── Förbrukningsberäkning ────────────────────────────────────────────────
+        // quantity = null betyder "ingen debiterbar förbrukning" (öppningsavläsning).
+        const quantity = await this.computeQuantity(
+          dto.meterId,
           readingType,
-          readingDate: new Date(dto.readingDate),
+          dto.value,
+          periodEnd,
+          tx,
+        )
+
+        // Aktivt hyresförhållande för perioden (eller explicit angivet).
+        const lease = await this.resolveLease(
+          meter.unitId,
+          organizationId,
+          dto.leaseId,
           periodStart,
           periodEnd,
-          source: dto.source,
-          registeredById: userId,
-          ...(lease ? { leaseId: lease.id } : {}),
-          ...(dto.externalId ? { externalId: dto.externalId } : {}),
-          ...(dto.notes ? { notes: dto.notes } : {}),
-        },
-      })
+          tx,
+        )
 
-      let charge: ConsumptionCharge | null = null
-      if (billable && chargeData && lease && deliveryMode) {
-        charge = await tx.consumptionCharge.create({
+        // Leveranssätt: lease-override → fastighetens default.
+        const deliveryMode: ConsumptionBillingMode | null = lease
+          ? (lease.consumptionBillingMode ?? meter.unit.property.consumptionBillingMode)
+          : null
+
+        const billable =
+          quantity !== null &&
+          quantity > 0 &&
+          lease !== null &&
+          deliveryMode !== null &&
+          deliveryMode !== 'NONE'
+
+        // Tariff + moms-snapshot beräknas FÖRE transaktionen. Saknas tariff för en
+        // debiterbar avläsning är det ett konfigurationsfel → avvisa (inget skapas);
+        // priset måste konfigureras innan en debiterbar förbrukning registreras.
+        let chargeData: {
+          pricePerUnit: number
+          netAmount: number
+          vatStatus: ConsumptionVatStatus
+          vatRate: number
+          vatAmount: number
+          totalAmount: number
+        } | null = null
+
+        if (billable) {
+          const tariff = await this.resolveTariff(
+            organizationId,
+            meter.unitId,
+            meter.unit.propertyId,
+            meter.type,
+            periodEnd,
+            tx,
+          )
+          if (!tariff) {
+            throw new BadRequestException(
+              `Ingen gällande tariff för ${meter.type} vid ${dto.periodEnd}. Konfigurera en tariff innan debiterbar förbrukning registreras.`,
+            )
+          }
+          // Moms = snapshot från unit-config (typ + frivillig skattskyldighet).
+          // ALDRIG hårdkodat "bostad = momsfri" — vatRateForRent äger den regeln.
+          const vatRate = vatRateForRent(meter.unit.type, meter.unit.voluntaryTaxLiability)
+          const vatStatus: ConsumptionVatStatus = vatRate === 25 ? 'TAXABLE_25' : 'EXEMPT'
+          const pricePerUnit = Number(tariff.pricePerUnit)
+          const netAmount = round2((quantity as number) * pricePerUnit)
+          const vatAmount = round2((netAmount * vatRate) / 100)
+          chargeData = {
+            pricePerUnit,
+            netAmount,
+            vatStatus,
+            vatRate,
+            vatAmount,
+            totalAmount: round2(netAmount + vatAmount),
+          }
+        }
+
+        const reading = await tx.meterReading.create({
           data: {
             organizationId,
-            leaseId: lease.id,
+            meterId: dto.meterId,
             unitId: meter.unitId,
-            tenantId: lease.tenantId,
-            meterReadingId: reading.id,
-            meterType: meter.type,
+            value: dto.value,
+            readingType,
+            readingDate: new Date(dto.readingDate),
             periodStart,
             periodEnd,
-            quantity: quantity as number,
-            pricePerUnit: chargeData.pricePerUnit,
-            netAmount: chargeData.netAmount,
-            vatStatus: chargeData.vatStatus,
-            vatRate: chargeData.vatRate,
-            vatAmount: chargeData.vatAmount,
-            totalAmount: chargeData.totalAmount,
-            kind: 'ACTUAL',
-            status: 'DRAFT',
-            deliveryMode,
+            source: dto.source,
+            registeredById: userId,
+            ...(lease ? { leaseId: lease.id } : {}),
+            ...(dto.externalId ? { externalId: dto.externalId } : {}),
+            ...(dto.notes ? { notes: dto.notes } : {}),
           },
         })
-      }
 
-      return { reading, charge, idempotent: false }
-    }, PRISMA_DEFAULT_TX_LIMITS)
+        let charge: ConsumptionCharge | null = null
+        if (billable && chargeData && lease && deliveryMode) {
+          charge = await tx.consumptionCharge.create({
+            data: {
+              organizationId,
+              leaseId: lease.id,
+              unitId: meter.unitId,
+              tenantId: lease.tenantId,
+              meterReadingId: reading.id,
+              meterType: meter.type,
+              periodStart,
+              periodEnd,
+              quantity: quantity as number,
+              pricePerUnit: chargeData.pricePerUnit,
+              netAmount: chargeData.netAmount,
+              vatStatus: chargeData.vatStatus,
+              vatRate: chargeData.vatRate,
+              vatAmount: chargeData.vatAmount,
+              totalAmount: chargeData.totalAmount,
+              kind: 'ACTUAL',
+              status: 'DRAFT',
+              deliveryMode,
+            },
+          })
+        }
+
+        return { reading, charge, idempotent: false }
+      }, PRISMA_DEFAULT_TX_LIMITS)
+      .catch(consumptionConflict)
   }
 
   // CUMULATIVE: differens mot föregående avläsning på SAMMA mätare. Första
@@ -398,13 +426,14 @@ export class ConsumptionService {
     readingType: ReadingType,
     value: number,
     periodEnd: Date,
+    db: Prisma.TransactionClient,
   ): Promise<number | null> {
     if (readingType === 'PERIOD_VOLUME') {
       if (value < 0) throw new BadRequestException('Periodförbrukning kan inte vara negativ')
       return value
     }
 
-    const previous = await this.prisma.meterReading.findFirst({
+    const previous = await db.meterReading.findFirst({
       where: { meterId, periodEnd: { lt: periodEnd } },
       orderBy: { periodEnd: 'desc' },
       select: { value: true },
@@ -427,6 +456,7 @@ export class ConsumptionService {
     explicitLeaseId: string | undefined,
     periodStart: Date,
     periodEnd: Date,
+    db: Prisma.TransactionClient,
   ): Promise<{
     id: string
     tenantId: string
@@ -434,7 +464,7 @@ export class ConsumptionService {
   } | null> {
     const select = { id: true, tenantId: true, consumptionBillingMode: true } as const
     if (explicitLeaseId) {
-      const lease = await this.prisma.lease.findFirst({
+      const lease = await db.lease.findFirst({
         where: { id: explicitLeaseId, organizationId, unitId },
         select,
       })
@@ -442,7 +472,7 @@ export class ConsumptionService {
       return lease
     }
     // Aktivt avtal som täcker mätperioden.
-    return this.prisma.lease.findFirst({
+    return db.lease.findFirst({
       where: {
         unitId,
         organizationId,
@@ -481,48 +511,65 @@ export class ConsumptionService {
     return charge
   }
 
-  // ── DRAFT → CONFIRMED: bokför verifikat + 1510-fordran (PR 3) ───────────────
-  //
-  // Här uppstår intäkten och kundfordran — oberoende av leverans (PR 4 rör detta
-  // aldrig). Verifikatet skapas UTANFÖR transaktionen och är idempotent via
-  // sourceId="consumption-charge:<id>": dubbel confirm skapar inte dubbla
-  // verifikat. Bokföringsfel loggas men fäller aldrig confirm:en (jfr deposits/
-  // avisering). Inget rörs på avi/faktura, ingen consumptionAmount, ingen
-  // RentNoticeLine — det är PR 4.
+  async getChargeControl(id: string, organizationId: string) {
+    return this.prisma
+      .$transaction(async (tx) => {
+        await lockConsumptionEvidence(tx, organizationId)
+        return (await loadChargeControl(tx, organizationId, id)).control
+      }, PRISMA_DEFAULT_TX_LIMITS)
+      .catch(consumptionConflict)
+  }
+
+  // Samma lås skyddar underlag, intyg, kontrollspår, status och verifikat.
   async confirmCharge(
     id: string,
     organizationId: string,
     userId: string,
+    dto: ConfirmConsumptionChargeInput,
   ): Promise<ConsumptionCharge> {
-    // Atomär statusövergång DRAFT → CONFIRMED: en villkorad updateMany (status:
-    // 'DRAFT' i WHERE) kan aldrig råka skriva över ett samtidigt CANCELLED till
-    // CONFIRMED — stänger TOCTOU mot ett framtida cancel-flöde. count påverkar
-    // inget: verifikat-anropet nedan körs alltid (self-heal) och är idempotent.
-    await this.prisma.consumptionCharge.updateMany({
-      where: { id, organizationId, status: 'DRAFT' },
-      data: { status: 'CONFIRMED' },
-    })
-
-    const charge = await this.prisma.consumptionCharge.findFirst({ where: { id, organizationId } })
-    if (!charge) throw new NotFoundException('Förbrukningsposten hittades inte')
-    if (charge.status === 'CANCELLED') {
-      throw new BadRequestException('Annullerad förbrukningspost kan inte bokföras')
-    }
-    // CONFIRMED/ATTACHED → redan bokförd; det idempotenta anropet nedan körs ändå
-    // (self-heal om ett tidigare confirm dog efter statusbytet men före verifikatet)
-    // utan att skapa dubbletter, tack vare sourceId-idempotensen.
-
     try {
-      await this.accounting.createJournalEntryForConsumptionCharge(charge, organizationId, userId)
-    } catch (err) {
-      this.logger.error(
-        `[Consumption] Bokföring av förbrukningspost ${charge.id} misslyckades: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      )
+      return await this.prisma.$transaction(async (tx) => {
+        await lockConsumptionEvidence(tx, organizationId)
+        const actorName = await requireChargeActor(tx, organizationId, userId)
+        const { charge, control, evidence, nextRevision } = await loadChargeControl(
+          tx,
+          organizationId,
+          id,
+        )
+        if (dto.expectedFingerprint !== control.fingerprint) throw chargeConflict()
+        if (!control.allowed) throw new ConflictException(control.problems.join('\n'))
+        if (!control.hasCurrentCheck)
+          await tx.consumptionChargeCheck.create({
+            data: {
+              chargeId: id,
+              organizationId,
+              readingId: charge.meterReadingId,
+              fingerprint: control.fingerprint,
+              revision: nextRevision,
+              ruleVersion: control.ruleVersion,
+              evidence: JSON.parse(JSON.stringify(evidence)) as Prisma.InputJsonValue,
+              checkedById: userId,
+              checkedByName: actorName,
+            },
+          })
+        await tx.consumptionCharge.updateMany({
+          where: { id, organizationId, status: 'DRAFT' },
+          data: { status: 'CONFIRMED' },
+        })
+        await this.accounting.createJournalEntryForConsumptionCharge(
+          charge,
+          organizationId,
+          userId,
+          tx,
+        )
+        return tx.consumptionCharge.findFirstOrThrow({
+          where: { id, organizationId },
+          include: CHARGE_INCLUDE,
+        })
+      }, PRISMA_DEFAULT_TX_LIMITS)
+    } catch (error) {
+      consumptionConflict(error)
     }
-
-    return this.findCharge(id, organizationId)
   }
 
   // ══ Leveranssätt: CONFIRMED → ATTACHED (PR 4) ═══════════════════════════════
@@ -550,56 +597,72 @@ export class ConsumptionService {
   }): Promise<number> {
     const lagCutoff = new Date(Date.UTC(params.aviYear, params.aviMonth - 2, 0))
 
-    const charges = await this.prisma.consumptionCharge.findMany({
-      where: {
-        organizationId: params.organizationId,
-        leaseId: params.leaseId,
-        status: 'CONFIRMED',
-        deliveryMode: 'RENT_NOTICE_LINE',
-        periodEnd: { lte: lagCutoff },
-      },
-      orderBy: { periodEnd: 'asc' },
-    })
-    if (charges.length === 0) return 0
-
-    let consumptionTotal = 0
-    await this.prisma.$transaction(async (tx) => {
-      for (const charge of charges) {
-        // Atomiskt anspråk CONFIRMED → ATTACHED (race-säkert): bara den som
-        // vinner får skapa raden. @unique(consumptionChargeId) är backstop.
-        const claim = await tx.consumptionCharge.updateMany({
-          where: { id: charge.id, organizationId: params.organizationId, status: 'CONFIRMED' },
-          data: { status: 'ATTACHED' },
-        })
-        if (claim.count === 0) continue
-
-        await tx.rentNoticeLine.create({
-          data: {
-            rentNoticeId: params.rentNoticeId,
-            description: chargeLineDescription(charge.meterType, charge.periodEnd),
-            quantity: charge.quantity,
-            unitPrice: charge.pricePerUnit,
-            vatRate: charge.vatRate,
-            total: charge.totalAmount,
-            consumptionChargeId: charge.id,
+    return this.prisma
+      .$transaction(async (tx) => {
+        await lockConsumptionEvidence(tx, params.organizationId)
+        await tx.$queryRaw`SELECT "id" FROM "RentNotice" WHERE "id" = ${params.rentNoticeId} AND "organizationId" = ${params.organizationId} FOR UPDATE`
+        const notice = await tx.rentNotice.findFirst({
+          where: {
+            id: params.rentNoticeId,
+            organizationId: params.organizationId,
+            leaseId: params.leaseId,
+            type: 'RENT',
           },
         })
-        consumptionTotal += Number(charge.totalAmount)
-      }
+        if (!notice || notice.status === 'CANCELLED')
+          throw new NotFoundException('Hyresavin hittades inte för avtalet.')
+        const charges = await tx.consumptionCharge.findMany({
+          where: {
+            organizationId: params.organizationId,
+            leaseId: params.leaseId,
+            status: 'CONFIRMED',
+            deliveryMode: 'RENT_NOTICE_LINE',
+            periodEnd: { lte: lagCutoff },
+          },
+          orderBy: { periodEnd: 'asc' },
+        })
+        if (charges.length === 0) return 0
 
-      // Org-scopad write (defense-in-depth, samma mönster som MiscCharge-attach):
-      // updateMany med organizationId i where så consumptionAmount aldrig kan skrivas
-      // till en annan orgs avi. count===0 → avin tillhör inte org:en → kasta.
-      const updated = await tx.rentNotice.updateMany({
-        where: { id: params.rentNoticeId, organizationId: params.organizationId },
-        data: { consumptionAmount: round2(consumptionTotal) },
-      })
-      if (updated.count === 0) {
-        throw new NotFoundException('Hyresavin hittades inte för organisationen')
-      }
-    }, PRISMA_DEFAULT_TX_LIMITS)
+        let consumptionTotal = 0
+        for (const charge of charges) {
+          await requireChargeCheck(tx, params.organizationId, charge.id)
+          if (charge.tenantId !== notice.tenantId)
+            throw new ConflictException('Avin och debiteringen gäller olika hyresgäster.')
+          // Atomiskt anspråk CONFIRMED → ATTACHED (race-säkert): bara den som
+          // vinner får skapa raden. @unique(consumptionChargeId) är backstop.
+          const claim = await tx.consumptionCharge.updateMany({
+            where: { id: charge.id, organizationId: params.organizationId, status: 'CONFIRMED' },
+            data: { status: 'ATTACHED' },
+          })
+          if (claim.count === 0) continue
 
-    return round2(consumptionTotal)
+          await tx.rentNoticeLine.create({
+            data: {
+              rentNoticeId: params.rentNoticeId,
+              description: chargeLineDescription(charge.meterType, charge.periodEnd),
+              quantity: charge.quantity,
+              unitPrice: charge.pricePerUnit,
+              vatRate: charge.vatRate,
+              total: charge.totalAmount,
+              consumptionChargeId: charge.id,
+            },
+          })
+          consumptionTotal += Number(charge.totalAmount)
+        }
+
+        // Org-scopad write (defense-in-depth, samma mönster som MiscCharge-attach):
+        // updateMany med organizationId i where så consumptionAmount aldrig kan skrivas
+        // till en annan orgs avi. count===0 → avin tillhör inte org:en → kasta.
+        const updated = await tx.rentNotice.updateMany({
+          where: { id: params.rentNoticeId, organizationId: params.organizationId },
+          data: { consumptionAmount: round2(consumptionTotal) },
+        })
+        if (updated.count === 0) {
+          throw new NotFoundException('Hyresavin hittades inte för organisationen')
+        }
+        return round2(consumptionTotal)
+      }, PRISMA_DEFAULT_TX_LIMITS)
+      .catch(consumptionConflict)
   }
 
   // SEPARATE_INVOICE: bygger EN faktura (InvoiceType.UTILITY) av lease:ens
@@ -613,85 +676,91 @@ export class ConsumptionService {
     organizationId: string,
     userId: string,
   ): Promise<Invoice | null> {
-    const lease = await this.prisma.lease.findFirst({
-      where: { id: leaseId, organizationId },
-      select: { id: true, tenantId: true },
-    })
-    if (!lease) throw new NotFoundException('Hyresavtalet hittades inte')
-
-    const charges = await this.prisma.consumptionCharge.findMany({
-      where: {
-        organizationId,
-        leaseId,
-        status: 'CONFIRMED',
-        deliveryMode: 'SEPARATE_INVOICE',
-      },
-      orderBy: { periodEnd: 'asc' },
-    })
-    if (charges.length === 0) return null
-
-    const subtotal = round2(charges.reduce((s, c) => s + Number(c.netAmount), 0))
-    const vatTotal = round2(charges.reduce((s, c) => s + Number(c.vatAmount), 0))
-    const total = round2(charges.reduce((s, c) => s + Number(c.totalAmount), 0))
-
-    const today = new Date()
-    const dueDate = new Date()
-    dueDate.setDate(dueDate.getDate() + 30)
-
-    return this.prisma.$transaction(async (tx) => {
-      const year = today.getFullYear()
-      const count = await tx.invoice.count({ where: { organizationId } })
-      const invoiceNumber = `F-${year}-${String(count + 1).padStart(4, '0')}`
-
-      const invoice = await tx.invoice.create({
-        data: {
-          organizationId,
-          invoiceNumber,
-          type: 'UTILITY',
-          status: 'DRAFT',
-          tenantId: lease.tenantId,
-          leaseId: lease.id,
-          subtotal,
-          vatTotal,
-          total,
-          dueDate,
-          issueDate: today,
-          notes: 'Förbrukningsdebitering (el/vatten/värme)',
-          lines: {
-            create: charges.map((c) => ({
-              description: chargeLineDescription(c.meterType, c.periodEnd),
-              quantity: c.quantity,
-              unitPrice: c.pricePerUnit,
-              vatRate: c.vatRate,
-              total: c.totalAmount,
-            })),
-          },
-        },
-      })
-
-      // Atomiskt anspråk per charge (CONFIRMED → ATTACHED) + länk till fakturan.
-      for (const charge of charges) {
-        await tx.consumptionCharge.updateMany({
-          where: { id: charge.id, organizationId, status: 'CONFIRMED' },
-          data: { status: 'ATTACHED', invoiceId: invoice.id },
+    return this.prisma
+      .$transaction(async (tx) => {
+        await lockConsumptionEvidence(tx, organizationId)
+        await requireChargeActor(tx, organizationId, userId)
+        const lease = await tx.lease.findFirst({
+          where: { id: leaseId, organizationId },
+          select: { id: true, tenantId: true },
         })
-      }
+        if (!lease) throw new NotFoundException('Hyresavtalet hittades inte')
 
-      // #340 (svepningen): via `record()`, inte en rå create. Den skrev bara
-      // `actorId` — ett UUID — och `users.service.ts` gör en riktig delete, så
-      // raderas användaren är namnet borta ur historiken för alltid.
-      // `record()` denormaliserar etiketten vid skrivtillfället.
-      await this.invoiceEvents.record(
-        invoice.id,
-        'CREATED',
-        'USER',
-        userId,
-        { invoiceNumber, consumptionChargeIds: charges.map((c) => c.id) },
-        { tx },
-      )
+        const charges = await tx.consumptionCharge.findMany({
+          where: {
+            organizationId,
+            leaseId,
+            status: 'CONFIRMED',
+            deliveryMode: 'SEPARATE_INVOICE',
+          },
+          orderBy: { periodEnd: 'asc' },
+        })
+        if (charges.length === 0) return null
 
-      return invoice
-    }, PRISMA_DEFAULT_TX_LIMITS)
+        for (const charge of charges) await requireChargeCheck(tx, organizationId, charge.id)
+
+        const subtotal = round2(charges.reduce((s, c) => s + Number(c.netAmount), 0))
+        const vatTotal = round2(charges.reduce((s, c) => s + Number(c.vatAmount), 0))
+        const total = round2(charges.reduce((s, c) => s + Number(c.totalAmount), 0))
+
+        const today = new Date()
+        const dueDate = new Date()
+        dueDate.setDate(dueDate.getDate() + 30)
+
+        const year = today.getFullYear()
+        const count = await tx.invoice.count({ where: { organizationId } })
+        const invoiceNumber = `F-${year}-${String(count + 1).padStart(4, '0')}`
+
+        const invoice = await tx.invoice.create({
+          data: {
+            organizationId,
+            invoiceNumber,
+            type: 'UTILITY',
+            status: 'DRAFT',
+            tenantId: lease.tenantId,
+            leaseId: lease.id,
+            subtotal,
+            vatTotal,
+            total,
+            dueDate,
+            issueDate: today,
+            notes: 'Förbrukningsdebitering (el/vatten/värme)',
+            lines: {
+              create: charges.map((c) => ({
+                description: chargeLineDescription(c.meterType, c.periodEnd),
+                quantity: c.quantity,
+                unitPrice: c.pricePerUnit,
+                vatRate: c.vatRate,
+                total: c.totalAmount,
+              })),
+            },
+          },
+        })
+
+        // Atomiskt anspråk per charge (CONFIRMED → ATTACHED) + länk till fakturan.
+        for (const charge of charges) {
+          await tx.consumptionCharge.updateMany({
+            where: { id: charge.id, organizationId, status: 'CONFIRMED' },
+            data: { status: 'ATTACHED', invoiceId: invoice.id },
+          })
+        }
+
+        // #340 (svepningen): via `record()`, inte en rå create. Den skrev bara
+        // `actorId` — ett UUID — och `users.service.ts` gör en riktig delete, så
+        // raderas användaren är namnet borta ur historiken för alltid.
+        // `record()` denormaliserar etiketten vid skrivtillfället.
+        await this.invoiceEvents.record(
+          invoice.id,
+          'CREATED',
+          'USER',
+          userId,
+          { invoiceNumber, consumptionChargeIds: charges.map((c) => c.id) },
+          { tx },
+        )
+
+        return invoice
+      }, PRISMA_DEFAULT_TX_LIMITS)
+      .catch(consumptionConflict)
   }
 
   // ══ Bokslut: upplupen förbrukningsintäkt (1790, PR 5) ═══════════════════════
@@ -739,7 +808,7 @@ export class ConsumptionService {
 
     // Stängd period blockerar bokslutsposten (BFL) — tydligt fel uppåt innan
     // vi börjar skapa verifikat.
-    await this.assertPeriodOpen(organizationId, yearEndDate, reversalDate)
+    await this.assertPeriodOpen(organizationId, yearEndDate, reversalDate, this.prisma)
 
     const meters = await this.prisma.meter.findMany({
       where: { organizationId, status: 'ACTIVE' },
@@ -760,112 +829,131 @@ export class ConsumptionService {
     let skipped = 0
     let totalNet = 0
 
-    for (const meter of meters) {
-      // Aktivt hyresförhållande som täcker årsskiftet — vakant enhet ger ingen
-      // hyresgästintäkt att periodisera.
-      const lease = await this.prisma.lease.findFirst({
-        where: {
-          unitId: meter.unitId,
-          organizationId,
-          status: 'ACTIVE',
-          startDate: { lte: yearEndDate },
-          OR: [{ endDate: null }, { endDate: { gte: fiscalStart } }],
-        },
-        select: { consumptionBillingMode: true },
-      })
-      if (!lease) {
-        skipped++
-        continue
-      }
-      const billingMode = lease.consumptionBillingMode ?? meter.unit.property.consumptionBillingMode
-      if (billingMode === 'NONE') {
-        skipped++
-        continue
-      }
+    for (const candidate of meters) {
+      const accruedNet = await this.prisma
+        .$transaction(async (tx) => {
+          await lockConsumptionEvidence(tx, organizationId)
+          const meter = await tx.meter.findFirst({
+            where: { id: candidate.id, organizationId, status: 'ACTIVE' },
+            include: {
+              unit: {
+                select: {
+                  id: true,
+                  type: true,
+                  voluntaryTaxLiability: true,
+                  propertyId: true,
+                  property: { select: { consumptionBillingMode: true } },
+                },
+              },
+            },
+          })
+          if (!meter) return null
+          // Aktivt hyresförhållande som täcker årsskiftet — vakant enhet ger ingen
+          // hyresgästintäkt att periodisera.
+          const lease = await tx.lease.findFirst({
+            where: {
+              unitId: meter.unitId,
+              organizationId,
+              status: 'ACTIVE',
+              startDate: { lte: yearEndDate },
+              OR: [{ endDate: null }, { endDate: { gte: fiscalStart } }],
+            },
+            select: { consumptionBillingMode: true },
+          })
+          if (!lease) {
+            return null
+          }
+          const billingMode =
+            lease.consumptionBillingMode ?? meter.unit.property.consumptionBillingMode
+          if (billingMode === 'NONE') {
+            return null
+          }
 
-      const lastReading = await this.prisma.meterReading.findFirst({
-        where: { meterId: meter.id },
-        orderBy: { periodEnd: 'desc' },
-        select: { periodEnd: true },
-      })
-      // Senaste ACTUAL-charge ger dagstakten (basis). Ingen → ingen estimatbas.
-      const lastCharge = await this.prisma.consumptionCharge.findFirst({
-        where: {
-          organizationId,
-          meterType: meter.type,
-          kind: 'ACTUAL',
-          meterReading: { meterId: meter.id },
-        },
-        orderBy: { periodEnd: 'desc' },
-        select: { quantity: true, periodStart: true, periodEnd: true },
-      })
-      if (!lastReading || !lastCharge) {
-        skipped++
-        continue
-      }
+          const lastReading = await tx.meterReading.findFirst({
+            where: { meterId: meter.id },
+            orderBy: { periodEnd: 'desc' },
+            select: { periodEnd: true },
+          })
+          // Senaste ACTUAL-charge ger dagstakten (basis). Ingen → ingen estimatbas.
+          const lastCharge = await tx.consumptionCharge.findFirst({
+            where: {
+              organizationId,
+              meterType: meter.type,
+              kind: 'ACTUAL',
+              meterReading: { meterId: meter.id },
+            },
+            orderBy: { periodEnd: 'desc' },
+            select: { id: true, quantity: true, periodStart: true, periodEnd: true },
+          })
+          if (!lastReading || !lastCharge) {
+            return null
+          }
 
-      // Gap-dagar inom räkenskapsåret: från sista mätpunkten (eller årsstart om
-      // mätaren inte lästs sedan föregående år) t.o.m. årsslut.
-      const fiscalStartPrevDay = new Date(fiscalStart.getTime() - DAY_MS)
-      const lower =
-        lastReading.periodEnd > fiscalStartPrevDay ? lastReading.periodEnd : fiscalStartPrevDay
-      const gapDays = Math.round((yearEndDate.getTime() - lower.getTime()) / DAY_MS)
-      if (gapDays <= 0) {
-        skipped++ // mätt t.o.m. årsslut — inget att periodisera
-        continue
-      }
+          // Gap-dagar inom räkenskapsåret: från sista mätpunkten (eller årsstart om
+          // mätaren inte lästs sedan föregående år) t.o.m. årsslut.
+          const fiscalStartPrevDay = new Date(fiscalStart.getTime() - DAY_MS)
+          const lower =
+            lastReading.periodEnd > fiscalStartPrevDay ? lastReading.periodEnd : fiscalStartPrevDay
+          const gapDays = Math.round((yearEndDate.getTime() - lower.getTime()) / DAY_MS)
+          if (gapDays <= 0) {
+            return null // mätt t.o.m. årsslut — inget att periodisera
+          }
 
-      const lastChargeDays =
-        Math.round((lastCharge.periodEnd.getTime() - lastCharge.periodStart.getTime()) / DAY_MS) + 1
-      if (lastChargeDays <= 0) {
-        skipped++
-        continue
-      }
-      const dailyQty = Number(lastCharge.quantity) / lastChargeDays
-      const estQty = dailyQty * gapDays
+          const lastChargeDays =
+            Math.round(
+              (lastCharge.periodEnd.getTime() - lastCharge.periodStart.getTime()) / DAY_MS,
+            ) + 1
+          if (lastChargeDays <= 0) {
+            return null
+          }
+          const dailyQty = Number(lastCharge.quantity) / lastChargeDays
+          const estQty = dailyQty * gapDays
 
-      const tariff = await this.resolveTariff(
-        organizationId,
-        meter.unitId,
-        meter.unit.propertyId,
-        meter.type,
-        yearEndDate,
-      )
-      if (!tariff) {
-        skipped++
-        continue
-      }
+          const tariff = await this.resolveTariff(
+            organizationId,
+            meter.unitId,
+            meter.unit.propertyId,
+            meter.type,
+            yearEndDate,
+            tx,
+          )
+          if (!tariff) {
+            return null
+          }
 
-      const net = round2(estQty * Number(tariff.pricePerUnit))
-      if (net <= 0) {
-        skipped++
-        continue
-      }
-      const vatRate = vatRateForRent(meter.unit.type, meter.unit.voluntaryTaxLiability)
-      const vatStatus: ConsumptionVatStatus = vatRate === 25 ? 'TAXABLE_25' : 'EXEMPT'
-      const vatAmount = round2((net * vatRate) / 100)
-      const total = round2(net + vatAmount)
+          const net = round2(estQty * Number(tariff.pricePerUnit))
+          if (net <= 0) {
+            return null
+          }
+          const vatRate = vatRateForRent(meter.unit.type, meter.unit.voluntaryTaxLiability)
+          const vatStatus: ConsumptionVatStatus = vatRate === 25 ? 'TAXABLE_25' : 'EXEMPT'
+          const vatAmount = round2((net * vatRate) / 100)
+          const total = round2(net + vatAmount)
 
-      const result = await this.accounting.createConsumptionAccrualEntry(
-        {
-          meterId: meter.id,
-          meterType: meter.type,
-          fiscalYear,
-          yearEndDate,
-          reversalDate,
-          netAmount: net,
-          vatStatus,
-          vatAmount,
-          totalAmount: total,
-        },
-        organizationId,
-        userId,
-      )
-      if (result) {
+          const result = await this.accounting.createConsumptionAccrualEntry(
+            {
+              meterId: meter.id,
+              basisChargeId: lastCharge.id,
+              meterType: meter.type,
+              fiscalYear,
+              yearEndDate,
+              reversalDate,
+              netAmount: net,
+              vatStatus,
+              vatAmount,
+              totalAmount: total,
+            },
+            organizationId,
+            userId,
+            tx,
+          )
+          return result ? net : null
+        }, PRISMA_DEFAULT_TX_LIMITS)
+        .catch(consumptionConflict)
+      if (accruedNet === null) skipped++
+      else {
         accrued++
-        totalNet = round2(totalNet + net)
-      } else {
-        skipped++
+        totalNet = round2(totalNet + accruedNet)
       }
     }
 
@@ -887,9 +975,10 @@ export class ConsumptionService {
     organizationId: string,
     yearEndDate: Date,
     reversalDate: Date,
+    db: Prisma.TransactionClient,
   ): Promise<void> {
     for (const date of [yearEndDate, reversalDate]) {
-      await assertPeriodOpen(this.prisma, organizationId, date, 'bokslutspost kan inte skapas')
+      await assertPeriodOpen(db, organizationId, date, 'bokslutspost kan inte skapas')
     }
   }
 

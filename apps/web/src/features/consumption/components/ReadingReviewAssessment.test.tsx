@@ -111,7 +111,10 @@ it('409 kräver omläsning och sparar inte igen i samma formulär', async () => 
     (screen.getByRole('button', { name: 'Spara bedömning' }) as HTMLButtonElement).disabled,
   ).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: 'Läs om granskningen' }))
-  await waitFor(() => expect(screen.queryByLabelText('Motivering')).toBeNull())
+  await waitFor(() => expect(screen.getByLabelText('Motivering')).toBeTruthy())
+  expect(
+    screen.getByRole('button', { name: 'Jag har granskat det omlästa underlaget' }),
+  ).toBeTruthy()
   expect(api.save).toHaveBeenCalledTimes(1)
 })
 it('bakgrundsuppdatering låter inte ett öppet formulär skriva över ny bedömning', () => {
@@ -215,4 +218,59 @@ it('behåller formuläret även vid användarens eget filterbyte', () => {
   fireEvent.change(screen.getByLabelText('Visa varningar'), { target: { value: 'EXPLAINED' } })
   expect((screen.getByLabelText('Motivering') as HTMLTextAreaElement).value).toBe('Behåll')
   expect(api.save).not.toHaveBeenCalled()
+})
+
+it('bevarar motivering och intyg men spärrar ett formulär när varningen försvinner', () => {
+  const r = report()
+  const { update } = mount(r)
+  fireEvent.click(screen.getByRole('button', { name: 'Bedöm varningen' }))
+  fireEvent.change(screen.getByLabelText('Motivering'), {
+    target: { value: 'Min utredning finns kvar' },
+  })
+  fireEvent.change(screen.getByLabelText('Intyg om debiteringsunderlaget'), {
+    target: { value: 'INCORRECT' },
+  })
+  update({ ...r, findings: [] })
+  expect((screen.getByLabelText('Motivering') as HTMLTextAreaElement).value).toBe(
+    'Min utredning finns kvar',
+  )
+  expect((screen.getByLabelText('Intyg om debiteringsunderlaget') as HTMLSelectElement).value).toBe(
+    'INCORRECT',
+  )
+  expect(
+    (screen.getByRole('button', { name: 'Spara bedömning' }) as HTMLButtonElement).disabled,
+  ).toBe(true)
+  expect(api.save).not.toHaveBeenCalled()
+})
+
+it('kräver nytt intyg efter omläsning men bevarar motiveringen', async () => {
+  const r = report()
+  const { update } = mount(r)
+  fireEvent.click(screen.getByRole('button', { name: 'Bedöm varningen' }))
+  fireEvent.change(screen.getByLabelText('Bedömning'), { target: { value: 'EXPLAINED' } })
+  fireEvent.change(screen.getByLabelText('Motivering'), {
+    target: { value: 'Kontrollerat original igen' },
+  })
+  fireEvent.change(screen.getByLabelText('Intyg om debiteringsunderlaget'), {
+    target: { value: 'VERIFIED_CORRECT_REAL_INCREASE' },
+  })
+  update({ ...r, findings: r.findings.map((f) => ({ ...f, fingerprint: 'b'.repeat(64) })) })
+  fireEvent.click(screen.getByRole('button', { name: 'Läs om granskningen' }))
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Jag har granskat det omlästa underlaget' }),
+  )
+  expect((screen.getByLabelText('Motivering') as HTMLTextAreaElement).value).toBe(
+    'Kontrollerat original igen',
+  )
+  expect((screen.getByLabelText('Intyg om debiteringsunderlaget') as HTMLSelectElement).value).toBe(
+    '',
+  )
+  api.save.mockResolvedValue(decision(r))
+  fireEvent.click(screen.getByRole('button', { name: 'Spara bedömning' }))
+  await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1))
+  expect(api.save.mock.calls[0]![0]).toMatchObject({
+    fingerprint: 'b'.repeat(64),
+    comment: 'Kontrollerat original igen',
+  })
+  expect(api.save.mock.calls[0]![0].billingBasisDecision).toBeUndefined()
 })

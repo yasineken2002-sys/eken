@@ -29,15 +29,18 @@ interface AssessmentFormProps {
   finding: Finding
   onClose: () => void
   onSaved: () => void
+  unavailable: boolean
 }
-function AssessmentForm({ finding, onClose, onSaved }: AssessmentFormProps) {
+function AssessmentForm({ finding, onClose, onSaved, unavailable }: AssessmentFormProps) {
   const qc = useQueryClient()
   const formId = useId()
-  const [basis] = useState({
+  const [basis, setBasis] = useState({
     fingerprint: finding.fingerprint,
     revision: latestReadingReview(finding)?.revision ?? 0,
   })
+  const [reloaded, setReloaded] = useState(false)
   const stale =
+    unavailable ||
     basis.fingerprint !== finding.fingerprint ||
     basis.revision !== (latestReadingReview(finding)?.revision ?? 0)
   const form = useForm<SaveReadingReviewInput>({
@@ -85,6 +88,31 @@ function AssessmentForm({ finding, onClose, onSaved }: AssessmentFormProps) {
         </select>
       </div>
       <div>
+        <label className="block text-sm font-medium" htmlFor={`${formId}-basis`}>
+          Intyg om debiteringsunderlaget
+        </label>
+        <select
+          id={`${formId}-basis`}
+          className="mt-1 block w-full rounded-lg border border-gray-300 p-2"
+          {...form.register('billingBasisDecision', { setValueAs: (value) => value || undefined })}
+          disabled={save.isPending || stale}
+        >
+          <option value="">Inget intyg om korrekt underlag</option>
+          <option value="INCORRECT">Underlaget är felaktigt – debitering spärras</option>
+          {finding.code === 'HIGH_RATE' && (
+            <option value="VERIFIED_CORRECT_REAL_INCREASE">
+              Jag intygar korrekt underlag och verklig, förklarad ökning
+            </option>
+          )}
+        </select>
+        <p className="mt-1 text-xs text-gray-600">
+          Intyget gäller mätvärde, period och visade jämförelseavläsningar. Kontrollera dessa och
+          beskriv ökningen. Endast Förklarad avvikelse tillsammans med detta uttryckliga intyg kan
+          tillåta en hög förbrukning. En kommentar rättar inga data. Rättelsevägen är ett separat
+          kommande bygge.
+        </p>
+      </div>
+      <div>
         <label className="block text-sm font-medium" htmlFor={`${formId}-comment`}>
           Motivering
         </label>
@@ -108,18 +136,40 @@ function AssessmentForm({ finding, onClose, onSaved }: AssessmentFormProps) {
       </p>
       {stale || conflict ? (
         <div role="alert" className="text-sm text-amber-800">
-          Underlaget eller bedömningen har ändrats. Läs om innan du sparar.
+          Underlaget eller bedömningen har ändrats. Läs om innan du sparar. Om varningen har
+          försvunnit eller bytt kod finns ditt utkast kvar, men kan inte sparas mot den gamla
+          varningen.
           <Button
             type="button"
             variant="secondary"
             size="sm"
-            onClick={() => {
-              void qc.invalidateQueries({ queryKey: ['readings', 'review'] })
-              onClose()
+            onClick={async () => {
+              await qc.invalidateQueries({ queryKey: ['readings', 'review'] })
+              setReloaded(true)
             }}
           >
             Läs om granskningen
           </Button>
+          {reloaded && !unavailable && (
+            <Button
+              type="button"
+              onClick={() => {
+                const next = {
+                  fingerprint: finding.fingerprint,
+                  revision: latestReadingReview(finding)?.revision ?? 0,
+                }
+                setBasis(next)
+                form.setValue('fingerprint', next.fingerprint)
+                form.setValue('expectedRevision', next.revision)
+                // Ett nytt underlag kräver ett nytt uttryckligt intyg. Motiveringen bevaras.
+                form.setValue('billingBasisDecision', undefined)
+                save.reset()
+                setReloaded(false)
+              }}
+            >
+              Jag har granskat det omlästa underlaget
+            </Button>
+          )}
         </div>
       ) : (
         save.isError && (
@@ -149,11 +199,13 @@ function AssessmentForm({ finding, onClose, onSaved }: AssessmentFormProps) {
 interface ReadingReviewAssessmentProps {
   finding: Finding
   canAssess: boolean
+  unavailable?: boolean
   onEditingChange?: (editing: boolean) => void
 }
 export function ReadingReviewAssessment({
   finding,
   canAssess,
+  unavailable = false,
   onEditingChange,
 }: ReadingReviewAssessmentProps) {
   const [editing, setEditing] = useState(false)
@@ -164,6 +216,14 @@ export function ReadingReviewAssessment({
       <p className="font-medium">
         {latest?.fingerprint === finding.fingerprint ? 'Senaste bedömning: ' : ''}
         {READING_REVIEW_STATE_LABELS[readingReviewState(finding)]}
+      </p>
+      <p>
+        Intyg:{' '}
+        {latest?.billingBasisDecision === 'VERIFIED_CORRECT_REAL_INCREASE'
+          ? 'Korrekt underlag och verklig, förklarad ökning'
+          : latest?.billingBasisDecision === 'INCORRECT'
+            ? 'Underlaget bedömt felaktigt'
+            : 'Inget intyg om korrekt underlag'}
       </p>
       {saved && (
         <p role="status" className="mt-1 text-gray-600">
@@ -188,6 +248,7 @@ export function ReadingReviewAssessment({
       {canAssess && editing && (
         <AssessmentForm
           finding={finding}
+          unavailable={unavailable}
           onClose={() => {
             setEditing(false)
             onEditingChange?.(false)
@@ -229,6 +290,22 @@ export function ReadingReviewHistory({ history, meterLabel }: ReadingReviewHisto
             </p>
             <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-700">
               {review.comment}
+            </p>
+            {review.billingBasisDecision && (
+              <p>
+                Intyg:{' '}
+                {review.billingBasisDecision === 'INCORRECT'
+                  ? 'Underlaget bedömt felaktigt'
+                  : 'Korrekt underlag och verklig, förklarad ökning'}
+              </p>
+            )}
+            <p>
+              Intyg:{' '}
+              {review.billingBasisDecision === 'VERIFIED_CORRECT_REAL_INCREASE'
+                ? 'Korrekt underlag och verklig, förklarad ökning'
+                : review.billingBasisDecision === 'INCORRECT'
+                  ? 'Underlaget bedömt felaktigt'
+                  : 'Inget intyg om korrekt underlag'}
             </p>
             <ReadingReviewEvidence finding={review.evidence} />
           </li>

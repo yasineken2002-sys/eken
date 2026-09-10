@@ -1,5 +1,10 @@
 import { get, patch } from '@/lib/api'
-import type { ConsumptionCharge, ConsumptionChargeStatus } from '@eken/shared'
+import type {
+  ConsumptionCharge,
+  ConsumptionChargeStatus,
+  ChargeControl,
+  ConfirmConsumptionChargeInput,
+} from '@eken/shared'
 
 // Tunna helpers mot /v1/consumption/charges. Egen subdomän-fil. Backend
 // exponerar GET (lista + enskild) + PATCH :id/confirm. Frontend bygger INGEN
@@ -23,7 +28,14 @@ export function fetchCharge(id: string): Promise<ConsumptionCharge> {
 }
 
 // DRAFT → CONFIRMED. Detta är en BOKFÖRINGSÅTGÄRD: backend skapar ett periodiserat
-// verifikat (1510-fordran + intäkt). Ingen body.
-export function confirmCharge(id: string): Promise<ConsumptionCharge> {
-  return patch<ConsumptionCharge>(`/consumption/charges/${id}/confirm`)
+// verifikat (1510-fordran + intäkt). Kroppen binder beslutet till den visade kontrollen.
+export function confirmCharge(
+  id: string,
+  dto: ConfirmConsumptionChargeInput,
+): Promise<ConsumptionCharge> {
+  return patch<ConsumptionCharge>(`/consumption/charges/${id}/confirm`, dto)
+}
+
+export function fetchChargeControl(id: string): Promise<ChargeControl> {
+  return get<ChargeControl>(`/consumption/charges/${id}/control`)
 }

@@ -1,3 +1,27 @@
+// Befintliga belopps-/leveransprov använder ersatt kontroll. Verklig grind,
+// samtidighet, rollback och bokföringseffekter ägs av charge-gate.db.spec.ts.
+jest.mock('./charge-gate', () => ({
+  ...jest.requireActual('./charge-gate'),
+  lockConsumptionEvidence: jest.fn().mockResolvedValue(undefined),
+  requireChargeActor: jest.fn().mockResolvedValue('Ada Test'),
+  requireChargeCheck: jest.fn().mockResolvedValue({}),
+  loadChargeControl: jest.fn(
+    async (tx: { consumptionCharge: { findFirst: () => Promise<{ status: string }> } }) => {
+      const charge = await tx.consumptionCharge.findFirst()
+      return {
+        charge,
+        evidence: {},
+        control: {
+          fingerprint: 'a'.repeat(64),
+          ruleVersion: 'test',
+          hasCurrentCheck: true,
+          allowed: charge.status !== 'CANCELLED',
+          problems: ['Annullerad post'],
+        },
+      }
+    },
+  ),
+}))
 /**
  * ConsumptionService — IMD intake (PR 2): avläsningar in → DRAFT-charges ut.
  *
@@ -98,6 +122,7 @@ interface Opts {
 function makeService(o: Opts = {}) {
   const meter = o.meter ?? defaultMeter()
   const prisma: Record<string, unknown> = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     meter: { findFirst: jest.fn().mockResolvedValue(meter) },
     unit: { findFirst: jest.fn().mockResolvedValue({ id: 'unit-1' }) },
     property: { findFirst: jest.fn().mockResolvedValue({ id: 'prop-1' }) },
@@ -118,6 +143,7 @@ function makeService(o: Opts = {}) {
     },
     consumptionCharge: {
       findFirst: jest.fn().mockResolvedValue(o.existingCharge ?? null),
+      findFirstOrThrow: jest.fn().mockResolvedValue(o.existingCharge ?? null),
       create: jest
         .fn()
         .mockImplementation(({ data }) => Promise.resolve({ id: 'charge-1', ...data })),
@@ -315,7 +341,9 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
   it('sätter CONFIRMED atomärt (villkorad på DRAFT) och bokför verifikat', async () => {
     const { service, prisma, accounting } = makeService({ existingCharge: chargeRow() })
 
-    await service.confirmCharge('charge-1', 'org-1', 'user-9')
+    await service.confirmCharge('charge-1', 'org-1', 'user-9', {
+      expectedFingerprint: 'a'.repeat(64),
+    })
 
     // Atomär, race-säker övergång: status:'DRAFT' i WHERE hindrar att en samtidig
     // CANCELLED skrivs över till CONFIRMED.
@@ -330,9 +358,9 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
     const { service, accounting } = makeService({
       existingCharge: chargeRow({ status: 'CANCELLED' }),
     })
-    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
-      BadRequestException,
-    )
+    await expect(
+      service.confirmCharge('charge-1', 'org-1', 'user-9', { expectedFingerprint: 'a'.repeat(64) }),
+    ).rejects.toBeInstanceOf(ConflictException)
     expect(accounting.createJournalEntryForConsumptionCharge).not.toHaveBeenCalled()
   })
 
@@ -340,14 +368,18 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
     const { service, accounting } = makeService({
       existingCharge: chargeRow({ status: 'CONFIRMED' }),
     })
-    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toBeDefined()
+    await expect(
+      service.confirmCharge('charge-1', 'org-1', 'user-9', { expectedFingerprint: 'a'.repeat(64) }),
+    ).resolves.toBeDefined()
     expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
   })
 
-  it('bokföringsfel fäller inte confirm:en (loggas)', async () => {
+  it('bokföringsfel fäller confirm så transaktionen kan rullas tillbaka', async () => {
     const { service, accounting } = makeService({ existingCharge: chargeRow() })
     accounting.createJournalEntryForConsumptionCharge.mockRejectedValueOnce(new Error('boom'))
-    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toBeDefined()
+    await expect(
+      service.confirmCharge('charge-1', 'org-1', 'user-9', { expectedFingerprint: 'a'.repeat(64) }),
+    ).rejects.toThrow('boom')
   })
 })
 
@@ -359,6 +391,7 @@ function makeLeverans(charges: Record<string, unknown>[]) {
     invoices: [],
   }
   const prisma: Record<string, unknown> = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     lease: { findFirst: jest.fn().mockResolvedValue({ id: 'lease-1', tenantId: 'ten-1' }) },
     consumptionCharge: {
       findMany: jest.fn().mockResolvedValue(charges),
@@ -370,7 +403,10 @@ function makeLeverans(charges: Record<string, unknown>[]) {
         return Promise.resolve({ id: `line-${created.lines.length}`, ...data })
       }),
     },
-    rentNotice: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    rentNotice: {
+      findFirst: jest.fn().mockResolvedValue({ tenantId: 'ten-1', status: 'PENDING' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     invoice: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn().mockImplementation(({ data }) => {
@@ -405,6 +441,7 @@ interface LeveransPrisma {
 function leveransCharge(over: Record<string, unknown> = {}) {
   return {
     id: 'c1',
+    tenantId: 'ten-1',
     organizationId: 'org-1',
     leaseId: 'lease-1',
     meterType: 'ELECTRICITY',
@@ -496,6 +533,7 @@ describe('invoiceSeparateCharges (SEPARATE_INVOICE, PR 4)', () => {
     const { service, prisma, created } = makeLeverans([
       leveransCharge({
         id: 'c1',
+        tenantId: 'ten-1',
         deliveryMode: 'SEPARATE_INVOICE',
         netAmount: 600,
         vatAmount: 0,
@@ -564,6 +602,7 @@ interface AccrualOpts {
 
 function makeAccrual(o: AccrualOpts = {}) {
   const prisma: Record<string, unknown> = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     organization: {
       findUnique: jest
         .fn()
@@ -575,7 +614,10 @@ function makeAccrual(o: AccrualOpts = {}) {
     accountingPeriodEvent: {
       findFirst: jest.fn().mockResolvedValue(o.closed ? { type: 'CLOSED' } : null),
     },
-    meter: { findMany: jest.fn().mockResolvedValue(o.meters ?? [accrualMeter()]) },
+    meter: {
+      findMany: jest.fn().mockResolvedValue(o.meters ?? [accrualMeter()]),
+      findFirst: jest.fn().mockResolvedValue(o.meters?.[0] ?? accrualMeter()),
+    },
     lease: {
       findFirst: jest
         .fn()
@@ -601,6 +643,7 @@ function makeAccrual(o: AccrualOpts = {}) {
     },
     consumptionTariff: { findMany: jest.fn().mockResolvedValue(o.tariffs ?? [defaultTariff()]) },
   }
+  prisma.$transaction = jest.fn((cb: (tx: unknown) => unknown) => cb(prisma))
   const accounting = {
     createConsumptionAccrualEntry: jest.fn().mockResolvedValue({ accrual: {}, reversal: {} }),
   }
@@ -635,6 +678,7 @@ describe('runYearEndAccrual — estimatmetod + periodisering (PR 5)', () => {
       }),
       'org-1',
       'user-9',
+      expect.anything(),
     )
   })
 

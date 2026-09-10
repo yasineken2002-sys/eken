@@ -109,6 +109,7 @@ async function rensa(prisma: PrismaClient): Promise<void> {
   await prisma.rentNoticeEvent.deleteMany({ where: { rentNotice: w } })
   await prisma.rentNoticeLine.deleteMany({ where: { rentNotice: w } })
   await prisma.rentNotice.deleteMany({ where: w })
+  await prisma.consumptionChargeCheck.deleteMany({ where: w })
   await prisma.consumptionCharge.deleteMany({ where: w })
   await prisma.meterReading.deleteMany({ where: w })
   await prisma.meter.deleteMany({ where: w })

@@ -1,3 +1,16 @@
+// Enbart konteringsprov med ersatt grind; skarpa DB-effekter testas i charge-gate.db.spec.ts.
+import { requireChargeCheck } from '../consumption/charge-gate'
+jest.mock('../consumption/charge-gate', () => ({
+  ...jest.requireActual('../consumption/charge-gate'),
+  requireChargeCheck: jest.fn(),
+}))
+async function bookCharge(
+  service: AccountingService,
+  ...args: Parameters<AccountingService['createJournalEntryForConsumptionCharge']>
+) {
+  jest.mocked(requireChargeCheck).mockResolvedValue(args[0] as never)
+  return service.createJournalEntryForConsumptionCharge(...args)
+}
 /**
  * IMD · PR 3 — createJournalEntryForConsumptionCharge (BFL-korrekt verifikat).
  *
@@ -22,7 +35,9 @@ interface JLine {
 function makeAccounting() {
   // Stateful verifikat-lager → äkta idempotenstest (findFirst hittar tidigare).
   const store: Array<Record<string, unknown>> = []
+  jest.mocked(requireChargeCheck).mockResolvedValue({ meterReadingId: 'reading-1' } as never)
   const prisma: Record<string, unknown> = {
+    meterReading: { findFirst: jest.fn().mockResolvedValue({ id: 'reading-1' }) },
     account: {
       findMany: jest.fn().mockResolvedValue([
         { id: 'acc-1510', number: 1510 },
@@ -80,7 +95,7 @@ const baseCharge = {
 describe('createJournalEntryForConsumptionCharge — EXEMPT (bostad, el)', () => {
   it('balanserar: 1510 D 600 / 3920 K 600, ingen momsrad', async () => {
     const { service, prisma } = makeAccounting()
-    await service.createJournalEntryForConsumptionCharge(baseCharge, 'org-1', 'user-9')
+    await bookCharge(service, baseCharge, 'org-1', 'user-9')
 
     const lines = linesOf(prisma.journalEntry.create)
     expect(sum(lines, 'debit')).toBe(600)
@@ -93,7 +108,7 @@ describe('createJournalEntryForConsumptionCharge — EXEMPT (bostad, el)', () =>
 
   it('daterar verifikatet till periodEnd, inte skapandedatum', async () => {
     const { service, prisma } = makeAccounting()
-    await service.createJournalEntryForConsumptionCharge(baseCharge, 'org-1', 'user-9')
+    await bookCharge(service, baseCharge, 'org-1', 'user-9')
     expect(prisma.journalEntry.create.mock.calls[0][0].data.date).toEqual(new Date('2026-05-31'))
   })
 })
@@ -101,7 +116,8 @@ describe('createJournalEntryForConsumptionCharge — EXEMPT (bostad, el)', () =>
 describe('createJournalEntryForConsumptionCharge — TAXABLE_25 (lokal, el)', () => {
   it('balanserar: 1510 D 750 / 2611 K 150 / 3920 K 600', async () => {
     const { service, prisma } = makeAccounting()
-    await service.createJournalEntryForConsumptionCharge(
+    await bookCharge(
+      service,
       { ...baseCharge, vatStatus: 'TAXABLE_25', vatAmount: 150, totalAmount: 750 },
       'org-1',
       'user-9',
@@ -119,11 +135,7 @@ describe('createJournalEntryForConsumptionCharge — TAXABLE_25 (lokal, el)', ()
 describe('createJournalEntryForConsumptionCharge — kontoval per mätartyp', () => {
   it('vatten (WATER_COLD) krediteras 3970, inte 3920', async () => {
     const { service, prisma } = makeAccounting()
-    await service.createJournalEntryForConsumptionCharge(
-      { ...baseCharge, meterType: 'WATER_COLD' },
-      'org-1',
-      'user-9',
-    )
+    await bookCharge(service, { ...baseCharge, meterType: 'WATER_COLD' }, 'org-1', 'user-9')
     const lines = linesOf(prisma.journalEntry.create)
     expect(lines.find((l) => l.accountId === 'acc-3970')?.credit).toBe(600)
     expect(lines.some((l) => l.accountId === 'acc-3920')).toBe(false)
@@ -131,7 +143,7 @@ describe('createJournalEntryForConsumptionCharge — kontoval per mätartyp', ()
 
   it('bruttoredovisning: inga kostnadskonton (5020/5040) i verifikatet', async () => {
     const { service, prisma } = makeAccounting()
-    await service.createJournalEntryForConsumptionCharge(baseCharge, 'org-1', 'user-9')
+    await bookCharge(service, baseCharge, 'org-1', 'user-9')
     const lines = linesOf(prisma.journalEntry.create)
     // Endast 1510 + 3920 förekommer; inga 50xx-konton är ens seedade i mappen.
     expect(lines.every((l) => l.accountId === 'acc-1510' || l.accountId === 'acc-3920')).toBe(true)
@@ -141,8 +153,8 @@ describe('createJournalEntryForConsumptionCharge — kontoval per mätartyp', ()
 describe('createJournalEntryForConsumptionCharge — idempotens', () => {
   it('dubbelbokning skapar inte två verifikat', async () => {
     const { service, prisma, store } = makeAccounting()
-    await service.createJournalEntryForConsumptionCharge(baseCharge, 'org-1', 'user-9')
-    await service.createJournalEntryForConsumptionCharge(baseCharge, 'org-1', 'user-9')
+    await bookCharge(service, baseCharge, 'org-1', 'user-9')
+    await bookCharge(service, baseCharge, 'org-1', 'user-9')
 
     expect(prisma.journalEntry.create).toHaveBeenCalledTimes(1)
     expect(store).toHaveLength(1)
@@ -152,6 +164,7 @@ describe('createJournalEntryForConsumptionCharge — idempotens', () => {
 // ── IMD · PR 5 — bokslut: upplupen förbrukningsintäkt (1790) ──────────────────
 
 const baseAccrual = {
+  basisChargeId: 'charge-1',
   meterId: 'meter-1',
   meterType: 'ELECTRICITY' as const,
   fiscalYear: 2026,

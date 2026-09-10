@@ -140,6 +140,18 @@ jobs:
       - name: Run test suite
         run: pnpm exec turbo test:ci --filter=@eken/api
 
+      - name: Verify consumption gate DB tests actually ran
+        run: |
+          node - <<'NODE'
+          const report = require('./apps/api/jest-report.json')
+          const suite = report.testResults.find(s => s.name.endsWith('/consumption/charge-gate.db.spec.ts'))
+          if (!suite || suite.status !== 'passed' || !suite.assertionResults.length ||
+              suite.assertionResults.some(t => t.status !== 'passed')) {
+            throw new Error('Debiteringsgrindens riktiga DB-spec saknas eller kördes inte grönt')
+          }
+          console.warn('charge-gate.db.spec.ts: ' + suite.assertionResults.length + ' genomförda DB-prov')
+          NODE
+
       # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
       #
       # En hoppad svit är GRÖN, och en kanariefågel inuti en hoppad svit kan
@@ -1505,7 +1517,7 @@ jobs:
       #   npx playwright test --list <riktig> <påhittad>   → exit 0, 1 test
       # En bortdöpt spec försvann alltså ur CI utan att något blev rött. Ett
       # förväntat antal kan inte krympa tyst.
-      E2E_EXPECTED_TESTS: '15'
+      E2E_EXPECTED_TESTS: '16'
 
     steps:
       - uses: actions/checkout@v4

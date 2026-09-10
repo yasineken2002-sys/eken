@@ -1,3 +1,5 @@
+import { ConfirmConsumptionChargeSchema } from '@eken/shared'
+import { ConfirmConsumptionChargeDto } from '../../consumption/dto/confirm-consumption-charge.dto'
 import { UpdateReadingReviewFollowUpDto } from '../../consumption/dto/update-reading-review-follow-up.dto'
 import { UpdateReadingReviewFollowUpSchema, SaveReadingReviewSchema } from '@eken/shared'
 import { SaveReadingReviewDto } from '../../consumption/dto/save-reading-review.dto'
@@ -259,6 +261,15 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { enabled: false },
     ogiltig: { enabled: 'yes' },
     ogiltigVarfor: 'ett gissat ja får inte aktivera automatisk uppföljning',
+  },
+  {
+    endpoint: 'PATCH /consumption/charges/:id/confirm',
+    inputTyp: 'ConfirmConsumptionChargeInput',
+    schema: ConfirmConsumptionChargeSchema,
+    dto: ConfirmConsumptionChargeDto,
+    giltig: { expectedFingerprint: 'a'.repeat(64) },
+    ogiltig: {},
+    ogiltigVarfor: 'konfirmering kräver det visade underlagets fingerprint',
   },
   {
     endpoint: 'POST /consumption/reading-review/decisions',
