@@ -1,0 +1,227 @@
+{
+  "kind": "PREDEFINED_REQUIREMENTS_NOT_OBSERVED",
+  "cases": {
+    "01-two-equal-events": {
+      "newPayments": 2,
+      "newPaymentOre": 20000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false
+    },
+    "02-exact-reimport": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "03-concurrent-reimport": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "04-concurrent-distinct": {
+      "newPayments": 2,
+      "newPaymentOre": 20000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false
+    },
+    "05-account-local-id": {
+      "newPayments": 2,
+      "newPaymentOre": 30000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false
+    },
+    "06-organization-isolation": {
+      "newPayments": 2,
+      "newPaymentOre": 20000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false
+    },
+    "07-verified-provider-bridge": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "08-unbound-new-consent": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 1,
+      "openIdentity": true
+    },
+    "09-client-asserted-proof": {
+      "newPayments": 0,
+      "newPaymentOre": 0,
+      "dispatchMarkers": 0,
+      "held": 1,
+      "openIdentity": true
+    },
+    "10-unproven-api-file": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 1,
+      "openIdentity": true,
+      "identityAmbiguity": "May be same or different physical event; observation sum is not money total."
+    },
+    "11-proven-same-api-file": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "12-proven-distinct-api-file": {
+      "newPayments": 2,
+      "newPaymentOre": 20000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false
+    },
+    "10-unproven-file-api": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 1,
+      "openIdentity": true,
+      "identityAmbiguity": "May be same or different physical event; observation sum is not money total."
+    },
+    "11-proven-same-file-api": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "12-proven-distinct-file-api": {
+      "newPayments": 2,
+      "newPaymentOre": 20000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false
+    },
+    "13-no-source-proof": {
+      "newPayments": 0,
+      "newPaymentOre": 0,
+      "dispatchMarkers": 0,
+      "held": 1,
+      "openIdentity": true
+    },
+    "14-legacy-unproven": {
+      "newPayments": 0,
+      "newPaymentOre": 0,
+      "dispatchMarkers": 0,
+      "held": 1,
+      "openIdentity": true
+    },
+    "15-legacy-verified-link": {
+      "newPayments": 0,
+      "newPaymentOre": 0,
+      "dispatchMarkers": 0,
+      "held": 0,
+      "openIdentity": false
+    },
+    "16-verified-transition": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "17-before-transition": {
+      "newPayments": 0,
+      "newPaymentOre": 0,
+      "dispatchMarkers": 0,
+      "held": 1,
+      "openIdentity": true
+    },
+    "18-changed-content": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 1,
+      "openIdentity": true
+    },
+    "19-conflict-before-claim": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 0,
+      "held": 1,
+      "openIdentity": true
+    },
+    "20-status-conflict": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 2,
+      "openIdentity": true
+    },
+    "21-rollback-save": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false,
+      "committedObservations": 1
+    },
+    "22-crash-before-claim": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "23-crash-before-effect": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 0,
+      "held": 0,
+      "openIdentity": true
+    },
+    "24-crash-after-effect": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": true
+    },
+    "25-wrong-claim-org": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 0,
+      "held": 0,
+      "openIdentity": true
+    },
+    "26-wrong-finish-token": {
+      "newPayments": 1,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 1,
+      "held": 0,
+      "openIdentity": false
+    },
+    "27-old-ocr-amount-passthrough": {
+      "newPayments": 2,
+      "newPaymentOre": 10000,
+      "dispatchMarkers": 2,
+      "held": 0,
+      "openIdentity": false,
+      "limitation": "Only preservation of reference and payment amounts, no invoice allocation/partial/waterfall algorithm is executed."
+    },
+    "28-noneligible-recorded": {
+      "newPayments": 0,
+      "newPaymentOre": 0,
+      "dispatchMarkers": 0,
+      "held": 0,
+      "openIdentity": false,
+      "rejected": 3
+    }
+  }
+}

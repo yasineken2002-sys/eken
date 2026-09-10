@@ -1,0 +1,21 @@
+{
+  "allocationGateSourceNegativeControls": 3,
+  "kind": "UNAPPLIED_PATCH_SYNTAX_NOT_TYPES_OR_IMPORT_EXECUTION",
+  "base": "fa15d0d9f3eae17d04afc4d46165cb45205373fa",
+  "targetFiles": 11,
+  "typeSyntaxParsed": [
+    "apps/api/src/reconciliation/reconciliation.service.ts",
+    "apps/api/src/reconciliation/reconciliation.controller.ts",
+    "apps/api/src/reconciliation/bank-statement-import.service.ts",
+    "apps/api/src/psd2/psd2-sync.service.ts",
+    "apps/api/src/ai/shadow/shadow-sweep.service.ts",
+    "apps/api/src/ai/shadow/payment/payment-shadow.service.ts",
+    "apps/api/src/payment-freshness/payment-freshness.service.ts",
+    "apps/api/src/accounting/accounting-period.service.ts",
+    "apps/api/src/reconciliation/bank-event-gate.ts"
+  ],
+  "gitApplyCheck": true,
+  "productionTargetsUnchanged": true,
+  "originalMatchingAndAllocationBodiesPreservedApartFromIdentityGate": true,
+  "patchSha256": "2b9c49f714dbdfd14b1e98f56d2fc0b323545fb485e6118c973cbf3816c0c553"
+}

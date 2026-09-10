@@ -1,0 +1,74 @@
+// Proposed registry tables. Empty on deployment; proof strings are audit links,
+// not a machine verification of the underlying bank contract.
+model BankIdentityScope {
+  id String @id
+  organizationId String
+  bankAccountAnchor String
+  idContract String
+  proofRef String
+  legacyThrough DateTime? @db.Date
+  transitionProof String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  bindings BankIdentityBinding[]
+  bridges BankIdentityBridge[]
+  events BankEvent[]
+  @@unique([id, organizationId])
+  @@unique([organizationId, bankAccountAnchor])
+}
+model BankIdentityBinding {
+  organizationId String
+  provider String
+  consent String
+  account String
+  kind String
+  scopeId String
+  proofRef String
+  scope BankIdentityScope @relation(fields: [scopeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
+  @@id([organizationId, provider, consent, account, kind])
+}
+model BankIdentityBridge {
+  organizationId String
+  scopeId String
+  externalId String
+  bankTransactionId String @unique
+  proofRef String
+  scope BankIdentityScope @relation(fields: [scopeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
+  @@id([scopeId, externalId])
+}
+model BankImportGuard {
+  organizationId String @id
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+}
+model BankEvent {
+  id String @id
+  organizationId String
+  scopeId String
+  externalId String
+  body Json
+  bankTransactionId String? @unique
+  state String
+  conflict Boolean @default(false)
+  attemptToken String?
+  startedAt DateTime? @db.Timestamptz
+  finishedAt DateTime? @db.Timestamptz
+  scope BankIdentityScope @relation(fields: [scopeId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
+  bankTransaction BankTransaction? @relation(fields: [bankTransactionId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
+  observations BankObservation[]
+  @@unique([scopeId, externalId])
+  @@unique([id, organizationId])
+}
+model BankObservation {
+  id String @id
+  organizationId String
+  origin Json
+  externalId String?
+  body Json
+  eventId String?
+  outcome String
+  reason String
+  createdAt DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  event BankEvent? @relation(fields: [eventId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: NoAction)
+  @@index([organizationId, outcome], map: "BankObservation_org_outcome")
+}
