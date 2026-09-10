@@ -1,0 +1,61 @@
+{
+  "previousControls": {
+    "kind": "ACTUAL_POSTGRES_SQL_ONLY",
+    "passed": [
+      "concurrent_claim_one_winner",
+      "only_winning_internal_token",
+      "wrong_org_denied",
+      "absent_bank_denied",
+      "conflict_commits_before_claim_denies",
+      "observation_update_denied",
+      "observation_delete_denied",
+      "second_namespace_same_account_denied",
+      "binding_cross_org_denied",
+      "trusted_actor_balance_preserved",
+      "contradictory_cutover_denied"
+    ],
+    "count": 11,
+    "claimContentionWitness": {
+      "separateSessions": 2,
+      "secondSessionLockWaitObserved": true
+    }
+  },
+  "reviewControls": {
+    "passed": [
+      "description_conflict_blocks_pending",
+      "legacy_conflict_blocks_unmatched",
+      "legacy_description_conflict_visible",
+      "legacy_identical_complete_content_replays",
+      "oversized_money_preserved_rejected",
+      "guard_text_cast",
+      "legacy_pending_first_observation_blocks",
+      "legacy_negative_first_observation_blocks",
+      "legacy_currency_first_observation_blocks"
+    ],
+    "count": 9,
+    "separateChangedLegacyDescriptionExample": true,
+    "productionImportExecuted": false
+  },
+  "database": {
+    "database": "eveno_tillgodo_test",
+    "address": null,
+    "dataDirectory": "/var/lib/postgresql/data",
+    "listen": "",
+    "version": "PostgreSQL 16.13 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+    "fsync": "on",
+    "synchronousCommit": "on",
+    "userTables": 0,
+    "network": "none",
+    "ports": [],
+    "memoryLimitBytes": 536870912,
+    "dataStorage": "isolated tmpfs; not host-crash durability proof"
+  },
+  "headAtRun": "11a39c800334175bc4df9246dfeea1dbbb7345a3",
+  "sourceHashes": {
+    "apps/api/scripts/bankevent_proposal/storage.sql": "4a696ea45085d49f1ce531661aa29076b70ce17ccbefe2a7c40f462ba10d7d9d",
+    "apps/api/scripts/bankevent_proposal/run.py": "174c17540673626e1605e0a9f99d0c4399ca0f486bb6ef2c47a0887603e74cf6",
+    "apps/api/scripts/bankevent_proposal/controls.py": "d3886a3c893437bd741826e0c3cb1941e92a8d0b72d4add84e330bf4ba78c90f",
+    "apps/api/scripts/bankevent_proposal/review_controls.py": "8a6e89d71a2a09cef2f1e2f0df7bc548cb79ac7a0397d6e54236b6944d69b050",
+    "docs/eval/bankhandelse-forslag/granskning-komplettering-facit-v2.json": "df7680df14a061325240d6f4e58d857e4d3b394e4f2a63509ead60b2295eb897"
+  }
+}

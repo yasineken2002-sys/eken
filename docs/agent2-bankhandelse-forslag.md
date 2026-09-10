@@ -32,7 +32,7 @@ Detta bevisar varken ändrad faktisk import eller exakt en bokförings-/köeffek
   Korrigerade indata v2 frystes i `215a606d`, med **oförändrat krav/facit**.
   Detta ändrar inget av #874:s 31 fall eller originalets 2 000 betalningar.
 - SQL och elva tilläggskontrollers krav frysta i `695b539fb8f25a2df8ed1d339d0bfc4135b76acd`
-  före körning. [Körningsmanifestet](eval/bankhandelse-forslag/korning-v2/manifest.json)
+  före körning. [Senaste körningsmanifestet](eval/bankhandelse-forslag/korning-v4/manifest.json)
   innehåller exakta SHA-256 för körda källor och **154 bevarade filer**, inklusive
   historiska data/facit och berörda produktkällor. Originalets 2 000 återspelades
   inte och inga nya matchningsprocenttal beräknades.
@@ -79,7 +79,7 @@ ett **ändringsförslag**, inte en installationsklar eller typkontrollerad produ
 
 ## Verifierat kontra kvarstående per krav
 
-[Separat eftertabell för rättad SQL-komponent](eval/bankhandelse-forslag/korning-v3/falltabell.md)
+[Separat eftertabell för rättad SQL-komponent](eval/bankhandelse-forslag/korning-v4/falltabell.md)
 innehåller exakt en rad per nytt fall. Den är **inte en efterkörning av #874**.
 
 | Krav | #874 före / oförändrad produktion | Separat SQL-komponent efter |
@@ -96,7 +96,7 @@ innehåller exakt en rad per nytt fall. Den är **inte en efterkörning av #874*
 | Cursors, tom sida, konto-fel, sidindelning | Kända #874-avvikelser | Inte åtgärdade eller omprovade av SQL-komponenten. |
 
 Före slutgranskning: 31/31 komponentkrav, 10/10 negativa omräkningskontroller
-och 11/11 extra SQL-kontroller godkända. Den körningen bevaras i `korning-v2`. Efter rättelser kördes
+och 11/11 extra SQL-kontroller godkända. Den körningen bevaras i `korning-v2`. Efter första rättelsen kördes
 samma 31 komponentindata igen på `4b3e9eee`, med oförändrad fil/facit.
 **31/31 skärpta krav**, **10/10 negativa kontroller**, **11/11 tidigare SQL-kontroller
 plus 6/6 granskarfall** passerar. Mot det äldre komponentfacitet uppfylls
@@ -104,6 +104,15 @@ plus 6/6 granskarfall** passerar. Mot det äldre komponentfacitet uppfylls
 identitet. Denna striktare spärr är en redovisad kravändring, ingen förbättring
 av oförändrat gammalt mått. Resultat/hashes: [korning-v3](eval/bankhandelse-forslag/korning-v3/omrakning.json)
 och [granskarfall](eval/bankhandelse-forslag/granskning-komplettering-resultat.json).
+Efter återgranskning kördes samma 31 indata även på `11a39c80`: åter **31/31
+skärpta krav, 30/31 äldre krav och 10/10 negativa kontroller**, se
+[korning-v4](eval/bankhandelse-forslag/korning-v4/omrakning.json). Status-, valuta-
+och negativa beloppskonflikter mot legacy bedöms nu före nybetalningsgrinden.
+Tre ytterligare förhandsfrysta fall isolerar respektive signal.
+**20/20 SQL-kontroller** (11 tidigare + 9 granskarfall) passerar, se
+[slutlig komplettering](eval/bankhandelse-forslag/granskning-komplettering-resultat-v2.json). CSV använder
+rätt parameter `filename`; PDF behåller index före filtrering; filproveniens
+sparas även när separat verifierad identity-metadata finns.
 Tre negativa textkontroller fångar var sin borttagen allokeringsgrind.
 Riktig import/Prisma/kö körs fortfarande inte av dessa efterprov. De negativa kontrollerna fångar tappad hundralapp,
 dubbelt anrop/belopp, fel summa, förlorad observation, förfalskad kontolänk,
@@ -117,7 +126,14 @@ samt samma 11 PASS / 20 FAIL. Ingen avvikelse har döpts om till godkänt.
 Ingen verklig providers ID-kontrakt är verifierat; bara Stub/Mock finns i den
 lästa anslutningen. Positiva nya prov förutsätter separat syntetisk administrativ
 bevisning om samma fysiska konto, ID-stabilitet, slutligt innehåll/datum och
-kontinuitet mellan källor/samtycken. Registret är tomt efter föreslagen migration.
+kontinuitet mellan källor/samtycken. En bindning förutsätter att den mottagna
+externalId redan är det styrkta kanoniska ID:t; olika leverantörers olika nummer
+får inte bindas ihop utan en verifierad översättning, vilken inte implementeras
+här. Även leveransens ursprung måste vara betrott: en uppladdad fil, dess hash
+eller en ID-kolumn bevisar inte bankens innehåll. Dagens filcallers tillför ingen
+verifierad identity-metadata och förblir därför hållna. Positiva filkomponentprov
+förutsätter separat syntetiskt styrkt leverans; autentiseringen provas inte.
+Registret är tomt efter föreslagen migration.
 Ingen klient kan själv skapa denna bevisning genom OCR eller en flagga.
 
 Gamla betalningsrader och `@@unique([organizationId, externalId])` bevaras.
@@ -160,7 +176,7 @@ python3 -B apps/api/scripts/bankevent_proposal/run.py --out /tmp/bankevent-new-r
 python3 -B apps/api/scripts/bankevent_proposal/audit.py /tmp/bankevent-new-run --review-requirements --out /tmp/bankevent-new-run
 python3 -B apps/api/scripts/bankevent_proposal/review_controls.py --out /tmp/bankevent-new-controls.json
 python3 -B apps/api/scripts/bankevent_proposal/audit.py docs/eval/bankhandelse-forslag/korning-v2 --evidence-commit 6264d3ad
-python3 -B apps/api/scripts/bankevent_proposal/audit.py docs/eval/bankhandelse-forslag/korning-v3 --review-requirements
+python3 -B apps/api/scripts/bankevent_proposal/audit.py docs/eval/bankhandelse-forslag/korning-v4 --review-requirements
 python3 -B apps/api/scripts/bankevent_proposal/check_patch.py
 node --experimental-vm-modules apps/api/scripts/test_bankimport_harness.cjs
 python3 -B apps/api/scripts/audit_bankimport.py docs/eval/bankimport-identitet/korning-slut/observationer.json.gz --evidence-commit ebc87b85

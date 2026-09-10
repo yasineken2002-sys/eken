@@ -60,4 +60,26 @@ rättelse. Inget juridiskt auktoritetspåstående, ingen produktionsacceptans.
 Huvudagenten korrigerade även main-jämförelsens för snäva formulering samt
 beloppsgränsen i SQL: över numeric(12,2)-kapacitet bevaras observationen avvisad,
 istället för att insättningen ska kasta och rulla tillbaka observationsspåret.
-Slutlig återgranskning av rättelser och provutfall tillkommer före PR-leverans.
+
+## Andra oberoende granskningen
+
+Båda granskade `e94b619e50eb325960704eda0dd47576d1cd888c` via Git-objekt.
+Båda begärde ytterligare ändringar, självständigt innan de såg varandras svar:
+
+- `build_patch.py:74`/`kandidat.patch:242` använde `fileName` i CSV/Excel,
+  trots att faktisk parameter heter `filename`. Accepterat och rättat; syntax-
+  kontrollen kunde inte hitta detta typ-/scopefel. Ingen kandidatadapter påstås körd.
+- `storage.sql:99–103`: ogiltig första legacyåterobservation avvisades före
+  brygguppslaget. Accepterat: bryggkonflikt bedöms först, även booked=false,
+  negativt belopp och annan valuta. Tre separata krav frysta i
+  `granskning-komplettering-facit-v2.json` före körning. Fixturebeskrivningen
+  görs lika i dessa nya kontrollfall så att endast den prövade signalen skiljer.
+- Pengagranskaren: `kandidat.patch:414–421` räknade PDF-index efter att uttag
+  filtrerats bort. Accepterat: index följer bevarad finalTx-lista före filtrering.
+- Integritetsgranskaren: `build_patch.py:34` valde bort filproveniens när
+  identity fanns. Accepterat: separat fileProvenance bevaras i båda vägarna.
+
+De tidigare lås-, beskrivnings-, statistik- och resumed-måttfynden bedömdes
+rättade inom den statiska bevisnivån. Void→text och redovisningen 31/30 var
+korrekt avgränsade. Inga rättelser applicerade i produktionen. Samtliga nya
+fynd accepterade; inga avvisade. Ny fryst slutkontroll följer före leverans.
