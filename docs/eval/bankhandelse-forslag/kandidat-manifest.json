@@ -4,7 +4,7 @@
   "files": {
     "apps/api/src/reconciliation/reconciliation.service.ts": {
       "baseSha256": "eb3be6f0f30752c4cabdc0123221d4e33701ca53a331ef7751bb63391822f111",
-      "proposedSha256": "631e07e3c6126b4e18adbfc63e6b2ab3b42246695d63d351458d576ca09e4360",
+      "proposedSha256": "2c6689a282f237a477af895242a586fca85ef09a41e348f19989556386859668",
       "protected": true
     },
     "apps/api/src/reconciliation/reconciliation.controller.ts": {
@@ -14,7 +14,7 @@
     },
     "apps/api/src/reconciliation/bank-statement-import.service.ts": {
       "baseSha256": "b0c8bec81ab53262ca26617870b7b59e54b723b01711cd03f2f22a79f877861b",
-      "proposedSha256": "74a0397607c09f478cf5caca3f7ba41eed99e29dfa5a7c2302641d93fbca0ea6",
+      "proposedSha256": "4a0e71d01e0fceeb5dee8abb2ecf06a1d9f3968612d9faf110411c93dcba9b6e",
       "protected": true
     },
     "apps/api/src/psd2/psd2-sync.service.ts": {
@@ -49,7 +49,7 @@
     },
     "apps/api/prisma/migrations/20260909180000_bank_event_identity_proposal/migration.sql": {
       "baseSha256": null,
-      "proposedSha256": "af78fcc3566a676a0cb188e287c16d56d5c8b50106384eba2cbf6b008e6e3620",
+      "proposedSha256": "4a696ea45085d49f1ce531661aa29076b70ce17ccbefe2a7c40f462ba10d7d9d",
       "protected": false
     },
     "apps/api/prisma/schema.prisma": {
@@ -58,5 +58,5 @@
       "protected": false
     }
   },
-  "patchSha256": "3465e224b55766d2082f144349efb4da282e9feddcccebf7342719d77b1f2a9e"
+  "patchSha256": "2b9c49f714dbdfd14b1e98f56d2fc0b323545fb485e6118c973cbf3816c0c553"
 }

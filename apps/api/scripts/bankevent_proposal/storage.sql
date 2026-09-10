@@ -96,7 +96,6 @@ BEGIN
      ELSIF e.conflict THEN why:='PRIOR_CONTENT_CONFLICT';
      ELSE decision:='REPLAY';why:=e.state;
      END IF;
-   ELSIF NOT coalesce(valid,false) THEN decision:='REJECTED';why:='NOT_ELIGIBLE_PAYMENT';
    ELSE
      SELECT "bankTransactionId" INTO bridge_id FROM "BankIdentityBridge"
        WHERE "organizationId"=p_org AND "scopeId"=s.id AND "externalId"=p_external;
@@ -107,7 +106,7 @@ BEGIN
        eid:=gen_random_uuid()::text;bid:=bridge_id;
        INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
          VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
-       IF old.amount*100<>money OR old.date::date<>day
+       IF NOT coalesce(valid,false) OR old.amount*100<>money OR old.date::date<>day
          OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr'
          OR old.reference IS DISTINCT FROM p_body->>'reference'
          OR old.description IS DISTINCT FROM p_body->>'description' THEN
@@ -116,6 +115,7 @@ BEGIN
        ELSE
          decision:='REPLAY';why:='VERIFIED_LEGACY_BRIDGE';
        END IF;
+     ELSIF NOT coalesce(valid,false) THEN decision:='REJECTED';why:='NOT_ELIGIBLE_PAYMENT';
      ELSIF EXISTS(SELECT 1 FROM "BankTransaction" b WHERE b."organizationId"=p_org
            AND NOT EXISTS(SELECT 1 FROM "BankEvent" x WHERE x."bankTransactionId"=b.id))
            AND NOT (s."legacyThrough" IS NOT NULL AND day>s."legacyThrough" AND length(s."transitionProof")>0

@@ -31,7 +31,7 @@ s=part(s,'export type FileIngestResult =','/**\n * PSD2 P1', '''export type File
 a=s.index('export type ApiIngestResult =');b=s.index('\n\n',a);s=s[:a]+'export type ApiIngestResult = IdentityImportResult'+s[b:]
 s=part(s,'  async ingestFromFile(', '  // ── Parse CSV', '''  async ingestFromFile(organizationId: string, input: FileIngestInput): Promise<FileIngestResult> {
     const data = input.data
-    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin ?? { kind: 'file', ...input.observationSource },
+    const result = await ingestIdentity(this.prisma, organizationId, { ...input.identity?.origin, kind: 'file', fileProvenance: input.observationSource ?? {} },
       input.identity?.externalId ?? null, {
         amountOre: new Decimal(data.amount.toString()).mul(100).toNumber(),
         day: normalizeToStockholmDay(new Date(data.date)).toISOString().slice(0, 10),
@@ -56,7 +56,7 @@ s=part(s,'  async ingestFromFile(', '  // ── Parse CSV', '''  async ingestFr
   ): Promise<ApiIngestResult> {
     const date = normalizeToStockholmDay(raw.bookingDate)
     const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? null
-    return ingestIdentity(this.prisma, organizationId, origin ?? { kind: 'api' }, externalId, {
+    return ingestIdentity(this.prisma, organizationId, { ...origin, kind: 'api' }, externalId, {
       amountOre: new Decimal(raw.amount).mul(100).toNumber(),
       day: date.toISOString().slice(0, 10), booked: raw.booked, currency: raw.currency,
       rawOcr, reference: raw.reference ?? null, description: raw.description,
@@ -71,7 +71,7 @@ s=part(s,'  async ingestFromFile(', '  // ── Parse CSV', '''  async ingestFr
 ''')
 s=replace(s,'    const rows = parsed.rows', "    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')\n    const rows = parsed.rows")
 s=replace(s,'          dedup: { date: row.date, description: row.description, amount: amountDecimal },',
-  "          observationSource: { format: ext, bank, fileName, fileSha256, parsedRowIndex: i },\n          dedup: { date: row.date, description: row.description, amount: amountDecimal },")
+  "          observationSource: { format: ext, bank, fileName: filename, fileSha256, parsedRowIndex: i },\n          dedup: { date: row.date, description: row.description, amount: amountDecimal },")
 s=replace(s,'    for (const line of lines) {', "    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')\n    for (const [parsedRowIndex, line] of lines.entries()) {")
 s=replace(s,'          dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },',
   "          observationSource: { format: 'bgmax', fileName, fileSha256, parsedRowIndex },\n          dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },")
@@ -123,7 +123,9 @@ s=replace(s,"  @Post('import')",'''  @Get('bank-observations')
   @Post('import')''');save(P,s)
 P='apps/api/src/reconciliation/bank-statement-import.service.ts';s=read(P)
 s=replace(s,'export interface ImportCommitResult {', 'export interface ImportCommitResult {\n  identityHeld: number\n  identityObservations: string[]\n  resumed: number')
-s=replace(s,'    for (const t of incoming) {', '    for (const [parsedRowIndex, t] of incoming.entries()) {')
+s=replace(s,"    const incoming = finalTx.filter((t) => t.amount > 0)",
+    "    const incoming = finalTx.map((transaction, parsedRowIndex) => ({ transaction, parsedRowIndex })).filter(({ transaction }) => transaction.amount > 0)")
+s=replace(s,'    for (const t of incoming) {', '    for (const { transaction: t, parsedRowIndex } of incoming) {')
 s=replace(s,'        dedup: { date, description: t.description, amount: amountDecimal },',
   "        observationSource: { format: 'pdf', fileName: draft.fileName, importId: id, parsedRowIndex },\n        dedup: { date, description: t.description, amount: amountDecimal },")
 s=replace(s,'    let duplicates = 0','    let duplicates = 0\n    let identityHeld = 0\n    let resumed = 0\n    const identityObservations: string[] = []')
@@ -197,6 +199,7 @@ for path,new in changes.items():
     patch.extend(difflib.unified_diff(before.splitlines(True),new.splitlines(True),fromfile=a,tofile='b/'+path))
     manifest['files'][path]={'baseSha256':hashlib.sha256(before.encode()).hexdigest() if before else None,
         'proposedSha256':hashlib.sha256(new.encode()).hexdigest(),'protected':path.startswith('apps/api/src/reconciliation/')}
-raw=''.join(patch).encode();manifest['patchSha256']=hashlib.sha256(raw).hexdigest()
+# Git accepts an empty line for blank context, avoiding whitespace in the artifact.
+raw=''.join('\n' if line==' \n' else line for line in patch).encode();manifest['patchSha256']=hashlib.sha256(raw).hexdigest()
 (OUT/'kandidat.patch').write_bytes(raw);(OUT/'kandidat-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 print('Wrote UNAPPLIED text proposal for',len(changes),'paths; no production files written.')

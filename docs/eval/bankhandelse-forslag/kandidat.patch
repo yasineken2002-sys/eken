@@ -35,7 +35,7 @@
 +  | { held: true; reason: string; observationId: string }
 +  | { held?: false; duplicate: true }
 +  | { held?: false; duplicate: false; resumed: boolean; transactionId: string; matched: boolean; matchError?: Error }
- 
+
  /**
   * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
 @@ -126,12 +134,10 @@
@@ -47,7 +47,7 @@
 -  | { outcome: 'duplicate'; transactionId: string; via: 'externalId' | 'dedupKey' }
 -  | { outcome: 'rejected'; reason: 'NOT_BOOKED' | 'NON_SEK' | 'NON_POSITIVE' }
 +export type ApiIngestResult = IdentityImportResult
- 
+
  export interface ReconciliationStats {
 +  bankIdentity?: IdentitySummary
    total: number
@@ -71,7 +71,7 @@
 -        where: { organizationId, dedupKey, externalId: { not: null } },
 -        select: { id: true },
 +    const data = input.data
-+    const result = await ingestIdentity(this.prisma, organizationId, input.identity?.origin ?? { kind: 'file', ...input.observationSource },
++    const result = await ingestIdentity(this.prisma, organizationId, { ...input.identity?.origin, kind: 'file', fileProvenance: input.observationSource ?? {} },
 +      input.identity?.externalId ?? null, {
 +        amountOre: new Decimal(data.amount.toString()).mul(100).toNumber(),
 +        day: normalizeToStockholmDay(new Date(data.date)).toISOString().slice(0, 10),
@@ -102,7 +102,7 @@
 +  ): Promise<ApiIngestResult> {
 +    const date = normalizeToStockholmDay(raw.bookingDate)
 +    const rawOcr = raw.ocr ?? extractOcr(raw.reference) ?? extractOcrFromProse(raw.description) ?? null
-+    return ingestIdentity(this.prisma, organizationId, origin ?? { kind: 'api' }, externalId, {
++    return ingestIdentity(this.prisma, organizationId, { ...origin, kind: 'api' }, externalId, {
 +      amountOre: new Decimal(raw.amount).mul(100).toNumber(),
 +      day: date.toISOString().slice(0, 10), booked: raw.booked, currency: raw.currency,
 +      rawOcr, reference: raw.reference ?? null, description: raw.description,
@@ -225,21 +225,21 @@
 -      }
 -    }
    }
- 
+
    // ── Parse CSV ───────────────────────────────────────────────────────────────
 @@ -651,6 +560,7 @@
        throw new BadRequestException('Endast CSV och Excel-filer (.csv, .xlsx, .xls) stöds')
      }
- 
+
 +    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')
      const rows = parsed.rows
      const bank: BankFormat = bankOverride ?? parsed.bank
- 
+
 @@ -693,6 +603,7 @@
- 
+
          // Delad ingest-kärna: fält-dedup (org, date, description, amount) → create → match.
          const outcome = await this.ingestFromFile(organizationId, {
-+          observationSource: { format: ext, bank, fileName, fileSha256, parsedRowIndex: i },
++          observationSource: { format: ext, bank, fileName: filename, fileSha256, parsedRowIndex: i },
            dedup: { date: row.date, description: row.description, amount: amountDecimal },
            data: {
              date: row.date,
@@ -263,17 +263,17 @@
          if (outcome.matchError) throw outcome.matchError
          if (outcome.matched) {
 @@ -773,7 +690,8 @@
- 
+
      let sectionDate: Date | null = null
      let latestCoverage: Date | null = null
 -    for (const line of lines) {
 +    const fileSha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex')
 +    for (const [parsedRowIndex, line] of lines.entries()) {
        const tc = line.slice(0, 2)
- 
+
        // TC 05: 0-1=tc, 2-11=BG(10), 12-21=PG(10), 22-29=date(8 YYYYMMDD)
 @@ -811,6 +729,7 @@
- 
+
          // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) → create → match.
          const outcome = await this.ingestFromFile(organizationId, {
 +          observationSource: { format: 'bgmax', fileName, fileSha256, parsedRowIndex },
@@ -302,7 +302,7 @@
 @@ -835,7 +760,7 @@
        }
      }
- 
+
 -    if (result.imported === 0 && result.duplicates === 0) {
 +    if (result.imported === 0 && result.duplicates === 0 && !result.identityHeld && !result.resumed) {
        throw new BadRequestException(
@@ -316,7 +316,7 @@
 +      throw new BadRequestException('Bankidentitet eller tidigare hanteringsförsök kräver granskning')
 +    }
      const tolerance = new Decimal('1.00')
- 
+
      // ── 1. OCR-match (deterministisk) ────────────────────────────────────
 @@ -1324,6 +1252,7 @@
      matchType?: 'fuzzy',
@@ -332,12 +332,12 @@
        // allokeringen atomiska även när samma inbetalning matchas samtidigt.
 +      await lockIdentity(tx, organizationId, transactionId)
        await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
- 
+
        // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
 @@ -1938,6 +1868,10 @@
- 
+
    // ── Stats ────────────────────────────────────────────────────────────────────
- 
+
 +  async getIdentityObservations(organizationId: string, after?: string) {
 +    return identityObservations(this.prisma, organizationId, after)
 +  }
@@ -348,13 +348,13 @@
 @@ -1970,16 +1904,18 @@
        }
      }
- 
+
 -    return stats
 +    return { ...stats, bankIdentity: await identitySummary(this.prisma, organizationId) }
    }
- 
+
    // ── Bulk auto-match (kör matchTransaction på alla UNMATCHED) ────────────────
- 
+
    async autoMatchAll(organizationId: string): Promise<AutoMatchResult> {
 +    const identityBlocked = await blockedBankIds(this.prisma, organizationId)
      const candidates = await this.prisma.bankTransaction.findMany({
@@ -392,7 +392,7 @@
 +++ b/apps/api/src/reconciliation/bank-statement-import.service.ts
 @@ -26,6 +26,9 @@
  import type { BankStatementImportStatus } from '@prisma/client'
- 
+
  export interface ImportCommitResult {
 +  identityHeld: number
 +  identityObservations: string[]
@@ -400,8 +400,13 @@
    importId: string
    created: number
    duplicates: number
-@@ -221,16 +224,20 @@
- 
+@@ -217,20 +220,24 @@
+     // Endast inbetalningar (positiva belopp) ska skapa BankTransactions —
+     // samma som CSV/BgMax-flödena. Uttag/avgifter visas i preview men
+     // commitas inte (de matchas inte mot fakturor/avier).
+-    const incoming = finalTx.filter((t) => t.amount > 0)
++    const incoming = finalTx.map((transaction, parsedRowIndex) => ({ transaction, parsedRowIndex })).filter(({ transaction }) => transaction.amount > 0)
+
      let created = 0
      let duplicates = 0
 +    let identityHeld = 0
@@ -409,12 +414,12 @@
 +    const identityObservations: string[] = []
      let autoMatched = 0
      let unmatched = 0
- 
+
 -    for (const t of incoming) {
-+    for (const [parsedRowIndex, t] of incoming.entries()) {
++    for (const { transaction: t, parsedRowIndex } of incoming) {
        const amountDecimal = new Decimal(t.amount.toFixed(2))
        const date = new Date(t.date)
- 
+
        // Delad ingest-kärna (samma pipeline som CSV/BgMax): fält-dedup identisk med
        // CSV-importen (org, date, description, amount) → create → matchTransaction.
        const outcome = await this.reconciliation.ingestFromFile(organizationId, {
@@ -438,7 +443,7 @@
 -      created++
 +      if (outcome.resumed) resumed++
 +      else created++
- 
+
        if (outcome.matchError) {
          // Matchning kan kasta vid kantfall (t.ex. korrupt journal-state).
 @@ -271,7 +284,7 @@
@@ -453,11 +458,11 @@
 @@ -297,7 +310,7 @@
        }
      }
- 
+
 -    return { importId: id, created, duplicates, autoMatched, unmatched }
 +    return { importId: id, created, duplicates, autoMatched, unmatched, identityHeld, identityObservations, resumed }
    }
- 
+
    async cancelImport(id: string, organizationId: string): Promise<void> {
 --- a/apps/api/src/psd2/psd2-sync.service.ts
 +++ b/apps/api/src/psd2/psd2-sync.service.ts
@@ -476,7 +481,7 @@
 +  resumedUnmatched: number
    matched: number
  }
- 
+
 @@ -56,6 +61,10 @@
        imported: 0,
        duplicates: 0,
@@ -487,10 +492,10 @@
 +      resumedUnmatched: 0,
        matched: 0,
      }
- 
+
 @@ -115,7 +124,7 @@
        })
- 
+
        let latestCursor = consent.syncCursor ?? undefined
 -      const rawTxs: ProviderRawTx[] = []
 +      const rawTxs: Array<{ transaction: ProviderRawTx; origin: BankOrigin }> = []
@@ -508,7 +513,7 @@
          if (page.cursor) latestCursor = page.cursor
        }
        result.fetched += rawTxs.length
- 
+
 -      for (const tx of rawTxs) {
 +      for (const { transaction: tx, origin } of rawTxs) {
          // Den härdade vägen in. externalId = bankens id (idempotent). booked-only,
@@ -541,17 +546,17 @@
 +        confirmedData: { identityHeld: result.identityHeld, resumed: result.resumed, resumedMatched: result.resumedMatched, resumedUnmatched: result.resumedUnmatched, fetched: result.fetched, rejected: result.rejected, duplicates: result.duplicates },
        },
      })
- 
+
 --- a/apps/api/src/ai/shadow/shadow-sweep.service.ts
 +++ b/apps/api/src/ai/shadow/shadow-sweep.service.ts
 @@ -1,3 +1,4 @@
 +import { blockedBankIds } from '../../reconciliation/bank-event-gate'
  import { Injectable, Logger } from '@nestjs/common'
  import { Cron } from '@nestjs/schedule'
- 
+
 @@ -172,11 +173,12 @@
        const har = new Set(medForslag.map((r) => r.sourceId).filter((x): x is string => !!x))
- 
+
        // TAKET SYNS, DET KRYMPER INTE TYST — samma konstruktion som ovan.
 +      const identityBlocked = await blockedBankIds(this.prisma, org.id)
        const kandidater = await this.prisma.bankTransaction.count({
@@ -578,7 +583,7 @@
 +    if (!await identityAllowed(this.prisma, organizationId, bankTransactionId)) {
 +      return { utfall: 'INGEN_FRAGA', detalj: 'bankidentitet kräver granskning' }
 +    }
- 
+
      // ── EN REDAN MATCHAD RAD HAR INGEN FRÅGA ────────────────────────────────
      //
 --- a/apps/api/src/payment-freshness/payment-freshness.service.ts
@@ -596,7 +601,7 @@
 +    const evaluation = this.evaluate(org, now)
 +    return await identityOpen(this.prisma, organizationId) ? { ...evaluation, stale: true } : evaluation
    }
- 
+
    async recordPaymentDataThrough(
 @@ -148,6 +150,7 @@
      tx?: Prisma.TransactionClient,
@@ -608,7 +613,7 @@
      // 2099 får aldrig sätta datan "färsk i 70 år" och därmed avaktivera grinden).
 @@ -205,6 +208,11 @@
      })
- 
+
      for (const org of orgs) {
 +      if (await identityOpen(this.prisma, org.id)) {
 +        stale.add(org.id)
@@ -635,7 +640,7 @@
      ).filter((c): c is PeriodCheck => c != null)
 @@ -1061,6 +1063,12 @@
    }
- 
+
    /** Omatchade banktransaktioner i perioden = möjliga obokförda affärshändelser. */
 +  private async checkBankIdentity(organizationId: string): Promise<PeriodCheck | null> {
 +    if (!await identityOpen(this.prisma, organizationId)) return null
@@ -860,7 +865,6 @@
 +     ELSIF e.conflict THEN why:='PRIOR_CONTENT_CONFLICT';
 +     ELSE decision:='REPLAY';why:=e.state;
 +     END IF;
-+   ELSIF NOT coalesce(valid,false) THEN decision:='REJECTED';why:='NOT_ELIGIBLE_PAYMENT';
 +   ELSE
 +     SELECT "bankTransactionId" INTO bridge_id FROM "BankIdentityBridge"
 +       WHERE "organizationId"=p_org AND "scopeId"=s.id AND "externalId"=p_external;
@@ -871,7 +875,7 @@
 +       eid:=gen_random_uuid()::text;bid:=bridge_id;
 +       INSERT INTO "BankEvent"(id,"organizationId","scopeId","externalId",body,"bankTransactionId",state)
 +         VALUES(eid,p_org,s.id,p_external,canonical,bid,'LEGACY');
-+       IF old.amount*100<>money OR old.date::date<>day
++       IF NOT coalesce(valid,false) OR old.amount*100<>money OR old.date::date<>day
 +         OR old."rawOcr" IS DISTINCT FROM p_body->>'rawOcr'
 +         OR old.reference IS DISTINCT FROM p_body->>'reference'
 +         OR old.description IS DISTINCT FROM p_body->>'description' THEN
@@ -880,6 +884,7 @@
 +       ELSE
 +         decision:='REPLAY';why:='VERIFIED_LEGACY_BRIDGE';
 +       END IF;
++     ELSIF NOT coalesce(valid,false) THEN decision:='REJECTED';why:='NOT_ELIGIBLE_PAYMENT';
 +     ELSIF EXISTS(SELECT 1 FROM "BankTransaction" b WHERE b."organizationId"=p_org
 +           AND NOT EXISTS(SELECT 1 FROM "BankEvent" x WHERE x."bankTransactionId"=b.id))
 +           AND NOT (s."legacyThrough" IS NOT NULL AND day>s."legacyThrough" AND length(s."transitionProof")>0
@@ -946,7 +951,7 @@
 +++ b/apps/api/prisma/schema.prisma
 @@ -598,6 +598,9 @@
  // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
- 
+
  model Organization {
 +  bankIdentityScopes BankIdentityScope[]
 +  bankImportGuard BankImportGuard?
@@ -956,7 +961,7 @@
    orgNumber            String?            @unique
 @@ -2514,6 +2517,9 @@
  // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
- 
+
  model BankTransaction {
 +  identityEvent BankEvent?
 +  identityBridge BankIdentityBridge?
@@ -965,7 +970,7 @@
    organizationId      String
    date                DateTime
 @@ -7049,3 +7055,78 @@
- 
+
    @@index([delegationId, createdAt])
  }
 +

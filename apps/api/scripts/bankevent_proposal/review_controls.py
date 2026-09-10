@@ -10,7 +10,7 @@ from controls import controls
 
 
 def review_controls(pg):
-    expected=json.loads((DATA/'granskning-komplettering-facit.json').read_text())['checks'];done=[]
+    expected=json.loads((DATA/'granskning-komplettering-facit-v2.json').read_text())['checks'];done=[]
     seed=json.loads((DATA/'indata-v2.json').read_text())['cases'][0]
     def fresh(n,**kw):
         schema='exp_review_'+str(n);setup(pg,schema,dict(seed,**kw));return schema
@@ -24,8 +24,9 @@ def review_controls(pg):
     claim=json.loads(pg.sql('SELECT bank_event_claim(\'org-A\','+literal(first['eventId'])+",'test');",s));assert not claim['claimed']
     record('description_conflict_blocks_pending')
     s=fresh(2,legacy=True,bridge=True)
-    # Separate synthetic UNMATCHED legacy fixture; no real/historical row touched.
-    pg.sql('UPDATE "BankTransaction" SET status=\'UNMATCHED\';',s);before=snapshot(pg,s)['BankTransaction']
+    # Separate synthetic UNMATCHED legacy fixture with otherwise identical content.
+    # Only amount differs; description must not accidentally mask a missing amount guard.
+    pg.sql('UPDATE "BankTransaction" SET status=\'UNMATCHED\', description=\'SYNTETISK\';',s);before=snapshot(pg,s)['BankTransaction']
     a=copy.deepcopy(seed['steps'][0]);a['body']['amountOre']=12000;o=observe(s,a);after=snapshot(pg,s)
     assert o['reason']=='LEGACY_CONTENT_CONFLICT' and o['bankTransactionId']=='legacy-bank' and o['eventId']
     assert after['BankTransaction']==before and len(after['BankEvent'])==1 and after['BankEvent'][0]['conflict']
@@ -44,6 +45,18 @@ def review_controls(pg):
     assert o['outcome']=='REJECTED' and len(after['BankObservation'])==1 and not after['BankTransaction'];record('oversized_money_preserved_rejected')
     assert pg.sql("SELECT json_build_object('type',pg_typeof(bank_event_guard('org-A')::text)::text);",s)=='{"type" : "text"}'
     record('guard_text_cast')
+    for index,(field,value,key) in enumerate([
+      ('booked',False,'legacy_pending_first_observation_blocks'),
+      ('amountOre',-10000,'legacy_negative_first_observation_blocks'),
+      ('currency','EUR','legacy_currency_first_observation_blocks')]):
+        s=fresh(6+index,legacy=True,bridge=True)
+        pg.sql('UPDATE "BankTransaction" SET status=\'UNMATCHED\', description=\'SYNTETISK\';',s)
+        before=snapshot(pg,s)['BankTransaction'];a=copy.deepcopy(seed['steps'][0]);a['body'][field]=value
+        o=observe(s,a);after=snapshot(pg,s)
+        assert o['reason']=='LEGACY_CONTENT_CONFLICT' and o['eventId'] and o['bankTransactionId']=='legacy-bank'
+        assert after['BankTransaction']==before and len(after['BankObservation'])==1 and after['BankEvent'][0]['conflict']
+        assert pg.sql("SELECT bank_event_allows_automatic('org-A','legacy-bank');",s)=='f'
+        assert pg.sql("SELECT bank_identity_open('org-A');",s)=='t';record(key)
     assert set(done)==set(expected)
     return {'passed':done,'count':len(done),'separateChangedLegacyDescriptionExample':True,'productionImportExecuted':False}
 
@@ -54,6 +67,6 @@ if __name__=='__main__':
     try:
         pg.start();result={'previousControls':controls(pg),'reviewControls':review_controls(pg),'database':pg.identity,
          'headAtRun':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
-         'sourceHashes':{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in [HERE/'storage.sql',HERE/'run.py',HERE/'controls.py',HERE/'review_controls.py',DATA/'granskning-komplettering-facit.json']}}
+         'sourceHashes':{p.relative_to(ROOT).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in [HERE/'storage.sql',HERE/'run.py',HERE/'controls.py',HERE/'review_controls.py',DATA/'granskning-komplettering-facit-v2.json']}}
         args.out.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n');print(json.dumps({'previousControls':result['previousControls']['count'],'reviewControls':result['reviewControls']['count']}))
     finally:pg.close()
