@@ -83,3 +83,33 @@ De tidigare lås-, beskrivnings-, statistik- och resumed-måttfynden bedömdes
 rättade inom den statiska bevisnivån. Void→text och redovisningen 31/30 var
 korrekt avgränsade. Inga rättelser applicerade i produktionen. Samtliga nya
 fynd accepterade; inga avvisade. Ny fryst slutkontroll följer före leverans.
+
+## Slutlig gemensam frysning
+
+Båda återgranskade självständigt **7ef3d5ea4d384ba51e67331012e755bca18d18b6**.
+Båda avslutade sina tidigare fynd som rättade i patchartefakten och fann inga
+nya blockerande följdfel inom den avgränsade kontrollen. Detta är ingen
+produktionsacceptans. De såg inte varandras nya slutsatser före sina egna.
+
+- Integritet: `kandidat.patch:74,242,372,408,426,844,869–887` visar bevarad
+  filproveniens, rätt CSV-parameter, vattenfallslås, PDF-index samt full
+  beskrivnings- och legacygrind. `check_patch.py:30–48` täcker tre allokeringsvägar
+  med var sin negativ textkontroll. `review_controls.py:48–59` isolerar de tre
+  nya status-/valuta-/beloppsfallen.
+- Pengar/testbevis: `storage.sql:100–118` binder legacykonflikten före
+  nybetalningsregeln. `review_controls.py:26–35,48–59` isolerar signalerna och
+  kräver oförändrad äldre rad, nekad automatik och öppen identitet.
+  `kandidat.patch:535–546` bevarar resumed-resultat separat. `korning-v4/omrakning.json:2–31`
+  håller 31 skärpta respektive 30 äldre uppfyllda krav isär.
+
+Granskarna läste kontroller och sparade resultat; ingen gjorde egna körningar.
+Full Prisma-/typ-/migrationsvalidering och faktiska import-, allokerings- och
+köprov med samtidighet/avbrott återstår efter frigivning. Verkliga kontobevis,
+namespacekontrakt och operatörshantering återstår före aktivering. Markörerna är
+fortfarande inga verifikationer eller exakt-en-gång-bevis.
+
+Totalt faktiskt genomfört: en tidig beslutsmodellgranskning samt tre gemensamma
+frysta granskningspunkter med två separata läsare. Inga fler än två samtidiga,
+inga parallella tunga tester, inga betalda modell-API-anrop eller externa
+skrivningar från granskarna. Senare leveranscommit lägger endast till denna
+slutsats/överlämning; granskat patchinnehåll ändras inte.

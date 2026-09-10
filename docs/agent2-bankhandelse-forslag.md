@@ -227,3 +227,10 @@ frigivning är att införa kandidaten samordnat på egen gren, validera full
 Prisma-/typkoppling och köra de faktiska import-/allokeringsvägarna isolerat.
 Aktivering och verifierade bank-/övergångsbevis är därefter separata krav;
 ingen produktionsskrivning eller driftsättning är godkänd av denna rapport.
+
+Leveransen finns som [svenskt PR-utkast #875](https://github.com/yasineken2002-sys/eken/pull/875)
+med #874:s gren som bas. Båda läsande granskarna avslutade samtliga tidigare
+fynd på den gemensamma frysta kandidaten `7ef3d5ea4d384ba51e67331012e755bca18d18b6`.
+Det innebär godtagbart granskningsunderlag inom deras avgränsning, ingen
+produktionsacceptans. Slutlig leverans-HEAD och dess CI-status rapporteras i
+terminalen; CI-status för en äldre SHA används inte som grönt för en ny.
