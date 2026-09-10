@@ -189,13 +189,14 @@ självständigt verifierat testloggar, negativkontroll eller levererad HEAD.
 
 ### Migration och begränsningar
 
-Två additiva migrationer: `20260910160000_consumption_charge_gate` inför nullable
-intygsfält, kontrolltabell utan historiska rader, UPDATE-spärr och tre
-organisationslåstriggers. `20260910170000_consumption_check_identity` inför
-obligatorisk kontrollrevision, unik org+charge+revision, sammansatt FK till rätt
-org+charge+avläsning samt kontrolltabellens egen låstrigger. Den andra förutsätter
-att den första nya tabellen är tom; de hör till samma leverans. Inga tidigare
-bedömningar omtolkas och inga gamla verifikat uppdateras. Radering av kontrollspår
+En additiv migration: `20260910160000_consumption_charge_gate` inför nullable
+intygsfält och skapar kontrolltabellen direkt med obligatorisk revision utan
+default, unik org+charge+revision och sammansatt FK till rätt org+charge+avläsning.
+UPDATE-spärren och samtliga fyra organisationslåstriggers ingår i samma
+BEGIN/COMMIT. `20260910170000_consumption_check_identity` är borttagen efter
+sammanslagningen i steg 1; delarna kan inte appliceras som separata migrationer.
+Inga historiska kontrollrader skapas, tidigare bedömningar omtolkas inte och
+gamla verifikat uppdateras inte. Radering av kontrollspår
 är fortfarande möjlig vid uttrycklig organisationsstädning; scriptet raderar
 spåren före charges. Append-only betyder här förbud mot UPDATE, inte att en
 privilegierad databasadministratör saknar möjlighet att radera data.
@@ -240,11 +241,12 @@ betalda AI-anrop användes. Tidiga E2E-fel gällde ESM-import i testet, beloppet
 befintliga formatering och en ofullständig syntetisk termsVersion-fixture; dessa
 rättades och den riktiga klickkedjan kördes därefter grönt.
 
-### Två slutliga DB-körningar
+### Två slutliga DB-körningar (historik före migrationssammanslagningen)
 
+Dessa resultat gäller implementationen före steg 1 nedan och bevaras oförändrade.
 Databas: **agent3_debiteringsgrind_test**. Den skapades separat och var tom
 (0 tabeller i public). `prisma migrate deploy` applicerade 188 migrationer,
-inklusive de två nya; detta har verifierats i `_prisma_migrations`. Ingen
+inklusive de då två nya; detta har verifierats i `_prisma_migrations`. Ingen
 migration kördes i befintlig utvecklings- eller kunddatabas.
 
 | Körning     | Resultat               | Tid      | Organisationer/avläsningar/bedömningar/charges/spår/verifikat/verifikatrader/fakturor/avier/avirader före → efter |
@@ -380,8 +382,8 @@ anpassats till det nya konfirmeringskontraktet efter första CI-körningen.
 | Fil                                                                                  | Ändring och syfte                                                                                    |
 | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `.github/workflows/ci.yml`                                                           | Kräver att nya DB-specens samtliga prov faktiskt körts; E2E-discovery 16.                            |
-| `apps/api/prisma/migrations/20260910160000_consumption_charge_gate/migration.sql`    | Additivt intyg, kontrolltabell och låstriggers.                                                      |
-| `apps/api/prisma/migrations/20260910170000_consumption_check_identity/migration.sql` | Kontrollrevision, sammansatt identitet/FK och lås för kontrollspår.                                  |
+| `apps/api/prisma/migrations/20260910160000_consumption_charge_gate/migration.sql`    | Samlad slutstruktur, identitets-FK, revision, index och alla triggers.                               |
+| `apps/api/prisma/migrations/20260910170000_consumption_check_identity/migration.sql` | Borttagen i steg 1; innehållet ingår i föregående migration.                                         |
 | `apps/api/prisma/schema.prisma`                                                      | Nullable intyg och relationer för beständigt kontrollspår.                                           |
 | `apps/api/prisma/seed-history.ts`                                                    | Syntetisk städning tar spår före charges; inte körd.                                                 |
 | `apps/api/src/accounting/accounting.consumption.spec.ts`                             | Anpassade anropskontrakt, befintligt självständigt beloppsfacit.                                     |
@@ -581,3 +583,59 @@ verifieras innan grön leveransstatus anges.
 
 PR:n förblir utkast. Inget är mergat eller driftsatt. Kvarstående HIGH för
 utskick av redan ATTACHED dokument är ett verkligt leveranshinder trots grön CI.
+
+### Steg 1: sammanslagen migration (2026-09-10)
+
+Utgångs-HEAD: `0c33c99270ef1105a938588eab8203a84d07833d`, rent träd och
+oförändrad fjärr-HEAD verifierade före skrivning. Inga andra agenter var aktiva.
+CLAUDE.md läst. PR #877 var öppet utkast och omergad; migrationsfilerna saknades
+på hämtad `origin/main` (`27a720d4b6fb194fed83c760ce713c6aa70a0ad5`).
+Inga belägg hittades som motsäger uppgiften om enbart isolerade testdatabaser.
+Ingen driftsatt migrationsfil ändrades och ingen produktionsdatabas lästes.
+
+Endast `20260910160000_consumption_charge_gate/migration.sql` och den borttagna
+`20260910170000_consumption_check_identity/migration.sql` ändrar databasbygget:
+**+16/−15 SQL-rader totalt**, inklusive BEGIN/COMMIT. Tabellens slutliga revision
+utan default och identitets-FK skapas direkt; båda unika indexen och alla fem
+triggers ligger i samma atomiska migration. Inga DML-satser eller historiska
+kontrollrader tillförs. Produktionslogik, schema.prisma och testfacit är oförändrade.
+Den tredje berörda filen är denna migrationsdokumentation.
+
+**Ny isolerad databas:** `agent3_grind_migration_test_20260910`, skapad från
+template0, verifierat 0 tabeller i public före `migrate deploy`. **187 migrationer**
+applicerades, varav exakt en grindmigration och ingen separat identity-migration.
+Gamla testdatabaser har inte migrerats, återställts eller fått `migrate resolve`.
+De historiska körningarna med 188 migrationer ovan gäller sina dåvarande commits.
+
+Katalogkontroll med uttryckliga assertions före och efter testerna verifierade
+kontrolltabellens samtliga **11 kolumner**, revision som `integer NOT NULL` utan
+default, nullable intyg utan default, exakt två enumvärden, primärnyckel och
+validerad identitets-FK (ON UPDATE CASCADE / ON DELETE RESTRICT), två unika
+verksamhetsindex, tidsindex och primärnyckelindex. **Fem aktiva triggers**:
+fyra BEFORE INSERT/UPDATE/DELETE FOR EACH ROW med `lock_consumption_evidence`,
+samt `ConsumptionChargeCheck_no_update` BEFORE UPDATE FOR EACH STATEMENT med
+`append_only_guard`. Källfilerna innehåller totalt 187 migrationer.
+
+Oförändrad riktig `charge-gate.db.spec.ts`: **44/44 två gånger**, 0 hoppade,
+27,145 s respektive 22,536 s. Alla tio tabellantal i den befintliga riggen var
+0 före och efter båda körningarna. Kritiska index-vakten (5/5) och append-only-
+vakten (14/14 modeller) är gröna. Ett tungt jobb åt gången; `pgrep -af
+'[j]est|[t]sc'` gav inga träffar före respektive Jest-körning. Hela sviten och
+typecheck körs i ny CI för migrationsfixens HEAD.
+
+Kommandon från `apps/api` (wrappern injicerar endast den nya testdatabasens
+anslutning och ett heap-tak; inga lösenord eller anslutningssträngar loggas):
+
+```sh
+python3 /tmp/agent3-migration-db-run.py pnpm exec prisma migrate deploy
+python3 /tmp/agent3-migration-db-run.py node /tmp/agent3-migration-schema.cjs
+python3 /tmp/agent3-migration-db-run.py pnpm exec jest src/consumption/charge-gate.db.spec.ts --runInBand --json --outputFile=/tmp/agent3-migration-db1.json
+python3 /tmp/agent3-migration-db-run.py pnpm exec jest src/consumption/charge-gate.db.spec.ts --runInBand --json --outputFile=/tmp/agent3-migration-db2.json
+python3 /tmp/agent3-migration-db-run.py node /tmp/agent3-migration-schema.cjs
+```
+
+Från roten: `node apps/api/scripts/check-critical-indexes.mjs`,
+`node apps/api/scripts/check-append-only.mjs` och `git diff --check`.
+Nytt exakt HEAD och dess verifierade CI-länk anges i PR #877:s separata
+leveranskvitto för steg 1 och i slutrapporten. Inga äldre CI-länkar återanvänds
+som bevis för denna ändring. **Steg 1 är enda bygget; PR2/PR3 har inte startats.**

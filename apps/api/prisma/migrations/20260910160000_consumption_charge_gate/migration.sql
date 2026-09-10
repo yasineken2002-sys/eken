@@ -1,17 +1,27 @@
+BEGIN;
+
 CREATE TYPE "BillingBasisDecision" AS ENUM ('VERIFIED_CORRECT_REAL_INCREASE', 'INCORRECT');
 ALTER TABLE "MeterReadingReview" ADD COLUMN "billingBasisDecision" "BillingBasisDecision";
+CREATE UNIQUE INDEX "ConsumptionCharge_control_identity_key"
+  ON "ConsumptionCharge"("organizationId", "id", "meterReadingId");
 CREATE TABLE "ConsumptionChargeCheck" (
   "id" TEXT NOT NULL PRIMARY KEY,
-  "chargeId" TEXT NOT NULL REFERENCES "ConsumptionCharge"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "chargeId" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
   "readingId" TEXT NOT NULL,
+  "revision" INTEGER NOT NULL,
   "fingerprint" VARCHAR(64) NOT NULL,
   "ruleVersion" TEXT NOT NULL,
   "evidence" JSONB NOT NULL,
   "checkedById" TEXT NOT NULL,
   "checkedByName" TEXT NOT NULL,
-  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ConsumptionChargeCheck_organizationId_chargeId_readingId_fkey"
+    FOREIGN KEY ("organizationId", "chargeId", "readingId")
+    REFERENCES "ConsumptionCharge"("organizationId", "id", "meterReadingId") ON DELETE RESTRICT ON UPDATE CASCADE
 );
+CREATE UNIQUE INDEX "ConsumptionChargeCheck_organizationId_chargeId_revision_key"
+  ON "ConsumptionChargeCheck"("organizationId", "chargeId", "revision");
 CREATE INDEX "ConsumptionChargeCheck_organizationId_chargeId_createdAt_idx"
   ON "ConsumptionChargeCheck"("organizationId", "chargeId", "createdAt");
 CREATE TRIGGER "ConsumptionChargeCheck_no_update" BEFORE UPDATE ON "ConsumptionChargeCheck"
@@ -37,3 +47,7 @@ CREATE TRIGGER "MeterReadingReview_consumption_lock" BEFORE INSERT OR UPDATE OR 
   FOR EACH ROW EXECUTE FUNCTION lock_consumption_evidence();
 CREATE TRIGGER "ConsumptionCharge_consumption_lock" BEFORE INSERT OR UPDATE OR DELETE ON "ConsumptionCharge"
   FOR EACH ROW EXECUTE FUNCTION lock_consumption_evidence();
+CREATE TRIGGER "ConsumptionChargeCheck_consumption_lock" BEFORE INSERT OR UPDATE OR DELETE ON "ConsumptionChargeCheck"
+  FOR EACH ROW EXECUTE FUNCTION lock_consumption_evidence();
+
+COMMIT;
