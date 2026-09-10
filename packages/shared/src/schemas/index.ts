@@ -2378,6 +2378,7 @@ export const SaveReadingReviewSchema = z
       .regex(/^[a-f0-9]{64}$/),
     expectedRevision: z.number().int().min(0).max(2147483646),
     assessment: z.enum(['NEEDS_INVESTIGATION', 'CONFIRMED', 'EXPLAINED']),
+    billingBasisDecision: z.enum(['VERIFIED_CORRECT_REAL_INCREASE', 'INCORRECT']).optional(),
     comment: z.string().min(1, 'Ange en motivering').max(1000).regex(/\S/, 'Ange en motivering'),
   })
   .strict()
@@ -2404,3 +2405,13 @@ export const ReadingReviewFollowUpStatusSchema = z.object({
   lastFailedAt: z.string().datetime().nullable(),
 })
 export type ReadingReviewFollowUpStatus = z.infer<typeof ReadingReviewFollowUpStatusSchema>
+
+export const ConfirmConsumptionChargeSchema = z
+  .object({
+    expectedFingerprint: z
+      .string()
+      .length(64)
+      .regex(/^[a-f0-9]{64}$/),
+  })
+  .strict()
+export type ConfirmConsumptionChargeInput = z.infer<typeof ConfirmConsumptionChargeSchema>

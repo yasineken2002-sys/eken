@@ -1,3 +1,4 @@
+import { requireChargeCheck, consumptionConflict } from '../consumption/charge-gate'
 import {
   BadRequestException,
   ConflictException,
@@ -2465,73 +2466,81 @@ export class AccountingService {
     },
     organizationId: string,
     createdById: string | null,
+    externalTx?: Prisma.TransactionClient,
   ) {
-    const sourceId = `consumption-charge:${charge.id}`
+    const run = async (tx: Prisma.TransactionClient) => {
+      charge = await requireChargeCheck(tx, organizationId, charge.id)
+      const sourceId = `consumption-charge:${charge.id}`
 
-    const accounts = await this.prisma.account.findMany({
-      where: { organizationId },
-      select: { id: true, number: true },
-    })
-    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+      const accounts = await tx.account.findMany({
+        where: { organizationId },
+        select: { id: true, number: true },
+      })
+      const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
 
-    const revenueAccountNumber = CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE[charge.meterType]
-    const receivableId = accountByNumber.get(1510)
-    const revenueId = accountByNumber.get(revenueAccountNumber)
-    if (!receivableId || !revenueId) {
-      this.logger.error(
-        `[Accounting] Konto saknas (1510 eller ${revenueAccountNumber}) för förbrukningspost ` +
-          `${charge.id} — verifikation skapas ej`,
-      )
-      return null
-    }
-
-    const net = Number(charge.netAmount)
-    const vat = Number(charge.vatAmount)
-    const total = Number(charge.totalAmount)
-    if (total <= 0) return null
-
-    const label = METER_TYPE_LABEL[charge.meterType]
-    const period = charge.periodEnd.toISOString().slice(0, 7) // YYYY-MM
-
-    const lines: JournalLineInput[] = [
-      { accountId: receivableId, debit: total, description: `Förbrukning ${label} ${period}` },
-    ]
-
-    // Momsraden tas DIREKT från charge-snapshotet — beräknas aldrig om (PR 2 äger
-    // momsregeln via vatRateForRent). EXEMPT (bostad m.fl.) ger ingen 26xx-rad;
-    // hellre INGEN verifikation än en med fel momsbehandling (felaktigt debiterad
-    // moms: ML 2 kap. 12 §, betalningsskyldighet ML 16 kap. 23 §; god
-    // redovisningssed BFL 4 kap 2 §).
-    if (charge.vatStatus === 'TAXABLE_25' && vat > 0) {
-      const vatAccountNumber = VAT_TO_ACCOUNT[25] // 2611
-      const vatAccountId = vatAccountNumber ? accountByNumber.get(vatAccountNumber) : undefined
-      if (!vatAccountId) {
+      const revenueAccountNumber = CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE[charge.meterType]
+      const receivableId = accountByNumber.get(1510)
+      const revenueId = accountByNumber.get(revenueAccountNumber)
+      if (!receivableId || !revenueId) {
         this.logger.error(
-          `[Accounting] Momskonto ${vatAccountNumber} saknas för förbrukningspost ${charge.id} — verifikation skapas ej`,
+          `[Accounting] Konto saknas (1510 eller ${revenueAccountNumber}) för förbrukningspost ` +
+            `${charge.id} — verifikation skapas ej`,
         )
         return null
       }
-      lines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
+
+      const net = Number(charge.netAmount)
+      const vat = Number(charge.vatAmount)
+      const total = Number(charge.totalAmount)
+      if (total <= 0) return null
+
+      const label = METER_TYPE_LABEL[charge.meterType]
+      const period = charge.periodEnd.toISOString().slice(0, 7) // YYYY-MM
+
+      const lines: JournalLineInput[] = [
+        { accountId: receivableId, debit: total, description: `Förbrukning ${label} ${period}` },
+      ]
+
+      // Momsraden tas DIREKT från charge-snapshotet — beräknas aldrig om (PR 2 äger
+      // momsregeln via vatRateForRent). EXEMPT (bostad m.fl.) ger ingen 26xx-rad;
+      // hellre INGEN verifikation än en med fel momsbehandling (felaktigt debiterad
+      // moms: ML 2 kap. 12 §, betalningsskyldighet ML 16 kap. 23 §; god
+      // redovisningssed BFL 4 kap 2 §).
+      if (charge.vatStatus === 'TAXABLE_25' && vat > 0) {
+        const vatAccountNumber = VAT_TO_ACCOUNT[25] // 2611
+        const vatAccountId = vatAccountNumber ? accountByNumber.get(vatAccountNumber) : undefined
+        if (!vatAccountId) {
+          this.logger.error(
+            `[Accounting] Momskonto ${vatAccountNumber} saknas för förbrukningspost ${charge.id} — verifikation skapas ej`,
+          )
+          return null
+        }
+        lines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
+      }
+
+      lines.push({
+        accountId: revenueId,
+        credit: net,
+        description: `Förbrukningsersättning ${label} ${period}`,
+      })
+
+      return this.createNumberedEntry({
+        organizationId,
+        // Mätperiodens slut styr räkenskapsåret — inte skapandedatumet.
+        date: charge.periodEnd,
+        description: `Förbrukning ${label} ${period}`,
+        source: 'INVOICE',
+        sourceId,
+        createdById,
+        lines,
+        idempotencyWhere: { organizationId, sourceId },
+        include: { lines: { include: { account: true } } },
+        tx,
+      })
     }
-
-    lines.push({
-      accountId: revenueId,
-      credit: net,
-      description: `Förbrukningsersättning ${label} ${period}`,
-    })
-
-    return this.createNumberedEntry({
-      organizationId,
-      // Mätperiodens slut styr räkenskapsåret — inte skapandedatumet.
-      date: charge.periodEnd,
-      description: `Förbrukning ${label} ${period}`,
-      source: 'INVOICE',
-      sourceId,
-      createdById,
-      lines,
-      idempotencyWhere: { organizationId, sourceId },
-      include: { lines: { include: { account: true } } },
-    })
+    return externalTx
+      ? run(externalTx)
+      : this.prisma.$transaction(run, PRISMA_DEFAULT_TX_LIMITS).catch(consumptionConflict)
   }
 
   // ── Teknisk förvaltning · Spår A PR 2 — MiscCharge-verifikat ────────────────
@@ -3463,6 +3472,7 @@ export class AccountingService {
   // och hamnar aldrig på en avi/faktura (jfr ACTUAL-flödet).
   async createConsumptionAccrualEntry(
     params: {
+      basisChargeId: string
       meterId: string
       meterType: MeterType
       fiscalYear: number
@@ -3475,75 +3485,85 @@ export class AccountingService {
     },
     organizationId: string,
     createdById: string | null,
+    externalTx?: Prisma.TransactionClient,
   ) {
-    const { meterId, meterType, fiscalYear, yearEndDate, reversalDate } = params
-    const net = params.netAmount
-    const vat = params.vatAmount
-    const total = params.totalAmount
-    if (total <= 0) return null
+    const run = async (tx: Prisma.TransactionClient) => {
+      const basis = await requireChargeCheck(tx, organizationId, params.basisChargeId)
+      const reading = await tx.meterReading.findFirst({
+        where: { id: basis.meterReadingId, organizationId, meterId: params.meterId },
+      })
+      if (!reading) throw new ConflictException('Bokslutsunderlaget gäller en annan mätare.')
+      const { meterId, meterType, fiscalYear, yearEndDate, reversalDate } = params
+      const net = params.netAmount
+      const vat = params.vatAmount
+      const total = params.totalAmount
+      if (total <= 0) return null
 
-    const accounts = await this.prisma.account.findMany({
-      where: { organizationId },
-      select: { id: true, number: true },
-    })
-    const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
+      const accounts = await tx.account.findMany({
+        where: { organizationId },
+        select: { id: true, number: true },
+      })
+      const accountByNumber = new Map(accounts.map((a) => [a.number, a.id]))
 
-    const accrualAccountId = accountByNumber.get(1790)
-    const revenueId = accountByNumber.get(CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE[meterType])
-    if (!accrualAccountId || !revenueId) {
-      this.logger.error(
-        `[Accounting] Konto saknas (1790 eller intäktskonto) för upplupen förbrukning ` +
-          `mätare ${meterId} ${fiscalYear} — bokslutspost skapas ej`,
-      )
-      return null
-    }
-
-    let vatAccountId: string | undefined
-    if (params.vatStatus === 'TAXABLE_25' && vat > 0) {
-      const vatNumber = VAT_TO_ACCOUNT[25] // 2611
-      vatAccountId = vatNumber ? accountByNumber.get(vatNumber) : undefined
-      if (!vatAccountId) {
+      const accrualAccountId = accountByNumber.get(1790)
+      const revenueId = accountByNumber.get(CONSUMPTION_REVENUE_ACCOUNT_BY_METER_TYPE[meterType])
+      if (!accrualAccountId || !revenueId) {
         this.logger.error(
-          `[Accounting] Momskonto 2611 saknas för upplupen förbrukning mätare ${meterId} — bokslutspost skapas ej`,
+          `[Accounting] Konto saknas (1790 eller intäktskonto) för upplupen förbrukning ` +
+            `mätare ${meterId} ${fiscalYear} — bokslutspost skapas ej`,
         )
         return null
       }
-    }
 
-    const label = METER_TYPE_LABEL[meterType]
-    // Mätarreferens i verifikattexten (BFL 5 kap 7 §) — sambandet ska kunna
-    // fastställas utan att slå upp sourceId.
-    const meterRef = meterId.slice(0, 8)
-    const accrualSourceId = `consumption-accrual:${meterId}:${fiscalYear}`
-    const reversalSourceId = `consumption-accrual-reversal:${meterId}:${fiscalYear}`
+      let vatAccountId: string | undefined
+      if (params.vatStatus === 'TAXABLE_25' && vat > 0) {
+        const vatNumber = VAT_TO_ACCOUNT[25] // 2611
+        vatAccountId = vatNumber ? accountByNumber.get(vatNumber) : undefined
+        if (!vatAccountId) {
+          this.logger.error(
+            `[Accounting] Momskonto 2611 saknas för upplupen förbrukning mätare ${meterId} — bokslutspost skapas ej`,
+          )
+          return null
+        }
+      }
 
-    const accrualLines: JournalLineInput[] = [
-      { accountId: accrualAccountId, debit: total, description: `Upplupen förbrukning ${label}` },
-    ]
-    if (vatAccountId)
-      accrualLines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
-    accrualLines.push({
-      accountId: revenueId,
-      credit: net,
-      description: `Upplupen förbrukningsersättning ${label} ${fiscalYear}`,
-    })
+      const label = METER_TYPE_LABEL[meterType]
+      // Mätarreferens i verifikattexten (BFL 5 kap 7 §) — sambandet ska kunna
+      // fastställas utan att slå upp sourceId.
+      const meterRef = meterId.slice(0, 8)
+      const accrualSourceId = `consumption-accrual:${meterId}:${fiscalYear}`
+      const reversalSourceId = `consumption-accrual-reversal:${meterId}:${fiscalYear}`
 
-    const reversalLines: JournalLineInput[] = [
-      { accountId: revenueId, debit: net, description: `Återföring upplupen förbrukning ${label}` },
-    ]
-    if (vatAccountId)
-      reversalLines.push({ accountId: vatAccountId, debit: vat, description: 'Moms 25%' })
-    reversalLines.push({
-      accountId: accrualAccountId,
-      credit: total,
-      description: `Återföring upplupen intäkt ${label} ${fiscalYear}`,
-    })
+      const accrualLines: JournalLineInput[] = [
+        { accountId: accrualAccountId, debit: total, description: `Upplupen förbrukning ${label}` },
+      ]
+      if (vatAccountId)
+        accrualLines.push({ accountId: vatAccountId, credit: vat, description: 'Moms 25%' })
+      accrualLines.push({
+        accountId: revenueId,
+        credit: net,
+        description: `Upplupen förbrukningsersättning ${label} ${fiscalYear}`,
+      })
 
-    // Accrual (räkenskapsårets slut) + reversal (nästa års första dag) skapas
-    // ATOMISKT i EN transaktion: en halvfärdig periodisering (accrual utan
-    // reversal) skulle dubbelräkna intäkten nästa år. Antingen båda eller inget.
-    // createNumberedEntry förblir idempotent inuti transaktionen via sourceId.
-    return this.prisma.$transaction(async (tx) => {
+      const reversalLines: JournalLineInput[] = [
+        {
+          accountId: revenueId,
+          debit: net,
+          description: `Återföring upplupen förbrukning ${label}`,
+        },
+      ]
+      if (vatAccountId)
+        reversalLines.push({ accountId: vatAccountId, debit: vat, description: 'Moms 25%' })
+      reversalLines.push({
+        accountId: accrualAccountId,
+        credit: total,
+        description: `Återföring upplupen intäkt ${label} ${fiscalYear}`,
+      })
+
+      // Accrual (räkenskapsårets slut) + reversal (nästa års första dag) skapas
+      // ATOMISKT i EN transaktion: en halvfärdig periodisering (accrual utan
+      // reversal) skulle dubbelräkna intäkten nästa år. Antingen båda eller inget.
+      // createNumberedEntry förblir idempotent inuti transaktionen via sourceId.
       const accrual = await this.createNumberedEntry({
         organizationId,
         date: yearEndDate,
@@ -3571,7 +3591,10 @@ export class AccountingService {
       })
 
       return { accrual, reversal }
-    }, PRISMA_DEFAULT_TX_LIMITS)
+    }
+    return externalTx
+      ? run(externalTx)
+      : this.prisma.$transaction(run, PRISMA_DEFAULT_TX_LIMITS).catch(consumptionConflict)
   }
 
   // ── Årsavslutsverifikatet (#704 PR 2) ─────────────────────────────────────

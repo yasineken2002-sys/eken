@@ -17,21 +17,28 @@ export function ReadingReviewContent({
   report,
   meterLabel,
   canAssess = false,
+  unavailable = false,
 }: {
   canAssess?: boolean
+  unavailable?: boolean
   report: ReadingReviewSnapshot
   meterLabel: (id: string) => string
 }) {
   const filterId = useId()
   const [filter, setFilter] = useState<ReadingReviewFilter>('ALL')
-  const [editing, setEditing] = useState<string[]>([])
+  const [editing, setEditing] = useState<Record<string, ReadingReviewSnapshot['findings'][number]>>(
+    {},
+  )
   const queue = readingReviewQueue(report.findings, filter)
   const key = (f: ReadingReviewSnapshot['findings'][number]) => `${f.readingId}-${f.code}`
   const selected = new Set(queue.findings.map(key))
   // En bakgrundsuppdatering får inte kasta bort en påbörjad motivering när
   // någon annans bedömning flyttar raden ut ur det valda urvalet.
-  const outside = report.findings.filter((f) => editing.includes(key(f)) && !selected.has(key(f)))
-  const visible = [...queue.findings, ...outside]
+  const outside = report.findings.filter((f) => key(f) in editing && !selected.has(key(f)))
+  const missing = Object.values(editing).filter(
+    (f) => !report.findings.some((current) => key(current) === key(f)),
+  )
+  const visible = [...queue.findings, ...outside, ...missing]
   return (
     <section className="mt-6 space-y-4" aria-label="Granskning av avläsningar">
       <div className="rounded-2xl border border-gray-200 bg-white p-5">
@@ -87,11 +94,11 @@ export function ReadingReviewContent({
           </p>
         </div>
       </div>
-      {report.total === 0 ? (
+      {report.total === 0 && visible.length === 0 ? (
         <p className="rounded-xl bg-white p-5 text-sm text-gray-600">
           Inga avläsningar att granska ännu.
         </p>
-      ) : report.findings.length === 0 ? (
+      ) : report.findings.length === 0 && visible.length === 0 ? (
         <p className="rounded-xl bg-white p-5 text-sm text-gray-600">
           Inga avvikelser hittades av dessa kontroller. Avläsningar utan tillräcklig historik har
           inte trendbedömts.
@@ -123,12 +130,14 @@ export function ReadingReviewContent({
               <ReadingReviewAssessment
                 finding={f}
                 canAssess={canAssess}
+                unavailable={unavailable || missing.some((old) => key(old) === key(f))}
                 onEditingChange={(open) =>
-                  setEditing((current) =>
-                    open
-                      ? [...new Set([...current, key(f)])]
-                      : current.filter((id) => id !== key(f)),
-                  )
+                  setEditing((current) => {
+                    const next = { ...current }
+                    if (open) next[key(f)] = f
+                    else delete next[key(f)]
+                    return next
+                  })
                 }
               />
             </li>
@@ -144,7 +153,7 @@ export function ReadingReview({ meterLabel }: { meterLabel: (id: string) => stri
   // API:t äger underlaget. Listflikens datumfilter får inte klippa trendhistoriken.
   const query = useReadingReview()
   const canAssess = useCanWrite()
-  if (query.isError)
+  if (query.isError && !query.data)
     return isForbidden(query.error) ? (
       <PermissionDeniedState vad="avläsningarna" />
     ) : (
@@ -156,5 +165,20 @@ export function ReadingReview({ meterLabel }: { meterLabel: (id: string) => stri
         Hämtar avläsningar för granskning…
       </p>
     )
-  return <ReadingReviewContent report={query.data} meterLabel={meterLabel} canAssess={canAssess} />
+  return (
+    <>
+      {query.isError && (
+        <LoadErrorState
+          vad="aktuella avläsningarna; ditt utkast finns kvar"
+          onRetry={() => void query.refetch()}
+        />
+      )}
+      <ReadingReviewContent
+        report={query.data}
+        meterLabel={meterLabel}
+        canAssess={canAssess}
+        unavailable={query.isError}
+      />
+    </>
+  )
 }

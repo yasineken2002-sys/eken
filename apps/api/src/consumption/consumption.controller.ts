@@ -25,6 +25,7 @@ import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
 import { CreateTariffDto } from './dto/create-tariff.dto'
 import { RecordReadingDto } from './dto/record-reading.dto'
+import { ConfirmConsumptionChargeDto } from './dto/confirm-consumption-charge.dto'
 import { YearEndAccrualDto } from './dto/year-end-accrual.dto'
 
 @Controller('consumption')
@@ -140,6 +141,11 @@ export class ConsumptionController {
     return this.consumption.findCharge(id, organizationId)
   }
 
+  @Get('charges/:id/control')
+  async chargeControl(@Param('id') id: string, @OrgId() organizationId: string) {
+    return this.consumption.getChargeControl(id, organizationId)
+  }
+
   // DRAFT → CONFIRMED: bokför verifikat + 1510-fordran. Oberoende av leverans.
   @Patch('charges/:id/confirm')
   @Roles('MANAGER', 'ADMIN', 'OWNER')
@@ -147,8 +153,9 @@ export class ConsumptionController {
     @Param('id') id: string,
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
+    @Body() dto: ConfirmConsumptionChargeDto,
   ) {
-    return this.consumption.confirmCharge(id, organizationId, user.sub)
+    return this.consumption.confirmCharge(id, organizationId, user.sub, dto)
   }
 
   // SEPARATE_INVOICE: bygg EN faktura (UTILITY) av lease:ens CONFIRMED charges

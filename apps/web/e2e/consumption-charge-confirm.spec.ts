@@ -136,10 +136,12 @@ test('charges: bokföringsnot på DRAFT + SEPARATE_INVOICE utan faktura-knapp + 
 
   // ── Bevis 1: DRAFT (RENT_NOTICE_LINE) → bokföringsnot + "Bekräfta och bokför" ─
   await rows.filter({ hasText: 'Rad på hyresavi' }).first().click()
-  await expect(modal.getByText('Att bekräfta innebär att bokföra')).toBeVisible()
-  await expect(modal.getByText(/periodiserat verifikat skapas.*kundfordran 1510/i)).toBeVisible()
+  await expect(modal.getByText('Kontroll före debitering')).toBeVisible()
+  await expect(modal.getByText(/Konfirmering bokför kundfordran och intäkt/)).toBeVisible()
   const confirmBtn = modal.getByRole('button', { name: 'Bekräfta och bokför' })
   await expect(confirmBtn).toBeVisible()
+  await expect(confirmBtn).toBeDisabled()
+  await modal.getByRole('checkbox').check()
   await expect(confirmBtn).toBeEnabled()
 
   // ── Bevis 3: belopp visas (från verifikatet), 100 kWh × 2,50 = 250 kr ───────

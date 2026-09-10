@@ -814,6 +814,10 @@ const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   ],
   ['GET /consumption/charges/:id', 'Domändata, som listan, samma include.'],
   [
+    'GET /consumption/charges/:id/control',
+    'Läsning av aktuell debiteringskontroll, scoped på anroparens organisation och charge-ID i loadChargeControl. Sparar inget intyg; konfirmering har separat rollgrind och aktiv serverkontrollerad aktör.',
+  ],
+  [
     'GET /dashboard/stats',
     'Aggregat över domändata: räknare per status, intäkt ur huvudboken (Σ 3xxx) och\n' +
       'de fem senaste fakturorna. Organisationsraden läses med\n' +

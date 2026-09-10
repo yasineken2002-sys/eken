@@ -1,4 +1,14 @@
-import { IsIn, IsInt, IsString, IsUUID, Length, Matches, Max, Min } from 'class-validator'
+import {
+  IsIn,
+  IsInt,
+  ValidateIf,
+  IsString,
+  IsUUID,
+  Length,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator'
 import type { SaveReadingReviewInput, SammaNycklar } from '@eken/shared'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
@@ -26,6 +36,11 @@ export class SaveReadingReviewDto implements SaveReadingReviewInput {
   @IsIn(['NEEDS_INVESTIGATION', 'CONFIRMED', 'EXPLAINED'])
   @StrictString()
   assessment!: SaveReadingReviewInput['assessment']
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(['VERIFIED_CORRECT_REAL_INCREASE', 'INCORRECT'])
+  @StrictString()
+  billingBasisDecision?: SaveReadingReviewInput['billingBasisDecision']
 
   @IsString()
   @StrictString()

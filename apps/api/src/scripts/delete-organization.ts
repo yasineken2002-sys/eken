@@ -92,6 +92,7 @@ export const DELETION_STEPS: readonly Step[] = [
     restrictAgainst: 'MiscCharge, Organization, Property',
     where: byOrg,
   },
+  { model: 'ConsumptionChargeCheck', restrictAgainst: 'ConsumptionCharge', where: byOrg },
   {
     model: 'ConsumptionCharge',
     restrictAgainst: 'Lease, MeterReading, Organization, Tenant',

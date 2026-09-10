@@ -1,3 +1,4 @@
+import type { ConfirmConsumptionChargeInput } from '@eken/shared'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchCharges, fetchCharge, confirmCharge } from '../api/charges.api'
 import type { ChargeFilters } from '../api/charges.api'
@@ -28,10 +29,12 @@ export function useCharge(id: string | null) {
 export function useConfirmCharge() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => confirmCharge(id),
+    mutationFn: ({ id, dto }: { id: string; dto: ConfirmConsumptionChargeInput }) =>
+      confirmCharge(id, dto),
     // Confirm bokför posten (status + verifikat). Invalidera BÅDE listan och den
     // berörda detaljen så en öppen detaljmodal aldrig visar inaktuell status.
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, { id }) => {
+      void qc.invalidateQueries({ queryKey: ['charge-control', id] })
       void qc.invalidateQueries({ queryKey: ['charges'] })
       void qc.invalidateQueries({ queryKey: CHARGE_DETAIL(id) })
     },

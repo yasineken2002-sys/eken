@@ -39,11 +39,12 @@ export function readingFindingFingerprint(finding: ReadingFinding): string {
 export async function loadReadingReview(
   organizationId: string,
   db: Pick<Prisma.TransactionClient, 'meterReading' | 'meterReadingReview'>,
+  meterId?: string,
 ): Promise<ReadingReviewSnapshot> {
-  // Samma ofiltrerade organisationshistorik som GET readings. Ingen klientstyrd
-  // org, mätare eller datumgräns får klippa jämförelseperioderna.
+  // Full periodhistorik för organisationen, eller grindens servervalda mätare.
+  // Ingen klientstyrd datumgräns får klippa jämförelseperioderna.
   const rows = await db.meterReading.findMany({
-    where: { organizationId },
+    where: { organizationId, ...(meterId ? { meterId } : {}) },
     select: {
       id: true,
       organizationId: true,
@@ -62,7 +63,7 @@ export async function loadReadingReview(
   }))
   const report = reviewReadings(readings)
   const history = await db.meterReadingReview.findMany({
-    where: { organizationId },
+    where: { organizationId, ...(meterId ? { reading: { meterId } } : {}) },
     orderBy: [{ createdAt: 'desc' }, { revision: 'desc' }],
   })
   const byFinding = new Map<string, ReadingReviewDecision[]>()
@@ -91,6 +92,8 @@ export function presentReadingReviewDecision(row: MeterReadingReview): ReadingRe
     fingerprint: row.fingerprint,
     revision: row.revision,
     assessment: row.assessment,
+    ruleVersion: row.ruleVersion,
+    ...(row.billingBasisDecision ? { billingBasisDecision: row.billingBasisDecision } : {}),
     comment: row.comment,
     reviewedByName: row.reviewedByName,
     createdAt: row.createdAt.toISOString(),
