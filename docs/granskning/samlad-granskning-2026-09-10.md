@@ -560,3 +560,196 @@ går inte att gissa fram.
 6. **"Tillgodo" är inte byggt**, trots två PR-titlar som säger det.
 7. **Granskningsverktyget i Agent 3 kan inte stoppa en debitering.** Det är inte
    en glömd detalj — det är arkitekturen, och den frågan är din att avgöra.
+
+---
+
+# TILLÄGG 2026-09-10, efter Codex svar — FEM RÄTTELSER
+
+Codex har svarat på granskningen och invänt mot sex punkter. Jag har mätt om
+dem själv. **Fem av invändningarna håller, och rättar fel i det som står ovan.**
+Läs det här tillägget innan du agerar på §4–§6.
+
+Codex svarade dessutom **"INGEN DOKUMENTERAD ORSAK"** på sju av nio frågor om
+varför något gjordes. Det är svaret på frågan om hur arbetet tänkte: det går inte
+att veta. Beslutsunderlaget finns inte i commit-meddelanden, kodkommentarer eller
+docs. Det enda som var dokumenterat från början är Agent 3:s läsande avgränsning
+(`docs/agent3-forbrukningsgranskning.md:3-5`) och att modellkörningar kostar
+pengar och därför inte körs i CI (`apps/api/scripts/eval-shadow-agent.ts:4-9`).
+
+## R1 — BÖR-9 är FEL. Grinden körs FÖRE utmatningen.
+
+Rapporten ovan säger att faktablocket appendas efter den strömmade texten, så en
+hallucinerad tidpunkt får den korrekta tryckt under sig. **Det beskriver flödet
+före #867.** Mätt på `origin/codex/agent3-svarsgrind`:
+
+```
+ai-assistant.controller.ts:368-372   stream.on('text') ACKUMULERAR bara i
+                                     assistantText — inget skickas
+                 :492-499            grinden körs, skriver om assistantText
+                 :500                send('delta', { text: assistantText })
+                 :516-518            faktablocket appendas — EFTER att grinden
+                                     redan haft det som statusFacts-indata
+```
+
+Kommentaren i koden säger det själv: *"Buffra text tills läsningarna och
+svarsgrinden är klara. Verktygens status visas löpande; ett ostyrkt påstående får
+aldrig hinna visas först."* `consumption-follow-up-chat.spec.ts:295-318` prövar
+att ingen delta skickas före domen (provet är läst, inte kört).
+
+**BÖR-9 utgår.** Kvarstående, riktig begränsning: grinden kan bedöma fel. Det är
+en annan sak.
+
+## R2 — BÖR-2 beskriver fel defekt. Varningen gäller RÄTT tak.
+
+Rapporten säger att `takNått`-krocken ger "en varning om fel sak". Mätt:
+
+```
+payment-shadow.service.ts:412   if (f.takNått)        ← databastakets flagga
+                         :417   `Fler än ${KANDIDATTAK} öppna poster`  ← samma tak
+```
+
+Flaggan och texten hör ihop. Ingen felaktig varning uppstår.
+
+**Defekten är den omvända:** `payment-candidates.ts:297`:s `takNått` — trunkering
+till `MAX_KANDIDATER = 5` — har ingen produktionskonsument. Trunkeringen av
+kandidatmenyn är alltså **osynlig** för hyresvärden som ska godkänna. Det är en
+saknad varning, inte en fel. Namnkrocken kvarstår som ett riktigt problem
+(två frågor, ett namn), och fixen är Codex förslag: separata namn, separata
+utfall, och ett prov att vart tak blir synligt oberoende av det andra.
+
+## R3 — BÖR-3:s premiss om "aritmetik i prompten" är FEL
+
+Rapporten säger att tre uppgifter som är ren aritmetik ligger i prompten. Mätt:
+
+```
+payment-shadow.service.ts:211   const belopp: Beloppsutfall =
+                                  beloppsutfall(rad.belopp, vald.utestaende)
+                         :635   modellens utdata = ['avi','confidence','reasoning']
+payment-candidates.ts           OCR-avståndet räknas i kandidatkoden
+```
+
+Beloppsetiketten och OCR-avståndet räknas alltså **i kod**. Modellen får inte
+räkna dem. Det som ligger i prompten (`:670-681`) är mjuk vägledning om hur de
+redan uträknade fakta ska **vägas** i avi-valet.
+
+Den riktiga invändningen är smalare och Codex formulerar den bättre än jag:
+*"avi-valet påverkas fortfarande av mjuka instruktioner där vissa faktakontroller
+kan göras deterministiskt."* Och skillnaden mellan de två sakerna: att prioritera
+äldsta skuld är en **hanteringsregel**, inte aritmetik.
+
+## R4 — "noll .spec.ts-referenser" är FEL som formulerat
+
+```
+byggBetalningsprompt  ← verklighetslik-betalningsmatning.ts:98
+                      ← verklighetslika-betalningar.spec.ts:90
+```
+
+Funktionen nås alltså från en spec CI kör. **Men specen injicerar färdiga
+modellsvar** (`response({ avi, confidence, reasoning })`), så den verifierar
+mätriggen — inte om modellen följer returdetektionen, namnregeln eller
+prioriteringen. Den underliggande invändningen står; formuleringen i §5.3 ska
+läsas som "ingen deterministisk prövning av de nya reglernas beteende", inte som
+"ingen spec rör funktionen".
+
+Codex tillägg, som är det viktiga: *"Att testa att prompten innehåller en mening
+bevisar inte att modellen följer den."*
+
+## R5 — #874 är INTE bara experiment utanför produktionskoden
+
+§5.1 säger att #873–#875 inte innehåller produktionsavtryck. Det är literalt sant
+om `apps/api/src` (noll tillagda rader), men underskattar vad #874 gör:
+
+```
+eval_bankimport.cjs:30-50
+  prod.ReconciliationService.prototype.ingestFromApi.call(service, …)
+  prod.ReconciliationService.prototype.ingestFromFile.call(service, …)
+  med riktig CentDecimal
+```
+
+Det är **komponentprov mot riktig produktionskod** med ersatta gränser, inte en
+omskrivning i Python. Kritiken att det aldrig körs av CI står kvar — men det är
+en annan slutsats än "ingen produktionskoppling".
+
+## R6 — MÅSTE-2:s formulering är oprecis (accepterad utan ommätning)
+
+"Bedömer en människa att avvikelsen är bekräftad — alltså att avläsningen är fel"
+är fel likhetstecken. `docs/agent3-assistent-underlag.md:14-15` säger uttryckligen
+motsatsen: en **verklig** förbrukningsökning kan vara korrekt uppmätt. Behovet av
+en rättelseväg vid faktiska fel kvarstår oförändrat.
+
+Samma sort: §6 BÖR-8:s "omätt kvalitetseffekt" är för absolut —
+`docs/agent3-assistent-status.md:62-71` beskriver utvecklingsmätningar med
+produktionsprompten. Vad som saknas är en **bred, isolerad** jämförelse av
+effekten på andra chattämnen.
+
+## R7 — §5.5:s REKOMMENDATION är fel, och Codex analys är starkare än min
+
+Rapporten rekommenderar att återinföra `86bf2473` eller skriva ner varför inte.
+Codex skrev ner varför inte, och lade till det jag missade.
+
+**Min mätning:** korpusen innehåller noll korrekt identifierade överbetalningsfall.
+**Codex slutsats ur samma mätning:** det är DÄRFÖR filtret såg ut att vinna. Det
+skar bort en förmåga mätningen inte kan se, och metriken belönade det. 36/36 var
+inget bevis på att regeln var bra — det var ett bevis på att korpusen var blind
+för vad regeln kostade.
+
+Det finns dessutom ett senare dokumenterat ställningstagande,
+`docs/agent2-verklighetslika-prov.md:63-66`: *"Sådana kontroller måste behålla
+OCR, relevanta kandidater samt människans möjlighet att välja. Att skära bort
+avier vars skuld inte rymmer hela betalningen är fortfarande fel väg."*
+
+**Rätt åtgärd är inte att återinföra filtret.** Den är att skilja tre frågor åt:
+
+```
+identitet          ÄR det här rätt avi?            ← behåll kandidaten
+beloppsrelation    täcker betalningen skulden?     ← räkna i öre, tre värden
+tillåten hantering får detta verkställas?          ← spärra, inte gömma
+```
+
+En avi kan vara korrekt identifierad även när betalningen innehåller överskott.
+Då ska den visas för människan, medan olämplig verkställighet spärras.
+
+Två preciseringar till, båda Codex och båda riktiga: `klassificeraBelopp`
+behåller ±1 krs tolerans (`experiment-betalningsgrind.ts:34`) — exakt
+öresaritmetik betyder inte att toleransregeln försvann. Och att b24–b31 har
+`avi: INGEN` är ett uttryckligt **facitbeslut** (`korpus-betalningar.json:38-45`),
+inte något den tvågradiga typen tvingar fram.
+
+## Vad som INTE ändras av Codex svar
+
+- **MÅSTE-1 står oemotsagt.** Codex bekräftar fyndet och tillägger att frågan
+  borde ha avgjorts vid **#861**, när beständiga bedömningar infördes — dess egen
+  efterhandsbedömning, inte en återfunnen plan. Plus två krav jag inte hade:
+  spärren måste hantera **saknad** bedömning, inte bara sparat
+  `NEEDS_INVESTIGATION`, och bedömningsstatusen `CONFIRMED` får **aldrig**
+  återanvändas som betalningsgodkännande (husregeln om lånade fält).
+- **MÅSTE-2, MÅSTE-3, MÅSTE-4** står.
+- **BÖR-1** står, med R7:s skärpning.
+- **Titlarna (§5.2).** Codex håller med och föreslår själv:
+  `#870: Designstudie: simulera överskottsuppdelning – ingen produktionsfunktion`
+  `#871: Designstudie: pröva tillgodopolicy i isolerad PostgreSQL`
+- **JSON-filerna (§5.4).** Codex invänder mot kriteriet, inte mot problemet:
+  `bankevent_proposal/audit.py:18-21,125-133` läser indata, facit och
+  körningsarkiv och kontrollerar hashvärden. **Avsaknad av `.spec.ts`-import är
+  alltså inte ett tillräckligt gallringskriterium.** Inventera användningen före
+  gallring; frysta facit, historiska granskningsbevis och regenererbara resultat
+  kräver olika hantering. Codex har inte gjort en fullständig
+  konsumentinventering av alla 82 — ingen har.
+
+## ORDNINGEN, reviderad
+
+Codex tre förslag är mina MÅSTE-1, MÅSTE-2 och BÖR-1 i bättre form. Den
+reviderade ordningen i §7 blir:
+
+1. #876 (med BÖR-7), #857, #855 — oförändrat.
+2. De två juridiska — oförändrat (MÅSTE-3, MÅSTE-4).
+3. **Grind före förbrukningsdebitering**, med granskningsstatus läst i SAMMA
+   transaktion, som hanterar saknad bedömning och inte lånar `CONFIRMED`.
+   Före eller tillsammans med Agent 3-stapeln.
+4. **Spårbar rättelseväg** för avläsning och debitering, utan att historik
+   försvinner.
+5. **Exakt beloppsklassning i öre, med identitet och hantering som skilda
+   beslut**, med CI-prov — och UTAN att återinföra kandidatfiltret. Nytt,
+   separat facit för identifierat överskott, utan att skriva om gamla mätningar.
+6. Namnbyte på #870/#871. Inventering före JSON-gallring. BÖR-2 (de två taken),
+   BÖR-4 (confidence), BÖR-5, BÖR-6, BÖR-8.
