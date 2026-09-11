@@ -1281,4 +1281,44 @@ describe('2a: beständiga leveransbeslut i PostgreSQL', () => {
       expect(await counts(f)).toEqual({ roots: 1, decisions: 1, members: 2, events: 1 })
     }
   })
+  it('2a-17 ägd registrering rapporterar uppskjutet FK-fel och full rollback', async () => {
+    const f = await fixture('INVOICE', 0)
+    const before = await counts(f),
+      invoicesBefore = await db.invoice.count()
+    let writtenRoot = '',
+      writtenDocument = ''
+    const faultyStorage = db.$extends({
+      query: {
+        deliveryDocument: {
+          async create({ args, query }) {
+            const row = await query(args)
+            writtenRoot = row.id!
+            return row
+          },
+        },
+        invoice: {
+          async create({ args, query }) {
+            // Verklig insättning under fel identitet: rotens FK brister först vid slutkontroll.
+            const row = await query({ ...args, data: { ...args.data, id: key() } })
+            writtenDocument = row.id!
+            return row
+          },
+        },
+      },
+    })
+    await expect(
+      new DeliveryDecisions(faultyStorage as unknown as PrismaClient).register(
+        f.organizationId,
+        f.actorId,
+        { kind: 'INVOICE', data: { ...f.invoiceData, invoiceNumber: key() } },
+      ),
+    ).rejects.toThrow('DeliveryDocument_organizationId_invoiceId_fkey')
+    expect(writtenRoot).not.toBe('')
+    expect(writtenDocument).not.toBe('')
+    expect(writtenRoot).not.toBe(writtenDocument)
+    expect(await counts(f)).toEqual(before)
+    expect(await db.invoice.count()).toBe(invoicesBefore)
+    expect(await db.deliveryDocument.findUnique({ where: { id: writtenRoot } })).toBeNull()
+    expect(await db.invoice.findUnique({ where: { id: writtenDocument } })).toBeNull()
+  })
 })
