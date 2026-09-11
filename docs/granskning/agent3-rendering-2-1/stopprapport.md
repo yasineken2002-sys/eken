@@ -108,6 +108,13 @@ Tidiga testmejl hade manuellt inkonsekventa fält gentemot bilagan. De rättades
 före implementation och auktoritativ fångst. Äldre råserier och driver-v1 bevaras.
 Originalets fixturkällfil före automatisk formattering ligger i
 `fixture-source-before.ts.txt`; dess hash stämmer med samtliga före-manifest.
+CI:s designkontroll fällde senare fixturens hårdkodade varumärkesfärg på
+`5e4acd9149ab576dfe54a1993818a35a00ae850a`:
+[röd kontroll](https://github.com/yasineken2002-sys/eken/actions/runs/34614143128/job/103311736897).
+Den nuvarande fabriken använder därför `DEFAULT_BRAND_COLOR`; hela fabrikens
+serialiserade resultat jämfördes med den sparade originalkällan och var identiskt.
+Alla råa före-filer och manifest är oförändrade. Detta var ett verkligt CI-fel i
+testhjälparen, inte den beställda avsiktliga beteendemutationen.
 
 ## Rena dokument och visuell före-kontroll
 

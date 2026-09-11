@@ -4,6 +4,8 @@
  * Fabriken skapar nya Date/objekt; JSON.stringify ger ett stabilt frysbart underlag.
  * Inga personnummer finns i fixturerna, och alla e-postadresser använder example.test.
  */
+import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+
 export const renderingFixtureBaseSha = '5ae9906b152307eae0d79eec719d4303a042742c'
 export const renderingFixtureAsOf = '2026-09-11T12:00:00Z'
 
@@ -34,7 +36,7 @@ export function createRenderingFixtures() {
     email: 'ekonomi@example.test',
     phone: 'TEST-TELEFON',
     bankgiro: '5050-1055',
-    invoiceColor: '#1a6b3c',
+    invoiceColor: DEFAULT_BRAND_COLOR,
     invoiceTemplate: 'classic',
     brandSecondaryColor: '#245c7c',
     brandFont: 'SYSTEM_SANS',
