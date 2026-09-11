@@ -101,19 +101,25 @@ export class DeliveryExecution {
     )
       throw new ConflictException('DELIVERY_SCOPE_CONFLICT')
     command = json(command) as typeof command
-    const prepared = await this.decisions.prepareCommand(command)
-    if ('dispatch' in prepared) return prepared.dispatch
-    if (prepared.fingerprint !== command.expectedFingerprint)
-      throw new ConflictException('DELIVERY_SNAPSHOT_CONFLICT')
-    const resources = await this.checkedResources(command)
-    const body = await this.ports.render(prepared.snapshot, resources, command.rendering)
+    let body: string | undefined
+    // Legacy commands keep their original single-transaction contract.
+    if (command.rendering) {
+      const prepared = await this.decisions.prepareCommand(command)
+      if ('dispatch' in prepared) return prepared.dispatch
+      if (prepared.fingerprint !== command.expectedFingerprint)
+        throw new ConflictException('DELIVERY_SNAPSHOT_CONFLICT')
+      const resources = await this.checkedResources(command)
+      body = await this.ports.render(prepared.snapshot, resources, command.rendering)
+    }
     return this.decisions.transaction(async (tx) => {
       const result = await this.decisions.decide(command, tx)
       const existing = await tx.deliveryDispatch.findUnique({
         where: { decisionId: result.decision.id },
       })
       if (existing) return existing
-      await this.checkedResources(command)
+      const resources = await this.checkedResources(command)
+      const sealedBody =
+        body ?? (await this.ports.render(result.decision.snapshot, resources, command.rendering))
       return tx.deliveryDispatch.create({
         data: {
           decisionId: result.decision.id,
@@ -124,8 +130,8 @@ export class DeliveryExecution {
           method: 'POST',
           endpoint: 'https://api.resend.com/emails',
           resources: command.resources,
-          body,
-          digest: deliveryDigest(body),
+          body: sealedBody,
+          digest: deliveryDigest(sealedBody),
         },
       })
     })
