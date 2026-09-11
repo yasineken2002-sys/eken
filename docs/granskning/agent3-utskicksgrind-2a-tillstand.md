@@ -1,5 +1,10 @@
 # PR 2a — tillstånd och övergångar före SQL
 
+> Historiskt stoppunderlag. Ägaren höjde senare taket till 650 rader.
+> Tillståndskontraktet gäller; registrering/städning preciseras i
+> [bevisplanen](agent3-utskicksgrind-2a-bevisplan.md) och den genomförda 2a
+> rapporteras i [leveransrapporten](agent3-utskicksgrind-2a-leverans.md).
+
 Datum: 2026-09-11. Detta är ett designkontrakt, inte implementerade garantier.
 Tabellen sparas före ändringar i schema, migrationer eller produktionskod.
 Storleksprövningen görs efter denna första sparning. Inga utskick aktiveras.
