@@ -95,3 +95,10 @@ dokumentationsrader och 388 binärfiler; 1253 källfiler granskades, inga
 statiska importfel och 312 uttryckligen redovisade analysgränser.
 Detta skiljer sig avsiktligt från äldre manuella totalsiffror för test-/
 bevismaterial: kategorierna följer den dokumenterade filregeln.
+
+En bokstavlig file:-import avvisas som en intern import som inte kan upplösas;
+den får aldrig förväxlas med ett externt npm-paket. Det gäller även när URL:en pekar
+på en testfil. En separat negativ kontroll reproducerade detta tidigare tystgröna
+fall och gav sedan avslag; räknaren försöker inte följa godtyckliga fil-URL:er.
+
+Efter tillägget av file:-provet passerade den slutliga sviten 34/34.

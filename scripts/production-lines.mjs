@@ -206,7 +206,8 @@ export function imports(files, names = new Set(files.keys())) {
         spec === p ||
         (p.includes('*') && spec.startsWith(p.split('*')[0]) && spec.endsWith(p.split('*')[1])),
     )
-    if (!targets.size && (spec.startsWith('.') || spec.startsWith('/') || alias || workspace))
+    const local = /^(?:[./]|file:)/i.test(spec)
+    if (!targets.size && (local || alias || workspace))
       errors.push({ file: from, text: `${from}: unresolved internal import ${spec}` })
     return targets
   }

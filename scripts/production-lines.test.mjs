@@ -338,3 +338,11 @@ test('colon in a source filename cannot remove a real production diagnostic', ()
     report.errors.some((e) => e.includes('src/a:b.ts') && e.includes('production imports test')),
   )
 })
+
+test('literal file URL cannot be mistaken for an external package', () => {
+  const report = graph({
+    'app.mjs': "import 'file:///__eken_counter__/rig.test-ports.mjs'",
+    'rig.test-ports.mjs': 'export const x = 1',
+  })
+  assert.ok(report.errors.some((error) => error.includes('unresolved internal import file:')))
+})

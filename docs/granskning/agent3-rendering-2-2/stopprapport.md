@@ -7,8 +7,8 @@ Själva renderingskopplingen är inte implementerad. Samma uppdrag och samma nya
 behålls; ingen extra produktdel eller PR-uppdelning föreslås.
 
 Det uttryckliga taket är **450 ändrade produktionsrader**. Det färdiga instrumentet
-och dess CI-koppling tar **435**. Den konkretiserade återstående adapterdelen bedöms
-till **257–400**, alltså **692–835** totalt. Bedömningen är en kostnadsprognos,
+och dess CI-koppling tar **436**. Den konkretiserade återstående adapterdelen bedöms
+till **257–400**, alltså **693–836** totalt. Bedömningen är en kostnadsprognos,
 inte ett matematiskt bevis att varje möjlig implementation kräver exakt dessa tal.
 
 **Begärt ägarbeslut: höj taket till 850 för samma 2.2 och samma PR.**
@@ -29,12 +29,12 @@ färre fysiska rader för att få en missvisande budget; det är normalt Prettie
 
 ## Faktiskt instrumentmått
 
-| Klass | Tillagda | Borttagna | Ändrade |
-| --- | ---: | ---: | ---: |
-| Räknare, `scripts/production-lines.mjs` | 429 | 0 | 429 |
-| CI, `.github/workflows/ci.yml` | 6 | 0 | 6 |
-| Produktion totalt | 435 | 0 | 435 |
-| Räknarens tester, `scripts/production-lines.test.mjs` | 340 | 0 | 340 |
+| Klass                                                 | Tillagda | Borttagna | Ändrade |
+| ----------------------------------------------------- | -------: | --------: | ------: |
+| Räknare, `scripts/production-lines.mjs`               |      430 |         0 |     430 |
+| CI, `.github/workflows/ci.yml`                        |        6 |         0 |       6 |
+| Produktion totalt                                     |      436 |         0 |     436 |
+| Räknarens tester, `scripts/production-lines.test.mjs` |      348 |         0 |     348 |
 
 Dokumentationen särredovisas av samma skript. Den ändrar inte produktionsmåttet.
 Inga binärfiler tillkommer.
@@ -66,15 +66,15 @@ Den uttryckliga uppdragsbudgeten mäts separat mot ovanstående fasta e90-bas.
 
 ## Varför återstoden inte är en fristående extrafunktion
 
-| Kvarstående del, utifrån kod vid e90 | Bedömda ändrade produktionsrader |
-| --- | ---: |
-| Fryst kontext i fullständigt kommando; kort förberedelse med befintlig authorize/replay/snapshot | 24–38 |
-| Tvåfas-enqueue: verklig rendering utanför skrivtransaktionen, atomisk kontroll och bindning, bevarad replay | 58–88 |
-| Färsk asynkron identitetskontroll med beständigt konfliktspår och oförändrad retrygren | 18–30 |
-| Verklig adapter: validerad snapshotavkodning, faktura/avi, PDF/mejl och exakt body | 125–180 |
-| Återanvänd fakturamejlsbyggare och deklarera adapter i kodidentiteten | 12–25 |
-| r22-krav i CI och faktisk exekvering | 20–39 |
-| Återstående totalt | **257–400** |
+| Kvarstående del, utifrån kod vid e90                                                                        | Bedömda ändrade produktionsrader |
+| ----------------------------------------------------------------------------------------------------------- | -------------------------------: |
+| Fryst kontext i fullständigt kommando; kort förberedelse med befintlig authorize/replay/snapshot            |                            24–38 |
+| Tvåfas-enqueue: verklig rendering utanför skrivtransaktionen, atomisk kontroll och bindning, bevarad replay |                            58–88 |
+| Färsk asynkron identitetskontroll med beständigt konfliktspår och oförändrad retrygren                      |                            18–30 |
+| Verklig adapter: validerad snapshotavkodning, faktura/avi, PDF/mejl och exakt body                          |                          125–180 |
+| Återanvänd fakturamejlsbyggare och deklarera adapter i kodidentiteten                                       |                            12–25 |
+| r22-krav i CI och faktisk exekvering                                                                        |                            20–39 |
+| Återstående totalt                                                                                          |                      **257–400** |
 
 Samma kedja måste bära det frysta underlaget från kommando till återproducerbara
 mejlbyte. Att ta bort exempelvis fullkommando-replay, typavkodning eller atomisk
@@ -87,7 +87,7 @@ ingen ny bindningstabell eller omskrivning av gammal migration behövs för dett
 
 ## Instrumentets prov och granskningsfynd
 
-**33/33 riktade Node-prov godkända**, inklusive den delade källskannerns kanarier.
+**34/34 riktade Node-prov godkända**, inklusive den delade källskannerns kanarier.
 
 Repots två skannervakter passerade också: check-guard-preprocessors granskade 58
 skript, 53 med delad skanner och noll handrullade lexer-former.
@@ -106,7 +106,7 @@ rättningar och negativa prov:
 En avsiktlig beteendemutation i separat tillfällig kopia slog av testimportspärren.
 Provet för oförändrad helper/barrel föll med AssertionError och exit 1.
 Kopian städades; ordinarie källfil muterades inte och den hela sviten blev åter
-33/33 grön. Detta är räknarens negativa kontroll, **inte** den beställda r22-kontrollen.
+33/33 grön. Efter file:-tillägget passerade 34/34. Detta är räknarens negativa kontroll, **inte** den beställda r22-kontrollen.
 
 Räknaren granskar det statiskt upplösbara importnätet, inklusive oförändrade filer,
 tsconfig-alias, workspace-exporter och Python-importer. Dynamiska laddare, eval,
@@ -142,3 +142,11 @@ korrekt. Verklig rendereradapter och dess prov återstår. Den deklarerade milj�
 vara oföränderlig under framställningen. PROVIDER_ACCEPTED är API-acceptans, inte
 mottagarleverans eller läsning. Den redan lanseringsdokumenterade luckan 2b-26 består.
 Ingenting i detta instrument aktiverar skyddet i produktionen.
+
+Ett sjätte konkret importfall upptäcktes vid slutkontrollen: en bokstavlig
+file:-URL till en testfil blev felaktigt behandlad som ett externt paket.
+Fallet reproducerades grönt på c67e70c6, rättades till uttryckligt avslag och fick
+ett eget prov. Det ökar räknaren till 430 och summan med CI till 436 rader.
+
+De fem tidigare fynden återverifierades av den oberoende granskaren på c67e70c6;
+samtliga var stängda genom egna reproduktioner. File:-fallet är en separat senare rättning.
