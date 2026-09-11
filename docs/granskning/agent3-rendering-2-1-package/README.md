@@ -70,6 +70,8 @@ med läsåtkomst krävs för nedhämtning. Raderad körning/artefakt kan avsluta
 åtkomsten tidigare. [GitHubs dokumentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts)
 beskriver åtkomst och nedhämtning.
 
+Efter 2026-12-10 är detta manifest en FÖRTECKNING över vad som fanns, inte en hämtbar pekare. Det beskriver utvecklingskörningar; det auktoritativa före-underlaget (before-final) ligger committat i repot och påverkas inte av utgången.
+
 Efter hämtning till en ny katalog verifieras tar-filen utan extrahering:
 
 ```bash
