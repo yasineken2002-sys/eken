@@ -1,137 +1,198 @@
-# PR 2b — exekveringskontrakt före implementation
+# PR 2b, steg 1 — kontrakt före SQL
 
-Datum: 2026-09-11. Bas: `0973272d5eb8f6f8285ec8c98f039a47f6ec568b` (#878).
-**Designunderlag vid budgetstopp. Ingenting nedan är implementerat i 2b.**
-Se [omfattningsbedömningen](agent3-utskicksgrind-2b-omfattning.md) och
-[det oberoende facit](agent3-utskicksgrind-2b-facit.md).
+Datum: 2026-09-11. Godkänd 2a-bas:
+`0973272d5eb8f6f8285ec8c98f039a47f6ec568b`, PR #878. Eget utkast #879.
+Detta kontrakt beskriver beställda garantier; körda bevis redovisas separat.
 
-## Gemensam auktoritet och identitet
+## Öppen ändring av det tidigare kontraktet
 
-2a:s DeliveryDocument, DeliveryDecision, DeliveryMember och DeliveryEvent
-behålls. Senaste eventrevision är enda affärstillståndet. Outboxens
-transportobservationer, artefaktbindningar och konfliktobservationer får inte
-bli en andra tillståndsmaskin. Ingen ny originalposition införs.
+Byggordern ”Agent 3, PR 2b — STEG 1” ersätter 400-raderstaket med 700
+ändrade produktionsrader och tillåter ett enda nytt sätt att maskinellt lösa
+UNKNOWN: verifierat positivt svar från ett tillåtet, identiskt omanrop.
+Tidigare 2b-förbud mot alla omanrop och all maskinell upplösning är ersatta
+här och i facit FÖRE implementation. Versionen vid `6524b68f` finns i historiken.
+2a:s migration, historiska leveransrapport och sjutton beteendeprov bevaras.
 
-Dokumentroten är organisation + kontrollerat skapat dokument. Beslutets UUID
-är utskicks-ID och används även vid återpublicering. SENDING-eventets UUID
-är försöks-ID. En avsiktlig fakturaomsändning har eget beslut, utskicks-ID och
-försök samt referens till accepterat original. En ny kommandonyckel ger inte
-rätt att kringgå SENDING/UNKNOWN eller att skicka ett andra original.
+2a:s A–D gäller: A nytt kontrollerat original; B nytt original efter acceptans
+nekas; C uttrycklig fakturaomsändning får eget beslut och försök; D UNKNOWN
+hindrar nytt ORIGINAL och INVOICE_RESEND. D förbjuder inte det uttryckligen
+beställda identiska omanropet av SAMMA försök. 2a:s generiska mänskliga
+UNKNOWN-övergång utan utredning ska fortfarande nekas.
 
-## Transaktionsgränser och återstart
+## Två skilda dimensioner
 
-| Steg | Beständigt före steget | Arbete och commitgräns | Återstart och identitet |
-| --- | --- | --- | --- |
-| Beslut och outbox | Kontrollerad dokumentrot och aktuellt behörigt underlag | Ägd READ COMMITTED-transaktion tar 2a:s organisationslås; kör `decide(command, tx)` och skriver unik organisations-/dokumentbunden outboxavsikt för samma beslut. `checkConstraints(tx)` körs efter ALLA skrivningar. | Fel ger hel rollback. Samma kommando återläser samma beslut och outbox; ändrad innebörd ger konflikt. Ocommittat resultat är preliminärt. |
-| Transportpublicering | Committat beslut och outboxavsikt | Publicerare läser DB och publicerar endast beständig utskicksidentitet. Köeffekt sker efter commit. Publiceringsobservation sparas efter transporten. | Krasch före publicering lämnar avsikten kvar. Krasch efter publicering före lokal observation får ge dubbel köleverans med samma identitet. Redis-retention får inte definiera slutstatus; återstart måste kunna återpublicera obesvarad avsikt även om äldre publicering noterats. |
-| Artefaktframställning | Committat beslut med fryst snapshot | Betrodd framställare använder endast beslutets frysta data och frysta renderingsresurser. Faktiska PDF-/mejlbyte och manifest binds oföränderligt till beslutet i en egen kort transaktion med slutkontroll. | Ofärdig framställning får återförsökas före start med samma utskicks-ID. En befintlig förseglad artefakt återanvänds; den skrivs inte över med ny rendering. |
-| Leveransstart | Beslut, outbox och verifierbar förseglad artefakt | En ägd starttransaktion låser, återläser aktuellt beslut och underlag, verifierar artefakt och registrerar SENDING/försöks-ID. Exekveraren får sin engångsrätt först efter lyckad commit. | Konkurrent eller replay får aldrig engångsrätt. Om commitutfallet är okänt görs inget anrop; DB återläses utan att återskapa startbehörighet. |
-| Leverantörsanrop | Committad SENDING för exakt försök och artefakt | Endast exekveringsprocessen som vann starten får anropa den kontrollerade leverantörsgränsen en gång. Ingen DB-transaktion hålls över nätanropet. | Alla automatiska nätverksretries måste vara avstängda även i adaptern. Processförlust efter SENDING ger inte rätt till ersättningssändning. |
-| Utfall | SENDING eller UNKNOWN för samma försök | Korrelerad acceptans eller definitivt avslag sparas i ny transaktion enligt 2a:s evidenskontrakt. Observation, leverantör och referens bevaras. | Förlorat svar eller misslyckad lokal kvittolagring lämnar SENDING/UNKNOWN. Lokal lagring av samma bevis kan återförsökas; själva anropet får inte upprepas. Efter UNKNOWN krävs mänsklig utredning för slutövergång. |
+Senaste DeliveryEvent-revision anger leveransutfallet. Oföränderlig
+exekveringshistorik anger rätten till ytterligare nätanrop. Ingen tidsgräns,
+köstatus eller stängningspost får betyda skickat eller misslyckat.
 
-En starttransaktion måste äga både artefaktverifiering och övergång. Den får
-inte behandla `transition(command, tx)` som ett verkställighetstillstånd:
-2a ger uttryckligen `startGranted: false` för övertagen transaktion. Den nya
-ägda exekveringsmetoden måste utöka samma kontrakt utan en parallell maskin.
+| Leveransutfall | Betydelse och övergång |
+| --- | --- |
+| DECIDED | Människa har godkänt fryst underlag. Behörig människa får återkalla; behörig tjänst får försöka starta efter kontroller. |
+| REVOKED | Terminalt för beslutet; inga anrop. Historiken bevaras. |
+| SENDING | Start har committats med ett beständigt försöks-ID. Ingen ny start; osäkerhet kan registreras som UNKNOWN. |
+| UNKNOWN | Inget slutligt utfall är bevisat. Reservation och deltagande skrivares spärr kvarstår även när anropsfönstret stängts. |
+| PROVIDER_ACCEPTED | Positiv korrelerad Resend-API-acceptans. Ingen mottagarleverans eller läsning påstås. |
+| FAILED_NO_ACCEPTANCE | 2a:s definitiva negativa slutbevis, inklusive utesluten senare acceptans. Ett fel från ett omanrop räcker aldrig. |
 
-## Artefaktens beviskedja
+| Anropsrätt | Villkor, beständig observation och nekning |
+| --- | --- |
+| Inte startat | Ingen nätanropsrätt, även om attemptId redan allokerats i Dispatch. |
+| Första anrop | Egen lyckad SENDING-commit, matchande principal/scope/artefakt och separat committad anropsobservation. |
+| Begränsat omanrop | Samma attemptId, scope och sparade byte; SENDING/UNKNOWN, öppen tid och kvarvarande global budget. Ny observation med eget anropsnummer, aldrig ny attempt. |
+| Tillfälligt för tidigt | Ingen ny rätt före återförsöksintervallet. Tidsgrund och budget återställs inte. |
+| Stängt | EXPIRED, CALL_LIMIT, CONTENT_CONFLICT eller slututfall spärrar nya rättigheter. Stängningen är oåterkallelig; inga nya POST. UNKNOWN kvarstår tills tillräckligt slutbevis; utan korrelerat positivt svar från redan tillåten RETRY krävs människa. |
 
-Renderingsresursernas verkliga byte/digester måste bindas beständigt före
-eller i beslut/outbox-commiten och ingå i beslutskommandots jämförda
-innebörd. Att först efter beslutet läsa logoStorageKey och frysa de då
-aktuella byten är otillräckligt: resursen kan ha bytts i mellanrummet.
-2a:s nuvarande kommando saknar denna resursbindning. Dess konkreta utökning
-och hur infrysningen verifieras är OLÖST vid stoppet; inget färdigt
-beslutsbevis över resursbyte påstås här.
+Varje anropsobservation har eget beständigt ID/nummer och typ FIRST/RETRY.
+Kvitto refererar just den observationen, inte bara attemptId. Identiskt
+kvitto kan lagras igen utan ny acceptansövergång; annat mejl-ID för samma
+försök är en avvikelse. Avvikelsen sparas utan att skriva om ett slututfall.
 
-Manifestet behöver en entydig versionsmärkt representation som binder:
-organisation, dokument, beslut/utskicks-ID, beslutets fingerprint,
-mottagaridentitet och exakt adress, avsändare, ämne, text-/HTML-innehåll,
-bilagornas namn/mediatyper och exakta byte samt renderer-/resursidentitet.
-Digest beräknas över de verkliga byten och manifestet. Data som lämnas till
-leverantörsgränsen ska läsas tillbaka och jämföras mot den förseglade
-bindningen. Samma lagringsnyckel med nya byte ska ge avslag.
+## Identitet, principal och behörighet
 
-Två olika bevis behövs: att en betrodd framställare använde den beslutade
-snapshoten, och att samma framställda byte används vid leveransen. En hash
-över godtyckliga uppladdade byte styrker bara det senare. `updatedAt`,
-`pdfKey`, logotypnyckel eller ett digestsvar från samma obetrodda indata räcker
-inte för hela kedjan. Ändrat underlag får aldrig utlösa tyst omrendering.
+`Idempotency-Key` är EXAKT attemptId: ett beständigt UUID med DB-unikhet
+även mellan organisationer. Dispatch kan allokera det i beslutets commit;
+SENDING måste sedan ha `event.id = event.attemptId = dispatch.attemptId`.
+Beslutets UUID är utskicks-ID. Dokumentrot och accepterad originalposition
+är oförändrade. Inga prefix, Redis-nycklar eller nya nycklar vid retry.
 
-Fakturarenderaren läser i dag aktuell DB och logotyp
-(`apps/api/src/invoices/pdf.service.ts:135`, `:155`); avirenderaren hämtar också
-logotyp via nyckel (`apps/api/src/avisering/avisering.service.ts:1048`). De är
-inte färdiga adaptrar för frysta resurser. Verklig framställning från fryst
-underlag återstår och får inte döljas som bevisad av syntetiska PDF-byte.
+Dispatch binder organisation, dokument, beslut, attemptId, Resend-team,
+HTTP-metod, endpoint och fullständiga förseglade anropsbyte. Dessa värden är
+oföränderliga. API-hemligheter ingår aldrig. Bytt team eller endpoint är
+inte ett återförsök och ska avvisas före nätanrop.
 
-## Ändringsordning och beständig spärr
+Tjänsten har egen organisationsbunden principaltabell och egen kontrollerad
+FK-gren i eventtriggern. Befintliga mänskliga actorId är fortsatt icke-null;
+aktörsarten väljer uttryckligen människa respektive tjänst. SYSTEM eller
+saknat User-ID blir aldrig tjänsteidentitet. En User-rad utan principalrad
+kan inte verkställa. SQL skyddar relation och övergång; processens betrodda
+konstruktionsport väljer tjänsteidentiteten. Ingen extern autentisering
+eller hemlighetsdistribution installeras i detta inaktiva steg.
 
-Inom den nya inaktiva mekanismen behöver varje relevant skrivning äga en
-transaktion, ta samma organisationslås och läsa senaste beständiga tillstånd
-EFTER låset. Skrivsamordnaren måste neka ändringar under SENDING/UNKNOWN.
-En konservativ spärr för relevant underlag i hela organisationen är möjlig,
-men dess bredare påverkan ska beskrivas och provas.
+Jobbet innehåller endast beslutets identitet. Exekveraren läser organisation,
+dokument och principal ur betrodd konfiguration och DB, aldrig aktör ur jobbet.
+Tjänsten får starta befintligt beslut och spara korrelerade observationer/utfall.
+Den får inte registrera dokument, besluta, återkalla, utreda mänskligt eller
+lösa UNKNOWN negativt. Den nya positiva UNKNOWN-rätten kräver en sparad
+RETRY-rätt och verifierat positivt svar för exakt dess scope och byte.
+Ett sent originalkvitto efter UNKNOWN ger inte denna rätt.
 
-Om ändringen committar först ska starten se ändringen och spara en beständig
-konfliktobservation med beslut, gammal/aktuell fingerprint och konkret skäl.
-Ingen starthändelse eller leverantörseffekt får uppstå. Konfliktspåret måste
-committas utan att följa med i den misslyckade starttransaktionens rollback.
-Beslutet ersätts inte och originalpositionen flyttas inte.
+## Atomisk lagring och ägda transaktioner
 
-Om starten committar först ska en ny skrivare se SENDING och nekas även om
-startarens DB-anslutning sedan försvinner medan leverantörsanropet fortgår.
-Efter återstart gäller samma spärr på SENDING/UNKNOWN. Därmed är inte det
-tillfälliga DB-låset det enda skyddet.
+Tre nya tabeller räcker: principal, Dispatch och exekveringsobservationer.
+Dispatch förenar outboxavsikt, frysta resurser och förseglad artefakt; det är
+en avsikt med ett oföränderligt innehåll. Observationer är append-only och
+blir inte ett andra leveransutfall. Funktioner som ersätts får kompletta
+nya definitioner i NY migration; 2a:s SQL skrivs aldrig om.
 
-Detta gäller deltagande nya skrivare. Äldre produktionsskrivare använder inte
-primitiven och skyddas inte av ett sådant prov. Ingen gammal väg eller trigger
-på gamla underlagstabeller kopplas om i denna order. Samordnad inkoppling
-måste senare verifiera hela skrivmängden innan skydd kan hävdas i drift.
+| Operation | Transaktion och bevis |
+| --- | --- |
+| Beslut + Dispatch | Betrodd port fryser syntetiska resurser; deras digester ingår i jämfört beslutskommando. Ägd READ COMMITTED-tx tar 2a:s lås, kör decide(tx), renderar endast frysta indata utan extern I/O och sparar förseglad Dispatch. checkConstraints körs sist. Fel rullar tillbaka allt; transporten har noll anrop. |
+| Publicering | Läser committad Dispatch och publicerar samma besluts-ID. Krasch före publicering och tappad bekräftelse lämnar avsikten återpublicerbar. Redis-retention och tidigare publiceringsobservation ger inga nya identiteter. |
+| Start | Exekveraren äger tx, läser underlag efter lås, kontrollerar aktuella charges/snapshot/artefakt, skriver SENDING och tidsgrund. Starttillstånd lämnas först efter lyckad commit. Övertagen tx/replay ger aldrig starttillstånd. |
+| Nekad start | Förväntad snapshot-/policykonflikt returneras som ett nekningsresultat efter att konfliktspåret committats. Eventuellt undantag kastas först utanför tx. Inget SENDING eller POST. Oförväntat DB-fel ger ingen rätt. |
+| Anrop | Separat ägd tx registrerar rätt och antal. Ingen tx hålls över transporten. Sista kontrollerbara portpunkt kontrollerar deadline efter commit. Tappat commitbesked ger inget anrop, även om rätten råkade bli lagrad. |
+| Utgång | Nekande operation observerar tiden och committar EXPIRED innan den rapporterar avslag. Bakgrundsjobb behövs inte för att neka. SQL-undantag i samma tx får inte vara vägen för denna normala nekning. |
+| Kvitto | Ny kort tx sparar svar med grant/attempt/scope-korrelation. Positivt slutbevis ger tillåten eventövergång; 409/timeout/404 ger aldrig acceptans eller negativ finalitet. |
 
-## Workers, behörighet och det sista anropsfönstret
+## Fast tidsgrund och transportbegränsning
 
-Beslut, återkallelse och slutlig utredning av UNKNOWN ska fortsatt kräva en
-behörig människa. Exekvering behöver en separat organisationsbunden
-tjänsteprincipal med snäva rättigheter: verifiera befintligt beslut, starta
-det en gång och rapportera tillåtna utfall. Jobbets payload får inte välja
-principal eller skapa ett nytt godkännande. Beslutsfattarens User-ID får inte
-användas som om människan själv körde workern.
+Tidsgrund t0 sparas från PostgreSQLs UTC-klocka före första möjliga POST.
+Deadline är oföränderligt `t0 + 23 timmar`: Resends 24 timmar minus en vald
+säkerhetsmarginal om en timme. Jämförelsen är strikt `nu < deadline`;
+likhet och senare tid nekas. Omstart, ny worker, återpublicering, UNKNOWN
+eller 409 får aldrig flytta t0 eller deadline.
 
-2a kräver User i både `DeliveryDecisions.authorize` och SQL:s eventtrigger.
-En ny migration och motsvarande typ-/auktoriseringsändring måste därför
-bevara övergångsreglerna och skilja tjänst från människa. Den betrodda
-processidentitetens konkreta autentisering och DB-bindning är ännu inte
-implementerad eller verifierad. Ett fritt `actorKind: SYSTEM` är inte en
-lösning. Detta är inkluderat i budgeten som arbete, inte ett befintligt skydd.
+Högst fyra anropsrättigheter per försök: original plus tre identiska omanrop.
+Minsta intervall före retry 1/2/3 är 1/5/30 sekunder från föregående beviljade
+anrop. Budget och intervall räknas i DB över alla processer. FIRST får förekomma
+högst en gång, endast i den ägda starttransaktionen; RETRY högst tre gånger.
+Vid krasch efter SENDING utan FIRST-observation räknas första retryintervallet
+från t0. Återstartaren får RETRY, aldrig FIRST eller en fjärde retry.
+CALL_LIMIT nekar nya rättigheter, inte den sista redan beviljade rätten. Förbrukad budget
+stänger rätten beständigt även om ett svar tappats; utfallet kan förbli UNKNOWN.
 
-Gamla omlevererade jobb och workers som ännu inte vunnit start kan stoppas
-av den beständiga engångsreservationen. En gammal VINNARE som pausats efter
-sista DB-kontrollen men före nätanrop är ett annat fall: ingen senare
-DB-flagga återkallar i sig kodens redan erhållna sändförmåga.
+PostgreSQL-klockan måste följa faktisk förfluten tid inom marginalen. Även
+fördröjningen mellan sista kontroll och providerankomst måste rymmas inom
+marginalen tillsammans med klockfelet. Detta är transportantaganden, inte
+bevisade driftgränser. En säkerhetsmarginal garanterar ingenting vid
+obegränsad processpaus eller obegränsad klockavvikelse.
 
-Kontraktet får därför inte lova att UNKNOWN, ett generationsnummer eller
-utgången lease stoppar ett redan auktoriserat externt anrop. Ingen annan
-worker får ta över sändningen, och skrivspärren måste kvarstå. Innan negativ
-slutlighet frigör reservationen krävs även positivt belägg att gammal
-sändförmåga har upphört, alternativt verklig leverantörsfencing som avvisar
-det gamla försöket. Hur detta garanteras i drift är en öppen beroendefråga.
+Paus FÖRE sista kontroll: återupptagning vid/efter deadline nekas och stängning
+sparas. Paus EFTER sista kontroll: ett redan kontrollerat anrop kan nå providern
+senare, även efter cachens utgång. Varken lease, lokal timeout eller DB-flagga
+återkallar den förmågan. Provet ska visa denna lucka och får visa möjlig andra
+acceptans när transportantagandet avsiktligt bryts. Ingen driftgaranti om
+högst en acceptans över obegränsad paus får hävdas.
 
-## Fel, slutbevis och gränser
+Sena kvitton sparas alltid. Positivt kvitto från en tidigare tillåten RETRY
+får lösa UNKNOWN även när svaret anländer efter stängningen: detta avslutar
+redan auktoriserat arbete och ger ingen ny anropsrätt. Stängningshistoriken
+ligger kvar. Sent originalkvitto efter UNKNOWN sparas för mänsklig utredning.
+Felkorrelerat eller motsägande kvitto sparas som avvikelse och ändrar inte
+slututfallet. Negativ maskinell UNKNOWN-upplösning är aldrig tillåten.
 
-Förberedelse-/lagrings-/transportfel före SENDING kan återförsökas med samma
-beständiga identitet. Återkallelse, underlagskonflikt och byte-/identitetsfel
-ska stoppa jobbet och vara spårbara; de får inte maskeras som tillfälliga
-fel eller repareras med nytt godkännande i workern.
+## Artefakt och determinism
 
-Efter SENDING är krasch före anrop, förlorat svar och förlorad lokal
-kvittens alla konservativt osäkra från återstartarens perspektiv. UNKNOWN
-behåller försöks-ID och reservation. Ett sent positivt svar efter UNKNOWN
-kan bevaras som utredningsunderlag men inte ge tjänsten mänsklig
-utredningsbehörighet. Timeout, tidspassage, Redis-tömning och avsaknad av
-kvitto är inga slutbevis.
+Det sparade innehållet är exakt serialiserade byte, inte bara en JSONB-form
+som kan serialiseras annorlunda. Det binder mottagare/avsändare/ämne,
+text/HTML, samtliga bilagebyte, namn, mediatyper och alla övriga fält som
+skickas. Inga externa bilage-URL:er får ersätta bytebindningen. Digest ska
+beräknas över de verkliga sparade byten och kontrolleras vid anropsgränsen.
+Omanrop läser samma sparade sträng/byte; rendererporten får inte anropas igen.
 
-PROVIDER_ACCEPTED betyder endast leverantörsacceptans. Mottagarleverans och
-läsning följer inte av detta. Verklig providers korrelation, retrybeteende,
-fencing och slutliga negativa besked måste verifieras före drift. Inga
-sådana aktuella garantier har kontrollerats i denna läsuppgift, och inga
-riktiga utskick eller betalda externa API-anrop har gjorts.
+Resursernas digester binds i beslutets commit. Betrodd syntetisk port
+använder bara fryst snapshot och byte med kontrollerade digester. Samma
+lagringsnyckel med bytt innehåll nekas; ny hash från den utbytta resursen är
+inte ett godkännande att byta det redan beslutade innehållet.
+
+Återanvändbara rendererportprov jämför hela resultatet för identiska frysta
+indata och resurser, även över ny adapterinstans. Ändrad tidsstämpel,
+slumpvärde, filnamn eller en bilagebyte ska vart och ett fälla kontraktsprovet.
+Syntetiska portprov bevisar INTE den verkliga renderern. Steg 2 måste köra
+samma krav mot sin riktiga adapter; dess arbete är inte byggt här.
+
+## Skrivsamordning och inaktiv gräns
+
+Deltagande skrivare tar samma korta organisationslås som 2a men prövar
+beständig spärr för berört dokument och dess charge-medlemmar. Aktuella
+relationer OCH frysta DeliveryMember ska räknas vid chargeflytt/ändring.
+SENDING/UNKNOWN förbjuder skrivningen. Ett annat, obesläktat dokument i
+samma organisation får committa; organisationen får ingen beständig spärr.
+Samordnaren är en betrodd intern deltagarport; den gör inte godtycklig SQL
+eller felaktigt deklarerade skrivmängder säkra.
+
+Ändring först ger beständig startkonflikt; start först ger beständig
+skrivspärr som överlever startarens förlorade DB-anslutning. Prov använder
+separata anslutningar och observerar faktisk pg_blocking_pids-väntan.
+
+Befintliga produktionsskrivare är ännu inte inkopplade: fakturans ändring,
+kreditering och makulering i invoices.service.ts; avins betalning,
+annullering och chargefrikoppling i avisering.service.ts; kredit,
+påminnelse, ränta och kundförlust i rent-*-tjänsterna; chargeändringar i
+consumption.service.ts samt skrivare av snapshotens källor (avtal, part,
+organisation, mätare och bedömning). Detta är namngivna kvarstående grupper,
+inte en verifierad fullständig 2c-inventering. Produktionsluckan är öppen.
+
+Ingen producent, worker, renderer, dokumentutlämning eller annan
+produktionsväg kopplas in. Inga verkliga utskick, betalda API-anrop,
+produktionsdata, backfill, reconciliation, merge eller driftsättning.
+Modellen uttrycker inte mottagarleverans, läsning eller säker gammal historik.
+Resends egna leveransretries begränsar innebörden av API-acceptans och är
+inte ett separat hinder för detta inaktiva steg.
+
+## Godkänt leverantörskontrakt, steg 0
+
+Kontrollerat 2026-09-11: Resend behåller nycklar i 24 timmar och kan återge
+originalets mejl-ID för identisk begäran. 409 concurrent anger pågående;
+409 invalid anger innehållskonflikt. Ingen 409 är API-acceptans. Efter
+utgången kan samma nyckel skapa en ny sändning; varje senare anrop behöver
+inte göra det. [Idempotency Keys](https://resend.com/docs/dashboard/emails/idempotency-keys),
+[Errors](https://resend.com/docs/api-reference/errors).
+
+Räckvidden team + HTTP-metod + endpoint är godkänd i byggorderns steg 0.
+[Engineering Idempotency Keys](https://resend.com/blog/engineering-idempotency-keys)
+och [diagrammet](https://cdn.resend.com/posts/engineering-idempotency-keys-1.png)
+är dess källor; diagrammet gick inte att hämta via webbverktyget i denna omgång.
+[Retrieve Sent Email](https://resend.com/docs/api-reference/emails/retrieve-email)
+är uppslag på mejl-ID, inte slutbevis att ett osäkert försök saknade effekt.
+Timeout, saknat kvitto och 404 lämnar alltså UNKNOWN olöst.

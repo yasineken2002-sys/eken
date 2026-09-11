@@ -1,3 +1,79 @@
+# Agent 3, PR 2b — steg 1, omräknad budget före implementation
+
+Datum: 2026-09-11. Byggordern höjer taket till **700** ändrade
+produktionsrader mot `0973272d5eb8f6f8285ec8c98f039a47f6ec568b`.
+Den historiska 400-radersbedömningen nedan är ersatt för steg 1.
+
+Worktree verifierad: `/workspaces/eken-fran-mac-20260909/arbete/agent3-utskicksgrind-2b`.
+Gren `codex/agent3-utskicksgrind-2b`; inledningsvis ren, HEAD
+`6524b68f8111cd4567db9d53e4e509301b44c4fb`. GitHub #879 är ett öppet utkast
+med bas `codex/agent3-utskicksgrind`, exakt godkänd 2a-HEAD ovan.
+CLAUDE.md, 2a:s leveransrapport och befintliga kontrakt/facit är lästa.
+Inga tillämpliga AGENTS.md hittades. Endast denna worktree används.
+
+## Sammanhängande plan och radbudget
+
+Tre nya tabeller: organisationsbunden principal; oföränderlig Dispatch som
+förenar outbox, frysta resurser, provideridentitet och fullständiga byte;
+append-only observationer för varje anropsrätt, kvitto, avvikelse och
+stängning. Syntetisk betrodd rendering utan extern I/O sker i beslutets
+ägda transaktion. Därmed behövs ingen separat efterföljande artefakttabell
+eller Attempt-tabell: startens event bevarar t0 och attemptId är DB-unikt.
+Detta är en förenklad lagring av hela steg 1, ingen ytterligare uppdelning.
+
+| Del | Tillagda + borttagna, uppskattat |
+| --- | ---: |
+| NY SQL-migration: 3 tabeller/FK/CHECK, insert-/anropsvakter, komplett ersatt eventfunktion och historikskydd | 230–250 |
+| Prisma: 3 modeller och relationer | 60–70 |
+| Befintlig delivery-decisions.ts: återbruk av tx/slutkontroll, identitets- och tjänstegren, inklusive borttagna rader | 20 |
+| Ny exekverare och portar: atomiskt beslut/Dispatch, publicering, start, fönster, 409, kvitton/UNKNOWN | 235–260 |
+| Skrivsamordnare för dokument och charge-medlemmar | 30–40 |
+| CI: literal 17 + 30 ID:n, genomförda positiva assertionstal, namngivna fel, inklusive borttagna gamla rader | 49–59 |
+| **Summa** | **624–699** |
+
+Bedömningen utgår från läsbar kod och explicit återbruk, inte hoptryckta
+rader. Ny SQL-funktionskropp räknas helt; 2a:s migration ändras inte.
+Detta är en planeringsuppskattning, inte en uppmätt diff eller matematisk
+undre gräns. Den ryms precis; faktisk diff ska räknas under arbetet. Om
+nödvändig sammanhängande lösning överstiger 700 stoppas arbetet och det
+konkreta överskridandet rapporteras. Inga krav får gömmas i tester/docs.
+Tester och dokumentation redovisas separat och undantas endast från taket.
+
+## Tre självständiga förgranskningar
+
+- `granska_db`: tre-tabellsplan 600–675 med äldre CI-antagande 25–35.
+  Återbruk av 2a:s transaktion, snapshot, lås, originalposition och historik;
+  komplett eventfunktion i ny migration. Inga behov av fem separata tabeller.
+- `granska_provider`: nya providerkrav kostar 100–155 utöver äldre planens
+  kärna. Fast t0, global retrybudget, sen kvittokorrelation och gränsen efter
+  sista kontroll måste uttryckas. Den aritmetiken får inte summeras igen
+  ovanpå den nya tre-tabellsplanen som redan inkluderar dem.
+- `granska_facit`: CI behöver cirka 55 ändrade produktionsrader, inte gamla
+  25–40. Literal 17 + 30 ID:n, rätt svit och positiva faktiska assertionstal.
+  Detta ersätter DB-granskarens CI-antagande i den sammanräknade budgeten.
+
+Fynden är införda i [kontrakt](agent3-utskicksgrind-2b-kontrakt.md) och
+[fryst facit](agent3-utskicksgrind-2b-facit.md) före första SQL/kodändring.
+Det är läsgranskning, inte genomförda beteendeprov.
+
+## Steg 2, uppskattat men inte byggt
+
+Verklig faktura-/avirendering måste ta fryst underlag och frysta resurser
+utan levande DB-/lagringsuppslag, avlägsna tid/slump/filnamnsvariation och
+köra samma rendererportkontrakt. Preliminärt **250–450 produktionsrader**
+plus **250–500 testrader**; den verkliga resurs-/mallkedjan måste först
+inventeras för en säkrare siffra. Syntetisk rendering i en kort tx bevisar
+inte att Puppeteer ryms i 2a:s 5-sekundersgräns; steg 2 måste välja/verifiera
+framställningsgräns utan att bryta den atomiska beviskedjan.
+
+Inkoppling av producenter, workers, samtliga skrivare och dokumentutlämning,
+äldre dokument samt produktionsmätning återstår separat. De ingår inte i
+renderersiffran och byggs inte i steg 1. Allt förblir inaktivt.
+
+---
+
+## Historisk bedömning vid 400-radersstoppet (6524b68f)
+
 # Agent 3, PR 2b — omfattningsbedömning och budgetstopp
 
 Datum: 2026-09-11. **Stopp före implementation enligt beställd gräns cirka

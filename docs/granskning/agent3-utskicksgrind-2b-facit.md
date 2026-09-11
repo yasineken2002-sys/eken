@@ -3,7 +3,14 @@
 Datum: 2026-09-11. Bas: `0973272d5eb8f6f8285ec8c98f039a47f6ec568b`.
 Facit bygger på byggordern och den separata granskaren `granska_facit_2b`,
 före produktionsändringar. Förväntningar får inte härledas från den kod som
-ska provas. **Alla nedanstående 2b-prov är ännu okörda: budgetstopp.**
+ska provas. **Alla nedanstående steg 1-prov är ännu okörda vid denna frysning.**
+
+Byggordern STEG 1, 2026-09-11, ändrar öppet det tidigare facitet före SQL:
+2b-12–16 och 18 tillåter nu begränsat identiskt omanrop och endast positiv
+verifierad retryupplösning av UNKNOWN. Versionen vid `6524b68f` bevaras i
+historiken. 2a-01–17 och A–D bevaras; den generiska mänskliga vägen utan
+utredning ska fortfarande nekas. Kontraktets exakta tider, budget och
+hantering av sena kvitton är en del av dessa förväntningar.
 
 ## Oförminskad obligatorisk mängd
 
@@ -19,13 +26,18 @@ Nya obligatoriska ID:n i detta facit:
 
 ```text
 2b-01, 2b-02, 2b-03, 2b-04, 2b-05, 2b-06, 2b-07, 2b-08, 2b-09,
-2b-10, 2b-11, 2b-12, 2b-13, 2b-14, 2b-15, 2b-16, 2b-17, 2b-18
+2b-10, 2b-11, 2b-12, 2b-13, 2b-14, 2b-15, 2b-16, 2b-17, 2b-18,
+2b-19, 2b-20, 2b-21, 2b-22, 2b-23, 2b-24, 2b-25, 2b-26, 2b-27,
+2b-28, 2b-29, 2b-30
 ```
 
 CI ska kräva lyckad faktisk exekvering av varje ID i rätt svit samt av
 sviten själv. Saknat, överhoppat, todo eller underkänt obligatoriskt prov
 ska fälla kontrollen med namngivet ID. Även övriga förekommande prov ska
-vara godkända. Denna dokumentlista är ännu inte en implementerad CI-spärr.
+vara godkända. Varje obligatoriskt prov måste ha positivt faktiskt
+assertionstal (`numPassingAsserts > 0`), exakt en match och rätt svit.
+Funnen fil, tom testfunktion, skip, todo och dubbelt ID räcker inte.
+Kravlistorna ska vara bokstavliga i CI, aldrig härledda ur specen. Denna dokumentlista är ännu inte en implementerad CI-spärr.
 
 ## Observerbart beteende
 
@@ -42,13 +54,25 @@ vara godkända. Denna dokumentlista är ännu inte en implementerad CI-spärr.
 | 2b-09 | Utbytta PDF-byte, mejlbyte eller återanvänd lagringsnyckel, även resursbyte mellan beslut och framställning | Det ursprungligen bundna bytebeviset avvisar substitutioner före anrop; framställning får inte använda senare utbytta resursbyte. Separat positivt kontrollfall skickar de exakt bundna byten. |
 | 2b-10 | Relevant ändring vinner mot start | Ändringen committar; start nekas med beständig konflikt och noll anrop. Ordningen bevisas med verkliga transaktioner. |
 | 2b-11 | Start vinner mot relevant ändring | SENDING är committat före anrop; ändringen får inte committa under SENDING/UNKNOWN. |
-| 2b-12 | DB-session försvinner medan provideranropet väntar | Låset får försvinna, men beständigt SENDING/UNKNOWN stoppar ny ändring och nytt försök; det redan pågående externa anropet kan fortfarande slutföras. Anslutningsförlust och samtidigt pågående anrop måste observeras. |
-| 2b-13 | Krasch efter SENDING, före provideranrop | Återstart skickar inte automatiskt; dokumentposition och försöks-ID bevaras och osäkerheten registreras konservativt. |
-| 2b-14 | Simulerad acceptans följd av krasch respektive misslyckad lokal kvittolagring | Inget automatiskt omutskick; återstart når/bevarar UNKNOWN med samma korrelation. Ett sent svar kringgår inte kravet på mänsklig utredning. |
-| 2b-15 | UNKNOWN efter omstart, faktisk tidspassage, Redis-tömning, leaseutgång och ny nyckel | Ingen frigöring, omsändning eller ny originaloperation. Rapportera faktisk observerad tid; kort förflyttning är inte ett dygns uthållighetsprov. |
-| 2b-16 | UNKNOWN får utfallsuppgift utan mänsklig utredning eller tillräckligt korrelerat slutbevis | Avvisas och UNKNOWN kvarstår. Timeout, tomt uppslag och saknat kvitto är otillräckligt. Negativ upplösning måste även utesluta senare anrop från gammal auktoriserad process. |
+| 2b-12 | DB-session försvinner medan provideranropet väntar | Beständig SENDING/UNKNOWN stoppar deltagande skrivare och ny attempt även när sessionslåset försvinner. Samma attempt får endast tillåtet identiskt omanrop. Observera frånkoppling medan anropet verkligen pågår. |
+| 2b-13 | Krasch efter SENDING före anrop | Återstart behåller t0, attemptId och skrivspärr. Identiskt omanrop inom fönstret kan skapa den enda provideracceptansen. Ingen ny start eller nytt beslut. Utan FIRST-observation räknas första retry från t0; högst tre RETRY, aldrig ny FIRST. |
+| 2b-14 | Acceptans med tappat svar eller misslyckad kvittolagring | Återstart bevarar UNKNOWN och korrelation. Tillåten identisk retry kan ge två nätanrop men en acceptans och samma mejl-ID. Sent originalkvitto utan retry ger inte tjänsten utredningsrätt. |
+| 2b-15 | UNKNOWN över omstart, tid, Redis-tömning, lease och ny nyckel | Ingen ny attempt, ORIGINAL eller INVOICE_RESEND. t0/deadline återställs aldrig. Efter stängning inga nya POST och UNKNOWN kvar. Separera simulerad tid från faktisk väntetid. |
+| 2b-16 | UNKNOWN får otillräckligt bevis | Godtycklig ACCEPTANCE-JSON, negativ retry, timeout, 404 och saknat kvitto ger inget slututfall. Endast verifierat positivt svar från tillåten identisk retry får ge maskinell acceptans; mänsklig negativ utredning kräver 2a:s finalitet. |
 | 2b-17 | Accepterat original och uttryckligen godkända fakturaomsändningar | Två successiva omsändningar får egna beslut, utskicks-ID:n, artefaktbindningar och försök; permanent originalposition bevaras. Exakt replay skapar ingen ytterligare effekt; nytt ORIGINAL och aviomsändning nekas. |
-| 2b-18 | Workerprincipal och gammal återupptagen worker | Ingen påhittad User; endast behörig tjänst kan verifiera/verkställa befintligt beslut. Tjänsten får inte fatta nytt godkännande eller lösa UNKNOWN. Gammalt jobb utan vunnen start får ingen rätt genom lease/replay. Pausad tidigare vinnare före anrop får inte leda till ersättningssändning eller osamordnad ändring. |
+| 2b-18 | Principaler och gammal worker | Egen organisationsbunden tjänstrad/FK-gren krävs; annan org, inaktiv principal, SYSTEM och människas User-ID nekas. Jobbet kan inte välja principal. Tjänsten får starta/registrera utfall samt snäv positiv retryupplösning, aldrig besluta/återkalla/utreda. Övertagen tx ger ingen nätanropsrätt. |
+| 2b-19 | Original accepterat, svar tappat, ny exekverarinstans | Två POST, exakt en provideracceptans, samma ID och byte; UNKNOWN löses med sparad RETRY-korrelation. |
+| 2b-20 | Original nådde aldrig provider | Identisk retry använder ursprungligt beslut, attemptId och spärr; den får skapa den enda acceptansen. |
+| 2b-21 | Samtidiga omanrop och pågående 409 | Faktisk DB-samordning; högst fyra beviljade anrop totalt och minimiintervall 1/5/30 s. 409 är alltid olöst. Samma slutliga mejl-ID; count/t0 överlever ny process. |
+| 2b-22 | 409 innehållskonflikt | Beständig avvikelse/stängning; UNKNOWN kvar; noll nya POST därefter. Inget byte av key eller innehåll för att kringgå konflikten. |
+| 2b-23 | Byte av team, metod, endpoint, attemptId, body | Riktiga DB-bindningar och anropsport avvisar varje byte, även självkonsekventa korskopplingar till existerande rader. Global attemptunikhet och UUID-format provas i DB. |
+| 2b-24 | Precis före, vid och efter deadline | Strikt före kan beviljas. Likhet/senare nekas och committar beständigt EXPIRED även när operationen rapporterar avslag. Inget bakgrundsjobb behövs. |
+| 2b-25 | Stängt över klientomstart och ny köleverans | Samma t0/deadline/stängningshistorik; inga nya auktoriserade POST, UNKNOWN kvar utan senare slutbevis. Ny klockavläsning öppnar inte stängt fönster. |
+| 2b-26 | Paus före respektive efter sista kontroll | Före: återupptag vid deadline stoppar POST. Efter: visa uttryckligen att redan auktoriserat anrop kan nå provider efter 24h och möjliggöra ytterligare acceptans när transportantagandet bryts. Ingen ovillkorlig garanti påstås. |
+| 2b-27 | Sena, felkorrelerade och motstridiga kvitton | Alla observationer bevaras utan återöppning. Positivt svar från tidigare tillåten RETRY får lösa UNKNOWN; sent original kräver människa. Fel grant/scope eller annat slutligt ID sparas som avvikelse. |
+| 2b-28 | Dokument-/charge-spärrens båda riktningar | Dokument och frysta/aktuella charge-medlemmar skyddas över startanslutningens förlust. Annat obesläktat dokument i samma org får committa. Attach/detach får inte kringgå medlemskontrollen. |
+| 2b-29 | Återanvändbart rendererportkontrakt | Identiska frysta data/resurser ger exakt samma fullständiga resultat över ny instans. Separata timestamp-, slump-, filnamns- och enbytesmutanter fäller kontraktsprovet. Detta bevisar inte verklig renderer. |
+| 2b-30 | Resursbyte bakom samma lagringsnyckel | Fel resursbyte mot förväntad digest nekas före försegling; försök att byta sparade bytes nekas efter commit. Bytt innehåll bakom live-nyckeln påverkar däremot inte retry som läser sparade bytes med noll render-/lagringsuppslag. |
 
 2a:s A–D förblir egna obligatoriska prov. 2b-17 kontrollerar även den
 omvända riktningen: två legitima omsändningar får inte felaktigt slås ihop.
@@ -61,7 +85,11 @@ skapa egna organisationer, dokument, charges och bedömningar via verkliga
 primitiver. Transport och provider ersätts vid uttryckliga portar för att
 styra publicering, acceptans, paus och fel utan riktiga utskick.
 
-Om renderer eller objektlagring också ersätts måste rapporten säga det.
+Renderer och lagring ersätts uttryckligen av betrodda syntetiska portar i steg 1.
+Providern är en simulering med separat kontrollerad tid, 24-timmarscache,
+pågående anrop, innehållskonflikt och tappat svar. Den räknar nätanrop och
+nya acceptanser separat. Transportantagandet får brytas endast i det
+uttryckligt negativa pausfallet 2b-26, vars effekt ska redovisas öppet.
 Syntetiska utdata kan pröva kärnans bindning och substitutionsskydd men
 bevisar inte att verklig faktura-/avirendering använder rätt frysta underlag.
 Den senare kedjan behöver ett eget verkligt framställningsprov innan den
@@ -110,5 +138,5 @@ fel byte passerar eller förväntat avslag uteblir. Återställ den namngivna
 filen och kontrollera tom diff mot sparad produktionsversion. Försvagningen
 får aldrig committas eller pushas. Ordinarie DB-körning ska därefter bli grön.
 
-Ingen av negativkontrollerna har utförts vid detta budgetstopp. Inga röda
+Ingen av negativkontrollerna har utförts vid denna frysning före implementation. Inga röda
 eller återställda gröna CI-länkar kan därför redovisas som bevis ännu.
