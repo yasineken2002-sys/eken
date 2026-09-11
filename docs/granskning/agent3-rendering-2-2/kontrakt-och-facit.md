@@ -87,6 +87,12 @@ använder verklig retry fortfarande sparad body; reproduktionsprovet ger aldrig
 rätt att ersätta denna med färska renderingsbyte.
 
 Grant måste kontrollera färsk verklig identitet, inte en gammal miljöcache.
+Den kontrollen gäller installerad kod/motor/miljö. Den får inte ersätta fryst logotyp,
+asOf eller avsändare med en aktuell lagrings-/konfigurationsläsning.
+r22-07 och r22-14 angriper tillförda byte och kontrollerade ändringspunkter; de
+bevisar inte säkerhet för en godtyckligt föränderlig installation mellan två kontroller.
+En sådan garanti följer inte av upprepad hashning. Den deklarerade miljön måste
+förbli oföränderlig under framställning, såsom i det godkända 2.1-kontraktet.
 Adapter/mappningskod ska ingå i den uttryckligen deklarerade kodidentitetsgränsen.
 Faktura, avi och mejl ska återanvända 2.1:s renderare och payloadbyggare.
 

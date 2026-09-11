@@ -59,6 +59,12 @@ jobs:
       - name: Run lint
         run: pnpm exec turbo lint
 
+      - name: Verify production-line counting and test import boundary
+        run: |
+          node scripts/production-lines.mjs --self-test
+          node --test scripts/production-lines.test.mjs
+          node scripts/production-lines.mjs HEAD^ HEAD
+
   test:
     name: Tests
     runs-on: ubuntu-latest
