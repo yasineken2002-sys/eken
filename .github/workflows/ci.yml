@@ -152,6 +152,20 @@ jobs:
           console.warn('charge-gate.db.spec.ts: ' + suite.assertionResults.length + ' genomförda DB-prov')
           NODE
 
+      - name: Verify delivery decision DB assertions actually passed
+        run: |
+          node - <<'NODE'
+          const report = require('./apps/api/jest-report.json')
+          const suite = report.testResults.find(s => s.name.endsWith('/consumption/delivery-decisions.db.spec.ts'))
+          const assertions = suite?.assertionResults ?? []
+          const ids = Array.from({ length: 14 }, (_, i) => `2a-${String(i + 1).padStart(2, '0')}`)
+          if (suite?.status !== 'passed' || assertions.some(t => t.status !== 'passed') ||
+              ids.some(id => !assertions.some(t => t.status === 'passed' && t.title.startsWith(id + ' ')))) {
+            throw new Error('Leveransbeslutens fjorton DB-facit saknas eller kördes inte grönt')
+          }
+          console.warn('delivery-decisions.db.spec.ts: ' + assertions.length + ' genomförda DB-prov; ' + ids.join(', '))
+          NODE
+
       # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
       #
       # En hoppad svit är GRÖN, och en kanariefågel inuti en hoppad svit kan

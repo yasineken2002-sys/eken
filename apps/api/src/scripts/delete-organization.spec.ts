@@ -61,8 +61,16 @@ describe('raderingsordningen för en organisation', () => {
     expect(models.some((m) => m.cascadesFromOrg)).toBe(true)
   })
 
-  it('varje tabell med organizationId faller via kaskad eller står i skriptet', () => {
-    expect(uncovered(models, handled)).toEqual([])
+  it('varje organisationstabell har raderingsväg utom 2a:s uttryckligt bevarade bevis', () => {
+    // 2a förbjuder radering även i dev. Dessa får inte läggas i DELETION_STEPS:
+    // provmiljön städas med ett eget schema, utan undantag i historikskyddet.
+    // Exakt mängd: både en ny okänd tabell och en påhittad raderingsväg fäller.
+    expect(uncovered(models, handled)).toEqual([
+      'DeliveryDecision',
+      'DeliveryDocument',
+      'DeliveryEvent',
+      'DeliveryMember',
+    ])
   })
 
   it('varje steg i skriptet motsvarar en modell som finns i schemat', () => {
