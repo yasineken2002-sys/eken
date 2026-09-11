@@ -1,0 +1,140 @@
+{
+  "id": "synthetic-notice-utility",
+  "organizationId": "synthetic-rendering-org",
+  "noticeNumber": "AVI-SYN-2026-0904",
+  "ocrNumber": "1234567897",
+  "type": "RENT",
+  "status": "OVERDUE",
+  "year": 2026,
+  "month": 9,
+  "createdAt": "2026-08-20T10:00:00.000Z",
+  "dueDate": "2026-07-31T00:00:00.000Z",
+  "amount": 9000,
+  "vatAmount": 0,
+  "totalAmount": 9000,
+  "consumptionAmount": 500,
+  "miscChargeAmount": 0,
+  "reminderFeeAmount": 60,
+  "interestAccruedAmount": 108.17,
+  "isProrated": false,
+  "isBackfill": false,
+  "periodStart": null,
+  "periodEnd": null,
+  "totalDays": null,
+  "daysCharged": null,
+  "tenant": {
+    "id": "synthetic-rendering-tenant",
+    "type": "INDIVIDUAL",
+    "firstName": "Testa",
+    "lastName": "Åberg",
+    "companyName": null,
+    "personalNumberEnc": null,
+    "orgNumber": null,
+    "email": "testa.aberg@example.test",
+    "phone": null,
+    "street": "Exempelvägen 4",
+    "postalCode": "000 01",
+    "city": "Teststaden"
+  },
+  "organization": {
+    "id": "synthetic-rendering-org",
+    "name": "Syntetiska Fastigheter AB",
+    "orgNumber": "TEST-ORG-001",
+    "street": "Testgatan 12",
+    "postalCode": "000 00",
+    "city": "Teststaden",
+    "email": "ekonomi@example.test",
+    "phone": "TEST-TELEFON",
+    "bankgiro": "5050-1055",
+    "invoiceColor": "#1a6b3c",
+    "invoiceTemplate": "classic",
+    "brandSecondaryColor": "#245c7c",
+    "brandFont": "SYSTEM_SANS",
+    "logoStorageKey": "synthetic/rendering/org-logo.png",
+    "hasFSkatt": true,
+    "fSkattApprovedDate": "2020-01-15T00:00:00.000Z",
+    "vatNumber": "SETESTORG001",
+    "companyForm": "AB",
+    "collectionAgencyName": "Syntetisk kravmottagare"
+  },
+  "lease": {
+    "id": "synthetic-rendering-lease",
+    "monthlyRent": 9000,
+    "unit": {
+      "id": "synthetic-rendering-unit",
+      "unitNumber": "1101",
+      "name": "Lägenhet 1101",
+      "property": {
+        "id": "synthetic-rendering-property",
+        "name": "Testhuset",
+        "street": "Testgatan 12"
+      }
+    }
+  },
+  "lines": [
+    {
+      "id": "line-050",
+      "description": "El juli 2026, 100 kWh",
+      "quantity": 100,
+      "unitPrice": 2,
+      "vatRate": 25,
+      "total": 250,
+      "consumptionChargeId": "synthetic-charge-1",
+      "createdAt": "2026-08-20T10:00:01.000Z"
+    },
+    {
+      "id": "line-040",
+      "description": "Vatten juli 2026, 4 m³",
+      "quantity": 4,
+      "unitPrice": 50,
+      "vatRate": 25,
+      "total": 250,
+      "consumptionChargeId": "synthetic-charge-2",
+      "createdAt": "2026-08-20T10:00:02.000Z"
+    }
+  ],
+  "credits": [
+    {
+      "id": "synthetic-credit-001",
+      "amount": 100
+    }
+  ],
+  "payments": [],
+  "collectionStage": "INKASSO_READY",
+  "sentAt": "2026-07-20T00:00:00.000Z",
+  "remindedAt": "2026-08-07T00:00:00.000Z",
+  "collectionReadyAt": "2026-09-10T00:00:00.000Z",
+  "interestAccruedThrough": "2026-09-09T00:00:00.000Z",
+  "reminderPdfStorageKey": "synthetic/rendering/reminder.pdf",
+  "events": [
+    {
+      "type": "EMAIL_DELIVERED",
+      "createdAt": "2026-08-08T00:00:00.000Z",
+      "payload": {}
+    },
+    {
+      "type": "INTEREST_ACCRUED",
+      "createdAt": "2026-09-10T00:00:00.000Z",
+      "payload": {
+        "segments": [
+          {
+            "from": "2026-08-01",
+            "to": "2026-08-31",
+            "days": 31,
+            "referenceRatePercent": 2.5,
+            "effectiveRatePercent": 10.5,
+            "amount": 83.83
+          },
+          {
+            "from": "2026-09-01",
+            "to": "2026-09-09",
+            "days": 9,
+            "referenceRatePercent": 2.5,
+            "effectiveRatePercent": 10.5,
+            "amount": 24.34
+          }
+        ]
+      }
+    }
+  ]
+}
