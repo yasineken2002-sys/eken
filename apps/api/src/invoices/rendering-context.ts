@@ -79,6 +79,7 @@ export function renderingCodeManifest(): Array<[string, string]> {
   const files = [
     './pdf.service',
     '../consumption/delivery-renderer',
+    '../consumption/delivery-execution',
     './rendering-context',
     './pdf-wait-until',
     './templates/invoice-pdf.template',
