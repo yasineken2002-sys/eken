@@ -220,10 +220,7 @@ export class DeliveryRenderer {
         amount: rentNoticePayableTotal(notice),
         dueDate: document.dueDate,
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
-        pdfBuffer: await this.pdf.generateFromHtml(
-          AviseringService.buildNoticePdfHtml(notice, org, context),
-          context,
-        ),
+        pdfBuffer: await AviseringService.renderNoticePdf(this.pdf, notice, org, context),
       })
     }
     const rendered = await this.mail.render(payload.template, payload.props, {
