@@ -172,16 +172,16 @@ Tystnad i dessa delar är inget implicit godkännande.
 ## Verifiering och granskning
 
 Den slutliga lokala produktionsversionen sparades i
-`2a28acbd91f2de9cd3800637f03ba8153615edea` före negativkontrollen.
+`c041c8e6628fcad4c6200fe37793acb34808e911` före negativkontrollen.
 Alla fjorton frysta facitrader samt tre kompletteringar kördes mot riktig
 PostgreSQL utan Redis, köjobb, leverantörsanrop eller betalda AI-anrop.
 
 | Riktning | Implementation | Oberoende DB-prov | Båda körningarna |
 | --- | --- | --- | --- |
-| A: nytt kontrollerat original | `delivery-decisions.ts:74,185`; SQL `delivery_register:73` | 2a-01, spec:475 | Tillåtet, exakt ett beslut med full mängd |
+| A: nytt kontrollerat original | `delivery-decisions.ts:78,189`; SQL `delivery_register:73` | 2a-01, spec:475 | Tillåtet, exakt ett beslut med full mängd |
 | B: nytt första original efter acceptans | SQL `delivery_ready:158–165` | 2a-02, spec:502 | ORIGINAL_ALREADY_ACCEPTED, noll radtillväxt |
-| C: avsiktlig fakturaomsändning | SQL `delivery_ready:160–166`; metod:185 | 2a-03, spec:515 | Två successiva egna beslut/försök; avi nekas |
-| D: UNKNOWN | SQL `delivery_ready:156`; replay metod:147–156 | 2a-04, spec:540 | Båda operationerna blockerade efter version/nyckel/omstart |
+| C: avsiktlig fakturaomsändning | SQL `delivery_ready:160–166`; metod:189 | 2a-03, spec:515 | Två successiva egna beslut/försök; avi nekas |
+| D: UNKNOWN | SQL `delivery_ready:157`; replay metod:151–160 | 2a-04, spec:540 | Båda operationerna blockerade efter version/nyckel/omstart |
 
 Övriga frysta facit: 2a-05 nyckelinnehåll/replay, 06 nedkoppling/omstart,
 07 konkurrerande original, 08 återkallelse mot start i båda ordningar,
@@ -200,7 +200,7 @@ slutverifieringsdatabas och samma återställda produktionskod.
 | Mätning | Körning 1 | Körning 2 efter negativkontroll |
 | --- | ---: | ---: |
 | Godkända / hoppade prov | 17 / 0 | 17 / 0 |
-| Tid | 41,012 s | 28,745 s |
+| DB-specens tid enligt Jest-rapport | 30,925 s | 29,827 s |
 | Public före / efter | 190 / 190 | 190 / 190 |
 | Egna schemas rader efter prov, före städning | 1106 | 1106 |
 | DeliveryDocument / Decision / Member / Event före städning | 36 / 32 / 64 / 61 | 36 / 32 / 64 / 61 |
@@ -230,7 +230,7 @@ medlemsförseglingen i `delivery_member_insert` togs förbi. Det namngivna
 **2a-11** föll på `Received promise resolved instead of rejected`; den tredje
 riktiga medlemmen hade accepterats. Detta var ett beteendefel, inte ett
 kompileringsfel. Endast denna fil återställdes från ovanstående commit med
-`git restore --source=2a28acbd91f2de9cd3800637f03ba8153615edea -- <fil>`.
+`git restore --source=c041c8e6628fcad4c6200fe37793acb34808e911 -- <fil>`.
 Diffen verifierades tom och körning 2 blev helt grön. Förbikopplingen committades
 eller pushades aldrig. De andra 16 proven var avsiktligt utelämnade i just
 den namngivna negativkontrollen, inte i de två fullständiga körningarna.
@@ -247,6 +247,18 @@ Slutlig API-typecheck gick grönt med heap 2600 MB; den första körningen med
 1800 MB avbröts av heapgränsen. Riktad ESLint och `git diff --check` gick grönt.
 Före Jest/typecheck kontrollerades processer; ett tungt jobb kördes åt gången.
 Hela testsviten körs av CI.
+
+Första CI på `0f5edae7` upptäckte två integrationskrav: gemensamma
+transaktionsgränser och dev-raderingsprovets klassning av de fyra bevarade
+tabellerna. Wrappern använder nu `PRISMA_DEFAULT_TX_LIMITS` (5 s / 2 s), utan
+att transaktionstimeout avgör något leverantörsutfall. Klassningsprovet kräver
+exakt de fyra oraderbara bevismodellerna; dess kanariefåglar är kvar.
+Inget produktionsskript eller historikskydd ändrades. Organisationer med
+nya bevis kan inte raderas genom dev-skriptet: FK stoppar raderingen med
+rollback. Organisationer utan nya bevis behåller den befintliga vägen.
+Integritetsgranskaren granskade och godkände denna uttryckliga klassning.
+De elva riktade klassnings-/skriptproven gick grönt tillsammans med första
+slutkörningens sjutton DB-prov (totalt 28/28).
 
 Tre separata granskare invände mot kontrakt, diff och prov:
 
@@ -271,9 +283,9 @@ kapacitets-/låsordning och övergång från äldre flöden enligt avsnitten ova
 ## Omfattning och stopp
 
 Mätt som tillagda PLUS borttagna rader mot den frysta PR-basen: applikationskod
-267 + SQL 281 + Prisma 73 = **621 + 0**. CI-kontroll **14 + 0** räknas också
-konservativt i produktionstaket: **635 ändrade produktionsrader av 650**.
-Tester **1324 + 0** redovisas separat. Dokumentationens exakta diffstat anges
+271 + SQL 281 + Prisma 73 = **625 + 0**. CI-kontroll **14 + 0** räknas också
+konservativt i produktionstaket: **639 ändrade produktionsrader av 650**.
+Tester **1334 + 2** = 1336 ändrade rader redovisas separat. Dokumentationens exakta diffstat anges
 i slutrapporten efter att denna rapport färdigställts.
 
 Endast 2a levereras. Ingen modulregistrering eller anrop från skapandevägar,

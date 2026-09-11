@@ -1,7 +1,13 @@
 {
   "database": "agent3_delivery_2a_20260911_final",
-  "productionCommit": "2a28acbd91f2de9cd3800637f03ba8153615edea",
+  "productionCommit": "c041c8e6628fcad4c6200fe37793acb34808e911",
   "migrations": 188,
+  "negativeControl": {
+    "test": "2a-11",
+    "result": "failed",
+    "reason": "Received promise resolved instead of rejected",
+    "restoredBeforeRun2": true
+  },
   "publicBaseline": {
     "Account": "0",
     "AccountingPeriodEvent": "0",
@@ -119,7 +125,8 @@
   "runs": [
     {
       "run": 1,
-      "schema": "delivery_2a_d9b3386f70a1405fb8fa92028fff9610",
+      "seconds": 30.925,
+      "schema": "delivery_2a_1d37508aa9f440a4b925eadb3477f34f",
       "publicAfterEqualsBaseline": true,
       "ownSchemaAbsentAfter": true,
       "fixtureRows": {
@@ -153,28 +160,28 @@
       },
       "concurrentConnections": [
         {
-          "firstPid": 7693,
-          "secondPid": 7694,
+          "firstPid": 9575,
+          "secondPid": 9576,
           "blocked": true
         },
         {
-          "firstPid": 7695,
-          "secondPid": 7696,
+          "firstPid": 9577,
+          "secondPid": 9578,
           "blocked": true
         },
         {
-          "firstPid": 7704,
-          "secondPid": 7705,
+          "firstPid": 9579,
+          "secondPid": 9580,
           "blocked": true
         },
         {
-          "firstPid": 7706,
-          "secondPid": 7707,
+          "firstPid": 9581,
+          "secondPid": 9582,
           "blocked": true
         },
         {
-          "firstPid": 7716,
-          "secondPid": 7717,
+          "firstPid": 9591,
+          "secondPid": 9592,
           "blocked": true
         }
       ],
@@ -200,7 +207,8 @@
     },
     {
       "run": 2,
-      "schema": "delivery_2a_c2dee10b9e5e4dc8881f7953662b02a8",
+      "seconds": 29.827,
+      "schema": "delivery_2a_487c7752426647bcb1265487e7d357ce",
       "publicAfterEqualsBaseline": true,
       "ownSchemaAbsentAfter": true,
       "fixtureRows": {
@@ -234,28 +242,28 @@
       },
       "concurrentConnections": [
         {
-          "firstPid": 8066,
-          "secondPid": 8067,
+          "firstPid": 9813,
+          "secondPid": 9814,
           "blocked": true
         },
         {
-          "firstPid": 8068,
-          "secondPid": 8069,
+          "firstPid": 9815,
+          "secondPid": 9816,
           "blocked": true
         },
         {
-          "firstPid": 8070,
-          "secondPid": 8071,
+          "firstPid": 9817,
+          "secondPid": 9818,
           "blocked": true
         },
         {
-          "firstPid": 8072,
-          "secondPid": 8073,
+          "firstPid": 9819,
+          "secondPid": 9820,
           "blocked": true
         },
         {
-          "firstPid": 8083,
-          "secondPid": 8084,
+          "firstPid": 9829,
+          "secondPid": 9830,
           "blocked": true
         }
       ],
