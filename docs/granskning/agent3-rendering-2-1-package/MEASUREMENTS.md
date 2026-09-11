@@ -64,8 +64,11 @@ miljöers sammanlagt 24 TTF och deras licenser finns i arkivet.
 | #880 godkänt slutträd | 3 615 | 92 541 828 | 939 012 | 404 |
 | Första beskurna commit | 2 345 | 39 393 641 | 584 486 | 62 |
 
-De oförändrade basfilerna rensas inte. Basens 16 binärer består av fem PDF,
-två PNG, åtta WOFF2 och en ICO. Lägg dessa till den behållna typmängden ovan
+De oförändrade basfilerna rensas inte. Basens 16 filer i mätningens binärklass
+består av fem PDF, två PNG, åtta WOFF2 samt `other`: den befintliga
+`apps/api/src/accounting/sie-balance-records.golden.txt` (964 bytes), som
+inte är UTF-8. Den sista är alltså text i annan kodning, inte en bild eller
+ett nytt binärt resultat. Lägg basens typmängd till den behållna mängden ovan
 för det nya hela trädet. Maskinläsbara totalsummor per typ finns i mätfilen.
 
 ## Nåbara Git-objekt sedan basen
