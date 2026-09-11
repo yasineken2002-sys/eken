@@ -155,15 +155,39 @@ jobs:
       - name: Verify delivery decision DB assertions actually passed
         run: |
           node - <<'NODE'
+          // Mäter faktiskt godkända assertions. Semantiken ägs av fryst facit
+          // och beteendenegativkontrollen; funnen fil eller testnamn räcker inte.
           const report = require('./apps/api/jest-report.json')
-          const suite = report.testResults.find(s => s.name.endsWith('/consumption/delivery-decisions.db.spec.ts'))
-          const assertions = suite?.assertionResults ?? []
-          const ids = Array.from({ length: 14 }, (_, i) => `2a-${String(i + 1).padStart(2, '0')}`)
-          if (suite?.status !== 'passed' || assertions.some(t => t.status !== 'passed') ||
-              ids.some(id => !assertions.some(t => t.status === 'passed' && t.title.startsWith(id + ' ')))) {
-            throw new Error('Leveransbeslutens fjorton DB-facit saknas eller kördes inte grönt')
+          const required = [
+            ['delivery-decisions.db.spec.ts', [
+              '2a-01', '2a-02', '2a-03', '2a-04', '2a-05', '2a-06',
+              '2a-07', '2a-08', '2a-09', '2a-10', '2a-11', '2a-12',
+              '2a-13', '2a-14', '2a-15', '2a-16', '2a-17',
+            ]],
+            ['delivery-execution.db.spec.ts', [
+              '2b-01', '2b-02', '2b-03', '2b-04', '2b-05', '2b-06',
+              '2b-07', '2b-08', '2b-09', '2b-10', '2b-11', '2b-12',
+              '2b-13', '2b-14', '2b-15', '2b-16', '2b-17', '2b-18',
+              '2b-19', '2b-20', '2b-21', '2b-22', '2b-23', '2b-24',
+              '2b-25', '2b-26', '2b-27', '2b-28', '2b-29', '2b-30',
+            ]],
+          ]
+          for (const [file, ids] of required) {
+            const suites = report.testResults.filter(s => s.name.endsWith('/consumption/' + file))
+            if (suites.length !== 1 || suites[0].status !== 'passed') {
+              throw new Error(file + ': saknad, dubbel eller underkänd svit; kräver ' + ids.join(', '))
+            }
+            const assertions = suites[0].assertionResults
+            for (const id of ids) {
+              const matches = assertions.filter(t => t.title.startsWith(id + ' '))
+              if (matches.length !== 1 || matches[0].status !== 'passed' ||
+                  !(matches[0].numPassingAsserts > 0)) {
+                throw new Error(file + ': ' + id + ' saknas eller saknar godkända genomförda assertions')
+              }
+            }
+            if (assertions.some(t => t.status !== 'passed')) throw new Error(file + ': underkänt extra prov')
+            console.warn(file + ': genomförda assertions verifierade för ' + ids.join(', '))
           }
-          console.warn('delivery-decisions.db.spec.ts: ' + assertions.length + ' genomförda DB-prov; ' + ids.join(', '))
           NODE
 
       # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
