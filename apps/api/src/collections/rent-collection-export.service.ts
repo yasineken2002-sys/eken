@@ -1,3 +1,4 @@
+import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { csvCell } from '../common/csv/csv-cell'
 import type { Prisma } from '@prisma/client'
@@ -192,7 +193,16 @@ export class RentCollectionExportService {
     const notice = await this.loadNotice(noticeId, organizationId)
     await this.assertExportable(notice)
 
-    const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(notice))
+    const context = await this.pdf.createRenderingContext(
+      new Date(),
+      await getLogoDataUrl(this.storage, notice.organization.logoStorageKey ?? null),
+    )
+    const html = RentCollectionExportService.buildPdfHtml(
+      notice,
+      context,
+      this.pn.reveal(notice.tenant.personalNumberEnc),
+    )
+    const pdfBuffer = await this.pdf.generateFromHtml(html, context)
     const csvBuffer = Buffer.from(this.buildCsv([notice]), 'utf8')
 
     const date = new Date().toISOString().slice(0, 10)
@@ -262,7 +272,16 @@ export class RentCollectionExportService {
     const zip = new JSZip()
     for (const notice of notices) {
       const safe = notice.noticeNumber.replace(/[^\w-]/g, '_')
-      const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(notice))
+      const context = await this.pdf.createRenderingContext(
+        new Date(),
+        await getLogoDataUrl(this.storage, notice.organization.logoStorageKey ?? null),
+      )
+      const html = RentCollectionExportService.buildPdfHtml(
+        notice,
+        context,
+        this.pn.reveal(notice.tenant.personalNumberEnc),
+      )
+      const pdfBuffer = await this.pdf.generateFromHtml(html, context)
       zip.file(`${safe}/inkasso-underlag-${safe}.pdf`, pdfBuffer)
 
       if (notice.reminderPdfStorageKey) {
@@ -403,7 +422,7 @@ export class RentCollectionExportService {
    * inkasso-redo) och visar hur räntan räknats per halvår. Vi litar på den
    * bokförda totalen även om en öresrest skulle skilja mot Σ segment.
    */
-  private figures(notice: RentNoticeWithCollectionData): CollectionFigures {
+  private static figures(notice: RentNoticeWithCollectionData): CollectionFigures {
     // ── KAPITALET ÄR NETTO EFTER KREDITERING (#518) ────────────────────────
     //
     // Det här talet trycks i inkassounderlaget och är vad bolaget driver in. En
@@ -460,7 +479,7 @@ export class RentCollectionExportService {
       'inkassobolag',
     ]
     const rows = notices.map((notice) => {
-      const f = this.figures(notice)
+      const f = RentCollectionExportService.figures(notice)
       const t = notice.tenant
       const o = notice.organization
       const partyName =
@@ -497,13 +516,16 @@ export class RentCollectionExportService {
     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
   }
 
-  private async buildPdfHtml(notice: RentNoticeWithCollectionData): Promise<string> {
-    const f = this.figures(notice)
+  static buildPdfHtml(
+    notice: RentNoticeWithCollectionData,
+    context: DocumentContext,
+    tenantPersonalNumber: string | null,
+  ): string {
+    const f = RentCollectionExportService.figures(notice)
     const t = notice.tenant
     const o = notice.organization
     // Dekryptering vid användningstillfället — kravbrevet ska bära gäldenärens
     // personnummer. Inget annat i den här filen behöver klartexten.
-    const tenantPersonalNumber = this.pn.reveal(t.personalNumberEnc)
     const partyName =
       t.type === 'INDIVIDUAL'
         ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
@@ -519,9 +541,9 @@ export class RentCollectionExportService {
     ]
       .filter((part) => part && part.trim())
       .join('<br>')
-    const today = new Date().toLocaleDateString('sv-SE')
+    const today = new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
     const leaseRef = `${notice.lease.unit.property.name} – ${notice.lease.unit.name} (${notice.lease.unit.unitNumber})`
-    const deliveredAt = this.deliveredAt(notice)
+    const deliveredAt = RentCollectionExportService.deliveredAt(notice)
 
     // Räntan som en EGEN rad med per-halvår-specifikation (räntelagen 9 §).
     const interestRows =
@@ -539,7 +561,7 @@ export class RentCollectionExportService {
         : `<tr><td colspan="4" class="meta">Ingen dröjsmålsränta har kristalliserats.</td></tr>`
 
     const org = notice.organization
-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    const logoDataUrl = renderingLogo(context)
     // Steg 3, PR 3e-ii: hårdkodad dokumentgrön #1a4a28 → orgens brandfärg
     // (invoiceColor) med delad DEFAULT_BRAND_COLOR som fallback — enas mot samma
     // default som det faktura-baserade inkassounderlaget (#126).
@@ -573,7 +595,7 @@ export class RentCollectionExportService {
     <div class="docref">
       <div class="meta"><strong>Hyresavi</strong></div>
       <div class="docnum">${escapeHtml(notice.noticeNumber)}</div>
-      <div class="meta">Förfallodatum ${notice.dueDate.toLocaleDateString('sv-SE')}</div>
+      <div class="meta">Förfallodatum ${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</div>
       <div class="meta">OCR ${escapeHtml(notice.ocrNumber)}</div>
     </div>
   </div>
@@ -643,10 +665,10 @@ export class RentCollectionExportService {
 
   <h2>Krav- och leveranshistorik</h2>
   <p class="meta">
-    Avi utfärdad och skickad: ${notice.sentAt ? notice.sentAt.toLocaleDateString('sv-SE') : '–'}<br>
-    Påminnelse skickad: ${notice.remindedAt ? notice.remindedAt.toLocaleDateString('sv-SE') : '–'}<br>
+    Avi utfärdad och skickad: ${notice.sentAt ? notice.sentAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) : '–'}<br>
+    Påminnelse skickad: ${notice.remindedAt ? notice.remindedAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) : '–'}<br>
     Påminnelse levererad (verifierad): ${deliveredAt ?? '–'}<br>
-    Markerad inkasso-redo: ${notice.collectionReadyAt ? notice.collectionReadyAt.toLocaleDateString('sv-SE') : '–'}<br>
+    Markerad inkasso-redo: ${notice.collectionReadyAt ? notice.collectionReadyAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) : '–'}<br>
     Lagrad påminnelsekopia: ${notice.reminderPdfStorageKey ? 'bifogad' : '–'}
   </p>
 
@@ -688,7 +710,7 @@ export class RentCollectionExportService {
   }
 
   // Datum då påminnelsen verifierat levererades (Resend-webhook → EMAIL_DELIVERED).
-  private deliveredAt(notice: RentNoticeWithCollectionData): string | null {
+  private static deliveredAt(notice: RentNoticeWithCollectionData): string | null {
     const ev = notice.events.find((e) => e.type === 'EMAIL_DELIVERED')
     return ev ? ev.createdAt.toISOString().slice(0, 10) : null
   }

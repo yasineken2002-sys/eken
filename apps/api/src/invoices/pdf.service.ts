@@ -4,8 +4,16 @@ import puppeteer, { type Browser, type Page } from 'puppeteer'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
-import { generateInvoiceHtml } from './templates/invoice-pdf.template'
+import { detectMime, generateInvoiceHtml } from './templates/invoice-pdf.template'
 import { PDF_WAIT_UNTIL } from './pdf-wait-until'
+import {
+  documentContext,
+  pdfEnvironmentIdentity,
+  renderingDigest,
+  renderingLogo,
+  stampPdfDates,
+  type PdfRenderingContext,
+} from './rendering-context'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 
@@ -50,6 +58,7 @@ export class PdfService implements OnModuleDestroy {
   // dokumenterade läckor när processen återstartas snabbt).
   private browser: Browser | null = null
   private launchPromise: Promise<Browser> | null = null
+  private renderingEnvironment = ''
 
   // Lättviktig semaphore. queue håller resolves som väntar på en ledig slot,
   // active räknar hur många pages som körs just nu.
@@ -72,7 +81,12 @@ export class PdfService implements OnModuleDestroy {
     }
   }
 
-  async generateFromHtml(html: string): Promise<Buffer> {
+  async createRenderingContext(asOf: Date, logo: string | null): Promise<PdfRenderingContext> {
+    await this.getBrowser()
+    return { ...documentContext(asOf, logo), environment: this.renderingEnvironment }
+  }
+
+  async generateFromHtml(html: string, context?: PdfRenderingContext): Promise<Buffer> {
     return this.withPage(async (page) => {
       await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
       const pdf = await page.pdf({
@@ -80,8 +94,8 @@ export class PdfService implements OnModuleDestroy {
         printBackground: true,
         margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
       })
-      return Buffer.from(pdf)
-    })
+      return context ? stampPdfDates(Buffer.from(pdf), context) : Buffer.from(pdf)
+    }, context)
   }
 
   /**
@@ -159,7 +173,7 @@ export class PdfService implements OnModuleDestroy {
       }
     }
 
-    const html = generateInvoiceHtml({
+    const data = {
       invoiceColor: invoice.organization.invoiceColor ?? DEFAULT_BRAND_COLOR,
       invoiceTemplate: invoice.organization.invoiceTemplate ?? 'classic',
       invoice: {
@@ -198,8 +212,25 @@ export class PdfService implements OnModuleDestroy {
         },
       },
       logoBase64,
-    })
+    }
+    const logo =
+      logoBase64 === null
+        ? null
+        : `data:${detectMime(invoice.organization.logoStorageKey ?? '')};base64,${logoBase64}`
+    return this.renderInvoice(data, await this.createRenderingContext(new Date(), logo))
+  }
 
+  async renderInvoice(
+    data: Parameters<typeof generateInvoiceHtml>[0],
+    context: PdfRenderingContext,
+  ): Promise<Buffer> {
+    const logo = renderingLogo(context)
+    const expectedLogo =
+      data.logoBase64 === null
+        ? null
+        : `data:${detectMime(data.invoice.organization.logoUrl ?? '')};base64,${data.logoBase64}`
+    if (logo !== expectedLogo) throw new Error('Invoice resource mismatch')
+    const html = generateInvoiceHtml(data)
     return this.withPage(async (page) => {
       await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
       const pdf = await page.pdf({
@@ -207,8 +238,8 @@ export class PdfService implements OnModuleDestroy {
         printBackground: true,
         margin: { top: '0', right: '0', bottom: '0', left: '0' },
       })
-      return Buffer.from(pdf)
-    })
+      return stampPdfDates(Buffer.from(pdf), context)
+    }, context)
   }
 
   // ── Browser pool ──────────────────────────────────────────────────────────
@@ -219,6 +250,18 @@ export class PdfService implements OnModuleDestroy {
    * första-anrop delar samma launchPromise så vi aldrig startar två browsers.
    */
   private async getBrowser(): Promise<Browser> {
+    const environment = renderingDigest(
+      JSON.stringify([
+        await pdfEnvironmentIdentity(),
+        BROWSER_LAUNCH_ARGS,
+        PDF_WAIT_UNTIL,
+        PdfService.prototype.generateFromHtml.toString(),
+        PdfService.prototype.renderInvoice.toString(),
+      ]),
+    )
+    this.renderingEnvironment ||= environment
+    if (environment !== this.renderingEnvironment)
+      throw new Error('Renderer environment changed; new process required')
     if (this.browser && this.browser.connected) return this.browser
     if (this.launchPromise) return this.launchPromise
 
@@ -245,13 +288,32 @@ export class PdfService implements OnModuleDestroy {
    * efter (även vid fel). Stänger pagen alltid — Puppeteer läcker minne om
    * pages lämnas öppna.
    */
-  private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+  private async withPage<T>(
+    fn: (page: Page) => Promise<T>,
+    context?: PdfRenderingContext,
+  ): Promise<T> {
     await this.acquireSlot()
     let page: Page | null = null
     try {
       const browser = await this.getBrowser()
+      if (context && context.environment !== this.renderingEnvironment)
+        throw new Error('Rendering identity mismatch')
       page = await browser.newPage()
-      return await fn(page)
+      let externalRequest = false
+      if (context) {
+        await page.setJavaScriptEnabled(false)
+        await page.setRequestInterception(true)
+        page.on('request', (request) => {
+          if (/^(data:|about:blank$)/.test(request.url())) void request.continue()
+          else {
+            externalRequest = true
+            void request.abort()
+          }
+        })
+      }
+      const result = await fn(page)
+      if (externalRequest) throw new Error('External rendering resource rejected')
+      return result
     } finally {
       if (page) {
         try {

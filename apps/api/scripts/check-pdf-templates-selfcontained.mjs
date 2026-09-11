@@ -188,13 +188,13 @@ function hittaFunktion(filRel, symbol, sedda = new Set()) {
 function producent(filRel, argument, index) {
   const arg = argument.trim().replace(/^await\s+/, '')
   if (arg.includes(':')) return null // typannotering ⇒ metoddeklaration, inte anrop
-  const anrop = arg.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
+  const anrop = arg.match(/^(?:[\p{L}\p{N}_$]+\.)?([\p{L}\p{N}_$]+)\s*\(/u)
   if (anrop) return anrop[1]
   const ident = arg.match(/^([\p{L}\p{N}_$]+)$/u)
   if (!ident) return null
   const f = fil(filRel)
   const före = f.kalla.slice(0, index)
-  const t = [...före.matchAll(new RegExp(`const\\s+${ident[1]}\\s*=\\s*(await\\s+)?([\\s\\S]{0,40})`, 'g'))].pop()
+  const t = [...före.matchAll(new RegExp(`const\\s+${ident[1]}\\s*=\\s*(await\\s+)?([\\s\\S]{0,120})`, 'g'))].pop()
   if (!t) return null
   const uttryck = t[2].trim()
   if (uttryck.startsWith('`')) {
@@ -203,7 +203,7 @@ function producent(filRel, argument, index) {
     const om = kroppar(filRel).filter((k) => k.start <= idx && idx <= k.slut).sort((a, b) => b.start - a.start)[0]
     return om ? om.namn : null
   }
-  const s = uttryck.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
+  const s = uttryck.match(/^(?:[\p{L}\p{N}_$]+\.)?([\p{L}\p{N}_$]+)\s*\(/u)
   return s ? s[1] : null
 }
 

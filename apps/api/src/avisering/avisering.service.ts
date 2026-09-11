@@ -1,3 +1,4 @@
+import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
 import {
   Injectable,
   Logger,
@@ -958,8 +959,12 @@ export class AviseringService {
     }
 
     try {
-      const pdfHtml = await this.buildNoticePdfHtml(notice, org)
-      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
+      const context = await this.pdfService.createRenderingContext(
+        new Date(),
+        await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
+      )
+      const pdfHtml = AviseringService.buildNoticePdfHtml(notice, org, context)
+      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml, context)
 
       const tenantName =
         notice.tenant.type === 'INDIVIDUAL'
@@ -1026,11 +1031,15 @@ export class AviseringService {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
-    const html = await this.buildNoticePdfHtml(notice, org)
-    return this.pdfService.generateFromHtml(html)
+    const context = await this.pdfService.createRenderingContext(
+      new Date(),
+      await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
+    )
+    const html = AviseringService.buildNoticePdfHtml(notice, org, context)
+    return this.pdfService.generateFromHtml(html, context)
   }
 
-  private async buildNoticePdfHtml(
+  static buildNoticePdfHtml(
     notice: NoticeWithRelations,
     org: {
       name: string
@@ -1044,8 +1053,9 @@ export class AviseringService {
       brandFont?: string | null
       logoStorageKey?: string | null
     },
-  ): Promise<string> {
-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    context: DocumentContext,
+  ): string {
+    const logoDataUrl = renderingLogo(context)
     // Steg 3, PR 3b/3c: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
     // alltså pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
     const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
@@ -1106,10 +1116,14 @@ export class AviseringService {
 
     const ocrLine = formatBankgiroLine(notice.ocrNumber, payable, bankgiro)
 
-    const monthLabel = new Date(notice.year, notice.month - 1, 1).toLocaleDateString('sv-SE', {
-      month: 'long',
-      year: 'numeric',
-    })
+    const monthLabel = new Date(Date.UTC(notice.year, notice.month - 1, 1)).toLocaleDateString(
+      'sv-SE',
+      {
+        timeZone: 'UTC',
+        month: 'long',
+        year: 'numeric',
+      },
+    )
 
     const isDeposit = notice.type === RentNoticeType.DEPOSIT
     const isProrated = notice.isProrated
@@ -1449,7 +1463,7 @@ export class AviseringService {
     </div>
     <div class="avi-header">
       <div class="avi-meta">
-        Datum: <span>${new Date().toLocaleDateString('sv-SE')}</span><br>
+        Datum: <span>${new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</span><br>
         Avinummer: <span>${notice.noticeNumber}</span><br>
         ${isDeposit ? '' : `Period: <span>${monthLabel}</span><br>`}
         Kundnr: <span>${notice.ocrNumber.slice(-6)}</span>
@@ -1520,7 +1534,7 @@ export class AviseringService {
 
   <div class="due-notice">
     &#9888; Dröjsmål debiteras med referensränta + 8% —
-    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE')}</strong>
+    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</strong>
   </div>
 </div>
 
@@ -1545,7 +1559,7 @@ export class AviseringService {
     <div class="slip-field">
       <div class="label">Förfallodatum</div>
       <div class="value" style="color:#c0392b">
-        ${notice.dueDate.toLocaleDateString('sv-SE')}
+        ${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}
       </div>
     </div>
     <div class="slip-field">

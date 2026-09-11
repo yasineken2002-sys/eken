@@ -1,3 +1,4 @@
+import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
 import {
   ConflictException,
   Injectable,
@@ -1122,8 +1123,12 @@ export class RentReminderService {
     }
 
     try {
-      const html = await this.buildReminderPdfHtml(notice, org)
-      const pdfBuffer = await this.pdfService.generateFromHtml(html)
+      const context = await this.pdfService.createRenderingContext(
+        new Date(),
+        await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
+      )
+      const html = RentReminderService.buildReminderPdfHtml(notice, org, context)
+      const pdfBuffer = await this.pdfService.generateFromHtml(html, context)
 
       // Inkasso PR 4b₀: lagra den FAKTISKT skickade påminnelse-PDF:en org-scopat
       // (reminders/{orgId}/…, samma R2-tenant-isolation som övriga dokument) så
@@ -1251,6 +1256,10 @@ export class RentReminderService {
    * vid sitt eget anropsställe.
    */
   private daysSince(date: Date, now: Date): number {
+    return RentReminderService.daysSince(date, now)
+  }
+
+  private static daysSince(date: Date, now: Date): number {
     const ms = now.getTime() - date.getTime()
     return Math.floor(ms / (24 * 60 * 60 * 1000))
   }
@@ -1281,7 +1290,7 @@ export class RentReminderService {
   }
 
   // Exponerad för test (org-adress + villkorat bankgiro enligt lag 1981:739 5 §).
-  async buildReminderPdfHtml(
+  static buildReminderPdfHtml(
     notice: ReminderNotice,
     org: {
       name: string
@@ -1294,8 +1303,9 @@ export class RentReminderService {
       brandFont?: string | null
       logoStorageKey?: string | null
     },
-  ): Promise<string> {
-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    context: DocumentContext,
+  ): string {
+    const logoDataUrl = renderingLogo(context)
     // Steg 3, PR 3d: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
     // pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
     const accent = org.invoiceColor ?? DEFAULT_BRAND_COLOR
@@ -1310,8 +1320,8 @@ export class RentReminderService {
     // och ett mejl med restskulden vore värre än två fel siffror — de hade
     // motsagt varandra i samma försändelse.
     const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
-    const daysOverdue = this.daysSince(notice.dueDate, new Date())
-    const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE')
+    const daysOverdue = RentReminderService.daysSince(notice.dueDate, new Date(context.asOf))
+    const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })
 
     const tenantName =
       notice.tenant.type === 'INDIVIDUAL'

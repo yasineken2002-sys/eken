@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { render } from '@react-email/render'
 import * as crypto from 'crypto'
+import { readFileSync } from 'node:fs'
 import * as React from 'react'
 import { Custom } from './templates/base/Custom'
 import { MagicLink } from './templates/auth/MagicLink'
@@ -45,11 +46,31 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
 }
 
 interface RenderResult {
+  identity: string
   html: string
   text: string
 }
 
 const CACHE_MAX_ENTRIES = 256
+
+export function mailEnvironment(): string {
+  const files = new Set<string>([__filename])
+  const visit = (entry: NodeModule): void => {
+    if (files.has(entry.filename)) return
+    files.add(entry.filename)
+    for (const child of entry.children ?? []) visit(child)
+  }
+  for (const entry of module.children ?? []) {
+    if (/\/(mail\/templates|@react-email|react)\//.test(entry.filename)) visit(entry)
+  }
+  const hash = crypto
+    .createHash('sha256')
+    .update(JSON.stringify([process.versions, React.version, 'UTC']))
+  for (const file of [...files].sort()) hash.update(file).update(readFileSync(file))
+  return hash.digest('hex')
+}
+
+const INITIAL_MAIL_ENVIRONMENT = mailEnvironment()
 
 @Injectable()
 export class MailRenderer {
@@ -64,8 +85,15 @@ export class MailRenderer {
   async render<T extends TemplateName>(
     template: T,
     props: TemplatePropsMap[T],
+    context = { environment: mailEnvironment() },
   ): Promise<RenderResult> {
-    const cacheKey = this.computeCacheKey(template, props)
+    if (
+      context.environment !== mailEnvironment() ||
+      context.environment !== INITIAL_MAIL_ENVIRONMENT
+    ) {
+      throw new Error('Mail rendering environment changed; new process required')
+    }
+    const cacheKey = this.computeCacheKey(template, { props, context })
     const cached = this.cache.get(cacheKey)
     if (cached) return cached
 
@@ -81,7 +109,7 @@ export class MailRenderer {
       render(element, { plainText: true }),
     ])
 
-    const result: RenderResult = { html, text }
+    const result: RenderResult = { html, text, identity: cacheKey }
 
     if (this.cache.size >= CACHE_MAX_ENTRIES) {
       // Trim oldest entry — Map preserves insertion order
@@ -95,7 +123,7 @@ export class MailRenderer {
 
   private computeCacheKey(template: TemplateName, props: unknown): string {
     const serialized = stableStringify(props)
-    const hash = crypto.createHash('sha1').update(serialized).digest('hex')
+    const hash = crypto.createHash('sha256').update(serialized).digest('hex')
     return `${template}:${hash}`
   }
 }
