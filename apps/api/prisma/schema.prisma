@@ -598,6 +598,7 @@ enum CompanyForm {
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
+  deliveryPrincipals DeliveryPrincipal[]
   id                   String             @id @default(uuid())
   name                 String
   orgNumber            String?            @unique
@@ -7159,6 +7160,7 @@ model DeliveryDecision {
   successors DeliveryDecision[] @relation("DeliveryPrevious")
   members DeliveryMember[]
   events DeliveryEvent[]
+  dispatch DeliveryDispatch?
   @@unique([organizationId, documentId, id])
   @@unique([organizationId, documentId, sequence])
 }
@@ -7188,8 +7190,56 @@ model DeliveryEvent {
   evidence Json
   actorId String
   actorName String
+  actorKind String @default("HUMAN")
   createdAt DateTime @default(now())
   decision DeliveryDecision @relation(fields: [organizationId, documentId, decisionId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
   @@unique([organizationId, commandKey])
   @@unique([decisionId, revision])
+}
+
+// Inaktiv 2b: processidentitet väljs aldrig av köpayloaden.
+model DeliveryPrincipal {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  active Boolean @default(true)
+  observations DeliveryObservation[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  @@unique([organizationId, id])
+}
+
+model DeliveryDispatch {
+  decisionId String @id
+  organizationId String
+  documentId String
+  attemptId String @unique
+  team String
+  method String
+  endpoint String
+  resources Json
+  body String
+  digest String @db.VarChar(64)
+  decision DeliveryDecision @relation(fields: [organizationId, documentId, decisionId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
+  observations DeliveryObservation[]
+  @@unique([organizationId, decisionId])
+  @@unique([organizationId, documentId, decisionId])
+}
+
+// Anropsrätt/observation är separat från DeliveryEvents leveransutfall.
+model DeliveryObservation {
+  id String @id @default(uuid())
+  organizationId String
+  decisionId String
+  sequence Int @default(0)
+  kind String
+  grantId String?
+  evidence Json
+  principalId String
+  createdAt DateTime @default(now())
+  dispatch DeliveryDispatch @relation(fields: [organizationId, decisionId], references: [organizationId, decisionId], onDelete: Restrict, onUpdate: NoAction)
+  principal DeliveryPrincipal @relation(fields: [organizationId, principalId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  grant DeliveryObservation? @relation("DeliveryReceipt", fields: [organizationId, decisionId, grantId], references: [organizationId, decisionId, id], onDelete: Restrict, onUpdate: NoAction)
+  receipts DeliveryObservation[] @relation("DeliveryReceipt")
+  @@unique([organizationId, decisionId, id])
+  @@unique([decisionId, sequence])
 }

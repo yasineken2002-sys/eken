@@ -5,7 +5,12 @@ import { consumptionConflict, requireChargeActor, requireChargeCheck } from './c
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 type Tx = Prisma.TransactionClient
-type Scope = { organizationId: string; documentId: string; actorId: string }
+type Scope = {
+  organizationId: string
+  documentId: string
+  actorId: string
+  actorKind?: 'HUMAN' | 'SERVICE'
+}
 type Creation =
   | {
       kind: 'INVOICE'
@@ -20,6 +25,8 @@ type Creation =
     }
 export type DeliveryDecisionCommand = Scope & {
   commandKey: string
+  resources?: Prisma.InputJsonObject
+  team?: string
   operation: 'ORIGINAL' | 'INVOICE_RESEND'
   expectedFingerprint: string
   reason: string
@@ -48,13 +55,14 @@ const eventFields = (command: Command) => ({
   request: json(command),
   actorId: command.actorId,
   actorName: '',
+  actorKind: command.actorKind ?? 'HUMAN',
 })
 
 // Ingen Nest-modul registrerar denna klass. Inga kö-/leverantörsadaptrar importeras.
 export class DeliveryDecisions {
   constructor(private readonly db: PrismaClient) {}
 
-  private transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
+  transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
     return this.db
       .$transaction(
         async (tx) => {
@@ -106,12 +114,19 @@ export class DeliveryDecisions {
     })
   }
 
-  private async authorize(tx: Tx, scope: Scope) {
+  private async authorize(tx: Tx, scope: Scope, execution = false) {
     await tx.$queryRaw`SELECT delivery_lock(${scope.organizationId})::text`
-    await requireChargeActor(tx, scope.organizationId, scope.actorId)
+    if (scope.actorKind === 'SERVICE') {
+      const principal =
+        execution &&
+        (await tx.deliveryPrincipal.findFirst({
+          where: { id: scope.actorId, organizationId: scope.organizationId, active: true },
+        }))
+      if (!principal) conflict('DELIVERY_PRINCIPAL_FORBIDDEN')
+    } else await requireChargeActor(tx, scope.organizationId, scope.actorId)
   }
 
-  private async snapshot(tx: Tx, scope: Scope) {
+  async snapshot(tx: Tx, scope: Scope) {
     const root = await tx.deliveryDocument.findFirst({
       where: {
         id: scope.documentId,
@@ -245,7 +260,7 @@ export class DeliveryDecisions {
         startGranted: result.outcome === 'RECORDED' && result.event.state === 'SENDING',
       }
     }
-    await this.authorize(tx, command)
+    await this.authorize(tx, command, true)
     const replay = await this.replay(tx, command)
     if (replay) return replay
     const current = await this.result(tx, command, command.decisionId, 'READ')
@@ -254,7 +269,11 @@ export class DeliveryDecisions {
       const fresh = await this.snapshot(tx, command)
       if (fresh.fingerprint !== current.decision.fingerprint) conflict('DELIVERY_SNAPSHOT_CONFLICT')
     }
-    const id = randomUUID()
+    const dispatch =
+      command.actorKind === 'SERVICE' && command.to === 'SENDING'
+        ? await tx.deliveryDispatch.findUniqueOrThrow({ where: { decisionId: command.decisionId } })
+        : null
+    const id = dispatch?.attemptId ?? randomUUID()
     await tx.deliveryEvent.create({
       data: {
         ...eventFields(command),

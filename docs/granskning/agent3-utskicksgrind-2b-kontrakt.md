@@ -25,22 +25,22 @@ Senaste DeliveryEvent-revision anger leveransutfallet. Oföränderlig
 exekveringshistorik anger rätten till ytterligare nätanrop. Ingen tidsgräns,
 köstatus eller stängningspost får betyda skickat eller misslyckat.
 
-| Leveransutfall | Betydelse och övergång |
-| --- | --- |
-| DECIDED | Människa har godkänt fryst underlag. Behörig människa får återkalla; behörig tjänst får försöka starta efter kontroller. |
-| REVOKED | Terminalt för beslutet; inga anrop. Historiken bevaras. |
-| SENDING | Start har committats med ett beständigt försöks-ID. Ingen ny start; osäkerhet kan registreras som UNKNOWN. |
-| UNKNOWN | Inget slutligt utfall är bevisat. Reservation och deltagande skrivares spärr kvarstår även när anropsfönstret stängts. |
-| PROVIDER_ACCEPTED | Positiv korrelerad Resend-API-acceptans. Ingen mottagarleverans eller läsning påstås. |
-| FAILED_NO_ACCEPTANCE | 2a:s definitiva negativa slutbevis, inklusive utesluten senare acceptans. Ett fel från ett omanrop räcker aldrig. |
+| Leveransutfall       | Betydelse och övergång                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| DECIDED              | Människa har godkänt fryst underlag. Behörig människa får återkalla; behörig tjänst får försöka starta efter kontroller. |
+| REVOKED              | Terminalt för beslutet; inga anrop. Historiken bevaras.                                                                  |
+| SENDING              | Start har committats med ett beständigt försöks-ID. Ingen ny start; osäkerhet kan registreras som UNKNOWN.               |
+| UNKNOWN              | Inget slutligt utfall är bevisat. Reservation och deltagande skrivares spärr kvarstår även när anropsfönstret stängts.   |
+| PROVIDER_ACCEPTED    | Positiv korrelerad Resend-API-acceptans. Ingen mottagarleverans eller läsning påstås.                                    |
+| FAILED_NO_ACCEPTANCE | 2a:s definitiva negativa slutbevis, inklusive utesluten senare acceptans. Ett fel från ett omanrop räcker aldrig.        |
 
-| Anropsrätt | Villkor, beständig observation och nekning |
-| --- | --- |
-| Inte startat | Ingen nätanropsrätt, även om attemptId redan allokerats i Dispatch. |
-| Första anrop | Egen lyckad SENDING-commit, matchande principal/scope/artefakt och separat committad anropsobservation. |
-| Begränsat omanrop | Samma attemptId, scope och sparade byte; SENDING/UNKNOWN, öppen tid och kvarvarande global budget. Ny observation med eget anropsnummer, aldrig ny attempt. |
-| Tillfälligt för tidigt | Ingen ny rätt före återförsöksintervallet. Tidsgrund och budget återställs inte. |
-| Stängt | EXPIRED, CALL_LIMIT, CONTENT_CONFLICT eller slututfall spärrar nya rättigheter. Stängningen är oåterkallelig; inga nya POST. UNKNOWN kvarstår tills tillräckligt slutbevis; utan korrelerat positivt svar från redan tillåten RETRY krävs människa. |
+| Anropsrätt             | Villkor, beständig observation och nekning                                                                                                                                                                                                          |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Inte startat           | Ingen nätanropsrätt, även om attemptId redan allokerats i Dispatch.                                                                                                                                                                                 |
+| Första anrop           | Egen lyckad SENDING-commit, matchande principal/scope/artefakt och separat committad anropsobservation.                                                                                                                                             |
+| Begränsat omanrop      | Samma attemptId, scope och sparade byte; SENDING/UNKNOWN, öppen tid och kvarvarande global budget. Ny observation med eget anropsnummer, aldrig ny attempt.                                                                                         |
+| Tillfälligt för tidigt | Ingen ny rätt före återförsöksintervallet. Tidsgrund och budget återställs inte.                                                                                                                                                                    |
+| Stängt                 | EXPIRED, CALL_LIMIT, CONTENT_CONFLICT eller slututfall spärrar nya rättigheter. Stängningen är oåterkallelig; inga nya POST. UNKNOWN kvarstår tills tillräckligt slutbevis; utan korrelerat positivt svar från redan tillåten RETRY krävs människa. |
 
 Varje anropsobservation har eget beständigt ID/nummer och typ FIRST/RETRY.
 Kvitto refererar just den observationen, inte bara attemptId. Identiskt
@@ -84,15 +84,15 @@ en avsikt med ett oföränderligt innehåll. Observationer är append-only och
 blir inte ett andra leveransutfall. Funktioner som ersätts får kompletta
 nya definitioner i NY migration; 2a:s SQL skrivs aldrig om.
 
-| Operation | Transaktion och bevis |
-| --- | --- |
+| Operation         | Transaktion och bevis                                                                                                                                                                                                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Beslut + Dispatch | Betrodd port fryser syntetiska resurser; deras digester ingår i jämfört beslutskommando. Ägd READ COMMITTED-tx tar 2a:s lås, kör decide(tx), renderar endast frysta indata utan extern I/O och sparar förseglad Dispatch. checkConstraints körs sist. Fel rullar tillbaka allt; transporten har noll anrop. |
-| Publicering | Läser committad Dispatch och publicerar samma besluts-ID. Krasch före publicering och tappad bekräftelse lämnar avsikten återpublicerbar. Redis-retention och tidigare publiceringsobservation ger inga nya identiteter. |
-| Start | Exekveraren äger tx, läser underlag efter lås, kontrollerar aktuella charges/snapshot/artefakt, skriver SENDING och tidsgrund. Starttillstånd lämnas först efter lyckad commit. Övertagen tx/replay ger aldrig starttillstånd. |
-| Nekad start | Förväntad snapshot-/policykonflikt returneras som ett nekningsresultat efter att konfliktspåret committats. Eventuellt undantag kastas först utanför tx. Inget SENDING eller POST. Oförväntat DB-fel ger ingen rätt. |
-| Anrop | Separat ägd tx registrerar rätt och antal. Ingen tx hålls över transporten. Sista kontrollerbara portpunkt kontrollerar deadline efter commit. Tappat commitbesked ger inget anrop, även om rätten råkade bli lagrad. |
-| Utgång | Nekande operation observerar tiden och committar EXPIRED innan den rapporterar avslag. Bakgrundsjobb behövs inte för att neka. SQL-undantag i samma tx får inte vara vägen för denna normala nekning. |
-| Kvitto | Ny kort tx sparar svar med grant/attempt/scope-korrelation. Positivt slutbevis ger tillåten eventövergång; 409/timeout/404 ger aldrig acceptans eller negativ finalitet. |
+| Publicering       | Läser committad Dispatch och publicerar samma besluts-ID. Krasch före publicering och tappad bekräftelse lämnar avsikten återpublicerbar. Redis-retention och tidigare publiceringsobservation ger inga nya identiteter.                                                                                    |
+| Start             | Exekveraren äger tx, läser underlag efter lås, kontrollerar aktuella charges/snapshot/artefakt, skriver SENDING och tidsgrund. Starttillstånd lämnas först efter lyckad commit. Övertagen tx/replay ger aldrig starttillstånd.                                                                              |
+| Nekad start       | Förväntad snapshot-/policykonflikt returneras som ett nekningsresultat efter att konfliktspåret committats. Eventuellt undantag kastas först utanför tx. Inget SENDING eller POST. Oförväntat DB-fel ger ingen rätt.                                                                                        |
+| Anrop             | Separat ägd tx registrerar rätt och antal. Ingen tx hålls över transporten. Sista kontrollerbara portpunkt kontrollerar deadline efter commit. Tappat commitbesked ger inget anrop, även om rätten råkade bli lagrad.                                                                                       |
+| Utgång            | Nekande operation observerar tiden och committar EXPIRED innan den rapporterar avslag. Bakgrundsjobb behövs inte för att neka. SQL-undantag i samma tx får inte vara vägen för denna normala nekning.                                                                                                       |
+| Kvitto            | Ny kort tx sparar svar med grant/attempt/scope-korrelation. Positivt slutbevis ger tillåten eventövergång; 409/timeout/404 ger aldrig acceptans eller negativ finalitet.                                                                                                                                    |
 
 ## Fast tidsgrund och transportbegränsning
 
@@ -111,7 +111,16 @@ från t0. Återstartaren får RETRY, aldrig FIRST eller en fjärde retry.
 CALL_LIMIT nekar nya rättigheter, inte den sista redan beviljade rätten. Förbrukad budget
 stänger rätten beständigt även om ett svar tappats; utfallet kan förbli UNKNOWN.
 
-PostgreSQL-klockan måste följa faktisk förfluten tid inom marginalen. Även
+Sista DB-tidsavläsningen görs efter övriga kontroller. Dess återstående
+budget förankras konservativt i en lokal monoton klocka avläst före DB-frågan.
+Direkt efter slutcommiten och före transportporten jämförs den monotona tiden
+igen utan mellanliggande await. Om budgeten förbrukats sparas oåterkallelig
+CONSERVATIVE_DEADLINE-stängning och UNKNOWN i en ny ägd tx; inget anrop görs.
+Testerna får injicera den uttryckliga monotona klockporten och DB-tidsporten.
+En paus efter denna sista synkrona jämförelse är fortfarande inte återkallbar.
+
+PostgreSQL-klockan och den monotona klockporten måste följa faktisk
+förfluten tid, även under processpauser, inom marginalen. Även
 fördröjningen mellan sista kontroll och providerankomst måste rymmas inom
 marginalen tillsammans med klockfelet. Detta är transportantaganden, inte
 bevisade driftgränser. En säkerhetsmarginal garanterar ingenting vid
@@ -124,7 +133,9 @@ senare, även efter cachens utgång. Varken lease, lokal timeout eller DB-flagga
 acceptans när transportantagandet avsiktligt bryts. Ingen driftgaranti om
 högst en acceptans över obegränsad paus får hävdas.
 
-Sena kvitton sparas alltid. Positivt kvitto från en tidigare tillåten RETRY
+Sena kvitton sparas alltid. En principal som avaktiverats efter en beviljad
+anropsrätt får fortfarande bevara korrelerat svar för sin egen rätt. Den
+får inga nya anropsrättigheter eller slutövergångar genom detta undantag. Positivt kvitto från en tidigare tillåten RETRY
 får lösa UNKNOWN även när svaret anländer efter stängningen: detta avslutar
 redan auktoriserat arbete och ger ingen ny anropsrätt. Stängningshistoriken
 ligger kvar. Sent originalkvitto efter UNKNOWN sparas för mänsklig utredning.
@@ -168,7 +179,7 @@ separata anslutningar och observerar faktisk pg_blocking_pids-väntan.
 Befintliga produktionsskrivare är ännu inte inkopplade: fakturans ändring,
 kreditering och makulering i invoices.service.ts; avins betalning,
 annullering och chargefrikoppling i avisering.service.ts; kredit,
-påminnelse, ränta och kundförlust i rent-*-tjänsterna; chargeändringar i
+påminnelse, ränta och kundförlust i rent-\*-tjänsterna; chargeändringar i
 consumption.service.ts samt skrivare av snapshotens källor (avtal, part,
 organisation, mätare och bedömning). Detta är namngivna kvarstående grupper,
 inte en verifierad fullständig 2c-inventering. Produktionsluckan är öppen.
