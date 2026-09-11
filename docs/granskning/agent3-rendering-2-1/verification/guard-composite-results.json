@@ -1,0 +1,1084 @@
+{
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 451,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-01 beslut, samtliga medlemmar och outbox blir synliga i samma commit",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 11,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-01 beslut, samtliga medlemmar och outbox blir synliga i samma commit"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 598,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-02 delskrivningsfel och verkligt uppskjutet FK-fel \u00e5terst\u00e4ller exakta radantal",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 8,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-02 delskrivningsfel och verkligt uppskjutet FK-fel \u00e5terst\u00e4ller exakta radantal"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 340,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-03 krasch efter commit f\u00f6re publicering \u00e5terupptas med samma avsikt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 5,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-03 krasch efter commit f\u00f6re publicering \u00e5terupptas med samma avsikt"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 596,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-04 tappad publiceringskvittens och f\u00f6rlorat k\u00f6jobb \u00e5terpublicerar samma identitet",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 8,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-04 tappad publiceringskvittens och f\u00f6rlorat k\u00f6jobb \u00e5terpublicerar samma identitet"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 601,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-05 tv\u00e5 verkligt \u00f6verlappande workers f\u00e5r en start och ett kontrollanrop",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 7,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-05 tv\u00e5 verkligt \u00f6verlappande workers f\u00e5r en start och ett kontrollanrop"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 541,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-06 ny verklig INCORRECT-bed\u00f6mning ger best\u00e4ndigt startkonfliktsp\u00e5r",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 6,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-06 ny verklig INCORRECT-bed\u00f6mning ger best\u00e4ndigt startkonfliktsp\u00e5r"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 366,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-07 \u00e5terkallat beslut f\u00f6rblir \u00e5terkallat vid gammal k\u00f6leverans",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 3,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-07 \u00e5terkallat beslut f\u00f6rblir \u00e5terkallat vid gammal k\u00f6leverans"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 945,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-08 existerande fr\u00e4mmande organisation, dokument, mottagare och artefakt avvisas",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-08 existerande fr\u00e4mmande organisation, dokument, mottagare och artefakt avvisas"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1385,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-09 ersatta PDF-, mejl- och resursbyte nekas; kontrollen anv\u00e4nder exakt f\u00f6rseglade byte",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 14,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-09 ersatta PDF-, mejl- och resursbyte nekas; kontrollen anv\u00e4nder exakt f\u00f6rseglade byte"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 408,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-10 \u00e4ndring vinner verklig l\u00e5st\u00e4vlan; nekad start committar konflikten",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 7,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-10 \u00e4ndring vinner verklig l\u00e5st\u00e4vlan; nekad start committar konflikten"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 505,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-11 start vinner verklig l\u00e5st\u00e4vlan; dokumentet \u00e4r sp\u00e4rrat f\u00f6re provideranrop",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 7,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-11 start vinner verklig l\u00e5st\u00e4vlan; dokumentet \u00e4r sp\u00e4rrat f\u00f6re provideranrop"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 734,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-12 bortkopplad workeranslutning under verkligt p\u00e5g\u00e5ende simulerat provideranrop tar inte bort sp\u00e4rren",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 27,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-12 bortkopplad workeranslutning under verkligt p\u00e5g\u00e5ende simulerat provideranrop tar inte bort sp\u00e4rren"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1591,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-13 krasch efter SENDING utan FIRST beh\u00e5ller tidsgrund och ger endast begr\u00e4nsad RETRY",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 32,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-13 krasch efter SENDING utan FIRST beh\u00e5ller tidsgrund och ger endast begr\u00e4nsad RETRY"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1150,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-14 tappat svar och fel vid kvittocommit bevarar korrelation f\u00f6r identisk retry",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 13,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-14 tappat svar och fel vid kvittocommit bevarar korrelation f\u00f6r identisk retry"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 618,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-15 UNKNOWN f\u00f6rbjuder nya f\u00f6rs\u00f6k och kvarst\u00e5r efter st\u00e4ngning och k\u00f6omstart",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-15 UNKNOWN f\u00f6rbjuder nya f\u00f6rs\u00f6k och kvarst\u00e5r efter st\u00e4ngning och k\u00f6omstart"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1096,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-16 godtycklig acceptans, negativ retry, timeout och 404 l\u00e4mnar UNKNOWN ol\u00f6st",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 20,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-16 godtycklig acceptans, negativ retry, timeout och 404 l\u00e4mnar UNKNOWN ol\u00f6st"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1578,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-17 tv\u00e5 uttryckliga fakturaoms\u00e4ndningar f\u00e5r egna identiteter och originalpositionen bevaras",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 13,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-17 tv\u00e5 uttryckliga fakturaoms\u00e4ndningar f\u00e5r egna identiteter och originalpositionen bevaras"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1741,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-18 tj\u00e4nsteprincipal har egen organisationsgren och ingen m\u00e4nsklig beslutsr\u00e4tt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 30,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-18 tj\u00e4nsteprincipal har egen organisationsgren och ingen m\u00e4nsklig beslutsr\u00e4tt"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 465,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-19 f\u00f6rlorat acceptanssvar l\u00f6ses efter omstart med samma mejl-ID och exakt tv\u00e5 POST",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 13,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-19 f\u00f6rlorat acceptanssvar l\u00f6ses efter omstart med samma mejl-ID och exakt tv\u00e5 POST"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 495,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-20 aldrig framkommet original f\u00e5r en acceptans genom identisk retry med samma sp\u00e4rr",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 11,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-20 aldrig framkommet original f\u00e5r en acceptans genom identisk retry med samma sp\u00e4rr"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1642,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-21 samtidiga retries m\u00f6ter ett verkligt v\u00e4ntande original; 409, intervall och budget \u00e4r best\u00e4ndiga",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 38,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-21 samtidiga retries m\u00f6ter ett verkligt v\u00e4ntande original; 409, intervall och budget \u00e4r best\u00e4ndiga"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 561,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-22 inneh\u00e5llskonflikt 409 st\u00e4nger best\u00e4ndigt och blir aldrig provideracceptans",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 13,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-22 inneh\u00e5llskonflikt 409 st\u00e4nger best\u00e4ndigt och blir aldrig provideracceptans"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 3112,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-23 DB och anropsgr\u00e4ns f\u00f6rbjuder byte av scope, nyckel och inneh\u00e5ll samt dubbelt attemptId",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 27,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-23 DB och anropsgr\u00e4ns f\u00f6rbjuder byte av scope, nyckel och inneh\u00e5ll samt dubbelt attemptId"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1533,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-24 strikt f\u00f6re deadline kan retry ske; vid och efter st\u00e4ngs den best\u00e4ndigt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 30,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-24 strikt f\u00f6re deadline kan retry ske; vid och efter st\u00e4ngs den best\u00e4ndigt"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 565,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-25 st\u00e4ngningen \u00f6verlever omstart, ny k\u00f6leverans och bak\u00e5tflyttad klocka",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-25 st\u00e4ngningen \u00f6verlever omstart, ny k\u00f6leverans och bak\u00e5tflyttad klocka"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1544,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-26 paus f\u00f6re kontroll stoppar POST; paus efter kontroll visar transportantagandets gr\u00e4ns",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 15,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-26 paus f\u00f6re kontroll stoppar POST; paus efter kontroll visar transportantagandets gr\u00e4ns"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1288,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-27 sena och felkorrelerade kvitton bevaras utan ny anropsr\u00e4tt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 24,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-27 sena och felkorrelerade kvitton bevaras utan ny anropsr\u00e4tt"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 1232,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-28 dokument och charge-medlemmar sp\u00e4rras; obesl\u00e4ktat dokument i samma org kan skrivas",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 24,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-28 dokument och charge-medlemmar sp\u00e4rras; obesl\u00e4ktat dokument i samma org kan skrivas"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 393,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-29 \u00e5teranv\u00e4ndbart rendererportkontrakt f\u00e4ller timestamp, slump, filnamn och en bilagebyte",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 7,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-29 \u00e5teranv\u00e4ndbart rendererportkontrakt f\u00e4ller timestamp, slump, filnamn och en bilagebyte"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 782,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL 2b-30 resursbyte bakom samma nyckel nekas f\u00f6re f\u00f6rsegling men p\u00e5verkar inte sparad retry",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2b-30 resursbyte bakom samma nyckel nekas f\u00f6re f\u00f6rsegling men p\u00e5verkar inte sparad retry"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 4825,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL r21-17 DECIDED A mot resursidentitet B committar namngiven konflikt f\u00f6re start",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 20,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-17 DECIDED A mot resursidentitet B committar namngiven konflikt f\u00f6re start"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 2380,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL r21-18 konflikt \u00f6verlever omstart och ny k\u00f6leverans \u00e4ven n\u00e4r identitet A \u00e5terst\u00e4lls",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 17,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-18 konflikt \u00f6verlever omstart och ny k\u00f6leverans \u00e4ven n\u00e4r identitet A \u00e5terst\u00e4lls"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 2522,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL r21-19 m\u00e4nniska \u00e5terkallar A och beslutar B utan att tj\u00e4nsten f\u00e5r beslutsr\u00e4tt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 29,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-19 m\u00e4nniska \u00e5terkallar A och beslutar B utan att tj\u00e4nsten f\u00e5r beslutsr\u00e4tt"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 2362,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL r21-20 publik SERVICE-start efter konflikt ger ingen ny grant eller POST \u00f6ver omstart",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 24,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-20 publik SERVICE-start efter konflikt ger ingen ny grant eller POST \u00f6ver omstart"
+        },
+        {
+          "ancestorTitles": [
+            "2b: inaktivt exekveringsmaskineri i PostgreSQL"
+          ],
+          "duration": 2902,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2b: inaktivt exekveringsmaskineri i PostgreSQL r21-21 SENDING och UNKNOWN utan tidigare grant verifierar resurser f\u00f6re f\u00f6rsta anropsr\u00e4tt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 53,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-21 SENDING och UNKNOWN utan tidigare grant verifierar resurser f\u00f6re f\u00f6rsta anropsr\u00e4tt"
+        }
+      ],
+      "endTime": 1789148174374,
+      "message": "",
+      "name": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/consumption/delivery-execution.db.spec.ts",
+      "startTime": 1789148115286,
+      "status": "passed",
+      "summary": ""
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 684,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-01 A: kontrollerat original binder verkligt dokument och hela underlaget",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 17,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-01 A: kontrollerat original binder verkligt dokument och hela underlaget"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 462,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-02 B: originalacceptans f\u00f6rbrukar originalet \u00f6ver versions- och mottagarbyte",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 2,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-02 B: originalacceptans f\u00f6rbrukar originalet \u00f6ver versions- och mottagarbyte"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 1174,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-03 C: tv\u00e5 successiva avsiktliga fakturaoms\u00e4ndningar f\u00e5r egna identiteter",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 10,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-03 C: tv\u00e5 successiva avsiktliga fakturaoms\u00e4ndningar f\u00e5r egna identiteter"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 1294,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-04 D: UNKNOWN p\u00e5 original eller oms\u00e4ndning blockerar nya operationer best\u00e4ndigt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-04 D: UNKNOWN p\u00e5 original eller oms\u00e4ndning blockerar nya operationer best\u00e4ndigt"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 405,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-05 exakt \u00e5terl\u00e4sning ger ingen r\u00e4tt; \u00e4ndrad kommandoinneb\u00f6rd ger konflikt",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 11,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-05 exakt \u00e5terl\u00e4sning ger ingen r\u00e4tt; \u00e4ndrad kommandoinneb\u00f6rd ger konflikt"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 568,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-06 SENDING och samma f\u00f6rs\u00f6ksidentitet \u00f6verlever ny anslutning och tj\u00e4nst",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 11,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-06 SENDING och samma f\u00f6rs\u00f6ksidentitet \u00f6verlever ny anslutning och tj\u00e4nst"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 919,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-07 samtidiga originalbeslut: en vinnare, samma nyckel \u00e5terl\u00e4ser",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 17,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-07 samtidiga originalbeslut: en vinnare, samma nyckel \u00e5terl\u00e4ser"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 856,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-08 \u00e5terkallelse mot start: b\u00e5da l\u00e5sordningar har exakt en vinnare",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 18,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-08 \u00e5terkallelse mot start: b\u00e5da l\u00e5sordningar har exakt en vinnare"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 797,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-09 \u00e5terkallat och slutligt misslyckat original till\u00e5ter nytt uttryckligt beslut",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 16,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-09 \u00e5terkallat och slutligt misslyckat original till\u00e5ter nytt uttryckligt beslut"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 542,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-10 existerande organisations-, dokument- och kontrollidentiteter f\u00e5r inte korskopplas",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-10 existerande organisations-, dokument- och kontrollidentiteter f\u00e5r inte korskopplas"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 1087,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-11 medlemsm\u00e4ngden \u00e4r fullst\u00e4ndig och extra INSERT efter f\u00f6rsegling avvisas",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 21,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-11 medlemsm\u00e4ngden \u00e4r fullst\u00e4ndig och extra INSERT efter f\u00f6rsegling avvisas"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 1086,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-12 tillst\u00e5nd, f\u00f6rs\u00f6kskorrelation och slutbevis skyddas \u00e4ven med direkt SQL",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 17,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-12 tillst\u00e5nd, f\u00f6rs\u00f6kskorrelation och slutbevis skyddas \u00e4ven med direkt SQL"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 448,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-13 fel efter observerade delskrivningar rullar tillbaka hela operationen",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 14,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-13 fel efter observerade delskrivningar rullar tillbaka hela operationen"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 284,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-14 \u00e4ldre ID kan inte f\u00e5 skapandegrund, inte heller genom samtidighetsf\u00f6nstret",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 13,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-14 \u00e4ldre ID kan inte f\u00e5 skapandegrund, inte heller genom samtidighetsf\u00f6nstret"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 78,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-15 avtalsmottagare pr\u00f6vas utan att medlemssp\u00e4rren kan maskera felet",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 2,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-15 avtalsmottagare pr\u00f6vas utan att medlemssp\u00e4rren kan maskera felet"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 2060,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-16 snapshot binder exakta rader, betalning, mall, avtal, fastighet och avi-kreditrader",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 48,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-16 snapshot binder exakta rader, betalning, mall, avtal, fastighet och avi-kreditrader"
+        },
+        {
+          "ancestorTitles": [
+            "2a: best\u00e4ndiga leveransbeslut i PostgreSQL"
+          ],
+          "duration": 44,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "2a: best\u00e4ndiga leveransbeslut i PostgreSQL 2a-17 \u00e4gd registrering rapporterar uppskjutet FK-fel och full rollback",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 8,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "2a-17 \u00e4gd registrering rapporterar uppskjutet FK-fel och full rollback"
+        }
+      ],
+      "endTime": 1789148190364,
+      "message": "",
+      "name": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/consumption/delivery-decisions.db.spec.ts",
+      "startTime": 1789148174403,
+      "status": "passed",
+      "summary": ""
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 15607,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-01 identical input, content resources and context reproduce all raw bytes",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 181,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-01 identical input, content resources and context reproduce all raw bytes"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 2,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-02 independent Node and Chrome instances cannot explain reproduction by cache",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 8,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-02 independent Node and Chrome instances cannot explain reproduction by cache"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 243,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-03 authoritative before-final-1/2 match except exactly two Info date fields",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 6,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-03 authoritative before-final-1/2 match except exactly two Info date fields"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 16,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-04 undeclared text or any non-exempt byte fails the same golden comparator",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 5,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-04 undeclared text or any non-exempt byte fails the same golden comparator"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 6,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-09 six real mail renderings retain HTML, text, recipients, names and correlated attachments",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 26,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-09 six real mail renderings retain HTML, text, recipients, names and correlated attachments"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 2308,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-10 clean and consumption documents retain dates, amounts, OCR, recipients, order and pages",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 45,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-10 clean and consumption documents retain dates, amounts, OCR, recipients, order and pages"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 11,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-12 reusable port contract rejects timestamp, randomness, filename and single attachment byte drift",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 5,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-12 reusable port contract rejects timestamp, randomness, filename and single attachment byte drift"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 2326,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-14 malformed, duplicate, missing or displaced PDF Info dates cannot be silently normalized",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 23,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-14 malformed, duplicate, missing or displaced PDF Info dates cannot be silently normalized"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 10268,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-15 declared identity is stable and an unrelated utility outside its boundary has no effect",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 5,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-15 declared identity is stable and an unrelated utility outside its boundary has no effect"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 79871,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-05 all five existing public callers execute their shared real rendering cores",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 154,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-05 all five existing public callers execute their shared real rendering cores"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 8382,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-06 same storage key with changed bytes changes identity and old resource A rejects B",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 4,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-06 same storage key with changed bytes changes identity and old resource A rejects B"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 12,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-08 visible dates and overdue days follow explicit asOf, including the declared midnight change",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 5,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-08 visible dates and overdue days follow explicit asOf, including the declared midnight change"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 37427,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-07 actual font, fontconfig and engine bytes are bound; old context cannot use a new environment",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 12,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-07 actual font, fontconfig and engine bytes are bound; old context cannot use a new environment"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 18430,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-11 controlled real Chromium blocks external loading and disables scripts",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 7,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-11 controlled real Chromium blocks external loading and disables scripts"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 18918,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-13 actual rendering preserves inputs and the explicitly supplied row order",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 11,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-13 actual rendering preserves inputs and the explicitly supplied row order"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 19263,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-16 declared templates, engine implementation and dynamically loaded React SSR changes reject identity A",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 32,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-16 declared templates, engine implementation and dynamically loaded React SSR changes reject identity A"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 9087,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-23 the additional clean InvoiceReminder retains UTC bytes and declares only the Stockholm due date",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 9,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-23 the additional clean InvoiceReminder retains UTC bytes and declares only the Stockholm due date"
+        },
+        {
+          "ancestorTitles": [
+            "real deterministic rendering, independent before-final golden"
+          ],
+          "duration": 15472,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "real deterministic rendering, independent before-final golden r21-22 legacy and controlled PDFs share the kernel, own distinct browsers and close both",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 14,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "r21-22 legacy and controlled PDFs share the kernel, own distinct browsers and close both"
+        }
+      ],
+      "endTime": 1789148631031,
+      "message": "",
+      "name": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/invoices/rendering.real.spec.ts",
+      "startTime": 1789148611589,
+      "status": "passed",
+      "summary": ""
+    }
+  ]
+}

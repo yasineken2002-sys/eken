@@ -137,8 +137,10 @@ jobs:
       # Skälet att dela alls: det här jobbet provisionerar Postgres och Redis
       # för API-sviten. Webs och portals rena enhetsprov behöver ingetdera, och
       # att köra dem här hade gjort dem beroende av en databas de aldrig rör.
-      - name: Install locked renderer browser
-        run: pnpm --filter @eken/api exec puppeteer browsers install chrome
+      - name: Install renderer browser and PDF inspection tools
+        run: |
+          sudo apt-get install -y --no-install-recommends poppler-utils
+          pnpm --filter @eken/api exec puppeteer browsers install chrome
 
       - name: Run test suite
         run: pnpm exec turbo test:ci --filter=@eken/api

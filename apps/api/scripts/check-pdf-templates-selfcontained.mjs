@@ -188,7 +188,7 @@ function hittaFunktion(filRel, symbol, sedda = new Set()) {
 function producent(filRel, argument, index) {
   const arg = argument.trim().replace(/^await\s+/, '')
   if (arg.includes(':')) return null // typannotering ⇒ metoddeklaration, inte anrop
-  const anrop = arg.match(/^(?:[\p{L}\p{N}_$]+\.)?([\p{L}\p{N}_$]+)\s*\(/u)
+  const anrop = arg.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
   if (anrop) return anrop[1]
   const ident = arg.match(/^([\p{L}\p{N}_$]+)$/u)
   if (!ident) return null

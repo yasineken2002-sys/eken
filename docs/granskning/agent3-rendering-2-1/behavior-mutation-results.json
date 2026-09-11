@@ -1,0 +1,36 @@
+[
+  {
+    "label": "behavior-red",
+    "exitCode": 1,
+    "sourceSha256": "a78d14304e6761b20e372cbd4621da1b22d99ce5c18c144e9b4d01c7167741b2",
+    "tests": [
+      {
+        "title": "r21-03 authoritative before-final-1/2 match except exactly two Info date fields",
+        "status": "failed",
+        "numPassingAsserts": 4,
+        "failureMessages": [
+          "assert(received)\n\nExpected value to be equal to:\n  true\nReceived:\n  false\n\nMessage:\n  Undeclared PDF byte difference\n    at assertPdfGolden (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/invoices/rendering.golden.test-helpers.ts:108:10)\n    at assertGoldenPair (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/invoices/rendering.golden.test-helpers.ts:139:26)\n    at /workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/invoices/rendering.real.spec.ts:191:36\n    at Array.map (<anonymous>)\n    at Object.<anonymous> (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api/src/invoices/rendering.real.spec.ts:189:62)\n    at Promise.then.completed (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:316:40)\n    at async _runTest (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:252:3)\n    at async _runTestsForDescribeBlock (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:126:9)\n    at async _runTestsForDescribeBlock (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:121:9)\n    at async run (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:71:3)\n    at async runAndTransformResultsToJestFormat (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at async jestAdapter (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at async runTestInternal (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:367:16)\n    at async runTest (/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:444:34)"
+        ]
+      }
+    ]
+  },
+  {
+    "label": "behavior-restored",
+    "exitCode": 0,
+    "sourceSha256": "ee642ac012c1e2c380dc957b71e9729bbc1aaa85361a042af33cd2ab0168998a",
+    "tests": [
+      {
+        "title": "r21-03 authoritative before-final-1/2 match except exactly two Info date fields",
+        "status": "passed",
+        "numPassingAsserts": 6,
+        "failureMessages": []
+      },
+      {
+        "title": "r21-04 undeclared text or any non-exempt byte fails the same golden comparator",
+        "status": "passed",
+        "numPassingAsserts": 5,
+        "failureMessages": []
+      }
+    ]
+  }
+]

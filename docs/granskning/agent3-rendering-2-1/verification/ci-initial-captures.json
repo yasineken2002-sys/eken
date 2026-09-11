@@ -1,0 +1,982 @@
+[
+  {
+    "pid": 4687,
+    "chromiumPid": 4802,
+    "identity": "5d6c1f8ec1bbfb5b8fca5bf737a77e862b74f035c10b0e7ae16836e1947e09d7",
+    "environment": {
+      "node": "v20.20.2",
+      "versions": {
+        "node": "20.20.2",
+        "acorn": "8.16.0",
+        "ada": "2.9.2",
+        "ares": "1.34.6",
+        "brotli": "1.1.0",
+        "cjs_module_lexer": "2.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.3.1",
+        "modules": "115",
+        "napi": "9",
+        "nghttp2": "1.61.0",
+        "openssl": "3.0.19",
+        "simdutf": "6.4.2",
+        "tz": "2025c",
+        "undici": "6.24.1",
+        "unicode": "17.0",
+        "uv": "1.46.0",
+        "uvwasi": "0.0.23",
+        "v8": "11.3.244.8-node.38",
+        "zlib": "1.3.1-e00f703"
+      },
+      "platform": "linux",
+      "arch": "x64",
+      "timezone": "UTC",
+      "osRelease": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+      "puppeteer": "24.40.0",
+      "chromium": "Chrome/146.0.7680.153",
+      "chromeExecutable": "/home/runner/.cache/puppeteer/chrome/linux-146.0.7680.153/chrome-linux64/chrome",
+      "chromeSha256": "41ee36c2177df46b085119be59d146c99cf0a8611d594ef1ab10c606ac973465",
+      "react": "18.3.1",
+      "reactEmail": "2.0.7",
+      "fontFiles": [
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans-Bold.ttf",
+          "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans.ttf",
+          "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-Bold.ttf",
+          "sha256": "3a3c502eeff669a231549e80df9f7c49de109bafe303170409e905d0b31a38fe"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-BoldOblique.ttf",
+          "sha256": "a5251173370e30760e6919711dcd33e149d216ca4814eb74332bda03fcc7e834"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-Oblique.ttf",
+          "sha256": "3d7955616e69721f7edb8e1b7a580f8fbd7d737111c6b54266ddc1d9ef13202f"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono.ttf",
+          "sha256": "c805f9436dbc268644c1d9584f01a601a653e028e08fd74b9b949f6cf8304d88"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSerif-Bold.ttf",
+          "sha256": "847b33e13925f19ff87e4d934d6b3cf7cac35ce16424f6f670e40c2f377cf2df"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSerif.ttf",
+          "sha256": "8f2c103bfa3fd5de71f1b92b18f21906b5a26871fb7e19a9a4c9af539c3cc7ab"
+        }
+      ],
+      "fontconfig": "Pattern has 43 elts (size 48)\n\tfamily: \"DejaVu Sans\"(w)\n\tfamilylang: \"en\"(s)\n\tstyle: \"Book\"(s)\n\tstylelang: \"en\"(s)\n\tfullname: \"DejaVu Sans\"(w)\n\tfullnamelang: \"en\"(s)\n\tslant: 0(i)(s)\n\tweight: 80(f)(s)\n\twidth: 100(f)(s)\n\tsize: 12(f)(s)\n\tpixelsize: 12.5(f)(s)\n\tfoundry: \"PfEd\"(s)\n\tantialias: True(w)\n\thintstyle: 1(i)(w)\n\thinting: True(s)\n\tverticallayout: False(s)\n\tautohint: False(s)\n\tglobaladvance: True(s)\n\tfile: \"/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans.ttf\"(s)\n\tindex: 0(i)(w)\n\toutline: True(s)\n\tscalable: True(s)\n\tdpi: 75(f)(s)\n\trgba: 1(i)(w)\n\tscale: 1(f)(s)\n\tcharset: \n\t0000: 00000000 ffffffff ffffffff 7fffffff 00000000 ffffffff ffffffff ffffffff\n\t0001: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0002: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff 008873ff\n\t0003: ffffffff ffffffff f58effff fcff0007 ffffd7f0 fffffffb ffffffff ffffffff\n\t0004: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0005: ffffffff fffe003f fe7fffff fffffffe 000006ff ffff0000 ffff00cf 001f07ff\n\t0006: 882016c0 07fffffe 04bfffff fe11ffff ffffffff ffffffff 002159c0 03ff0000\n\t0007: 00000000 00000000 00000000 00000000 00000000 00000000 ffffffff 073ff8ff\n\t000e: 00000000 80000000 00000000 00000000 fef02596 3bffecae 33ff3f5f 00000000\n\t0010: 00000000 00000000 00000000 00000000 00000000 ffffffff ffff003f 1fffffff\n\t0014: effffefe ffbfffff fff7f7ff ffffffff ffffffff 3fffffff ffffffff fffff7ff\n\t0015: ffff00ff 7fffffff fffdffff fff007ff 007ffc3f 0000ffff 40000000 00000002\n\t0016: 00000000 00000000 000000c0 007fc000 1fffffff 00000000 00000000 00000000\n\t001d: ffdfffff ffff7fcf efffffff 298007ff f8000020 ffffffff 000003f0 00000000\n\t001e: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff 0fffffff\n\t001f: 3f3fffff ffffffff aaff3f3f 3fffffff ffffffff ffdfffff efcfffdf 7fdcffff\n\t0020: ffffffff ffffffff ffffffff fff3fc1f 1fff7fff 273fffff 18c30000 00000002\n\t0021: fffffbff ffffffff ffff4bff ffffffff ffff023f ffffffff ffffffff ffffffff\n\t0022: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0023: f303ffff 000019f3 00000000 24380000 f8100080 00007fff 0000c000 00000128\n\t0024: 00000000 0000000c 00000000 000003ff 00000000 00000000 00000000 00000000\n\t0025: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0026: ffffffff ffffffff ffffffff ffffffff dfffffff 01ffffff 0000000f 00000004\n\t0027: fffff3de fffffeff 7f47afff fffffffe ff1fffff 7ffeffff 00000060 ffff0fc1\n\t0028: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0029: 00000cc0 00000000 00000003 00000000 00000018 00000000 003fc000 0c000800\n\t002a: 1ffff007 00008000 00000000 e0000c00 ffffffff 07ffc001 00000000 06000000\n\t002b: 87ffffff 0000001f 00180000 00000000 00000000 00000000 00000000 00000000\n\t002c: 00000000 00000000 00000000 feffffff 00000000 00000000 00000000 00000000\n\t002d: ffffffff ffff003f ffffffff 0000803f 00000000 00000000 00000000 00000000\n\t002e: 81000000 0000403c 00000000 00000000 00000000 00000000 00000000 00000000\n\t004d: 00000000 00000000 00000000 00000000 00000000 00000000 ffffffff ffffffff\n\t00a4: 00000000 00000000 00000000 00000000 00000000 00000000 ffff0000 ffffffff\n\t00a6: 00000000 00000000 00f330f0 00007ffc 03303c00 00000000 00000000 00000000\n\t00a7: f87fff00 ffff0ffc 00cfcfc3 000000f0 00037e0f 000007ff 00000000 ff000000\n\t00ef: 03ffffff 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n\t00f0: 0000000f 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n\t00f4: ffffffff ffffff7f 00000003 00000000 00000000 00000000 00000000 00000000\n\t00f6: 00000000 00000000 00000000 00000000 00000000 00000000 00000020 00000000\n\t00fb: e0f8007f 5f7fffff fffcffdb ffffffff ffffffff 00003c0f dff80000 f00003f0\n\t00fe: 0000ffff 0000000f 00000000 ffdf0000 ffffffff ffffffff ffffffff 9fffffff\n\t00ff: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3e000000\n\t0103: 7fffffff 0000000f 00000000 00000000 00000000 00000000 00000000 00000000\n\t01d3: ffffffff ffffffff 007fffff 00000000 00000000 00000000 00000000 00000000\n\t01d5: 00000000 7b000000 fffdfc5f 00000fff 00000000 ffffffff 000fffff 00000000\n\t01d7: 00000000 00000000 00000000 00000000 00000000 00000000 ff000000 00000fff\n\t01ee: ffffffef 0af7fe96 00000000 5ef7f796 00000000 00000000 00000000 00000000\n\t01f0: 00000000 ffff0000 ffffffff ffffffff 000fffff 7ffe7fff fffefffe 00000000\n\t01f3: 01fe0000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n\t01f4: 00000000 00226000 00000000 00000000 00000000 00000000 00000000 00000000\n\t01f6: ffffffff ffffefef 00000009 00000000 00000000 00000000 00000000 00000000\n(s)\n\tlang: aa|ab|af|ar|ast|av|ay|az-az|az-ir|ba|bm|be|bg|bi|bin|br|bs|bua|ca|ce|ch|chm|co|cs|cu|cv|cy|da|de|el|en|eo|es|et|eu|fa|fi|fj|fo|fr|ff|fur|fy|ga|gd|gl|gn|gv|ha|haw|he|ho|hr|hu|hy|ia|ig|id|ie|ik|io|is|it|iu|ka|kaa|ki|kk|kl|ku-am|ku-ir|kum|kv|kw|ky|la|lb|lez|ln|lo|lt|lv|mg|mh|mi|mk|mo|mt|nb|nds|nl|nn|no|nr|nso|ny|oc|om|os|pl|pt|rm|ro|ru|sah|sco|se|sel|sh|shs|sk|sl|sm|sma|smj|smn|sms|so|sq|sr|ss|st|sv|sw|tg|tk|tl|tn|to|tr|ts|tt|tw|tyv|ug|uk|uz|ve|vi|vo|vot|wa|wen|wo|xh|yap|yi|yo|zu|ak|an|ber-dz|ber-ma|crh|csb|ee|fat|fil|hsb|ht|hz|jv|kab|kj|kr|ku-iq|ku-tr|kwm|lg|li|mn-mn|ms|na|ng|nv|ota|pap-an|pap-aw|qu|quz|rn|rw|sc|sd|sg|sn|su|ty|za|agr|ayc|bem|ckb|dsb|lij|mfe|mhr|miq|mjw|nhn|niu|rif|sgs|szl|tpi|unm|wae|yuw(s)\n\tfontversion: 155320(i)(s)\n\tcapability: \"otlayout:DFLT otlayout:arab otlayout:armn otlayout:brai otlayout:cans otlayout:cher otlayout:cyrl otlayout:geor otlayout:grek otlayout:hani otlayout:hebr otlayout:kana otlayout:lao  otlayout:latn otlayout:math otlayout:nko  otlayout:ogam otlayout:runr otlayout:tfng otlayout:thai\"(w)\n\tfontformat: \"TrueType\"(s)\n\tembeddedbitmap: True(s)\n\tdecorative: False(s)\n\tlcdfilter: 1(i)(w)\n\tnamelang: \"en\"(s)\n\tprgname: \"fc-match\"(s)\n\tpostscriptname: \"DejaVuSans\"(s)\n\tcolor: False(s)\n\tsymbol: False(s)\n\tvariable: False(s)\n\tfonthashint: True(s)\n\torder: 0(i)(s)\n\tnamedinstance: False(s)\n\tfontwrapper: \"SFNT\"(s)\n\n"
+    },
+    "records": [
+      {
+        "id": "invoice-customer-classic",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-classic.input.json",
+          "sha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+          "bytes": 2249
+        },
+        "html": {
+          "file": "invoice-customer-classic.html",
+          "sha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+          "bytes": 6981
+        },
+        "pdf": {
+          "file": "invoice-customer-classic.pdf",
+          "sha256": "680d533b8dbd062f7f22e421e625fd400574cadafcfbf3d0647fc082fcc9e192",
+          "bytes": 71199
+        }
+      },
+      {
+        "id": "invoice-rent-classic",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-rent-classic.input.json",
+          "sha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+          "bytes": 2055
+        },
+        "html": {
+          "file": "invoice-rent-classic.html",
+          "sha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+          "bytes": 6504
+        },
+        "pdf": {
+          "file": "invoice-rent-classic.pdf",
+          "sha256": "94ccfbdd356d661ea41763866821472156855ddfb6ae50cbdbffb33922639eb0",
+          "bytes": 68872
+        }
+      },
+      {
+        "id": "invoice-utility-classic",
+        "hasConsumption": true,
+        "input": {
+          "file": "invoice-utility-classic.input.json",
+          "sha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+          "bytes": 2234
+        },
+        "html": {
+          "file": "invoice-utility-classic.html",
+          "sha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+          "bytes": 6973
+        },
+        "pdf": {
+          "file": "invoice-utility-classic.pdf",
+          "sha256": "b10e8ede1fe1d3197628990baf2bd375f5c2c04ee5b71a9002254b35934be9dd",
+          "bytes": 71077
+        }
+      },
+      {
+        "id": "invoice-customer-modern",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-modern.input.json",
+          "sha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+          "bytes": 2248
+        },
+        "html": {
+          "file": "invoice-customer-modern.html",
+          "sha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+          "bytes": 6464
+        },
+        "pdf": {
+          "file": "invoice-customer-modern.pdf",
+          "sha256": "a9029c79844548b5b238f4254e9540c87201a1f844966ff653109c37d856f461",
+          "bytes": 74717
+        }
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-minimal.input.json",
+          "sha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+          "bytes": 2249
+        },
+        "html": {
+          "file": "invoice-customer-minimal.html",
+          "sha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+          "bytes": 6399
+        },
+        "pdf": {
+          "file": "invoice-customer-minimal.pdf",
+          "sha256": "db7b687d30c69ba6ea523dc3f9277325e961dd4ae8b5162ee90ac9880975e1fb",
+          "bytes": 67976
+        }
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-multipage.input.json",
+          "sha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+          "bytes": 13683
+        },
+        "html": {
+          "file": "invoice-customer-multipage.html",
+          "sha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+          "bytes": 34411
+        },
+        "pdf": {
+          "file": "invoice-customer-multipage.pdf",
+          "sha256": "e50bd50649062713d9784eab4ce1afc770b64c343d31438b9aac39d7dcb08a68",
+          "bytes": 169515
+        }
+      },
+      {
+        "id": "notice-rent",
+        "hasConsumption": false,
+        "input": {
+          "file": "notice-rent.input.json",
+          "sha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+          "bytes": 2053
+        },
+        "html": {
+          "file": "notice-rent.html",
+          "sha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+          "bytes": 9836
+        },
+        "pdf": {
+          "file": "notice-rent.pdf",
+          "sha256": "b88d85dc2ea4aaf1d20e24715be043c05df53d1459e03e9e747d66e19e748910",
+          "bytes": 61021
+        }
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "hasConsumption": false,
+        "input": {
+          "file": "notice-prorated-backfill.input.json",
+          "sha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+          "bytes": 2095
+        },
+        "html": {
+          "file": "notice-prorated-backfill.html",
+          "sha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+          "bytes": 10487
+        },
+        "pdf": {
+          "file": "notice-prorated-backfill.pdf",
+          "sha256": "954a845247736f226b6e7cf0d41474469448ce58583b1d3d01a43ee2a705e74a",
+          "bytes": 64279
+        }
+      },
+      {
+        "id": "notice-deposit",
+        "hasConsumption": false,
+        "input": {
+          "file": "notice-deposit.input.json",
+          "sha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+          "bytes": 2061
+        },
+        "html": {
+          "file": "notice-deposit.html",
+          "sha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+          "bytes": 9979
+        },
+        "pdf": {
+          "file": "notice-deposit.pdf",
+          "sha256": "88b0edb1ada4d66eba289a1430b3f74c5d3fea31313b3f7138d3b2c39104c349",
+          "bytes": 61625
+        }
+      },
+      {
+        "id": "notice-utility-credit",
+        "hasConsumption": true,
+        "input": {
+          "file": "notice-utility-credit.input.json",
+          "sha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+          "bytes": 2664
+        },
+        "html": {
+          "file": "notice-utility-credit.html",
+          "sha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+          "bytes": 10099
+        },
+        "pdf": {
+          "file": "notice-utility-credit.pdf",
+          "sha256": "0b30733ef2f1866ff33db966e392a604ae66f397d1e36506f25cfe94e82c4061",
+          "bytes": 63825
+        }
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "hasConsumption": false,
+        "input": {
+          "file": "reminder-rent-partpaid.input.json",
+          "sha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+          "bytes": 2171
+        },
+        "html": {
+          "file": "reminder-rent-partpaid.html",
+          "sha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+          "bytes": 3768
+        },
+        "pdf": {
+          "file": "reminder-rent-partpaid.pdf",
+          "sha256": "abbf6dba80dbcff5d7cc54b1bbd4c25af1328970e65d28175abd87c2720a06b2",
+          "bytes": 35172
+        }
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "hasConsumption": true,
+        "input": {
+          "file": "reminder-utility-partpaid-credit.input.json",
+          "sha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+          "bytes": 2782
+        },
+        "html": {
+          "file": "reminder-utility-partpaid-credit.html",
+          "sha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+          "bytes": 3768
+        },
+        "pdf": {
+          "file": "reminder-utility-partpaid-credit.pdf",
+          "sha256": "31a40b5655ff605923db7b3d8f31fa27269ee42b18f793c294e9e6e9c9465628",
+          "bytes": 35331
+        }
+      },
+      {
+        "id": "collection-invoice-clean",
+        "hasConsumption": false,
+        "input": {
+          "file": "collection-invoice-clean.input.json",
+          "sha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+          "bytes": 2718
+        },
+        "html": {
+          "file": "collection-invoice-clean.html",
+          "sha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+          "bytes": 6027
+        },
+        "pdf": {
+          "file": "collection-invoice-clean.pdf",
+          "sha256": "c64ca5ecb3f748edffbe275c8fc58056a3b702df917c6ed4879b19514b375b4a",
+          "bytes": 50986
+        }
+      },
+      {
+        "id": "collection-invoice-utility",
+        "hasConsumption": true,
+        "input": {
+          "file": "collection-invoice-utility.input.json",
+          "sha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+          "bytes": 2703
+        },
+        "html": {
+          "file": "collection-invoice-utility.html",
+          "sha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+          "bytes": 5997
+        },
+        "pdf": {
+          "file": "collection-invoice-utility.pdf",
+          "sha256": "c7251f467515c4bcc48e14844317ca21d3a224b2ea10477bcfc63480adb3a5b5",
+          "bytes": 51971
+        }
+      },
+      {
+        "id": "collection-notice-clean",
+        "hasConsumption": false,
+        "input": {
+          "file": "collection-notice-clean.input.json",
+          "sha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+          "bytes": 3084
+        },
+        "html": {
+          "file": "collection-notice-clean.html",
+          "sha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+          "bytes": 6675
+        },
+        "pdf": {
+          "file": "collection-notice-clean.pdf",
+          "sha256": "22025380c58111a9efd6cc16b3fd5c2e4ae41531ab5734eeecdf2e6332b93648",
+          "bytes": 54470
+        }
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "hasConsumption": true,
+        "input": {
+          "file": "collection-notice-utility-credit.input.json",
+          "sha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+          "bytes": 3696
+        },
+        "html": {
+          "file": "collection-notice-utility-credit.html",
+          "sha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+          "bytes": 6675
+        },
+        "pdf": {
+          "file": "collection-notice-utility-credit.pdf",
+          "sha256": "f125144b02c918088832c423f6cd03264077f1e61f023e8facb1b6d5bb1f6f32",
+          "bytes": 54344
+        }
+      },
+      {
+        "id": "mail-invoice",
+        "envelope": {
+          "file": "mail-invoice.json",
+          "sha256": "49e2a33b0ae92ace93742265669ff7edc48968723deb47106408f628a122114a",
+          "bytes": 95492
+        },
+        "html": {
+          "file": "mail-invoice.html",
+          "sha256": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+          "bytes": 7660
+        },
+        "text": {
+          "file": "mail-invoice.txt",
+          "sha256": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+          "bytes": 612
+        }
+      },
+      {
+        "id": "mail-overdue",
+        "envelope": {
+          "file": "mail-overdue.json",
+          "sha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+          "bytes": 394
+        },
+        "html": {
+          "file": "mail-overdue.html",
+          "sha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+          "bytes": 6461
+        },
+        "text": {
+          "file": "mail-overdue.txt",
+          "sha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+          "bytes": 646
+        }
+      },
+      {
+        "id": "mail-friendly",
+        "envelope": {
+          "file": "mail-friendly.json",
+          "sha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+          "bytes": 484
+        },
+        "html": {
+          "file": "mail-friendly.html",
+          "sha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+          "bytes": 7656
+        },
+        "text": {
+          "file": "mail-friendly.txt",
+          "sha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+          "bytes": 859
+        }
+      },
+      {
+        "id": "mail-formal",
+        "envelope": {
+          "file": "mail-formal.json",
+          "sha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+          "bytes": 583
+        },
+        "html": {
+          "file": "mail-formal.html",
+          "sha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+          "bytes": 8496
+        },
+        "text": {
+          "file": "mail-formal.txt",
+          "sha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+          "bytes": 1149
+        }
+      },
+      {
+        "id": "mail-notice",
+        "envelope": {
+          "file": "mail-notice.json",
+          "sha256": "6d99b2f1ed423e69f4732606f4b44b0a557a4bfe9105a59e21bf8db1d78ef140",
+          "bytes": 83276
+        },
+        "html": {
+          "file": "mail-notice.html",
+          "sha256": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+          "bytes": 6137
+        },
+        "text": {
+          "file": "mail-notice.txt",
+          "sha256": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+          "bytes": 505
+        }
+      },
+      {
+        "id": "mail-notice-reminder",
+        "envelope": {
+          "file": "mail-notice-reminder.json",
+          "sha256": "dfed1d9489e622a1799d0e3a760aad1b975337b53c8240a4cab22a079e87e41a",
+          "bytes": 49472
+        },
+        "html": {
+          "file": "mail-notice-reminder.html",
+          "sha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+          "bytes": 6882
+        },
+        "text": {
+          "file": "mail-notice-reminder.txt",
+          "sha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+          "bytes": 714
+        }
+      }
+    ]
+  },
+  {
+    "pid": 7031,
+    "chromiumPid": 7147,
+    "identity": "5d6c1f8ec1bbfb5b8fca5bf737a77e862b74f035c10b0e7ae16836e1947e09d7",
+    "environment": {
+      "node": "v20.20.2",
+      "versions": {
+        "node": "20.20.2",
+        "acorn": "8.16.0",
+        "ada": "2.9.2",
+        "ares": "1.34.6",
+        "brotli": "1.1.0",
+        "cjs_module_lexer": "2.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.3.1",
+        "modules": "115",
+        "napi": "9",
+        "nghttp2": "1.61.0",
+        "openssl": "3.0.19",
+        "simdutf": "6.4.2",
+        "tz": "2025c",
+        "undici": "6.24.1",
+        "unicode": "17.0",
+        "uv": "1.46.0",
+        "uvwasi": "0.0.23",
+        "v8": "11.3.244.8-node.38",
+        "zlib": "1.3.1-e00f703"
+      },
+      "platform": "linux",
+      "arch": "x64",
+      "timezone": "UTC",
+      "osRelease": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+      "puppeteer": "24.40.0",
+      "chromium": "Chrome/146.0.7680.153",
+      "chromeExecutable": "/home/runner/.cache/puppeteer/chrome/linux-146.0.7680.153/chrome-linux64/chrome",
+      "chromeSha256": "41ee36c2177df46b085119be59d146c99cf0a8611d594ef1ab10c606ac973465",
+      "react": "18.3.1",
+      "reactEmail": "2.0.7",
+      "fontFiles": [
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans-Bold.ttf",
+          "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans.ttf",
+          "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-Bold.ttf",
+          "sha256": "3a3c502eeff669a231549e80df9f7c49de109bafe303170409e905d0b31a38fe"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-BoldOblique.ttf",
+          "sha256": "a5251173370e30760e6919711dcd33e149d216ca4814eb74332bda03fcc7e834"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-Oblique.ttf",
+          "sha256": "3d7955616e69721f7edb8e1b7a580f8fbd7d737111c6b54266ddc1d9ef13202f"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono.ttf",
+          "sha256": "c805f9436dbc268644c1d9584f01a601a653e028e08fd74b9b949f6cf8304d88"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSerif-Bold.ttf",
+          "sha256": "847b33e13925f19ff87e4d934d6b3cf7cac35ce16424f6f670e40c2f377cf2df"
+        },
+        {
+          "file": "/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSerif.ttf",
+          "sha256": "8f2c103bfa3fd5de71f1b92b18f21906b5a26871fb7e19a9a4c9af539c3cc7ab"
+        }
+      ],
+      "fontconfig": "Pattern has 43 elts (size 48)\n\tfamily: \"DejaVu Sans\"(w)\n\tfamilylang: \"en\"(s)\n\tstyle: \"Book\"(s)\n\tstylelang: \"en\"(s)\n\tfullname: \"DejaVu Sans\"(w)\n\tfullnamelang: \"en\"(s)\n\tslant: 0(i)(s)\n\tweight: 80(f)(s)\n\twidth: 100(f)(s)\n\tsize: 12(f)(s)\n\tpixelsize: 12.5(f)(s)\n\tfoundry: \"PfEd\"(s)\n\tantialias: True(w)\n\thintstyle: 1(i)(w)\n\thinting: True(s)\n\tverticallayout: False(s)\n\tautohint: False(s)\n\tglobaladvance: True(s)\n\tfile: \"/home/runner/work/eken/eken/docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans.ttf\"(s)\n\tindex: 0(i)(w)\n\toutline: True(s)\n\tscalable: True(s)\n\tdpi: 75(f)(s)\n\trgba: 1(i)(w)\n\tscale: 1(f)(s)\n\tcharset: \n\t0000: 00000000 ffffffff ffffffff 7fffffff 00000000 ffffffff ffffffff ffffffff\n\t0001: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0002: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff 008873ff\n\t0003: ffffffff ffffffff f58effff fcff0007 ffffd7f0 fffffffb ffffffff ffffffff\n\t0004: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0005: ffffffff fffe003f fe7fffff fffffffe 000006ff ffff0000 ffff00cf 001f07ff\n\t0006: 882016c0 07fffffe 04bfffff fe11ffff ffffffff ffffffff 002159c0 03ff0000\n\t0007: 00000000 00000000 00000000 00000000 00000000 00000000 ffffffff 073ff8ff\n\t000e: 00000000 80000000 00000000 00000000 fef02596 3bffecae 33ff3f5f 00000000\n\t0010: 00000000 00000000 00000000 00000000 00000000 ffffffff ffff003f 1fffffff\n\t0014: effffefe ffbfffff fff7f7ff ffffffff ffffffff 3fffffff ffffffff fffff7ff\n\t0015: ffff00ff 7fffffff fffdffff fff007ff 007ffc3f 0000ffff 40000000 00000002\n\t0016: 00000000 00000000 000000c0 007fc000 1fffffff 00000000 00000000 00000000\n\t001d: ffdfffff ffff7fcf efffffff 298007ff f8000020 ffffffff 000003f0 00000000\n\t001e: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff 0fffffff\n\t001f: 3f3fffff ffffffff aaff3f3f 3fffffff ffffffff ffdfffff efcfffdf 7fdcffff\n\t0020: ffffffff ffffffff ffffffff fff3fc1f 1fff7fff 273fffff 18c30000 00000002\n\t0021: fffffbff ffffffff ffff4bff ffffffff ffff023f ffffffff ffffffff ffffffff\n\t0022: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0023: f303ffff 000019f3 00000000 24380000 f8100080 00007fff 0000c000 00000128\n\t0024: 00000000 0000000c 00000000 000003ff 00000000 00000000 00000000 00000000\n\t0025: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0026: ffffffff ffffffff ffffffff ffffffff dfffffff 01ffffff 0000000f 00000004\n\t0027: fffff3de fffffeff 7f47afff fffffffe ff1fffff 7ffeffff 00000060 ffff0fc1\n\t0028: ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff ffffffff\n\t0029: 00000cc0 00000000 00000003 00000000 00000018 00000000 003fc000 0c000800\n\t002a: 1ffff007 00008000 00000000 e0000c00 ffffffff 07ffc001 00000000 06000000\n\t002b: 87ffffff 0000001f 00180000 00000000 00000000 00000000 00000000 00000000\n\t002c: 00000000 00000000 00000000 feffffff 00000000 00000000 00000000 00000000\n\t002d: ffffffff ffff003f ffffffff 0000803f 00000000 00000000 00000000 00000000\n\t002e: 81000000 0000403c 00000000 00000000 00000000 00000000 00000000 00000000\n\t004d: 00000000 00000000 00000000 00000000 00000000 00000000 ffffffff ffffffff\n\t00a4: 00000000 00000000 00000000 00000000 00000000 00000000 ffff0000 ffffffff\n\t00a6: 00000000 00000000 00f330f0 00007ffc 03303c00 00000000 00000000 00000000\n\t00a7: f87fff00 ffff0ffc 00cfcfc3 000000f0 00037e0f 000007ff 00000000 ff000000\n\t00ef: 03ffffff 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n\t00f0: 0000000f 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n\t00f4: ffffffff ffffff7f 00000003 00000000 00000000 00000000 00000000 00000000\n\t00f6: 00000000 00000000 00000000 00000000 00000000 00000000 00000020 00000000\n\t00fb: e0f8007f 5f7fffff fffcffdb ffffffff ffffffff 00003c0f dff80000 f00003f0\n\t00fe: 0000ffff 0000000f 00000000 ffdf0000 ffffffff ffffffff ffffffff 9fffffff\n\t00ff: 00000000 00000000 00000000 00000000 00000000 00000000 00000000 3e000000\n\t0103: 7fffffff 0000000f 00000000 00000000 00000000 00000000 00000000 00000000\n\t01d3: ffffffff ffffffff 007fffff 00000000 00000000 00000000 00000000 00000000\n\t01d5: 00000000 7b000000 fffdfc5f 00000fff 00000000 ffffffff 000fffff 00000000\n\t01d7: 00000000 00000000 00000000 00000000 00000000 00000000 ff000000 00000fff\n\t01ee: ffffffef 0af7fe96 00000000 5ef7f796 00000000 00000000 00000000 00000000\n\t01f0: 00000000 ffff0000 ffffffff ffffffff 000fffff 7ffe7fff fffefffe 00000000\n\t01f3: 01fe0000 00000000 00000000 00000000 00000000 00000000 00000000 00000000\n\t01f4: 00000000 00226000 00000000 00000000 00000000 00000000 00000000 00000000\n\t01f6: ffffffff ffffefef 00000009 00000000 00000000 00000000 00000000 00000000\n(s)\n\tlang: aa|ab|af|ar|ast|av|ay|az-az|az-ir|ba|bm|be|bg|bi|bin|br|bs|bua|ca|ce|ch|chm|co|cs|cu|cv|cy|da|de|el|en|eo|es|et|eu|fa|fi|fj|fo|fr|ff|fur|fy|ga|gd|gl|gn|gv|ha|haw|he|ho|hr|hu|hy|ia|ig|id|ie|ik|io|is|it|iu|ka|kaa|ki|kk|kl|ku-am|ku-ir|kum|kv|kw|ky|la|lb|lez|ln|lo|lt|lv|mg|mh|mi|mk|mo|mt|nb|nds|nl|nn|no|nr|nso|ny|oc|om|os|pl|pt|rm|ro|ru|sah|sco|se|sel|sh|shs|sk|sl|sm|sma|smj|smn|sms|so|sq|sr|ss|st|sv|sw|tg|tk|tl|tn|to|tr|ts|tt|tw|tyv|ug|uk|uz|ve|vi|vo|vot|wa|wen|wo|xh|yap|yi|yo|zu|ak|an|ber-dz|ber-ma|crh|csb|ee|fat|fil|hsb|ht|hz|jv|kab|kj|kr|ku-iq|ku-tr|kwm|lg|li|mn-mn|ms|na|ng|nv|ota|pap-an|pap-aw|qu|quz|rn|rw|sc|sd|sg|sn|su|ty|za|agr|ayc|bem|ckb|dsb|lij|mfe|mhr|miq|mjw|nhn|niu|rif|sgs|szl|tpi|unm|wae|yuw(s)\n\tfontversion: 155320(i)(s)\n\tcapability: \"otlayout:DFLT otlayout:arab otlayout:armn otlayout:brai otlayout:cans otlayout:cher otlayout:cyrl otlayout:geor otlayout:grek otlayout:hani otlayout:hebr otlayout:kana otlayout:lao  otlayout:latn otlayout:math otlayout:nko  otlayout:ogam otlayout:runr otlayout:tfng otlayout:thai\"(w)\n\tfontformat: \"TrueType\"(s)\n\tembeddedbitmap: True(s)\n\tdecorative: False(s)\n\tlcdfilter: 1(i)(w)\n\tnamelang: \"en\"(s)\n\tprgname: \"fc-match\"(s)\n\tpostscriptname: \"DejaVuSans\"(s)\n\tcolor: False(s)\n\tsymbol: False(s)\n\tvariable: False(s)\n\tfonthashint: True(s)\n\torder: 0(i)(s)\n\tnamedinstance: False(s)\n\tfontwrapper: \"SFNT\"(s)\n\n"
+    },
+    "records": [
+      {
+        "id": "invoice-customer-classic",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-classic.input.json",
+          "sha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+          "bytes": 2249
+        },
+        "html": {
+          "file": "invoice-customer-classic.html",
+          "sha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+          "bytes": 6981
+        },
+        "pdf": {
+          "file": "invoice-customer-classic.pdf",
+          "sha256": "680d533b8dbd062f7f22e421e625fd400574cadafcfbf3d0647fc082fcc9e192",
+          "bytes": 71199
+        }
+      },
+      {
+        "id": "invoice-rent-classic",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-rent-classic.input.json",
+          "sha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+          "bytes": 2055
+        },
+        "html": {
+          "file": "invoice-rent-classic.html",
+          "sha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+          "bytes": 6504
+        },
+        "pdf": {
+          "file": "invoice-rent-classic.pdf",
+          "sha256": "94ccfbdd356d661ea41763866821472156855ddfb6ae50cbdbffb33922639eb0",
+          "bytes": 68872
+        }
+      },
+      {
+        "id": "invoice-utility-classic",
+        "hasConsumption": true,
+        "input": {
+          "file": "invoice-utility-classic.input.json",
+          "sha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+          "bytes": 2234
+        },
+        "html": {
+          "file": "invoice-utility-classic.html",
+          "sha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+          "bytes": 6973
+        },
+        "pdf": {
+          "file": "invoice-utility-classic.pdf",
+          "sha256": "b10e8ede1fe1d3197628990baf2bd375f5c2c04ee5b71a9002254b35934be9dd",
+          "bytes": 71077
+        }
+      },
+      {
+        "id": "invoice-customer-modern",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-modern.input.json",
+          "sha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+          "bytes": 2248
+        },
+        "html": {
+          "file": "invoice-customer-modern.html",
+          "sha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+          "bytes": 6464
+        },
+        "pdf": {
+          "file": "invoice-customer-modern.pdf",
+          "sha256": "a9029c79844548b5b238f4254e9540c87201a1f844966ff653109c37d856f461",
+          "bytes": 74717
+        }
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-minimal.input.json",
+          "sha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+          "bytes": 2249
+        },
+        "html": {
+          "file": "invoice-customer-minimal.html",
+          "sha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+          "bytes": 6399
+        },
+        "pdf": {
+          "file": "invoice-customer-minimal.pdf",
+          "sha256": "db7b687d30c69ba6ea523dc3f9277325e961dd4ae8b5162ee90ac9880975e1fb",
+          "bytes": 67976
+        }
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "hasConsumption": false,
+        "input": {
+          "file": "invoice-customer-multipage.input.json",
+          "sha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+          "bytes": 13683
+        },
+        "html": {
+          "file": "invoice-customer-multipage.html",
+          "sha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+          "bytes": 34411
+        },
+        "pdf": {
+          "file": "invoice-customer-multipage.pdf",
+          "sha256": "e50bd50649062713d9784eab4ce1afc770b64c343d31438b9aac39d7dcb08a68",
+          "bytes": 169515
+        }
+      },
+      {
+        "id": "notice-rent",
+        "hasConsumption": false,
+        "input": {
+          "file": "notice-rent.input.json",
+          "sha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+          "bytes": 2053
+        },
+        "html": {
+          "file": "notice-rent.html",
+          "sha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+          "bytes": 9836
+        },
+        "pdf": {
+          "file": "notice-rent.pdf",
+          "sha256": "b88d85dc2ea4aaf1d20e24715be043c05df53d1459e03e9e747d66e19e748910",
+          "bytes": 61021
+        }
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "hasConsumption": false,
+        "input": {
+          "file": "notice-prorated-backfill.input.json",
+          "sha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+          "bytes": 2095
+        },
+        "html": {
+          "file": "notice-prorated-backfill.html",
+          "sha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+          "bytes": 10487
+        },
+        "pdf": {
+          "file": "notice-prorated-backfill.pdf",
+          "sha256": "954a845247736f226b6e7cf0d41474469448ce58583b1d3d01a43ee2a705e74a",
+          "bytes": 64279
+        }
+      },
+      {
+        "id": "notice-deposit",
+        "hasConsumption": false,
+        "input": {
+          "file": "notice-deposit.input.json",
+          "sha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+          "bytes": 2061
+        },
+        "html": {
+          "file": "notice-deposit.html",
+          "sha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+          "bytes": 9979
+        },
+        "pdf": {
+          "file": "notice-deposit.pdf",
+          "sha256": "88b0edb1ada4d66eba289a1430b3f74c5d3fea31313b3f7138d3b2c39104c349",
+          "bytes": 61625
+        }
+      },
+      {
+        "id": "notice-utility-credit",
+        "hasConsumption": true,
+        "input": {
+          "file": "notice-utility-credit.input.json",
+          "sha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+          "bytes": 2664
+        },
+        "html": {
+          "file": "notice-utility-credit.html",
+          "sha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+          "bytes": 10099
+        },
+        "pdf": {
+          "file": "notice-utility-credit.pdf",
+          "sha256": "0b30733ef2f1866ff33db966e392a604ae66f397d1e36506f25cfe94e82c4061",
+          "bytes": 63825
+        }
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "hasConsumption": false,
+        "input": {
+          "file": "reminder-rent-partpaid.input.json",
+          "sha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+          "bytes": 2171
+        },
+        "html": {
+          "file": "reminder-rent-partpaid.html",
+          "sha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+          "bytes": 3768
+        },
+        "pdf": {
+          "file": "reminder-rent-partpaid.pdf",
+          "sha256": "abbf6dba80dbcff5d7cc54b1bbd4c25af1328970e65d28175abd87c2720a06b2",
+          "bytes": 35172
+        }
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "hasConsumption": true,
+        "input": {
+          "file": "reminder-utility-partpaid-credit.input.json",
+          "sha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+          "bytes": 2782
+        },
+        "html": {
+          "file": "reminder-utility-partpaid-credit.html",
+          "sha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+          "bytes": 3768
+        },
+        "pdf": {
+          "file": "reminder-utility-partpaid-credit.pdf",
+          "sha256": "31a40b5655ff605923db7b3d8f31fa27269ee42b18f793c294e9e6e9c9465628",
+          "bytes": 35331
+        }
+      },
+      {
+        "id": "collection-invoice-clean",
+        "hasConsumption": false,
+        "input": {
+          "file": "collection-invoice-clean.input.json",
+          "sha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+          "bytes": 2718
+        },
+        "html": {
+          "file": "collection-invoice-clean.html",
+          "sha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+          "bytes": 6027
+        },
+        "pdf": {
+          "file": "collection-invoice-clean.pdf",
+          "sha256": "c64ca5ecb3f748edffbe275c8fc58056a3b702df917c6ed4879b19514b375b4a",
+          "bytes": 50986
+        }
+      },
+      {
+        "id": "collection-invoice-utility",
+        "hasConsumption": true,
+        "input": {
+          "file": "collection-invoice-utility.input.json",
+          "sha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+          "bytes": 2703
+        },
+        "html": {
+          "file": "collection-invoice-utility.html",
+          "sha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+          "bytes": 5997
+        },
+        "pdf": {
+          "file": "collection-invoice-utility.pdf",
+          "sha256": "c7251f467515c4bcc48e14844317ca21d3a224b2ea10477bcfc63480adb3a5b5",
+          "bytes": 51971
+        }
+      },
+      {
+        "id": "collection-notice-clean",
+        "hasConsumption": false,
+        "input": {
+          "file": "collection-notice-clean.input.json",
+          "sha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+          "bytes": 3084
+        },
+        "html": {
+          "file": "collection-notice-clean.html",
+          "sha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+          "bytes": 6675
+        },
+        "pdf": {
+          "file": "collection-notice-clean.pdf",
+          "sha256": "22025380c58111a9efd6cc16b3fd5c2e4ae41531ab5734eeecdf2e6332b93648",
+          "bytes": 54470
+        }
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "hasConsumption": true,
+        "input": {
+          "file": "collection-notice-utility-credit.input.json",
+          "sha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+          "bytes": 3696
+        },
+        "html": {
+          "file": "collection-notice-utility-credit.html",
+          "sha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+          "bytes": 6675
+        },
+        "pdf": {
+          "file": "collection-notice-utility-credit.pdf",
+          "sha256": "f125144b02c918088832c423f6cd03264077f1e61f023e8facb1b6d5bb1f6f32",
+          "bytes": 54344
+        }
+      },
+      {
+        "id": "mail-invoice",
+        "envelope": {
+          "file": "mail-invoice.json",
+          "sha256": "49e2a33b0ae92ace93742265669ff7edc48968723deb47106408f628a122114a",
+          "bytes": 95492
+        },
+        "html": {
+          "file": "mail-invoice.html",
+          "sha256": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+          "bytes": 7660
+        },
+        "text": {
+          "file": "mail-invoice.txt",
+          "sha256": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+          "bytes": 612
+        }
+      },
+      {
+        "id": "mail-overdue",
+        "envelope": {
+          "file": "mail-overdue.json",
+          "sha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+          "bytes": 394
+        },
+        "html": {
+          "file": "mail-overdue.html",
+          "sha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+          "bytes": 6461
+        },
+        "text": {
+          "file": "mail-overdue.txt",
+          "sha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+          "bytes": 646
+        }
+      },
+      {
+        "id": "mail-friendly",
+        "envelope": {
+          "file": "mail-friendly.json",
+          "sha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+          "bytes": 484
+        },
+        "html": {
+          "file": "mail-friendly.html",
+          "sha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+          "bytes": 7656
+        },
+        "text": {
+          "file": "mail-friendly.txt",
+          "sha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+          "bytes": 859
+        }
+      },
+      {
+        "id": "mail-formal",
+        "envelope": {
+          "file": "mail-formal.json",
+          "sha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+          "bytes": 583
+        },
+        "html": {
+          "file": "mail-formal.html",
+          "sha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+          "bytes": 8496
+        },
+        "text": {
+          "file": "mail-formal.txt",
+          "sha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+          "bytes": 1149
+        }
+      },
+      {
+        "id": "mail-notice",
+        "envelope": {
+          "file": "mail-notice.json",
+          "sha256": "6d99b2f1ed423e69f4732606f4b44b0a557a4bfe9105a59e21bf8db1d78ef140",
+          "bytes": 83276
+        },
+        "html": {
+          "file": "mail-notice.html",
+          "sha256": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+          "bytes": 6137
+        },
+        "text": {
+          "file": "mail-notice.txt",
+          "sha256": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+          "bytes": 505
+        }
+      },
+      {
+        "id": "mail-notice-reminder",
+        "envelope": {
+          "file": "mail-notice-reminder.json",
+          "sha256": "dfed1d9489e622a1799d0e3a760aad1b975337b53c8240a4cab22a079e87e41a",
+          "bytes": 49472
+        },
+        "html": {
+          "file": "mail-notice-reminder.html",
+          "sha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+          "bytes": 6882
+        },
+        "text": {
+          "file": "mail-notice-reminder.txt",
+          "sha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+          "bytes": 714
+        }
+      }
+    ]
+  }
+]

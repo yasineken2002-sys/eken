@@ -1,0 +1,29 @@
+{
+  "note": "Local guard fault injection over composite genuine reports, not a full CI run",
+  "results": [
+    {
+      "kind": "actual-empty-first",
+      "error": "invoices/rendering.real.spec.ts: r21-01 saknas eller saknar godkända genomförda assertions"
+    },
+    {
+      "kind": "missing",
+      "error": "invoices/rendering.real.spec.ts: r21-03 saknas eller saknar godkända genomförda assertions"
+    },
+    {
+      "kind": "duplicate-test",
+      "error": "invoices/rendering.real.spec.ts: r21-03 saknas eller saknar godkända genomförda assertions"
+    },
+    {
+      "kind": "skipped",
+      "error": "invoices/rendering.real.spec.ts: r21-03 saknas eller saknar godkända genomförda assertions"
+    },
+    {
+      "kind": "zero",
+      "error": "invoices/rendering.real.spec.ts: r21-03 saknas eller saknar godkända genomförda assertions"
+    },
+    {
+      "kind": "duplicate-suite",
+      "error": "invoices/rendering.real.spec.ts: saknad, dubbel eller underkänd svit; kräver r21-01, r21-02, r21-03, r21-04, r21-05, r21-06, r21-07, r21-08, r21-09, r21-10, r21-11, r21-12, r21-13, r21-14, r21-15, r21-16, r21-22, r21-23"
+    }
+  ]
+}

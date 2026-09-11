@@ -1,0 +1,510 @@
+{
+  "id": "customer-multipage",
+  "organizationId": "synthetic-rendering-org",
+  "invoiceNumber": "F-SYN-2026-customer-multipage",
+  "type": "SERVICE",
+  "status": "DRAFT",
+  "issueDate": "2026-08-31T00:00:00.000Z",
+  "dueDate": "2026-09-30T00:00:00.000Z",
+  "reference": "Syntetisk beställning 2026",
+  "ocrNumber": "1234567897",
+  "subtotal": 5500,
+  "vatTotal": 1375,
+  "total": 6875,
+  "notes": null,
+  "lines": [
+    {
+      "id": "long-line-055",
+      "description": "Planerat servicearbete 01 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-054",
+      "description": "Planerat servicearbete 02 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-053",
+      "description": "Planerat servicearbete 03 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-052",
+      "description": "Planerat servicearbete 04 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-051",
+      "description": "Planerat servicearbete 05 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-050",
+      "description": "Planerat servicearbete 06 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-049",
+      "description": "Planerat servicearbete 07 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-048",
+      "description": "Planerat servicearbete 08 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-047",
+      "description": "Planerat servicearbete 09 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-046",
+      "description": "Planerat servicearbete 10 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-045",
+      "description": "Planerat servicearbete 11 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-044",
+      "description": "Planerat servicearbete 12 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-043",
+      "description": "Planerat servicearbete 13 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-042",
+      "description": "Planerat servicearbete 14 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-041",
+      "description": "Planerat servicearbete 15 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-040",
+      "description": "Planerat servicearbete 16 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-039",
+      "description": "Planerat servicearbete 17 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-038",
+      "description": "Planerat servicearbete 18 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-037",
+      "description": "Planerat servicearbete 19 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-036",
+      "description": "Planerat servicearbete 20 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-035",
+      "description": "Planerat servicearbete 21 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-034",
+      "description": "Planerat servicearbete 22 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-033",
+      "description": "Planerat servicearbete 23 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-032",
+      "description": "Planerat servicearbete 24 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-031",
+      "description": "Planerat servicearbete 25 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-030",
+      "description": "Planerat servicearbete 26 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-029",
+      "description": "Planerat servicearbete 27 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-028",
+      "description": "Planerat servicearbete 28 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-027",
+      "description": "Planerat servicearbete 29 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-026",
+      "description": "Planerat servicearbete 30 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-025",
+      "description": "Planerat servicearbete 31 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-024",
+      "description": "Planerat servicearbete 32 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-023",
+      "description": "Planerat servicearbete 33 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-022",
+      "description": "Planerat servicearbete 34 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-021",
+      "description": "Planerat servicearbete 35 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-020",
+      "description": "Planerat servicearbete 36 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-019",
+      "description": "Planerat servicearbete 37 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-018",
+      "description": "Planerat servicearbete 38 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-017",
+      "description": "Planerat servicearbete 39 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-016",
+      "description": "Planerat servicearbete 40 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-015",
+      "description": "Planerat servicearbete 41 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-014",
+      "description": "Planerat servicearbete 42 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-013",
+      "description": "Planerat servicearbete 43 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-012",
+      "description": "Planerat servicearbete 44 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-011",
+      "description": "Planerat servicearbete 45 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-010",
+      "description": "Planerat servicearbete 46 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-009",
+      "description": "Planerat servicearbete 47 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-008",
+      "description": "Planerat servicearbete 48 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-007",
+      "description": "Planerat servicearbete 49 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-006",
+      "description": "Planerat servicearbete 50 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-005",
+      "description": "Planerat servicearbete 51 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-004",
+      "description": "Planerat servicearbete 52 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-003",
+      "description": "Planerat servicearbete 53 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-002",
+      "description": "Planerat servicearbete 54 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    },
+    {
+      "id": "long-line-001",
+      "description": "Planerat servicearbete 55 — kontroll av lokal och utrustning",
+      "quantity": 1,
+      "unitPrice": 100,
+      "vatRate": 25,
+      "total": 125
+    }
+  ],
+  "tenant": null,
+  "customer": {
+    "id": "synthetic-rendering-customer",
+    "type": "COMPANY",
+    "firstName": null,
+    "lastName": null,
+    "companyName": "Syntetisk Kund AB",
+    "personalNumberEnc": null,
+    "orgNumber": "TEST-KUND-002",
+    "email": "kund@example.test",
+    "phone": null,
+    "street": "Kundgatan 9",
+    "postalCode": "000 01",
+    "city": "Teststaden"
+  },
+  "organization": {
+    "id": "synthetic-rendering-org",
+    "name": "Syntetiska Fastigheter AB",
+    "orgNumber": "TEST-ORG-001",
+    "street": "Testgatan 12",
+    "postalCode": "000 00",
+    "city": "Teststaden",
+    "email": "ekonomi@example.test",
+    "phone": "TEST-TELEFON",
+    "bankgiro": "5050-1055",
+    "invoiceColor": "#1a6b3c",
+    "invoiceTemplate": "classic",
+    "brandSecondaryColor": "#245c7c",
+    "brandFont": "SYSTEM_SANS",
+    "logoStorageKey": "synthetic/rendering/org-logo.png",
+    "hasFSkatt": true,
+    "fSkattApprovedDate": "2020-01-15T00:00:00.000Z",
+    "vatNumber": "SETESTORG001",
+    "companyForm": "AB",
+    "collectionAgencyName": "Syntetisk kravmottagare"
+  },
+  "lease": {
+    "id": "synthetic-rendering-lease",
+    "monthlyRent": 9000,
+    "unit": {
+      "id": "synthetic-rendering-unit",
+      "unitNumber": "1101",
+      "name": "Lägenhet 1101",
+      "property": {
+        "id": "synthetic-rendering-property",
+        "name": "Testhuset",
+        "street": "Testgatan 12"
+      }
+    }
+  },
+  "payments": [],
+  "creditNotes": [],
+  "paymentReminders": []
+}

@@ -185,3 +185,41 @@ sparade assertionstal ovan gäller före setupfixen och ska inte presenteras
 som en körningsverifiering av den. Riktade efterkontroller och CI återstår.
 Verklig beteendenegativkontroll, borttagen-golden-kanarie och grön CI på exakt
 slutlig HEAD är fortfarande inte bevittnade i denna granskning.
+
+## Tillägg: avsiktlig beteendenegativkontroll verifierad
+
+Jag har nu oberoende läst `verify-behavior-mutation.py`,
+[resultatsammanställningen](behavior-mutation-results.json), båda Jest-rapporterna
+och råloggarna samt samtliga fyra fångsters manifest och artefakter. Jag körde
+inte mutationsskriptet eller Jest; kontrollen läste och jämförde sparade bytes.
+
+Skriptets mutation ändrar en produktionsrad i `PdfService`: den riktiga
+faktura-HTML-byggarens utdata får första `Att betala` utbytt mot `Att betalX`.
+Jag återskapade endast dessa bytes i minnet och kontrollerade den rapporterade
+källhashen. Alla fyra manifest binder rätt källhash för sin respektive fas.
+De sex ändrade faktura-HTML-filerna motsvarar exakt denna enda textersättning;
+deras PDF-filer och fakturamejlets bilage-envelope skiljer sig också.
+
+| Fas | Verifierat Jest-resultat | Nya processer, Node / Chromium |
+| --- | --- | --- |
+| [Röd](behavior-red/jest.json) | r21-03 misslyckas med `Undeclared PDF byte difference`; 0 godkända, 1 fel, 17 utanför urvalet. | 489088 / 489824 samt 493462 / 493760 |
+| [Återställd](behavior-restored/jest.json) | r21-03 och r21-04 godkända med 6 respektive 5 assertions; 0 fel, 16 utanför urvalet. | 497564 / 497800 samt 501442 / 501684 |
+
+Det är fyra olika Node-processer och fyra olika Chromium-processer. Inom
+respektive fas är de två fångsternas samtliga 66 artefakter identiska.
+Efter återställning matchar båda fångsterna dessutom alla 66 råartefakter
+från `after-proof-4/process-1/run-1` utan datumundantag eller normalisering.
+Samtliga kontrollerade artefakter matchar manifestens längd och SHA256.
+
+Den återställda produktionsfilen är byteidentisk med HEAD
+`f6e9d162d163586f1172832aabefadc96ad08cab` vid läskontrollen. Dess SHA256 är
+`ee642ac012c1e2c380dc957b71e9729bbc1aaa85361a042af33cd2ab0168998a`;
+mutationshashen är
+`a78d14304e6761b20e372cbd4621da1b22d99ce5c18c144e9b4d01c7167741b2`.
+Skriptet återställer bara om filen fortfarande är exakt den egna mutationen,
+vilket bevarar en eventuell samtidig främmande ändring.
+
+Det tidigare återstående kravet på verkligt röd beteendekontroll är därmed
+styrkt av dessa granskade körningsbevis. Detta är inte den separata
+borttagningskanarien i riktig CI. Den kanarien och grön CI för exakt slutlig
+HEAD har fortfarande inte granskats här.
