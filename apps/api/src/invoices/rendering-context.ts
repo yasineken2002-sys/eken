@@ -78,6 +78,7 @@ function installationFiles(directory: string): string[] {
 export function renderingCodeManifest(): Array<[string, string]> {
   const files = [
     './pdf.service',
+    '../consumption/delivery-renderer',
     './rendering-context',
     './pdf-wait-until',
     './templates/invoice-pdf.template',

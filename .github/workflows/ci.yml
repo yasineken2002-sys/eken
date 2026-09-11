@@ -149,6 +149,8 @@ jobs:
           pnpm --filter @eken/api exec puppeteer browsers install chrome
 
       - name: Run test suite
+        env:
+          NODE_OPTIONS: --experimental-vm-modules
         run: pnpm exec turbo test:ci --filter=@eken/api
 
       - name: Verify consumption gate DB tests actually ran
@@ -170,6 +172,11 @@ jobs:
           // och beteendenegativkontrollen; funnen fil eller testnamn räcker inte.
           const report = require('./apps/api/jest-report.json')
           const required = [
+            ['consumption/delivery-renderer.db.spec.ts', [
+              'r22-01', 'r22-02', 'r22-03', 'r22-04', 'r22-05',
+              'r22-06', 'r22-07', 'r22-08', 'r22-09', 'r22-10',
+              'r22-11', 'r22-12', 'r22-13', 'r22-14', 'r22-15',
+            ]],
             ['consumption/delivery-decisions.db.spec.ts', [
               '2a-01', '2a-02', '2a-03', '2a-04', '2a-05', '2a-06',
               '2a-07', '2a-08', '2a-09', '2a-10', '2a-11', '2a-12',
@@ -197,7 +204,8 @@ jobs:
             const assertions = suites[0].assertionResults
             for (const id of ids) {
               const matches = assertions.filter(t => t.title.startsWith(id + ' '))
-              if (matches.length !== 1 || matches[0].status !== 'passed' ||
+              const total = report.testResults.flatMap(s => s.assertionResults).filter(t => t.title.startsWith(id + ' ')).length
+              if (total !== 1 || matches.length !== 1 || matches[0].status !== 'passed' ||
                   !(matches[0].numPassingAsserts > 0)) {
                 throw new Error(file + ': ' + id + ' saknas eller saknar godkända genomförda assertions')
               }
