@@ -1696,6 +1696,8 @@ model Lease {
 // ─── Invoice (Faktura) ────────────────────────────────────────────────────────
 
 model Invoice {
+  deliveryDocuments DeliveryDocument[]
+  @@unique([organizationId, id], map: "Invoice_delivery_org_key")
   id             String        @id @default(uuid())
   organizationId String
   invoiceNumber  String
@@ -4845,6 +4847,8 @@ model MaintenanceComment {
 // ─── Rent Notice (Hyresavi) ───────────────────────────────────────────────────
 
 model RentNotice {
+  deliveryDocuments DeliveryDocument[]
+  @@unique([organizationId, id], map: "RentNotice_delivery_org_key")
   id             String           @id @default(uuid())
   organizationId String
   tenantId       String
@@ -7105,6 +7109,8 @@ enum BillingBasisDecision {
 
 // Historisk kontroll, aldrig ett generellt framtida tillstånd på debiteringen.
 model ConsumptionChargeCheck {
+  deliveryMembers DeliveryMember[]
+  @@unique([organizationId, chargeId, id], map: "ConsumptionChargeCheck_delivery_org_key")
   id String @id @default(uuid())
   chargeId String
   organizationId String
@@ -7119,4 +7125,71 @@ model ConsumptionChargeCheck {
   charge ConsumptionCharge @relation(fields: [organizationId, chargeId, readingId], references: [organizationId, id, meterReadingId], onDelete: Restrict)
   @@unique([organizationId, chargeId, revision])
   @@index([organizationId, chargeId, createdAt])
+}
+
+// Inaktiv 2a: registrering skapar alltid källdokumentet i samma transaktion.
+model DeliveryDocument {
+  id String @id
+  organizationId String
+  invoiceId String?
+  noticeId String?
+  createdById String
+  createdAt DateTime @default(now())
+  invoice Invoice? @relation(fields: [organizationId, invoiceId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  notice RentNotice? @relation(fields: [organizationId, noticeId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  decisions DeliveryDecision[]
+  @@unique([organizationId, id])
+}
+
+model DeliveryDecision {
+  id String @id @default(uuid()) // Också utskicksidentiteten; en till en.
+  organizationId String
+  documentId String
+  sequence Int
+  operation String
+  originalId String?
+  previousId String?
+  fingerprint String @db.VarChar(64)
+  snapshot Json
+  createdAt DateTime @default(now())
+  document DeliveryDocument @relation(fields: [organizationId, documentId], references: [organizationId, id], onDelete: Restrict, onUpdate: NoAction)
+  original DeliveryDecision? @relation("DeliveryOriginal", fields: [organizationId, documentId, originalId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
+  resends DeliveryDecision[] @relation("DeliveryOriginal")
+  previous DeliveryDecision? @relation("DeliveryPrevious", fields: [organizationId, documentId, previousId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
+  successors DeliveryDecision[] @relation("DeliveryPrevious")
+  members DeliveryMember[]
+  events DeliveryEvent[]
+  @@unique([organizationId, documentId, id])
+  @@unique([organizationId, documentId, sequence])
+}
+
+model DeliveryMember {
+  organizationId String
+  documentId String
+  decisionId String
+  chargeId String
+  checkId String
+  decision DeliveryDecision @relation(fields: [organizationId, documentId, decisionId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
+  check ConsumptionChargeCheck @relation(fields: [organizationId, chargeId, checkId], references: [organizationId, chargeId, id], onDelete: Restrict, onUpdate: NoAction)
+  @@id([organizationId, documentId, decisionId, chargeId])
+}
+
+// Tillståndsprojektionen är sista revisionen; ingen fristående status skrivs om.
+model DeliveryEvent {
+  id String @id @default(uuid())
+  organizationId String
+  documentId String
+  decisionId String
+  revision Int
+  commandKey String
+  request Json
+  state String
+  attemptId String?
+  evidence Json
+  actorId String
+  actorName String
+  createdAt DateTime @default(now())
+  decision DeliveryDecision @relation(fields: [organizationId, documentId, decisionId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
+  @@unique([organizationId, commandKey])
+  @@unique([decisionId, revision])
 }
