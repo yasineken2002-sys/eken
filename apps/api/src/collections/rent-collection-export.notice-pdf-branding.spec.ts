@@ -29,6 +29,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { RentCollectionExportService } from './rent-collection-export.service'
+import { documentContext } from '../invoices/rendering-context'
 import { Decimal } from '@prisma/client/runtime/library'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
@@ -123,21 +124,12 @@ function makeNotice(over: Record<string, unknown> = {}) {
   }
 }
 
-function makeService(): RentCollectionExportService {
-  const noop = {}
-  return new RentCollectionExportService(
-    noop as never,
-    testPersonalNumberService(), // prisma
-    noop as never, // pdf
-    noop as never, // storage
-    noop as never, // pdfQueue
-    noop as never, // rentDebt
-  )
-}
-
 async function render(notice: Record<string, unknown> = makeNotice()): Promise<string> {
-  return (makeService() as unknown as { buildPdfHtml(n: unknown): Promise<string> }).buildPdfHtml(
-    notice,
+  const input = notice as unknown as Parameters<typeof RentCollectionExportService.buildPdfHtml>[0]
+  return RentCollectionExportService.buildPdfHtml(
+    input,
+    documentContext(new Date('2026-07-21T12:00:00Z'), null),
+    testPersonalNumberService().reveal(input.tenant.personalNumberEnc),
   )
 }
 

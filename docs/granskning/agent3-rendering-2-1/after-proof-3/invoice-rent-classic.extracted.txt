@@ -1,0 +1,47 @@
+                                                                                                      FAKTURA
+                                                                                                   F-SYN-2026-rent-classic
+                                                                                              Syntetisk beställning 2026
+
+
+
+
+   FAKTURERAS TILL                                                       UTFÄRDANDEDATUM              2026-08-31
+   Testa Åberg                                                           FÖRFALLODATUM                2026-09-30
+   testa.aberg@example.test                                              BETALNINGSVILLKOR            30 dagar
+   Exempelvägen 4
+                                                                         BANKGIRO                     5050-1055
+   000 01 Teststaden
+
+
+
+  ✓ Godkänd för F-skatt (sedan 2020-01-15)                    Momsregistreringsnummer: SETESTORG001
+
+
+
+  BESKRIVNING                                       ANTAL                     À-PRIS          MOMS                      BELOPP
+
+
+  Hyra september 2026                                     1            9 000,00 kr               0%              9 000,00 kr
+
+
+
+                                                                                 Netto exkl. moms                    9 000,00 kr
+                                                                                 Moms                                      0,00 kr
+
+
+                                                                                 Att betala                     9 000,00 kr
+
+
+
+                                           OC R-N UMME R — ANGE ALLTI D VID B ETALNING
+
+
+                                                 1234567897
+                                             Bankgiro: 5050-1055 · Att betala: 9 000,00 kr
+
+
+
+
+Syntetiska Fastigheter AB · TEST-ORG-001                                   ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden
+Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001
+

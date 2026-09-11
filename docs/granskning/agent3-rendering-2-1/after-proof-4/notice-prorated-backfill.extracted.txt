@@ -1,0 +1,75 @@
+                                                                                                                         Hyresavi
+
+
+
+Syntetiska Fastigheter AB                                                                                          Datum: 2026-09-11
+                                                                                                        Avinummer: AVI-SYN-2026-0902
+Testgatan 12, 000 00 Teststaden
+                                                                                                                     Period: juni 2026
+Bankgiro: 5050-1055
+                                                                                                                      Kundnr: 567897
+E-post: ekonomi@example.test
+
+
+
+
+   Testa Åberg
+   testa.aberg@example.test
+
+
+
+
+  OBJEKT        SPECIFIKATION                                                                                              SUMMA
+
+
+                Hyra juni 2026 (delmånad) — Lägenhet 1101 , Testgatan 12
+                Period: 16 juni – 30 juni (15 av 30 dagar)
+                Dagshyra: 9 000,00 / 30 = 300,00 kr                                                                       4 500,00
+  1101
+                 Efterfakturerad hyra för perioden 16 juni 2026–30 juni 2026 (sen registrering). Avser en
+                                                                                                                                 kr
+                 tidigare bebodd men ännu ej aviserad period. Har du frågor om denna efterdebitering,
+                 kontakta oss innan förfallodagen.
+
+
+
+
+                                                                                               Att betala:        4 500,00 kr
+
+
+  ⚠ Dröjsmål debiteras med referensränta + 8% — Förfallodatum: 2026-09-30
+
+
+
+
+                                            ✂ Avrivningskupong — skicka in vid betalning
+
+
+
+
+  bankgirot                                 I N B E TA L N I N G / G I R E R I N G AV I
+
+
+BETALNINGSMOTTAGARE                         FÖRFALLODATUM                                          PERIOD
+
+Syntetiska Fastigheter AB                   2026-09-30                                             juni 2026
+
+
+                                       O C R- N U M M E R — A N G E A L LT I D V I D B E TA L N I N G
+
+
+
+                                           1234567897
+                                        Detta nummer identifierar din betalning automatiskt
+
+
+
+
+TILL BANKGIRO                                                                                                              ATT BETALA
+
+
+5050-1055                                                                                                    4 500,00 kr
+
+                   #    1234567897                 #     4500          00       7    >     50501055#41#
+                                       VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
+

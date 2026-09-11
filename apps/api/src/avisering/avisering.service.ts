@@ -1,3 +1,4 @@
+import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
 import {
   Injectable,
   Logger,
@@ -958,8 +959,9 @@ export class AviseringService {
     }
 
     try {
-      const pdfHtml = await this.buildNoticePdfHtml(notice, org)
-      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
+      const context = await this.pdfService.collectRenderingContext(org.logoStorageKey ?? null)
+      const pdfHtml = AviseringService.buildNoticePdfHtml(notice, org, context)
+      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml, context)
 
       const tenantName =
         notice.tenant.type === 'INDIVIDUAL'
@@ -1026,11 +1028,12 @@ export class AviseringService {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
-    const html = await this.buildNoticePdfHtml(notice, org)
-    return this.pdfService.generateFromHtml(html)
+    const context = await this.pdfService.collectRenderingContext(org.logoStorageKey ?? null)
+    const html = AviseringService.buildNoticePdfHtml(notice, org, context)
+    return this.pdfService.generateFromHtml(html, context)
   }
 
-  private async buildNoticePdfHtml(
+  static buildNoticePdfHtml(
     notice: NoticeWithRelations,
     org: {
       name: string
@@ -1044,8 +1047,9 @@ export class AviseringService {
       brandFont?: string | null
       logoStorageKey?: string | null
     },
-  ): Promise<string> {
-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    context: DocumentContext,
+  ): string {
+    const logoDataUrl = renderingLogo(context)
     // Steg 3, PR 3b/3c: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
     // alltså pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
     const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
@@ -1106,10 +1110,14 @@ export class AviseringService {
 
     const ocrLine = formatBankgiroLine(notice.ocrNumber, payable, bankgiro)
 
-    const monthLabel = new Date(notice.year, notice.month - 1, 1).toLocaleDateString('sv-SE', {
-      month: 'long',
-      year: 'numeric',
-    })
+    const monthLabel = new Date(Date.UTC(notice.year, notice.month - 1, 1)).toLocaleDateString(
+      'sv-SE',
+      {
+        timeZone: 'UTC',
+        month: 'long',
+        year: 'numeric',
+      },
+    )
 
     const isDeposit = notice.type === RentNoticeType.DEPOSIT
     const isProrated = notice.isProrated
@@ -1119,7 +1127,12 @@ export class AviseringService {
     // annars kan hyresgästen inte bedöma sin bestridanderätt. Visas i BÅDA
     // rent-grenarna (delmånad + hel månad).
     const fmtDay = (d: Date | string): string =>
-      new Date(d).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })
+      new Date(d).toLocaleDateString('sv-SE', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
     const backfillNoteHtml =
       notice.isBackfill && notice.periodStart && notice.periodEnd
         ? `<div style="font-size:10px;color:#8a5a00;background:#fff8e6;border-radius:4px;padding:6px 8px;margin-top:6px;line-height:1.5">
@@ -1168,8 +1181,8 @@ export class AviseringService {
           ${unitNamePart}
           ${propertyPart}
           <div style="font-size:10px;color:#666;margin-top:4px;line-height:1.5">
-            Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
-            – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
+            Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''}
+            – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''}
             (${notice.daysCharged} av ${notice.totalDays} dagar)<br>
             Dagshyra: ${fmt(monthlyRent)} / ${notice.totalDays} =
             ${fmt(dailyRate)} kr
@@ -1449,7 +1462,7 @@ export class AviseringService {
     </div>
     <div class="avi-header">
       <div class="avi-meta">
-        Datum: <span>${new Date().toLocaleDateString('sv-SE')}</span><br>
+        Datum: <span>${new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</span><br>
         Avinummer: <span>${notice.noticeNumber}</span><br>
         ${isDeposit ? '' : `Period: <span>${monthLabel}</span><br>`}
         Kundnr: <span>${notice.ocrNumber.slice(-6)}</span>
@@ -1520,7 +1533,7 @@ export class AviseringService {
 
   <div class="due-notice">
     &#9888; Dröjsmål debiteras med referensränta + 8% —
-    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE')}</strong>
+    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</strong>
   </div>
 </div>
 
@@ -1545,7 +1558,7 @@ export class AviseringService {
     <div class="slip-field">
       <div class="label">Förfallodatum</div>
       <div class="value" style="color:#c0392b">
-        ${notice.dueDate.toLocaleDateString('sv-SE')}
+        ${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}
       </div>
     </div>
     <div class="slip-field">

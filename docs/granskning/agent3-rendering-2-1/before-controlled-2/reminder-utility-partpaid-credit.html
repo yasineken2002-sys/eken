@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1f2937;
+    }
+    .bp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 3px solid #1a6b3c;
+      margin-bottom: 24px;
+    }
+    .bp-logo { max-height: 56px; max-width: 220px; object-fit: contain; }
+    .bp-orgname { font-size: 20px; font-weight: 700; color: #1a6b3c; }
+    .bp-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: #245c7c;
+      text-align: right;
+    }
+    .bp-content { font-size: 13px; }
+    .bp-footer {
+      margin-top: 40px;
+      padding-top: 12px;
+      border-top: 1px solid #245c7c;
+      color: #6b7280;
+      font-size: 11px;
+    }
+    .bp-footer .bp-footer-org { font-weight: 600; color: #374151; }
+    .bp-footer-note { margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header class="bp-header">
+    <div class="bp-brand"><img class="bp-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAgCAIAAABiouoDAAAAWElEQVR42u3YMQ0AIAxFwepAC47wPxcHTRhgKPfzFNzUNMaaKgoEgAABAvQ9UJYD1BEoDwcIECBAPYHy8gABAgQIECBAgByKgAAB8jADBMjTHpAAAQL0qA0wt0PC6qoY3AAAAABJRU5ErkJggg==" alt="Syntetiska Fastigheter AB" /></div>
+    <h1 class="bp-title">Betalningspåminnelse</h1>
+  </header>
+
+  <main class="bp-content">
+    <style>
+  .bp-content { color: #111827; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  .totalrow td { border-top:2px solid #111827; padding-top:10px; font-weight:700; font-size:15px; }
+  .ocrbox { background:#F9FAFB; border:1px solid #E5E7EB; border-radius:8px; padding:16px 20px; margin-top:24px; }
+  .mono { font-family:monospace; font-weight:700; letter-spacing:0.06em; }
+  .muted { color:#6B7280; font-size:12px; }</style>
+  <p class="muted" style="margin-bottom:24px">Avi AVI-SYN-2026-0904 · 11 dagar förfallen</p>
+
+  <div class="muted" style="margin-bottom:24px">
+      <strong style="color:#111827">Syntetiska Fastigheter AB</strong><br/>Testgatan 12, 000 00 Teststaden
+    </div>
+
+  <p style="font-size:13.5px;line-height:1.6">
+    Hej Testa Åberg,<br/>
+    hyresavi <strong>AVI-SYN-2026-0904</strong> förföll 2026-08-31 och är ännu inte
+    fullt betald. Vänligen betala snarast. En påminnelseavgift enligt
+    4 § lagen (1981:739) om ersättning för inkassokostnader har tillkommit.
+  </p>
+
+  <table style="margin-top:24px">
+    <tr><td style="padding:6px 0;color:#6B7280">Avins belopp</td>
+        <td style="padding:6px 0;text-align:right;color:#111827">9 500,00 kr</td></tr>
+    <tr><td style="padding:6px 0;color:#6B7280">Påminnelseavgift</td>
+             <td style="padding:6px 0;text-align:right;color:#111827">60,00 kr</td></tr>
+    <tr><td style="padding:6px 0;color:#6B7280">Registrerad betalning</td>
+             <td style="padding:6px 0;text-align:right;color:#111827">−4 000,00 kr</td></tr>
+    
+    <tr class="totalrow"><td>Att betala nu</td>
+        <td style="text-align:right">5 460,00 kr</td></tr>
+  </table>
+
+  <div class="ocrbox">
+    <table>
+      <tr><td style="padding:4px 0;color:#6B7280">Bankgiro</td>
+             <td style="padding:4px 0;text-align:right" class="mono">5050-1055</td></tr>
+      <tr><td style="padding:4px 0;color:#6B7280">OCR-nummer</td>
+          <td style="padding:4px 0;text-align:right"><span class="mono" style="color:#1a6b3c">1234567897</span></td></tr>
+    </table>
+  </div>
+
+  <p class="muted" style="margin-top:32px">
+    Har du redan betalat kan du bortse från denna påminnelse.
+  </p>
+  </main>
+
+</body>
+</html>

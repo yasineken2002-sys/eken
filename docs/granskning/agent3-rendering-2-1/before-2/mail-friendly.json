@@ -1,0 +1,17 @@
+{
+  "template": "reminder-friendly",
+  "props": {
+    "tenantName": "Testa Åberg",
+    "invoiceNumber": "F-SYN-2026-001",
+    "total": 1100,
+    "dueDate": "2026-08-31T00:00:00Z",
+    "daysOverdue": 11,
+    "organizationName": "Syntetiska Fastigheter AB",
+    "ocrNumber": "1234567897",
+    "bankgiro": "5050-1055"
+  },
+  "to": "testa.aberg@example.test",
+  "organizationId": "synthetic-rendering-org",
+  "subject": "Påminnelse — faktura F-SYN-2026-001",
+  "priority": "normal"
+}

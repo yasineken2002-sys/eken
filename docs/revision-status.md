@@ -1,5 +1,7 @@
 # Revisionslistan — mätt status
 
+Vid framtida aktivering kan en extrem processpaus efter sista tidskontrollen medföra dubbla faktura- eller avimejl; begränsningen är demonstrerad i [2b-26 på 5ae9906b152307eae0d79eec719d4303a042742c](https://github.com/yasineken2002-sys/eken/blob/5ae9906b152307eae0d79eec719d4303a042742c/apps/api/src/consumption/delivery-execution.db.spec.ts#L1570).
+
 ## FAS 0 (FUNDAMENTET) ÄR KLAR PÅ KODSIDAN — OCH DET ÄR INTE SAMMA SAK SOM KLART
 
 Nio PR:er stängde fundamentet i koden (se tabellen). **Fyra saker återstår, och

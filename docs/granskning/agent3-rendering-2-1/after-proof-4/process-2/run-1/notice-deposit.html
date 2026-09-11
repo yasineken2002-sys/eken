@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1f2937;
+    }
+    .bp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 3px solid #1a6b3c;
+      margin-bottom: 24px;
+    }
+    .bp-logo { max-height: 56px; max-width: 220px; object-fit: contain; }
+    .bp-orgname { font-size: 20px; font-weight: 700; color: #1a6b3c; }
+    .bp-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: #245c7c;
+      text-align: right;
+    }
+    .bp-content { font-size: 13px; }
+    .bp-footer {
+      margin-top: 40px;
+      padding-top: 12px;
+      border-top: 1px solid #245c7c;
+      color: #6b7280;
+      font-size: 11px;
+    }
+    .bp-footer .bp-footer-org { font-weight: 600; color: #374151; }
+    .bp-footer-note { margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header class="bp-header">
+    <div class="bp-brand"><img class="bp-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAgCAIAAABiouoDAAAAWElEQVR42u3YMQ0AIAxFwepAC47wPxcHTRhgKPfzFNzUNMaaKgoEgAABAvQ9UJYD1BEoDwcIECBAPYHy8gABAgQIECBAgByKgAAB8jADBMjTHpAAAQL0qA0wt0PC6qoY3AAAAABJRU5ErkJggg==" alt="Syntetiska Fastigheter AB" /></div>
+    <h1 class="bp-title">Depositionsavi</h1>
+  </header>
+
+  <main class="bp-content">
+    <style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  .bp-content { font-size: 11px; color: #333; }
+
+  /* ── UPPER SECTION ── */
+  .upper { padding: 30px 40px 20px 40px; }
+
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+  }
+  .org-name {
+    font-size: 20px;
+    font-weight: bold;
+    color: #1a6b3c;
+    margin-bottom: 4px;
+  }
+  .org-details { font-size: 10px; color: #555; line-height: 1.6; }
+
+  .avi-header { text-align: right; }
+  .avi-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #1a6b3c;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .avi-meta {
+    font-size: 10px;
+    color: #666;
+    margin-top: 6px;
+    line-height: 1.8;
+  }
+  .avi-meta span { font-weight: bold; color: #333; }
+
+  .recipient-box {
+    border-left: 3px solid #1a6b3c;
+    padding: 10px 16px;
+    margin: 20px 0;
+    background: #fafafa;
+  }
+  .recipient-name { font-size: 13px; font-weight: bold; }
+  .recipient-detail { font-size: 10px; color: #666; margin-top: 2px; }
+
+  .spec-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+  }
+  .spec-table th {
+    background: #1a6b3c;
+    color: white;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .spec-table th:last-child { text-align: right; }
+  .spec-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    font-size: 11px;
+  }
+  .spec-table td:last-child { text-align: right; font-weight: 500; }
+  .spec-table tr:nth-child(even) td { background: #f9f9f9; }
+
+  .totals-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+    padding-right: 12px;
+  }
+  .totals-table { font-size: 11px; }
+  .totals-table td { padding: 3px 12px; }
+  .totals-table td:last-child { text-align: right; font-weight: 500; }
+  .total-final td {
+    font-size: 14px;
+    font-weight: bold;
+    color: #1a6b3c;
+    border-top: 2px solid #1a6b3c;
+    padding-top: 6px;
+  }
+
+  .due-notice {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 16px 0;
+    font-size: 10px;
+    color: #856404;
+  }
+
+  /* ── TEAR OFF LINE ── */
+  .tearoff {
+    border-top: 2px dashed #999;
+    margin: 10px 40px;
+    position: relative;
+    text-align: center;
+  }
+  .tearoff-label {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    padding: 0 10px;
+    font-size: 9px;
+    color: #999;
+    white-space: nowrap;
+  }
+
+  /* ── PAYMENT SLIP ── */
+  .payment-slip {
+    padding: 16px 40px 20px 40px;
+    background: white;
+  }
+
+  .slip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .bankgiro-logo {
+    font-size: 16px;
+    font-weight: bold;
+    color: #003087;
+    border: 2px solid #003087;
+    padding: 4px 10px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+  }
+  .slip-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #333;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .slip-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin: 12px 0;
+  }
+  .slip-field .label {
+    font-size: 9px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+  }
+  .slip-field .value {
+    font-size: 13px;
+    font-weight: bold;
+    color: #333;
+  }
+
+  .ocr-section {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    text-align: center;
+  }
+  .ocr-label {
+    font-size: 9px;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+  .ocr-number {
+    font-size: 28px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 4px;
+    color: #1a6b3c;
+  }
+  .ocr-instruction {
+    font-size: 9px;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  .bankgiro-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 10px 0;
+    padding: 8px 0;
+    border-top: 1px solid #eee;
+  }
+  .bankgiro-number {
+    font-size: 16px;
+    font-weight: bold;
+    color: #003087;
+  }
+  .amount-box { text-align: right; }
+  .amount-label { font-size: 9px; color: #666; }
+  .amount-value {
+    font-size: 22px;
+    font-weight: bold;
+    color: #c0392b;
+  }
+
+  .ocr-machine-line {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #ccc;
+    font-family: 'OCR-B', 'Courier New', monospace;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: #000;
+    text-align: center;
+  }
+  .ocr-warning {
+    font-size: 8px;
+    color: #999;
+    text-align: center;
+    margin-top: 4px;
+    font-family: Arial, sans-serif;
+    letter-spacing: normal;
+  }
+
+  @page { margin: 10mm; size: A4; }</style>
+
+<!-- ═══ UPPER SECTION ═══ -->
+<div class="upper">
+  <div class="header-row">
+    <div>
+      <div class="org-name">Syntetiska Fastigheter AB</div>
+      <div class="org-details">
+        Testgatan 12, 000 00 Teststaden<br>
+        Bankgiro: 5050-1055<br>
+        E-post: ekonomi@example.test
+      </div>
+    </div>
+    <div class="avi-header">
+      <div class="avi-meta">
+        Datum: <span>2026-09-11</span><br>
+        Avinummer: <span>AVI-SYN-2026-0903</span><br>
+        
+        Kundnr: <span>567897</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="recipient-box">
+    <div class="recipient-name">Testa Åberg</div>
+    <div class="recipient-detail">testa.aberg@example.test</div>
+    
+  </div>
+
+  <table class="spec-table">
+    <thead>
+      <tr>
+        <th>Objekt</th>
+        <th>Specifikation</th>
+        <th>Summa</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      <tr>
+        <td>1101</td>
+        <td>
+          <strong>Deposition</strong>
+           — Lägenhet 1101
+          , Testgatan 12
+          <div style="font-size:10px;color:#666;margin-top:4px">
+            Säkerhet enligt 12 kap. 21 § JB. Återbetalas vid avflyttning efter slutbesiktning.
+          </div>
+        </td>
+        <td>18 000,00 kr</td>
+      </tr>
+      
+    </tbody>
+  </table>
+
+  <div class="totals-row">
+    <table class="totals-table">
+      
+      
+      <tr class="total-final">
+        <td>Att betala:</td>
+        <td>18 000,00 kr</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="due-notice">
+    &#9888; Dröjsmål debiteras med referensränta + 8% —
+    Förfallodatum: <strong>2026-09-30</strong>
+  </div>
+</div>
+
+<!-- ═══ TEAR OFF LINE ═══ -->
+<div class="tearoff">
+  <span class="tearoff-label">&#9986; Avrivningskupong — skicka in vid betalning</span>
+</div>
+
+<!-- ═══ PAYMENT SLIP ═══ -->
+<div class="payment-slip">
+  <div class="slip-header">
+    <div class="bankgiro-logo">bankgirot</div>
+    <div class="slip-title">Inbetalning / Girering AVI</div>
+    <div style="width:80px"></div>
+  </div>
+
+  <div class="slip-grid">
+    <div class="slip-field">
+      <div class="label">Betalningsmottagare</div>
+      <div class="value" style="font-size:12px">Syntetiska Fastigheter AB</div>
+    </div>
+    <div class="slip-field">
+      <div class="label">Förfallodatum</div>
+      <div class="value" style="color:#c0392b">
+        2026-09-30
+      </div>
+    </div>
+    <div class="slip-field">
+      <div class="label">Avser</div>
+      <div class="value" style="font-size:12px">Deposition</div>
+    </div>
+  </div>
+
+  <div class="ocr-section">
+    <div class="ocr-label">OCR-nummer — ange alltid vid betalning</div>
+    <div class="ocr-number">1234567897</div>
+    <div class="ocr-instruction">
+      Detta nummer identifierar din betalning automatiskt
+    </div>
+  </div>
+
+  <div class="bankgiro-row">
+    <div>
+      <div style="font-size:9px; color:#666; margin-bottom:3px">TILL BANKGIRO</div>
+      <div class="bankgiro-number">5050-1055</div>
+    </div>
+    <div class="amount-box">
+      <div class="amount-label">ATT BETALA</div>
+      <div class="amount-value">
+        18 000,00 kr
+      </div>
+    </div>
+  </div>
+
+  <!-- Machine-readable OCR line -->
+  <div class="ocr-machine-line">
+    # 1234567897 # 18000 00 2 > 50501055#41#
+  </div>
+  <div class="ocr-warning">
+    VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
+  </div>
+</div>
+  </main>
+
+</body>
+</html>

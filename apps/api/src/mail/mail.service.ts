@@ -282,6 +282,7 @@ function formatSek(amount: number): string {
 
 function formatDateSv(d: Date | string): string {
   return new Date(d).toLocaleDateString('sv-SE', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -625,6 +626,12 @@ export class MailService {
   }
 
   async sendRentNoticeReminder(opts: SendRentNoticeReminderOptions): Promise<string> {
+    return this.queue.enqueue(MailService.buildRentNoticeReminder(opts))
+  }
+
+  static buildRentNoticeReminder(
+    opts: SendRentNoticeReminderOptions,
+  ): EnqueueMailOptions<'custom'> {
     const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
     const feeRow =
       opts.feeAmount > 0
@@ -666,7 +673,7 @@ export class MailService {
               </td></tr>
         </table>
       </div>`
-    return this.enqueueTyped(
+    return MailService.mailPayload(
       'custom',
       'normal',
       {
@@ -692,6 +699,10 @@ export class MailService {
   }
 
   async sendRentNotice(opts: SendRentNoticeOptions): Promise<string> {
+    return this.queue.enqueue(MailService.buildRentNotice(opts))
+  }
+
+  static buildRentNotice(opts: SendRentNoticeOptions): EnqueueMailOptions<'custom'> {
     const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
     const bodyHtml = `
       <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
@@ -709,7 +720,7 @@ export class MailService {
               </td></tr>
         </table>
       </div>`
-    return this.enqueueTyped(
+    return MailService.mailPayload(
       'custom',
       'normal',
       {
@@ -910,6 +921,12 @@ export class MailService {
   // ── Privat helper ────────────────────────────────────────────────────────────
 
   private async enqueueTyped<T extends TemplateName>(
+    ...args: Parameters<typeof MailService.mailPayload<T>>
+  ): Promise<string> {
+    return this.queue.enqueue(MailService.mailPayload(...args))
+  }
+
+  static mailPayload<T extends TemplateName>(
     template: T,
     priority: MailPriority,
     props: TemplatePropsMap[T],
@@ -921,7 +938,7 @@ export class MailService {
       idempotencyKey?: string | undefined
       correlation?: MailCorrelation | undefined
     },
-  ): Promise<string> {
+  ): EnqueueMailOptions<T> {
     const opts: EnqueueMailOptions<T> = {
       template,
       props,
@@ -933,6 +950,6 @@ export class MailService {
     if (extras.attachments) opts.attachments = extras.attachments
     if (extras.idempotencyKey) opts.idempotencyKey = extras.idempotencyKey
     if (extras.correlation) opts.correlation = extras.correlation
-    return this.queue.enqueue(opts)
+    return opts
   }
 }

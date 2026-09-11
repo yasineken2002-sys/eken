@@ -1,0 +1,935 @@
+diff --git a/apps/api/scripts/check-pdf-templates-selfcontained.mjs b/apps/api/scripts/check-pdf-templates-selfcontained.mjs
+index f63bec88..3060c04d 100644
+--- a/apps/api/scripts/check-pdf-templates-selfcontained.mjs
++++ b/apps/api/scripts/check-pdf-templates-selfcontained.mjs
+@@ -188,13 +188,13 @@ function hittaFunktion(filRel, symbol, sedda = new Set()) {
+ function producent(filRel, argument, index) {
+   const arg = argument.trim().replace(/^await\s+/, '')
+   if (arg.includes(':')) return null // typannotering ⇒ metoddeklaration, inte anrop
+-  const anrop = arg.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
++  const anrop = arg.match(/^(?:[\p{L}\p{N}_$]+\.)?([\p{L}\p{N}_$]+)\s*\(/u)
+   if (anrop) return anrop[1]
+   const ident = arg.match(/^([\p{L}\p{N}_$]+)$/u)
+   if (!ident) return null
+   const f = fil(filRel)
+   const före = f.kalla.slice(0, index)
+-  const t = [...före.matchAll(new RegExp(`const\\s+${ident[1]}\\s*=\\s*(await\\s+)?([\\s\\S]{0,40})`, 'g'))].pop()
++  const t = [...före.matchAll(new RegExp(`const\\s+${ident[1]}\\s*=\\s*(await\\s+)?([\\s\\S]{0,120})`, 'g'))].pop()
+   if (!t) return null
+   const uttryck = t[2].trim()
+   if (uttryck.startsWith('`')) {
+@@ -203,7 +203,7 @@ function producent(filRel, argument, index) {
+     const om = kroppar(filRel).filter((k) => k.start <= idx && idx <= k.slut).sort((a, b) => b.start - a.start)[0]
+     return om ? om.namn : null
+   }
+-  const s = uttryck.match(/^(?:this\.)?([\p{L}\p{N}_$]+)\s*\(/u)
++  const s = uttryck.match(/^(?:[\p{L}\p{N}_$]+\.)?([\p{L}\p{N}_$]+)\s*\(/u)
+   return s ? s[1] : null
+ }
+ 
+diff --git a/apps/api/src/avisering/avisering.service.ts b/apps/api/src/avisering/avisering.service.ts
+index ac65a782..816b6f67 100644
+--- a/apps/api/src/avisering/avisering.service.ts
++++ b/apps/api/src/avisering/avisering.service.ts
+@@ -1,3 +1,4 @@
++import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
+ import {
+   Injectable,
+   Logger,
+@@ -958,8 +959,12 @@ export class AviseringService {
+     }
+ 
+     try {
+-      const pdfHtml = await this.buildNoticePdfHtml(notice, org)
+-      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
++      const context = await this.pdfService.createRenderingContext(
++        new Date(),
++        await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
++      )
++      const pdfHtml = AviseringService.buildNoticePdfHtml(notice, org, context)
++      const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml, context)
+ 
+       const tenantName =
+         notice.tenant.type === 'INDIVIDUAL'
+@@ -1026,11 +1031,15 @@ export class AviseringService {
+     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
+     if (!org) throw new NotFoundException('Organisation hittades inte')
+ 
+-    const html = await this.buildNoticePdfHtml(notice, org)
+-    return this.pdfService.generateFromHtml(html)
++    const context = await this.pdfService.createRenderingContext(
++      new Date(),
++      await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
++    )
++    const html = AviseringService.buildNoticePdfHtml(notice, org, context)
++    return this.pdfService.generateFromHtml(html, context)
+   }
+ 
+-  private async buildNoticePdfHtml(
++  static buildNoticePdfHtml(
+     notice: NoticeWithRelations,
+     org: {
+       name: string
+@@ -1044,8 +1053,9 @@ export class AviseringService {
+       brandFont?: string | null
+       logoStorageKey?: string | null
+     },
+-  ): Promise<string> {
+-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
++    context: DocumentContext,
++  ): string {
++    const logoDataUrl = renderingLogo(context)
+     // Steg 3, PR 3b/3c: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
+     // alltså pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
+     const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
+@@ -1106,10 +1116,14 @@ export class AviseringService {
+ 
+     const ocrLine = formatBankgiroLine(notice.ocrNumber, payable, bankgiro)
+ 
+-    const monthLabel = new Date(notice.year, notice.month - 1, 1).toLocaleDateString('sv-SE', {
+-      month: 'long',
+-      year: 'numeric',
+-    })
++    const monthLabel = new Date(Date.UTC(notice.year, notice.month - 1, 1)).toLocaleDateString(
++      'sv-SE',
++      {
++        timeZone: 'UTC',
++        month: 'long',
++        year: 'numeric',
++      },
++    )
+ 
+     const isDeposit = notice.type === RentNoticeType.DEPOSIT
+     const isProrated = notice.isProrated
+@@ -1449,7 +1463,7 @@ export class AviseringService {
+     </div>
+     <div class="avi-header">
+       <div class="avi-meta">
+-        Datum: <span>${new Date().toLocaleDateString('sv-SE')}</span><br>
++        Datum: <span>${new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</span><br>
+         Avinummer: <span>${notice.noticeNumber}</span><br>
+         ${isDeposit ? '' : `Period: <span>${monthLabel}</span><br>`}
+         Kundnr: <span>${notice.ocrNumber.slice(-6)}</span>
+@@ -1520,7 +1534,7 @@ export class AviseringService {
+ 
+   <div class="due-notice">
+     &#9888; Dröjsmål debiteras med referensränta + 8% —
+-    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE')}</strong>
++    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</strong>
+   </div>
+ </div>
+ 
+@@ -1545,7 +1559,7 @@ export class AviseringService {
+     <div class="slip-field">
+       <div class="label">Förfallodatum</div>
+       <div class="value" style="color:#c0392b">
+-        ${notice.dueDate.toLocaleDateString('sv-SE')}
++        ${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}
+       </div>
+     </div>
+     <div class="slip-field">
+diff --git a/apps/api/src/avisering/rent-reminder.service.ts b/apps/api/src/avisering/rent-reminder.service.ts
+index abbce514..a9fb7baf 100644
+--- a/apps/api/src/avisering/rent-reminder.service.ts
++++ b/apps/api/src/avisering/rent-reminder.service.ts
+@@ -1,3 +1,4 @@
++import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
+ import {
+   ConflictException,
+   Injectable,
+@@ -1122,8 +1123,12 @@ export class RentReminderService {
+     }
+ 
+     try {
+-      const html = await this.buildReminderPdfHtml(notice, org)
+-      const pdfBuffer = await this.pdfService.generateFromHtml(html)
++      const context = await this.pdfService.createRenderingContext(
++        new Date(),
++        await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
++      )
++      const html = RentReminderService.buildReminderPdfHtml(notice, org, context)
++      const pdfBuffer = await this.pdfService.generateFromHtml(html, context)
+ 
+       // Inkasso PR 4b₀: lagra den FAKTISKT skickade påminnelse-PDF:en org-scopat
+       // (reminders/{orgId}/…, samma R2-tenant-isolation som övriga dokument) så
+@@ -1251,6 +1256,10 @@ export class RentReminderService {
+    * vid sitt eget anropsställe.
+    */
+   private daysSince(date: Date, now: Date): number {
++    return RentReminderService.daysSince(date, now)
++  }
++
++  private static daysSince(date: Date, now: Date): number {
+     const ms = now.getTime() - date.getTime()
+     return Math.floor(ms / (24 * 60 * 60 * 1000))
+   }
+@@ -1281,7 +1290,7 @@ export class RentReminderService {
+   }
+ 
+   // Exponerad för test (org-adress + villkorat bankgiro enligt lag 1981:739 5 §).
+-  async buildReminderPdfHtml(
++  static buildReminderPdfHtml(
+     notice: ReminderNotice,
+     org: {
+       name: string
+@@ -1294,8 +1303,9 @@ export class RentReminderService {
+       brandFont?: string | null
+       logoStorageKey?: string | null
+     },
+-  ): Promise<string> {
+-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
++    context: DocumentContext,
++  ): string {
++    const logoDataUrl = renderingLogo(context)
+     // Steg 3, PR 3d: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
+     // pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
+     const accent = org.invoiceColor ?? DEFAULT_BRAND_COLOR
+@@ -1310,8 +1320,8 @@ export class RentReminderService {
+     // och ett mejl med restskulden vore värre än två fel siffror — de hade
+     // motsagt varandra i samma försändelse.
+     const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
+-    const daysOverdue = this.daysSince(notice.dueDate, new Date())
+-    const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE')
++    const daysOverdue = RentReminderService.daysSince(notice.dueDate, new Date(context.asOf))
++    const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })
+ 
+     const tenantName =
+       notice.tenant.type === 'INDIVIDUAL'
+diff --git a/apps/api/src/collections/collection-export.service.ts b/apps/api/src/collections/collection-export.service.ts
+index 7617279a..d0f54f4c 100644
+--- a/apps/api/src/collections/collection-export.service.ts
++++ b/apps/api/src/collections/collection-export.service.ts
+@@ -1,3 +1,4 @@
++import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
+ import {
+   BadRequestException,
+   ConflictException,
+@@ -192,7 +193,16 @@ export class CollectionExportService {
+ 
+     // Först HÄR börjar det dyra arbetet. Misslyckades claimen har vi redan
+     // kastat — ingen PDF genererad, ingen InvoiceEvent skriven.
+-    const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
++    const context = await this.pdf.createRenderingContext(
++      new Date(),
++      await getLogoDataUrl(this.storage, invoice.organization.logoStorageKey ?? null),
++    )
++    const html = CollectionExportService.buildPdfHtml(
++      invoice,
++      context,
++      this.pn.reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
++    )
++    const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+     const csvBuffer = Buffer.from(this.buildCsv([invoice]), 'utf8')
+ 
+     const date = new Date().toISOString().slice(0, 10)
+@@ -334,7 +344,16 @@ export class CollectionExportService {
+     const zip = new JSZip()
+     for (const invoice of invoices) {
+       const safeNumber = invoice.invoiceNumber.replace(/[^\w-]/g, '_')
+-      const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
++      const context = await this.pdf.createRenderingContext(
++        new Date(),
++        await getLogoDataUrl(this.storage, invoice.organization.logoStorageKey ?? null),
++      )
++      const html = CollectionExportService.buildPdfHtml(
++        invoice,
++        context,
++        this.pn.reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
++      )
++      const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+       zip.file(`${safeNumber}/inkasso-${safeNumber}.pdf`, pdfBuffer)
+     }
+     // Samlad CSV med alla fakturor — många inkassobolag (Visma Collectors,
+@@ -548,6 +567,10 @@ export class CollectionExportService {
+    * faktura kunde nekas på en siffra och exporteras på en annan.
+    */
+   private outstandingFor(invoice: InvoiceWithCollectionData): InvoiceDebt {
++    return CollectionExportService.outstandingFor(invoice)
++  }
++
++  private static outstandingFor(invoice: InvoiceWithCollectionData): InvoiceDebt {
+     return computeInvoiceDebt({
+       total: invoice.total,
+       allocations: invoice.payments.map((p) => p.amount),
+@@ -869,11 +892,14 @@ export class CollectionExportService {
+     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
+   }
+ 
+-  private async buildPdfHtml(invoice: InvoiceWithCollectionData): Promise<string> {
++  static buildPdfHtml(
++    invoice: InvoiceWithCollectionData,
++    context: DocumentContext,
++    partyPersonalNumber: string | null,
++  ): string {
+     const party = invoice.tenant ?? invoice.customer
+     // Dekryptering vid användningstillfället — kravbrevet ska bära gäldenärens
+     // personnummer, inget annat i den här filen behöver klartexten.
+-    const partyPersonalNumber = this.pn.reveal(party?.personalNumberEnc)
+     const partyName = party
+       ? (party.companyName ?? `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim())
+       : '–'
+@@ -903,13 +929,13 @@ export class CollectionExportService {
+     // de ingår i totalen och därmed i restskulden. Noten under beloppet
+     // fortsätter redovisa dem separat.
+     // Samma beräkning som grinden i claimForExport använde — se outstandingFor.
+-    const debt = this.outstandingFor(invoice)
++    const debt = CollectionExportService.outstandingFor(invoice)
+     // debt.paid, INTE total − outstanding: outstanding är klampad till 0 vid
+     // överbetalning, så subtraktionen hade visat ett för lågt betalt-belopp på
+     // ett dokument som går till inkasso. Fångat av båda granskarna oberoende.
+     const alreadyPaid = debt.paid
+     const totalDue = debt.outstanding.toNumber()
+-    const today = new Date().toLocaleDateString('sv-SE')
++    const today = new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
+     const leaseRef = invoice.lease
+       ? `${invoice.lease.unit.property.name} – ${invoice.lease.unit.name} (${invoice.lease.unit.unitNumber})`
+       : '–'
+@@ -918,7 +944,7 @@ export class CollectionExportService {
+       .map((r) => {
+         const label = REMINDER_LABEL[r.type]
+         return `<tr>
+-          <td>${r.sentAt.toLocaleDateString('sv-SE')}</td>
++          <td>${r.sentAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</td>
+           <td>${label}</td>
+           <td style="text-align:right">${formatSek(Number(r.feeAmount))}</td>
+         </tr>`
+@@ -937,7 +963,7 @@ export class CollectionExportService {
+       .join('')
+ 
+     const org = invoice.organization
+-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
++    const logoDataUrl = renderingLogo(context)
+     // Steg 3, PR 3e: dokumentet var HELT brand-blint (egen inline-HTML, ingen
+     // logga, egen dokumentgrön #1a4a28). Hårdkodad #1a4a28 → orgens brandfärg
+     // (invoiceColor) med delad DEFAULT_BRAND_COLOR som fallback. #1a4a28 låg
+@@ -972,7 +998,7 @@ export class CollectionExportService {
+     <div class="docref">
+       <div class="meta"><strong>Faktura</strong></div>
+       <div class="docnum">${invoice.invoiceNumber}</div>
+-      <div class="meta">Förfallodatum ${invoice.dueDate.toLocaleDateString('sv-SE')}</div>
++      <div class="meta">Förfallodatum ${invoice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</div>
+     </div>
+   </div>
+ 
+diff --git a/apps/api/src/collections/rent-collection-export.service.ts b/apps/api/src/collections/rent-collection-export.service.ts
+index e763007b..5ab6a777 100644
+--- a/apps/api/src/collections/rent-collection-export.service.ts
++++ b/apps/api/src/collections/rent-collection-export.service.ts
+@@ -1,3 +1,4 @@
++import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
+ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+ import { csvCell } from '../common/csv/csv-cell'
+ import type { Prisma } from '@prisma/client'
+@@ -192,7 +193,16 @@ export class RentCollectionExportService {
+     const notice = await this.loadNotice(noticeId, organizationId)
+     await this.assertExportable(notice)
+ 
+-    const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(notice))
++    const context = await this.pdf.createRenderingContext(
++      new Date(),
++      await getLogoDataUrl(this.storage, notice.organization.logoStorageKey ?? null),
++    )
++    const html = RentCollectionExportService.buildPdfHtml(
++      notice,
++      context,
++      this.pn.reveal(notice.tenant.personalNumberEnc),
++    )
++    const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+     const csvBuffer = Buffer.from(this.buildCsv([notice]), 'utf8')
+ 
+     const date = new Date().toISOString().slice(0, 10)
+@@ -262,7 +272,16 @@ export class RentCollectionExportService {
+     const zip = new JSZip()
+     for (const notice of notices) {
+       const safe = notice.noticeNumber.replace(/[^\w-]/g, '_')
+-      const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(notice))
++      const context = await this.pdf.createRenderingContext(
++        new Date(),
++        await getLogoDataUrl(this.storage, notice.organization.logoStorageKey ?? null),
++      )
++      const html = RentCollectionExportService.buildPdfHtml(
++        notice,
++        context,
++        this.pn.reveal(notice.tenant.personalNumberEnc),
++      )
++      const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+       zip.file(`${safe}/inkasso-underlag-${safe}.pdf`, pdfBuffer)
+ 
+       if (notice.reminderPdfStorageKey) {
+@@ -403,7 +422,7 @@ export class RentCollectionExportService {
+    * inkasso-redo) och visar hur räntan räknats per halvår. Vi litar på den
+    * bokförda totalen även om en öresrest skulle skilja mot Σ segment.
+    */
+-  private figures(notice: RentNoticeWithCollectionData): CollectionFigures {
++  private static figures(notice: RentNoticeWithCollectionData): CollectionFigures {
+     // ── KAPITALET ÄR NETTO EFTER KREDITERING (#518) ────────────────────────
+     //
+     // Det här talet trycks i inkassounderlaget och är vad bolaget driver in. En
+@@ -460,7 +479,7 @@ export class RentCollectionExportService {
+       'inkassobolag',
+     ]
+     const rows = notices.map((notice) => {
+-      const f = this.figures(notice)
++      const f = RentCollectionExportService.figures(notice)
+       const t = notice.tenant
+       const o = notice.organization
+       const partyName =
+@@ -497,13 +516,16 @@ export class RentCollectionExportService {
+     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
+   }
+ 
+-  private async buildPdfHtml(notice: RentNoticeWithCollectionData): Promise<string> {
+-    const f = this.figures(notice)
++  static buildPdfHtml(
++    notice: RentNoticeWithCollectionData,
++    context: DocumentContext,
++    tenantPersonalNumber: string | null,
++  ): string {
++    const f = RentCollectionExportService.figures(notice)
+     const t = notice.tenant
+     const o = notice.organization
+     // Dekryptering vid användningstillfället — kravbrevet ska bära gäldenärens
+     // personnummer. Inget annat i den här filen behöver klartexten.
+-    const tenantPersonalNumber = this.pn.reveal(t.personalNumberEnc)
+     const partyName =
+       t.type === 'INDIVIDUAL'
+         ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
+@@ -519,9 +541,9 @@ export class RentCollectionExportService {
+     ]
+       .filter((part) => part && part.trim())
+       .join('<br>')
+-    const today = new Date().toLocaleDateString('sv-SE')
++    const today = new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
+     const leaseRef = `${notice.lease.unit.property.name} – ${notice.lease.unit.name} (${notice.lease.unit.unitNumber})`
+-    const deliveredAt = this.deliveredAt(notice)
++    const deliveredAt = RentCollectionExportService.deliveredAt(notice)
+ 
+     // Räntan som en EGEN rad med per-halvår-specifikation (räntelagen 9 §).
+     const interestRows =
+@@ -539,7 +561,7 @@ export class RentCollectionExportService {
+         : `<tr><td colspan="4" class="meta">Ingen dröjsmålsränta har kristalliserats.</td></tr>`
+ 
+     const org = notice.organization
+-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
++    const logoDataUrl = renderingLogo(context)
+     // Steg 3, PR 3e-ii: hårdkodad dokumentgrön #1a4a28 → orgens brandfärg
+     // (invoiceColor) med delad DEFAULT_BRAND_COLOR som fallback — enas mot samma
+     // default som det faktura-baserade inkassounderlaget (#126).
+@@ -573,7 +595,7 @@ export class RentCollectionExportService {
+     <div class="docref">
+       <div class="meta"><strong>Hyresavi</strong></div>
+       <div class="docnum">${escapeHtml(notice.noticeNumber)}</div>
+-      <div class="meta">Förfallodatum ${notice.dueDate.toLocaleDateString('sv-SE')}</div>
++      <div class="meta">Förfallodatum ${notice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</div>
+       <div class="meta">OCR ${escapeHtml(notice.ocrNumber)}</div>
+     </div>
+   </div>
+@@ -643,10 +665,10 @@ export class RentCollectionExportService {
+ 
+   <h2>Krav- och leveranshistorik</h2>
+   <p class="meta">
+-    Avi utfärdad och skickad: ${notice.sentAt ? notice.sentAt.toLocaleDateString('sv-SE') : '–'}<br>
+-    Påminnelse skickad: ${notice.remindedAt ? notice.remindedAt.toLocaleDateString('sv-SE') : '–'}<br>
++    Avi utfärdad och skickad: ${notice.sentAt ? notice.sentAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) : '–'}<br>
++    Påminnelse skickad: ${notice.remindedAt ? notice.remindedAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) : '–'}<br>
+     Påminnelse levererad (verifierad): ${deliveredAt ?? '–'}<br>
+-    Markerad inkasso-redo: ${notice.collectionReadyAt ? notice.collectionReadyAt.toLocaleDateString('sv-SE') : '–'}<br>
++    Markerad inkasso-redo: ${notice.collectionReadyAt ? notice.collectionReadyAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' }) : '–'}<br>
+     Lagrad påminnelsekopia: ${notice.reminderPdfStorageKey ? 'bifogad' : '–'}
+   </p>
+ 
+@@ -688,7 +710,7 @@ export class RentCollectionExportService {
+   }
+ 
+   // Datum då påminnelsen verifierat levererades (Resend-webhook → EMAIL_DELIVERED).
+-  private deliveredAt(notice: RentNoticeWithCollectionData): string | null {
++  private static deliveredAt(notice: RentNoticeWithCollectionData): string | null {
+     const ev = notice.events.find((e) => e.type === 'EMAIL_DELIVERED')
+     return ev ? ev.createdAt.toISOString().slice(0, 10) : null
+   }
+diff --git a/apps/api/src/invoices/pdf.service.ts b/apps/api/src/invoices/pdf.service.ts
+index ac94e328..3f3b7b89 100644
+--- a/apps/api/src/invoices/pdf.service.ts
++++ b/apps/api/src/invoices/pdf.service.ts
+@@ -4,8 +4,16 @@ import puppeteer, { type Browser, type Page } from 'puppeteer'
+ import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+ import { PrismaService } from '../common/prisma/prisma.service'
+ import { StorageService } from '../storage/storage.service'
+-import { generateInvoiceHtml } from './templates/invoice-pdf.template'
++import { detectMime, generateInvoiceHtml } from './templates/invoice-pdf.template'
+ import { PDF_WAIT_UNTIL } from './pdf-wait-until'
++import {
++  documentContext,
++  pdfEnvironmentIdentity,
++  renderingDigest,
++  renderingLogo,
++  stampPdfDates,
++  type PdfRenderingContext,
++} from './rendering-context'
+ import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
+ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+ 
+@@ -50,6 +58,7 @@ export class PdfService implements OnModuleDestroy {
+   // dokumenterade läckor när processen återstartas snabbt).
+   private browser: Browser | null = null
+   private launchPromise: Promise<Browser> | null = null
++  private renderingEnvironment = ''
+ 
+   // Lättviktig semaphore. queue håller resolves som väntar på en ledig slot,
+   // active räknar hur många pages som körs just nu.
+@@ -72,7 +81,12 @@ export class PdfService implements OnModuleDestroy {
+     }
+   }
+ 
+-  async generateFromHtml(html: string): Promise<Buffer> {
++  async createRenderingContext(asOf: Date, logo: string | null): Promise<PdfRenderingContext> {
++    await this.getBrowser()
++    return { ...documentContext(asOf, logo), environment: this.renderingEnvironment }
++  }
++
++  async generateFromHtml(html: string, context?: PdfRenderingContext): Promise<Buffer> {
+     return this.withPage(async (page) => {
+       await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
+       const pdf = await page.pdf({
+@@ -80,8 +94,8 @@ export class PdfService implements OnModuleDestroy {
+         printBackground: true,
+         margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
+       })
+-      return Buffer.from(pdf)
+-    })
++      return context ? stampPdfDates(Buffer.from(pdf), context) : Buffer.from(pdf)
++    }, context)
+   }
+ 
+   /**
+@@ -159,7 +173,7 @@ export class PdfService implements OnModuleDestroy {
+       }
+     }
+ 
+-    const html = generateInvoiceHtml({
++    const data = {
+       invoiceColor: invoice.organization.invoiceColor ?? DEFAULT_BRAND_COLOR,
+       invoiceTemplate: invoice.organization.invoiceTemplate ?? 'classic',
+       invoice: {
+@@ -198,8 +212,25 @@ export class PdfService implements OnModuleDestroy {
+         },
+       },
+       logoBase64,
+-    })
++    }
++    const logo =
++      logoBase64 === null
++        ? null
++        : `data:${detectMime(invoice.organization.logoStorageKey ?? '')};base64,${logoBase64}`
++    return this.renderInvoice(data, await this.createRenderingContext(new Date(), logo))
++  }
+ 
++  async renderInvoice(
++    data: Parameters<typeof generateInvoiceHtml>[0],
++    context: PdfRenderingContext,
++  ): Promise<Buffer> {
++    const logo = renderingLogo(context)
++    const expectedLogo =
++      data.logoBase64 === null
++        ? null
++        : `data:${detectMime(data.invoice.organization.logoUrl ?? '')};base64,${data.logoBase64}`
++    if (logo !== expectedLogo) throw new Error('Invoice resource mismatch')
++    const html = generateInvoiceHtml(data)
+     return this.withPage(async (page) => {
+       await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
+       const pdf = await page.pdf({
+@@ -207,8 +238,8 @@ export class PdfService implements OnModuleDestroy {
+         printBackground: true,
+         margin: { top: '0', right: '0', bottom: '0', left: '0' },
+       })
+-      return Buffer.from(pdf)
+-    })
++      return stampPdfDates(Buffer.from(pdf), context)
++    }, context)
+   }
+ 
+   // ── Browser pool ──────────────────────────────────────────────────────────
+@@ -219,6 +250,18 @@ export class PdfService implements OnModuleDestroy {
+    * första-anrop delar samma launchPromise så vi aldrig startar två browsers.
+    */
+   private async getBrowser(): Promise<Browser> {
++    const environment = renderingDigest(
++      JSON.stringify([
++        await pdfEnvironmentIdentity(),
++        BROWSER_LAUNCH_ARGS,
++        PDF_WAIT_UNTIL,
++        PdfService.prototype.generateFromHtml.toString(),
++        PdfService.prototype.renderInvoice.toString(),
++      ]),
++    )
++    this.renderingEnvironment ||= environment
++    if (environment !== this.renderingEnvironment)
++      throw new Error('Renderer environment changed; new process required')
+     if (this.browser && this.browser.connected) return this.browser
+     if (this.launchPromise) return this.launchPromise
+ 
+@@ -245,13 +288,32 @@ export class PdfService implements OnModuleDestroy {
+    * efter (även vid fel). Stänger pagen alltid — Puppeteer läcker minne om
+    * pages lämnas öppna.
+    */
+-  private async withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
++  private async withPage<T>(
++    fn: (page: Page) => Promise<T>,
++    context?: PdfRenderingContext,
++  ): Promise<T> {
+     await this.acquireSlot()
+     let page: Page | null = null
+     try {
+       const browser = await this.getBrowser()
++      if (context && context.environment !== this.renderingEnvironment)
++        throw new Error('Rendering identity mismatch')
+       page = await browser.newPage()
+-      return await fn(page)
++      let externalRequest = false
++      if (context) {
++        await page.setJavaScriptEnabled(false)
++        await page.setRequestInterception(true)
++        page.on('request', (request) => {
++          if (/^(data:|about:blank$)/.test(request.url())) void request.continue()
++          else {
++            externalRequest = true
++            void request.abort()
++          }
++        })
++      }
++      const result = await fn(page)
++      if (externalRequest) throw new Error('External rendering resource rejected')
++      return result
+     } finally {
+       if (page) {
+         try {
+diff --git a/apps/api/src/invoices/rendering-context.ts b/apps/api/src/invoices/rendering-context.ts
+new file mode 100644
+index 00000000..2bfbaabc
+--- /dev/null
++++ b/apps/api/src/invoices/rendering-context.ts
+@@ -0,0 +1,126 @@
++import { createHash } from 'node:crypto'
++import { execFile } from 'node:child_process'
++import { readFile, readdir } from 'node:fs/promises'
++import { dirname, join } from 'node:path'
++import { promisify } from 'node:util'
++import puppeteer from 'puppeteer'
++
++export interface DocumentContext {
++  asOf: string
++  logo: { dataUrl: string; digest: string } | null
++}
++
++export interface PdfRenderingContext extends DocumentContext {
++  environment: string
++}
++
++export function renderingDigest(value: string | Buffer): string {
++  return createHash('sha256').update(value).digest('hex')
++}
++
++export function documentContext(asOf: Date, logo: string | null): DocumentContext {
++  return {
++    asOf: asOf.toISOString(),
++    logo: logo === null ? null : { dataUrl: logo, digest: renderingDigest(logo) },
++  }
++}
++
++export function renderingLogo(context: DocumentContext): string | null {
++  if (context.logo && renderingDigest(context.logo.dataUrl) !== context.logo.digest) {
++    throw new Error('Rendering resource digest mismatch')
++  }
++  return context.logo?.dataUrl ?? null
++}
++
++export function stampPdfDates(pdf: Buffer, context: DocumentContext): Buffer {
++  const bytes = Buffer.from(pdf)
++  const end = bytes.indexOf('\nendobj')
++  const info = bytes.subarray(0, end).toString('latin1')
++  const trailer = bytes.subarray(bytes.lastIndexOf('\ntrailer\n')).toString('latin1')
++  if (
++    !info.startsWith('%PDF-1.4\n') ||
++    !info.includes('\n1 0 obj\n<<') ||
++    !/\/Info 1 0 R\b/.test(trailer)
++  )
++    throw new Error('Unsupported PDF Info structure')
++  const date = new Date(context.asOf).toISOString().slice(0, 19).replace(/\D/g, '')
++  for (const field of ['CreationDate', 'ModDate']) {
++    const matches = [...info.matchAll(new RegExp(`/${field} \\(D:[0-9]{14}\\+00'00'\\)`, 'g'))]
++    if (matches.length !== 1) throw new Error(`Unsupported PDF ${field}`)
++    const replacement = `/${field} (D:${date}+00'00')`
++    if (replacement.length !== matches[0][0].length) throw new Error('PDF date width changed')
++    bytes.write(replacement, matches[0].index, replacement.length, 'latin1')
++  }
++  return bytes
++}
++
++const execute = promisify(execFile)
++
++async function command(file: string, args: string[]): Promise<string> {
++  const result = await execute(file, args, { env: { ...process.env, LC_ALL: 'C' } })
++  return result.stdout
++}
++
++async function installationFiles(directory: string): Promise<string[]> {
++  const entries = await readdir(directory, { withFileTypes: true })
++  const files: string[] = []
++  for (const entry of entries) {
++    const file = join(directory, entry.name)
++    if (entry.isDirectory()) files.push(...(await installationFiles(file)))
++    else files.push(file)
++  }
++  return files
++}
++
++/** Collects actual dependencies, never a cached substitute for their bytes.
++ * The installation must remain immutable for the entire Chromium lifetime.
++ */
++export async function pdfEnvironmentIdentity(): Promise<string> {
++  if (process.platform !== 'linux')
++    throw new Error('PDF rendering requires the verified Linux environment')
++  const chrome = puppeteer.executablePath()
++  const fonts = (await command('/usr/bin/fc-list', ['--format', '%{file}\n'])).trim().split('\n')
++  const configList = await command('/usr/bin/fc-conflist', [])
++  const configs = [...configList.matchAll(/^\+ (.+?): /gm)].map((match) => match[1])
++  configs.push(process.env.FONTCONFIG_FILE ?? '/etc/fonts/fonts.conf')
++  const libraries: string[] = []
++  for (const executable of [chrome, process.execPath, '/usr/bin/fc-list']) {
++    const dependencies = await command('/usr/bin/ldd', [executable])
++    for (const line of dependencies.split('\n')) {
++      const match = line.match(/(?:=>\s+|^\s*)(\/\S+)\s+\(/)
++      if (match) libraries.push(match[1])
++      else if (line.includes('not found')) throw new Error('Missing renderer library')
++    }
++  }
++  const files = [
++    ...new Set([
++      ...(await installationFiles(dirname(chrome))),
++      ...fonts,
++      ...configs,
++      ...libraries,
++      process.execPath,
++      '/usr/bin/fc-list',
++      '/usr/bin/fc-conflist',
++      '/etc/os-release',
++    ]),
++  ].sort()
++  const digests: Array<[string, string]> = []
++  for (const file of files) digests.push([file, renderingDigest(await readFile(file))])
++  return renderingDigest(
++    JSON.stringify({
++      revision: 'payment-rendering-2.1',
++      files: digests,
++      configList,
++      node: process.versions,
++      architecture: process.arch,
++      chrome: await command(chrome, ['--version']),
++      locale: Intl.DateTimeFormat().resolvedOptions(),
++      fontconfig: Object.fromEntries(
++        Object.entries(process.env).filter(
++          ([key]) =>
++            key.startsWith('FONTCONFIG_') || ['LANG', 'LC_ALL', 'LC_CTYPE', 'TZ'].includes(key),
++        ),
++      ),
++    }),
++  )
++}
+diff --git a/apps/api/src/invoices/templates/invoice-pdf.template.ts b/apps/api/src/invoices/templates/invoice-pdf.template.ts
+index 24ed2edb..062629a5 100644
+--- a/apps/api/src/invoices/templates/invoice-pdf.template.ts
++++ b/apps/api/src/invoices/templates/invoice-pdf.template.ts
+@@ -109,7 +109,7 @@ function round2(n: number): number {
+ }
+ 
+ function formatDate(value: Date | string): string {
+-  return new Date(value).toLocaleDateString('sv-SE')
++  return new Date(value).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
+ }
+ 
+ function tenantName(t: InvoicePdfData['invoice']['tenant']): string {
+@@ -119,7 +119,7 @@ function tenantName(t: InvoicePdfData['invoice']['tenant']): string {
+   return t.companyName ?? '–'
+ }
+ 
+-function detectMime(logoUrl: string): string {
++export function detectMime(logoUrl: string): string {
+   const ext = logoUrl.split('.').pop()?.toLowerCase() ?? ''
+   if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+   if (ext === 'webp') return 'image/webp'
+diff --git a/apps/api/src/mail/mail.renderer.ts b/apps/api/src/mail/mail.renderer.ts
+index b11d1d9d..5efecb0c 100644
+--- a/apps/api/src/mail/mail.renderer.ts
++++ b/apps/api/src/mail/mail.renderer.ts
+@@ -1,6 +1,7 @@
+ import { Injectable, Logger } from '@nestjs/common'
+ import { render } from '@react-email/render'
+ import * as crypto from 'crypto'
++import { readFileSync } from 'node:fs'
+ import * as React from 'react'
+ import { Custom } from './templates/base/Custom'
+ import { MagicLink } from './templates/auth/MagicLink'
+@@ -45,12 +46,32 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
+ }
+ 
+ interface RenderResult {
++  identity: string
+   html: string
+   text: string
+ }
+ 
+ const CACHE_MAX_ENTRIES = 256
+ 
++export function mailEnvironment(): string {
++  const files = new Set<string>([__filename])
++  const visit = (entry: NodeModule): void => {
++    if (files.has(entry.filename)) return
++    files.add(entry.filename)
++    for (const child of entry.children ?? []) visit(child)
++  }
++  for (const entry of module.children ?? []) {
++    if (/\/(mail\/templates|@react-email|react)\//.test(entry.filename)) visit(entry)
++  }
++  const hash = crypto
++    .createHash('sha256')
++    .update(JSON.stringify([process.versions, React.version, 'UTC']))
++  for (const file of [...files].sort()) hash.update(file).update(readFileSync(file))
++  return hash.digest('hex')
++}
++
++const INITIAL_MAIL_ENVIRONMENT = mailEnvironment()
++
+ @Injectable()
+ export class MailRenderer {
+   private readonly logger = new Logger(MailRenderer.name)
+@@ -64,8 +85,15 @@ export class MailRenderer {
+   async render<T extends TemplateName>(
+     template: T,
+     props: TemplatePropsMap[T],
++    context = { environment: mailEnvironment() },
+   ): Promise<RenderResult> {
+-    const cacheKey = this.computeCacheKey(template, props)
++    if (
++      context.environment !== mailEnvironment() ||
++      context.environment !== INITIAL_MAIL_ENVIRONMENT
++    ) {
++      throw new Error('Mail rendering environment changed; new process required')
++    }
++    const cacheKey = this.computeCacheKey(template, { props, context })
+     const cached = this.cache.get(cacheKey)
+     if (cached) return cached
+ 
+@@ -81,7 +109,7 @@ export class MailRenderer {
+       render(element, { plainText: true }),
+     ])
+ 
+-    const result: RenderResult = { html, text }
++    const result: RenderResult = { html, text, identity: cacheKey }
+ 
+     if (this.cache.size >= CACHE_MAX_ENTRIES) {
+       // Trim oldest entry — Map preserves insertion order
+@@ -95,7 +123,7 @@ export class MailRenderer {
+ 
+   private computeCacheKey(template: TemplateName, props: unknown): string {
+     const serialized = stableStringify(props)
+-    const hash = crypto.createHash('sha1').update(serialized).digest('hex')
++    const hash = crypto.createHash('sha256').update(serialized).digest('hex')
+     return `${template}:${hash}`
+   }
+ }
+diff --git a/apps/api/src/mail/mail.service.ts b/apps/api/src/mail/mail.service.ts
+index 7a5e2bf8..e01c3dc1 100644
+--- a/apps/api/src/mail/mail.service.ts
++++ b/apps/api/src/mail/mail.service.ts
+@@ -282,6 +282,7 @@ function formatSek(amount: number): string {
+ 
+ function formatDateSv(d: Date | string): string {
+   return new Date(d).toLocaleDateString('sv-SE', {
++    timeZone: 'UTC',
+     year: 'numeric',
+     month: 'long',
+     day: 'numeric',
+@@ -625,6 +626,12 @@ export class MailService {
+   }
+ 
+   async sendRentNoticeReminder(opts: SendRentNoticeReminderOptions): Promise<string> {
++    return this.queue.enqueue(MailService.buildRentNoticeReminder(opts))
++  }
++
++  static buildRentNoticeReminder(
++    opts: SendRentNoticeReminderOptions,
++  ): EnqueueMailOptions<'custom'> {
+     const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
+     const feeRow =
+       opts.feeAmount > 0
+@@ -666,7 +673,7 @@ export class MailService {
+               </td></tr>
+         </table>
+       </div>`
+-    return this.enqueueTyped(
++    return MailService.mailPayload(
+       'custom',
+       'normal',
+       {
+@@ -692,6 +699,10 @@ export class MailService {
+   }
+ 
+   async sendRentNotice(opts: SendRentNoticeOptions): Promise<string> {
++    return this.queue.enqueue(MailService.buildRentNotice(opts))
++  }
++
++  static buildRentNotice(opts: SendRentNoticeOptions): EnqueueMailOptions<'custom'> {
+     const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
+     const bodyHtml = `
+       <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
+@@ -709,7 +720,7 @@ export class MailService {
+               </td></tr>
+         </table>
+       </div>`
+-    return this.enqueueTyped(
++    return MailService.mailPayload(
+       'custom',
+       'normal',
+       {
+@@ -910,6 +921,12 @@ export class MailService {
+   // ── Privat helper ────────────────────────────────────────────────────────────
+ 
+   private async enqueueTyped<T extends TemplateName>(
++    ...args: Parameters<typeof MailService.mailPayload<T>>
++  ): Promise<string> {
++    return this.queue.enqueue(MailService.mailPayload(...args))
++  }
++
++  static mailPayload<T extends TemplateName>(
+     template: T,
+     priority: MailPriority,
+     props: TemplatePropsMap[T],
+@@ -921,7 +938,7 @@ export class MailService {
+       idempotencyKey?: string | undefined
+       correlation?: MailCorrelation | undefined
+     },
+-  ): Promise<string> {
++  ): EnqueueMailOptions<T> {
+     const opts: EnqueueMailOptions<T> = {
+       template,
+       props,
+@@ -933,6 +950,6 @@ export class MailService {
+     if (extras.attachments) opts.attachments = extras.attachments
+     if (extras.idempotencyKey) opts.idempotencyKey = extras.idempotencyKey
+     if (extras.correlation) opts.correlation = extras.correlation
+-    return this.queue.enqueue(opts)
++    return opts
+   }
+ }
+diff --git a/apps/api/src/mail/templates/shared/format.ts b/apps/api/src/mail/templates/shared/format.ts
+index 39f67c89..38e8a8b5 100644
+--- a/apps/api/src/mail/templates/shared/format.ts
++++ b/apps/api/src/mail/templates/shared/format.ts
+@@ -8,6 +8,7 @@ export function formatSek(amount: number): string {
+ 
+ export function formatDate(d: Date | string): string {
+   return new Date(d).toLocaleDateString('sv-SE', {
++    timeZone: 'UTC',
+     year: 'numeric',
+     month: 'long',
+     day: 'numeric',

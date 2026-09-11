@@ -1,0 +1,48 @@
+Syntetiska Fastigheter AB
+F-SYN-2026-customer-classic
+
+
+
+
+   FAKTURERAS TILL                                                       UTFÄRDANDEDATUM              2026-08-31
+   Syntetisk Kund AB                                                     FÖRFALLODATUM                2026-09-30
+   kund@example.test                                                     BETALNINGSVILLKOR            30 dagar
+   Kundgatan 9
+                                                                         BANKGIRO                     5050-1055
+   000 01 Teststaden
+
+
+
+  ✓ Godkänd för F-skatt (sedan 2020-01-15)                   Momsregistreringsnummer: SETESTORG001
+
+
+
+  BESKRIVNING                                          ANTAL                  À-PRIS          MOMS                      BELOPP
+
+
+  Lokalservice september                                      2           400,00 kr             25%              1 000,00 kr
+
+  Material för lokalservice                                   1            80,00 kr             25%                 100,00 kr
+
+
+
+                                                                                 Netto exkl. moms                      880,00 kr
+                                                                                 Moms                                  220,00 kr
+
+
+                                                                                 Att betala                     1 100,00 kr
+
+
+
+                                           OC R-N UMME R — ANGE ALLTI D VID B ETALNING
+
+
+                                                 1234567897
+                                             Bankgiro: 5050-1055 · Att betala: 1 100,00 kr
+
+
+
+
+Syntetiska Fastigheter AB · TEST-ORG-001                                   ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden
+Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001
+

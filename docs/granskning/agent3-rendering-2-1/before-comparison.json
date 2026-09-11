@@ -1,0 +1,498 @@
+[
+  {
+    "id": "invoice-customer-classic",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "074cacd71c829de820d902ad5f94685e7939e1ac87ef088cb5793da86068a017",
+      "sha2": "517691a6a95aece5af84fa8f0831ff35e4470e5bdb29d94c8afbe2ed4469bea1",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142927+00'00')"],
+        [237, 271, "/ModDate (D:20260911142927+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "sha2": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "invoice-rent-classic",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "084d4fa1b988cc1c362dba6c568278e1e94b2c7d56c39387c416f1777f1e629a",
+      "sha2": "340611d996e0849b2dd3886c2bbb0037e96ba11cb755f40a89d020dc3911429c",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142927+00'00')"],
+        [237, 271, "/ModDate (D:20260911142927+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "sha2": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "invoice-utility-classic",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "f6b613618e3d07ff7e4e63bdb31b18f85a6f1afcdca41ea1eba340d719a6f656",
+      "sha2": "0b436eff40faeb317b894da7effa818addeb9157a3d59262d23d4c7b721732fa",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142928+00'00')"],
+        [237, 271, "/ModDate (D:20260911142928+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "sha2": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "invoice-customer-modern",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "661c37c90e666ae37af21e8d611fa78ff59157dbdfee64a7118042145255068d",
+      "sha2": "19e5e4a9e9fb9be2646d2df2d60afedc33388ce8934b2b724c74dc5c002ade97",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142928+00'00')"],
+        [237, 271, "/ModDate (D:20260911142928+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "sha2": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "invoice-customer-minimal",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "5edf2c215eb07bf4465a0d772fe6d2606375edce2c9b11650d74feb52da2c51a",
+      "sha2": "a3f7f8577f15b62d5b5bdad76f9e5e6d9d96c69b4c3a9c4e5a1841258b2e3be9",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142928+00'00')"],
+        [237, 271, "/ModDate (D:20260911142928+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "sha2": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "invoice-customer-multipage",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "e1cbc15810c734fdbde2c70b9d65696acfdf4ced8e923ed8ad2b13b76df784ea",
+      "sha2": "391c664df0713608df5fa33ba0bec5487b07572d27a971126f9fc882dce5f840",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142928+00'00')"],
+        [237, 271, "/ModDate (D:20260911142928+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "sha2": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "notice-rent",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "16c488781fce702d41e8d3c60da7c1572319b0473d66587699b073ae86f0c86f",
+      "sha2": "8984ac07317c1b983ba4922b72e3c09b9710fa0e2d7cac4d1caeec81b43b8deb",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142928+00'00')"],
+        [237, 271, "/ModDate (D:20260911142928+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "sha2": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "notice-prorated-backfill",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "4ac789a0328a0288c51b1424a550ae8913087291134652617218a0510f82bd97",
+      "sha2": "2d88565a42ee848496904bae194129590cdf78aa83d9c8fcee9a2e138a27d415",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142929+00'00')"],
+        [237, 271, "/ModDate (D:20260911142929+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "sha2": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "notice-deposit",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "49d870d34f830d840e7692b7eb15f3632dac712b19e1340a0c15d8c883a149ba",
+      "sha2": "d7acb773aeb771786f22814d7a431693a94a3200c17234dadfdd2da842706ed6",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142929+00'00')"],
+        [237, 271, "/ModDate (D:20260911142929+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "sha2": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "notice-utility-credit",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "8ed7b60b52a24fbbeb9ce5942e7560e11c66b5b9439b0d5c6f56209432216540",
+      "sha2": "f698ce1a9190df25afc8d325a24b338ffb619715c8bda48468495684ddfb6fe1",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142929+00'00')"],
+        [237, 271, "/ModDate (D:20260911142929+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "sha2": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "reminder-rent-partpaid",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "e91f2a6b6439d79e288385fa07793cca2931eb5d53d4140bf962647b548537c1",
+      "sha2": "9bc1d1908b3f56674ceebf70b9028c7f185cb9dc2614ab0e57105aff720c37bf",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142929+00'00')"],
+        [237, 271, "/ModDate (D:20260911142929+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "sha2": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "reminder-utility-partpaid-credit",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "a5002da991320e598784580aee406327c450562a23757e2502092dc05a5f38b8",
+      "sha2": "b647c8cf8e791e3498184146703cef5550056f57f2ae508815692a8076822783",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142930+00'00')"],
+        [237, 271, "/ModDate (D:20260911142930+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "sha2": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "collection-invoice-clean",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "06539336177ab48f846c3b19ff88c383207512633d00bb3cf0b6f3fcd0902477",
+      "sha2": "3b630879346d3b61fe85735b7b93619c4cdc12a2b8def57a2b9350a0407c9cf5",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142930+00'00')"],
+        [237, 271, "/ModDate (D:20260911142930+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "sha2": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "collection-invoice-utility",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "d33c6d76d24453eda0bb05b7bca7108cc7931b56e4f47a7d435d6654bdb029dc",
+      "sha2": "4691c228330b11cdfa477228e3e02014c4eb0ef7cee9dfb1b58cfe72f6a2b6cd",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142930+00'00')"],
+        [237, 271, "/ModDate (D:20260911142930+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "sha2": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "collection-notice-clean",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "9f99d04ecb7bc385b6a1ef4c66ff5c59cafb9eb52c80ed0479a345343056c8dd",
+      "sha2": "bfa5cf3969f18369177c08be7d72d5508e8c8a9df7cd1a47ef3f6993b9917751",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142930+00'00')"],
+        [237, 271, "/ModDate (D:20260911142930+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "sha2": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "collection-notice-utility-credit",
+    "pdf": {
+      "rawEqual": false,
+      "sha1": "558a16fe3ab16def57827b40ab70a4e33422ace635d9cb1f675d26d6cda4fce5",
+      "sha2": "3235f450c374b0d5cbd0609ab9e2c1b7dc9b74ce9a9813a72c35d2811edb2921",
+      "differingBytes": 8,
+      "sameLength": true,
+      "dateFields": [
+        [197, 236, "/CreationDate (D:20260911142931+00'00')"],
+        [237, 271, "/ModDate (D:20260911142931+00'00')"]
+      ],
+      "onlyDateFieldsDiffer": true
+    },
+    "html": {
+      "rawEqual": true,
+      "sha1": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "sha2": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "mail-invoice",
+    "html": {
+      "rawEqual": true,
+      "sha1": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "sha2": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "text": {
+      "rawEqual": true,
+      "sha1": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "sha2": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "envelope": {
+      "rawEqual": false,
+      "sha1": "036af4bd1a793068a15337972b9c3434f79c8ea3e7e23d2e959bd1f43320f8ca",
+      "sha2": "0a43af57a8cc2d01f779025dfb062ece980b9512565f9cdcd7561c6700ef33a0",
+      "differingBytes": 9,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "mail-overdue",
+    "html": {
+      "rawEqual": true,
+      "sha1": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "sha2": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "text": {
+      "rawEqual": true,
+      "sha1": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "sha2": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "envelope": {
+      "rawEqual": true,
+      "sha1": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "sha2": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "mail-friendly",
+    "html": {
+      "rawEqual": true,
+      "sha1": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "sha2": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "text": {
+      "rawEqual": true,
+      "sha1": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "sha2": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "envelope": {
+      "rawEqual": true,
+      "sha1": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "sha2": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "mail-formal",
+    "html": {
+      "rawEqual": true,
+      "sha1": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "sha2": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "text": {
+      "rawEqual": true,
+      "sha1": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "sha2": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "envelope": {
+      "rawEqual": true,
+      "sha1": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "sha2": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "differingBytes": 0,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "mail-notice",
+    "html": {
+      "rawEqual": true,
+      "sha1": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "sha2": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "text": {
+      "rawEqual": true,
+      "sha1": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "sha2": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "envelope": {
+      "rawEqual": false,
+      "sha1": "c5dce6178f93c397573fffc521f7e4a2ef9416857d56fb3dfe512cd9141b17ac",
+      "sha2": "c745d71e6309db63ce6604f8ab58a9eedc5bd9fa9da592f6c50ce07cce12308a",
+      "differingBytes": 9,
+      "sameLength": true
+    }
+  },
+  {
+    "id": "mail-notice-reminder",
+    "html": {
+      "rawEqual": true,
+      "sha1": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "sha2": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "text": {
+      "rawEqual": true,
+      "sha1": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "sha2": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "differingBytes": 0,
+      "sameLength": true
+    },
+    "envelope": {
+      "rawEqual": false,
+      "sha1": "d7ccceb0880c7296a50085fa0870ea6f659e5afd332c58b01f4cbdd8cfc4838d",
+      "sha2": "4dd325d172f7783744496a9088bd44c36463cab68cd4ff98df4554f31f1282af",
+      "differingBytes": 9,
+      "sameLength": true
+    }
+  }
+]

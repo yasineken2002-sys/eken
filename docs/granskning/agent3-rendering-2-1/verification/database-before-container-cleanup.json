@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-09-11T18:11:19.893917+00:00",
+  "container": "agent3-r21-20260911",
+  "containerId": "f55332d891c5fa68c67584e16e95169c8afe1de9d646a260a068a2cbe27dae39",
+  "publicTableCount": 115,
+  "publicRows": 191,
+  "publicNonzero": {
+    "CustomerNumberSequence": 1,
+    "ReferenceInterestRate": 1,
+    "_prisma_migrations": 189
+  },
+  "schemas": [
+    "information_schema",
+    "pg_catalog",
+    "pg_toast",
+    "public"
+  ],
+  "cleanup": "Own test schemas were removed by the successful suites; own container removal recorded separately."
+}

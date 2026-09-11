@@ -169,8 +169,22 @@ export class DeliveryExecution {
       const d = await this.load(tx, decisionId)
       const state = d.decision.events[0]!.state
       if (!['DECIDED', 'SENDING', 'UNKNOWN'].includes(state)) return null
-      if (state === 'DECIDED') {
+      const [prior] = await tx.$queryRaw<Array<{ blocked: boolean; granted: boolean }>>`
+        SELECT coalesce(bool_or("kind" = 'CONFLICT' AND "evidence"->>'reason' = 'RENDER_IDENTITY_CONFLICT'), false) AS blocked,
+               coalesce(bool_or("kind" IN ('FIRST', 'RETRY')), false) AS granted
+        FROM "DeliveryObservation" WHERE "decisionId" = ${decisionId}`
+      if (prior?.blocked) return null
+      if (state === 'DECIDED' || !prior?.granted) {
         try {
+          const current = this.ports.resources()
+          const expected = d.resources as Record<string, string>
+          if (
+            Object.keys(current).length !== Object.keys(expected).length ||
+            Object.entries(current).some(
+              ([key, bytes]) => deliveryDigest(Buffer.from(bytes, 'base64')) !== expected[key],
+            )
+          )
+            throw new ConflictException('RENDER_IDENTITY_CONFLICT')
           const fresh = await this.decisions.snapshot(tx, this.scope(d))
           if (fresh.fingerprint !== d.decision.fingerprint)
             throw new ConflictException('DELIVERY_SNAPSHOT_CONFLICT')
@@ -182,8 +196,9 @@ export class DeliveryExecution {
           })
           return null // Nekning committas; inget undantag rullar tillbaka spåret.
         }
-        await this.transition(tx, d, 'SENDING')
-      } else if (state === 'SENDING') await this.transition(tx, d, 'UNKNOWN')
+        if (state === 'DECIDED') await this.transition(tx, d, 'SENDING')
+      }
+      if (state === 'SENDING') await this.transition(tx, d, 'UNKNOWN')
       const grant = await this.observe(tx, d, state === 'DECIDED' ? 'FIRST' : 'RETRY')
       return grant.kind === 'CLOSED' ? null : { d, grant }
     }) // Först efter denna ägda commit får någon fortsätta mot nätet.

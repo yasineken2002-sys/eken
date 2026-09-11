@@ -1,3 +1,4 @@
+import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
 import {
   BadRequestException,
   ConflictException,
@@ -13,7 +14,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
-import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
+import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { DEFAULT_BRAND_COLOR, INVOICE_TRANSITIONS, isValidTransition } from '@eken/shared'
 import type { InvoiceStatus } from '@eken/shared'
 import { UserRole } from '@prisma/client'
@@ -192,7 +193,7 @@ export class CollectionExportService {
 
     // Först HÄR börjar det dyra arbetet. Misslyckades claimen har vi redan
     // kastat — ingen PDF genererad, ingen InvoiceEvent skriven.
-    const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
+    const pdfBuffer = await this.generatePdf(invoice)
     const csvBuffer = Buffer.from(this.buildCsv([invoice]), 'utf8')
 
     const date = new Date().toISOString().slice(0, 10)
@@ -334,7 +335,7 @@ export class CollectionExportService {
     const zip = new JSZip()
     for (const invoice of invoices) {
       const safeNumber = invoice.invoiceNumber.replace(/[^\w-]/g, '_')
-      const pdfBuffer = await this.pdf.generateFromHtml(await this.buildPdfHtml(invoice))
+      const pdfBuffer = await this.generatePdf(invoice)
       zip.file(`${safeNumber}/inkasso-${safeNumber}.pdf`, pdfBuffer)
     }
     // Samlad CSV med alla fakturor — många inkassobolag (Visma Collectors,
@@ -548,6 +549,10 @@ export class CollectionExportService {
    * faktura kunde nekas på en siffra och exporteras på en annan.
    */
   private outstandingFor(invoice: InvoiceWithCollectionData): InvoiceDebt {
+    return CollectionExportService.outstandingFor(invoice)
+  }
+
+  private static outstandingFor(invoice: InvoiceWithCollectionData): InvoiceDebt {
     return computeInvoiceDebt({
       total: invoice.total,
       allocations: invoice.payments.map((p) => p.amount),
@@ -869,11 +874,26 @@ export class CollectionExportService {
     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
   }
 
-  private async buildPdfHtml(invoice: InvoiceWithCollectionData): Promise<string> {
+  private async generatePdf(invoice: InvoiceWithCollectionData): Promise<Buffer> {
+    const context = await this.pdf.collectRenderingContext(
+      invoice.organization.logoStorageKey ?? null,
+    )
+    const html = CollectionExportService.buildPdfHtml(
+      invoice,
+      context,
+      this.pn.reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
+    )
+    return this.pdf.generateFromHtml(html, context)
+  }
+
+  static buildPdfHtml(
+    invoice: InvoiceWithCollectionData,
+    context: DocumentContext,
+    partyPersonalNumber: string | null,
+  ): string {
     const party = invoice.tenant ?? invoice.customer
     // Dekryptering vid användningstillfället — kravbrevet ska bära gäldenärens
     // personnummer, inget annat i den här filen behöver klartexten.
-    const partyPersonalNumber = this.pn.reveal(party?.personalNumberEnc)
     const partyName = party
       ? (party.companyName ?? `${party.firstName ?? ''} ${party.lastName ?? ''}`.trim())
       : '–'
@@ -903,13 +923,13 @@ export class CollectionExportService {
     // de ingår i totalen och därmed i restskulden. Noten under beloppet
     // fortsätter redovisa dem separat.
     // Samma beräkning som grinden i claimForExport använde — se outstandingFor.
-    const debt = this.outstandingFor(invoice)
+    const debt = CollectionExportService.outstandingFor(invoice)
     // debt.paid, INTE total − outstanding: outstanding är klampad till 0 vid
     // överbetalning, så subtraktionen hade visat ett för lågt betalt-belopp på
     // ett dokument som går till inkasso. Fångat av båda granskarna oberoende.
     const alreadyPaid = debt.paid
     const totalDue = debt.outstanding.toNumber()
-    const today = new Date().toLocaleDateString('sv-SE')
+    const today = new Date(context.asOf).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
     const leaseRef = invoice.lease
       ? `${invoice.lease.unit.property.name} – ${invoice.lease.unit.name} (${invoice.lease.unit.unitNumber})`
       : '–'
@@ -918,7 +938,7 @@ export class CollectionExportService {
       .map((r) => {
         const label = REMINDER_LABEL[r.type]
         return `<tr>
-          <td>${r.sentAt.toLocaleDateString('sv-SE')}</td>
+          <td>${r.sentAt.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</td>
           <td>${label}</td>
           <td style="text-align:right">${formatSek(Number(r.feeAmount))}</td>
         </tr>`
@@ -937,7 +957,7 @@ export class CollectionExportService {
       .join('')
 
     const org = invoice.organization
-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    const logoDataUrl = renderingLogo(context)
     // Steg 3, PR 3e: dokumentet var HELT brand-blint (egen inline-HTML, ingen
     // logga, egen dokumentgrön #1a4a28). Hårdkodad #1a4a28 → orgens brandfärg
     // (invoiceColor) med delad DEFAULT_BRAND_COLOR som fallback. #1a4a28 låg
@@ -972,7 +992,7 @@ export class CollectionExportService {
     <div class="docref">
       <div class="meta"><strong>Faktura</strong></div>
       <div class="docnum">${invoice.invoiceNumber}</div>
-      <div class="meta">Förfallodatum ${invoice.dueDate.toLocaleDateString('sv-SE')}</div>
+      <div class="meta">Förfallodatum ${invoice.dueDate.toLocaleDateString('sv-SE', { timeZone: 'UTC' })}</div>
     </div>
   </div>
 

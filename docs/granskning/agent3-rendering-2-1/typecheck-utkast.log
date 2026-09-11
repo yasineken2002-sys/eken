@@ -1,0 +1,26 @@
+
+> @eken/api@0.0.1 typecheck /workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api
+> tsc --noEmit -p tsconfig.typecheck.json
+
+src/avisering/rent-reminder.notice-pdf-branding.spec.ts(87,24): error TS2576: Property 'buildReminderPdfHtml' does not exist on type 'RentReminderService'. Did you mean to access the static member 'RentReminderService.buildReminderPdfHtml' instead?
+src/avisering/rent-reminder.service.spec.ts(438,33): error TS2576: Property 'buildReminderPdfHtml' does not exist on type 'RentReminderService'. Did you mean to access the static member 'RentReminderService.buildReminderPdfHtml' instead?
+src/avisering/rent-reminder.service.spec.ts(456,33): error TS2576: Property 'buildReminderPdfHtml' does not exist on type 'RentReminderService'. Did you mean to access the static member 'RentReminderService.buildReminderPdfHtml' instead?
+src/avisering/rent-reminder.service.spec.ts(981,32): error TS2576: Property 'buildReminderPdfHtml' does not exist on type 'RentReminderService'. Did you mean to access the static member 'RentReminderService.buildReminderPdfHtml' instead?
+src/avisering/rent-reminder.service.spec.ts(1000,32): error TS2576: Property 'buildReminderPdfHtml' does not exist on type 'RentReminderService'. Did you mean to access the static member 'RentReminderService.buildReminderPdfHtml' instead?
+src/collections/rent-collection-export.service.ts(490,32): error TS2576: Property 'deliveredAt' does not exist on type 'RentCollectionExportService'. Did you mean to access the static member 'RentCollectionExportService.deliveredAt' instead?
+src/invoices/rendering-context.ts(51,32): error TS2532: Object is possibly 'undefined'.
+src/invoices/rendering-context.ts(52,30): error TS2532: Object is possibly 'undefined'.
+src/invoices/rendering-context.ts(91,33): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/invoices/rendering-context.ts(108,43): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/invoices/rendering-context.ts(108,80): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(path: PathLike | FileHandle, options?: ({ encoding?: null | undefined; flag?: OpenMode | undefined; } & Abortable) | null | undefined): Promise<...>', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'PathLike | FileHandle'.
+      Type 'undefined' is not assignable to type 'PathLike | FileHandle'.
+  Overload 2 of 3, '(path: PathLike | FileHandle, options?: BufferEncoding | (ObjectEncodingOptions & Abortable & { flag?: OpenMode | undefined; }) | null | undefined): Promise<...>', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'PathLike | FileHandle'.
+      Type 'undefined' is not assignable to type 'PathLike | FileHandle'.
+/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/apps/api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @eken/api@0.0.1 typecheck: `tsc --noEmit -p tsconfig.typecheck.json`
+Exit status 2

@@ -28,6 +28,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { CollectionExportService } from './collection-export.service'
+import { documentContext } from '../invoices/rendering-context'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
@@ -86,23 +87,16 @@ const INVOICE = {
   },
 }
 
-function makeService(): CollectionExportService {
-  const noop = {}
-  return new CollectionExportService(
-    noop as never,
-    testPersonalNumberService(), // prisma
-    noop as never, // pdf
-    noop as never, // storage
-    noop as never, // pdfQueue
-  )
-}
-
 async function render(overrides: Record<string, unknown> = {}): Promise<string> {
-  // buildPdfHtml är privat men är den enda rena renderingsvägen.
-  return (makeService() as unknown as { buildPdfHtml(i: unknown): Promise<string> }).buildPdfHtml({
+  const invoice = {
     ...INVOICE,
     ...overrides,
-  })
+  } as unknown as Parameters<typeof CollectionExportService.buildPdfHtml>[0]
+  return CollectionExportService.buildPdfHtml(
+    invoice,
+    documentContext(new Date('2026-07-21T12:00:00Z'), null),
+    testPersonalNumberService().reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
+  )
 }
 
 describe('CollectionExportService.buildPdfHtml — brandad shell + juridisk/ekonomisk integritet (PR 3e)', () => {

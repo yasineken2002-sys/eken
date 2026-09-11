@@ -1,0 +1,72 @@
+                                                      Inkassounderlag – hyresfordran
+
+
+Genererat 2026-09-11 · Eveno fastighetssystem                                                                    Hyresavi
+
+                                                                                          AVI-SYN-2026-0904
+                                                                                                   Förfallodatum 2026-07-31
+                                                                                                          OCR 1234567897
+
+
+
+  BORGENÄR (FASTIGHETSÄGARE)                                        GÄLDENÄR (HYRESGÄST)
+
+  Syntetiska Fastigheter AB                                         Testa Åberg
+  Org.nr: TEST-ORG-001                                              Exempelvägen 4
+  Testgatan 12                                                      000 01 Teststaden
+  000 00 Teststaden                                                 E-post: testa.aberg@example.test
+  E-post: ekonomi@example.test
+
+
+
+Skuldspecifikation
+
+ POST                                                                                                             BELOPP
+
+
+ Kapital (hyra och förbrukning)                                                                                9 400,00 kr
+
+ Påminnelseavgift                                                                                                 60,00 kr
+
+ Dröjsmålsränta (t.o.m. 2026-09-09)                                                                             108,17 kr
+
+
+
+Dröjsmålsränta per period (räntelagen 6 §, 9 §)
+
+ PERIOD                                                           DAGAR                    RÄNTESATS              BELOPP
+
+
+ 2026-08-01 – 2026-08-31                                               31                      10.50 %            83,83 kr
+
+ 2026-09-01 – 2026-09-09                                                9                      10.50 %            24,34 kr
+
+
+Dröjsmålsräntan är referensräntan + 8 procentenheter och beräknas på det obetalda kapitalet från dagen efter
+förfallodagen. Vid halvårsskifte delas perioden så varje del bär sitt halvårs referensränta.
+
+
+
+   TOTAL SKULD ATT DRIVA IN
+
+   Kapital + påminnelseavgift + dröjsmålsränta                                                  9 568,17 kr
+
+Krav- och leveranshistorik
+
+Avi utfärdad och skickad: 2026-07-20
+Påminnelse skickad: 2026-08-07
+Påminnelse levererad (verifierad): 2026-08-08
+Markerad inkasso-redo: 2026-09-10
+Lagrad påminnelsekopia: bifogad
+Kontrakts- och fastighetsreferens
+
+Testhuset – Lägenhet 1101 (1101)
+
+
+Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att skicka det vidare till sitt valda inkassobolag (t.ex. Visma
+Collectors, Intrum eller Lindorff). Påminnelseavgift (60 kr) utgår enligt 4 § lagen (1981:739) om ersättning för inkassokostnader.
+Dröjsmålsränta beräknas enligt räntelagen (1975:635) 6 § (referensränta + 8 procentenheter) och redovisas per period enligt 9 §.
+Inkassobolaget ansvarar för att utfärda formellt inkassokrav enligt inkassolagen (1974:182) 5 § med skälig
+betalningstid innan betalningsföreläggande eller talan väcks. Eveno är ett fastighetssystem, bedriver INTE inkassoverksamhet
+och har inte tillstånd enligt inkassolagen.
+

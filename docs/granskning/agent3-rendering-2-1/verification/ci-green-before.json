@@ -1,0 +1,4849 @@
+{
+  "conclusion": "success",
+  "databaseId": 34631616328,
+  "event": "pull_request",
+  "headSha": "3eecefa5711aa64bfdb13b9a9b151ed36bc16d76",
+  "jobs": [
+    {
+      "completedAt": "2026-09-11T18:08:55Z",
+      "conclusion": "success",
+      "databaseId": 103369538255,
+      "name": "Sequence allocation atomicity guard",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:42Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (canary on the derivation, both directions of R2)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:52Z",
+          "conclusion": "success",
+          "name": "Verify every number sequence is allocated atomically",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:52Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:52Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:52Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538255"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:50Z",
+      "conclusion": "success",
+      "databaseId": 103369538452,
+      "name": "History registry guard",
+      "startedAt": "2026-09-11T18:08:38Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:40Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:42Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule, scope and comment canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "History registry guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538452"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:50Z",
+      "conclusion": "success",
+      "databaseId": 103369538505,
+      "name": "Skip precondition guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Verify every conditional skip asserts its precondition",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538505"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:19Z",
+      "conclusion": "success",
+      "databaseId": 103369538512,
+      "name": "Self-tests must be able to fail",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:42Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (four fixtures, shadow tree, floor)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Verify every self-test can actually fail",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538512"
+    },
+    {
+      "completedAt": "2026-09-11T18:10:00Z",
+      "conclusion": "success",
+      "databaseId": 103369538517,
+      "name": "Typecheck",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:40Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:50Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:59Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:58Z",
+          "conclusion": "success",
+          "name": "Run typecheck",
+          "number": 6,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:58Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:58Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:59Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 12,
+          "startedAt": "2026-09-11T18:09:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:59Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-09-11T18:09:59Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538517"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:50Z",
+      "conclusion": "success",
+      "databaseId": 103369538523,
+      "name": "AI tool iteration cap guard",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:39Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:43Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Verify the tool iteration cap is single-sourced and never silent",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538523"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:53Z",
+      "conclusion": "success",
+      "databaseId": 103369538529,
+      "name": "Redaction single-source guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (both detections, canary)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:50Z",
+          "conclusion": "success",
+          "name": "Verify redaction logic exists in exactly one place",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:50Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:50Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:50Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538529"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:51Z",
+      "conclusion": "success",
+      "databaseId": 103369538565,
+      "name": "PDF template self-contained guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (5 canaries, each must fire)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Verify every PDF template is self-contained",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538565"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:48Z",
+      "conclusion": "success",
+      "databaseId": 103369538627,
+      "name": "AI tool effect linkage guard",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Verify every AI tool execution can be traced to its effects",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538627"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:48Z",
+      "conclusion": "success",
+      "databaseId": 103369538641,
+      "name": "DTO placement guard",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (positive, three negatives, derived total)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Verify no validated class lives outside a *.dto.ts file",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538641"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:47Z",
+      "conclusion": "success",
+      "databaseId": 103369538649,
+      "name": "AI action tool authorization guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:40Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Verify binding tools cannot execute without a consumed confirmation",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538649"
+    },
+    {
+      "completedAt": "2026-09-11T18:17:48Z",
+      "conclusion": "success",
+      "databaseId": 103369538664,
+      "name": "Tests",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:39Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Initialize containers",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:04Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:12Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-09-11T18:09:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Apply migrations",
+          "number": 7,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:33Z",
+          "conclusion": "success",
+          "name": "Install renderer browser and PDF inspection tools",
+          "number": 8,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Run test suite",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Verify consumption gate DB tests actually ran",
+          "number": 10,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Verify delivery decision DB assertions actually passed",
+          "number": 11,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Verify no tests were skipped",
+          "number": 12,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 21,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 22,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 23,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:46Z",
+          "conclusion": "success",
+          "name": "Stop containers",
+          "number": 24,
+          "startedAt": "2026-09-11T18:17:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:46Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-09-11T18:17:46Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538664"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:10Z",
+      "conclusion": "success",
+      "databaseId": 103369538672,
+      "name": "Generated legal knowledge sync guard",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:39Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:42Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:54Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:04Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (a source edit without regeneration must fail it)",
+          "number": 6,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:06Z",
+          "conclusion": "success",
+          "name": "Verify generated/ matches .claude/knowledge/lagar/",
+          "number": 7,
+          "startedAt": "2026-09-11T18:09:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:06Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 12,
+          "startedAt": "2026-09-11T18:09:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:06Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 13,
+          "startedAt": "2026-09-11T18:09:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:06Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 14,
+          "startedAt": "2026-09-11T18:09:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:06Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-09-11T18:09:06Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538672"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:50Z",
+      "conclusion": "success",
+      "databaseId": 103369538688,
+      "name": "Resumption engine shadow-mode guard",
+      "startedAt": "2026-09-11T18:08:38Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:40Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (all four identifiers, prose, substrings, floor)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Verify the resumption engine has no path to execution",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538688"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:51Z",
+      "conclusion": "success",
+      "databaseId": 103369538713,
+      "name": "Platform invoice-number source guard",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:39Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:42Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (good passes, bypass variants caught)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Verify invoice-number is only sourced from the shared sequence",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:49Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:49Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:49Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538713"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:59Z",
+      "conclusion": "success",
+      "databaseId": 103369538717,
+      "name": "Critical index guard",
+      "startedAt": "2026-09-11T18:08:49Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:50Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:52Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (SQL identifier parsing, floor, counter-probes)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Verify critical partial DB indexes survive migrations",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538717"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:01Z",
+      "conclusion": "success",
+      "databaseId": 103369538723,
+      "name": "Source scanner canary guard",
+      "startedAt": "2026-09-11T18:08:49Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:51Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:53Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (meta-canary + parity both ways)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Verify every scanner mode has a canary that can fail",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538723"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:05Z",
+      "conclusion": "success",
+      "databaseId": 103369538732,
+      "name": "Equipment chain guard",
+      "startedAt": "2026-09-11T18:08:52Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:54Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule and scope canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Equipment chain guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538732"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:46Z",
+      "conclusion": "success",
+      "databaseId": 103369538745,
+      "name": "Request contract guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:40Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (views, both directions, multipart exemption)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Verify no new unshared request payload types",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538745"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:49Z",
+      "conclusion": "success",
+      "databaseId": 103369538759,
+      "name": "Reminder fee amount guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (good passes, bypass variants caught)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Verify every reminder-fee writer resolves its amount through the shared rule",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:47Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:47Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538759"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:29Z",
+      "conclusion": "success",
+      "databaseId": 103369538765,
+      "name": "Lint",
+      "startedAt": "2026-09-11T18:08:37Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:39Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:43Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:55Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:26Z",
+          "conclusion": "success",
+          "name": "Run lint",
+          "number": 6,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:26Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 12,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538765"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:06Z",
+      "conclusion": "success",
+      "databaseId": 103369538771,
+      "name": "Tool authority guard",
+      "startedAt": "2026-09-11T18:08:52Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:57Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (R1a-d, R2, R3, R4 and scope canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Tool authority guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538771"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:03Z",
+      "conclusion": "success",
+      "databaseId": 103369538784,
+      "name": "AI display masking guard",
+      "startedAt": "2026-09-11T18:08:51Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:53Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:54Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:59Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (detection, both directions, canary)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Verify every AI read path masks or is acknowledged",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538784"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:48Z",
+      "conclusion": "success",
+      "databaseId": 103369538786,
+      "name": "as never guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:41Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (positive, five negatives, derived total)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Verify no new `as never` in production code",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:46Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:46Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538786"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:03Z",
+      "conclusion": "success",
+      "databaseId": 103369538813,
+      "name": "Identifier regex ASCII ratchet",
+      "startedAt": "2026-09-11T18:08:50Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:52Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:55Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:59Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:59Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (MISSAD/KAPAD, both directions, keyword rule, views)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Verify no new ASCII identifier derivations",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538813"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:11Z",
+      "conclusion": "success",
+      "databaseId": 103369538845,
+      "name": "Cron error sink guard",
+      "startedAt": "2026-09-11T18:08:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule + scope + ack both ways)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:08Z",
+          "conclusion": "success",
+          "name": "Verify every @Cron reaches a durable failure sink",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:08Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:08Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538845"
+    },
+    {
+      "completedAt": "2026-09-11T18:08:46Z",
+      "conclusion": "success",
+      "databaseId": 103369538857,
+      "name": "OCR provenance guard",
+      "startedAt": "2026-09-11T18:08:36Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:38Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:40Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Verify every OCR extractor input is classified and prose requires Luhn",
+          "number": 5,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:44Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:08:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:45Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:08:45Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538857"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:04Z",
+      "conclusion": "success",
+      "databaseId": 103369538864,
+      "name": "Cron concurrency classification guard",
+      "startedAt": "2026-09-11T18:08:52Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:54Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:55Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:59Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Verify every cron job is classified and every invariant is named",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538864"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:03Z",
+      "conclusion": "success",
+      "databaseId": 103369538873,
+      "name": "Transaction limits guard",
+      "startedAt": "2026-09-11T18:08:51Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:53Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:55Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:59Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (scanning, both directions, canary)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Verify every $transaction has deliberate limits",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538873"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:06Z",
+      "conclusion": "success",
+      "databaseId": 103369538899,
+      "name": "Delegation scope guard",
+      "startedAt": "2026-09-11T18:08:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (R1 canaries, comment canary, scope)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Delegation scope guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538899"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:05Z",
+      "conclusion": "success",
+      "databaseId": 103369538912,
+      "name": "Migrationer i denna PR (annotering)",
+      "startedAt": "2026-09-11T18:08:53Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Self-test the annotator (real",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "List migrations added by this PR",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:02Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538912"
+    },
+    {
+      "completedAt": "2026-09-11T18:12:43Z",
+      "conclusion": "success",
+      "databaseId": 103369538934,
+      "name": "E2E",
+      "startedAt": "2026-09-11T18:08:58Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Initialize containers",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:39Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:44Z",
+          "conclusion": "success",
+          "name": "Install postgresql-client",
+          "number": 7,
+          "startedAt": "2026-09-11T18:09:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:44Z",
+          "conclusion": "success",
+          "name": "Resolve Playwright version",
+          "number": 8,
+          "startedAt": "2026-09-11T18:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:49Z",
+          "conclusion": "success",
+          "name": "Run actions/cache@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:49Z",
+          "conclusion": "skipped",
+          "name": "Install Chromium",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:54Z",
+          "conclusion": "success",
+          "name": "Build @eken/shared",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:56Z",
+          "conclusion": "success",
+          "name": "Apply migrations",
+          "number": 12,
+          "startedAt": "2026-09-11T18:09:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:48Z",
+          "conclusion": "success",
+          "name": "Start API and verify throttle relaxation reached it",
+          "number": 13,
+          "startedAt": "2026-09-11T18:09:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:50Z",
+          "conclusion": "success",
+          "name": "Kanarief\u00e5gel \u2014 Playwright ska hitta exakt f\u00f6rv\u00e4ntat antal tester",
+          "number": 14,
+          "startedAt": "2026-09-11T18:10:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "success",
+          "name": "Run E2E",
+          "number": 15,
+          "startedAt": "2026-09-11T18:10:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "success",
+          "name": "Rapportera flaky-omf\u00f6rs\u00f6k",
+          "number": 16,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "skipped",
+          "name": "Upload traces on failure",
+          "number": 17,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "success",
+          "name": "Post Run actions/cache@v4",
+          "number": 30,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 31,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 32,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:39Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 33,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:40Z",
+          "conclusion": "success",
+          "name": "Stop containers",
+          "number": 34,
+          "startedAt": "2026-09-11T18:12:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:12:40Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 35,
+          "startedAt": "2026-09-11T18:12:40Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538934"
+    },
+    {
+      "completedAt": "2026-09-11T18:10:23Z",
+      "conclusion": "success",
+      "databaseId": 103369538997,
+      "name": "API build artifact guard",
+      "startedAt": "2026-09-11T18:09:05Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:08Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:17Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:28Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:39Z",
+          "conclusion": "success",
+          "name": "Run pnpm install --frozen-lockfile",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:41Z",
+          "conclusion": "success",
+          "name": "Run pnpm --filter @eken/shared build",
+          "number": 6,
+          "startedAt": "2026-09-11T18:09:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:44Z",
+          "conclusion": "success",
+          "name": "Run pnpm --filter @eken/api exec prisma generate",
+          "number": 7,
+          "startedAt": "2026-09-11T18:09:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:20Z",
+          "conclusion": "success",
+          "name": "Build the API",
+          "number": 8,
+          "startedAt": "2026-09-11T18:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:20Z",
+          "conclusion": "success",
+          "name": "Artefakten ska ligga d\u00e4r migrate-and-start.sh letar",
+          "number": 9,
+          "startedAt": "2026-09-11T18:10:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 16,
+          "startedAt": "2026-09-11T18:10:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:20Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 17,
+          "startedAt": "2026-09-11T18:10:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 18,
+          "startedAt": "2026-09-11T18:10:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:21Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 19,
+          "startedAt": "2026-09-11T18:10:21Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369538997"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:03Z",
+      "conclusion": "success",
+      "databaseId": 103369539005,
+      "name": "Partial match identity guard",
+      "startedAt": "2026-09-11T18:08:53Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:54Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:08:56Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:08:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Verify partial matching requires an unambiguous identity",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:01Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:01Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539005"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:09Z",
+      "conclusion": "success",
+      "databaseId": 103369539016,
+      "name": "Graceful shutdown wiring guard",
+      "startedAt": "2026-09-11T18:08:56Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:08:58Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:08:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:00Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:08:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (8 canaries, each must fire)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Verify shutdown hooks and the stall budget are wired",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:06Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539016"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:12Z",
+      "conclusion": "success",
+      "databaseId": 103369539037,
+      "name": "Backup endpoint jurisdiction guard",
+      "startedAt": "2026-09-11T18:09:02Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:03Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Verify the backup endpoint is derived, not hardcoded",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:10Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539037"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:19Z",
+      "conclusion": "success",
+      "databaseId": 103369539066,
+      "name": "Assignment status writers guard",
+      "startedAt": "2026-09-11T18:09:08Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:10Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:11Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (write/comment/read canaries, view, scope)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Assignment status writers guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:17Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:17Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:17Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539066"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:22Z",
+      "conclusion": "success",
+      "databaseId": 103369539115,
+      "name": "Strict coercion guard",
+      "startedAt": "2026-09-11T18:09:09Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:11Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (15 probes across three forms)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Verify every coercible DTO field carries its strict decorator",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539115"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:17Z",
+      "conclusion": "success",
+      "databaseId": 103369539127,
+      "name": "AI journal source guard",
+      "startedAt": "2026-09-11T18:09:05Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:07Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:10Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (canaries compare against a count derived from source)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "AI journal source guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539127"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:20Z",
+      "conclusion": "success",
+      "databaseId": 103369539128,
+      "name": "Legal text version sync guard",
+      "startedAt": "2026-09-11T18:09:07Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:11Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Verify legal text and version have not drifted apart",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:17Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:17Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:17Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539128"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:15Z",
+      "conclusion": "success",
+      "databaseId": 103369539132,
+      "name": "Design token guard",
+      "startedAt": "2026-09-11T18:09:04Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:05Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:07Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:11Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:12Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (detection, comment stripping, allowlist, families)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:13Z",
+          "conclusion": "success",
+          "name": "Verify no new raw colours or unmapped Tailwind families",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:13Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539132"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:18Z",
+      "conclusion": "success",
+      "databaseId": 103369539164,
+      "name": "Guard preprocessor single-source guard",
+      "startedAt": "2026-09-11T18:09:06Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:07Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:07Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (5 forms + the scanner's per-mode canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Verify no guard rolls its own source preprocessor",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539164"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:24Z",
+      "conclusion": "success",
+      "databaseId": 103369539202,
+      "name": "Accounting period lookup guard",
+      "startedAt": "2026-09-11T18:09:09Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:12Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (legitimate code passes, bypass variants caught)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Verify period state is only looked up via the shared helper",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539202"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:17Z",
+      "conclusion": "success",
+      "databaseId": 103369539237,
+      "name": "OCR lookup field classification guard",
+      "startedAt": "2026-09-11T18:09:08Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:09Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:10Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own assertion)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Verify every OCR lookup field is classified and free text is gated",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539237"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:38Z",
+      "conclusion": "success",
+      "databaseId": 103369539264,
+      "name": "User-HTML sanitizer single-source guard",
+      "startedAt": "2026-09-11T18:09:14Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:18Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:30Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (4 detections + rule canary + scope canary)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:35Z",
+          "conclusion": "success",
+          "name": "Verify user-authored HTML is sanitized in exactly one place",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:35Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:36Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:36Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:36Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539264"
+    },
+    {
+      "completedAt": "2026-09-11T18:10:31Z",
+      "conclusion": "success",
+      "databaseId": 103369539279,
+      "name": "Schema drift guard",
+      "startedAt": "2026-09-11T18:09:42Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:45Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:58Z",
+          "conclusion": "success",
+          "name": "Initialize containers",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:01Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:02Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:10:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:14Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 5,
+          "startedAt": "2026-09-11T18:10:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:23Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-09-11T18:10:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:26Z",
+          "conclusion": "success",
+          "name": "Check for destructive schema drift",
+          "number": 7,
+          "startedAt": "2026-09-11T18:10:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:26Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 11,
+          "startedAt": "2026-09-11T18:10:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:26Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 12,
+          "startedAt": "2026-09-11T18:10:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:26Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 13,
+          "startedAt": "2026-09-11T18:10:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:29Z",
+          "conclusion": "success",
+          "name": "Stop containers",
+          "number": 14,
+          "startedAt": "2026-09-11T18:10:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:29Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-09-11T18:10:29Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539279"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:30Z",
+      "conclusion": "success",
+      "databaseId": 103369539346,
+      "name": "Mail correlation id provenance guard",
+      "startedAt": "2026-09-11T18:09:18Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:22Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule + scope + ack both ways)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Verify every mail correlation id is written from persistResendId",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:28Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:28Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:28Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539346"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:42Z",
+      "conclusion": "success",
+      "databaseId": 103369539373,
+      "name": "Tool outward capabilities guard",
+      "startedAt": "2026-09-11T18:09:30Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:33Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:38Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:38Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule, scope, R1/R3 and view canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:39Z",
+          "conclusion": "success",
+          "name": "Tool outward capabilities guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:38Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:39Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:39Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:39Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:39Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539373"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:24Z",
+      "conclusion": "success",
+      "databaseId": 103369539415,
+      "name": "Enqueue cron context guard",
+      "startedAt": "2026-09-11T18:09:14Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:17Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:22Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule + spread + scope)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Verify every enqueueSafely in a cron file passes its context",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539415"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:21Z",
+      "conclusion": "success",
+      "databaseId": 103369539484,
+      "name": "Append-only trigger guard",
+      "startedAt": "2026-09-11T18:09:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (canaries compare against a count derived from source)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:19Z",
+          "conclusion": "success",
+          "name": "Append-only trigger guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539484"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:28Z",
+      "conclusion": "success",
+      "databaseId": 103369539502,
+      "name": "Assignment deadline independence guard",
+      "startedAt": "2026-09-11T18:09:20Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (canary both directions on R1, R2-R4 each proven)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Verify the assignment deadline is data, not a shared constant",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539502"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:24Z",
+      "conclusion": "success",
+      "databaseId": 103369539513,
+      "name": "Tool human path guard",
+      "startedAt": "2026-09-11T18:09:12Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:14Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:16Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:20Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (scope canary on three readers, view canary both directions, R1-R6)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Verify every agent tool has a human path that exists",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539513"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:29Z",
+      "conclusion": "success",
+      "databaseId": 103369539529,
+      "name": "Test runner wiring guard",
+      "startedAt": "2026-09-11T18:09:20Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:21Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own canary)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Verify every package with tests is reached by turbo test:ci",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:28Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:28Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:28Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539529"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:33Z",
+      "conclusion": "success",
+      "databaseId": 103369539540,
+      "name": "Effect trace wiring guard",
+      "startedAt": "2026-09-11T18:09:22Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:26Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:30Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (scope, rule, ack, persistence and prose canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Effect trace wiring guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539540"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:33Z",
+      "conclusion": "success",
+      "databaseId": 103369539541,
+      "name": "Effect idempotency declaration guard",
+      "startedAt": "2026-09-11T18:09:20Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:22Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:24Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:28Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:30Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (rule, scope, mechanism and comment canaries)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:30Z",
+          "conclusion": "success",
+          "name": "Effect idempotency declaration guard",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539541"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:34Z",
+      "conclusion": "success",
+      "databaseId": 103369539560,
+      "name": "Spread where tenant scope guard",
+      "startedAt": "2026-09-11T18:09:25Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:26Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:29Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "No where-clause can silently lose its organizationId",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Guard self-test (canaries must fail the guard)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 8,
+          "startedAt": "2026-09-11T18:09:32Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:32Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539560"
+    },
+    {
+      "completedAt": "2026-09-11T18:10:19Z",
+      "conclusion": "success",
+      "databaseId": 103369539571,
+      "name": "Unit tests (web, portal)",
+      "startedAt": "2026-09-11T18:09:23Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:24Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:26Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Run pnpm/action-setup@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:36Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:44Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:16Z",
+          "conclusion": "success",
+          "name": "Run unit tests",
+          "number": 6,
+          "startedAt": "2026-09-11T18:09:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:17Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:10:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:17Z",
+          "conclusion": "success",
+          "name": "Post Run pnpm/action-setup@v4",
+          "number": 11,
+          "startedAt": "2026-09-11T18:10:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:17Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 12,
+          "startedAt": "2026-09-11T18:10:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:10:17Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 13,
+          "startedAt": "2026-09-11T18:10:17Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539571"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:30Z",
+      "conclusion": "success",
+      "databaseId": 103369539588,
+      "name": "Actor stamping guard",
+      "startedAt": "2026-09-11T18:09:22Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:23Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:25Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Actor stamping wiring is intact",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Guard self-test (canaries must fail the guard)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 8,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539588"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:33Z",
+      "conclusion": "success",
+      "databaseId": 103369539603,
+      "name": "Module cycle guard",
+      "startedAt": "2026-09-11T18:09:24Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:25Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (injected cycle + empty graph must fail)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Verify no undeclared module cycle",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:31Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:32Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:32Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539603"
+    },
+    {
+      "completedAt": "2026-09-11T18:09:35Z",
+      "conclusion": "success",
+      "databaseId": 103369539642,
+      "name": "DI type-import guard",
+      "startedAt": "2026-09-11T18:09:26Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:09:27Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:29Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-09-11T18:09:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:33Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-09-11T18:09:29Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:33Z",
+          "conclusion": "success",
+          "name": "Self-test the guard (each rule proven by its own canary)",
+          "number": 4,
+          "startedAt": "2026-09-11T18:09:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:34Z",
+          "conclusion": "success",
+          "name": "Verify no injected dependency is type-erased",
+          "number": 5,
+          "startedAt": "2026-09-11T18:09:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:34Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-09-11T18:09:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:34Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 10,
+          "startedAt": "2026-09-11T18:09:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:09:34Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-09-11T18:09:34Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103369539642"
+    },
+    {
+      "completedAt": "2026-09-11T18:17:54Z",
+      "conclusion": "success",
+      "databaseId": 103372364102,
+      "name": "CI passed",
+      "startedAt": "2026-09-11T18:17:51Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-09-11T18:17:52Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-09-11T18:17:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:53Z",
+          "conclusion": "success",
+          "name": "Verify every CI job succeeded",
+          "number": 2,
+          "startedAt": "2026-09-11T18:17:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-09-11T18:17:53Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 3,
+          "startedAt": "2026-09-11T18:17:53Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328/job/103372364102"
+    }
+  ],
+  "status": "completed",
+  "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328"
+}

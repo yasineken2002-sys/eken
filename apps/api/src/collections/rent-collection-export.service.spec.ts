@@ -17,6 +17,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import JSZip from 'jszip'
 import { RentCollectionExportService } from './rent-collection-export.service'
+import { documentContext } from '../invoices/rendering-context'
 import { Decimal } from '@prisma/client/runtime/library'
 import { testPersonalNumberService } from '../common/crypto/personal-number.testing'
 
@@ -108,7 +109,13 @@ function makeService(
     rentNoticePayment: { findFirst: paymentFindFirst },
     $transaction: jest.fn().mockImplementation((cb: (t: typeof tx) => unknown) => cb(tx)),
   }
-  const pdf = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 underlag')) }
+  const pdf = {
+    collectRenderingContext: jest.fn().mockResolvedValue({
+      ...documentContext(new Date('2026-07-21T12:00:00Z'), null),
+      environment: 'test-pdf-port',
+    }),
+    generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 underlag')),
+  }
   const uploadFile = jest.fn().mockResolvedValue('https://signed.example/r2')
   const getFileBuffer = jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4 paminnelse'))
   const storage = { uploadFile, getFileBuffer }

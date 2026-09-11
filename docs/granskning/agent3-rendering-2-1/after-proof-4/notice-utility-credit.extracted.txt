@@ -1,0 +1,74 @@
+                                                                                                                      Hyresavi
+
+
+
+Syntetiska Fastigheter AB                                                                                       Datum: 2026-09-11
+                                                                                                    Avinummer: AVI-SYN-2026-0904
+Testgatan 12, 000 00 Teststaden
+                                                                                                            Period: september 2026
+Bankgiro: 5050-1055
+                                                                                                                   Kundnr: 567897
+E-post: ekonomi@example.test
+
+
+
+
+   Testa Åberg
+   testa.aberg@example.test
+
+
+
+
+  OBJEKT           SPECIFIKATION                                                                                        SUMMA
+
+
+  1101             Hyra september 2026 — Lägenhet 1101 , Testgatan 12                                                9 000,00 kr
+
+
+
+                                                                                   Hyra:                          9 000,00 kr
+
+                                                                                   El juli 2026, 100 kWh            250,00 kr
+
+                                                                                   Vatten juli 2026, 4 m³           250,00 kr
+
+
+                                                                                   Att betala:                 9 400,00 kr
+
+
+  ⚠ Dröjsmål debiteras med referensränta + 8% — Förfallodatum: 2026-09-30
+
+
+
+
+                                        ✂ Avrivningskupong — skicka in vid betalning
+
+
+
+
+  bankgirot                             I N B E TA L N I N G / G I R E R I N G AV I
+
+
+BETALNINGSMOTTAGARE                     FÖRFALLODATUM                                          PERIOD
+
+Syntetiska Fastigheter AB               2026-09-30                                             september 2026
+
+
+                                   O C R- N U M M E R — A N G E A L LT I D V I D B E TA L N I N G
+
+
+
+                                       1234567897
+                                    Detta nummer identifierar din betalning automatiskt
+
+
+
+
+TILL BANKGIRO                                                                                                           ATT BETALA
+
+
+5050-1055                                                                                                9 400,00 kr
+
+                  #   1234567897               #     9400          00       7    >     50501055#41#
+                                   VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
+

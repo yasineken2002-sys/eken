@@ -1,0 +1,11 @@
+{
+  "greenBeforeHead": "3eecefa5711aa64bfdb13b9a9b151ed36bc16d76",
+  "greenBeforeRun": "https://github.com/yasineken2002-sys/eken/actions/runs/34631616328",
+  "path": "apps/api/src/invoices/rendering.real.spec.ts",
+  "originalSha256": "5076cba1e4480b4efdbc675f3e3001b0367c332c40adea339205968847105b4a",
+  "mutantSha256": "d46ff9ebe5b627d2dbb3377e8c3653d73acaf13df5039ac73075dcd9674e824d",
+  "ciSha256": "608ae7a9b1324960bd69d608f4c48a71c07745164add72db8487d50f7c6104e9",
+  "removedImport": "  assertGoldenPair,\n",
+  "removedTestBlock": "  it('r21-03 authoritative before-final-1/2 match except exactly two Info date fields', () => {\n    for (const directory of ['before-final-1', 'before-final-2']) {\n      const baseline = loadCapture(join(evidence, directory))\n      expect(baseline.baseSha).toBe('5ae9906b152307eae0d79eec719d4303a042742c')\n      expect(baseline.sourceHead).toBe('5ae9906b152307eae0d79eec719d4303a042742c')\n    }\n    const comparisons = ['before-final-1', 'before-final-2'].map((before) => ({\n      before,\n      comparisons: assertGoldenPair(join(evidence, before), after[0]!),\n    }))\n    writeFileSync(\n      join(output, 'golden-comparisons.json'),\n      JSON.stringify(comparisons, null, 2) + '\\n',\n    )\n    expect(comparisons.map((item) => item.comparisons.length)).toEqual([66, 66])\n    expect(manifests[0]!.records.filter((record) => record.hasConsumption === false)).toHaveLength(\n      11,\n    )\n  })\n\n",
+  "scope": "Only r21-03 and its unused import removed; CI required list unchanged."
+}

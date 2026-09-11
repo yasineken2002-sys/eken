@@ -1,0 +1,78 @@
+{
+  "id": "rent-classic",
+  "organizationId": "synthetic-rendering-org",
+  "invoiceNumber": "F-SYN-2026-rent-classic",
+  "type": "RENT",
+  "status": "DRAFT",
+  "issueDate": "2026-08-31T00:00:00.000Z",
+  "dueDate": "2026-09-30T00:00:00.000Z",
+  "reference": "Syntetisk beställning 2026",
+  "ocrNumber": "1234567897",
+  "subtotal": 9000,
+  "vatTotal": 0,
+  "total": 9000,
+  "notes": null,
+  "lines": [
+    {
+      "id": "line-030",
+      "description": "Hyra september 2026",
+      "quantity": 1,
+      "unitPrice": 9000,
+      "vatRate": 0,
+      "total": 9000
+    }
+  ],
+  "tenant": {
+    "id": "synthetic-rendering-tenant",
+    "type": "INDIVIDUAL",
+    "firstName": "Testa",
+    "lastName": "Åberg",
+    "companyName": null,
+    "personalNumberEnc": null,
+    "orgNumber": null,
+    "email": "testa.aberg@example.test",
+    "phone": null,
+    "street": "Exempelvägen 4",
+    "postalCode": "000 01",
+    "city": "Teststaden"
+  },
+  "customer": null,
+  "organization": {
+    "id": "synthetic-rendering-org",
+    "name": "Syntetiska Fastigheter AB",
+    "orgNumber": "TEST-ORG-001",
+    "street": "Testgatan 12",
+    "postalCode": "000 00",
+    "city": "Teststaden",
+    "email": "ekonomi@example.test",
+    "phone": "TEST-TELEFON",
+    "bankgiro": "5050-1055",
+    "invoiceColor": "#1a6b3c",
+    "invoiceTemplate": "classic",
+    "brandSecondaryColor": "#245c7c",
+    "brandFont": "SYSTEM_SANS",
+    "logoStorageKey": "synthetic/rendering/org-logo.png",
+    "hasFSkatt": true,
+    "fSkattApprovedDate": "2020-01-15T00:00:00.000Z",
+    "vatNumber": "SETESTORG001",
+    "companyForm": "AB",
+    "collectionAgencyName": "Syntetisk kravmottagare"
+  },
+  "lease": {
+    "id": "synthetic-rendering-lease",
+    "monthlyRent": 9000,
+    "unit": {
+      "id": "synthetic-rendering-unit",
+      "unitNumber": "1101",
+      "name": "Lägenhet 1101",
+      "property": {
+        "id": "synthetic-rendering-property",
+        "name": "Testhuset",
+        "street": "Testgatan 12"
+      }
+    }
+  },
+  "payments": [],
+  "creditNotes": [],
+  "paymentReminders": []
+}

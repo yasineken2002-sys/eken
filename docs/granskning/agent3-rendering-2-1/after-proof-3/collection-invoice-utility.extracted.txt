@@ -1,0 +1,62 @@
+                                                                                               Inkassounderlag
+
+
+Genererat 2026-09-11 · Eveno fastighetssystem                                                                                  Faktura
+
+                                                                                    F-SYN-2026-utility-classic
+                                                                                                            Förfallodatum 2026-07-31
+
+
+
+   BORGENÄR (FASTIGHETSÄGARE)                                            GÄLDENÄR (HYRESGÄST)
+
+   Syntetiska Fastigheter AB                                             Testa Åberg
+   Org.nr: TEST-ORG-001                                                  Exempelvägen 4
+   Testgatan 12                                                          000 01 Teststaden
+   000 00 Teststaden                                                     E-post: testa.aberg@example.test
+   E-post: ekonomi@example.test
+
+
+
+Skuldspecifikation
+
+ BESKRIVNING                                                           ANTAL                     À-PRIS                       SUMMA
+
+
+ El juli 2026, 100 kWh                                                     100                    2,00 kr                   250,00 kr
+
+ Vatten juli 2026, 4 m³                                                       4                 50,00 kr                    250,00 kr
+
+ Påminnelseavgift                                                             1                 60,00 kr                      60,00 kr
+
+
+
+
+   KVARSTÅENDE SKULD
+
+   Inkluderar påminnelseavgifter 60,00 kr                                                                    360,00 kr
+   Fakturabelopp 560,00 kr − betalt 200,00 kr
+
+
+
+
+Påminnelsehistorik
+
+ DATUM                                    TYP                                                                                 AVGIFT
+
+
+ 2026-08-07                               Vänlig påminnelse                                                                    0,00 kr
+
+ 2026-08-14                               Formell påminnelse                                                                  60,00 kr
+
+
+
+Kontrakts- och fastighetsreferens
+
+Testhuset – Lägenhet 1101 (1101)
+
+
+Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att skicka det vidare till sitt valda inkassobolag (t.ex. Visma
+Collectors, Intrum eller Lindorff). Eveno är ett fastighetssystem och bedriver INTE inkassoverksamhet. Påminnelseavgift utgår enligt 4 §
+lagen (1981:739) om ersättning för inkassokostnader.
+

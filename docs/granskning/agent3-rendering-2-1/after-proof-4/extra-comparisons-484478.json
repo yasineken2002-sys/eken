@@ -1,0 +1,24 @@
+[
+  {
+    "kind": "html",
+    "beforeUtc": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12",
+    "afterUtc": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12",
+    "beforeStockholm": "7d70e76e45fcc26ecd25466b3e1232544f539ae11f561ef5a52cd88b2d725434",
+    "afterStockholm": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12",
+    "declaredField": "body.dueDate",
+    "offset": 4655,
+    "before": "12 september 2026",
+    "after": "11 september 2026"
+  },
+  {
+    "kind": "text",
+    "beforeUtc": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416",
+    "afterUtc": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416",
+    "beforeStockholm": "a67b21a758fec9ec8a2933a5d5856af0771e69e3637d18aa0b9e512fab05d780",
+    "afterStockholm": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416",
+    "declaredField": "body.dueDate",
+    "offset": 212,
+    "before": "12 september 2026",
+    "after": "11 september 2026"
+  }
+]

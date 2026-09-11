@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #1f2937;
+    }
+    .bp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 3px solid #1a6b3c;
+      margin-bottom: 24px;
+    }
+    .bp-logo { max-height: 56px; max-width: 220px; object-fit: contain; }
+    .bp-orgname { font-size: 20px; font-weight: 700; color: #1a6b3c; }
+    .bp-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: #245c7c;
+      text-align: right;
+    }
+    .bp-content { font-size: 13px; }
+    .bp-footer {
+      margin-top: 40px;
+      padding-top: 12px;
+      border-top: 1px solid #245c7c;
+      color: #6b7280;
+      font-size: 11px;
+    }
+    .bp-footer .bp-footer-org { font-weight: 600; color: #374151; }
+    .bp-footer-note { margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header class="bp-header">
+    <div class="bp-brand"><img class="bp-logo" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAAgCAIAAABiouoDAAAAWElEQVR42u3YMQ0AIAxFwepAC47wPxcHTRhgKPfzFNzUNMaaKgoEgAABAvQ9UJYD1BEoDwcIECBAPYHy8gABAgQIECBAgByKgAAB8jADBMjTHpAAAQL0qA0wt0PC6qoY3AAAAABJRU5ErkJggg==" alt="Syntetiska Fastigheter AB" /></div>
+    <h1 class="bp-title">Inkassounderlag – hyresfordran</h1>
+  </header>
+
+  <main class="bp-content">
+    <style>
+  .docmeta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+  .docref { text-align: right; }
+  .docnum { font-size: 18px; font-weight: 700; }
+  h2 { font-size: 14px; color: #1a6b3c; margin: 24px 0 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
+  .meta { font-size: 11px; color: #4b5563; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 14px; }
+  .label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 11px; }
+  th { background: #f3f4f6; color: #374151; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+  tfoot td { font-weight: 700; }
+  .total-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-top: 18px; display: flex; justify-content: space-between; align-items: center; }
+  .total-box .amt { font-size: 22px; font-weight: 700; color: #b91c1c; }
+  .legal { font-size: 10px; color: #6b7280; margin-top: 24px; line-height: 1.5; }</style>
+  <div class="docmeta">
+    <div class="meta">Genererat 2026-09-11 · Eveno fastighetssystem</div>
+    <div class="docref">
+      <div class="meta"><strong>Hyresavi</strong></div>
+      <div class="docnum">AVI-SYN-2026-0904</div>
+      <div class="meta">Förfallodatum 2026-07-31</div>
+      <div class="meta">OCR 1234567897</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <div class="label">Borgenär (fastighetsägare)</div>
+      <strong>Syntetiska Fastigheter AB</strong><br>
+      Org.nr: TEST-ORG-001<br>
+      Testgatan 12<br>
+      000 00 Teststaden<br>
+      E-post: ekonomi@example.test
+    </div>
+    <div class="box">
+      <div class="label">Gäldenär (hyresgäst)</div>
+      <strong>Testa Åberg</strong><br>
+      
+      Exempelvägen 4<br>000 01 Teststaden<br>
+      E-post: testa.aberg@example.test<br>
+      
+    </div>
+  </div>
+
+  <h2>Skuldspecifikation</h2>
+  <table>
+    <thead>
+      <tr><th>Post</th><th style="text-align:right">Belopp</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Kapital (hyra och förbrukning)</td><td style="text-align:right">9 400,00 kr</td></tr>
+      <tr><td>Påminnelseavgift</td><td style="text-align:right">60,00 kr</td></tr>
+      <tr><td>Dröjsmålsränta (t.o.m. 2026-09-09)</td><td style="text-align:right">108,17 kr</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Dröjsmålsränta per period (räntelagen 6 §, 9 §)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th style="text-align:right">Dagar</th>
+        <th style="text-align:right">Räntesats</th>
+        <th style="text-align:right">Belopp</th>
+      </tr>
+    </thead>
+    <tbody><tr>
+          <td>2026-08-01 – 2026-08-31</td>
+          <td style="text-align:right">31</td>
+          <td style="text-align:right">10.50 %</td>
+          <td style="text-align:right">83,83 kr</td>
+        </tr><tr>
+          <td>2026-09-01 – 2026-09-09</td>
+          <td style="text-align:right">9</td>
+          <td style="text-align:right">10.50 %</td>
+          <td style="text-align:right">24,34 kr</td>
+        </tr></tbody>
+  </table>
+  <p class="meta">
+    Dröjsmålsräntan är referensräntan + 8 procentenheter och beräknas på det
+    obetalda kapitalet från dagen efter förfallodagen. Vid halvårsskifte
+    delas perioden så varje del bär sitt halvårs referensränta.
+  </p>
+
+  <div class="total-box">
+    <div>
+      <div class="label">Total skuld att driva in</div>
+      <div class="meta">Kapital + påminnelseavgift + dröjsmålsränta</div>
+    </div>
+    <div class="amt">9 568,17 kr</div>
+  </div>
+
+  <h2>Krav- och leveranshistorik</h2>
+  <p class="meta">
+    Avi utfärdad och skickad: 2026-07-20<br>
+    Påminnelse skickad: 2026-08-07<br>
+    Påminnelse levererad (verifierad): 2026-08-08<br>
+    Markerad inkasso-redo: 2026-09-10<br>
+    Lagrad påminnelsekopia: bifogad
+  </p>
+
+  <h2>Kontrakts- och fastighetsreferens</h2>
+  <p class="meta">Testhuset – Lägenhet 1101 (1101)</p>
+
+  <p class="legal">
+    Detta dokument är ett underlag för inkassoärende. Borgenären ansvarar för att
+    skicka det vidare till sitt valda inkassobolag (t.ex. Visma Collectors, Intrum
+    eller Lindorff). Påminnelseavgift (60 kr) utgår enligt 4 § lagen (1981:739)
+    om ersättning för inkassokostnader. Dröjsmålsränta beräknas enligt räntelagen
+    (1975:635) 6 § (referensränta + 8 procentenheter) och redovisas per period
+    enligt 9 §. <strong>Inkassobolaget ansvarar för att utfärda formellt
+    inkassokrav enligt inkassolagen (1974:182) 5 § med skälig betalningstid innan
+    betalningsföreläggande eller talan väcks.</strong> Eveno är ett
+    fastighetssystem, bedriver INTE inkassoverksamhet och har inte tillstånd enligt
+    inkassolagen.
+  </p>
+  </main>
+
+</body>
+</html>
