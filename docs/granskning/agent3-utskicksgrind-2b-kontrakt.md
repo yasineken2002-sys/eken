@@ -62,7 +62,7 @@ inte ett återförsök och ska avvisas före nätanrop.
 
 Tjänsten har egen organisationsbunden principaltabell och egen kontrollerad
 FK-gren i eventtriggern. Befintliga mänskliga actorId är fortsatt icke-null;
-aktörsarten väljer uttryckligen människa respektive tjänst. SYSTEM eller
+fältet authorityKind väljer uttryckligen människa respektive tjänst. SYSTEM eller
 saknat User-ID blir aldrig tjänsteidentitet. En User-rad utan principalrad
 kan inte verkställa. SQL skyddar relation och övergång; processens betrodda
 konstruktionsport väljer tjänsteidentiteten. Ingen extern autentisering
@@ -75,6 +75,12 @@ Den får inte registrera dokument, besluta, återkalla, utreda mänskligt eller
 lösa UNKNOWN negativt. Den nya positiva UNKNOWN-rätten kräver en sparad
 RETRY-rätt och verifierat positivt svar för exakt dess scope och byte.
 Ett sent originalkvitto efter UNKNOWN ger inte denna rätt.
+
+CI-granskning före den korrigerade SQL-versionen: leveransens nya
+behörighetsfält heter `authorityKind`, inte den globala auditkolumnen
+`actorKind`. Den senare härleds och stämplas automatiskt av en befintlig
+Prisma-extension. HUMAN/SERVICE och principalens FK-gren måste därför ha
+egen kolumn; auditmekanismen och dess CI-spärr ändras inte.
 
 ## Atomisk lagring och ägda transaktioner
 
@@ -90,7 +96,7 @@ nya definitioner i NY migration; 2a:s SQL skrivs aldrig om.
 | Publicering       | Läser committad Dispatch och publicerar samma besluts-ID. Krasch före publicering och tappad bekräftelse lämnar avsikten återpublicerbar. Redis-retention och tidigare publiceringsobservation ger inga nya identiteter.                                                                                    |
 | Start             | Exekveraren äger tx, läser underlag efter lås, kontrollerar aktuella charges/snapshot/artefakt, skriver SENDING och tidsgrund. Starttillstånd lämnas först efter lyckad commit. Övertagen tx/replay ger aldrig starttillstånd.                                                                              |
 | Nekad start       | Förväntad snapshot-/policykonflikt returneras som ett nekningsresultat efter att konfliktspåret committats. Eventuellt undantag kastas först utanför tx. Inget SENDING eller POST. Oförväntat DB-fel ger ingen rätt.                                                                                        |
-| Anrop             | Separat ägd tx registrerar rätt och antal. Ingen tx hålls över transporten. Sista kontrollerbara portpunkt kontrollerar deadline efter commit. Tappat commitbesked ger inget anrop, även om rätten råkade bli lagrad.                                                                                       |
+| Anrop             | Startens tx registrerar FIRST; omanropets egen tx registrerar RETRY och antal. Ingen tx hålls över transporten. Sista kontrollerbara portpunkt kontrollerar deadline efter commit. Tappat commitbesked ger inget anrop, även om rätten råkade bli lagrad.                                                   |
 | Utgång            | Nekande operation observerar tiden och committar EXPIRED innan den rapporterar avslag. Bakgrundsjobb behövs inte för att neka. SQL-undantag i samma tx får inte vara vägen för denna normala nekning.                                                                                                       |
 | Kvitto            | Ny kort tx sparar svar med grant/attempt/scope-korrelation. Positivt slutbevis ger tillåten eventövergång; 409/timeout/404 ger aldrig acceptans eller negativ finalitet.                                                                                                                                    |
 
