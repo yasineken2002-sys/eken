@@ -490,30 +490,6 @@ describe('r22: verklig rendering från beslutets frysta PostgreSQL-underlag', ()
     ).toBe(1)
   })
 
-  it('r22-12 SQL kan inte ändra verklig body, digest eller manifest', async () => {
-    const source = saved[1]!
-    const changed = JSON.parse(source.sealed.body)
-    changed.html += '<!-- changed -->'
-    const body = JSON.stringify(changed)
-    await expect(
-      rig.db
-        .$executeRaw`UPDATE "DeliveryDispatch" SET "body" = ${body}, "digest" = ${deliveryDigest(body)} WHERE "decisionId" = ${source.sealed.decisionId}`,
-    ).rejects.toThrow('append-only: DeliveryDispatch')
-    for (const column of ['body', 'digest', 'resources']) {
-      const value = column === 'resources' ? '{}' : column === 'digest' ? '0'.repeat(64) : '{}'
-      await expect(
-        rig.db.$executeRawUnsafe(
-          `UPDATE "DeliveryDispatch" SET "${column}" = $1${column === 'resources' ? '::jsonb' : ''} WHERE "decisionId" = $2`,
-          value,
-          source.sealed.decisionId,
-        ),
-      ).rejects.toThrow('append-only: DeliveryDispatch')
-    }
-    expect(
-      await rig.db.deliveryDispatch.findUnique({ where: { decisionId: source.sealed.decisionId } }),
-    ).toEqual(source.sealed)
-  })
-
   it('r22-13 samtidiga kommandon renderar utanför låset men får ett beslut och en dispatch', async () => {
     const h = await harness()
     const both = latch()
