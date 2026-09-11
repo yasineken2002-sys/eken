@@ -19,6 +19,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { AviseringService } from './avisering.service'
+import { documentContext } from '../invoices/rendering-context'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 // Bygger en avi med kända, kontrollerade värden så att den exakta OCR-raden kan
@@ -76,32 +77,14 @@ const ORG = {
   logoStorageKey: null,
 }
 
-function makeService() {
-  const noop = {}
-  return new AviseringService(
-    noop as never, // prisma
-    noop as never, // ocr
-    noop as never, // mail
-    noop as never, // pdf
-    noop as never, // storage
-    noop as never, // pdfQueue
-    noop as never, // accounting
-    noop as never, // consumption
-    noop as never, // miscCharges
-    { ensureDepositForNotice: jest.fn().mockResolvedValue({ created: false }) } as never, // deposits
-    {} as never, // rentNoticeEvents
-  )
-}
-
 async function render(noticeOverrides: Record<string, unknown> = {}): Promise<string> {
-  const service = makeService()
-  // buildNoticePdfHtml är privat men ren (utöver logo-hämtning, som hoppas över
-  // när logoStorageKey är null) — anropas direkt för att inspektera HTML:en.
-  return (
-    service as unknown as {
-      buildNoticePdfHtml: (n: unknown, o: unknown) => Promise<string>
-    }
-  ).buildNoticePdfHtml(buildNotice(noticeOverrides), ORG)
+  return AviseringService.buildNoticePdfHtml(
+    buildNotice(noticeOverrides) as unknown as Parameters<
+      typeof AviseringService.buildNoticePdfHtml
+    >[0],
+    ORG,
+    documentContext(new Date('2026-07-01T12:00:00Z'), null),
+  )
 }
 
 // fmt() i servicen: sv-SE med exakt två decimaler. Replikeras här för att jämföra

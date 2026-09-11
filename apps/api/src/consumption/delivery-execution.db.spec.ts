@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -70,7 +71,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
   async function identity(value: PrismaClient) {
     const [row] = await value.$queryRaw<Array<{ database: string; schema: string }>>`
       SELECT current_database() AS database, current_schema() AS schema`
-    expect(row).toEqual({ database: url.pathname.slice(1), schema })
+    assert.deepEqual(row, { database: url.pathname.slice(1), schema })
   }
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) throw new Error('2b kräver riktig PostgreSQL')
@@ -84,7 +85,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
     const publicUrl = new URL(url)
     publicUrl.searchParams.set('schema', 'public')
     base = new PrismaClient({ datasources: { db: { url: publicUrl.toString() } } })
-    expect(await extension()).toEqual([{ nspname: 'public' }])
+    assert.deepEqual(await extension(), [{ nspname: 'public' }])
     baseline = await inventory(base, 'public')
     schemasBefore = await base.$queryRaw`SELECT nspname FROM pg_namespace ORDER BY nspname`
     console.warn('2b DB före:', url.pathname.slice(1), JSON.stringify(baseline))
@@ -120,7 +121,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
       `CREATE OR REPLACE FUNCTION delivery_now() RETURNS TIMESTAMP LANGUAGE sql VOLATILE AS $$ SELECT "now" FROM "SyntheticDeliveryClock" $$`,
     )
     await identity(db)
-    expect(await db.deliveryDecision.count()).toBe(0)
+    assert.equal(await db.deliveryDecision.count(), 0)
     console.warn(
       '2b privat schema:',
       schema,
@@ -1921,5 +1922,534 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
     expect(h.provider.accepted).toHaveLength(1)
     expect(h.provider.calls[1]!.body).toBe(h.dispatch.body)
     expect(h.provider.calls[1]).toEqual(h.provider.calls[0])
+  })
+
+  it('r21-17 DECIDED A mot resursidentitet B committar namngiven konflikt före start', async () => {
+    const { documentContext, renderingCodeIdentity } = await import('../invoices/rendering-context')
+    const { renderingFixtureAsOf, renderingFixtureLogo } =
+      await import('../invoices/rendering.test-fixtures')
+    const code = renderingCodeIdentity()
+    const identityResource = (logo: string) =>
+      Buffer.from(
+        JSON.stringify({
+          code,
+          context: documentContext(
+            new Date(renderingFixtureAsOf),
+            `data:${renderingFixtureLogo.mediaType};base64,${logo}`,
+          ),
+        }),
+      ).toString('base64')
+    const resourceKey = 'synthetic/renderer-identity'
+    const logoB = Buffer.concat([
+      Buffer.from(renderingFixtureLogo.base64, 'base64'),
+      Buffer.from('\n'),
+    ]).toString('base64')
+    const identityA = identityResource(renderingFixtureLogo.base64)
+    const identityB = identityResource(logoB)
+    expect(code).toMatch(/^[0-9a-f]{64}$/)
+    expect(identityB).not.toBe(identityA)
+    const h = await harness()
+    let available = { ...h.resources, [resourceKey]: identityA }
+    h.ports.resources.mockImplementation(() => ({ ...available }))
+    const decisionCommand = {
+      ...(await h.enqueueCommand()),
+      resources: fixtureResourceDigests(available),
+    }
+    const dispatch = await h.execution.enqueue(decisionCommand)
+    const reader = client()
+    expect(await pid(reader)).not.toBe(await pid(db))
+    const decision = await reader.deliveryDecision.findUniqueOrThrow({
+      where: { id: dispatch.decisionId },
+    })
+    const history = await reader.deliveryEvent.findMany({
+      where: { decisionId: dispatch.decisionId },
+      orderBy: { revision: 'asc' },
+    })
+    expect(dispatch.resources).toEqual(decisionCommand.resources)
+    expect(history[0]!.request).toMatchObject({ resources: decisionCommand.resources })
+    const before = await counts(h.f, reader)
+    const renders = h.ports.render.mock.calls.length
+    const reads = h.ports.resources.mock.calls.length
+    available = { ...available, [resourceKey]: identityB }
+    expect(fixtureResourceDigests(available)[resourceKey]).not.toBe(
+      decisionCommand.resources[resourceKey],
+    )
+
+    // En inaktiv run-operation äger nekningens commit. Detta är ingen verklig render+DB-adapter.
+    await expect(h.execution.run(dispatch.decisionId)).resolves.toEqual({ called: false })
+    expect(h.ports.resources).toHaveBeenCalledTimes(reads + 1)
+    const journal = await reader.deliveryObservation.findMany({
+      where: { decisionId: dispatch.decisionId },
+      orderBy: { sequence: 'asc' },
+    })
+    expect(journal).toHaveLength(1)
+    expect(journal[0]).toMatchObject({
+      kind: 'CONFLICT',
+      principalId: h.principal.id,
+      grantId: null,
+      evidence: { reason: 'RENDER_IDENTITY_CONFLICT' },
+    })
+    expect(await counts(h.f, reader)).toEqual({ ...before, observations: before.observations + 1 })
+    expect(
+      await reader.deliveryDecision.findUniqueOrThrow({ where: { id: dispatch.decisionId } }),
+    ).toEqual(decision)
+    expect(
+      await reader.deliveryEvent.findMany({
+        where: { decisionId: dispatch.decisionId },
+        orderBy: { revision: 'asc' },
+      }),
+    ).toEqual(history)
+    expect(history.map((event) => event.state)).toEqual(['DECIDED'])
+    expect(
+      await reader.deliveryDispatch.findUniqueOrThrow({
+        where: { decisionId: dispatch.decisionId },
+      }),
+    ).toEqual(dispatch)
+    expect(h.ports.render).toHaveBeenCalledTimes(renders)
+    expect(h.ports.send).not.toHaveBeenCalled()
+    expect(h.provider.calls).toHaveLength(0)
+    expect(h.provider.accepted).toHaveLength(0)
+    expect(h.jobs).toHaveLength(0)
+  })
+
+  it('r21-18 konflikt överlever omstart och ny köleverans även när identitet A återställs', async () => {
+    const { documentContext, renderingCodeIdentity } = await import('../invoices/rendering-context')
+    const { renderingFixtureAsOf, renderingFixtureLogo } =
+      await import('../invoices/rendering.test-fixtures')
+    const code = renderingCodeIdentity()
+    const identityResource = (logo: string) =>
+      Buffer.from(
+        JSON.stringify({
+          code,
+          context: documentContext(
+            new Date(renderingFixtureAsOf),
+            `data:${renderingFixtureLogo.mediaType};base64,${logo}`,
+          ),
+        }),
+      ).toString('base64')
+    const resourceKey = 'synthetic/renderer-identity'
+    const logoB = Buffer.concat([
+      Buffer.from(renderingFixtureLogo.base64, 'base64'),
+      Buffer.from('\n'),
+    ]).toString('base64')
+    const h = await harness()
+    const original = {
+      ...h.resources,
+      [resourceKey]: identityResource(renderingFixtureLogo.base64),
+    }
+    let available = { ...original }
+    h.ports.resources.mockImplementation(() => ({ ...available }))
+    const dispatch = await h.execution.enqueue({
+      ...(await h.enqueueCommand()),
+      resources: fixtureResourceDigests(available),
+    })
+    const reader = client()
+    const workerConnection = client()
+    expect(await pid(reader)).not.toBe(await pid(workerConnection))
+    const decision = await reader.deliveryDecision.findUniqueOrThrow({
+      where: { id: dispatch.decisionId },
+    })
+    const history = await reader.deliveryEvent.findMany({
+      where: { decisionId: dispatch.decisionId },
+      orderBy: { revision: 'asc' },
+    })
+    const renders = h.ports.render.mock.calls.length
+    available = { ...original, [resourceKey]: identityResource(logoB) }
+    expect(available[resourceKey]).not.toBe(original[resourceKey])
+    await expect(h.restart(workerConnection).run(dispatch.decisionId)).resolves.toEqual({
+      called: false,
+    })
+    const conflict = await reader.deliveryObservation.findFirstOrThrow({
+      where: { decisionId: dispatch.decisionId, kind: 'CONFLICT' },
+    })
+    expect(conflict.evidence).toMatchObject({ reason: 'RENDER_IDENTITY_CONFLICT' })
+    await workerConnection.$disconnect()
+
+    available = { ...original }
+    expect(fixtureResourceDigests(available)).toEqual(dispatch.resources)
+    const restarted = h.restart()
+    await restarted.publish(dispatch.decisionId)
+    expect(h.jobs).toEqual([dispatch.decisionId])
+    await expect(restarted.run(h.jobs[0]!)).resolves.toEqual({ called: false })
+    expect(
+      await reader.deliveryObservation.findUniqueOrThrow({ where: { id: conflict.id } }),
+    ).toEqual(conflict)
+    const journal = await reader.deliveryObservation.findMany({
+      where: { decisionId: dispatch.decisionId },
+      orderBy: { sequence: 'asc' },
+    })
+    expect(journal.map((entry) => entry.kind)).toEqual(['CONFLICT', 'PUBLISHED'])
+    expect(
+      await reader.deliveryDispatch.findMany({ where: { organizationId: h.f.organizationId } }),
+    ).toEqual([dispatch])
+    expect(
+      await reader.deliveryDecision.findUniqueOrThrow({ where: { id: dispatch.decisionId } }),
+    ).toEqual(decision)
+    expect(
+      await reader.deliveryEvent.findMany({
+        where: { decisionId: dispatch.decisionId },
+        orderBy: { revision: 'asc' },
+      }),
+    ).toEqual(history)
+    expect(history.map((event) => event.state)).toEqual(['DECIDED'])
+    expect(h.ports.render).toHaveBeenCalledTimes(renders)
+    expect(h.ports.send).not.toHaveBeenCalled()
+    expect(h.provider.calls).toHaveLength(0)
+    expect(h.provider.accepted).toHaveLength(0)
+  })
+
+  it('r21-19 människa återkallar A och beslutar B utan att tjänsten får beslutsrätt', async () => {
+    const { documentContext, renderingCodeIdentity } = await import('../invoices/rendering-context')
+    const { renderingFixtureAsOf, renderingFixtureLogo } =
+      await import('../invoices/rendering.test-fixtures')
+    const code = renderingCodeIdentity()
+    const identityResource = (logo: string) =>
+      Buffer.from(
+        JSON.stringify({
+          code,
+          context: documentContext(
+            new Date(renderingFixtureAsOf),
+            `data:${renderingFixtureLogo.mediaType};base64,${logo}`,
+          ),
+        }),
+      ).toString('base64')
+    const resourceKey = 'synthetic/renderer-identity'
+    const logoB = Buffer.concat([
+      Buffer.from(renderingFixtureLogo.base64, 'base64'),
+      Buffer.from('\n'),
+    ]).toString('base64')
+    const h = await harness()
+    let available = { ...h.resources, [resourceKey]: identityResource(renderingFixtureLogo.base64) }
+    h.ports.resources.mockImplementation(() => ({ ...available }))
+    const original = await h.execution.enqueue({
+      ...(await h.enqueueCommand()),
+      resources: fixtureResourceDigests(available),
+    })
+    const reader = client()
+    expect(await pid(reader)).not.toBe(await pid(db))
+    const decisionA = await reader.deliveryDecision.findUniqueOrThrow({
+      where: { id: original.decisionId },
+    })
+    const decidedA = await reader.deliveryEvent.findFirstOrThrow({
+      where: { decisionId: original.decisionId, state: 'DECIDED' },
+    })
+    available = { ...available, [resourceKey]: identityResource(logoB) }
+    expect(fixtureResourceDigests(available)).not.toEqual(original.resources)
+    await expect(h.execution.run(original.decisionId)).resolves.toEqual({ called: false })
+    const conflict = await reader.deliveryObservation.findFirstOrThrow({
+      where: { decisionId: original.decisionId, kind: 'CONFLICT' },
+    })
+    expect(conflict.evidence).toMatchObject({ reason: 'RENDER_IDENTITY_CONFLICT' })
+    const beforeDeniedAuthority = await counts(h.f, reader)
+    await expect(
+      service.transition({
+        ...transition(h.f, original.decisionId, 'REVOKED'),
+        actorId: h.principal.id,
+        authorityKind: 'SERVICE',
+      }),
+    ).rejects.toThrow()
+    await expect(
+      h.execution.enqueue({
+        ...(await h.enqueueCommand()),
+        resources: fixtureResourceDigests(available),
+        actorId: h.principal.id,
+        authorityKind: 'SERVICE',
+      }),
+    ).rejects.toThrow('DELIVERY_PRINCIPAL_FORBIDDEN')
+    expect(await counts(h.f, reader)).toEqual(beforeDeniedAuthority)
+    expect(h.ports.send).not.toHaveBeenCalled()
+    const renders = h.ports.render.mock.calls.length
+
+    await service.transition(transition(h.f, original.decisionId, 'REVOKED'))
+    const commandB = {
+      ...(await h.enqueueCommand()),
+      resources: fixtureResourceDigests(available),
+    }
+    const dispatchB = await h.execution.enqueue(commandB)
+    expect(dispatchB.decisionId).not.toBe(original.decisionId)
+    expect(dispatchB.attemptId).not.toBe(original.attemptId)
+    expect(dispatchB.resources).toEqual(commandB.resources)
+    expect(dispatchB.resources).not.toEqual(original.resources)
+    const decisionB = await reader.deliveryDecision.findUniqueOrThrow({
+      where: { id: dispatchB.decisionId },
+    })
+    expect(decisionB.previousId).toBe(original.decisionId)
+    expect(decisionB.sequence).toBe(decisionA.sequence + 1)
+    const humanHistory = await reader.deliveryEvent.findMany({
+      where: { decisionId: original.decisionId },
+      orderBy: { revision: 'asc' },
+    })
+    expect(humanHistory[0]).toEqual(decidedA)
+    expect(humanHistory.map((event) => event.state)).toEqual(['DECIDED', 'REVOKED'])
+    expect(humanHistory[1]).toMatchObject({ actorId: h.f.actorId, authorityKind: 'HUMAN' })
+    expect(await latest(dispatchB.decisionId)).toMatchObject({
+      state: 'DECIDED',
+      actorId: h.f.actorId,
+      authorityKind: 'HUMAN',
+    })
+    expect(
+      await reader.deliveryDecision.findUniqueOrThrow({ where: { id: original.decisionId } }),
+    ).toEqual(decisionA)
+    expect(
+      await reader.deliveryDispatch.findUniqueOrThrow({
+        where: { decisionId: original.decisionId },
+      }),
+    ).toEqual(original)
+    expect(
+      await reader.deliveryObservation.findUniqueOrThrow({ where: { id: conflict.id } }),
+    ).toEqual(conflict)
+    expect(h.ports.render).toHaveBeenCalledTimes(renders + 1)
+    expect(h.provider.calls).toHaveLength(0)
+    await expect(h.restart().run(original.decisionId)).resolves.toEqual({ called: false })
+    // Positiv kontroll gäller bara det nya mänskliga beslutet och den simulerade providern.
+    expect((await h.restart().run(dispatchB.decisionId)).called).toBe(true)
+    expect(h.provider.calls).toHaveLength(1)
+    expect(h.provider.calls[0]!.attemptId).toBe(dispatchB.attemptId)
+    expect(h.provider.accepted).toHaveLength(1)
+    expect((await latest(original.decisionId)).state).toBe('REVOKED')
+  })
+
+  it('r21-20 publik SERVICE-start efter konflikt ger ingen ny grant eller POST över omstart', async () => {
+    const { documentContext, renderingCodeIdentity } = await import('../invoices/rendering-context')
+    const { renderingFixtureAsOf, renderingFixtureLogo } =
+      await import('../invoices/rendering.test-fixtures')
+    const code = renderingCodeIdentity()
+    const identityResource = (logo: string) =>
+      Buffer.from(
+        JSON.stringify({
+          code,
+          context: documentContext(
+            new Date(renderingFixtureAsOf),
+            `data:${renderingFixtureLogo.mediaType};base64,${logo}`,
+          ),
+        }),
+      ).toString('base64')
+    const resourceKey = 'synthetic/renderer-identity'
+    const logoB = Buffer.concat([
+      Buffer.from(renderingFixtureLogo.base64, 'base64'),
+      Buffer.from('\n'),
+    ]).toString('base64')
+    const h = await harness()
+    const resourcesA = {
+      ...h.resources,
+      [resourceKey]: identityResource(renderingFixtureLogo.base64),
+    }
+    let available = { ...resourcesA }
+    h.ports.resources.mockImplementation(() => ({ ...available }))
+    const dispatch = await h.execution.enqueue({
+      ...(await h.enqueueCommand()),
+      resources: fixtureResourceDigests(available),
+    })
+    const reader = client()
+    const worker = client()
+    expect(await pid(reader)).not.toBe(await pid(worker))
+    const decision = await reader.deliveryDecision.findUniqueOrThrow({
+      where: { id: dispatch.decisionId },
+    })
+    const renders = h.ports.render.mock.calls.length
+    available = { ...resourcesA, [resourceKey]: identityResource(logoB) }
+    expect(fixtureResourceDigests(available)).not.toEqual(dispatch.resources)
+    await expect(h.execution.run(dispatch.decisionId)).resolves.toEqual({ called: false })
+    const conflict = await reader.deliveryObservation.findFirstOrThrow({
+      where: { decisionId: dispatch.decisionId, kind: 'CONFLICT' },
+    })
+    expect(conflict.evidence).toMatchObject({ reason: 'RENDER_IDENTITY_CONFLICT' })
+
+    // Den äldre publika domänmetoden tillåter SERVICE att registrera SENDING.
+    // Det får inte kringgå exekverarens beständiga spärr för FIRST/RETRY/POST.
+    const started = await service.transition({
+      ...transition(h.f, dispatch.decisionId, 'SENDING'),
+      actorId: h.principal.id,
+      authorityKind: 'SERVICE',
+    })
+    expect(started.startGranted).toBe(true)
+    expect(started.event).toMatchObject({
+      state: 'SENDING',
+      id: dispatch.attemptId,
+      actorId: h.principal.id,
+      authorityKind: 'SERVICE',
+    })
+    const history = await reader.deliveryEvent.findMany({
+      where: { decisionId: dispatch.decisionId },
+      orderBy: { revision: 'asc' },
+    })
+    expect(history.map((event) => event.state)).toEqual(['DECIDED', 'SENDING'])
+    const beforeDeniedRun = await counts(h.f, reader)
+    available = { ...resourcesA }
+    expect(fixtureResourceDigests(available)).toEqual(dispatch.resources)
+    const resourceReads = h.ports.resources.mock.calls.length
+
+    // En sekund räcker för första RETRY i basens trigger. Provet kan alltså
+    // inte bli grönt enbart av DELIVERY_RETRY_LATER eller ett utgånget fönster.
+    await advance(1000, h.provider)
+    await expect(h.restart(worker).run(dispatch.decisionId)).resolves.toEqual({ called: false })
+    expect(await counts(h.f, reader)).toEqual(beforeDeniedRun)
+    await worker.$disconnect()
+
+    const restarted = h.restart()
+    await restarted.publish(dispatch.decisionId)
+    expect(h.jobs).toEqual([dispatch.decisionId])
+    await advance(5000, h.provider)
+    await expect(restarted.run(h.jobs[0]!)).resolves.toEqual({ called: false })
+    expect(await counts(h.f, reader)).toEqual({
+      ...beforeDeniedRun,
+      observations: beforeDeniedRun.observations + 1,
+    })
+    const journal = await reader.deliveryObservation.findMany({
+      where: { decisionId: dispatch.decisionId },
+      orderBy: { sequence: 'asc' },
+    })
+    expect(journal.map((entry) => entry.kind)).toEqual(['CONFLICT', 'PUBLISHED'])
+    expect(journal[0]).toEqual(conflict)
+    expect(journal.filter((entry) => ['FIRST', 'RETRY'].includes(entry.kind))).toHaveLength(0)
+    expect(
+      await reader.deliveryEvent.findMany({
+        where: { decisionId: dispatch.decisionId },
+        orderBy: { revision: 'asc' },
+      }),
+    ).toEqual(history)
+    expect(
+      await reader.deliveryDecision.findUniqueOrThrow({ where: { id: dispatch.decisionId } }),
+    ).toEqual(decision)
+    expect(
+      await reader.deliveryDispatch.findMany({ where: { organizationId: h.f.organizationId } }),
+    ).toEqual([dispatch])
+    expect(h.ports.resources).toHaveBeenCalledTimes(resourceReads)
+    expect(h.ports.render).toHaveBeenCalledTimes(renders)
+    expect(h.ports.send).not.toHaveBeenCalled()
+    expect(h.provider.calls).toHaveLength(0)
+    expect(h.provider.accepted).toHaveLength(0)
+  })
+
+  it('r21-21 SENDING och UNKNOWN utan tidigare grant verifierar resurser före första anropsrätt', async () => {
+    const { documentContext, renderingCodeIdentity } = await import('../invoices/rendering-context')
+    const { renderingFixtureAsOf, renderingFixtureLogo } =
+      await import('../invoices/rendering.test-fixtures')
+    const code = renderingCodeIdentity()
+    const identityResource = (logo: string) =>
+      Buffer.from(
+        JSON.stringify({
+          code,
+          context: documentContext(
+            new Date(renderingFixtureAsOf),
+            `data:${renderingFixtureLogo.mediaType};base64,${logo}`,
+          ),
+        }),
+      ).toString('base64')
+    const resourceKey = 'synthetic/renderer-identity'
+    const identityA = identityResource(renderingFixtureLogo.base64)
+    const identityB = identityResource(
+      Buffer.concat([
+        Buffer.from(renderingFixtureLogo.base64, 'base64'),
+        Buffer.from('\n'),
+      ]).toString('base64'),
+    )
+    expect(identityB).not.toBe(identityA)
+
+    for (const state of ['SENDING', 'UNKNOWN'] as const) {
+      const h = await harness()
+      const resourcesA = { ...h.resources, [resourceKey]: identityA }
+      let available = { ...resourcesA }
+      h.ports.resources.mockImplementation(() => ({ ...available }))
+      const dispatch = await h.execution.enqueue({
+        ...(await h.enqueueCommand()),
+        resources: fixtureResourceDigests(available),
+      })
+      const reader = client()
+      const worker = client()
+      expect(await pid(reader)).not.toBe(await pid(worker))
+      const decision = await reader.deliveryDecision.findUniqueOrThrow({
+        where: { id: dispatch.decisionId },
+      })
+      const started = await service.transition({
+        ...transition(h.f, dispatch.decisionId, 'SENDING'),
+        actorId: h.principal.id,
+        authorityKind: 'SERVICE',
+      })
+      expect(started.startGranted).toBe(true)
+      expect(started.event.id).toBe(dispatch.attemptId)
+      if (state === 'UNKNOWN') {
+        const unresolved = await service.transition({
+          ...transition(h.f, dispatch.decisionId, 'UNKNOWN', dispatch.attemptId),
+          actorId: h.principal.id,
+          authorityKind: 'SERVICE',
+        })
+        expect(unresolved.startGranted).toBe(false)
+        expect(unresolved.event.state).toBe('UNKNOWN')
+      }
+      const history = await reader.deliveryEvent.findMany({
+        where: { decisionId: dispatch.decisionId },
+        orderBy: { revision: 'asc' },
+      })
+      expect(history.map((event) => event.state)).toEqual(
+        state === 'SENDING' ? ['DECIDED', 'SENDING'] : ['DECIDED', 'SENDING', 'UNKNOWN'],
+      )
+      expect(
+        await reader.deliveryObservation.findMany({ where: { decisionId: dispatch.decisionId } }),
+      ).toEqual([])
+      const before = await counts(h.f, reader)
+      const renders = h.ports.render.mock.calls.length
+      const resourceReads = h.ports.resources.mock.calls.length
+      available = { ...resourcesA, [resourceKey]: identityB }
+      expect(Object.keys(available)).toEqual(Object.keys(resourcesA))
+      expect(fixtureResourceDigests(available)).not.toEqual(dispatch.resources)
+
+      // Ingen run har gjorts tidigare och alltså ingen FIRST/RETRY utfärdats.
+      // Tiden passerar första tillåtna RETRY-fördröjningen men inte deadline.
+      await advance(1000, h.provider)
+      await expect(h.restart(worker).run(dispatch.decisionId)).resolves.toEqual({ called: false })
+      expect(h.ports.resources).toHaveBeenCalledTimes(resourceReads + 1)
+      const journal = await reader.deliveryObservation.findMany({
+        where: { decisionId: dispatch.decisionId },
+        orderBy: { sequence: 'asc' },
+      })
+      expect(journal).toHaveLength(1)
+      const conflict = journal[0]!
+      expect(conflict).toMatchObject({
+        kind: 'CONFLICT',
+        principalId: h.principal.id,
+        grantId: null,
+        evidence: { reason: 'RENDER_IDENTITY_CONFLICT' },
+      })
+      expect(await counts(h.f, reader)).toEqual({
+        ...before,
+        observations: before.observations + 1,
+      })
+      await worker.$disconnect()
+
+      // A tillbaka får inte sudda bort nekningen som den andra anslutningen sett.
+      available = { ...resourcesA }
+      expect(fixtureResourceDigests(available)).toEqual(dispatch.resources)
+      await advance(5000, h.provider)
+      await expect(h.restart().run(dispatch.decisionId)).resolves.toEqual({ called: false })
+      expect(
+        await reader.deliveryObservation.findMany({
+          where: { decisionId: dispatch.decisionId },
+          orderBy: { sequence: 'asc' },
+        }),
+      ).toEqual([conflict])
+      expect(await counts(h.f, reader)).toEqual({
+        ...before,
+        observations: before.observations + 1,
+      })
+      expect(
+        await reader.deliveryDecision.findUniqueOrThrow({ where: { id: dispatch.decisionId } }),
+      ).toEqual(decision)
+      expect(
+        await reader.deliveryDispatch.findMany({ where: { organizationId: h.f.organizationId } }),
+      ).toEqual([dispatch])
+      expect(
+        await reader.deliveryEvent.findMany({
+          where: { decisionId: dispatch.decisionId },
+          orderBy: { revision: 'asc' },
+        }),
+      ).toEqual(history)
+      expect(h.ports.resources).toHaveBeenCalledTimes(resourceReads + 1)
+      expect(h.ports.render).toHaveBeenCalledTimes(renders)
+      expect(h.ports.send).not.toHaveBeenCalled()
+      expect(h.provider.calls).toHaveLength(0)
+      expect(h.provider.accepted).toHaveLength(0)
+      expect(h.jobs).toHaveLength(0)
+    }
   })
 })

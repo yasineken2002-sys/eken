@@ -1,0 +1,44 @@
+name: Rendering evidence archive
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/rendering-evidence-archive*'
+      - '.github/workflows/rendering-evidence-archive.yml'
+      - 'docs/granskning/agent3-rendering-2-1-package/**'
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify archive reader negative controls
+        run: python3 .github/scripts/rendering-evidence-archive-test.py
+      - name: Fetch the frozen evidence source without changing HEAD
+        run: |
+          git fetch --no-tags --depth=1 origin 73d221c9b7e002b70262a3186b76fea876d6ad01
+          test "$(git rev-parse FETCH_HEAD)" = 73d221c9b7e002b70262a3186b76fea876d6ad01
+          git fetch --no-tags --depth=1 origin 5ae9906b152307eae0d79eec719d4303a042742c
+      - name: Build and verify the pinned archive
+        run: |
+          python3 .github/scripts/rendering-evidence-archive.py build "$RUNNER_TEMP/agent3-rendering-2-1-evidence-73d221c9.tar"
+          python3 .github/scripts/rendering-evidence-archive.py verify "$RUNNER_TEMP/agent3-rendering-2-1-evidence-73d221c9.tar"
+      - uses: actions/upload-artifact@v4
+        id: evidence
+        with:
+          name: agent3-rendering-2-1-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent3-rendering-2-1-evidence-73d221c9.tar
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+      - name: Record artifact location
+        env:
+          ARTIFACT_ID: ${{ steps.evidence.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.evidence.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.evidence.outputs.artifact-digest }}
+        run: |
+          printf 'Artifact ID: %s\nURL: %s\nZIP digest: %s\n' "$ARTIFACT_ID" "$ARTIFACT_URL" "$ARTIFACT_DIGEST" >> "$GITHUB_STEP_SUMMARY"

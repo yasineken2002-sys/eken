@@ -1,0 +1,110 @@
+{
+  "id": "utility-classic",
+  "organizationId": "synthetic-rendering-org",
+  "invoiceNumber": "F-SYN-2026-utility-classic",
+  "type": "UTILITY",
+  "status": "OVERDUE",
+  "issueDate": "2026-06-30T00:00:00.000Z",
+  "dueDate": "2026-07-31T00:00:00.000Z",
+  "reference": "Syntetisk beställning 2026",
+  "ocrNumber": "1234567897",
+  "subtotal": 400,
+  "vatTotal": 100,
+  "total": 560,
+  "notes": null,
+  "lines": [
+    {
+      "id": "line-050",
+      "description": "El juli 2026, 100 kWh",
+      "quantity": 100,
+      "unitPrice": 2,
+      "vatRate": 25,
+      "total": 250
+    },
+    {
+      "id": "line-040",
+      "description": "Vatten juli 2026, 4 m³",
+      "quantity": 4,
+      "unitPrice": 50,
+      "vatRate": 25,
+      "total": 250
+    },
+    {
+      "id": "line-fee",
+      "description": "Påminnelseavgift",
+      "quantity": 1,
+      "unitPrice": 60,
+      "vatRate": 0,
+      "total": 60
+    }
+  ],
+  "tenant": {
+    "id": "synthetic-rendering-tenant",
+    "type": "INDIVIDUAL",
+    "firstName": "Testa",
+    "lastName": "Åberg",
+    "companyName": null,
+    "personalNumberEnc": null,
+    "orgNumber": null,
+    "email": "testa.aberg@example.test",
+    "phone": null,
+    "street": "Exempelvägen 4",
+    "postalCode": "000 01",
+    "city": "Teststaden"
+  },
+  "customer": null,
+  "organization": {
+    "id": "synthetic-rendering-org",
+    "name": "Syntetiska Fastigheter AB",
+    "orgNumber": "TEST-ORG-001",
+    "street": "Testgatan 12",
+    "postalCode": "000 00",
+    "city": "Teststaden",
+    "email": "ekonomi@example.test",
+    "phone": "TEST-TELEFON",
+    "bankgiro": "5050-1055",
+    "invoiceColor": "#1a6b3c",
+    "invoiceTemplate": "classic",
+    "brandSecondaryColor": "#245c7c",
+    "brandFont": "SYSTEM_SANS",
+    "logoStorageKey": "synthetic/rendering/org-logo.png",
+    "hasFSkatt": true,
+    "fSkattApprovedDate": "2020-01-15T00:00:00.000Z",
+    "vatNumber": "SETESTORG001",
+    "companyForm": "AB",
+    "collectionAgencyName": "Syntetisk kravmottagare"
+  },
+  "lease": {
+    "id": "synthetic-rendering-lease",
+    "monthlyRent": 9000,
+    "unit": {
+      "id": "synthetic-rendering-unit",
+      "unitNumber": "1101",
+      "name": "Lägenhet 1101",
+      "property": {
+        "id": "synthetic-rendering-property",
+        "name": "Testhuset",
+        "street": "Testgatan 12"
+      }
+    }
+  },
+  "payments": [
+    {
+      "amount": 200,
+      "paidAt": "2026-08-15T00:00:00.000Z"
+    }
+  ],
+  "creditNotes": [],
+  "paymentReminders": [
+    {
+      "type": "REMINDER_FRIENDLY",
+      "sentAt": "2026-08-07T00:00:00.000Z",
+      "feeAmount": 0
+    },
+    {
+      "type": "REMINDER_FORMAL",
+      "sentAt": "2026-08-14T00:00:00.000Z",
+      "feeAmount": 60
+    }
+  ]
+}

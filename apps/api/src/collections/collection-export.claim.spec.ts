@@ -22,6 +22,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import { CollectionExportService, COLLECTION_SOURCE_STATUSES } from './collection-export.service'
+import { documentContext } from '../invoices/rendering-context'
 
 const ORG = 'org-1'
 
@@ -99,6 +100,13 @@ function makeService(
   }
 
   const pdf = {
+    collectRenderingContext: jest.fn(() => {
+      ordning.push('renderingskontext')
+      return Promise.resolve({
+        ...documentContext(new Date('2026-02-10T12:00:00Z'), null),
+        environment: 'test-pdf-port',
+      })
+    }),
     generateFromHtml: jest.fn(() => {
       ordning.push('generera-pdf')
       return Promise.resolve(Buffer.from('%PDF'))
@@ -131,6 +139,8 @@ describe('#307 — claimForExport: claim före I/O', () => {
     expect(ordning.indexOf('claim')).toBeLessThan(ordning.indexOf('generera-pdf'))
     expect(ordning.indexOf('claim')).toBeLessThan(ordning.indexOf('ladda-upp'))
     expect(ordning.indexOf('skriv-händelse')).toBeLessThan(ordning.indexOf('generera-pdf'))
+    expect(ordning.indexOf('claim')).toBeLessThan(ordning.indexOf('renderingskontext'))
+    expect(ordning.indexOf('skriv-händelse')).toBeLessThan(ordning.indexOf('renderingskontext'))
     // Nyckeln kan först skrivas när uppladdningen är klar.
     expect(ordning.indexOf('ladda-upp')).toBeLessThan(ordning.indexOf('skriv-nyckel'))
   })

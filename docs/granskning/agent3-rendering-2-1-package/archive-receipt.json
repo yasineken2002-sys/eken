@@ -1,0 +1,51 @@
+{
+  "source": "73d221c9b7e002b70262a3186b76fea876d6ad01",
+  "base": "5ae9906b152307eae0d79eec719d4303a042742c",
+  "archiveName": "agent3-rendering-2-1-evidence-73d221c9.tar",
+  "archiveBytes": 55121920,
+  "archiveSha256": "10a5b90e2860123ee7294627ae73cac5505691d8b6b647677a044ca955390af7",
+  "artifact": {
+    "id": 10280105416,
+    "node_id": "MDg6QXJ0aWZhY3QxMDI4MDEwNTQxNg==",
+    "name": "agent3-rendering-2-1-evidence-34639792688-1",
+    "size_in_bytes": 26372439,
+    "url": "https://api.github.com/repos/yasineken2002-sys/eken/actions/artifacts/10280105416",
+    "archive_download_url": "https://api.github.com/repos/yasineken2002-sys/eken/actions/artifacts/10280105416/zip",
+    "expired": false,
+    "digest": "sha256:17216e708e3d8489d020deb307a34d17cc3c3dc956fd803ea4646b98259d8231",
+    "created_at": "2026-09-11T19:37:15Z",
+    "updated_at": "2026-09-11T19:37:15Z",
+    "expires_at": "2026-12-10T19:37:00Z",
+    "workflow_run": {
+      "id": 34639792688,
+      "repository_id": 1186637753,
+      "head_repository_id": 1186637753,
+      "head_branch": "codex/agent3-rendering-2-1-compact",
+      "head_sha": "3c0648aac4f20d2793e397e9ee6e65542e47f3b0"
+    }
+  },
+  "downloadUrl": "https://github.com/yasineken2002-sys/eken/actions/runs/34639792688/artifacts/10280105416",
+  "access": "Authenticated GitHub account with repository read access; GitHub Actions artifact, not permanent storage.",
+  "retentionRequestedDays": 90,
+  "earlyRemovalPossible": true,
+  "verifiedAt": "2026-09-11T19:41:29.572537+00:00",
+  "verification": {
+    "downloadedIntoNewDirectory": true,
+    "downloadedZipBytes": 26372439,
+    "downloadedZipSha256": "17216e708e3d8489d020deb307a34d17cc3c3dc956fd803ea4646b98259d8231",
+    "zipMatchesApiDigestAndSize": true,
+    "tarMatchesTwoIndependentLocalBuilds": true,
+    "verifiedMembers": 1278,
+    "verifiedFields": [
+      "path",
+      "regular-file type",
+      "mode",
+      "fixed tar headers",
+      "byte count",
+      "SHA256"
+    ],
+    "requiresHistoricalWorktreeForVerification": false
+  },
+  "downloadCommand": "gh run download 34639792688 --repo yasineken2002-sys/eken --name agent3-rendering-2-1-evidence-34639792688-1 --dir /tmp/agent3-evidence-download",
+  "verifyCommand": "python3 .github/scripts/rendering-evidence-archive.py verify /tmp/agent3-evidence-download/agent3-rendering-2-1-evidence-73d221c9.tar"
+}

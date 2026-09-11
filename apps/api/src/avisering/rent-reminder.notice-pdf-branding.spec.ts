@@ -22,6 +22,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { RentReminderService } from './rent-reminder.service'
+import { documentContext } from '../invoices/rendering-context'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 function fmt(n: number): string {
@@ -56,35 +57,12 @@ const ORG = {
   logoStorageKey: null,
 }
 
-function makeService(): RentReminderService {
-  const noop = {}
-  return new RentReminderService(
-    noop as never, // prisma
-    noop as never, // accounting
-    noop as never, // rentNoticeEvents
-    noop as never, // rentInterest
-    noop as never, // pdfQueue
-    noop as never, // mailService
-    noop as never, // pdfService
-    noop as never, // storage
-    noop as never, // rentDebt
-    noop as never, // freshness,
-    // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
-    // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
-    // förbi rapporteringen.
-    {
-      report: () => {
-        throw new Error('#605: cronErrors.report anropades oväntat i test')
-      },
-    } as never,
-    // #648 — notisskrivaren. Attrappen räknar anrop; att den KASTAR vore fel
-    // här, eftersom larmet är en legitim sidoeffekt av en blockerad avi.
-    { create: jest.fn() } as never,
-  )
-}
-
 async function render(): Promise<string> {
-  return makeService().buildReminderPdfHtml(NOTICE as never, ORG)
+  return RentReminderService.buildReminderPdfHtml(
+    NOTICE as unknown as Parameters<typeof RentReminderService.buildReminderPdfHtml>[0],
+    ORG,
+    documentContext(new Date('2026-06-12T12:00:00Z'), null),
+  )
 }
 
 describe('RentReminderService.buildReminderPdfHtml — brandad shell + betalningsintegritet (PR 3d)', () => {

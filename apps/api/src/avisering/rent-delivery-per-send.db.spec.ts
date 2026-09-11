@@ -33,6 +33,7 @@ import { Prisma, PrismaClient } from '@prisma/client'
 import { Logger } from '@nestjs/common'
 
 import { RentReminderService } from './rent-reminder.service'
+import { documentContext } from '../invoices/rendering-context'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
@@ -140,7 +141,13 @@ medDb('leveransutfall per utskick', () => {
           return 'mailjob-1'
         },
       },
-      pdfService: { generateFromHtml: async () => Buffer.from('%PDF-1.4') },
+      pdfService: {
+        collectRenderingContext: async () => ({
+          ...documentContext(NU, null),
+          environment: 'test-pdf-port',
+        }),
+        generateFromHtml: async () => Buffer.from('%PDF-1.4'),
+      },
       storage: { uploadFile: async () => undefined },
       pdfQueue: { enqueue: async () => 'pdfjob-1' },
     })

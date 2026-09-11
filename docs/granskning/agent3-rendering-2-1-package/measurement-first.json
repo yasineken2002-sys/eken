@@ -1,0 +1,638 @@
+{
+  "source": "73d221c9b7e002b70262a3186b76fea876d6ad01",
+  "base": "5ae9906b152307eae0d79eec719d4303a042742c",
+  "measuredHead": "3c0648aac4f20d2793e397e9ee6e65542e47f3b0",
+  "method": "Per-path logical bytes. Text is UTF-8 without NUL excluding known binary magic; lines count LF plus nonempty final unterminated line. Binary types identified by file magic, other otherwise. Git objects are unique reachable objects excluding all base reachability, with uncompressed object size; not pack/disk bytes. One-off audit, no production-line guard.",
+  "fullTrees": {
+    "base": {
+      "files": 2092,
+      "bytes": 31772584,
+      "textFiles": 2076,
+      "textBytes": 29249663,
+      "textLines": 543105,
+      "binaryFiles": 16,
+      "binaryBytes": 2522921,
+      "binaryTypes": {
+        "other": {
+          "files": 1,
+          "bytes": 964
+        },
+        "PDF": {
+          "files": 5,
+          "bytes": 1273762
+        },
+        "PNG": {
+          "files": 2,
+          "bytes": 1194663
+        },
+        "WOFF2": {
+          "files": 8,
+          "bytes": 53532
+        }
+      }
+    },
+    "source": {
+      "files": 3615,
+      "bytes": 92541828,
+      "textFiles": 3211,
+      "textBytes": 54778723,
+      "textLines": 939012,
+      "binaryFiles": 404,
+      "binaryBytes": 37763105,
+      "binaryTypes": {
+        "other": {
+          "files": 1,
+          "bytes": 964
+        },
+        "PDF": {
+          "files": 262,
+          "bytes": 18034019
+        },
+        "PNG": {
+          "files": 63,
+          "bytes": 5826755
+        },
+        "HTML-with-NUL": {
+          "files": 38,
+          "bytes": 280699
+        },
+        "TTF": {
+          "files": 32,
+          "bytes": 13567136
+        },
+        "WOFF2": {
+          "files": 8,
+          "bytes": 53532
+        }
+      }
+    },
+    "new": {
+      "files": 2345,
+      "bytes": 39393641,
+      "textFiles": 2283,
+      "textBytes": 31335972,
+      "textLines": 584486,
+      "binaryFiles": 62,
+      "binaryBytes": 8057669,
+      "binaryTypes": {
+        "other": {
+          "files": 1,
+          "bytes": 964
+        },
+        "PDF": {
+          "files": 37,
+          "bytes": 3386522
+        },
+        "PNG": {
+          "files": 4,
+          "bytes": 1194953
+        },
+        "HTML-with-NUL": {
+          "files": 4,
+          "bytes": 29914
+        },
+        "TTF": {
+          "files": 8,
+          "bytes": 3391784
+        },
+        "WOFF2": {
+          "files": 8,
+          "bytes": 53532
+        }
+      }
+    }
+  },
+  "sourceChangedFiles": {
+    "files": 1547,
+    "bytes": 61592048,
+    "textFiles": 1159,
+    "textBytes": 26351864,
+    "textLines": 413683,
+    "binaryFiles": 388,
+    "binaryBytes": 35240184,
+    "binaryTypes": {
+      "PDF": {
+        "files": 257,
+        "bytes": 16760257
+      },
+      "PNG": {
+        "files": 61,
+        "bytes": 4632092
+      },
+      "HTML-with-NUL": {
+        "files": 38,
+        "bytes": 280699
+      },
+      "TTF": {
+        "files": 32,
+        "bytes": 13567136
+      }
+    }
+  },
+  "retainedOriginalFiles": {
+    "files": 269,
+    "bytes": 7794524,
+    "textFiles": 223,
+    "textBytes": 2259776,
+    "textLines": 44499,
+    "binaryFiles": 46,
+    "binaryBytes": 5534748,
+    "binaryTypes": {
+      "PDF": {
+        "files": 32,
+        "bytes": 2112760
+      },
+      "PNG": {
+        "files": 2,
+        "bytes": 290
+      },
+      "HTML-with-NUL": {
+        "files": 4,
+        "bytes": 29914
+      },
+      "TTF": {
+        "files": 8,
+        "bytes": 3391784
+      }
+    }
+  },
+  "retainedByRole": {
+    "approved-code": {
+      "files": 13,
+      "bytes": 511606,
+      "textFiles": 13,
+      "textBytes": 511606,
+      "textLines": 11640,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "documentation": {
+      "files": 4,
+      "bytes": 99514,
+      "textFiles": 4,
+      "textBytes": 99514,
+      "textLines": 579,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "provenance": {
+      "files": 3,
+      "bytes": 31679,
+      "textFiles": 3,
+      "textBytes": 31679,
+      "textLines": 665,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "runtime-fixture": {
+      "files": 232,
+      "bytes": 6785824,
+      "textFiles": 186,
+      "textBytes": 1251076,
+      "textLines": 22716,
+      "binaryFiles": 46,
+      "binaryBytes": 5534748,
+      "binaryTypes": {
+        "PDF": {
+          "files": 32,
+          "bytes": 2112760
+        },
+        "PNG": {
+          "files": 2,
+          "bytes": 290
+        },
+        "HTML-with-NUL": {
+          "files": 4,
+          "bytes": 29914
+        },
+        "TTF": {
+          "files": 8,
+          "bytes": 3391784
+        }
+      }
+    },
+    "test-code": {
+      "files": 17,
+      "bytes": 365901,
+      "textFiles": 17,
+      "textBytes": 365901,
+      "textLines": 8899,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    }
+  },
+  "archivedOriginalFiles": {
+    "files": 1278,
+    "bytes": 53797524,
+    "textFiles": 936,
+    "textBytes": 24092088,
+    "textLines": 369184,
+    "binaryFiles": 342,
+    "binaryBytes": 29705436,
+    "binaryTypes": {
+      "PDF": {
+        "files": 225,
+        "bytes": 14647497
+      },
+      "PNG": {
+        "files": 59,
+        "bytes": 4631802
+      },
+      "HTML-with-NUL": {
+        "files": 34,
+        "bytes": 250785
+      },
+      "TTF": {
+        "files": 24,
+        "bytes": 10175352
+      }
+    }
+  },
+  "archivedByExperiment": {
+    "E01": {
+      "files": 276,
+      "bytes": 6339297,
+      "textFiles": 192,
+      "textBytes": 1997025,
+      "textLines": 30546,
+      "binaryFiles": 84,
+      "binaryBytes": 4342272,
+      "binaryTypes": {
+        "PDF": {
+          "files": 64,
+          "bytes": 4225520
+        },
+        "PNG": {
+          "files": 4,
+          "bytes": 580
+        },
+        "HTML-with-NUL": {
+          "files": 16,
+          "bytes": 116172
+        }
+      }
+    },
+    "E02": {
+      "files": 69,
+      "bytes": 3145849,
+      "textFiles": 50,
+      "textBytes": 2074367,
+      "textLines": 31432,
+      "binaryFiles": 19,
+      "binaryBytes": 1071482,
+      "binaryTypes": {
+        "PDF": {
+          "files": 16,
+          "bytes": 1056380
+        },
+        "PNG": {
+          "files": 1,
+          "bytes": 145
+        },
+        "HTML-with-NUL": {
+          "files": 2,
+          "bytes": 14957
+        }
+      }
+    },
+    "E03": {
+      "files": 16,
+      "bytes": 398342,
+      "textFiles": 10,
+      "textBytes": 44356,
+      "textLines": 1230,
+      "binaryFiles": 6,
+      "binaryBytes": 353986,
+      "binaryTypes": {
+        "PDF": {
+          "files": 5,
+          "bytes": 353841
+        },
+        "PNG": {
+          "files": 1,
+          "bytes": 145
+        }
+      }
+    },
+    "E04": {
+      "files": 201,
+      "bytes": 10131146,
+      "textFiles": 149,
+      "textBytes": 4317423,
+      "textLines": 68548,
+      "binaryFiles": 52,
+      "binaryBytes": 5813723,
+      "binaryTypes": {
+        "PDF": {
+          "files": 38,
+          "bytes": 2391735
+        },
+        "TTF": {
+          "files": 8,
+          "bytes": 3391784
+        },
+        "PNG": {
+          "files": 2,
+          "bytes": 290
+        },
+        "HTML-with-NUL": {
+          "files": 4,
+          "bytes": 29914
+        }
+      }
+    },
+    "E05": {
+      "files": 353,
+      "bytes": 14028724,
+      "textFiles": 293,
+      "textBytes": 4823217,
+      "textLines": 84038,
+      "binaryFiles": 60,
+      "binaryBytes": 9205507,
+      "binaryTypes": {
+        "PDF": {
+          "files": 38,
+          "bytes": 2391735
+        },
+        "TTF": {
+          "files": 16,
+          "bytes": 6783568
+        },
+        "PNG": {
+          "files": 2,
+          "bytes": 290
+        },
+        "HTML-with-NUL": {
+          "files": 4,
+          "bytes": 29914
+        }
+      }
+    },
+    "E06": {
+      "files": 277,
+      "bytes": 12634992,
+      "textFiles": 201,
+      "textBytes": 8346298,
+      "textLines": 126741,
+      "binaryFiles": 76,
+      "binaryBytes": 4288694,
+      "binaryTypes": {
+        "PDF": {
+          "files": 64,
+          "bytes": 4228286
+        },
+        "PNG": {
+          "files": 4,
+          "bytes": 580
+        },
+        "HTML-with-NUL": {
+          "files": 8,
+          "bytes": 59828
+        }
+      }
+    },
+    "E07": {
+      "files": 47,
+      "bytes": 4639814,
+      "textFiles": 2,
+      "textBytes": 10042,
+      "textLines": 200,
+      "binaryFiles": 45,
+      "binaryBytes": 4629772,
+      "binaryTypes": {
+        "PNG": {
+          "files": 45,
+          "bytes": 4629772
+        }
+      }
+    },
+    "E08": {
+      "files": 5,
+      "bytes": 65562,
+      "textFiles": 5,
+      "textBytes": 65562,
+      "textLines": 246,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E09": {
+      "files": 1,
+      "bytes": 57129,
+      "textFiles": 1,
+      "textBytes": 57129,
+      "textLines": 1,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E10": {
+      "files": 8,
+      "bytes": 65277,
+      "textFiles": 8,
+      "textBytes": 65277,
+      "textLines": 99,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E11": {
+      "files": 5,
+      "bytes": 59941,
+      "textFiles": 5,
+      "textBytes": 59941,
+      "textLines": 1159,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E12": {
+      "files": 1,
+      "bytes": 48267,
+      "textFiles": 1,
+      "textBytes": 48267,
+      "textLines": 982,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E13": {
+      "files": 4,
+      "bytes": 1026723,
+      "textFiles": 4,
+      "textBytes": 1026723,
+      "textLines": 10889,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E14": {
+      "files": 8,
+      "bytes": 1036361,
+      "textFiles": 8,
+      "textBytes": 1036361,
+      "textLines": 11013,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E15": {
+      "files": 3,
+      "bytes": 55559,
+      "textFiles": 3,
+      "textBytes": 55559,
+      "textLines": 1136,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "E16": {
+      "files": 4,
+      "bytes": 64541,
+      "textFiles": 4,
+      "textBytes": 64541,
+      "textLines": 924,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    }
+  },
+  "newDeliveryChangedFiles": {
+    "files": 277,
+    "bytes": 8443861,
+    "textFiles": 231,
+    "textBytes": 2909113,
+    "textLines": 59157,
+    "binaryFiles": 46,
+    "binaryBytes": 5534748,
+    "binaryTypes": {
+      "PDF": {
+        "files": 32,
+        "bytes": 2112760
+      },
+      "HTML-with-NUL": {
+        "files": 4,
+        "bytes": 29914
+      },
+      "TTF": {
+        "files": 8,
+        "bytes": 3391784
+      },
+      "PNG": {
+        "files": 2,
+        "bytes": 290
+      }
+    }
+  },
+  "newPackagingFiles": {
+    "files": 8,
+    "bytes": 649337,
+    "textFiles": 8,
+    "textBytes": 649337,
+    "textLines": 14658,
+    "binaryFiles": 0,
+    "binaryBytes": 0,
+    "binaryTypes": {}
+  },
+  "newPackagingByRole": {
+    "CI-code": {
+      "files": 2,
+      "bytes": 7256,
+      "textFiles": 2,
+      "textBytes": 7256,
+      "textLines": 173,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "test-code": {
+      "files": 1,
+      "bytes": 7097,
+      "textFiles": 1,
+      "textBytes": 7097,
+      "textLines": 140,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    },
+    "documentation-and-manifests": {
+      "files": 5,
+      "bytes": 634984,
+      "textFiles": 5,
+      "textBytes": 634984,
+      "textLines": 14345,
+      "binaryFiles": 0,
+      "binaryBytes": 0,
+      "binaryTypes": {}
+    }
+  },
+  "objectsSinceBase": {
+    "source": {
+      "blob": {
+        "objects": 411,
+        "uncompressedBytes": 35048927
+      },
+      "tree": {
+        "objects": 120,
+        "uncompressedBytes": 143158
+      },
+      "commit": {
+        "objects": 8,
+        "uncompressedBytes": 2420
+      }
+    },
+    "new": {
+      "blob": {
+        "objects": 182,
+        "uncompressedBytes": 8048478
+      },
+      "tree": {
+        "objects": 32,
+        "uncompressedBytes": 30721
+      },
+      "commit": {
+        "objects": 1,
+        "uncompressedBytes": 312
+      }
+    }
+  },
+  "newCommitChain": [
+    {
+      "commit": "3c0648aac4f20d2793e397e9ee6e65542e47f3b0",
+      "parent": "5ae9906b152307eae0d79eec719d4303a042742c",
+      "archivedPaths": 0,
+      "exclusiveArchivedBlobs": 0
+    }
+  ],
+  "noSourceCommitsImported": true,
+  "mergeBaseWithSource": "5ae9906b152307eae0d79eec719d4303a042742c",
+  "archivedContent": {
+    "archivedPaths": 1278,
+    "uniqueArchivedBlobs": 335,
+    "alsoInRetainedTree": 114,
+    "alreadyReachableFromBase": 19,
+    "exclusiveArchivedBlobs": 221,
+    "exclusiveArchiveLeaksInNewHistory": [],
+    "newlyIntroducedSharedBlobs": 95
+  },
+  "approvedProductionFilesIdentical": [
+    ".github/workflows/ci.yml",
+    "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+    "apps/api/src/avisering/avisering.service.ts",
+    "apps/api/src/avisering/rent-reminder.service.ts",
+    "apps/api/src/collections/collection-export.service.ts",
+    "apps/api/src/collections/rent-collection-export.service.ts",
+    "apps/api/src/consumption/delivery-execution.ts",
+    "apps/api/src/invoices/pdf.service.ts",
+    "apps/api/src/invoices/rendering-context.ts",
+    "apps/api/src/invoices/templates/invoice-pdf.template.ts",
+    "apps/api/src/mail/mail.renderer.ts",
+    "apps/api/src/mail/mail.service.ts",
+    "apps/api/src/mail/templates/shared/format.ts"
+  ],
+  "allRetainedFilesIdentical": 269
+}
