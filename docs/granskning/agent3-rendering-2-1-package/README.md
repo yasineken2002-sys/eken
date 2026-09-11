@@ -52,12 +52,20 @@ Två lokala byggen är byteidentiska och samtliga 1278 filer verifierade:
 55 121 920 bytes; SHA256
 `10a5b90e2860123ee7294627ae73cac5505691d8b6b647677a044ca955390af7`.
 
-CI-artefaktens hämtningsadress, faktiska utgångstid och nedhämtningsbevis införs
-när uppladdningen och återhämtningen är genomförda. Tills dess är det ett
-förberett arkiv, inte en slutförd extern arkivering.
+Arkivet är uppladdat och återhämtat från
+[artefakt 10280105416](https://github.com/yasineken2002-sys/eken/actions/runs/34639792688/artifacts/10280105416),
+byggd på denna grens första commit `3c0648aac4f20d2793e397e9ee6e65542e47f3b0`.
+[archive-receipt.json](archive-receipt.json) bevarar API-metadata och faktisk
+nedhämtningsverifiering: ZIP 26 372 439 bytes med matchande API-digest, samt
+samtliga 1 278 tar-medlemmars bytes/hash/mode/headerfält. Den nedhämtade tar-filen
+matchar båda oberoende lokala byggen. **Utgångstid: 2026-12-10 19:37:00 UTC.**
 
-Workflowen begär 90 dagars retention. Den faktiska `expires_at`-uppgiften ska
-läsas från artefakten; detta är **inte permanent lagring**. Inloggat GitHub-konto
+```bash
+gh run download 34639792688 --repo yasineken2002-sys/eken --name agent3-rendering-2-1-evidence-34639792688-1 --dir /tmp/agent3-evidence-download
+```
+
+Workflowen begär 90 dagars retention. Den faktiska `expires_at`-uppgiften är
+läst från artefakten och sparad i kvittot; detta är **inte permanent lagring**. Inloggat GitHub-konto
 med läsåtkomst krävs för nedhämtning. Raderad körning/artefakt kan avsluta
 åtkomsten tidigare. [GitHubs dokumentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts)
 beskriver åtkomst och nedhämtning.
@@ -65,7 +73,7 @@ beskriver åtkomst och nedhämtning.
 Efter hämtning till en ny katalog verifieras tar-filen utan extrahering:
 
 ```bash
-python3 .github/scripts/rendering-evidence-archive.py verify /tmp/download/agent3-rendering-2-1-evidence-73d221c9.tar
+python3 .github/scripts/rendering-evidence-archive.py verify /tmp/agent3-evidence-download/agent3-rendering-2-1-evidence-73d221c9.tar
 ```
 
 Verifieringen behöver bara den nya grenens script och manifest, inte en gammal
@@ -86,9 +94,28 @@ i 73d. Det påstås därför inte ingå i detta källträdsarkiv:
 [CI 34634346933](https://github.com/yasineken2002-sys/eken/actions/runs/34634346933).
 Även vissa historiska lokala textloggar som rapporterna nämner saknar blob på
 73d; manifestets exakta medlemslista avgör vad som faktiskt arkiverats.
-Nya prov ska köras helt från den beskurna grenen med färsk rendering i CI.
+Nya prov körs helt från den beskurna grenen med färsk rendering i CI.
+Resultat och exakt slutlig HEAD rapporteras i den nya PR:ns leveransrapport.
 
 Gamla Git-blobbar har inte raderats från GitHub, gamla refs eller delade kloner.
 Det som ska bevisas är att utelämnade unika blobbar inte blir nåbara genom
 **den nya grenens** commitkedja sedan 5ae. Delat objektlager och runnerns läsande
 fetch av 73d är inte commitföräldraskap.
+
+## Granskning
+
+En separat granskare härledde runtime-/provenienskedjan i DEPENDENCIES.md.
+En annan kontrollerade alla 1 547 källposters fullständiga partition,
+269 behållna filers bytes/mode och de 13 produktions-/CI-filerna mot 73d.
+Arkivgranskaren efterfrågade negativa prov för fel i själva partitionen.
+Det åtgärdades: saknad medlem, samma antal med annan medlem och ändrad
+behållen fil fäller den riktiga verifieraren. Alla 12 integritetsprov är gröna.
+Återgranskningen fann inga blockerare i kod, manifest eller experimentsammanfattning.
+Därefter verifierade samma granskare oberoende den faktiska nedladdade ZIP-filen,
+tar-filen, alla 1 278 medlemmar och första committens Git-historik. Inga
+blockerare: 221 exklusiva arkivblobbar och noll läckor; de 19 basblobbarna
+är en delmängd av de 114 delade blobbarna.
+
+[MEASUREMENTS.md](MEASUREMENTS.md) skiljer originalfiler, nya manifest/kod,
+slutträd och nåbara Git-objekt. Mätningen av första förpackningscommitten är
+fryst där; den avslutande rapportcommitten och exakt slutlig CI redovisas i PR:n.

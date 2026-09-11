@@ -10230,5 +10230,15 @@
       "experiment": "E07"
     }
   ],
-  "format": "Uncompressed deterministic GNU tar; headers normalized, SHA independent of compression runtime. GitHub artifact ZIP is a separate transport wrapper."
+  "format": "Uncompressed deterministic GNU tar; headers normalized, SHA independent of compression runtime. GitHub artifact ZIP is a separate transport wrapper.",
+  "storage": {
+    "kind": "GitHub Actions artifact; temporary, not permanent",
+    "url": "https://github.com/yasineken2002-sys/eken/actions/runs/34639792688/artifacts/10280105416",
+    "access": "Authenticated GitHub account with repository read access; GitHub Actions artifact, not permanent storage.",
+    "expiresAt": "2026-12-10T19:37:00Z",
+    "mayBeDeletedEarlier": true,
+    "receipt": "archive-receipt.json",
+    "downloadCommand": "gh run download 34639792688 --repo yasineken2002-sys/eken --name agent3-rendering-2-1-evidence-34639792688-1 --dir /tmp/agent3-evidence-download",
+    "verifyCommand": "python3 .github/scripts/rendering-evidence-archive.py verify /tmp/agent3-evidence-download/agent3-rendering-2-1-evidence-73d221c9.tar"
+  }
 }
