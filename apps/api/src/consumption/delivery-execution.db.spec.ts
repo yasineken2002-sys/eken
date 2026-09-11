@@ -23,6 +23,8 @@ import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
+import { actorStampExtension, STÄMPLADE_MODELLER } from '../common/prisma/actor-stamp-extension'
+import { runWithActor } from '../common/actor/actor.context'
 
 // Facit: docs/granskning/agent3-utskicksgrind-2b-facit.md, fryst före SQL.
 // Riktig PostgreSQL/domänkod, uttryckligen syntetiska renderer-/providerportar.
@@ -967,7 +969,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
         {
           ...transition(h.f, h.dispatch.decisionId, 'SENDING'),
           actorId: h.principal.id,
-          actorKind: 'SERVICE',
+          authorityKind: 'SERVICE',
         },
         tx,
       ),
@@ -991,7 +993,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
         {
           ...transition(budget.f, budget.dispatch.decisionId, 'SENDING'),
           actorId: budget.principal.id,
-          actorKind: 'SERVICE',
+          authorityKind: 'SERVICE',
         },
         tx,
       ),
@@ -1094,7 +1096,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
           fabricated,
         ),
         actorId: h.principal.id,
-        actorKind: 'SERVICE',
+        authorityKind: 'SERVICE',
       }),
     ).rejects.toThrow()
     await expect(
@@ -1194,7 +1196,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
     const serviceCommand = {
       ...(await h.enqueueCommand()),
       actorId: h.principal.id,
-      actorKind: 'SERVICE' as const,
+      authorityKind: 'SERVICE' as const,
     }
     await expect(h.execution.enqueue(serviceCommand)).rejects.toThrow()
     await expect(
@@ -1207,13 +1209,13 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
       service.transition({
         ...transition(h.f, h.dispatch.decisionId, 'REVOKED'),
         actorId: h.principal.id,
-        actorKind: 'SERVICE',
+        authorityKind: 'SERVICE',
       }),
     ).rejects.toThrow()
     await expect(
       service.transition({
         ...transition(h.f, h.dispatch.decisionId, 'SENDING'),
-        actorKind: 'SYSTEM',
+        authorityKind: 'SYSTEM',
       } as unknown as DeliveryTransitionCommand),
     ).rejects.toThrow()
     expect(h.provider.calls).toHaveLength(0)
@@ -1222,13 +1224,13 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
         {
           ...transition(h.f, h.dispatch.decisionId, 'SENDING'),
           actorId: h.principal.id,
-          actorKind: 'SERVICE',
+          authorityKind: 'SERVICE',
         },
         tx,
       ),
     )
     expect(adopted.startGranted).toBe(false)
-    expect(adopted.event.actorKind).toBe('SERVICE')
+    expect(adopted.event.authorityKind).toBe('SERVICE')
     expect(adopted.event.actorName).toBe(h.principal.name)
     expect(await db.user.findUnique({ where: { id: adopted.event.actorId } })).toBeNull()
     await expect(h.restart().run(h.dispatch.decisionId)).rejects.toThrow('DELIVERY_RETRY_LATER')
@@ -1247,7 +1249,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
           detail: 'Tjänsten saknar denna rätt',
         }),
         actorId: h.principal.id,
-        actorKind: 'SERVICE',
+        authorityKind: 'SERVICE',
       }),
     ).rejects.toThrow()
     await h.restart().publish(h.dispatch.decisionId)
@@ -1283,6 +1285,19 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
     expect(await observations(revoked.dispatch.decisionId, 'FIRST')).toHaveLength(1)
     expect(await observations(revoked.dispatch.decisionId, 'RETRY')).toHaveLength(0)
     expect(revoked.provider.calls).toHaveLength(1)
+    // Den globala auditstämpeln får inte välja eller ersätta leveransens FK-gren.
+    expect(STÄMPLADE_MODELLER.has('DeliveryEvent')).toBe(false)
+    const audited = new DeliveryExecution(
+      db.$extends(actorStampExtension) as unknown as PrismaClient,
+      other.configuration,
+      other.ports,
+      () => BigInt(now) * 1_000_000n,
+    )
+    expect(
+      (await runWithActor('SYSTEM', () => audited.run(other.dispatch.decisionId))).called,
+    ).toBe(true)
+    expect((await latest(other.dispatch.decisionId)).authorityKind).toBe('SERVICE')
+    expect((await latest(other.dispatch.decisionId)).actorId).toBe(other.principal.id)
   })
 
   it('2b-19 förlorat acceptanssvar löses efter omstart med samma mejl-ID och exakt två POST', async () => {
@@ -1678,7 +1693,7 @@ describe('2b: inaktivt exekveringsmaskineri i PostgreSQL', () => {
     await service.transition({
       ...transition(lateOriginal.f, first.d.decisionId, 'UNKNOWN', first.d.attemptId),
       actorId: lateOriginal.principal.id,
-      actorKind: 'SERVICE',
+      authorityKind: 'SERVICE',
     })
     await setTime((await startTime(lateOriginal.dispatch)) + 23 * 3600_000, lateOriginal.provider)
     await internal(lateOriginal.execution).record(first.d, first.grant, originalReply)

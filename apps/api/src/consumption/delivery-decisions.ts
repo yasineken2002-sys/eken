@@ -9,7 +9,7 @@ type Scope = {
   organizationId: string
   documentId: string
   actorId: string
-  actorKind?: 'HUMAN' | 'SERVICE'
+  authorityKind?: 'HUMAN' | 'SERVICE'
 }
 type Creation =
   | {
@@ -55,7 +55,7 @@ const eventFields = (command: Command) => ({
   request: json(command),
   actorId: command.actorId,
   actorName: '',
-  actorKind: command.actorKind ?? 'HUMAN',
+  authorityKind: command.authorityKind ?? 'HUMAN',
 })
 
 // Ingen Nest-modul registrerar denna klass. Inga kö-/leverantörsadaptrar importeras.
@@ -116,7 +116,7 @@ export class DeliveryDecisions {
 
   private async authorize(tx: Tx, scope: Scope, execution = false) {
     await tx.$queryRaw`SELECT delivery_lock(${scope.organizationId})::text`
-    if (scope.actorKind === 'SERVICE') {
+    if (scope.authorityKind === 'SERVICE') {
       const principal =
         execution &&
         (await tx.deliveryPrincipal.findFirst({
@@ -270,7 +270,7 @@ export class DeliveryDecisions {
       if (fresh.fingerprint !== current.decision.fingerprint) conflict('DELIVERY_SNAPSHOT_CONFLICT')
     }
     const dispatch =
-      command.actorKind === 'SERVICE' && command.to === 'SENDING'
+      command.authorityKind === 'SERVICE' && command.to === 'SENDING'
         ? await tx.deliveryDispatch.findUniqueOrThrow({ where: { decisionId: command.decisionId } })
         : null
     const id = dispatch?.attemptId ?? randomUUID()

@@ -39,7 +39,7 @@ export class DeliveryExecution {
       organizationId: d.organizationId,
       documentId: d.documentId,
       actorId: this.identity.principalId,
-      actorKind: 'SERVICE' as const,
+      authorityKind: 'SERVICE' as const,
     }
   }
 

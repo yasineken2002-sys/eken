@@ -7190,7 +7190,7 @@ model DeliveryEvent {
   evidence Json
   actorId String
   actorName String
-  actorKind String @default("HUMAN")
+  authorityKind String @default("HUMAN")
   createdAt DateTime @default(now())
   decision DeliveryDecision @relation(fields: [organizationId, documentId, decisionId], references: [organizationId, documentId, id], onDelete: Restrict, onUpdate: NoAction)
   @@unique([organizationId, commandKey])

@@ -17,7 +17,7 @@ END;
 $$;
 CREATE TRIGGER delivery_principal_update BEFORE UPDATE ON "DeliveryPrincipal" FOR EACH ROW EXECUTE FUNCTION delivery_principal_update();
 CREATE TRIGGER delivery_principal_preserve BEFORE DELETE OR TRUNCATE ON "DeliveryPrincipal" FOR EACH STATEMENT EXECUTE FUNCTION append_only_guard();
-ALTER TABLE "DeliveryEvent" ADD COLUMN "actorKind" TEXT NOT NULL DEFAULT 'HUMAN';
+ALTER TABLE "DeliveryEvent" ADD COLUMN "authorityKind" TEXT NOT NULL DEFAULT 'HUMAN';
 CREATE TABLE "DeliveryDispatch" (
   "decisionId" TEXT PRIMARY KEY,
   "organizationId" TEXT NOT NULL,
@@ -110,13 +110,13 @@ BEGIN
   PERFORM delivery_lock(NEW."organizationId");
   SELECT * INTO decision FROM "DeliveryDecision" WHERE "id" = NEW."decisionId" AND "organizationId" = NEW."organizationId" AND "documentId" = NEW."documentId";
   SELECT * INTO prior FROM "DeliveryEvent" WHERE "decisionId" = NEW."decisionId" ORDER BY "revision" DESC LIMIT 1;
-  IF NEW."actorKind" = 'HUMAN' THEN
+  IF NEW."authorityKind" = 'HUMAN' THEN
     IF NEW."state" = 'SENDING' AND EXISTS (SELECT FROM "DeliveryDispatch" WHERE "decisionId" = NEW."decisionId") THEN
       RAISE EXCEPTION 'DELIVERY_PRINCIPAL_REQUIRED';
     END IF;
     SELECT btrim("firstName" || ' ' || "lastName") INTO NEW."actorName" FROM "User"
       WHERE "id" = NEW."actorId" AND "organizationId" = NEW."organizationId" AND "isActive" AND "role" IN ('OWNER','ADMIN','MANAGER') FOR SHARE;
-  ELSIF NEW."actorKind" = 'SERVICE' THEN
+  ELSIF NEW."authorityKind" = 'SERVICE' THEN
     SELECT "name" INTO NEW."actorName" FROM "DeliveryPrincipal"
       WHERE "id" = NEW."actorId" AND "organizationId" = NEW."organizationId" AND "active" FOR SHARE;
     SELECT * INTO dispatch FROM "DeliveryDispatch" WHERE "decisionId" = NEW."decisionId" AND "organizationId" = NEW."organizationId" AND "documentId" = NEW."documentId";
@@ -168,7 +168,7 @@ BEGIN
       IF NEW."state" = 'FAILED_NO_ACCEPTANCE' THEN
         valid := valid AND length(btrim(NEW."evidence"->'receipt'->>'finalityReference')) > 0;
       END IF;
-      IF prior."state" = 'UNKNOWN' AND NEW."actorKind" = 'HUMAN' THEN
+      IF prior."state" = 'UNKNOWN' AND NEW."authorityKind" = 'HUMAN' THEN
         valid := valid AND length(btrim(NEW."evidence"->'investigation'->>'caseId')) > 0
           AND length(btrim(NEW."evidence"->'investigation'->>'source')) > 0;
       END IF;
@@ -186,7 +186,7 @@ BEGIN
         AND decision."snapshot"->'lease'->>'tenantId' = decision."snapshot"->'recipient'->>'id'
         AND decision."snapshot"->'property'->>'organizationId' = NEW."organizationId"));
   END IF;
-  valid := valid AND COALESCE(NEW."request"->>'actorKind', 'HUMAN') = NEW."actorKind"
+  valid := valid AND COALESCE(NEW."request"->>'authorityKind', 'HUMAN') = NEW."authorityKind"
     AND NEW."request"->>'actorId' = NEW."actorId" AND NEW."request"->>'documentId' = NEW."documentId"
     AND NEW."request"->>'organizationId' = NEW."organizationId" AND NEW."request"->>'commandKey' = NEW."commandKey";
   IF valid IS DISTINCT FROM TRUE THEN RAISE EXCEPTION 'DELIVERY_TRANSITION_FORBIDDEN'; END IF;
