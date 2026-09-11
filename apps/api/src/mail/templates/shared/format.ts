@@ -8,6 +8,7 @@ export function formatSek(amount: number): string {
 
 export function formatDate(d: Date | string): string {
   return new Date(d).toLocaleDateString('sv-SE', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'long',
     day: 'numeric',

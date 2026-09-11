@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { render } from '@react-email/render'
 import * as crypto from 'crypto'
+import { INITIAL_RENDERING_CODE, renderingCodeIdentity } from '../invoices/rendering-context'
 import * as React from 'react'
 import { Custom } from './templates/base/Custom'
 import { MagicLink } from './templates/auth/MagicLink'
@@ -45,11 +46,14 @@ const TEMPLATE_REGISTRY: Record<TemplateName, TemplateComponent> = {
 }
 
 interface RenderResult {
+  identity: string
   html: string
   text: string
 }
 
 const CACHE_MAX_ENTRIES = 256
+
+export const mailEnvironment = renderingCodeIdentity
 
 @Injectable()
 export class MailRenderer {
@@ -64,8 +68,15 @@ export class MailRenderer {
   async render<T extends TemplateName>(
     template: T,
     props: TemplatePropsMap[T],
+    context = { environment: mailEnvironment() },
   ): Promise<RenderResult> {
-    const cacheKey = this.computeCacheKey(template, props)
+    if (
+      context.environment !== mailEnvironment() ||
+      context.environment !== INITIAL_RENDERING_CODE
+    ) {
+      throw new Error('RENDER_IDENTITY_CONFLICT')
+    }
+    const cacheKey = this.computeCacheKey(template, { props, context })
     const cached = this.cache.get(cacheKey)
     if (cached) return cached
 
@@ -81,7 +92,7 @@ export class MailRenderer {
       render(element, { plainText: true }),
     ])
 
-    const result: RenderResult = { html, text }
+    const result: RenderResult = { html, text, identity: cacheKey }
 
     if (this.cache.size >= CACHE_MAX_ENTRIES) {
       // Trim oldest entry — Map preserves insertion order
@@ -95,7 +106,7 @@ export class MailRenderer {
 
   private computeCacheKey(template: TemplateName, props: unknown): string {
     const serialized = stableStringify(props)
-    const hash = crypto.createHash('sha1').update(serialized).digest('hex')
+    const hash = crypto.createHash('sha256').update(serialized).digest('hex')
     return `${template}:${hash}`
   }
 }

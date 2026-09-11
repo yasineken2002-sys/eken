@@ -32,6 +32,9 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { CollectionExportService } from './collection-export.service'
+import { documentContext } from '../invoices/rendering-context'
+
+afterEach(() => jest.restoreAllMocks())
 
 type Row = { id: string; invoiceNumber: string; type: string; status: string }
 
@@ -65,7 +68,13 @@ function makeService(rows: Row[]) {
       ),
     } as never,
     { reveal: jest.fn(() => null) } as never,
-    { generateFromHtml: jest.fn(async () => Buffer.from('pdf')) } as never,
+    {
+      collectRenderingContext: jest.fn().mockResolvedValue({
+        ...documentContext(new Date('2026-07-21T12:00:00Z'), null),
+        environment: 'test-pdf-port',
+      }),
+      generateFromHtml: jest.fn(async () => Buffer.from('pdf')),
+    } as never,
     { uploadFile: jest.fn(async () => 'https://example.invalid/fil') } as never,
     { enqueue: jest.fn() } as never,
   )
@@ -73,15 +82,29 @@ function makeService(rows: Row[]) {
     loadInvoice: (id: string, org: string) => Promise<Row>
     claimForExport: (...a: unknown[]) => Promise<void>
     outstandingFor: (inv: Row) => unknown
-    buildPdfHtml: (inv: Row) => Promise<string>
     buildCsv: (invs: Row[]) => string
   }
-  s.loadInvoice = jest.fn(async (id: string) => rows.find((r) => r.id === id)!)
+  s.loadInvoice = jest.fn(async (id: string) => ({
+    ...rows.find((r) => r.id === id)!,
+    organization: {
+      name: 'Syntetisk exportorganisation',
+      street: 'Testgatan 1',
+      postalCode: '000 00',
+      city: 'Teststaden',
+      email: 'export@example.test',
+      logoStorageKey: null,
+      invoiceColor: null,
+      brandSecondaryColor: null,
+      brandFont: null,
+    },
+    tenant: null,
+    customer: null,
+  }))
   s.claimForExport = jest.fn(async (id: unknown) => {
     claimed.push(String(id))
   })
   s.outstandingFor = () => ({ outstanding: { toNumber: () => 1000 } })
-  s.buildPdfHtml = async () => '<html></html>'
+  jest.spyOn(CollectionExportService, 'buildPdfHtml').mockReturnValue('<html></html>')
   s.buildCsv = () => 'csv'
   return { svc, claimed }
 }

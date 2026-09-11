@@ -1,0 +1,3736 @@
+{
+  "source": "73d221c9b7e002b70262a3186b76fea876d6ad01",
+  "base": "5ae9906b152307eae0d79eec719d4303a042742c",
+  "scope": "Files changed by approved PR880; unchanged base files remain inherited.",
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "bytes": 119763,
+      "sha256": "608ae7a9b1324960bd69d608f4c48a71c07745164add72db8487d50f7c6104e9",
+      "gitBlob": "719efc9b91f0e971dcbe00dcef2e53c5937e8235",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/scripts/check-pdf-templates-selfcontained.mjs",
+      "bytes": 22698,
+      "sha256": "5420e6f7af15152457c773fb1428db388dc7d2e0da0e4ccc33148e51f55383d4",
+      "gitBlob": "330289b2da3122a45d6adc95eea55f543c7a9d31",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/avisering/avisering.notice-pdf-branding.spec.ts",
+      "bytes": 6765,
+      "sha256": "a9ccb95b5b1c931173752d32730d10b6811c8da34141eb405adf2fe7bd793a9d",
+      "gitBlob": "953ca568c5774abe2cea70210af9438454c79cf1",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/avisering/avisering.service.ts",
+      "bytes": 116126,
+      "sha256": "12a830d399770559af03400dd755b1ff2e72f27adee498403345173d0279b5fb",
+      "gitBlob": "397ae8e6431fd9f29a7989c2f3c9e3346cf20608",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/avisering/rent-delivery-per-send.db.spec.ts",
+      "bytes": 14558,
+      "sha256": "00f2c550e723bf673b732342f53e80a26e928611ae99b681519c0a4fa0b13bee",
+      "gitBlob": "41776991c81cd1f8dbc7d4c17147bbb00c87d0db",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/avisering/rent-reminder.notice-pdf-branding.spec.ts",
+      "bytes": 4638,
+      "sha256": "5544c3a435817cb8e2089aa77978009a4e5962a94f1afeaa9c0b273969abaefd",
+      "gitBlob": "b851d64f93ed20d444cc8c9f73cf8ee79fc4d25b",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/avisering/rent-reminder.service.spec.ts",
+      "bytes": 45363,
+      "sha256": "7a9e593f3140e7b1d8cb15e1f48745c78cd64cf58636ccf0689c2c946008bf2d",
+      "gitBlob": "0c13784be126cf28ede8ce994029f7fd6b6d48f4",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/avisering/rent-reminder.service.ts",
+      "bytes": 78327,
+      "sha256": "c6b5777b8bf1acb5e6b72a7641828d05290f56fbc0f8fd4b726c6fd6add1ac1c",
+      "gitBlob": "8472e7370ada67c615a335ae43ff07dca4bb4f2b",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/collection-export.claim.spec.ts",
+      "bytes": 14486,
+      "sha256": "b304276be4fb6e4631953662ec52de52398e2cfa31eca465136576252e4076b2",
+      "gitBlob": "c12fd35805a178deec5dfb7fe816de1786d695f6",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/collection-export.notice-pdf-branding.spec.ts",
+      "bytes": 8919,
+      "sha256": "e02be403ea68da404fabee1f027a4f2e90eff670f2c180e635c8c8344c5e2f8a",
+      "gitBlob": "223d3cff30659d81dd1fbd306f7a9dcf4a6c056a",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/collection-export.service.ts",
+      "bytes": 52263,
+      "sha256": "75fcb23850074db5934a979ecaba644cd86ca1f49caece15a6c9807d9154a688",
+      "gitBlob": "452d53a51979b5d629d120c97fa0a9d83d7ec104",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/deposit-bulk-export-excluded.spec.ts",
+      "bytes": 7847,
+      "sha256": "32657a5a7975f37e07eed66bb96d85c536e950a8ca652017c06b89bf296e7b59",
+      "gitBlob": "3054e18a5f39798d4896292958799a632f278b61",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/rent-collection-export.notice-pdf-branding.spec.ts",
+      "bytes": 10681,
+      "sha256": "7c10e3c7500fdf1a9626c88c73bd6e75f66888baed17041ecfb689a730d94f0c",
+      "gitBlob": "8dc9ad1cd66d136a3b7c0b97d91cd1ab59a48c81",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/rent-collection-export.service.spec.ts",
+      "bytes": 17069,
+      "sha256": "8b68dac003d98badfc737424b2bf351470796e8872128fdcea99787067ef4e6e",
+      "gitBlob": "a54f2dc32dbdee1393491c6cab84377d57fa8422",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/collections/rent-collection-export.service.ts",
+      "bytes": 32145,
+      "sha256": "1f5bacd3e07910dddc7a348b6db14f033893e5c5f772b198e29927957b1886eb",
+      "gitBlob": "9e692979e311caeecc0379e5c9ad1a864ba336c7",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/consumption/delivery-decisions.db.spec.ts",
+      "bytes": 50522,
+      "sha256": "764fee9c3753dd8ea4bd9d288ed2b8a88b7c3ec29c33c324a256e85da9fa7f62",
+      "gitBlob": "319f6fa7a4939eec7bbe7390980270dc03d6849e",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/consumption/delivery-execution.db.spec.ts",
+      "bytes": 101613,
+      "sha256": "383ba7efff1de4f3be64697c884e12ad5b670de2ebe77a1fa22686c7f11e2cb4",
+      "gitBlob": "7090d2b798196470561ade5e79fcc46e699c3ff2",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/consumption/delivery-execution.ts",
+      "bytes": 13600,
+      "sha256": "8cbe4d2c0400e12c570f0f943af0d744f4efccb1a3fa071baa32b278f1a34e6d",
+      "gitBlob": "b64342430bc5fc4c0bdc02e10050bb676164c433",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/pdf.service.ts",
+      "bytes": 13752,
+      "sha256": "ee642ac012c1e2c380dc957b71e9729bbc1aaa85361a042af33cd2ab0168998a",
+      "gitBlob": "0901dd04512a5d3cc027d3103288e588a46611ea",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/rendering-context.ts",
+      "bytes": 7557,
+      "sha256": "f8d091c1d8c5d542bd490749710867382ab8f35e746778b966cad20d35c96d1e",
+      "gitBlob": "36f6aa36e1619f18c6a440db4db92483fe98f7f6",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/rendering.golden.test-helpers.ts",
+      "bytes": 6025,
+      "sha256": "44c9e61e937b2b3fb4b96079f7bfdfd26b927c51ec0a77e3cd63a8ddc4346808",
+      "gitBlob": "f7a985b03a61eb3f653e02d85b82261a64683603",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/rendering.real.spec.ts",
+      "bytes": 28918,
+      "sha256": "5076cba1e4480b4efdbc675f3e3001b0367c332c40adea339205968847105b4a",
+      "gitBlob": "f82c3d0410f605fbdb7d88474520d26fb17580ae",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/rendering.routing.test-helpers.ts",
+      "bytes": 13358,
+      "sha256": "e3b1dca674f63e97d5a741d074ca5655090c4b97334772f5df2f430fd9452c2a",
+      "gitBlob": "97f9254b4da7ebedcdbf1a35d99148e133dd2b1d",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/rendering.test-fixtures.ts",
+      "bytes": 12188,
+      "sha256": "376dcd270cd3803ea28e74ac8b0b2219309276a7dbe4bb77c20da7e479655d8b",
+      "gitBlob": "2204c0252c378b59f81e5df4072fb75f33d22f38",
+      "role": "test-code",
+      "reason": "Godkänd berörd spec eller dess testhjälpare; samma förväntningar/importer behålls.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "ci.yml Run test suite -> Jest och 70 obligatoriska ID"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/invoices/templates/invoice-pdf.template.ts",
+      "bytes": 16599,
+      "sha256": "41fcb44547bc2ce873b453aae039ed03270975e5e7543a3b22566706c2b1bba2",
+      "gitBlob": "062629a55af2a6a60664c75cd67482523416bb07",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/mail/mail.renderer.ts",
+      "bytes": 5370,
+      "sha256": "0db5ef0f39d57365634a01b358983972f7555b7903bacec1cfb90a2bc1d9cfec",
+      "gitBlob": "d54cf8fc6ad0c0727361f99fd54aaceb2e80d866",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/mail/mail.service.ts",
+      "bytes": 33021,
+      "sha256": "84de44d696687e6957df4e7818e3dfdeb5691531b7a2100a6857089594dfbb8f",
+      "gitBlob": "e01c3dc12084b3128c3c963774927bf42a067f6a",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "apps/api/src/mail/templates/shared/format.ts",
+      "bytes": 385,
+      "sha256": "10044e9072bcc69be5f81dba15bcd5970d218ef1f9874d7618f568e72f94f25f",
+      "gitBlob": "38e8a8b5db8982c4469ab52fc501cfbd10b01aea",
+      "role": "approved-code",
+      "reason": "Godkänd produktions-/CI-fil överförs byteidentiskt, utan funktionsändring.",
+      "via": [
+        "godkänd diff 5ae -> 73d",
+        "berörda specar och verkliga renderingsanrop"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-invoice-clean.html",
+      "bytes": 6027,
+      "sha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "gitBlob": "222e30adcf53c2779557698226dae40af5874798",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-invoice-clean.input.json",
+      "bytes": 2718,
+      "sha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "gitBlob": "0fd829709bb4333b2ea62aec0ee797515c16e4f5",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-invoice-clean.pdf",
+      "bytes": 50986,
+      "sha256": "0354d333636189f9fe1295411635843085cf84d076012e76c287affc8b17c67c",
+      "gitBlob": "2efa66917c6a1981765d1162e15cf7b947d6c5da",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-invoice-utility.html",
+      "bytes": 5997,
+      "sha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "gitBlob": "3d6d77882cf79a33dfe5890642144754135d470e",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-invoice-utility.input.json",
+      "bytes": 2703,
+      "sha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "gitBlob": "9d78d6298bf194ac664c73fd6b33592ac4ad9b83",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-invoice-utility.pdf",
+      "bytes": 51971,
+      "sha256": "31c7b9b82292b8c7a7623e230da75c032b99bbabd1c416c6ad9a3a6bce4dc056",
+      "gitBlob": "3a0960589f9318e1bb7af7fb8c4670fda6eae771",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-notice-clean.html",
+      "bytes": 6675,
+      "sha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "gitBlob": "2ddbc62e62a0c5faf6b537ea4cab92d1a95a7423",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-notice-clean.input.json",
+      "bytes": 3084,
+      "sha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "gitBlob": "7b14e54ecce93b56e23efb6c271ad103cb8e152a",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-notice-clean.pdf",
+      "bytes": 54470,
+      "sha256": "f4916a7bca3479fc45a1a8737000652bf4ad98c2ed30d50003d67103aebfe493",
+      "gitBlob": "71314bce4bba9baddddfad44a0084e59435baf39",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-notice-utility-credit.html",
+      "bytes": 6675,
+      "sha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "gitBlob": "41f2de7182e139c085648785970e7f7d8105026e",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-notice-utility-credit.input.json",
+      "bytes": 3696,
+      "sha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "gitBlob": "db0728ae86068422bf98c6950412c377ac987a9a",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/collection-notice-utility-credit.pdf",
+      "bytes": 54344,
+      "sha256": "66ddf4093512559020c7cb5fb5a85ba557803776dce0981f57d7554105af4eff",
+      "gitBlob": "192bb74f3e03b1bdf30e79aad233aa507ff3ce38",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-classic.html",
+      "bytes": 6981,
+      "sha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "gitBlob": "76d8ec4d0053c2bff22d4de7e4a872bb6afa755e",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-classic.input.json",
+      "bytes": 2249,
+      "sha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "gitBlob": "1e4e260a7746e1ac51f3a41089273ff85ed39b02",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-classic.pdf",
+      "bytes": 71199,
+      "sha256": "835faa00b2b42f924200577c94411301c5381cdcf7906831bf763acedc36ab0b",
+      "gitBlob": "434599d33c2a10bf4d61e0884a4c245494475b84",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-minimal.html",
+      "bytes": 6399,
+      "sha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "gitBlob": "4c63f1158b4621d8195f7c62377e76961bd047cf",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-minimal.input.json",
+      "bytes": 2249,
+      "sha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "gitBlob": "b05212d0be6cdc62f9618ab1d21cee16ae9ebac1",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-minimal.pdf",
+      "bytes": 67976,
+      "sha256": "d1272d56739f909f67599bf9699b46b47615f6fd2bbae09a23141cc652788bf8",
+      "gitBlob": "d251314d3f33e68ccc2a3119884ae3ae52aa5766",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-modern.html",
+      "bytes": 6464,
+      "sha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "gitBlob": "02e1654f7d16a4efc9c0ee2220b4d5797fed8a85",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-modern.input.json",
+      "bytes": 2248,
+      "sha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "gitBlob": "7eaf47681deee0958edc55373ef5afce9f8c62d2",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-modern.pdf",
+      "bytes": 74717,
+      "sha256": "18d2046411fdaa5fd12b8e87533178bb6ede8f16759110eedf800a6caebca3b4",
+      "gitBlob": "e186f36017fe25fd3dfb9bbd3ae8bf7aa3b30a13",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-multipage.html",
+      "bytes": 34411,
+      "sha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "gitBlob": "fa8610edad417e795eac392576053fe8af8f19dc",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-multipage.input.json",
+      "bytes": 13683,
+      "sha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "gitBlob": "b16e67aab8bf3fec4b90ef1a5ed5d731a3febeb0",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-customer-multipage.pdf",
+      "bytes": 169515,
+      "sha256": "bf0738b65920a8c7f6f64fe0e2e264e9043e6a554697296d0faa358de4297ad7",
+      "gitBlob": "aa5eba6407f7a5321d29466f6d776e75b51031f6",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-rent-classic.html",
+      "bytes": 6504,
+      "sha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "gitBlob": "cae723ceeb58f0cc639937d59c4be37af6381f72",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-rent-classic.input.json",
+      "bytes": 2055,
+      "sha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "gitBlob": "9539b4b5b5c495fcbf775268ba413153dc231dd7",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-rent-classic.pdf",
+      "bytes": 68872,
+      "sha256": "a0c9feeec223d84b232a2084544530cc1297b940815ead72adec2bee93fd0bb6",
+      "gitBlob": "8127e6997ba1c7c904ae7b9a54748f96808aa30e",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-utility-classic.html",
+      "bytes": 6973,
+      "sha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "gitBlob": "30e4dafdd98b1e24915de0c715aa86396f2973bf",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-utility-classic.input.json",
+      "bytes": 2234,
+      "sha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "gitBlob": "2d5269dd4887f48b717aacc7cd0cf50e6983b0c6",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/invoice-utility-classic.pdf",
+      "bytes": 71077,
+      "sha256": "65dd0d5cac6ab6d42cc28bf9a6eb852d88eb28c1e275a33e65f0c5f63894496f",
+      "gitBlob": "23deba7111fc2c4009e2128ebef30a1c25d4eb13",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/logo.png",
+      "bytes": 145,
+      "sha256": "9ebdb9e455d6ecb94611a334790ed269e2a290539861eb2ecf765e20eaf3a021",
+      "gitBlob": "5d010246c206483b39ca74d43751f7fca3ef0df7",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-formal.html",
+      "bytes": 8496,
+      "sha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "gitBlob": "609dfb2f8c95344e94747fec1b9130a426b5e411",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-formal.json",
+      "bytes": 583,
+      "sha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "gitBlob": "b51d9a5e2d2d69c51db2df92fc47a69691ac40e0",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-formal.txt",
+      "bytes": 1149,
+      "sha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "gitBlob": "772b07e38a3cf60ef9bbcb9bb3b2a68fdcf1e672",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-friendly.html",
+      "bytes": 7656,
+      "sha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "gitBlob": "08279ab7b11388ebd0628528f66de985c8435d80",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-friendly.json",
+      "bytes": 484,
+      "sha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "gitBlob": "3f9d92baa0ac3b1bb65ca7fb53056c1bdeebf4d3",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-friendly.txt",
+      "bytes": 859,
+      "sha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "gitBlob": "599e68dbae5d57b70cb19591a5ad19d60a0a18dd",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-invoice.html",
+      "bytes": 7660,
+      "sha256": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+      "gitBlob": "f20718f296348f3d810bef54f149c164507f5f03",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-invoice.json",
+      "bytes": 95492,
+      "sha256": "bf4b4e857a906bfd537c68a3edd3a50ad4049facf6d1283b6a9901b7728be10d",
+      "gitBlob": "d4eea0c04f7d64d58338c589d13a1910e6332eff",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-invoice.txt",
+      "bytes": 612,
+      "sha256": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+      "gitBlob": "3177f288788c1f5a65c130992cc6c404ece622c0",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-notice-reminder.html",
+      "bytes": 6882,
+      "sha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "gitBlob": "76bbfe14335f46069e63a175b8cc712dc22bfff3",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-notice-reminder.json",
+      "bytes": 49472,
+      "sha256": "f41eb975e0fa1f8ca64931f6b6101947f561d9797d95c5eab259552380d4c4df",
+      "gitBlob": "030fba0fc1d7dbb08187d700e77a785b626818d8",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-notice-reminder.txt",
+      "bytes": 714,
+      "sha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "gitBlob": "27ad923c91d1cf9300244edff3a91b81ca57fe13",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-notice.html",
+      "bytes": 6137,
+      "sha256": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+      "gitBlob": "23d4bbc6c602afd4bedcecf7b399787700f84487",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-notice.json",
+      "bytes": 83276,
+      "sha256": "6c72d705a6ea62512f596bb4f79db529b86bf95645a7fd1e5bbd87a4be7f6014",
+      "gitBlob": "beb7fb31ce8828302660b9b7c27e154967fbd729",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-notice.txt",
+      "bytes": 505,
+      "sha256": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+      "gitBlob": "eaf77ec4cfe15ff1a42142643d9c8f598bb75be6",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-overdue.html",
+      "bytes": 6461,
+      "sha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "gitBlob": "47b2dbcf575ae9d8fc750f88fa8b11d677e8ea16",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-overdue.json",
+      "bytes": 394,
+      "sha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "gitBlob": "f7741d8ed6a7eea6fadf6d2ee10a5dbf7aa8643b",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/mail-overdue.txt",
+      "bytes": 646,
+      "sha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "gitBlob": "b001483ad452b92f2dc24748e187d1a0a53da239",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/manifest.json",
+      "bytes": 24409,
+      "sha256": "3cb040f91f558a3dcfd85b1284a3d9091840c63cc6c49ce92f1b9bbaec1336f5",
+      "gitBlob": "53e636d2bff8b7814f38db97cc4dabcf6e5eaa40",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-deposit.html",
+      "bytes": 9979,
+      "sha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "gitBlob": "9bb8be556585dde323ac0d718fd6e01bb79c1022",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-deposit.input.json",
+      "bytes": 2061,
+      "sha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "gitBlob": "65e37618d62cbd89ebf55c4dfe096ce3aaa72166",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-deposit.pdf",
+      "bytes": 61625,
+      "sha256": "95c60f111a22daedfe552dcc9f10ef71604d5f8aa048752583922f1fea52b468",
+      "gitBlob": "1378c47eca5a8d7368c2b2e286b54447d61a9f9a",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-prorated-backfill.html",
+      "bytes": 10487,
+      "sha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "gitBlob": "d2527e66a75139e96b768a2a199917418bf3d14d",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-prorated-backfill.input.json",
+      "bytes": 2095,
+      "sha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "gitBlob": "bdfd3b6b8d66841423712ff8377edfae86f7b65b",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-prorated-backfill.pdf",
+      "bytes": 64279,
+      "sha256": "5db621cf55b7dafd6dc1715ba3daa8d859f72ce7df42bc8957fd79e7d4cc8dcc",
+      "gitBlob": "6ed48987b299cc27f7387fe9bea30eb6213e94c0",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-rent.html",
+      "bytes": 9836,
+      "sha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "gitBlob": "8f7da35ebcdfb36ea554a577ca7a8c2bf1ca7dab",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-rent.input.json",
+      "bytes": 2053,
+      "sha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "gitBlob": "b5aa053efad88198595f362d05c4f867926cc83f",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-rent.pdf",
+      "bytes": 61021,
+      "sha256": "169cdf9ab5b5d467d6b7649564df40884017832b438b7fb539740ae446791a6c",
+      "gitBlob": "0969b4597102f38d3951e9bec182b2a7037ff804",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-utility-credit.html",
+      "bytes": 10099,
+      "sha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "gitBlob": "d4151ff3f98266ee652c12b5e67605aad06c41ee",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-utility-credit.input.json",
+      "bytes": 2664,
+      "sha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "gitBlob": "4e8902b882dca94b9b2e4466c0447bce5da9bc1d",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/notice-utility-credit.pdf",
+      "bytes": 63825,
+      "sha256": "643f9b03fa4872b31030084bdd897702c9f10577a8303fd5aa0e7af2b4c9afc3",
+      "gitBlob": "d691f6b80ec4a9a7f1b7b9bfa52d20c4d4fb2958",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/reminder-rent-partpaid.html",
+      "bytes": 3768,
+      "sha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "gitBlob": "3c4ec7da4e36158d30bd68d37092310d2df1c771",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/reminder-rent-partpaid.input.json",
+      "bytes": 2171,
+      "sha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "gitBlob": "456bbbbf2b08c726a56c621958e7fda37e8fccc5",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/reminder-rent-partpaid.pdf",
+      "bytes": 35172,
+      "sha256": "5044a6f54e20d3d9b56af266cddd7c71023265f903119c873ff9a0f59545fd7f",
+      "gitBlob": "d733c0829179f78792004dbb9ca9c49d16e36986",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/reminder-utility-partpaid-credit.html",
+      "bytes": 3768,
+      "sha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "gitBlob": "34fdd32a49417ba586fb48b5d8cbfb91a8718834",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/reminder-utility-partpaid-credit.input.json",
+      "bytes": 2782,
+      "sha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "gitBlob": "763cc31874e74323d71ab8fc95f8e8a92e516056",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-1/reminder-utility-partpaid-credit.pdf",
+      "bytes": 35331,
+      "sha256": "fe853e46c1fb396ad4f08058dcc1e1725625be948ba569eb678277bbe839674f",
+      "gitBlob": "79b6c08ff0ce2bf9e0162ea2dedf8153b7b3abf8",
+      "role": "runtime-fixture",
+      "reason": "Auktoritativ rå föreserie; hela serien och proveniens behålls byteidentiskt.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-1/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-invoice-clean.html",
+      "bytes": 6027,
+      "sha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "gitBlob": "222e30adcf53c2779557698226dae40af5874798",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-invoice-clean.input.json",
+      "bytes": 2718,
+      "sha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "gitBlob": "0fd829709bb4333b2ea62aec0ee797515c16e4f5",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-invoice-clean.pdf",
+      "bytes": 50986,
+      "sha256": "47086f51e85b134d7746e81a1450606ed0e7f88f2e09c93e448b312266290c0c",
+      "gitBlob": "f3597aaeb1f1229991c9f266b100274bdea62ff7",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-invoice-utility.html",
+      "bytes": 5997,
+      "sha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "gitBlob": "3d6d77882cf79a33dfe5890642144754135d470e",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-invoice-utility.input.json",
+      "bytes": 2703,
+      "sha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "gitBlob": "9d78d6298bf194ac664c73fd6b33592ac4ad9b83",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-invoice-utility.pdf",
+      "bytes": 51971,
+      "sha256": "d9a9142481d414cf4e9937c5a683411657e4033f446911f7424616f8e2d8dc42",
+      "gitBlob": "aa01add9414587a69f8736ff96b6d0d3ae5687ea",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-notice-clean.html",
+      "bytes": 6675,
+      "sha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "gitBlob": "2ddbc62e62a0c5faf6b537ea4cab92d1a95a7423",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-notice-clean.input.json",
+      "bytes": 3084,
+      "sha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "gitBlob": "7b14e54ecce93b56e23efb6c271ad103cb8e152a",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-notice-clean.pdf",
+      "bytes": 54470,
+      "sha256": "a78facd075b6d7f4fc52f29d230c4714328a719b9f83d0e0d43c0201ef27f103",
+      "gitBlob": "3a5e3e8ca750a0c5a200a77dacf4f785be323c60",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-notice-utility-credit.html",
+      "bytes": 6675,
+      "sha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "gitBlob": "41f2de7182e139c085648785970e7f7d8105026e",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-notice-utility-credit.input.json",
+      "bytes": 3696,
+      "sha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "gitBlob": "db0728ae86068422bf98c6950412c377ac987a9a",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/collection-notice-utility-credit.pdf",
+      "bytes": 54344,
+      "sha256": "b9c05a2ea6ad01347fb41597e3b493eb7df54e019edf7b262beed4f961631be3",
+      "gitBlob": "99332c35e0a9c692f922999983b1bf4e1dae7b5d",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-classic.html",
+      "bytes": 6981,
+      "sha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "gitBlob": "76d8ec4d0053c2bff22d4de7e4a872bb6afa755e",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-classic.input.json",
+      "bytes": 2249,
+      "sha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "gitBlob": "1e4e260a7746e1ac51f3a41089273ff85ed39b02",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-classic.pdf",
+      "bytes": 71199,
+      "sha256": "58d589e7d86e746567c06dc22bc7f087193bfde67490cdb89368790727d98a3a",
+      "gitBlob": "0c0579c8dbaa2f56dab68fe663e30713a1bae363",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-minimal.html",
+      "bytes": 6399,
+      "sha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "gitBlob": "4c63f1158b4621d8195f7c62377e76961bd047cf",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-minimal.input.json",
+      "bytes": 2249,
+      "sha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "gitBlob": "b05212d0be6cdc62f9618ab1d21cee16ae9ebac1",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-minimal.pdf",
+      "bytes": 67976,
+      "sha256": "c05570b8861469b9360ac7ebdb5da0e20f3700a0d2f0225cb398285f6c844548",
+      "gitBlob": "88f08c44af8a000024e79781cd24958d9f2e9b2f",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-modern.html",
+      "bytes": 6464,
+      "sha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "gitBlob": "02e1654f7d16a4efc9c0ee2220b4d5797fed8a85",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-modern.input.json",
+      "bytes": 2248,
+      "sha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "gitBlob": "7eaf47681deee0958edc55373ef5afce9f8c62d2",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-modern.pdf",
+      "bytes": 74717,
+      "sha256": "8b2f33749065fdbfe8199a105b17a85ccdcc18440aa204371b8f8c714f5f92d2",
+      "gitBlob": "37123cd40aa38566c64ac51e8f11b0618cb4b4df",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-multipage.html",
+      "bytes": 34411,
+      "sha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "gitBlob": "fa8610edad417e795eac392576053fe8af8f19dc",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-multipage.input.json",
+      "bytes": 13683,
+      "sha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "gitBlob": "b16e67aab8bf3fec4b90ef1a5ed5d731a3febeb0",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-customer-multipage.pdf",
+      "bytes": 169515,
+      "sha256": "5b0d251e3f1090d33b7149cbf83467e22f4e11d00d6443385e1de28f25e9469a",
+      "gitBlob": "b2ef84cbdd718f1a4c8a41bab463b93e95dc80a6",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-rent-classic.html",
+      "bytes": 6504,
+      "sha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "gitBlob": "cae723ceeb58f0cc639937d59c4be37af6381f72",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-rent-classic.input.json",
+      "bytes": 2055,
+      "sha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "gitBlob": "9539b4b5b5c495fcbf775268ba413153dc231dd7",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-rent-classic.pdf",
+      "bytes": 68872,
+      "sha256": "53e210a2c1c4e8af682ec3a76ebe7b45b482b882faead4044643684227ee911e",
+      "gitBlob": "86d8e6abe2b873582d9c0b5c805c94d190300233",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-utility-classic.html",
+      "bytes": 6973,
+      "sha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "gitBlob": "30e4dafdd98b1e24915de0c715aa86396f2973bf",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-utility-classic.input.json",
+      "bytes": 2234,
+      "sha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "gitBlob": "2d5269dd4887f48b717aacc7cd0cf50e6983b0c6",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/invoice-utility-classic.pdf",
+      "bytes": 71077,
+      "sha256": "801057fac181bd814804141dd137f5d978e921aacb987b31d8235618de322265",
+      "gitBlob": "c020cebb63da88e69de48859ca752394b1b8a776",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/logo.png",
+      "bytes": 145,
+      "sha256": "9ebdb9e455d6ecb94611a334790ed269e2a290539861eb2ecf765e20eaf3a021",
+      "gitBlob": "5d010246c206483b39ca74d43751f7fca3ef0df7",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-formal.html",
+      "bytes": 8496,
+      "sha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "gitBlob": "609dfb2f8c95344e94747fec1b9130a426b5e411",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-formal.json",
+      "bytes": 583,
+      "sha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "gitBlob": "b51d9a5e2d2d69c51db2df92fc47a69691ac40e0",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-formal.txt",
+      "bytes": 1149,
+      "sha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "gitBlob": "772b07e38a3cf60ef9bbcb9bb3b2a68fdcf1e672",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-friendly.html",
+      "bytes": 7656,
+      "sha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "gitBlob": "08279ab7b11388ebd0628528f66de985c8435d80",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-friendly.json",
+      "bytes": 484,
+      "sha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "gitBlob": "3f9d92baa0ac3b1bb65ca7fb53056c1bdeebf4d3",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-friendly.txt",
+      "bytes": 859,
+      "sha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "gitBlob": "599e68dbae5d57b70cb19591a5ad19d60a0a18dd",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-invoice.html",
+      "bytes": 7660,
+      "sha256": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+      "gitBlob": "f20718f296348f3d810bef54f149c164507f5f03",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-invoice.json",
+      "bytes": 95492,
+      "sha256": "03eb01be655829b4bd11c41510caf6c4c1c368d305d17724614ae8f5932c7675",
+      "gitBlob": "5ba0994d7513f41b93355249fb7cbb6eed43bf27",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-invoice.txt",
+      "bytes": 612,
+      "sha256": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+      "gitBlob": "3177f288788c1f5a65c130992cc6c404ece622c0",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-notice-reminder.html",
+      "bytes": 6882,
+      "sha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "gitBlob": "76bbfe14335f46069e63a175b8cc712dc22bfff3",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-notice-reminder.json",
+      "bytes": 49472,
+      "sha256": "31885804a548ef14f831eb16496057ff9111160105149ebf76290b71c1af796a",
+      "gitBlob": "a46e7f90919c6f205867d7f21a633d534bf8c2f5",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-notice-reminder.txt",
+      "bytes": 714,
+      "sha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "gitBlob": "27ad923c91d1cf9300244edff3a91b81ca57fe13",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-notice.html",
+      "bytes": 6137,
+      "sha256": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+      "gitBlob": "23d4bbc6c602afd4bedcecf7b399787700f84487",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-notice.json",
+      "bytes": 83276,
+      "sha256": "8f8e193883fd5e5c5530b6cbeddec357d2a8d105c7d507cd1b7411692f284137",
+      "gitBlob": "3db602ff16d25a0c40c9b50c60ba81dfeda030c4",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-notice.txt",
+      "bytes": 505,
+      "sha256": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+      "gitBlob": "eaf77ec4cfe15ff1a42142643d9c8f598bb75be6",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-overdue.html",
+      "bytes": 6461,
+      "sha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "gitBlob": "47b2dbcf575ae9d8fc750f88fa8b11d677e8ea16",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-overdue.json",
+      "bytes": 394,
+      "sha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "gitBlob": "f7741d8ed6a7eea6fadf6d2ee10a5dbf7aa8643b",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/mail-overdue.txt",
+      "bytes": 646,
+      "sha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "gitBlob": "b001483ad452b92f2dc24748e187d1a0a53da239",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/manifest.json",
+      "bytes": 24409,
+      "sha256": "88a9c2b8849faa6ee33bbdeba06aecfc4bf8e2a601f59d9bd3f215997ffde05e",
+      "gitBlob": "d455570ec4901fc9b3caf90e45de7a8ec16b7357",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-deposit.html",
+      "bytes": 9979,
+      "sha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "gitBlob": "9bb8be556585dde323ac0d718fd6e01bb79c1022",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-deposit.input.json",
+      "bytes": 2061,
+      "sha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "gitBlob": "65e37618d62cbd89ebf55c4dfe096ce3aaa72166",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-deposit.pdf",
+      "bytes": 61625,
+      "sha256": "400a383efeeffc2a1c34105786982eedb6fc38cc317e4ad2c0d31c3620a4ab5f",
+      "gitBlob": "3d779b8fb25c8253edb3bda90277f8e37683fe7c",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-prorated-backfill.html",
+      "bytes": 10487,
+      "sha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "gitBlob": "d2527e66a75139e96b768a2a199917418bf3d14d",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-prorated-backfill.input.json",
+      "bytes": 2095,
+      "sha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "gitBlob": "bdfd3b6b8d66841423712ff8377edfae86f7b65b",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-prorated-backfill.pdf",
+      "bytes": 64279,
+      "sha256": "f8b14b3e022b49697e55c5f583199b8081bee2a739cf3974e2d12ae758977dab",
+      "gitBlob": "2afce32819d03be828b27bd00453929fd32cf414",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-rent.html",
+      "bytes": 9836,
+      "sha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "gitBlob": "8f7da35ebcdfb36ea554a577ca7a8c2bf1ca7dab",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-rent.input.json",
+      "bytes": 2053,
+      "sha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "gitBlob": "b5aa053efad88198595f362d05c4f867926cc83f",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-rent.pdf",
+      "bytes": 61021,
+      "sha256": "d9436a407243c6797910c0cc1615d4d9366d2b84691c22f60f4577e9ed417803",
+      "gitBlob": "0303cacec73b17a965f2e90380228d8a107cd17c",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-utility-credit.html",
+      "bytes": 10099,
+      "sha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "gitBlob": "d4151ff3f98266ee652c12b5e67605aad06c41ee",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-utility-credit.input.json",
+      "bytes": 2664,
+      "sha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "gitBlob": "4e8902b882dca94b9b2e4466c0447bce5da9bc1d",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/notice-utility-credit.pdf",
+      "bytes": 63825,
+      "sha256": "63d163d3385e1bdcc06847d3eb9feb416470793df4920da282129ad1f01b1e2f",
+      "gitBlob": "7585df5d614d6cfb13640c845d96def4f9201611",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/reminder-rent-partpaid.html",
+      "bytes": 3768,
+      "sha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "gitBlob": "3c4ec7da4e36158d30bd68d37092310d2df1c771",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/reminder-rent-partpaid.input.json",
+      "bytes": 2171,
+      "sha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "gitBlob": "456bbbbf2b08c726a56c621958e7fda37e8fccc5",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/reminder-rent-partpaid.pdf",
+      "bytes": 35172,
+      "sha256": "fca27a3fdbe9e201898740f78672781f4f233e31106a72507e48feb1669a0b74",
+      "gitBlob": "e9e34723a826dba630ff5a8f55b9910861e01e3b",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/reminder-utility-partpaid-credit.html",
+      "bytes": 3768,
+      "sha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "gitBlob": "34fdd32a49417ba586fb48b5d8cbfb91a8718834",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/reminder-utility-partpaid-credit.input.json",
+      "bytes": 2782,
+      "sha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "gitBlob": "763cc31874e74323d71ab8fc95f8e8a92e516056",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/before-final-2/reminder-utility-partpaid-credit.pdf",
+      "bytes": 35331,
+      "sha256": "17f56c7d404d42dc27ba9c53e338b508be806ea50faea2fae4ea22b6f1d61104",
+      "gitBlob": "65b778b6b24906f406b1c4cd1238d8c090b2f11e",
+      "role": "runtime-fixture",
+      "reason": "Andra auktoritativa rå föreserien; oberoende före/före och före/efter.",
+      "via": [
+        "rendering.real.spec.ts:183 r21-03",
+        "rendering.golden.test-helpers.ts:62 loadCapture / :128 assertGoldenPair",
+        "before-final-2/manifest.json records/resources"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/capture-after.cjs",
+      "bytes": 8954,
+      "sha256": "2e4ae1fa598d540775ffedac07b649be97e3ab2c35bf5835f14e0f2e6be740ca",
+      "gitBlob": "1e8c3a820997995fc9d9272cb687273982474cf9",
+      "role": "test-code",
+      "reason": "Verklig PDF-/mejlfångst i två nya processer; ersätts inte av sparade efterfiler.",
+      "via": [
+        "rendering.real.spec.ts:120 beforeAll -> node -r ts-node/register/transpile-only capture-after.cjs",
+        "capture-after.cjs -> produktionskärnor + rendering.test-fixtures.ts"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/capture-before.cjs",
+      "bytes": 7852,
+      "sha256": "5c66acee5c2681900d0d8946257daedfe2285886cbf550776d286b4f7699e088",
+      "gitBlob": "5814b1aa13d5c08d2ac34430bd44eec3a34aff4a",
+      "role": "provenance",
+      "reason": "Historisk fångstkod vars SHA256 binds av båda auktoritativa föremanifesten; körs inte i normala prov.",
+      "via": [
+        "before-final-1/manifest.json captureSourceSha256",
+        "before-final-2/manifest.json captureSourceSha256"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/capture-extra-mail-before.cjs",
+      "bytes": 12354,
+      "sha256": "3b3d1412e314fe336984e81ac43d91330df18007e7c7239e2a9c71afd255a9f4",
+      "gitBlob": "454be62bbca28ed7a150b9b4265d1f436927c13f",
+      "role": "provenance",
+      "reason": "Historisk fångstkod som matchar kompletterande föremanifestens driverSha256.",
+      "via": [
+        "extra-mail-before-utc/manifest.json driverSha256",
+        "extra-mail-before-stockholm/manifest.json driverSha256"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/capture-extra-mail.cjs",
+      "bytes": 13997,
+      "sha256": "ac160bd1d6051eef266331c3776897a0638b08630df1c04017ac62c273d97143",
+      "gitBlob": "e598b11c0f2a226a7d0ff501d4076bca3465b3f7",
+      "role": "test-code",
+      "reason": "Dynamiskt require och två separata node/TZ-körningar för kompletterande mejlprov.",
+      "via": [
+        "rendering.real.spec.ts:563 r21-23 -> createRequire + execute(node,capture-extra-mail.cjs)",
+        "capture-extra-mail.cjs -> MailRenderer + pinnat förekällarkiv"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/fixture.json",
+      "bytes": 252,
+      "sha256": "47115058b1c991ced30de8fdd561f6654803c04f2ab9769f640ebca3de812414",
+      "gitBlob": "5a9936918814dedb33f25b92d638542e7fbe38e8",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/mail-invoice-reminder-1.html",
+      "bytes": 6294,
+      "sha256": "7d70e76e45fcc26ecd25466b3e1232544f539ae11f561ef5a52cd88b2d725434",
+      "gitBlob": "8ae425a93881ef33d988f2896f79565833732c6a",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/mail-invoice-reminder-1.txt",
+      "bytes": 649,
+      "sha256": "a67b21a758fec9ec8a2933a5d5856af0771e69e3637d18aa0b9e512fab05d780",
+      "gitBlob": "c3d3824bd672beaf1329d5add517e2a62bb12f7d",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/mail-invoice-reminder-2.html",
+      "bytes": 6294,
+      "sha256": "7d70e76e45fcc26ecd25466b3e1232544f539ae11f561ef5a52cd88b2d725434",
+      "gitBlob": "8ae425a93881ef33d988f2896f79565833732c6a",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/mail-invoice-reminder-2.txt",
+      "bytes": 649,
+      "sha256": "a67b21a758fec9ec8a2933a5d5856af0771e69e3637d18aa0b9e512fab05d780",
+      "gitBlob": "c3d3824bd672beaf1329d5add517e2a62bb12f7d",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/manifest.json",
+      "bytes": 18769,
+      "sha256": "7b7dfc835d9f70408ab5d7d908a44ae4216fa211346e20e11e4d8d160e3f409a",
+      "gitBlob": "d322e9c1667f718e55ade0931e858353fb26e0a9",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/mail.renderer.ts",
+      "bytes": 4941,
+      "sha256": "df03559aad64e6642cca3a1b10f91315f03dba349f6e2c88c11c797ad7924430",
+      "gitBlob": "b11d1d9dabea16fc1a19dbc98a32d1ca851fe82e",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/auth/MagicLink.tsx",
+      "bytes": 3134,
+      "sha256": "d8a5c254e4cd98a27b17a4c297aad63d365eac9104e55739f24ea582aace2a1b",
+      "gitBlob": "0e01763a38120222b3ae8fd1b6330eccdb4dbdb3",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/base/Custom.tsx",
+      "bytes": 1876,
+      "sha256": "6de6896c9c5559e9ea0ea1b4fac43b3ceb67c662c1c3466333daef4a0d0630a3",
+      "gitBlob": "0d1ef21e0708919c7c5d06bf69972b8c1d0184aa",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/base/EmailFooter.tsx",
+      "bytes": 1548,
+      "sha256": "3424e5d82346f005565ab81b675ba03564dac5bfc01cd7bbdf7fd94ef1388686",
+      "gitBlob": "87318d5c8f233cfd0bea93f49d30eaaa16d2c528",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/base/EmailLayout.tsx",
+      "bytes": 2875,
+      "sha256": "402b0f4cfe040097c5073a1b1e238e0ff8b30bd2d6950305f0651291b60150e7",
+      "gitBlob": "5607cb7e6d57983eff414ede4402902320859760",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/invoices/InvoiceCreated.tsx",
+      "bytes": 3350,
+      "sha256": "4e6928170b5a159b3bcee669b0da986e4922d4fcf397685e05e34e9607365d69",
+      "gitBlob": "5a62d726fc19afdd8c3695ebba9ae339e8e63ebe",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/invoices/InvoiceOverdue.tsx",
+      "bytes": 2413,
+      "sha256": "35af99ec683980556fd99c306c5519390d922fbdea6e5f7d9ac0a603e9206f2b",
+      "gitBlob": "5fb23134d144ed1531b7dcdabf3b46a2f0ebb0e4",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/invoices/InvoiceReminder.tsx",
+      "bytes": 2216,
+      "sha256": "cf591ccf4d26ac40edb94b8d367a9f92beff58fd2cd2ab0063f427b9da8a6ebc",
+      "gitBlob": "96d7d6718fb9c71d634ba02370d1ec79cf7394fb",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/invoices/ReminderFormal.tsx",
+      "bytes": 5214,
+      "sha256": "e567973817c13824bfa9e1ab58d57fb851eb32270d307025cf446bea2cc5f1e3",
+      "gitBlob": "96e825507a23141473474f48a2f896e0c4ae2fc2",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/invoices/ReminderFriendly.tsx",
+      "bytes": 3528,
+      "sha256": "9708399dacb2487f9c3e60d9746af8b29940bc469b143932223ed8f653c1da21",
+      "gitBlob": "566cc54bdb49fbdbe327e4b2dd3b8bf1a656c394",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/notifications/MaintenanceUpdate.tsx",
+      "bytes": 4424,
+      "sha256": "22db9548334c9db014eebf30a373d47b80383e64bc7d2c11efc0bc242673ade0",
+      "gitBlob": "db6985b8ca8b73645bfe8868a46b53f98cdf52dd",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/shared/format.ts",
+      "bytes": 364,
+      "sha256": "0a2da0ee226561aaf771e13727bb67e422ca1854562926afd7990a6d3de45c4a",
+      "gitBlob": "39f67c89b699dd4c4c0c3c372b6951e6484d42ba",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/RentIncreaseNotice.tsx",
+      "bytes": 7744,
+      "sha256": "5bf823dc97ac8b552c4bb2e47d359c4a4c24cd014274d67aa41797bcb4718eac",
+      "gitBlob": "c9ed7da49037bcc00e43305c362fe68794a0d18c",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/TenantActivationReminder.tsx",
+      "bytes": 3445,
+      "sha256": "14dcf754652a4faf27709264bae0d2aceaba30478966aa0714e94ce7a9c8cb24",
+      "gitBlob": "34f0a83a55f54622a97052331e34986cb37f9034",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/TenantInvite.tsx",
+      "bytes": 3045,
+      "sha256": "ba2d4d701ec2cd0ddd61292af741f0a4e3b24d9ad526d237262d1906710c67a3",
+      "gitBlob": "bdad2aa8869326faddc8b09085a6c27dc455ade8",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/TenantPortalInvite.tsx",
+      "bytes": 3530,
+      "sha256": "6d0b17572a062e26c9fb9d419887e805991e6a56aecba8f6b5c2f81ed8909b11",
+      "gitBlob": "5592facfdb4364de289273d5a4915129b366925e",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/TenantSignatureConfirmation.tsx",
+      "bytes": 2468,
+      "sha256": "479139cc30ddd998691ca0f42d80f7dbe3bc2832b374ed85f27b930d6cfb4eab",
+      "gitBlob": "3cf6288271c6d4cc55f2839ebfca54c530eaec38",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/TenantWelcome.tsx",
+      "bytes": 2819,
+      "sha256": "2ee5d20905f301973075c0820d80777ecaff70aa40c6cd82aa6f31012a9deb87",
+      "gitBlob": "a9243a1c76f16ba034b3c03866f4f76dd20dd434",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/tenants/TenantWelcomeWithContract.tsx",
+      "bytes": 4363,
+      "sha256": "53cc4a22f5de7506af1a13a25bb0b9d9108adef9efaec721ca80f21fb49d2aa8",
+      "gitBlob": "de5278af44da61dcbe2663d46cecd3bd67a0f250",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/users/PasswordReset.tsx",
+      "bytes": 3236,
+      "sha256": "8fd22f3b1bed68d5c83eb9e6c8429d929aa95064024a567c0b209471f0c2ef64",
+      "gitBlob": "4f946cbb8974d6231477a84399fb1a628b6ef8c9",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/sources/apps/api/src/mail/templates/users/UserInvite.tsx",
+      "bytes": 3504,
+      "sha256": "7911ded395192ae0747990d679c220b90cd3d6699beaea40e24fba22ec02de82",
+      "gitBlob": "b69b6d03b5555dc15eef8cad49930070bbc22f59",
+      "role": "runtime-fixture",
+      "reason": "Kompletterande tidszons-golden inklusive samtliga manifestbundna källblobbar.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs assertExtraMailComparison / readExtraMailCapture",
+        "extra-mail-before-stockholm/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/fixture.json",
+      "bytes": 252,
+      "sha256": "47115058b1c991ced30de8fdd561f6654803c04f2ab9769f640ebca3de812414",
+      "gitBlob": "5a9936918814dedb33f25b92d638542e7fbe38e8",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/mail-invoice-reminder-1.html",
+      "bytes": 6294,
+      "sha256": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12",
+      "gitBlob": "152aea12cfb6783fa36dd6b44383d3a7257ed49b",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/mail-invoice-reminder-1.txt",
+      "bytes": 649,
+      "sha256": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416",
+      "gitBlob": "0f269fd6129768d278bd19018883bacf7f8120ee",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/mail-invoice-reminder-2.html",
+      "bytes": 6294,
+      "sha256": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12",
+      "gitBlob": "152aea12cfb6783fa36dd6b44383d3a7257ed49b",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/mail-invoice-reminder-2.txt",
+      "bytes": 649,
+      "sha256": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416",
+      "gitBlob": "0f269fd6129768d278bd19018883bacf7f8120ee",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/manifest.json",
+      "bytes": 18673,
+      "sha256": "d5b737fedd92410e9d795c064857246eea1a988b130164d25d7c60e2f7f0a545",
+      "gitBlob": "ba531f2853e359b3137f990c7288f764cde7c00d",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/mail.renderer.ts",
+      "bytes": 4941,
+      "sha256": "df03559aad64e6642cca3a1b10f91315f03dba349f6e2c88c11c797ad7924430",
+      "gitBlob": "b11d1d9dabea16fc1a19dbc98a32d1ca851fe82e",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/auth/MagicLink.tsx",
+      "bytes": 3134,
+      "sha256": "d8a5c254e4cd98a27b17a4c297aad63d365eac9104e55739f24ea582aace2a1b",
+      "gitBlob": "0e01763a38120222b3ae8fd1b6330eccdb4dbdb3",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/base/Custom.tsx",
+      "bytes": 1876,
+      "sha256": "6de6896c9c5559e9ea0ea1b4fac43b3ceb67c662c1c3466333daef4a0d0630a3",
+      "gitBlob": "0d1ef21e0708919c7c5d06bf69972b8c1d0184aa",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/base/EmailFooter.tsx",
+      "bytes": 1548,
+      "sha256": "3424e5d82346f005565ab81b675ba03564dac5bfc01cd7bbdf7fd94ef1388686",
+      "gitBlob": "87318d5c8f233cfd0bea93f49d30eaaa16d2c528",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/base/EmailLayout.tsx",
+      "bytes": 2875,
+      "sha256": "402b0f4cfe040097c5073a1b1e238e0ff8b30bd2d6950305f0651291b60150e7",
+      "gitBlob": "5607cb7e6d57983eff414ede4402902320859760",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/invoices/InvoiceCreated.tsx",
+      "bytes": 3350,
+      "sha256": "4e6928170b5a159b3bcee669b0da986e4922d4fcf397685e05e34e9607365d69",
+      "gitBlob": "5a62d726fc19afdd8c3695ebba9ae339e8e63ebe",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/invoices/InvoiceOverdue.tsx",
+      "bytes": 2413,
+      "sha256": "35af99ec683980556fd99c306c5519390d922fbdea6e5f7d9ac0a603e9206f2b",
+      "gitBlob": "5fb23134d144ed1531b7dcdabf3b46a2f0ebb0e4",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/invoices/InvoiceReminder.tsx",
+      "bytes": 2216,
+      "sha256": "cf591ccf4d26ac40edb94b8d367a9f92beff58fd2cd2ab0063f427b9da8a6ebc",
+      "gitBlob": "96d7d6718fb9c71d634ba02370d1ec79cf7394fb",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/invoices/ReminderFormal.tsx",
+      "bytes": 5214,
+      "sha256": "e567973817c13824bfa9e1ab58d57fb851eb32270d307025cf446bea2cc5f1e3",
+      "gitBlob": "96e825507a23141473474f48a2f896e0c4ae2fc2",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/invoices/ReminderFriendly.tsx",
+      "bytes": 3528,
+      "sha256": "9708399dacb2487f9c3e60d9746af8b29940bc469b143932223ed8f653c1da21",
+      "gitBlob": "566cc54bdb49fbdbe327e4b2dd3b8bf1a656c394",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/notifications/MaintenanceUpdate.tsx",
+      "bytes": 4424,
+      "sha256": "22db9548334c9db014eebf30a373d47b80383e64bc7d2c11efc0bc242673ade0",
+      "gitBlob": "db6985b8ca8b73645bfe8868a46b53f98cdf52dd",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/shared/format.ts",
+      "bytes": 364,
+      "sha256": "0a2da0ee226561aaf771e13727bb67e422ca1854562926afd7990a6d3de45c4a",
+      "gitBlob": "39f67c89b699dd4c4c0c3c372b6951e6484d42ba",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/RentIncreaseNotice.tsx",
+      "bytes": 7744,
+      "sha256": "5bf823dc97ac8b552c4bb2e47d359c4a4c24cd014274d67aa41797bcb4718eac",
+      "gitBlob": "c9ed7da49037bcc00e43305c362fe68794a0d18c",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/TenantActivationReminder.tsx",
+      "bytes": 3445,
+      "sha256": "14dcf754652a4faf27709264bae0d2aceaba30478966aa0714e94ce7a9c8cb24",
+      "gitBlob": "34f0a83a55f54622a97052331e34986cb37f9034",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/TenantInvite.tsx",
+      "bytes": 3045,
+      "sha256": "ba2d4d701ec2cd0ddd61292af741f0a4e3b24d9ad526d237262d1906710c67a3",
+      "gitBlob": "bdad2aa8869326faddc8b09085a6c27dc455ade8",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/TenantPortalInvite.tsx",
+      "bytes": 3530,
+      "sha256": "6d0b17572a062e26c9fb9d419887e805991e6a56aecba8f6b5c2f81ed8909b11",
+      "gitBlob": "5592facfdb4364de289273d5a4915129b366925e",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/TenantSignatureConfirmation.tsx",
+      "bytes": 2468,
+      "sha256": "479139cc30ddd998691ca0f42d80f7dbe3bc2832b374ed85f27b930d6cfb4eab",
+      "gitBlob": "3cf6288271c6d4cc55f2839ebfca54c530eaec38",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/TenantWelcome.tsx",
+      "bytes": 2819,
+      "sha256": "2ee5d20905f301973075c0820d80777ecaff70aa40c6cd82aa6f31012a9deb87",
+      "gitBlob": "a9243a1c76f16ba034b3c03866f4f76dd20dd434",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/tenants/TenantWelcomeWithContract.tsx",
+      "bytes": 4363,
+      "sha256": "53cc4a22f5de7506af1a13a25bb0b9d9108adef9efaec721ca80f21fb49d2aa8",
+      "gitBlob": "de5278af44da61dcbe2663d46cecd3bd67a0f250",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/users/PasswordReset.tsx",
+      "bytes": 3236,
+      "sha256": "8fd22f3b1bed68d5c83eb9e6c8429d929aa95064024a567c0b209471f0c2ef64",
+      "gitBlob": "4f946cbb8974d6231477a84399fb1a628b6ef8c9",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/sources/apps/api/src/mail/templates/users/UserInvite.tsx",
+      "bytes": 3504,
+      "sha256": "7911ded395192ae0747990d679c220b90cd3d6699beaea40e24fba22ec02de82",
+      "gitBlob": "b69b6d03b5555dc15eef8cad49930070bbc22f59",
+      "role": "runtime-fixture",
+      "reason": "Pinnat kompletterande golden och frysta källblobbar; after-drivern läser detta källarkiv.",
+      "via": [
+        "rendering.real.spec.ts:562 r21-23",
+        "capture-extra-mail.cjs sourcesFromArchive / readExtraMailCapture",
+        "extra-mail-before-utc/manifest.json fixture/sourceBlobs/renders"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/extra-mail-komplettering.md",
+      "bytes": 3100,
+      "sha256": "8ce599bb895dc9232f13f43660a35e840fff4c121f0f63aa9bf75365c5bf83c9",
+      "gitBlob": "1768c9d413a3050b8ec4a6d199860473549789d9",
+      "role": "documentation",
+      "reason": "Förklarar den öppet sent kompletterade oberoende mejlserien och dess snäva datumskillnad.",
+      "via": [
+        "r21-23 -> extra-mail-before-*",
+        "capture-extra-mail.cjs assertExtraMailComparison"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/fixture-source-before.ts.txt",
+      "bytes": 11473,
+      "sha256": "713233e2c92864174cd30c88f1fe2b657877b0a2840e3701d7ef8d791f8f642b",
+      "gitBlob": "1ac088ef6ba703e1c7ea575cac0a8012a2381cea",
+      "role": "provenance",
+      "reason": "Historisk fixturkälla som matchar båda auktoritativa föremanifestens fixtureSourceSha256.",
+      "via": [
+        "before-final-1/manifest.json fixtureSourceSha256",
+        "before-final-2/manifest.json fixtureSourceSha256"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/LICENSE-DejaVu",
+      "bytes": 3859,
+      "sha256": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9",
+      "gitBlob": "b3d93a1235a82213fbc451853317c40e62ed9272",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/10-hinting-slight.conf",
+      "bytes": 620,
+      "sha256": "d138eca2bac3f78d45ff7cfb649ad792caa4a6e61f73cea7cf0ea54b091f1ef4",
+      "gitBlob": "96a81fb07f6ce3772561f60a0153659fbb3e3c6f",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/10-scale-bitmap-fonts.conf",
+      "bytes": 2068,
+      "sha256": "df8e99abb6f82384c61978906a45a95794940545da95790d87f01d9391e0894b",
+      "gitBlob": "0c3a2efc30423b12307953ba45443b9ecb18e5ff",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/10-sub-pixel-rgb.conf",
+      "bytes": 672,
+      "sha256": "e4cfc04f5fc5093d2ba20c40f8709c9dfc099997313d0f96bc8256597a15d057",
+      "gitBlob": "a87470a1979c2676a68909fa97b50da84ee77e32",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/10-yes-antialias.conf",
+      "bytes": 258,
+      "sha256": "e6d82a642d1b37f7d24dc37f938b999f00ff7aa4303b2602d04164d53f221005",
+      "gitBlob": "4451f6ed10a2021ca08d6ae87d5a002038aa80e9",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/11-lcdfilter-default.conf",
+      "bytes": 695,
+      "sha256": "76aec9d8dac48faabe1bbde9e887cfb09fa45f30be5f8826e945a394a0097e48",
+      "gitBlob": "60255978377ae6e0264c2f04a67bcea646b3ad4e",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-dejavu-lgc-sans-mono.conf",
+      "bytes": 874,
+      "sha256": "0a6b0f1c1f5d1c06a811b517a3d2690700bba8e961cd55dd2c7648cde3605a21",
+      "gitBlob": "9036e83ecf4991095ec30fb1caee04463a826c72",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-dejavu-lgc-sans.conf",
+      "bytes": 864,
+      "sha256": "144619057c0a040de247c74cf09f230d737b9c1c534f3ba8804fdd3ddeded8b0",
+      "gitBlob": "35abebd50eaebd6f10e4a81aab6ab007be4172d3",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-dejavu-lgc-serif.conf",
+      "bytes": 866,
+      "sha256": "977c24eb43f10d21263bbdb624649e5edf63147bd7bb4f84db97ce7d53bb9054",
+      "gitBlob": "54486e878cbb2880980a43a604209e1755c25a78",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-dejavu-sans-mono.conf",
+      "bytes": 866,
+      "sha256": "3e90c9c36beef46f10d1529251f8683b9c4ac900695adbb4a23a4b6036f938a5",
+      "gitBlob": "102dbcc4a8e6c0397879954b203c6ddc8a8fa951",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-dejavu-sans.conf",
+      "bytes": 856,
+      "sha256": "0d9c177b6a85daa9957ed6750d4eb26122604da18d340e7ba31e6f4d24f963ed",
+      "gitBlob": "ee69996dc0b2e6e67d15ab61d8eaed3340d100e4",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-dejavu-serif.conf",
+      "bytes": 858,
+      "sha256": "68777b1705ec7a05a86430def4be093668e84e305cc7e11291df52403a7318cc",
+      "gitBlob": "cf6caa2cd3af785963f059f47a62cb905ddcf288",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/20-unhint-small-vera.conf",
+      "bytes": 1377,
+      "sha256": "278732c68c16177f2aa3c7e4ea318b9f720aee13a433c32eb15ba626806c609d",
+      "gitBlob": "e4e9c33cb524535bb7f095103d63e9c982ec6fdf",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/30-metric-aliases.conf",
+      "bytes": 13610,
+      "sha256": "3baf25c82e1a14c606d45c212296852be06ae9795d60e84aab573226151450a2",
+      "gitBlob": "edf4ef8525fb060436921f161686437cd05e995b",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/40-nonlatin.conf",
+      "bytes": 7981,
+      "sha256": "9c56aeed6490db1d29602d7f8e028742b5e7a0268eaaa60de2fde582c6403715",
+      "gitBlob": "c99534b52790f016dec943ef64606eee13ba0691",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/45-generic.conf",
+      "bytes": 3490,
+      "sha256": "24de9f68189d544bb4cc084d9bd8f3a59d8b988a9dc44b11e9877d5add5fc948",
+      "gitBlob": "5c1bd36b5c05075b333a28dce25de254e1eec26c",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/45-latin.conf",
+      "bytes": 7159,
+      "sha256": "807638284032d8d8f6ed8b014a0edae79a4d4f3c4e70317fdb0bfa8edd66779e",
+      "gitBlob": "e48a7534d3c445ff05fbe67c85604f759528ba0e",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/48-spacing.conf",
+      "bytes": 441,
+      "sha256": "99d839cd8aa28854e8f54f26e7200b6e57951f39f56791a0ed473662488bcef6",
+      "gitBlob": "6df5c11762017af95ffb7c112f9c14441b120cc3",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/49-sansserif.conf",
+      "bytes": 639,
+      "sha256": "7849a11ce5243e8bb3d06bcad558737a8682e5122e73c8e427f4c011a2054818",
+      "gitBlob": "6cc3a1c4948368e3c342cd0c6a5db8ecfe67a2cd",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/57-dejavu-sans-mono.conf",
+      "bytes": 1201,
+      "sha256": "1f2ead86f8203d809abfc9d88d92b04316edd67b6291795ea74ea8a0c3c2e04d",
+      "gitBlob": "2c75b5cff6e206fae08d6ec0279337b12f98bc4e",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/57-dejavu-sans.conf",
+      "bytes": 1711,
+      "sha256": "f6285e2d336f93086acfa2ac7895ef75ef5ff34f833ba5a63c09fb2841aedc27",
+      "gitBlob": "cff7a842d0ce043b84c5da90f942aed4d61c173c",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/57-dejavu-serif.conf",
+      "bytes": 1357,
+      "sha256": "7c596f7e202090ded38fded904c4a17d5a189b6c9cc914a2e88554116f6474ca",
+      "gitBlob": "10ae70fd21618e0124fcaaa92667898af0874197",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/58-dejavu-lgc-sans-mono.conf",
+      "bytes": 1545,
+      "sha256": "807e5222c6d11a72ad527ebc088f42daf2a807e7718c8f7ff227cbfecafd3d70",
+      "gitBlob": "9d0a8b266223d055c9037a191aec1e5462f3d92f",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/58-dejavu-lgc-sans.conf",
+      "bytes": 2063,
+      "sha256": "ecde2093f005c73d7da21cdd7b80c791910050609db36cb5eea84a4ba8da5cef",
+      "gitBlob": "decd2a3183cca23d11e476ecbd1148d9a37df0d3",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/58-dejavu-lgc-serif.conf",
+      "bytes": 1689,
+      "sha256": "e685632c3edbb6868a7ca5275e7c71f25486a8cfd16113a478194a5631205619",
+      "gitBlob": "01045e84fea707dbe81d89277de5947ee8c8ec5c",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/60-generic.conf",
+      "bytes": 1911,
+      "sha256": "195bc8605dd23289d42c10d79cc13a5ce4a4b3cf965df5b30ecc0b7149bb951f",
+      "gitBlob": "78315077194f7ed9f4e849ab2bbf18fd52068564",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/60-latin.conf",
+      "bytes": 2166,
+      "sha256": "2de7c687e03b1fedf9fd016aa14ed8088f52578896a73f06158dda8acd264f09",
+      "gitBlob": "fcf2dbd2911beb5186b6b017eed94007733a1683",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/65-fonts-persian.conf",
+      "bytes": 10132,
+      "sha256": "c675fab143a3638346874798be45f51f6878ebec591b4362d83cfffb828ec4ca",
+      "gitBlob": "47da1bb09027181b666a0760b795629af595cdb0",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/65-nonlatin.conf",
+      "bytes": 9876,
+      "sha256": "e309e38d7fb47cc3f639f4313b19e72c9be4d1f2db92d7d892ea65bfdd0cbd30",
+      "gitBlob": "f69466b426cc7cc85f68c41cbc9a8868a4d9ba9c",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/69-unifont.conf",
+      "bytes": 687,
+      "sha256": "fa97c0cf5f79d70e2dc3dc48155d4c9220cd7c6a8bc95b89c4ebcc517f97479e",
+      "gitBlob": "02854ff9dfe3d8826ddb069a8e2e5389491bc3df",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/70-no-bitmaps-except-emoji.conf",
+      "bytes": 429,
+      "sha256": "bb5df65896bf3011b2f2935b63ab12db1ecf078674ff73a533123445f122a92b",
+      "gitBlob": "3170cd6f6ad76603f90f87aaf0be61e30786ccbf",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/80-delicious.conf",
+      "bytes": 437,
+      "sha256": "34f27b7fe9cd83b2b6d46f16ef9c477412f2d7ef63634f86b9b38b79bc4f81ad",
+      "gitBlob": "d20990cd31de0e6975144334ee9fb919797b597d",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/conf.d/90-synthetic.conf",
+      "bytes": 1757,
+      "sha256": "cdd0aac7840c664a7127b64db66bdfe8dc22be3774d10bc22f4a41c98de5d85e",
+      "gitBlob": "dfce674bbf4ef96627b170dfdbdeb1c90f3f0baf",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts.conf",
+      "bytes": 2834,
+      "sha256": "c4cd4fe96f765a7012401089617bca70ede8940c1c9ec13705b109f8ff52962e",
+      "gitBlob": "c726367bd4d907f72120fb01c595fa93a0ee2004",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans-Bold.ttf",
+      "bytes": 708920,
+      "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895",
+      "gitBlob": "426812b9b0ce12f20285adf46d8acc0dd40dfba5",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSans.ttf",
+      "bytes": 759720,
+      "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280",
+      "gitBlob": "fb0bd945a4f5aa716dcb8d9b7476bfa30e365a1e",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-Bold.ttf",
+      "bytes": 334268,
+      "sha256": "3a3c502eeff669a231549e80df9f7c49de109bafe303170409e905d0b31a38fe",
+      "gitBlob": "eeff2f2d51bb8edf68658679d26cbc9105f3d460",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-BoldOblique.ttf",
+      "bytes": 254960,
+      "sha256": "a5251173370e30760e6919711dcd33e149d216ca4814eb74332bda03fcc7e834",
+      "gitBlob": "abbd3cd235e61cdde4dfcccdc60c7ab032ad23d6",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono-Oblique.ttf",
+      "bytes": 253448,
+      "sha256": "3d7955616e69721f7edb8e1b7a580f8fbd7d737111c6b54266ddc1d9ef13202f",
+      "gitBlob": "05d85f5547950e21b7bad9500d61f7e13eae396e",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSansMono.ttf",
+      "bytes": 343140,
+      "sha256": "c805f9436dbc268644c1d9584f01a601a653e028e08fd74b9b949f6cf8304d88",
+      "gitBlob": "538ee272366e7b7c7c00e1151f6fa61671ba601b",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSerif-Bold.ttf",
+      "bytes": 356668,
+      "sha256": "847b33e13925f19ff87e4d934d6b3cf7cac35ce16424f6f670e40c2f377cf2df",
+      "gitBlob": "fd4f498a5d8440b8b127f9a0c70b62f862c0bb3c",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/font-environment/fonts/DejaVuSerif.ttf",
+      "bytes": 380660,
+      "sha256": "8f2c103bfa3fd5de71f1b92b18f21906b5a26871fb7e19a9a4c9af539c3cc7ab",
+      "gitBlob": "daf016501efdd5deb039d3cb384ce4de90268885",
+      "role": "runtime-fixture",
+      "reason": "En gemensam betrodd fontmiljö; fonts.conf, inkluderade conf.d, fontbytes och tillhörande licens.",
+      "via": [
+        "rendering.real.spec.ts:51,115 beforeAll och r21-07/22",
+        "FONTCONFIG_FILE -> fonts.conf -> relative fonts + conf.d",
+        "rendering-context.ts pdfEnvironmentIdentity -> fc-list/fc-conflist"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/fortsattning-550.md",
+      "bytes": 9848,
+      "sha256": "bcd2fd83d98c0bea72577c094236e47d909ab7adbbadbd04767a81de65fae9a4",
+      "gitBlob": "cf353986f6baed96587960b49267f91b3a959e83",
+      "role": "documentation",
+      "reason": "Godkänt fryst beteendekontrakt, inventering och oberoende r21-facit; förväntningar ändras inte av förpackningen.",
+      "via": [
+        "ägarens krav att bevara datumundantag, rendering och samtliga 70 prov",
+        "r21-01..14 i kontrakt-och-inventering; r21-15..23 i fortsattning-550"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/granskning/agent3-rendering-2-1/kontrakt-och-inventering.md",
+      "bytes": 18533,
+      "sha256": "e6eefa4acc682b19d2d5f30828ba390bc8b89f38869e94971ac5a076a01b819a",
+      "gitBlob": "1606633523e4d77d66fd5172557b156bb263ebfd",
+      "role": "documentation",
+      "reason": "Godkänt fryst beteendekontrakt, inventering och oberoende r21-facit; förväntningar ändras inte av förpackningen.",
+      "via": [
+        "ägarens krav att bevara datumundantag, rendering och samtliga 70 prov",
+        "r21-01..14 i kontrakt-och-inventering; r21-15..23 i fortsattning-550"
+      ],
+      "mode": "100644"
+    },
+    {
+      "path": "docs/revision-status.md",
+      "bytes": 68033,
+      "sha256": "851d4faea3f8b29233f924226d7d5e9ba0fb7fc456c4bee85723f76d2868da6d",
+      "gitBlob": "21846529246a129290c58dcba247be3c304a24b0",
+      "role": "documentation",
+      "reason": "Obligatorisk lanseringsnotering om 2b-26 på exakt godkänt SHA.",
+      "via": [
+        "ägarens lanseringskrav",
+        "revision-status.md:3 -> delivery-execution.db.spec.ts på 5ae"
+      ],
+      "mode": "100644"
+    }
+  ]
+}

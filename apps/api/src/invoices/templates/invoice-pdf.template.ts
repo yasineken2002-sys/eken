@@ -109,7 +109,7 @@ function round2(n: number): number {
 }
 
 function formatDate(value: Date | string): string {
-  return new Date(value).toLocaleDateString('sv-SE')
+  return new Date(value).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
 }
 
 function tenantName(t: InvoicePdfData['invoice']['tenant']): string {
@@ -119,7 +119,7 @@ function tenantName(t: InvoicePdfData['invoice']['tenant']): string {
   return t.companyName ?? '–'
 }
 
-function detectMime(logoUrl: string): string {
+export function detectMime(logoUrl: string): string {
   const ext = logoUrl.split('.').pop()?.toLowerCase() ?? ''
   if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
   if (ext === 'webp') return 'image/webp'
