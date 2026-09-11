@@ -18,9 +18,11 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { RentReminderService } from './rent-reminder.service'
+import { documentContext } from '../invoices/rendering-context'
 import { Decimal } from '@prisma/client/runtime/library'
 
 const DAY = 24 * 60 * 60 * 1000
+const RENDER_CONTEXT = documentContext(new Date('2026-06-12T12:00:00Z'), null)
 
 function makeService(opts: { ocrOutstanding?: number; staleOrgs?: Set<string> } = {}) {
   // G2: grinden läser avins periodfält + avtalets villkorsdatum FÖRE anspråket.
@@ -320,7 +322,13 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       },
     }
     const rentNoticeEvents = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
-    const pdfService = { generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4')) }
+    const pdfService = {
+      collectRenderingContext: jest.fn().mockResolvedValue({
+        ...RENDER_CONTEXT,
+        environment: 'test-pdf-port',
+      }),
+      generateFromHtml: jest.fn().mockResolvedValue(Buffer.from('%PDF-1.4')),
+    }
     const uploadFile = opts.uploadFails
       ? jest.fn().mockRejectedValue(new Error('R2 nere'))
       : jest.fn().mockResolvedValue('https://signed.example/r2')
@@ -434,11 +442,12 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
   })
 
   it('#344 — PDF:EN bär samma tal som mejlet, med betalningsraden utskriven', async () => {
-    const { service, notice, org } = makeSendService({ payments: [4000] })
-    const html = (await service.buildReminderPdfHtml(notice as never, org as never)).replace(
-      /\u00a0/g,
-      ' ',
-    )
+    const { notice, org } = makeSendService({ payments: [4000] })
+    const html = RentReminderService.buildReminderPdfHtml(
+      notice as unknown as Parameters<typeof RentReminderService.buildReminderPdfHtml>[0],
+      org,
+      RENDER_CONTEXT,
+    ).replace(/\u00a0/g, ' ')
 
     expect(html).toContain('Avins belopp')
     expect(html).toContain('8 000,00 kr')
@@ -452,11 +461,12 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
   })
 
   it('#344 — överbetald avi: PDF:en redovisar överbetalningen i stället för att gå ihop fel', async () => {
-    const { service, notice, org } = makeSendService({ payments: [9000] })
-    const html = (await service.buildReminderPdfHtml(notice as never, org as never)).replace(
-      /\u00a0/g,
-      ' ',
-    )
+    const { notice, org } = makeSendService({ payments: [9000] })
+    const html = RentReminderService.buildReminderPdfHtml(
+      notice as unknown as Parameters<typeof RentReminderService.buildReminderPdfHtml>[0],
+      org,
+      RENDER_CONTEXT,
+    ).replace(/\u00a0/g, ' ')
 
     // 8 060 nominellt, 9 000 betalt → 0 att betala, 940 överbetalt.
     expect(html).toContain('Överbetalt belopp')
@@ -977,16 +987,19 @@ describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
   }
 
   it('innehåller fordringsägarens namn + adress, avgift och lagrum', async () => {
-    const { service } = makeService()
-    const html = await service.buildReminderPdfHtml(notice as never, {
-      name: 'Värd AB',
-      street: 'Storgatan 1',
-      postalCode: '111 22',
-      city: 'Stockholm',
-      bankgiro: '123-4567',
-      invoiceColor: null,
-      logoStorageKey: null,
-    })
+    const html = RentReminderService.buildReminderPdfHtml(
+      notice as never,
+      {
+        name: 'Värd AB',
+        street: 'Storgatan 1',
+        postalCode: '111 22',
+        city: 'Stockholm',
+        bankgiro: '123-4567',
+        invoiceColor: null,
+        logoStorageKey: null,
+      },
+      RENDER_CONTEXT,
+    )
     expect(html).toContain('Värd AB')
     expect(html).toContain('Storgatan 1')
     expect(html).toContain('Stockholm')
@@ -996,16 +1009,19 @@ describe('buildReminderPdfHtml — innehåll (lag 1981:739 5 §)', () => {
   })
 
   it('utelämnar bankgiro-raden helt när org saknar bankgiro (aldrig 0000-0000)', async () => {
-    const { service } = makeService()
-    const html = await service.buildReminderPdfHtml(notice as never, {
-      name: 'Värd AB',
-      street: null,
-      postalCode: null,
-      city: null,
-      bankgiro: null,
-      invoiceColor: null,
-      logoStorageKey: null,
-    })
+    const html = RentReminderService.buildReminderPdfHtml(
+      notice as never,
+      {
+        name: 'Värd AB',
+        street: null,
+        postalCode: null,
+        city: null,
+        bankgiro: null,
+        invoiceColor: null,
+        logoStorageKey: null,
+      },
+      RENDER_CONTEXT,
+    )
     expect(html).not.toContain('0000-0000')
     expect(html).not.toContain('Bankgiro')
   })

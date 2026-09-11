@@ -1,0 +1,278 @@
+                                                                                                FAKTURA
+                                                                                  F-SYN-2026-customer-multipage
+                                                                                        Syntetisk beställning 2026
+
+
+
+
+   FAKTURERAS TILL                                                  UTFÄRDANDEDATUM             2026-08-31
+   Syntetisk Kund AB                                                FÖRFALLODATUM               2026-09-30
+   kund@example.test                                                BETALNINGSVILLKOR           30 dagar
+   Kundgatan 9
+                                                                    BANKGIRO                    5050-1055
+   000 01 Teststaden
+
+
+
+  ✓ Godkänd för F-skatt (sedan 2020-01-15)              Momsregistreringsnummer: SETESTORG001
+
+
+
+  BESKRIVNING                                                         ANTAL           À-PRIS      MOMS            BELOPP
+
+
+  Planerat servicearbete 01 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 02 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 03 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 04 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 05 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 06 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 07 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 08 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 09 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 10 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 11 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 12 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 13 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+Syntetiska Fastigheter AB · TEST-ORG-001                             ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden
+Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001
+  BESKRIVNING                                                         ANTAL           À-PRIS      MOMS            BELOPP
+
+
+  Planerat servicearbete 14 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 15 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 16 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 17 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 18 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 19 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 20 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 21 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 22 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 23 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 24 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 25 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 26 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 27 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 28 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 29 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 30 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 31 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 32 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 33 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+Syntetiska Fastigheter AB · TEST-ORG-001                             ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden
+Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001
+  BESKRIVNING                                                         ANTAL           À-PRIS      MOMS            BELOPP
+
+
+  Planerat servicearbete 34 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 35 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 36 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 37 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 38 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 39 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 40 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 41 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 42 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 43 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 44 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 45 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 46 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 47 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 48 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 49 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 50 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 51 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 52 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 53 — kontroll av lokal och
+                                                                            1     100,00 kr         25%       125,00 kr
+  utrustning
+Syntetiska Fastigheter AB · TEST-ORG-001                             ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden
+Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001
+  BESKRIVNING                                                               ANTAL            À-PRIS     MOMS            BELOPP
+
+
+  Planerat servicearbete 54 — kontroll av lokal och
+                                                                                  1     100,00 kr         25%       125,00 kr
+  utrustning
+
+  Planerat servicearbete 55 — kontroll av lokal och
+                                                                                  1     100,00 kr         25%       125,00 kr
+  utrustning
+
+
+
+                                                                                 Netto exkl. moms                    5 500,00 kr
+
+                                                                                 Moms                                1 375,00 kr
+
+
+                                                                                 Att betala                     6 875,00 kr
+
+
+
+                                           OC R-N UMME R — ANGE ALLTI D VID B ETALNING
+
+
+                                                 1234567897
+                                             Bankgiro: 5050-1055 · Att betala: 6 875,00 kr
+
+
+
+
+Syntetiska Fastigheter AB · TEST-ORG-001                                   ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden
+Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001
+

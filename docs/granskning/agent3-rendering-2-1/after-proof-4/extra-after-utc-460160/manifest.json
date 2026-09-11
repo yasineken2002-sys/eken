@@ -1,0 +1,388 @@
+{
+  "series": "late-invoice-reminder-source-replay",
+  "note": "Sent kompletterat föreunderlag från fryst källa; ersätter inte before-final-1/2.",
+  "mode": "after",
+  "baseSha": "5ae9906b152307eae0d79eec719d4303a042742c",
+  "applicationSourceSha": "9a3305e64ed2753e64d192e9f69b48dd20bb722d",
+  "worktreeHead": "9a3305e64ed2753e64d192e9f69b48dd20bb722d",
+  "worktreeStatus": " M .github/workflows/ci.yml\n M apps/api/src/avisering/avisering.notice-pdf-branding.spec.ts\n M apps/api/src/avisering/avisering.service.ts\n M apps/api/src/avisering/rent-delivery-per-send.db.spec.ts\n M apps/api/src/avisering/rent-reminder.notice-pdf-branding.spec.ts\n M apps/api/src/avisering/rent-reminder.service.spec.ts\n M apps/api/src/avisering/rent-reminder.service.ts\n M apps/api/src/collections/collection-export.claim.spec.ts\n M apps/api/src/collections/collection-export.notice-pdf-branding.spec.ts\n M apps/api/src/collections/collection-export.service.ts\n M apps/api/src/collections/deposit-bulk-export-excluded.spec.ts\n M apps/api/src/collections/rent-collection-export.notice-pdf-branding.spec.ts\n M apps/api/src/collections/rent-collection-export.service.spec.ts\n M apps/api/src/collections/rent-collection-export.service.ts\n M apps/api/src/consumption/delivery-execution.db.spec.ts\n M apps/api/src/consumption/delivery-execution.ts\n M apps/api/src/invoices/pdf.service.ts\n M apps/api/src/invoices/rendering-context.ts\n M apps/api/src/mail/mail.renderer.ts\n?? apps/api/src/invoices/rendering.golden.test-helpers.ts\n?? apps/api/src/invoices/rendering.real.spec.ts\n?? apps/api/src/invoices/rendering.routing.test-helpers.ts\n?? docs/granskning/agent3-rendering-2-1/after-development/\n?? docs/granskning/agent3-rendering-2-1/after-proof-2/\n?? docs/granskning/agent3-rendering-2-1/after-proof-3/\n?? docs/granskning/agent3-rendering-2-1/after-proof-4/\n?? docs/granskning/agent3-rendering-2-1/capture-after-development.cjs\n?? docs/granskning/agent3-rendering-2-1/capture-after.cjs\n?? docs/granskning/agent3-rendering-2-1/capture-extra-mail-before.cjs\n?? docs/granskning/agent3-rendering-2-1/capture-extra-mail.cjs\n?? docs/granskning/agent3-rendering-2-1/extra-mail-before-stockholm/\n?? docs/granskning/agent3-rendering-2-1/extra-mail-before-utc/\n?? docs/granskning/agent3-rendering-2-1/extra-mail-komplettering.md\n?? docs/granskning/agent3-rendering-2-1/fortsattning-550.md\n?? docs/granskning/agent3-rendering-2-1/granskning-determinism.md\n?? docs/granskning/agent3-rendering-2-1/granskning-facit-ci.md\n?? docs/granskning/agent3-rendering-2-1/granskning-regressioner.md\n?? docs/granskning/agent3-rendering-2-1/verify-visual-pages.py\n?? docs/granskning/agent3-rendering-2-1/visual-after-proof-4/\n",
+  "capturedAt": "2026-09-11T17:31:01.243Z",
+  "pid": 462152,
+  "driverSha256": "ac160bd1d6051eef266331c3776897a0638b08630df1c04017ac62c273d97143",
+  "fixture": {
+    "file": "fixture.json",
+    "bytes": 252,
+    "sha256": "47115058b1c991ced30de8fdd561f6654803c04f2ab9769f640ebca3de812414"
+  },
+  "fixtureSha256": "4c91fdd3db780512e762d36a4140b97284782e5fc309e14d8ce010ad7f051556",
+  "sourceBlobs": [
+    {
+      "path": "apps/api/src/mail/mail.renderer.ts",
+      "baseGitBlob": "b11d1d9dabea16fc1a19dbc98a32d1ca851fe82e",
+      "actualGitBlob": "d54cf8fc6ad0c0727361f99fd54aaceb2e80d866",
+      "source": {
+        "file": "sources/apps/api/src/mail/mail.renderer.ts",
+        "bytes": 5370,
+        "sha256": "0db5ef0f39d57365634a01b358983972f7555b7903bacec1cfb90a2bc1d9cfec"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/auth/MagicLink.tsx",
+      "baseGitBlob": "0e01763a38120222b3ae8fd1b6330eccdb4dbdb3",
+      "actualGitBlob": "0e01763a38120222b3ae8fd1b6330eccdb4dbdb3",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/auth/MagicLink.tsx",
+        "bytes": 3134,
+        "sha256": "d8a5c254e4cd98a27b17a4c297aad63d365eac9104e55739f24ea582aace2a1b"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/base/Custom.tsx",
+      "baseGitBlob": "0d1ef21e0708919c7c5d06bf69972b8c1d0184aa",
+      "actualGitBlob": "0d1ef21e0708919c7c5d06bf69972b8c1d0184aa",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/base/Custom.tsx",
+        "bytes": 1876,
+        "sha256": "6de6896c9c5559e9ea0ea1b4fac43b3ceb67c662c1c3466333daef4a0d0630a3"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/base/EmailFooter.tsx",
+      "baseGitBlob": "87318d5c8f233cfd0bea93f49d30eaaa16d2c528",
+      "actualGitBlob": "87318d5c8f233cfd0bea93f49d30eaaa16d2c528",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/base/EmailFooter.tsx",
+        "bytes": 1548,
+        "sha256": "3424e5d82346f005565ab81b675ba03564dac5bfc01cd7bbdf7fd94ef1388686"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/base/EmailLayout.tsx",
+      "baseGitBlob": "5607cb7e6d57983eff414ede4402902320859760",
+      "actualGitBlob": "5607cb7e6d57983eff414ede4402902320859760",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/base/EmailLayout.tsx",
+        "bytes": 2875,
+        "sha256": "402b0f4cfe040097c5073a1b1e238e0ff8b30bd2d6950305f0651291b60150e7"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/invoices/InvoiceCreated.tsx",
+      "baseGitBlob": "5a62d726fc19afdd8c3695ebba9ae339e8e63ebe",
+      "actualGitBlob": "5a62d726fc19afdd8c3695ebba9ae339e8e63ebe",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/invoices/InvoiceCreated.tsx",
+        "bytes": 3350,
+        "sha256": "4e6928170b5a159b3bcee669b0da986e4922d4fcf397685e05e34e9607365d69"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/invoices/InvoiceOverdue.tsx",
+      "baseGitBlob": "5fb23134d144ed1531b7dcdabf3b46a2f0ebb0e4",
+      "actualGitBlob": "5fb23134d144ed1531b7dcdabf3b46a2f0ebb0e4",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/invoices/InvoiceOverdue.tsx",
+        "bytes": 2413,
+        "sha256": "35af99ec683980556fd99c306c5519390d922fbdea6e5f7d9ac0a603e9206f2b"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/invoices/InvoiceReminder.tsx",
+      "baseGitBlob": "96d7d6718fb9c71d634ba02370d1ec79cf7394fb",
+      "actualGitBlob": "96d7d6718fb9c71d634ba02370d1ec79cf7394fb",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/invoices/InvoiceReminder.tsx",
+        "bytes": 2216,
+        "sha256": "cf591ccf4d26ac40edb94b8d367a9f92beff58fd2cd2ab0063f427b9da8a6ebc"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/invoices/ReminderFormal.tsx",
+      "baseGitBlob": "96e825507a23141473474f48a2f896e0c4ae2fc2",
+      "actualGitBlob": "96e825507a23141473474f48a2f896e0c4ae2fc2",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/invoices/ReminderFormal.tsx",
+        "bytes": 5214,
+        "sha256": "e567973817c13824bfa9e1ab58d57fb851eb32270d307025cf446bea2cc5f1e3"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/invoices/ReminderFriendly.tsx",
+      "baseGitBlob": "566cc54bdb49fbdbe327e4b2dd3b8bf1a656c394",
+      "actualGitBlob": "566cc54bdb49fbdbe327e4b2dd3b8bf1a656c394",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/invoices/ReminderFriendly.tsx",
+        "bytes": 3528,
+        "sha256": "9708399dacb2487f9c3e60d9746af8b29940bc469b143932223ed8f653c1da21"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/notifications/MaintenanceUpdate.tsx",
+      "baseGitBlob": "db6985b8ca8b73645bfe8868a46b53f98cdf52dd",
+      "actualGitBlob": "db6985b8ca8b73645bfe8868a46b53f98cdf52dd",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/notifications/MaintenanceUpdate.tsx",
+        "bytes": 4424,
+        "sha256": "22db9548334c9db014eebf30a373d47b80383e64bc7d2c11efc0bc242673ade0"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/shared/format.ts",
+      "baseGitBlob": "39f67c89b699dd4c4c0c3c372b6951e6484d42ba",
+      "actualGitBlob": "38e8a8b5db8982c4469ab52fc501cfbd10b01aea",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/shared/format.ts",
+        "bytes": 385,
+        "sha256": "10044e9072bcc69be5f81dba15bcd5970d218ef1f9874d7618f568e72f94f25f"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/RentIncreaseNotice.tsx",
+      "baseGitBlob": "c9ed7da49037bcc00e43305c362fe68794a0d18c",
+      "actualGitBlob": "c9ed7da49037bcc00e43305c362fe68794a0d18c",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/RentIncreaseNotice.tsx",
+        "bytes": 7744,
+        "sha256": "5bf823dc97ac8b552c4bb2e47d359c4a4c24cd014274d67aa41797bcb4718eac"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/TenantActivationReminder.tsx",
+      "baseGitBlob": "34f0a83a55f54622a97052331e34986cb37f9034",
+      "actualGitBlob": "34f0a83a55f54622a97052331e34986cb37f9034",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/TenantActivationReminder.tsx",
+        "bytes": 3445,
+        "sha256": "14dcf754652a4faf27709264bae0d2aceaba30478966aa0714e94ce7a9c8cb24"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/TenantInvite.tsx",
+      "baseGitBlob": "bdad2aa8869326faddc8b09085a6c27dc455ade8",
+      "actualGitBlob": "bdad2aa8869326faddc8b09085a6c27dc455ade8",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/TenantInvite.tsx",
+        "bytes": 3045,
+        "sha256": "ba2d4d701ec2cd0ddd61292af741f0a4e3b24d9ad526d237262d1906710c67a3"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/TenantPortalInvite.tsx",
+      "baseGitBlob": "5592facfdb4364de289273d5a4915129b366925e",
+      "actualGitBlob": "5592facfdb4364de289273d5a4915129b366925e",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/TenantPortalInvite.tsx",
+        "bytes": 3530,
+        "sha256": "6d0b17572a062e26c9fb9d419887e805991e6a56aecba8f6b5c2f81ed8909b11"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/TenantSignatureConfirmation.tsx",
+      "baseGitBlob": "3cf6288271c6d4cc55f2839ebfca54c530eaec38",
+      "actualGitBlob": "3cf6288271c6d4cc55f2839ebfca54c530eaec38",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/TenantSignatureConfirmation.tsx",
+        "bytes": 2468,
+        "sha256": "479139cc30ddd998691ca0f42d80f7dbe3bc2832b374ed85f27b930d6cfb4eab"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/TenantWelcome.tsx",
+      "baseGitBlob": "a9243a1c76f16ba034b3c03866f4f76dd20dd434",
+      "actualGitBlob": "a9243a1c76f16ba034b3c03866f4f76dd20dd434",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/TenantWelcome.tsx",
+        "bytes": 2819,
+        "sha256": "2ee5d20905f301973075c0820d80777ecaff70aa40c6cd82aa6f31012a9deb87"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/tenants/TenantWelcomeWithContract.tsx",
+      "baseGitBlob": "de5278af44da61dcbe2663d46cecd3bd67a0f250",
+      "actualGitBlob": "de5278af44da61dcbe2663d46cecd3bd67a0f250",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/tenants/TenantWelcomeWithContract.tsx",
+        "bytes": 4363,
+        "sha256": "53cc4a22f5de7506af1a13a25bb0b9d9108adef9efaec721ca80f21fb49d2aa8"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/users/PasswordReset.tsx",
+      "baseGitBlob": "4f946cbb8974d6231477a84399fb1a628b6ef8c9",
+      "actualGitBlob": "4f946cbb8974d6231477a84399fb1a628b6ef8c9",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/users/PasswordReset.tsx",
+        "bytes": 3236,
+        "sha256": "8fd22f3b1bed68d5c83eb9e6c8429d929aa95064024a567c0b209471f0c2ef64"
+      },
+      "loadedFromFrozenBlob": false
+    },
+    {
+      "path": "apps/api/src/mail/templates/users/UserInvite.tsx",
+      "baseGitBlob": "b69b6d03b5555dc15eef8cad49930070bbc22f59",
+      "actualGitBlob": "b69b6d03b5555dc15eef8cad49930070bbc22f59",
+      "source": {
+        "file": "sources/apps/api/src/mail/templates/users/UserInvite.tsx",
+        "bytes": 3504,
+        "sha256": "7911ded395192ae0747990d679c220b90cd3d6699beaea40e24fba22ec02de82"
+      },
+      "loadedFromFrozenBlob": false
+    }
+  ],
+  "environment": {
+    "node": "v24.11.1",
+    "versions": {
+      "node": "24.11.1",
+      "acorn": "8.15.0",
+      "ada": "3.3.0",
+      "amaro": "1.1.4",
+      "ares": "1.34.5",
+      "brotli": "1.1.0",
+      "cjs_module_lexer": "2.1.0",
+      "cldr": "47.0",
+      "icu": "77.1",
+      "llhttp": "9.3.0",
+      "modules": "137",
+      "napi": "10",
+      "nbytes": "0.1.1",
+      "ncrypto": "0.0.1",
+      "nghttp2": "1.66.0",
+      "openssl": "3.5.4",
+      "simdjson": "4.0.7",
+      "simdutf": "6.4.0",
+      "sqlite": "3.50.4",
+      "tz": "2025b",
+      "undici": "7.16.0",
+      "unicode": "16.0",
+      "uv": "1.51.0",
+      "uvwasi": "0.0.23",
+      "v8": "13.6.233.10-node.28",
+      "zlib": "1.3.1-470d3a2",
+      "zstd": "1.5.7"
+    },
+    "nodeExecutableSha256": "5796fd9700e83170bc7ddfdf7f18858c794a9f91cb39dd6f9e95060b292f2563",
+    "platform": "linux",
+    "arch": "x64",
+    "requestedTimezone": "UTC",
+    "intl": {
+      "locale": "en-US",
+      "calendar": "gregory",
+      "numberingSystem": "latn",
+      "timeZone": "UTC",
+      "year": "numeric",
+      "month": "numeric",
+      "day": "numeric"
+    },
+    "nodeEnv": "test",
+    "osRelease": "PRETTY_NAME=\"Ubuntu 24.04.3 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.3 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "pnpmLockSha256": "7724ee13b5cd7acccc87131851625aed17057b974bd7072c3167a383de2970de",
+    "packages": [
+      {
+        "name": "typescript",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/typescript@5.9.3/node_modules/typescript/lib/typescript.js",
+        "entrySha256": "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+        "packageName": "typescript",
+        "version": "5.9.3",
+        "packageJsonSha256": "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6"
+      },
+      {
+        "name": "react",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/react@18.3.1/node_modules/react/index.js",
+        "entrySha256": "a216c390bf956cbb906c66d29fdb2e2ad6999464a5ca83e476533a6f25ad0ef3",
+        "packageName": "react",
+        "version": "18.3.1",
+        "packageJsonSha256": "d4e68a5c96babb20cad1daafea8b78822eae45b341552cf5418d06a5304fa64c"
+      },
+      {
+        "name": "react-dom/server",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/server.node.js",
+        "entrySha256": "a0f7a56527b73f95ac283578815fad4a4e5e849f451267fb7a0d7b347453727c",
+        "packageName": "react-dom",
+        "version": "18.3.1",
+        "packageJsonSha256": "d2f29e31bd48b833e48cd7bbf41f192e8ee4ff8da249fdbe10d4ac4114b8b12e"
+      },
+      {
+        "name": "@react-email/render",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/@react-email+render@2.0.7_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/@react-email/render/dist/node/index.cjs",
+        "entrySha256": "49375b2f5dbd45076a4e7d0068199eff0a02a12780ffe9b938f5c1bb3af50667",
+        "packageName": "@react-email/render",
+        "version": "2.0.7",
+        "packageJsonSha256": "988ff069574f9ffe07873992dc6b2da47e4a497c5a441e90db7765d4dd5a55e8"
+      },
+      {
+        "name": "@react-email/components",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/@react-email+components@1.0.12_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/@react-email/components/dist/index.cjs",
+        "entrySha256": "f818f1c07165e7f0fc1324648bd24d6fbfa94ed795ca78e0787f56e2be8c3ecc",
+        "packageName": "@react-email/components",
+        "version": "1.0.12",
+        "packageJsonSha256": "1c97f01b1fef484ea059cda1dc1db4c68f8659be6e33854d16e6e7659ac5c679"
+      },
+      {
+        "name": "@nestjs/common",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/node_modules/.pnpm/@nestjs+common@10.4.22_class-transformer@0.5.1_class-validator@0.14.4_reflect-metadata@0.2.2_rxjs@7.8.2/node_modules/@nestjs/common/index.js",
+        "entrySha256": "429130e1469c12d949cc85e883262ccb0d085d023aba6b70d0758fd3b77129e1",
+        "packageName": "@nestjs/common",
+        "version": "10.4.22",
+        "packageJsonSha256": "4d8ded1c9d885249d6b57b7ca4024a838b896a7ca35c134cbbe11904ca840a0b"
+      },
+      {
+        "name": "@eken/shared",
+        "entry": "/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-1/packages/shared/dist/cjs/index.js",
+        "entrySha256": "5757ab070b128d50e459eb9eb94663dcc3a1601b52afa3ce093ef6557b6a63c8",
+        "packageName": "@eken/shared",
+        "version": "0.0.1",
+        "packageJsonSha256": "53679ead6a88e38418a1d0fd46c9cb60a59776e25c7dfa734bd9f98c7a917415"
+      }
+    ],
+    "sharedBrandingSha256": "8089edf7ef72284e7621fce91d80fed728ab56a1f6be64ccfda2eec7351ba227"
+  },
+  "renders": [
+    {
+      "instance": 1,
+      "html": {
+        "file": "mail-invoice-reminder-1.html",
+        "bytes": 6294,
+        "sha256": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12"
+      },
+      "text": {
+        "file": "mail-invoice-reminder-1.txt",
+        "bytes": 649,
+        "sha256": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416"
+      },
+      "renderingIdentity": "invoice-reminder:280c8f110723a5ae16ca1a31edd2802fde86b74c1150d8c09eea3ff09f03efd4"
+    },
+    {
+      "instance": 2,
+      "html": {
+        "file": "mail-invoice-reminder-2.html",
+        "bytes": 6294,
+        "sha256": "c126cb57b535b3fe3e0e69764537771a74a5f9180a65e5d94e31c014677b5e12"
+      },
+      "text": {
+        "file": "mail-invoice-reminder-2.txt",
+        "bytes": 649,
+        "sha256": "6d4e299b36d1d07de5209e0b27887bac77f59f09072f6504d884ba3e45ab5416"
+      },
+      "renderingIdentity": "invoice-reminder:280c8f110723a5ae16ca1a31edd2802fde86b74c1150d8c09eea3ff09f03efd4"
+    }
+  ]
+}

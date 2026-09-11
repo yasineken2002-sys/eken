@@ -1,0 +1,1484 @@
+[
+  {
+    "before": "before-final-1",
+    "comparisons": [
+      {
+        "id": "invoice-customer-classic",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+        "after": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-classic",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "835faa00b2b42f924200577c94411301c5381cdcf7906831bf763acedc36ab0b",
+        "after": "680d533b8dbd062f7f22e421e625fd400574cadafcfbf3d0647fc082fcc9e192",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143655"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143655"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-classic",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+        "after": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+        "exception": null
+      },
+      {
+        "id": "invoice-rent-classic",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+        "after": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+        "exception": null
+      },
+      {
+        "id": "invoice-rent-classic",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "a0c9feeec223d84b232a2084544530cc1297b940815ead72adec2bee93fd0bb6",
+        "after": "94ccfbdd356d661ea41763866821472156855ddfb6ae50cbdbffb33922639eb0",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143655"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143655"
+          }
+        ]
+      },
+      {
+        "id": "invoice-rent-classic",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+        "after": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+        "exception": null
+      },
+      {
+        "id": "invoice-utility-classic",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+        "after": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+        "exception": null
+      },
+      {
+        "id": "invoice-utility-classic",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "65dd0d5cac6ab6d42cc28bf9a6eb852d88eb28c1e275a33e65f0c5f63894496f",
+        "after": "b10e8ede1fe1d3197628990baf2bd375f5c2c04ee5b71a9002254b35934be9dd",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143656"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143656"
+          }
+        ]
+      },
+      {
+        "id": "invoice-utility-classic",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+        "after": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-modern",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+        "after": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-modern",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "18d2046411fdaa5fd12b8e87533178bb6ede8f16759110eedf800a6caebca3b4",
+        "after": "a9029c79844548b5b238f4254e9540c87201a1f844966ff653109c37d856f461",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143656"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143656"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-modern",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+        "after": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+        "after": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "d1272d56739f909f67599bf9699b46b47615f6fd2bbae09a23141cc652788bf8",
+        "after": "db7b687d30c69ba6ea523dc3f9277325e961dd4ae8b5162ee90ac9880975e1fb",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143656"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143656"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+        "after": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+        "after": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "bf0738b65920a8c7f6f64fe0e2e264e9043e6a554697296d0faa358de4297ad7",
+        "after": "e50bd50649062713d9784eab4ce1afc770b64c343d31438b9aac39d7dcb08a68",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143656"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143656"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+        "after": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+        "exception": null
+      },
+      {
+        "id": "notice-rent",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+        "after": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+        "exception": null
+      },
+      {
+        "id": "notice-rent",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "169cdf9ab5b5d467d6b7649564df40884017832b438b7fb539740ae446791a6c",
+        "after": "b88d85dc2ea4aaf1d20e24715be043c05df53d1459e03e9e747d66e19e748910",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143657"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143657"
+          }
+        ]
+      },
+      {
+        "id": "notice-rent",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+        "after": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+        "exception": null
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+        "after": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+        "exception": null
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "5db621cf55b7dafd6dc1715ba3daa8d859f72ce7df42bc8957fd79e7d4cc8dcc",
+        "after": "954a845247736f226b6e7cf0d41474469448ce58583b1d3d01a43ee2a705e74a",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143657"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143657"
+          }
+        ]
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+        "after": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+        "exception": null
+      },
+      {
+        "id": "notice-deposit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+        "after": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+        "exception": null
+      },
+      {
+        "id": "notice-deposit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "95c60f111a22daedfe552dcc9f10ef71604d5f8aa048752583922f1fea52b468",
+        "after": "88b0edb1ada4d66eba289a1430b3f74c5d3fea31313b3f7138d3b2c39104c349",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143657"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143657"
+          }
+        ]
+      },
+      {
+        "id": "notice-deposit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+        "after": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+        "exception": null
+      },
+      {
+        "id": "notice-utility-credit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+        "after": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+        "exception": null
+      },
+      {
+        "id": "notice-utility-credit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "643f9b03fa4872b31030084bdd897702c9f10577a8303fd5aa0e7af2b4c9afc3",
+        "after": "0b30733ef2f1866ff33db966e392a604ae66f397d1e36506f25cfe94e82c4061",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143658"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143658"
+          }
+        ]
+      },
+      {
+        "id": "notice-utility-credit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+        "after": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+        "exception": null
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+        "after": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+        "exception": null
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "5044a6f54e20d3d9b56af266cddd7c71023265f903119c873ff9a0f59545fd7f",
+        "after": "abbf6dba80dbcff5d7cc54b1bbd4c25af1328970e65d28175abd87c2720a06b2",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143658"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143658"
+          }
+        ]
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+        "after": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+        "exception": null
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+        "after": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+        "exception": null
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "fe853e46c1fb396ad4f08058dcc1e1725625be948ba569eb678277bbe839674f",
+        "after": "31a40b5655ff605923db7b3d8f31fa27269ee42b18f793c294e9e6e9c9465628",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143658"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143658"
+          }
+        ]
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+        "after": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-clean",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+        "after": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-clean",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "0354d333636189f9fe1295411635843085cf84d076012e76c287affc8b17c67c",
+        "after": "c64ca5ecb3f748edffbe275c8fc58056a3b702df917c6ed4879b19514b375b4a",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143659"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143659"
+          }
+        ]
+      },
+      {
+        "id": "collection-invoice-clean",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+        "after": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-utility",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+        "after": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-utility",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "31c7b9b82292b8c7a7623e230da75c032b99bbabd1c416c6ad9a3a6bce4dc056",
+        "after": "c7251f467515c4bcc48e14844317ca21d3a224b2ea10477bcfc63480adb3a5b5",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143659"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143659"
+          }
+        ]
+      },
+      {
+        "id": "collection-invoice-utility",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+        "after": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-clean",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+        "after": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-clean",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "f4916a7bca3479fc45a1a8737000652bf4ad98c2ed30d50003d67103aebfe493",
+        "after": "22025380c58111a9efd6cc16b3fd5c2e4ae41531ab5734eeecdf2e6332b93648",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143659"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143659"
+          }
+        ]
+      },
+      {
+        "id": "collection-notice-clean",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+        "after": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+        "after": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "66ddf4093512559020c7cb5fb5a85ba557803776dce0981f57d7554105af4eff",
+        "after": "f125144b02c918088832c423f6cd03264077f1e61f023e8facb1b6d5bb1f6f32",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143700"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143700"
+          }
+        ]
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+        "after": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+        "exception": null
+      },
+      {
+        "id": "mail-invoice",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+        "after": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+        "exception": null
+      },
+      {
+        "id": "mail-invoice",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+        "after": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+        "exception": null
+      },
+      {
+        "id": "mail-invoice",
+        "kind": "envelope",
+        "rawEqual": false,
+        "before": "bf4b4e857a906bfd537c68a3edd3a50ad4049facf6d1283b6a9901b7728be10d",
+        "after": "49e2a33b0ae92ace93742265669ff7edc48968723deb47106408f628a122114a",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-overdue",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+        "after": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+        "exception": null
+      },
+      {
+        "id": "mail-overdue",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+        "after": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+        "exception": null
+      },
+      {
+        "id": "mail-overdue",
+        "kind": "envelope",
+        "rawEqual": true,
+        "before": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+        "after": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-friendly",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+        "after": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+        "exception": null
+      },
+      {
+        "id": "mail-friendly",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+        "after": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+        "exception": null
+      },
+      {
+        "id": "mail-friendly",
+        "kind": "envelope",
+        "rawEqual": true,
+        "before": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+        "after": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-formal",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+        "after": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+        "exception": null
+      },
+      {
+        "id": "mail-formal",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+        "after": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+        "exception": null
+      },
+      {
+        "id": "mail-formal",
+        "kind": "envelope",
+        "rawEqual": true,
+        "before": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+        "after": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-notice",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+        "after": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+        "exception": null
+      },
+      {
+        "id": "mail-notice",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+        "after": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+        "exception": null
+      },
+      {
+        "id": "mail-notice",
+        "kind": "envelope",
+        "rawEqual": false,
+        "before": "6c72d705a6ea62512f596bb4f79db529b86bf95645a7fd1e5bbd87a4be7f6014",
+        "after": "6d99b2f1ed423e69f4732606f4b44b0a557a4bfe9105a59e21bf8db1d78ef140",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-notice-reminder",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+        "after": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+        "exception": null
+      },
+      {
+        "id": "mail-notice-reminder",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+        "after": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+        "exception": null
+      },
+      {
+        "id": "mail-notice-reminder",
+        "kind": "envelope",
+        "rawEqual": false,
+        "before": "f41eb975e0fa1f8ca64931f6b6101947f561d9797d95c5eab259552380d4c4df",
+        "after": "dfed1d9489e622a1799d0e3a760aad1b975337b53c8240a4cab22a079e87e41a",
+        "exception": "two Info dates in PDF attachment only"
+      }
+    ]
+  },
+  {
+    "before": "before-final-2",
+    "comparisons": [
+      {
+        "id": "invoice-customer-classic",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+        "after": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-classic",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "58d589e7d86e746567c06dc22bc7f087193bfde67490cdb89368790727d98a3a",
+        "after": "680d533b8dbd062f7f22e421e625fd400574cadafcfbf3d0647fc082fcc9e192",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143851"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143851"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-classic",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+        "after": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+        "exception": null
+      },
+      {
+        "id": "invoice-rent-classic",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+        "after": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+        "exception": null
+      },
+      {
+        "id": "invoice-rent-classic",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "53e210a2c1c4e8af682ec3a76ebe7b45b482b882faead4044643684227ee911e",
+        "after": "94ccfbdd356d661ea41763866821472156855ddfb6ae50cbdbffb33922639eb0",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143852"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143852"
+          }
+        ]
+      },
+      {
+        "id": "invoice-rent-classic",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+        "after": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+        "exception": null
+      },
+      {
+        "id": "invoice-utility-classic",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+        "after": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+        "exception": null
+      },
+      {
+        "id": "invoice-utility-classic",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "801057fac181bd814804141dd137f5d978e921aacb987b31d8235618de322265",
+        "after": "b10e8ede1fe1d3197628990baf2bd375f5c2c04ee5b71a9002254b35934be9dd",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143852"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143852"
+          }
+        ]
+      },
+      {
+        "id": "invoice-utility-classic",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+        "after": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-modern",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+        "after": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-modern",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "8b2f33749065fdbfe8199a105b17a85ccdcc18440aa204371b8f8c714f5f92d2",
+        "after": "a9029c79844548b5b238f4254e9540c87201a1f844966ff653109c37d856f461",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143852"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143852"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-modern",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+        "after": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+        "after": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "c05570b8861469b9360ac7ebdb5da0e20f3700a0d2f0225cb398285f6c844548",
+        "after": "db7b687d30c69ba6ea523dc3f9277325e961dd4ae8b5162ee90ac9880975e1fb",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143852"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143852"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-minimal",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+        "after": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+        "after": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+        "exception": null
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "5b0d251e3f1090d33b7149cbf83467e22f4e11d00d6443385e1de28f25e9469a",
+        "after": "e50bd50649062713d9784eab4ce1afc770b64c343d31438b9aac39d7dcb08a68",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143853"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143853"
+          }
+        ]
+      },
+      {
+        "id": "invoice-customer-multipage",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+        "after": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+        "exception": null
+      },
+      {
+        "id": "notice-rent",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+        "after": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+        "exception": null
+      },
+      {
+        "id": "notice-rent",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "d9436a407243c6797910c0cc1615d4d9366d2b84691c22f60f4577e9ed417803",
+        "after": "b88d85dc2ea4aaf1d20e24715be043c05df53d1459e03e9e747d66e19e748910",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143853"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143853"
+          }
+        ]
+      },
+      {
+        "id": "notice-rent",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+        "after": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+        "exception": null
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+        "after": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+        "exception": null
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "f8b14b3e022b49697e55c5f583199b8081bee2a739cf3974e2d12ae758977dab",
+        "after": "954a845247736f226b6e7cf0d41474469448ce58583b1d3d01a43ee2a705e74a",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143853"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143853"
+          }
+        ]
+      },
+      {
+        "id": "notice-prorated-backfill",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+        "after": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+        "exception": null
+      },
+      {
+        "id": "notice-deposit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+        "after": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+        "exception": null
+      },
+      {
+        "id": "notice-deposit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "400a383efeeffc2a1c34105786982eedb6fc38cc317e4ad2c0d31c3620a4ab5f",
+        "after": "88b0edb1ada4d66eba289a1430b3f74c5d3fea31313b3f7138d3b2c39104c349",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143854"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143854"
+          }
+        ]
+      },
+      {
+        "id": "notice-deposit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+        "after": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+        "exception": null
+      },
+      {
+        "id": "notice-utility-credit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+        "after": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+        "exception": null
+      },
+      {
+        "id": "notice-utility-credit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "63d163d3385e1bdcc06847d3eb9feb416470793df4920da282129ad1f01b1e2f",
+        "after": "0b30733ef2f1866ff33db966e392a604ae66f397d1e36506f25cfe94e82c4061",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143854"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143854"
+          }
+        ]
+      },
+      {
+        "id": "notice-utility-credit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+        "after": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+        "exception": null
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+        "after": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+        "exception": null
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "fca27a3fdbe9e201898740f78672781f4f233e31106a72507e48feb1669a0b74",
+        "after": "abbf6dba80dbcff5d7cc54b1bbd4c25af1328970e65d28175abd87c2720a06b2",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143854"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143854"
+          }
+        ]
+      },
+      {
+        "id": "reminder-rent-partpaid",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+        "after": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+        "exception": null
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+        "after": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+        "exception": null
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "17f56c7d404d42dc27ba9c53e338b508be806ea50faea2fae4ea22b6f1d61104",
+        "after": "31a40b5655ff605923db7b3d8f31fa27269ee42b18f793c294e9e6e9c9465628",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143854"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143854"
+          }
+        ]
+      },
+      {
+        "id": "reminder-utility-partpaid-credit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+        "after": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-clean",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+        "after": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-clean",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "47086f51e85b134d7746e81a1450606ed0e7f88f2e09c93e448b312266290c0c",
+        "after": "c64ca5ecb3f748edffbe275c8fc58056a3b702df917c6ed4879b19514b375b4a",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143855"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143855"
+          }
+        ]
+      },
+      {
+        "id": "collection-invoice-clean",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+        "after": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-utility",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+        "after": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+        "exception": null
+      },
+      {
+        "id": "collection-invoice-utility",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "d9a9142481d414cf4e9937c5a683411657e4033f446911f7424616f8e2d8dc42",
+        "after": "c7251f467515c4bcc48e14844317ca21d3a224b2ea10477bcfc63480adb3a5b5",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143855"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143855"
+          }
+        ]
+      },
+      {
+        "id": "collection-invoice-utility",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+        "after": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-clean",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+        "after": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-clean",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "a78facd075b6d7f4fc52f29d230c4714328a719b9f83d0e0d43c0201ef27f103",
+        "after": "22025380c58111a9efd6cc16b3fd5c2e4ae41531ab5734eeecdf2e6332b93648",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143855"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143855"
+          }
+        ]
+      },
+      {
+        "id": "collection-notice-clean",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+        "after": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "kind": "input",
+        "rawEqual": true,
+        "before": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+        "after": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+        "exception": null
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "kind": "pdf",
+        "rawEqual": false,
+        "before": "b9c05a2ea6ad01347fb41597e3b493eb7df54e019edf7b262beed4f961631be3",
+        "after": "f125144b02c918088832c423f6cd03264077f1e61f023e8facb1b6d5bb1f6f32",
+        "exception": [
+          {
+            "name": "CreationDate",
+            "offset": 214,
+            "length": 14,
+            "value": "20260911143855"
+          },
+          {
+            "name": "ModDate",
+            "offset": 249,
+            "length": 14,
+            "value": "20260911143855"
+          }
+        ]
+      },
+      {
+        "id": "collection-notice-utility-credit",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+        "after": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+        "exception": null
+      },
+      {
+        "id": "mail-invoice",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+        "after": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+        "exception": null
+      },
+      {
+        "id": "mail-invoice",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+        "after": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+        "exception": null
+      },
+      {
+        "id": "mail-invoice",
+        "kind": "envelope",
+        "rawEqual": false,
+        "before": "03eb01be655829b4bd11c41510caf6c4c1c368d305d17724614ae8f5932c7675",
+        "after": "49e2a33b0ae92ace93742265669ff7edc48968723deb47106408f628a122114a",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-overdue",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+        "after": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+        "exception": null
+      },
+      {
+        "id": "mail-overdue",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+        "after": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+        "exception": null
+      },
+      {
+        "id": "mail-overdue",
+        "kind": "envelope",
+        "rawEqual": true,
+        "before": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+        "after": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-friendly",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+        "after": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+        "exception": null
+      },
+      {
+        "id": "mail-friendly",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+        "after": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+        "exception": null
+      },
+      {
+        "id": "mail-friendly",
+        "kind": "envelope",
+        "rawEqual": true,
+        "before": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+        "after": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-formal",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+        "after": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+        "exception": null
+      },
+      {
+        "id": "mail-formal",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+        "after": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+        "exception": null
+      },
+      {
+        "id": "mail-formal",
+        "kind": "envelope",
+        "rawEqual": true,
+        "before": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+        "after": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-notice",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+        "after": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+        "exception": null
+      },
+      {
+        "id": "mail-notice",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+        "after": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+        "exception": null
+      },
+      {
+        "id": "mail-notice",
+        "kind": "envelope",
+        "rawEqual": false,
+        "before": "8f8e193883fd5e5c5530b6cbeddec357d2a8d105c7d507cd1b7411692f284137",
+        "after": "6d99b2f1ed423e69f4732606f4b44b0a557a4bfe9105a59e21bf8db1d78ef140",
+        "exception": "two Info dates in PDF attachment only"
+      },
+      {
+        "id": "mail-notice-reminder",
+        "kind": "html",
+        "rawEqual": true,
+        "before": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+        "after": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+        "exception": null
+      },
+      {
+        "id": "mail-notice-reminder",
+        "kind": "text",
+        "rawEqual": true,
+        "before": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+        "after": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+        "exception": null
+      },
+      {
+        "id": "mail-notice-reminder",
+        "kind": "envelope",
+        "rawEqual": false,
+        "before": "31885804a548ef14f831eb16496057ff9111160105149ebf76290b71c1af796a",
+        "after": "dfed1d9489e622a1799d0e3a760aad1b975337b53c8240a4cab22a079e87e41a",
+        "exception": "two Info dates in PDF attachment only"
+      }
+    ]
+  }
+]

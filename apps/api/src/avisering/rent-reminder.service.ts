@@ -25,7 +25,6 @@ import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from './rent-debt.service'
-import { getLogoDataUrl } from './avisering.service'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { RentNoticeEventsService } from './rent-notice-events.service'
@@ -1123,10 +1122,7 @@ export class RentReminderService {
     }
 
     try {
-      const context = await this.pdfService.createRenderingContext(
-        new Date(),
-        await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
-      )
+      const context = await this.pdfService.collectRenderingContext(org.logoStorageKey ?? null)
       const html = RentReminderService.buildReminderPdfHtml(notice, org, context)
       const pdfBuffer = await this.pdfService.generateFromHtml(html, context)
 

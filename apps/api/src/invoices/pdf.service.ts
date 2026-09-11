@@ -6,8 +6,11 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { detectMime, generateInvoiceHtml } from './templates/invoice-pdf.template'
 import { PDF_WAIT_UNTIL } from './pdf-wait-until'
+import { getLogoDataUrl } from '../common/branding/logo.util'
 import {
   documentContext,
+  INITIAL_RENDERING_CODE,
+  renderingCodeIdentity,
   pdfEnvironmentIdentity,
   renderingDigest,
   renderingLogo,
@@ -59,6 +62,7 @@ export class PdfService implements OnModuleDestroy {
   private browser: Browser | null = null
   private launchPromise: Promise<Browser> | null = null
   private renderingEnvironment = ''
+  private controlled: PdfService | null = null
 
   // Lättviktig semaphore. queue håller resolves som väntar på en ledig slot,
   // active räknar hur många pages som körs just nu.
@@ -71,6 +75,7 @@ export class PdfService implements OnModuleDestroy {
   ) {}
 
   async onModuleDestroy(): Promise<void> {
+    await this.controlled?.onModuleDestroy()
     if (this.browser) {
       try {
         await this.browser.close()
@@ -81,9 +86,15 @@ export class PdfService implements OnModuleDestroy {
     }
   }
 
+  async collectRenderingContext(logoKey: string | null) {
+    return this.createRenderingContext(new Date(), await getLogoDataUrl(this.storage, logoKey))
+  }
+
   async createRenderingContext(asOf: Date, logo: string | null): Promise<PdfRenderingContext> {
-    await this.getBrowser()
-    return { ...documentContext(asOf, logo), environment: this.renderingEnvironment }
+    const code = renderingCodeIdentity()
+    if (code !== INITIAL_RENDERING_CODE) throw new Error('RENDER_IDENTITY_CONFLICT')
+    const environment = renderingDigest(JSON.stringify([await pdfEnvironmentIdentity(), code]))
+    return { ...documentContext(asOf, logo), environment }
   }
 
   async generateFromHtml(html: string, context?: PdfRenderingContext): Promise<Buffer> {
@@ -229,7 +240,7 @@ export class PdfService implements OnModuleDestroy {
       data.logoBase64 === null
         ? null
         : `data:${detectMime(data.invoice.organization.logoUrl ?? '')};base64,${data.logoBase64}`
-    if (logo !== expectedLogo) throw new Error('Invoice resource mismatch')
+    if (logo !== expectedLogo) throw new Error('RENDER_IDENTITY_CONFLICT')
     const html = generateInvoiceHtml(data)
     return this.withPage(async (page) => {
       await page.setContent(html, { waitUntil: PDF_WAIT_UNTIL })
@@ -250,18 +261,6 @@ export class PdfService implements OnModuleDestroy {
    * första-anrop delar samma launchPromise så vi aldrig startar två browsers.
    */
   private async getBrowser(): Promise<Browser> {
-    const environment = renderingDigest(
-      JSON.stringify([
-        await pdfEnvironmentIdentity(),
-        BROWSER_LAUNCH_ARGS,
-        PDF_WAIT_UNTIL,
-        PdfService.prototype.generateFromHtml.toString(),
-        PdfService.prototype.renderInvoice.toString(),
-      ]),
-    )
-    this.renderingEnvironment ||= environment
-    if (environment !== this.renderingEnvironment)
-      throw new Error('Renderer environment changed; new process required')
     if (this.browser && this.browser.connected) return this.browser
     if (this.launchPromise) return this.launchPromise
 
@@ -295,9 +294,26 @@ export class PdfService implements OnModuleDestroy {
     await this.acquireSlot()
     let page: Page | null = null
     try {
-      const browser = await this.getBrowser()
-      if (context && context.environment !== this.renderingEnvironment)
-        throw new Error('Rendering identity mismatch')
+      let browser: Browser
+      if (context) {
+        const current = await this.createRenderingContext(
+          new Date(context.asOf),
+          renderingLogo(context),
+        )
+        this.renderingEnvironment ||= current.environment
+        if (
+          context.environment !== current.environment ||
+          current.environment !== this.renderingEnvironment
+        )
+          throw new Error('RENDER_IDENTITY_CONFLICT')
+        this.controlled ??= new PdfService(this.prisma, this.storage)
+        browser = await this.controlled.getBrowser()
+        if (
+          (await this.createRenderingContext(new Date(context.asOf), renderingLogo(context)))
+            .environment !== current.environment
+        )
+          throw new Error('RENDER_IDENTITY_CONFLICT')
+      } else browser = await this.getBrowser()
       page = await browser.newPage()
       let externalRequest = false
       if (context) {

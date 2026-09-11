@@ -959,10 +959,7 @@ export class AviseringService {
     }
 
     try {
-      const context = await this.pdfService.createRenderingContext(
-        new Date(),
-        await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
-      )
+      const context = await this.pdfService.collectRenderingContext(org.logoStorageKey ?? null)
       const pdfHtml = AviseringService.buildNoticePdfHtml(notice, org, context)
       const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml, context)
 
@@ -1031,10 +1028,7 @@ export class AviseringService {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
-    const context = await this.pdfService.createRenderingContext(
-      new Date(),
-      await getLogoDataUrl(this.storage, org.logoStorageKey ?? null),
-    )
+    const context = await this.pdfService.collectRenderingContext(org.logoStorageKey ?? null)
     const html = AviseringService.buildNoticePdfHtml(notice, org, context)
     return this.pdfService.generateFromHtml(html, context)
   }
@@ -1133,7 +1127,12 @@ export class AviseringService {
     // annars kan hyresgästen inte bedöma sin bestridanderätt. Visas i BÅDA
     // rent-grenarna (delmånad + hel månad).
     const fmtDay = (d: Date | string): string =>
-      new Date(d).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', year: 'numeric' })
+      new Date(d).toLocaleDateString('sv-SE', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC',
+      })
     const backfillNoteHtml =
       notice.isBackfill && notice.periodStart && notice.periodEnd
         ? `<div style="font-size:10px;color:#8a5a00;background:#fff8e6;border-radius:4px;padding:6px 8px;margin-top:6px;line-height:1.5">
@@ -1182,8 +1181,8 @@ export class AviseringService {
           ${unitNamePart}
           ${propertyPart}
           <div style="font-size:10px;color:#666;margin-top:4px;line-height:1.5">
-            Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
-            – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' }) : ''}
+            Period: ${notice.periodStart ? new Date(notice.periodStart).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''}
+            – ${notice.periodEnd ? new Date(notice.periodEnd).toLocaleDateString('sv-SE', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : ''}
             (${notice.daysCharged} av ${notice.totalDays} dagar)<br>
             Dagshyra: ${fmt(monthlyRent)} / ${notice.totalDays} =
             ${fmt(dailyRate)} kr

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  @page { size: A4; margin: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    color: #111827;
+    background: #ffffff;
+    padding: 40px;
+    width: 210mm;
+    min-height: 297mm;
+  }
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    background: #f3f4f6;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  th:not(:first-child) { text-align: right; }
+  .label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #9ca3af;
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+
+<div style="margin-bottom:32px;padding-bottom:16px;border-bottom:2px solid #1a6b3c;">
+  <div style="font-size:26px;font-weight:700;color:#1a6b3c;letter-spacing:-0.5px;">Syntetiska Fastigheter AB</div>
+  <div style="font-size:15px;color:#6b7280;margin-top:6px;">F-SYN-2026-customer-classic</div>
+</div>
+
+<!-- META GRID -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+  <div style="background:#f9fafb;border-radius:8px;padding:20px;">
+    <div class="label">Faktureras till</div>
+    <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:4px;">Syntetisk Kund AB</div>
+    <div style="color:#4b5563;margin-bottom:2px;">kund@example.test</div>
+    
+    <div style="color:#374151;">Kundgatan 9</div>
+       <div style="color:#374151;">000 01 Teststaden</div>
+  </div>
+  <div style="background:#f9fafb;border-radius:8px;padding:20px;">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;align-items:baseline;">
+      <span class="label" style="margin-bottom:0;">Utfärdandedatum</span>
+      <span style="font-weight:500;">2026-08-31</span>
+      <span class="label" style="margin-bottom:0;">Förfallodatum</span>
+      <span style="font-weight:600;color:#dc2626;">2026-09-30</span>
+      <span class="label" style="margin-bottom:0;">Betalningsvillkor</span>
+      <span>30 dagar</span>
+      <span class="label" style="margin-bottom:0;">Bankgiro</span>
+      <span style="font-weight:500;">5050-1055</span>
+    </div>
+  </div>
+</div>
+
+<!-- SKATTEINFORMATION (frivillig uppgift — se noten vid fSkattLine) -->
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">
+  <div style="display:inline-flex;align-items:center;gap:6px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:600;">
+        <span>✓</span> Godkänd för F-skatt (sedan 2020-01-15)
+      </div>
+  <div style="background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:500;">
+        Momsregistreringsnummer: SETESTORG001
+      </div>
+</div>
+
+<!-- INVOICE LINES -->
+<table style="margin-bottom:0;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+  <thead>
+    <tr>
+      <th style="text-align:left;">Beskrivning</th>
+      <th>Antal</th>
+      <th>À-pris</th>
+      <th>Moms</th>
+      <th>Belopp</th>
+    </tr>
+  </thead>
+  <tbody>
+    
+      <tr style="background:#ffffff;">
+        <td style="padding:10px 12px;color:#111827;">Lokalservice september</td>
+        <td style="padding:10px 12px;text-align:right;color:#374151;">2</td>
+        <td style="padding:10px 12px;text-align:right;color:#374151;">400,00 kr</td>
+        <td style="padding:10px 12px;text-align:right;color:#374151;">25%</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:600;color:#111827;">1 000,00 kr</td>
+      </tr>
+      <tr style="background:#f9fafb;">
+        <td style="padding:10px 12px;color:#111827;">Material för lokalservice</td>
+        <td style="padding:10px 12px;text-align:right;color:#374151;">1</td>
+        <td style="padding:10px 12px;text-align:right;color:#374151;">80,00 kr</td>
+        <td style="padding:10px 12px;text-align:right;color:#374151;">25%</td>
+        <td style="padding:10px 12px;text-align:right;font-weight:600;color:#111827;">100,00 kr</td>
+      </tr>
+  </tbody>
+</table>
+
+<!-- TOTALS -->
+<div style="display:flex;justify-content:flex-end;margin-top:24px;">
+  <div style="min-width:280px;">
+    
+    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
+      <span>Netto exkl. moms</span>
+      <span>880,00 kr</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;color:#374151;">
+      <span>Moms</span>
+      <span>220,00 kr</span>
+    </div>
+    <div style="border-top:2px solid #111827;margin:8px 0;"></div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;">
+      <span style="font-size:17px;font-weight:700;color:#111827;">Att betala</span>
+      <span style="font-size:17px;font-weight:800;color:#1a6b3c;">1 100,00 kr</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- OCR -->
+<div style="margin-top:32px;background:#f5f5f5;border:1px solid #ddd;border-radius:8px;padding:16px 20px;text-align:center;">
+  <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+    OCR-nummer — ange alltid vid betalning
+  </div>
+  <div style="font-size:26px;font-weight:700;font-family:'Courier New',monospace;letter-spacing:4px;color:#1a6b3c;">
+    1234567897
+  </div>
+  <div style="font-size:10px;color:#888;margin-top:6px;">
+    Bankgiro: <strong>5050-1055</strong> · Att betala: <strong>1 100,00 kr</strong>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="position:fixed;bottom:24px;left:40px;right:40px;
+            border-top:1px solid #e2e8f0;padding-top:10px;
+            font-size:10.5px;color:#9ca3af;line-height:1.5;">
+  <div style="display:flex;justify-content:space-between;gap:16px;">
+    <span>Syntetiska Fastigheter AB · TEST-ORG-001</span>
+    <span>ekonomi@example.test · Testgatan 12 · 000 00 · Teststaden</span>
+  </div>
+  <div style="margin-top:4px;color:#6b7280;font-weight:500;">Aktiebolag · Godkänd för F-skatt (sedan 2020-01-15) · Momsregistreringsnummer: SETESTORG001</div>
+</div>
+
+</body>
+</html>

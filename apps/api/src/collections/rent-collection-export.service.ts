@@ -10,7 +10,7 @@ import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { RentDebtService } from '../avisering/rent-debt.service'
-import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
+import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
@@ -193,16 +193,7 @@ export class RentCollectionExportService {
     const notice = await this.loadNotice(noticeId, organizationId)
     await this.assertExportable(notice)
 
-    const context = await this.pdf.createRenderingContext(
-      new Date(),
-      await getLogoDataUrl(this.storage, notice.organization.logoStorageKey ?? null),
-    )
-    const html = RentCollectionExportService.buildPdfHtml(
-      notice,
-      context,
-      this.pn.reveal(notice.tenant.personalNumberEnc),
-    )
-    const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+    const pdfBuffer = await this.generatePdf(notice)
     const csvBuffer = Buffer.from(this.buildCsv([notice]), 'utf8')
 
     const date = new Date().toISOString().slice(0, 10)
@@ -272,16 +263,7 @@ export class RentCollectionExportService {
     const zip = new JSZip()
     for (const notice of notices) {
       const safe = notice.noticeNumber.replace(/[^\w-]/g, '_')
-      const context = await this.pdf.createRenderingContext(
-        new Date(),
-        await getLogoDataUrl(this.storage, notice.organization.logoStorageKey ?? null),
-      )
-      const html = RentCollectionExportService.buildPdfHtml(
-        notice,
-        context,
-        this.pn.reveal(notice.tenant.personalNumberEnc),
-      )
-      const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+      const pdfBuffer = await this.generatePdf(notice)
       zip.file(`${safe}/inkasso-underlag-${safe}.pdf`, pdfBuffer)
 
       if (notice.reminderPdfStorageKey) {
@@ -487,7 +469,7 @@ export class RentCollectionExportService {
           ? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()
           : (t.companyName ?? '')
       const leaseRef = `${notice.lease.unit.property.name} / ${notice.lease.unit.name}`
-      const deliveredAt = this.deliveredAt(notice)
+      const deliveredAt = RentCollectionExportService.deliveredAt(notice)
       return [
         notice.noticeNumber,
         notice.ocrNumber,
@@ -514,6 +496,18 @@ export class RentCollectionExportService {
       ]
     })
     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
+  }
+
+  private async generatePdf(notice: RentNoticeWithCollectionData): Promise<Buffer> {
+    const context = await this.pdf.collectRenderingContext(
+      notice.organization.logoStorageKey ?? null,
+    )
+    const html = RentCollectionExportService.buildPdfHtml(
+      notice,
+      context,
+      this.pn.reveal(notice.tenant.personalNumberEnc),
+    )
+    return this.pdf.generateFromHtml(html, context)
   }
 
   static buildPdfHtml(

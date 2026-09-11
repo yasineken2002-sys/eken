@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -51,7 +52,7 @@ describe('2a: beständiga leveransbeslut i PostgreSQL', () => {
   async function identity(value: PrismaClient) {
     const [row] = await value.$queryRaw<Array<{ database: string; schema: string }>>`
       SELECT current_database() AS database, current_schema() AS schema`
-    expect(row).toEqual({ database: url.pathname.slice(1), schema })
+    assert.deepEqual(row, { database: url.pathname.slice(1), schema })
   }
   beforeAll(async () => {
     if (!process.env.DATABASE_URL) throw new Error('2a kräver riktig PostgreSQL')
@@ -65,7 +66,7 @@ describe('2a: beständiga leveransbeslut i PostgreSQL', () => {
     const publicUrl = new URL(url)
     publicUrl.searchParams.set('schema', 'public')
     base = new PrismaClient({ datasources: { db: { url: publicUrl.toString() } } })
-    expect(await extension()).toEqual([{ nspname: 'public' }])
+    assert.deepEqual(await extension(), [{ nspname: 'public' }])
     baseline = await inventory(base, 'public')
     schemasBefore = await base.$queryRaw`SELECT nspname FROM pg_namespace ORDER BY nspname`
     console.warn('2a DB före:', url.pathname.slice(1), JSON.stringify(baseline))
@@ -95,7 +96,7 @@ describe('2a: beständiga leveransbeslut i PostgreSQL', () => {
     db = client()
     service = new DeliveryDecisions(db)
     await identity(db)
-    expect(await db.deliveryDecision.count()).toBe(0)
+    assert.equal(await db.deliveryDecision.count(), 0)
     console.warn(
       '2a privat schema:',
       schema,

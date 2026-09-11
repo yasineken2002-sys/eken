@@ -1,0 +1,69 @@
+                                                                                                           Depositionsavi
+
+
+
+Syntetiska Fastigheter AB                                                                                         Datum: 2026-09-11
+                                                                                                       Avinummer: AVI-SYN-2026-0903
+Testgatan 12, 000 00 Teststaden
+                                                                                                                     Kundnr: 567897
+Bankgiro: 5050-1055
+E-post: ekonomi@example.test
+
+
+
+
+   Testa Åberg
+   testa.aberg@example.test
+
+
+
+
+  OBJEKT        SPECIFIKATION                                                                                            SUMMA
+
+
+                Deposition — Lägenhet 1101 , Testgatan 12
+  1101                                                                                                               18 000,00 kr
+                Säkerhet enligt 12 kap. 21 § JB. Återbetalas vid avflyttning efter slutbesiktning.
+
+
+
+
+                                                                                            Att betala:         18 000,00 kr
+
+
+  ⚠ Dröjsmål debiteras med referensränta + 8% — Förfallodatum: 2026-09-30
+
+
+
+
+                                           ✂ Avrivningskupong — skicka in vid betalning
+
+
+
+
+  bankgirot                                I N B E TA L N I N G / G I R E R I N G AV I
+
+
+BETALNINGSMOTTAGARE                        FÖRFALLODATUM                                          AVSER
+
+Syntetiska Fastigheter AB                  2026-09-30                                             Deposition
+
+
+                                      O C R- N U M M E R — A N G E A L LT I D V I D B E TA L N I N G
+
+
+
+                                          1234567897
+                                       Detta nummer identifierar din betalning automatiskt
+
+
+
+
+TILL BANKGIRO                                                                                                             ATT BETALA
+
+
+5050-1055                                                                                                 18 000,00 kr
+
+                 #    1234567897                #     18000             00      2     >     50501055#41#
+                                      VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
+

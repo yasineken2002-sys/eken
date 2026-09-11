@@ -1,0 +1,170 @@
+[
+  {
+    "document": "collection-invoice-clean",
+    "before": "visual-after-proof-4/before/collection-invoice-clean-1.png",
+    "after": "visual-after-proof-4/after/collection-invoice-clean-1.png",
+    "beforeSha256": "b76ed7309dca5778083e3d2c7777ccb1de5a37369a02c79f21c9fdd51f66ee00",
+    "afterSha256": "b76ed7309dca5778083e3d2c7777ccb1de5a37369a02c79f21c9fdd51f66ee00",
+    "identicalRaster": true
+  },
+  {
+    "document": "collection-invoice-utility",
+    "before": "visual-after-proof-4/before/collection-invoice-utility-1.png",
+    "after": "visual-after-proof-4/after/collection-invoice-utility-1.png",
+    "beforeSha256": "70341c43000d54babbf9952bb6fee9cf1d9c2fdc38b10bfa2b0c19fed2fd94e5",
+    "afterSha256": "70341c43000d54babbf9952bb6fee9cf1d9c2fdc38b10bfa2b0c19fed2fd94e5",
+    "identicalRaster": true
+  },
+  {
+    "document": "collection-notice-clean",
+    "before": "visual-after-proof-4/before/collection-notice-clean-1.png",
+    "after": "visual-after-proof-4/after/collection-notice-clean-1.png",
+    "beforeSha256": "c35bd0cfde8f3b3b2506acbfa108a9daa8e0c0d46e9f146633a7d858e1d3bd25",
+    "afterSha256": "c35bd0cfde8f3b3b2506acbfa108a9daa8e0c0d46e9f146633a7d858e1d3bd25",
+    "identicalRaster": true
+  },
+  {
+    "document": "collection-notice-clean",
+    "before": "visual-after-proof-4/before/collection-notice-clean-2.png",
+    "after": "visual-after-proof-4/after/collection-notice-clean-2.png",
+    "beforeSha256": "cb13939896f669e54ebafb4fbd43914b48014a1f20a8e892fd6c9473a8cc4438",
+    "afterSha256": "cb13939896f669e54ebafb4fbd43914b48014a1f20a8e892fd6c9473a8cc4438",
+    "identicalRaster": true
+  },
+  {
+    "document": "collection-notice-utility-credit",
+    "before": "visual-after-proof-4/before/collection-notice-utility-credit-1.png",
+    "after": "visual-after-proof-4/after/collection-notice-utility-credit-1.png",
+    "beforeSha256": "8b1a3b5e6996fbd579b07dca45d05e692043ef3c41289111610863a0c9e438af",
+    "afterSha256": "8b1a3b5e6996fbd579b07dca45d05e692043ef3c41289111610863a0c9e438af",
+    "identicalRaster": true
+  },
+  {
+    "document": "collection-notice-utility-credit",
+    "before": "visual-after-proof-4/before/collection-notice-utility-credit-2.png",
+    "after": "visual-after-proof-4/after/collection-notice-utility-credit-2.png",
+    "beforeSha256": "cb13939896f669e54ebafb4fbd43914b48014a1f20a8e892fd6c9473a8cc4438",
+    "afterSha256": "cb13939896f669e54ebafb4fbd43914b48014a1f20a8e892fd6c9473a8cc4438",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-classic",
+    "before": "visual-after-proof-4/before/invoice-customer-classic-1.png",
+    "after": "visual-after-proof-4/after/invoice-customer-classic-1.png",
+    "beforeSha256": "d35fe5c7f9f08ac58cdc6e5cfbc01d474fe1517890b23d46dd735d27036ba146",
+    "afterSha256": "d35fe5c7f9f08ac58cdc6e5cfbc01d474fe1517890b23d46dd735d27036ba146",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-minimal",
+    "before": "visual-after-proof-4/before/invoice-customer-minimal-1.png",
+    "after": "visual-after-proof-4/after/invoice-customer-minimal-1.png",
+    "beforeSha256": "29ffb95519a9e297d18942fdc87e3a29f04d3ea90ca72a4abc4bb1efaf92afe5",
+    "afterSha256": "29ffb95519a9e297d18942fdc87e3a29f04d3ea90ca72a4abc4bb1efaf92afe5",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-modern",
+    "before": "visual-after-proof-4/before/invoice-customer-modern-1.png",
+    "after": "visual-after-proof-4/after/invoice-customer-modern-1.png",
+    "beforeSha256": "35dbd2533b94760e75eb9a16ded1c9f6693b21e45fe5d7f078db8b9ad645c35d",
+    "afterSha256": "35dbd2533b94760e75eb9a16ded1c9f6693b21e45fe5d7f078db8b9ad645c35d",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-multipage",
+    "before": "visual-after-proof-4/before/invoice-customer-multipage-1.png",
+    "after": "visual-after-proof-4/after/invoice-customer-multipage-1.png",
+    "beforeSha256": "5277b8d445015464dafedb3924ab1a17456f528e846b2fe11f3143fc3dfc2901",
+    "afterSha256": "5277b8d445015464dafedb3924ab1a17456f528e846b2fe11f3143fc3dfc2901",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-multipage",
+    "before": "visual-after-proof-4/before/invoice-customer-multipage-2.png",
+    "after": "visual-after-proof-4/after/invoice-customer-multipage-2.png",
+    "beforeSha256": "c686b3537d14a33d7536a9d36194f882fa24fa4357e7fff9416da56ee55a0ab4",
+    "afterSha256": "c686b3537d14a33d7536a9d36194f882fa24fa4357e7fff9416da56ee55a0ab4",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-multipage",
+    "before": "visual-after-proof-4/before/invoice-customer-multipage-3.png",
+    "after": "visual-after-proof-4/after/invoice-customer-multipage-3.png",
+    "beforeSha256": "95825e8cd008249484d3fe9641ff2232fab6d3285f7c563f52f9da4fd7ff9b62",
+    "afterSha256": "95825e8cd008249484d3fe9641ff2232fab6d3285f7c563f52f9da4fd7ff9b62",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-customer-multipage",
+    "before": "visual-after-proof-4/before/invoice-customer-multipage-4.png",
+    "after": "visual-after-proof-4/after/invoice-customer-multipage-4.png",
+    "beforeSha256": "3fc46fef63a04314d25a18d815a4083bfce8864cc3a628987e65d159489f03fc",
+    "afterSha256": "3fc46fef63a04314d25a18d815a4083bfce8864cc3a628987e65d159489f03fc",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-rent-classic",
+    "before": "visual-after-proof-4/before/invoice-rent-classic-1.png",
+    "after": "visual-after-proof-4/after/invoice-rent-classic-1.png",
+    "beforeSha256": "41166993fbd0bb3ff419372140ce7718848f9af29eb5eab788486e5b1e733cd8",
+    "afterSha256": "41166993fbd0bb3ff419372140ce7718848f9af29eb5eab788486e5b1e733cd8",
+    "identicalRaster": true
+  },
+  {
+    "document": "invoice-utility-classic",
+    "before": "visual-after-proof-4/before/invoice-utility-classic-1.png",
+    "after": "visual-after-proof-4/after/invoice-utility-classic-1.png",
+    "beforeSha256": "b6288392f68545e4bd6b7c05513b67a0003d6df2dea3f5a85c927cce4cfe3ff4",
+    "afterSha256": "b6288392f68545e4bd6b7c05513b67a0003d6df2dea3f5a85c927cce4cfe3ff4",
+    "identicalRaster": true
+  },
+  {
+    "document": "notice-deposit",
+    "before": "visual-after-proof-4/before/notice-deposit-1.png",
+    "after": "visual-after-proof-4/after/notice-deposit-1.png",
+    "beforeSha256": "cd1c49c614fa479167f54306be641e038e3e0e639a5d02ac241628caf9bbe9e9",
+    "afterSha256": "cd1c49c614fa479167f54306be641e038e3e0e639a5d02ac241628caf9bbe9e9",
+    "identicalRaster": true
+  },
+  {
+    "document": "notice-prorated-backfill",
+    "before": "visual-after-proof-4/before/notice-prorated-backfill-1.png",
+    "after": "visual-after-proof-4/after/notice-prorated-backfill-1.png",
+    "beforeSha256": "602da66a367004dd67cf4e1fd1b725982f2059c5976db6a8ca95f9d1161c5e01",
+    "afterSha256": "602da66a367004dd67cf4e1fd1b725982f2059c5976db6a8ca95f9d1161c5e01",
+    "identicalRaster": true
+  },
+  {
+    "document": "notice-rent",
+    "before": "visual-after-proof-4/before/notice-rent-1.png",
+    "after": "visual-after-proof-4/after/notice-rent-1.png",
+    "beforeSha256": "3d0de3ffd657c53fd4db76383bf0ef95da2b3ab92664b2e5f0ee17efb0b7aead",
+    "afterSha256": "3d0de3ffd657c53fd4db76383bf0ef95da2b3ab92664b2e5f0ee17efb0b7aead",
+    "identicalRaster": true
+  },
+  {
+    "document": "notice-utility-credit",
+    "before": "visual-after-proof-4/before/notice-utility-credit-1.png",
+    "after": "visual-after-proof-4/after/notice-utility-credit-1.png",
+    "beforeSha256": "aea71a8f5c749988864f1b15997b0477965c15373f9f9984c1cd2b2363c8f280",
+    "afterSha256": "aea71a8f5c749988864f1b15997b0477965c15373f9f9984c1cd2b2363c8f280",
+    "identicalRaster": true
+  },
+  {
+    "document": "reminder-rent-partpaid",
+    "before": "visual-after-proof-4/before/reminder-rent-partpaid-1.png",
+    "after": "visual-after-proof-4/after/reminder-rent-partpaid-1.png",
+    "beforeSha256": "a0a51066999fb3d9ba99cea30c40c841f98da4910bba769feeacdcc33d9da574",
+    "afterSha256": "a0a51066999fb3d9ba99cea30c40c841f98da4910bba769feeacdcc33d9da574",
+    "identicalRaster": true
+  },
+  {
+    "document": "reminder-utility-partpaid-credit",
+    "before": "visual-after-proof-4/before/reminder-utility-partpaid-credit-1.png",
+    "after": "visual-after-proof-4/after/reminder-utility-partpaid-credit-1.png",
+    "beforeSha256": "56b82d0224b0f229f7cb3725dd00627a935408ef9b4df9ebbc610b1847eee2ec",
+    "afterSha256": "56b82d0224b0f229f7cb3725dd00627a935408ef9b4df9ebbc610b1847eee2ec",
+    "identicalRaster": true
+  }
+]

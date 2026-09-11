@@ -14,7 +14,7 @@ import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
-import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
+import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { DEFAULT_BRAND_COLOR, INVOICE_TRANSITIONS, isValidTransition } from '@eken/shared'
 import type { InvoiceStatus } from '@eken/shared'
 import { UserRole } from '@prisma/client'
@@ -193,16 +193,7 @@ export class CollectionExportService {
 
     // Först HÄR börjar det dyra arbetet. Misslyckades claimen har vi redan
     // kastat — ingen PDF genererad, ingen InvoiceEvent skriven.
-    const context = await this.pdf.createRenderingContext(
-      new Date(),
-      await getLogoDataUrl(this.storage, invoice.organization.logoStorageKey ?? null),
-    )
-    const html = CollectionExportService.buildPdfHtml(
-      invoice,
-      context,
-      this.pn.reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
-    )
-    const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+    const pdfBuffer = await this.generatePdf(invoice)
     const csvBuffer = Buffer.from(this.buildCsv([invoice]), 'utf8')
 
     const date = new Date().toISOString().slice(0, 10)
@@ -344,16 +335,7 @@ export class CollectionExportService {
     const zip = new JSZip()
     for (const invoice of invoices) {
       const safeNumber = invoice.invoiceNumber.replace(/[^\w-]/g, '_')
-      const context = await this.pdf.createRenderingContext(
-        new Date(),
-        await getLogoDataUrl(this.storage, invoice.organization.logoStorageKey ?? null),
-      )
-      const html = CollectionExportService.buildPdfHtml(
-        invoice,
-        context,
-        this.pn.reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
-      )
-      const pdfBuffer = await this.pdf.generateFromHtml(html, context)
+      const pdfBuffer = await this.generatePdf(invoice)
       zip.file(`${safeNumber}/inkasso-${safeNumber}.pdf`, pdfBuffer)
     }
     // Samlad CSV med alla fakturor — många inkassobolag (Visma Collectors,
@@ -890,6 +872,18 @@ export class CollectionExportService {
       ]
     })
     return [headers, ...rows].map((r) => r.map((c) => csvCell(c)).join(',')).join('\n')
+  }
+
+  private async generatePdf(invoice: InvoiceWithCollectionData): Promise<Buffer> {
+    const context = await this.pdf.collectRenderingContext(
+      invoice.organization.logoStorageKey ?? null,
+    )
+    const html = CollectionExportService.buildPdfHtml(
+      invoice,
+      context,
+      this.pn.reveal((invoice.tenant ?? invoice.customer)?.personalNumberEnc),
+    )
+    return this.pdf.generateFromHtml(html, context)
   }
 
   static buildPdfHtml(

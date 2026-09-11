@@ -1,0 +1,86 @@
+{
+  "id": "customer-classic",
+  "organizationId": "synthetic-rendering-org",
+  "invoiceNumber": "F-SYN-2026-customer-classic",
+  "type": "SERVICE",
+  "status": "DRAFT",
+  "issueDate": "2026-08-31T00:00:00.000Z",
+  "dueDate": "2026-09-30T00:00:00.000Z",
+  "reference": "Syntetisk beställning 2026",
+  "ocrNumber": "1234567897",
+  "subtotal": 880,
+  "vatTotal": 220,
+  "total": 1100,
+  "notes": null,
+  "lines": [
+    {
+      "id": "line-020",
+      "description": "Lokalservice september",
+      "quantity": 2,
+      "unitPrice": 400,
+      "vatRate": 25,
+      "total": 1000
+    },
+    {
+      "id": "line-010",
+      "description": "Material för lokalservice",
+      "quantity": 1,
+      "unitPrice": 80,
+      "vatRate": 25,
+      "total": 100
+    }
+  ],
+  "tenant": null,
+  "customer": {
+    "id": "synthetic-rendering-customer",
+    "type": "COMPANY",
+    "firstName": null,
+    "lastName": null,
+    "companyName": "Syntetisk Kund AB",
+    "personalNumberEnc": null,
+    "orgNumber": "TEST-KUND-002",
+    "email": "kund@example.test",
+    "phone": null,
+    "street": "Kundgatan 9",
+    "postalCode": "000 01",
+    "city": "Teststaden"
+  },
+  "organization": {
+    "id": "synthetic-rendering-org",
+    "name": "Syntetiska Fastigheter AB",
+    "orgNumber": "TEST-ORG-001",
+    "street": "Testgatan 12",
+    "postalCode": "000 00",
+    "city": "Teststaden",
+    "email": "ekonomi@example.test",
+    "phone": "TEST-TELEFON",
+    "bankgiro": "5050-1055",
+    "invoiceColor": "#1a6b3c",
+    "invoiceTemplate": "classic",
+    "brandSecondaryColor": "#245c7c",
+    "brandFont": "SYSTEM_SANS",
+    "logoStorageKey": "synthetic/rendering/org-logo.png",
+    "hasFSkatt": true,
+    "fSkattApprovedDate": "2020-01-15T00:00:00.000Z",
+    "vatNumber": "SETESTORG001",
+    "companyForm": "AB",
+    "collectionAgencyName": "Syntetisk kravmottagare"
+  },
+  "lease": {
+    "id": "synthetic-rendering-lease",
+    "monthlyRent": 9000,
+    "unit": {
+      "id": "synthetic-rendering-unit",
+      "unitNumber": "1101",
+      "name": "Lägenhet 1101",
+      "property": {
+        "id": "synthetic-rendering-property",
+        "name": "Testhuset",
+        "street": "Testgatan 12"
+      }
+    }
+  },
+  "payments": [],
+  "creditNotes": [],
+  "paymentReminders": []
+}

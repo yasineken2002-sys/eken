@@ -1,0 +1,14 @@
+{
+  "template": "invoice-overdue",
+  "props": {
+    "tenantName": "Testa Åberg",
+    "invoiceNumber": "F-SYN-2026-001",
+    "total": 1100,
+    "dueDate": "2026-08-31T00:00:00Z",
+    "organizationName": "Syntetiska Fastigheter AB"
+  },
+  "to": "testa.aberg@example.test",
+  "organizationId": "synthetic-rendering-org",
+  "subject": "Förfallen faktura F-SYN-2026-001",
+  "priority": "normal"
+}

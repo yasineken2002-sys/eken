@@ -1,0 +1,10 @@
+{
+  "template": "invoice-reminder",
+  "props": {
+    "tenantName": "Testa Åberg",
+    "invoiceNumber": "F-SYN-EXTRA-REMINDER-001",
+    "total": 1100,
+    "dueDate": "2026-09-11T23:30:00.000Z",
+    "organizationName": "Syntetiska Fastigheter AB"
+  }
+}
