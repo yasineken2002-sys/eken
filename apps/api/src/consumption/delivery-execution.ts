@@ -111,7 +111,7 @@ export class DeliveryExecution {
       const resources = await this.checkedResources(command)
       body = await this.ports.render(prepared.snapshot, resources, command.rendering)
     }
-    return this.decisions.transaction(async (tx) => {
+    const bind = async (tx: Tx) => {
       const result = await this.decisions.decide(command, tx)
       const existing = await tx.deliveryDispatch.findUnique({
         where: { decisionId: result.decision.id },
@@ -134,7 +134,20 @@ export class DeliveryExecution {
           digest: deliveryDigest(sealedBody),
         },
       })
-    })
+    }
+    try {
+      return await this.decisions.transaction(bind)
+    } catch (error) {
+      // Only a known expired, rolled-back binding; no rendering or transport is retried.
+      if (
+        !command.rendering ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2028' ||
+        !error.message.includes('expired transaction')
+      )
+        throw error
+      return this.decisions.transaction(bind) // Same command/body; fresh authorization, snapshot and resources again.
+    }
   }
 
   async publish(decisionId: string) {

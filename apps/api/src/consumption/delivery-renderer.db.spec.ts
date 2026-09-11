@@ -524,6 +524,34 @@ describe('r22: verklig rendering från beslutets frysta PostgreSQL-underlag', ()
     expect(
       await rig.db.deliveryDispatch.count({ where: { organizationId: h.f.organizationId } }),
     ).toBe(1)
+    const expired = await harness()
+    let stalled = false,
+      rollbacks = 0
+    expired.ports.resources.mockImplementation(async (...args) => {
+      const resources = await expired.actual.resources(...args)
+      if (expired.ports.render.mock.calls.length && !stalled) {
+        stalled = true
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 5200))
+      }
+      return resources
+    })
+    const transaction = expired.execution.decisions.transaction.bind(expired.execution.decisions)
+    jest.spyOn(expired.execution.decisions, 'transaction').mockImplementation(async (work) => {
+      try {
+        return await transaction(work)
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028') {
+          rollbacks++
+          await empty(expired)
+        }
+        throw error
+      }
+    })
+    const recovered = await expired.execution.enqueue(expired.command)
+    expect(rollbacks).toBe(1)
+    expect(expired.ports.render).toHaveBeenCalledTimes(1)
+    expect(await expired.execution.enqueue(expired.command)).toEqual(recovered)
+    expect(expired.ports.send).not.toHaveBeenCalled()
   })
 
   it('r22-14 resursbyte före sista bindningen lämnar ingen halv commit', async () => {

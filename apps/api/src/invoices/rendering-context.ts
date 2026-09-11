@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { createReadStream, existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -189,13 +190,10 @@ export async function pdfEnvironmentIdentity(): Promise<string> {
       '/etc/os-release',
     ]),
   ].sort()
-  // Fresh bytes, bounded memory, and yields so another binding can finish its DB queries.
+  // Fresh bytes, one file at a time; yield so another binding can finish its DB queries.
   const digests: Array<[string, string]> = []
   for (const file of files) {
-    const hash = createHash('sha256')
-    for await (const chunk of createReadStream(file, { highWaterMark: 1024 * 1024 }))
-      hash.update(chunk)
-    digests.push([file, hash.digest('hex')])
+    digests.push([file, renderingDigest(await readFile(file))])
   }
   return renderingDigest(
     JSON.stringify({
