@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { ConflictException } from '@nestjs/common'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { consumptionConflict, requireChargeActor, requireChargeCheck } from './charge-gate'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 type Tx = Prisma.TransactionClient
 type Scope = { organizationId: string; documentId: string; actorId: string }
@@ -61,7 +62,10 @@ export class DeliveryDecisions {
           await this.checkConstraints(tx)
           return result
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 },
+        {
+          ...PRISMA_DEFAULT_TX_LIMITS,
+          isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+        },
       )
       .catch(consumptionConflict)
   }
