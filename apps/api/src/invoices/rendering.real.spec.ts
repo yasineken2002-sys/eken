@@ -29,6 +29,7 @@ import {
   renderingFixtureLogo,
 } from './rendering.test-fixtures'
 import {
+  assertGoldenPair,
   assertPdfGolden,
   comparableEnvelope,
   comparablePdf,
@@ -177,6 +178,26 @@ describe('real deterministic rendering, independent before-final golden', () => 
     expect(manifests[0]!.renderingCodeIdentity).toBe(manifests[1]!.renderingCodeIdentity)
     expect(manifests[0]!.environment).toEqual(manifests[1]!.environment)
     expect(manifests[0]!.records).toEqual(manifests[1]!.records)
+  })
+
+  it('r21-03 authoritative before-final-1/2 match except exactly two Info date fields', () => {
+    for (const directory of ['before-final-1', 'before-final-2']) {
+      const baseline = loadCapture(join(evidence, directory))
+      expect(baseline.baseSha).toBe('5ae9906b152307eae0d79eec719d4303a042742c')
+      expect(baseline.sourceHead).toBe('5ae9906b152307eae0d79eec719d4303a042742c')
+    }
+    const comparisons = ['before-final-1', 'before-final-2'].map((before) => ({
+      before,
+      comparisons: assertGoldenPair(join(evidence, before), after[0]!),
+    }))
+    writeFileSync(
+      join(output, 'golden-comparisons.json'),
+      JSON.stringify(comparisons, null, 2) + '\n',
+    )
+    expect(comparisons.map((item) => item.comparisons.length)).toEqual([66, 66])
+    expect(manifests[0]!.records.filter((record) => record.hasConsumption === false)).toHaveLength(
+      11,
+    )
   })
 
   it('r21-04 undeclared text or any non-exempt byte fails the same golden comparator', () => {

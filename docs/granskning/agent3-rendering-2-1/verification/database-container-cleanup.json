@@ -1,0 +1,17 @@
+{
+  "removedAt": "2026-09-11T18:11:46.639793+00:00",
+  "container": "agent3-r21-20260911",
+  "containerId": "f55332d891c5fa68c67584e16e95169c8afe1de9d646a260a068a2cbe27dae39",
+  "command": [
+    "docker",
+    "rm",
+    "-f",
+    "-v",
+    "agent3-r21-20260911"
+  ],
+  "returncode": 0,
+  "stdout": "agent3-r21-20260911\n",
+  "stderr": "",
+  "remainingOwnContainer": "",
+  "scope": "Only this task-created container and its anonymous volume; no image or other container removed."
+}

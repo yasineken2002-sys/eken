@@ -223,3 +223,60 @@ Det tidigare återstående kravet på verkligt röd beteendekontroll är därmed
 styrkt av dessa granskade körningsbevis. Detta är inte den separata
 borttagningskanarien i riktig CI. Den kanarien och grön CI för exakt slutlig
 HEAD har fortfarande inte granskats här.
+
+## Tillägg: verklig förgrön CI och avgränsad kanariecommit
+
+Den sparade körmetadatan och den fullständiga Tests-loggen för
+[CI 34631616328](https://github.com/yasineken2002-sys/eken/actions/runs/34631616328)
+har nu granskats oberoende. Körningen är slutförd med success på exakt
+`3eecefa5711aa64bfdb13b9a9b151ed36bc16d76`; samtliga 61 jobb lyckades.
+API-jobbet körde 490 sviter och 6 090 prov grönt. Både kontrollen av de 70
+hårdkodade ID:na och kontrollen mot hoppade prov lyckades. Tests-loggens
+SHA256 matchar [det sparade beviset](verification/ci-green-before-proof.json).
+
+Det är faktisk exekvering: loggen visar `@eken/api:test:ci` följt av
+`cache miss, executing`, och remote caching är avstängd. De två fångsterna
+har olika Node-PID 4479/6774 och Chromium-PID 4596/6869. Sparade fångstmanifest
+matchar de faktiska loggraderna, med identiska uppgifter för alla 66
+artefakter och samma renderingsidentitet. CI-miljön är Node 20.20.2,
+ICU 78.2 och Chrome 146.0.7680.153 med Puppeteer 24.40.0 på Linux/x64/UTC.
+Detta redovisar den verkliga skillnaden mot den lokala Node-/ICU-miljön;
+goldenprovet passerade ändå utan utvidgade datumundantag.
+
+Kanariecommit `66bec1ba64a4d68699ac7a6a2baf33c0c4029640` har den gröna
+commiten som enda förälder. Jag jämförde Git-blobbarnas bytes och den
+[sparade mutationsbeskrivningen](verification/ci-canary-mutation.json):
+exakt r21-03-blocket och dess enda importpost är borttagna, totalt 21 rader
+i en testfil. Alla andra r21-prov finns kvar. CI-filens bytes och dess
+SHA256 är oförändrade, inklusive det obligatoriska r21-03-ID:t. Inga
+produkt-, skip-, cache- eller körningsändringar ingår i kanariecommiten.
+
+Inga blockerande fynd i förgrönbeviset eller mutationens avgränsning.
+Detta är inte den slutliga återställda gröna körningen. Kanariens verkliga
+utfall och återställningens CI ska granskas separat. Endast denna rapport
+har ändrats av mig i denna återgranskning; inga prov har körts.
+
+## Tillägg: verklig röd borttagningskanarie verifierad
+
+[CI 34632751687](https://github.com/yasineken2002-sys/eken/actions/runs/34632751687)
+är slutförd med failure på exakt
+`66bec1ba64a4d68699ac7a6a2baf33c0c4029640`. Jag har oberoende jämfört sparad
+metadata, hela Tests-loggen och fångstmanifesten med
+[kanariebeviset](verification/ci-canary-red-proof.json). Loggens SHA256 stämmer.
+
+`Run test suite` lyckades med 490 sviter och 6 089 prov, alltså exakt ett
+prov färre än förgrön körning. API-tasken visar `cache miss, executing` och
+remote caching är avstängd. Två verkliga fångster redovisas med Node-PID
+5021/7287 och Chromium-PID 5114/7400; deras manifest matchar loggen och varandra.
+
+Tests-jobbets enda misslyckade steg är ID-guarden, med exakt felorsak:
+`invoices/rendering.real.spec.ts: r21-03 saknas eller saknar godkända genomförda assertions`.
+Även det sammanfattande `CI passed`-jobbet blir följdriktigt rött. Det senare
+no-skipped-steget kördes inte eftersom ID-guarden redan hade stoppat jobbet;
+Jest-körningen dessförinnan var komplett grön för de 6 089 kvarvarande proven.
+
+Den riktiga kanarien har därmed fällt just borttagningen av det obligatoriska
+goldenprovet, utan testfel, typfel eller cacheträff som alternativ förklaring.
+Inga blockerande fynd i detta bevis. Återställningens exakta filhash och grön
+CI för den slutliga commiten ska fortfarande granskas separat, endast genom
+läsning efter att denna rapport har committats. Inga prov kördes av mig.

@@ -25,7 +25,7 @@ som **INGEN DOKUMENTERAD ORSAK** i inventeringen.
 
 | Gemensam kärna | Verklig anropare och innehåll | Förändring och regressionsbevis |
 | --- | --- | --- |
-| Faktura | `pdf.service.ts:160` → `renderInvoice:231` → `invoice-pdf.template.ts` | Sex PDF-fixturer, fem utan förbrukning; classic/modern/minimal och 55 rader. Samma kärna används för alla fakturatyper; den grenar inte på enumtypen. |
+| Faktura | `pdf.service.ts:160` → `renderInvoice:234` → `invoice-pdf.template.ts` | Sex PDF-fixturer, fem utan förbrukning; classic/modern/minimal och 55 rader. Samma kärna används för alla fakturatyper; den grenar inte på enumtypen. |
 | Avi | `avisering.service.ts`, `buildNoticePdfHtml` | Fyra fixturer: ren hyra, deposition, proration/backfill och förbrukning/kredit. |
 | Avipåminnelse | `rent-reminder.service.ts`, `buildReminderPdfHtml` | Två delbetalda dokument med/utan förbrukning; skuld, avgift och förseningsdagar bevaras. |
 | Fakturainkasso | `collection-export.service.ts:877`, `buildPdfHtml:890` | Två underlag med/utan förbrukning. Single/bulk använder samma privata PDF-ingång och innehållskärna. |
@@ -164,6 +164,9 @@ muterad `a78d14304e6761b20e372cbd4621da1b22d99ce5c18c144e9b4d01c7167741b2`,
   två referensrader). Egna scheman hade 1106 respektive 2449 fixturrader före
   städning och saknades efteråt. Nio faktiska låspar per körning; fulla PID,
   tabellräkningar och hashkontroller i `verification/database-summary.json`.
+  Före containerstädning räknades åter 115 publictabeller och 191 rader; inga
+  egna testscheman fanns kvar. Endast den egna namngivna containern och dess
+  testvolym togs bort. Separata råa JSON-städbevis finns i samma katalog.
 - Nio berörda befintliga sviter: 121/121 gröna, inklusive äldre DB-regression.
 - Full API-typkontroll grön; riktad ESLint grön efter testimportsrättning.
   PDF-kontrollen: tre renderingsställen, tio producenter, 59 malliteraler.
@@ -195,6 +198,25 @@ oberoende granskning.
 Produktion mot godkänd bas: **13 filer, 470 tillagda +80 borttagna =550**.
 Prisma- och migrationsfiler har inga ändringar. Exekverarens nya inline-SQL,
 CI och PDF-kontrollskriptet ingår i siffran.
+
+| Produktionsfil | Tillagda | Borttagna |
+| --- | ---: | ---: |
+| `.github/workflows/ci.yml` | 14 | 3 |
+| `apps/api/scripts/check-pdf-templates-selfcontained.mjs` | 2 | 2 |
+| `avisering/avisering.service.ts` | 30 | 17 |
+| `avisering/rent-reminder.service.ts` | 14 | 8 |
+| `collections/collection-export.service.ts` | 30 | 10 |
+| `collections/rent-collection-export.service.ts` | 33 | 17 |
+| `consumption/delivery-execution.ts` | 18 | 3 |
+| `invoices/pdf.service.ts` | 89 | 11 |
+| `invoices/rendering-context.ts` | 202 | 0 |
+| `invoices/templates/invoice-pdf.template.ts` | 2 | 2 |
+| `mail/mail.renderer.ts` | 14 | 3 |
+| `mail/mail.service.ts` | 21 | 4 |
+| `mail/templates/shared/format.ts` | 1 | 0 |
+
+Sökvägar utan prefix i tabellen ligger under `apps/api/src/`.
+
 Testkod, syntetiska resurser, råa fångster/loggar och dokumentation räknas
 separat i slutlig diffstat. Inga produktionshjälpare klassificeras som tester.
 Raw golden och kopierad fontconfig har avsiktligt kvar sin whitespace;
@@ -241,7 +263,61 @@ med vanlig flerradig YAML och samma apt-installmönster som CI:s befintliga
 postgresklientinstallation. Två produktionsrader tillkommer. Samtidigt
 återtas en onödig utvidgning av PDF-guardens direktanropsregex till basens
 regel. Alla aktuella nya klassanrop går via lokala HTML-variabler, där
-klassprefixstödet och120-fönstret behålls. Okända direkta producenter nekas
+klassprefixstödet och 120-fönstret behålls. Okända direkta producenter nekas
 fortfarande. Oberoende granskare bekräftade avgränsningen, och guard +
-självtest är gröna:3renderingsställen,10producenter,59malliteraler och6kanarier.
-Netto är budgeten fortsatt550, nu470+80. Ingen rendering eller golden ändras.
+självtest är gröna: 3 renderingsställen, 10 producenter, 59 malliteraler och 6 kanarier.
+Netto är budgeten fortsatt 550, nu 470 + 80. Ingen rendering eller golden ändras.
+
+## Grön fullkörning före borttagningskanarien
+
+[CI 34631616328](https://github.com/yasineken2002-sys/eken/actions/runs/34631616328)
+är grön på `3eecefa5711aa64bfdb13b9a9b151ed36bc16d76`: samtliga 61 jobb,
+490 API-sviter och 6090 API-prov. Kravkontrollen verifierade alla 70 ID:n.
+API-tasken loggar `cache miss, executing`. Två nya Node-/Chromeprocesser
+(4479/4596 respektive 6774/6869) gav 66 identiska råartefakter. Full logg,
+körmetadata, verkliga capture-records och härledd sammanställning finns i
+`verification/ci-green-before*`. Denna gröna körning föregår kanarien och
+ersätter inte kravet på grön CI för slutlig återställd HEAD.
+
+## Verklig röd kanarie och exakt återställning
+
+Kanariecommit `66bec1ba64a4d68699ac7a6a2baf33c0c4029640` tog bort endast
+r21-03:s provblock och dess då oanvända import: en fil, 21 borttagna testrader.
+CI-listan ändrades inte. [Körning 34632751687](https://github.com/yasineken2002-sys/eken/actions/runs/34632751687)
+blev röd av exakt `invoices/rendering.real.spec.ts: r21-03 saknas eller saknar
+godkända genomförda assertions`. Run test suite var grön: 490 sviter och
+6089 prov; den efterföljande obligatoriska ID-kontrollen föll. Övriga jobb
+var gröna utom den sammanfattande CI passed-grinden, som korrekt föll på Tests.
+
+API-tasken hade `cache miss, executing`; två verkliga Node-/Chromeprocesser
+(5021/5114 och 7287/7400) renderade 66 identiska råartefakter. Testloggens SHA256
+är `9167fcabce9ea589b0f18306f043f76fa0557b0ad3c9c1bbeaf78cabb17aaf45`.
+Metadata, full rålogg, captures och exakt commitdiff finns under
+`verification/ci-canary-*`. Kanarien är alltså ett saknat beteendeprov,
+inte ett kompileringsfel, ett hoppat prov eller en ändrad kravlista.
+
+De två borttagna spannen återställdes efter kontroll att arbetsfilen fortfarande
+var exakt den avsiktliga mutanten. Originalets och den återställda filens SHA256
+är båda `5076cba1e4480b4efdbc675f3e3001b0367c332c40adea339205968847105b4a`;
+mutantens är `d46ff9ebe5b627d2dbb3377e8c3653d73acaf13df5039ac73075dcd9674e824d`.
+CI-filens oförändrade SHA256 är
+`608ae7a9b1324960bd69d608f4c48a71c07745164add72db8487d50f7c6104e9`.
+Återställningen levereras i en vanlig ny commit tillsammans med bevisen.
+Slutlig HEAD och dess slutliga gröna CI-länk publiceras i PR-beskrivningen
+och leveransmeddelandet efter verifiering; inga nya repoändringar görs för
+att föra in den då redan provade commitens eget SHA i filen.
+
+## Samlad diff mot godkänd PR-bas
+
+| Klass | Filer | Tillagda rader | Borttagna rader | Binärfiler |
+| --- | ---: | ---: | ---: | ---: |
+| Produktion | 13 | 470 | 80 | 0 |
+| Testkod | 24 | 3475 | 124 | 0 |
+| Råa testbevis och syntetiska resurser | 1501 | 390654 | 0 | 388 |
+| Dokumentation | 9 | 1512 | 0 | 0 |
+
+Testkod omfattar endast specar, testfixturer/-hjälpare och kördrivare för bevis.
+Historiska kopior av gammal implementation används endast av jämförelseprov.
+Råa PDF, PNG, typsnitt, före-/eftermanifest och CI-loggar är testbevis; de
+historiska fångsterna behålls även när de gör diffen stor. Binärfiler saknar
+textbaserat radantal i git numstat och redovisas därför i egen kolumn.

@@ -1,0 +1,11 @@
+{
+  "restoredAt": "2026-09-11T18:33:27.082544+00:00",
+  "canaryCommit": "66bec1ba64a4d68699ac7a6a2baf33c0c4029640",
+  "path": "apps/api/src/invoices/rendering.real.spec.ts",
+  "beforeRestoreSha256": "d46ff9ebe5b627d2dbb3377e8c3653d73acaf13df5039ac73075dcd9674e824d",
+  "restoredSha256": "5076cba1e4480b4efdbc675f3e3001b0367c332c40adea339205968847105b4a",
+  "originalSha256": "5076cba1e4480b4efdbc675f3e3001b0367c332c40adea339205968847105b4a",
+  "ciSha256": "608ae7a9b1324960bd69d608f4c48a71c07745164add72db8487d50f7c6104e9",
+  "exactOriginalBytesRestored": true,
+  "scope": "Only the two intentionally removed spans were restored; current file was verified to match the exact saved mutant first."
+}
