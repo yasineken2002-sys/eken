@@ -1,5 +1,8 @@
 # Agent 3 — steg 2.1: kontrakt före implementation
 
+**Status: stoppat enligt radtaket.** Se [stopprapporten](stopprapport.md).
+Följande är det bevarade kontraktet och uppskattningen före implementation.
+
 Beställning 2026-09-11. Fryst bas `5ae9906b152307eae0d79eec719d4303a042742c`.
 Egen worktree `arbete/agent3-rendering-2-1`, gren `codex/agent3-rendering-2-1`.
 Avsedd utkastbas: `codex/agent3-utskicksgrind-2b`. #877–879 förblir frysta.

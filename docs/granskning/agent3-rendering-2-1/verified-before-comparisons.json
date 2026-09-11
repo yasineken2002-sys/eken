@@ -1,0 +1,3214 @@
+{
+  "verifiedArtifacts": 396,
+  "rawComparisons": 264,
+  "comparisons": [
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "secondSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-classic.html",
+      "rawEqual": true,
+      "firstSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "secondSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "074cacd71c829de820d902ad5f94685e7939e1ac87ef088cb5793da86068a017",
+      "secondSha256": "517691a6a95aece5af84fa8f0831ff35e4470e5bdb29d94c8afbe2ed4469bea1",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142927"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142927"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-rent-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "secondSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-rent-classic.html",
+      "rawEqual": true,
+      "firstSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "secondSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-rent-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "084d4fa1b988cc1c362dba6c568278e1e94b2c7d56c39387c416f1777f1e629a",
+      "secondSha256": "340611d996e0849b2dd3886c2bbb0037e96ba11cb755f40a89d020dc3911429c",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142927"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142927"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-utility-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "secondSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-utility-classic.html",
+      "rawEqual": true,
+      "firstSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "secondSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-utility-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "f6b613618e3d07ff7e4e63bdb31b18f85a6f1afcdca41ea1eba340d719a6f656",
+      "secondSha256": "0b436eff40faeb317b894da7effa818addeb9157a3d59262d23d4c7b721732fa",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-modern.input.json",
+      "rawEqual": true,
+      "firstSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "secondSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-modern.html",
+      "rawEqual": true,
+      "firstSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "secondSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-modern.pdf",
+      "rawEqual": false,
+      "firstSha256": "661c37c90e666ae37af21e8d611fa78ff59157dbdfee64a7118042145255068d",
+      "secondSha256": "19e5e4a9e9fb9be2646d2df2d60afedc33388ce8934b2b724c74dc5c002ade97",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-minimal.input.json",
+      "rawEqual": true,
+      "firstSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "secondSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-minimal.html",
+      "rawEqual": true,
+      "firstSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "secondSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-minimal.pdf",
+      "rawEqual": false,
+      "firstSha256": "5edf2c215eb07bf4465a0d772fe6d2606375edce2c9b11650d74feb52da2c51a",
+      "secondSha256": "a3f7f8577f15b62d5b5bdad76f9e5e6d9d96c69b4c3a9c4e5a1841258b2e3be9",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-multipage.input.json",
+      "rawEqual": true,
+      "firstSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "secondSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-multipage.html",
+      "rawEqual": true,
+      "firstSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "secondSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "invoice-customer-multipage.pdf",
+      "rawEqual": false,
+      "firstSha256": "e1cbc15810c734fdbde2c70b9d65696acfdf4ced8e923ed8ad2b13b76df784ea",
+      "secondSha256": "391c664df0713608df5fa33ba0bec5487b07572d27a971126f9fc882dce5f840",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-rent.input.json",
+      "rawEqual": true,
+      "firstSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "secondSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-rent.html",
+      "rawEqual": true,
+      "firstSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "secondSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-rent.pdf",
+      "rawEqual": false,
+      "firstSha256": "16c488781fce702d41e8d3c60da7c1572319b0473d66587699b073ae86f0c86f",
+      "secondSha256": "8984ac07317c1b983ba4922b72e3c09b9710fa0e2d7cac4d1caeec81b43b8deb",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-prorated-backfill.input.json",
+      "rawEqual": true,
+      "firstSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "secondSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-prorated-backfill.html",
+      "rawEqual": true,
+      "firstSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "secondSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-prorated-backfill.pdf",
+      "rawEqual": false,
+      "firstSha256": "4ac789a0328a0288c51b1424a550ae8913087291134652617218a0510f82bd97",
+      "secondSha256": "2d88565a42ee848496904bae194129590cdf78aa83d9c8fcee9a2e138a27d415",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-deposit.input.json",
+      "rawEqual": true,
+      "firstSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "secondSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-deposit.html",
+      "rawEqual": true,
+      "firstSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "secondSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-deposit.pdf",
+      "rawEqual": false,
+      "firstSha256": "49d870d34f830d840e7692b7eb15f3632dac712b19e1340a0c15d8c883a149ba",
+      "secondSha256": "d7acb773aeb771786f22814d7a431693a94a3200c17234dadfdd2da842706ed6",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "secondSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "secondSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "8ed7b60b52a24fbbeb9ce5942e7560e11c66b5b9439b0d5c6f56209432216540",
+      "secondSha256": "f698ce1a9190df25afc8d325a24b338ffb619715c8bda48468495684ddfb6fe1",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "reminder-rent-partpaid.input.json",
+      "rawEqual": true,
+      "firstSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "secondSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "reminder-rent-partpaid.html",
+      "rawEqual": true,
+      "firstSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "secondSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "reminder-rent-partpaid.pdf",
+      "rawEqual": false,
+      "firstSha256": "e91f2a6b6439d79e288385fa07793cca2931eb5d53d4140bf962647b548537c1",
+      "secondSha256": "9bc1d1908b3f56674ceebf70b9028c7f185cb9dc2614ab0e57105aff720c37bf",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "reminder-utility-partpaid-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "secondSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "reminder-utility-partpaid-credit.html",
+      "rawEqual": true,
+      "firstSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "secondSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "reminder-utility-partpaid-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "a5002da991320e598784580aee406327c450562a23757e2502092dc05a5f38b8",
+      "secondSha256": "b647c8cf8e791e3498184146703cef5550056f57f2ae508815692a8076822783",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-invoice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "secondSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-invoice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "secondSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-invoice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "06539336177ab48f846c3b19ff88c383207512633d00bb3cf0b6f3fcd0902477",
+      "secondSha256": "3b630879346d3b61fe85735b7b93619c4cdc12a2b8def57a2b9350a0407c9cf5",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-invoice-utility.input.json",
+      "rawEqual": true,
+      "firstSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "secondSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-invoice-utility.html",
+      "rawEqual": true,
+      "firstSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "secondSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-invoice-utility.pdf",
+      "rawEqual": false,
+      "firstSha256": "d33c6d76d24453eda0bb05b7bca7108cc7931b56e4f47a7d435d6654bdb029dc",
+      "secondSha256": "4691c228330b11cdfa477228e3e02014c4eb0ef7cee9dfb1b58cfe72f6a2b6cd",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-notice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "secondSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-notice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "secondSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-notice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "9f99d04ecb7bc385b6a1ef4c66ff5c59cafb9eb52c80ed0479a345343056c8dd",
+      "secondSha256": "bfa5cf3969f18369177c08be7d72d5508e8c8a9df7cd1a47ef3f6993b9917751",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "secondSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "secondSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "collection-notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "558a16fe3ab16def57827b40ab70a4e33422ace635d9cb1f675d26d6cda4fce5",
+      "secondSha256": "3235f450c374b0d5cbd0609ab9e2c1b7dc9b74ce9a9813a72c35d2811edb2921",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142931"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142931"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-invoice.json",
+      "rawEqual": false,
+      "firstSha256": "036af4bd1a793068a15337972b9c3434f79c8ea3e7e23d2e959bd1f43320f8ca",
+      "secondSha256": "0a43af57a8cc2d01f779025dfb062ece980b9512565f9cdcd7561c6700ef33a0",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-invoice.html",
+      "rawEqual": true,
+      "firstSha256": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "secondSha256": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-invoice.txt",
+      "rawEqual": true,
+      "firstSha256": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "secondSha256": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-overdue.json",
+      "rawEqual": true,
+      "firstSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "secondSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-overdue.html",
+      "rawEqual": true,
+      "firstSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "secondSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-overdue.txt",
+      "rawEqual": true,
+      "firstSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "secondSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-friendly.json",
+      "rawEqual": true,
+      "firstSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "secondSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-friendly.html",
+      "rawEqual": true,
+      "firstSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "secondSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-friendly.txt",
+      "rawEqual": true,
+      "firstSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "secondSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-formal.json",
+      "rawEqual": true,
+      "firstSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "secondSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-formal.html",
+      "rawEqual": true,
+      "firstSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "secondSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-formal.txt",
+      "rawEqual": true,
+      "firstSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "secondSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-notice.json",
+      "rawEqual": false,
+      "firstSha256": "c5dce6178f93c397573fffc521f7e4a2ef9416857d56fb3dfe512cd9141b17ac",
+      "secondSha256": "c745d71e6309db63ce6604f8ab58a9eedc5bd9fa9da592f6c50ce07cce12308a",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-notice.html",
+      "rawEqual": true,
+      "firstSha256": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "secondSha256": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-notice.txt",
+      "rawEqual": true,
+      "firstSha256": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "secondSha256": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-notice-reminder.json",
+      "rawEqual": false,
+      "firstSha256": "d7ccceb0880c7296a50085fa0870ea6f659e5afd332c58b01f4cbdd8cfc4838d",
+      "secondSha256": "4dd325d172f7783744496a9088bd44c36463cab68cd4ff98df4554f31f1282af",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-notice-reminder.html",
+      "rawEqual": true,
+      "firstSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "secondSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-2",
+      "file": "mail-notice-reminder.txt",
+      "rawEqual": true,
+      "firstSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "secondSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "secondSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-classic.html",
+      "rawEqual": true,
+      "firstSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "secondSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "1fa1f60a8770e171c9b67469914a2695eeb2a03ee0ef009e17854809d4fe64ba",
+      "secondSha256": "f51fd108fc334bf67830a4803ec5ba708363c9a9730d3fe5a79fd038e5643d8d",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143216"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143216"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-rent-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "secondSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-rent-classic.html",
+      "rawEqual": true,
+      "firstSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "secondSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-rent-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "d7e0867802e4285ac8f435039cea086eeebcb330d259e55b22b53b88e0b34211",
+      "secondSha256": "b790556b3a4764c03a851556310458187cf924daff2b8b5820baac1d808fdb24",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143217"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143217"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-utility-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "secondSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-utility-classic.html",
+      "rawEqual": true,
+      "firstSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "secondSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-utility-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "22199dcfda19d99672f5b68c766616160359d44d5bb8b6efb4a71b70af313893",
+      "secondSha256": "e61250afee1cc94a989b65b407e14d3fadf439ce0be8c033035798a9ea868f06",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143217"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143217"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-modern.input.json",
+      "rawEqual": true,
+      "firstSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "secondSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-modern.html",
+      "rawEqual": true,
+      "firstSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "secondSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-modern.pdf",
+      "rawEqual": false,
+      "firstSha256": "b0bd63588fdaa77dfc5a61bf92bc7312b8da7518c4279c2b7644eadafe1397a4",
+      "secondSha256": "25aecfc7000be12a264f37958d1deaf010d3ab92b32daa84f6675957e0c171b7",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143217"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143217"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-minimal.input.json",
+      "rawEqual": true,
+      "firstSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "secondSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-minimal.html",
+      "rawEqual": true,
+      "firstSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "secondSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-minimal.pdf",
+      "rawEqual": false,
+      "firstSha256": "be7f27050206b2aa6259bfba6719f047c0398aa5cd3b71832b9c6d204a778933",
+      "secondSha256": "6aceeea25e01e65de973e1d3bda48433c9d6d7d85004a32d90d245a816b97d48",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143217"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143217"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-multipage.input.json",
+      "rawEqual": true,
+      "firstSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "secondSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-multipage.html",
+      "rawEqual": true,
+      "firstSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "secondSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "invoice-customer-multipage.pdf",
+      "rawEqual": false,
+      "firstSha256": "8d64c461697c2aa23a3414f1113f28853df75c2a34f609ef4043a0b613df06f6",
+      "secondSha256": "4c50b8228eae8756ed9a77ccb76feea33c8a6cf97b8bad12c4afae678deb2b54",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143218"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143218"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-rent.input.json",
+      "rawEqual": true,
+      "firstSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "secondSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-rent.html",
+      "rawEqual": true,
+      "firstSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "secondSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-rent.pdf",
+      "rawEqual": false,
+      "firstSha256": "3cebfef1c7db8deb8513d982a4324d6e589c441cba3f878e3cd500ee0954cae9",
+      "secondSha256": "5f4f39ab3f38a2831cfd3b033b221167014c9f4be6dcc6499a86ba25e9f76880",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143218"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143218"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-prorated-backfill.input.json",
+      "rawEqual": true,
+      "firstSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "secondSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-prorated-backfill.html",
+      "rawEqual": true,
+      "firstSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "secondSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-prorated-backfill.pdf",
+      "rawEqual": false,
+      "firstSha256": "11f1b8e84c9eb8576a43d8f4d975fa62a46ad85e4d88ce35bae14d4324db39da",
+      "secondSha256": "a3e813a5882ca8125f91edbba42e7d66e15d895575c44fee93d18abb7073b972",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143218"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143218"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-deposit.input.json",
+      "rawEqual": true,
+      "firstSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "secondSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-deposit.html",
+      "rawEqual": true,
+      "firstSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "secondSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-deposit.pdf",
+      "rawEqual": false,
+      "firstSha256": "8b61b84d7f67d5cf9c0bd8740e550623bd8c70a68a4516818bc8741a553facba",
+      "secondSha256": "94ddea2da8052d138c9b8f470bd6d06d3dc525aa250c269758d978a59ca2a244",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143218"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143218"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "secondSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "secondSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "e4f46e589d15cd17acd4556d10b53b2156afab84bf230d04e62a4b166dceaaa6",
+      "secondSha256": "66dc1ec4155376ac9761c67afaa75f9e852e3210e743f5441e207b1aa74c8a0a",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143219"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143219"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "reminder-rent-partpaid.input.json",
+      "rawEqual": true,
+      "firstSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "secondSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "reminder-rent-partpaid.html",
+      "rawEqual": true,
+      "firstSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "secondSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "reminder-rent-partpaid.pdf",
+      "rawEqual": false,
+      "firstSha256": "0be51ab0dfda7a920d0cfef5efc6e185b0ed3824acf4eea4da86acf6c8e0e67c",
+      "secondSha256": "610ee4d8bb98bf458107a33820c395d9004269be9920989c4fcd12d005d02680",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143219"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143219"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "reminder-utility-partpaid-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "secondSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "reminder-utility-partpaid-credit.html",
+      "rawEqual": true,
+      "firstSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "secondSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "reminder-utility-partpaid-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "7ffcdb5673908ceb69ac3431241e174585fb8dc17649d2ddaf385714d645de51",
+      "secondSha256": "6323b9ad2335c2f3b93c80c0012514b9d7452af9b2ae379bc559dd3aa5ed17e5",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143219"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143219"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-invoice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "secondSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-invoice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "secondSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-invoice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "2ae3197ed324d3972141f1ce8cfb06881bb01a72a76a3e54160669871119eabc",
+      "secondSha256": "260e70d1418812b35ea810ff9b5b4a80b99e4f95149b79cb82dce796a4609615",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143220"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143220"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-invoice-utility.input.json",
+      "rawEqual": true,
+      "firstSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "secondSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-invoice-utility.html",
+      "rawEqual": true,
+      "firstSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "secondSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-invoice-utility.pdf",
+      "rawEqual": false,
+      "firstSha256": "68734d95691c5a8f80832c0514210a0d84c230667b0e7552834b03c3de8cfca1",
+      "secondSha256": "033c2d2fb96b135c0fd5137438c131c9d4acd1eee1278497ac4c4a19a99cc244",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143220"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143220"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-notice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "secondSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-notice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "secondSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-notice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "9984271c59029dee63cb2a2dcbef92ebb624d9d37e0fc6dd531bffa81f1974ff",
+      "secondSha256": "96d421ba45c83f47a75219f17fd15a2450ca1047b1bc8a72dc4ec940f3aef3bf",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143220"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143220"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "secondSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "secondSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "collection-notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "00a71ad5dc9ddfd6af50bc661d9357794ed5bc16bf7fee0947ec1f28f08388b1",
+      "secondSha256": "4a493a709f1765e8f73cab720e1709f2be363593506ab7869583dd37cd22a46a",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143220"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143220"
+        }
+      ]
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-invoice.json",
+      "rawEqual": false,
+      "firstSha256": "2efcbfbfccc961c812ea51bcaf59a696b39d0895ad956a41d403ced1c2ad835b",
+      "secondSha256": "2674714c43ccfdbb3da9531df55cdf8fd6320458dcf4e0082df2f649afbf23a6",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-invoice.html",
+      "rawEqual": true,
+      "firstSha256": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "secondSha256": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-invoice.txt",
+      "rawEqual": true,
+      "firstSha256": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "secondSha256": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-overdue.json",
+      "rawEqual": true,
+      "firstSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "secondSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-overdue.html",
+      "rawEqual": true,
+      "firstSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "secondSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-overdue.txt",
+      "rawEqual": true,
+      "firstSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "secondSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-friendly.json",
+      "rawEqual": true,
+      "firstSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "secondSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-friendly.html",
+      "rawEqual": true,
+      "firstSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "secondSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-friendly.txt",
+      "rawEqual": true,
+      "firstSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "secondSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-formal.json",
+      "rawEqual": true,
+      "firstSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "secondSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-formal.html",
+      "rawEqual": true,
+      "firstSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "secondSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-formal.txt",
+      "rawEqual": true,
+      "firstSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "secondSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-notice.json",
+      "rawEqual": false,
+      "firstSha256": "8923387997660f2a16047a5657c0b4c3e6fd2bc125b425adda1994411b13cf96",
+      "secondSha256": "4dfefa65db0086ec5b6f9128666ac3ea7e425d8f87da3c0d24cc92326429c758",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-notice.html",
+      "rawEqual": true,
+      "firstSha256": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "secondSha256": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-notice.txt",
+      "rawEqual": true,
+      "firstSha256": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "secondSha256": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-notice-reminder.json",
+      "rawEqual": false,
+      "firstSha256": "7d886d8e9f84d6fdcf1b48ff71310c41df1795f043e95516d8acf68a1bbdf761",
+      "secondSha256": "e4aa74d8876ddbbe8e10e7a61a7d106045246d0d530369dc4f592833909a5a3d",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-notice-reminder.html",
+      "rawEqual": true,
+      "firstSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "secondSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "exception": null
+    },
+    {
+      "left": "before-controlled-1",
+      "right": "before-controlled-2",
+      "file": "mail-notice-reminder.txt",
+      "rawEqual": true,
+      "firstSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "secondSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "secondSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-classic.html",
+      "rawEqual": true,
+      "firstSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "secondSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "074cacd71c829de820d902ad5f94685e7939e1ac87ef088cb5793da86068a017",
+      "secondSha256": "1fa1f60a8770e171c9b67469914a2695eeb2a03ee0ef009e17854809d4fe64ba",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142927"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142927"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-rent-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "secondSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-rent-classic.html",
+      "rawEqual": true,
+      "firstSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "secondSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-rent-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "084d4fa1b988cc1c362dba6c568278e1e94b2c7d56c39387c416f1777f1e629a",
+      "secondSha256": "d7e0867802e4285ac8f435039cea086eeebcb330d259e55b22b53b88e0b34211",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142927"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142927"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-utility-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "secondSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-utility-classic.html",
+      "rawEqual": true,
+      "firstSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "secondSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-utility-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "f6b613618e3d07ff7e4e63bdb31b18f85a6f1afcdca41ea1eba340d719a6f656",
+      "secondSha256": "22199dcfda19d99672f5b68c766616160359d44d5bb8b6efb4a71b70af313893",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-modern.input.json",
+      "rawEqual": true,
+      "firstSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "secondSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-modern.html",
+      "rawEqual": true,
+      "firstSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "secondSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-modern.pdf",
+      "rawEqual": false,
+      "firstSha256": "661c37c90e666ae37af21e8d611fa78ff59157dbdfee64a7118042145255068d",
+      "secondSha256": "b0bd63588fdaa77dfc5a61bf92bc7312b8da7518c4279c2b7644eadafe1397a4",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-minimal.input.json",
+      "rawEqual": true,
+      "firstSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "secondSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-minimal.html",
+      "rawEqual": true,
+      "firstSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "secondSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-minimal.pdf",
+      "rawEqual": false,
+      "firstSha256": "5edf2c215eb07bf4465a0d772fe6d2606375edce2c9b11650d74feb52da2c51a",
+      "secondSha256": "be7f27050206b2aa6259bfba6719f047c0398aa5cd3b71832b9c6d204a778933",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-multipage.input.json",
+      "rawEqual": true,
+      "firstSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "secondSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-multipage.html",
+      "rawEqual": true,
+      "firstSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "secondSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "invoice-customer-multipage.pdf",
+      "rawEqual": false,
+      "firstSha256": "e1cbc15810c734fdbde2c70b9d65696acfdf4ced8e923ed8ad2b13b76df784ea",
+      "secondSha256": "8d64c461697c2aa23a3414f1113f28853df75c2a34f609ef4043a0b613df06f6",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-rent.input.json",
+      "rawEqual": true,
+      "firstSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "secondSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-rent.html",
+      "rawEqual": true,
+      "firstSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "secondSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-rent.pdf",
+      "rawEqual": false,
+      "firstSha256": "16c488781fce702d41e8d3c60da7c1572319b0473d66587699b073ae86f0c86f",
+      "secondSha256": "3cebfef1c7db8deb8513d982a4324d6e589c441cba3f878e3cd500ee0954cae9",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142928"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142928"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-prorated-backfill.input.json",
+      "rawEqual": true,
+      "firstSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "secondSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-prorated-backfill.html",
+      "rawEqual": true,
+      "firstSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "secondSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-prorated-backfill.pdf",
+      "rawEqual": false,
+      "firstSha256": "4ac789a0328a0288c51b1424a550ae8913087291134652617218a0510f82bd97",
+      "secondSha256": "11f1b8e84c9eb8576a43d8f4d975fa62a46ad85e4d88ce35bae14d4324db39da",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-deposit.input.json",
+      "rawEqual": true,
+      "firstSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "secondSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-deposit.html",
+      "rawEqual": true,
+      "firstSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "secondSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-deposit.pdf",
+      "rawEqual": false,
+      "firstSha256": "49d870d34f830d840e7692b7eb15f3632dac712b19e1340a0c15d8c883a149ba",
+      "secondSha256": "8b61b84d7f67d5cf9c0bd8740e550623bd8c70a68a4516818bc8741a553facba",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "secondSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "secondSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "8ed7b60b52a24fbbeb9ce5942e7560e11c66b5b9439b0d5c6f56209432216540",
+      "secondSha256": "e4f46e589d15cd17acd4556d10b53b2156afab84bf230d04e62a4b166dceaaa6",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "reminder-rent-partpaid.input.json",
+      "rawEqual": true,
+      "firstSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "secondSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "reminder-rent-partpaid.html",
+      "rawEqual": true,
+      "firstSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "secondSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "reminder-rent-partpaid.pdf",
+      "rawEqual": false,
+      "firstSha256": "e91f2a6b6439d79e288385fa07793cca2931eb5d53d4140bf962647b548537c1",
+      "secondSha256": "0be51ab0dfda7a920d0cfef5efc6e185b0ed3824acf4eea4da86acf6c8e0e67c",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142929"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142929"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "reminder-utility-partpaid-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "secondSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "reminder-utility-partpaid-credit.html",
+      "rawEqual": true,
+      "firstSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "secondSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "reminder-utility-partpaid-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "a5002da991320e598784580aee406327c450562a23757e2502092dc05a5f38b8",
+      "secondSha256": "7ffcdb5673908ceb69ac3431241e174585fb8dc17649d2ddaf385714d645de51",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-invoice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "secondSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-invoice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "secondSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-invoice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "06539336177ab48f846c3b19ff88c383207512633d00bb3cf0b6f3fcd0902477",
+      "secondSha256": "2ae3197ed324d3972141f1ce8cfb06881bb01a72a76a3e54160669871119eabc",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-invoice-utility.input.json",
+      "rawEqual": true,
+      "firstSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "secondSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-invoice-utility.html",
+      "rawEqual": true,
+      "firstSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "secondSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-invoice-utility.pdf",
+      "rawEqual": false,
+      "firstSha256": "d33c6d76d24453eda0bb05b7bca7108cc7931b56e4f47a7d435d6654bdb029dc",
+      "secondSha256": "68734d95691c5a8f80832c0514210a0d84c230667b0e7552834b03c3de8cfca1",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-notice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "secondSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-notice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "secondSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-notice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "9f99d04ecb7bc385b6a1ef4c66ff5c59cafb9eb52c80ed0479a345343056c8dd",
+      "secondSha256": "9984271c59029dee63cb2a2dcbef92ebb624d9d37e0fc6dd531bffa81f1974ff",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142930"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142930"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "secondSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "secondSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "collection-notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "558a16fe3ab16def57827b40ab70a4e33422ace635d9cb1f675d26d6cda4fce5",
+      "secondSha256": "00a71ad5dc9ddfd6af50bc661d9357794ed5bc16bf7fee0947ec1f28f08388b1",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911142931"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911142931"
+        }
+      ]
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-invoice.json",
+      "rawEqual": false,
+      "firstSha256": "036af4bd1a793068a15337972b9c3434f79c8ea3e7e23d2e959bd1f43320f8ca",
+      "secondSha256": "2efcbfbfccc961c812ea51bcaf59a696b39d0895ad956a41d403ced1c2ad835b",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-invoice.html",
+      "rawEqual": true,
+      "firstSha256": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "secondSha256": "a59020b153a2a3fe68b3a69657d97ae750edae39197b159ec46b445e3bd24051",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-invoice.txt",
+      "rawEqual": true,
+      "firstSha256": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "secondSha256": "768bc3dfc8fec556651e99c6d682725070af2583f698737e759170a0858894f2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-overdue.json",
+      "rawEqual": true,
+      "firstSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "secondSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-overdue.html",
+      "rawEqual": true,
+      "firstSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "secondSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-overdue.txt",
+      "rawEqual": true,
+      "firstSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "secondSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-friendly.json",
+      "rawEqual": true,
+      "firstSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "secondSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-friendly.html",
+      "rawEqual": true,
+      "firstSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "secondSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-friendly.txt",
+      "rawEqual": true,
+      "firstSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "secondSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-formal.json",
+      "rawEqual": true,
+      "firstSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "secondSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-formal.html",
+      "rawEqual": true,
+      "firstSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "secondSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-formal.txt",
+      "rawEqual": true,
+      "firstSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "secondSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-notice.json",
+      "rawEqual": false,
+      "firstSha256": "c5dce6178f93c397573fffc521f7e4a2ef9416857d56fb3dfe512cd9141b17ac",
+      "secondSha256": "8923387997660f2a16047a5657c0b4c3e6fd2bc125b425adda1994411b13cf96",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-notice.html",
+      "rawEqual": true,
+      "firstSha256": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "secondSha256": "2d15d307fb644c9b2d4643690feed83540f555a1540072f85fff7525badaf2e2",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-notice.txt",
+      "rawEqual": true,
+      "firstSha256": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "secondSha256": "6fabe2ee2a102a0b0aa9a3d0808ed1458f220e7929fcb859318964dbe79de45f",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-notice-reminder.json",
+      "rawEqual": false,
+      "firstSha256": "d7ccceb0880c7296a50085fa0870ea6f659e5afd332c58b01f4cbdd8cfc4838d",
+      "secondSha256": "7d886d8e9f84d6fdcf1b48ff71310c41df1795f043e95516d8acf68a1bbdf761",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-notice-reminder.html",
+      "rawEqual": true,
+      "firstSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "secondSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "exception": null
+    },
+    {
+      "left": "before-1",
+      "right": "before-controlled-1",
+      "file": "mail-notice-reminder.txt",
+      "rawEqual": true,
+      "firstSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "secondSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "secondSha256": "d0d4365fbcaa896211f9bd1f185eec3a49ac71b906df0a82963a84065697abd6",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-classic.html",
+      "rawEqual": true,
+      "firstSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "secondSha256": "b2c42e1dda3f0aedb6893276a6bf70646ba5b908026cf326d5f2e994b45caf92",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "835faa00b2b42f924200577c94411301c5381cdcf7906831bf763acedc36ab0b",
+      "secondSha256": "58d589e7d86e746567c06dc22bc7f087193bfde67490cdb89368790727d98a3a",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143655"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143655"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-rent-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "secondSha256": "07167c6dd3fea2546fd80984aa92b1cc19cccbc0fc9bbe77a14bfeb0abf7a0ee",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-rent-classic.html",
+      "rawEqual": true,
+      "firstSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "secondSha256": "025a3d08927dc1685731debfad18c4cbcbd9c82e2921c2cc6f00499af81b6032",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-rent-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "a0c9feeec223d84b232a2084544530cc1297b940815ead72adec2bee93fd0bb6",
+      "secondSha256": "53e210a2c1c4e8af682ec3a76ebe7b45b482b882faead4044643684227ee911e",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143655"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143655"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-utility-classic.input.json",
+      "rawEqual": true,
+      "firstSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "secondSha256": "480dee82f74ec6f0fe94cfa7860ab0628b3c3118da1b852eade054edaac92b27",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-utility-classic.html",
+      "rawEqual": true,
+      "firstSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "secondSha256": "bf32d808f522dcb889716ee4c4f50d3de66f5017ec1554767c67c46e46cca5f0",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-utility-classic.pdf",
+      "rawEqual": false,
+      "firstSha256": "65dd0d5cac6ab6d42cc28bf9a6eb852d88eb28c1e275a33e65f0c5f63894496f",
+      "secondSha256": "801057fac181bd814804141dd137f5d978e921aacb987b31d8235618de322265",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143656"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143656"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-modern.input.json",
+      "rawEqual": true,
+      "firstSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "secondSha256": "ea442220d4f38877105a04a8679041dca5142a95ce24b2ad8a99970cce965637",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-modern.html",
+      "rawEqual": true,
+      "firstSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "secondSha256": "e5c99569c531f0ee7fa0d091a219bb3d63629ae30fbe719321e931c2036a5c90",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-modern.pdf",
+      "rawEqual": false,
+      "firstSha256": "18d2046411fdaa5fd12b8e87533178bb6ede8f16759110eedf800a6caebca3b4",
+      "secondSha256": "8b2f33749065fdbfe8199a105b17a85ccdcc18440aa204371b8f8c714f5f92d2",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143656"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143656"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-minimal.input.json",
+      "rawEqual": true,
+      "firstSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "secondSha256": "5936cdfe3b046079487b4b436ad00d9af904de54c40082b100f6c88bd5667cbf",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-minimal.html",
+      "rawEqual": true,
+      "firstSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "secondSha256": "841fddda736519030e0c0fa0887542cf43d314d6a2360500f35faa8a88e2a6d5",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-minimal.pdf",
+      "rawEqual": false,
+      "firstSha256": "d1272d56739f909f67599bf9699b46b47615f6fd2bbae09a23141cc652788bf8",
+      "secondSha256": "c05570b8861469b9360ac7ebdb5da0e20f3700a0d2f0225cb398285f6c844548",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143656"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143656"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-multipage.input.json",
+      "rawEqual": true,
+      "firstSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "secondSha256": "7180104c0491ae50b783ad30293ea205af22b7be87ddc00086416556e5c197b1",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-multipage.html",
+      "rawEqual": true,
+      "firstSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "secondSha256": "97933b6cedf7fbf72f09f8eb6e981ac58c77e0a2eefa502b60f45213b9fe855d",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "invoice-customer-multipage.pdf",
+      "rawEqual": false,
+      "firstSha256": "bf0738b65920a8c7f6f64fe0e2e264e9043e6a554697296d0faa358de4297ad7",
+      "secondSha256": "5b0d251e3f1090d33b7149cbf83467e22f4e11d00d6443385e1de28f25e9469a",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143656"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143656"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-rent.input.json",
+      "rawEqual": true,
+      "firstSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "secondSha256": "64aabaf52f6486a15bc294defd167c0736356d89e0a2531315bca8863f2f1ca8",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-rent.html",
+      "rawEqual": true,
+      "firstSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "secondSha256": "6446aa43042e497eb8aef11bb14f3a51f9097863a058ea7bf590eec292481cd5",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-rent.pdf",
+      "rawEqual": false,
+      "firstSha256": "169cdf9ab5b5d467d6b7649564df40884017832b438b7fb539740ae446791a6c",
+      "secondSha256": "d9436a407243c6797910c0cc1615d4d9366d2b84691c22f60f4577e9ed417803",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143657"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143657"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-prorated-backfill.input.json",
+      "rawEqual": true,
+      "firstSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "secondSha256": "f3c4db411b1b160d26770de99d3343e01ca3ea3654ed42211cef548fd3a36501",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-prorated-backfill.html",
+      "rawEqual": true,
+      "firstSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "secondSha256": "82155af26255a489a4bc459c9838e33fc5f7318a8a1c763b9c5fc25ed2980e68",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-prorated-backfill.pdf",
+      "rawEqual": false,
+      "firstSha256": "5db621cf55b7dafd6dc1715ba3daa8d859f72ce7df42bc8957fd79e7d4cc8dcc",
+      "secondSha256": "f8b14b3e022b49697e55c5f583199b8081bee2a739cf3974e2d12ae758977dab",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143657"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143657"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-deposit.input.json",
+      "rawEqual": true,
+      "firstSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "secondSha256": "a1b745168d8a8b8d279cc9c4d74b83320a655a8b1dd82235cccfdf34fd6fb4b8",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-deposit.html",
+      "rawEqual": true,
+      "firstSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "secondSha256": "43397a02dadb11a21c0e1f7567ab4c7ba486d92f9a49a3e0ae62e313262c85d9",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-deposit.pdf",
+      "rawEqual": false,
+      "firstSha256": "95c60f111a22daedfe552dcc9f10ef71604d5f8aa048752583922f1fea52b468",
+      "secondSha256": "400a383efeeffc2a1c34105786982eedb6fc38cc317e4ad2c0d31c3620a4ab5f",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143657"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143657"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "secondSha256": "358c4460cfd84c7c655ba684ced32dcb8df5345e4fa771060d3f16a83bb374e1",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "secondSha256": "5f91da819dedec98e5eeb508574f959a3d18c9746304f3674185b4106c0b6998",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "643f9b03fa4872b31030084bdd897702c9f10577a8303fd5aa0e7af2b4c9afc3",
+      "secondSha256": "63d163d3385e1bdcc06847d3eb9feb416470793df4920da282129ad1f01b1e2f",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143658"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143658"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "reminder-rent-partpaid.input.json",
+      "rawEqual": true,
+      "firstSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "secondSha256": "062a65227855c8de15b6a30c65587fa6d421a7d9b99fae2aa3f5e361549ad287",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "reminder-rent-partpaid.html",
+      "rawEqual": true,
+      "firstSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "secondSha256": "b534c2239b1def2f729d9cc2ed574914c95315fb4d79f9a8a43be19752b0afd7",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "reminder-rent-partpaid.pdf",
+      "rawEqual": false,
+      "firstSha256": "5044a6f54e20d3d9b56af266cddd7c71023265f903119c873ff9a0f59545fd7f",
+      "secondSha256": "fca27a3fdbe9e201898740f78672781f4f233e31106a72507e48feb1669a0b74",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143658"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143658"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "reminder-utility-partpaid-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "secondSha256": "87c22d5eb0f55b19356f61e396adea2d0f3478ea03576206c584ba087826bc01",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "reminder-utility-partpaid-credit.html",
+      "rawEqual": true,
+      "firstSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "secondSha256": "3e559fdc152e802f7f3377015269cb294454b77e3d38caf194240c50e899cdec",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "reminder-utility-partpaid-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "fe853e46c1fb396ad4f08058dcc1e1725625be948ba569eb678277bbe839674f",
+      "secondSha256": "17f56c7d404d42dc27ba9c53e338b508be806ea50faea2fae4ea22b6f1d61104",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143658"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143658"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-invoice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "secondSha256": "262285a41f492970468ceb073fcd61a9caffb7ffa6bd81a99e7a13f237971717",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-invoice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "secondSha256": "2019aa0fc2e96544b438093307f2391e63e170800d88bcab716b044a893c90c6",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-invoice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "0354d333636189f9fe1295411635843085cf84d076012e76c287affc8b17c67c",
+      "secondSha256": "47086f51e85b134d7746e81a1450606ed0e7f88f2e09c93e448b312266290c0c",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143659"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143659"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-invoice-utility.input.json",
+      "rawEqual": true,
+      "firstSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "secondSha256": "376455efacd630a8a54665d4d2f4f6196480435c6c5c43ee53f446246633c26e",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-invoice-utility.html",
+      "rawEqual": true,
+      "firstSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "secondSha256": "350bd18c9891803720008744431f5b3d938faf4b1f545570d5dbe43b2a5bbed8",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-invoice-utility.pdf",
+      "rawEqual": false,
+      "firstSha256": "31c7b9b82292b8c7a7623e230da75c032b99bbabd1c416c6ad9a3a6bce4dc056",
+      "secondSha256": "d9a9142481d414cf4e9937c5a683411657e4033f446911f7424616f8e2d8dc42",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143659"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143659"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-notice-clean.input.json",
+      "rawEqual": true,
+      "firstSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "secondSha256": "46a62aad0187a9ef1779bd6193b3027c35678afd498f706b132ab64a06bf263a",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-notice-clean.html",
+      "rawEqual": true,
+      "firstSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "secondSha256": "02254fcd3fae37e5e395cf4fe798366072f00fb122951d4e381393263b682b36",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-notice-clean.pdf",
+      "rawEqual": false,
+      "firstSha256": "f4916a7bca3479fc45a1a8737000652bf4ad98c2ed30d50003d67103aebfe493",
+      "secondSha256": "a78facd075b6d7f4fc52f29d230c4714328a719b9f83d0e0d43c0201ef27f103",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143659"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143659"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-notice-utility-credit.input.json",
+      "rawEqual": true,
+      "firstSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "secondSha256": "2c0e9a80f09039b3281026e691ef42bac1ed75ba99fd1db2292cbc8bbf0ee63d",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-notice-utility-credit.html",
+      "rawEqual": true,
+      "firstSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "secondSha256": "b1e3e07626b918f4bf4d7aec5a1b5b699e872216379e034187a292ba4e91335f",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "collection-notice-utility-credit.pdf",
+      "rawEqual": false,
+      "firstSha256": "66ddf4093512559020c7cb5fb5a85ba557803776dce0981f57d7554105af4eff",
+      "secondSha256": "b9c05a2ea6ad01347fb41597e3b493eb7df54e019edf7b262beed4f961631be3",
+      "exception": [
+        {
+          "name": "CreationDate",
+          "offset": 214,
+          "length": 14,
+          "original": "20260911143700"
+        },
+        {
+          "name": "ModDate",
+          "offset": 249,
+          "length": 14,
+          "original": "20260911143700"
+        }
+      ]
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-invoice.json",
+      "rawEqual": false,
+      "firstSha256": "bf4b4e857a906bfd537c68a3edd3a50ad4049facf6d1283b6a9901b7728be10d",
+      "secondSha256": "03eb01be655829b4bd11c41510caf6c4c1c368d305d17724614ae8f5932c7675",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-invoice.html",
+      "rawEqual": true,
+      "firstSha256": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+      "secondSha256": "9d4fab43230393995d4e19d9c4fad26151ffaf4c82ec5178928ec7ba39b17ccb",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-invoice.txt",
+      "rawEqual": true,
+      "firstSha256": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+      "secondSha256": "95040e8fd1287a4dde8ef415ca760bc365717384564aaf8b0618ef857e4a8e6a",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-overdue.json",
+      "rawEqual": true,
+      "firstSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "secondSha256": "a47bb90a6c86907a3fab20974f6562ccd2a37fa78ec54b751780fed2f5768763",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-overdue.html",
+      "rawEqual": true,
+      "firstSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "secondSha256": "41d385ef77527ccdbb3e57470a7a549af3863a8182d1ec46088ad51f345207d9",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-overdue.txt",
+      "rawEqual": true,
+      "firstSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "secondSha256": "b4723b4018fba408194b091b2c10e49df45225ea84db235013cd725b444debfb",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-friendly.json",
+      "rawEqual": true,
+      "firstSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "secondSha256": "20fe3686c5a6ad13d7211e77e34585f5704aaf11ff2c49de12c0aa5106f310e2",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-friendly.html",
+      "rawEqual": true,
+      "firstSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "secondSha256": "4651e7d095d256a8f9b6793321ae6b3f26321fe2a134e91bc38739d0a52d9c9e",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-friendly.txt",
+      "rawEqual": true,
+      "firstSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "secondSha256": "70645651597e63743fc868ecd00e09c101742696db744710f2fc0413843cf2d4",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-formal.json",
+      "rawEqual": true,
+      "firstSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "secondSha256": "fab395fb67d4de7d94d2e08d9e1aa3d8276c004de93dce143121dc200e082109",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-formal.html",
+      "rawEqual": true,
+      "firstSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "secondSha256": "b3718fc16a4ed8af9a8071d30904d00306aac70d8651d7d040cacde8f7f01e60",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-formal.txt",
+      "rawEqual": true,
+      "firstSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "secondSha256": "0e70176a22c364aa907694ac7ed4db6fb5bc2e90664ed7829060e2ea8a9292f2",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-notice.json",
+      "rawEqual": false,
+      "firstSha256": "6c72d705a6ea62512f596bb4f79db529b86bf95645a7fd1e5bbd87a4be7f6014",
+      "secondSha256": "8f8e193883fd5e5c5530b6cbeddec357d2a8d105c7d507cd1b7411692f284137",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-notice.html",
+      "rawEqual": true,
+      "firstSha256": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+      "secondSha256": "4ef65bb8d180f5a7ce1edf1cc1a81f9c37a4204fd8dc186d969782b75d75b282",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-notice.txt",
+      "rawEqual": true,
+      "firstSha256": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+      "secondSha256": "99544e7d8fc9c6a9c9c413ac8b5c01617aff330f36908447ca94b5c96690f0fb",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-notice-reminder.json",
+      "rawEqual": false,
+      "firstSha256": "f41eb975e0fa1f8ca64931f6b6101947f561d9797d95c5eab259552380d4c4df",
+      "secondSha256": "31885804a548ef14f831eb16496057ff9111160105149ebf76290b71c1af796a",
+      "exception": "Only the two date fields in decoded PDF attachments"
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-notice-reminder.html",
+      "rawEqual": true,
+      "firstSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "secondSha256": "244282efd8539f8aca41d1cf99db832c343435353990bbf9929d6da657970725",
+      "exception": null
+    },
+    {
+      "left": "before-final-1",
+      "right": "before-final-2",
+      "file": "mail-notice-reminder.txt",
+      "rawEqual": true,
+      "firstSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "secondSha256": "12d804d859596050d60f2f6f3a7afa31873a6ede96b833e0bc1537bb10fc3db6",
+      "exception": null
+    }
+  ]
+}
