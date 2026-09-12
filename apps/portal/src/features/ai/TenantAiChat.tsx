@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useFocusTrap } from '@eken/ui/hooks'
+import { TenantChatSchema, type TenantChatInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
 import { confirmAiAction, sendAiMessage, type TenantAiPendingAction } from '@/api/portal.api'
 import styles from './TenantAiChat.module.css'
+
+interface SentMessage {
+  message: string
+  draftVersion: number
+}
 
 interface ChatMessage {
   id: string
@@ -34,18 +41,23 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const initialSentRef = useRef<string | null>(null)
+  const draftVersionRef = useRef(0)
+  const sendingRef = useRef(false)
   const queryClient = useQueryClient()
 
   const sendMutation = useMutation({
-    mutationFn: (msg: string) => sendAiMessage(msg, conversationId ?? undefined),
-    onSuccess: (res, sentMsg) => {
+    mutationFn: (sent: SentMessage) => sendAiMessage(sent.message, conversationId ?? undefined),
+    onSuccess: (res, sent) => {
       if (res.conversationId !== conversationId) {
         setConversationId(res.conversationId)
       }
-      const next: ChatMessage[] = [
-        ...messages,
-        { id: `u-${Date.now()}`, role: 'user', content: sentMsg },
-      ]
+      // Ett sent svar får bara tömma utkastet som hör till just detta anrop.
+      // Texten ligger kvar vid fel, även när den kom från en förslagsknapp.
+      if (draftVersionRef.current === sent.draftVersion) {
+        setInput('')
+        if (textareaRef.current) textareaRef.current.style.height = 'auto'
+      }
+      const next: ChatMessage[] = [{ id: `u-${Date.now()}`, role: 'user', content: sent.message }]
       if (res.pendingAction) {
         setPendingAction(res.pendingAction)
       } else if (res.reply) {
@@ -55,7 +67,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
           content: res.reply,
         })
       }
-      setMessages(next)
+      setMessages((prev) => [...prev, ...next])
     },
     onError: (err: unknown) => {
       const message =
@@ -64,7 +76,12 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
           : 'Något gick fel. Försök igen om en stund eller kontakta din hyresvärd direkt.'
       setError(message)
     },
+    onSettled: () => {
+      sendingRef.current = false
+    },
   })
+
+  const { mutate: sendMessage } = sendMutation
 
   const confirmMutation = useMutation({
     mutationFn: (confirmed: boolean) => {
@@ -99,13 +116,42 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, pendingAction, sendMutation.isPending])
 
+  const handleSend = useCallback(
+    (text?: string) => {
+      // Ref-spärren gäller även två anrop innan React har hunnit rendera pending.
+      if (sendingRef.current || pendingAction) return
+      const draft = text ?? input
+      const msg = draft.trim()
+      if (!msg) return
+
+      if (text !== undefined) {
+        draftVersionRef.current++
+        setInput(draft)
+      }
+
+      const kropp: TenantChatInput = {
+        message: msg,
+        ...(conversationId ? { conversationId } : {}),
+      }
+      const fel = kontraktsfel(TenantChatSchema, kropp)
+      setError(fel)
+      if (fel) return
+
+      sendingRef.current = true
+      sendMessage({ message: msg, draftVersion: draftVersionRef.current })
+    },
+    [input, pendingAction, conversationId, sendMessage],
+  )
+
   useEffect(() => {
-    if (!open) return
+    if (!open || sendingRef.current || pendingAction) return
+    // Ett nytt startmeddelande får inte skriva över text som redan redigeras.
+    if (input && input !== initialMessage) return
     if (initialMessage && initialMessage !== initialSentRef.current) {
       initialSentRef.current = initialMessage
-      sendMutation.mutate(initialMessage)
+      handleSend(initialMessage)
     }
-  }, [open, initialMessage, sendMutation])
+  }, [open, initialMessage, input, pendingAction, handleSend])
 
   // PR5: focus-trap + Escape (dialogen hade redan role/aria-modal/aria-label).
   const trapRef = useFocusTrap<HTMLDivElement>(open)
@@ -120,16 +166,8 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
 
   if (!open) return null
 
-  const handleSend = (text?: string) => {
-    const msg = (text ?? input).trim()
-    if (!msg || sendMutation.isPending) return
-    setError(null)
-    setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
-    sendMutation.mutate(msg)
-  }
-
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    draftVersionRef.current++
     setInput(e.target.value)
     const ta = textareaRef.current
     if (ta) {
@@ -212,7 +250,11 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
             </div>
           )}
 
-          {error && <div className={styles.error}>{error}</div>}
+          {error && (
+            <div className={styles.error} role="alert">
+              {error}
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -257,6 +299,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
             onKeyDown={handleKeyDown}
             placeholder="Skriv en fråga..."
             rows={1}
+            maxLength={TenantChatSchema.shape.message.maxLength ?? undefined}
             disabled={sendMutation.isPending || !!pendingAction}
           />
           <button

@@ -305,8 +305,12 @@ export class TenantAiService {
       data: { pendingActionHash: null, pendingActionExpiresAt: null },
     })
     if (claim.count !== 1) {
+      // Ett förbrukat anspråk kan ha skapat ärendet före ett tappat chattkvitto.
+      // Utan beständigt kopplat resultat kan vi inte avgöra utfallet här.
       throw new BadRequestException(
-        'Bekräftelsen är ogiltig eller har gått ut. Be assistenten föreslå åtgärden igen.',
+        toolName === 'create_maintenance_ticket'
+          ? 'Bekräftelsen är ogiltig, har gått ut eller har redan använts. Kontrollera dina felanmälningar innan du begär en ny. Ärendet kan redan ha skapats.'
+          : 'Bekräftelsen är ogiltig eller har gått ut. Be assistenten föreslå åtgärden igen.',
       )
     }
 
