@@ -333,14 +333,11 @@ test('api-release-19 schema and omitted build input deny', async () => {
   const changed = fixture()
   writeFileSync(join(root, 'prisma/schema.prisma'), 'changed datasource')
   await denied(changed, 'SCHEMA_ARTIFACT')
-  const omitted = fixture()
-  omitted.tree.push({
-    path: 'apps/api/src/new-source.ts',
-    type: 'blob',
-    mode: '100644',
-    sha: 'b'.repeat(40),
-  })
-  await denied(omitted, 'BUILD_SOURCE_SET')
+  for (const path of ['apps/api/src/new-source.ts', 'tsconfig.base.json', '.npmrc', '.dockerignore']) {
+    const omitted = fixture()
+    omitted.tree.push({ path, type: 'blob', mode: '100644', sha: 'b'.repeat(40) })
+    await denied(omitted, 'BUILD_SOURCE_SET')
+  }
 })
 test('api-release-20 real HTTP and process adapter denies malformed responses and timeout before spawn', async () => {
   const { runRelease } = createRequire(__filename)('../../scripts/release-api.cjs')
