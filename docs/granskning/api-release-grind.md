@@ -24,15 +24,15 @@ kör Prisma före appstart. Historiskt skäl till avstängd Wait for CI:
 
 ## Härledd omfattning
 
-| Komponent | Faktisk bas och ändring |
-| --- | --- |
-| Utlösare | En Railway Git-trigger; ingen ny deployworkflow. |
-| Frontend | `.github/workflows/deploy.yml:35` och checkout av head_sha; orört. |
-| Aktiv API-start | `apps/api/scripts/migrate-and-start.sh:18`, Dockerfile:128; orört. |
-| CI-kontrakt | `.github/workflows/ci.yml`: 59 needs + CI passed, 60 obligatoriska jobb; en PR-annotering utanför needs. |
-| Kandidat | `release-gate.cjs`, `prepare-release-artifact.cjs`, `release-api.cjs`; explicit YAML-parser, inget nytt nät- eller deployjobb i CI. |
-| CI-bevis | 20 namngivna Jestprov, efterkontroll av exakt en svit/ett prov per id, passed och positiva assertions; manifestprov på verklig API-byggutdata i befintligt byggjobb. |
-| Migrationsstudie | Fem verkliga PR-filer, egen PostgreSQL 18.6, gammal main-klient/tjänstekod; separat [rapport](api-release-migrationer.md). |
+| Komponent        | Faktisk bas och ändring                                                                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Utlösare         | En Railway Git-trigger; ingen ny deployworkflow.                                                                                                                     |
+| Frontend         | `.github/workflows/deploy.yml:35` och checkout av head_sha; orört.                                                                                                   |
+| Aktiv API-start  | `apps/api/scripts/migrate-and-start.sh:18`, Dockerfile:128; orört.                                                                                                   |
+| CI-kontrakt      | `.github/workflows/ci.yml`: 59 needs + CI passed, 60 obligatoriska jobb; en PR-annotering utanför needs.                                                             |
+| Kandidat         | `release-gate.cjs`, `prepare-release-artifact.cjs`, `release-api.cjs`; explicit YAML-parser, inget nytt nät- eller deployjobb i CI.                                  |
+| CI-bevis         | 20 namngivna Jestprov, efterkontroll av exakt en svit/ett prov per id, passed och positiva assertions; manifestprov på verklig API-byggutdata i befintligt byggjobb. |
+| Migrationsstudie | Fem verkliga PR-filer, egen PostgreSQL 18.6, gammal main-klient/tjänstekod; separat [rapport](api-release-migrationer.md).                                           |
 
 ## Releasekontrakt
 
@@ -150,3 +150,44 @@ De driver den verkliga grinden, HTTP-adaptern och processgränsen. De bevisar in
 Railways framtida credentials, imageöverföring, pre-deploy-status eller routing.
 Migrationerna provas med riktig Prisma 5.22.0 och separat PostgreSQL 18.6.
 Den separata migrationsrapporten redovisar mätningarna och kvarstående luckor.
+
+## Validering och radomfattning
+
+Den pinnade radräknaren är oförändrad från
+`561b382b6cbddfccba719613a5ea3aa2f0f7e695`, tillsammans med dess source-scan.
+Mätbasen är den ovan angivna main-committen, inte Agent 3-kedjan eller HEAD^.
+Kandidatens **579 produktionsrader** är tillagda rader:
+
+| Komponent                                            | Produktionsrader |
+| ---------------------------------------------------- | ---------------: |
+| Releasevillkor, identitet och artefaktkontroll       |              420 |
+| Verklig HTTP-/processadapter                         |               83 |
+| Framtida manifestbyggkommando                        |               16 |
+| Krav på faktiskt körda CI-prov                       |               45 |
+| Befintlig CI: assertionkontroll och manifestbyggprov |               11 |
+| Explicit YAML-beroende och lockfil                   |                4 |
+
+Lokalt passerade 20/20 grindprov och krävda positiva assertions. För den sista
+avgränsade körningen användes ts-jest isolatedModules med låg minnesgräns;
+den ersätter inte full typecheck. Den separata fulla typkontrollen passerade
+8/8 workspace-uppgifter med concurrency=1. Delade maskinens Jest/tsc-processer
+kontrollerades före tunga prov.
+
+Negativkontroll: SHA-jämförelsen i `apps/api/scripts/release-gate.cjs` ersattes
+avsiktligt med true. `api-release-02` föll därför att ett förbjudet migratoranrop
+tilläts. Filen återställdes med
+`git restore --source=a153b9fb3fbacbe72e173b19165900882769ddd5 -- apps/api/scripts/release-gate.cjs`;
+därefter passerade alla 20 prov igen. En tidigare avbruten testprocess och ett
+ram-timeout under maskinbelastning räknas inte som negativkontroll. HTTP-provets
+ram har 30 s; dess avsiktligt korta nät-timeout är oförändrad.
+
+Releasegränsen granskades separat. Fynd om schema/root-byggkonfiguration,
+verklig adapter och hashkontrollens tillitsgräns är åtgärdade. Granskningen
+hittade därefter inga blockerande releasekodfel. Operativa villkor ovan
+kvarstår och kan inte ersättas av den granskningen.
+
+CI för kandidatcommit `1f18817177491a1f10d3800d671cba3fed5e2e24`: samtliga
+61 jobb lyckades, inklusive den faktiskt körda manifestbyggnaden och
+assertionskontrollen. [Körning 34705953168](https://github.com/yasineken2002-sys/eken/actions/runs/34705953168).
+Senare dokumentations-/riggändringars CI redovisas på utkast-PR:n och i
+slutrapporten för exakt HEAD.

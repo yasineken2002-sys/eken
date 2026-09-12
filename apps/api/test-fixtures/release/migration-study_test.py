@@ -37,6 +37,7 @@ def database(name, template=None):
   q=sql.SQL('CREATE DATABASE {}').format(sql.Identifier(name))
   if template: q+=sql.SQL(' TEMPLATE {}').format(sql.Identifier(template))
   c.execute(q)
+  c.execute(sql.SQL("ALTER DATABASE {} SET log_error_verbosity='verbose'").format(sql.Identifier(name)))
 def env(db):
  return {**os.environ,'DATABASE_URL':URL+db,'PRISMA_HIDE_UPDATE_MESSAGE':'1','CHECKPOINT_DISABLE':'1'}
 def bundle(count):
@@ -74,6 +75,7 @@ def rows(db):
   return result
 def catalog(db):
  with connect(db) as c,c.cursor() as q:
+  q.execute("SET statement_timeout='15s'");q.execute("SET lock_timeout='2s'")
   queries={
    'relations':"SELECT relname,relkind FROM pg_class WHERE relnamespace='public'::regnamespace AND relname NOT LIKE '_prisma%' ORDER BY 1",
    'columns':"SELECT c.relname,a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,pg_get_expr(d.adbin,d.adrelid) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE c.relnamespace='public'::regnamespace AND c.relkind='r' AND c.relname<>'_prisma_migrations' AND a.attnum>0 AND NOT a.attisdropped ORDER BY 1,2",
@@ -166,7 +168,13 @@ def scenario(db,count,kind,expected_digest=None):
   entry['concurrent_old_api']=old_result
  else:
   assert result['exit']!=0,entry
-  if kind=='timeout':assert '55P03' in result['codes'],entry
+  if kind=='timeout':
+   pid=next(r[0] for _,rs in samples for r in rs if not r[4] and r[2]==table)
+   logs=subprocess.run(['docker','logs','--since',str(int(time.time())-300),'agent3-api-release-pg'],capture_output=True,text=True,check=True)
+   evidence=[line for line in (logs.stdout+logs.stderr).splitlines() if f'[{pid}] ERROR:' in line and 'canceling statement due to lock timeout' in line]
+   assert '55P03' in result['codes'] or evidence,{'entry':entry,'output':result['output']}
+   entry['server_timeout_evidence']=evidence
+   entry['prisma_failure_output']=result['output']
   assert retry['exit']!=0 and 'P3009' in retry['codes'],entry
   failed=[m for m in after['migrations'] if m[0]==MIGRATIONS[count-1][2] and not m[2] and not m[3]]
   assert len(failed)==1,entry
@@ -202,17 +210,19 @@ def competition(db):
  for m in ledger:assert m[1]==hashlib.sha256((bundle(5)/'migrations'/m[0]/'migration.sql').read_bytes()).hexdigest()
  return {'database':db,'exits':[r1['exit'],r2['exit']],'advisory_wait_proven':True,'advisory_evidence':[r for r in seen if r[1]=='advisory' and not r[4]][:1],'catalog':state,'rows':rows(db)}
 def deadlock(db):
+ before=catalog(db)
  # Starta Prisma bakom en separat DDL-barriär innan gamla API:ts 5 s-transaktion.
  hold=blocker(db,'MeterReadingReview');observer=connect(db,'study-observer');q=observer.cursor();p=start(db,3);t=time.monotonic()
  while time.monotonic()-t<120:
   q.execute(LOCK_SQL);locks=q.fetchall()
-  if any(r[2]=='MeterReadingReview' and not r[4] for r in locks):break
+  if any(r[2]=='MeterReadingReview' and not r[4] for r in locks):
+   migrator_pid=next(r[0] for r in locks if r[2]=='MeterReadingReview' and not r[4]);break
   assert p.poll() is None,'migrator exited before deadlock barrier'
   time.sleep(0.005)
  else:raise AssertionError('migrator never reached deadlock barrier')
  old=subprocess.Popen(['node',str(OLD),'deadlock'],cwd=ROOT,env=env(db),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
  assert old.stdout.readline().strip()=='READING_WRITTEN','old transaction did not reach first write'
- before=catalog(db);hold.rollback();hold.close();start_time=time.monotonic();signalled=False;cycle=[]
+ hold.rollback();hold.close();start_time=time.monotonic();signalled=False;cycle=[]
  while p.poll() is None and time.monotonic()-start_time<120:
   q.execute(LOCK_SQL);locks=q.fetchall()
   if not signalled and any(r[2]=='MeterReading' and not r[4] for r in locks):
@@ -224,7 +234,10 @@ def deadlock(db):
  result=finish(p);out,err=old.communicate(timeout=15);q.close();observer.close()
  assert signalled and cycle,{'reason':'no measured lock cycle','migrator':result,'old_exit':old.returncode,'old_error':err[-1000:]}
  assert result['exit']!=0 or old.returncode!=0,'no deadlock victim'
- return {'database':db,'cycle':cycle,'migrator_exit':result['exit'],'migrator_codes':result['codes'],'old_api_exit':old.returncode,'old_api_deadlock': 'deadlock' in err.lower(),'old_api_output':out,'catalog_before':before,'catalog_after':catalog(db),'rows':rows(db)}
+ logs=subprocess.run(['docker','logs','--since',str(int(time.time())-300),'agent3-api-release-pg'],capture_output=True,text=True,check=True)
+ evidence=[line for line in (logs.stdout+logs.stderr).splitlines() if f'[{migrator_pid}] ERROR:' in line and 'deadlock detected' in line]
+ if result['exit']!=0 and old.returncode==0:assert evidence,'migrator error lacks PID-bound server deadlock evidence'
+ return {'database':db,'cycle':cycle,'migrator_pid':migrator_pid,'server_deadlock_evidence':evidence,'migrator_exit':result['exit'],'migrator_codes':result['codes'],'old_api_exit':old.returncode,'old_api_deadlock': 'deadlock' in err.lower(),'old_api_output':out,'catalog_before':before,'catalog_after':catalog(db),'rows':rows(db)}
 def run(round_names=('a','b')):
  for path in ['apps/api/prisma/schema.prisma','apps/api/src/consumption/consumption.service.ts']:
   assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT),'old API source differs from pinned base'
