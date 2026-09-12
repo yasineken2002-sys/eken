@@ -70,3 +70,44 @@ it('tidsstämplar utanför @db.Date ger inte påhittade hela luckdagar', () => {
     ]).coverageGaps,
   ).toEqual([])
 })
+
+it.each(['2026-01-01', '2026-01-06'])(
+  'senare period som täcker luckan helt/delvis (%s) ger inget falskt täckningsbesked',
+  (start) => {
+    const result = reviewReadings([
+      r('1', '2026-01-01', '2026-01-02'),
+      r('2', '2026-01-10', '2026-01-11'),
+      r('3', start, '2026-01-20'),
+    ])
+    expect(result.findings.map((f) => f.code)).toContain('OVERLAP')
+    expect(result.coverageGaps).toEqual([])
+  },
+)
+
+it('ogiltigt underlag lämnar strukturfynd och inget täckningsbesked', () => {
+  const result = reviewReadings([
+    r('1', '2026-01-01', '2026-01-02'),
+    r('2', '2026-01-10', '2026-01-11'),
+    { ...r('3', '2026-01-15', '2026-01-20'), value: -1 },
+  ])
+  expect(result.findings.map((f) => f.code)).toContain('DATA')
+  expect(result.coverageGaps).toEqual([])
+})
+it.each([false, true])(
+  'ett tvetydigt underlag påverkar inte andra grupper, omvänd ordning=%s',
+  (reverse) => {
+    const rows = [
+      r('1', '2026-01-01', '2026-01-02'),
+      r('2', '2026-01-10', '2026-01-11'),
+      ...[
+        r('3', '2026-01-01', '2026-01-02'),
+        r('4', '2026-01-10', '2026-01-11'),
+        r('5', '2026-01-01', '2026-01-20'),
+      ].map((x) => ({ ...x, meterId: 'other' })),
+    ]
+    const result = reviewReadings(reverse ? [...rows].reverse() : rows)
+    expect(result.coverageGaps).toEqual([
+      { readingId: '2', meterId: 'm', periodStart: '2026-01-03', periodEnd: '2026-01-09', days: 7 },
+    ])
+  },
+)

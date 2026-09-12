@@ -36,6 +36,8 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
     groups.set(key, group)
   }
   for (const rows of groups.values()) {
+    const findingOffset = findings.length
+    const gapOffset = coverageGaps.length
     const sorted = [...rows].sort(
       (a, b) =>
         (Date.parse(a.periodEnd) || 0) - (Date.parse(b.periodEnd) || 0) || a.id.localeCompare(b.id),
@@ -153,6 +155,10 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
       }
       rates.push(rate)
     }
+    // En senare överlappande period kan täcka en tidigare skenbar lucka.
+    // Vid ogiltigt/överlappande underlag avstår hela mätargruppen från täckningsbesked; strukturfynden kvarstår.
+    if (findings.slice(findingOffset).some((f) => f.code === 'DATA' || f.code === 'OVERLAP'))
+      coverageGaps.splice(gapOffset)
   }
   return {
     findings,

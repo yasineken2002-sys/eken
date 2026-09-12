@@ -263,7 +263,7 @@ it.each(cases)(
       type,
       periods: periods.map((p) => p.start + '..' + p.end).join('; '),
       accepted: accepted.map((v) => (v ? 'Y' : 'N')).join(''),
-      results: accepted.every(Boolean) ? measured(rows) : undefined,
+      ...(accepted.every(Boolean) ? { results: measured(rows) } : {}),
     })
     if (accepted.every(Boolean)) {
       // Oberoende datumfacit: unika stigande slut och inga överlapp. Ingen kalendergrind.

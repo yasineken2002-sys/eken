@@ -1,5 +1,7 @@
 # Luckregel för avläsningsgranskning
 
+> **Historisk första iteration vid 8c6f8501.** Kalenderregeln nedan är ersatt efter en bredare mätning. Aktuellt designval, fullständig före/efter-tabell och begränsningar finns i [datumrymdsrapporten](agent3-luckregel-858/date-space.md).
+
 Bas: #858, codex/agent3-forbrukningsgranskning, 9295e013303c4de21f8eb947e3812e05d6f693e3.
 Egen gren: codex/agent3-luckregel-858. Endast denna gren ändras.
 
