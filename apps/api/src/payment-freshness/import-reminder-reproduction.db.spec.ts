@@ -28,26 +28,6 @@ const TODAY = '2026-09-13'
 const CSV_BAD = Buffer.from('Datum;Beskrivning;Belopp\nogiltigt;Syntetisk rad;100\n')
 const CSV_WITHDRAWAL = Buffer.from('Datum;Beskrivning;Belopp\n2026-09-13;Syntetiskt uttag;-100\n')
 const PDF = Buffer.from('%PDF-1.4\n% syntetiskt parserunderlag\n%%EOF\n')
-const tables = [
-  'Organization',
-  'Property',
-  'Unit',
-  'Tenant',
-  'Lease',
-  'RentNotice',
-  'RentNoticeEvent',
-  'RentNoticeSend',
-  'JournalEntry',
-  'JournalEntryLine',
-  'JournalEntrySequence',
-  'Account',
-  'BankTransaction',
-  'BankStatementImport',
-  'BankConsent',
-  'ReferenceInterestRate',
-  'Notification',
-]
-
 const outside = new Proxy(
   {},
   {
@@ -77,9 +57,14 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
 
   async function counts() {
     const result: Record<string, number> = {}
-    for (const table of tables) {
+    // Alla tabeller i testschemat, inklusive migrationshistorik och felsänkor.
+    // Lika radantal bevisar städningens antal, inte varje äldre rads innehåll.
+    const tables = await db.$queryRaw<Array<{ tablename: string }>>`
+      SELECT tablename FROM pg_tables WHERE schemaname = current_schema() ORDER BY tablename
+    `
+    for (const { tablename: table } of tables) {
       const rows = await db.$queryRawUnsafe<Array<{ n: bigint }>>(
-        'SELECT count(*) AS n FROM "' + table + '"',
+        'SELECT count(*) AS n FROM "' + table.replace(/"/g, '""') + '"',
       )
       result[table] = Number(rows[0]!.n)
     }
@@ -290,6 +275,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
   })
 
   async function runCron(id: string) {
+    expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
     // Cronen saknar org-parameter: stoppa före anrop om den kan röra någon annans avi.
     const candidates = await db.rentNotice.findMany({
       where: {
@@ -324,7 +310,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     const observation = {
       id,
       through: org.paymentDataThrough?.toISOString().slice(0, 10) ?? null,
-      stale: gate.stale,
+      evaluateStale: gate.stale,
       summary,
       stage: notice.collectionStage,
       fee: Number(notice.reminderFeeAmount),
@@ -393,7 +379,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     ).toEqual([{ status: 'FAILED', errorMessage: 'Syntetiskt parserfel' }])
   }
 
-  it('F06 KANARIEFÅGEL: verkligt daterat utdrag med endast uttag ger färskhet och avgiftsverifikat', async () => {
+  it('F06 KANARIEFÅGEL: verklig import av syntetiskt daterat utdrag med endast uttag ger färskhet och avgiftsverifikat', async () => {
     const result = await importer.importBankStatement(CSV_WITHDRAWAL, 'test.csv', orgId!)
     expect(result).toMatchObject({ imported: 0, errors: [] })
     expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
