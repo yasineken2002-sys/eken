@@ -6,6 +6,7 @@ import type { PendingAction } from '../api/ai.api'
 
 interface ConfirmationCardProps {
   pendingAction: PendingAction
+  explanation?: string
   onConfirm: () => void
   onCancel: () => void
   isLoading: boolean
@@ -18,6 +19,7 @@ interface ConfirmationCardProps {
  */
 export function ConfirmationCard({
   pendingAction,
+  explanation,
   onConfirm,
   onCancel,
   isLoading,
@@ -66,6 +68,17 @@ export function ConfirmationCard({
                 detaljerna nedan noggrant innan du bekräftar.
               </p>
             </div>
+          )}
+
+          {explanation && (
+            <p
+              role="region"
+              aria-label="Förklaring till förslaget"
+              tabIndex={0}
+              className="mb-4 max-h-32 overflow-y-auto whitespace-pre-wrap text-[13.5px] leading-relaxed text-gray-700"
+            >
+              {explanation}
+            </p>
           )}
 
           {/* Confirmation message */}

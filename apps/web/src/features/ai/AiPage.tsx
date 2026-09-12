@@ -43,7 +43,9 @@ export function AiPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [pendingMessages, setPendingMessages] = useState<AiMessage[]>([])
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [pendingAction, setPendingAction] = useState<
+    (PendingAction & { explanation?: string }) | null
+  >(null)
   const [isThinking, setIsThinking] = useState(false)
   const [streamingText, setStreamingText] = useState<string>('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -174,12 +176,17 @@ export function AiPage() {
       setToolEvents([])
       setIterationCapped(null)
 
+      // Callbackarna kan köras i samma nätverksläsning, före nästa React-rendering.
+      let latestText = ''
       streamCleanupRef.current = streamChat(
         msg,
         activeConversationId ?? undefined,
         token,
         {
-          onDelta: (text) => setStreamingText(text),
+          onDelta: (text) => {
+            latestText = text
+            setStreamingText(text)
+          },
           onToolUseStart: ({ id, name }) => {
             setToolEvents((prev) => [...prev, { id, name, status: 'starting' }])
           },
@@ -210,6 +217,7 @@ export function AiPage() {
               toolName: action.toolName,
               toolInput: action.toolInput,
               confirmationMessage: action.confirmationMessage,
+              explanation: latestText,
               details: action.details,
               ...(action.requiresDoubleConfirm ? { requiresDoubleConfirm: true } : {}),
             })
@@ -263,7 +271,10 @@ export function AiPage() {
 
       // Double-confirm: server returned a new pendingAction (high-risk second check)
       if (res.pendingAction) {
-        setPendingAction(res.pendingAction)
+        setPendingAction({
+          ...res.pendingAction,
+          ...(pendingAction.explanation ? { explanation: pendingAction.explanation } : {}),
+        })
         return
       }
 
@@ -418,6 +429,7 @@ export function AiPage() {
             {pendingAction && (
               <ConfirmationCard
                 pendingAction={pendingAction}
+                explanation={pendingAction.explanation ?? ''}
                 onConfirm={() => void handleConfirm()}
                 onCancel={() => void handleCancel()}
                 isLoading={confirmMutation.isPending}
