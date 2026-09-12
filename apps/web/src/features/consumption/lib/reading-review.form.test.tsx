@@ -156,6 +156,15 @@ describe.each(types)('luckregel med verkliga formulärdatum: %s', (type) => {
     expectSpike(await series(type, periods))
   })
 
+  it('når kalenderundantaget med månadsprefix över årsskifte och skottdag', async () => {
+    const days = [10, 10, 10, 29, 10]
+    const periods = Array.from({ length: count(type) }, (_, i) => ({
+      end: date(2027, 10 + i, days[i]!),
+    }))
+    expect(periods.some(({ end }) => end === '2028-02-29')).toBe(true)
+    expectSpike(await series(type, periods))
+  })
+
   it('skiljer utebliven hel månad från tid mellan mätarställningar', async () => {
     const periods = monthly(type, 10)
     periods[periods.length - 1] = { end: date(2026, count(type), 10) }
@@ -213,4 +222,17 @@ it('kumulativ minskning är fortfarande ett fel även efter en hel saknad månad
   const rows = await series('CUMULATIVE', [{ end: '2026-01-10' }, { end: '2026-03-10' }], false)
   rows[1]!.value = Number(rows[0]!.value) - 1
   expect(reviewReadings(rows)).toMatchObject({ trendAssessed: 0, findings: [{ code: 'DECREASE' }] })
+})
+
+it('periodvolym: föregående dagliga serie är inte ett månadsfönster', async () => {
+  const periods = [
+    { start: '2026-02-08', end: '2026-02-08' },
+    { start: '2026-02-09', end: '2026-02-09' },
+    { start: '2026-02-10', end: '2026-02-10' },
+    { end: '2026-03-10' },
+  ]
+  expect(reviewReadings(await series('PERIOD_VOLUME', periods))).toMatchObject({
+    findings: [],
+    trendAssessed: 0,
+  })
 })
