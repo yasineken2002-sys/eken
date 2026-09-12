@@ -2044,10 +2044,14 @@ Kör detta mentalt innan varje feature anses klar:
   `${{ github.event.workflow_run.head_sha }}`, alltså exakt den commit CI
   granskade. Skälet till att det inte är `push` + `needs: ci` står i
   `deploy.yml`:s egen huvudkommentar, med den mätta incidenten på `a5d9954`.
-  Och `ci.yml` är inte "typecheck + lint": mätt 2026-09-12 är den **61 jobb**,
-  varav 59 står i `ci-passed`:s `needs` (det sextioförsta är
-  `migration-annotation`, som är `pull_request`-bart och med flit står utanför
-  grinden).
+  Och `ci.yml` är inte "typecheck + lint" — den är **61 jobb**:
+
+  ```
+    59  i `ci-passed`:s `needs`
+  +  1  `ci-passed` självt
+  +  1  `migration-annotation` — `pull_request`-bart, med flit utanför grinden
+  = 61  jobb i ci.yml   (mätt 2026-09-12)
+  ```
 - **Postgres + Redis** → Railway-plugins.
 
 ### `--delete-branch` på en PR som är BAS för en annan stänger den beroende PR:en
@@ -2686,8 +2690,9 @@ ai-attachment-composer tills #477 gett CI R2-nycklar). En kanariefågel kräver 
 Playwright hittar exakt `E2E_EXPECTED_TESTS` tester — ändrar du uteslutningarna
 ska talet ändras i samma PR.
 
-**Men skyddet gäller bara fram till merge — och bara för API:t.** De två ytorna
-är olika grindade, och skillnaden är mätt:
+**Men för API:t gäller skyddet bara fram till merge.** Frontend är grindad hela
+vägen till utrullning; API:t är det inte. De två ytorna är olika grindade, och
+skillnaden är mätt:
 
 ```
 frontend  deploy.yml: on: workflow_run, workflows:['CI'],
