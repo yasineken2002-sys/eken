@@ -1,14 +1,20 @@
 # Steg 2.2 — bindning och identitetsgräns
 
-## Kort återupptagningsstatus — 2026-09-12 00:33 UTC
+## Kort status och återupptagning
 
-- Egen worktree: `/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-2-real`; gren `codex/agent3-rendering-2-2-real`; utkast [#883](https://github.com/yasineken2002-sys/eken/pull/883).
-- Senaste kodcommit: `72226f91bb4254124b0ee699d1d975e815a46f93`. Bas: `0d048101f291cf352a730100ec96d6b042ed98a4`. Basmätning **402/450**.
-- Två fullständiga DB-körningar: **67/67 + 67/67**, resultat och radantal nedan. Egen tillfällig databas är borttagen.
-- Pågående [CI-kanarie](https://github.com/yasineken2002-sys/eken/actions/runs/34661093684): r22-12 saknas avsiktligt i committen. Kravlistan kräver alla 85 id. Tidigare röda CI-körningar nådde inte rätt kravsteg och är inte kanariebevis.
-- Nästa steg: invänta att hela API-sviten passerar och kravsteget uttryckligen fäller r22-12; spara länken, återställ provet med vanlig commit och push, mät bas→HEAD, invänta grön CI för samma HEAD och uppdatera slutrapport/PR.
-- Arbetskopian innehåller redan det återställda r22-12-blocket. Vid förlust hämtas enbart blocket `it('r22-12 ...` fram till nästa `it('r22-13 ...` ur `b93b7eb66bc6086d9e117bf30e82f39f97ba3b70:apps/api/src/consumption/delivery-renderer.db.spec.ts`; lägg det före nuvarande r22-13. Återställ inte hela den äldre filen eftersom riggen senare samlats i specen.
-- Inget ägarbeslut krävs just nu. Stanna om 450 nås eller nytt ägarbeslut krävs. Ingen merge, aktivering eller 2c.
+Byggdelen och de två lokala DB-bevisen är klara: **402/450 produktionsrader**,
+**67/67 + 67/67 prov**, inga ändrade 2a-/2b-/r21-prov. Egen tillfällig DB är borttagen.
+Den röda kanarien är verifierad och r22-12 återställs med denna vanliga commit.
+
+Arbetsplats: `/workspaces/eken-fran-mac-20260909/arbete/agent3-rendering-2-2-real`,
+gren `codex/agent3-rendering-2-2-real`, bas `0d048101f291cf352a730100ec96d6b042ed98a4`.
+Slutrapport med exakt HEAD och slutlig CI-länk sparas i [utkast #883](https://github.com/yasineken2002-sys/eken/pull/883).
+
+Vid avbrott: kontrollera `git status`, gren och HEAD; kontrollera sedan CI för
+PR:ens exakta HEAD. Om den är grön och grinden har verifierat alla 85 id återstår
+endast slutrapporten i PR och återrapportering. Vid fel: säkra tillåtet arbete,
+behåll facit och 450-taket, och stanna om ägarbeslut krävs. Ingen merge, aktivering
+eller 2c.
 
 Det [kompletterade beteendefacitet](komplettering-facit.md) frystes i `b2de5c13`
 före implementation och bevarar [basens r22-facit](kontrakt-och-facit.md).
@@ -291,3 +297,23 @@ vid cirka 4,1 GB. Den är inte kanariebevis: kravsteget nåddes aldrig.
 Jest får därför `isolatedModules: true`, samma transpilation som de två lokala
 gröna körningarna. CI:s fullständiga Typecheck-jobb, samtliga prov och kravsteg
 ligger kvar. Ingen heap-, tids- eller radbudget höjdes.
+
+## Röd kanarie och återställning
+
+[rätt CI-körning](https://github.com/yasineken2002-sys/eken/actions/runs/34661093684),
+HEAD `72226f91bb4254124b0ee699d1d975e815a46f93`, visar att hela API-sviten
+passerade. Därefter blev [assertionsgrinden röd](https://github.com/yasineken2002-sys/eken/actions/runs/34661093684/job/103463580950) med exit 1:
+
+```text
+Error: consumption/delivery-renderer.db.spec.ts: r22-12 saknas eller saknar godkända genomförda assertions
+```
+
+Borttagningen gjordes i `8f79e7f3f951dd218247008b85cc15ae5cb4bc57`.
+Samma 24-radiga provblock återställs nu i en **vanlig ny commit**, efter observerat
+utfall; ingen amend, historikomskrivning eller ändrad kravlista. Tidigare
+transaktionsfel, minnesavbrott och avbrutna CI-körningar räknas inte som kanariebevis.
+De två gröna lokala körningarna ovan innehöll hela r22-12 (5 assertions vardera).
+
+Negativkontrollen av avsändarens beteende och dess exakta `git restore --source=`
+finns under Kontrollerade utvecklingsfynd. Varken den kontrollen eller CI-kanarien
+ersätter kravet på slutlig grön CI för PR:ens exakta HEAD.
