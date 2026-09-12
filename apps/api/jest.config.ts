@@ -10,6 +10,8 @@ const config: Config = {
     '^.+\\.(t|j)sx?$': [
       'ts-jest',
       {
+        // CI typechecks separately; retain no project compiler graph per VM test environment.
+        isolatedModules: true,
         tsconfig: {
           experimentalDecorators: true,
           emitDecoratorMetadata: true,

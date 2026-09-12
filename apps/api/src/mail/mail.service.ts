@@ -488,7 +488,11 @@ export class MailService {
   // ── Fakturor & avier ─────────────────────────────────────────────────────────
 
   async sendInvoice(opts: SendInvoiceOptions): Promise<string> {
-    return this.enqueueTyped(
+    return this.queue.enqueue(MailService.buildInvoice(opts))
+  }
+
+  static buildInvoice(opts: SendInvoiceOptions): EnqueueMailOptions<'invoice-created'> {
+    return MailService.mailPayload(
       'invoice-created',
       'normal',
       {

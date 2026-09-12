@@ -1,4 +1,8 @@
-import { renderingLogo, type DocumentContext } from '../invoices/rendering-context'
+import {
+  renderingLogo,
+  type DocumentContext,
+  type PdfRenderingContext,
+} from '../invoices/rendering-context'
 import {
   Injectable,
   Logger,
@@ -1029,8 +1033,17 @@ export class AviseringService {
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
     const context = await this.pdfService.collectRenderingContext(org.logoStorageKey ?? null)
+    return AviseringService.renderNoticePdf(this.pdfService, notice, org, context)
+  }
+
+  static renderNoticePdf(
+    pdf: PdfService,
+    notice: NoticeWithRelations,
+    org: Parameters<typeof AviseringService.buildNoticePdfHtml>[1],
+    context: PdfRenderingContext,
+  ): Promise<Buffer> {
     const html = AviseringService.buildNoticePdfHtml(notice, org, context)
-    return this.pdfService.generateFromHtml(html, context)
+    return pdf.generateFromHtml(html, context)
   }
 
   static buildNoticePdfHtml(

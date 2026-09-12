@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
@@ -78,6 +79,8 @@ function installationFiles(directory: string): string[] {
 export function renderingCodeManifest(): Array<[string, string]> {
   const files = [
     './pdf.service',
+    '../consumption/delivery-renderer',
+    '../consumption/delivery-execution',
     './rendering-context',
     './pdf-wait-until',
     './templates/invoice-pdf.template',
@@ -187,9 +190,14 @@ export async function pdfEnvironmentIdentity(): Promise<string> {
       '/etc/os-release',
     ]),
   ].sort()
+  // Fresh bytes, one file at a time; yield so another binding can finish its DB queries.
+  const digests: Array<[string, string]> = []
+  for (const file of files) {
+    digests.push([file, renderingDigest(await readFile(file))])
+  }
   return renderingDigest(
     JSON.stringify({
-      files: files.map((file) => [file, renderingDigest(readFileSync(file))]),
+      files: digests,
       configList,
       fontconfig: Object.fromEntries(
         Object.entries(process.env).filter(

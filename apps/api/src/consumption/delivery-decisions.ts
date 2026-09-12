@@ -26,6 +26,7 @@ type Creation =
 export type DeliveryDecisionCommand = Scope & {
   commandKey: string
   resources?: Prisma.InputJsonObject
+  rendering?: Prisma.InputJsonObject
   team?: string
   operation: 'ORIGINAL' | 'INVOICE_RESEND'
   expectedFingerprint: string
@@ -198,6 +199,20 @@ export class DeliveryDecisions {
       event.decisionId,
       'to' in command && command.to === 'SENDING' ? 'ALREADY_STARTED' : 'REPLAYED',
     )
+  }
+
+  async prepareCommand(command: DeliveryDecisionCommand) {
+    return this.transaction(async (tx) => {
+      await this.authorize(tx, command)
+      const replay = await this.replay(tx, command)
+      if (replay)
+        return {
+          dispatch: await tx.deliveryDispatch.findUniqueOrThrow({
+            where: { decisionId: replay.decision.id },
+          }),
+        }
+      return this.snapshot(tx, command)
+    })
   }
 
   // tx gör en framtida outboxavsikt möjlig i SAMMA commit. Ingen outbox finns i 2a.

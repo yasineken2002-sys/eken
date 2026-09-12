@@ -13,8 +13,12 @@ export type DeliveryPacket = Pick<
 >
 export type DeliveryReply = { status: number; id?: string; code?: string }
 export interface DeliveryPorts {
-  resources(): DeliveryResources
-  render(snapshot: Prisma.JsonValue, resources: DeliveryResources): string
+  resources(context?: Prisma.InputJsonObject): DeliveryResources | Promise<DeliveryResources>
+  render(
+    snapshot: Prisma.JsonValue,
+    resources: DeliveryResources,
+    context?: Prisma.InputJsonObject,
+  ): string | Promise<string>
   publish(decisionId: string): Promise<void>
   send(packet: DeliveryPacket): Promise<DeliveryReply> // Idempotency-Key = attemptId; ingen intern retry.
 }
@@ -22,7 +26,7 @@ export const deliveryDigest = (bytes: string | Buffer) =>
   createHash('sha256').update(bytes).digest('hex')
 const json = (value: unknown): Prisma.InputJsonObject => JSON.parse(JSON.stringify(value))
 
-// Inaktiv: ingen Nest-registrering, köadapter, renderer eller nätklient importeras.
+// Inaktiv: ingen Nest-registrering, köadapter eller nätklient importeras.
 export class DeliveryExecution {
   readonly decisions: DeliveryDecisions
   constructor(
@@ -74,6 +78,20 @@ export class DeliveryExecution {
     })
   }
 
+  private async checkedResources(
+    command: DeliveryDecisionCommand & { resources: Prisma.InputJsonObject },
+  ) {
+    const resources = { ...(await this.ports.resources(command.rendering)) }
+    if (
+      Object.keys(resources).length !== Object.keys(command.resources).length ||
+      Object.entries(resources).some(
+        ([key, bytes]) => deliveryDigest(Buffer.from(bytes, 'base64')) !== command.resources[key],
+      )
+    )
+      throw new ConflictException('DELIVERY_RESOURCE_CONFLICT')
+    return resources
+  }
+
   async enqueue(
     command: DeliveryDecisionCommand & { resources: Prisma.InputJsonObject; team: string },
   ) {
@@ -82,26 +100,26 @@ export class DeliveryExecution {
       command.team !== this.identity.team
     )
       throw new ConflictException('DELIVERY_SCOPE_CONFLICT')
-    return this.decisions.transaction(async (tx) => {
+    command = json(command) as typeof command
+    let body: string | undefined
+    // Legacy commands keep their original single-transaction contract.
+    if (command.rendering) {
+      const prepared = await this.decisions.prepareCommand(command)
+      if ('dispatch' in prepared) return prepared.dispatch
+      if (prepared.fingerprint !== command.expectedFingerprint)
+        throw new ConflictException('DELIVERY_SNAPSHOT_CONFLICT')
+      const resources = await this.checkedResources(command)
+      body = await this.ports.render(prepared.snapshot, resources, command.rendering)
+    }
+    const bind = async (tx: Tx) => {
       const result = await this.decisions.decide(command, tx)
       const existing = await tx.deliveryDispatch.findUnique({
         where: { decisionId: result.decision.id },
       })
       if (existing) return existing
-      const resources = { ...this.ports.resources() }
-      const digests = Object.fromEntries(
-        Object.entries(resources).map(([key, bytes]) => [
-          key,
-          deliveryDigest(Buffer.from(bytes, 'base64')),
-        ]),
-      )
-      // Kontrollerar verkliga resursbyte mot beslutets digester, även bakom samma nyckel.
-      if (
-        Object.keys(digests).length !== Object.keys(command.resources).length ||
-        Object.entries(digests).some(([key, digest]) => command.resources[key] !== digest)
-      )
-        throw new ConflictException('DELIVERY_RESOURCE_CONFLICT')
-      const body = this.ports.render(result.decision.snapshot, resources)
+      const resources = await this.checkedResources(command)
+      const sealedBody =
+        body ?? (await this.ports.render(result.decision.snapshot, resources, command.rendering))
       return tx.deliveryDispatch.create({
         data: {
           decisionId: result.decision.id,
@@ -112,11 +130,24 @@ export class DeliveryExecution {
           method: 'POST',
           endpoint: 'https://api.resend.com/emails',
           resources: command.resources,
-          body,
-          digest: deliveryDigest(body),
+          body: sealedBody,
+          digest: deliveryDigest(sealedBody),
         },
       })
-    })
+    }
+    try {
+      return await this.decisions.transaction(bind)
+    } catch (error) {
+      // Only a known expired, rolled-back binding; no rendering or transport is retried.
+      if (
+        !command.rendering ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2028' ||
+        !error.message.includes('expired transaction')
+      )
+        throw error
+      return this.decisions.transaction(bind) // Same command/body; fresh authorization, snapshot and resources again.
+    }
   }
 
   async publish(decisionId: string) {
@@ -176,7 +207,12 @@ export class DeliveryExecution {
       if (prior?.blocked) return null
       if (state === 'DECIDED' || !prior?.granted) {
         try {
-          const current = this.ports.resources()
+          const first = await tx.deliveryEvent.findFirstOrThrow({
+            where: { decisionId, revision: 1 },
+          })
+          const current = await this.ports.resources(
+            (first.request as DeliveryDecisionCommand).rendering,
+          )
           const expected = d.resources as Record<string, string>
           if (
             Object.keys(current).length !== Object.keys(expected).length ||
