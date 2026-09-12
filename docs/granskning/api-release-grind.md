@@ -31,7 +31,7 @@ kör Prisma före appstart. Historiskt skäl till avstängd Wait for CI:
 | Aktiv API-start | `apps/api/scripts/migrate-and-start.sh:18`, Dockerfile:128; orört. |
 | CI-kontrakt | `.github/workflows/ci.yml`: 59 needs + CI passed, 60 obligatoriska jobb; en PR-annotering utanför needs. |
 | Kandidat | `release-gate.cjs`, `prepare-release-artifact.cjs`, `release-api.cjs`; explicit YAML-parser, inget nytt nät- eller deployjobb i CI. |
-| CI-bevis | 20 namngivna Jestprov, efterkontroll av exakt en svit/ett prov per id, passed och positiva assertions. |
+| CI-bevis | 20 namngivna Jestprov, efterkontroll av exakt en svit/ett prov per id, passed och positiva assertions; manifestprov på verklig API-byggutdata i befintligt byggjobb. |
 | Migrationsstudie | Fem verkliga PR-filer, egen PostgreSQL 18.6, gammal main-klient/tjänstekod; separat [rapport](api-release-migrationer.md). |
 
 ## Releasekontrakt
@@ -63,8 +63,9 @@ Grinden kräver följande före första migratoranropet:
    tsconfig.base.json, .npmrc, .dockerignore och kandidatens CJS-filer.
    Ny källa inom mängden kan inte utelämnas ur manifestet.
 
-Manifestet innehåller SHA-256 för runtime/dist. Lokal ändring mellan byggnad,
-verifiering och migratoranrop nekar. Byggkällornas Git-blobhashar kontrolleras
+Manifestet innehåller SHA-256 för runtime/dist. Lokal ändring upptäcks vid de
+två hashkontrollerna. Kontrollen är inte atomisk med Prismas senare filöppning;
+oföränderlig image och frånvaro av samtidiga filskrivare är en tillitsgräns. Byggkällornas Git-blobhashar kontrolleras
 mot GitHub. **Den betrodda byggprocessen måste fortfarande verkligen kompilera
 dessa källor och distribuera samma immutable image till pre-deploy och app.**
 En självdeklarerad SHA eller efterhandshashning bevisar inte kompilatorns

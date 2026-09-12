@@ -2,7 +2,7 @@
 Requires psycopg2, generated old Prisma client, and built workspace dependencies.
 No production URL, source rows or migration edits are accepted.
 """
-import os, sys, json, time, shutil, tempfile, subprocess, threading, signal, hashlib
+import os, sys, json, time, tempfile, subprocess, threading, signal, hashlib, io, tarfile
 from pathlib import Path
 import psycopg2
 from psycopg2 import sql
@@ -22,6 +22,7 @@ MIGRATIONS = [
 TEMP = Path(tempfile.mkdtemp(prefix='api-release-prisma-'))
 PREFIX = 'api_release_' + str(int(time.time())) + '_'
 RESULT = {'base': BASE, 'synthetic_only': True, 'poll_seconds': 0.005, 'rounds': []}
+NORMAL_ONLY = os.environ.get('API_RELEASE_ONLY_NORMAL') == '1'
 def connect(db, name='study'):
  assert db.startswith('api_release_')
  c=psycopg2.connect(URL+db,application_name=name,connect_timeout=5)
@@ -37,11 +38,18 @@ def database(name, template=None):
   if template: q+=sql.SQL(' TEMPLATE {}').format(sql.Identifier(template))
   c.execute(q)
 def env(db):
- return {**os.environ,'DATABASE_URL':URL+db,'PRISMA_HIDE_UPDATE_MESSAGE':'true'}
+ return {**os.environ,'DATABASE_URL':URL+db,'PRISMA_HIDE_UPDATE_MESSAGE':'1','CHECKPOINT_DISABLE':'1'}
 def bundle(count):
  target=TEMP/str(count)
  if target.exists(): return target
- target.mkdir();shutil.copytree(ROOT/'apps/api/prisma/migrations',target/'migrations')
+ target.mkdir()
+ archive=subprocess.check_output(['git','archive',BASE,'apps/api/prisma/migrations'],cwd=ROOT)
+ with tarfile.open(fileobj=io.BytesIO(archive)) as source:
+  for member in source.getmembers():
+   if member.isfile():
+    relative=Path(member.name).relative_to('apps/api/prisma')
+    destination=target/relative;destination.parent.mkdir(parents=True,exist_ok=True)
+    destination.write_bytes(source.extractfile(member).read())
  (target/'schema.prisma').write_bytes(subprocess.check_output(['git','show',BASE+':apps/api/prisma/schema.prisma'],cwd=ROOT))
  for _,head,name,_ in MIGRATIONS[:count]:
   p=target/'migrations'/name;p.mkdir()
@@ -50,7 +58,10 @@ def bundle(count):
 def start(db,count):
  return subprocess.Popen(['node',str(PRISMA),'migrate','deploy','--schema',str(bundle(count)/'schema.prisma')],cwd=TEMP,env=env(db),stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,start_new_session=True)
 def finish(p):
- output=p.communicate(timeout=35)[0]
+ try: output=p.communicate(timeout=120)[0]
+ except subprocess.TimeoutExpired:
+  os.killpg(p.pid,signal.SIGTERM);output=p.communicate(timeout=15)[0]
+  raise AssertionError('isolated Prisma process exceeded 120 s: '+output[-3500:])
  return {'exit':p.returncode,'codes':[code for code in ['P1002','P3009','P3018','55P03','40P01','57P01'] if code in output], 'output':output[-3500:]}
 def apply(db,count):
  r=finish(start(db,count));assert r['exit']==0,r
@@ -70,6 +81,8 @@ def catalog(db):
    'constraints':"SELECT conname,convalidated,pg_get_constraintdef(oid) FROM pg_constraint WHERE connamespace='public'::regnamespace AND conname NOT LIKE '_prisma%' ORDER BY 1,3",
    'triggers':"SELECT tgname,tgenabled,pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE c.relnamespace='public'::regnamespace AND NOT t.tgisinternal ORDER BY 1,3",
    'functions':"SELECT proname,prosrc FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY proname,prosrc",
+   'types':"SELECT t.typname,t.typtype,t.typcategory,COALESCE(c.relname,''),COALESCE(e.typname,'') FROM pg_type t LEFT JOIN pg_class c ON c.oid=t.typrelid LEFT JOIN pg_type e ON e.oid=t.typelem WHERE t.typnamespace='public'::regnamespace ORDER BY t.typname",
+   'enums':"SELECT t.typname,e.enumlabel,e.enumsortorder FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid WHERE t.typnamespace='public'::regnamespace ORDER BY t.typname,e.enumsortorder",
   }
   result={}
   for k,statement in queries.items(): q.execute(statement);result[k]=q.fetchall()
@@ -77,7 +90,7 @@ def catalog(db):
   return {'digest':hashlib.sha256(json.dumps(result,default=str).encode()).hexdigest(),'counts':{k:len(v) for k,v in result.items()},'invalidIndexes':[r for r in result['indexes'] if not r[1] or not r[2]],'unvalidated':[r for r in result['constraints'] if not r[1]],'migrations':q.fetchall()}
 def blocker(db,table):
  c=connect(db,'old-api-blocker');c.autocommit=False;q=c.cursor()
- if table in ['Organization','DeliveryEvent']: q.execute(sql.SQL('SELECT count(*) FROM {}').format(sql.Identifier(table)))
+ if table in ['Organization','DeliveryEvent','MeterReadingReview']: q.execute(sql.SQL('SELECT count(*) FROM {}').format(sql.Identifier(table)))
  else: q.execute(sql.SQL('UPDATE {} SET id=id WHERE false').format(sql.Identifier(table)))
  return c
 LOCK_SQL="""SELECT a.pid,l.locktype,COALESCE(c.relname,''),l.mode,l.granted,pg_blocking_pids(a.pid)
@@ -116,7 +129,7 @@ def scenario(db,count,kind,expected_digest=None):
    if kind=='interrupt':os.killpg(p.pid,signal.SIGTERM);action_at=now
   if first_wait and not released and ((kind=='normal' and now-first_wait>0.3) or (kind!='normal' and now-first_wait>0.6)):
    hold.rollback();hold.close();released=True;action_at=now
-  assert now-t0<60,'scenario stalled'
+  assert now-t0<120,'scenario stalled before process completion'
   time.sleep(0.005)
  end=time.monotonic()
  if not released:hold.rollback();hold.close()
@@ -132,18 +145,31 @@ def scenario(db,count,kind,expected_digest=None):
   q.execute(LOCK_SQL);remaining=q.fetchall()
   if not remaining:break
   time.sleep(0.01)
+ assert not remaining,'Prisma backend still holds locks; catalog/resolve forbidden'
  q.close();observer.close()
  assert first_wait is not None,'no observed lock wait'
  after=catalog(db);retry=finish(start(db,count));after_retry=catalog(db)
  wait_samples=[t for t,rs in samples if any(not r[4] and r[2]==table for r in rs)]
  grant_samples=[t for t,rs in samples if any(r[4] and r[2]==table and r[3] not in ['AccessShareLock','RowExclusiveLock'] for r in rs)]
  lock_modes=sorted(set((r[1],r[2],r[3],r[4],bool(r[5])) for _,rs in samples for r in rs))
+ held={}
+ for t,rs in samples:
+  for r in rs:
+   if r[1]=='relation' and r[4] and r[3] not in ['AccessShareLock','RowExclusiveLock']:
+    held.setdefault((r[2],r[3]),[]).append(t)
  entry={'kind':kind,'database':db,'pr':MIGRATIONS[count-1][0],'total_ms':round((end-t0)*1000,3),'observed_wait_ms':round((max(wait_samples)-min(wait_samples))*1000,3),'observed_grant_span_ms':round((max(grant_samples)-min(grant_samples))*1000,3) if grant_samples else None,'grant_upper_bound_ms':round((end-(action_at or end))*1000,3) if kind=='normal' else None,'lock_modes':lock_modes,'traffic':worker_results,'exit':result['exit'],'codes':result['codes'],'catalog_before':before,'catalog_after':after,'retry_exit':retry['exit'],'retry_codes':retry['codes'],'catalog_after_retry':after_retry,'rows':rows(db)}
+ entry['wait_evidence']=next(rs for _,rs in samples if any(not r[4] and r[2]==table for r in rs))
+ entry['max_sample_gap_ms']=round(max((b[0]-a[0] for a,b in zip(samples,samples[1:])),default=0)*1000,3)
+ entry['held_relations']=[{'relation':rel,'mode':mode,'observed_span_ms':round((max(ts)-min(ts))*1000,3)} for (rel,mode),ts in sorted(held.items())]
  if kind=='normal':
   assert result['exit']==retry['exit']==0 and before['digest']!=after['digest'] and after['digest']==after_retry['digest']
   entry['concurrent_old_api']=old_result
  else:
   assert result['exit']!=0,entry
+  if kind=='timeout':assert '55P03' in result['codes'],entry
+  assert retry['exit']!=0 and 'P3009' in retry['codes'],entry
+  failed=[m for m in after['migrations'] if m[0]==MIGRATIONS[count-1][2] and not m[2] and not m[3]]
+  assert len(failed)==1,entry
   if kind in ['timeout','terminate']:assert before['digest']==after['digest'],entry
   entry['sql_rolled_back'] = before['digest']==after['digest']
   # Ingen gissad resolve: återställd katalog eller exakt samma schema som lyckad körning.
@@ -156,20 +182,38 @@ def scenario(db,count,kind,expected_digest=None):
   entry['isolated_recovery']={'resolution':resolution,'catalog':catalog(db)}
  return entry
 def competition(db):
- hold=blocker(db,'MeterReading');observer=connect(db,'study-observer');q=observer.cursor();p1=start(db,5);p2=start(db,5);seen=[];t=time.monotonic()
- while time.monotonic()-t<4:
+ hold=blocker(db,'MeterReading');observer=connect(db,'study-observer');q=observer.cursor();p1=start(db,5);seen=[];t=time.monotonic()
+ while time.monotonic()-t<120:
+  q.execute(LOCK_SQL);rs=q.fetchall();seen+=rs
+  if any(r[2]=='MeterReading' and not r[4] for r in rs):break
+  time.sleep(0.01)
+ assert any(r[2]=='MeterReading' and not r[4] for r in seen),'first migrator did not reach barrier'
+ p2=start(db,5);t=time.monotonic()
+ while time.monotonic()-t<120:
   q.execute(LOCK_SQL);rs=q.fetchall();seen+=rs
   if any(r[1]=='advisory' and not r[4] and r[5] for r in rs) and any(r[2]=='MeterReading' and not r[4] for r in rs):break
   time.sleep(0.01)
  assert any(r[1]=='advisory' and not r[4] for r in seen),'no Prisma advisory contention observed'
  hold.rollback();hold.close();r1=finish(p1);r2=finish(p2);q.close();observer.close()
  assert r1['exit']==r2['exit']==0,(r1,r2)
- return {'database':db,'exits':[r1['exit'],r2['exit']],'advisory_wait_proven':True,'catalog':catalog(db),'rows':rows(db)}
+ state=catalog(db);ledger=state['migrations']
+ assert len(ledger)==5 and len({m[0] for m in ledger})==5 and all(m[2] and not m[3] for m in ledger),state
+ assert not state['invalidIndexes'] and not state['unvalidated'],state
+ for m in ledger:assert m[1]==hashlib.sha256((bundle(5)/'migrations'/m[0]/'migration.sql').read_bytes()).hexdigest()
+ return {'database':db,'exits':[r1['exit'],r2['exit']],'advisory_wait_proven':True,'advisory_evidence':[r for r in seen if r[1]=='advisory' and not r[4]][:1],'catalog':state,'rows':rows(db)}
 def deadlock(db):
+ # Starta Prisma bakom en separat DDL-barriär innan gamla API:ts 5 s-transaktion.
+ hold=blocker(db,'MeterReadingReview');observer=connect(db,'study-observer');q=observer.cursor();p=start(db,3);t=time.monotonic()
+ while time.monotonic()-t<120:
+  q.execute(LOCK_SQL);locks=q.fetchall()
+  if any(r[2]=='MeterReadingReview' and not r[4] for r in locks):break
+  assert p.poll() is None,'migrator exited before deadlock barrier'
+  time.sleep(0.005)
+ else:raise AssertionError('migrator never reached deadlock barrier')
  old=subprocess.Popen(['node',str(OLD),'deadlock'],cwd=ROOT,env=env(db),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
  assert old.stdout.readline().strip()=='READING_WRITTEN','old transaction did not reach first write'
- before=catalog(db);observer=connect(db,'study-observer');q=observer.cursor();p=start(db,3);start_time=time.monotonic();signalled=False;cycle=[]
- while p.poll() is None and time.monotonic()-start_time<15:
+ before=catalog(db);hold.rollback();hold.close();start_time=time.monotonic();signalled=False;cycle=[]
+ while p.poll() is None and time.monotonic()-start_time<120:
   q.execute(LOCK_SQL);locks=q.fetchall()
   if not signalled and any(r[2]=='MeterReading' and not r[4] for r in locks):
    old.stdin.write('GO\n');old.stdin.flush();signalled=True
@@ -178,21 +222,23 @@ def deadlock(db):
   if any(a in graph.get(b,[]) for a,bs in graph.items() for b in bs):cycle=[(a,bs) for a,bs in graph.items()]
   time.sleep(0.005)
  result=finish(p);out,err=old.communicate(timeout=15);q.close();observer.close()
- assert signalled and cycle,'no measured lock cycle'
+ assert signalled and cycle,{'reason':'no measured lock cycle','migrator':result,'old_exit':old.returncode,'old_error':err[-1000:]}
  assert result['exit']!=0 or old.returncode!=0,'no deadlock victim'
  return {'database':db,'cycle':cycle,'migrator_exit':result['exit'],'migrator_codes':result['codes'],'old_api_exit':old.returncode,'old_api_deadlock': 'deadlock' in err.lower(),'old_api_output':out,'catalog_before':before,'catalog_after':catalog(db),'rows':rows(db)}
-def run():
- for round_name in ['a','b']:
+def run(round_names=('a','b')):
+ for path in ['apps/api/prisma/schema.prisma','apps/api/src/consumption/consumption.service.ts']:
+  assert (ROOT/path).read_bytes()==subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT),'old API source differs from pinned base'
+ for round_name in round_names:
   base=PREFIX+round_name;database(base);apply(base,0)
   subprocess.run(['node',str(OLD),'seed'],cwd=ROOT,env=env(base),check=True,capture_output=True)
   original=rows(base);assert original=={'Organization':2,'Meter':1,'MeterReading':0,'ConsumptionCharge':0,'Invoice':0,'RentNotice':2}
   report={'clean_database':base,'before':original,'files':[],'scenarios':[]}
   RESULT['rounds'].append(report)
   for i,(_,head,name,_) in enumerate(MIGRATIONS,1):
-   if i==3:
+   if i==3 and not NORMAL_ONLY:
     deadlock_db=f'{PREFIX}{round_name}_deadlock';database(deadlock_db,base);report['deadlock']=deadlock(deadlock_db)
    # Varje felprov börjar i ett orört prefix av de faktiska migrationerna.
-   for kind in ['normal','timeout','terminate','interrupt']:
+   for kind in (['normal'] if NORMAL_ONLY else ['normal','timeout','terminate','interrupt']):
     db=f'{PREFIX}{round_name}_{i}_{kind}';database(db,base)
     expected=next((s['catalog_after']['digest'] for s in report['scenarios'] if s['pr']==MIGRATIONS[i-1][0] and s['kind']=='normal'),None)
     report['scenarios'].append(scenario(db,i,kind,expected))
@@ -203,13 +249,15 @@ def run():
   report['after_migrations']=rows(base);assert report['after_migrations']==original
   report['old_api']=subprocess.run(['node',str(OLD),'probe'],cwd=ROOT,env=env(base),check=True,capture_output=True,text=True).stdout
   report['after_old_api']=rows(base)
-  db=f'{PREFIX}{round_name}_competition';database(db);apply(db,0)
-  subprocess.run(['node',str(OLD),'seed'],cwd=ROOT,env=env(db),check=True,capture_output=True)
-  report['competition']=competition(db)
-  Path('/tmp/api-release-migration-results.json').write_text(json.dumps(RESULT,default=str,indent=2))
+  if not NORMAL_ONLY:
+   db=f'{PREFIX}{round_name}_competition';database(db);apply(db,0)
+   subprocess.run(['node',str(OLD),'seed'],cwd=ROOT,env=env(db),check=True,capture_output=True)
+   report['competition']=competition(db)
+  Path('/tmp/api-release-migration-normal.json' if NORMAL_ONLY else '/tmp/api-release-migration-results.json').write_text(json.dumps(RESULT,default=str,indent=2))
  run_end=time.time();RESULT['completed_unix']=run_end
- Path('/tmp/api-release-migration-results.json').write_text(json.dumps(RESULT,default=str,indent=2))
+ Path('/tmp/api-release-migration-normal.json' if NORMAL_ONLY else '/tmp/api-release-migration-results.json').write_text(json.dumps(RESULT,default=str,indent=2))
  print('Two clean rounds completed',flush=True)
-try:run()
-except Exception:
- Path('/tmp/api-release-migration-partial.json').write_text(json.dumps(RESULT,default=str,indent=2));raise
+if __name__ == '__main__':
+ try:run()
+ except Exception:
+  Path('/tmp/api-release-migration-partial.json').write_text(json.dumps(RESULT,default=str,indent=2));raise

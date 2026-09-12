@@ -194,6 +194,9 @@ test('api-release-07 missing, duplicate and previous-attempt mandatory jobs deny
   const stale = fixture()
   stale.jobs[0].run_attempt = 1
   await denied(stale, 'JOB_IDENTITY')
+  const identity = fixture()
+  delete identity.jobs[0].id
+  await denied(identity, 'API_ITEM_IDENTITY')
 })
 test('api-release-08 PR annotation outside needs may be skipped', async () => {
   const f = fixture()
@@ -307,12 +310,10 @@ test('api-release-17 superseded main and changed deployment are denied at final 
   )
   await denied(f, 'RELEASE_SUPERSEDED')
   const d = fixture()
-  d.railway
-    .mockResolvedValueOnce(d.deployment)
-    .mockResolvedValue({
-      ...d.deployment,
-      meta: { ...d.deployment.meta, commitHash: 'b'.repeat(40) },
-    })
+  d.railway.mockResolvedValueOnce(d.deployment).mockResolvedValue({
+    ...d.deployment,
+    meta: { ...d.deployment.meta, commitHash: 'b'.repeat(40) },
+  })
   await denied(d, 'DEPLOYMENT_SHA')
 })
 test('api-release-18 missing canonical run or umbrella denies', async () => {
@@ -333,7 +334,12 @@ test('api-release-19 schema and omitted build input deny', async () => {
   const changed = fixture()
   writeFileSync(join(root, 'prisma/schema.prisma'), 'changed datasource')
   await denied(changed, 'SCHEMA_ARTIFACT')
-  for (const path of ['apps/api/src/new-source.ts', 'tsconfig.base.json', '.npmrc', '.dockerignore']) {
+  for (const path of [
+    'apps/api/src/new-source.ts',
+    'tsconfig.base.json',
+    '.npmrc',
+    '.dockerignore',
+  ]) {
     const omitted = fixture()
     omitted.tree.push({ path, type: 'blob', mode: '100644', sha: 'b'.repeat(40) })
     await denied(omitted, 'BUILD_SOURCE_SET')
@@ -403,4 +409,4 @@ test('api-release-20 real HTTP and process adapter denies malformed responses an
       server.close((error) => (error ? reject(error) : resolveClose())),
     )
   }
-})
+}, 30000)

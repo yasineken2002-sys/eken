@@ -209,6 +209,10 @@ async function completeList(get, path, key) {
     demand(total === data.total_count && data[key].length <= 100, 'API_LIST_CHANGED')
     all.push(...data[key])
     demand(
+      all.every((row) => Number.isSafeInteger(row?.id) && row.id > 0),
+      'API_ITEM_IDENTITY',
+    )
+    demand(
       all.length <= total && new Set(all.map((row) => row.id)).size === all.length,
       'API_DUPLICATE_LIST',
     )
