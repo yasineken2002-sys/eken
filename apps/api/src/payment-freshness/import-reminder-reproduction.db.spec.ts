@@ -8,6 +8,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { randomUUID } from 'node:crypto'
+import { BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaClient } from '@prisma/client'
 import { AccountingService } from '../accounting/accounting.service'
@@ -499,5 +500,76 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         where: { organizationId: orgId!, status: 'FAILED' },
       }),
     ).toBe(1)
+  })
+  it('F09 KÄLLSPÅR: avvisad PDF-signatur lämnar ingen importrad och når inte parsern', async () => {
+    const parse = jest.fn(async () => {
+      throw new Error('Parsern får inte nås')
+    })
+    const pdfImport = new BankStatementImportService(
+      db as never,
+      { parse } as never,
+      importer,
+      freshness,
+    )
+    await expect(
+      pdfImport.uploadAndParsePdf(Buffer.from('detta är inte en PDF'), 'fel.pdf', orgId!, null),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(parse).not.toHaveBeenCalled()
+    expect(await db.bankStatementImport.count({ where: { organizationId: orgId! } })).toBe(0)
+    expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
+    expect(
+      (await db.organization.findUniqueOrThrow({ where: { id: orgId! } })).paymentDataThrough,
+    ).toBeNull()
+  })
+
+  it('F10 KÄLLSPÅR: tom lyckad PSD2-synk skriver api-historik men inget täckningsdatum', async () => {
+    const consent = await db.bankConsent.create({
+      data: {
+        organizationId: orgId!,
+        provider: 'MOCK',
+        consentId: randomUUID(),
+        status: 'ACTIVE',
+        accessTokenEnc: crypto.encrypt('syntetisk-token'),
+      },
+    })
+    const fetchTransactions = jest.fn(async () => ({ transactions: [], cursor: 'tom-sida' }))
+    const provider: BankDataProvider = {
+      name: 'MOCK',
+      beginConsent: async () => {
+        throw new Error('Inte anropbar')
+      },
+      exchangeCallback: async () => {
+        throw new Error('Inte anropbar')
+      },
+      revokeConsent: async () => {
+        throw new Error('Inte anropbar')
+      },
+      getConsentStatus: async () => ({ status: 'ACTIVE' }),
+      listAccounts: async () => [{ accountId: 'syntetiskt-konto', currency: 'SEK' }],
+      fetchTransactions,
+    }
+    const sync = new Psd2SyncService(db as never, importer, crypto, provider)
+    expect(await sync.syncOrganization(orgId!)).toMatchObject({
+      consents: 1,
+      fetched: 0,
+      imported: 0,
+      matched: 0,
+    })
+    expect(fetchTransactions).toHaveBeenCalledTimes(1)
+    expect(await db.bankConsent.findUnique({ where: { id: consent.id } })).toMatchObject({
+      status: 'ACTIVE',
+      lastSyncedAt: NOW,
+      syncCursor: 'tom-sida',
+    })
+    expect(
+      await db.bankStatementImport.findMany({
+        where: { organizationId: orgId! },
+        select: { status: true, fileType: true, transactionCount: true },
+      }),
+    ).toEqual([{ status: 'CONFIRMED', fileType: 'api', transactionCount: 0 }])
+    expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
+    expect(
+      (await db.organization.findUniqueOrThrow({ where: { id: orgId! } })).paymentDataThrough,
+    ).toBeNull()
   })
 })
