@@ -1,7 +1,7 @@
 # Bekräftelsetext — avgränsad rättning av #867 b
 
-Fast bas: 561b382b6cbddfccba719613a5ea3aa2f0f7e695 (#883).
-Egen gren: codex/agent3-bekraftelsetext. Äldre grenar förblir frysta.
+Fast PR-bas: 3fa4b55128143d5bd70f696178679f2a99f22f29 (#867, codex/agent3-svarsgrind).
+Egen gren: codex/agent3-bekraftelsetext-867. Befintliga grenar förblir orörda.
 
 Facit, skrivet före produktionsändringen:
 
@@ -36,9 +36,9 @@ Avgränsning: rättning av #867 b, tappad förklaring vid SSE-bekräftelse. Den 
 | apps/api/src/ai/consumption-follow-up-chat.spec.ts:380      | Fyra nya prov genom den verkliga kontrollern: ordning, väntande registrering, registreringsfel och textlöst förslag.                 |
 | apps/web/src/features/ai/AiPage.pending-action.spec.tsx:165 | Sex prov genom verklig AiPage, ConfirmationCard, QueryClient och SSE-läsare med syntetisk HTTP-ström.                                |
 
-### Före, efter och negativ kontroll
+### Ursprungliga före-/efterprov och negativ kontroll
 
-Facit och tester committades före produktionsändringen i 307e1225. Produktionsändringen säkrades i a95c048f99d629120d4539cf53b27d65f080ea94 före negativkontrollen.
+Den första arbetskopian utgick från #883. Nedanstående ursprungliga prov kördes där; omproven på rätt PR-bas redovisas separat nedan. Facit och tester committades före produktionsändringen i 307e1225. Produktionsändringen säkrades i a95c048f99d629120d4539cf53b27d65f080ea94 före negativkontrollen.
 
 | Kontroll                | Utfall                                                                                                                                |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -80,13 +80,43 @@ node --max-old-space-size=1400 node_modules/jest/bin/jest.js --runInBand --no-ca
 cd ../web
 node --max-old-space-size=1400 node_modules/vitest/vitest.mjs run src/features/ai/AiPage.pending-action.spec.tsx --maxWorkers=1 --minWorkers=1
 cd ../..
-node scripts/production-lines.mjs 561b382b6cbddfccba719613a5ea3aa2f0f7e695 HEAD
+git diff --numstat origin/codex/agent3-svarsgrind..HEAD
 ```
 
-### Pushstopp
+### Flytt till regressionskällan och båda diffmåtten
 
-Efter explicit fetch av refs/heads/main till refs/remotes/origin/main var origin/main 3b71e905d866f461f6b07211bc89b3fa88505200 och merge-base 27a720d4b6fb194fed83c760ce713c6aa70a0ad5. Kontrollens diff omfattar 462 filer: våra sju filer plus 455 ärvda filer. Samtliga 455 är byteoförändrade mellan den fasta basen och vår HEAD.
+Användarens besked ändrar målgrenen till #867:s gren, där regressionen infördes. En ny worktree skapades från dess exakta HEAD. Alla tre egna commits behövdes: 850e9f7d ensam innehåller inte hela kodändringen. De applicerades med vanliga cherry-picks:
 
-Användarens regel kräver stopp när diffen mot main innehåller filer vi inte rört. Tidigare undantag för inventeringen återanvänds inte som generellt tillstånd. Ingen push eller ny PR har därför genomförts; ingen ny CI-status kan redovisas. Färdigt förslag är en utkast-PR från codex/agent3-bekraftelsetext mot codex/agent3-rendering-2-2-real, efter uttryckligt undantag för dessa oförändrade ärvda filer. Ingen merge.
+| Ursprunglig commit                       | Ny commit |
+| ---------------------------------------- | --------- |
+| 307e12251c1607ebeacf7c9a0cbbcbbf94daee39 | c6beec45  |
+| a95c048f99d629120d4539cf53b27d65f080ea94 | 8f6f4924  |
+| 850e9f7d318a3357e6e2ba6252e820ac429c6b8a | 37d5763d  |
 
-Slutlig lint och formatering är gröna. Webbens sex prov och typkontroll kördes åter efter rättningen av testets typimport, utan fel.
+Alla sex kod- och testfiler är byteidentiska med den tidigare fixen. Ingen befintlig gren har skrivits om. Rapporten uppdateras för korrekt bas och mätning.
+
+Vid mätningen: origin/main = 3b71e905d866f461f6b07211bc89b3fa88505200, merge-base = 27a720d4b6fb194fed83c760ce713c6aa70a0ad5.
+
+```sh
+git diff --name-only origin/codex/agent3-svarsgrind..HEAD
+# 7 filer: fyra produktionsfiler, två testfiler och denna rapport.
+
+git diff --name-only "$(git merge-base HEAD origin/main)"..HEAD
+# 134 filer: 7 egna och 127 ärvda.
+```
+
+Samtliga ärvda filer är oförändrade mellan PR-basen och denna gren. Ingenting har filtrerats bort för att få en kortare lista. Den rätta stackdiffen innehåller exakt de sju avsedda filerna; inga andra filer följer med rättningen.
+
+En separat läsande återgranskning på 37d5763d gav inga blockerande fynd inom rättningen: 36 tillagda plus 5 borttagna produktionsrader, oförändrad bekräftelsepayload och explicit knapptryck, höjdbegränsad förklaring och inga ärvda borttagningar.
+
+Global SSE-buffring, blockerande fynd 1, kvarstår. Framåtpropagering till #877, #878, #879, #881, #882 och #883 är inte utförd och kräver separat beställning. Ingen merge eller aktivering ingår. Kodgodkännande från ägarens granskare inväntas när utkast-PR finns.
+
+### Omprov på #867-basen
+
+På 37d5763d byggdes egna @eken/ui och @eken/shared från den nya worktreen. Två shared-filer skiljer från #883, så senare grenars byggda shared-paket återanvändes inte. Installerade tredjepartsberoenden återanvändes; paketmanifest och låsfil är oförändrade.
+
+Resultat: 41/41 API-prov i tre sviter, 6/6 webbprov, grön API-typkontroll och grön webbtypkontroll. Processkontrollen var tom före varje tung körning; körningarna var sekventiella. Negativkontrollen och webbläsarbeviset ovan tillhör den första arbetskopian och påstås inte ha körts om här.
+
+Radräknaren finns ännu inte i #867. Den kördes därför läsande via exporten measure(worktree, base) ur #882:s oförändrade verktyg, pinnat till 0d048101f291cf352a730100ec96d6b042ed98a4; både production-lines.mjs och lib/source-scan.mjs verifierades byteidentiska mot Git-objekten. Inget verktyg har kopierats in i denna PR. Utfallet är 41 ändrade produktionsrader (36 + 5), 335 testrader och noll binärfiler. Dokumentationsrader särredovisas i PR-texten.
+
+Slutlig lint, formatering och git diff --check körs före leverans. Lokal verifiering ersätter inte kommande CI eller ägarens kodgranskning.
