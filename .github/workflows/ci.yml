@@ -167,6 +167,9 @@ jobs:
       - name: Verify no tests were skipped
         run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report.json
 
+      - name: Require executed API release gate behavior tests
+        run: node apps/api/scripts/check-release-tests.cjs apps/api/jest-report.json
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest
@@ -1972,6 +1975,14 @@ jobs:
 
       - name: Build the API
         run: pnpm --filter @eken/api build
+
+      # Inaktivt emballeringsprov på den verkliga byggutdatan; ingen migrator.
+      - name: Build and verify the candidate release manifest
+        env:
+          RAILWAY_GIT_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          node apps/api/scripts/prepare-release-artifact.cjs
+          node -e 'const g=require("./apps/api/scripts/release-gate.cjs"); const m=require("./apps/api/release-artifact.json"); g.verifyArtifact("apps/api",m); require("node:assert/strict").equal(m.revision,process.env.RAILWAY_GIT_COMMIT_SHA); console.log("Built API manifest verified; migrator not invoked")'
 
       - name: Artefakten ska ligga där migrate-and-start.sh letar
         run: |
