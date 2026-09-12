@@ -2731,7 +2731,7 @@ skarp: sexton sekventiella mergar ger sexton API-deployer och sexton
 
 **Det är MÄTT, inte härlett.** Stycket ovan bar fram till 2026-09-12 ett
 förbehåll — "obekräftat: ingen ren frontend-commit har prövats" — eftersom de tre
-mergar som mättes den dagen alla rörde API-relevanta sökvägar. #884 var proven:
+mergar som mättes den dagen alla rörde API-relevanta sökvägar. #884 var provet:
 en commit som bara rörde `CLAUDE.md`, inte en rad under `apps/` eller
 `packages/`. Den rullade ut API:t.
 
@@ -2748,6 +2748,11 @@ klar**, för en ändring som inte innehöll någon kod. Samma sha visar dessutom
 asymmetrin i ett enda fall: `deploy.yml` skrev `⏭ Ignoring the change` för web,
 admin OCH portal ("not affected"), medan Railway byggde och rullade ut. Frontend
 hoppade alltså över exakt den commit som API:t deployade.
+
+Notera att alla fyra deployjobb ändå rapporterade `success` — ett
+turbo-ignore-hopp ser ut som en grön bock, och hoppet syns BARA i loggen. Det är
+exakt kriteriet i avsnittet "Är webben ute?" ovan, och den här commiten är dess
+renaste exempel: fyra gröna jobb, noll utrullad frontend, ett utrullat API.
 
 Praktiskt betyder det två saker:
 
