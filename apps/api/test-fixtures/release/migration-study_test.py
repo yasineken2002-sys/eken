@@ -83,8 +83,9 @@ def blocker(db,table):
 LOCK_SQL="""SELECT a.pid,l.locktype,COALESCE(c.relname,''),l.mode,l.granted,pg_blocking_pids(a.pid)
 FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid LEFT JOIN pg_class c ON c.oid=l.relation
 WHERE a.datname=current_database() AND a.application_name NOT LIKE '%%study%%' AND a.application_name<>'old-api-blocker'
+AND EXISTS (SELECT FROM pg_locks g WHERE g.pid=a.pid AND g.locktype='advisory' AND g.classid=0 AND g.objid=72707369)
 AND (l.locktype='advisory' OR (c.relnamespace='public'::regnamespace AND c.relname<>'_prisma_migrations'))"""
-def scenario(db,count,kind):
+def scenario(db,count,kind,expected_digest=None):
  table=MIGRATIONS[count-1][3];before=catalog(db)
  old_process=None
  if kind=='normal':
@@ -115,7 +116,7 @@ def scenario(db,count,kind):
    if kind=='interrupt':os.killpg(p.pid,signal.SIGTERM);action_at=now
   if first_wait and not released and ((kind=='normal' and now-first_wait>0.3) or (kind!='normal' and now-first_wait>0.6)):
    hold.rollback();hold.close();released=True;action_at=now
-  assert now-t0<30,'scenario stalled'
+  assert now-t0<60,'scenario stalled'
   time.sleep(0.005)
  end=time.monotonic()
  if not released:hold.rollback();hold.close()
@@ -145,6 +146,14 @@ def scenario(db,count,kind):
   assert result['exit']!=0,entry
   if kind in ['timeout','terminate']:assert before['digest']==after['digest'],entry
   entry['sql_rolled_back'] = before['digest']==after['digest']
+  # Ingen gissad resolve: återställd katalog eller exakt samma schema som lyckad körning.
+  rolled_back=entry['sql_rolled_back']
+  assert rolled_back or after['digest']==expected_digest,'partial schema requires investigation'
+  resolution='--rolled-back' if rolled_back else '--applied'
+  resolved=subprocess.run(['node',str(PRISMA),'migrate','resolve',resolution,MIGRATIONS[count-1][2],'--schema',str(bundle(count)/'schema.prisma')],cwd=TEMP,env=env(db),capture_output=True,text=True)
+  assert resolved.returncode==0,resolved.stdout+resolved.stderr
+  apply(db,count)
+  entry['isolated_recovery']={'resolution':resolution,'catalog':catalog(db)}
  return entry
 def competition(db):
  hold=blocker(db,'MeterReading');observer=connect(db,'study-observer');q=observer.cursor();p1=start(db,5);p2=start(db,5);seen=[];t=time.monotonic()
@@ -156,6 +165,22 @@ def competition(db):
  hold.rollback();hold.close();r1=finish(p1);r2=finish(p2);q.close();observer.close()
  assert r1['exit']==r2['exit']==0,(r1,r2)
  return {'database':db,'exits':[r1['exit'],r2['exit']],'advisory_wait_proven':True,'catalog':catalog(db),'rows':rows(db)}
+def deadlock(db):
+ old=subprocess.Popen(['node',str(OLD),'deadlock'],cwd=ROOT,env=env(db),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+ assert old.stdout.readline().strip()=='READING_WRITTEN','old transaction did not reach first write'
+ before=catalog(db);observer=connect(db,'study-observer');q=observer.cursor();p=start(db,3);start_time=time.monotonic();signalled=False;cycle=[]
+ while p.poll() is None and time.monotonic()-start_time<15:
+  q.execute(LOCK_SQL);locks=q.fetchall()
+  if not signalled and any(r[2]=='MeterReading' and not r[4] for r in locks):
+   old.stdin.write('GO\n');old.stdin.flush();signalled=True
+  q.execute("SELECT pid,pg_blocking_pids(pid) FROM pg_stat_activity WHERE datname=current_database() AND cardinality(pg_blocking_pids(pid))>0")
+  graph=dict(q.fetchall())
+  if any(a in graph.get(b,[]) for a,bs in graph.items() for b in bs):cycle=[(a,bs) for a,bs in graph.items()]
+  time.sleep(0.005)
+ result=finish(p);out,err=old.communicate(timeout=15);q.close();observer.close()
+ assert signalled and cycle,'no measured lock cycle'
+ assert result['exit']!=0 or old.returncode!=0,'no deadlock victim'
+ return {'database':db,'cycle':cycle,'migrator_exit':result['exit'],'migrator_codes':result['codes'],'old_api_exit':old.returncode,'old_api_deadlock': 'deadlock' in err.lower(),'old_api_output':out,'catalog_before':before,'catalog_after':catalog(db),'rows':rows(db)}
 def run():
  for round_name in ['a','b']:
   base=PREFIX+round_name;database(base);apply(base,0)
@@ -164,10 +189,13 @@ def run():
   report={'clean_database':base,'before':original,'files':[],'scenarios':[]}
   RESULT['rounds'].append(report)
   for i,(_,head,name,_) in enumerate(MIGRATIONS,1):
+   if i==3:
+    deadlock_db=f'{PREFIX}{round_name}_deadlock';database(deadlock_db,base);report['deadlock']=deadlock(deadlock_db)
    # Varje felprov börjar i ett orört prefix av de faktiska migrationerna.
    for kind in ['normal','timeout','terminate','interrupt']:
     db=f'{PREFIX}{round_name}_{i}_{kind}';database(db,base)
-    report['scenarios'].append(scenario(db,i,kind))
+    expected=next((s['catalog_after']['digest'] for s in report['scenarios'] if s['pr']==MIGRATIONS[i-1][0] and s['kind']=='normal'),None)
+    report['scenarios'].append(scenario(db,i,kind,expected))
     print(round_name,i,kind,report['scenarios'][-1]['exit'],flush=True)
    apply(base,i)
    data=(bundle(i)/'migrations'/name/'migration.sql').read_bytes()

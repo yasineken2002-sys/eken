@@ -99,7 +99,15 @@ async function probe() {
   })
   const { ConsumptionService } = require('../../src/consumption/consumption.service.ts')
   // De två tjänsterna används inte av dessa verkliga läs-/avläsningsmetoder.
-  const service = new ConsumptionService(prisma, undefined, undefined)
+  const observedPrisma = mode === 'deadlock' ? prisma.$extends({ query: { meterReading: {
+    async create({ args, query }) {
+      const result = await query(args)
+      process.stdout.write('READING_WRITTEN\n')
+      await new Promise(resolveInput => process.stdin.once('data', resolveInput))
+      return result
+    },
+  } } }) : prisma
+  const service = new ConsumptionService(observedPrisma, undefined, undefined)
   await prisma.consumptionTariff.upsert({
     where: { id: 'tariff' },
     update: {},
