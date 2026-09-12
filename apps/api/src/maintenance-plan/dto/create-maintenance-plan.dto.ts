@@ -11,10 +11,12 @@ import {
   MinLength,
 } from 'class-validator'
 import { MaintenancePlanCategory } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class CreateMaintenancePlanDto implements CreateMaintenancePlanInput {
   @IsString()
   @MinLength(3)
+  @StrictString()
   title!: string
 
   @IsUUID()
@@ -49,10 +51,12 @@ export class CreateMaintenancePlanDto implements CreateMaintenancePlanInput {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   description?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   notes?: string
 }
 

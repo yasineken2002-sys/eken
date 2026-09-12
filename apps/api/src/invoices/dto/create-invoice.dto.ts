@@ -5,15 +5,19 @@ import {
   IsIn,
   IsOptional,
   IsUUID,
-  IsDateString,
   ValidateNested,
   ArrayMinSize,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class InvoiceLineDto {
-  @ApiProperty() @IsString() description!: string
+  @ApiProperty()
+  @IsString()
+  @StrictString()
+  description!: string
   @ApiProperty() @IsNumber() quantity!: number
   @ApiProperty() @IsNumber() unitPrice!: number
   @ApiProperty({ enum: [0, 6, 12, 25] }) @IsIn([0, 6, 12, 25]) vatRate!: number
@@ -49,16 +53,18 @@ export class CreateInvoiceDto {
   @ArrayMinSize(1)
   lines!: InvoiceLineDto[]
 
-  @ApiProperty() @IsDateString() dueDate!: string
-  @ApiProperty() @IsDateString() issueDate!: string
+  @ApiProperty() @StrictIsoDatum() dueDate!: string
+  @ApiProperty() @StrictIsoDatum() issueDate!: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   reference?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   notes?: string
 }

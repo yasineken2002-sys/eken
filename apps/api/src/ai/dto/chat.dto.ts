@@ -1,5 +1,6 @@
 import { CHAT_MESSAGE_MAX_LENGTH, CHAT_MAX_ATTACHMENTS } from '@eken/shared'
 import type { ChatInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 import {
   IsString,
   IsOptional,
@@ -26,6 +27,7 @@ export class ChatDto implements ChatInput {
   @IsString()
   @MinLength(1)
   @MaxLength(CHAT_MESSAGE_MAX_LENGTH)
+  @StrictString()
   message!: string
 
   @IsUUID()

@@ -1,6 +1,7 @@
 import { IsString, MaxLength, MinLength } from 'class-validator'
 
 import type { AnswerQuestionInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../../common/contract/strict-string.decorator'
 
 /**
  * Svaret på en fråga från agenten.
@@ -13,6 +14,7 @@ export class AnswerQuestionDto implements AnswerQuestionInput {
   @IsString()
   @MinLength(1)
   @MaxLength(200)
+  @StrictString()
   svar!: string
 }
 

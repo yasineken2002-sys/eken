@@ -2,6 +2,7 @@ import { IsEnum, IsString, MaxLength, MinLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { AccountingPeriodEventReasonCategory } from '@prisma/client'
 import type { ReopenPeriodInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * Kroppen till POST /accounting/periods/:year/:month/reopen.
@@ -28,6 +29,7 @@ export class ReopenPeriodDto implements ReopenPeriodInput {
       'Skälet måste vara minst 10 tecken — det sparas i historiken och ska gå att förstå i efterhand',
   })
   @MaxLength(500, { message: 'Skälet får vara högst 500 tecken' })
+  @StrictString()
   reason!: string
 
   /**

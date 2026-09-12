@@ -1,16 +1,8 @@
 import type { IssueKeysInput, SammaNycklar } from '@eken/shared'
 import { KeyType } from '@prisma/client'
-import {
-  IsEnum,
-  IsInt,
-  IsISO8601,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  MaxLength,
-  Min,
-} from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
 
 export class IssueKeysDto implements IssueKeysInput {
   @IsUUID()
@@ -29,22 +21,25 @@ export class IssueKeysDto implements IssueKeysInput {
   @IsString()
   @IsOptional()
   @MaxLength(120)
+  @StrictString()
   label?: string
 
   // Om någon annan än hyresgästen fysiskt kvitterade (sambo/firma).
   @IsString()
   @IsOptional()
   @MaxLength(120)
+  @StrictString()
   issuedToName?: string
 
   // Frivilligt utlämningsdatum — annars sätts now() i servicen.
-  @IsISO8601()
+  @StrictIsoDatum()
   @IsOptional()
   issuedAt?: string
 
   @IsString()
   @IsOptional()
   @MaxLength(1000)
+  @StrictString()
   notes?: string
 }
 

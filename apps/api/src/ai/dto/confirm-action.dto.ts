@@ -1,9 +1,11 @@
 import type { ConfirmActionInput, SammaNycklar } from '@eken/shared'
 import { IsString, IsBoolean, IsUUID, IsObject } from 'class-validator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class ConfirmActionDto implements ConfirmActionInput {
   @IsString()
+  @StrictString()
   toolName!: string
 
   @IsObject()

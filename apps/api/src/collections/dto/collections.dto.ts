@@ -6,6 +6,7 @@ import type {
   SammaNycklar,
 } from '@eken/shared'
 import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * INKASSOFLÖDETS KROPPAR.
@@ -29,6 +30,7 @@ export class PauseRemindersDto implements PauseRemindersInput {
   @IsOptional()
   @IngenKoercion()
   @IsString()
+  @StrictString()
   reason?: string
 }
 
@@ -36,6 +38,7 @@ export class MarkSentDto implements MarkSentInput {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  @StrictString()
   note?: string
 }
 

@@ -2,15 +2,18 @@ import { IsString, MinLength } from 'class-validator'
 import { ApiProperty } from '@nestjs/swagger'
 import { IsStrongPassword } from './password.decorators'
 import type { SammaNycklar, ResetPasswordRequestInput } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class ResetPasswordDto implements ResetPasswordRequestInput {
   @ApiProperty()
   @IsString()
   @MinLength(32)
+  @StrictString()
   token!: string
 
   @ApiProperty({ minLength: 10 })
   @IsStrongPassword()
+  @StrictString()
   newPassword!: string
 }
 

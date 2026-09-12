@@ -1,7 +1,6 @@
 import type { RegisterPaymentInput, SammaNycklar } from '@eken/shared'
 import { SEN_BOKFORING_MIN_SKAL, SEN_BOKFORING_MAX_SKAL } from '@eken/shared'
 import {
-  IsDateString,
   IsEnum,
   IsNumber,
   IsOptional,
@@ -13,6 +12,8 @@ import {
 import { Transform } from 'class-transformer'
 import { PaymentMethod } from '@prisma/client'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * Manuell betalningsregistrering på en faktura. Till skillnad från den generiska
@@ -62,16 +63,18 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
   @IsOptional()
   @IsString()
   @MaxLength(60)
+  @StrictString()
   paymentMethodRaw?: string
 
   @ApiPropertyOptional({ description: 'OCR/referens' })
   @IsOptional()
   @IsString()
+  @StrictString()
   reference?: string
 
   @ApiPropertyOptional({ description: 'Betalningsdatum (ISO 8601). Standard: nu.' })
   @IsOptional()
-  @IsDateString()
+  @StrictIsoDatum()
   paidAt?: string
 
   /**
@@ -96,6 +99,7 @@ export class RegisterPaymentDto implements RegisterPaymentInput {
       'Skälet måste vara minst 10 tecken — det sparas i verifikatets spår och ska gå att förstå i efterhand',
   })
   @MaxLength(SEN_BOKFORING_MAX_SKAL, { message: 'Skälet får vara högst 500 tecken' })
+  @StrictString()
   senBokforingSkal?: string
 }
 

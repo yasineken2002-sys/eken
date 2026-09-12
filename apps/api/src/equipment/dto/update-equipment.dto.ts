@@ -1,4 +1,5 @@
 import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * VAD SOM INTE GÅR ATT ÄNDRA, och varför.
@@ -18,6 +19,7 @@ export class UpdateEquipmentDto {
   @IsString()
   @IsOptional()
   @MaxLength(120)
+  @StrictString()
   label?: string
 
   @IsInt()

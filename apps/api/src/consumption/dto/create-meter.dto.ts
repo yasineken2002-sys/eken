@@ -1,6 +1,8 @@
 import type { CreateMeterInput, SammaNycklar } from '@eken/shared'
-import { IsEnum, IsOptional, IsString, IsUUID, IsDateString, MaxLength } from 'class-validator'
+import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator'
 import { MeterType } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -22,25 +24,29 @@ export class CreateMeterDto implements CreateMeterInput {
   // Fri text, källagnostisk: "kWh" | "m³" | "MWh".
   @IsString()
   @MaxLength(16)
+  @StrictString()
   unitOfMeasure!: string
 
   @IsString()
   @IsOptional()
   @MaxLength(64)
+  @StrictString()
   serialNumber?: string
 
   // Källagnostik: extern koppling för framtida leverantörs-API.
   @IsString()
   @IsOptional()
   @MaxLength(64)
+  @StrictString()
   provider?: string
 
   @IsString()
   @IsOptional()
   @MaxLength(128)
+  @StrictString()
   externalId?: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   installedAt?: string
 }

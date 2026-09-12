@@ -1,6 +1,7 @@
 import { IsString, MaxLength, MinLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import type { ReverseEntryInput, SammaNycklar } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * Kroppen till POST /accounting/journal/:id/reverse.
@@ -22,6 +23,7 @@ export class ReverseEntryDto implements ReverseEntryInput {
     message: 'Skälet måste vara minst 10 tecken — det blir rättelsens beskrivning i huvudboken',
   })
   @MaxLength(300, { message: 'Skälet får vara högst 300 tecken' })
+  @StrictString()
   reason!: string
 }
 

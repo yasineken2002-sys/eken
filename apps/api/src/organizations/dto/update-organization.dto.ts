@@ -6,7 +6,6 @@ import {
   IsNumber,
   IsBoolean,
   IsEnum,
-  IsDateString,
   Matches,
   Min,
   Max,
@@ -14,10 +13,13 @@ import {
 import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
 import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @IsString()
   @IsOptional()
+  @StrictString()
   bankgiro?: string
 
   @IsNumber()
@@ -30,6 +32,7 @@ export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @Matches(/^#[0-9A-Fa-f]{6}$/, {
     message: `invoiceColor måste vara en giltig hex-färg, t.ex. ${DEFAULT_BRAND_COLOR}`,
   })
+  @StrictString()
   invoiceColor?: string
 
   @IsOptional()
@@ -48,6 +51,7 @@ export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @Matches(/^#[0-9A-Fa-f]{6}$/, {
     message: 'brandSecondaryColor måste vara en giltig hex-färg, t.ex. #2563EB',
   })
+  @StrictString()
   brandSecondaryColor?: string
 
   @IsBoolean()
@@ -140,6 +144,7 @@ export class UpdateOrganizationDto implements UpdateOrganizationInput {
 
   @IsString()
   @IsOptional()
+  @StrictString()
   collectionAgencyName?: string
 
   // ── Skatteinformation (F-skatt + moms) ──────────────────────────────────
@@ -152,12 +157,13 @@ export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @StrictBoolean()
   hasFSkatt?: boolean
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   fSkattApprovedDate?: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   vatNumber?: string
 
   // Momsredovisningsperiod (SFL 26 kap). Styr enbart hur berörda momsperioder

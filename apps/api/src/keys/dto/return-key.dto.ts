@@ -1,15 +1,18 @@
 import type { ReturnKeyInput, SammaNycklar } from '@eken/shared'
-import { IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class ReturnKeyDto implements ReturnKeyInput {
   // Frivilligt återlämningsdatum — annars sätts now() i servicen.
-  @IsISO8601()
+  @StrictIsoDatum()
   @IsOptional()
   returnedAt?: string
 
   @IsString()
   @IsOptional()
   @MaxLength(1000)
+  @StrictString()
   notes?: string
 }
 

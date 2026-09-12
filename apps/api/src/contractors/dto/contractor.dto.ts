@@ -20,6 +20,7 @@ import type {
 } from '@eken/shared'
 import { MAINTENANCE_CATEGORIES } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * HANTVERKARREGISTRET — formen bor i @eken/shared, gränserna här.
@@ -33,12 +34,14 @@ export class CreateContractorDto implements CreateContractorInput {
   @IsString()
   @MinLength(2)
   @MaxLength(200)
+  @StrictString()
   name!: string
 
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
+  @StrictString()
   contactPerson?: string
 
   @IsOptional()
@@ -49,12 +52,14 @@ export class CreateContractorDto implements CreateContractorInput {
   @IsString()
   @MinLength(1)
   @MaxLength(40)
+  @StrictString()
   phone?: string
 
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(20)
+  @StrictString()
   orgNumber?: string
 
   @IsOptional()
@@ -66,6 +71,7 @@ export class CreateContractorDto implements CreateContractorInput {
   @IsOptional()
   @IsString()
   @MaxLength(4000)
+  @StrictString()
   notes?: string
 
   // Se `no-coercion.decorator.ts`: utan den gör pipens implicita konvertering
@@ -82,12 +88,14 @@ export class UpdateContractorDto implements UpdateContractorInput {
   @IsString()
   @MinLength(2)
   @MaxLength(200)
+  @StrictString()
   name?: string
 
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
+  @StrictString()
   contactPerson?: string
 
   @IsOptional()
@@ -98,12 +106,14 @@ export class UpdateContractorDto implements UpdateContractorInput {
   @IsString()
   @MinLength(1)
   @MaxLength(40)
+  @StrictString()
   phone?: string
 
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(20)
+  @StrictString()
   orgNumber?: string
 
   @IsOptional()
@@ -115,6 +125,7 @@ export class UpdateContractorDto implements UpdateContractorInput {
   @IsOptional()
   @IsString()
   @MaxLength(4000)
+  @StrictString()
   notes?: string
 
   @IsOptional()

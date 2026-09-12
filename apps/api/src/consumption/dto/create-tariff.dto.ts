@@ -1,15 +1,8 @@
 import type { CreateTariffInput, SammaNycklar } from '@eken/shared'
-import {
-  IsEnum,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  IsDateString,
-  MaxLength,
-  Min,
-} from 'class-validator'
+import { IsEnum, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator'
 import { MeterType, TariffScope } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -51,7 +44,7 @@ export class CreateTariffDto implements CreateTariffInput {
 
   // Tariffen gäller från detta datum. En tidigare gällande tariff (validTo=null)
   // för samma scope/mål/meterType stängs automatiskt dagen innan (historik).
-  @IsDateString()
+  @StrictIsoDatum()
   validFrom!: string
 
   // Beräkningsgrund (JB 12:19): fri dokumentationstext om hur vidaredebiteringen
@@ -59,6 +52,7 @@ export class CreateTariffDto implements CreateTariffInput {
   @IsString()
   @IsOptional()
   @MaxLength(2000)
+  @StrictString()
   calculationBasis?: string
 }
 

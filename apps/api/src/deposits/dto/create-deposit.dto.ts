@@ -1,5 +1,6 @@
 import type { CreateDepositInput, SammaNycklar } from '@eken/shared'
 import { IsUUID, IsNumber, IsOptional, IsString, Min, MaxLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 // ── KONTRAKTET MOT WEBBEN ───────────────────────────────────────────────────
 //
@@ -22,6 +23,7 @@ export class CreateDepositDto implements CreateDepositInput {
   @IsString()
   @IsOptional()
   @MaxLength(1000)
+  @StrictString()
   notes?: string
 }
 

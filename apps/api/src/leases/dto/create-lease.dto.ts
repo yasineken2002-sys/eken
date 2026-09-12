@@ -2,9 +2,10 @@ import type { SammaNycklar, CreateLeaseInput } from '@eken/shared'
 import { CreateLeaseSchema } from '@eken/shared'
 import { UppfyllerSchemat } from '../../common/contract/uppfyller-schemat.decorator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 import {
   IsUUID,
-  IsDateString,
   IsNumber,
   IsOptional,
   IsEnum,
@@ -23,10 +24,10 @@ export class CreateLeaseDto implements CreateLeaseInput {
   @IsUUID()
   tenantId!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   startDate!: string
 
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   endDate?: string
 
@@ -81,11 +82,17 @@ export class CreateLeaseDto implements CreateLeaseInput {
   @IsNumber() @Min(0) @IsOptional() garageFee?: number
 
   // ── Användning, husdjur, andrahand, försäkring ─────────────────────────
-  @IsString() @IsOptional() usagePurpose?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  usagePurpose?: string
   @IsEnum(['ALLOWED', 'REQUIRES_APPROVAL', 'NOT_ALLOWED'])
   @IsOptional()
   petsAllowed?: 'ALLOWED' | 'REQUIRES_APPROVAL' | 'NOT_ALLOWED'
-  @IsString() @IsOptional() petsApprovalNotes?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  petsApprovalNotes?: string
   @StrictBoolean() @IsBoolean() @IsOptional() sublettingAllowed?: boolean
   @StrictBoolean() @IsBoolean() @IsOptional() requiresHomeInsurance?: boolean
 
@@ -94,16 +101,25 @@ export class CreateLeaseDto implements CreateLeaseInput {
   @IsOptional()
   indexClauseType?: 'NONE' | 'KPI' | 'NEGOTIATED' | 'MARKET_RENT'
   @IsInt() @Min(1900) @Max(2100) @IsOptional() indexBaseYear?: number
-  @IsString() @IsOptional() indexAdjustmentDate?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  indexAdjustmentDate?: string
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMaxIncrease?: number
   @IsNumber() @Min(0) @Max(100) @IsOptional() indexMinIncrease?: number
-  @IsString() @IsOptional() indexNotes?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  indexNotes?: string
 
   // ── Övriga villkor / särskilda bestämmelser (Kontraktsmall 2.0) ────────
   // Fritextfält för egna villkor utöver standardparagraferna. Renderas
   // som egen § "Övriga villkor & särskilda bestämmelser" i kontraktet
   // när det är ifyllt.
-  @IsString() @IsOptional() specialTerms?: string
+  @IsString()
+  @IsOptional()
+  @StrictString()
+  specialTerms?: string
 }
 
 /** NYCKELPARITET mot det delade schemat — se övriga DTO:er. */

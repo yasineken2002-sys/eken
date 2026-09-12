@@ -4,7 +4,6 @@ import {
   IsEmail,
   IsOptional,
   IsUUID,
-  IsDateString,
   IsNumber,
   IsDefined,
   IsObject,
@@ -13,6 +12,8 @@ import {
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // Hyresgäst kan inte längre skapas fristående – ett kontrakt mot en enhet
 // är obligatoriskt. Datamodellen är: Org → Property → Unit → Lease → Tenant.
@@ -22,11 +23,11 @@ export class CreateTenantLeaseDto {
   unitId!: string
 
   @ApiProperty()
-  @IsDateString()
+  @StrictIsoDatum()
   startDate!: string
 
   @ApiProperty({ required: false })
-  @IsDateString()
+  @StrictIsoDatum()
   @IsOptional()
   endDate?: string
 
@@ -46,6 +47,7 @@ export class CreateTenantLeaseDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   specialTerms?: string
 }
 
@@ -57,16 +59,19 @@ export class CreateTenantDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   firstName?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   lastName?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   companyName?: string
 
   @ApiProperty()
@@ -76,31 +81,37 @@ export class CreateTenantDto {
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   phone?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   personalNumber?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   orgNumber?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   street?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   city?: string
 
   @ApiProperty({ required: false })
   @IsString()
   @IsOptional()
+  @StrictString()
   postalCode?: string
 
   // Obligatoriskt – varje hyresgäst måste skapas i kontext av ett kontrakt.

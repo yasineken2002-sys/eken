@@ -3,7 +3,6 @@ import {
   ArrayMinSize,
   IsArray,
   IsInt,
-  IsISO8601,
   IsNumber,
   IsOptional,
   IsString,
@@ -14,6 +13,8 @@ import {
   ValidateNested,
 } from 'class-validator'
 import { Transform, Type } from 'class-transformer'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * Kroppen till POST /accounting/journal-entries — människans väg till ett fritt
@@ -51,6 +52,7 @@ export class JournalLineDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(200, { message: 'Radtexten får vara högst 200 tecken' })
+  @StrictString()
   description?: string
 }
 
@@ -65,13 +67,14 @@ export class JournalLineDto {
 // måste fortsätta importeras som VÄRDE i controllern — `import type` raderar den
 // och ValidationPipe tappar all metadata. Se CLAUDE.md:s DTO-regel.
 export class CreateJournalEntryDto implements CreateJournalEntryInput {
-  @IsISO8601({}, { message: 'Datum måste anges som ÅÅÅÅ-MM-DD' })
+  @StrictIsoDatum()
   date!: string
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString({ message: 'Ange vad verifikatet avser' })
   @MinLength(3, { message: 'Beskrivningen måste vara minst 3 tecken' })
   @MaxLength(300, { message: 'Beskrivningen får vara högst 300 tecken' })
+  @StrictString()
   description!: string
 
   @IsArray()
@@ -90,12 +93,14 @@ export class CreateJournalEntryDto implements CreateJournalEntryInput {
   @IsOptional()
   @IsString()
   @MaxLength(120, { message: 'Idempotensnyckeln får vara högst 120 tecken' })
+  @StrictString()
   idempotencyKey?: string
 
   /** Valfri bilaga (kvitto/underlag), redan uppladdad — URL:en lagras på posten. */
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  @StrictString()
   attachmentUrl?: string
 }
 

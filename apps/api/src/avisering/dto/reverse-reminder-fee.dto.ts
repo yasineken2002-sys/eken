@@ -1,4 +1,5 @@
 import { IsString, MinLength } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * G4a — skälet till att en påminnelseavgift stryks.
@@ -16,5 +17,6 @@ import { IsString, MinLength } from 'class-validator'
 export class ReverseReminderFeeDto {
   @IsString()
   @MinLength(10)
+  @StrictString()
   reason!: string
 }

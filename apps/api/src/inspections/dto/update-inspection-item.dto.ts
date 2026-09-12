@@ -3,6 +3,7 @@ import { InspectionItemCondition } from '@prisma/client'
 
 import type { UpdateInspectionItemInput, SammaNycklar } from '@eken/shared'
 import { INSPECTION_TEXT_MAX, REPAIR_COST_MAX } from '@eken/shared'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /**
  * PATCH /inspections/:id/items/:itemId
@@ -25,6 +26,7 @@ export class UpdateInspectionItemDto implements UpdateInspectionItemInput {
   @IsString()
   @MaxLength(INSPECTION_TEXT_MAX)
   @IsOptional()
+  @StrictString()
   notes?: string
 
   @IsNumber()

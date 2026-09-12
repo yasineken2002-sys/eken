@@ -3,6 +3,9 @@ import { Injectable, Logger } from '@nestjs/common'
 import { formatCurrency } from '@eken/shared'
 
 import { PrismaService } from '../../../common/prisma/prisma.service'
+import { enqueueSafely } from '../../../common/queue/enqueue-safety'
+import { AiExecutionDryRunQueue } from '../../execution-dryrun/dryrun.queue'
+import { QUEUE_AI_EXECUTION_DRYRUN } from '../../execution-dryrun/dryrun.types'
 import { AiUsageService } from '../../usage/ai-usage.service'
 import { AiQuotaService } from '../../usage/ai-quota.service'
 import { rentNoticePayableTotal } from '../../../common/utils/rent-notice-total.util'
@@ -83,6 +86,7 @@ export class PaymentShadowService {
     private readonly prisma: PrismaService,
     private readonly usage: AiUsageService,
     private readonly quota: AiQuotaService,
+    private readonly dryrun: AiExecutionDryRunQueue,
   ) {}
 
   /**
@@ -451,6 +455,14 @@ export class PaymentShadowService {
           ...(f.vald?.motpartId ? { tenantId: f.vald.motpartId } : {}),
         },
         select: { id: true },
+      })
+      // Förslaget är sparat före köandet. Vid köfel fyller torrlägets befintliga
+      // svep luckan; betalningsförslaget får inte gå förlorat för att Redis är nere.
+      await enqueueSafely(() => this.dryrun.enqueue({ organizationId, assignmentId: skapad.id }), {
+        queue: QUEUE_AI_EXECUTION_DRYRUN,
+        jobType: 'dryrun-assignment',
+        organizationId,
+        logger: this.logger,
       })
       return { utfall: 'SKAPAD', assignmentId: skapad.id }
     } catch (err: unknown) {

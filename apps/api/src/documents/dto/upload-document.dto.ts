@@ -1,13 +1,16 @@
 import { IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator'
 import { DocumentCategory } from '@prisma/client'
+import { StrictString } from '../../common/contract/strict-string.decorator'
 
 export class UploadDocumentDto {
   @IsString()
   @MinLength(1)
+  @StrictString()
   name!: string
 
   @IsString()
   @IsOptional()
+  @StrictString()
   description?: string
 
   @IsEnum(DocumentCategory)

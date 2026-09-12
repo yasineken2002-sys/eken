@@ -1,4 +1,6 @@
-import { IsISO8601, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator'
+import { IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator'
+import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * RÄTTELSE — en NY händelse som pekar tillbaka, aldrig en UPDATE.
@@ -18,7 +20,7 @@ export class CorrectEventDto {
   @IsUUID()
   correctsId!: string
 
-  @IsISO8601()
+  @StrictIsoDatum()
   occurredAt!: string
 
   @IsUUID()
@@ -33,10 +35,12 @@ export class CorrectEventDto {
   @IsString()
   @IsOptional()
   @MaxLength(500)
+  @StrictString()
   attachmentUrl?: string
 
   /** SKÄLET. Obligatoriskt — en rättelse utan skäl är bara en andra version. */
   @IsString()
   @MaxLength(1000)
+  @StrictString()
   note!: string
 }
