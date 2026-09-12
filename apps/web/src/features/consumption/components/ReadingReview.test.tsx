@@ -79,3 +79,24 @@ it('skiljer behörighetsfel från tom data och serverfel', () => {
   expect(screen.queryByRole('button')).toBeNull()
   expect(screen.queryByText('Inga avläsningar att granska ännu.')).toBeNull()
 })
+
+it.each([false, true])('visar luckans egna datum som separat upplysning, med hopp=%s', (spike) => {
+  const readings = Array.from({ length: 4 }, (_, i) => ({
+    id: String(i + 1),
+    organizationId: 'o',
+    meterId: 'm',
+    value: i === 3 && spike ? 1620 : 60,
+    readingType: 'PERIOD_VOLUME' as const,
+    periodStart: '2026-0' + (i + 1) + '-15',
+    periodEnd: '2026-0' + (i + 1) + '-20',
+  }))
+  render(<ReadingReviewContent meterLabel={label} readings={readings} />)
+  const summary = screen.getByText('Tidsluckor i periodunderlaget (3)')
+  const details = summary.closest('details')!
+  expect(details.open).toBe(false)
+  expect(details.textContent).toContain('2026-01-21 – 2026-02-14 (25 dagar)')
+  expect(details.textContent).toContain('uppskattar ingen förbrukning')
+  expect(details.textContent).not.toContain('gånger medianen')
+  expect(screen.queryByText(/Förbrukningen per dag är 27 gånger/) !== null).toBe(spike)
+  expect(screen.queryByRole('button')).toBeNull()
+})

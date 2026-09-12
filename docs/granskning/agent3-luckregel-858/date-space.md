@@ -1,0 +1,302 @@
+# Datumrymden för avläsningsgranskningen
+
+## Mätning före nytt designval
+
+Basen är 9295e013303c4de21f8eb947e3812e05d6f693e3. Första #888-fixen är 8c6f850111b7e378d653ee781abd7e6071f3e32c. Båda analysfilerna är byteidentiska, hashkontrollerade testfixturer; deras resultat hålls isär från den aktuella kandidatens.
+
+ReadingForm.tsx:228–247 har tre redigerbara date-fält utan min/max. CreateReadingSchema, packages/shared/src/schemas/index.ts:1151–1168, kräver datum och slut >= start. Den kräver varken start den första, slut i samma månad, eller att readingDate ligger i perioden. MeterReading.periodStart/periodEnd är @db.Date (schema.prisma:6173–6174). Ingen lagring eller backendacceptans har körts i denna mätning.
+
+Matrisen korsar samtliga 3 startformer × 4 slutformer × 3 avstånd × 2 typer × 3 kalender-/idag-kontexter: **216 axelkombinationer, 150 unika typ+periodserier**. Detta är ändliga ekvivalensklasser, inte ett påstående om att alla kalenderdatum är uttömda. Start=first/15:e/last; end=today/last/same/next månads 10:e. Successive använder efterföljande månader; skip-month hoppar över en månad inför sista observationen; same-month upprepar föregående månad med samma slutdatum. Två extra fall prövar skilda slutdatum inom samma månad, två prövar readingDate både före och efter perioden.
+
+jan20 börjar januari 2026 med idag den 20:e; jan02 med idag den 2:a; nov28 börjar november 2027 med idag den 28:e och passerar årsskifte/skottår. Varje rad visar perioderna explicit. CUMULATIVE har fem observationer för fyra differenser; PERIOD_VOLUME fyra periodvolymer. Tre dagsmedel är 10, sista är 270 när en giltig differens/period finns. Duplicerade periodslut har ingen väldefinierad sista differens och klassas strukturellt, inte som ett missat 27×-hopp.
+
+Alla datum och värden passerar riktiga fält, resolver, submit och handleClean. Fyra läshooks ersätts med syntetiska uppgifter; UI och schema är verkliga. Identiska formulärinmatningar återanvänder ett verifierat kvitto. Första mätningen gav 425 unika formulärsubmit, 220 observationer (216 + 4 extra) och 221 gröna instrumentprov.
+
+Kanarien kördes FÖRST separat: verkliga dagliga serier gav exakt trendAssessed=1 och HIGH_RATE på sista raden för båda typerna och alla tre laddade versionerna. Ett instrument som alltid lämnar noll fälls. Den fullständiga matrisen startar först efter dessa kontroller. Rapportskrivningen har därefter förstärkts med exakt ID-mängd: partiell/duplicerad mätning får inte kallas fullständig.
+
+| Utfall, 216 kombinationer                | Före #888 | Första #888-fixen | Ny regel |
+| ---------------------------------------- | --------: | ----------------: | -------: |
+| Formuläret avvisar minst en rad          |        24 |                24 |       24 |
+| Strukturella överlappningsfynd           |        76 |                76 |       76 |
+| HIGH_RATE                                |         6 |                67 |      116 |
+| Tyst: inga fynd och ingen trendbedömning |       110 |                49 |        0 |
+
+Per typ finns 58 accepterade, icke överlappande serier. Första fixen bedömer alla 58 CUMULATIVE men bara 9 PERIOD_VOLUME; 49 periodvolymserier förblir helt tysta. Start den 15:e samt sista dagen→nästa månads 10:e reproducerar tystnaden med 27× dagsmedel.
+
+## Designbeslut med mätningen som underlag
+
+Kalenderundantaget tas bort. PERIOD_VOLUME normaliseras som volym / inklusive kalenderdagar i just den registrerade perioden. Mellanrummet ingår inte i täljaren eller nämnaren. Det finns därför ingen matematisk grund för att godkänna den första men avvisa den femtonde. Luckor bryter inte trendjämförelsen för någon typ; ogiltiga data, typbyte, överlappning, minskande ställning och tre tidigare jämförbara dagsmedel behåller sina regler.
+
+Avstånd säger däremot något om täckning. Hela UTC-dagar mellan två periodvolymer av samma typ redovisas som separata coverageGaps med egna datum och antal dagar, inte som fel på den senare avläsningen. Ingen godtycklig tröskel för ”stor” införs; en eller flera hela luckdagar visas i en neutral, hopfällbar upplysning. Inget värde fylls i och ingen förbrukning uppskattas. Detta visar luckor mellan de registrerade perioderna i hämtat underlag, inte att ingen avläsning någonsin gjorts. Luckor före första/efter sista observationen kan inte härledas utan en separat förväntan.
+
+Dagsmedel är inte en säsongs-/beläggningsmodell. Gammal historik kan vara mindre representativ; HIGH_RATE är en uppmaning att kontrollera, aldrig bevis för fel eller debiteringsklartecken. Två meningar i analyskoden uttrycker både vad som mäts och vad jämförelsen inte kan se.
+
+Separat läsande granskning stödjer matematiken. Den upptäckte att en ny GAP-kod i findings skulle ge en bärnstensfärgad avvikelse med den aktuella avläsningens datum; därför används separat upplysning med luckans egna datum. Mätgranskningen verifierade fullständighet och källhashar, samt krävde exakt rapportmängd och att 216 kombinationer inte kallas 216 olika datumserier.
+
+## Korrigering efter separat kodgranskning
+
+En senare slut-sorterad period kan täcka hela eller en del av en tidigare skenbar lucka. A=1–2 januari, B=10–11 januari och C=1–20 januari är det konkreta motexemplet. Både helt och delvis täckning reproducerades som röda beteendeprov innan rättningen. Vid DATA eller OVERLAP avstår nu hela den berörda organisations-/mätargruppen från coverageGaps. Strukturfynden kvarstår och andra gruppers luckor påverkas inte. Detta är konservativ avhållsamhet från ett osäkert täckningsbesked, inte en komplett union-/täckningsberäkning. Avsaknad av lucklista vid strukturfynd betyder inte full täckning.
+
+Mätningen efter rättningen gav 116/116 HIGH_RATE för de accepterade, icke överlappande serierna, 76 oförändrade strukturella utfall och 24 avvisade formulärserier. Samtliga 220 ID:n, datum, acceptanskvitton och båda historiska versionsresultat jämfördes maskinellt med första mätningen och är oförändrade. Kandidatens noll tysta fall gäller detta konstruerade 27×-facit, inte alla verkliga avläsningar eller en procentsats träffsäkerhet i drift.
+
+Det gamla enhetsprovet som krävde att en PV-lucka tystar trenden har uttryckligen ändrats till det nya kontraktet. Samma avsiktliga ändring gäller de kalenderavvisande formulärproven; de används inte för att bevara en regel som mätningen visat vara fel. De båda historiska implementationsfixturerna är oförändrade.
+
+Reproducera hela matrisen (ett rapportkvitto kräver alla 220 observations-ID:n):
+
+```sh
+DATE_SPACE_REPORT=/tmp/reading-date-space.json pnpm --filter @eken/web exec vitest run src/features/consumption/lib/reading-review.date-space.test.tsx --maxWorkers=1 --minWorkers=1
+```
+
+## Fullständig tabell
+
+Y/N är verkligt formulärutfall per observation. Om någon rad avvisas körs inte analysen för den serien; strecket betyder **inte noll**. Analyscellen visar trendAssessed; findings som KOD@avläsningsnummer (ettbaserat). Samma månad med samma periodslut ger dubblett/OVERLAP, vilket hålls isär från tyst luckspärr.
+
+<!-- prettier-ignore -->
+| Kombination | Formulär | Perioder i ordning | Före | Första fixen | Ny regel | Täckningsluckor |
+| --- | --- | --- | --- | --- | --- | --- |
+| jan20/CUMULATIVE/first/today/successive | YYYYY | 2026-01-01..2026-01-20; 2026-02-01..2026-02-20; 2026-03-01..2026-03-20; 2026-04-01..2026-04-20; 2026-05-01..2026-05-20 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/first/today/skip-month | YYYYY | 2026-01-01..2026-01-20; 2026-02-01..2026-02-20; 2026-03-01..2026-03-20; 2026-04-01..2026-04-20; 2026-06-01..2026-06-20 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/first/today/same-month | YYYYY | 2026-01-01..2026-01-20; 2026-02-01..2026-02-20; 2026-03-01..2026-03-20; 2026-04-01..2026-04-20; 2026-04-01..2026-04-20 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/first/last/successive | YYYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30; 2026-05-01..2026-05-31 | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/first/last/skip-month | YYYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30; 2026-06-01..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/first/last/same-month | YYYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30; 2026-04-01..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/first/same/successive | YYYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01; 2026-05-01..2026-05-01 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/first/same/skip-month | YYYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01; 2026-06-01..2026-06-01 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/first/same/same-month | YYYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01; 2026-04-01..2026-04-01 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/first/next/successive | YYYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10; 2026-05-01..2026-06-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/first/next/skip-month | YYYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10; 2026-06-01..2026-07-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/CUMULATIVE/first/next/same-month | YYYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10; 2026-04-01..2026-05-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/middle/today/successive | YYYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20; 2026-05-15..2026-05-20 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/today/skip-month | YYYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20; 2026-06-15..2026-06-20 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/today/same-month | YYYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20; 2026-04-15..2026-04-20 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/middle/last/successive | YYYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30; 2026-05-15..2026-05-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/last/skip-month | YYYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30; 2026-06-15..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/last/same-month | YYYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30; 2026-04-15..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/middle/same/successive | YYYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15; 2026-05-15..2026-05-15 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/same/skip-month | YYYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15; 2026-06-15..2026-06-15 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/same/same-month | YYYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15; 2026-04-15..2026-04-15 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/middle/next/successive | YYYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10; 2026-05-15..2026-06-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/next/skip-month | YYYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10; 2026-06-15..2026-07-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/middle/next/same-month | YYYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10; 2026-04-15..2026-05-10 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/last/today/successive | NNNNN | 2026-01-31..2026-01-20; 2026-02-28..2026-02-20; 2026-03-31..2026-03-20; 2026-04-30..2026-04-20; 2026-05-31..2026-05-20 | — avvisad | — avvisad | — avvisad | — |
+| jan20/CUMULATIVE/last/today/skip-month | NNNNN | 2026-01-31..2026-01-20; 2026-02-28..2026-02-20; 2026-03-31..2026-03-20; 2026-04-30..2026-04-20; 2026-06-30..2026-06-20 | — avvisad | — avvisad | — avvisad | — |
+| jan20/CUMULATIVE/last/today/same-month | NNNNN | 2026-01-31..2026-01-20; 2026-02-28..2026-02-20; 2026-03-31..2026-03-20; 2026-04-30..2026-04-20; 2026-04-30..2026-04-20 | — avvisad | — avvisad | — avvisad | — |
+| jan20/CUMULATIVE/last/last/successive | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-05-31..2026-05-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/last/last/skip-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-06-30..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/last/last/same-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-04-30..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/last/same/successive | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-05-31..2026-05-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/last/same/skip-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-06-30..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/last/same/same-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-04-30..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/CUMULATIVE/last/next/successive | YYYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10; 2026-05-31..2026-06-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/last/next/skip-month | YYYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10; 2026-06-30..2026-07-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan20/CUMULATIVE/last/next/same-month | YYYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10; 2026-04-30..2026-05-10 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan20/PERIOD_VOLUME/first/today/successive | YYYY | 2026-01-01..2026-01-20; 2026-02-01..2026-02-20; 2026-03-01..2026-03-20; 2026-04-01..2026-04-20 | 0; [] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/first/today/skip-month | YYYY | 2026-01-01..2026-01-20; 2026-02-01..2026-02-20; 2026-03-01..2026-03-20; 2026-05-01..2026-05-20 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/first/today/same-month | YYYY | 2026-01-01..2026-01-20; 2026-02-01..2026-02-20; 2026-03-01..2026-03-20; 2026-03-01..2026-03-20 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/first/last/successive | YYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30 | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 0 |
+| jan20/PERIOD_VOLUME/first/last/skip-month | YYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-05-01..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 1 |
+| jan20/PERIOD_VOLUME/first/last/same-month | YYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-03-01..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/first/same/successive | YYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01 | 0; [] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/first/same/skip-month | YYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-05-01..2026-05-01 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/first/same/same-month | YYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-03-01..2026-03-01 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/first/next/successive | YYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/first/next/skip-month | YYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-05-01..2026-06-10 | 0; [OVERLAP@2, OVERLAP@3] | 0; [OVERLAP@2, OVERLAP@3] | 0; [OVERLAP@2, OVERLAP@3] | 0 |
+| jan20/PERIOD_VOLUME/first/next/same-month | YYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-03-01..2026-04-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/middle/today/successive | YYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/today/skip-month | YYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-05-15..2026-05-20 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/today/same-month | YYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-03-15..2026-03-20 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/middle/last/successive | YYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/last/skip-month | YYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-05-15..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/last/same-month | YYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-03-15..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/middle/same/successive | YYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/same/skip-month | YYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-05-15..2026-05-15 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/same/same-month | YYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-03-15..2026-03-15 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/middle/next/successive | YYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/next/skip-month | YYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-05-15..2026-06-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/middle/next/same-month | YYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-03-15..2026-04-10 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/last/today/successive | NNNN | 2026-01-31..2026-01-20; 2026-02-28..2026-02-20; 2026-03-31..2026-03-20; 2026-04-30..2026-04-20 | — avvisad | — avvisad | — avvisad | — |
+| jan20/PERIOD_VOLUME/last/today/skip-month | NNNN | 2026-01-31..2026-01-20; 2026-02-28..2026-02-20; 2026-03-31..2026-03-20; 2026-05-31..2026-05-20 | — avvisad | — avvisad | — avvisad | — |
+| jan20/PERIOD_VOLUME/last/today/same-month | NNNN | 2026-01-31..2026-01-20; 2026-02-28..2026-02-20; 2026-03-31..2026-03-20; 2026-03-31..2026-03-20 | — avvisad | — avvisad | — avvisad | — |
+| jan20/PERIOD_VOLUME/last/last/successive | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/last/last/skip-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-05-31..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/last/last/same-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-03-31..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/last/same/successive | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/last/same/skip-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-05-31..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/last/same/same-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-03-31..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan20/PERIOD_VOLUME/last/next/successive | YYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/last/next/skip-month | YYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-05-31..2026-06-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan20/PERIOD_VOLUME/last/next/same-month | YYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-03-31..2026-04-10 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/CUMULATIVE/first/today/successive | YYYYY | 2026-01-01..2026-01-02; 2026-02-01..2026-02-02; 2026-03-01..2026-03-02; 2026-04-01..2026-04-02; 2026-05-01..2026-05-02 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/first/today/skip-month | YYYYY | 2026-01-01..2026-01-02; 2026-02-01..2026-02-02; 2026-03-01..2026-03-02; 2026-04-01..2026-04-02; 2026-06-01..2026-06-02 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/first/today/same-month | YYYYY | 2026-01-01..2026-01-02; 2026-02-01..2026-02-02; 2026-03-01..2026-03-02; 2026-04-01..2026-04-02; 2026-04-01..2026-04-02 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/first/last/successive | YYYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30; 2026-05-01..2026-05-31 | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/first/last/skip-month | YYYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30; 2026-06-01..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/first/last/same-month | YYYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30; 2026-04-01..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/first/same/successive | YYYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01; 2026-05-01..2026-05-01 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/first/same/skip-month | YYYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01; 2026-06-01..2026-06-01 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/first/same/same-month | YYYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01; 2026-04-01..2026-04-01 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/first/next/successive | YYYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10; 2026-05-01..2026-06-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/first/next/skip-month | YYYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10; 2026-06-01..2026-07-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/CUMULATIVE/first/next/same-month | YYYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10; 2026-04-01..2026-05-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/middle/today/successive | NNNNN | 2026-01-15..2026-01-02; 2026-02-15..2026-02-02; 2026-03-15..2026-03-02; 2026-04-15..2026-04-02; 2026-05-15..2026-05-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/CUMULATIVE/middle/today/skip-month | NNNNN | 2026-01-15..2026-01-02; 2026-02-15..2026-02-02; 2026-03-15..2026-03-02; 2026-04-15..2026-04-02; 2026-06-15..2026-06-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/CUMULATIVE/middle/today/same-month | NNNNN | 2026-01-15..2026-01-02; 2026-02-15..2026-02-02; 2026-03-15..2026-03-02; 2026-04-15..2026-04-02; 2026-04-15..2026-04-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/CUMULATIVE/middle/last/successive | YYYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30; 2026-05-15..2026-05-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/middle/last/skip-month | YYYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30; 2026-06-15..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/middle/last/same-month | YYYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30; 2026-04-15..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/middle/same/successive | YYYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15; 2026-05-15..2026-05-15 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/middle/same/skip-month | YYYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15; 2026-06-15..2026-06-15 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/middle/same/same-month | YYYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15; 2026-04-15..2026-04-15 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/middle/next/successive | YYYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10; 2026-05-15..2026-06-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/middle/next/skip-month | YYYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10; 2026-06-15..2026-07-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/middle/next/same-month | YYYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10; 2026-04-15..2026-05-10 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/last/today/successive | NNNNN | 2026-01-31..2026-01-02; 2026-02-28..2026-02-02; 2026-03-31..2026-03-02; 2026-04-30..2026-04-02; 2026-05-31..2026-05-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/CUMULATIVE/last/today/skip-month | NNNNN | 2026-01-31..2026-01-02; 2026-02-28..2026-02-02; 2026-03-31..2026-03-02; 2026-04-30..2026-04-02; 2026-06-30..2026-06-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/CUMULATIVE/last/today/same-month | NNNNN | 2026-01-31..2026-01-02; 2026-02-28..2026-02-02; 2026-03-31..2026-03-02; 2026-04-30..2026-04-02; 2026-04-30..2026-04-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/CUMULATIVE/last/last/successive | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-05-31..2026-05-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/last/last/skip-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-06-30..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/last/last/same-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-04-30..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/last/same/successive | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-05-31..2026-05-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/last/same/skip-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-06-30..2026-06-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/last/same/same-month | YYYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30; 2026-04-30..2026-04-30 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/CUMULATIVE/last/next/successive | YYYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10; 2026-05-31..2026-06-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/last/next/skip-month | YYYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10; 2026-06-30..2026-07-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| jan02/CUMULATIVE/last/next/same-month | YYYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10; 2026-04-30..2026-05-10 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| jan02/PERIOD_VOLUME/first/today/successive | YYYY | 2026-01-01..2026-01-02; 2026-02-01..2026-02-02; 2026-03-01..2026-03-02; 2026-04-01..2026-04-02 | 0; [] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/first/today/skip-month | YYYY | 2026-01-01..2026-01-02; 2026-02-01..2026-02-02; 2026-03-01..2026-03-02; 2026-05-01..2026-05-02 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/first/today/same-month | YYYY | 2026-01-01..2026-01-02; 2026-02-01..2026-02-02; 2026-03-01..2026-03-02; 2026-03-01..2026-03-02 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/first/last/successive | YYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-04-01..2026-04-30 | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 0 |
+| jan02/PERIOD_VOLUME/first/last/skip-month | YYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-05-01..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 1 |
+| jan02/PERIOD_VOLUME/first/last/same-month | YYYY | 2026-01-01..2026-01-31; 2026-02-01..2026-02-28; 2026-03-01..2026-03-31; 2026-03-01..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/first/same/successive | YYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-04-01..2026-04-01 | 0; [] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/first/same/skip-month | YYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-05-01..2026-05-01 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/first/same/same-month | YYYY | 2026-01-01..2026-01-01; 2026-02-01..2026-02-01; 2026-03-01..2026-03-01; 2026-03-01..2026-03-01 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/first/next/successive | YYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-04-01..2026-05-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/first/next/skip-month | YYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-05-01..2026-06-10 | 0; [OVERLAP@2, OVERLAP@3] | 0; [OVERLAP@2, OVERLAP@3] | 0; [OVERLAP@2, OVERLAP@3] | 0 |
+| jan02/PERIOD_VOLUME/first/next/same-month | YYYY | 2026-01-01..2026-02-10; 2026-02-01..2026-03-10; 2026-03-01..2026-04-10; 2026-03-01..2026-04-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/middle/today/successive | NNNN | 2026-01-15..2026-01-02; 2026-02-15..2026-02-02; 2026-03-15..2026-03-02; 2026-04-15..2026-04-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/PERIOD_VOLUME/middle/today/skip-month | NNNN | 2026-01-15..2026-01-02; 2026-02-15..2026-02-02; 2026-03-15..2026-03-02; 2026-05-15..2026-05-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/PERIOD_VOLUME/middle/today/same-month | NNNN | 2026-01-15..2026-01-02; 2026-02-15..2026-02-02; 2026-03-15..2026-03-02; 2026-03-15..2026-03-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/PERIOD_VOLUME/middle/last/successive | YYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-04-15..2026-04-30 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/middle/last/skip-month | YYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-05-15..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/middle/last/same-month | YYYY | 2026-01-15..2026-01-31; 2026-02-15..2026-02-28; 2026-03-15..2026-03-31; 2026-03-15..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/middle/same/successive | YYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-04-15..2026-04-15 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/middle/same/skip-month | YYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-05-15..2026-05-15 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/middle/same/same-month | YYYY | 2026-01-15..2026-01-15; 2026-02-15..2026-02-15; 2026-03-15..2026-03-15; 2026-03-15..2026-03-15 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/middle/next/successive | YYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-04-15..2026-05-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/middle/next/skip-month | YYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-05-15..2026-06-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/middle/next/same-month | YYYY | 2026-01-15..2026-02-10; 2026-02-15..2026-03-10; 2026-03-15..2026-04-10; 2026-03-15..2026-04-10 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/last/today/successive | NNNN | 2026-01-31..2026-01-02; 2026-02-28..2026-02-02; 2026-03-31..2026-03-02; 2026-04-30..2026-04-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/PERIOD_VOLUME/last/today/skip-month | NNNN | 2026-01-31..2026-01-02; 2026-02-28..2026-02-02; 2026-03-31..2026-03-02; 2026-05-31..2026-05-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/PERIOD_VOLUME/last/today/same-month | NNNN | 2026-01-31..2026-01-02; 2026-02-28..2026-02-02; 2026-03-31..2026-03-02; 2026-03-31..2026-03-02 | — avvisad | — avvisad | — avvisad | — |
+| jan02/PERIOD_VOLUME/last/last/successive | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/last/last/skip-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-05-31..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/last/last/same-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-03-31..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/last/same/successive | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-04-30..2026-04-30 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/last/same/skip-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-05-31..2026-05-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/last/same/same-month | YYYY | 2026-01-31..2026-01-31; 2026-02-28..2026-02-28; 2026-03-31..2026-03-31; 2026-03-31..2026-03-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| jan02/PERIOD_VOLUME/last/next/successive | YYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-04-30..2026-05-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/last/next/skip-month | YYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-05-31..2026-06-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| jan02/PERIOD_VOLUME/last/next/same-month | YYYY | 2026-01-31..2026-02-10; 2026-02-28..2026-03-10; 2026-03-31..2026-04-10; 2026-03-31..2026-04-10 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/CUMULATIVE/first/today/successive | YYYYY | 2027-11-01..2027-11-28; 2027-12-01..2027-12-28; 2028-01-01..2028-01-28; 2028-02-01..2028-02-28; 2028-03-01..2028-03-28 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/first/today/skip-month | YYYYY | 2027-11-01..2027-11-28; 2027-12-01..2027-12-28; 2028-01-01..2028-01-28; 2028-02-01..2028-02-28; 2028-04-01..2028-04-28 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/first/today/same-month | YYYYY | 2027-11-01..2027-11-28; 2027-12-01..2027-12-28; 2028-01-01..2028-01-28; 2028-02-01..2028-02-28; 2028-02-01..2028-02-28 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/first/last/successive | YYYYY | 2027-11-01..2027-11-30; 2027-12-01..2027-12-31; 2028-01-01..2028-01-31; 2028-02-01..2028-02-29; 2028-03-01..2028-03-31 | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/first/last/skip-month | YYYYY | 2027-11-01..2027-11-30; 2027-12-01..2027-12-31; 2028-01-01..2028-01-31; 2028-02-01..2028-02-29; 2028-04-01..2028-04-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/first/last/same-month | YYYYY | 2027-11-01..2027-11-30; 2027-12-01..2027-12-31; 2028-01-01..2028-01-31; 2028-02-01..2028-02-29; 2028-02-01..2028-02-29 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/first/same/successive | YYYYY | 2027-11-01..2027-11-01; 2027-12-01..2027-12-01; 2028-01-01..2028-01-01; 2028-02-01..2028-02-01; 2028-03-01..2028-03-01 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/first/same/skip-month | YYYYY | 2027-11-01..2027-11-01; 2027-12-01..2027-12-01; 2028-01-01..2028-01-01; 2028-02-01..2028-02-01; 2028-04-01..2028-04-01 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/first/same/same-month | YYYYY | 2027-11-01..2027-11-01; 2027-12-01..2027-12-01; 2028-01-01..2028-01-01; 2028-02-01..2028-02-01; 2028-02-01..2028-02-01 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/first/next/successive | YYYYY | 2027-11-01..2027-12-10; 2027-12-01..2028-01-10; 2028-01-01..2028-02-10; 2028-02-01..2028-03-10; 2028-03-01..2028-04-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/first/next/skip-month | YYYYY | 2027-11-01..2027-12-10; 2027-12-01..2028-01-10; 2028-01-01..2028-02-10; 2028-02-01..2028-03-10; 2028-04-01..2028-05-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/CUMULATIVE/first/next/same-month | YYYYY | 2027-11-01..2027-12-10; 2027-12-01..2028-01-10; 2028-01-01..2028-02-10; 2028-02-01..2028-03-10; 2028-02-01..2028-03-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/middle/today/successive | YYYYY | 2027-11-15..2027-11-28; 2027-12-15..2027-12-28; 2028-01-15..2028-01-28; 2028-02-15..2028-02-28; 2028-03-15..2028-03-28 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/today/skip-month | YYYYY | 2027-11-15..2027-11-28; 2027-12-15..2027-12-28; 2028-01-15..2028-01-28; 2028-02-15..2028-02-28; 2028-04-15..2028-04-28 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/today/same-month | YYYYY | 2027-11-15..2027-11-28; 2027-12-15..2027-12-28; 2028-01-15..2028-01-28; 2028-02-15..2028-02-28; 2028-02-15..2028-02-28 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/middle/last/successive | YYYYY | 2027-11-15..2027-11-30; 2027-12-15..2027-12-31; 2028-01-15..2028-01-31; 2028-02-15..2028-02-29; 2028-03-15..2028-03-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/last/skip-month | YYYYY | 2027-11-15..2027-11-30; 2027-12-15..2027-12-31; 2028-01-15..2028-01-31; 2028-02-15..2028-02-29; 2028-04-15..2028-04-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/last/same-month | YYYYY | 2027-11-15..2027-11-30; 2027-12-15..2027-12-31; 2028-01-15..2028-01-31; 2028-02-15..2028-02-29; 2028-02-15..2028-02-29 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/middle/same/successive | YYYYY | 2027-11-15..2027-11-15; 2027-12-15..2027-12-15; 2028-01-15..2028-01-15; 2028-02-15..2028-02-15; 2028-03-15..2028-03-15 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/same/skip-month | YYYYY | 2027-11-15..2027-11-15; 2027-12-15..2027-12-15; 2028-01-15..2028-01-15; 2028-02-15..2028-02-15; 2028-04-15..2028-04-15 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/same/same-month | YYYYY | 2027-11-15..2027-11-15; 2027-12-15..2027-12-15; 2028-01-15..2028-01-15; 2028-02-15..2028-02-15; 2028-02-15..2028-02-15 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/middle/next/successive | YYYYY | 2027-11-15..2027-12-10; 2027-12-15..2028-01-10; 2028-01-15..2028-02-10; 2028-02-15..2028-03-10; 2028-03-15..2028-04-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/next/skip-month | YYYYY | 2027-11-15..2027-12-10; 2027-12-15..2028-01-10; 2028-01-15..2028-02-10; 2028-02-15..2028-03-10; 2028-04-15..2028-05-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/middle/next/same-month | YYYYY | 2027-11-15..2027-12-10; 2027-12-15..2028-01-10; 2028-01-15..2028-02-10; 2028-02-15..2028-03-10; 2028-02-15..2028-03-10 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/last/today/successive | NNNNN | 2027-11-30..2027-11-28; 2027-12-31..2027-12-28; 2028-01-31..2028-01-28; 2028-02-29..2028-02-28; 2028-03-31..2028-03-28 | — avvisad | — avvisad | — avvisad | — |
+| nov28/CUMULATIVE/last/today/skip-month | NNNNN | 2027-11-30..2027-11-28; 2027-12-31..2027-12-28; 2028-01-31..2028-01-28; 2028-02-29..2028-02-28; 2028-04-30..2028-04-28 | — avvisad | — avvisad | — avvisad | — |
+| nov28/CUMULATIVE/last/today/same-month | NNNNN | 2027-11-30..2027-11-28; 2027-12-31..2027-12-28; 2028-01-31..2028-01-28; 2028-02-29..2028-02-28; 2028-02-29..2028-02-28 | — avvisad | — avvisad | — avvisad | — |
+| nov28/CUMULATIVE/last/last/successive | YYYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29; 2028-03-31..2028-03-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/last/last/skip-month | YYYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29; 2028-04-30..2028-04-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/last/last/same-month | YYYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29; 2028-02-29..2028-02-29 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/last/same/successive | YYYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29; 2028-03-31..2028-03-31 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/last/same/skip-month | YYYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29; 2028-04-30..2028-04-30 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/last/same/same-month | YYYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29; 2028-02-29..2028-02-29 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/CUMULATIVE/last/next/successive | YYYYY | 2027-11-30..2027-12-10; 2027-12-31..2028-01-10; 2028-01-31..2028-02-10; 2028-02-29..2028-03-10; 2028-03-31..2028-04-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/last/next/skip-month | YYYYY | 2027-11-30..2027-12-10; 2027-12-31..2028-01-10; 2028-01-31..2028-02-10; 2028-02-29..2028-03-10; 2028-04-30..2028-05-10 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| nov28/CUMULATIVE/last/next/same-month | YYYYY | 2027-11-30..2027-12-10; 2027-12-31..2028-01-10; 2028-01-31..2028-02-10; 2028-02-29..2028-03-10; 2028-02-29..2028-03-10 | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0; [OVERLAP@4, OVERLAP@5] | 0 |
+| nov28/PERIOD_VOLUME/first/today/successive | YYYY | 2027-11-01..2027-11-28; 2027-12-01..2027-12-28; 2028-01-01..2028-01-28; 2028-02-01..2028-02-28 | 0; [] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/first/today/skip-month | YYYY | 2027-11-01..2027-11-28; 2027-12-01..2027-12-28; 2028-01-01..2028-01-28; 2028-03-01..2028-03-28 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/first/today/same-month | YYYY | 2027-11-01..2027-11-28; 2027-12-01..2027-12-28; 2028-01-01..2028-01-28; 2028-01-01..2028-01-28 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/first/last/successive | YYYY | 2027-11-01..2027-11-30; 2027-12-01..2027-12-31; 2028-01-01..2028-01-31; 2028-02-01..2028-02-29 | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 0 |
+| nov28/PERIOD_VOLUME/first/last/skip-month | YYYY | 2027-11-01..2027-11-30; 2027-12-01..2027-12-31; 2028-01-01..2028-01-31; 2028-03-01..2028-03-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 1 |
+| nov28/PERIOD_VOLUME/first/last/same-month | YYYY | 2027-11-01..2027-11-30; 2027-12-01..2027-12-31; 2028-01-01..2028-01-31; 2028-01-01..2028-01-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/first/same/successive | YYYY | 2027-11-01..2027-11-01; 2027-12-01..2027-12-01; 2028-01-01..2028-01-01; 2028-02-01..2028-02-01 | 0; [] | 1; [HIGH_RATE@4] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/first/same/skip-month | YYYY | 2027-11-01..2027-11-01; 2027-12-01..2027-12-01; 2028-01-01..2028-01-01; 2028-03-01..2028-03-01 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/first/same/same-month | YYYY | 2027-11-01..2027-11-01; 2027-12-01..2027-12-01; 2028-01-01..2028-01-01; 2028-01-01..2028-01-01 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/first/next/successive | YYYY | 2027-11-01..2027-12-10; 2027-12-01..2028-01-10; 2028-01-01..2028-02-10; 2028-02-01..2028-03-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/first/next/skip-month | YYYY | 2027-11-01..2027-12-10; 2027-12-01..2028-01-10; 2028-01-01..2028-02-10; 2028-03-01..2028-04-10 | 0; [OVERLAP@2, OVERLAP@3] | 0; [OVERLAP@2, OVERLAP@3] | 0; [OVERLAP@2, OVERLAP@3] | 0 |
+| nov28/PERIOD_VOLUME/first/next/same-month | YYYY | 2027-11-01..2027-12-10; 2027-12-01..2028-01-10; 2028-01-01..2028-02-10; 2028-01-01..2028-02-10 | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@2, OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/middle/today/successive | YYYY | 2027-11-15..2027-11-28; 2027-12-15..2027-12-28; 2028-01-15..2028-01-28; 2028-02-15..2028-02-28 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/today/skip-month | YYYY | 2027-11-15..2027-11-28; 2027-12-15..2027-12-28; 2028-01-15..2028-01-28; 2028-03-15..2028-03-28 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/today/same-month | YYYY | 2027-11-15..2027-11-28; 2027-12-15..2027-12-28; 2028-01-15..2028-01-28; 2028-01-15..2028-01-28 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/middle/last/successive | YYYY | 2027-11-15..2027-11-30; 2027-12-15..2027-12-31; 2028-01-15..2028-01-31; 2028-02-15..2028-02-29 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/last/skip-month | YYYY | 2027-11-15..2027-11-30; 2027-12-15..2027-12-31; 2028-01-15..2028-01-31; 2028-03-15..2028-03-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/last/same-month | YYYY | 2027-11-15..2027-11-30; 2027-12-15..2027-12-31; 2028-01-15..2028-01-31; 2028-01-15..2028-01-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/middle/same/successive | YYYY | 2027-11-15..2027-11-15; 2027-12-15..2027-12-15; 2028-01-15..2028-01-15; 2028-02-15..2028-02-15 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/same/skip-month | YYYY | 2027-11-15..2027-11-15; 2027-12-15..2027-12-15; 2028-01-15..2028-01-15; 2028-03-15..2028-03-15 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/same/same-month | YYYY | 2027-11-15..2027-11-15; 2027-12-15..2027-12-15; 2028-01-15..2028-01-15; 2028-01-15..2028-01-15 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/middle/next/successive | YYYY | 2027-11-15..2027-12-10; 2027-12-15..2028-01-10; 2028-01-15..2028-02-10; 2028-02-15..2028-03-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/next/skip-month | YYYY | 2027-11-15..2027-12-10; 2027-12-15..2028-01-10; 2028-01-15..2028-02-10; 2028-03-15..2028-04-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/middle/next/same-month | YYYY | 2027-11-15..2027-12-10; 2027-12-15..2028-01-10; 2028-01-15..2028-02-10; 2028-01-15..2028-02-10 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/last/today/successive | NNNN | 2027-11-30..2027-11-28; 2027-12-31..2027-12-28; 2028-01-31..2028-01-28; 2028-02-29..2028-02-28 | — avvisad | — avvisad | — avvisad | — |
+| nov28/PERIOD_VOLUME/last/today/skip-month | NNNN | 2027-11-30..2027-11-28; 2027-12-31..2027-12-28; 2028-01-31..2028-01-28; 2028-03-31..2028-03-28 | — avvisad | — avvisad | — avvisad | — |
+| nov28/PERIOD_VOLUME/last/today/same-month | NNNN | 2027-11-30..2027-11-28; 2027-12-31..2027-12-28; 2028-01-31..2028-01-28; 2028-01-31..2028-01-28 | — avvisad | — avvisad | — avvisad | — |
+| nov28/PERIOD_VOLUME/last/last/successive | YYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/last/last/skip-month | YYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-03-31..2028-03-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/last/last/same-month | YYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-01-31..2028-01-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/last/same/successive | YYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-02-29..2028-02-29 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/last/same/skip-month | YYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-03-31..2028-03-31 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/last/same/same-month | YYYY | 2027-11-30..2027-11-30; 2027-12-31..2027-12-31; 2028-01-31..2028-01-31; 2028-01-31..2028-01-31 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| nov28/PERIOD_VOLUME/last/next/successive | YYYY | 2027-11-30..2027-12-10; 2027-12-31..2028-01-10; 2028-01-31..2028-02-10; 2028-02-29..2028-03-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/last/next/skip-month | YYYY | 2027-11-30..2027-12-10; 2027-12-31..2028-01-10; 2028-01-31..2028-02-10; 2028-03-31..2028-04-10 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| nov28/PERIOD_VOLUME/last/next/same-month | YYYY | 2027-11-30..2027-12-10; 2027-12-31..2028-01-10; 2028-01-31..2028-02-10; 2028-01-31..2028-02-10 | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0; [OVERLAP@3, OVERLAP@4] | 0 |
+| readingDate-before-after/CUMULATIVE | YYYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20; 2026-05-15..2026-05-20 | 0; [] | 1; [HIGH_RATE@5] | 1; [HIGH_RATE@5] | 0 |
+| readingDate-before-after/PERIOD_VOLUME | YYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
+| same-month-distinct-ends/CUMULATIVE | YY | 2026-01-15..2026-01-20; 2026-01-15..2026-01-28 | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0 |
+| same-month-distinct-ends/PERIOD_VOLUME | YY | 2026-01-15..2026-01-20; 2026-01-15..2026-01-28 | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0 |
+
+## Slutverifiering
+
+Källkoden i säkringscommitten bc65f20578c107bd251319e98f964cbeef05a272 kördes i Codespaces. Rättningsfilens SHA-256 är 762193cf1494899e83caf664f62af1b3781d02059b36ae67d1222fe704f75c2d.
+
+- Fem berörda sviter: **296/296** godkända prov (21 analys, 29 formulär, 222 datumrymd, 16 täckning och 8 UI). Webtypkontroll och riktad lint är gröna.
+- Verklig kanarie: endast reading-review.ts ersattes tillfälligt med versionen från 8c6f850111b7e378d653ee781abd7e6071f3e32c. Den nya matrisen gav **50 avsedda PERIOD_VOLUME-fel, 172 godkända prov**. Samtliga 220 uppmätta analysresultat återgick exakt till första fixens resultat. De 50 felen är 49 kärnkombinationer och ett extra readingDate-fall.
+- Samma fil återställdes byteidentiskt från bc65f205 med vanlig git restore. Omkörningen gav **296/296**. Ingen historik skrevs om.
+- Rapportkanarie: körning av endast de två kanarieproven gav två godkända prov och 220 överhoppade, men sviten blev röd i afterAll för saknad fullständig ID-mängd. Ingen rapportfil skapades. En partiell körning kan alltså inte lämna ett komplett kvitto.
+- Täckningsregressionens två fall (senare period täcker hela/del av en skenbar lucka) var röda före den konservativa gruppspärren. Slutproven täcker även DATA och isolering mellan frisk och tvetydig mätargrupp i båda indataordningarna.
+- Slutliga mätfiler från tre körningar jämfördes som fullständiga JSON-objekt: identiska 220 observationer, 425 formulärkvitton och historiska resultat. Råa lokala körningsloggar har inte lagts till i Git.
+
+## Ändringsställen och omfattning
+
+- reading-review.ts:17: separat typ för täckningsluckor; :24–26: vad jämförelsen mäter och inte kan se; :108: luckornas beräkning; :158: strukturellt tvetydig grupp avstår från täckningsbesked.
+- ReadingReview.tsx:41: neutral, hopfällbar upplysning med luckans egna datum, separat från avläsningsfynd.
+- reading-review.date-space.test.tsx:183: positiv instrumentkontroll före matrisen; :339: fullständig ID-mängd krävs för rapporten.
+- reading-review.coverage.test.ts:75: senare överlappande perioder; :87: ogiltiga data; :97: gruppisolering i båda ordningarna.
+- reading-review.form.test.tsx: de ursprungliga formulär-/kalenderproven behålls med uttryckligt uppdaterad luckpolicy. reading-review.test.ts ändrar enbart det gamla provkontraktet som krävde tystnad efter PV-lucka.
+- date-space-fixtures/before.test-helpers.ts och first-fix.test-helpers.ts: oförändrade historiska implementationsfixturer, enbart importerade av datumrymdens spec.
+
+Den pinnade production-lines.mjs från #882 (SHA-256 37d1d6d903ac4946dcebf2e684c68e434b7346202cee8e4db0ef9af2c475f2f1) mäter **56 ändrade produktionsrader, 1 272 testrader och noll binärer** mot den fasta basen. Inga importspärrfel; verktyget redovisar 304 generella analysbegränsningar för hela källträdet, inte 304 nya fel i diffen.
+
+Pushkontrollen mäter **13 egna filer** mot origin/codex/agent3-forbrukningsgranskning och **15 filer** med main-formen. Två filer är oförändrat ärvda från basen: apps/web/src/features/consumption/ConsumptionPage.tsx och docs/agent3-forbrukningsgranskning.md. Kontrollen använder bas 9295e013, main 3b71e905 och merge-base 27a720d4; inga filer har filtrerats bort ur talen.
+
+Ingen API-/databasvalidering, debitering, migration, merge eller framåtpropagering ingår. Detta är en granskning av syntetiska avläsningar genom det verkliga formuläret och analysen. CI för den kommande pushens exakta HEAD rapporteras i PR #888.

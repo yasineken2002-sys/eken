@@ -59,8 +59,12 @@ describe('reviewReadings — endast läsanalys', () => {
   ])('blandar inte historik: %j', (extra) => {
     expect(reviewReadings([...history(), row(4, 100, extra)]).trendAssessed).toBe(0)
   })
-  it('jämför inte över luckor', () => {
-    expect(reviewReadings([...history(), row(8, 100)]).trendAssessed).toBe(0)
+  it('jämför dagsmedel över luckor och redovisar täckningen separat', () => {
+    expect(reviewReadings([...history(), row(8, 100)])).toMatchObject({
+      trendAssessed: 1,
+      findings: [{ code: 'HIGH_RATE' }],
+      coverageGaps: [{ periodStart: '2026-01-04', periodEnd: '2026-01-07', days: 4 }],
+    })
   })
   it('visar överlappning och använder den inte för trend', () => {
     expect(reviewReadings([...history(), row(4, 100, { periodStart: day(2) })])).toMatchObject({

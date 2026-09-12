@@ -1,0 +1,247 @@
+{
+  "formatVersion": 1,
+  "measuredAt": "2026-09-12T20:05:03.402Z",
+  "introduction": "9295e013303c4de21f8eb947e3812e05d6f693e3",
+  "scope": "Frozen Git commits; no fetching or ref updates. A missing module is ABSENT, not a passing behavior test.",
+  "caseDefinition": {
+    "readingTypes": ["CUMULATIVE", "PERIOD_VOLUME"],
+    "formEndDays": [2, 10, 15, 28],
+    "year": 2026,
+    "baselinePerDay": 1,
+    "lastPerDay": 27,
+    "cumulativeRows": 5,
+    "periodVolumeRows": 4,
+    "formsExpected": {
+      "findings": [],
+      "trendAssessed": 0
+    },
+    "controlsExpected": {
+      "targetFinding": "HIGH_RATE",
+      "trendAssessed": 1
+    }
+  },
+  "refs": [
+    {
+      "branch": "origin/codex/agent3-api-release-grind",
+      "sha": "316507fd8b5acaece65608b9cacd7c045d6d4e34",
+      "analysisFile": null,
+      "status": "ABSENT",
+      "sourceHashes": {},
+      "absentPaths": [
+        "apps/web/src/features/consumption/lib/reading-review.ts",
+        "packages/shared/src/utils/reading-review.ts"
+      ]
+    },
+    {
+      "branch": "origin/codex/agent3-api-underlag",
+      "sha": "a16b2e33d17bfd8688cc1f41e3a16bac99ff0fc4",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "75347039648b187cddd91c5d261f6a9ec60866b2317a7a93320eb2779749e444",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-assistent-status",
+      "sha": "d2ca0c1a5485879535d30f62d269dfab8b062b5c",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "26927f52d35a7f9ed7cb6796f0b07fd38018a8aba61fa2ffd8a5c46dd7feb191",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-assistent-underlag",
+      "sha": "57538a0e72600a849f5d2d465b8a665600ec8d90",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "8b071cb3a7db3f217099c2188654019a22dc92eccc1ab86147ccba8aec7d37cf",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-automatisk-uppfoljning",
+      "sha": "82e4c4a0bfd022dd6855d553d6ea8b301e351c41",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "8b071cb3a7db3f217099c2188654019a22dc92eccc1ab86147ccba8aec7d37cf",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-bedomningar",
+      "sha": "46c77508c52b38439b26cb47b8815991301fec88",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "8b071cb3a7db3f217099c2188654019a22dc92eccc1ab86147ccba8aec7d37cf",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-bekraftelsetext-867",
+      "sha": "03612cf160ff91f3887814b0d4ce77de7361c6b6",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "29e8ef27f352685cf94c454321059de3293e09a926d1110c7bf4543079f5f994",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-debiteringsgrind",
+      "sha": "9f879291dd039e404ba80b7266fbd53842a0b42b",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-forbrukningsgranskning",
+      "sha": "9295e013303c4de21f8eb947e3812e05d6f693e3",
+      "analysisFile": "apps/web/src/features/consumption/lib/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "apps/web/src/features/consumption/lib/reading-review.ts": "bbea5274dbe835968792fc8b581804c44dbb52737a825e228f4614bf25866547",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-granskningsko",
+      "sha": "d22d1fbd910f6b491d6010689f379e951912f049",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "8b071cb3a7db3f217099c2188654019a22dc92eccc1ab86147ccba8aec7d37cf",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-granskningsunderlag",
+      "sha": "55de3341c494a1edb1be86266009feac5e99a4bc",
+      "analysisFile": "apps/web/src/features/consumption/lib/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "apps/web/src/features/consumption/lib/reading-review.ts": "5cc71e5cf369f8f7b30d29702ebb958b23e44a59023ccc5074ce9561dbe6a252",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-rendering-2-1",
+      "sha": "73d221c9b7e002b70262a3186b76fea876d6ad01",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-rendering-2-1-compact",
+      "sha": "e90a70a028c5d46b41f3dea26644de67fddb6529",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-rendering-2-2",
+      "sha": "0d048101f291cf352a730100ec96d6b042ed98a4",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-rendering-2-2-real",
+      "sha": "561b382b6cbddfccba719613a5ea3aa2f0f7e695",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-statusfakta",
+      "sha": "dbabac2c44e82a13a2678a987bb48e04665f3c77",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "26927f52d35a7f9ed7cb6796f0b07fd38018a8aba61fa2ffd8a5c46dd7feb191",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-svarsgrind",
+      "sha": "3fa4b55128143d5bd70f696178679f2a99f22f29",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "29e8ef27f352685cf94c454321059de3293e09a926d1110c7bf4543079f5f994",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-utskicksgrind",
+      "sha": "0973272d5eb8f6f8285ec8c98f039a47f6ec568b",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-utskicksgrind-2b",
+      "sha": "5ae9906b152307eae0d79eec719d4303a042742c",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/codex/agent3-utskicksgrind-2c-inventering",
+      "sha": "e8ed5e7256393c9f0b8821c1f2c8c2f21030e72f",
+      "analysisFile": "packages/shared/src/utils/reading-review.ts",
+      "status": "DEFECT",
+      "sourceHashes": {
+        "packages/shared/src/utils/reading-review.ts": "0f5cb9cb138d4d5ffab3382cea05ccd5fbbf68ecc0ec42931122f4b44206e95a",
+        "packages/shared/src/utils/reading-rate-comparison.ts": "9e792590d5b7ce5fc1c64ae8c40f24873eef5d8df2c73395bd1a9a4027f58d83",
+        "apps/web/src/features/consumption/components/ReadingForm.tsx": "7e19469df37374fcf45f18dd47e9b1bb242820493df63c8143838aac05ade945"
+      }
+    },
+    {
+      "branch": "origin/main",
+      "sha": "3b71e905d866f461f6b07211bc89b3fa88505200",
+      "analysisFile": null,
+      "status": "ABSENT",
+      "sourceHashes": {},
+      "absentPaths": [
+        "apps/web/src/features/consumption/lib/reading-review.ts",
+        "packages/shared/src/utils/reading-review.ts"
+      ]
+    }
+  ]
+}
