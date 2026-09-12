@@ -145,6 +145,7 @@ medDb('agent 2 — skuggförslag på omatchade betalningar', () => {
       prisma as never,
       { logUsage: async () => undefined } as never,
       { checkOrgDailyCostCap: async () => undefined } as never,
+      { enqueue: async () => 'dryrun-test' } as never,
     )
   })
 
