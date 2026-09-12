@@ -2723,18 +2723,36 @@ Två sekunder efter merge, fyra–fem minuter före CI. Och eftersom
 servern startar är det SCHEMAT som hinner först. En redeploy ångrar ingen
 migration.
 
-**`watchPatterns: []` betyder ingen sökvägsfiltrering** — och det är en slutsats
-ur KONFIGURATIONEN, inte ur en mätning. Utan mönster har Railway inget att
-filtrera på, så varje push till `main` blir en API-deploy, även en commit som
-bara rör `docs/` eller en frontend. För en stackad kedja är följden skarp:
-sexton sekventiella mergar ger sexton API-deployer och sexton
+**`watchPatterns: []` betyder ingen sökvägsfiltrering.** Utan mönster har Railway
+inget att filtrera på, så varje push till `main` blir en API-deploy, även en
+commit som bara rör `docs/` eller en frontend. För en stackad kedja är följden
+skarp: sexton sekventiella mergar ger sexton API-deployer och sexton
 `prisma migrate deploy`, oavsett vad varje enskild commit rörde.
 
-> **Obekräftat: ingen ren frontend-commit har prövats.** De tre mergar som mättes
-> ovan rörde alla API-relevanta sökvägar — #876 och #857 rörde `apps/api`, #855
-> rörde `packages/shared` — så ingen av dem skiljer "deployar alltid" från
-> "deployade för att den råkade vara relevant". Vill du veta: merga något som
-> bara rör `docs/` och läs `revision` efteråt.
+**Det är MÄTT, inte härlett.** Stycket ovan bar fram till 2026-09-12 ett
+förbehåll — "obekräftat: ingen ren frontend-commit har prövats" — eftersom de tre
+mergar som mättes den dagen alla rörde API-relevanta sökvägar. #884 var provet:
+en commit som bara rörde `CLAUDE.md`, inte en rad under `apps/` eller
+`packages/`. Den rullade ut API:t.
+
+```
+merge (squash e483daaf)      14:55:12Z
+Railway-deploy skapad        14:55:13.791Z   ← +1,8 s
+Railway-deploy klar          14:57:12.768Z
+prod serverar e483daaf       14:57:41Z       ← avläst ur /v1/health
+main-CI klar                 15:00:18Z       ← +5 min 06 s efter merge
+```
+
+Prod körde alltså den nya API-containern **tre minuter innan main-CI ens blev
+klar**, för en ändring som inte innehöll någon kod. Samma sha visar dessutom
+asymmetrin i ett enda fall: `deploy.yml` skrev `⏭ Ignoring the change` för web,
+admin OCH portal ("not affected"), medan Railway byggde och rullade ut. Frontend
+hoppade alltså över exakt den commit som API:t deployade.
+
+Notera att alla fyra deployjobb ändå rapporterade `success` — ett
+turbo-ignore-hopp ser ut som en grön bock, och hoppet syns BARA i loggen. Det är
+exakt kriteriet i avsnittet "Är webben ute?" ovan, och den här commiten är dess
+renaste exempel: fyra gröna jobb, noll utrullad frontend, ett utrullat API.
 
 Praktiskt betyder det två saker:
 
