@@ -278,12 +278,17 @@ export class MaintenanceService {
       })
     }, PRISMA_DEFAULT_TX_LIMITS)
 
+    // En notis per mottagare, oavsett om ärendet kom från formulär eller AI.
+    // Bevara hyresgästnamnet som tidigare fanns i anroparnas extra notis.
+    const tenantName = ticket.tenant?.firstName
+      ? `${ticket.tenant.firstName} ${ticket.tenant.lastName ?? ''}`.trim()
+      : (ticket.tenant?.companyName ?? ticket.tenant?.email)
     void this.notificationsService
       .createForAllOrgUsers(
         organizationId,
         'MAINTENANCE_NEW',
         'Nytt underhållsärende',
-        `Ärende ${ticket.ticketNumber}: ${dto.title}`,
+        `${tenantName ? `${tenantName} — ` : ''}Ärende ${ticket.ticketNumber}: ${dto.title}`,
         { relatedEntityType: 'MAINTENANCE_TICKET', relatedEntityId: ticket.id },
       )
       .catch((err) =>
