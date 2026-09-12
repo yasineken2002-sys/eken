@@ -2038,7 +2038,20 @@ Kör detta mentalt innan varje feature anses klar:
 - **API** → **Railway** (Docker: `apps/api/Dockerfile` → `apps/api/scripts/migrate-and-start.sh`,
   som kör `prisma migrate deploy` + `node dist/main.js`; containern exponerar port 8080).
 - **web / admin / portal** → **Vercel** (Vite-builds; API-proxy via varje apps `vercel.json`-rewrite).
-  Deployas av `.github/workflows/deploy.yml` på push till `main` (CI = `ci.yml`: typecheck + lint).
+  Deployas av `.github/workflows/deploy.yml`, som triggas på `workflow_run` när
+  `ci.yml` är KLAR på `main` — **inte på push**. Ett `gate`-jobb fäller om
+  körningens `conclusion ≠ success`, och varje deployjobb checkar ut
+  `${{ github.event.workflow_run.head_sha }}`, alltså exakt den commit CI
+  granskade. Skälet till att det inte är `push` + `needs: ci` står i
+  `deploy.yml`:s egen huvudkommentar, med den mätta incidenten på `a5d9954`.
+  Och `ci.yml` är inte "typecheck + lint" — den är **61 jobb**:
+
+  ```
+    59  i `ci-passed`:s `needs`
+  +  1  `ci-passed` självt
+  +  1  `migration-annotation` — `pull_request`-bart, med flit utanför grinden
+  = 61  jobb i ci.yml   (mätt 2026-09-12)
+  ```
 - **Postgres + Redis** → Railway-plugins.
 
 ### `--delete-branch` på en PR som är BAS för en annan stänger den beroende PR:en
@@ -2198,9 +2211,10 @@ Samma regel gäller när du läser antalet jobb: härled det ur körningen eller
 ### Railways byggkonfiguration kan glida ifrån `railway.toml`
 
 Den TREDJE varianten av samma tema. De två ovan handlar om att `CI passed` säger
-för mycket (Railway deployar utan att bry sig om checkar) eller för lite (Vercel
-strypt). Den här handlar om att bygget kan köra **fel sak, eller ingenting alls**,
-utan att vare sig CI eller repot märker något.
+för mycket (Railway deployar utan att VÄNTA på checkar — `checkSuites` är AV; se
+avsnittet om CI-skyddet nedan) eller för lite (Vercel strypt). Den här handlar om
+att bygget kan köra **fel sak, eller ingenting alls**, utan att vare sig CI eller
+repot märker något.
 
 Hände 2026-08-18: tjänstens builder hade bytts från Dockerfile till **RAILPACK**,
 och `healthcheckPath` försvunnit. `railway.toml` sa fortfarande `builder =
@@ -2676,10 +2690,51 @@ ai-attachment-composer tills #477 gett CI R2-nycklar). En kanariefågel kräver 
 Playwright hittar exakt `E2E_EXPECTED_TESTS` tester — ändrar du uteslutningarna
 ska talet ändras i samma PR.
 
-**Men skyddet gäller bara fram till merge.** `deploy.yml` bygger de tre SPA:erna och
-har `needs: ci` — **API:t deployas av Railways egen git-integration**, som lyssnar
-direkt på `main` och inte känner till GitHubs checkar. Hamnar något på `main` ändå,
-går det ut.
+**Men för API:t gäller skyddet bara fram till merge.** Frontend är grindad hela
+vägen till utrullning; API:t är det inte. De två ytorna är olika grindade, och
+skillnaden är mätt:
+
+```
+frontend  deploy.yml: on: workflow_run, workflows:['CI'],
+          types:[completed], branches:[main]  → gate-jobb på conclusion
+          → ref: ${{ github.event.workflow_run.head_sha }}
+          KAN INTE deploya före grön CI, och bygger exakt den commit CI granskade.
+
+API       Railway GitHub-autodeploy, tjänsten eken, env production,
+          triggergren main, watchPatterns: []
+          checkSuites: FALSE   ← Wait for CI är AV
+```
+
+Funktionen **finns** (`checkSuites`); den är **avstängd**. Skriv alltså inte att
+Railway "inte känner till GitHubs checkar" — den kan, men gör det inte här.
+Skillnaden mellan "kan inte" och "är av" är skillnaden mellan ett faktum och en
+åtgärd. (`deploy.yml` har inte heller `needs: ci` — den kopplingen togs bort när
+triggern blev `workflow_run`; se deploy.yml:s huvudkommentar.)
+
+Mätt 2026-09-12, två mergar i följd:
+
+```
+#876  merge 13:19:08Z · Railway-deploy 13:19:09.694Z · main-CI klar 13:23:28Z
+#857  merge 13:38:29Z · Railway-deploy 13:38:31.335Z · main-CI klar 13:43:22Z
+```
+
+Två sekunder efter merge, fyra–fem minuter före CI. Och eftersom
+`apps/api/scripts/migrate-and-start.sh:18` kör `prisma migrate deploy` **innan**
+servern startar är det SCHEMAT som hinner först. En redeploy ångrar ingen
+migration.
+
+**`watchPatterns: []` betyder ingen sökvägsfiltrering** — och det är en slutsats
+ur KONFIGURATIONEN, inte ur en mätning. Utan mönster har Railway inget att
+filtrera på, så varje push till `main` blir en API-deploy, även en commit som
+bara rör `docs/` eller en frontend. För en stackad kedja är följden skarp:
+sexton sekventiella mergar ger sexton API-deployer och sexton
+`prisma migrate deploy`, oavsett vad varje enskild commit rörde.
+
+> **Obekräftat: ingen ren frontend-commit har prövats.** De tre mergar som mättes
+> ovan rörde alla API-relevanta sökvägar — #876 och #857 rörde `apps/api`, #855
+> rörde `packages/shared` — så ingen av dem skiljer "deployar alltid" från
+> "deployade för att den råkade vara relevant". Vill du veta: merga något som
+> bara rör `docs/` och läs `revision` efteråt.
 
 Praktiskt betyder det två saker:
 
