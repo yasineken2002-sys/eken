@@ -151,7 +151,6 @@ async function actualRows(
       rows.push({
         id: String(i + 1),
         organizationId: 'synthetic-org',
-        meterId: ids.meter,
         ...payload,
         readingType: type,
       })
@@ -314,15 +313,42 @@ it.each(types)('två olika periodslut i samma månad: %s', async (type) => {
     results: measured(rows),
   })
 })
+const expectedIds = [
+  ...cases.map((c) => c.id),
+  ...types.map((t) => 'readingDate-before-after/' + t),
+  ...types.map((t) => 'same-month-distinct-ends/' + t),
+].sort()
+function completeIds(ids: string[]) {
+  expect(cases).toHaveLength(216)
+  expect(expectedIds).toHaveLength(220)
+  expect([...ids].sort()).toEqual(expectedIds)
+}
+it('kanarie: partiell eller duplicerad observationsmängd får inget komplett kvitto', () => {
+  expect(() => completeIds(expectedIds.slice(1))).toThrow()
+  expect(() => completeIds([...expectedIds.slice(1), expectedIds[1]!])).toThrow()
+  completeIds(expectedIds)
+})
 afterAll(() => {
   const out = process.env.DATE_SPACE_REPORT
-  if (out && instrumentReady)
+  if (out && instrumentReady) {
+    completeIds(observations.map((o) => o.id))
     writeFileSync(
       out,
       JSON.stringify(
-        { cases: cases.length, receipts: receipts.size, instrumentReady, observations },
+        {
+          cases: cases.length,
+          uniqueSeries: new Set(
+            observations
+              .filter((o) => cases.some((c) => c.id === o.id))
+              .map((o) => o.type + o.periods),
+          ).size,
+          receipts: receipts.size,
+          instrumentReady,
+          observations,
+        },
         null,
         2,
       ) + '\n',
     )
+  }
 })
