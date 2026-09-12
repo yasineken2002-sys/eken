@@ -387,7 +387,10 @@ describe('SSE — förklaring till en väntande bekräftelse', () => {
   })
 
   it('skickar alla textdelar exakt en gång före en registrerad pending action, utan exekvering', async () => {
-    const parts = ['Jag föreslår fastigheten Björken. ', 'Kontrollera uppgifterna innan du bekräftar.']
+    const parts = [
+      'Jag föreslår fastigheten Björken. ',
+      'Kontrollera uppgifterna innan du bekräftar.',
+    ]
     const f = setup([proposal(parts)])
     const answer = await f.run('SSE')
     expect(answer.reply).toBe(parts.join(''))
@@ -404,7 +407,11 @@ describe('SSE — förklaring till en väntande bekräftelse', () => {
       wire.findIndex((raw) => raw.startsWith('event: pending_action\n')),
     )
     expect(f.service.recordPendingAction).toHaveBeenCalledWith(
-      'c1', 'org', 'user', 'create_property', { name: 'Björken' },
+      'c1',
+      'org',
+      'user',
+      'create_property',
+      { name: 'Björken' },
     )
     expect(f.execute).not.toHaveBeenCalled()
     expect(f.judge).not.toHaveBeenCalled()
@@ -416,14 +423,20 @@ describe('SSE — förklaring till en väntande bekräftelse', () => {
     const f = setup([proposal(['Förslag som ännu inte är registrerat.'])])
     let release!: () => void
     let entered!: () => void
-    const started = new Promise<void>((resolve) => { entered = resolve })
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
     jest.spyOn(f.service, 'recordPendingAction').mockImplementation(() => {
       entered()
-      return new Promise<void>((resolve) => { release = resolve })
+      return new Promise<void>((resolve) => {
+        release = resolve
+      })
     })
     const running = f.run('SSE')
     await started
-    expect(f.reply.raw.write.mock.calls.some(([raw]) => /event: (delta|pending_action)\n/.test(raw))).toBe(false)
+    expect(
+      f.reply.raw.write.mock.calls.some(([raw]) => /event: (delta|pending_action)\n/.test(raw)),
+    ).toBe(false)
     release()
     const answer = await running
     expect(answer.reply).toBe('Förslag som ännu inte är registrerat.')
@@ -433,11 +446,17 @@ describe('SSE — förklaring till en väntande bekräftelse', () => {
 
   it('ger ingen bekräftelsetext eller pending action när registreringen misslyckas', async () => {
     const f = setup([proposal(['Det här förslaget kunde inte registreras.'])])
-    jest.spyOn(f.service, 'recordPendingAction').mockRejectedValue(new Error('syntetiskt registreringsfel'))
+    jest
+      .spyOn(f.service, 'recordPendingAction')
+      .mockRejectedValue(new Error('syntetiskt registreringsfel'))
     // Riggans run kräver normalt ett felfritt SSE-svar. Här ska dess kontroll falla.
     await expect(f.run('SSE')).rejects.toThrow()
     const wire = f.reply.raw.write.mock.calls.map(([raw]: [string]) => raw)
-    expect(wire.some((raw) => raw.startsWith('event: error\n') && raw.includes('syntetiskt registreringsfel'))).toBe(true)
+    expect(
+      wire.some(
+        (raw) => raw.startsWith('event: error\n') && raw.includes('syntetiskt registreringsfel'),
+      ),
+    ).toBe(true)
     expect(wire.some((raw) => /event: (delta|pending_action)\n/.test(raw))).toBe(false)
     expect(f.execute).not.toHaveBeenCalled()
     expect(f.assistant()).toBeUndefined()
@@ -448,7 +467,9 @@ describe('SSE — förklaring till en väntande bekräftelse', () => {
     const answer = await f.run('SSE')
     expect(answer.reply).toBe('')
     expect(answer.pendingAction).toBeDefined()
-    expect(f.reply.raw.write.mock.calls.some(([raw]) => raw.startsWith('event: delta\n'))).toBe(false)
+    expect(f.reply.raw.write.mock.calls.some(([raw]) => raw.startsWith('event: delta\n'))).toBe(
+      false,
+    )
     expect(f.execute).not.toHaveBeenCalled()
   })
 })

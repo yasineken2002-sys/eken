@@ -197,13 +197,17 @@ export function streamChat(
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let currentEvent = ''
+      let unfinishedLine = ''
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value)
-        for (const line of chunk.split('\n')) {
+        // Nätverksläsningar kan sluta mitt i både en JSON-rad och ett UTF-8-tecken.
+        unfinishedLine += decoder.decode(value, { stream: true })
+        const lines = unfinishedLine.split('\n')
+        unfinishedLine = lines.pop() ?? ''
+        for (const line of lines) {
           const trimmed = line.trim()
           if (trimmed.startsWith('event: ')) {
             currentEvent = trimmed.slice(7)

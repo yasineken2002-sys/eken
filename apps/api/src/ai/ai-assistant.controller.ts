@@ -587,6 +587,8 @@ export class AiAssistantController {
           pendingAction.toolName,
           pendingAction.toolInput,
         )
+        // Förklaringen hör till ett registrerat förslag, inte ett utfört verktyg.
+        if (assistantText) send('delta', { text: assistantText })
         send('pending_action', { conversationId: conversation.id, ...pendingAction })
       } else {
         // Spara user + assistant separat så assistant-raden kan få `blocks`

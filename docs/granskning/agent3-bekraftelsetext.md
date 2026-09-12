@@ -4,6 +4,7 @@ Fast bas: 561b382b6cbddfccba719613a5ea3aa2f0f7e695 (#883).
 Egen gren: codex/agent3-bekraftelsetext. Äldre grenar förblir frysta.
 
 Facit, skrivet före produktionsändringen:
+
 - En registrerad SSE-bekräftelse får exakt den samlade modelltexten före pending_action.
 - En misslyckad pending-registrering lämnar ingen sådan text eller bekräftelse.
 - Texten syns bredvid bekräftelsekortet även efter omhämtning av user-historik.
