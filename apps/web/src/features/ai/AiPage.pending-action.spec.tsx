@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { AiPage } from './AiPage'
 import type { AiConversation, PendingAction } from './api/ai.api'
+import type * as AiApiModule from './api/ai.api'
 
 const api = vi.hoisted(() => ({
   fetchConversations: vi.fn(),
@@ -14,7 +15,7 @@ const api = vi.hoisted(() => ({
   deleteConversation: vi.fn(),
 }))
 vi.mock('./api/ai.api', async (original) => ({
-  ...(await original<typeof import('./api/ai.api')>()),
+  ...(await original<typeof AiApiModule>()),
   ...api,
 }))
 vi.mock('@/components/ui/PageWrapper', () => ({
