@@ -3,6 +3,15 @@
 **Detta är ett förslag, inte ett fastställt riktningsbeslut och inte en byggorder.**
 Ingen masterplan, produktkod, flagga eller PR-status ändras av det här dokumentet.
 
+**Inramning: ARBETSINRIKTNING TILLS VIDARE, inte ett permanent val av framtida
+bokföringsarkitektur.** Att avvakta med deklarations- och årsredovisningsfunktioner
+bevarar det arbete som redan gjorts. Det binder inte Eveno till att alltid ha en egen
+huvudbok, och det utesluter inte ett senare beslut i motsatt riktning.
+
+**Rättelser i version 2 (2026-09-13), efter granskning:** fem formuleringar i
+version 1 var för starka eller buntade ihop val som är oberoende. Var och en är
+utmärkt nedan med `RÄTTAT v1→v2`.
+
 **Granskad commit:** `3b71e905d866f461f6b07211bc89b3fa88505200` (`origin/main`, 2026-09-12).
 Varje tal nedan är mätt mot den commiten. Uppskattningar är märkta UPPSKATTNING.
 
@@ -107,15 +116,20 @@ Supabase/Postgres-instans:
 `replaceSIEImport`, `undoSIEImport`, `computeVoucherNumberRanges`,
 `resyncNextPeriodOpeningBalance`.
 
-**Tidigare formulering som rättas:** jag skrev "hela deras kedja" och "håller
-skarpt". Det var för starkt. Det som kördes är parsning, kontomappning och
-förhandsvisning. En sparad import är inte visad.
+**RÄTTAT v1→v2, två saker.** Jag skrev "hela deras kedja" och "håller skarpt". Det
+var för starkt: det som kördes är parsning, kontomappning och förhandsvisning, och en
+sparad import är inte visad. Jag markerade också hela exportnivån som KLAR. Det var
+också för starkt: filen byggdes i Evenos format med Evenos riktiga `encodeCp437`, men
+**Evenos verkliga exportmetod kördes aldrig** — den kräver en databas med ett helt
+räkenskapsår. Formatet är verifierat; metoden är det inte. Exportnivån är därför
+delad i två i tabellen ovan, och bara den första är klar.
 
 ### Tre beviskrav som ska hållas åtskilda
 
 | Nivå | Beviskrav | Läge |
 |---|---|---|
-| **Export** | vår SIE4 läses av en oberoende parser utan fel, med kanariefågel | KLAR (ovan) |
+| **Export, formatnivå** | en fil i vårt utdataformat, kodad med vår riktiga `encodeCp437`, läses av en oberoende parser utan fel, med kanariefågel | KLAR (ovan) |
+| **Export, metodnivå** | Evenos VERKLIGA exportmetod i `accounting.service.ts` körd mot en riktig databas, och dess utdata läst av samma parser | EJ PÅBÖRJAD |
 | **Engångsimport** | en sparad import i en riktig instans: verifikat skapade, IB bokförd, räkenskapsår skapat, kontoplan utökad, resultat jämfört post för post mot källan | EJ PÅBÖRJAD |
 | **Löpande synk** | upprepad överföring utan dubbletter, med stabil nyckel per affärshändelse, och ett prov som visar att andra körningen inte skapar något | EJ PÅBÖRJAD, och se punkt 5 |
 
@@ -151,30 +165,115 @@ Fyra mätta egenskaper:
    `prisma.rentNotice`. Färskhetsgrinden läser bara `prisma.organization`. Ett
    undantag finns: `rent-bad-debt.service.ts:407` läser `journalEntry` för en
    idempotenskoll.
-4. **`paymentDataThrough = NULL` läses som FÄRSKT.** Kommentaren motiverar det: en
-   org som aldrig matat in betalningsdata ska inte pausas.
+4. **`paymentDataThrough = NULL` läses som FÄRSKT.** Kommentaren motiverar det med
+   att en org som aldrig matat in betalningsdata inte ska pausas.
 
-**Punkt 4 är hålet, och den svarar direkt på kravet "ingen försenad synk får tolkas
-som bevis för obetald hyra".** I dag är två tillstånd omöjliga att skilja åt:
+### RÄTTAT v1→v2: hålet är LIVE I DAG, inte bara under en framtida integration
+
+Version 1 skrev att NULL-beteendet är "korrekt i dag, eftersom den andra situationen
+inte kan uppstå". Båda halvorna av den satsen är fel.
+
+**Första felet: en misslyckad första import lämnar också NULL.** Mätt på båda
+importvägarna:
 
 ```
-org som bokför manuellt, aldrig haft bankkoppling     paymentDataThrough = NULL  → kravtrappan KÖR
-extern leverantörs synk har aldrig levererat          paymentDataThrough = NULL  → kravtrappan KÖR
+CSV-import   reconciliation.service.ts:732
+             advancePaymentFreshness ligger EFTER radloopen men UTANFÖR dess
+             try/catch (fångsten är per rad). Med noll giltiga rader blir
+             latestCoverageDate(...) null, och advance gör då ingenting
+             (payment-freshness.service.ts: if (advanced.count === 0) return).
+
+BgMax        reconciliation.service.ts:838-845
+             kastar BadRequestException FÖRE advance-anropet om varken
+             imported eller duplicates är > 0. Datumet sätts aldrig.
 ```
 
-Det är korrekt i dag, eftersom den andra situationen inte kan uppstå: Eveno är
-enda källan. Under en integration kan den uppstå, och då skickas krav på hyra som
-kan vara betald.
+En organisation som kopplat upp sig och vars **allra första import misslyckades**
+har därför `paymentDataThrough = NULL`, läses som färsk, och kravtrappan körs. Det
+kräver ingen extern leverantör.
+
+**Andra felet: NULL bevisar inte att någon kontrollerat betalningarna.** Koden
+uttrycker en avsikt ("en org som aldrig matat in betalningsdata ska inte pausas").
+Den etablerar inget faktum om världen. Att datumet saknas är inte ett belägg för att
+en människa läst banken manuellt.
+
+Tre tillstånd är alltså i dag omöjliga att skilja åt, och alla tre läses som färska:
+
+```
+A  org bokför manuellt, har aldrig haft bankkoppling        NULL → kravtrappan KÖR
+B  org kopplad, FÖRSTA importen misslyckades                NULL → kravtrappan KÖR   ← live i dag
+C  extern leverantörs synk har aldrig levererat             NULL → kravtrappan KÖR   ← vid integration
+```
+
+Bara A är avsett. B är en verklig defektväg i dag och hör till `revision-status`
+oavsett vad som beslutas om riktningen.
+
+**Vad koden redan gör RÄTT, och som inte får tappas:** `reconciliation.service.ts:730`
+flyttar fram datumet även för ett utdrag utan inbetalningar, med motiveringen att "ett
+utdrag UTAN inbetalningar är ändå färsk data som bekräftar 'inga betalningar än'".
+Det är rätt, och det är just den distinktionen som saknas i NULL-fallet: systemet
+skiljer "läst, inga betalningar" från "aldrig läst" — men behandlar det andra som det
+första.
+
+### RÄTTAT v1→v2: ett anslutningsläge räcker inte
+
+Version 1 föreslog en enum `AVVAKTAR_FÖRSTA_SYNK / KOPPLAD / EJ_KOPPLAD`. Det är
+otillräckligt: **"kopplad" betyder inte "uppdaterad".** En lyckad anslutning säger
+ingenting om till vilket datum betalningarna är komplett inlästa.
+
+Det som behövs är två oberoende uppgifter, inte en:
+
+```
+1. FÖRVÄNTAS täckning?      manuellt läge · kopplad · ej kopplad
+2. VERIFIERAD täckning      t.o.m. vilket datum är betalningarna komplett inlästa,
+                            och när bekräftades det senast
+```
+
+Grinden måste kunna svara "täckning förväntas men har aldrig verifierats" som ett
+eget utfall, skilt från både "ingen täckning förväntas" och "täckning verifierad men
+gammal". Fyra fall att precisera innan lösningen beställs, och de ska namnges i
+beställningen: **manuellt läge · första synk · synkfel · verifierad täckning.**
+
+Teknisk anmärkning som står kvar: en grind över en nullbar kolumn bär ett tyst
+undantag för precis de rader ingen tänkte på. Samma familj som husregeln om NOT NULL
+med sentinel. Lösningen är uttryckliga tillstånd plus ett verifierat täckningsdatum,
+inte NULL.
+
+### RÄTTAT v1→v2: TRE oberoende ansvar, inte ett
+
+Version 1 buntade ihop huvudboken med bankmatchningen och bedömde alternativ B som
+om matchningen automatiskt följde med. Det är fel. Lagren är oberoende och kan
+fördelas var för sig:
+
+```
+LAGER 1  BANKDATA          vem håller samtycket och levererar transaktionerna
+LAGER 2  MATCHNING         vem matchar betalning mot avi och äger betalningsstatus
+LAGER 3  HUVUDBOK          vem håller verifikaten
+```
+
+Ett fullt rimligt upplägg, som måste verifieras men inte får uteslutas på förhand:
+
+```
+LAGER 1  en bankleverantör (aggregator)
+LAGER 2  EVENO — avier, betalningar, hyresgästens skuld hålls ihop här
+LAGER 3  Fortnox, Spiris, Accounted eller annan mottagare
+```
+
+Det upplägget bevarar det som gör Eveno till Eveno: `RentDebtService` läser bara
+`prisma.rentNotice`, så skuldberäkningen och kravtrappan är redan oberoende av
+huvudboken. Matchningen behöver inte flytta med bokföringen.
 
 ### Vad som måste avgöras före en övergång
 
-| Fråga | Måste besvaras av ägaren |
-|---|---|
-| Vem håller PSD2-samtycket: Eveno eller leverantören? | |
-| Om leverantören: vad skriver `paymentDataThrough`, och hur? | |
-| Hur skiljs "aldrig kopplad" från "kopplad men tyst"? Ett tredje tillstånd behövs, inte en nullbar kolumn. | |
-| Vilken maximal synklatens tolereras innan kravtrappan pausas? | |
-| Vem äger matchningen avi↔betalning: Eveno eller leverantören? Båda kan inte. | |
+| Fråga | Lager | Måste besvaras av ägaren |
+|---|---|---|
+| Vem håller PSD2-samtycket: Eveno eller leverantören? | 1 | |
+| Om leverantören: vad skriver det verifierade täckningsdatumet, och hur ofta? | 1 | |
+| Vem äger matchningen avi↔betalning? Båda kan inte. | 2 | |
+| Vem äger betalningsstatus som hyresgästen och kravtrappan läser? | 2 | |
+| Vilken maximal synklatens tolereras innan kravtrappan pausas? | 1+2 | |
+| Hur skiljs de fyra fallen manuellt läge / första synk / synkfel / verifierad täckning? | 2 | |
+| Vem håller verifikaten? | 3 | |
 
 **Teknisk anmärkning till den tredje frågan:** ett unikt villkor eller en grind över
 en nullbar kolumn bär ett tyst undantag för precis de rader ingen tänkte på. Samma
@@ -247,11 +346,39 @@ landar.
 **Två auktoritativa böcker är inte en modell, det är ett fel.** Tre hållbara
 alternativ, och valet är ägarens:
 
-| Alternativ | Auktoritativ för bokföringen | Konsultens rättelser | Pris |
-|---|---|---|---|
-| **A. Eveno äger boken, extern är mottagare** | Eveno | sker i Eveno, eller i det externa systemet och är då ENDAST för deklaration (divergens accepteras uttryckligen) | enklast; Eveno måste fortsätta bära huvudboken |
-| **B. Extern äger boken, Eveno matar** | leverantören | sker i det externa systemet och är auktoritativa | kräver returkanal för betalningsstatus (punkt 3) och omdesign av agentplattformens effektmodell |
-| **C. Delad, per räkenskapsår** | Eveno för öppet år, extern för stängda | rättelse i stängt år sker externt | gränssnittet blir ett datum; kräver att Eveno aldrig postar i ett överlämnat år |
+Alternativen nedan gäller **enbart lager 3, huvudboken.** Lager 1 och 2 fördelas
+separat (se punkt 3). Inget alternativ förutsätter att matchningen flyttar.
+
+| Alternativ | Auktoritativ för bokföringen | Pris |
+|---|---|---|
+| **A. Eveno äger boken, extern är mottagare** | Eveno | enklast; Eveno fortsätter bära huvudboken. **Kräver en uttrycklig rättelseregel, se nedan.** |
+| **B. Extern äger boken, Eveno matar** | leverantören | kräver returkanal för betalningsstatus om lager 2 också flyttar, och omdesign av agentplattformens effektmodell |
+| **C. Delad, per räkenskapsår** | Eveno för öppet år, extern för stängda | gränssnittet blir ett datum; kräver att Eveno aldrig postar i ett överlämnat år |
+
+### RÄTTAT v1→v2: alternativ A behöver en rättelseregel, inte accepterad divergens
+
+Version 1 skrev att en rättelse hos konsulten kunde vara "ENDAST för deklaration
+(divergens accepteras uttryckligen)". Det håller inte. En bokföringspåverkande
+rättelse hos konsulten **är ett bokföringsfaktum**, och två böcker som tillåts vara
+oense är inte en modell.
+
+Alternativ A är bara hållbart med en av dessa regler, och valet är ägarens:
+
+```
+A1  Konsulten rättar I EVENO. Det externa systemet är en ren mottagare och
+    importeras om efter rättelsen. Kräver att konsulten får åtkomst till Eveno.
+
+A2  Konsulten rättar externt, och rättelsen FÖRS TILLBAKA till Eveno som ett
+    verifikat innan året stängs. Kräver en definierad returväg och en ägare av
+    avstämningen. SIE har ingen sådan kanal — den måste byggas eller skötas manuellt.
+
+A3  Året ÖVERLÄMNAS vid en namngiven tidpunkt, varefter Eveno inte längre är
+    auktoritativt för det året. Det är i praktiken alternativ C, och ska då
+    kallas C och inte A.
+```
+
+Utan en av A1, A2 eller A3 är alternativ A inte ett alternativ, utan en obesvarad
+fråga.
 
 **Anmärkning till alternativ B:** Evenos förbrukningsgrind (#877) och
 leveransmekanism (#878/#879) är byggda kring att bokföra i samma
@@ -284,11 +411,17 @@ Inget nedan är beslutat i det här dokumentet.
    engångsimport-beviset mot EN mottagare innan någon leverantör väljs, och gör det
    mot accounted eftersom exportbeviset redan finns där.
 
-5. **Besluta om masterplanens visionstext ska ändras.** Den säger i dag att systemet
-   sköter "avisering, påminnelser, bankavstämning, **bokföring**, kravhantering"
-   automatiskt, och att Eveno ersätter Vitec och Momentum, som har bokföring. Om
-   deklarations- och bokslutslagret aldrig byggs är den texten inte längre sann som
-   skriven. Antingen ändras texten, eller så står posten kvar som framtida arbete.
+5. **Besluta hur produktens gräns uttrycks i masterplanen.**
+
+   **RÄTTAT v1→v2.** Version 1 skrev att visionstexten "inte längre är sann som
+   skriven" om deklarationslagret aldrig byggs. Det var en överdrift. Behålls
+   huvudboken så sköter systemet faktiskt bokföringen löpande, och löftet står
+   kvar. Det som behöver skrivas ut är **gränsen**: Eveno bokför, stänger period
+   och stänger år — Eveno upprättar inte bokslut och lämnar inte in deklarationer.
+   Det är ett förtydligande av texten, inte en motsägelse mot den.
+
+   Beslutet som behövs: ska gränsen skrivas in i visionsavsnittet, eller stå som en
+   egen rad bland det som återstår?
 
 6. **Besluta vem som äger dokumentet `docs/revision-status.md`-raden för den här
    frågan**, så att beslutet inte blir en rad utan sha som nästa session bygger på.
@@ -311,5 +444,9 @@ BAS:s konto för mottagna skadestånd är **3992 "Erhållna skadestånd"**. Med 
 redovisas ett depositionsavdrag för skada som nettoomsättning i hyresvärdens
 INK2R. Evenos egen kommentar (`bas-chart.ts:87-88`) säger att 3040 medvetet hålls
 skilt från 3990 — avsikten var rätt, kontonumret är fel. Förslag: 3040 → 3992,
-fortfarande skilt från 3990. Hör till `bokforings-expert`, inte till det här
-beslutet, och kräver en migrationsplan för befintliga poster.
+fortfarande skilt från 3990.
+
+**Detta är en SEPARAT redovisningsrättelse med egen granskning.** Den hör till
+`bokforings-expert`, inte till riktningsbeslutet. **Ingen kodändring och ingen
+migration ingår i det här beslutet.** Befintliga poster på 3040 kräver en egen
+migrationsplan, och den planen är inte skriven.
