@@ -1,3 +1,4 @@
+import type { UpdateOrganizationInput, SammaNycklar } from '@eken/shared'
 import {
   IsString,
   IsOptional,
@@ -15,7 +16,7 @@ import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
-export class UpdateOrganizationDto {
+export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @IsString()
   @IsOptional()
   @StrictString()
@@ -190,3 +191,6 @@ export class UpdateOrganizationDto {
   @Max(50_000_000)
   maxBankTxAmount?: number
 }
+
+const _kontrakt: SammaNycklar<UpdateOrganizationDto, UpdateOrganizationInput> = true
+void _kontrakt

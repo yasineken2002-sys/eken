@@ -1,3 +1,4 @@
+import type { DecideAssignmentInput } from '@eken/shared'
 import { get, patch } from '@/lib/api'
 
 export type AssignmentStatus = 'AWAITING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'EXPIRED'
@@ -65,12 +66,10 @@ export const fetchAssignments = async (status?: AssignmentStatus): Promise<Assig
   return sida.rader
 }
 
-export const decideAssignment = (params: {
-  id: string
-  decision: 'APPROVED' | 'REJECTED'
-  reason?: string
-}) =>
-  patch<Assignment>(`/ai/assignments/${params.id}/decision`, {
+export const decideAssignment = (params: { id: string } & DecideAssignmentInput) => {
+  const kropp: DecideAssignmentInput = {
     decision: params.decision,
     ...(params.reason ? { reason: params.reason } : {}),
-  })
+  }
+  return patch<Assignment>(`/ai/assignments/${params.id}/decision`, kropp)
+}

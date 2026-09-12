@@ -1,3 +1,6 @@
+import { UpdateOrganizationSchema, type UpdateOrganizationInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -179,6 +182,18 @@ export function SettingsPage() {
     }
   }, [org, reset])
 
+  const sparaOrganisation = (
+    kropp: UpdateOrganizationInput,
+    options?: Parameters<typeof updateMutation.mutate>[1],
+  ) => {
+    const fel = kontraktsfel(UpdateOrganizationSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    updateMutation.mutate(kropp, options)
+  }
+
   const handleSaveTaxInfo = () => {
     setTaxError(null)
     if (hasFSkatt && fSkattApprovedDate) {
@@ -188,20 +203,18 @@ export function SettingsPage() {
         return
       }
     }
-    updateMutation.mutate(
-      {
-        hasFSkatt,
-        ...(hasFSkatt && fSkattApprovedDate ? { fSkattApprovedDate } : {}),
-        vatNumber,
-        vatReportingPeriod,
+    const kropp: UpdateOrganizationInput = {
+      hasFSkatt,
+      ...(hasFSkatt && fSkattApprovedDate ? { fSkattApprovedDate } : {}),
+      vatNumber,
+      vatReportingPeriod,
+    }
+    sparaOrganisation(kropp, {
+      onSuccess: () => {
+        setTaxSavedFlash(true)
+        setTimeout(() => setTaxSavedFlash(false), 2500)
       },
-      {
-        onSuccess: () => {
-          setTaxSavedFlash(true)
-          setTimeout(() => setTaxSavedFlash(false), 2500)
-        },
-      },
-    )
+    })
   }
 
   // ── Påminnelseavgiftens tak, i gränssnittet ────────────────────────────────
@@ -228,40 +241,37 @@ export function SettingsPage() {
       )
       return
     }
-    updateMutation.mutate(
-      {
-        reminderFeeSek,
-        reminderFormalDay,
-        reminderCollectionDay,
-        collectionAgencyName,
+    const kropp: UpdateOrganizationInput = {
+      reminderFeeSek,
+      reminderFormalDay,
+      reminderCollectionDay,
+      collectionAgencyName,
+    }
+    sparaOrganisation(kropp, {
+      onSuccess: () => {
+        setCollectionsSavedFlash(true)
+        setTimeout(() => setCollectionsSavedFlash(false), 2500)
       },
-      {
-        onSuccess: () => {
-          setCollectionsSavedFlash(true)
-          setTimeout(() => setCollectionsSavedFlash(false), 2500)
-        },
-      },
-    )
+    })
   }
 
   const handleSave = (v: PaymentFormValues) => {
-    updateMutation.mutate(
-      {
-        ...(v.bankgiro ? { bankgiro: v.bankgiro } : {}),
-        ...(v.paymentTermsDays != null ? { paymentTermsDays: v.paymentTermsDays } : {}),
+    const kropp: UpdateOrganizationInput = {
+      ...(v.bankgiro ? { bankgiro: v.bankgiro } : {}),
+      ...(v.paymentTermsDays != null ? { paymentTermsDays: v.paymentTermsDays } : {}),
+    }
+    sparaOrganisation(kropp, {
+      onSuccess: () => {
+        setSavedFlash(true)
+        setTimeout(() => setSavedFlash(false), 2500)
       },
-      {
-        onSuccess: () => {
-          setSavedFlash(true)
-          setTimeout(() => setSavedFlash(false), 2500)
-        },
-      },
-    )
+    })
   }
 
   const handleMorningReportToggle = (value: boolean) => {
     setMorningReportEnabled(value)
-    updateMutation.mutate({ morningReportEnabled: value })
+    const kropp: UpdateOrganizationInput = { morningReportEnabled: value }
+    sparaOrganisation(kropp)
   }
 
   const handleShadowAgentToggle = (value: boolean) => {
@@ -273,12 +283,14 @@ export function SettingsPage() {
     // delegationerna); den här raden är bara för att gränssnittet inte ska visa
     // ett läge som inte finns förrän nästa hämtning.
     if (!value) setAgentExecutionEnabled(false)
-    updateMutation.mutate({ shadowAgentEnabled: value })
+    const kropp: UpdateOrganizationInput = { shadowAgentEnabled: value }
+    sparaOrganisation(kropp)
   }
 
   const handleSkarptLageToggle = (value: boolean) => {
     setAgentExecutionEnabled(value)
-    updateMutation.mutate({ agentExecutionEnabled: value })
+    const kropp: UpdateOrganizationInput = { agentExecutionEnabled: value }
+    sparaOrganisation(kropp)
   }
 
   const handleAiMemoriesToggle = (value: boolean) => {
@@ -301,22 +313,27 @@ export function SettingsPage() {
   }
 
   const handleSaveInvoiceSettings = () => {
-    updateMutation.mutate(
-      {
-        invoiceColor,
-        invoiceTemplate,
-        brandFont,
-        // Skicka sekundärfärg bara när den är aktiverad; annars lämnas fältet
-        // orört (NULL → härleds), så befintligt beteende inte ändras.
-        ...(useSecondaryColor ? { brandSecondaryColor } : {}),
+    const template = UpdateOrganizationSchema.shape.invoiceTemplate.safeParse(invoiceTemplate)
+    const font = UpdateOrganizationSchema.shape.brandFont.safeParse(brandFont)
+    if (!template.success || !font.success) {
+      toast.error('Välj en giltig fakturamall och ett giltigt typsnitt.')
+      return
+    }
+
+    const kropp: UpdateOrganizationInput = {
+      invoiceColor,
+      invoiceTemplate: template.data,
+      brandFont: font.data,
+      // Skicka sekundärfärg bara när den är aktiverad; annars lämnas fältet
+      // orört (NULL → härleds), så befintligt beteende inte ändras.
+      ...(useSecondaryColor ? { brandSecondaryColor } : {}),
+    }
+    sparaOrganisation(kropp, {
+      onSuccess: () => {
+        setInvoiceSavedFlash(true)
+        setTimeout(() => setInvoiceSavedFlash(false), 2500)
       },
-      {
-        onSuccess: () => {
-          setInvoiceSavedFlash(true)
-          setTimeout(() => setInvoiceSavedFlash(false), 2500)
-        },
-      },
-    )
+    })
   }
 
   const handleFileSelect = (file: File) => {
@@ -1023,7 +1040,8 @@ export function SettingsPage() {
                   gransOre={vasentlighetsgransOre}
                   onSpara={(ore) => {
                     setVasentlighetsgransOre(ore)
-                    updateMutation.mutate({ lateBookingMaterialityThreshold: ore })
+                    const kropp: UpdateOrganizationInput = { lateBookingMaterialityThreshold: ore }
+                    sparaOrganisation(kropp)
                   }}
                   sparar={updateMutation.isPending}
                 />
@@ -1159,7 +1177,8 @@ export function SettingsPage() {
                     onClick={() => {
                       const next = !remindersEnabled
                       setRemindersEnabled(next)
-                      updateMutation.mutate({ remindersEnabled: next })
+                      const kropp: UpdateOrganizationInput = { remindersEnabled: next }
+                      sparaOrganisation(kropp)
                     }}
                     className={cn(
                       'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
@@ -1291,15 +1310,15 @@ export function SettingsPage() {
                   variant="primary"
                   size="sm"
                   onClick={() => {
-                    updateMutation.mutate(
-                      { daysBeforeMoveInForFirstPayment: daysBeforeMoveIn },
-                      {
-                        onSuccess: () => {
-                          setAviSavedFlash(true)
-                          setTimeout(() => setAviSavedFlash(false), 2500)
-                        },
+                    const kropp: UpdateOrganizationInput = {
+                      daysBeforeMoveInForFirstPayment: daysBeforeMoveIn,
+                    }
+                    sparaOrganisation(kropp, {
+                      onSuccess: () => {
+                        setAviSavedFlash(true)
+                        setTimeout(() => setAviSavedFlash(false), 2500)
                       },
-                    )
+                    })
                   }}
                 >
                   Spara inställning

@@ -1,10 +1,11 @@
+import type { UpdateTicketInput, SammaNycklar } from '@eken/shared'
 import { IsString, IsUUID, IsOptional, IsEnum, IsNumber, IsBoolean } from 'class-validator'
 import { MaintenanceCategory, MaintenancePriority, MaintenanceStatus } from '@prisma/client'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
-export class UpdateMaintenanceTicketDto {
+export class UpdateMaintenanceTicketDto implements UpdateTicketInput {
   @IsString()
   @IsOptional()
   @StrictString()
@@ -52,3 +53,6 @@ export class UpdateMaintenanceTicketDto {
   @StrictBoolean()
   tenantNotified?: boolean
 }
+
+const _kontrakt: SammaNycklar<UpdateMaintenanceTicketDto, UpdateTicketInput> = true
+void _kontrakt

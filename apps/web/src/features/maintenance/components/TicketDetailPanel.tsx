@@ -1,3 +1,6 @@
+import { UpdateTicketSchema, type UpdateTicketInput } from '@eken/shared'
+import { kontraktsfel } from '@/lib/contract-gate'
+import { toast } from 'sonner'
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, Lock, Globe, MessageSquare, ImageIcon } from 'lucide-react'
@@ -55,7 +58,13 @@ export function TicketDetailPanel({ ticket: initialTicket, onClose }: Props) {
     : null
 
   const handleStatusTransition = async (newStatus: MaintenanceTicket['status']) => {
-    await updateTicket.mutateAsync({ id: ticket.id, dto: { status: newStatus } })
+    const kropp: UpdateTicketInput = { status: newStatus }
+    const fel = kontraktsfel(UpdateTicketSchema, kropp)
+    if (fel) {
+      toast.error(fel)
+      return
+    }
+    await updateTicket.mutateAsync({ id: ticket.id, dto: kropp })
   }
 
   const handleAddComment = async () => {

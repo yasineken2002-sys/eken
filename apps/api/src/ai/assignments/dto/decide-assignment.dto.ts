@@ -1,3 +1,4 @@
+import type { DecideAssignmentInput, SammaNycklar } from '@eken/shared'
 import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 import { StrictString } from '../../../common/contract/strict-string.decorator'
 
@@ -10,7 +11,7 @@ import { StrictString } from '../../../common/contract/strict-string.decorator'
  * plats där bara HTTP-vägen ser den. Tjänsten är den enda ingången som alla
  * anropare passerar.
  */
-export class DecideAssignmentDto {
+export class DecideAssignmentDto implements DecideAssignmentInput {
   @IsIn(['APPROVED', 'REJECTED'])
   decision!: 'APPROVED' | 'REJECTED'
 
@@ -21,3 +22,6 @@ export class DecideAssignmentDto {
   @StrictString()
   reason?: string
 }
+
+const _kontrakt: SammaNycklar<DecideAssignmentDto, DecideAssignmentInput> = true
+void _kontrakt
