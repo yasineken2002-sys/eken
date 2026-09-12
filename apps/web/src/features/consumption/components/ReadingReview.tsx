@@ -38,6 +38,24 @@ export function ReadingReviewContent({
           ))}
         </dl>
       </div>
+      {report.coverageGaps.length > 0 && (
+        <details className="rounded-xl border border-gray-200 bg-white p-5">
+          <summary className="cursor-pointer font-medium text-gray-900">
+            Tidsluckor i periodunderlaget ({report.coverageGaps.length})
+          </summary>
+          <p className="mt-2 text-sm text-gray-600">
+            De registrerade periodvolymerna täcker inte mellanrummen nedan. Trendjämförelsen
+            använder de registrerade perioderna och uppskattar ingen förbrukning i luckorna.
+          </p>
+          <ul className="mt-3 space-y-2 text-sm text-gray-600">
+            {report.coverageGaps.map((gap) => (
+              <li key={gap.readingId}>
+                {meterLabel(gap.meterId)}: {gap.periodStart} – {gap.periodEnd} ({gap.days} dagar)
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {report.total === 0 ? (
         <p className="rounded-xl bg-white p-5 text-sm text-gray-600">
           Inga avläsningar att granska ännu.

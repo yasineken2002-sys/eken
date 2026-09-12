@@ -165,12 +165,12 @@ describe.each(types)('luckregel med verkliga formulärdatum: %s', (type) => {
     expectSpike(await series(type, periods))
   })
 
-  it('skiljer utebliven hel månad från tid mellan mätarställningar', async () => {
+  it('jämför dagsmedel även när en hel månad saknas', async () => {
     const periods = monthly(type, 10)
     periods[periods.length - 1] = { end: date(2026, count(type), 10) }
     const result = reviewReadings(await series(type, periods))
-    expect(result.trendAssessed).toBe(type === 'CUMULATIVE' ? 1 : 0)
-    expect(result.findings.map((f) => f.code)).toEqual(type === 'CUMULATIVE' ? ['HIGH_RATE'] : [])
+    expect(result.trendAssessed).toBe(1)
+    expect(result.findings.map((f) => f.code)).toEqual(['HIGH_RATE'])
   })
 
   it('behåller överlappningsspärren för upprepade månadsfönster inom samma månad', async () => {
@@ -182,40 +182,37 @@ describe.each(types)('luckregel med verkliga formulärdatum: %s', (type) => {
   })
 })
 
-it('periodvolym: datumformen styr även det tvetydiga fönstret 1:a till 1:a', async () => {
+it('periodvolym: jämför enstaka registrerade dagar i olika månader', async () => {
   expectSpike(await series('PERIOD_VOLUME', monthly('PERIOD_VOLUME', 1)))
 })
 
-it('periodvolym: en lucka i en daglig serie blir inte ett månadsfönster', async () => {
+it('periodvolym: en lucka i en daglig serie tystar inte dagsmedlet', async () => {
   const periods = [2, 3, 4, 8].map((day) => ({
     start: date(2026, 0, day),
     end: date(2026, 0, day),
   }))
-  expect(reviewReadings(await series('PERIOD_VOLUME', periods))).toMatchObject({
-    findings: [],
-    trendAssessed: 0,
-  })
+  expectSpike(await series('PERIOD_VOLUME', periods))
 })
 
 it.each(['annan startdag', 'flera månader'] as const)(
-  'periodvolym: kalenderundantaget gäller inte %s',
+  'periodvolym: dagsmedlet fungerar även med %s',
   async (kind) => {
     const periods = monthly('PERIOD_VOLUME', 10)
     periods[3] =
       kind === 'annan startdag'
         ? { start: '2026-04-02', end: '2026-04-10' }
         : { start: '2026-04-01', end: '2026-05-10' }
-    expect(reviewReadings(await series('PERIOD_VOLUME', periods))).toMatchObject({
-      findings: [],
-      trendAssessed: 0,
-    })
+    expectSpike(await series('PERIOD_VOLUME', periods))
   },
 )
 
-it('periodvolym: kalenderundantaget kräver formulärets hela UTC-datum', async () => {
+it('periodvolym: klockslaget är inte längre en trendspärr (utanför formulärets datumform)', async () => {
   const rows = await series('PERIOD_VOLUME', monthly('PERIOD_VOLUME', 10))
   rows[3]!.periodStart = '2026-04-01T01:00:00Z'
-  expect(reviewReadings(rows)).toMatchObject({ findings: [], trendAssessed: 0 })
+  expect(reviewReadings(rows)).toMatchObject({
+    findings: [{ code: 'HIGH_RATE' }],
+    trendAssessed: 1,
+  })
 })
 
 it('kumulativ minskning är fortfarande ett fel även efter en hel saknad månad', async () => {
@@ -224,15 +221,12 @@ it('kumulativ minskning är fortfarande ett fel även efter en hel saknad månad
   expect(reviewReadings(rows)).toMatchObject({ trendAssessed: 0, findings: [{ code: 'DECREASE' }] })
 })
 
-it('periodvolym: föregående dagliga serie är inte ett månadsfönster', async () => {
+it('periodvolym: tidigare dagsmedel kan jämföras med ett senare månadsfönster', async () => {
   const periods = [
     { start: '2026-02-08', end: '2026-02-08' },
     { start: '2026-02-09', end: '2026-02-09' },
     { start: '2026-02-10', end: '2026-02-10' },
     { end: '2026-03-10' },
   ]
-  expect(reviewReadings(await series('PERIOD_VOLUME', periods))).toMatchObject({
-    findings: [],
-    trendAssessed: 0,
-  })
+  expectSpike(await series('PERIOD_VOLUME', periods))
 })

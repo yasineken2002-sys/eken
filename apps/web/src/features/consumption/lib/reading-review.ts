@@ -13,33 +13,20 @@ export interface ReadingFinding {
 const DAY = 86400000
 const format = (value: number) => value.toLocaleString('sv-SE', { maximumFractionDigits: 2 })
 
-// Formuläret registrerar första→idag. Detta jämför observerade månadsfönster,
-// inte förbrukning under de omätta mellandagarna (även första→första är ett fönster).
-function monthWindowIndex({ start, end }: { start: number; end: number }) {
-  const from = new Date(start)
-  const to = new Date(end)
-  if (
-    start % DAY !== 0 ||
-    end % DAY !== 0 ||
-    from.getUTCDate() !== 1 ||
-    from.getUTCFullYear() !== to.getUTCFullYear() ||
-    from.getUTCMonth() !== to.getUTCMonth()
-  )
-    return undefined
-  return from.getUTCFullYear() * 12 + from.getUTCMonth()
+export interface ReadingCoverageGap {
+  readingId: string
+  meterId: string
+  periodStart: string
+  periodEnd: string
+  days: number
 }
 
-function consecutiveMonthWindows(
-  previous: { start: number; end: number },
-  current: { start: number; end: number },
-) {
-  const month = monthWindowIndex(previous)
-  return month !== undefined && monthWindowIndex(current) === month + 1
-}
-
+// Den här jämför periodvolym per kalenderdag respektive ställningsförändring per förfluten dag, oavsett datumluckor.
+// Den kan inte se förbrukningen mellan periodvolymer eller förklara skillnader från säsong, beläggning eller ändrad användning.
 /** Läsanalys, aldrig debiteringsunderlag. Inga ändringar av indata eller sparade belopp. */
 export function reviewReadings(readings: readonly ReviewReading[]) {
   const findings: ReadingFinding[] = []
+  const coverageGaps: ReadingCoverageGap[] = []
   let trendAssessed = 0
   const groups = new Map<string, ReviewReading[]>()
   for (const r of readings) {
@@ -58,7 +45,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
       const end = Date.parse(r.periodEnd)
       endCounts.set(end, (endCounts.get(end) ?? 0) + 1)
     }
-    let previous: { start: number; end: number; value: number; type: string } | undefined
+    let previous: { end: number; value: number; type: string } | undefined
     let rates: number[] = []
     for (const r of sorted) {
       const start = Date.parse(r.periodStart)
@@ -90,7 +77,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         rates = []
         continue
       }
-      const current = { start, end, value, type: r.readingType }
+      const current = { end, value, type: r.readingType }
       if (
         previous &&
         (start < previous.end || (r.readingType === 'PERIOD_VOLUME' && start === previous.end))
@@ -116,14 +103,24 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
         rates = []
         continue
       }
+      // Täckning är en separat upplysning, aldrig ett stopp för normaliserad rate.
+      // Bara hela UTC-dagar mellan två registrerade periodvolymer kan härledas här.
       if (
-        previous &&
-        (previous.type !== r.readingType ||
-          (r.readingType === 'PERIOD_VOLUME' &&
-            start > previous.end + DAY &&
-            !consecutiveMonthWindows(previous, current)))
+        previous?.type === 'PERIOD_VOLUME' &&
+        r.readingType === 'PERIOD_VOLUME' &&
+        start % DAY === 0 &&
+        previous.end % DAY === 0 &&
+        start > previous.end + DAY
       ) {
-        // Typbyte bryter alltid. Ställningsdifferenser täcker däremot hela tidsavståndet.
+        coverageGaps.push({
+          readingId: r.id,
+          meterId: r.meterId,
+          periodStart: new Date(previous.end + DAY).toISOString().slice(0, 10),
+          periodEnd: new Date(start - DAY).toISOString().slice(0, 10),
+          days: (start - previous.end) / DAY - 1,
+        })
+      }
+      if (previous && previous.type !== r.readingType) {
         previous = undefined
         rates = []
       }
@@ -159,6 +156,7 @@ export function reviewReadings(readings: readonly ReviewReading[]) {
   }
   return {
     findings,
+    coverageGaps,
     total: readings.length,
     trendAssessed,
     notTrendAssessed: readings.length - trendAssessed,

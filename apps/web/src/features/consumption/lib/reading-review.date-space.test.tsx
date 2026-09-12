@@ -265,6 +265,22 @@ it.each(cases)(
       accepted: accepted.map((v) => (v ? 'Y' : 'N')).join(''),
       results: accepted.every(Boolean) ? measured(rows) : undefined,
     })
+    if (accepted.every(Boolean)) {
+      // Oberoende datumfacit: unika stigande slut och inga överlapp. Ingen kalendergrind.
+      const comparable = periods.every(
+        (p, i) =>
+          i === 0 ||
+          (p.end > periods[i - 1]!.end &&
+            (type === 'CUMULATIVE'
+              ? p.start >= periods[i - 1]!.end
+              : p.start > periods[i - 1]!.end)),
+      )
+      if (comparable) positive(reviewReadings(rows), String(count))
+      else {
+        expect(reviewReadings(rows).trendAssessed).toBe(0)
+        expect(reviewReadings(rows).findings).toEqual(firstFix(rows).findings)
+      }
+    }
   },
   30000,
 )
@@ -293,6 +309,8 @@ it.each(types)('avläsningsdatum kan ligga före/efter perioden: %s', async (typ
     accepted: 'Y'.repeat(count),
     results: measured(a.rows),
   })
+  positive(reviewReadings(a.rows), String(count))
+  positive(reviewReadings(b.rows), String(count))
 })
 it.each(types)('två olika periodslut i samma månad: %s', async (type) => {
   const { rows, accepted } = await actualRows(
