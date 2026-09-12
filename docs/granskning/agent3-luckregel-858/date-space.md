@@ -274,3 +274,29 @@ Y/N är verkligt formulärutfall per observation. Om någon rad avvisas körs in
 | readingDate-before-after/PERIOD_VOLUME | YYYY | 2026-01-15..2026-01-20; 2026-02-15..2026-02-20; 2026-03-15..2026-03-20; 2026-04-15..2026-04-20 | 0; [] | 0; [] | 1; [HIGH_RATE@4] | 3 |
 | same-month-distinct-ends/CUMULATIVE | YY | 2026-01-15..2026-01-20; 2026-01-15..2026-01-28 | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0 |
 | same-month-distinct-ends/PERIOD_VOLUME | YY | 2026-01-15..2026-01-20; 2026-01-15..2026-01-28 | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0; [OVERLAP@2] | 0 |
+
+## Slutverifiering
+
+Källkoden i säkringscommitten bc65f20578c107bd251319e98f964cbeef05a272 kördes i Codespaces. Rättningsfilens SHA-256 är 762193cf1494899e83caf664f62af1b3781d02059b36ae67d1222fe704f75c2d.
+
+- Fem berörda sviter: **296/296** godkända prov (21 analys, 29 formulär, 222 datumrymd, 16 täckning och 8 UI). Webtypkontroll och riktad lint är gröna.
+- Verklig kanarie: endast reading-review.ts ersattes tillfälligt med versionen från 8c6f850111b7e378d653ee781abd7e6071f3e32c. Den nya matrisen gav **50 avsedda PERIOD_VOLUME-fel, 172 godkända prov**. Samtliga 220 uppmätta analysresultat återgick exakt till första fixens resultat. De 50 felen är 49 kärnkombinationer och ett extra readingDate-fall.
+- Samma fil återställdes byteidentiskt från bc65f205 med vanlig git restore. Omkörningen gav **296/296**. Ingen historik skrevs om.
+- Rapportkanarie: körning av endast de två kanarieproven gav två godkända prov och 220 överhoppade, men sviten blev röd i afterAll för saknad fullständig ID-mängd. Ingen rapportfil skapades. En partiell körning kan alltså inte lämna ett komplett kvitto.
+- Täckningsregressionens två fall (senare period täcker hela/del av en skenbar lucka) var röda före den konservativa gruppspärren. Slutproven täcker även DATA och isolering mellan frisk och tvetydig mätargrupp i båda indataordningarna.
+- Slutliga mätfiler från tre körningar jämfördes som fullständiga JSON-objekt: identiska 220 observationer, 425 formulärkvitton och historiska resultat. Råa lokala körningsloggar har inte lagts till i Git.
+
+## Ändringsställen och omfattning
+
+- reading-review.ts:17: separat typ för täckningsluckor; :24–26: vad jämförelsen mäter och inte kan se; :108: luckornas beräkning; :158: strukturellt tvetydig grupp avstår från täckningsbesked.
+- ReadingReview.tsx:41: neutral, hopfällbar upplysning med luckans egna datum, separat från avläsningsfynd.
+- reading-review.date-space.test.tsx:183: positiv instrumentkontroll före matrisen; :339: fullständig ID-mängd krävs för rapporten.
+- reading-review.coverage.test.ts:75: senare överlappande perioder; :87: ogiltiga data; :97: gruppisolering i båda ordningarna.
+- reading-review.form.test.tsx: de ursprungliga formulär-/kalenderproven behålls med uttryckligt uppdaterad luckpolicy. reading-review.test.ts ändrar enbart det gamla provkontraktet som krävde tystnad efter PV-lucka.
+- date-space-fixtures/before.test-helpers.ts och first-fix.test-helpers.ts: oförändrade historiska implementationsfixturer, enbart importerade av datumrymdens spec.
+
+Den pinnade production-lines.mjs från #882 (SHA-256 37d1d6d903ac4946dcebf2e684c68e434b7346202cee8e4db0ef9af2c475f2f1) mäter **56 ändrade produktionsrader, 1 272 testrader och noll binärer** mot den fasta basen. Inga importspärrfel; verktyget redovisar 304 generella analysbegränsningar för hela källträdet, inte 304 nya fel i diffen.
+
+Pushkontrollen mäter **13 egna filer** mot origin/codex/agent3-forbrukningsgranskning och **15 filer** med main-formen. Två filer är oförändrat ärvda från basen: apps/web/src/features/consumption/ConsumptionPage.tsx och docs/agent3-forbrukningsgranskning.md. Kontrollen använder bas 9295e013, main 3b71e905 och merge-base 27a720d4; inga filer har filtrerats bort ur talen.
+
+Ingen API-/databasvalidering, debitering, migration, merge eller framåtpropagering ingår. Detta är en granskning av syntetiska avläsningar genom det verkliga formuläret och analysen. CI för den kommande pushens exakta HEAD rapporteras i PR #888.
