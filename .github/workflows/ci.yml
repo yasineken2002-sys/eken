@@ -167,6 +167,9 @@ jobs:
       - name: Verify no tests were skipped
         run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report.json
 
+      - name: Require executed API release gate behavior tests
+        run: node apps/api/scripts/check-release-tests.cjs apps/api/jest-report.json
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest
