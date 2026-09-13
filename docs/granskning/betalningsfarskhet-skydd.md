@@ -42,15 +42,27 @@ Lokala tredjeparter lånades från befintlig pnpm-cache, med egen genererad Pris
 
 ## Slutverifiering lokalt 2026-09-13
 
-De sparade `live/farskhet-skydd-db-slut-1.log`/`.json` och `live/farskhet-skydd-db-slut-2.log`/`.json` har lästs efter återstarten. Båda visar 23/23 godkända prov, noll fallerade, noll överhoppade och noll runtime-fel. De kördes mot den egna isolerade databasen `eveno_farskhet_test` på port 55439. Produktionskoden är oförändrad sedan dessa körningar.
+De sparade `live/farskhet-skydd-db-slut-1.log`/`.json` och `live/farskhet-skydd-db-slut-2.log`/`.json` har lästs efter återstarten. Båda visar 23/23 godkända prov, noll fallerade, noll överhoppade och noll runtime-fel. De kördes mot den egna isolerade databasen `eveno_farskhet_test` på port 55439. Dessa resultat hör till implementationen i 87c6685a; senare CI-rättelse redovisas nedan.
 
 Radantalen är identiska före och efter i båda körningarna, tabell för tabell över 106 tabeller: `_prisma_migrations=185`, `CustomerNumberSequence=1`, `ReferenceInterestRate=1`, övriga 103 tabeller noll. Det är totalt 187 rader inklusive migrationshistoriken, två utan den. Inga organisations- eller importfixturer finns kvar efter städningen. Loggarna räknar före/efter, inte det sammanlagda antalet skapade fixturrader under körningen; lika radantal intygar inte äldre raders innehåll.
 
-Negativkontrollens JSON bekräftar ett fallerat F12 och 22 avsiktligt ej valda fall. När endast effektgrindens beslut avaktiverades skapades 60 kr avgift, ett event, ett verifikat och ett köjobb; `pausedStale` blev 0. Den återställda produktionsfilen är byteidentisk med implementationscommitten och har fortfarande ovan angiven SHA-256. Båda gröna slutkörningarna följde efter återställningen.
+Negativkontrollens JSON bekräftar ett fallerat F12 och 22 avsiktligt ej valda fall. När endast effektgrindens beslut avaktiverades skapades 60 kr avgift, ett event, ett verifikat och ett köjobb; `pausedStale` blev 0. Vid återläsningen inför c0f62025 var den återställda produktionsfilen byteidentisk med implementationscommitten och hade ovan angiven SHA-256. Båda gröna slutkörningarna följde efter återställningen.
 
-De tre cron-spionerna i `rent-bad-debt.service.spec.ts` har flyttats till `automaticallyReclassifyToProbableLoss`, med två argument. Beteendefacitet för moms, saknad bokförd fordran och paus är bevarat; direkta manuella provanrop kvarstår. Övriga anrop och konstruktionsriggar för de berörda tjänsterna har kontrollerats. PSD2-provet i `import-entry-boundary.spec.ts` väntar nu på en kontrollerad mock-promise och kräver att kön inte anropas innan den upplöses. Rubriken beskriver portordningen, inte DB-commit.
+De tre cron-spionerna i `rent-bad-debt.service.spec.ts` har flyttats till `automaticallyReclassifyToProbableLoss`, med två argument. Beteendefacitet för moms, saknad bokförd fordran och paus är bevarat; direkta manuella provanrop kvarstår. Övriga anrop och konstruktionsriggar för aviseringstjänsterna har kontrollerats. PSD2-provet i `import-entry-boundary.spec.ts` väntar nu på en kontrollerad mock-promise och kräver att kön inte anropas innan den upplöses. Rubriken beskriver portordningen, inte DB-commit.
 
 Ny seriell körning: `rent-bad-debt.service.spec.ts` 21/21 och `import-entry-boundary.spec.ts` 41/41, tillsammans 62/62, noll överhoppade. Dessa överlappar den tidigare körningens 144 prov och ska inte adderas som unika prov. Riktad ESLint över samtliga 27 ändrade TypeScript-/TSX-filer mot reproduktionsbasen passerade med `--max-warnings=0`. API-typkontrollen har också körts om efter återstarten med exit 0 och noll diagnostik. Nya loggar/JSON finns lokalt i `.proof-betalningsfarskhet-leverans/`. Före Jest/tsc utfördes både pgrep-kontroll och `live/farskhet-tunga-processer.py`; inga andra Jest/tsc körde.
+
+## CI-fångade rättelser och omprov
+
+Första fulla CI på c0f62025 ([34750475140](https://github.com/yasineken2002-sys/eken/actions/runs/34750475140)) hittade transaktionsvaktens ej igenkända optionsobjekt och åtta fallerade prov i två äldre sviter (473 sviter/5779 prov passerade). DB-reproduktionsspecen kördes och passerade, men detta var inte grön CI.
+
+I 5fbed8bb väljer samtliga fem berörda transaktionsanrop `PRISMA_DEFAULT_TX_LIMITS` uttryckligt. `paymentFreshnessTransactionOptions` tillför ReadCommitted till de valda tidsgränserna. Timeout 5000 ms, maxWait 2000 ms och isolering är desamma som före rättelsen. Transaktionsvakten, dess självprov och kvitteringar har inte ändrats; både självprov och skarp vakt passerar.
+
+I ca69d8f0 kompletteras OCR-proveniensriggens mock med `recordImportStarted`, och organisationspartitionen klassificerar den nya interna förstmarkören som medvetet utelämnad från den allmänna organisationsvyn. Ingen matchningsassertion, parserregel, API-select eller partitionsgrind ändras. Dessa två sviter passerar 14/14. De nio övriga berörda enhetssviterna har körts seriellt efter produktionsrättelsen: 165/165. API-typkontrollen passerar också med exit 0.
+
+Ny F12-negativkontroll gjordes efter sparad ca69d8f0: endast effektbeslutet avaktiverades, och exakt ett valt prov föll på `expectPaused` med 60 kr avgift, ett event, ett verifikat och ett köjobb. De 22 ej valda fallen är filtrering. Filen återställdes byte-för-byte från den sparade versionen; slutlig SHA-256 är `557a258a770119abc0515028af74b1d81763cc07266b47b43b5c2ac5db14d210`. Nya loggar/JSON ligger i `.proof-betalningsfarskhet-leverans/` (`enhetsprov-slut`, `ci-riggprov`, `typkontroll-slut`, `negativ-slut`).
+
+Efter den nya återställningen passerade två fulla seriella DB-omprov, `db-slut-3` och `db-slut-4`, 23/23 vardera med noll överhoppade. Båda har samma verifierade före-/efterantal som de sparade första slutkörningarna: 106 tabeller, 187 rader inklusive 185 migrationsrader, endast en kundnummersekvens och en referensränta därutöver. Riktad slutlint över alla 29 ändrade TS/TSX-filer passerar med `--max-warnings=0`. Endast egen märkt testcontainer på port 55439 startades för omproven; inga andra databaser användes. Samtliga nya Jest/tsc-körningar föregicks av de båda processkontrollerna.
 
 ## Bevisgränser vid leverans
 
