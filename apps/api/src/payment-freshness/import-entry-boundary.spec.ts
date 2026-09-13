@@ -302,14 +302,24 @@ describe('PSD2-trigger och första providerförsök', () => {
       instance: new Psd2Controller(consent as never, queue as never, reconciliation as never),
     }
   }
-  test('synkmarkör committas före köpublicering, även när kön nekar', async () => {
+  test('synk inväntar mockad markörport före köpublicering, även när kön nekar', async () => {
     const f = controller()
+    let finishMarker!: () => void
+    f.reconciliation.recordImportStarted.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishMarker = resolve
+        }),
+    )
     f.queue.enqueueOrgSync.mockImplementation(async (org: string) => {
       expect(f.reconciliation.recordImportStarted).toHaveBeenCalledWith(org)
       throw new Error('queue-unavailable')
     })
-    await expect(f.instance.sync(ORG)).rejects.toThrow('queue-unavailable')
+    const operation = f.instance.sync(ORG)
     expect(f.reconciliation.recordImportStarted).toHaveBeenCalledWith(ORG)
+    expect(f.queue.enqueueOrgSync).not.toHaveBeenCalled()
+    finishMarker()
+    await expect(operation).rejects.toThrow('queue-unavailable')
   })
   test('markörfel stoppar köpublicering', async () => {
     const f = controller()

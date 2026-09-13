@@ -336,10 +336,12 @@ describe('reclassifyProbableLosses (cron)', () => {
       { id: 'rn-fri', organizationId: 'org-1', vatAmount: new Decimal(0) },
       { id: 'rn-lokal', organizationId: 'org-1', vatAmount: new Decimal(2500) },
     ])
-    const spy = jest.spyOn(service, 'reclassifyToProbableLoss').mockResolvedValue({ booked: true })
+    const spy = jest
+      .spyOn(service, 'automaticallyReclassifyToProbableLoss')
+      .mockResolvedValue({ booked: true })
     const summary = await service.reclassifyProbableLosses()
     expect(spy).toHaveBeenCalledTimes(1)
-    expect(spy).toHaveBeenCalledWith('rn-fri', 'org-1', null)
+    expect(spy).toHaveBeenCalledWith('rn-fri', 'org-1')
     expect(summary.reclassified).toBe(1)
     expect(summary.manual).toBe(1)
   })
@@ -351,7 +353,7 @@ describe('reclassifyProbableLosses (cron)', () => {
       { id: 'rn-orphan', organizationId: 'org-1', vatAmount: new Decimal(0) },
     ])
     jest
-      .spyOn(service, 'reclassifyToProbableLoss')
+      .spyOn(service, 'automaticallyReclassifyToProbableLoss')
       .mockRejectedValue(new MissingAccrualError('rn-orphan saknar bokförd fordran'))
 
     const summary = await service.reclassifyProbableLosses()
@@ -383,7 +385,9 @@ describe('reclassifyProbableLosses (cron)', () => {
     prisma.rentNotice.findMany.mockResolvedValueOnce([
       { id: 'rn-fri', organizationId: 'org-1', vatAmount: new Decimal(0) },
     ])
-    const spy = jest.spyOn(service, 'reclassifyToProbableLoss').mockResolvedValue({ booked: true })
+    const spy = jest
+      .spyOn(service, 'automaticallyReclassifyToProbableLoss')
+      .mockResolvedValue({ booked: true })
     const summary = await service.reclassifyProbableLosses()
     expect(evaluateAndAlert).toHaveBeenCalledWith(['org-1'])
     expect(spy).not.toHaveBeenCalled() // INGEN nedskrivning 1510→1515
