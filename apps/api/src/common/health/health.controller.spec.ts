@@ -29,11 +29,25 @@ function makeController(
   // med en riktig rad — och riggen påstår inget den inte blivit tillsagd.
   const findFirst: jest.Mock = jest.fn().mockResolvedValue(null)
   const prisma = { legalChunkEmbedding: { count }, aiResumptionRun: { findFirst } }
+  // `moduleRef.get(SchedulerRegistry)` KASTAR som default, och det är det
+  // magraste svaret: så beter sig en process där `ScheduleModule.forRoot()`
+  // aldrig laddades — alltså dev, test och pausat läge. Ett prov som passerar
+  // med det passerar också när registret finns.
+  const moduleRefGet: jest.Mock = jest.fn().mockImplementation(() => {
+    throw new Error('SchedulerRegistry finns inte i denna kontext')
+  })
+  const moduleRef = { get: moduleRefGet }
   return {
-    controller: new HealthController(health as never, prismaHealth as never, prisma as never),
+    controller: new HealthController(
+      health as never,
+      prismaHealth as never,
+      prisma as never,
+      moduleRef as never,
+    ),
     check,
     count,
     findFirst,
+    moduleRefGet,
   }
 }
 
@@ -122,6 +136,7 @@ describe('HealthController.check', () => {
     const result = await controller.check()
 
     expect(Object.keys(result).sort()).toEqual([
+      'automation',
       'cron',
       'details',
       'error',
@@ -145,6 +160,19 @@ describe('HealthController.check', () => {
     // felmeddelande när fältet byggs ut. Nycklarna är LÅSNYCKLAR, som kommer ur
     // koden — inte kunddata.
     expect(Object.keys(result.cron).sort()).toEqual(['bootAt', 'jobs', 'staleCount'])
+
+    // Och för driftpausens kvitto. Samma spärr, samma skäl. Fältet bär ett
+    // VARIABELNAMN och tre tal — aldrig variabelns VÄRDE, aldrig ett könamn,
+    // aldrig en organisation. Att räkna nycklarna här är spärren mot att någon
+    // senare lägger till "senaste pausande operatör" eller "väntande jobb per
+    // kö", vilket vore drift- respektive kunddata på en publik endpoint.
+    expect(Object.keys(result.automation).sort()).toEqual([
+      'cronJobs',
+      'paused',
+      'queueConsumers',
+      'variable',
+    ])
+    expect(Object.keys(result.automation.queueConsumers).sort()).toEqual(['registered', 'withheld'])
     for (const puls of Object.values(result.cron.jobs)) {
       expect(Object.keys(puls).sort()).toEqual([
         'ageSec',

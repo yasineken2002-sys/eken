@@ -1,0 +1,251 @@
+# Driftpaus för automatiska verksamhetsjobb
+
+En process kan startas i ett läge där den **inte** utför automatiskt arbete. Läget
+väljs innan processen startar, går att kontrollera efteråt, och hävs bara genom
+att starta om utan flaggan.
+
+**Ingen paus är aktiverad någonstans.** Den här filen beskriver en mekanism som
+finns i koden och är verifierad isolerat. Den säger ingenting om vad som körs i
+produktion.
+
+## Vad flaggan gör
+
+| Variabel                | Värde        | Verkan                                         |
+| ----------------------- | ------------ | ---------------------------------------------- |
+| `OPS_AUTOMATION_PAUSED` | `true`       | Pausat läge                                    |
+|                         | `false`      | Normal drift                                   |
+|                         | saknad / tom | Normal drift — **dagens beteende, oförändrat** |
+|                         | allt annat   | **Uppstart avbryts**                           |
+
+Den sista raden är avsiktlig. En felstavning (`ture`, `TRUE`, `1`) får inte tyst
+betyda "kör på" i just det ögonblick någon trodde sig ha pausat. Kastet sker vid
+boot, före första jobbet, i alla miljöer.
+
+Saknat värde betyder normal drift, så ingen befintlig miljö behöver röras för att
+fortsätta fungera. Priset är att en **utebliven** paus ser ut som en normal start
+— därför ska läget alltid läsas tillbaka ur `/v1/health` efter start.
+
+## Vad som stoppas i pausat läge
+
+| Yta                | Antal | Mekanism                                                                                  |
+| ------------------ | ----- | ----------------------------------------------------------------------------------------- |
+| `@Cron`-jobb       | 34    | `ScheduleModule.forRoot()` registreras inte → ingen timer finns att avfyra                |
+| Bull-konsumenter   | 11    | `@Processor`-klassen utelämnas ur modulens `providers` → `queue.process()` anropas aldrig |
+| Uppstarts-backfill | 1     | `DepositsService.onApplicationBootstrap` hoppas över                                      |
+
+Grinden sitter på **registreringen**, inte i jobbkroppen. Ett jobb kan därför
+inte hinna köra "en gång innan spärren slog till".
+
+Köade, fördröjda och återkommande jobb **bevaras**. Pausen stoppar konsumtion —
+den tömmer, kvitterar och markerar ingenting.
+
+## Vad flaggan INTE skyddar mot
+
+Det här är inte en avgränsning som kan skrivas bort; det följer av att flaggan
+gäller en process, från dess egen start.
+
+- **Redan körande äldre processer.** En container som startade utan variabeln
+  fortsätter köra cron och konsumera köer. Pausen når den aldrig.
+- **Manuella anrop.** Varje skrivande HTTP-endpoint fungerar som förut. Flaggan
+  rör inte ingressen.
+- **Okända externa skrivare.** Andra tjänster eller människor med DB-åtkomst
+  berörs inte.
+- **Redan enqueueade jobb** konsumeras av vilken opausad worker som helst som är
+  ansluten till samma Redis.
+
+Bankfixens införandeordning kräver verklig avskärmning — stängd ingress, bevisat
+stoppade gamla generationer, spärrad återstart. Den här flaggan är steg 8:s
+saknade halva, **inte** en ersättning för steg 1–4.
+
+## Kontrollera läget efter start
+
+`GET /v1/health` bär fältet `automation`:
+
+```json
+"automation": {
+  "paused": true,
+  "variable": "OPS_AUTOMATION_PAUSED",
+  "cronJobs": null,
+  "queueConsumers": { "registered": 0, "withheld": 11 }
+}
+```
+
+`paused` är vad konfigurationen säger. `cronJobs` och `queueConsumers` är vad
+processen faktiskt gjorde. Går de isär är det ett fynd: `paused: true` med
+`cronJobs: 34` betyder att variabeln lästes efter att timrarna redan startat.
+
+`cronJobs: null` betyder att `ScheduleModule` inte laddades alls — pausat läges
+normaltillstånd, och även dev:s.
+
+Fältet påverkar **aldrig** `status`. `railway.toml` pollar `/v1/health` med
+`restartPolicyType = "ON_FAILURE"`; ett fält som sänkte `status` hade gjort en
+avsiktlig paus till en omstartsloop där varje ny process startade pausad och
+fällde samma healthcheck.
+
+## Återöppning
+
+En väg, uttryckligen: **ta bort variabeln (eller sätt `false`) och starta en ny
+process.** Det finns med flit ingen endpoint, ingen timeout och ingen automatik
+som kan häva pausen, så att en healthcheck, en Railway-omstart eller en deploy
+med gammal konfiguration inte kan öppna verksamhetsjobben.
+
+## Köverktyget
+
+`apps/api/src/scripts/queue-ops.ts` inspekterar och pausar Bull-köer **globalt i
+Redis**, utan att starta Nest/AppModule. Standardläget är läsande.
+
+```bash
+# 1. LÄS FÖRST. Skriver ingenting. Skriv av måltexten ur utskriften.
+node -r ts-node/register apps/api/src/scripts/queue-ops.ts \
+  --redis-url=redis://HOST:PORT/DB --prefix=bull
+
+# 2. ÅTGÄRD. --confirm måste vara EXAKT måltexten ur steg 1.
+node -r ts-node/register apps/api/src/scripts/queue-ops.ts \
+  --redis-url=redis://HOST:PORT/DB --prefix=bull \
+  --action=pause --confirm='HOST:PORT/dbN prefix=bull'
+
+# 3. ÅTERÖPPNING är ett eget, lika uttryckligt handgrepp.
+  --action=resume --confirm='HOST:PORT/dbN prefix=bull'
+```
+
+Tre spärrar mot fel system:
+
+1. `--redis-url` är obligatorisk. Verktyget läser med flit **inte** `REDIS_URL`
+   ur miljön — ett verktyg som kör mot "det som råkade stå i miljön" antar
+   produktion som standard.
+2. Muterande åtgärder kräver `--confirm` med exakt den måltext verktyget självt
+   skrev ut i läsläget (värd, port, databasindex, prefix). Operatören kan alltså
+   inte pausa något den inte först läst.
+3. Inventeringen jämförs mot koden. En kö i Redis som koden inte känner till,
+   eller ett avgränsat `--queues`, sätter `inventeringKomplett: false` — och då
+   får utfallet inte redovisas som en verifierad avskärmning.
+
+Verktyget raderar aldrig jobb (`clean`/`empty`/`remove`/`obliterate` finns inte),
+skriver aldrig ut credentials, jobbpayloads eller personuppgifter, och rapporterar
+bara antal.
+
+**En global paus stoppar konsumtion.** Den stoppar inte producenter, inte
+HTTP-vägar, och inte en gammal process som redan håller ett aktivt jobb — ett
+`pause()` som returnerat betyder inte att allt arbete är stoppat.
+
+## Var mekaniken är mätt
+
+| Fil                                            | Vad den bevisar                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `common/ops/automation-pause.spec.ts`          | Tolkningen: tre värden, och att det fjärde kastar                                                                  |
+| `common/ops/automation-pause-startup.spec.ts`  | Riktigt Nest-startförlopp, riktiga timrar: ingen körning i pausat läge, och en kanariefågel som fyrar av i normalt |
+| `common/ops/automation-pause-queue.db.spec.ts` | Riktig Bull 4.16.5 mot riktig Redis: bevarade jobb, omstart, global paus, uttrycklig återöppning, fel prefix       |
+| `scripts/queue-ops.spec.ts`                    | Verktygets spärrar innan en anslutning öppnas                                                                      |
+| `apps/api/scripts/check-automation-pause.mjs`  | Att grinden når varje konsument — härlett ur koden, åt båda håll                                                   |
+
+## Bilaga: full täckningsinventering
+
+Härledd ur koden på `codex/bankfix-driftpaus` (bas: #893 `87bd9b8d`), inte
+handskriven. `apps/api/scripts/check-automation-pause.mjs` gör om härledningen i
+CI och fäller åt båda håll.
+
+### Registrering, enqueue och exekvering är tre olika saker
+
+|                  | Vad det är                                                                                                                               | Vad pausen gör                                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Registrering** | `ScheduleModule.forRoot()` läser `@Cron`-metadata och startar timrar; `BullExplorer` anropar `queue.process()` per `@Processor`-provider | **Detta är det som stängs av.** Ingen timer, ingen handler                                          |
+| **Enqueue**      | `*.queue.ts` → `queue.add(...)`, anropat av HTTP-vägar, cron och andra jobb                                                              | **Orört.** Producenter fungerar som förut; jobben hamnar i Redis och väntar                         |
+| **Exekvering**   | Bull plockar jobbet och kör `@Process`-metoden                                                                                           | Sker inte i den pausade processen. Sker i **vilken annan opausad worker som helst** mot samma Redis |
+
+Att enqueue lämnas orört är avsiktligt: ett HTTP-anrop ska få sitt 202-svar och
+sitt jobb bevarat, inte tappas. Det är också varför flaggan inte ersätter en
+stängd ingress.
+
+### 34 `@Cron`-jobb — alla via `ScheduleModule.forRoot()` (`app.module.ts:129`)
+
+Talet 34 är samma mängd som `apps/api/scripts/cron-classification.ack.json`
+härleder och CI redan bevakar åt båda håll. Ingen av dem registreras i pausat
+läge.
+
+```
+ai/assignments/ai-assignments.service.ts:634         utgångspass
+ai/attachments/ai-attachments.service.ts:549         cleanupExpiredAttachments
+ai/execution/execution-sweep.service.ts:70           svepPass
+ai/execution-dryrun/dryrun-sweep.service.ts:67       svepPass
+ai/resumption/resumption-freshness.service.ts:144    passera
+ai/resumption/resumption.service.ts:114              passera
+ai/retention/ai-retention.service.ts:99              scheduledRetention
+ai/shadow/shadow-sweep.service.ts:67                 svepPass
+ai-usage/ai-usage-notifier.service.ts:42             dailyCheck
+avisering/avisering.scheduler.ts:41                  generateForCurrentMonth
+avisering/rent-bad-debt.service.ts:127               reclassifyProbableLosses
+avisering/rent-reminder.service.ts:237               escalateOverdueRentNotices
+avisering/rent-reminder.service.ts:552               escalateRemindedToInkassoReady
+backup/backup.scheduler.ts:31                        dailyBackup
+backup/backup.scheduler.ts:89                        dailyFreshnessCheck
+bankid/bankid-auth.service.ts:360                    cleanupExpiredOrders
+common/actor/actor-null-sweep.service.ts:83          sveep
+leases/leases.service.ts:1419                        processLifecycle
+notifications/notifications.service.ts:280           deleteOld
+notifications/notifications.service.ts:317           markOverdueInvoices
+notifications/notifications.service.ts:357           markOverdueRentNotices
+notifications/notifications.service.ts:549           sendMorningInsights
+notifications/notifications.service.ts:688           sendWeeklySummary
+notifications/notifications.service.ts:815           sendMonthlyReport
+notifications/payment-reminder.service.ts:67         processOverdueReminders
+platform/auth/platform-token-cleanup.service.ts:36   purgeExpired
+platform/errors/error-log-retention.service.ts:70    scheduledRetention
+platform/invoices/platform-invoices.service.ts:543   createMonthlyInvoicesCron
+platform/invoices/platform-invoices.service.ts:819   sendRemindersAndEscalate
+platform/invoices/platform-invoices.service.ts:969   convertExpiredTrialsCron
+platform/invoices/platform-invoices.service.ts:1276  sendTrialEndingRemindersCron
+psd2/psd2-consent.service.ts:203                     cleanupExpiredConsentStates
+tenant-portal/tenant-auth.service.ts:624             cleanupStaleSessions
+tenant-portal/tenant-auth.service.ts:674             sendActivationReminders
+```
+
+`runCronSafely` (`common/cron/cron-safety.ts`) valdes **bort** som grindpunkt:
+den nås först när jobbet redan startat, och `backup.scheduler.ts` går med flit
+utanför den. En grind där hade alltså både varit för sen och haft ett hål.
+
+### 11 Bull-konsumenter — alla bakom `pausedUnless`
+
+11 könamn i 9 `BullModule.registerQueue`-anrop. Varje `@Processor`-klass står i
+sin moduls `providers` som `...pausedUnless(X)`.
+
+| Konsument                                       | Kö                    | Modul (providers)                         |
+| ----------------------------------------------- | --------------------- | ----------------------------------------- |
+| `ai/execution/execution.worker.ts:13`           | `ai-agent-execution`  | `ai/execution/execution.module.ts:64`     |
+| `ai/execution-dryrun/dryrun.worker.ts:16`       | `ai-execution-dryrun` | `ai/execution-dryrun/dryrun.module.ts:76` |
+| `ai/shadow/payment/payment-shadow.worker.ts:16` | `ai-payment-shadow`   | `ai/shadow/shadow.module.ts:89`           |
+| `ai/shadow/shadow.worker.ts:17`                 | `ai-shadow`           | `ai/shadow/shadow.module.ts:84`           |
+| `import/contract-scan-batch.worker.ts:29`       | `contract-scan-batch` | `import/import.module.ts:48`              |
+| `leases/lease-activation.worker.ts:31`          | `lease-activation`    | `leases/leases.module.ts:44`              |
+| `mail/mail.worker.ts:318`                       | `mail:high`           | `mail/mail.module.ts:40`                  |
+| `mail/mail.worker.ts:341`                       | `mail:normal`         | `mail/mail.module.ts:41`                  |
+| `mail/mail.worker.ts:364`                       | `mail:low`            | `mail/mail.module.ts:42`                  |
+| `pdf-jobs/pdf.worker.ts:25`                     | `pdf`                 | `pdf-jobs/pdf-queue.module.ts:31`         |
+| `psd2/psd2-sync.worker.ts:17`                   | `psd2-sync`           | `psd2/psd2.module.ts:57`                  |
+
+Avskärmningsordningen namnger fyra av dessa (`psd2-sync`, `mail:*`). De övriga
+sju är inte mindre farliga under ett underhållsfönster: `pdf` renderar och
+skickar avier, `lease-activation` skapar initiala avier och välkomstmejl.
+
+### 6 livscykel-hookar — en av dem skriver
+
+| Hook                                                                  | Effekt                                                         | Grindad?       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- | -------------- |
+| `deposits/deposits.service.ts:62` `onApplicationBootstrap`            | **Skriver**: skapar `Deposit`-rader och bokför 1510 D / 2890 K | **Ja**         |
+| `common/crypto/pii-coherence.service.ts:263` `onApplicationBootstrap` | Diagnostik; kan skriva en `ErrorLog`-rad vid larm              | Nej — se nedan |
+| `ai/knowledge/retrieval/legal-retrieval.service.ts:97` `onModuleInit` | Läser och loggar paritet                                       | Nej            |
+| `common/prisma/prisma.service.ts:29` `onModuleInit`                   | `$connect`                                                     | Nej            |
+| `notifications/monthly-report.service.ts:65` `onModuleInit`           | DI-upplösning via `ModuleRef`                                  | Nej            |
+| `notifications/notifications.service.ts:178` `onModuleInit`           | DI-upplösning via `ModuleRef`                                  | Nej            |
+
+De fem ogrindade utför inget **verksamhetsarbete**: de kopplar ihop beroenden,
+öppnar en anslutning eller rapporterar ett tillstånd. `pii-coherence` är den enda
+gränsdragningen värd att skriva ut — den kan skriva en rad i `ErrorLog`, men det
+är ett _larm om_ ett tillstånd, och ett underhållsfönster är precis när det
+larmet ska nå fram. Att tysta det hade gjort pausen till en blindhet.
+
+### Egna timers och pollers
+
+Inga. `setInterval` förekommer inte i produktionskoden under `apps/api/src`, och
+`SchedulerRegistry` injiceras ingenstans. Inga återkommande Bull-jobb heller —
+`repeat:` finns inte i produktionskoden, så kadensen ägs helt av
+`@nestjs/schedule`.

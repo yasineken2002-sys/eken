@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core'
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { validateEnv } from './config/env.validation'
+import { schedulerShouldRegister } from './common/ops/automation-pause'
 import { PersonalNumberModule } from './common/crypto/personal-number.module'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { UserOrIpThrottlerGuard } from './common/throttler/user-or-ip.throttler-guard'
@@ -104,9 +105,28 @@ import { Psd2Module } from './psd2/psd2.module'
     // Grinden gäller alla 23 @Cron-jobb, inte bara AI-jobben: backup, kravtrappa,
     // påminnelser och plattformsfakturering ska heller aldrig utlösas från en
     // utvecklingsmiljö mot delade externa resurser (R2, Resend, Anthropic).
-    ...(process.env['NODE_ENV'] === 'production' || process.env['CRON_ENABLED'] === 'true'
-      ? [ScheduleModule.forRoot()]
-      : []),
+    // ── DRIFTPAUS ────────────────────────────────────────────────────────
+    //
+    // Grinden ovan är ett ELLER, och det är därför den inte kan pausa
+    // produktionen: `NODE_ENV=production` ensamt registrerar alla 34 @Cron-jobb
+    // oavsett vad CRON_ENABLED står på. `automationPaused` är därför INTE ett
+    // tredje led i samma villkor utan ett OMSLUTANDE nej — den vinner över båda.
+    //
+    // REGISTRERINGEN, INTE KROPPEN. `ScheduleModule.forRoot()` är det som läser
+    // @Cron-metadatan och startar timrarna. Utelämnas modulen finns det ingen
+    // timer att avfyra, så inget jobb kan köra "en gång innan spärren hann slå
+    // till" — vilket en kontroll inuti varje cron-kropp inte kan lova. Det är
+    // också skälet att grinden står HÄR och inte i `runCronSafely`: den
+    // hjälparen nås först när jobbet redan startat, och `backup.scheduler.ts`
+    // går med flit utanför den.
+    //
+    // VILLKORET BOR I `schedulerShouldRegister` och inte här, av ett mätbart
+    // skäl: den här filen går inte att importera i ett prov (modulgrafen drar in
+    // @aws-sdk/client-s3 → ESM → ts-jest faller), så ett villkor skrivet HÄR
+    // hade bara kunnat provas genom att skrivas av — och en avskrift som glider
+    // isär ger ett grönt prov över en produktion som registrerar cron i pausat
+    // läge.
+    ...(schedulerShouldRegister(process.env) ? [ScheduleModule.forRoot()] : []),
 
     // Queue
     BullModule.forRootAsync({

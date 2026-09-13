@@ -1,4 +1,6 @@
 import { Controller, Get, Logger } from '@nestjs/common'
+import { ModuleRef } from '@nestjs/core'
+import { SchedulerRegistry } from '@nestjs/schedule'
 import { ApiOkResponse } from '@nestjs/swagger'
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus'
 import { Public } from '../decorators/public.decorator'
@@ -8,6 +10,11 @@ import { buildLegalChunks } from '../../ai/knowledge/retrieval/legal-chunk'
 import { LASTA_CRON_JOBB, tröskelSek } from '../cron/cron-heartbeat'
 import { VOYAGE_EMBEDDINGS } from '../../ai/ai.config'
 import { ATERUPPTAGNING_TYSTNAD_MAX_MS } from '../../ai/resumption/resumption-freshness.service'
+import {
+  AUTOMATION_PAUSE_VAR,
+  automationGateEntries,
+  automationPaused,
+} from '../ops/automation-pause'
 
 /**
  * Byggd commit-SHA, ur Railways egen variabel — ingen egen mekanism.
@@ -107,6 +114,60 @@ interface ResumptionPulse {
 }
 
 /**
+ * DRIFTPAUSENS KVITTO — skiljer "API-processen fungerar" från "verksamhetsjobben
+ * är frisläppta".
+ *
+ * ── VARFÖR FÄLTET BEHÖVS ────────────────────────────────────────────────────
+ *
+ * `status: 'ok'` har alltid betytt att processen svarar och att databasen går
+ * att nå. Det har ALDRIG betytt att cron och köer är igång, och skillnaden var
+ * osynlig utifrån. Under ett underhållsfönster är det precis den skillnaden
+ * operatören behöver läsa: en pausad process ser från utsidan exakt ut som en
+ * normal, ända tills någon upptäcker att ingenting blivit gjort.
+ *
+ * ── OCH VARFÖR DEN INTE FÄLLER `status` ─────────────────────────────────────
+ *
+ * `railway.toml` sätter `healthcheckPath = "/v1/health"` med
+ * `restartPolicyType = "ON_FAILURE"`. Ett fält som sänkte `status` i pausat läge
+ * hade gjort en AVSIKTLIG paus till en omstartsloop — Railway hade dödat och
+ * startat om processen i all oändlighet, och varje ny process hade startat i
+ * samma pausade läge och fällt samma healthcheck. Fältet ligger därför utanför
+ * Terminus indikator-lista, av exakt samma skäl som `legalKnowledge`, `cron` och
+ * `resumption`.
+ *
+ * ── TVÅ VYER, INTE ETT OMDÖME ───────────────────────────────────────────────
+ *
+ * `paused` är vad KONFIGURATIONEN säger. `cronJobs` och `queueConsumers` är vad
+ * processen FAKTISKT gjorde — antal timrar som registrerats i
+ * `SchedulerRegistry`, och antal konsumenter grinden släppte respektive höll
+ * tillbaka. Att båda står här är poängen: `paused: true` med `cronJobs: 0` och
+ * `registered: 0` är ett kvitto som går att kontrollera, medan `paused: true`
+ * ensamt bara upprepar vad den som satte variabeln redan trodde.
+ *
+ * Går de isär är det ett verkligt fynd: `paused: true` med `cronJobs: 34` är en
+ * process som läste variabeln efter att timrarna redan startat.
+ */
+interface AutomationStatus {
+  /** Sant när OPS_AUTOMATION_PAUSED=true. Det KONFIGURERADE läget. */
+  paused: boolean
+  /** Variabelns namn, så läsaren slipper leta efter vilken knapp som styr. */
+  variable: string
+  /**
+   * Antal cron-timrar `SchedulerRegistry` känner till. `null` = ScheduleModule
+   * laddades inte alls, vilket är pausat läges normaltillstånd (och även dev:s,
+   * där CRON_ENABLED är false).
+   */
+  cronJobs: number | null
+  /** Vad grinden gjorde med Bull-konsumenterna vid modulladdning. */
+  queueConsumers: {
+    /** Konsumenter som registrerades och alltså kan plocka jobb. */
+    registered: number
+    /** Konsumenter grinden UTELÄMNADE. Summan är alltid hela mängden. */
+    withheld: number
+  }
+}
+
+/**
  * Processens starttid. Sätts vid modulladdning, alltså i praktiken vid boot.
  *
  * Referens för jobb som ännu inte kört: ett dagligt jobb är inte TYST fem
@@ -151,7 +212,54 @@ export class HealthController {
     private health: HealthCheckService,
     private prismaHealth: PrismaHealthIndicator,
     private prisma: PrismaService,
+    // Behövs för att FRÅGA processen om den registrerade några cron-timrar, i
+    // stället för att räkna om vad konfigurationen borde ha gett. `strict: false`
+    // + try/catch nedan därför att `SchedulerRegistry` bara FINNS när
+    // `ScheduleModule.forRoot()` laddats — dess frånvaro är ett av svaren.
+    private moduleRef: ModuleRef,
   ) {}
+
+  /**
+   * Driftpausens kvitto. Kastar aldrig — samma avvägning som `countVectors` och
+   * `readCronPulses`: Railway pollar endpointen med `restartPolicyType =
+   * "ON_FAILURE"`, så en läsning som kan fälla svaret hade gjort observerbarheten
+   * till en driftrisk. Här väger det extra tungt: fältet finns för att LÄSAS
+   * under ett underhållsfönster, alltså exakt när en omstartsloop är som dyrast.
+   */
+  private readAutomation(): AutomationStatus {
+    let cronJobs: number | null = null
+    try {
+      // Finns bara när ScheduleModule.forRoot() laddats. Frånvaron är inte ett
+      // fel utan ett mätvärde: inga timrar registrerade.
+      cronJobs = this.moduleRef.get(SchedulerRegistry, { strict: false }).getCronJobs().size
+    } catch {
+      cronJobs = null
+    }
+
+    const entries = automationGateEntries()
+    // `paused` läses ur env och inte ur registret: ett tomt register skulle
+    // annars kunna tolkas som "inte pausat" i ett prov som importerat en enda
+    // modul. De två fälten ska kunna MOTSÄGA varandra — det är hela nyttan.
+    let paused = false
+    try {
+      paused = automationPaused(process.env)
+    } catch {
+      // Ett ogiltigt värde fäller boot (env.validation + app.module). Når vi
+      // ändå hit är processen i ett läge ingen valt: rapportera det som pausat,
+      // alltså åt det säkra hållet, i stället för att påstå normal drift.
+      paused = true
+    }
+
+    return {
+      paused,
+      variable: AUTOMATION_PAUSE_VAR,
+      cronJobs,
+      queueConsumers: {
+        registered: entries.filter((e) => !e.withheld).length,
+        withheld: entries.filter((e) => e.withheld).length,
+      },
+    }
+  }
 
   /**
    * Rader för den AKTIVA modellen. Kastar aldrig: kan talet inte läsas blir det
@@ -298,6 +406,27 @@ export class HealthController {
             model: { type: 'string', example: 'voyage-4' },
           },
         },
+        automation: {
+          type: 'object',
+          description:
+            'Driftpausens kvitto. Skiljer "API-processen fungerar" från ' +
+            '"verksamhetsjobben är frisläppta". Bär BÅDE det konfigurerade läget ' +
+            '(paused) och vad processen faktiskt gjorde (cronJobs, queueConsumers) — ' +
+            'går de isär är det ett fynd. Påverkar ALDRIG status: en avsiktlig paus ' +
+            'får inte bli en omstartsloop.',
+          properties: {
+            paused: { type: 'boolean', example: false },
+            variable: { type: 'string', example: 'OPS_AUTOMATION_PAUSED' },
+            cronJobs: { type: 'number', nullable: true, example: 34 },
+            queueConsumers: {
+              type: 'object',
+              properties: {
+                registered: { type: 'number', example: 11 },
+                withheld: { type: 'number', example: 0 },
+              },
+            },
+          },
+        },
         resumption: {
           type: 'object',
           description:
@@ -355,6 +484,10 @@ export class HealthController {
     // Det nya fältet lägger till de nio övriga, det ersätter inte det tionde.
     const cron = await this.readCronPulses()
 
-    return { ...result, revision: buildRevision(), legalKnowledge, resumption, cron }
+    // PÅVERKAR INTE `status`, och det är lastbärande — se AutomationStatus.
+    // En avsiktlig driftpaus får inte bli en omstartsloop i Railway.
+    const automation = this.readAutomation()
+
+    return { ...result, revision: buildRevision(), legalKnowledge, resumption, cron, automation }
   }
 }

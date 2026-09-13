@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { E2E_AUTH_THROTTLE_FLAG, authThrottleRelaxed } from '../common/throttler/auth-throttle-mode'
 import { BANKID_PROVIDER_VAR, bankIdMockRequested } from '../bankid/bankid-provider-mode'
 import { PSD2_PROVIDER_VAR, psd2MockRequested } from '../psd2/psd2-provider-mode'
+import { AUTOMATION_PAUSE_VAR, automationPaused } from '../common/ops/automation-pause'
 import {
   PLACEHOLDER_CHECKED_VARS,
   SECRET_FORM_VARS,
@@ -170,6 +171,7 @@ export const VALIDATED_ENV_VARS: readonly string[] = [
     E2E_AUTH_THROTTLE_FLAG,
     BANKID_PROVIDER_VAR,
     PSD2_PROVIDER_VAR,
+    AUTOMATION_PAUSE_VAR,
   ]),
 ]
 
@@ -346,6 +348,29 @@ export function validateEnv(config: EnvRecord): EnvRecord {
   //    anropet är en no-op i alla andra lägen.
   try {
     psd2MockRequested(config as NodeJS.ProcessEnv)
+  } catch (err) {
+    errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
+  }
+
+  // 8. DRIFTPAUSENS VÄRDE måste vara 'true', 'false' eller saknas. Samma form
+  //    som punkt 5–7, och samma skäl: felet ska smälla vid boot, före första
+  //    jobbet. `automationPaused` kastar bara på ett värde utanför mängden, så
+  //    anropet är en no-op i alla giltiga lägen.
+  //
+  //    RIKTNINGEN ÄR HELA POÄNGEN. De andra kontrollerna stänger en väg som är
+  //    för TILLÅTANDE (mock i produktion, uppmjukad strypning). Den här stänger
+  //    en TYST ÖPPNING: `OPS_AUTOMATION_PAUSED=ture` skulle utan kastet tolkas
+  //    som "inte pausad", alltså full automatisk drift — i exakt det ögonblick
+  //    operatören trodde sig ha pausat den. En varning duger inte; den läses
+  //    inte i tid av någon, och underhållsfönstret är redan igång.
+  //
+  //    OBS: app.module.ts läser samma funktion när `imports`-arrayen byggs,
+  //    alltså FÖRE den här valideringen hinner köra. Kontrollen står ändå här,
+  //    av samma skäl som SIGNING_ENABLED-grenen upprepar modul-factoryn: den
+  //    som läser filen ska se att variabeln granskas vid boot, och den dag
+  //    modulgrinden flyttas får felet fortfarande ett vettigt meddelande.
+  try {
+    automationPaused(config as NodeJS.ProcessEnv)
   } catch (err) {
     errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
   }

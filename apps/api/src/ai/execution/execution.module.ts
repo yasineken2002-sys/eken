@@ -11,6 +11,7 @@ import { AiAgentExecutionService } from './agent-execution.service'
 import { AiAgentExecutionSweepService } from './execution-sweep.service'
 import { AiAgentExecutionWorker } from './execution.worker'
 import { QUEUE_AI_AGENT_EXECUTION } from './execution.types'
+import { pausedUnless } from '../../common/ops/automation-pause'
 
 /**
  * SKARPT LÄGE (etapp 9).
@@ -35,6 +36,18 @@ import { QUEUE_AI_AGENT_EXECUTION } from './execution.types'
  * startar. `AiShadowModule` och torrläget bär samma not; att den behövts tre
  * gånger säger att den är rätt.
  */
+/**
+ * DRIFTPAUS: `pausedUnless` UTELÄMNAR konsumenten ur `providers` när
+ * OPS_AUTOMATION_PAUSED=true. Det är strukturellt och inte en flagga i
+ * jobbkroppen: `BullExplorer.onModuleInit` anropar `queue.process(...)` för
+ * varje upptäckt @Processor-provider (bull.explorer.js), så en konsument som
+ * aldrig registreras kan aldrig plocka ett jobb — inte heller det första, innan
+ * någon kontroll hunnit köra.
+ *
+ * KÖN SJÄLV REGISTRERAS SOM VANLIGT. Producenter (`*.queue.ts`) fungerar därför
+ * oförändrat, och waiting/delayed-jobb blir kvar i Redis i stället för att tappas
+ * eller kvitteras. Pausen stoppar KONSUMTIONEN, den tömmer ingenting.
+ */
 @Global()
 @Module({
   imports: [
@@ -48,7 +61,7 @@ import { QUEUE_AI_AGENT_EXECUTION } from './execution.types'
   providers: [
     AiAgentExecutionService,
     AiAgentExecutionQueue,
-    AiAgentExecutionWorker,
+    ...pausedUnless(AiAgentExecutionWorker),
     AiAgentExecutionSweepService,
   ],
   exports: [AiAgentExecutionService, AiAgentExecutionQueue],

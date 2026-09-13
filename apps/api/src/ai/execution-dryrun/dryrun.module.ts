@@ -10,6 +10,7 @@ import { AiExecutionDryRunSweepService } from './dryrun-sweep.service'
 import { AiExecutionDryRunWorker } from './dryrun.worker'
 import { AiExecutionDryRunService } from './execution-dryrun.service'
 import { QUEUE_AI_EXECUTION_DRYRUN } from './dryrun.types'
+import { pausedUnless } from '../../common/ops/automation-pause'
 
 /**
  * TORRLÄGET (etapp 8, PR 1).
@@ -48,6 +49,18 @@ import { QUEUE_AI_EXECUTION_DRYRUN } from './dryrun.types'
  * den nästa modulen av samma form säger att noten var rätt och att den läses
  * för sent — den står därför här också, vid raderna den handlar om.
  */
+/**
+ * DRIFTPAUS: `pausedUnless` UTELÄMNAR konsumenten ur `providers` när
+ * OPS_AUTOMATION_PAUSED=true. Det är strukturellt och inte en flagga i
+ * jobbkroppen: `BullExplorer.onModuleInit` anropar `queue.process(...)` för
+ * varje upptäckt @Processor-provider (bull.explorer.js), så en konsument som
+ * aldrig registreras kan aldrig plocka ett jobb — inte heller det första, innan
+ * någon kontroll hunnit köra.
+ *
+ * KÖN SJÄLV REGISTRERAS SOM VANLIGT. Producenter (`*.queue.ts`) fungerar därför
+ * oförändrat, och waiting/delayed-jobb blir kvar i Redis i stället för att tappas
+ * eller kvitteras. Pausen stoppar KONSUMTIONEN, den tömmer ingenting.
+ */
 @Global()
 @Module({
   imports: [
@@ -60,7 +73,7 @@ import { QUEUE_AI_EXECUTION_DRYRUN } from './dryrun.types'
   providers: [
     AiExecutionDryRunService,
     AiExecutionDryRunQueue,
-    AiExecutionDryRunWorker,
+    ...pausedUnless(AiExecutionDryRunWorker),
     AiExecutionDryRunSweepService,
   ],
   exports: [AiExecutionDryRunService, AiExecutionDryRunQueue],
