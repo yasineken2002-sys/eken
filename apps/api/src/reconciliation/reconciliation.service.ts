@@ -234,10 +234,54 @@ function parseDate(raw: string | number | undefined): Date | null {
 
 function parseAmount(raw: string | number | undefined): number {
   if (raw === undefined || raw === null) return NaN
-  if (typeof raw === 'number') return raw
-  // Swedish format: "1 234,56" → 1234.56; also handle "-1 234,56"
-  const cleaned = String(raw).trim().replace(/\s/g, '').replace(',', '.')
-  return parseFloat(cleaned)
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN
+  const token = String(raw).trim()
+  // Hela token före normalisering: decimalpunkt/-komma, hela exponenter och
+  // tresiffriga tusengrupper med blanksteg/NBSP/smalt NBSP. Inga valutagissningar.
+  if (
+    !/^[+-]?(?:(?:\d+|\d{1,3}(?:[ \u00a0\u202f]\d{3})+)(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/.test(
+      token,
+    )
+  ) {
+    return NaN
+  }
+  const value = Number(token.replace(/[ \u00a0\u202f]/g, '').replace(',', '.'))
+  return Number.isFinite(value) ? value : NaN
+}
+
+function parseOptionalBalance(
+  raw: string | number | undefined,
+  previousRaw: string | number | undefined = raw,
+): number | undefined {
+  const value = parseAmount(raw)
+  if (Number.isFinite(value)) return value
+  // Enbart kompatibilitetsspärr för tidigare lagringsfel, aldrig en alternativ
+  // källa till ett accepterat prefixvärde. Behåll lagringsgränsen även för
+  // t.ex. "1e999skräp" eller "10000000000skräp"; utelämning skulle frigöra datum.
+  // Uttag/noll och bekräftade dubbletter behåller sina befintliga vägar.
+  const previous =
+    typeof previousRaw === 'number'
+      ? previousRaw
+      : parseFloat(
+          String(previousRaw ?? '')
+            .trim()
+            .replace(/\s/g, '')
+            .replace(',', '.'),
+        )
+  if (Number.isNaN(previous)) return undefined
+  if (!Number.isFinite(previous)) return previous
+  // Befintligt schema: BankTransaction.balance Decimal(12,2). Samma toFixed
+  // som vid lagring; även avrundning över gränsen ska behålla DB-avvisningen.
+  // Detta är ingen ny affärsgräns. Verkliga DB-prov binder den till schemat.
+  return new Decimal(previous.toFixed(2)).abs().gte('10000000000') ? previous : undefined
+}
+
+function csvNumericField(raw: string | undefined): string | undefined {
+  const token = raw?.trim()
+  // Ensidig citatborttagning får inte göra början av ett trasigt fält till ett tal.
+  return token && token.length >= 2 && token.startsWith('"') && token.endsWith('"')
+    ? token.slice(1, -1)
+    : token
 }
 
 // ── OCR extraction ────────────────────────────────────────────────────────────
@@ -551,18 +595,21 @@ export class ReconciliationService {
     for (let i = headerLineIdx + 1; i < lines.length; i++) {
       const line = lines[i]
       if (!line) continue
-      const cells = line.split(delimiter).map((c) => c.trim().replace(/^"|"$/g, ''))
+      const rawCells = line.split(delimiter)
+      const cells = rawCells.map((c) => c.trim().replace(/^"|"$/g, ''))
       const dateRaw: string | undefined = cols.date >= 0 ? cells[cols.date] : undefined
-      const amountRaw: string | undefined = cols.amount >= 0 ? cells[cols.amount] : undefined
+      const amountRaw = cols.amount >= 0 ? csvNumericField(rawCells[cols.amount]) : undefined
       const descRaw: string | undefined = cols.description >= 0 ? cells[cols.description] : cells[1]
-      const balRaw: string | undefined = cols.balance >= 0 ? cells[cols.balance] : undefined
+      const balRaw = cols.balance >= 0 ? csvNumericField(rawCells[cols.balance]) : undefined
       const refRaw: string | undefined = cols.reference >= 0 ? cells[cols.reference] : undefined
 
       const date = parseDate(dateRaw)
       const amount = parseAmount(amountRaw)
       const description = descRaw ?? ''
-      const balNum = parseAmount(balRaw)
-      const balance: number | undefined = isNaN(balNum) ? undefined : balNum
+      const balance = parseOptionalBalance(
+        balRaw,
+        cols.balance >= 0 ? cells[cols.balance] : undefined,
+      )
       const reference: string | undefined = refRaw
 
       rows.push({ date, description, amount, balance, reference })
@@ -579,12 +626,19 @@ export class ReconciliationService {
     const sheet = workbook.Sheets[sheetName]
     if (!sheet) return { rows: [], bank: 'GENERIC' }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const jsonRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
+    type SheetRow = Record<string, unknown> & { __rowNum__: number }
+    const jsonRows = XLSX.utils.sheet_to_json<SheetRow>(sheet, {
       raw: false,
       defval: '',
     })
     if (jsonRows.length === 0) return { rows: [], bank: 'GENERIC' }
+    // Samma blad och radnycklar; endast numeriska belopps-/saldoceller läses rått.
+    // Datum, text och radurval kommer fortsatt från den befintliga projektionen.
+    const numericRows = new Map(
+      XLSX.utils
+        .sheet_to_json<SheetRow>(sheet, { raw: true, defval: '' })
+        .map((row) => [row.__rowNum__, row]),
+    )
 
     // Detect column keys from first row keys
     const headers = Object.keys(jsonRows[0] ?? {})
@@ -594,6 +648,7 @@ export class ReconciliationService {
 
     const rows: ParsedRow[] = []
     for (const row of jsonRows) {
+      const numericRow = numericRows.get(row.__rowNum__)
       const dateKey = cols.date >= 0 ? headerByIdx[cols.date] : undefined
       const amountKey = cols.amount >= 0 ? headerByIdx[cols.amount] : undefined
       const descKey = cols.description >= 0 ? headerByIdx[cols.description] : undefined
@@ -602,20 +657,29 @@ export class ReconciliationService {
 
       const dateRaw: string | undefined =
         dateKey !== undefined ? (row[dateKey] as string | undefined) : undefined
-      const amountRaw: string | number | undefined =
-        amountKey !== undefined ? (row[amountKey] as string | number | undefined) : undefined
+      const amountCell = amountKey !== undefined ? numericRow?.[amountKey] : undefined
+      const amountRaw =
+        typeof amountCell === 'number'
+          ? amountCell
+          : amountKey !== undefined
+            ? (row[amountKey] as string | undefined)
+            : undefined
       const descRaw: string | undefined =
         descKey !== undefined ? (row[descKey] as string | undefined) : undefined
-      const balRaw: string | number | undefined =
-        balKey !== undefined ? (row[balKey] as string | number | undefined) : undefined
+      const balanceCell = balKey !== undefined ? numericRow?.[balKey] : undefined
+      const balRaw =
+        typeof balanceCell === 'number'
+          ? balanceCell
+          : balKey !== undefined
+            ? (row[balKey] as string | undefined)
+            : undefined
       const refRaw: string | undefined =
         refKey !== undefined ? (row[refKey] as string | undefined) : undefined
 
       const date = parseDate(dateRaw)
       const amount = parseAmount(amountRaw)
       const description = descRaw ?? ''
-      const balNum = parseAmount(balRaw)
-      const balance: number | undefined = isNaN(balNum) ? undefined : balNum
+      const balance = parseOptionalBalance(balRaw)
       const reference: string | undefined = refRaw
 
       rows.push({ date, description, amount, balance, reference })

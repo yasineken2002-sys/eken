@@ -33,6 +33,68 @@ import { PaymentDataPausedError, PaymentFreshnessService } from './payment-fresh
 
 const NOW = new Date('2026-09-13T12:00:00.000Z')
 const TODAY = '2026-09-13'
+
+// Fasta lagringsfacit, beslutade före produktionsändring; inte härledda av parsern.
+const AMOUNT_ACCEPTANCE = [
+  ['heltal', '123', '123.00', false],
+  ['noll', '0', null, false],
+  ['plustecken', '+123', '123.00', false],
+  ['uttag', '-123', null, false],
+  ['decimalcomma', '123,45', '123.45', false],
+  ['decimalpunkt', '123.45', '123.45', false],
+  ['grupp blanksteg', '1 234,56', '1234.56', false],
+  ['grupp NBSP', '1 234,56', '1234.56', false],
+  ['grupp smalt NBSP', '1 234.56', '1234.56', false],
+  ['flera grupper', '1 234 567,89', '1234567.89', false],
+  ['blandade godkända gruppblanksteg', '1 234 567,89', '1234567.89', false],
+  ['omgivande blanktecken', '\t +1 234,56  ', '1234.56', false],
+  ['inledande decimalpunkt', '.5', '0.50', false],
+  ['inledande decimalcomma', ',5', '0.50', false],
+  ['avslutande decimalpunkt', '1.', '1.00', false],
+  ['avslutande decimalcomma', '1,', '1.00', false],
+  ['hel exponent', '1e2', '100.00', false],
+  ['decimal exponent', '1,25e+2', '125.00', false],
+  ['negativ exponentbetalning', '-1E2', null, false],
+  ['grupperad mantissa', '1 234e-1', '123.40', false],
+  ['single comma är decimal', '1,234', '1.23', false],
+  ['single punkt är decimal', '1.234', '1.23', false],
+  ['avrundning 1.005', '1.005', '1.00', false],
+  ['avrundning 2.675', '2.675', '2.67', false],
+  ['positivt under öret', '0.001', '0.00', false],
+  ['underflow till noll', '1e-999', null, false],
+  ['minsta positiva avrundning', '3e-324', '0.00', false],
+  ['databasens max', '9999999999.99', '9999999999.99', false],
+  ['suffix skräp', '123skräp', null, true],
+  ['suffix valuta', '123kr', null, true],
+  ['inre bokstäver', '123abc456', null, true],
+  ['ofullständig exponent', '1e', null, true],
+  ['ofullständig plus-exponent', '1e+', null, true],
+  ['ofullständig minus-exponent', '1e-', null, true],
+  ['exponent med suffix', '1e2skräp', null, true],
+  ['grupp 1 2 3', '1 2 3', null, true],
+  ['kort sista grupp', '12 34', null, true],
+  ['för lång första grupp', '1234 567', null, true],
+  ['för lång sista grupp', '1 2345', null, true],
+  ['inre tab', '1\t234', null, true],
+  ['inre CR', '1\r234', null, true],
+  ['dubbla commas', '1,2,3', null, true],
+  ['dubbla punkter', '1.2.3', null, true],
+  ['blandade separatorer US', '1,234.56', null, true],
+  ['blandade separatorer EU', '1.234,56', null, true],
+  ['inre tecken', '1-23', null, true],
+  ['mellanrum efter plus', '+ 123', null, true],
+  ['dubbelt tecken', '--1', null, true],
+  ['hexliknande', '0x10', null, true],
+  ['binärliknande', '0b10', null, true],
+  ['NaN', 'NaN', null, true],
+  ['Infinity', 'Infinity', null, true],
+  ['negativ Infinity', '-Infinity', null, true],
+  ['exponentoverflow', '1e309', null, true],
+  ['över databasens max', '10000000000', null, true],
+  ['avrundning över max', '9 999 999 999,995', null, true],
+  ['över Number-heltalsprecision', '9007199254740993', null, true],
+] as const
+
 const CSV_BAD = Buffer.from('Datum;Beskrivning;Belopp\nogiltigt;Syntetisk rad;100\n')
 const CSV_WITHDRAWAL = Buffer.from('Datum;Beskrivning;Belopp\n2026-09-13;Syntetiskt uttag;-100\n')
 const PDF = Buffer.from('%PDF-1.4\n% syntetiskt parserunderlag\n%%EOF\n')
@@ -1338,13 +1400,29 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       },
     )
 
-    it('F32 PARSERGRÄNS: numeriskt prefix med skräp är ändligt och accepteras fortfarande', async () => {
+    it('F32 STRIKT BELOPP: numeriskt prefix får inte skapa bankrad, datum eller avgift', async () => {
       const result = await importRows(format, [[TODAY, 'Syntetisk prefixrad', '123skräp']])
-      expect(result).toMatchObject({ imported: 1, unmatched: 1, errors: [] })
-      expect((await bankRows()).map((row) => Number(row.amount))).toEqual([123])
-      const observed = await runCron(`F32 ${format}`, 1)
-      expect(observed.through).toBe(TODAY)
-      expectEffect(observed)
+      const saved = await bankRows()
+      // Observera faktisk cron före säkerhetsassertionerna även i före-/negativprovet.
+      const observed = await runCron(`F32 ${format}`, saved.length)
+      console.warn(
+        'BELOPP_F32_OBSERVATION ' +
+          JSON.stringify({
+            format,
+            result,
+            amounts: saved.map((row) => row.amount.toFixed(2)),
+            through: observed.through,
+            fee: observed.fee,
+            events: observed.events,
+            vouchers: observed.vouchers,
+            queued: observed.queued,
+          }),
+      )
+      expect(saved).toHaveLength(0)
+      expect(result).toMatchObject({ imported: 0, duplicates: 0, unmatched: 0 })
+      expectFileError(result)
+      expect(observed.through).toBeNull()
+      expectPaused(observed)
       fileCasePassed(observed.id, result, observed)
     })
 
@@ -1370,6 +1448,484 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     expectPaused(observed)
     fileCasePassed(observed.id, result, observed)
   })
+
+  function amountCasePassed(
+    id: string,
+    result: Awaited<ReturnType<typeof importRows>>,
+    saved: Awaited<ReturnType<typeof bankRows>>,
+    observed: Awaited<ReturnType<typeof runCron>>,
+  ) {
+    // Markören ligger efter fallets kravassertioner, inklusive lagrat värde och cron.
+    console.warn(
+      'BELOPP_ASSERTIONS_OK ' +
+        JSON.stringify({
+          test: expect.getState().currentTestName,
+          id,
+          result,
+          saved: saved.map((row) => ({
+            amount: row.amount.toFixed(2),
+            balance: row.balance?.toFixed(2) ?? null,
+            date: row.date.toISOString().slice(0, 10),
+            status: row.status,
+          })),
+          through: observed.through,
+          fee: observed.fee,
+          events: observed.events,
+          vouchers: observed.vouchers,
+          queued: observed.queued,
+          summary: observed.summary,
+        }),
+    )
+  }
+
+  describe.each(['csv', 'xlsx', 'xls'] as const)(
+    'strikt belopp genom faktisk import: %s',
+    (format) => {
+      it.each(AMOUNT_ACCEPTANCE)(
+        'B01 ACCEPTANSMATRIS: %s',
+        async (name, input, expectedAmount, rejected) => {
+          const result = await importRows(format, [[TODAY, 'Syntetisk matrisrad', input]])
+          const expectedCount = expectedAmount === null ? 0 : 1
+          expect(result).toMatchObject({
+            imported: expectedCount,
+            duplicates: 0,
+            autoMatched: 0,
+            unmatched: expectedCount,
+          })
+          if (rejected) expectFileError(result)
+          else expect(result.errors).toEqual([])
+          const saved = await bankRows()
+          expect(
+            saved.map((row) => ({
+              amount: row.amount.toFixed(2),
+              balance: row.balance?.toFixed(2) ?? null,
+              description: row.description,
+              date: row.date,
+              status: row.status,
+            })),
+          ).toEqual(
+            expectedAmount === null
+              ? []
+              : [
+                  {
+                    amount: expectedAmount,
+                    balance: null,
+                    description: 'Syntetisk matrisrad',
+                    date: new Date(TODAY),
+                    status: 'UNMATCHED',
+                  },
+                ],
+          )
+          const observed = await runCron(`B01 ${format} ${name}`, expectedCount)
+          expect(observed.through).toBe(rejected ? null : TODAY)
+          if (rejected) expectPaused(observed)
+          else expectEffect(observed)
+          amountCasePassed(observed.id, result, saved, observed)
+        },
+      )
+
+      it.each([
+        ['frånvarande', undefined, null, false],
+        ['tomt', '', null, false],
+        ['textfel', 'ogiltigt', null, false],
+        ['finit prefixtext', '123skräp', null, false],
+        ['valutasuffix', '123kr', null, false],
+        ['felgrupperat finit', '1 2 3', null, false],
+        ['blandade separatorer', '1,234.56', null, false],
+        ['NaN', 'NaN', null, false],
+        ['korrekt grupperat', '1 234,56', '1234.56', false],
+        ['negativt grupperat', '-1\u00a0234,56', '-1234.56', false],
+        ['noll', '0', '0.00', false],
+        ['hel exponent', '1e2', '100.00', false],
+        ['Infinity', 'Infinity', null, true],
+        ['negativ Infinity', '-Infinity', null, true],
+        ['overflow', '1e309', null, true],
+        ['overflowprefix', '1e309skräp', null, true],
+        ['Infinityprefix', 'Infinityskräp', null, true],
+        ['felgrupperat overflow', '1  e309', null, true],
+        ['databasoverflow', '10000000000', null, true],
+        ['avrundning över databasgräns', '9 999 999 999,995', null, true],
+      ] as const)('B02 VALFRITT SALDO: %s', async (name, input, expectedBalance, blocked) => {
+        const result = await importRows(
+          format,
+          [[TODAY, 'Syntetisk saldorad', '100', input]],
+          ['Datum', 'Beskrivning', 'Belopp', 'Saldo'],
+        )
+        expect(result).toMatchObject({
+          imported: blocked ? 0 : 1,
+          duplicates: 0,
+          autoMatched: 0,
+          unmatched: blocked ? 0 : 1,
+        })
+        if (blocked) expectFileError(result)
+        else expect(result.errors).toEqual([])
+        const saved = await bankRows()
+        expect(
+          saved.map((row) => ({
+            amount: row.amount.toFixed(2),
+            balance: row.balance?.toFixed(2) ?? null,
+          })),
+        ).toEqual(blocked ? [] : [{ amount: '100.00', balance: expectedBalance }])
+        const observed = await runCron(`B02 ${format} ${name}`, blocked ? 0 : 1)
+        expect(observed.through).toBe(blocked ? null : TODAY)
+        if (blocked) expectPaused(observed)
+        else expectEffect(observed)
+        amountCasePassed(observed.id, result, saved, observed)
+      })
+
+      it('B03 RÄTTAD ÅTERIMPORT: prefixfel stoppar filens datum, riktig dubblett bevarar första id', async () => {
+        const good = [TODAY, 'Syntetisk bevarad betalning', '100,50']
+        const first = await importRows(format, [
+          good,
+          ['2026-09-12', 'Syntetisk rättad betalning', '123skräp'],
+        ])
+        expect(first).toMatchObject({ imported: 1, duplicates: 0, unmatched: 1 })
+        expectFileError(first)
+        const before = await bankRows()
+        expect(before.map((row) => row.amount.toFixed(2))).toEqual(['100.50'])
+        const paused = await runCron(`B03 ${format} före rättning`, 1)
+        expect(paused.through).toBeNull()
+        expectPaused(paused)
+        amountCasePassed(paused.id, first, before, paused)
+        const second = await importRows(format, [
+          good,
+          ['2026-09-12', 'Syntetisk rättad betalning', '123,45'],
+        ])
+        expect(second).toMatchObject({
+          imported: 1,
+          duplicates: 1,
+          autoMatched: 0,
+          unmatched: 1,
+          errors: [],
+        })
+        const after = await bankRows()
+        expect(
+          after.map((row) => ({
+            description: row.description,
+            amount: row.amount.toFixed(2),
+            date: row.date.toISOString().slice(0, 10),
+          })),
+        ).toEqual([
+          { description: 'Syntetisk bevarad betalning', amount: '100.50', date: TODAY },
+          { description: 'Syntetisk rättad betalning', amount: '123.45', date: '2026-09-12' },
+        ])
+        expect(after[0]!.id).toBe(before[0]!.id)
+        const observed = await runCron(`B03 ${format} efter rättning`, 2)
+        expect(observed.through).toBe(TODAY)
+        expectEffect(observed)
+        amountCasePassed(observed.id, second, after, observed)
+      })
+
+      it.each([null, '2026-09-01', '2026-09-10'])(
+        'B04 TIDIGARE DATUM: %s bevaras vid prefixfel',
+        async (prior) => {
+          await db.organization.update({
+            where: { id: orgId! },
+            data: { paymentDataThrough: prior ? new Date(prior) : null },
+          })
+          // Felet först: även efterföljande giltig bankrad måste behållas utan nytt datum.
+          const result = await importRows(format, [
+            [TODAY, 'Syntetisk prefixrad', '123skräp'],
+            [TODAY, 'Syntetisk bevarad rad', '100'],
+          ])
+          expect(result).toMatchObject({ imported: 1, duplicates: 0, unmatched: 1 })
+          expectFileError(result)
+          const saved = await bankRows()
+          expect(saved.map((row) => row.amount.toFixed(2))).toEqual(['100.00'])
+          const observed = await runCron(`B04 ${format} ${prior}`, 1)
+          expect(observed.through).toBe(prior)
+          if (prior === '2026-09-10') expectEffect(observed)
+          else expectPaused(observed)
+          amountCasePassed(observed.id, result, saved, observed)
+        },
+      )
+
+      it.each(['uttag', 'noll', 'dubblett'])(
+        'B05 SALDOGRÄNS: %s med Infinity-saldo behåller befintlig väg före lagring',
+        async (kind) => {
+          const amount = kind === 'uttag' ? -100 : kind === 'noll' ? 0 : 100
+          const description = 'Syntetisk befintlig väg'
+          const seeded =
+            kind === 'dubblett'
+              ? await db.bankTransaction.create({
+                  data: {
+                    organizationId: orgId!,
+                    date: new Date(TODAY),
+                    description,
+                    amount,
+                    balance: 321.45,
+                  },
+                })
+              : null
+          const result = await importRows(
+            format,
+            [[TODAY, description, amount, 'Infinity']],
+            ['Datum', 'Beskrivning', 'Belopp', 'Saldo'],
+          )
+          expect(result).toMatchObject({
+            imported: 0,
+            duplicates: seeded ? 1 : 0,
+            autoMatched: 0,
+            unmatched: 0,
+            errors: [],
+          })
+          const saved = await bankRows()
+          expect(saved.map((row) => ({ id: row.id, balance: row.balance?.toFixed(2) }))).toEqual(
+            seeded ? [{ id: seeded.id, balance: '321.45' }] : [],
+          )
+          const observed = await runCron(`B05 ${format} ${kind}`, seeded ? 1 : 0)
+          expect(observed.through).toBe(TODAY)
+          expectEffect(observed)
+          amountCasePassed(observed.id, result, saved, observed)
+        },
+      )
+    },
+  )
+
+  describe.each(['xlsx', 'xls'] as const)('råa numeriska Excelceller: %s', (format) => {
+    it.each([
+      [
+        'tusental och avrundad saldovisning',
+        1234.56,
+        '#,##0.00',
+        '1234.56',
+        4321.99,
+        '#,##0',
+        '4321.99',
+      ],
+      ['exponent och procent', 1234.56, '0.00E+00', '1234.56', 0.01234, '0%', '0.01'],
+      ['binär avrundning', 1.005, '0.00', '1.00', 2.675, '0.00', '2.67'],
+      ['procent och tusental', 0.01234, '0%', '0.01', 1234.56, '#,##0.00', '1234.56'],
+      [
+        'heltalsvisning och negativt saldo',
+        123.456,
+        '0',
+        '123.46',
+        -1234.56,
+        '#,##0.00;(#,##0.00)',
+        '-1234.56',
+      ],
+    ] as const)(
+      'B06 NUMERISKA CELLER: %s',
+      async (
+        name,
+        value,
+        numberFormat,
+        expectedAmount,
+        balance,
+        balanceFormat,
+        expectedBalance,
+      ) => {
+        const sheet = XLSX.utils.aoa_to_sheet([
+          ['Datum', 'Beskrivning', 'Belopp', 'Saldo'],
+          [TODAY, 'Syntetisk råvärdesrad', value, balance],
+        ])
+        sheet['C2']!.z = numberFormat
+        sheet['D2']!.z = balanceFormat
+        const book = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(book, sheet, 'Syntetiskt')
+        const buffer = XLSX.write(book, { type: 'buffer', bookType: format }) as Buffer
+        // Kontrollera att arbetsboken verkligen bär avsedda numeriska cellvärden.
+        const read = XLSX.read(buffer, { type: 'buffer', cellDates: true }).Sheets['Syntetiskt']!
+        expect(read['C2']).toMatchObject({ t: 'n', v: value })
+        expect(read['D2']).toMatchObject({ t: 'n', v: balance })
+        const result = await importer.importBankStatement(buffer, 'syntetiskt.' + format, orgId!)
+        expect(result).toMatchObject({ imported: 1, autoMatched: 0, unmatched: 1, errors: [] })
+        const saved = await bankRows()
+        expect(
+          saved.map((row) => ({ amount: row.amount.toFixed(2), balance: row.balance?.toFixed(2) })),
+        ).toEqual([{ amount: expectedAmount, balance: expectedBalance }])
+        const observed = await runCron(`B06 ${format} ${name}`, 1)
+        expect(observed.through).toBe(TODAY)
+        expectEffect(observed)
+        amountCasePassed(observed.id, result, saved, observed)
+      },
+    )
+
+    it('B07 EXCEL-MAPPNING: offset, heltalsrubrik, blankrad och andra blad ändrar inte datum/radurval', async () => {
+      const sheet = XLSX.utils.aoa_to_sheet([])
+      XLSX.utils.sheet_add_aoa(
+        sheet,
+        [
+          ['Datum', '7', 'Beskrivning', 'Belopp', 'Saldo', 'Referens'],
+          [new Date('2026-09-12T00:00:00Z'), 'decoy', 'Syntetisk A', 1234.56, 4321.99, 'ref-A'],
+          [],
+          [new Date('2026-09-13T00:00:00Z'), 'decoy', 'Syntetisk B', 2345.67, 5432.98, 'ref-B'],
+        ],
+        { origin: 'C3', cellDates: true },
+      )
+      // sheet_add_aoa på ett tomt blad behåller annars A1 i !ref. Fixturen avser C3.
+      sheet['!ref'] = 'C3:H6'
+      for (const addr of ['C4', 'C6']) sheet[addr]!.z = 'yyyy-mm-dd'
+      for (const addr of ['F4', 'F6']) sheet[addr]!.z = '#,##0.00'
+      for (const addr of ['G4', 'G6']) sheet[addr]!.z = '0.00E+00'
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, 'Första')
+      XLSX.utils.book_append_sheet(
+        book,
+        XLSX.utils.aoa_to_sheet([
+          ['Datum', 'Beskrivning', 'Belopp'],
+          [TODAY, 'Ska inte väljas', '123skräp'],
+        ]),
+        'Andra',
+      )
+      const result = await importer.importBankStatement(
+        XLSX.write(book, { type: 'buffer', bookType: format }) as Buffer,
+        'offset.' + format,
+        orgId!,
+      )
+      expect(result).toMatchObject({
+        imported: 2,
+        duplicates: 0,
+        autoMatched: 0,
+        unmatched: 2,
+        errors: [],
+      })
+      const saved = await bankRows()
+      expect(
+        saved.map((row) => ({
+          amount: row.amount.toFixed(2),
+          balance: row.balance?.toFixed(2),
+          date: row.date.toISOString().slice(0, 10),
+          description: row.description,
+          reference: row.reference,
+        })),
+      ).toEqual([
+        {
+          amount: '1234.56',
+          balance: '4321.99',
+          date: '2026-09-12',
+          description: 'Syntetisk A',
+          reference: 'ref-A',
+        },
+        {
+          amount: '2345.67',
+          balance: '5432.98',
+          date: TODAY,
+          description: 'Syntetisk B',
+          reference: 'ref-B',
+        },
+      ])
+      const observed = await runCron(`B07 ${format}`, 2)
+      expect(observed.through).toBe(TODAY)
+      expectEffect(observed)
+      amountCasePassed(observed.id, result, saved, observed)
+    })
+
+    it('B08 TEXTCELL: inre radbrytning avvisas som en hel ogiltig token', async () => {
+      const result = await importRows(format, [[TODAY, 'Syntetisk flerradscell', '12\n34']])
+      expect(result.imported).toBe(0)
+      expectFileError(result)
+      const saved = await bankRows()
+      expect(saved).toHaveLength(0)
+      const observed = await runCron(`B08 ${format}`)
+      expect(observed.through).toBeNull()
+      expectPaused(observed)
+      amountCasePassed(observed.id, result, saved, observed)
+    })
+  })
+
+  it.each([
+    ['citerat flerradsbelopp', '"12\n34"', true],
+    ['ensidigt inledande citat', '"123', true],
+    ['ensidigt avslutande citat', '123"', true],
+    ['helt citatpar', '"123,45"', false],
+  ] as const)('B09 CSV-CITAT: %s', async (name, input, rejected) => {
+    const result = await importRows('csv', [[TODAY, 'Syntetisk citerad rad', input]])
+    expect(result.imported).toBe(rejected ? 0 : 1)
+    if (rejected) expectFileError(result, input.includes('\n') ? 2 : 1)
+    else expect(result.errors).toEqual([])
+    const saved = await bankRows()
+    expect(saved.map((row) => row.amount.toFixed(2))).toEqual(rejected ? [] : ['123.45'])
+    const observed = await runCron(`B09 ${name}`, rejected ? 0 : 1)
+    expect(observed.through).toBe(rejected ? null : TODAY)
+    if (rejected) expectPaused(observed)
+    else expectEffect(observed)
+    amountCasePassed(observed.id, result, saved, observed)
+  })
+
+  it('B10 CSV-SALDO: tidigare ensidig quote-strip av Infinity behåller lagringsspärren', async () => {
+    const result = await importRows(
+      'csv',
+      [[TODAY, 'Syntetisk citerad saldorad', '100', '"Infinity']],
+      ['Datum', 'Beskrivning', 'Belopp', 'Saldo'],
+    )
+    expect(result.imported).toBe(0)
+    expectFileError(result)
+    const saved = await bankRows()
+    expect(saved).toHaveLength(0)
+    const observed = await runCron('B10 csv')
+    expect(observed.through).toBeNull()
+    expectPaused(observed)
+    amountCasePassed(observed.id, result, saved, observed)
+  })
+
+  describe.each(['csv', 'xlsx', 'xls'] as const)(
+    'saldo och befintlig lagringsprecision: %s',
+    (format) => {
+      it.each([
+        '10000000000skräp',
+        '-10000000000skräp',
+        '9999999999.995skräp',
+        '-9999999999.995skräp',
+        '10000 000000skräp',
+      ])(
+        'B11 FINIT OVERFLOWPREFIX: %s får inte bli utelämnat saldo och frigöra datum',
+        async (input) => {
+          const result = await importRows(
+            format,
+            [[TODAY, 'Syntetisk overflowrad', '100', input]],
+            ['Datum', 'Beskrivning', 'Belopp', 'Saldo'],
+          )
+          const saved = await bankRows()
+          const observed = await runCron(`B11 ${format} ${input}`, saved.length)
+          console.warn(
+            'BELOPP_OVERFLOW_OBSERVATION ' +
+              JSON.stringify({
+                format,
+                input,
+                imported: result.imported,
+                rows: saved.length,
+                through: observed.through,
+                fee: observed.fee,
+              }),
+          )
+          expect(saved).toHaveLength(0)
+          expect(result.imported).toBe(0)
+          expectFileError(result)
+          expect(observed.through).toBeNull()
+          expectPaused(observed)
+          amountCasePassed(observed.id, result, saved, observed)
+        },
+      )
+    },
+  )
+
+  it.each(['xlsx', 'xls'] as const)(
+    'B12 NUMERISKT SALDO: %s med rått saldo över databasprecision får inte döljas av visningsformat',
+    async (format) => {
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['Datum', 'Beskrivning', 'Belopp', 'Saldo'],
+        [TODAY, 'Syntetisk numerisk overflowrad', 100, 10000000000],
+      ])
+      sheet['D2']!.z = '#,##0'
+      const book = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(book, sheet, 'Syntetiskt')
+      const result = await importer.importBankStatement(
+        XLSX.write(book, { type: 'buffer', bookType: format }) as Buffer,
+        'overflow.' + format,
+        orgId!,
+      )
+      expect(result.imported).toBe(0)
+      expectFileError(result)
+      const saved = await bankRows()
+      expect(saved).toHaveLength(0)
+      const observed = await runCron(`B12 ${format}`)
+      expect(observed.through).toBeNull()
+      expectPaused(observed)
+      amountCasePassed(observed.id, result, saved, observed)
+    },
+  )
 
   it('F20 RÄNTA: ett registrerat försök skyddar även den separata riktiga räntetransaktionen', async () => {
     await freshness.recordImportStarted(orgId!)
