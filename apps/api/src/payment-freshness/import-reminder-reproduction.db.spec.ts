@@ -6,13 +6,14 @@
  * Spionerna flyttar bara tidpunkter; felprovet F15 injicerar ett uttryckligt skrivfel.
  * Provet intygar inte fullständig kontotäckning, bankbetalning eller levererat mejl.
  * Separata avgifts-/räntetransaktioner och senare köleverans är inte en atomisk helhet.
- * F19 visar uttryckligen att giltigt datum + ogiltigt belopp fortfarande kan avancera datumet.
+ * F19 och F24-F34 prövar filfel; matchError och parserprefix särredovisas som kvarvarande gränser.
  * Alla egna rader städas; lika tabellantal/radantal intygar inte äldre raders innehåll.
  */
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { randomUUID } from 'node:crypto'
+import * as XLSX from 'xlsx'
 import { BadRequestException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Prisma, PrismaClient } from '@prisma/client'
@@ -57,6 +58,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
   let badDebt: RentBadDebtService
   const extraOrgIds: string[] = []
   let baseline: Record<string, number>
+  const shadowQueue = { enqueue: jest.fn(async () => 'syntetiskt-skuggjobb') }
   const queue = { enqueue: jest.fn(async () => 'syntetiskt-jobb') }
   const mail = { sendCustomEmail: jest.fn(async () => undefined) }
   const errors = { report: jest.fn(async () => undefined) }
@@ -229,7 +231,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       accounting,
       freshness,
       events,
-      outside as never,
+      shadowQueue as never,
       outside as never,
     )
     interest = new RentInterestService(db as never, accounting, events, freshness)
@@ -476,8 +478,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     )
   }
 
-  async function runCron(id: string) {
-    expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
+  async function runCron(id: string, expectedBankRows = 0) {
+    expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(
+      expectedBankRows,
+    )
     // Cronen saknar org-parameter: stoppa före anrop om den kan röra någon annans avi.
     const candidates = await db.rentNotice.findMany({
       where: {
@@ -674,7 +678,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
 
   it('F04 SÄKERHET: CSV med enbart ogiltiga datum ska pausa automatisk avgift', async () => {
     const result = await importer.importBankStatement(CSV_BAD, 'fel.csv', orgId!)
-    expect(result).toMatchObject({ imported: 0, errors: ['Rad 2: Ogiltigt datum'] })
+    expect(result).toMatchObject({
+      imported: 0,
+      errors: [
+        'Rad 2: Ogiltigt datum. Betalningsunderlagets datum uppdaterades inte. Rätta filen och importera igen.',
+      ],
+    })
     expect(await db.bankStatementImport.count({ where: { organizationId: orgId! } })).toBe(0)
     const observed = await runCron('F04')
     expect(observed.through).toBeNull()
@@ -1005,12 +1014,361 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       'Datum;Beskrivning;Belopp\n2026-09-13;Syntetisk felaktig rad;ogiltigt\n',
     )
     const result = await importer.importBankStatement(csv, 'felbelopp.csv', orgId!)
-    expect(result).toMatchObject({ imported: 0, errors: ['Rad 2: Ogiltigt belopp'] })
+    expect(result).toMatchObject({
+      imported: 0,
+      errors: [
+        'Rad 2: Ogiltigt belopp. Betalningsunderlagets datum uppdaterades inte. Rätta filen och importera igen.',
+      ],
+    })
     expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
     const observed = await runCron('F19')
     expect(observed.importStartedAt).toBe(NOW.toISOString())
     expect(observed.through).toBeNull()
     expectPaused(observed)
+    fileCasePassed('F19', result, observed)
+  })
+
+  // Inga parser-/datum-/cronmockar. XLSX.write skapar riktiga små arbetsböcker.
+  type FileFormat = 'csv' | 'xlsx' | 'xls'
+  type Cell = string | number | undefined
+  function fileBuffer(
+    format: FileFormat,
+    rows: Cell[][],
+    headers = ['Datum', 'Beskrivning', 'Belopp'],
+  ) {
+    const cells = [headers, ...rows]
+    if (format === 'csv') return Buffer.from(cells.map((row) => row.join(';')).join('\n') + '\n')
+    const book = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(cells), 'Syntetiskt')
+    return XLSX.write(book, { type: 'buffer', bookType: format }) as Buffer
+  }
+
+  async function importRows(format: FileFormat, rows: Cell[][], headers?: string[]) {
+    return importer.importBankStatement(
+      fileBuffer(format, rows, headers),
+      'syntetiskt.' + format,
+      orgId!,
+    )
+  }
+
+  async function bankRows() {
+    return db.bankTransaction.findMany({
+      where: { organizationId: orgId! },
+      orderBy: { description: 'asc' },
+    })
+  }
+
+  function expectFileError(result: Awaited<ReturnType<typeof importRows>>, count = 1) {
+    expect(result.errors).toHaveLength(count)
+    for (const error of result.errors) {
+      expect(error).toContain('Betalningsunderlagets datum uppdaterades inte.')
+      expect(error).toContain('Rätta filen och importera igen.')
+      expect(error).not.toMatch(/paus/i)
+    }
+  }
+
+  // Skrivs först EFTER fallets assertions. CI-loggen kan kontrollera namngivna fall,
+  // inte bara att filen laddades. Utfallen innehåller enbart syntetiska uppgifter.
+  function fileCasePassed(
+    id: string,
+    result: Awaited<ReturnType<typeof importRows>> | { rejectedEmptyFile: true },
+    observed: Awaited<ReturnType<typeof runCron>>,
+  ) {
+    const effect = {
+      through: observed.through,
+      importStartedAt: observed.importStartedAt,
+      summary: observed.summary,
+      stage: observed.stage,
+      fee: observed.fee,
+      events: observed.events,
+      vouchers: observed.vouchers,
+      queued: observed.queued,
+    }
+    console.warn(
+      'FILFEL_ASSERTIONS_OK ' +
+        JSON.stringify({ test: expect.getState().currentTestName, id, result, effect }),
+    )
+  }
+
+  describe.each(['csv', 'xlsx'] as const)('filkontrakt genom produktionsparser: %s', (format) => {
+    it.each([
+      { position: 'först', failedDate: '2026-09-12' },
+      { position: 'sist', failedDate: '2026-09-12' },
+      { position: 'först', failedDate: '2026-09-14' },
+      { position: 'sist', failedDate: '2026-09-14' },
+    ])(
+      'F24 BLANDAT: fel $position med datum $failedDate maskeras inte av lyckad aktuell rad',
+      async ({ position, failedDate }) => {
+        const good = [TODAY, 'Syntetisk giltig rad', '100']
+        const bad = [failedDate, 'Syntetisk felaktig rad', 'ogiltigt']
+        const result = await importRows(format, position === 'först' ? [bad, good] : [good, bad])
+        expect(result).toMatchObject({ imported: 1, duplicates: 0, autoMatched: 0, unmatched: 1 })
+        expectFileError(result)
+        expect(await bankRows()).toMatchObject([
+          { description: 'Syntetisk giltig rad', date: new Date(TODAY), status: 'UNMATCHED' },
+        ])
+        const observed = await runCron(`F24 ${format} ${position} ${failedDate}`, 1)
+        expect(observed.through).toBeNull()
+        expectPaused(observed)
+        fileCasePassed(observed.id, result, observed)
+      },
+    )
+
+    it.each([
+      { label: 'ogiltigt datum', date: 'ogiltigt', amount: '100' },
+      { label: 'saknad datumcell', date: '', amount: '100' },
+      { label: 'saknad beloppscell', date: TODAY, amount: '' },
+      { label: 'ogiltigt belopp', date: TODAY, amount: 'ogiltigt' },
+      { label: 'Infinity', date: TODAY, amount: 'Infinity' },
+      { label: '-Infinity', date: TODAY, amount: '-Infinity' },
+      { label: 'överflöde', date: TODAY, amount: '1e999' },
+      { label: 'tomma obligatoriska fält i datarad', date: '', amount: '' },
+    ])('F25 VALIDERING: $label lämnar inget datum', async ({ label, date, amount }) => {
+      const result = await importRows(format, [[date, 'Syntetisk felrad', amount]])
+      expect(result).toMatchObject({ imported: 0, duplicates: 0, autoMatched: 0, unmatched: 0 })
+      expectFileError(result)
+      const observed = await runCron(`F25 ${format} ${label}`)
+      expect(observed.through).toBeNull()
+      expectPaused(observed)
+      fileCasePassed(observed.id, result, observed)
+    })
+
+    it.each(['Datum', 'Belopp'])(
+      'F26 FÄLT: saknad obligatorisk kolumn %s är radfel',
+      async (missing) => {
+        const headers = missing === 'Datum' ? ['Beskrivning', 'Belopp'] : ['Datum', 'Beskrivning']
+        const row = missing === 'Datum' ? ['Syntetisk rad', '100'] : [TODAY, 'Syntetisk rad']
+        const result = await importRows(format, [row], headers)
+        expect(result.imported).toBe(0)
+        expectFileError(result)
+        const observed = await runCron(`F26 ${format} ${missing}`)
+        expect(observed.through).toBeNull()
+        expectPaused(observed)
+        fileCasePassed(observed.id, result, observed)
+      },
+    )
+
+    it('F27 LAGRING/ÅTERIMPORT: DB nekar en rad; sparad rad behålls och verklig dedup används vid nytt försök', async () => {
+      const rows = [
+        [TODAY, 'Syntetisk behållen rad', '100'],
+        ['2026-09-14', 'Syntetisk lagringsrad', '200'],
+      ]
+      const buffer = fileBuffer(format, rows)
+      // Egen trigger avgränsad till fixturens org och rad. Inga andra rader påverkas.
+      // UUID och namn skapas av riggen; inga användarsträngar interpoleras i SQL.
+      const trigger = 'filfel_' + randomUUID().replace(/-/g, '')
+      await db.$executeRawUnsafe(`CREATE FUNCTION "${trigger}"() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW."organizationId" = '${orgId!}' AND NEW.description = 'Syntetisk lagringsrad' THEN
+            RAISE EXCEPTION 'Ogiltigt belopp';
+          END IF;
+          RETURN NEW;
+        END $$`)
+      let keptId: string
+      try {
+        await db.$executeRawUnsafe(
+          `CREATE TRIGGER "${trigger}" BEFORE INSERT ON "BankTransaction" FOR EACH ROW EXECUTE FUNCTION "${trigger}"()`,
+        )
+        const first = await importer.importBankStatement(buffer, 'syntetiskt.' + format, orgId!)
+        expect(first).toMatchObject({ imported: 1, duplicates: 0, unmatched: 1 })
+        expectFileError(first)
+        expect(first.errors[0]).toContain('Ogiltigt belopp')
+        const saved = await bankRows()
+        expect(saved).toHaveLength(1)
+        expect(saved[0]).toMatchObject({
+          description: rows[0]![1],
+          date: new Date(TODAY),
+          status: 'UNMATCHED',
+        })
+        expect(Number(saved[0]!.amount)).toBe(100)
+        keptId = saved[0]!.id
+        const observed = await runCron(`F27 ${format} lagringsfel`, 1)
+        expect(observed.through).toBeNull()
+        expectPaused(observed)
+        fileCasePassed(observed.id, first, observed)
+      } finally {
+        await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "${trigger}" ON "BankTransaction"`)
+        await db.$executeRawUnsafe(`DROP FUNCTION "${trigger}"()`)
+      }
+      // Samma bytes, felet avhjälpt. findFirst/create/matchTransaction är verkliga.
+      const second = await importer.importBankStatement(buffer, 'syntetiskt.' + format, orgId!)
+      expect(second).toMatchObject({
+        imported: 1,
+        duplicates: 1,
+        autoMatched: 0,
+        unmatched: 1,
+        errors: [],
+      })
+      const saved = await bankRows()
+      expect(
+        saved.map((row) => ({
+          id: row.id,
+          description: row.description,
+          amount: Number(row.amount),
+          date: row.date.toISOString().slice(0, 10),
+          status: row.status,
+        })),
+      ).toEqual([
+        {
+          id: keptId!,
+          description: 'Syntetisk behållen rad',
+          amount: 100,
+          date: TODAY,
+          status: 'UNMATCHED',
+        },
+        {
+          id: expect.any(String),
+          description: 'Syntetisk lagringsrad',
+          amount: 200,
+          date: '2026-09-14',
+          status: 'UNMATCHED',
+        },
+      ])
+      expect(
+        await db.rentNoticePayment.count({ where: { rentNotice: { organizationId: orgId! } } }),
+      ).toBe(0)
+      const observed = await runCron(`F27 ${format} återimport`, 2)
+      // Befintlig färskhetstjänst begränsar framtida datum till dagens datum.
+      expect(observed.through).toBe(TODAY)
+      expectEffect(observed)
+      fileCasePassed(observed.id, second, observed)
+    })
+
+    it.each(['uttag', 'noll', 'dubblett'])(
+      'F28 BEVARAT: endast %s behåller datumunderlaget',
+      async (kind) => {
+        await db.organization.update({
+          where: { id: orgId! },
+          data: { paymentDataThrough: new Date('2026-09-01') },
+        })
+        const amount = kind === 'uttag' ? -100 : kind === 'noll' ? 0 : 100
+        const description = 'Syntetisk bevarad rad'
+        const seeded =
+          kind === 'dubblett'
+            ? await db.bankTransaction.create({
+                data: { organizationId: orgId!, date: new Date(TODAY), description, amount },
+              })
+            : null
+        const result = await importRows(format, [[TODAY, description, amount]])
+        expect(result).toMatchObject({
+          imported: 0,
+          duplicates: seeded ? 1 : 0,
+          autoMatched: 0,
+          unmatched: 0,
+          errors: [],
+        })
+        const saved = await bankRows()
+        expect(saved.map((row) => row.id)).toEqual(seeded ? [seeded.id] : [])
+        const observed = await runCron(`F28 ${format} ${kind}`, seeded ? 1 : 0)
+        expect(observed.through).toBe(TODAY)
+        expectEffect(observed)
+        fileCasePassed(observed.id, result, observed)
+      },
+    )
+
+    it.each(['unmatched', 'matchError'])(
+      'F29 MATCHNING: %s efter lagring särredovisas med bevarad policy',
+      async (kind) => {
+        if (kind === 'matchError')
+          jest.spyOn(importer, 'matchTransaction').mockRejectedValue(new Error('Ogiltigt belopp'))
+        const result = await importRows(format, [[TODAY, 'Syntetisk omatchad rad', 123]])
+        expect(result).toMatchObject({
+          imported: 1,
+          duplicates: 0,
+          autoMatched: 0,
+          unmatched: kind === 'unmatched' ? 1 : 0,
+          errors: kind === 'unmatched' ? [] : ['Rad 2: Ogiltigt belopp'],
+        })
+        const saved = await bankRows()
+        expect(saved).toHaveLength(1)
+        expect(saved[0]!.status).toBe('UNMATCHED')
+        expect(Number(saved[0]!.amount)).toBe(123)
+        expect(shadowQueue.enqueue).toHaveBeenCalledTimes(kind === 'unmatched' ? 1 : 0)
+        const observed = await runCron(`F29 ${format} ${kind}`, 1)
+        expect(observed.through).toBe(TODAY)
+        expectEffect(observed)
+        fileCasePassed(observed.id, result, observed)
+      },
+    )
+
+    it.each(['tom', 'rubriker', 'blankrader'])(
+      'F30 TOMT: %s ger inget påhittat datum',
+      async (kind) => {
+        let buffer: Buffer
+        if (kind === 'tom') {
+          if (format === 'csv') buffer = Buffer.alloc(0)
+          else {
+            const book = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([]), 'Tomt')
+            buffer = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+          }
+        } else buffer = fileBuffer(format, kind === 'blankrader' ? [[], [], []] : [])
+        let result: Awaited<ReturnType<typeof importRows>> | { rejectedEmptyFile: true }
+        if (kind === 'tom' && format === 'csv') {
+          await expect(importer.importBankStatement(buffer, 'tom.csv', orgId!)).rejects.toThrow(
+            BadRequestException,
+          )
+          result = { rejectedEmptyFile: true }
+        } else {
+          result = await importer.importBankStatement(buffer, 'tom.' + format, orgId!)
+          expect(result).toMatchObject({ imported: 0, duplicates: 0, unmatched: 0, errors: [] })
+        }
+        const observed = await runCron(`F30 ${format} ${kind}`)
+        expect(observed.through).toBeNull()
+        expect(observed.importStartedAt).toBe(NOW.toISOString())
+        expectPaused(observed)
+        fileCasePassed(observed.id, result, observed)
+      },
+    )
+
+    it.each([null, '2026-09-01', '2026-09-10'])(
+      'F31 TIDIGARE DATUM: %s bevaras efter filfel med dagens åldersregel',
+      async (prior) => {
+        await db.organization.update({
+          where: { id: orgId! },
+          data: { paymentDataThrough: prior ? new Date(prior) : null },
+        })
+        const result = await importRows(format, [[TODAY, 'Syntetisk felrad', 'ogiltigt']])
+        expectFileError(result)
+        const observed = await runCron(`F31 ${format} ${prior}`)
+        expect(observed.through).toBe(prior)
+        if (prior === '2026-09-10') expectEffect(observed)
+        else expectPaused(observed)
+        fileCasePassed(observed.id, result, observed)
+      },
+    )
+
+    it('F32 PARSERGRÄNS: numeriskt prefix med skräp är ändligt och accepteras fortfarande', async () => {
+      const result = await importRows(format, [[TODAY, 'Syntetisk prefixrad', '123skräp']])
+      expect(result).toMatchObject({ imported: 1, unmatched: 1, errors: [] })
+      expect((await bankRows()).map((row) => Number(row.amount))).toEqual([123])
+      const observed = await runCron(`F32 ${format}`, 1)
+      expect(observed.through).toBe(TODAY)
+      expectEffect(observed)
+      fileCasePassed(observed.id, result, observed)
+    })
+
+    it('F33 MONOTONI: lyckad äldre fil backar inte ett aktuellt tidigare datum', async () => {
+      await db.organization.update({
+        where: { id: orgId! },
+        data: { paymentDataThrough: new Date(TODAY) },
+      })
+      const result = await importRows(format, [['2026-09-01', 'Syntetiskt uttag', -100]])
+      expect(result).toMatchObject({ imported: 0, errors: [] })
+      const observed = await runCron(`F33 ${format}`)
+      expect(observed.through).toBe(TODAY)
+      expectEffect(observed)
+      fileCasePassed(observed.id, result, observed)
+    })
+  })
+
+  it('F34 XLS: riktig äldre Excel-arbetsbok med felaktigt belopp spärrar datum', async () => {
+    const result = await importRows('xls', [[TODAY, 'Syntetisk felrad', 'ogiltigt']])
+    expectFileError(result)
+    const observed = await runCron('F34 xls')
+    expect(observed.through).toBeNull()
+    expectPaused(observed)
+    fileCasePassed(observed.id, result, observed)
   })
 
   it('F20 RÄNTA: ett registrerat försök skyddar även den separata riktiga räntetransaktionen', async () => {

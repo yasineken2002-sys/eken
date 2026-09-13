@@ -669,19 +669,26 @@ export class ReconciliationService {
       bank,
     }
 
+    let fileReadComplete = true
+    const incompleteFileMessage =
+      '. Betalningsunderlagets datum uppdaterades inte. Rätta filen och importera igen.'
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       if (!row) continue
 
+      let ingestionConfirmed = false
       try {
         // Skip rows without a valid date
         if (!row.date || isNaN(row.date.getTime())) {
-          result.errors.push(`Rad ${i + 2}: Ogiltigt datum`)
+          fileReadComplete = false
+          result.errors.push(`Rad ${i + 2}: Ogiltigt datum${incompleteFileMessage}`)
           continue
         }
         // Skip rows without a valid amount
-        if (isNaN(row.amount)) {
-          result.errors.push(`Rad ${i + 2}: Ogiltigt belopp`)
+        if (!Number.isFinite(row.amount)) {
+          fileReadComplete = false
+          result.errors.push(`Rad ${i + 2}: Ogiltigt belopp${incompleteFileMessage}`)
           continue
         }
         // Skip debits (outgoing payments)
@@ -714,6 +721,9 @@ export class ReconciliationService {
             ...(rawOcr ? { ocr: rawOcr } : {}),
           },
         })
+        // Ett returnerat utfall bekräftar dubblett eller sparad bankrad.
+        // matchError inträffar efter lagring och behåller sin befintliga policy.
+        ingestionConfirmed = true
         if (outcome.duplicate) {
           result.duplicates++
           continue
@@ -728,17 +738,19 @@ export class ReconciliationService {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        result.errors.push(`Rad ${i + 2}: ${msg}`)
+        if (!ingestionConfirmed) fileReadComplete = false
+        result.errors.push(`Rad ${i + 2}: ${msg}${ingestionConfirmed ? '' : incompleteFileMessage}`)
       }
     }
 
-    // PR 4 (B) — utdraget täcker betalningsdatan t.o.m. dess senaste radslut. Flyttar
-    // fram paymentDataThrough oavsett om raderna var inbetalningar eller uttag: ett
-    // utdrag UTAN inbetalningar är ändå färsk data som bekräftar "inga betalningar än".
-    await this.advancePaymentFreshness(
-      organizationId,
-      this.latestCoverageDate(rows.map((r) => r?.date)),
-    )
+    // Ett radfel får inte maskeras av maxdatum från lyckade rader.
+    // Giltiga uttag, nollbelopp och dubbletter behåller sitt datumunderlag.
+    if (fileReadComplete) {
+      await this.advancePaymentFreshness(
+        organizationId,
+        this.latestCoverageDate(rows.map((r) => r?.date)),
+      )
+    }
 
     return result
   }
