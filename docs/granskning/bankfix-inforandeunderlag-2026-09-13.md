@@ -1,4 +1,8 @@
-# Införandeunderlag: bankfixarna #891 och #892
+# Införandeunderlag: bankfixarna #891, #892 och #893
+
+**Revision 2 — rättad 2026-09-13 efter Codex granskning.** Ändringslogg i
+avsnitt 9. Codex invände mot åtta punkter; sju var berättigade och är rättade,
+den åttonde skärpt. Två av dem var direkta motsägelser i mitt eget dokument.
 
 Oberoende införandegranskning. **Ingen merge, deploy, aktivering eller
 framåtpropagering har utförts.** Ingenting nedan är en beställning; det är ett
@@ -19,8 +23,9 @@ Tre saker avgör införandet, och de pekar åt olika håll.
    `prisma migrate deploy` kör 2,5–3 minuter innan CI ens svarat.** Mätt på fyra
    raka mergar. Det finns ingen grind mellan merge-knappen och produktionens
    schema — Railways egen "Wait for CI" (`checkSuites`) finns men är avstängd.
-   Under utrullningen kör **gammal kod mot nytt schema i ~69 sekunder** (mätt på
-   tre utrullningar; den gamla containern går hela dräneringstaket varje gång).
+   Under utrullningen kör **gammal kod mot nytt schema**: tre utrullningar gav
+   68,9 / 67,9 / 68,6 s, och den gamla containern gick hela dräneringstaket varje
+   gång. Det är tre observationer, **inte en gräns** för nästa utrullning.
    Slutsatsen: det får ske **en enda** merge till `main` för hela stacken, och
    först när kombinationen är komplett.
 2. **Den uppmätta sprängradien är nära noll.** Produktionen har 2 organisationer,
@@ -29,12 +34,16 @@ Tre saker avgör införandet, och de pekar åt olika håll.
    och färskhetsgrinden kommer inte att pausa någon. Den riskbild Codex beskriver
    i sin egen införandespärr är korrekt som mekanik men gäller en datamängd som
    inte finns ännu.
-3. **Det finns ingen aktuell återställningsbar backup.** Produktionen larmar om
-   det själv varje dygn: *"databasbackupen kör INTE i produktion … Det finns
-   dessutom ingen dump alls i lagringen."* Den färskaste dumpen som existerar är
-   manuell, 16 dygn gammal, 48 migrationer efterlämnad och aldrig
-   återställningstestad. Det är den invändning som väger tyngst, och den gäller
-   oavsett hur liten den här ändringen är.
+3. **Det finns ingen *aktuell* återställningspunkt.** Det nattliga backupjobbet
+   kör inte — produktionen larmar om det själv varje dygn. Inventeringen
+   (avsnitt 5.2) hittade tre äldre artefakter: en Railway-volymögonblicksbild
+   från 2026-08-23 som **löper ut 2026-09-22**, och två manuella dumpar från
+   2026-08-28 respektive 2026-07-13. Den från 28 augusti **är** återläsningstestad
+   med 341/341 mätpunkter, och det lokala exemplarets sha256 stämmer mot
+   runbookens registrerade värde — men den är 16 dygn och 48 migrationer gammal.
+   Det gamla provet bevisar proceduren, inte dagens återställningspunkt. Det är
+   den invändning som väger tyngst, och den gäller oavsett hur liten ändringen
+   är.
 
 Utöver det finns ett kodfynd som inte är ett merge-hinder men kräver ett medvetet
 ägarbeslut: **importmarkören är enkelriktad och har ingen väg tillbaka i
@@ -44,6 +53,12 @@ Rekommendationen i korthet: **slå ihop hela stacken uppåt, låt kombinationen 
 egen CI, merga en gång, utanför kravtrappans cronfönster** — och ta ett medvetet
 beslut om backupfrågan innan, eftersom den inte är specifik för de här PR:erna
 men blir synlig av dem.
+
+**Underlaget är inte en körbar införandeinstruktion.** Tre saker saknas fortfarande
+och kan inte skrivas fram från skrivbordet: en aktuell återläst backup, en konkret
+avskärmningsprocedur för gamla skrivare med verifierbara stoppvillkor (4.7), och
+Codex kodgodkännande av #893. Cronfönstret i 6.1 är en försiktighetsåtgärd, inte
+ett bevis för att inga gamla jobb kan skriva.
 
 ---
 
@@ -88,11 +103,22 @@ bekräftas jämfördes hash mot hash enligt regeln i `CLAUDE.md`.
 | #889 | `codex/betalningsfarskhet-reproduktion` | `main` | `88d5fc38d760359375351e66746230dd4a483a41` | utkast, BLOCKED | **2 fail / 59 pass** (`Tests`, `CI passed`) |
 | #886 | `codex/agent3-api-release-grind` | `main` | `316507fd8b5acaece65608b9cacd7c045d6d4e34` | utkast | 61/61 pass |
 | #890 | `codex/api-release-tokenkontrakt` | `codex/agent3-api-release-grind` | `942306d794f06145eb1cea374395118487e77eb8` | utkast | 61/61 pass |
+| **#893** | `codex/bankimport-strikta-belopp` | `codex/betalningsfarskhet-filfel` | `87bd9b8dc677deb6ff6d12c589d3af5053b5d7e8` | utkast, MERGEABLE/CLEAN | **61/61 pass** (körning 34760333195) |
 
-Belopps-PR:en: grenen `codex/bankimport-strikta-belopp` finns **bara lokalt**
-(`73ea9f606aee…`, 13:06Z), är inte pushad till `origin` och har ingen PR. Den
-ligger en commit ovanför #892:s HEAD, och den commiten är hittills bara
-testförebevis. **Numret och utfallet är alltså okända och gissas inte här.**
+**Beloppsrättningen är levererad sedan revision 1 skrevs.** PR **#893** öppnades
+13:36:49Z mot #892:s gren. Verifierat av mig 2026-09-13 ca 14:05Z, oberoende av
+Codex redovisning:
+
+- HEAD `87bd8…` → `87bd9b8dc677deb6ff6d12c589d3af5053b5d7e8`, bas
+  `codex/betalningsfarskhet-filfel`, 5 ändrade filer (+843 / −24).
+- CI-körning `34760333195` står på **exakt den shan**, `event: pull_request`,
+  `status: completed`, `conclusion: success`, och samtliga **61 jobb** har
+  `conclusion: success` — noll misslyckade, noll `null`.
+
+**CI-status är inte ett kodgodkännande.** Codex har uttryckligen skrivit att egen
+kontroll av produktdiffen och de nya observationsloggarna i #893 återstår. Den här
+granskningen har inte heller läst #893:s diff. Punkt 4 i 6.4 är därmed besvarad,
+men villkoret i 3.6 är det inte.
 
 ### 2.3 Vad en merge till `main` faktiskt utlöser
 
@@ -122,18 +148,34 @@ Att deployen hinner före CI är mätt på **fyra raka mergar**, inte härlett:
 Inga andra spärrar finns att missa, kontrollerat 13:30Z:
 `gh api repos/…/environments` ger 8 miljöer, **samtliga** med
 `protection_rules: []` och `deployment_branch_policy: null`.
-`allow_auto_merge: false` → ingen merge queue. Railway: `projectTokens: []`,
+Rulesetet har noll `merge_queue`-regler → ingen merge queue (2.7). Railway:
+`projectTokens: []`,
 `project.members: []`, `teamId: null`, plan *hobby* → ingen RBAC och inga
 deployment approvals; en sökning i Railways GraphQL-schema efter `approval` ger
 **noll träffar** — funktionen finns inte att slå på. Och `deploy.yml` innehåller
 bara `gate`, `deploy-web`, `deploy-admin`, `deploy-portal`: **inget API-jobb
 alls.** CI-grinden i `deploy.yml` skyddar frontend, aldrig Railway.
 
-**Hålet är ett fältbyte brett.** `checkSuites` är Railways egen "Wait for CI",
-den finns, och den är den enda spärr som faktiskt hade stängt det här. Att slå på
-den är en driftändring och ligger utanför den här uppgiften — men den bör stå med
-som ett alternativ för ägaren, eftersom den gör hela avsnitt 3:s
-ordningsdisciplin till mekanik i stället för till en rutin någon måste minnas.
+**`checkSuites` är en användbar spärr, men den ersätter inte planen.** Railways
+egen dokumentation (läst 2026-09-13) anger reglerna, och de är inte
+"grön CI krävs":
+
+> *"A workflow that **fails** skips the deployment immediately. A workflow that is
+> **skipped** or reports **neutral** never blocks. A workflow that is
+> **cancelled** blocks the deployment only if no other workflow on the same commit
+> succeeded. If at least one other workflow passed, the cancelled run is ignored
+> and the deployment proceeds. If the workflows have not all finished after two
+> hours, the deployment is skipped."*
+
+Två saker gör det relevant just här: `deploy.yml` kör också på `main`, så det
+finns mer än ett workflow per commit — en **avbruten** CI-körning skulle alltså
+kunna ignoreras om `deploy.yml` gick igenom. Och `migration-annotation` ligger
+med flit utanför `ci-passed`:s grind.
+
+Att slå på `checkSuites` är en driftändring, ligger utanför den här uppgiften, och
+**får inte räknas som en ersättning för aktuellt backupbevis, granskad kombination
+eller en säker versionsövergång.** Den bör stå med som ett alternativ för ägaren,
+med de begränsningarna utskrivna — inte som "hålet är ett fältbyte brett".
 
 Av detta följer, och det stämmer med det som redan står mätt i `CLAUDE.md`:
 
@@ -214,11 +256,18 @@ nedersta vägarna användas**, eftersom de kringgår hela ordningen.
 
 ### 2.7 Två luckor i grenskyddet som inte gäller den här stacken men bör noteras
 
-Rulesetet `main` (aktivt, tom bypass-lista) har exakt två regler: `deletion` och
-`required_status_checks` med `CI passed`. Det betyder:
+Rulesetet `main` (aktivt, tom bypass-lista) har exakt två regeltyper:
+`["deletion", "required_status_checks"]` med `CI passed`. Noll regler av typen
+`merge_queue` (avläst 14:08Z). **Det är beviset för att ingen merge queue är
+inkopplad — inte `allow_auto_merge: false`, som är en annan inställning.**
+Klassisk branch protection gick inte att läsa med den här tokenen
+(`Resource not accessible by integration`); `CLAUDE.md` uppger den som avstängd,
+mätt i #405, och det är inte omprövat här. Av rulesetet följer:
 
 - **Ingen `pull_request`-regel** — ingen granskning krävs för att merga.
-- **Ingen `non_fast_forward`** — force-push till `main` är inte blockerad.
+- **Ingen `non_fast_forward`-regel** — inget i rulesetet blockerar force-push till
+  `main`. Att faktiskt pröva det med en push är uteslutet; konfigurationsbevis ska
+  läsas, inte provas.
 - **`strict_required_status_checks_policy: false`** — grenen behöver inte vara à
   jour med `main`. CI kan alltså ha granskat ett annat träd än det som hamnar på
   `main` och deployas.
@@ -276,12 +325,12 @@ Alla steg utom det sista rör **inte** `main` och utlöser **ingen** deploy.
 
 | # | Åtgärd | Målgren som behöver klartecken | Vad som händer |
 | --- | --- | --- | --- |
-| 1 | Belopps-PR öppnas med bas `codex/betalningsfarskhet-filfel` | — | Ingen deploy. CI kör på belopps-PR:en. |
-| 2 | Merga belopps-PR **in i** `codex/betalningsfarskhet-filfel` | `codex/betalningsfarskhet-filfel` (#892:s gren) | Ingen deploy. #892:s CI kör om med beloppsrättningen inne. |
+| 1 | **#893** (bas `codex/betalningsfarskhet-filfel`) kodgranskas av Codex | — | Ingen deploy. CI är redan grön på `87bd9b8d`; det som återstår är diff- och bevisgranskning. |
+| 2 | Merga **#893 in i** `codex/betalningsfarskhet-filfel` | `codex/betalningsfarskhet-filfel` (#892:s gren) | Ingen deploy. #892:s CI kör om med beloppsrättningen inne. |
 | 3 | Merga **#892 in i** `codex/betalningsfarskhet-skydd` | `codex/betalningsfarskhet-skydd` (#891:s gren) | Ingen deploy. **#891:s CI kör nu på hela kombinationen mot `main`.** |
 | 4 | Granska #891:s slutdiff mot `main` och läs CI **på HEAD-shan**, inte på PR-numret | — | Detta är den samlade granskningen och kombinationens egen CI. |
 | 5 | Merga #891 till `main` | `main` | **En** deploy, **en** `prisma migrate deploy`, **ett** containerbyte. |
-| 6 | Stäng #889 och #892-resterna, radera grenar manuellt | — | Ingen deploy. |
+| 6 | Stäng #889 efter verifierad integration | — | Ingen deploy. **Ingen gren behöver raderas** — Codex har svarat att grenradering inte ingår. |
 
 Två målgrenar behöver alltså uttryckligt klartecken innan `main`:
 `codex/betalningsfarskhet-filfel` (steg 2) och `codex/betalningsfarskhet-skydd`
@@ -301,7 +350,8 @@ senaste mainline-commits har formen `… (#NNN)`), och det är också den form s
   och går **inte** att återöppna — `gh pr reopen` och `gh pr edit --base` avvisas
   båda på en stängd PR. Repots `delete_branch_on_merge` är `false` (avläst
   13:25Z), så automatiken är av, men CLI-flaggan kan fortfarande skickas för
-  hand. Radera grenar först i steg 6.
+  hand. Och enligt Codex svar ska ingen gren raderas alls i den här leveransen —
+  det enklaste är därför att aldrig skicka flaggan.
 - **`gh pr checks <nummer>` kan svara om en äldre körning.** Efter varje push och
   varje merge in i grenen: fråga på **shan**, inte på numret. Annars ser en
   helgrön lista ut som ett godkännande av fel commit.
@@ -315,10 +365,18 @@ lätt att förväxla med "den gick aldrig in". Det är därför andrahandsvalet.
 
 ### 3.6 Villkoret som ännu inte är uppfyllt
 
-Belopps-PR:en är ett **öppet beroende**. Den finns inte på `origin`, den har
-inget nummer, och dess enda commit ovanför #892 är hittills förebevis. Ingen
-slutlig bedömning av kombinationen kan göras förrän dess levererade HEAD och CI
-finns. Steg 1–6 ovan är ordningen; startsignalen är Codex leverans.
+Beloppsrättningen **är** levererad: #893, HEAD `87bd9b8d`, 61/61 grön CI på exakt
+den shan (2.2). Det öppna beroendet har därmed flyttat sig, inte försvunnit:
+
+- **Codex kodgodkännande av #893 återstår** — diffen och de nya
+  observationsloggarna är inte granskade, varken av Codex eller av mig. Grön CI
+  är inte det.
+- **Kombinationen finns inte ännu.** Ingen gren bär i dag #891 + #892 + #893
+  samtidigt. Den slutdiff och den CI-körning som avsnitt 6 bygger sin
+  granskningspunkt på uppstår först i steg 3.
+
+Ingen slutlig bedömning kan alltså ges förrän båda finns. Steg 1–6 är ordningen;
+startsignalen är Codex kodgodkännande.
 
 ---
 
@@ -359,12 +417,18 @@ Backfillen ligger alltså **inuti migrationen**, inte som ett separat jobb.
 | `paymentImportStartedAt` finns redan? | **Nej** (0 kolumner) |
 | `_prisma_migrations` avslutade | **184** — exakt lika många som `main` har kataloger |
 
-**Vad det betyder konkret:** backfillen träffar noll rader eftersom
-`BankStatementImport` är tom. Båda organisationerna får `paymentImportStartedAt =
-NULL`. Med NULL-markör och NULL-täckningsdatum är utfallet av `evaluate()`
-`stale: false` — grinden engagerar **inte**. **Ingen organisation pausas av den
-här migrationen.** Och det finns inga aktiva hyresavier för kravtrappan att
-eskalera: de två som finns är annullerade.
+**Vad det betyder konkret:** `UPDATE`-satsen i migrationen uppdaterar **noll
+organisationer**, eftersom källan `BankStatementImport` är tom. Båda
+organisationerna behåller det `NULL` som `ADD COLUMN` gav dem — backfillen sätter
+alltså inget värde alls, den träffar ingen rad. Med NULL-markör och
+NULL-täckningsdatum ger `evaluate()` `stale: false` → grinden engagerar **inte**.
+**Ingen organisation pausas av den här migrationen.** Och det finns inga aktiva
+hyresavier för kravtrappan att eskalera: de två som finns är annullerade.
+
+**Detta är ett ögonblicksvärde, inte en egenskap.** Noll importrader vid
+mätningen 13:21Z bevisar inte att inget importförsök kan påbörjas senare — vare
+sig före, under eller efter utrullningen. Varje slutsats nedan som vilar på
+tomheten är därför villkorad av att tillståndet mäts om omedelbart före steg 5.
 
 ### 4.3 Den rullade migrationsraden är inte ett hinder — mätt, inte antaget
 
@@ -417,21 +481,28 @@ GAMMAL container: Stopping          15:56:45.416Z   (+62,23 s efter SIGTERM)
 
 De två föregående utrullningarna gav **67,93 s** och **68,56 s**. Den gamla
 containern gick **hela dräneringstaket** i alla tre fallen (62,23 / 61,81 /
-61,96 s) och stoppades vid taket — vilket bekräftar de 60 sekunderna empiriskt.
+61,96 s) och stoppades vid taket.
 
-Två saker följer av det, och de är viktigare än talet självt:
+**Det är tre observationer, inte en gräns.** Varken en undre eller en övre gräns
+för nästa utrullning går att härleda ur dem, och i revision 1 påstod jag
+felaktigt att ~69 s var en undre gräns. Vad som faktiskt följer:
 
 - **Kommentaren i `main.ts:194` gäller inte drift.** Den säger att 2 564 ms är
-  golvet för en ren stängning. I produktion exiterar processen inte själv — den
-  blir stoppad vid taket, varje gång. Under ~62 sekunder kan gammal kod alltså
-  fortfarande fullborda BullMQ-jobb och HTTP-requests **mot det nya schemat**.
-- **69 s är en undre gräns.** Alla tre mätta utrullningarna loggade `No pending
-  migrations to apply`. Fönstret öppnar när den **första DDL:en committar**, inte
-  när migrationsskriptet är klart, och förlängs med migrationens egen körtid. För
-  den här migrationen är körtiden mikrosekunder (metadata-only `ADD COLUMN`,
-  `UPDATE` på två rader), så ~69 s är en god uppskattning — men det är en
-  uppskattning, och den håller bara så länge tabellen inte är låst av något annat
-  (se 4.8, punkt 1).
+  golvet för en ren stängning med tomma köer. I produktion exiterade processen
+  inte själv i något av de tre fallen — den stoppades vid taket. Railways
+  dokumentation beskriver just den sekvensen: ny deploy aktiv → överlapp →
+  SIGTERM → dränering → *"forcefully stopped with a SIGKILL"*. Under den
+  dräneringen kan gammal kod fortfarande fullborda BullMQ-jobb och HTTP-requests
+  **mot det nya schemat**.
+- **Alla tre mätta utrullningarna loggade `No pending migrations to apply`.**
+  Fönstret öppnar när den **första DDL:en committar**, inte när migrationsskriptet
+  är klart, och förlängs med migrationens egen körtid. **Den körtiden är inte
+  uppmätt för den här migrationen** och ska inte gissas — låsväntan på
+  `Organization` (4.8, punkt 1) kan dominera den helt.
+- **En replika betyder inte att bara en kodversion arbetar.** Mätningen visar
+  motsatsen: under dräneringen lever två kodversioner samtidigt mot samma
+  databas. Att trafiken dirigeras till den nya säger inget om vad den gamla
+  processens crons och köworkers gör under tiden.
 
 **Vad gammal kod kan göra i det fönstret:**
 
@@ -458,16 +529,26 @@ containern startar — mitt i övergången, inte efter den. Det enda sättet att
 uppfylla "backfill efter sista gamla importen" med den här migrationen är att
 säkerställa att **ingen import pågår eller startar under utrullningsfönstret**.
 
-Mot den uppmätta produktionen är det trivialt: `BankStatementImport` är tom, inga
-bankkopplingar finns (`BankConsent = 0`), och de enda vägarna in är autentiserade
-`POST`-anrop från två användare. Det finns ingen schemalagd köproducent på den
-här basen — PSD2-synken startas av ett uttryckligt behörigt `POST /psd2/sync`.
+Mot den uppmätta produktionen är utgångsläget gynnsamt: `BankStatementImport` är
+tom, inga bankkopplingar finns (`BankConsent = 0`), och de enda vägarna in är
+autentiserade `POST`-anrop från två användare. Det finns ingen schemalagd
+köproducent på den här basen — PSD2-synken startas av ett uttryckligt behörigt
+`POST /psd2/sync`.
 
-Vill man ha garantin i mekanik i stället för i avstämning krävs en ändring som
-inte finns i dag (t.ex. att lyfta backfillen till ett separat, idempotent
-efterjobb). **Det är ett ägarbeslut, och den här granskningen föreslår det inte
-som villkor för just den här leveransen**, eftersom det som kan missas i dag är
-noll rader.
+**Men det gynnsamma utgångsläget är inte en avskärmning, och cronfönstret i 6.1
+är en försiktighetsåtgärd — inte ett bevis.** Att tabellerna var tomma 13:21Z
+säger ingenting om vad som kan starta under utrullningen. Det som saknas, och som
+den här granskningen inte kan skriva fram från skrivbordet, är **en konkret
+procedur med verifierbara stoppvillkor för de relevanta skrivarna**: vilka
+ingångar som stängs eller bevakas, hur det verifieras att de är stängda, och hur
+det verifieras att de öppnats igen efteråt. I den här miljöns storlek kan den
+proceduren vara mycket enkel — men den måste finnas och får inte bygga på att
+tabellerna var tomma tidigare.
+
+Att flytta backfillen till ett separat idempotent efterjobb skulle flytta
+**tidpunkten**, inte lösa problemet: det löser varken saknad historik för
+ospårade CSV/BgMax-försök (4.8) eller frågan om vilka skrivare som är aktiva. Det
+är alltså ingen avskärmning i sig.
 
 ### 4.6 Vilka skrivningar riskerar annars att missas
 
@@ -506,17 +587,25 @@ psql "$DATABASE_PUBLIC_URL" -At -c "SET default_transaction_read_only = on;
   ORDER BY backend_start LIMIT 5;"
 ```
 
-Punkt 3 är belagd som körbar (avläst 13:27Z; `pg_stat_activity` svarar via
-`DATABASE_PUBLIC_URL`) och är det närmaste ett direkt bevis för att gamla
-processer inte längre kan skriva. Med en enda replika räcker den för frågan
-"finns någon kvar nu".
+Punkt 3 är belagd som **körbar** (avläst 13:27Z; `pg_stat_activity` svarar via
+`DATABASE_PUBLIC_URL`), men i revision 1 övertolkade jag den. `backend_start`
+anger **anslutningens ålder, inte appversionen**. En gammal process som
+återansluter — eller vars pool öppnar en ny anslutning under dräneringen — får en
+färsk `backend_start` och blir osynlig för kontrollen. Frågan "finns det backends
+äldre än bootAt" är alltså värd att ställa, men ett negativt svar är **inte** ett
+bevis för att ingen gammal process kan skriva.
 
 **Vad som inte går att belägga, och det ska sägas rakt ut:**
 
-- **Att en gammal BullMQ-körning inte hann skriva klart under de ~62
-  dräneringssekunderna.** Railways logg ger plattformens händelse
-  (`Stopping Container`), inte processens död, och det finns inget replik-API att
-  fråga när `numReplicas = 1`. Det beviset saknas.
+- **Att en gammal BullMQ-körning inte hann skriva klart under dräneringen.**
+  Railways logg ger plattformens händelse (`Stopping Container`), inte processens
+  död, och det finns inget replik-API att fråga när `numReplicas = 1`. Det
+  beviset saknas.
+- **Att ingen gammal skrivare kan återansluta.** Se ovan: ingen av de
+  tillgängliga avläsningarna skiljer appversion. Det som skulle krävas är en
+  versionsmarkör i anslutningen — `application_name` är tom i dag (avläst
+  13:27Z) — eller en procedur som stänger ingångarna i stället för att observera
+  dem.
 - **Att kravtrappan är pausad eller inte, i förväg och för alla organisationer.**
   `/v1/health` listar 13 låsta cronjobb (`cron-heartbeat.ts:45-59`), och
   kravtrappans tre jobb är **inte** bland dem — de är klass B och har inget
@@ -544,7 +633,8 @@ nedan är kontrollerade av mig där de gick att kontrollera.
 **Bekräftat och ofarligt:**
 
 - `ALTER TABLE … ADD COLUMN` utan default är metadata-only i PG 11+ — ingen
-  tabellomskrivning. `UPDATE`:n rör två rader. Körtiden är mikrosekunder.
+  tabellomskrivning. `UPDATE`-satsen träffar noll rader mot dagens källa.
+  Körtiden är **inte uppmätt** och uppskattas inte här.
 - Inget namnkrock: repots övriga triggers tillhör `append_only_*`-familjen, och
   `check-append-only.mjs` har ett uttryckligt motprov på att en trigger utan det
   prefixet inte räknas. Den nya triggern fäller alltså ingen vakt.
@@ -563,16 +653,29 @@ nedan är kontrollerade av mig där de gick att kontrollera.
    transaktion som håller lås på tabellen blockerar `ALTER`:n, och `ALTER`:n köar
    i sin tur upp varje efterföljande läsare bakom sig — med
    `healthcheckTimeout = 300` finns gott om tid för det att bli en stall i
-   stället för ett fel. `SET LOCAL lock_timeout = '3s';` som första sats kostar
-   ingenting och gör värsta fallet till ett rent, snabbt misslyckande.
+   stället för ett fel.
+
+   **Rättat efter Codex granskning:** i revision 1 skrev jag "som första sats".
+   Det är fel. `SET LOCAL` gäller bara inom en transaktion, så raden hör hemma
+   **efter `BEGIN;`**. Och `lock_timeout` begränsar **varje enskild låsväntan**,
+   inte migrationens totala tid — tre sekunder är alltså inte ett tak för
+   migrationen. Ett valt värde bör dessutom ha ett mätt återhämtningsförlopp:
+   vad händer när timeouten löser ut mitt i en deploy? Det är inte prövat här.
    *Riskklass, inte uppmätt utfall — ingen profil över långa transaktioner mot
    `Organization` finns.*
 2. **Explicit `BEGIN;`/`COMMIT;` är unikt i hela migrationshistoriken** — en
-   träff av 185. Prisma skickar filen som en simple-query-batch, som PostgreSQL
-   redan lägger i en implicit transaktion; den explicita `COMMIT;` avslutar den
-   tidigt. Här är den sista satsen, så atomiciteten är oskadd — men invarianten
-   "hela skriptet är atomiskt" är tyst upphävd för allt någon senare lägger
-   **efter** `COMMIT`. Ta bort dem; de köper ingenting.
+   träff av 185. Prisma 5.22 skickar filen som en simple-query-batch
+   (`postgres/connection.rs`), som PostgreSQL redan lägger i en implicit
+   transaktion; den explicita `COMMIT;` avslutar den tidigt. Här är den sista
+   satsen, så atomiciteten är oskadd.
+
+   **Rättat efter Codex granskning: rekommendationen att ta bort dem är
+   tillbakadragen.** Att gränsen är implicit i övriga migrationer gör inte den
+   här filens explicita gräns felaktig, och en borttagning löser inte det som
+   faktiskt är problemet — glappet mellan committad SQL och migrationshistoriken
+   (5.3). Behåll dem. Det som kvarstår som en anmärkning är bara att den som
+   någon gång lägger till satser **efter** `COMMIT` ska veta att de inte är
+   atomiska med resten.
 3. **Triggern skyddar inte `INSERT`.** `BEFORE UPDATE OF` fyrar bara på
    uppdateringar. Irrelevant i dag — ingenting skapar organisationer med markören
    satt — men gränsen bör vara skriven, inte antagen.
@@ -642,12 +745,14 @@ bara som ett beslut som bör fattas medvetet.
 | --- | --- | --- |
 | **Tidigare lyckat återläsningsprov** | **JA.** 2026-08-28, mot en riktig produktionsdump: `pg_restore` exit 0, 1,66 s, 341/341 mätpunkter identiska, `prisma migrate status` grönt, API startade mot den återställda databasen. Negativkontroll mot en 90 %-stympad kopia föll på 212 mätpunkter — proceduren skiljer bevisligen en hel dump från en trasig. | `docs/runbooks/db-backup-restore.md` |
 | **Aktuell återställningsbar backup** | **NEJ.** Se 5.2. | mätt 13:19Z |
-| **Kompatibel appåtergång** | **JA, men enkelriktad.** Gammal kod (`3b71e905`) är kompatibel med det nya schemat: extra kolumn stör inte Prisma, och triggern kan bara fyra på en kolumn som gammal kod aldrig skriver. En app-rollback fungerar alltså. | kodläsning + migrationens trigger-villkor |
+| **Kompatibel appåtergång** | **Schemakompatibel — men det är inte samma sak som återställt skydd.** Gammal kod (`3b71e905`) tolererar den extra kolumnen: Prisma räknar upp kolumner, och triggern kan bara fyra på en kolumn som gammal kod aldrig skriver. **Men en rollback återinför exakt de fel som stacken rättar** — färskhetshålet (#889) och F19/F32. Dessutom kör rollback-imagen `migrate deploy` vid start, så en ofärdig migrationsrad kan stoppa även återgången. Se 5.1b. | kodläsning + migrationens trigger-villkor |
 | **Återställning av databasen** | **Separat, manuell och riktad.** Det finns ingen down-migration — inte för den här och inte för någon i repot (`find migrations -name '*.sql' ! -name 'migration.sql'` är tom). Att backa schemat kräver handskriven SQL plus `prisma migrate resolve`. **Ordningen är inte fri:** se 5.1b. | `apps/api/prisma/migrations/` |
 
 **En appåtergång återställer inte databasen.** Efter en rollback av appen ligger
-kolumnen, backfillen och triggern kvar. Det är i det här fallet ofarligt — men
-det är inte en rollback, det är ett halvt tillstånd.
+kolumnen, eventuella markörer och triggern kvar. Det är inte en rollback, det är
+ett halvt tillstånd — och det ska inte kallas ofarligt. En app-rollback ska
+beskrivas med målimage, variabler, migrationshistorikens tillstånd och vilket
+skydd som därmed försvinner för de riskutsatta vägarna, inte som en knapp.
 
 ### 5.1b Asymmetrin: koden får backas, schemat får inte backas först
 
@@ -664,6 +769,12 @@ incident:
 köras medan den nya containern lever. I normal drift kan fallet inte inträffa
 (`set -eu` + `migrate deploy` före `exec` betyder att ny kod aldrig startar mot
 gammalt schema), men det gäller inte en manuell återställning under press.
+
+**Och rollback-imagen är inte passiv.** Den kör samma
+`migrate-and-start.sh`, alltså `prisma migrate deploy` innan servern startar.
+Ligger det en ofärdig rad i `_prisma_migrations` stoppas alltså **även
+återgången** — rollback är inte en väg runt ett migrationsproblem, den går rakt
+igenom det.
 
 ### 5.2 Backupläget — den tyngsta invändningen
 
@@ -695,26 +806,47 @@ databasbackupen kör INTE i produktion — BACKUP_ENABLED är inte satt till "tr
   är exakt fällan som `CLAUDE.md` beskriver: **en rad i en statuslista är ett
   spår, inte ett faktum.** Den raden får inte läsas som att backup finns.
 
-Det som finns är två manuella dumpar på en utvecklardator
-(`/workspaces/prod-backups`), båda med verifierad sha256 mot sina `.sha256`-filer
-och med `.log`-filer som slutar normalt:
+#### Vad inventeringen faktiskt hittade
 
-| Fil | Datum | Ålder i dag |
-| --- | --- | --- |
-| `eken-prod-20260713T083710Z.dump` | 2026-07-13 | 62 dygn |
-| `eken-prod-20260828T084632Z.dump` | 2026-08-28 | **16 dygn** |
+I revision 1 skrev jag att dumpen från 28 augusti *"aldrig återställningstestats"*
+och att *"det finns ingen återställningspunkt"*. **Båda var fel**, och den första
+motsade dessutom mitt eget avsnitt 5.1. Rättat:
 
-Och sedan den färskaste togs har **48 migrationer** applicerats i produktion —
-schemat har gått från 88 till 106 tabeller (mätt 13:26Z).
+Larmets *"ingen dump alls i lagringen"* avser **appens egen R2-lagring**, som är
+den enda `BackupService` känner till. Det utesluter alltså inte artefakter
+utanför den — och inventeringen nedan hittade två sådana.
 
-**Slutsats: det finns ingen återställningspunkt för dagens produktion.** Går
-migrationen fel under de mätta ~69 sekunderna är det närmaste man kommer en
-16 dygn gammal dump med ett annat schema, på en laptop, som aldrig
-återställningstestats. Det är inte ett fel som de här PR:erna orsakar, och det är
-inte något den här uppgiften ska bygga — men det är den enskilt tyngsta
-invändningen mot att köra något schemarörande, och ägaren bör ta ställning till
-det uttryckligen **innan**, inte efteråt. Databasen är 26 MB; en dump är minuter,
-inte ett projekt.
+Inventerat 2026-09-13 ca 14:00–14:10Z, tre källor: Railways volym-API,
+produktionens tjänstvariabler och katalogen `/workspaces/prod-backups`.
+
+| Artefakt | Datum | Ålder | Läge |
+| --- | --- | --- | --- |
+| Railway-volymögonblicksbild `Pre-Security-Patch Backup` (id `087bcafc…`) på `postgres-volume` | 2026-08-23T02:08:57Z | 21 dygn | **Löper ut 2026-09-22.** Skapad av plattformen (`creatorId: null`), `scheduleId: null` → engångs, inget schema. `volumeInstanceBackupScheduleList` är **tom** → inga återkommande volymbackuper. Aldrig återläsningstestad. |
+| `eken-prod-20260828T084632Z.dump` (lokalt) | 2026-08-28T08:46:32Z | **16 dygn** | 2 055 314 byte. sha256 `99d3d99874a7de97…` stämmer **både** mot filens `.sha256` och mot det värde runbooken registrerade vid provet — det lokala exemplaret är alltså bevisligen samma artefakt som testades. |
+| `eken-prod-20260713T083710Z.dump` (lokalt) | 2026-07-13 | 62 dygn | `.sha256` verifierad. |
+
+**Dumpen från 28 augusti ÄR återläsningstestad**, och det står i runbooken på den
+granskade main-commiten: `pg_restore` exit 0 på 1,66 s mot ett tomt PG 18.6-kluster,
+**341/341 mätpunkter identiska**, `prisma migrate status` grönt, API startade mot
+den återställda databasen — plus en negativkontroll mot en 90 %-stympad kopia som
+föll på 212 mätpunkter. **Proceduren är alltså bevisad diskriminerande.**
+
+Vad det gamla provet däremot **inte** bevisar är dagens återställningspunkt: sedan
+dumpen togs har 48 migrationer applicerats och schemat gått från 88 till 106
+tabeller (mätt 13:26Z).
+
+**Avgränsning av påståendet:** det här är vad som inventerats i de tre källorna
+ovan. Det är inte ett påstående om att ingen annan kopia kan finnas någon
+annanstans — bara att ingen aktuell återställningspunkt har gått att belägga.
+
+**Slutsats: det finns ingen *aktuell* återställningspunkt.** Går migrationen fel
+under utrullningen är det närmaste man kommer antingen en volymögonblicksbild från
+23 augusti som löper ut om nio dygn och aldrig provats, eller en 16 dygn gammal
+dump med 18 tabeller färre än dagens schema. Kravet står därför kvar: **en aktuell
+dump, återläst och verifierad enligt runbookens sex acceptanskriterier, innan
+migrationen körs.** Databasen är 26 MB. Codex har svarat att alternativet att
+kvittera bort detta inte rekommenderas, och den här granskningen delar den
+bedömningen.
 
 **Denna uppgift har varken hämtat eller skapat någon ny produktionsdump.**
 
@@ -722,18 +854,57 @@ inte ett projekt.
 
 | Scenario | Faktiskt utfall | Åtgärd |
 | --- | --- | --- |
-| **Migrationsfel** | SQL:en har egen `BEGIN`/`COMMIT` → ingen halvt applicerad kolumn. `migrate-and-start.sh` kör `set -eu`, så nollskild exit stoppar starten: **den nya containern startar aldrig**. Railway rullar inte ut en container som inte blir frisk, och **den gamla fortsätter serva** — mätt beteende, 2026-08-18. | Läs Railway-loggen. `_prisma_migrations` får en rad med `finished_at = NULL` som **blockerar alla kommande deployer** tills någon kör `prisma migrate resolve`. Precis det som hände 2026-04-29. |
-| **Avbruten migrator** (container dödas mitt i) | Transaktionen rullas tillbaka av PostgreSQL. Raden i `_prisma_migrations` kan ändå ligga kvar som ofärdig. | Samma som ovan: manuellt `migrate resolve --rolled-back`, sedan ny deploy. |
+| **Migrationsfel** (SQL:en faller) | SQL:en har egen `BEGIN`/`COMMIT` → ingen halvt applicerad kolumn. `migrate-and-start.sh` kör `set -eu`, så nollskild exit stoppar starten: **den nya containern startar aldrig**. Railway rullar inte ut en container som inte blir frisk, och **den gamla fortsätter serva** — mätt beteende, 2026-08-18. | Läs Railway-loggen. `_prisma_migrations` får en rad med `finished_at = NULL` som **blockerar alla kommande deployer, inklusive en rollback-image** (5.1b). Åtgärden är den i 5.3b — inte ett reflexmässigt `resolve`. |
+| **Avbruten migrator** (container dödas mitt i) | **Utfallet är okänt, inte "tillbakarullat".** Se 5.3b. | Se 5.3b. |
 | **Misslyckad appstart** (migrationen gick igenom, servern startar inte) | Hälsokontrollen faller, deployen markeras misslyckad, **gamla containern fortsätter serva** — men nu mot det **nya** schemat. Prod och `main` glider isär tyst; `/v1/health` svarar `ok` hela tiden. | Enda beviset är `revision`-fältet. `restartPolicyType = ON_FAILURE`; manifestet löser `maxRetries = 3` ur `railway.toml`. |
 | **Blandade gamla/nya versioner** | Med `numReplicas = 1` finns ingen blandning i **trafiken** — men det sekventiella överlappsfönstret i 4.4 är mätt till **~69 s**, varav ~62 s är dränering där gammal kod fortfarande fullbordar jobb mot nytt schema. | Ordning: merga utanför cronfönstret, ingen import under utrullningen. |
 | **Oväntad återupptagning av gamla jobb** | Bulls `maxStalledCount` är uttryckligen satt i `app.module.ts`; ett jobb vars worker försvann körs om **från början**. Kravtrappans effekter är idempotenta via verifikat-`sourceId`, men den garantin är #891:s och inte prövad av den här granskningen. | `docs/runbooks/aterupptagningsmotorns-tystnad.md` och `/v1/health`-fälten `cron.staleCount` / `resumption`. |
+
+### 5.3b En avbruten migrator lämnar ett OKÄNT tillstånd — inte ett tillbakarullat
+
+Det här är den rättelse från Codex granskning som ändrar en instruktion, och den
+är verifierad mot Prisma 5.22:s källa (läst 2026-09-13):
+
+`apply_migrations.rs` kör i ordningen **`record_migration_started` →
+`apply_script` → `record_migration_finished`**. SQL:en körs alltså **före**
+`finished_at` skrivs. Eftersom den här migrationens sista sats är `COMMIT;` kan
+DDL:en, backfillen och triggern vara **fullt committade** medan raden i
+`_prisma_migrations` saknar `finished_at` — om processen dör i glappet däremellan.
+Prisma kan inte skilja det fallet från ett verkligt SQL-fel: båda ser ut som
+`finished_at IS NULL AND rolled_back_at IS NULL`.
+
+**Kör därför inte rutinmässigt `prisma migrate resolve --rolled-back` efter ett
+avbrott.** Gör det på ett tillstånd där SQL:en faktiskt gick igenom, och nästa
+deploy försöker applicera migrationen igen — som då faller på att kolumnen redan
+finns. Det gör läget sämre, inte bättre.
+
+**Ordningen är: mät först, välj sedan.** Kontrollera var för sig, read-only:
+
+1. Finns kolumnen `Organization."paymentImportStartedAt"`?
+2. Finns funktionen `payment_import_started_immutable`?
+3. Finns triggern `payment_import_started_immutable` på `Organization`?
+4. Har backfillen körts, och stämmer utfallet mot källan
+   (`MIN("uploadedAt")` per org i `BankStatementImport`)?
+5. **Samtliga** rader i `_prisma_migrations` för migrationsnamnet — inte bara
+   den senaste, och inte bara ett totalantal.
+
+Svarar 1–3 ja är migrationen **applicerad**, och rätt åtgärd är
+`migrate resolve --applied`. Svarar de nej är den **inte** applicerad, och
+`--rolled-back` är rätt. Är bilden blandad är ingen av dem rätt: då är tillståndet
+inte det migrationen beskriver, och det måste utredas innan någonting skrivs.
+
+`migrate resolve` **ändrar historiken, inte schemat eller datan.** Och en lyckad
+migration går inte att märka som återställd: `mark_migration_rolled_back.rs`
+avvisar det med `CannotRollBackSucceededMigration` när `finished_at` är satt (och
+med `CannotRollBackUnappliedMigration` när raden saknas). Instruktionen i revision
+1 var därför delvis omöjlig att följa.
 
 ### 5.4 De redan kända riskerna — vad fixen förbättrar och vad som kvarstår
 
 | Risk | Vad stacken gör | Kvarstår efter merge |
 | --- | --- | --- |
 | **`matchError` efter lagring** | Ingenting. #892 klassificerar uttryckligen på **utfall**: en returnerad sparad bankrad räknas som godkänd inläsning, och `matchError` som inträffar *efter* lagring behåller sin befintliga policy. | **JA.** En betalning kan lagras, inte matchas, och ändå flytta fram täckningsdatumet och släppa igenom en avgift. **Kräver eget beslut.** |
-| **Aktuellt/felaktigt förnyat datum** | #892 stoppar hela körningens datumförnyelse när någon relevant rad saknar giltigt datum/belopp eller inte når bekräftat ingestutfall. Mätt: F19 går från "datum 2026-09-13, avgift 60 kr" till "datum NULL, paus". | **Delvis.** `parseFloat` accepterar numeriska prefix — `123skräp` tolkas som 123, importeras, och datumet flyttas fram (F32, mätt). Det är beloppsrättningens område och alltså **belopps-PR:ens** ansvar, inte #892:s. |
+| **Aktuellt/felaktigt förnyat datum** | #892 stoppar hela körningens datumförnyelse när någon relevant rad saknar giltigt datum/belopp eller inte når bekräftat ingestutfall. Mätt: F19 går från "datum 2026-09-13, avgift 60 kr" till "datum NULL, paus". | **Delvis.** `parseFloat` accepterar numeriska prefix — `123skräp` tolkas som 123, importeras, och datumet flyttas fram (F32, mätt). Det är beloppsrättningens område och alltså **#893:s** ansvar, inte #892:s. #893 uppger att fallet är rättat; Codex kodgranskning av det återstår (6.4, fråga 5). |
 | **Ofullständig banktäckning** | Ingenting, och det sägs rakt ut: ett registrerat datum är inte ett fullständighetsbevis, och `paymentDataThrough` beskrivs nu som *registrerat* importdatum i stället för *komplett* betalningsdata. | **JA.** Konton, blad och rader som aldrig kom med syns inte. **Kräver eget beslut.** |
 | **Historiska försök + NULL kan pausa någon som arbetat manuellt** | Markören sätts av backfillen ur `MIN(uploadedAt)`. | **Inaktuellt i dag** (0 importrader), men **blir aktuellt** när data finns. #891:s rapport kräver själv "en läsande inventering och separat ägarbeslut". |
 
@@ -751,12 +922,12 @@ inte testfel; de är medvetet utanför den här leveransens omfattning.
 | Steg | Åtgärd | Ansvarig | Förutsättning / bevis före steget | Verifierbart stoppvillkor |
 | --- | --- | --- | --- | --- |
 | **0** | Beslut om backup | **Ägaren** | Läget i 5.2 är läst | Går inte vidare förrän ägaren antingen tagit en färsk dump och verifierat den enligt runbookens sex acceptanskriterier, **eller** uttryckligen kvitterat att en migration körs utan återställningspunkt |
-| **1** | Belopps-PR levereras och öppnas mot `codex/betalningsfarskhet-filfel` | **Codex** | PR-numret finns, HEAD-sha är känd | `gh pr checks <sha>` grön på HEAD-shan |
+| **1** | Kodgranska **#893** (diff + observationsbevis) | **Codex** | PR, HEAD `87bd9b8d` och 61/61 CI på exakt shan — verifierat (2.2) | Codex kodgodkännande. Grön CI räcker inte. |
 | **2** | Merga belopps-PR in i `codex/betalningsfarskhet-filfel` (merge-commit, **utan** `--delete-branch`) | Ägaren | Steg 1 grönt | #892:s CI kör om; grön **på den nya HEAD-shan** |
 | **3** | Merga #892 in i `codex/betalningsfarskhet-skydd` (merge-commit, **utan** `--delete-branch`) | Ägaren | Steg 2 grönt | #891:s CI kör om; **61/61 grönt på den nya HEAD-shan** |
 | **4** | Granska slutdiffen `origin/main...#891-HEAD` | Ägaren + Codex | Steg 3 grönt | Diffen innehåller exakt en migration och inga främmande filer |
 | **5** | Merga #891 till `main` | Ägaren | Steg 4 klart, `origin/main` fortfarande `3b71e905…` (se 2.7), **och** klockan utanför 09:45–12:15 UTC | Se 6.2 |
-| **6** | Stäng #889, städa grenar | Ägaren | Steg 5 verifierat | `gh pr list` visar inga öppna PR:er med bas i den här stacken |
+| **6** | Stäng #889 | Ägaren | Steg 5 verifierat enligt 6.2 | `gh pr list` visar inga öppna PR:er med bas i den här stacken. Grenar lämnas kvar. |
 
 **Tidsvillkoret i steg 5** kommer ur 2.4: kravtrappans crons fyrar 10:00Z, 11:00Z
 och 12:00Z, och utrullningen tar ett par minuter. Utanför det fönstret kan ingen
@@ -772,13 +943,21 @@ något annat i spåren.
 
 ### 6.2 Verifiering efter merge — i den här ordningen
 
-1. **Innehållet ute:** `git merge-base --is-ancestor <squash-sha> <prod-revision>`
-   — fråga på innehåll, inte likhet (parallella strömmar kan låta prod hoppa förbi
-   din sha).
+1. **Rätt release kör — och ancestry räcker inte.** `--is-ancestor` svarar bara
+   att din commit ligger bakåt i historien; en senare commit kan ha återställt
+   bort rättningen och ändå ha din sha som förfader. Verifiera därför **både**:
+   (a) vilken sha `/v1/health` rapporterar, och (b) att den shans **kodträd**
+   innehåller rättningen — t.ex. `git diff <prod-revision> <godkänd-sha> --
+   apps/api/src/payment-freshness apps/api/src/reconciliation` ska vara tom. Har
+   `main` eller driftsversionen gått vidare sedan godkännandet krävs en ny diff-
+   och bevisbedömning, inte en ny ancestry-fråga.
 2. **Ny process äger schemat:** `/v1/health` → `cron.bootAt` senare än
    merge-tidpunkten, och `cron.staleCount == 0`.
-3. **Migrationen tog:** read-only mot databasen — kolumnen finns, triggern och
-   funktionen finns, och `_prisma_migrations` har 185 avslutade rader.
+3. **Migrationen tog:** read-only mot databasen. Ett totalantal rader räcker
+   **inte** (tabellen har redan 185 rader mot 184 distinkta namn, 4.3). Kontrollera
+   på namn: `20260913090000_payment_import_start` ska finnas med `finished_at`
+   satt, `rolled_back_at` NULL och en `checksum` som stämmer mot filen — och
+   schemaobjekten var för sig: kolumnen, funktionen och triggern.
 4. **Backfillens utfall stämmer med förväntan:** båda organisationerna ska ha
    `paymentImportStartedAt IS NULL`, eftersom `BankStatementImport` är tom. Ett
    annat utfall betyder att en import skedde under fönstret och ska utredas.
@@ -794,39 +973,40 @@ sak". `/v1/health` ensam duger inte (5.1).
 
 | Läge | Väg |
 | --- | --- |
-| Migrationen föll | Gamla containern servar fortfarande. Läs Railway-loggen, kör `prisma migrate resolve --rolled-back 20260913090000_payment_import_start`, rätta, deploya om. **Ingen ny merge behövs för att komma tillbaka** — den gamla versionen är redan den som kör. |
+| Migrationen föll eller migratorn avbröts | Gamla containern servar fortfarande. **Mät tillståndet enligt 5.3b innan något skrivs** — utfallet kan vara "applicerad men obokförd". Välj `migrate resolve --applied` eller `--rolled-back` efter mätningen, aldrig reflexmässigt. **Ingen ny merge behövs för att komma tillbaka** — den gamla versionen är redan den som kör. |
 | Appen startar inte efter grön migration | `revision`-fältet avslöjar det. Railway-rollback till föregående deploy återställer **appen**; kolumnen och triggern ligger kvar och är ofarliga för gammal kod. |
-| Beteendet är fel efter utrullning | App-rollback via Railway räcker för att stoppa den nya logiken. Databasen backas **inte** av det, och behöver oftast inte backas. Vill man ändå backa schemat: **först** app-rollback (annars `42703`, se 5.1b), **sedan** `DROP TRIGGER payment_import_started_immutable ON "Organization"; DROP FUNCTION payment_import_started_immutable(); ALTER TABLE "Organization" DROP COLUMN "paymentImportStartedAt";` följt av `prisma migrate resolve`. `DROP COLUMN` tar `ACCESS EXCLUSIVE` och flaggas som destruktiv av `annotate-added-migrations.mjs`. Med 0 backfillade rader förloras ingen data av det i dag. |
+| Beteendet är fel efter utrullning | App-rollback via Railway stoppar den nya logiken — men återinför de fel stacken rättar, och rollback-imagen kör själv `migrate deploy` (5.1/5.1b). Beskriv målimage, variabler och historikens tillstånd innan den används. **Databasen ska normalt inte backas.** Schemat är additivt; kolumnen och triggern är inerta för gammal kod. |
+| Någon vill ändå reversera schemat | **Det finns ingen verifierad återställningsväg, och revision 1:s DROP-kedja är struken.** Skälen: (a) noll backfillade rader *före* införandet säger ingenting om markörer som satts *efter* det — en `DROP COLUMN` kan alltså förstöra data som tillkommit; (b) `migrate resolve --rolled-back` är **avvisat** på en lyckad migration (`CannotRollBackSucceededMigration`, 5.3b), så steget "följt av `prisma migrate resolve`" var inte utförbart. Schemareversering är en **separat, prövad och uttryckligen beslutad åtgärd** — den ska inte stå som en rad i en återhämtningstabell. |
 | En organisation blev pausad och kan inte komma ur det | Enda produktvägen är en import som går helt igenom (4.9). Finns ingen sådan fil krävs en direkt databasändring — det är i dag ingen dokumenterad procedur. |
 | Data är skadad | **Ingen väg som håller i dag** — se 5.2. Det är därför steg 0 finns. |
 
-### 6.4 Öppna frågor som kräver Codex eller ägaren
+### 6.4 De tio frågorna — Codex svar och vad som återstår
 
-1. **Ägaren:** Ska en färsk, verifierad dump tas före migrationen? (5.2)
-2. **Ägaren:** Bekräfta uttryckligen att #889:s commits får följa med in i `main`
-   via #891, och att #889 stängs utan merge. (3.1)
-3. **Ägaren:** Vilken merge-metod till `main` i steg 5 — squash enligt repots
-   konvention, eller merge-commit för att bevara de granskade sha:erna? (3.3)
-4. **Codex:** Belopps-PR:ens nummer, levererad HEAD och CI-utfall. Ingen slutlig
-   bedömning kan ges utan dem. (3.6)
-5. **Codex:** Bekräfta att beloppsrättningen stänger F32 (`123skräp` → 123), eller
-   säg att den kvarstår. (5.4)
-6. **Ägaren:** De två riskerna som ingen PR i stacken rör — `matchError` efter
-   lagring och ofullständig banktäckning — behöver eget beslut, inte tystnad.
-   (5.4)
-7. **Ägaren:** Ska backfillen lyftas ur migrationen till ett separat idempotent
-   jobb innan produktionen har riktig importdata? Inte nödvändigt i dag; blir det
-   när `BankStatementImport` inte längre är tom. (4.5)
-8. **Ägaren:** Ska Railways `checkSuites` ("Wait for CI") slås på? Det är ett
-   fältbyte och skulle göra hela ordningsdisciplinen i avsnitt 3 till mekanik i
-   stället för rutin. Det är en driftändring och ligger utanför den här uppgiften.
-   (2.3)
-9. **Ägaren:** Behöver den pausade organisationen en väg tillbaka i produkten —
-   en behörighetsstyrd åtgärd som sätter `paymentDataThrough`, eller en trigger
-   som tillåter nollställning från en behörig väg? I dag finns ingen. (4.9)
-10. **Codex:** Ska `SET LOCAL lock_timeout = '3s';` läggas först i migrationen, och
-    `BEGIN;`/`COMMIT;` tas bort? Två små ändringar i samma fil, båda i #891.
-    (4.8)
+Codex har besvarat samtliga tio frågor från revision 1. Svaren är återgivna i
+sak nedan, med vad som faktiskt kvarstår efter dem.
+
+| # | Fråga | Codex svar | Kvarstår |
+| --- | --- | --- | --- |
+| 1 | Aktuell backup före migration? | **Ja.** Ska finnas och återläsningen verifieras före produktionsmigrationen. Alternativet att kvittera bort det rekommenderas inte. Ingen dump eller lagringskonfiguration är utförd eller beställd. | Åtgärden. Den är inte gjord. |
+| 2 | Får #889:s innehåll följa med? | **Ja, avsett.** De bevarade reproduktionsproven och deras historik ska följa med #891; förbudet gällde separat merge av den avsiktligt röda PR:en. Slutdiffen ska visa just det avsedda innehållet. #889 kan stängas efter verifierad integration; ingen gren behöver raderas. | Kontrollen av slutdiffen i steg 4. Not: steg 6 i 6.1 ska alltså läsas som "stäng #889", inte "radera grenar". |
+| 3 | Mergeform? | Inom stacken **vanliga merge-commits utan grenradering**. Till `main` följs den verifierade repopolicyn; ingen anledning att ändra policy för den här leveransen. Ordningsförslag, inte tillstånd att merga. | Inget. Frågan är stängd. |
+| 4 | Belopps-PR? | **#893**, HEAD `87bd9b8d`, CI 34760333195. | Inget — verifierat oberoende, se 2.2. |
+| 5 | Är F32 rättad? | #893 redovisar att fallet är rättat och beteendemuterat. **Codex verifierar diff och observationsbevis före kodgodkännande; den kontrollen är inte gjord.** | Kodgranskningen av #893. |
+| 6 | Matchfel och banktäckning? | **Kvarstår som separata produktgränser.** Ingen tyst acceptans av att gröna prov innebär kompletta betalningsuppgifter eller säkra automatiska krav. En förbättrad felspärr är inte ett fullständigt bankflöde. | Eget beslut, utanför den här leveransen. |
+| 7 | Flytta backfillen? | **Ingen sådan ändring beställs nu.** Övergångsproceduren ska klarläggas först. Ett efterjobb flyttar tidpunkten men löser inte saknad historik och är inte i sig avskärmning. | Övergångsproceduren (4.5). |
+| 8 | Slå på Wait for CI? | **Rekommenderas som egen driftåtgärd**, med begränsningarna i 2.3. Ingen inställning ändras av granskningen. | Driftåtgärden, och verifiering av dess faktiska regler. |
+| 9 | Manuell väg ur paus? | **Inte som administrativ bypass.** Radera inte faktumet att en import påbörjats och fabricera inget täckningsdatum. Ska manuell avstämning kunna ge klartecken behöver den ett eget kontrakt: vad som verifierats, till vilket datum, av vem och med vilket underlag. Separat produktuppgift. | Produktuppgiften. 4.9 ska läsas med den avgränsningen: ingen bypass föreslås. |
+| 10 | `lock_timeout` och transaktionsgräns? | **Behåll explicit transaktion nu.** Pröva behov och effekt av begränsad låsväntan isolerat innan någon ändring beställs; ett valt värde ska ha ett mätt återhämtningsförlopp. | Ett isolerat prov. 4.8 är rättat efter detta. |
+
+**Kvar som villkor före en samlad merge**, sammanfattat:
+
+1. Aktuell dump, återläst och verifierad (fråga 1).
+2. Codex kodgodkännande av #893 (fråga 5).
+3. Konkret avskärmningsprocedur för gamla skrivare med verifierbara stoppvillkor
+   (fråga 7, avsnitt 4.5/4.7).
+4. Kombinationen sammanförd, med egen CI och granskad slutdiff (3.6, steg 3–4).
+
+Ingen av dem är uppfylld i dag.
 
 ---
 
@@ -837,31 +1017,37 @@ sak". `/v1/health` ensam duger inte (5.1).
 2. **#886/#890 får inte räknas som en driftgrind.** Filen säger själv att den är
    inaktiv, och `checkSuites` är mätt avstängd i dag. Grön CI på dem ändrar
    ingenting om API-deployens ordning.
-3. **Backupfrågan är det enda som verkligen bör stoppa.** Allt annat i det här
-   införandet är litet och reversibelt. En migration mot en databas utan
-   återställningspunkt är det inte, hur liten migrationen än är.
-4. **Införandespärren i #891:s egen rapport är formulerad för en produktion som
+3. **Backupfrågan väger tyngst, men den är inte ensam.** I revision 1 skrev jag
+   att den var "det enda som verkligen bör stoppa". Det var för snävt: också
+   slutkombinationen, versionsövergången och återhämtningen måste vara
+   verifierade innan detta är en körbar instruktion (se 6.4:s fyra villkor). En
+   migration mot en databas utan aktuell återställningspunkt är dessutom inte
+   reversibel bara för att migrationen är liten.
+4. **Att tabellerna är tomma är ett ögonblicksvärde, inte ett skydd.** Flera
+   slutsatser i det här underlaget vilar på mätningen 13:21Z. Den ska göras om
+   omedelbart före steg 5, och den ersätter inte en avskärmningsprocedur.
+5. **Införandespärren i #891:s egen rapport är formulerad för en produktion som
    inte finns.** "Stoppa/dränera gamla producenter och kravworkers, kör backfill
    efter sista gamla importen" beskriver ett flerinstansigt system med
    importtrafik. Det verkliga systemet är en replika, in-process-crons och noll
    importrader. Att bygga ett stopp/dränerings-moment för det vore att lägga
    procedur ovanpå en risk som inte finns — men formuleringen blir korrekt den dag
    data finns, och bör stå kvar som villkor för **då**, inte för nu.
-5. **Backfillen går inte att schemalägga separat med dagens migration.** Påståendet
+6. **Backfillen går inte att schemalägga separat med dagens migration.** Påståendet
    "backfill körs efter sista gamla importen" går i dag bara att uppfylla genom
    avstämning, inte genom mekanik. Det ska sägas rakt ut i stället för att lova en
    ordning som SQL:en inte kan hålla.
-6. **Backupens av-läge har fel orsak i runbooken, och det spelar roll.**
+7. **Backupens av-läge har fel orsak i runbooken, och det spelar roll.**
    Runbooken pekar på isoleringsgrinden; i verkligheten faller `enabled` redan på
    `BACKUP_ENABLED`. Den som "bara slår på backupen" före migrationen får den
    fortfarande avstängd, nu med en annan orsakstext. Fyra variabler krävs. (5.2)
-7. **Det finns ingen paus-spak och ingen förhandskontroll av kravtrappan.**
+8. **Det finns ingen paus-spak och ingen förhandskontroll av kravtrappan.**
    Planen kan därför inte innehålla ett steg som "pausa kravtrappan före merge" —
    det går inte. Tidsvillkoret är det enda som faktiskt fungerar. (4.7)
-8. **Grenskyddet garanterar inte att CI granskade det träd som deployas.**
+9. **Grenskyddet garanterar inte att CI granskade det träd som deployas.**
    `strict_required_status_checks_policy` är `false`. Kontrollen av `origin/main`
    omedelbart före steg 5 är därför inte pedanteri. (2.7)
-9. **`/v1/health` och gröna bockar räcker inte som acceptans.** Hälsoindikatorn
+10. **`/v1/health` och gröna bockar räcker inte som acceptans.** Hälsoindikatorn
    svarade `ok` mot en 90 % stympad databas (mätt), `cron:daily-backup` säger
    `success` om ett jobb som inte tar någon dump (mätt i dag), och ett grönt
    `Deploy Web` kan betyda att appen hoppades över. Acceptanskriterierna i 6.2
@@ -873,24 +1059,54 @@ sak". `/v1/health` ensam duger inte (5.1).
 
 | Fråga | Varför den inte är besvarad | Exakt bevis som behövs |
 | --- | --- | --- |
-| Överlappsfönstret vid en **riktig** migration | De tre mätta utrullningarna loggade alla `No pending migrations to apply`. ~69 s är därför en **undre gräns** — fönstret öppnar när första DDL:en committar | `[start] running prisma migrate deploy` / `migrations done` och den gamla containerns `Stopping Container`, fångade **under** den här deployen |
+| Överlappsfönstret vid en **riktig** migration | De tre mätta utrullningarna loggade alla `No pending migrations to apply`. De 68,9 / 67,9 / 68,6 s är **observationer, varken undre eller övre gräns** | `[start] running prisma migrate deploy` / `migrations done` och den gamla containerns `Stopping Container`, fångade **under** den här deployen |
+| Migrationens egen körtid | Inte uppmätt. Revision 1 uppgav "mikrosekunder"; det var en uppskattning och är struket | Tidsstämplarna kring `migrate deploy` i deployloggen, eller en replay mot en kopia |
+| Att ingen gammal skrivare kan återansluta under dräneringen | `pg_stat_activity.backend_start` mäter anslutningens ålder, inte appversionen; `application_name` är tom | En avskärmningsprocedur som stänger ingångarna, eller en versionsmarkör i anslutningen |
 | Om den gamla containern exiterar eller `SIGKILL`:as | `Stopping Container` inföll vid exakt dräneringstaket i alla tre fallen, vilket pekar mot SIGKILL, men Railways logg skiljer inte processexit från plattformshändelse | En exit-kod eller en avslutningsrad ur processen själv |
 | Om en gammal BullMQ-körning hann skriva klart under dräneringen | Plattformens händelse är inte processens död, och med `numReplicas = 1` finns inget replik-API att fråga | Saknas — ingen mekanism finns i dag |
 | Om `@nestjs/schedule` slutar fyra crons i den gamla containern efter SIGTERM | Inte undersökt. Ett kravtrappe-jobb kl. 10:00:00Z mitt i ett deployfönster kan i teorin fyra i **båda** containrarna; jobben är klass B och skyddas bara av `updateMany`-claims, inte av Redis-lås | Ett prov som mäter cronbeteende efter SIGTERM — eller att helt enkelt hålla tidsvillkoret i 6.1 |
 | Att `lock_timeout`-risken är reell här | Ingen profil över långa transaktioner mot `Organization` finns | `pg_stat_activity` med `state = 'idle in transaction'` och `query_start` under en normal timme |
-| Prisma 5.22:s faktiska hantering av explicit `BEGIN`/`COMMIT` | Ingen DB-skrivning fick göras. Argumentet bygger på PostgreSQL:s implicita multi-satstransaktion | En shadow-DB-replay — sekunder |
+| Prisma 5.22:s faktiska hantering av explicit `BEGIN`/`COMMIT` | Källan är läst (`postgres/connection.rs`, simple query) och PostgreSQL:s multi-satsregel är dokumenterad, men beteendet är inte kört | En shadow-DB-replay — sekunder |
+| Vad som faktiskt händer när `lock_timeout` löser ut mitt i en deploy | Inte prövat. Ett valt värde ska enligt Codex ha ett mätt återhämtningsförlopp | Ett isolerat prov med en riktig blockerare |
+| Att Railway-volymögonblicksbilden från 2026-08-23 går att återställa | Endast dess metadata är läst (id, datum, `expiresAt`, storlekar) | En provåterställning till en separat volym — inte gjord, inte beställd |
 | Att schema-drift-vakten ignorerar trigger + funktion | Slutlett ur att Prisma inte modellerar triggers, inte mätt | `migrate diff --from-migrations` mot kombinationens HEAD i CI |
 | Att `/workspaces/prod-backups`-dumparna går att återställa | Bara datum, storlek, sha256 och loggens sista rad kontrollerade | `pg_restore --list` plus en provåterställning enligt de sex kriterierna i `db-backup-restore.md` |
 | Att en `pg_dump` av **dagens** produktion går att återläsa | Ingen ny dump har hämtats eller skapats — uttryckligen utanför uppgiften | Se ovan |
 | Att kravtrappans effekter är idempotenta vid omkörning efter stall | Ligger i #891:s egen bevisplan; inte omprövat här, och inga tunga körningar fick startas | #891:s DB-prov för verifikat-`sourceId` på kombinationens slutliga HEAD |
-| Belopps-PR:ens innehåll och utfall | Grenen finns bara lokalt i Codex worktree, ingen PR | Levererad HEAD + CI |
+| #893:s produktdiff och observationsbevis | PR, HEAD och CI är verifierade (2.2); **diffen är inte läst** av vare sig Codex eller den här granskningen | Codex kodgranskning |
+| Slutkombinationens diff och CI | Ingen gren bär #891 + #892 + #893 samtidigt ännu | Uppstår i steg 3; granskas i steg 4 |
 | Om #886:s nya CI-jobb blir obligatoriska för merge | `ci-passed`:s `needs`-lista lästes på `main`, inte i PR-grenen | `needs`-listan i PR-grenens `ci.yml` |
-| Om rulesetet blockerar direkt push/force-push till `main` | Skulle kräva ett faktiskt push-försök mot `main` | Inte gjort, och ska inte göras för att ta reda på det |
+| Om klassisk branch protection är av | GitHub-tokenen fick inte läsa `branchProtectionRules` (`Resource not accessible by integration`). `CLAUDE.md` uppger den som av, mätt i #405 | En token med rätt behörighet — **inte** ett push-försök |
 | Kravtrappans verkliga beteende mot riktig kunddata efter merge | Produktionen har inga aktiva hyresavier (2 st, båda annullerade) | Kan först mätas när det finns data att mäta på |
 
 ---
 
-*Mätningarna i det här dokumentet är gjorda 2026-09-13 mellan 13:14Z och 13:27Z
-mot `origin/main = 3b71e905d866f461f6b07211bc89b3fa88505200` och produktionens
-revision, som var densamma. Ingen skrivning har gjorts mot produktionen, inga
-migrationer har körts, ingen merge och ingen deploy.*
+## 9. Ändringslogg — revision 2 efter Codex granskning
+
+Codex granskade revision 1 (`b59ca32a`) och invände mot åtta punkter. Sju var
+berättigade och är rättade; den åttonde är skärpt. Inget som rättats har tagits
+bort utan att skälet står kvar.
+
+| # | Codex invändning | Hur den behandlats |
+| --- | --- | --- |
+| 1 | Överlapp och tomma tabeller övertolkade | **Rättat.** ~69 s är nu tre observationer, inte en gräns (4.4). Påståendet att en replika betyder en kodversion är struket. "Mikrosekunders migrationstid" struket och flyttat till OVERIFIERAT. Backfillens utfall omformulerat till "uppdaterar noll organisationer" (4.2), med uttrycklig notis om att tomhet är ett ögonblicksvärde. |
+| 2 | Avskärmning är fortfarande ett villkor | **Rättat.** Cronfönstret kallas nu en försiktighetsåtgärd, inte ett bevis (4.5). `pg_stat_activity.backend_start` nedgraderat: det mäter anslutningens ålder, inte appversionen (4.7). Kravet på en konkret procedur med verifierbara stoppvillkor tillagt och upptaget bland villkoren i 6.4. |
+| 3 | Backupbeviset är äldre, inte obefintligt | **Rättat — detta var en motsägelse i mitt eget dokument.** §5.2 påstod "aldrig återställningstestad" medan §5.1 återgav provet. Dumpen från 2026-08-28 **är** återläsningstestad, 341/341 mätpunkter, och det lokala exemplarets sha256 är nu jämförd mot runbookens registrerade värde och stämmer. Inventeringen utökad med en **Railway-volymögonblicksbild från 2026-08-23 som löper ut 2026-09-22** — den saknades helt i revision 1. Påståendet är avgränsat till vad som faktiskt inventerats. Kravet på en aktuell backup står kvar. |
+| 4 | Avbruten migrator betyder okänt utfall | **Rättat, och verifierat mot Prisma 5.22:s källa.** Nytt avsnitt 5.3b: SQL körs före `finished_at` skrivs, så committad DDL kan stå som ofärdig. Instruktionen "kör `migrate resolve --rolled-back`" är ersatt av mät-först-välj-sedan. |
+| 5 | Stryk den generella DROP-kedjan | **Struken** ur 6.3. Skälen utskrivna: nya markörer kan ha tillkommit, och `--rolled-back` avvisas på en lyckad migration (`CannotRollBackSucceededMigration`). Schemareversering beskrivs nu som en separat, prövad och uttryckligen beslutad åtgärd. |
+| 6 | Approllback är schemakompatibilitet, inte återställt skydd | **Rättat** i 5.1 och 5.1b. Tillagt att rollback-imagen själv kör `migrate deploy` och därför kan stoppas av ofärdig historik. "Ofarligt" struket. |
+| 7 | Behåll BEGIN/COMMIT | **Rekommendationen tillbakadragen** (4.8). `lock_timeout` placeras efter `BEGIN`, och det klargörs att det begränsar varje låsväntan, inte migrationens totala tid. Kravet på ett mätt återhämtningsförlopp tillagt. |
+| 8 | Verifiera exakt release, inte ancestry | **Rättat** i 6.2: kodträdet ska jämföras, inte bara härstamningen. Migrationen verifieras på namn, checksumma, `finished_at` och schemaobjekt — inte på ett totalantal rader. |
+| — | Wait for CI ersätter inte planen; `allow_auto_merge` bevisar inte merge queue | **Skärpt.** 2.3 återger Railways faktiska regler (skipped/neutral blockerar aldrig; cancelled ignoreras om ett annat workflow på samma commit lyckades; två timmar → deployen hoppas över) och säger uttryckligen att den inte ersätter backupbevis, granskad kombination eller säker versionsövergång. "Hålet är ett fältbyte brett" struket. 2.7 använder nu rulesetets frånvaro av `merge_queue`-regel som bevis, och noterar att klassisk branch protection inte gick att läsa med den här tokenen. |
+
+Utöver rättelserna: **#893 tillagd** i 2.2, 3.3 och 3.6, verifierad oberoende
+(HEAD, bas, CI-körning, 61/61). Frågorna i 6.4 är ersatta av Codex svar plus en
+lista över vad som faktiskt kvarstår.
+
+---
+
+*Revision 1 mättes 2026-09-13 mellan 13:14Z och 13:35Z. Revision 2 mättes
+2026-09-13 mellan 14:00Z och 14:15Z. Vid båda tillfällena var
+`origin/main = 3b71e905d866f461f6b07211bc89b3fa88505200` och produktionens
+revision densamma. Ingen skrivning har gjorts mot produktionen, inga migrationer
+har körts, ingen merge, ingen deploy och ingen driftinställning ändrad.*
