@@ -53,6 +53,32 @@ const SRC = 'apps/api/src'
 const APP_MODULE = 'apps/api/src/app.module.ts'
 const INVENTERING = 'apps/api/src/common/ops/queue-inventory.ts'
 
+/**
+ * IDENTIFIERARE ÄR INTE ASCII I DET HÄR REPOT — och det är inte en teoretisk
+ * invändning. `ai-assignments.service.ts` har ett @Cron som heter `utgångspass`,
+ * och `actor-null-sweep.service.ts` ett som heter `sveep`. Ett klassnamn eller en
+ * könamns-konstant med å/ä/ö är alltså fullt normalt här.
+ *
+ * Med `[A-Za-z0-9_$]+` hade `class PåminnelseWorker` fångats som `P`, och `\b`
+ * hade dragit en ordgräns mitt i ordet. Vakten hade då jämfört stympade namn mot
+ * stympade namn — ibland av en slump grönt, ibland rött på ett namn som inte
+ * finns. Båda utfallen är värdelösa.
+ *
+ * `\p{L}` med `u`-flaggan, och en negativ lookbehind i stället för `\b`, täcker
+ * allt `\b` täckte plus de svenska namnen. Samma regel som
+ * `apps/api/scripts/check-identifier-regex.mjs` kräver av alla vakter, och den
+ * fällde de här tre mönstren i sin första form.
+ */
+const ID = String.raw`[\p{L}\p{N}_$]`
+const EJ_ID_FORE = String.raw`(?<![\p{L}\p{N}_$])`
+
+const PROCESSOR_RE = new RegExp(
+  String.raw`@Processor\s*\([^)]*\)[\s\S]{0,400}?${EJ_ID_FORE}class\s+(${ID}+)`,
+  'gu',
+)
+const GRIND_RE = new RegExp(String.raw`${EJ_ID_FORE}pausedUnless\s*\(\s*(${ID}+)`, 'gu')
+const KONAMN_RE = new RegExp(String.raw`name\s*:\s*(${ID}+)`, 'gu')
+
 /** Under dessa tal mäter härledningarna ingenting — se R5. */
 const MIN_PROCESSORER = 8
 const MIN_KONAMN = 8
@@ -79,12 +105,12 @@ export function evaluate({ filer, appModuleKod, inventeringKod }) {
   const registrerade = new Set()
 
   for (const { rel, kod } of filer) {
-    for (const m of kod.matchAll(/@Processor\s*\([^)]*\)[\s\S]{0,400}?\bclass\s+([A-Za-z0-9_$]+)/g)) {
+    for (const m of kod.matchAll(PROCESSOR_RE)) {
       processorer.push({ rel, klass: m[1] })
     }
-    for (const m of kod.matchAll(/\bpausedUnless\s*\(\s*([A-Za-z0-9_$]+)/g)) grindade.add(m[1])
+    for (const m of kod.matchAll(GRIND_RE)) grindade.add(m[1])
     for (const m of kod.matchAll(/registerQueue\s*\(([\s\S]{0,400}?)\)/g)) {
-      for (const n of m[1].matchAll(/name\s*:\s*([A-Za-z0-9_$]+)/g)) registrerade.add(n[1])
+      for (const n of m[1].matchAll(KONAMN_RE)) registrerade.add(n[1])
     }
   }
 
@@ -324,6 +350,40 @@ function självtest() {
     }
   }
 
+  // KANARIE J — ett SVENSKT klassnamn måste hanteras HELT, inte stympat.
+  // Med det gamla ASCII-mönstret fångades `PåminnelseWorker` som `P`, och då
+  // jämfördes stympat mot stympat: R1 blev grön för att båda sidor var lika
+  // trasiga. Kanariefågeln prövar därför BÅDA riktningarna med ett å i namnet —
+  // grindad ska vara tyst, ogrindad ska fälla.
+  {
+    const grindadSvensk = {
+      ...grund,
+      filer: [
+        ...grund.filer,
+        { rel: 'syntetisk/sv.worker.ts', kod: '@Processor(Q)\nclass PåminnelseWorker {}\n' },
+        { rel: 'syntetisk/sv.module.ts', kod: 'providers: [...pausedUnless(PåminnelseWorker)]' },
+      ],
+    }
+    const utfall = evaluate(grindadSvensk)
+    if (utfall.fel.some((f) => f.includes('Påminnelse'))) {
+      fel.push(`KANARIE J: en GRINDAD svensk konsument fälldes ändå — ${JSON.stringify(utfall.fel)}`)
+    }
+    if (utfall.fel.some((f) => f.startsWith('R2') && f.includes('P)'))) {
+      fel.push('KANARIE J: namnet stympades vid första icke-ASCII-tecknet.')
+    }
+
+    const ogrindadSvensk = {
+      ...grund,
+      filer: [
+        ...grund.filer,
+        { rel: 'syntetisk/sv2.worker.ts', kod: '@Processor(Q)\nclass AvgiftWorkerÅÄÖ {}\n' },
+      ],
+    }
+    if (!evaluate(ogrindadSvensk).fel.some((f) => f.includes('AvgiftWorkerÅÄÖ'))) {
+      fel.push('KANARIE J: R1 såg inte en OGRINDAD konsument med svenskt namn.')
+    }
+  }
+
   // KANARIE I — den delade skannern klarar de mönster som bevisligen lurat oss.
   for (const f of kanariefåglar()) fel.push(`KANARIE I delad skanner: ${f}`)
 
@@ -334,7 +394,7 @@ function självtest() {
   console.warn(
     `SJÄLVTEST GRÖNT — ${grönt.mätt.processorer} @Processor-klasser, ` +
       `${grönt.mätt.grindade} grindade, ${grönt.mätt.könamn} könamn, ` +
-      `${grönt.mätt.inventerade} inventerade. 8 egna kanariefåglar prövade, ` +
+      `${grönt.mätt.inventerade} inventerade. 9 egna kanariefåglar prövade, ` +
       'plus den delade skannerns 7.',
   )
 }

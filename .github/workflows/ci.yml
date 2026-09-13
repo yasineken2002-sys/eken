@@ -611,7 +611,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Self-test the guard (8 canaries, each must fire)
+      - name: Self-test the guard (9 canaries, each must fire)
         run: node apps/api/scripts/check-automation-pause.mjs --self-test
 
       - name: Verify every automatic consumer is behind the pause gate
