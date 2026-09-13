@@ -1,8 +1,9 @@
 # Införandeunderlag: bankfixarna #891, #892 och #893
 
-**Revision 2 — rättad 2026-09-13 efter Codex granskning.** Ändringslogg i
-avsnitt 9. Codex invände mot åtta punkter; sju var berättigade och är rättade,
-den åttonde skärpt. Två av dem var direkta motsägelser i mitt eget dokument.
+**Revision 3 — rättad 2026-09-13.** Ändringslogg i avsnitt 9. Revision 2
+rättade Codex åtta invändningar; revision 3 rättar fem kvarstående fel, varav tre
+var mina egna motsägelser: att #893 vore ogranskad, att ingen gren bar
+kombinationen, och att övergångsrisken "inte finns".
 
 Oberoende införandegranskning. **Ingen merge, deploy, aktivering eller
 framåtpropagering har utförts.** Ingenting nedan är en beställning; det är ett
@@ -28,12 +29,15 @@ Tre saker avgör införandet, och de pekar åt olika håll.
    gång. Det är tre observationer, **inte en gräns** för nästa utrullning.
    Slutsatsen: det får ske **en enda** merge till `main` för hela stacken, och
    först när kombinationen är komplett.
-2. **Den uppmätta sprängradien är nära noll.** Produktionen har 2 organisationer,
-   0 rader i `BankStatementImport`, 0 banktransaktioner, 0 fakturor och 2
-   annullerade hyresavier. Backfillen kommer att sätta värde på **noll rader**,
-   och färskhetsgrinden kommer inte att pausa någon. Den riskbild Codex beskriver
-   i sin egen införandespärr är korrekt som mekanik men gäller en datamängd som
-   inte finns ännu.
+2. **Den uppmätta sprängradien var nära noll vid mättillfället.** 13:21Z hade
+   produktionen 2 organisationer, 0 rader i `BankStatementImport`, 0
+   banktransaktioner, 0 fakturor och 2 annullerade hyresavier. Med det tillståndet
+   träffar backfillen **noll rader** och färskhetsgrinden pausar ingen. **Det är
+   en ögonblicksbild, inte en egenskap**: den ska mätas om omedelbart före steg 5,
+   och den gör inte övergångsrisken obefintlig — mätningen visar själv ett
+   överlappsfönster där två kodversioner arbetar mot samma databas (4.4). Codex
+   införandespärr är korrekt som mekanik; det som är litet här är sannolikhet och
+   omfattning, inte riskens existens.
 3. **Det finns ingen *aktuell* återställningspunkt.** Det nattliga backupjobbet
    kör inte — produktionen larmar om det själv varje dygn. Inventeringen
    (avsnitt 5.2) hittade tre äldre artefakter: en Railway-volymögonblicksbild
@@ -54,10 +58,13 @@ egen CI, merga en gång, utanför kravtrappans cronfönster** — och ta ett med
 beslut om backupfrågan innan, eftersom den inte är specifik för de här PR:erna
 men blir synlig av dem.
 
-**Underlaget är inte en körbar införandeinstruktion.** Tre saker saknas fortfarande
-och kan inte skrivas fram från skrivbordet: en aktuell återläst backup, en konkret
-avskärmningsprocedur för gamla skrivare med verifierbara stoppvillkor (4.7), och
-Codex kodgodkännande av #893. Cronfönstret i 6.1 är en försiktighetsåtgärd, inte
+**Underlaget är inte en körbar införandeinstruktion.** Codex har godkänt #893:s
+kod inom beställd omfattning (2.2), och kombinationens innehåll finns redan samlat
+på #893:s gren (3.6). Två saker saknas fortfarande och kan inte skrivas fram från
+skrivbordet: en aktuell återläst backup, och en konkret avskärmningsprocedur för
+gamla skrivare med verifierbara stoppvillkor (4.7). Därutöver återstår
+sammanföringen till avsedd målgren och verifieringen av slutligt kodträd, aktuell
+main-bas och tillhörande CI. Cronfönstret i 6.1 är en försiktighetsåtgärd, inte
 ett bevis för att inga gamla jobb kan skriva.
 
 ---
@@ -115,10 +122,21 @@ Codex redovisning:
   `status: completed`, `conclusion: success`, och samtliga **61 jobb** har
   `conclusion: success` — noll misslyckade, noll `null`.
 
-**CI-status är inte ett kodgodkännande.** Codex har uttryckligen skrivit att egen
-kontroll av produktdiffen och de nya observationsloggarna i #893 återstår. Den här
-granskningen har inte heller läst #893:s diff. Punkt 4 i 6.4 är därmed besvarad,
-men villkoret i 3.6 är det inte.
+**Codex har sedan dess kodgodkänt #893 inom beställd omfattning**, på exakt
+`87bd9b8dc677deb6ff6d12c589d3af5053b5d7e8`. Underlaget för godkännandet, som
+Codex redovisat det:
+
+- Codex har läst **produktdiffen och importmetoden**.
+- En **separat granskare** har granskat testfaciten.
+- **Faktisk CI-logg** är verifierad, inte bara checklistans färg: 61 gröna jobb,
+  **6 132 API-prov**, **291 nya beloppsobservationer** med **288 testnamn**, samt
+  **båda F32-utfallen**.
+
+**Det är ett kodgodkännande — inte ett merge- eller driftgodkännande.** Den här
+granskningen har inte själv läst #893:s diff och gör inget eget kodutlåtande;
+ovanstående är Codex redovisning, och det som är oberoende verifierat härifrån är
+PR-metadata och CI-körningen. Villkoren i 3.6 och 6.4 kvarstår i den del de gäller
+sammanföring, slutligt kodträd, main-bas och CI.
 
 ### 2.3 Vad en merge till `main` faktiskt utlöser
 
@@ -325,7 +343,7 @@ Alla steg utom det sista rör **inte** `main` och utlöser **ingen** deploy.
 
 | # | Åtgärd | Målgren som behöver klartecken | Vad som händer |
 | --- | --- | --- | --- |
-| 1 | **#893** (bas `codex/betalningsfarskhet-filfel`) kodgranskas av Codex | — | Ingen deploy. CI är redan grön på `87bd9b8d`; det som återstår är diff- och bevisgranskning. |
+| 1 | **#893 är kodgodkänd** av Codex på `87bd9b8d` (2.2) | — | Ingen deploy. Klart. Steget kvarstår i tabellen som förutsättning för steg 2. |
 | 2 | Merga **#893 in i** `codex/betalningsfarskhet-filfel` | `codex/betalningsfarskhet-filfel` (#892:s gren) | Ingen deploy. #892:s CI kör om med beloppsrättningen inne. |
 | 3 | Merga **#892 in i** `codex/betalningsfarskhet-skydd` | `codex/betalningsfarskhet-skydd` (#891:s gren) | Ingen deploy. **#891:s CI kör nu på hela kombinationen mot `main`.** |
 | 4 | Granska #891:s slutdiff mot `main` och läs CI **på HEAD-shan**, inte på PR-numret | — | Detta är den samlade granskningen och kombinationens egen CI. |
@@ -363,20 +381,40 @@ merga #892. Kedjan är linjär, så diffen blir densamma. Nackdelen är att
 granskningshistoriken ligger på #891, och att #891 då måste stängas utan merge —
 lätt att förväxla med "den gick aldrig in". Det är därför andrahandsvalet.
 
-### 3.6 Villkoret som ännu inte är uppfyllt
+### 3.6 Vad som faktiskt kvarstår
 
-Beloppsrättningen **är** levererad: #893, HEAD `87bd9b8d`, 61/61 grön CI på exakt
-den shan (2.2). Det öppna beroendet har därmed flyttat sig, inte försvunnit:
+**Rättat i revision 3.** Revision 2 påstod att "ingen gren bär i dag #891 + #892
++ #893 samtidigt". Det var fel, och det motsade dokumentets egen beskrivning av
+stacken som linjär i 3.1. Läsande ancestry-kontroll 2026-09-13:
 
-- **Codex kodgodkännande av #893 återstår** — diffen och de nya
-  observationsloggarna är inte granskade, varken av Codex eller av mig. Grön CI
-  är inte det.
-- **Kombinationen finns inte ännu.** Ingen gren bär i dag #891 + #892 + #893
-  samtidigt. Den slutdiff och den CI-körning som avsnitt 6 bygger sin
-  granskningspunkt på uppstår först i steg 3.
+```
+git merge-base --is-ancestor <main>    <#891-HEAD>   → JA
+git merge-base --is-ancestor <#891>    <#892-HEAD>   → JA
+git merge-base --is-ancestor <#892>    <#893-HEAD>   → JA
+git merge-base <#893-HEAD> <main>                    → 3b71e905  (= aktuell main)
+```
 
-Ingen slutlig bedömning kan alltså ges förrän båda finns. Steg 1–6 är ordningen;
-startsignalen är Codex kodgodkännande.
+**#893:s gren `codex/bankimport-strikta-belopp` innehåller alltså redan hela
+kombinationen** — 17 commits ovanför `main`, 39 filer, +4 628 / −113. Och eftersom
+kedjan är linjär och basen är en förfader testade CI-körningen `34760333195` på
+`87bd9b8d` i praktiken just den kombinationens innehåll.
+
+Det gör **inte** att sammanföringen är gjord. Kvar står:
+
+1. **Sammanföring till avsedd målgren.** Innehållet ligger på den översta grenen i
+   stacken; det är inte samma sak som att #892 och #891 bär det, eller att någon
+   PR mot `main` visar det. Ordningen i 3.3 är fortfarande den som ska köras.
+2. **Verifiering av slutligt kodträd.** Trädet efter sammanföringen ska vara det
+   granskade trädet — inte "härlett ur att det borde bli samma".
+3. **Verifiering mot aktuell main-bas.** CI på `87bd9b8d` kördes med
+   `codex/betalningsfarskhet-filfel` som bas, inte med `main`. `main` stod stilla
+   på `3b71e905` vid mätningen, men det är ett ögonblicksvärde: rör sig `main`
+   krävs ny bas, ny CI och ny slutdiff.
+4. **Tillhörande CI på den sammanförda HEAD-shan**, frågad på shan och inte på
+   PR-numret (3.4).
+
+Ingen slutlig bedömning kan ges förrän 1–4 finns, tillsammans med de två
+kvarstående villkoren i 6.4 (aktuell backup, avskärmningsprocedur).
 
 ---
 
@@ -878,20 +916,41 @@ avbrott.** Gör det på ett tillstånd där SQL:en faktiskt gick igenom, och nä
 deploy försöker applicera migrationen igen — som då faller på att kolumnen redan
 finns. Det gör läget sämre, inte bättre.
 
-**Ordningen är: mät först, välj sedan.** Kontrollera var för sig, read-only:
+**Ordningen är: mät först, välj sedan — och tre befintliga objekt räcker inte.**
+Revision 2 skrev att "svarar 1–3 ja är migrationen applicerad". Det var för
+grovt: att en kolumn, en funktion och en trigger *finns* säger ingenting om att de
+har rätt **definition**, att backfillen körts, eller att historiken är hel. En
+halvvägs applicerad eller manuellt lappad databas kan ge tre ja.
 
-1. Finns kolumnen `Organization."paymentImportStartedAt"`?
-2. Finns funktionen `payment_import_started_immutable`?
-3. Finns triggern `payment_import_started_immutable` på `Organization`?
-4. Har backfillen körts, och stämmer utfallet mot källan
-   (`MIN("uploadedAt")` per org i `BankStatementImport`)?
-5. **Samtliga** rader i `_prisma_migrations` för migrationsnamnet — inte bara
-   den senaste, och inte bara ett totalantal.
+Kontrollera var för sig, read-only, och jämför mot migrationsfilen — inte mot
+minnet:
 
-Svarar 1–3 ja är migrationen **applicerad**, och rätt åtgärd är
-`migrate resolve --applied`. Svarar de nej är den **inte** applicerad, och
-`--rolled-back` är rätt. Är bilden blandad är ingen av dem rätt: då är tillståndet
-inte det migrationen beskriver, och det måste utredas innan någonting skrivs.
+| # | Kontroll | Vad som jämförs |
+| --- | --- | --- |
+| 1 | Kolumnen `Organization."paymentImportStartedAt"` | Att den finns **och** har rätt typ och nullbarhet (`timestamp(3)`, nullable) |
+| 2 | Funktionen `payment_import_started_immutable` | **Kroppens definition** (`prosrc`), inte bara namnet — villkoret `IS DISTINCT FROM`, `ERRCODE 23514` |
+| 3 | Triggern `payment_import_started_immutable` på `Organization` | Att den är `BEFORE UPDATE **OF** "paymentImportStartedAt"`, `FOR EACH ROW`, och pekar på rätt funktion |
+| 4 | **Backfillutfallet** | Per organisation: `paymentImportStartedAt` mot `MIN("uploadedAt")` ur `BankStatementImport`. Noll rader i källan ⇒ noll satta markörer. Avviker utfallet är migrationen inte den som körts |
+| 5 | **Checksumman** | `_prisma_migrations.checksum` för `20260913090000_payment_import_start` mot filens. Skiljer den sig är det inte den här migrationen som kördes |
+| 6 | **Samtliga** historikrader för migrationsnamnet | Inte den senaste, inte ett totalantal — alla. `started_at`, `finished_at`, `rolled_back_at`, `applied_steps_count` för var och en (jfr 4.3, där ett namn har två rader) |
+
+**Beslutsregeln:**
+
+- **Alla sex stämmer, och exakt en historikrad saknar `finished_at`** → migrationen
+  är applicerad men obokförd. Rätt åtgärd: `migrate resolve --applied`.
+- **Inget av schemaobjekten finns, backfillen har inte körts, och historikraden är
+  ofärdig** → migrationen är inte applicerad. Rätt åtgärd:
+  `migrate resolve --rolled-back`.
+- **Allt annat — blandat, oklart eller motsägelsefullt utfall — är fortsatt
+  stopp.** En avvikande definition, en checksumma som inte stämmer, ett
+  backfillutfall som inte följer källan, eller fler historikrader än väntat
+  betyder att tillståndet inte är det migrationen beskriver. Då skrivs ingenting,
+  och tillståndet utreds först. Att välja "den mest sannolika" av de två
+  åtgärderna på ett oklart underlag är hur ett återställbart läge blir ett
+  oåterkalleligt.
+
+**Den här granskningen har inte kört något `resolve`-kommando**, och beslutsregeln
+ovan är en beskrivning av vad som ska mätas — inte ett utfört ingrepp.
 
 `migrate resolve` **ändrar historiken, inte schemat eller datan.** Och en lyckad
 migration går inte att märka som återställd: `mark_migration_rolled_back.rs`
@@ -904,7 +963,7 @@ med `CannotRollBackUnappliedMigration` när raden saknas). Instruktionen i revis
 | Risk | Vad stacken gör | Kvarstår efter merge |
 | --- | --- | --- |
 | **`matchError` efter lagring** | Ingenting. #892 klassificerar uttryckligen på **utfall**: en returnerad sparad bankrad räknas som godkänd inläsning, och `matchError` som inträffar *efter* lagring behåller sin befintliga policy. | **JA.** En betalning kan lagras, inte matchas, och ändå flytta fram täckningsdatumet och släppa igenom en avgift. **Kräver eget beslut.** |
-| **Aktuellt/felaktigt förnyat datum** | #892 stoppar hela körningens datumförnyelse när någon relevant rad saknar giltigt datum/belopp eller inte når bekräftat ingestutfall. Mätt: F19 går från "datum 2026-09-13, avgift 60 kr" till "datum NULL, paus". | **Delvis.** `parseFloat` accepterar numeriska prefix — `123skräp` tolkas som 123, importeras, och datumet flyttas fram (F32, mätt). Det är beloppsrättningens område och alltså **#893:s** ansvar, inte #892:s. #893 uppger att fallet är rättat; Codex kodgranskning av det återstår (6.4, fråga 5). |
+| **Aktuellt/felaktigt förnyat datum** | #892 stoppar hela körningens datumförnyelse när någon relevant rad saknar giltigt datum/belopp eller inte når bekräftat ingestutfall. Mätt: F19 går från "datum 2026-09-13, avgift 60 kr" till "datum NULL, paus". | **Delvis.** `parseFloat` accepterar numeriska prefix — `123skräp` tolkas som 123, importeras, och datumet flyttas fram (F32, mätt). Det är beloppsrättningens område och alltså **#893:s** ansvar, inte #892:s. **#893 är kodgodkänd av Codex på `87bd9b8d`, och båda F32-utfallen är verifierade i CI-loggen** (2.2). Risken flyttar därmed från "öppen" till "rättad i den godkända koden, ännu inte i drift". |
 | **Ofullständig banktäckning** | Ingenting, och det sägs rakt ut: ett registrerat datum är inte ett fullständighetsbevis, och `paymentDataThrough` beskrivs nu som *registrerat* importdatum i stället för *komplett* betalningsdata. | **JA.** Konton, blad och rader som aldrig kom med syns inte. **Kräver eget beslut.** |
 | **Historiska försök + NULL kan pausa någon som arbetat manuellt** | Markören sätts av backfillen ur `MIN(uploadedAt)`. | **Inaktuellt i dag** (0 importrader), men **blir aktuellt** när data finns. #891:s rapport kräver själv "en läsande inventering och separat ägarbeslut". |
 
@@ -922,7 +981,7 @@ inte testfel; de är medvetet utanför den här leveransens omfattning.
 | Steg | Åtgärd | Ansvarig | Förutsättning / bevis före steget | Verifierbart stoppvillkor |
 | --- | --- | --- | --- | --- |
 | **0** | Beslut om backup | **Ägaren** | Läget i 5.2 är läst | Går inte vidare förrän ägaren antingen tagit en färsk dump och verifierat den enligt runbookens sex acceptanskriterier, **eller** uttryckligen kvitterat att en migration körs utan återställningspunkt |
-| **1** | Kodgranska **#893** (diff + observationsbevis) | **Codex** | PR, HEAD `87bd9b8d` och 61/61 CI på exakt shan — verifierat (2.2) | Codex kodgodkännande. Grön CI räcker inte. |
+| **1** | ~~Kodgranska #893~~ — **klart** | Codex | PR, HEAD `87bd9b8d` och 61/61 CI på exakt shan — verifierat (2.2) | **Uppfyllt:** Codex kodgodkännande inom beställd omfattning, med läst produktdiff, separat granskad testfacit och verifierad CI-logg. Inte ett merge- eller driftgodkännande. |
 | **2** | Merga belopps-PR in i `codex/betalningsfarskhet-filfel` (merge-commit, **utan** `--delete-branch`) | Ägaren | Steg 1 grönt | #892:s CI kör om; grön **på den nya HEAD-shan** |
 | **3** | Merga #892 in i `codex/betalningsfarskhet-skydd` (merge-commit, **utan** `--delete-branch`) | Ägaren | Steg 2 grönt | #891:s CI kör om; **61/61 grönt på den nya HEAD-shan** |
 | **4** | Granska slutdiffen `origin/main...#891-HEAD` | Ägaren + Codex | Steg 3 grönt | Diffen innehåller exakt en migration och inga främmande filer |
@@ -943,14 +1002,43 @@ något annat i spåren.
 
 ### 6.2 Verifiering efter merge — i den här ordningen
 
-1. **Rätt release kör — och ancestry räcker inte.** `--is-ancestor` svarar bara
-   att din commit ligger bakåt i historien; en senare commit kan ha återställt
-   bort rättningen och ändå ha din sha som förfader. Verifiera därför **både**:
-   (a) vilken sha `/v1/health` rapporterar, och (b) att den shans **kodträd**
-   innehåller rättningen — t.ex. `git diff <prod-revision> <godkänd-sha> --
-   apps/api/src/payment-freshness apps/api/src/reconciliation` ska vara tom. Har
-   `main` eller driftsversionen gått vidare sedan godkännandet krävs en ny diff-
-   och bevisbedömning, inte en ny ancestry-fråga.
+1. **Rätt release kör — och varken ancestry eller en delmängdsdiff räcker.**
+   `--is-ancestor` svarar bara att din commit ligger bakåt i historien; en senare
+   commit kan ha återställt bort rättningen och ändå ha din sha som förfader.
+   **Revision 2:s förslag att diffa två kataloger var också för smalt** — en tom
+   diff över `payment-freshness` och `reconciliation` bevisar ingenting om schema,
+   effektvägar, beroenden eller driftkonfiguration. Verifiera i stället **hela**
+   den godkända releasen:
+
+   ```bash
+   PROD=$(curl -fsS https://eken-production.up.railway.app/v1/health \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["revision"])')
+   git diff --stat "$PROD" <godkänd-sha>          # ska vara TOM
+   ```
+
+   En tom heldiff är kriteriet. Är den inte tom ska **varje** skillnad redovisas
+   och godkännas var för sig — inte förklaras bort. Ytorna som måste ingå i den
+   bedömningen, och som en katalogbegränsad diff missar:
+
+   | Yta | Varför den måste med |
+   | --- | --- |
+   | `apps/api/prisma/schema.prisma` + `prisma/migrations/` | Schemat är det som inte går att backa (5.1b, 6.3) |
+   | Effektvägarna: `apps/api/src/avisering/`, `apps/api/src/psd2/`, `apps/api/src/ai/tools/` | Kravtrappans tre crons och importmarkörens anropare ligger här, inte i de två katalogerna |
+   | `apps/web/src/` | Kombinationen rör fyra webbfiler; en text som säger fel sak om paus är ett kundsynligt fel |
+   | `package.json`, `pnpm-lock.yaml` | Ett beroendebyte ändrar den byggda artefakten utan att röra en rad kod |
+   | `apps/api/Dockerfile`, `apps/api/scripts/migrate-and-start.sh` | Startsekvensen är det som kör migrationen |
+   | `railway.toml`, `railway.json` | Driftkonfiguration: hälsokontroll, omstartspolicy, byggare |
+   | `.github/workflows/` | En ändrad grind ändrar vad "grön CI" betyder |
+
+   **Mätt på dagens kombination** (`main…#893-HEAD`, 39 filer, +4 628 / −113):
+   den rör `apps/api/src` (25 filer), `docs/granskning` (7), `apps/web/src` (4),
+   `apps/api/prisma` (2) och `docs/revision-status.md` — och **ingen** fil under
+   `Dockerfile`, `railway*`, `.github/` eller `package.json`/`pnpm-lock.yaml`. Det
+   är ett gynnsamt utfall, men det är en mätning på `87bd9b8d` och **ska göras om
+   på det sammanförda trädet**, inte antas gälla.
+
+   Har `main` eller driftsversionen gått vidare sedan godkännandet krävs ny bas,
+   ny CI och ny bevisbedömning — inte en ny ancestry-fråga.
 2. **Ny process äger schemat:** `/v1/health` → `cron.bootAt` senare än
    merge-tidpunkten, och `cron.staleCount == 0`.
 3. **Migrationen tog:** read-only mot databasen. Ett totalantal rader räcker
@@ -966,8 +1054,9 @@ något annat i spåren.
    båda organisationerna. Ingen paus, inga larm, `paymentDataStaleAlertedAt`
    fortsatt NULL.
 
-Punkt 4 och 6 är de som skiljer "migrationen kördes" från "migrationen gjorde rätt
-sak". `/v1/health` ensam duger inte (5.1).
+Punkt 1 skiljer "en commit med rätt förfader" från "rätt release". Punkt 4 och 6
+skiljer "migrationen kördes" från "migrationen gjorde rätt sak". `/v1/health`
+ensam duger inte till någondera (5.1).
 
 ### 6.3 Återhämtningsväg
 
@@ -991,7 +1080,7 @@ sak nedan, med vad som faktiskt kvarstår efter dem.
 | 2 | Får #889:s innehåll följa med? | **Ja, avsett.** De bevarade reproduktionsproven och deras historik ska följa med #891; förbudet gällde separat merge av den avsiktligt röda PR:en. Slutdiffen ska visa just det avsedda innehållet. #889 kan stängas efter verifierad integration; ingen gren behöver raderas. | Kontrollen av slutdiffen i steg 4. Not: steg 6 i 6.1 ska alltså läsas som "stäng #889", inte "radera grenar". |
 | 3 | Mergeform? | Inom stacken **vanliga merge-commits utan grenradering**. Till `main` följs den verifierade repopolicyn; ingen anledning att ändra policy för den här leveransen. Ordningsförslag, inte tillstånd att merga. | Inget. Frågan är stängd. |
 | 4 | Belopps-PR? | **#893**, HEAD `87bd9b8d`, CI 34760333195. | Inget — verifierat oberoende, se 2.2. |
-| 5 | Är F32 rättad? | #893 redovisar att fallet är rättat och beteendemuterat. **Codex verifierar diff och observationsbevis före kodgodkännande; den kontrollen är inte gjord.** | Kodgranskningen av #893. |
+| 5 | Är F32 rättad? | **Ja, och kontrollen är gjord.** Codex har kodgodkänt #893 på `87bd9b8d` inom beställd omfattning: läst produktdiff och importmetod, separat granskare på testfaciten, verifierad CI-logg med båda F32-utfallen (2.2). | Inget i kodfrågan. Merge- och driftgodkännande är separata beslut. |
 | 6 | Matchfel och banktäckning? | **Kvarstår som separata produktgränser.** Ingen tyst acceptans av att gröna prov innebär kompletta betalningsuppgifter eller säkra automatiska krav. En förbättrad felspärr är inte ett fullständigt bankflöde. | Eget beslut, utanför den här leveransen. |
 | 7 | Flytta backfillen? | **Ingen sådan ändring beställs nu.** Övergångsproceduren ska klarläggas först. Ett efterjobb flyttar tidpunkten men löser inte saknad historik och är inte i sig avskärmning. | Övergångsproceduren (4.5). |
 | 8 | Slå på Wait for CI? | **Rekommenderas som egen driftåtgärd**, med begränsningarna i 2.3. Ingen inställning ändras av granskningen. | Driftåtgärden, och verifiering av dess faktiska regler. |
@@ -1001,12 +1090,13 @@ sak nedan, med vad som faktiskt kvarstår efter dem.
 **Kvar som villkor före en samlad merge**, sammanfattat:
 
 1. Aktuell dump, återläst och verifierad (fråga 1).
-2. Codex kodgodkännande av #893 (fråga 5).
-3. Konkret avskärmningsprocedur för gamla skrivare med verifierbara stoppvillkor
+2. Konkret avskärmningsprocedur för gamla skrivare med verifierbara stoppvillkor
    (fråga 7, avsnitt 4.5/4.7).
-4. Kombinationen sammanförd, med egen CI och granskad slutdiff (3.6, steg 3–4).
+3. Sammanföring till avsedd målgren, plus verifierat slutligt kodträd, aktuell
+   main-bas och tillhörande CI (3.6).
 
-Ingen av dem är uppfylld i dag.
+**Uppfyllt sedan revision 2:** Codex kodgodkännande av #893 (fråga 5). Kvar av de
+fyra villkoren är alltså tre.
 
 ---
 
@@ -1020,19 +1110,26 @@ Ingen av dem är uppfylld i dag.
 3. **Backupfrågan väger tyngst, men den är inte ensam.** I revision 1 skrev jag
    att den var "det enda som verkligen bör stoppa". Det var för snävt: också
    slutkombinationen, versionsövergången och återhämtningen måste vara
-   verifierade innan detta är en körbar instruktion (se 6.4:s fyra villkor). En
+   verifierade innan detta är en körbar instruktion (se 6.4:s kvarstående
+   villkor). En
    migration mot en databas utan aktuell återställningspunkt är dessutom inte
    reversibel bara för att migrationen är liten.
 4. **Att tabellerna är tomma är ett ögonblicksvärde, inte ett skydd.** Flera
    slutsatser i det här underlaget vilar på mätningen 13:21Z. Den ska göras om
    omedelbart före steg 5, och den ersätter inte en avskärmningsprocedur.
-5. **Införandespärren i #891:s egen rapport är formulerad för en produktion som
-   inte finns.** "Stoppa/dränera gamla producenter och kravworkers, kör backfill
-   efter sista gamla importen" beskriver ett flerinstansigt system med
-   importtrafik. Det verkliga systemet är en replika, in-process-crons och noll
-   importrader. Att bygga ett stopp/dränerings-moment för det vore att lägga
-   procedur ovanpå en risk som inte finns — men formuleringen blir korrekt den dag
-   data finns, och bör stå kvar som villkor för **då**, inte för nu.
+5. **Införandespärren i #891:s egen rapport är skriven för en större produktion —
+   men den gäller.** "Stoppa/dränera gamla producenter och kravworkers, kör
+   backfill efter sista gamla importen" beskriver ett flerinstansigt system med
+   importtrafik, och det verkliga systemet är en replika med in-process-crons och
+   noll importrader vid mätningen. **Revision 2 drog en slutsats för långt av
+   det** och skrev att ett stopp-/dräneringsmoment vore "procedur ovanpå en risk
+   som inte finns". Den formuleringen är struken. Risken finns: mätningen visar
+   själv ett överlappsfönster där två kodversioner arbetar mot samma databas
+   (4.4), och noll importrader vid ett mättillfälle är inte ett skydd mot att en
+   import startar. Det som är litet här är **sannolikheten och omfattningen**,
+   inte riskens existens. Avskärmningen ska därför vara verifierbar, inte
+   bortresonerad — den får vara enkel i den här miljöns storlek, men den ska
+   finnas.
 6. **Backfillen går inte att schemalägga separat med dagens migration.** Påståendet
    "backfill körs efter sista gamla importen" går i dag bara att uppfylla genom
    avstämning, inte genom mekanik. Det ska sägas rakt ut i stället för att lova en
@@ -1043,7 +1140,12 @@ Ingen av dem är uppfylld i dag.
    fortfarande avstängd, nu med en annan orsakstext. Fyra variabler krävs. (5.2)
 8. **Det finns ingen paus-spak och ingen förhandskontroll av kravtrappan.**
    Planen kan därför inte innehålla ett steg som "pausa kravtrappan före merge" —
-   det går inte. Tidsvillkoret är det enda som faktiskt fungerar. (4.7)
+   det går inte med dagens kod. **Men tidsvillkoret i 6.1 räcker inte i stället.**
+   Revision 2 skrev att det "är det enda som faktiskt fungerar", vilket läses som
+   att det är tillräckligt. Det är det inte: cronfönstret flyttar bara en av de
+   skrivvägar som kan vara aktiva under övergången, och det säger ingenting om
+   importer, köjobb eller HTTP-anrop. Cronfönstret är en **försiktighetsåtgärd**;
+   den verifierbara avskärmningen (4.5/4.7) kvarstår som villkor. (4.7)
 9. **Grenskyddet garanterar inte att CI granskade det träd som deployas.**
    `strict_required_status_checks_policy` är `false`. Kontrollen av `origin/main`
    omedelbart före steg 5 är därför inte pedanteri. (2.7)
@@ -1073,15 +1175,30 @@ Ingen av dem är uppfylld i dag.
 | Att `/workspaces/prod-backups`-dumparna går att återställa | Bara datum, storlek, sha256 och loggens sista rad kontrollerade | `pg_restore --list` plus en provåterställning enligt de sex kriterierna i `db-backup-restore.md` |
 | Att en `pg_dump` av **dagens** produktion går att återläsa | Ingen ny dump har hämtats eller skapats — uttryckligen utanför uppgiften | Se ovan |
 | Att kravtrappans effekter är idempotenta vid omkörning efter stall | Ligger i #891:s egen bevisplan; inte omprövat här, och inga tunga körningar fick startas | #891:s DB-prov för verifikat-`sourceId` på kombinationens slutliga HEAD |
-| #893:s produktdiff och observationsbevis | PR, HEAD och CI är verifierade (2.2); **diffen är inte läst** av vare sig Codex eller den här granskningen | Codex kodgranskning |
-| Slutkombinationens diff och CI | Ingen gren bär #891 + #892 + #893 samtidigt ännu | Uppstår i steg 3; granskas i steg 4 |
+| #893:s produktdiff — **oberoende av Codex** | Codex har kodgodkänt den (läst produktdiff och importmetod, separat granskare på testfaciten, verifierad CI-logg). **Den här granskningen har inte läst diffen** och gör inget eget kodutlåtande; det som är verifierat härifrån är PR-metadata och CI-körningen | En egen läsning, om ägaren vill ha två oberoende kodutlåtanden i stället för ett |
+| Det sammanförda trädet | Kombinationens **innehåll** finns redan på #893:s gren (3.6, ancestry verifierad), men sammanföringen till avsedd målgren är inte gjord | Trädet efter steg 3, dess heldiff mot prod-revisionen (6.2 punkt 1) och CI på den sammanförda shan |
+| Kombinationen mot **aktuell** main-bas | CI 34760333195 kördes med `codex/betalningsfarskhet-filfel` som bas. `main` stod stilla på `3b71e905` vid mätningen, men det är ett ögonblicksvärde | En CI-körning vars bas är den `main` som faktiskt gäller vid steg 5 |
 | Om #886:s nya CI-jobb blir obligatoriska för merge | `ci-passed`:s `needs`-lista lästes på `main`, inte i PR-grenen | `needs`-listan i PR-grenens `ci.yml` |
 | Om klassisk branch protection är av | GitHub-tokenen fick inte läsa `branchProtectionRules` (`Resource not accessible by integration`). `CLAUDE.md` uppger den som av, mätt i #405 | En token med rätt behörighet — **inte** ett push-försök |
 | Kravtrappans verkliga beteende mot riktig kunddata efter merge | Produktionen har inga aktiva hyresavier (2 st, båda annullerade) | Kan först mätas när det finns data att mäta på |
 
 ---
 
-## 9. Ändringslogg — revision 2 efter Codex granskning
+## 9. Ändringslogg
+
+### Revision 3 — 2026-09-13
+
+Fem kvarstående fel rättade. Tre av dem var motsägelser inom dokumentet självt.
+
+| # | Fel i revision 2 | Rättelse |
+| --- | --- | --- |
+| 1 | #893 beskrevs som ogranskad på fem ställen | **Rättat** i 0, 2.2, 3.3, 5.4, 6.1 och 6.4. Codex har kodgodkänt #893 inom beställd omfattning på `87bd9b8d`: läst produktdiff och importmetod, separat granskare på testfaciten, verifierad CI-logg (61 gröna jobb, 6 132 API-prov, 291 nya beloppsobservationer med 288 testnamn, båda F32-utfallen). Genomgående utskrivet att det är ett **kodgodkännande, inte ett merge- eller driftgodkännande**, och att den här granskningen inte gör något eget kodutlåtande. |
+| 2 | "Ingen gren bär #891 + #892 + #893 samtidigt" | **Rättat** i 3.6 och 8 — och det motsade 3.1:s egen beskrivning av stacken som linjär. Läsande ancestry-kontroll visar att #893 bygger på #892 som bygger på #891, med `main` som merge-bas. Kombinationens **innehåll** finns alltså redan. Kvar är sammanföringen till avsedd målgren samt verifiering av slutligt kodträd, aktuell main-bas och tillhörande CI. |
+| 3 | §5.3b: "svarar 1–3 ja är migrationen applicerad" | **Rättat.** Tre befintliga objekt betyder inte att migrationen är korrekt applicerad. Kontrollen omfattar nu sex punkter — exakta definitioner för kolumn, funktion och trigger, backfillutfallet mot källan, checksumman och **samtliga** historikrader för namnet — med en uttrycklig beslutsregel där **oklart eller motsägelsefullt utfall är fortsatt stopp**. Inga `resolve`-kommandon har körts. |
+| 4 | §7 påstod att övergångsrisken "inte finns" och att tidsvillkoret "är det enda som fungerar" | **Båda struket.** Punkt 5 säger nu att risken finns — dokumentets egen mätning visar ett överlappsfönster — och att det som är litet är sannolikhet och omfattning, inte riskens existens. Punkt 8 säger att cronfönstret är en försiktighetsåtgärd som inte ersätter verifierbar avskärmning. Tomma tabeller behandlas genomgående som ögonblicksbild. |
+| 5 | §6.2 verifierade releasen med en diff över två kataloger | **Rättat.** Kriteriet är nu en **tom heldiff** mellan prod-revisionen och den godkända shan, med en uttrycklig lista över ytor en katalogbegränsad diff missar: schema och migrationer, effektvägarna i `avisering/`, `psd2/` och `ai/tools/`, webbfilerna, beroenden, `Dockerfile`/startskript, `railway.*` och `.github/workflows/`. Dagens kombination är mätt mot den listan (39 filer, inga bygg- eller driftfiler berörda) med notisen att mätningen ska göras om på det sammanförda trädet. |
+
+### Revision 2 — 2026-09-13, efter Codex granskning
 
 Codex granskade revision 1 (`b59ca32a`) och invände mot åtta punkter. Sju var
 berättigade och är rättade; den åttonde är skärpt. Inget som rättats har tagits
