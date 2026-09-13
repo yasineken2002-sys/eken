@@ -22,6 +22,10 @@ const required = [
   '18',
   '19',
   '20',
+  '21',
+  '22',
+  '23',
+  '24',
 ]
 if (!Array.isArray(report.testResults)) throw new Error('Jest report missing suites')
 for (const id of required) {
