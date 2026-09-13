@@ -623,6 +623,11 @@ export class ReconciliationService {
     return { rows, bank }
   }
 
+  // Samma förstmarkör vid autentiserad HTTP/AI-ingång och direkt tjänsteanrop.
+  async recordImportStarted(organizationId: string): Promise<void> {
+    await this.freshness.recordImportStarted(organizationId)
+  }
+
   // ── Import ──────────────────────────────────────────────────────────────────
 
   async importBankStatement(
@@ -631,6 +636,7 @@ export class ReconciliationService {
     organizationId: string,
     bankOverride?: BankFormat,
   ): Promise<ImportResult> {
+    await this.recordImportStarted(organizationId)
     const ext = filename.toLowerCase().split('.').pop() ?? ''
     let parsed: { rows: ParsedRow[]; bank: BankFormat }
 
@@ -750,6 +756,7 @@ export class ReconciliationService {
     fileName: string,
     organizationId: string,
   ): Promise<ImportResult & { fileName: string }> {
+    await this.recordImportStarted(organizationId)
     // SECURITY (H3): BgMax är ren text (fastformat 80 tecken). Tillåt
     // signaturlösa textfiler men avvisa allt med en binär signatur (en
     // omdöpt .exe/.zip osv) samt filer över taket.

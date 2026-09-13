@@ -103,7 +103,15 @@ medDb('dagsgrinden i escalateNoticeToInkassoReady', () => {
       prisma,
       accounting,
       rentNoticeEvents: events,
-      rentInterest: new RentInterestService(prisma as never, accounting, events),
+      rentInterest: new RentInterestService(
+        prisma as never,
+        accounting,
+        events,
+        new PaymentFreshnessService(
+          prisma as never,
+          { sendCustomEmail: async () => undefined } as never,
+        ),
+      ),
       rentDebt: new RentDebtService(prisma as never),
       freshness: new PaymentFreshnessService(
         prisma as never,

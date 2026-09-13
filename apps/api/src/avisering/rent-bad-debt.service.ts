@@ -12,7 +12,11 @@ import { runCronSafely } from '../common/cron/cron-safety'
 import { AccountingService, MissingAccrualError } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
-import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
+import {
+  PAYMENT_FRESHNESS_TX_LIMITS,
+  PaymentDataPausedError,
+  PaymentFreshnessService,
+} from '../payment-freshness/payment-freshness.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
@@ -195,10 +199,24 @@ export class RentBadDebtService {
               )
               continue
             }
-            const res = await this.reclassifyToProbableLoss(notice.id, notice.organizationId, null)
+            const res = await this.automaticallyReclassifyToProbableLoss(
+              notice.id,
+              notice.organizationId,
+            )
             if (res.booked) summary.reclassified++
             else summary.skipped++
           } catch (err) {
+            if (err instanceof PaymentDataPausedError) {
+              summary.pausedStale++
+              await this.freshness
+                .evaluateAndAlert([notice.organizationId])
+                .catch((alertError: unknown) => {
+                  this.logger.error(
+                    `Pauslarm kunde inte utvärderas: ${alertError instanceof Error ? alertError.message : String(alertError)}`,
+                  )
+                })
+              continue
+            }
             if (err instanceof ConflictException) {
               summary.skipped++
               continue
@@ -287,6 +305,23 @@ export class RentBadDebtService {
     organizationId: string,
     actorId: string | null,
   ): Promise<{ booked: boolean }> {
+    return this.reclassifyProbableLoss(noticeId, organizationId, actorId, false)
+  }
+
+  /** Explicit automatisk väg; actorId=null är aldrig ett policyläge. */
+  async automaticallyReclassifyToProbableLoss(
+    noticeId: string,
+    organizationId: string,
+  ): Promise<{ booked: boolean }> {
+    return this.reclassifyProbableLoss(noticeId, organizationId, null, true)
+  }
+
+  private async reclassifyProbableLoss(
+    noticeId: string,
+    organizationId: string,
+    actorId: string | null,
+    automatic: boolean,
+  ): Promise<{ booked: boolean }> {
     const notice = await this.loadNotice(noticeId, organizationId)
     this.assertMomsfri(notice)
 
@@ -305,6 +340,7 @@ export class RentBadDebtService {
 
     const now = new Date()
     return this.prisma.$transaction(async (tx) => {
+      if (automatic) await this.freshness.assertAutomaticEffectAllowed(tx, organizationId)
       // Bank-härdning PR 3b — RACE-WINDOW-FIX. Lås avi-raden och läs skulden INNE i
       // transaktionen. Partiella bank-allokeringar (PR 3b) muterar nu outstanding
       // löpande; läses beloppet UTANFÖR tx (som tidigare) kan en delbetalning landa
@@ -367,7 +403,7 @@ export class RentBadDebtService {
         { tx },
       )
       return { booked: true }
-    }, PRISMA_DEFAULT_TX_LIMITS)
+    }, PAYMENT_FRESHNESS_TX_LIMITS)
   }
 
   /**

@@ -63,6 +63,7 @@ export class Psd2SyncService {
       where: { organizationId, status: 'ACTIVE' },
     })
     result.consents = consents.length
+    if (consents.length > 0) await this.reconciliation.recordImportStarted(organizationId)
 
     for (const consent of consents) {
       const accessToken = this.crypto.decrypt(consent.accessTokenEnc)
