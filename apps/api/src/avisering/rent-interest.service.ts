@@ -1,10 +1,11 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import {
-  PAYMENT_FRESHNESS_TX_LIMITS,
+  paymentFreshnessTransactionOptions,
   PaymentFreshnessService,
 } from '../payment-freshness/payment-freshness.service'
 
@@ -269,7 +270,7 @@ export class RentInterestService {
       )
 
       return { delta, total: totalInterest, effectiveRatePercent, days, segments }
-    }, PAYMENT_FRESHNESS_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**

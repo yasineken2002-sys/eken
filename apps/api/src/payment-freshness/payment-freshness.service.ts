@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Prisma, UserRole } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
-import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { PRISMA_DEFAULT_TX_LIMITS, TransactionLimits } from '../common/prisma/transaction-limits'
 
 /**
  * Nivå 1 mäter registrerat första importförsök och det befintliga datumets ålder.
@@ -11,9 +11,9 @@ import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
  * Penganeutral: inga verifikat, belopp eller matchningsregler.
  */
 
-export const PAYMENT_FRESHNESS_TX_LIMITS = {
-  ...PRISMA_DEFAULT_TX_LIMITS,
-  isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+/** Anroparen väljer tidsgränserna uttryckligt; färskhetsporten kräver ReadCommitted. */
+export function paymentFreshnessTransactionOptions(limits: TransactionLimits) {
+  return { ...limits, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
 }
 
 export class PaymentDataPausedError extends Error {
@@ -100,7 +100,7 @@ export class PaymentFreshnessService {
           data: { paymentImportStartedAt: new Date() },
         })
       }
-    }, PAYMENT_FRESHNESS_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /** Måste vara första steget i effektens EGEN transaktion, före andra lås. */

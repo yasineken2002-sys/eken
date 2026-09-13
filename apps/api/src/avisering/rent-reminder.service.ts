@@ -14,6 +14,7 @@ import {
   type RentNoticeEventType,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -33,7 +34,7 @@ import { RentDebtService } from './rent-debt.service'
 import { resolveNoticeDebtOrigin } from '../accounting/debt-origin'
 import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminder-fee'
 import {
-  PAYMENT_FRESHNESS_TX_LIMITS,
+  paymentFreshnessTransactionOptions,
   PaymentDataPausedError,
   PaymentFreshnessService,
 } from '../payment-freshness/payment-freshness.service'
@@ -526,7 +527,7 @@ export class RentReminderService {
         { tx },
       )
       return true
-    }, PAYMENT_FRESHNESS_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**
@@ -992,7 +993,7 @@ export class RentReminderService {
         { tx },
       )
       return { flipped: true }
-    }, PAYMENT_FRESHNESS_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**

@@ -13,7 +13,7 @@ import { AccountingService, MissingAccrualError } from '../accounting/accounting
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
 import {
-  PAYMENT_FRESHNESS_TX_LIMITS,
+  paymentFreshnessTransactionOptions,
   PaymentDataPausedError,
   PaymentFreshnessService,
 } from '../payment-freshness/payment-freshness.service'
@@ -403,7 +403,7 @@ export class RentBadDebtService {
         { tx },
       )
       return { booked: true }
-    }, PAYMENT_FRESHNESS_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**
