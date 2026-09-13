@@ -1000,7 +1000,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     await expectNoPersistentEffect()
   })
 
-  it('F19 KVARSTÅENDE NULÄGE: CSV med giltigt datum men ogiltigt belopp registrerar ändå datum och tillåter avgift', async () => {
+  it('F19 FILFEL: giltigt datum men ogiltigt belopp får inte förnya datum eller frigöra avgift', async () => {
     const csv = Buffer.from(
       'Datum;Beskrivning;Belopp\n2026-09-13;Syntetisk felaktig rad;ogiltigt\n',
     )
@@ -1009,9 +1009,8 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
     const observed = await runCron('F19')
     expect(observed.importStartedAt).toBe(NOW.toISOString())
-    expect(observed.through).toBe(TODAY)
-    // GRÖNT nulägesprov av avgränsningen; detta är inte löst eller verifierad banktäckning.
-    expectEffect(observed)
+    expect(observed.through).toBeNull()
+    expectPaused(observed)
   })
 
   it('F20 RÄNTA: ett registrerat försök skyddar även den separata riktiga räntetransaktionen', async () => {
