@@ -14,6 +14,7 @@ import {
   type RentNoticeEventType,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -32,8 +33,11 @@ import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
 import { resolveNoticeDebtOrigin } from '../accounting/debt-origin'
 import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminder-fee'
-import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
-import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import {
+  paymentFreshnessTransactionOptions,
+  PaymentDataPausedError,
+  PaymentFreshnessService,
+} from '../payment-freshness/payment-freshness.service'
 import { bedömOmsändning, hashaAdress } from './resend-verdict'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -323,9 +327,21 @@ export class RentReminderService {
                 new Date(),
               )
             } catch (err) {
-              this.logger.error(
-                `Räntekristallisering misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
-              )
+              if (err instanceof PaymentDataPausedError) {
+                // Avgiften är redan committad; endast den separata räntan pausas.
+                this.logger.warn(`Ränta pausad för avi ${notice.id}: betalningsunderlag saknas.`)
+                await this.freshness
+                  .evaluateAndAlert([notice.organizationId])
+                  .catch((alertError: unknown) => {
+                    this.logger.error(
+                      `Pauslarm kunde inte utvärderas: ${alertError instanceof Error ? alertError.message : String(alertError)}`,
+                    )
+                  })
+              } else {
+                this.logger.error(
+                  `Räntekristallisering misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
+                )
+              }
             }
 
             // Avgift + kravsteg är nu bokförda atomiskt. Köa påminnelse-PDF:en — om
@@ -361,6 +377,17 @@ export class RentReminderService {
             }
             summary.reminded++
           } catch (err) {
+            if (err instanceof PaymentDataPausedError) {
+              summary.pausedStale++
+              await this.freshness
+                .evaluateAndAlert([notice.organizationId])
+                .catch((alertError: unknown) => {
+                  this.logger.error(
+                    `Pauslarm kunde inte utvärderas: ${alertError instanceof Error ? alertError.message : String(alertError)}`,
+                  )
+                })
+              continue
+            }
             this.logger.error(
               `Påminnelse misslyckades för avi ${notice.id}: ${err instanceof Error ? err.message : String(err)}`,
             )
@@ -402,6 +429,7 @@ export class RentReminderService {
     const now = new Date()
 
     return this.prisma.$transaction(async (tx) => {
+      await this.freshness.assertAutomaticEffectAllowed(tx, organizationId)
       // ── G2: AVGIFTENS BELOPP AVGÖRS FÖRE ANSPRÅKET ──────────────────────
       //
       // Måste ske före `updateMany` nedan, inte efter: anspråket skriver
@@ -499,7 +527,7 @@ export class RentReminderService {
         { tx },
       )
       return true
-    }, PRISMA_DEFAULT_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**
@@ -588,6 +616,17 @@ export class RentReminderService {
             if (res.flipped) summary.ready++
             else summary.skipped++
           } catch (err) {
+            if (err instanceof PaymentDataPausedError) {
+              summary.pausedStale++
+              await this.freshness
+                .evaluateAndAlert([notice.organizationId])
+                .catch((alertError: unknown) => {
+                  this.logger.error(
+                    `Pauslarm kunde inte utvärderas: ${alertError instanceof Error ? alertError.message : String(alertError)}`,
+                  )
+                })
+              continue
+            }
             // INV-B-grinden vägrade — ofullständigt underlag. Inte ett systemfel;
             // avin omprövas nästa dygn. Avvikelsen är redan loggad i avins egen logg.
             if (err instanceof ConflictException) {
@@ -880,6 +919,7 @@ export class RentReminderService {
     // grinden ovan hade prövats mot ett `now` och skrivningarna nedan mot
     // ett annat.)
     return this.prisma.$transaction(async (tx) => {
+      await this.freshness.assertAutomaticEffectAllowed(tx, organizationId)
       const claim = await tx.rentNotice.updateMany({
         where: {
           id: noticeId,
@@ -953,7 +993,7 @@ export class RentReminderService {
         { tx },
       )
       return { flipped: true }
-    }, PRISMA_DEFAULT_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**

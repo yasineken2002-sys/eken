@@ -2,23 +2,26 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Prisma, UserRole } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
+import { PRISMA_DEFAULT_TX_LIMITS, TransactionLimits } from '../common/prisma/transaction-limits'
 
 /**
- * Bankavstämnings-härdning PR 4 (B) — betalningsdatans FÄRSKHET.
- *
- * Kravtrappan får inte eskalera i blindo när systemet saknar FÄRSK betalningsdata.
- * Idag är cron-eskaleringen frikopplad från om avstämning körts: laddar ingen upp
- * en bankfil rullar trappan vidare mot hyresgäster som kan ha betalat.
- *
- * Denna tjänst är DATAKÄLLS-AGNOSTISK. Den känner bara till ett per-org-datum,
- * `paymentDataThrough` (t.o.m. vilket betalningsdatan är komplett). Idag matas det
- * av bankimporterna (CSV/BgMax/PDF); en framtida aggregator (Tink/Enable Banking)
- * matar SAMMA fält med sin lastSyncedAt utan att en rad här behöver skrivas om. Det
- * skyddar alltså även den automatiska bankkopplingen om den går ner.
- *
- * PENGANEUTRAL: tjänsten LÄSER ett datum, PAUSAR cron-steg (returnerar en mängd
- * stale-org-id) och LARMAR. Inga verifikat, ingen bokföring, ingen matchningslogik.
+ * Nivå 1 mäter registrerat första importförsök och det befintliga datumets ålder.
+ * Den kan inte se fullständig banktäckning, ospårade äldre försök eller bevisad
+ * manuell avstämning. NULL utan försök behåller enbart tidigare passage.
+ * Penganeutral: inga verifikat, belopp eller matchningsregler.
  */
+
+/** Anroparen väljer tidsgränserna uttryckligt; färskhetsporten kräver ReadCommitted. */
+export function paymentFreshnessTransactionOptions(limits: TransactionLimits) {
+  return { ...limits, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted }
+}
+
+export class PaymentDataPausedError extends Error {
+  constructor() {
+    super('Automatiska krav är pausade: betalningsunderlaget behöver uppdateras.')
+    this.name = 'PaymentDataPausedError'
+  }
+}
 
 // Samma mottagarroller som morgonrapporten/övriga org-aviseringar.
 const ALERT_RECIPIENT_ROLES: UserRole[] = [
@@ -32,6 +35,7 @@ const ORG_FRESHNESS_SELECT = {
   id: true,
   name: true,
   paymentDataThrough: true,
+  paymentImportStartedAt: true,
   paymentDataStaleDays: true,
   paymentDataStaleAlertedAt: true,
 } satisfies Prisma.OrganizationSelect
@@ -40,7 +44,7 @@ type OrgFreshness = Prisma.OrganizationGetPayload<{ select: typeof ORG_FRESHNESS
 
 export interface StaleEvaluation {
   stale: boolean
-  /** t.o.m.-datum för känd komplett betalningsdata (null = ingen data ingestad). */
+  /** Registrerat t.o.m.-datum; null betyder att datum saknas. */
   through: Date | null
   /** Antal hela dygn mellan `through` och nu (Infinity om through saknas). */
   ageDays: number
@@ -82,21 +86,73 @@ export class PaymentFreshnessService {
     private readonly mail: MailService,
   ) {}
 
-  /**
-   * Avgör om en organisations betalningsdata är inaktuell (äldre än tröskeln).
-   *
-   * NULL `paymentDataThrough` → INTE stale: en org som aldrig matat in betalningsdata
-   * (rent manuell avstämning) ska inte få sin kravtrappa pausad. Grinden engagerar
-   * FÖRST när data väl matats och sedan blivit gammal — exakt det som skyddar mot en
-   * nedbruten bankkoppling/uteblivna filuppladdningar.
-   */
+  /** Egen commit före importarbete; samma förstmarkör från HTTP och tjänst. */
+  async recordImportStarted(organizationId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockOrganization(tx, organizationId)
+      const org = await tx.organization.findUniqueOrThrow({
+        where: { id: organizationId },
+        select: { paymentImportStartedAt: true },
+      })
+      if (!org.paymentImportStartedAt) {
+        await tx.organization.update({
+          where: { id: organizationId },
+          data: { paymentImportStartedAt: new Date() },
+        })
+      }
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
+  }
+
+  /** Måste vara första steget i effektens EGEN transaktion, före andra lås. */
+  async assertAutomaticEffectAllowed(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    if ('$transaction' in tx) throw new Error('PAYMENT_EFFECT_REQUIRES_TRANSACTION')
+    const [settings] = await tx.$queryRaw<
+      Array<{ isolation: string }>
+    >`SELECT current_setting('transaction_isolation') AS isolation`
+    if (settings?.isolation !== 'read committed') {
+      throw new Error('PAYMENT_EFFECT_REQUIRES_READ_COMMITTED')
+    }
+    await this.lockOrganization(tx, organizationId, true)
+    // Separat statement EFTER låsväntan: ser den vinnande markörens commit.
+    const org = await tx.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: ORG_FRESHNESS_SELECT,
+    })
+    if (this.evaluate(org, now).stale) throw new PaymentDataPausedError()
+  }
+
+  private async lockOrganization(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    shared = false,
+  ): Promise<void> {
+    // Flera effekter får läsa samtidigt; första importen behöver exklusiv rätt.
+    if (shared) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtextextended('payment-freshness:' || ${organizationId}, 0))`
+    } else {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('payment-freshness:' || ${organizationId}, 0))`
+    }
+  }
+
   evaluate(
-    org: Pick<OrgFreshness, 'paymentDataThrough' | 'paymentDataStaleDays'>,
+    org: Pick<
+      OrgFreshness,
+      'paymentDataThrough' | 'paymentDataStaleDays' | 'paymentImportStartedAt'
+    >,
     now: Date,
   ): StaleEvaluation {
     const thresholdDays = org.paymentDataStaleDays
     if (!org.paymentDataThrough) {
-      return { stale: false, through: null, ageDays: Infinity, thresholdDays }
+      return {
+        stale: org.paymentImportStartedAt !== null,
+        through: null,
+        ageDays: Infinity,
+        thresholdDays,
+      }
     }
     const ageDays = wholeDaysBetween(org.paymentDataThrough, now)
     return {
@@ -110,7 +166,8 @@ export class PaymentFreshnessService {
   /**
    * Flyttar fram `paymentDataThrough` MONOTONT (bara framåt) vid varje
    * betalningsdata-ingest. `through` = datum t.o.m. vilket den ingestade datan är
-   * komplett (senaste transaktionsdatum, PDF-periodslut, eller framtida lastSyncedAt).
+   * registrerat av importen (senaste transaktionsdatum eller PDF-periodslut).
+   * Det är inte ett separat bevis för fullständighet.
    *
    * När datan åter blir FÄRSK nollställs stale-larmets idempotensmarkör så att en
    * KOMMANDE stale-period kan larma på nytt (en notis per period).
@@ -137,7 +194,11 @@ export class PaymentFreshnessService {
   async evaluateForOrg(organizationId: string, now: Date = new Date()): Promise<StaleEvaluation> {
     const org = await this.prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
-      select: { paymentDataThrough: true, paymentDataStaleDays: true },
+      select: {
+        paymentDataThrough: true,
+        paymentDataStaleDays: true,
+        paymentImportStartedAt: true,
+      },
     })
     return this.evaluate(org, now)
   }
@@ -263,16 +324,18 @@ export class PaymentFreshnessService {
     // byts när färsk data matas) → mail-lagrets idempotensnyckel dedupar per period.
     const periodKey = result.through ? result.through.toISOString().slice(0, 10) : 'never'
 
+    const reason = result.through
+      ? `Registrerat betalningsdatum: <strong>${throughLabel}</strong> (äldre än gränsen på ${result.thresholdDays} dagar).`
+      : 'En import har påbörjats men betalningsdatum saknas. Kontrollera importens resultat och försök igen.'
     const orgName = escHtml(org.name)
     const bodyHtml = `
       <h2 style="color:#111827;font-size:20px;font-weight:600;margin:0 0 8px">Kravtrappan är pausad</h2>
       <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
         Den automatiska kravtrappan (påminnelseavgift, inkasso-redo och befarad kundförlust)
-        har <strong>pausats</strong> för ${orgName} eftersom betalningsdatan är inaktuell.
+        har <strong>pausats</strong> för ${orgName} eftersom aktuellt betalningsunderlag saknas.
       </p>
       <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 16px">
-        Senast kända kompletta betalningsdata: <strong>${throughLabel}</strong>
-        (äldre än gränsen på ${result.thresholdDays} dagar). För att inte riskera att
+        ${reason} För att inte riskera att
         påminna eller skicka till inkasso en hyresgäst som faktiskt har betalat hålls
         de stegen tillbaka tills datan uppdaterats.
       </p>

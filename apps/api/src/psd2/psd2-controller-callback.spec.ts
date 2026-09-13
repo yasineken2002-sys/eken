@@ -1,3 +1,5 @@
+// Callbackprovet använder inte importer; behåll den nya injicerade porten isolerad.
+jest.mock('../reconciliation/reconciliation.service', () => ({ ReconciliationService: class {} }))
 /**
  * PSD2-callbacken: @Public, men auktorisering bärs av single-use `state` i
  * consent-servicen. Controllern ska ALLTID 302-redirecta tillbaka till frontend
@@ -21,7 +23,7 @@ function makeController(handleCallback: jest.Mock) {
     appReturnUrl: (ok: boolean) => `https://app/return?psd2=${ok ? 'ok' : 'error'}`,
   }
   const syncQueue = { enqueueOrgSync: jest.fn() }
-  return new Psd2Controller(consent as never, syncQueue as never)
+  return new Psd2Controller(consent as never, syncQueue as never, {} as never)
 }
 
 describe('Psd2Controller.callback', () => {

@@ -76,6 +76,7 @@ export class BankStatementImportService {
     organizationId: string,
     userId: string | null,
   ): Promise<{ id: string; status: string; parsed: ParsedBankStatement }> {
+    await this.freshness.recordImportStarted(organizationId)
     // SECURITY (H3): verifiera att filen faktiskt är en PDF (magiska byten
     // %PDF) och inte överskrider taket innan vi skickar den till Claude som
     // document-block. Den klient-deklarerade filändelsen räcker inte.
@@ -200,6 +201,7 @@ export class BankStatementImportService {
       where: { id, organizationId },
     })
     if (!draft) throw new NotFoundException('Importen hittades inte')
+    await this.freshness.recordImportStarted(organizationId)
     if (draft.status === 'CONFIRMED') {
       throw new BadRequestException('Importen är redan bekräftad och kan inte bekräftas igen.')
     }

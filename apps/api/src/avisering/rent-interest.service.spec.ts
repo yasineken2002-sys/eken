@@ -64,6 +64,7 @@ function makeService(
     prisma as never,
     accounting as never,
     rentNoticeEvents as never,
+    { assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined) } as never,
   )
   return { service, tx, accounting, rentNoticeEvents }
 }
@@ -103,6 +104,7 @@ function makeSegmentService(opts: {
     prisma as never,
     accounting as never,
     rentNoticeEvents as never,
+    { assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined) } as never,
   )
   return { service, tx, accounting, rentNoticeEvents }
 }

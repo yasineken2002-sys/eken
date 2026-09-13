@@ -12,6 +12,10 @@ ingen av dem är en kodrad.** Läs inte "fas 0 klar" som "allt klart".
 | **H2 under verklig samtidighet** — ~~återstår~~ **MÄTT 2026-09-03**                         | `concurrency-under-load.db.spec.ts` mäter det raden krävde: N=10 samtidiga matchare mot samma hyresgästs avier mot riktig Postgres → 1 allokering, **P2028 0 %**, deadlock 0, och negativkontrollen visar att riggen KAN producera felet (utan radlåset 10/10, Σ 90 000 mot en skuld på 9 000). Kvar att mäta är SKALAN, inte mekanismen: N=10 och inte hundra, två kärnor, loopback, en konkurrent och inte en kö. |
 | **H6:s skydd är delvis en deployinställning** — ~~låsen omätta~~ **LÅSEN MÄTTA 2026-09-03** | Prod kör `numReplicas: null` (= 1), och det står kvar: med en instans gör låsen ingenting, och skyddet aktiveras först vid uppskalning. Det som ÄNDRATS är att låsen inte längre är ett påstående — `lock-service-concurrency.db.spec.ts` mäter dem mot riktig Redis (N=10 → 1 kör, 9 nekas; representantjobbet 1 effekt med lås, 2 utan). Kvar som icke-kodinvariant: själva inställningen.                        |
 
+## Betalningsfärskhet nivå 1 — grenprov, inte driftsatt
+
+Mätt på `87c6685a` (2026-09-13): registrerat importförsök + saknat datum pausas i de fyra skyddade automatiska kravtransaktionerna. `import-reminder-reproduction.db.spec.ts` F12–F14 visar sen paus och konkurrerande transaktioner; F21–F22 prövar inkasso och befarad kundförlust. **F19 kvarstår:** CSV med giltigt datum men ogiltigt belopp kan ändå sätta datum och tillåta avgift. Detta är ingen fullständig täckningskvittens. Införandet kräver verifierad övergång utan gamla importer/kravworkers samt inventering av historiska försök + NULL; inget har aktiverats. Se [design och bevis](granskning/betalningsfarskhet-skydd.md).
+
 ## REGELN
 
 **En rad här får aldrig ligga till grund för arbete utan att först mätas om mot
