@@ -59,6 +59,8 @@ function utanKommentarer(src: string): string {
  * ställbar hör den hemma i plattformsadmin, inte i `GET /organizations/me`.
  */
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
+  paymentImportStartedAt:
+    'Oföränderlig intern försöksmarkör, ingen kundinställning. Kravvyn läser färskhetstjänstens bedömning.',
   // #577 — REVISIONSUPPGIFT, INGEN KONSUMENT I GRÄNSSNITTET.
   //
   // Hasharna finns för att kunna svara på "vilken TEXT accepterades" i
