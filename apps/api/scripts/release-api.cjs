@@ -22,6 +22,13 @@ async function runRelease({
     return response.json()
   }
   demand(env.API_RELEASE_GITHUB_TOKEN && env.API_RELEASE_RAILWAY_TOKEN, 'READ_CREDENTIALS_MISSING')
+  const kind = env.API_RELEASE_RAILWAY_TOKEN_KIND
+  demand(kind === 'project' || kind === 'oauth', 'RAILWAY_TOKEN_KIND_REQUIRED')
+  // Typen väljer protokoll; den bevisar inte tokenens scope eller resursbehörighet.
+  const railwayAuth =
+    kind === 'project'
+      ? { 'Project-Access-Token': env.API_RELEASE_RAILWAY_TOKEN }
+      : { Authorization: `Bearer ${env.API_RELEASE_RAILWAY_TOKEN}` }
   const manifest = JSON.parse(readFileSync(join(apiRoot, 'release-artifact.json'), 'utf8'))
   const result = await verifyAndMigrate({
     root: apiRoot,
@@ -39,7 +46,7 @@ async function runRelease({
       const result = await json('https://backboard.railway.com/graphql/v2', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${env.API_RELEASE_RAILWAY_TOKEN}`,
+          ...railwayAuth,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

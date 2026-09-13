@@ -388,8 +388,9 @@ test('api-release-20 real HTTP and process adapter denies malformed responses an
     apiRoot: root,
     env: {
       ...f.environment,
-      API_RELEASE_GITHUB_TOKEN: 'synthetic',
-      API_RELEASE_RAILWAY_TOKEN: 'synthetic',
+      API_RELEASE_GITHUB_TOKEN: 'synthetic-github-only',
+      API_RELEASE_RAILWAY_TOKEN: 'synthetic-railway-only',
+      API_RELEASE_RAILWAY_TOKEN_KIND: 'project',
     },
     fetchImpl,
     spawnImpl,
@@ -410,3 +411,134 @@ test('api-release-20 real HTTP and process adapter denies malformed responses an
     )
   }
 }, 30000)
+
+async function tokenTransport(
+  kind: 'project' | 'oauth',
+  railwayStatus = 200,
+  graphqlError = false,
+) {
+  const { runRelease } = createRequire(__filename)('../../scripts/release-api.cjs')
+  const f = fixture()
+  writeFileSync(join(root, 'release-artifact.json'), JSON.stringify(f.manifest))
+  const seen: Array<{
+    railway: boolean
+    authorization: string | undefined
+    project: string | undefined
+  }> = []
+  const server = createServer(async (request, response) => {
+    const railway = request.url === '/graphql'
+    const authorization = request.headers.authorization
+    const project = request.headers['project-access-token'] as string | undefined
+    seen.push({ railway, authorization, project })
+    const authorized = railway
+      ? kind === 'project'
+        ? project === 'synthetic-railway-only' && authorization === undefined
+        : authorization === 'Bearer synthetic-railway-only' && project === undefined
+      : authorization === 'Bearer synthetic-github-only' && project === undefined
+    if (!authorized) {
+      response.writeHead(401).end()
+      return
+    }
+    if (railway && railwayStatus !== 200) {
+      response.writeHead(railwayStatus).end()
+      return
+    }
+    const value = railway
+      ? {
+          data: { deployment: f.deployment },
+          ...(graphqlError ? { errors: [{ message: 'synthetic denial' }] } : {}),
+        }
+      : await f.github(request.url!)
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify(value))
+  })
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
+  const { port } = server.address() as AddressInfo
+  const spawnImpl = jest.fn(() => spawn(process.execPath, ['-e', 'process.exit(0)']))
+  try {
+    const operation = runRelease({
+      apiRoot: root,
+      env: {
+        ...f.environment,
+        API_RELEASE_GITHUB_TOKEN: 'synthetic-github-only',
+        API_RELEASE_RAILWAY_TOKEN: 'synthetic-railway-only',
+        API_RELEASE_RAILWAY_TOKEN_KIND: kind,
+      },
+      fetchImpl: (url: string, options: RequestInit) =>
+        fetch(
+          `http://127.0.0.1:${port}${url.includes('railway.com') ? '/graphql' : url.split(`/repos/${gate.REPO}`)[1]}`,
+          options,
+        ),
+      spawnImpl,
+    })
+    if (railwayStatus !== 200 || graphqlError) {
+      await expect(operation).rejects.toThrow(
+        graphqlError ? 'DEPLOYMENT_API_INCOMPLETE' : 'REMOTE_HTTP_ERROR',
+      )
+      expect(spawnImpl).not.toHaveBeenCalled()
+    } else {
+      await operation
+      expect(spawnImpl).toHaveBeenCalledTimes(1)
+    }
+    const railwayCalls = seen.filter((request) => request.railway)
+    const githubCalls = seen.filter((request) => !request.railway)
+    if (railwayStatus !== 200 || graphqlError) {
+      expect(railwayCalls).toHaveLength(1)
+      expect(githubCalls).toHaveLength(0)
+    } else {
+      expect(railwayCalls.length).toBeGreaterThan(0)
+      expect(githubCalls.length).toBeGreaterThan(0)
+    }
+    for (const request of railwayCalls)
+      expect(request).toEqual({
+        railway: true,
+        authorization: kind === 'oauth' ? 'Bearer synthetic-railway-only' : undefined,
+        project: kind === 'project' ? 'synthetic-railway-only' : undefined,
+      })
+    for (const request of githubCalls)
+      expect(request).toEqual({
+        railway: false,
+        authorization: 'Bearer synthetic-github-only',
+        project: undefined,
+      })
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((done, reject) =>
+      server.close((error) => (error ? reject(error) : done())),
+    )
+  }
+}
+test('api-release-21 project token uses only Project-Access-Token and keeps GitHub isolated', async () => {
+  await tokenTransport('project')
+})
+test('api-release-22 OAuth token uses only Bearer and keeps GitHub isolated', async () => {
+  await tokenTransport('oauth')
+})
+test('api-release-23 missing or unknown token kind denies before HTTP and process start', async () => {
+  const { runRelease } = createRequire(__filename)('../../scripts/release-api.cjs')
+  const fetchImpl = jest.fn()
+  const spawnImpl = jest.fn()
+  for (const kind of [undefined, '', 'account', 'workspace', 'PROJECT', 'other']) {
+    await expect(
+      runRelease({
+        apiRoot: root, // No manifest: credential-kind denial must precede even artifact IO.
+        env: {
+          API_RELEASE_GITHUB_TOKEN: 'synthetic-github-only',
+          API_RELEASE_RAILWAY_TOKEN: 'synthetic-railway-only',
+          API_RELEASE_RAILWAY_TOKEN_KIND: kind,
+        },
+        fetchImpl,
+        spawnImpl,
+      }),
+    ).rejects.toThrow('RAILWAY_TOKEN_KIND_REQUIRED')
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(spawnImpl).not.toHaveBeenCalled()
+  }
+})
+test('api-release-24 Railway 401, 403 and GraphQL errors deny with no fallback or migrator', async () => {
+  for (const kind of ['project', 'oauth'] as const) {
+    await tokenTransport(kind, 401)
+    await tokenTransport(kind, 403)
+    await tokenTransport(kind, 200, true)
+  }
+})
