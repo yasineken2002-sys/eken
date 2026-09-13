@@ -115,3 +115,65 @@ En kvarvarande historikgräns är särskilt viktig inför införandet: belopp in
 Efter rättelserna passerar 368/368 DB-prov: 78 bevarade #892-fall, 2 ändrade F32-säkerhetsfall och 288 nya B-fall. B-markörerna har 291 observationer eftersom återimporten har två steg i varje format. Fasta facit verifierar exakt lagrat belopp/saldo, importerade rader, datum och riktig cron/DB-effekt. Denna körning är före negativkontroll och ersätter inte de två beställda slutkörningarna.
 
 Två separata granskare har avslutat utan kvarstående blockerande fynd. Provgranskarens finita saldooverflow-fynd reproducerades med 15 röda fall och rättades; produktionsgranskaren återgranskade utökningen. Slutgranskad produktionsfil SHA-256: `8496b96e728b370d068a14f9c62c4da0c32c7cfd63f0495a5ed9c6eddec7ef2d`. Kontraktet kräver varken ny verksamhetspolicy eller bred parserombyggnad.
+
+
+## Slutbevis efter exakt återställning
+
+Implementation sparades som `d2313e52d113fc85dc10285866b7dca9b8639f5d` före negativkontrollen. Endast gamla `parseAmount` återinfördes tillfälligt. Båda F32-fallen (CSV/XLSX) blev röda på faktisk bankrad 123,00, datum 2026-09-13 och avgift 60 kr med 1 kravhändelse, 1 verifikation och 1 syntetiskt köanrop. Felet var `toHaveLength(0)` efter observerad riktig cron-effekt. Hela produktionsfilen återställdes från committen; SHA-256 ovan matchade exakt och Git-diff var tom.
+
+| Verifiering | Godkända prov | Hoppade prov | Namngivna nya B-fall / observationer | Tabeller före/efter städning |
+|---|---:|---:|---:|---|
+| `db-slut-1` | 368/368 | 0 | 288 / 291 | 106, alla radantal identiska |
+| `db-slut-2` | 368/368 | 0 | 288 / 291 | 106, alla radantal identiska |
+
+Varje körnings faktiska baslinje och slutläge: `_prisma_migrations=185`, `CustomerNumberSequence=1`, `ReferenceInterestRate=1`, övriga 103 tabeller noll. Totalt 187 rader före och efter; detta är **inte** antalet skapade fixturer. Egna organisations- och räntefixturer städas av sviten. Lika antal bevisar antalsstädning, inte identiskt innehåll i äldre rader. De 60 ärvda `FILFEL_ASSERTIONS_OK`-observationerna finns i båda loggarna; F32:s två förväntningar är avsiktligt skärpta, övriga 78 äldre provfacit bevarade.
+
+Egen PostgreSQL: `eveno-strikta-belopp-20260913`, etikett `eveno.task=bankimport-strikta-belopp`, port 55441, databas `eveno_farskhet_test`. 185 befintliga migrationer applicerades på egen tom volym; ingen ny migration. Säkerhetskontrollen för databasadress är oförändrad. Alla data och kö-/mejlportar är syntetiska; inga externa AI-anrop eller utskick görs. Lokala loggar och Jest-JSON ligger i worktreens ignorerade `.proof-belopp/`.
+
+## Uppmätta import-, datum- och kravutfall
+
+Datum i tabellen avser `paymentDataThrough`; provklockan är 2026-09-13. Avgift 60 innebär också en faktisk kravhändelse och en verifikation (1510 debet 60 / 3593 kredit 60) samt ett syntetiskt köanrop. Avgift 0 i de pausade fallen har noll av dessa sidoeffekter. Sparade bankrader i de nya beloppsfallen är normalt `UNMATCHED`.
+
+| Fall | Importerade / fel / dubbletter | Exakt lagrat belopp; saldo | Datum | Faktisk avgift |
+|---|---|---|---|---:|
+| F32 före, samma CSV `123skräp` | 1 / 0 / 0 | 123.00; NULL | 2026-09-13 | 60 |
+| F32 efter, CSV/XLSX; B01 även XLS | 0 / 1 / 0 | Ingen bankrad | NULL | 0 |
+| Giltig 100,50 + felaktig rad, alla tre format | 1 / 1 / 0 | 100.50; NULL | NULL | 0 |
+| Rättad återimport av samma fil | 1 / 0 / 1 | 100.50 och 123.45; NULL | 2026-09-13 | 60 |
+| Prefixfel först + giltig 100, tidigare NULL | 1 / 1 / 0 | 100.00; NULL | NULL | 0 |
+| Samma, tidigare gammalt datum | 1 / 1 / 0 | 100.00; NULL | 2026-09-01 oförändrat | 0 |
+| Samma, tidigare aktuellt datum | 1 / 1 / 0 | 100.00; NULL | 2026-09-10 oförändrat | 60 |
+| Belopp 100, saldo `123skräp`, före | 1 / 0 / 0 | 100.00; 123.00 | 2026-09-13 | 60 |
+| Samma, efter | 1 / 0 / 0 | 100.00; NULL | 2026-09-13 | 60 |
+| Belopp 100, saknat/tomt/vanligt ogiltigt saldo | 1 / 0 / 0 | 100.00; NULL | 2026-09-13 | 60 |
+| Belopp 100, saldo Infinity / exponentoverflow | 0 / 1 / 0 | Ingen bankrad | NULL | 0 |
+| Belopp 100, saldo med för stort finit prefix, efter granskningens rättelse | 0 / 1 / 0 | Ingen bankrad | NULL | 0 |
+| XLSX/XLS numeriska celler 1234,56 / 4321,99 med tusentals-/heltalsvisning, före | 1 / 0 / 0 | 1.23; 4.32 | 2026-09-13 | 60 |
+| Samma cellvärden och format, efter | 1 / 0 / 0 | 1234.56; 4321.99 | 2026-09-13 | 60 |
+
+Återimporten använder produktionsvägens verkliga dubblettkontroll; första bankradens ID är uttryckligen oförändrat och slutantalet är två. B05 bevarar uttag/noll/dubblett även med saldo som inte når lagringsvägen. B06–B12 prövar råa numeriska celler, textceller, blad/radmappning, citat och tidigare saldofel. Matrisens explicita facit kontrolleras genom import i alla tre format, inte genom att beräkna facit med parsern.
+
+Detta löser F32:s prefixfel och visningstextens feltolkning av numeriska Excelbelopp inom angivet område. Befintlig datumparser, ofullständig CSV-grammatik, Number-precision/underflow/avrundning och matchError-policy efter lagrad bankrad kvarstår. Lagrad bankdata bevisar inte korrekt matchning eller fullständig konto-/banktäckning. Ett fortfarande aktuellt tidigare datum är inte pausat av varje filfel. Historiskt felaktiga Excelbelopp kan få annan dedupidentitet vid korrekt råtolkning; dessa prov och denna PR rättar inte historiken. F15:s portfel, F22:s manuella tjänsteväg och F23:s låsräckvidd från #891 får inte beskrivas som verkligt commitfel, HTTP-behörighetsprov eller generell parallell bokföringskapacitet. Införande och avskärmning av gamla producenter/workers kräver separat beslut.
+
+
+## Lokal kontroll och avgränsad diff före push
+
+Riktade regressionsprov: 12 sviter, 129/129 godkända (färskhet, importgräns, ingest, OCR, dubbletter, matchError/unmatched och PDF-gränser). Riktad ESLint för produktionsfil och DB-spec är grön. Disk och `pgrep -af "[j]est|[t]sc"` samt `live/farskhet-tunga-processer.py` kontrollerades före tung körning; en tung process åt gången. Cirka 3,4 GiB ledigt, ingen ytterligare diskstädning. API-typkontroll (`tsc --noEmit -p tsconfig.typecheck.json`) är grön. Full svit och exakt slutlig HEAD ska verifieras i CI; lokala prov är inte CI-bevis.
+
+Egna lokala tredjepartsberoenden lånar befintlig cache; Prisma-klient och shared/ui är egna kopior. Ingen installation eller generering muterade cachegivarens arbetsyta. CI ska installera från grenens frysta låsfil. Den egna testcontainern är stoppad med volymen bevarad; noll `filfel_`-triggers/funktioner återstod efter provstädningen.
+
+Efter fetch är fast bas och aktuell PR-bas identiska: `39084309279b5bb300b7a783652777fd88f62fdd`. Merge-base med `origin/main` är `3b71e905d866f461f6b07211bc89b3fa88505200`. Inga främmande ändringar finns i den egna diffen. #891 och #892 är oförändrade. PR ska vara utkast mot `codex/betalningsfarskhet-filfel`; ingen merge, deploy, aktivering eller framåtpropagering.
+
+Egna fem filer:
+
+- `apps/api/src/reconciliation/reconciliation.service.ts`
+- `apps/api/src/payment-freshness/import-reminder-reproduction.db.spec.ts`
+- `docs/granskning/bankimport-strikta-belopp.md`
+- `docs/granskning/bankimport-strikta-belopp-fore.txt`
+- `docs/revision-status.md`
+
+Mot main är det 39 filer: dessa fem och 34 enbart ärvda, byte-oförändrade mot #892. Basen hade 37 filer mot main; tre av dem vidareändras här och två dokument tillkommer. Ärvt område: #889:s två reproduktionsunderlag, #891:s schema/migration, färskhetstjänst och import-/effektgränser, webbtext och äldre prov samt #892:s filfelsspärr och rapporter. Ärvd migration är ingen ny migration i denna PR.
+
+Radräkning använder `git diff --numstat`, tillägg plus borttagningar; kategorierna bestäms av de fem ovan angivna filernas roll. Testfacit och textförebevis räknas som test respektive dokumentation. Ingen binär diff. Exakta tal för fast/aktuell bas och merge-base med main står i följande kvitto.
+
+Fast bas = aktuell PR-bas: **5 filer, +843/−24**; produktion **98** berörda rader (+81/−17), test **568** (+562/−6), dokumentation **201**. Merge-base med main: **39 filer, +4628/−113** inklusive ärvt. Noll binärer.
