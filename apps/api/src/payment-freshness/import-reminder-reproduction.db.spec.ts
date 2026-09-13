@@ -1338,13 +1338,29 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       },
     )
 
-    it('F32 PARSERGRÄNS: numeriskt prefix med skräp är ändligt och accepteras fortfarande', async () => {
+    it('F32 STRIKT BELOPP: numeriskt prefix får inte skapa bankrad, datum eller avgift', async () => {
       const result = await importRows(format, [[TODAY, 'Syntetisk prefixrad', '123skräp']])
-      expect(result).toMatchObject({ imported: 1, unmatched: 1, errors: [] })
-      expect((await bankRows()).map((row) => Number(row.amount))).toEqual([123])
-      const observed = await runCron(`F32 ${format}`, 1)
-      expect(observed.through).toBe(TODAY)
-      expectEffect(observed)
+      const saved = await bankRows()
+      // Observera faktisk cron före säkerhetsassertionerna även i före-/negativprovet.
+      const observed = await runCron(`F32 ${format}`, saved.length)
+      console.warn(
+        'BELOPP_F32_OBSERVATION ' +
+          JSON.stringify({
+            format,
+            result,
+            amounts: saved.map((row) => row.amount.toFixed(2)),
+            through: observed.through,
+            fee: observed.fee,
+            events: observed.events,
+            vouchers: observed.vouchers,
+            queued: observed.queued,
+          }),
+      )
+      expect(saved).toHaveLength(0)
+      expect(result).toMatchObject({ imported: 0, duplicates: 0, unmatched: 0 })
+      expectFileError(result)
+      expect(observed.through).toBeNull()
+      expectPaused(observed)
       fileCasePassed(observed.id, result, observed)
     })
 

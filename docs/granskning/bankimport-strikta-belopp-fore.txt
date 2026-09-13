@@ -1,0 +1,19 @@
+Förebevis, 2026-09-13, endast syntetisk egen PostgreSQL på port 55441.
+Bas: 39084309279b5bb300b7a783652777fd88f62fdd.
+Produktion byteoförändrad mot basen. SHA-256 reconciliation.service.ts: 9373ffdf759ffd08ab174e4beb22432de4ab09a6c2363312a94e49fcdb0c59d8
+Oförändrad CSV: Datum;Beskrivning;Belopp\n2026-09-13;Syntetisk prefixrad;123skräp\n
+F32: {"format": "csv", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "errors": [], "bank": "GENERIC"}, "amounts": ["123.00"], "through": "2026-09-13", "fee": 60, "events": 1, "vouchers": 1, "queued": 1}
+Rött på expect(saved).toHaveLength(0): faktiskt 1 bankrad. Cron hade redan körts.
+F32-körning: 1 fallerat, 79 avsiktligt bortfiltrerade. Ingen trasig testrigg.
+Separat saldo-/Excel-föremätning: 9 körda prov, 80 bortfiltrerade.
+BELOPP_FORE_SALDO: {"input": "123skräp", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "bank": "GENERIC"}, "saved": [{"amount": "100.00", "balance": "123.00"}], "through": "2026-09-13", "fee": 60}
+BELOPP_FORE_SALDO: {"input": "ogiltigt", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "bank": "GENERIC"}, "saved": [{"amount": "100.00", "balance": null}], "through": "2026-09-13", "fee": 60}
+BELOPP_FORE_SALDO: {"input": "", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "bank": "GENERIC"}, "saved": [{"amount": "100.00", "balance": null}], "through": "2026-09-13", "fee": 60}
+BELOPP_FORE_SALDO: {"input": "Infinity", "result": {"imported": 0, "duplicates": 0, "autoMatched": 0, "unmatched": 0, "bank": "GENERIC"}, "saved": [], "through": null, "fee": 0}
+BELOPP_FORE_SALDO: {"input": "1e309", "result": {"imported": 0, "duplicates": 0, "autoMatched": 0, "unmatched": 0, "bank": "GENERIC"}, "saved": [], "through": null, "fee": 0}
+BELOPP_FORE_SALDO: {"input": "1e309skräp", "result": {"imported": 0, "duplicates": 0, "autoMatched": 0, "unmatched": 0, "bank": "GENERIC"}, "saved": [], "through": null, "fee": 0}
+BELOPP_FORE_SALDO: {"input": "Infinityskräp", "result": {"imported": 0, "duplicates": 0, "autoMatched": 0, "unmatched": 0, "bank": "GENERIC"}, "saved": [], "through": null, "fee": 0}
+BELOPP_FORE_EXCEL: {"format": "xlsx", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "bank": "GENERIC"}, "saved": [{"amount": "1.23", "balance": "4.32"}], "through": "2026-09-13", "fee": 60}
+BELOPP_FORE_EXCEL: {"format": "xls", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "bank": "GENERIC"}, "saved": [{"amount": "1.23", "balance": "4.32"}], "through": "2026-09-13", "fee": 60}
+f32-fore: 106 tabeller lika före/efter städning. Icke-tomma: {"CustomerNumberSequence": 1, "ReferenceInterestRate": 1, "_prisma_migrations": 185}. Övriga 103 tomma.
+saldo-excel-fore: 106 tabeller lika före/efter städning. Icke-tomma: {"CustomerNumberSequence": 1, "ReferenceInterestRate": 1, "_prisma_migrations": 185}. Övriga 103 tomma.
