@@ -17,3 +17,4 @@ BELOPP_FORE_EXCEL: {"format": "xlsx", "result": {"imported": 1, "duplicates": 0,
 BELOPP_FORE_EXCEL: {"format": "xls", "result": {"imported": 1, "duplicates": 0, "autoMatched": 0, "unmatched": 1, "bank": "GENERIC"}, "saved": [{"amount": "1.23", "balance": "4.32"}], "through": "2026-09-13", "fee": 60}
 f32-fore: 106 tabeller lika före/efter städning. Icke-tomma: {"CustomerNumberSequence": 1, "ReferenceInterestRate": 1, "_prisma_migrations": 185}. Övriga 103 tomma.
 saldo-excel-fore: 106 tabeller lika före/efter städning. Icke-tomma: {"CustomerNumberSequence": 1, "ReferenceInterestRate": 1, "_prisma_migrations": 185}. Övriga 103 tomma.
+Granskningsregression i första strikta implementationen: 15/15 B11 föll före saldokorrigeringen; varje fall sparade 1 inbetalning utan saldo, förnyade datum till 2026-09-13 och gav avgift 60. 353 andra fall filtrerades bort. Detta är inte basens F32-föreprov.

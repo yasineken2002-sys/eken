@@ -101,3 +101,17 @@ En textcell `1,234.56` ska däremot avvisas som tvetydigt blandade separatorer. 
 F32 körs med exakt #892:s CSV: `Datum;Beskrivning;Belopp\n2026-09-13;Syntetisk prefixrad;123skräp\n`. Faktiska rader och cron observeras före säkerhetsassertionerna. Det lilla textbeviset sparas i `bankimport-strikta-belopp-fore.txt`; råloggar/JSON finns i worktreens ignorerade `.proof-belopp/`.
 
 Alla matrisfall, riktiga numeriska/textceller, saldo, blandat/rättad återimport, NULL/gammalt/aktuellt datum och bärande cron-effekter ska provas med egna DB-fixturer. F32:s båda format är avsiktligt ändrade från nulägesbeskrivning till säkerhetskrav; övriga 78 #892-faciten behålls. Två fullständiga DB-slutkörningar, sparad commit före negativkontroll, exakt återställning, två separata granskare och full CI för slutlig HEAD krävs före leverans.
+
+## Förtydligande efter oberoende granskning, före saldokorrigering
+
+Provgranskaren fann att kompatibilitetsspärren även behöver omfatta ett tidigare finit prefix som överskrider **befintlig** `BankTransaction.balance @db.Decimal(12,2)` efter befintlig `toFixed(2)`, exempelvis `10000000000skräp` eller `9999999999.995skräp`. Sådana värden nekades vid lagring; de får inte bli tyst utelämnat saldo som frigör datum. Samma gäller negativa värden och felgrupperade stora prefix. Gränsen är schemats existerande lagringsprecision, inte en ny affärsmässig beloppsgräns. Kompatibilitetsvägen ska endast bevara dessa tidigare blockerande värden till samma lagringsgräns; ett finit prefix **inom** lagringsomfånget ska fortfarande utelämnas. B11 mäter regressionen före rättelsen och därefter det bevarade säkra utfallet i alla tre format. B02/B12 kompletterar med rena och råa numeriska Excel-saldon över DB-gränsen.
+
+Excel-mappningsprovets första fixtur hade av misstag `!ref=A1:H6` trots avsett startläge C3. Det gjorde en blank rad till rubrik och gav datumfel. Fixturen rättas till uttryckligt `C3:H6`; samma datum-/rad-/beloppsfacit behålls, ingen produktionsändring behövs för det felet.
+
+En kvarvarande historikgräns är särskilt viktig inför införandet: belopp ingår i befintlig dedup. Om äldre kod redan sparat en formaterad numerisk Excelcell med fel belopp (t.ex. 1234,56 som 1,23), kan en senare import med korrekt råvärde skapa en ny bankrad. Återimportproven bevisar korrekt sparad rad plus tidigare avvisad rad inom det nya beteendet, inte dedup mot historiskt feltolkade rader. Ingen historisk omtolkning, rättning eller migrering ingår.
+
+## Granskad implementation
+
+Efter rättelserna passerar 368/368 DB-prov: 78 bevarade #892-fall, 2 ändrade F32-säkerhetsfall och 288 nya B-fall. B-markörerna har 291 observationer eftersom återimporten har två steg i varje format. Fasta facit verifierar exakt lagrat belopp/saldo, importerade rader, datum och riktig cron/DB-effekt. Denna körning är före negativkontroll och ersätter inte de två beställda slutkörningarna.
+
+Två separata granskare har avslutat utan kvarstående blockerande fynd. Provgranskarens finita saldooverflow-fynd reproducerades med 15 röda fall och rättades; produktionsgranskaren återgranskade utökningen. Slutgranskad produktionsfil SHA-256: `8496b96e728b370d068a14f9c62c4da0c32c7cfd63f0495a5ed9c6eddec7ef2d`. Kontraktet kräver varken ny verksamhetspolicy eller bred parserombyggnad.
