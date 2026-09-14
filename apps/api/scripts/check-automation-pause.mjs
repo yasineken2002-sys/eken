@@ -39,11 +39,13 @@
  *   R4  Den EXPORTERADE listan `ALLA_KONAMN` i `queue-inventory.ts` räknar upp
  *       exakt de könamns-konstanter som `BullModule.registerQueue({ name: X })`
  *       använder — i båda riktningarna, utan dubbletter.
- *       R4-form läser listans medlemmar; en form den inte kan läsa medlemsvis är
- *       ett fel och aldrig en tom mängd. Regeln läste tidigare filens
- *       IMPORTNAMN, och en tömd lista med oförändrade importer gav därför
- *       `inventerade: 11` och `fel: []` — den intygade en inventering
- *       driftverktyget inte hade.
+ *       R4-form läser listans medlemmar OCH efterledet efter arrayens `]`; en
+ *       form den inte kan räkna om är ett fel och aldrig en tom mängd. Regeln
+ *       läste tidigare filens IMPORTNAMN, och en tömd lista med oförändrade
+ *       importer gav därför `inventerade: 11` och `fel: []`. Den läste därefter
+ *       bara arrayen, så `].sort().slice(0, 4)` exporterade fyra namn medan
+ *       vakten fortfarande räknade elva. Enda tillåtna efterledet är `.sort()`
+ *       utan argument.
  *   R5  KANARIEFÅGELN: härledningarna måste ha MÄTT något. Hittar skanningen
  *       noll processorer eller noll registerQueue-namn är R1–R4 gröna av tomhet,
  *       vilket är det utfall den här familjen av vakter oftast har fallit på.
@@ -118,7 +120,7 @@
  */
 import { readdirSync, statSync, readFileSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
-import { codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import { blankComments, codeMask, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
 
 const ROT = resolve(new URL('../../..', import.meta.url).pathname)
 const SRC = 'apps/api/src'
@@ -157,6 +159,38 @@ const KONAMN_RE = new RegExp(String.raw`name\s*:\s*(${ID}+)`, 'gu')
 const SCHEMA_RE = /ScheduleModule\s*\.\s*forRoot\s*\(/g
 
 /**
+ * ── VARFÖR NAMNET SJÄLVT MÅSTE GRINDAS ──────────────────────────────────────
+ *
+ * `SCHEMA_RE` kräver punktnotation och det ordagranna namnet `ScheduleModule`.
+ * En oberoende granskare visade att det inte räcker. Uppmätt mot verkliga
+ * `evaluate`, med repots riktiga källor i övrigt:
+ *
+ *   import { ScheduleModule as S } … imports: [S.forRoot()]    →  fel: []
+ *   imports: [ScheduleModule['forRoot']()]                     →  fel: []
+ *
+ * Båda registrerar schemaläggaren ogrindat, och båda var GRÖNA. Att jaga varje
+ * anropsform är en kapplöpning vakten inte kan vinna — men NAMNET går inte att
+ * komma runt: `ScheduleModule` måste importeras från `@nestjs/schedule` för att
+ * kunna anropas alls, i vilken form som helst.
+ *
+ * Därför flyttas grinden ett steg tillbaka: BINDNINGEN `ScheduleModule` får bara
+ * importeras i `app.module.ts`. Övriga bindningar (`Cron`, `CronExpression`,
+ * `SchedulerRegistry`) är fria — 25 filer använder dem, och de registrerar
+ * ingenting i sig. Uppmätt i dag: exakt en fil importerar `ScheduleModule`.
+ *
+ * En importform vakten inte kan läsa medlemsvis — namnrymdsimport, default,
+ * `require`, en lös sträng — blir ett granskningskrävande fel. Fail-closed:
+ * den formen kan bära namnet utan att visa det.
+ */
+const SCHEDULE_PAKET = '@nestjs/schedule'
+const SCHEDULE_NAMNIMPORT_RE =
+  /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*['"]@nestjs\/schedule['"]/g
+const SCHEDULE_FOREKOMST_RE = /@nestjs\/schedule/g
+
+/** `ScheduleModule[...]` — beräknad medlemsåtkomst göms för SCHEMA_RE. */
+const SCHEMA_BERAKNAD_RE = /ScheduleModule\s*\[/
+
+/**
  * DEN EXAKTA GRINDFORMEN, och ingen annan.
  *
  * Fyndet: R3 frågade tidigare tre skilda saker — att strängen
@@ -186,7 +220,17 @@ const GRIND_FORM_RE = new RegExp(
 )
 
 /** `export const ALLA_KONAMN … = [` — listan driftverktyget FAKTISKT använder. */
-const LISTA_RE = /export\s+const\s+ALLA_KONAMN[^=]*=\s*\[/
+// Ordgränsen bär: utan den matchar `export const ALLA_KONAMN_GAMLA = [...]`
+// först och vakten läser fel deklaration. Funnet av en granskare.
+const LISTA_RE = new RegExp(String.raw`export\s+const\s+ALLA_KONAMN(?!${ID})[^=]*=\s*\[`, 'u')
+
+/**
+ * Vad som får stå EFTER arrayens `]` i samma initializer. Se
+ * `läsInventeringslistan` för de tre mutationer som gjorde regeln nödvändig.
+ * `as const` tillåts därför att den är rent typnivå. Kommentarer är redan
+ * blankade till mellanslag av `codeMask` och fångas av `\s*`.
+ */
+const EFTERLED_RE = /^\s*(?:\.sort\(\s*\))?\s*(?:as\s+const\b)?\s*;?\s*(?:\r?\n|$)/
 
 /**
  * Läser den EXPORTERADE listans medlemmar, inte inventeringsfilens importrad.
@@ -221,6 +265,40 @@ function läsInventeringslistan(kod) {
   if (djup !== 0) {
     return { fel: 'ALLA_KONAMN-arrayen avslutas aldrig — källan går inte att läsa medlemsvis.' }
   }
+  // ── EFTERLEDET ÄR OCKSÅ EN DEL AV MÄNGDEN ─────────────────────────────────
+  //
+  // Läsningen stannade tidigare vid arrayens `]` och returnerade dess poster.
+  // Allt som stod EFTER arrayen i samma initializer var osynligt, och det är en
+  // öppning för godtycklig efterbearbetning. Tre minnesmutationer från
+  // granskningen, med repots övriga källor oförändrade:
+  //
+  //   ].sort().slice(0, 4)                                  faktiskt 4 namn
+  //   ].filter(name => name !== QUEUE_PDF).sort()           faktiskt 10 namn
+  //   ].map(name => name === QUEUE_PDF ? 'pdf-v2' : name)   PDF-kön saknas
+  //
+  // Alla tre gav `fel: []` och `inventerade: 11`. Den sista uppfyller dessutom
+  // queue-ops.spec.ts krav på längd, unikhet och de fyra namngivna köerna — den
+  // hade alltså inte fångats av mothållet på andra sidan heller.
+  //
+  // `.sort()` UTAN ARGUMENT är det enda tillåtna efterledet. Den kan inte ändra
+  // MEDLEMMARNA, bara ordningen, och filen sorterar med flit för att utskriften
+  // ska vara jämförbar mellan körningar. Varje annat efterled — inklusive
+  // `.sort(jämför)`, som vi inte behöver och därför inte tillåter — är en form
+  // vakten inte kan räkna om, och blir ett granskningskrävande fel.
+  const efterled = kod.slice(i)
+  if (!EFTERLED_RE.test(efterled)) {
+    const smakprov = efterled.trim().split('\n')[0].slice(0, 60)
+    return {
+      fel:
+        `ALLA_KONAMN-arrayen följs av ett efterled vakten inte kan räkna om ` +
+        `(\`${smakprov}\`). Den exporterade mängden är då något annat än arrayens ` +
+        'poster, och R4 skulle jämföra registreringarna mot en lista som inte finns. ' +
+        'Enda tillåtna efterledet är `.sort()` utan argument: den ändrar ordning, aldrig ' +
+        'medlemmar. Behövs en annan bearbetning ska den ske i en egen, namngiven konstant ' +
+        'som vakten kan läsa för sig.',
+    }
+  }
+
   const kropp = kod.slice(start.index + start[0].length, i - 1)
   const poster = kropp
     .split(',')
@@ -262,6 +340,16 @@ function samlaFiler(dir, ut = []) {
  *   blir röd när den kontroll den bevakar tas bort mäter inte den kontrollen.
  *   Produktionskörningen skickar aldrig något här.
  */
+/** Sökvägsformen normaliserad: `rel` kan bära `\\` eller ett `./`-prefix. */
+function ärAppModule(rel) {
+  return rel.split('\\').join('/').replace(/^\.\//, '') === APP_MODULE
+}
+
+/** Ligger `index` inuti regexträffen `m`? */
+function inom(index, m) {
+  return index >= m.index && index < m.index + m[0].length
+}
+
 export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }, läge = {}) {
   const fel = []
   const aktiv = (id) => läge.utanRegel !== id
@@ -365,14 +453,31 @@ export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }, l�
 
   // R3-form: GRINDUTTRYCKET självt, inte ordningen mellan två textträffar.
   const schemaTräffar = [...appModuleKod.matchAll(SCHEMA_RE)]
+  const grindTräff = GRIND_FORM_RE.exec(appModuleKod)
   if (aktiv('R3-form')) {
+    if (SCHEMA_BERAKNAD_RE.test(appModuleKod)) {
+      fel.push(
+        `R3-form ${APP_MODULE} — \`ScheduleModule[…]\` (beräknad medlemsåtkomst). Formen göms ` +
+          'för varje mönster som läser `ScheduleModule.forRoot(`, och en granskare visade att ' +
+          'den passerade vakten ogrindad. Skriv anropet med punktnotation, innanför grinden.',
+      )
+    }
     if (schemaTräffar.length !== 1) {
       fel.push(
         `R3-form ${APP_MODULE} — hittade ${schemaTräffar.length} ScheduleModule.forRoot(-anrop, ` +
           'förväntade exakt ett. Fler än ett betyder att minst ett kan stå utanför grinden; ' +
           'noll betyder att regeln inte längre mäter det den tror.',
       )
-    } else if (!GRIND_FORM_RE.test(appModuleKod)) {
+    } else if (grindTräff && !inom(schemaTräffar[0].index, grindTräff)) {
+      // Att mönstret finns NÅGONSTANS i filen räcker inte: en död hjälpfunktion
+      // som bär den giltiga formen hade gjort en ogrindad registrering i
+      // `imports` osynlig. Anropet måste vara DET anrop grinden omsluter.
+      fel.push(
+        `R3-form ${APP_MODULE} — grindformen finns i filen, men ScheduleModule.forRoot()-anropet ` +
+          'ligger UTANFÖR den. Grinden omsluter då något annat än den registrering appen ' +
+          'faktiskt använder.',
+      )
+    } else if (!grindTräff) {
       fel.push(
         `R3-form ${APP_MODULE} — ScheduleModule.forRoot() står inte i den grindform vakten ` +
           'kan läsa. Den enda godtagna formen är\n' +
@@ -393,7 +498,7 @@ export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }, l�
   // uppmätt: fel: []. En sådan registrering står per definition utanför grinden.
   if (aktiv('R3-utanför')) {
     for (const { rel, kod } of filer) {
-      if (rel === APP_MODULE) continue
+      if (ärAppModule(rel)) continue
       const antal = [...kod.matchAll(SCHEMA_RE)].length
       if (antal > 0) {
         fel.push(
@@ -401,6 +506,71 @@ export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }, l�
             'Schemaläggaren registreras då oavsett driftpausens grind, och @Cron-metoderna i ' +
             'hela appen kopplas in mitt i ett underhållsfönster. Registreringen hör hemma på ' +
             'exakt ett ställe, innanför schedulerShouldRegister(...).',
+        )
+      }
+    }
+  }
+
+  // R3-import: SJÄLVA BINDNINGEN grindas. Se kommentaren vid SCHEDULE_PAKET —
+  // `S.forRoot()` efter en alias-import och `ScheduleModule['forRoot']()` var
+  // båda gröna, och ingen mönstermatchning på ANROPET kan täcka alla former.
+  // Namnet går däremot inte att komma runt.
+  if (aktiv('R3-import')) {
+    // APP_MODULE INGÅR NUMERA. Regeln hoppade tidigare över den, och då gick
+    //
+    //   import { ScheduleModule, ScheduleModule as S } from '@nestjs/schedule'
+    //   imports: [ ...grinden..., S.forRoot() ]
+    //
+    // igenom: aliaset `S` syns inte för SCHEMA_RE, och importkontrollen tittade
+    // inte i filen. Påpekat som avgränsning i återgranskningen. I app.module.ts
+    // får bindningen därför importeras — men BARA under sitt eget namn.
+    for (const f of filer) {
+      // Kommentarer blankade, STRÄNGAR KVAR: modulsökvägen är en sträng, så
+      // `codeMask`-vyn kan inte svara på den här frågan. En vy per fråga.
+      const text = f.text ?? f.kod
+      const förekomster = [...text.matchAll(SCHEDULE_FOREKOMST_RE)].length
+      if (förekomster === 0) continue
+      const iAppModule = ärAppModule(f.rel)
+
+      let lästa = 0
+      for (const m of text.matchAll(SCHEDULE_NAMNIMPORT_RE)) {
+        lästa += 1
+        for (const del of m[1].split(',')) {
+          const led = del.trim()
+          if (led === '') continue
+          const [rå, lokalt] = led.split(/\s+as\s+/u)
+          // DEN CITERADE FORMEN NORMALISERAS. TypeScript 5.6 tillåter
+          // `import { 'ScheduleModule' as S }` (godtyckliga modulnamn, ES2022),
+          // och den gick rakt igenom en jämförelse mot det ociterade namnet —
+          // uppmätt i återgranskningen: fel: []. Citattecknen bärs av `text`,
+          // som med flit behåller strängar.
+          const namn = rå.trim().replace(/^(['"`])(.*)\1$/su, '$2')
+          if (namn !== 'ScheduleModule') continue
+
+          if (!iAppModule) {
+            fel.push(
+              `R3-import ${f.rel} — importerar bindningen ScheduleModule från ` +
+                `${SCHEDULE_PAKET}. Bara ${APP_MODULE} får göra det, och bara innanför ` +
+                'driftpausens grind. Övriga bindningar (Cron, CronExpression, ' +
+                'SchedulerRegistry) är fria — de registrerar ingen schemaläggare. Behövs ' +
+                'modulen någon annanstans är det ett eget beslut, inte en import.',
+            )
+          } else if ((lokalt ?? namn).trim() !== 'ScheduleModule') {
+            fel.push(
+              `R3-import ${APP_MODULE} — ScheduleModule importeras under namnet ` +
+                `\`${(lokalt ?? '').trim()}\`. Ett alias gör registreringen osynlig för ` +
+                'R3-form och R3-utanför, som båda läser det ordagranna namnet. Bindningen ' +
+                'ska heta ScheduleModule här.',
+            )
+          }
+        }
+      }
+      if (lästa !== förekomster) {
+        fel.push(
+          `R3-import ${f.rel} — ${förekomster - lästa} förekomst(er) av ${SCHEDULE_PAKET} som ` +
+            'inte är en läsbar namnimport (namnrymdsimport, default, require eller en lös ' +
+            'sträng). En sådan form kan bära ScheduleModule utan att visa namnet, så den blir ' +
+            'ett granskningskrävande fel i stället för ett tyst godkännande.',
         )
       }
     }
@@ -475,10 +645,17 @@ export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }, l�
 }
 
 function frånDisk() {
-  const filer = samlaFiler(join(ROT, SRC)).map((p) => ({
-    rel: relative(ROT, p),
-    kod: codeMask(readFileSync(p, 'utf8')),
-  }))
+  const filer = samlaFiler(join(ROT, SRC)).map((p) => {
+    const rå = readFileSync(p, 'utf8')
+    return {
+      rel: relative(ROT, p),
+      kod: codeMask(rå),
+      // EN VY PER FRÅGA. `kod` blankar stränginnehåll, vilket är rätt för
+      // identifierarfrågorna men gör modulsökvägar osynliga. `text` behåller
+      // strängarna och blankar bara kommentarerna — R3-import läser den.
+      text: blankComments(rå),
+    }
+  })
   return {
     filer,
     appModuleKod: codeMask(readFileSync(join(ROT, APP_MODULE), 'utf8')),
@@ -781,6 +958,34 @@ function självtest() {
     ),
   )
 
+  // ── KANARIE C1-C3: EFTERLEDET EFTER ARRAYEN ───────────────────────────────
+  //
+  // Återgranskningens tre motexempel, ordagrant. Alla tre gav före rättningen
+  // `fel: []` och `inventerade: 11` medan den FAKTISKT exporterade mängden var
+  // 4 namn, 10 namn respektive 11 namn där PDF-kön bytts ut.
+  for (const [namn, efterled] of [
+    ['C1', '.sort().slice(0, 4)'],
+    ['C2', '.filter(name => name !== QUEUE_PDF).sort()'],
+    ['C3', ".map(name => name === QUEUE_PDF ? 'pdf-v2' : name).sort()"],
+  ]) {
+    fel.push(
+      ...kanarie(
+        namn,
+        {
+          ...grund,
+          inventeringKod: grund.inventeringKod.replace(/\]\.sort\(\)/, `]${efterled}`),
+        },
+        'R4-form',
+        (f) => f.includes('efterled'),
+      ),
+    )
+  }
+
+  // KANARIE C4 — MOTSATSEN: det efterled filen FAKTISKT har måste passera.
+  // Utan den raden vore C1-C3 uppfyllda av att förbjuda varje efterled, och
+  // nuläget hade varit rött (kanarie 0 fångar det, men inte VARFÖR).
+  fel.push(...tystKanarie('C4', grund, 'R4-form'))
+
   // KANARIE U — en OLÄSLIG listform ska bli ett granskningskrävande fel, inte en
   // tom mängd. En tom mängd hade tystat BÅDA R4-riktningarna på en gång.
   fel.push(
@@ -794,15 +999,194 @@ function självtest() {
     ),
   )
 
-  // KANARIE G — en TOM filmängd ska fälla R5, och R1/R2 ska tiga.
+  // KANARIE G — de två GOLVEN, var för sig.
+  //
+  // G godtog tidigare `f.startsWith('R5')` mot en tom filmängd. Den prefixen
+  // täcker BÅDA golven och pariteten, så självtestet förblev grönt när endera
+  // golvet togs bort — uppmätt av en granskare. Det är samma defekt som C och D
+  // hade: en kanariefågel som blir grön av fel regel. Golven mäts därför var för
+  // sig, med varsitt motprov.
   {
-    const tom = evaluate({ ...grund, filer: [] })
-    if (!tom.fel.some((f) => f.startsWith('R5'))) {
-      fel.push('KANARIE G: R5 fällde inte på tom mängd.')
+    // G1: ingen fil alls → processorgolvet.
+    fel.push(...kanarie('G1', { ...grund, filer: [] }, 'R5-golv-processorer'))
+
+    // G2: filerna kvar, men ingen registerQueue → könamnsgolvet. Processorerna
+    // är orörda, så det här kan bara fällas av just det golvet.
+    const utanRegistreringar = {
+      ...grund,
+      filer: grund.filer.map((f) => ({ ...f, kod: f.kod.split('registerQueue').join('registrerarIngenting') })),
     }
+    fel.push(...kanarie('G2', utanRegistreringar, 'R5-golv-könamn'))
+
+    const tom = evaluate({ ...grund, filer: [] })
     if (tom.fel.some((f) => f.startsWith('R1'))) {
       fel.push('KANARIE G: R1 fällde på tom mängd — den ska tiga och låta R5 tala.')
     }
+  }
+
+  // ── R3-FORMENS EGNA PÅSTÅENDEN ────────────────────────────────────────────
+  // Mönstret säger att `process.env` ingår med flit, att den registrerande
+  // grenen bara får bära forRoot-anropet, och att den alternativa grenen måste
+  // vara TOM. Reglerna fällde de tre fallen redan — men ingenting höll fast dem,
+  // och en försvagning av mönstret hade passerat självtestet. Funnet av en
+  // granskare.
+  fel.push(
+    ...kanarie(
+      'W',
+      {
+        ...grund,
+        appModuleKod: GILTIG_APPMODULE.replace('process.env', 'minEgenMiljö'),
+      },
+      'R3-form',
+    ),
+  )
+  fel.push(
+    ...kanarie(
+      'X',
+      {
+        ...grund,
+        appModuleKod: GILTIG_APPMODULE.replace(
+          '[ScheduleModule.forRoot()]',
+          '[ScheduleModule.forRoot(), AnnanModul]',
+        ),
+      },
+      'R3-form',
+    ),
+  )
+  fel.push(
+    ...kanarie(
+      'Y',
+      { ...grund, appModuleKod: GILTIG_APPMODULE.replace(': [])', ': [AnnanModul])') },
+      'R3-form',
+    ),
+  )
+
+  // KANARIE Z0 — grindformen i en DÖD hjälpfunktion medan den riktiga
+  // registreringen står ogrindad i `imports`. Mönstret finns då i filen, men
+  // omsluter inte det anrop appen använder.
+  fel.push(
+    ...kanarie(
+      'Z0',
+      {
+        ...grund,
+        appModuleKod:
+          'imports: [ConfigModule.forRoot({ validate: validateEnv }), ScheduleModule.forRoot()]\n' +
+          'function dödKod() { return [...(schedulerShouldRegister(process.env) ? [x] : [])] }',
+      },
+      'R3-form',
+    ),
+  )
+
+  // KANARIE Z1 — beräknad medlemsåtkomst i app.module.ts.
+  fel.push(
+    ...kanarie(
+      'Z1',
+      {
+        ...grund,
+        appModuleKod: GILTIG_APPMODULE + "\n  ScheduleModule['forRoot']()",
+      },
+      'R3-form',
+      (f) => f.includes('beräknad medlemsåtkomst'),
+    ),
+  )
+
+  // ── R3-IMPORT ─────────────────────────────────────────────────────────────
+  // Granskarens fynd: `import { ScheduleModule as S }` följt av `S.forRoot()` i
+  // en featuremodul var GRÖN. Ingen mönstermatchning på ANROPET täcker alla
+  // former; bindningen gör det.
+  {
+    const medFil = (källa) => ({
+      ...grund,
+      filer: [
+        ...grund.filer,
+        { rel: 'apps/api/src/syntetisk/smyg.module.ts', kod: codeMask(källa), text: blankComments(källa) },
+      ],
+    })
+
+    fel.push(
+      ...kanarie(
+        'Z2',
+        medFil("import { ScheduleModule as S } from '@nestjs/schedule'\nimports: [S.forRoot()]\n"),
+        'R3-import',
+        (f) => f.includes('bindningen ScheduleModule'),
+      ),
+    )
+    fel.push(
+      ...kanarie(
+        'Z3',
+        medFil("import * as sched from '@nestjs/schedule'\nimports: [sched.ScheduleModule.forRoot()]\n"),
+        'R3-import',
+        (f) => f.includes('inte är en läsbar namnimport'),
+      ),
+    )
+    fel.push(
+      ...kanarie(
+        'Z4',
+        medFil("const { ScheduleModule } = require('@nestjs/schedule')\n"),
+        'R3-import',
+      ),
+    )
+    // Z5 — MOTSATSEN: de 25 filer som importerar Cron/CronExpression/
+    // SchedulerRegistry får INTE fällas. Utan den här raden vore regeln ovan
+    // uppfylld av att förbjuda hela paketet, vilket hade brutit halva appen.
+    fel.push(
+      ...tystKanarie(
+        'Z5',
+        medFil("import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule'\n"),
+        'R3-import',
+      ),
+    )
+
+    // KANARIE D1 — den CITERADE bindningen. TypeScript 5.6 tillåter formen, och
+    // den gav `fel: []` i återgranskningen: jämförelsen läste `'ScheduleModule'`
+    // med citattecken och matchade aldrig det ociterade namnet.
+    fel.push(
+      ...kanarie(
+        'D1',
+        medFil(
+          "import { 'ScheduleModule' as S } from '@nestjs/schedule'\n" +
+            '@Module({ imports: [S.forRoot()] })\nclass SmygModule {}\n',
+        ),
+        'R3-import',
+        (f) => f.includes('bindningen ScheduleModule'),
+      ),
+    )
+    fel.push(
+      ...kanarie(
+        'D2',
+        medFil("import { \"ScheduleModule\" as S } from '@nestjs/schedule'\n"),
+        'R3-import',
+        (f) => f.includes('bindningen ScheduleModule'),
+      ),
+    )
+
+    // KANARIE D3 — ETT ALIAS I APP.MODULE.TS. Återgranskningens uttryckliga
+    // avgränsning: `ScheduleModule as S` bredvid den riktiga grinden passerade,
+    // eftersom importkontrollen hoppade över AppModule. Den hoppar den inte
+    // längre, så luckan är stängd i stället för bara redovisad.
+    {
+      const källa =
+        "import { ScheduleModule, ScheduleModule as S } from '@nestjs/schedule'\n" +
+        'imports: [S.forRoot()]\n'
+      fel.push(
+        ...kanarie(
+          'D3',
+          {
+            ...grund,
+            filer: grund.filer.map((f) =>
+              ärAppModule(f.rel) ? { ...f, kod: codeMask(källa), text: blankComments(källa) } : f,
+            ),
+          },
+          'R3-import',
+          (f) => f.includes('under namnet'),
+        ),
+      )
+    }
+
+    // KANARIE D4 — MOTSATSEN: app.module.ts:s RIKTIGA import, under sitt eget
+    // namn, får inte fällas. Annars vore D3 uppfylld av att förbjuda importen
+    // överallt, och då kunde ingen registrera schemaläggaren alls.
+    fel.push(...tystKanarie('D4', grund, 'R3-import'))
   }
 
   // KANARIE H — en KOMMENTAR som påstår att grinden finns får inte uppfylla R1.
@@ -910,8 +1294,9 @@ function självtest() {
     `SJÄLVTEST GRÖNT — ${grönt.mätt.processorer} @Processor-klasser, ` +
       `${grönt.mätt.grindade} grindade, ${grönt.mätt.könamn} könamn, ` +
       `${grönt.mätt.inventerade} inventerade i den EXPORTERADE listan. ` +
-      '20 egna kanariefåglar prövade, var och en med motprov mot sin egen regel, ' +
-      'plus den delade skannerns 7.',
+      '41 egna kanariefåglar prövade: 35 med MOTPROV mot sin egen regel (mutationen ' +
+      'får inte längre fälla när just den regeln stängs av), och 6 tysta som kräver ' +
+      'att en KORREKT källa INTE fälls. Plus den delade skannerns 7.',
   )
 }
 
