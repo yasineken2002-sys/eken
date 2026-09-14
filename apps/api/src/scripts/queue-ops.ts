@@ -157,10 +157,30 @@ export function redactRedisUrl(url: string): string {
     const u = new URL(url)
     if (u.password) u.password = '***'
     if (u.username) u.username = '***'
-    // Nycklarna ögonblicksbilds först: `set` muterar samlingen vi itererar över.
-    for (const namn of [...u.searchParams.keys()]) u.searchParams.set(namn, '***')
-    if (u.hash) u.hash = '#***'
-    return u.toString()
+
+    // QUERYN UTELÄMNAS HELT — NAMN OCH ALLT. Att maskera värdena räckte inte:
+    // ett queryled utan `=` blir ett NAMN med tomt värde, så
+    //
+    //   --redis-url=redis://h:6379/0?SYNTHETIC_TEST_VALUE
+    //
+    // loggades som `redis://h:6379/0?SYNTHETIC_TEST_VALUE=***` — hemligheten
+    // oförändrad, bara med ett maskerat tomt värde efter sig. Uppmätt genom
+    // verkliga `main` av en granskare.
+    //
+    // Querynamn är ingen betrodd, ofarlig mängd bara för att värdena maskeras.
+    // Och eftersom formen ändå AVVISAS av `parseRedisTarget` finns det ingen som
+    // helst anledning att återge dess innehåll: ANTALET är allt operatören
+    // behöver för att se att det var queryn som fällde adressen.
+    const ledAntal = u.search === '' ? 0 : u.search.slice(1).split('&').filter(Boolean).length
+    const hadeFragment = u.hash !== ''
+    u.search = ''
+    u.hash = ''
+
+    return (
+      u.toString() +
+      (ledAntal > 0 ? ` (+${ledAntal} queryparameter(rar) utelämnade)` : '') +
+      (hadeFragment ? ' (+fragment utelämnat)' : '')
+    )
   } catch {
     // Går URL:en inte att tolka får ingenting skrivas ut — en oparserbar sträng
     // kan mycket väl vara en hel credential.
@@ -192,6 +212,34 @@ export interface RedisTarget {
  */
 const GLOBTECKEN = /[*?[\]\\]/
 
+/** IPv4 i punktform eller IPv6 (som alltid bär kolon). Se `bullQueueOptions`. */
+const ÄR_IP = /^(?:\d{1,3}(?:\.\d{1,3}){3}|.*:)/
+
+/**
+ * Maskerar varje redis-adress som råkar ligga inbäddad i en text.
+ *
+ * Finns för EN väg: `--confirm` ekas tillbaka till operatören, och `--confirm`
+ * och `--redis-url` bär båda en `redis://…`-sträng. Att klistra fel av de två är
+ * nära till hands, och då hade lösenordet hamnat på stderr genom den enda väg
+ * som inte gick genom `redactRedisUrl`. Funnet av en granskare.
+ */
+export function maskeraAdresser(text: string): string {
+  // `i`-FLAGGAN BÄR. Utan den gick en versal adress rakt igenom:
+  //
+  //   --confirm=REDIS://user:SYNTHETIC_TEST_VALUE@h:6379/0
+  //     angivet:   REDIS://user:SYNTHETIC_TEST_VALUE@h:6379/0
+  //
+  // Uppmätt genom hela CLI:s felväg av en granskare. `new URL()` normaliserar
+  // schemat, så själva maskeringen klarade formen — det var matchningen som inte
+  // såg den.
+  const medAdresserMaskerade = text.replace(/rediss?:\/\/\S+/gi, (m) => redactRedisUrl(m))
+
+  // SISTA UTVÄGEN: en userinfo-del i något som INTE såg ut som en redis-adress.
+  // Måltexten bär aldrig ett `@`, så en `//nånting:nånting@`-sekvens i en
+  // `--confirm` är per definition inte måltext — och kan vara en credential.
+  return medAdresserMaskerade.replace(/\/\/[^\s/@]*:[^\s/@]*@/g, '//***:***@')
+}
+
 /**
  * ETT PREFIX ÄR EN STRÄNG, INTE ETT MÖNSTER — och skillnaden är en spärr.
  *
@@ -201,15 +249,25 @@ const GLOBTECKEN = /[*?[\]\\]/
  * inte ligger där åtgärden landar.
  *
  * Uppmätt mot isolerad riktig Redis 7.4.8, seedad med `bull:pdf:id` och
- * `bull:mail:high:id`:
+ * `bull:mail:high:id`. Kolumnen "utan literalkontroll" är loopkroppen SOM DEN SÅG
+ * UT FÖRE den här rättningen — den bokstavliga per-träff-kontrollen i
+ * `scanQueueNames` infördes i samma commit som den här spärren, och utan den
+ * skillnaden är talen inte reproducerbara mot dagens kod:
  *
- *   prefix "bu?l"      SCAN träffar bull:*  → återrapporterade pdf, mail:high
- *   prefix "bul*"      SCAN träffar bull:*  → återrapporterade pdf, mail:high
- *   prefix "b[ua]ll"   SCAN träffar bull:*  → återrapporterade "2-sync", "l:high"
+ *   prefix        utan literalkontroll          med (dagens kod)
+ *   "bu?l"        pdf, mail:high, psd2-sync     []
+ *   "bul*"        pdf, mail:high, psd2-sync     []
+ *   "b[ua]ll"     "2-sync", "l:high"            []
  *
  * Den sista raden är värd att dröja vid: namnet skalas fram med `prefix.length`,
  * och ett mönster som är längre än strängen det matchar ger inte bara fel mål
  * utan STYMPADE könamn. Utfallet var alltså inte ens internt konsekvent.
+ *
+ * DE TVÅ SPÄRRARNA ÄR INTE SAMMA SPÄRR, och det är skälet att båda finns. Den
+ * bokstavliga kontrollen gör SCAN-resultatet tomt, vilket leder till att en
+ * muterande åtgärd vägras av tommålsspärren. Men `--allow-empty-target` häver
+ * just den vägran — och då hade Bull pausat under det bokstavliga globprefixet.
+ * Avvisningen här är det som stoppar den vägen.
  *
  * Valet är att AVVISA i stället för att escapea. Ett escapeat glob hade gett en
  * korrekt SCAN mot ett prefix som ändå inte kan vara ett Bull-prefix i den här
@@ -228,10 +286,9 @@ export function assertScanSafePrefix(prefix: string): void {
   if (GLOBTECKEN.test(prefix)) {
     throw new Error(
       `--prefix '${prefix}' bär ett Redis-metatecken (* ? [ ] \\). Ett prefix är en ` +
-        'STRÄNG för Bull och ett MÖNSTER för SCAN: verktyget hade läst ett ' +
-        'nyckelrum och pausat ett annat, rakt igenom tommålsspärren. Uppmätt mot ' +
-        'riktig Redis hittar `bu?l:*:id` nycklarna under `bull:`, medan Bull ' +
-        'muterar det bokstavliga prefixet `bu?l`.',
+        'STRÄNG för Bull och ett MÖNSTER för SCAN. Uppmätt mot riktig Redis ' +
+        'träffar `bu?l:*:id` nycklarna under `bull:`, medan Bull muterar det ' +
+        'BOKSTAVLIGA prefixet `bu?l` — alltså ett annat nyckelrum än det som lästes.',
     )
   }
 }
@@ -290,9 +347,20 @@ export function parseRedisTarget(redisUrl: string, prefix: string): RedisTarget 
   }
 
   if (u.search !== '') {
-    const namn = [...new Set(u.searchParams.keys())]
+    // BARA NAMN SOM HADE ETT VÄRDE ÅTERGES. Ett led utan `=` är inte ett
+    // parameternamn utan okänd text — `?hunter2` är en fullt möjlig felpaste av
+    // ett lösenord, och namnet på ett `namn=värde`-par är det inte. Funnet av en
+    // granskare; kostnaden för att hålla tyst om det är en rad.
+    const led = u.search.slice(1).split('&').filter(Boolean)
+    const namn = [
+      ...new Set(led.filter((d) => d.includes('=')).map((d) => d.slice(0, d.indexOf('=')))),
+    ]
+    const namnlösa = led.length - led.filter((d) => d.includes('=')).length
+    const uppräkning =
+      (namn.length > 0 ? namn.join(', ') : '') +
+      (namnlösa > 0 ? `${namn.length > 0 ? ', ' : ''}${namnlösa} utan värde (ej återgivna)` : '')
     throw new Error(
-      `--redis-url bär ${namn.length} queryparameter(rar) (${namn.join(', ')}). ` +
+      `--redis-url bär ${led.length} queryparameter(rar) (${uppräkning}). ` +
         'Den formen avvisas: Bull 4.16.5 låter queryn ersätta värd, port, databas ' +
         'och keyPrefix EFTER att måltexten räknats fram, alltså ett tyst ' +
         'alternativt mål. Ange värd, port och databas i URL:ens egen form och ' +
@@ -400,7 +468,19 @@ export function bullQueueOptions(mal: RedisTarget): Bull.QueueOptions {
       db: mal.db,
       ...(mal.username !== undefined ? { username: mal.username } : {}),
       ...(mal.password !== undefined ? { password: mal.password } : {}),
-      ...(mal.tls ? { tls: { servername: mal.host, rejectUnauthorized: true } } : {}),
+      // `servername` BARA för ett värdnamn. RFC 6066 tillåter inte SNI för en
+      // IP-adress, och Node varnar (DEP0123) och aviserar att den kommer att
+      // ignoreras. Identitetskontrollen faller då tillbaka på IP-SAN i
+      // certifikatet, vilket är rätt beteende — och `rejectUnauthorized`
+      // står kvar oavsett. Funnet av en granskare.
+      ...(mal.tls
+        ? {
+            tls: {
+              ...(ÄR_IP.test(mal.host) ? {} : { servername: mal.host }),
+              rejectUnauthorized: true,
+            },
+          }
+        : {}),
     },
   }
 }
@@ -574,7 +654,7 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
       throw new Error(
         `--action=${opts.action} kräver --confirm med EXAKT måltexten.\n` +
           `  förväntat: ${target}\n` +
-          `  angivet:   ${opts.confirm ?? '(inget)'}\n` +
+          `  angivet:   ${opts.confirm === undefined ? '(inget)' : maskeraAdresser(opts.confirm)}\n` +
           'Kör först utan --action och läs måltexten ur rapporten.',
       )
     }
@@ -595,9 +675,55 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
     const client = koer[0]!.client as unknown as {
       scan: (...a: unknown[]) => Promise<[string, string[]]>
       info: (section: string) => Promise<string>
+      client: (underkommando: string) => Promise<string>
     }
     const redisInfo = await client.info('server')
     const redisVersion = /redis_version:([^\r\n]+)/.exec(redisInfo)?.[1]?.trim() ?? '(okänd)'
+
+    // ── DATABASINDEXET MÄTS PÅ DEN LEVANDE ANSLUTNINGEN ───────────────────
+    //
+    // Formkontrollen i `parseRedisTarget` säger bara att ledet ÄR ett tal. Den
+    // säger ingenting om att servern accepterade det, och ioredis kör `SELECT` i
+    // sin `connectHandler` och SVÄLJER felet (`silentEmit('error', …)`):
+    // anslutningen blir `ready` på db 0 ändå. Uppmätt mot riktig Redis 7.4.8 med
+    // två seedade nycklar i db0:
+    //
+    //   --redis-url=redis://127.0.0.1:6399/99
+    //     måltext             redis://127.0.0.1:6399/db99 prefix=sond-d1
+    //     funnaIRedis         2
+    //     inventeringKomplett true          ← "inventering komplett: JA"
+    //     åtgärden landade i  db 0
+    //
+    // Det är samma defekt som queryn, via ett annat led: bekräftelsen beskriver
+    // ett mål som aldrig kontaktades. `redis://…/16` mot en standardinstans
+    // (`databases 16`, alltså index 0-15) är en helt vanlig operatörsmiss.
+    //
+    // `CLIENT INFO` är det enda stället där servern SJÄLV säger vilken databas
+    // anslutningen står i. Går den inte att läsa vägrar vi — en spärr som tyst
+    // hoppas över när den inte kan mäta är ingen spärr.
+    let faktiskDb: number
+    try {
+      const klientInfo = await client.client('INFO')
+      const träff = /(?:^|\s)db=(\d+)/.exec(klientInfo)
+      if (!träff) throw new Error('CLIENT INFO saknar db=')
+      faktiskDb = Number(träff[1])
+    } catch (err) {
+      throw new Error(
+        'kunde inte läsa CLIENT INFO för att verifiera databasindexet ' +
+          `(${err instanceof Error ? err.message : String(err)}). Utan den läsningen kan ` +
+          'verktyget inte veta vilken databas det står i: ioredis sväljer ett misslyckat ' +
+          'SELECT och blir ready på db 0 ändå. Kräver Redis 6.2 eller senare.',
+      )
+    }
+    if (faktiskDb !== mal.db) {
+      throw new Error(
+        `måltexten säger db${mal.db}, men anslutningen står i db${faktiskDb}. ` +
+          'ioredis SELECT misslyckades och felet sväljs tyst, så läsningen hade beskrivit ' +
+          'en databas den aldrig var i — och en åtgärd hade landat i ' +
+          `db${faktiskDb}. Kontrollera databasindexet i --redis-url mot instansens ` +
+          '`databases`-inställning.',
+      )
+    }
 
     const iRedis = await scanQueueNames(client, mal.prefix)
     const iRedisMangd = new Set(iRedis)

@@ -149,6 +149,29 @@ describe('parseRedisTarget — EN tolkning, eller inget mål alls', () => {
     }
   })
 
+  it('ett queryled UTAN värde återges inte — det kan vara en felpastad hemlighet', () => {
+    // `?hunter2` är inget parameternamn utan okänd text. Namnet på ett
+    // `namn=värde`-par är säkert att visa; ett ensamt led är det inte.
+    try {
+      mal(`redis://h:6379/0?${SYNTETISK_HEMLIGHET}`)
+      throw new Error('skulle ha avvisats')
+    } catch (err) {
+      const text = (err as Error).message
+      expect(text).toContain('queryparameter')
+      expect(text).not.toContain(SYNTETISK_HEMLIGHET)
+      expect(text).toContain('utan värde')
+    }
+  })
+
+  it('KANARIEFÅGELN: ett namn som HADE ett värde återges — annars vore provet ovan stumt', () => {
+    try {
+      mal('redis://h:6379/0?keyPrefix=x')
+      throw new Error('skulle ha avvisats')
+    } catch (err) {
+      expect((err as Error).message).toContain('keyPrefix')
+    }
+  })
+
   it('AVVISAR ett fragment', () => {
     expect(() => mal('redis://h:6379/0#x')).toThrow('fragment')
   })
@@ -289,6 +312,19 @@ describe('bullQueueOptions — måltexten och anslutningen är SAMMA tolkning', 
     expect(optioner['tls']).toEqual({ servername: 'secure.example', rejectUnauthorized: true })
   })
 
+  it('rediss:// mot en IP sätter INGEN servername — men behåller certifikatkravet', async () => {
+    // RFC 6066 tillåter inte SNI för en IP-adress; Node varnar (DEP0123) och
+    // aviserar att värdet kommer att ignoreras. Identitetskontrollen faller då
+    // tillbaka på IP-SAN i certifikatet, vilket är rätt beteende.
+    const { optioner } = await fangaKlientoptioner(mal('rediss://10.1.2.3:6380/0'))
+    expect(optioner['tls']).toEqual({ rejectUnauthorized: true })
+  })
+
+  it('rediss:// mot ett VÄRDNAMN sätter servername — annars vore provet ovan stumt', async () => {
+    const { optioner } = await fangaKlientoptioner(mal('rediss://h.example:6380/0'))
+    expect(optioner['tls']).toEqual({ servername: 'h.example', rejectUnauthorized: true })
+  })
+
   it('redis:// ger INGEN tls — annars vore provet ovan grönt av att allt är TLS', async () => {
     const { optioner } = await fangaKlientoptioner(mal('redis://plain.example:6379/0'))
     expect(optioner['tls']).toBeUndefined()
@@ -354,6 +390,23 @@ describe('confirm-spärren', () => {
     await expect(runQueueOps({ redisUrl: url, prefix: 'bull', action: 'resume' })).rejects.toThrow(
       '--confirm',
     )
+  })
+
+  it('en ADRESS som klistrats in i --confirm ekas MASKERAD', async () => {
+    // Nära till hands: --confirm och --redis-url bär båda en redis://-sträng,
+    // och en förväxling hade lagt lösenordet på stderr genom den enda väg som
+    // inte gick genom redactRedisUrl.
+    const felpastad = `redis://anv:${SYNTETISK_HEMLIGHET}@h.example:6379/0`
+    try {
+      await runQueueOps({ redisUrl: url, prefix: 'bull', action: 'pause', confirm: felpastad })
+      throw new Error('skulle ha avvisats')
+    } catch (err) {
+      const text = (err as Error).message
+      expect(text).toContain('--confirm')
+      expect(text).not.toContain(SYNTETISK_HEMLIGHET)
+      // KANARIEFÅGELN: adressen syns fortfarande, så operatören ser förväxlingen.
+      expect(text).toContain('h.example')
+    }
   })
 
   it('felmeddelandet visar den förväntade måltexten så operatören kan läsa den', async () => {
@@ -532,10 +585,13 @@ describe('scanQueueNames', () => {
   it.each([['bu?l'], ['bul*'], ['b[ua]ll'], ['bull\\'], ['']])(
     'AVVISAR prefixet %s i stället för att skanna ett annat nyckelrum',
     async (prefix) => {
-      // Mot riktig Redis 7.4.8 hittade `bu?l:*:id` nycklarna under `bull:` och
-      // återrapporterade pdf och mail:high, medan Bull hade muterat det
-      // BOKSTAVLIGA prefixet `bu?l`. `b[ua]ll` gav dessutom stympade namn
-      // ("2-sync", "l:high"), eftersom namnet skalas fram med prefix.length.
+      // Mot riktig Redis 7.4.8 TRÄFFAR `bu?l:*:id` nycklarna under `bull:`,
+      // medan Bull muterar det BOKSTAVLIGA prefixet `bu?l`. Före rättningen
+      // återrapporterades pdf och mail:high; `b[ua]ll` gav dessutom stympade
+      // namn ("2-sync", "l:high"), eftersom namnet skalas fram med prefix.length.
+      // Dagens loop filtrerar bort träffarna bokstavligt, så den vägen ger nu
+      // tomt — men `--allow-empty-target` hade ändå släppt fram en paus under
+      // det bokstavliga globprefixet. Därför avvisas formen här, före allt.
       await expect(scanQueueNames(fakeClient(['bull:pdf:id']), prefix)).rejects.toThrow(
         /metatecken|--prefix är tomt/,
       )

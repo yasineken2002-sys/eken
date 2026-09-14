@@ -32,12 +32,17 @@
 
 jest.mock('bull', () => {
   const anrop: unknown[][] = []
+  /** Den databas attrappens `CLIENT INFO` påstår sig stå i. Sätts per prov. */
+  const läge = { db: 0 }
 
   const skapaKö = (namn: string): Record<string, unknown> => ({
     name: namn,
     isReady: async () => undefined,
     client: {
       info: async () => 'redis_version:0.0.0-attrapp\r\n',
+      // `CLIENT INFO` — verktyget verifierar databasindexet mot den levande
+      // anslutningen. Attrappen svarar db=0, vilket är vad proven här ansluter mot.
+      client: async () => `id=1 addr=127.0.0.1:0 db=${läge.db} name= `,
       scan: async () => ['0', []],
     },
     isPaused: async () => false,
@@ -53,6 +58,7 @@ jest.mock('bull', () => {
     return skapaKö(args[0] as string)
   }
   BullAttrapp.__anrop = anrop
+  BullAttrapp.__läge = läge
 
   return { __esModule: true, default: BullAttrapp }
 })
@@ -62,6 +68,7 @@ import { bullQueueOptions, parseRedisTarget, runQueueOps } from './queue-ops'
 import { ALLA_KONAMN } from '../common/ops/queue-inventory'
 
 const anrop = (Bull as unknown as { __anrop: unknown[][] }).__anrop
+const läge = (Bull as unknown as { __läge: { db: number } }).__läge
 
 const URL_MED_ALLT = 'redis://anv:SYNTHETIC_TEST_VALUE@h.example:6380/3'
 const PREFIX = 'bull'
@@ -69,6 +76,10 @@ const PREFIX = 'bull'
 describe('runQueueOps → new Bull(...)', () => {
   beforeEach(() => {
     anrop.length = 0
+    // Verktyget verifierar databasen mot den levande anslutningen, så attrappen
+    // måste svara med den databas provets URL pekar ut. Prov som använder en
+    // annan URL sätter om den själv.
+    läge.db = 3
   })
 
   it('andra argumentet är ett OPTIONSOBJEKT, inte URL-strängen', async () => {
@@ -105,7 +116,34 @@ describe('runQueueOps → new Bull(...)', () => {
     }
   })
 
+  it('DATABASEN verifieras mot den LEVANDE anslutningen, inte mot måltexten', async () => {
+    // Formkontrollen säger bara att db-ledet ÄR ett tal. ioredis kör SELECT i
+    // sin connectHandler och SVÄLJER felet (silentEmit), så anslutningen blir
+    // ready på db 0 ändå. Uppmätt mot riktig Redis före rättningen:
+    // `redis://…/99` gav måltext db99, funnaIRedis=2 och "komplett: JA" — mot
+    // nycklar som låg i db 0.
+    läge.db = 0
+    await expect(
+      runQueueOps({ redisUrl: 'redis://h.example:6379/7', prefix: PREFIX, action: 'inspect' }),
+    ).rejects.toThrow('måltexten säger db7, men anslutningen står i db0')
+  })
+
+  it('KANARIEFÅGELN: stämmer databasen passerar läsningen', async () => {
+    läge.db = 7
+    await expect(
+      runQueueOps({ redisUrl: 'redis://h.example:6379/7', prefix: PREFIX, action: 'inspect' }),
+    ).resolves.toMatchObject({ target: 'redis://h.example:6379/db7 prefix=bull' })
+  })
+
+  it('kan CLIENT INFO inte läsas VÄGRAR verktyget — en spärr som inte mäter är ingen spärr', async () => {
+    läge.db = Number.NaN
+    await expect(
+      runQueueOps({ redisUrl: 'redis://h.example:6379/0', prefix: PREFIX, action: 'inspect' }),
+    ).rejects.toThrow('CLIENT INFO')
+  })
+
   it('TLS-flaggan följer med in i anropet för rediss://', async () => {
+    läge.db = 0
     await runQueueOps({ redisUrl: 'rediss://h.example:6380/0', prefix: PREFIX, action: 'inspect' })
     expect(anrop.length).toBeGreaterThan(0)
     for (const args of anrop) {

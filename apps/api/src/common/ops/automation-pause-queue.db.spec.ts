@@ -29,7 +29,7 @@ import { Test, type TestingModule } from '@nestjs/testing'
 import type { Queue } from 'bull'
 import Bull from 'bull'
 import { AUTOMATION_PAUSE_VAR, pausedUnless } from './automation-pause'
-import { runQueueOps, scanQueueNames } from '../../scripts/queue-ops'
+import { parseRedisTarget, runQueueOps, scanQueueNames } from '../../scripts/queue-ops'
 
 const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
 const QUEUE = 'driftpaus-prov'
@@ -615,6 +615,43 @@ describe('queue-ops mot riktig Redis', () => {
 
       // KANARIEFÅGELN: det BOKSTAVLIGA prefixet läses fortfarande.
       expect(await scanQueueNames(somSkanner(kö.client), globPrefix)).toContain('pdf')
+    } finally {
+      await kö.close()
+    }
+  })
+
+  /**
+   * ── DATABASINDEXET, MOT EN RIKTIG SERVER ────────────────────────────────
+   *
+   * Funnet av en granskare efter första rättningen, och samma klass som
+   * queryfyndet: bekräftelsen beskrev ett mål som aldrig kontaktades. ioredis
+   * kör `SELECT` i sin connectHandler och SVÄLJER felet, så anslutningen blir
+   * `ready` på db 0. Uppmätt före rättningen med två seedade nycklar i db 0:
+   * `--redis-url=…/99` gav måltext db99, funnaIRedis=2, "komplett: JA", och
+   * pausen landade i db 0.
+   *
+   * Provet kräver en server med färre än 100 databaser. Det är Redis default
+   * (`databases 16`) och gäller CI:s redis:7-alpine; KANARIEFÅGELN nedan mäter
+   * det i stället för att anta det, så en konfigurationsändring syns som ett
+   * tydligt fel och inte som en tyst grön.
+   */
+  it('FEL DATABASINDEX avvisas — bekräftelsen får inte beskriva en databas vi inte är i', async () => {
+    const kö = new Bull(KO_A, REDIS_URL, { prefix: `${PREFIX}:db` })
+    try {
+      await kö.isReady()
+
+      // KANARIEFÅGELN: att servern verkligen NEKAR db 99. Utan den raden kunde
+      // provet nedan vara grönt mot en instans där 99 är giltigt.
+      await expect(kö.client.select(99)).rejects.toThrow(/out of range/i)
+
+      const mål = parseRedisTarget(REDIS_URL, `${PREFIX}:db`)
+      await expect(
+        runQueueOps({
+          redisUrl: `redis://${mål.host}:${mål.port}/99`,
+          prefix: `${PREFIX}:db`,
+          action: 'inspect',
+        }),
+      ).rejects.toThrow('måltexten säger db99')
     } finally {
       await kö.close()
     }
