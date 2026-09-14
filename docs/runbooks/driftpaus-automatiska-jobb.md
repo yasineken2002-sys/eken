@@ -120,10 +120,26 @@ fälls först — men läs ändå båda talen, inte bara `paused`.
 `cronJobs: null` betyder att `ScheduleModule` inte laddades alls — pausat läges
 normaltillstånd, och även dev:s.
 
-Fältet påverkar **aldrig** `status`. `railway.toml` pollar `/v1/health` med
-`restartPolicyType = "ON_FAILURE"`; ett fält som sänkte `status` hade gjort en
-avsiktlig paus till en omstartsloop där varje ny process startade pausad och
-fällde samma healthcheck.
+Fältet påverkar **aldrig** `status`, och skälet är **utrullningen** — inte en
+omstartsloop.
+
+`railway.toml` sätter `healthcheckPath = "/v1/health"` med
+`healthcheckTimeout = 300`. Enligt [Railways dokumentation][rw-health], läst
+2026-09-14, används healthkontrollen **vid utrullning**: en ny deployment
+släpps inte fram förrän endpointen svarar OK, och kontrollen fortsätter inte
+övervaka endpointen efter att deploymenten blivit aktiv.
+`restartPolicyType = "ON_FAILURE"` gäller [en process som avslutas med fel][rw-restart],
+inte en healthstatus.
+
+Ett fält som sänkte `status` hade därför inte gett en löpande omstartsloop — det
+hade gjort **att en avsiktligt pausad men fullt fungerande API inte kunde rullas
+ut**: healthkontrollen hade aldrig fått sitt OK, och deploymenten hade fällts
+efter timeouten. Det är illa nog, och det är den riktiga motiveringen. Påstå inte
+att pausen skulle ha gett kontinuerliga omstarter på grund av healthstatus; den
+mekanismen finns inte.
+
+[rw-health]: https://docs.railway.com/deployments/healthchecks
+[rw-restart]: https://docs.railway.com/deployments/restart-policy
 
 ## Återöppning
 

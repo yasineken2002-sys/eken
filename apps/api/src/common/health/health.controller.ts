@@ -127,13 +127,19 @@ interface ResumptionPulse {
  *
  * ── OCH VARFÖR DEN INTE FÄLLER `status` ─────────────────────────────────────
  *
- * `railway.toml` sätter `healthcheckPath = "/v1/health"` med
- * `restartPolicyType = "ON_FAILURE"`. Ett fält som sänkte `status` i pausat läge
- * hade gjort en AVSIKTLIG paus till en omstartsloop — Railway hade dödat och
- * startat om processen i all oändlighet, och varje ny process hade startat i
- * samma pausade läge och fällt samma healthcheck. Fältet ligger därför utanför
- * Terminus indikator-lista, av exakt samma skäl som `legalKnowledge`, `cron` och
- * `resumption`.
+ * Railways healthkontroll används VID UTRULLNING (`healthcheckPath` i
+ * `railway.toml`, timeout 300 s) och fortsätter inte övervaka endpointen efter
+ * att deploymenten blivit aktiv; `restartPolicyType = "ON_FAILURE"` gäller en
+ * process som AVSLUTAS med fel, inte en healthstatus. Dokumentation läst
+ * 2026-09-14.
+ *
+ * Ett fält som sänkte `status` i pausat läge hade därför INTE gett en löpande
+ * omstartsloop. Det hade gjort att en avsiktligt pausad men fullt fungerande API
+ * inte gick att RULLA UT: healthkontrollen hade aldrig fått sitt OK, och
+ * deploymenten hade fällts efter timeouten — alltså precis i det ögonblick ett
+ * underhållsfönster behöver kunna släppa fram en ny revision. Fältet ligger
+ * därför utanför Terminus indikator-lista, av exakt samma skäl som
+ * `legalKnowledge`, `cron` och `resumption`.
  *
  * ── TVÅ VYER, INTE ETT OMDÖME ───────────────────────────────────────────────
  *
@@ -221,10 +227,21 @@ export class HealthController {
 
   /**
    * Driftpausens kvitto. Kastar aldrig — samma avvägning som `countVectors` och
-   * `readCronPulses`: Railway pollar endpointen med `restartPolicyType =
-   * "ON_FAILURE"`, så en läsning som kan fälla svaret hade gjort observerbarheten
-   * till en driftrisk. Här väger det extra tungt: fältet finns för att LÄSAS
-   * under ett underhållsfönster, alltså exakt när en omstartsloop är som dyrast.
+   * `readCronPulses`, men motiveringen är UTRULLNINGEN och inte en omstartsloop.
+   *
+   * `railway.toml` sätter `healthcheckPath = "/v1/health"` med
+   * `healthcheckTimeout = 300`. Railways dokumentation (läst 2026-09-14) säger
+   * att healthkontrollen används VID UTRULLNING — en ny deployment släpps inte
+   * fram förrän endpointen svarar OK — och att den inte fortsätter övervaka
+   * endpointen efter att deploymenten blivit aktiv. `restartPolicyType =
+   * "ON_FAILURE"` gäller en process som AVSLUTAS med fel, inte en healthstatus.
+   *
+   * En läsning som kunde fälla svaret hade därför inte gett löpande omstarter.
+   * Den hade gjort att en avsiktligt pausad men fullt fungerande API inte gick
+   * att rulla ut: healthkontrollen hade aldrig fått sitt OK och deploymenten
+   * hade fällts efter timeouten. Här väger det extra tungt, eftersom fältet
+   * finns för att LÄSAS under ett underhållsfönster — alltså precis när en
+   * utrullning behöver kunna gå igenom.
    */
   private readAutomation(): AutomationStatus {
     let cronJobs: number | null = null
@@ -264,7 +281,8 @@ export class HealthController {
   /**
    * Rader för den AKTIVA modellen. Kastar aldrig: kan talet inte läsas blir det
    * `null`, vilket är ett faktum ("kunde inte räknas"), inte ett omdöme.
-   * Endpointen får aldrig gå ned för det här fältets skull — Railway pollar den
+   * Endpointen får aldrig gå ned för det här fältets skull — Railway läser den
+   * vid utrullning, och
    * och skulle starta om tjänsten. Samma avvägning som för `revision`.
    */
   private async countVectors(): Promise<number | null> {
@@ -283,9 +301,11 @@ export class HealthController {
   /**
    * De låsta cron-jobbens hjärtslag (#710).
    *
-   * Kastar aldrig — samma avvägning som `readResumptionPulse`: Railway pollar
-   * endpointen med `restartPolicyType = "ON_FAILURE"`, så en läsning som kan
-   * fälla svaret hade gjort observerbarheten till en driftrisk.
+   * Kastar aldrig — samma avvägning som `readResumptionPulse`: Railway kräver ett
+   * OK-svar för att SLÄPPA FRAM en utrullning, så en läsning som kan fälla svaret
+   * hade gjort observerbarheten till en driftrisk vid varje ny deployment.
+   * (Kontrollen är en utrullningsgrind, inte en löpande övervakning — se
+   * `readAutomation`.)
    *
    * MÄNGDEN ÄR KARTANS, INTE TABELLENS. Ett jobb som aldrig kört saknar rad —
    * och det är just det som ska synas. Läste vi tabellen och listade det vi
@@ -342,8 +362,8 @@ export class HealthController {
 
   /**
    * Motorns puls. Kastar aldrig — samma avvägning som `countVectors`: Railway
-   * pollar endpointen och skulle starta om tjänsten. Att veta om motorn lever
-   * får aldrig kunna ta ned den.
+   * kräver ett OK-svar för att släppa fram en utrullning. Att veta om motorn
+   * lever får aldrig kunna blockera en ny deployment.
    */
   private async readResumptionPulse(): Promise<ResumptionPulse> {
     const thresholdSec = Math.round(ATERUPPTAGNING_TYSTNAD_MAX_MS / 1000)
@@ -413,7 +433,7 @@ export class HealthController {
             '"verksamhetsjobben är frisläppta". Bär BÅDE det konfigurerade läget ' +
             '(paused) och vad processen faktiskt gjorde (cronJobs, queueConsumers) — ' +
             'går de isär är det ett fynd. Påverkar ALDRIG status: en avsiktlig paus ' +
-            'får inte bli en omstartsloop.',
+            'måste kunna passera utrullningens healthkontroll.',
           properties: {
             paused: { type: 'boolean', example: false },
             variable: { type: 'string', example: 'OPS_AUTOMATION_PAUSED' },
@@ -451,9 +471,9 @@ export class HealthController {
     //
     // TILLAGT FÄLT, INTE ÄNDRAD STRUKTUR, och medvetet UTANFÖR Terminus
     // indikator-lista: en indikator kan rapportera `down` och skulle då fälla
-    // hela hälsokontrollen. Railway pollar endpointen (`healthcheckPath` i
-    // railway.toml) och skulle starta om tjänsten. Att veta vilken revision som
-    // kör får aldrig kunna ta ned den.
+    // hela hälsokontrollen. Railway läser endpointen (`healthcheckPath` i
+    // railway.toml) VID UTRULLNING och släpper inte fram deploymenten utan ett
+    // OK-svar. Att veta vilken revision som kör får aldrig kunna blockera nästa.
     //
     // AVGRÄNSNING: `health.check` kastar vid fel, så revisionen saknas i
     // 503-svaret. Felvägen har redan ett eget hål (GlobalExceptionFilter läser
@@ -485,7 +505,7 @@ export class HealthController {
     const cron = await this.readCronPulses()
 
     // PÅVERKAR INTE `status`, och det är lastbärande — se AutomationStatus.
-    // En avsiktlig driftpaus får inte bli en omstartsloop i Railway.
+    // En avsiktlig driftpaus måste kunna passera utrullningens healthkontroll.
     const automation = this.readAutomation()
 
     return { ...result, revision: buildRevision(), legalKnowledge, resumption, cron, automation }
