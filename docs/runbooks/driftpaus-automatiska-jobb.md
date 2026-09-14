@@ -240,8 +240,20 @@ Två fler saker operatören behöver veta:
   Ange `--queues` vid återöppning, eller läs `globalPaus` per kö först.
 
 Verktyget raderar aldrig jobb (`clean`/`empty`/`remove`/`obliterate` finns inte),
-skriver aldrig ut credentials, jobbpayloads eller personuppgifter, och rapporterar
-bara antal.
+och rapporterar bara antal.
+
+**Vad som skrivs ut, och vad som inte gör det — läs den här gränsen innan du
+klistrar något i en flagga.** Aldrig: användarnamn, lösenord, queryn (namn och
+värden), fragmentet, en sökväg som inte är ett databasindex, ett schema som inte
+är `redis`/`rediss`, en URL som inte går att tolka eller som saknar värd, och
+innehållet i en felaktig `--confirm`. Jobbpayloads och personuppgifter läses
+aldrig.
+
+**Med flit däremot:** schema, värd, port, databasindex och `--prefix` — de är
+måltexten, och den måste gå att upprepa ordagrant i `--confirm`. Ett avvisat
+`--queues`- eller `--action`-värde skrivs också ut, annars går stavfelet inte att
+se. En hemlighet klistrad i någon av **de** flaggorna hamnar alltså i loggen. Det
+är en känd gräns, inte ett skydd.
 
 **En global paus stoppar konsumtion.** Den stoppar inte producenter, inte
 HTTP-vägar, och inte en gammal process som redan håller ett aktivt jobb — ett
