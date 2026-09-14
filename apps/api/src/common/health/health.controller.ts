@@ -282,8 +282,9 @@ export class HealthController {
    * Rader för den AKTIVA modellen. Kastar aldrig: kan talet inte läsas blir det
    * `null`, vilket är ett faktum ("kunde inte räknas"), inte ett omdöme.
    * Endpointen får aldrig gå ned för det här fältets skull — Railway läser den
-   * vid utrullning, och
-   * och skulle starta om tjänsten. Samma avvägning som för `revision`.
+   * VID UTRULLNING och släpper inte fram deploymenten utan ett OK-svar.
+   * (`restartPolicyType = "ON_FAILURE"` gäller en process som avslutas med fel,
+   * inte en healthstatus.) Samma avvägning som för `revision`.
    */
   private async countVectors(): Promise<number | null> {
     try {
