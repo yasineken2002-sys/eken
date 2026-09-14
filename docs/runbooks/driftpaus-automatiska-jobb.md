@@ -21,9 +21,31 @@ Den sista raden är avsiktlig. En felstavning (`ture`, `TRUE`, `1`) får inte ty
 betyda "kör på" i just det ögonblick någon trodde sig ha pausat. Kastet sker vid
 boot, före första jobbet, i alla miljöer.
 
+Var beredd på konsekvensen: kastet sker redan vid **modulimport**, alltså före
+Nest, före `validateEnv` och före HTTP-servern. Ett stavfel i pausvariabeln tar
+därför ned **hela API:t**, inte bara automatiken — Railway startar om tre gånger
+(`restartPolicyType = "ON_FAILURE"`, `restartPolicyMaxRetries = 3`) och ger sedan
+upp. Rätt riktning (fail-closed), men en dyrare konsekvens än ordet "avbryts"
+antyder, och utan `validateEnv`:s samlade felmeddelande.
+
 Saknat värde betyder normal drift, så ingen befintlig miljö behöver röras för att
 fortsätta fungera. Priset är att en **utebliven** paus ser ut som en normal start
 — därför ska läget alltid läsas tillbaka ur `/v1/health` efter start.
+
+### Variabeln måste vara PROCESSMILJÖ, inte en rad i `.env`
+
+Konsumentgrinden läser miljön när varje kömodulfil **importeras**, alltså innan
+`ConfigModule.forRoot()` hunnit lägga `.env`-filens värden i `process.env`.
+Schemaläggaren, uppstarts-backfillen och `/v1/health` läser efteråt. Ett värde
+som bara står i `apps/api/.env` hade därför gett en **halv paus**: cron och
+backfill pausade, `/v1/health` sägande `paused: true`, och elva Bull-konsumenter
+registrerade och konsumerande.
+
+Det tillståndet är gjort **omöjligt**, inte dokumenterat bort: `validateEnv`
+jämför processmiljöns värde mot det som `ConfigModule` löste ut och **avbryter
+uppstarten** om de skiljer sig. Felmeddelandet säger vad som ska rättas.
+Produktionen (Railway) är inte drabbad — `apps/api/Dockerfile` kopierar ingen
+`.env` — men en repetition av proceduren lokalt eller i en container är det.
 
 ## Vad som stoppas i pausat läge
 
@@ -52,6 +74,19 @@ gäller en process, från dess egen start.
   berörs inte.
 - **Redan enqueueade jobb** konsumeras av vilken opausad worker som helst som är
   ansluten till samma Redis.
+- **Sin egen deploys migrering.** `apps/api/Dockerfile` kör
+  `apps/api/scripts/migrate-and-start.sh`, som gör `prisma migrate deploy`
+  **innan** Node startar — oberoende av pausen. **21 av migrationsfilerna
+  innehåller `UPDATE`/`INSERT`** mot verkliga tabeller (t.ex.
+  `20260512200000_billing_subscription_plans` skriver i `Organization`). Bär
+  deployen en sådan migration har den pausade processen ändå skrivit i
+  produktionsdatabasen, före sin första loggrad. Det är den enda punkten i den
+  här listan som utlöses av den pausade processen själv.
+- **Aktiva jobb återvinns inte under paus.** Bulls stalled-check körs bara av
+  `Queue.run()`, som nås via `process()`. I pausat läge registreras ingen
+  processor, så ett jobb som en dödad äldre generation lämnade i `active` ligger
+  kvar där — inte förlorat, men inte heller synligt som `waiting`. Verktyget
+  rapporterar talet; det återupptas först när pausen hävs.
 
 Bankfixens införandeordning kräver verklig avskärmning — stängd ingress, bevisat
 stoppade gamla generationer, spärrad återstart. Den här flaggan är steg 8:s
@@ -71,8 +106,11 @@ saknade halva, **inte** en ersättning för steg 1–4.
 ```
 
 `paused` är vad konfigurationen säger. `cronJobs` och `queueConsumers` är vad
-processen faktiskt gjorde. Går de isär är det ett fynd: `paused: true` med
-`cronJobs: 34` betyder att variabeln lästes efter att timrarna redan startat.
+processen faktiskt gjorde. **Går de isär är det ett fynd, åt båda hållen:**
+`paused: true` med `cronJobs: 34` betyder att variabeln lästes efter att timrarna
+redan startat; `paused: true` med `registered: 11, withheld: 0` betyder att
+konsumenterna inte grindades. Den andra formen kan inte längre uppstå — boot
+fälls först — men läs ändå båda talen, inte bara `paused`.
 
 `cronJobs: null` betyder att `ScheduleModule` inte laddades alls — pausat läges
 normaltillstånd, och även dev:s.
@@ -113,12 +151,20 @@ Tre spärrar mot fel system:
 1. `--redis-url` är obligatorisk. Verktyget läser med flit **inte** `REDIS_URL`
    ur miljön — ett verktyg som kör mot "det som råkade stå i miljön" antar
    produktion som standard.
-2. Muterande åtgärder kräver `--confirm` med exakt den måltext verktyget självt
-   skrev ut i läsläget (värd, port, databasindex, prefix). Operatören kan alltså
-   inte pausa något den inte först läst.
-3. Inventeringen jämförs mot koden. En kö i Redis som koden inte känner till,
-   eller ett avgränsat `--queues`, sätter `inventeringKomplett: false` — och då
-   får utfallet inte redovisas som en verifierad avskärmning.
+2. Muterande åtgärder kräver `--confirm` med exakt måltexten (schema, värd, port,
+   databasindex, prefix). **Vad den faktiskt är:** en stavfels- och
+   ändringsspärr, inte ett bevis för att operatören läst läsläget först —
+   måltexten är en ren funktion av flaggorna och går att räkna ut i huvudet. Det
+   den bevisligen fångar är ett stavfel mellan läsning och åtgärd, och en URL
+   eller ett prefix som ändrats däremellan.
+3. Inventeringen jämförs mot koden. `inventeringKomplett` blir `false` vid en kö
+   i Redis som koden inte känner till, vid ett avgränsat `--queues`, **och när
+   ingen enda av de begärda köerna har spår under prefixet** — det sista ledet
+   finns därför att `pause(false)` lyckas även mot ett könamn som inte existerar,
+   så ett fel prefix hade annars rapporterat elva pausade köer. En muterande
+   åtgärd **vägrar** mot ett sådant mål. Ett okänt namn i `--queues` avbryter
+   också, eftersom `mail-high` (bindestreck) annars hade pausats med framgång
+   medan `mail:high` konsumerade vidare.
 
 Verktyget raderar aldrig jobb (`clean`/`empty`/`remove`/`obliterate` finns inte),
 skriver aldrig ut credentials, jobbpayloads eller personuppgifter, och rapporterar
@@ -245,7 +291,10 @@ larmet ska nå fram. Att tysta det hade gjort pausen till en blindhet.
 
 ### Egna timers och pollers
 
-Inga. `setInterval` förekommer inte i produktionskoden under `apps/api/src`, och
-`SchedulerRegistry` injiceras ingenstans. Inga återkommande Bull-jobb heller —
+Inga. `setInterval` förekommer inte i produktionskoden under `apps/api/src`.
+`SchedulerRegistry` slås upp på exakt ett ställe, och det är läsande: hälsokontrollen
+gör `moduleRef.get(SchedulerRegistry, { strict: false })` inom try/catch för att
+kunna RÄKNA registrerade timrar (`health.controller.ts`). Ingen kod registrerar
+eller startar ett jobb den vägen. Inga återkommande Bull-jobb heller —
 `repeat:` finns inte i produktionskoden, så kadensen ägs helt av
 `@nestjs/schedule`.

@@ -11,7 +11,10 @@
 import {
   AUTOMATION_PAUSE_VAR,
   AUTOMATION_PAUSE_VALUES,
+  AutomationPauseSourceError,
   InvalidAutomationPauseError,
+  assertAutomationPauseSource,
+  automationGateEntries,
   automationPaused,
   pausedUnless,
 } from './automation-pause'
@@ -95,5 +98,67 @@ describe('pausedUnless', () => {
     expect(() => pausedUnless(Konsument, { [AUTOMATION_PAUSE_VAR]: 'ture' })).toThrow(
       InvalidAutomationPauseError,
     )
+  })
+})
+
+describe('assertAutomationPauseSource', () => {
+  /**
+   * Snapshoten togs när modulen laddades, alltså med den miljö jest startade i.
+   * Provsviten sätter inte OPS_AUTOMATION_PAUSED, så snapshoten är `undefined` —
+   * och det är precis det läge kontrollen ska mäta mot.
+   */
+  it('tyst när konfigurationen är lika tom som processmiljön', () => {
+    expect(() => assertAutomationPauseSource({})).not.toThrow()
+    expect(() => assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: '' })).not.toThrow()
+  })
+
+  it('KASTAR när värdet bara finns i konfigurationen (.env) och inte i processmiljön', () => {
+    // DET HÄR ÄR DEFEKTEN, i sin exakta form: `.env` säger 'true', processmiljön
+    // säger ingenting. Konsumentgrinden läste processmiljön vid modulimport och
+    // registrerade alltså elva konsumenter, medan schemaläggaren och
+    // /v1/health läser konfigurationen och rapporterar full paus.
+    expect(() => assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: 'true' })).toThrow(
+      AutomationPauseSourceError,
+    )
+  })
+
+  it('felmeddelandet säger VAD som ska rättas, inte bara att något är fel', () => {
+    try {
+      assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: 'true' })
+      throw new Error('förväntade ett kast')
+    } catch (err) {
+      const text = err instanceof Error ? err.message : String(err)
+      expect(text).toContain(AUTOMATION_PAUSE_VAR)
+      expect(text).toContain('.env')
+      expect(text).toContain('HALV paus')
+    }
+  })
+
+  it("kastar också åt ANDRA hållet — 'false' i .env över en tom processmiljö", () => {
+    // Mildare i sak, men samma klass av fel: två källor som säger olika saker om
+    // samma spärr. Att släppa igenom den riktningen hade gjort kontrollen till en
+    // halv kontroll.
+    expect(() => assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: 'false' })).toThrow(
+      AutomationPauseSourceError,
+    )
+  })
+})
+
+describe('grindens register', () => {
+  it('dedupar per klassnamn — en dubbelladdad modulfil får inte dubblera talen', () => {
+    class DubblettWorker {}
+    const fore = automationGateEntries().length
+    pausedUnless(DubblettWorker, { [AUTOMATION_PAUSE_VAR]: 'false' })
+    const efterForsta = automationGateEntries().length
+    pausedUnless(DubblettWorker, { [AUTOMATION_PAUSE_VAR]: 'false' })
+    expect(efterForsta).toBe(fore + 1)
+    expect(automationGateEntries().length).toBe(efterForsta)
+  })
+
+  it('registret bär vad grinden GJORDE, inte vad den ombads göra', () => {
+    class HallenWorker {}
+    pausedUnless(HallenWorker, { [AUTOMATION_PAUSE_VAR]: 'true' })
+    const post = automationGateEntries().find((e) => e.name === 'HallenWorker')
+    expect(post).toEqual({ name: 'HallenWorker', withheld: true })
   })
 })

@@ -30,9 +30,14 @@
  * grönt på båda raderna.
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { ConfigModule } from '@nestjs/config'
 import { Injectable } from '@nestjs/common'
 import { Cron, ScheduleModule, SchedulerRegistry } from '@nestjs/schedule'
 import { Test } from '@nestjs/testing'
+import { validateEnv } from '../../config/env.validation'
 import { AUTOMATION_PAUSE_VAR, schedulerShouldRegister } from './automation-pause'
 
 /** Väntar i väggklocktid. Cron-timrarna är riktiga, så tiden måste vara det. */
@@ -181,5 +186,68 @@ describe('B. Effekten i ett riktigt Nest-startförlopp (riktiga timrar)', () => 
     } finally {
       await mod.close()
     }
+  })
+})
+
+describe('C. En HALV paus ska vara omöjlig — .env-värdet fäller boot', () => {
+  /**
+   * ── DEFEKTEN, OCH VARFÖR DEN INTE SYNTES I NÅGOT ANNAT PROV ────────────────
+   *
+   * `pausedUnless` anropas när varje kömodulfil EVALUERAS, alltså före
+   * `ConfigModule.forRoot()` hunnit lägga `.env`-filens värden i `process.env`.
+   * `schedulerShouldRegister`, uppstarts-backfillen och `/v1/health` läser
+   * efteråt. Ett värde som bara står i `apps/api/.env` gav därför:
+   *
+   *     cron pausad · backfill pausad · health "paused": true
+   *     ELVA BULL-KONSUMENTER REGISTRERADE OCH KONSUMERANDE
+   *
+   * Två oberoende granskare reproducerade det var för sig. Provet nedan kör den
+   * RIKTIGA `validateEnv` genom en RIKTIG `ConfigModule.forRoot` med en riktig
+   * env-fil på disk — alltså exakt den väg defekten kom in — och kräver att
+   * boot faller.
+   *
+   * Riktningen är hela poängen: att låta `.env`-värdet tyst betyda "inte pausad"
+   * hade gett en operatör som TROR att pausen gäller.
+   */
+  const kat = mkdtempSync(join(tmpdir(), 'driftpaus-env-'))
+  const envFil = join(kat, '.env.prov')
+
+  afterAll(() => {
+    rmSync(kat, { recursive: true, force: true })
+  })
+
+  async function bootaMedEnvFil(rader: string) {
+    writeFileSync(envFil, rader, 'utf8')
+    const mod = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          envFilePath: envFil,
+          ignoreEnvFile: false,
+          validate: validateEnv,
+        }),
+      ],
+    }).compile()
+    await mod.close()
+  }
+
+  it('KANARIEFÅGELN: en env-fil UTAN pausvariabeln bootar', async () => {
+    // Utan den här raden kan nästa test inte skilja "kontrollen håller" från
+    // "riggen kan inte boota alls" — fixturen saknar ju alla kritiska variabler,
+    // men de är bara varningar utanför produktion.
+    await expect(bootaMedEnvFil('NAGOT_ANNAT=1\n')).resolves.toBeUndefined()
+  })
+
+  it.each([['true'], ['false']])(
+    "OPS_AUTOMATION_PAUSED='%s' ENBART i env-filen FÄLLER boot",
+    async (varde) => {
+      await expect(bootaMedEnvFil(`${AUTOMATION_PAUSE_VAR}=${varde}\n`)).rejects.toThrow(
+        AUTOMATION_PAUSE_VAR,
+      )
+    },
+  )
+
+  it('felet pekar ut .env som orsaken, så operatören vet vad som ska rättas', async () => {
+    await expect(bootaMedEnvFil(`${AUTOMATION_PAUSE_VAR}=true\n`)).rejects.toThrow('.env')
   })
 })

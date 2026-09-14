@@ -8,7 +8,13 @@
  * riktas mot fel system.
  */
 
-import { describeTarget, redactRedisUrl, runQueueOps, scanQueueNames } from './queue-ops'
+import {
+  assertKnownQueues,
+  describeTarget,
+  redactRedisUrl,
+  runQueueOps,
+  scanQueueNames,
+} from './queue-ops'
 import { ALLA_KONAMN } from '../common/ops/queue-inventory'
 
 describe('redactRedisUrl', () => {
@@ -32,14 +38,22 @@ describe('redactRedisUrl', () => {
 })
 
 describe('describeTarget', () => {
-  it('bär värd, port, databasindex och prefix', () => {
+  it('bär schema, värd, port, databasindex och prefix', () => {
     expect(describeTarget('redis://h.example:6380/3', 'bull')).toBe(
-      'h.example:6380/db3 prefix=bull',
+      'redis://h.example:6380/db3 prefix=bull',
     )
   })
 
   it('saknad port och saknat db-index blir Redis default, inte tomt', () => {
-    expect(describeTarget('redis://h.example', 'p')).toBe('h.example:6379/db0 prefix=p')
+    expect(describeTarget('redis://h.example', 'p')).toBe('redis://h.example:6379/db0 prefix=p')
+  })
+
+  it('SCHEMAT skiljer två mål åt — TLS och icke-TLS får inte dela --confirm', () => {
+    // `redis://h:6379/0` och `rediss://h:6379/0` är ofta två olika instanser,
+    // och utan schemat i måltexten hade samma --confirm gällt för båda.
+    expect(describeTarget('redis://h:6379/0', 'bull')).not.toBe(
+      describeTarget('rediss://h:6379/0', 'bull'),
+    )
   })
 
   it('måltexten skiljer två prefix åt — annars vore --confirm meningslös', () => {
@@ -77,8 +91,40 @@ describe('confirm-spärren', () => {
 
   it('felmeddelandet visar den förväntade måltexten så operatören kan läsa den', async () => {
     await expect(runQueueOps({ redisUrl: url, prefix: 'bull', action: 'pause' })).rejects.toThrow(
-      '127.0.0.1:1/db0 prefix=bull',
+      'redis://127.0.0.1:1/db0 prefix=bull',
     )
+  })
+})
+
+describe('--queues valideras mot kodens inventering', () => {
+  it('ETT STAVFEL avbryter i stället för att pausa en kö som inte finns', () => {
+    // `new Bull('mail-high').pause(false)` LYCKAS — bindestreck i stället för
+    // kolon hade gett raden `mail-high: globalPaus=true`, operatören hade
+    // bockat av mejlköerna, och `mail:high` hade konsumerat vidare.
+    expect(() => assertKnownQueues(['mail-high'])).toThrow('mail-high')
+  })
+
+  it('felet räknar upp de giltiga namnen, så rättelsen inte kräver en till körning', () => {
+    expect(() => assertKnownQueues(['psd2_sync'])).toThrow('mail:high')
+  })
+
+  it('KANARIEFÅGELN: giltiga namn passerar — annars vore proven ovan gröna av att allt avbryts', () => {
+    expect(() => assertKnownQueues(['mail:high', 'psd2-sync'])).not.toThrow()
+    expect(() => assertKnownQueues(ALLA_KONAMN)).not.toThrow()
+    expect(() => assertKnownQueues([])).not.toThrow()
+  })
+
+  it('kontrollen ligger FÖRE anslutningen — den når aldrig nätverket', async () => {
+    // URL:en pekar ingenstans. Skulle namnkontrollen ligga efter anslutningen
+    // hade provet hängt i stället för att avvisa på tre millisekunder.
+    await expect(
+      runQueueOps({
+        redisUrl: 'redis://127.0.0.1:1/0',
+        prefix: 'bull',
+        action: 'inspect',
+        queues: ['mail-high'],
+      }),
+    ).rejects.toThrow('--queues')
   })
 })
 

@@ -153,7 +153,11 @@ describe('Driftpaus × Bull 4.16.5 mot riktig Redis', () => {
     try {
       await queue.add({ id: 'väntande-1' })
       await queue.add({ id: 'väntande-2' })
-      await queue.add({ id: 'fördröjd-1' }, { delay: 60_000 })
+      // En timme, inte en minut: filens tester tar tillsammans långt över 60 s på
+      // en belastad runner, och ett moget jobb hade konsumerats av den processor
+      // som registreras längre ned — varpå `delayed` blivit 0 och ett senare
+      // prov fallit på körordningen i stället för på mekanismen.
+      await queue.add({ id: 'fördröjd-1' }, { delay: 3_600_000 })
 
       // Gott om tid för en opausad konsument att hinna plocka allt.
       await vanta(2_000)
@@ -251,43 +255,58 @@ describe('Driftpaus × Bull 4.16.5 mot riktig Redis', () => {
     // returnerar, men ett jobb var redan igång. Att kalla det stoppat bara för
     // att paus anropats är precis felet.
     const kö = new Bull<{ id: string }>(QUEUE, REDIS_URL, { prefix: PREFIX })
-    await kö.isReady()
-    await kö.resume(false)
-
-    let startat = false
-    let slutfört = false
     let slappLoss: () => void = () => {}
-    const håller = new Promise<void>((r) => {
-      slappLoss = r
-    })
+    try {
+      await kö.isReady()
+      await kö.resume(false)
 
-    kö.process(async () => {
-      startat = true
-      await håller
-      slutfört = true
-    })
+      let startat = false
+      let slutfört = false
+      const håller = new Promise<void>((r) => {
+        slappLoss = r
+      })
 
-    await kö.add({ id: 'långkörare' })
-    await vanta(1_000)
-    expect(startat).toBe(true)
+      kö.process(async () => {
+        startat = true
+        await håller
+        slutfört = true
+      })
 
-    // GLOBAL paus MEDAN jobbet kör. `doNotWaitActive = true` gör att anropet
-    // återvänder utan att invänta det aktiva jobbet — annars hade provet hängt
-    // på sitt eget jobb, vilket också är svaret på varför en operatör inte kan
-    // tolka ett returnerat `pause()` som "allt arbete är stoppat".
-    await kö.pause(false, true)
-    expect(await kö.isPaused(false)).toBe(true)
+      await kö.add({ id: 'långkörare' })
+      await vanta(1_000)
+      expect(startat).toBe(true)
 
-    const underPaus = await kö.getJobCounts()
-    expect(underPaus.active).toBe(1)
-    expect(slutfört).toBe(false)
+      // GLOBAL paus MEDAN jobbet kör.
+      //
+      // OM MEKANIKEN, exakt: `doNotWaitActive` läses BARA i `isLocal`-grenen
+      // (`bull/lib/queue.js:887-919`). Den globala grenen gör `scripts.pause()`
+      // och inväntar aldrig aktiva jobb — argumentet nedan är alltså en no-op
+      // här, och står kvar bara för att spegla driftverktygets anrop.
+      //
+      // SLUTSATSEN operatören ska dra är ändå den viktiga: att `pause()`
+      // returnerat betyder INTE att allt arbete är stoppat. Ett jobb som redan
+      // plockats fortsätter, och det är precis vad raderna nedan mäter.
+      await kö.pause(false, true)
+      expect(await kö.isPaused(false)).toBe(true)
 
-    // Jobbet körs klart — pausen avbröt det inte, och fick inte göra det.
-    slappLoss()
-    await vanta(1_500)
-    expect(slutfört).toBe(true)
+      const underPaus = await kö.getJobCounts()
+      expect(underPaus.active).toBe(1)
+      expect(slutfört).toBe(false)
 
-    await kö.close()
+      // Jobbet körs klart — pausen avbröt det inte, och fick inte göra det.
+      slappLoss()
+      await vanta(1_500)
+      expect(slutfört).toBe(true)
+    } finally {
+      // FALLER EN ASSERTION OVAN når close() annars aldrig, och köns tre
+      // ioredis-anslutningar blir kvar. `jest.config.ts` sätter varken
+      // `forceExit` eller `detectOpenHandles`, så utfallet hade blivit en svit
+      // som inte avslutas — vilket i CI ser ut som en trasig grind, inte som ett
+      // testfel. Släpp jobbet först: `close()` väntar OBEGRÄNSAT på aktiva jobb
+      // (`whenCurrentJobsFinished`, ingen tidsgräns).
+      slappLoss()
+      await kö.close()
+    }
   })
 
   it('FEL PREFIX ger noll i varje räknare — ett tomt resultat bevisar ingen avskärmning', async () => {
@@ -358,7 +377,8 @@ describe('queue-ops mot riktig Redis', () => {
       await köA.add({ id: 'verktyg-1' })
       await köB.add({ id: 'verktyg-2' }, { delay: 600_000 })
 
-      const mål = `${new URL(REDIS_URL).hostname}:${new URL(REDIS_URL).port || '6379'}/db0 prefix=${VERKTYGSPREFIX}`
+      const u = new URL(REDIS_URL)
+      const mål = `${u.protocol.replace(/:$/, '')}://${u.hostname}:${u.port || '6379'}/db0 prefix=${VERKTYGSPREFIX}`
 
       // LÄSLÄGE FÖRST — och det ska inte skriva något.
       const läst = await runQueueOps({
@@ -431,6 +451,42 @@ describe('queue-ops mot riktig Redis', () => {
       expect(resultat.inventeringKomplett).toBe(false)
     } finally {
       await okänd.close()
+    }
+  })
+  it('ETT TOMT MÅL rapporteras som ofullständigt — och en åtgärd VÄGRAS', async () => {
+    // DEN FARLIGASTE FORMEN, reproducerad av en granskare: fel prefix, fel
+    // databasindex eller fel Redis. Bulls `pause(false)` lyckas även mot ett
+    // könamn som inte finns, så utan det här ledet svarade verktyget
+    // "inventering komplett: JA" och "elva köer pausade" om ett mål som inte
+    // bär en enda av dem.
+    const tomtPrefix = `${PREFIX}:heltomt`
+
+    const läst = await runQueueOps({
+      redisUrl: REDIS_URL,
+      prefix: tomtPrefix,
+      action: 'inspect',
+    })
+    expect(läst.funnaIRedis).toBe(0)
+    expect(läst.inventeringKomplett).toBe(false)
+    expect(läst.utanSparIRedis).toHaveLength(läst.queues.length)
+
+    await expect(
+      runQueueOps({
+        redisUrl: REDIS_URL,
+        prefix: tomtPrefix,
+        action: 'pause',
+        confirm: läst.target,
+      }),
+    ).rejects.toThrow('ingen av de')
+
+    // OCH DEN VÄGRADE ÅTGÄRDEN SKREV INGENTING. Utan den här raden hade provet
+    // inte kunnat skilja "vägrade" från "vägrade efter att ha hunnit pausa".
+    const städare = new Bull(QUEUE, REDIS_URL, { prefix: tomtPrefix })
+    try {
+      await städare.isReady()
+      expect(await städare.client.keys(`${tomtPrefix}:*`)).toEqual([])
+    } finally {
+      await städare.close()
     }
   })
 })

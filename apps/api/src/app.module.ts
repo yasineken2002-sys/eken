@@ -102,7 +102,9 @@ import { Psd2Module } from './psd2/psd2.module'
     // krediter på sammanfattningar till skräpkonton. Eftersom dev och prod
     // delade API-nyckel drabbade det samma saldo som produktionen.
     //
-    // Grinden gäller alla 23 @Cron-jobb, inte bara AI-jobben: backup, kravtrappa,
+    // Grinden gäller alla 34 @Cron-jobb (talet stod tidigare som 23 och hade
+    // åldrats; mängden härleds av apps/api/scripts/cron-classification.ack.json),
+    // inte bara AI-jobben: backup, kravtrappa,
     // påminnelser och plattformsfakturering ska heller aldrig utlösas från en
     // utvecklingsmiljö mot delade externa resurser (R2, Resend, Anthropic).
     // ── DRIFTPAUS ────────────────────────────────────────────────────────

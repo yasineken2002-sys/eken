@@ -33,6 +33,37 @@
  *       noll processorer eller noll registerQueue-namn är R1–R4 gröna av tomhet,
  *       vilket är det utfall den här familjen av vakter oftast har fallit på.
  *
+ * ── VAD DEN HÄR VAKTEN INTE KAN SE ──────────────────────────────────────────
+ *
+ * Skrivet efter en oberoende granskning, och avsiktligt utförligt: en vakt som
+ * inte säger var den slutar läses som om den täckte allt.
+ *
+ *  • LIVSCYKEL-HOOKAR. Vakten härleder @Processor, ScheduleModule.forRoot och
+ *    registerQueue — ingenting annat. En TOLFTE startväg i form av en ny
+ *    `onApplicationBootstrap` som skickar ett mejl eller bokför blir INTE röd
+ *    här, precis som `DepositsService` inte hade blivit det. Den enda skrivande
+ *    hooken i dag är grindad och mätt i
+ *    `apps/api/src/deposits/deposits-uppstartspaus.spec.ts`, men det är ett prov
+ *    över en känd hook, inte en härledning över alla framtida.
+ *
+ *  • KÖNAMN SOM INTE ÄR IDENTIFIERARE. R4 läser `name: <identifierare>`. En kö
+ *    registrerad med en strängliteral (`{ name: 'ny-ko' }`), ett
+ *    mallsträngsnamn, `registerQueueAsync` eller en spridd array syns inte.
+ *    Grinden själv håller ändå — R1 härleder @Processor-klasser oberoende av
+ *    könamnets form — men driftverktygets INVENTERING skulle sakna kön. Ett
+ *    delvis mothåll finns i verktyget: en sådan kö dyker upp i `okandaIRedis`
+ *    så snart den har nycklar i Redis.
+ *
+ *  • VAR namnet står. R1/R2 jämför NAMNMÄNGDER över alla filer, inte varje
+ *    enskild registrering. `providers: [X, ...pausedUnless(X)]` är grönt här och
+ *    registrerar ändå konsumenten.
+ *
+ *  • ATT GRINDEN GÖR NÅGOT. Vakten äger PÅKOPPLINGEN. Effekten är mätt i
+ *    `common/ops/automation-pause-startup.spec.ts` (riktigt Nest-startförlopp)
+ *    och `common/ops/automation-pause-queue.db.spec.ts` (riktig Bull mot riktig
+ *    Redis). Var för sig är båda den defekt vi jagat: ett prov utan påkoppling,
+ *    och en vakt som bevakar en sträng ingen prövat effekten av.
+ *
  * ── EN VY PER FRÅGA ─────────────────────────────────────────────────────────
  *
  * Allt läses via `codeMask` (kommentarer och stränginnehåll blankade, positioner

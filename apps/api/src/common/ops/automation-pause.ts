@@ -108,6 +108,80 @@ export function automationPaused(env: NodeJS.ProcessEnv = process.env): boolean 
 }
 
 /**
+ * VÄRDET SOM LÄSTES NÄR DEN HÄR FILEN EVALUERADES — alltså vid det allra
+ * tidigaste tillfälle något i appen kan läsa miljön.
+ *
+ * ── VARFÖR DEN HÄR KONSTANTEN FINNS (uppmätt defekt) ────────────────────────
+ *
+ * `pausedUnless` anropas när varje modulfil EVALUERAS, och `app.module.ts`
+ * importerar alla feature-moduler på toppen av filen. Konsumentgrinden läser
+ * alltså miljön FÖRE `ConfigModule.forRoot()` hunnit köra. Schemaläggargrinden
+ * läser den EFTER, eftersom den står som ett element i `imports`-arrayen.
+ *
+ * `@nestjs/config` skjuter in `.env`-filens värden i `process.env` inne i
+ * `forRoot()`. Ett värde som BARA står i `apps/api/.env` syns därför för
+ * schemaläggargrinden, för uppstarts-backfillen och för `/v1/health` — men INTE
+ * för de elva konsumenterna. Utfallet är det värsta möjliga:
+ *
+ *     cron pausad · backfill pausad · health säger "paused": true
+ *     ELVA BULL-KONSUMENTER REGISTRERADE OCH KONSUMERANDE
+ *
+ * Två oberoende granskare reproducerade det, var för sig. Produktionen (Railway)
+ * är inte drabbad — `apps/api/Dockerfile` kopierar ingen `.env` och
+ * `migrate-and-start.sh` sätter inga filbaserade variabler, så där är variabeln
+ * riktig processmiljö. Men det är i en repetition av proceduren, lokalt eller i
+ * en container med `.env`, som man får halv paus och ett hälsosvar som ljuger.
+ *
+ * ── LÖSNINGEN ÄR ATT GÖRA TILLSTÅNDET OMÖJLIGT, INTE ATT DOKUMENTERA DET ────
+ *
+ * Snapshoten fryser vad processmiljön sa vid modulladdning.
+ * `automationPauseSourceMismatch` jämför den mot vad `ConfigModule` sedan löste
+ * ut, och `validateEnv` fäller boot om de skiljer sig. En halv paus kan då inte
+ * existera: antingen är variabeln processmiljö och gäller överallt, eller så
+ * vägrar appen starta med ett meddelande som säger exakt vad som ska rättas.
+ *
+ * Fail-closed, och på rätt sida: alternativet — att låta `.env`-värdet tyst
+ * betyda "inte pausad" — hade gett en operatör som TROR att pausen gäller.
+ */
+const PROCESSMILJONS_VARDE: string | undefined = process.env[AUTOMATION_PAUSE_VAR]
+
+export class AutomationPauseSourceError extends Error {
+  constructor(processvarde: string | undefined, konfigvarde: unknown) {
+    super(
+      `[ops] ${AUTOMATION_PAUSE_VAR} har OLIKA värden i processmiljön och i den ` +
+        `upplösta konfigurationen: processmiljö=${processvarde === undefined ? '(osatt)' : `'${processvarde}'`}, ` +
+        `konfiguration=${typeof konfigvarde === 'string' ? `'${konfigvarde}'` : '(osatt)'}. ` +
+        'Det inträffar när variabeln står i apps/api/.env i stället för i ' +
+        'processmiljön: köernas konsumenter grindas vid modulimport, alltså INNAN ' +
+        'ConfigModule läser .env, medan schemaläggaren och /v1/health läser efteråt. ' +
+        'Resultatet hade blivit en HALV paus med ett hälsosvar som påstår full paus. ' +
+        `Sätt ${AUTOMATION_PAUSE_VAR} som riktig miljövariabel (Railway, eller ` +
+        `\`${AUTOMATION_PAUSE_VAR}=true node ...\`) och ta bort den ur .env.`,
+    )
+  }
+}
+
+/**
+ * Jämför den upplösta konfigurationen mot processmiljöns snapshot.
+ *
+ * Anropas av `validateEnv`, alltså under ConfigModule-upplösningen — före
+ * `BullExplorer.onModuleInit` och före `onApplicationBootstrap`. Kastet
+ * avbryter därför boot innan en enda konsument kopplats in eller ett enda
+ * startjobb körts.
+ *
+ * @throws AutomationPauseSourceError när källorna skiljer sig åt.
+ */
+export function assertAutomationPauseSource(config: Record<string, unknown>): void {
+  const konfig = config[AUTOMATION_PAUSE_VAR]
+  const konfigStr = typeof konfig === 'string' && konfig !== '' ? konfig : undefined
+  const processStr =
+    PROCESSMILJONS_VARDE !== undefined && PROCESSMILJONS_VARDE !== ''
+      ? PROCESSMILJONS_VARDE
+      : undefined
+  if (konfigStr !== processStr) throw new AutomationPauseSourceError(processStr, konfigStr)
+}
+
+/**
  * Ska den här processen registrera `ScheduleModule.forRoot()`?
  *
  * ── VARFÖR BESLUTET BOR HÄR OCH INTE I `app.module.ts` ──────────────────────
@@ -151,14 +225,14 @@ export interface AutomationGateEntry {
   readonly withheld: boolean
 }
 
-const gateRegistry: AutomationGateEntry[] = []
+const gateRegistry = new Map<string, AutomationGateEntry>()
 
 /**
  * Hjälpare för `imports`/`providers`-arrayer: `...pausedUnless(x)` blir tom lista
  * i pausat läge och `[x]` annars.
  *
- * Finns för att grinden ska se LIKADAN ut på alla nitton ställen den används.
- * Nitton varianter av `...(automationPaused() ? [] : [X])` hade varit nitton
+ * Finns för att grinden ska se LIKADAN ut på alla elva ställen den används.
+ * Elva varianter av `...(automationPaused() ? [] : [X])` hade varit elva
  * tillfällen att skriva villkoret åt fel håll, och ett enda omvänt villkor hade
  * gett en konsument som startar just i pausat läge — den värsta formen, eftersom
  * den bara syns när pausen faktiskt behövs.
@@ -168,13 +242,16 @@ const gateRegistry: AutomationGateEntry[] = []
  */
 export function pausedUnless<T>(provider: T, env: NodeJS.ProcessEnv = process.env): T[] {
   const paused = automationPaused(env)
-  gateRegistry.push({
-    name:
-      typeof provider === 'function' && typeof (provider as { name?: unknown }).name === 'string'
-        ? ((provider as { name: string }).name ?? '(anonym)')
-        : '(anonym)',
-    withheld: paused,
-  })
+  const name =
+    typeof provider === 'function' && typeof (provider as { name?: unknown }).name === 'string'
+      ? (provider as { name: string }).name
+      : '(anonym)'
+  // NYCKLAT PÅ NAMN, inte push: laddas samma modulfil två gånger (dist + src,
+  // olika upplösta sökvägar) hade en ren lista dubblerat talen i /v1/health utan
+  // att något sa till. Varje konsumentklass grindas exakt en gång i koden, vilket
+  // check-automation-pause.mjs bevakar — så en dubblett är alltid en
+  // laddningsartefakt, aldrig en riktig andra konsument.
+  gateRegistry.set(name, { name, withheld: paused })
   return paused ? [] : [provider]
 }
 
@@ -198,5 +275,5 @@ export function pausedUnless<T>(provider: T, env: NodeJS.ProcessEnv = process.en
  * praktiken bara kan hända i ett prov som importerar en enda modul.
  */
 export function automationGateEntries(): readonly AutomationGateEntry[] {
-  return gateRegistry
+  return [...gateRegistry.values()]
 }

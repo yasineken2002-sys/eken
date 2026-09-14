@@ -21,10 +21,16 @@
  *    ur miljön. En operatörs terminal bär ofta produktionens variabler, och ett
  *    verktyg som "bara kör mot det som råkade stå i miljön" antar produktion som
  *    standard — vilket uppdraget uttryckligen förbjuder.
- * 2. Muterande åtgärder kräver `--confirm=<mål>`, där `<mål>` måste vara
- *    exakt den måltext verktyget självt skriver ut i läsläget (värd, port,
- *    databasindex och prefix). Operatören kan alltså inte pausa något den inte
- *    först har läst. Ett stavfel ger ett avbrott, inte en åtgärd på fel system.
+ * 2. Muterande åtgärder kräver `--confirm=<mål>`, där `<mål>` måste vara exakt
+ *    den måltext verktyget skriver ut (schema, värd, port, databasindex och
+ *    prefix).
+ *
+ *    VAD DEN FAKTISKT ÄR: en stavfelsspärr och en ändringsspärr — INTE ett bevis
+ *    för att operatören läst läsläget först. `describeTarget` är en ren funktion
+ *    av `--redis-url` och `--prefix`, utan nonce och utan något från det levande
+ *    systemet, så måltexten går att räkna ut i huvudet. Det den bevisligen
+ *    fångar är ett stavfel i URL:en eller prefixet mellan läsning och åtgärd,
+ *    och en URL som ändrats däremellan. Påstå inte mer än så.
  * 3. Inventeringen jämförs mot koden. Saknas en kö, eller finns det en kö i
  *    Redis som koden inte känner till, sätts `inventeringKomplett: false` och
  *    verktyget vägrar kalla utfallet verifierat. Ett tomt eller ofullständigt
@@ -79,11 +85,18 @@ export interface OpsResult {
   bullVersion: string
   redisVersion: string
   /**
-   * Sant bara när HELA kodens mängd begärdes OCH Redis inte bär någon kö
-   * utanför den. Se `okandaIRedis` för varför just den riktningen är den
-   * farliga.
+   * Sant bara när HELA kodens mängd begärdes, Redis inte bär någon kö utanför
+   * den, OCH minst en av de begärda köerna faktiskt har spår under prefixet.
+   *
+   * Det sista ledet är tillagt efter ett granskningsfynd som reproducerades
+   * skarpt: utan det svarade verktyget `inventering komplett: JA` mot ett HELT
+   * TOMT prefix, och `--action=pause` rapporterade elva pausade köer som inte
+   * fanns. Fel prefix, fel databasindex eller fel Redis hade alltså läst som en
+   * verifierad avskärmning — exakt det utfall spärren finns för att stoppa.
    */
   inventeringKomplett: boolean
+  /** Antal begärda köer som har spår under prefixet. Noll = fel mål. */
+  funnaIRedis: number
   /**
    * Köer i koden som inte har ett enda spår under prefixet. Den OFARLIGA
    * riktningen: en kö som aldrig fått ett jobb har inga nycklar, och det finns
@@ -122,11 +135,16 @@ export function redactRedisUrl(url: string): string {
  * formuleringar hade gjort bekräftelsen möjlig att uppfylla av misstag.
  */
 export function describeTarget(redisUrl: string, prefix: string): string {
+  let schema = '(okänt)'
   let host = '(okänd)'
   let port = '(okänd)'
   let db = '0'
   try {
     const u = new URL(redisUrl)
+    // SCHEMAT MÅSTE MED. `redis://h:6379/0` och `rediss://u:pw@h:6379/0` är två
+    // olika mål — ofta en oskyddad och en TLS-skyddad instans — och utan det här
+    // ledet delade de samma måltext, alltså samma giltiga --confirm.
+    schema = u.protocol.replace(/:$/, '')
     host = u.hostname
     port = u.port || '6379'
     const path = u.pathname.replace(/^\//, '')
@@ -134,7 +152,7 @@ export function describeTarget(redisUrl: string, prefix: string): string {
   } catch {
     /* måltexten blir då synligt ofullständig, vilket i sig stoppar --confirm */
   }
-  return `${host}:${port}/db${db} prefix=${prefix}`
+  return `${schema}://${host}:${port}/db${db} prefix=${prefix}`
 }
 
 function log(msg: string): void {
@@ -203,6 +221,32 @@ export async function scanQueueNames(
   return [...found].sort()
 }
 
+/**
+ * ETT STAVFEL I `--queues` SKA AVBRYTA, inte "pausa" en kö som inte finns.
+ *
+ * `new Bull('mail-high', …).pause(false)` LYCKAS — Bulls pause-script sätter
+ * `meta-paused` villkorslöst, även för ett namn ingen konsument lyssnar på.
+ * Bindestreck i stället för kolon hade alltså gett raden
+ * `mail-high: globalPaus=true`, operatören hade bockat av mejlköerna, och
+ * `mail:high` hade konsumerat vidare.
+ *
+ * Egen exporterad funktion, inte en rad inuti `runQueueOps`, så att den går att
+ * pröva utan att en Redis-anslutning öppnas — kontrollen ligger med flit FÖRE
+ * anslutningen, och ett prov som måste ansluta för att nå den hade mätt
+ * anslutningen i stället.
+ *
+ * @throws när något begärt namn saknas i kodens inventering.
+ */
+export function assertKnownQueues(begarda: readonly string[]): void {
+  const okanda = begarda.filter((n) => !ALLA_KONAMN.includes(n))
+  if (okanda.length > 0) {
+    throw new Error(
+      `--queues innehåller namn som inte finns i kodens inventering: ` +
+        `${okanda.join(', ')}. Giltiga: ${ALLA_KONAMN.join(', ')}.`,
+    )
+  }
+}
+
 export interface RunOptions {
   redisUrl: string
   prefix: string
@@ -215,6 +259,8 @@ export interface RunOptions {
 export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
   const target = describeTarget(opts.redisUrl, opts.prefix)
   const begarda = opts.queues && opts.queues.length > 0 ? [...opts.queues].sort() : [...ALLA_KONAMN]
+
+  assertKnownQueues(begarda)
 
   if (opts.action !== 'inspect') {
     if (opts.confirm !== target) {
@@ -244,11 +290,32 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
     const utanSparIRedis = ALLA_KONAMN.filter((n) => !iRedis.includes(n))
     const okandaIRedis = iRedis.filter((n) => !kodensMangd.has(n))
     const allaBegarda = begarda.length === ALLA_KONAMN.length
-    // ASYMMETRIN ÄR AVSIKTLIG. En kö utan spår i Redis kan inte konsumera något
-    // — den är ofarlig. En kö i Redis som koden inte känner till är motsatsen:
-    // den kan ha en konsument vi inte inventerat. Bara den riktningen, och ett
-    // avgränsat `--queues`, får fälla helhetsbedömningen.
-    const inventeringKomplett = allaBegarda && okandaIRedis.length === 0
+    const funnaIRedis = begarda.filter((n) => iRedis.includes(n)).length
+    // ASYMMETRIN ÄR AVSIKTLIG. En ENSKILD kö utan spår i Redis kan inte
+    // konsumera något — den är ofarlig, och en kö som aldrig fått ett jobb har
+    // inga nycklar. En kö i Redis som koden inte känner till är motsatsen: den
+    // kan ha en konsument vi inte inventerat.
+    //
+    // MEN NOLL FUNNA ÄR INTE SAMMA SAK SOM ELVA OFARLIGA. Hittas ingen enda av
+    // de begärda köerna är den överlägset troligaste förklaringen fel prefix,
+    // fel databasindex eller fel Redis — inte att produktionen aldrig kört ett
+    // jobb. Utan det ledet svarade verktyget "komplett: JA" mot ett tomt
+    // prefix, vilket ett granskningsfynd visade skarpt.
+    const inventeringKomplett = allaBegarda && okandaIRedis.length === 0 && funnaIRedis > 0
+
+    if ((opts.action === 'pause' || opts.action === 'resume') && funnaIRedis === 0) {
+      // VÄGRA, i stället för att lyckas. Bulls `pause(false)` sätter
+      // `meta-paused` villkorslöst och lyckas alltid — även för ett könamn som
+      // inte finns. En paus mot fel mål är därför inte ett fel som märks; den
+      // ser ut som elva pausade köer. Enda sättet att skilja fallen åt är att
+      // kräva att målet bevisligen BÄR köerna.
+      throw new Error(
+        `ingen av de ${begarda.length} begärda köerna har spår under ` +
+          `${target}. Bull:s pause/resume lyckas även mot ett könamn som inte finns, ` +
+          'så en åtgärd här hade rapporterat framgång mot fel prefix, fel ' +
+          'databasindex eller fel Redis. Kontrollera målet i läsläge först.',
+      )
+    }
 
     if (opts.action === 'pause' || opts.action === 'resume') {
       for (const q of koer) {
@@ -271,6 +338,7 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
       bullVersion: BULL_VERSION,
       redisVersion,
       inventeringKomplett,
+      funnaIRedis,
       utanSparIRedis,
       okandaIRedis,
       queues,
@@ -326,6 +394,7 @@ async function main(): Promise<void> {
     log(`bull ${result.bullVersion} · redis ${result.redisVersion}`)
     log(
       `inventering komplett: ${result.inventeringKomplett ? 'JA' : 'NEJ'}` +
+        ` · köer med spår: ${result.funnaIRedis}/${result.queues.length}` +
         (result.utanSparIRedis.length
           ? ` · utan spår i Redis: ${result.utanSparIRedis.join(', ')}`
           : '') +
