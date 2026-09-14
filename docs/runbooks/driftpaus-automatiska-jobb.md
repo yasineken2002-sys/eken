@@ -21,8 +21,9 @@ Den sista raden är avsiktlig. En felstavning (`ture`, `TRUE`, `1`) får inte ty
 betyda "kör på" i just det ögonblick någon trodde sig ha pausat. Kastet sker vid
 boot, före första jobbet, i alla miljöer.
 
-Var beredd på konsekvensen: kastet sker redan vid **modulimport**, alltså före
-Nest, före `validateEnv` och före HTTP-servern. Ett stavfel i pausvariabeln tar
+Var beredd på konsekvensen. Står det ogiltiga värdet i **processmiljön** sker
+kastet redan vid **modulimport**, alltså före Nest, före `validateEnv` och före
+HTTP-servern. Står det bara i `.env` fälls det i stället av `validateEnv`. Ett stavfel i pausvariabeln tar
 därför ned **hela API:t**, inte bara automatiken — Railway startar om tre gånger
 (`restartPolicyType = "ON_FAILURE"`, `restartPolicyMaxRetries = 3`) och ger sedan
 upp. Rätt riktning (fail-closed), men en dyrare konsekvens än ordet "avbryts"
@@ -34,12 +35,16 @@ fortsätta fungera. Priset är att en **utebliven** paus ser ut som en normal st
 
 ### Variabeln måste vara PROCESSMILJÖ, inte en rad i `.env`
 
-Konsumentgrinden läser miljön när varje kömodulfil **importeras**, alltså innan
-`ConfigModule.forRoot()` hunnit lägga `.env`-filens värden i `process.env`.
-Schemaläggaren, uppstarts-backfillen och `/v1/health` läser efteråt. Ett värde
-som bara står i `apps/api/.env` hade därför gett en **halv paus**: cron och
-backfill pausade, `/v1/health` sägande `paused: true`, och elva Bull-konsumenter
-registrerade och konsumerande.
+Flaggan läses vid fyra olika tidpunkter. `ConfigModule.forRoot` är asynkron och
+lägger `.env`-filens värden i `process.env` **efter** att `imports`-arrayen
+byggts. Uppmätt med en sond som speglar exakt den ordningen: båda **grindarna**
+(konsumenterna och schemaläggaren) läser processmiljön _före_ `.env`, medan
+`DepositsService`-backfillen och `/v1/health` läser vid runtime, alltså _efter_.
+
+Ett värde som bara står i `apps/api/.env` hade därför gett ett **splittrat**
+tillstånd: cron igång, elva konsumenter igång, uppstarts-backfillen pausad — och
+`/v1/health` sägande `paused: true` om en process som inte pausat något av
+betydelse.
 
 Det tillståndet är gjort **omöjligt**, inte dokumenterat bort: `validateEnv`
 jämför processmiljöns värde mot det som `ConfigModule` löste ut och **avbryter
@@ -165,6 +170,23 @@ Tre spärrar mot fel system:
    åtgärd **vägrar** mot ett sådant mål. Ett okänt namn i `--queues` avbryter
    också, eftersom `mail-high` (bindestreck) annars hade pausats med framgång
    medan `mail:high` konsumerade vidare.
+
+**Gränserna för punkt 3, utskrivna:** spärren fångar ett **helt tomt** mål. Den
+skiljer inte "rätt mål" från "fel mål" — ett gammalt prefix eller db-index från
+_samma_ app bär alla elva `:id`-nycklar och passerar. Att skilja de två kräver
+något läst ur det levande målet och jämfört mot något oberoende (Redis `run_id`,
+högsta jobb-id per kö); det är inte byggt. Är målet tomt **med flit** (nyuppsatt
+eller nyss flushad Redis) finns `--allow-empty-target`, som häver vägran men
+aldrig omdömet.
+
+Två fler saker operatören behöver veta:
+
+- **En kö i `okandaIRedis` går inte att pausa med `--queues`** — den finns ju inte
+  i kodens inventering, och namnkontrollen avvisar den. Ett sådant fynd är ett
+  stoppvillkor som kräver ett eget beslut, inte något verktyget ska köra förbi.
+- **`--action=resume` utan `--queues` återöppnar alla elva**, utan att skilja på
+  köer som pausades av det här fönstret och köer som var pausade av annan orsak.
+  Ange `--queues` vid återöppning, eller läs `globalPaus` per kö först.
 
 Verktyget raderar aldrig jobb (`clean`/`empty`/`remove`/`obliterate` finns inte),
 skriver aldrig ut credentials, jobbpayloads eller personuppgifter, och rapporterar

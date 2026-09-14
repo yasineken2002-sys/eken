@@ -381,13 +381,16 @@ export function validateEnv(config: EnvRecord): EnvRecord {
     errors.push(`  • ${err instanceof Error ? err.message : String(err)}`)
   }
 
-  // 9. DRIFTPAUSENS KÄLLA. Konsumentgrinden läser processmiljön vid modulimport,
-  //    alltså FÖRE den här valideringen och före `ConfigModule` hunnit lägga in
-  //    `.env`-filens värden. Ett värde som bara står i `apps/api/.env` skulle
-  //    därför pausa schemaläggaren, uppstarts-backfillen och `/v1/health` men
-  //    INTE de elva Bull-konsumenterna — en halv paus med ett hälsosvar som
-  //    påstår full paus. Kontrollen gör det tillståndet omöjligt i stället för
-  //    att dokumentera det. Se AutomationPauseSourceError för mätningen.
+  // 9. DRIFTPAUSENS KÄLLA. Flaggan läses vid fyra olika tidpunkter: de två
+  //    grindarna läser processmiljön innan `ConfigModule` hunnit lägga in
+  //    `.env`-filens värden, medan uppstarts-backfillen och `/v1/health` läser
+  //    vid runtime, alltså efteråt. Ett värde som bara står i `apps/api/.env`
+  //    hade därför gett cron och de elva konsumenterna IGÅNG, backfillen pausad,
+  //    och ett hälsosvar som påstår full paus. Kontrollen gör det tillståndet
+  //    omöjligt i stället för att dokumentera det — och den står FÖRE
+  //    `assignVariablesToProcess` i `ConfigModule.forRoot` (config.module.js:78-80),
+  //    så boot avbryts innan `.env`-värdet ens nått process.env. Se
+  //    AutomationPauseSourceError för mätningen.
   try {
     assertAutomationPauseSource(config)
   } catch (err) {

@@ -31,10 +31,17 @@
  *    systemet, så måltexten går att räkna ut i huvudet. Det den bevisligen
  *    fångar är ett stavfel i URL:en eller prefixet mellan läsning och åtgärd,
  *    och en URL som ändrats däremellan. Påstå inte mer än så.
- * 3. Inventeringen jämförs mot koden. Saknas en kö, eller finns det en kö i
- *    Redis som koden inte känner till, sätts `inventeringKomplett: false` och
- *    verktyget vägrar kalla utfallet verifierat. Ett tomt eller ofullständigt
- *    svar är den vanligaste formen av falskt lugn i den här operationen.
+ * 3. Inventeringen jämförs mot koden, och `inventeringKomplett` blir `false`
+ *    vid en okänd kö i Redis, vid ett avgränsat `--queues`, och när INGEN av de
+ *    begärda köerna har spår under prefixet. En muterande åtgärd vägrar i det
+ *    sista fallet.
+ *
+ *    VAD DEN SPÄRREN FAKTISKT FÅNGAR: ett HELT TOMT mål. Den skiljer inte "rätt
+ *    mål" från "fel mål" — ett gammalt prefix eller ett gammalt db-index från
+ *    SAMMA app bär alla elva `:id`-nycklar, och passerar. Att skilja de två
+ *    kräver något läst ur det levande målet och jämfört mot något oberoende
+ *    (t.ex. Redis `run_id` eller högsta jobb-id per kö) — det är inte byggt, och
+ *    verktyget lovar det inte.
  *
  * ── VAD DET ALDRIG GÖR ──────────────────────────────────────────────────────
  *
@@ -254,6 +261,18 @@ export interface RunOptions {
   /** Begärda könamn. Utelämnad = kodens fulla mängd. */
   queues?: readonly string[]
   confirm?: string
+  /**
+   * Tillåt en muterande åtgärd mot ett mål där INGEN begärd kö har spår.
+   *
+   * Finns för det legitima fallet: en nyprovisionerad Redis, eller en instans
+   * efter `FLUSHDB` under en incident, som ska förberedas-pausas INNAN appen
+   * startar. Utan flaggan hade verktyget gjort just det omöjligt.
+   *
+   * `inventeringKomplett` förblir `false` — flaggan häver vägran, aldrig
+   * omdömet. Ett utfall med den här flaggan får alltså aldrig redovisas som en
+   * verifierad avskärmning.
+   */
+  allowEmptyTarget?: boolean
 }
 
 export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
@@ -303,7 +322,11 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
     // prefix, vilket ett granskningsfynd visade skarpt.
     const inventeringKomplett = allaBegarda && okandaIRedis.length === 0 && funnaIRedis > 0
 
-    if ((opts.action === 'pause' || opts.action === 'resume') && funnaIRedis === 0) {
+    if (
+      (opts.action === 'pause' || opts.action === 'resume') &&
+      funnaIRedis === 0 &&
+      !opts.allowEmptyTarget
+    ) {
       // VÄGRA, i stället för att lyckas. Bulls `pause(false)` sätter
       // `meta-paused` villkorslöst och lyckas alltid — även för ett könamn som
       // inte finns. En paus mot fel mål är därför inte ett fel som märks; den
@@ -313,7 +336,10 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
         `ingen av de ${begarda.length} begärda köerna har spår under ` +
           `${target}. Bull:s pause/resume lyckas även mot ett könamn som inte finns, ` +
           'så en åtgärd här hade rapporterat framgång mot fel prefix, fel ' +
-          'databasindex eller fel Redis. Kontrollera målet i läsläge först.',
+          'databasindex eller fel Redis. Läsläget svarar likadant — kontrollera ' +
+          'måltexten mot den instans appen faktiskt använder. Är målet TOMT MED ' +
+          'FLIT (nyprovisionerad eller nyss flushad Redis): --allow-empty-target. ' +
+          'Inventeringen förblir då ofullständig.',
       )
     }
 
@@ -377,6 +403,7 @@ function parseArgs(argv: readonly string[]): RunOptions {
     action,
     ...(queues ? { queues } : {}),
     ...(get('confirm') !== undefined ? { confirm: get('confirm')! } : {}),
+    ...(argv.includes('--allow-empty-target') ? { allowEmptyTarget: true } : {}),
   }
 }
 

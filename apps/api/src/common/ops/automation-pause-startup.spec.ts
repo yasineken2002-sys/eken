@@ -216,6 +216,18 @@ describe('C. En HALV paus ska vara omöjlig — .env-värdet fäller boot', () =
     rmSync(kat, { recursive: true, force: true })
   })
 
+  /**
+   * `ConfigModule.forRoot` kör `assignVariablesToProcess` EFTER en lyckad
+   * validering, så en boot som gick igenom lämnar env-filens värde kvar i
+   * `process.env`. Nästa boot bygger sin config som `{...envFil, ...process.env}`
+   * — där processmiljön vinner — och hade då mätt det föregående provets värde i
+   * stället för sitt eget. Uppmätt: utan den här raden blev `=true`-provet grönt
+   * av att `=false`-provet körts före det.
+   */
+  afterEach(() => {
+    delete process.env[AUTOMATION_PAUSE_VAR]
+  })
+
   async function bootaMedEnvFil(rader: string) {
     writeFileSync(envFil, rader, 'utf8')
     const mod = await Test.createTestingModule({
@@ -238,14 +250,18 @@ describe('C. En HALV paus ska vara omöjlig — .env-värdet fäller boot', () =
     await expect(bootaMedEnvFil('NAGOT_ANNAT=1\n')).resolves.toBeUndefined()
   })
 
-  it.each([['true'], ['false']])(
-    "OPS_AUTOMATION_PAUSED='%s' ENBART i env-filen FÄLLER boot",
-    async (varde) => {
-      await expect(bootaMedEnvFil(`${AUTOMATION_PAUSE_VAR}=${varde}\n`)).rejects.toThrow(
-        AUTOMATION_PAUSE_VAR,
-      )
-    },
-  )
+  it("OPS_AUTOMATION_PAUSED='true' ENBART i env-filen FÄLLER boot", async () => {
+    await expect(bootaMedEnvFil(`${AUTOMATION_PAUSE_VAR}=true\n`)).rejects.toThrow(
+      AUTOMATION_PAUSE_VAR,
+    )
+  })
+
+  it("OPS_AUTOMATION_PAUSED='false' i env-filen bootar — båda källorna säger INTE PAUSAD", async () => {
+    // Jämförelsen gäller BESLUT, inte strängar. Fälldes den här kombinationen
+    // gick `cp .env.example .env` inte längre att göra — mätt av en granskare,
+    // och skälet till att `.env.example` nu bär raden utkommenterad.
+    await expect(bootaMedEnvFil(`${AUTOMATION_PAUSE_VAR}=false\n`)).resolves.toBeUndefined()
+  })
 
   it('felet pekar ut .env som orsaken, så operatören vet vad som ska rättas', async () => {
     await expect(bootaMedEnvFil(`${AUTOMATION_PAUSE_VAR}=true\n`)).rejects.toThrow('.env')

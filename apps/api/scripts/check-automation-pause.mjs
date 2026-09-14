@@ -32,6 +32,16 @@
  *   R5  KANARIEFÅGELN: härledningarna måste ha MÄTT något. Hittar skanningen
  *       noll processorer eller noll registerQueue-namn är R1–R4 gröna av tomhet,
  *       vilket är det utfall den här familjen av vakter oftast har fallit på.
+ *   R6  `.env.example` får INTE bära en aktiv `OPS_AUTOMATION_PAUSED=true`-rad.
+ *       Regeln kom ur ett granskningsfynd: källkontrollen i `validateEnv` fäller
+ *       boot när `.env` ger ett ANNAT pausbeslut än processmiljön — och
+ *       `cp .env.example .env` är det dokumenterade onboarding-steget. En rad
+ *       menad som dokumentation hade alltså brutit uppstarten för varje ny
+ *       utvecklare, i ett läge där ingenting var pausat.
+ *
+ *       `=false` fäller INTE: det ger samma beslut som en osatt variabel och kan
+ *       per konstruktion inte ge ett splittrat tillstånd. Regeln ska vara sann,
+ *       inte bara sträng.
  *
  * ── VAD DEN HÄR VAKTEN INTE KAN SE ──────────────────────────────────────────
  *
@@ -58,6 +68,12 @@
  *    enskild registrering. `providers: [X, ...pausedUnless(X)]` är grönt här och
  *    registrerar ändå konsumenten.
  *
+ *  • MÖNSTRETS FÖNSTER. `@Processor`-härledningen tillåter 400 tecken mellan
+ *    dekoratorn och `class`. En klass med mer däremellan faller UR mängden — och
+ *    en klass som inte härleds kan heller inte saknas i grinden. Det är skälet
+ *    att R5 numera kräver PARITET mot en parserfri räkning av `@Processor(` och
+ *    inte bara ett golv; uppmätt avstånd i dag är 8 tecken i samtliga elva fall.
+ *
  *  • ATT GRINDEN GÖR NÅGOT. Vakten äger PÅKOPPLINGEN. Effekten är mätt i
  *    `common/ops/automation-pause-startup.spec.ts` (riktigt Nest-startförlopp)
  *    och `common/ops/automation-pause-queue.db.spec.ts` (riktig Bull mot riktig
@@ -83,6 +99,8 @@ const ROT = resolve(new URL('../../..', import.meta.url).pathname)
 const SRC = 'apps/api/src'
 const APP_MODULE = 'apps/api/src/app.module.ts'
 const INVENTERING = 'apps/api/src/common/ops/queue-inventory.ts'
+const ENV_EXEMPEL = 'apps/api/.env.example'
+const PAUSVARIABEL = 'OPS_AUTOMATION_PAUSED'
 
 /**
  * IDENTIFIERARE ÄR INTE ASCII I DET HÄR REPOT — och det är inte en teoretisk
@@ -126,7 +144,7 @@ function samlaFiler(dir, ut = []) {
 /**
  * @param {{filer: Array<{rel: string, kod: string}>, appModuleKod: string, inventeringKod: string}} källor
  */
-export function evaluate({ filer, appModuleKod, inventeringKod }) {
+export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }) {
   const fel = []
 
   // ── Härledningarna ────────────────────────────────────────────────────────
@@ -161,6 +179,24 @@ export function evaluate({ filer, appModuleKod, inventeringKod }) {
         'ska mängden härledas på ett annat sätt, inte tystna.',
     )
   }
+  // PARITET, inte bara ett golv. `MIN_PROCESSORER` skyddar mot tomhet, men tre av
+  // elva kunde falla ur härledningen utan att någon regel sa något — mönstrets
+  // fönster på 400 tecken mellan dekoratorn och `class` är en sådan väg ut.
+  // En oberoende, parserfri räkning av `@Processor(` måste ge samma tal.
+  const råaProcessorer = filer.reduce(
+    (n, { kod }) => n + [...kod.matchAll(/@Processor\s*\(/g)].length,
+    0,
+  )
+  if (råaProcessorer !== processorer.length) {
+    fel.push(
+      `R5 — den strukturerade härledningen hittade ${processorer.length} @Processor-klasser, ` +
+        `men en parserfri räkning ger ${råaProcessorer}. Går de isär har skanningen gått ` +
+        'delvis blind, och R1 blir grön på fel underlag: en processor som inte HÄRLEDS kan ' +
+        'heller inte saknas i grinden. Vanligaste orsaken är att avståndet mellan @Processor ' +
+        'och `class` vuxit förbi mönstrets fönster.',
+    )
+  }
+
   if (registrerade.size < MIN_KONAMN) {
     fel.push(
       `R5 — bara ${registrerade.size} registerQueue-namn hittades (tröskel ${MIN_KONAMN}). ` +
@@ -203,6 +239,18 @@ export function evaluate({ filer, appModuleKod, inventeringKod }) {
         'ett grönt prov över en produktion som startar cron i pausat läge.',
     )
   }
+  // Hela halv-paus-garantin vilar på att ConfigModule faktiskt KÖR valideringen.
+  // Tas `validate:`-inkopplingen bort försvinner assertAutomationPauseSource tyst
+  // ur startförloppet — och startup-specens block C fortsätter vara grön, för den
+  // bygger sin EGEN ConfigModule. Fyndet kom ur granskningen.
+  if (!/validate\s*:\s*validateEnv/.test(appModuleKod)) {
+    fel.push(
+      `R3 ${APP_MODULE} — ConfigModule.forRoot saknar \`validate: validateEnv\`. Utan den körs ` +
+        'varken boot-valideringen eller driftpausens källkontroll, och inget prov ser det: ' +
+        'automation-pause-startup.spec.ts block C bygger sin egen ConfigModule.',
+    )
+  }
+
   const schemaTräffar = [...appModuleKod.matchAll(/ScheduleModule\.forRoot\s*\(/g)]
   if (schemaTräffar.length !== 1) {
     fel.push(
@@ -243,6 +291,23 @@ export function evaluate({ filer, appModuleKod, inventeringKod }) {
     }
   }
 
+  // ── R6 ────────────────────────────────────────────────────────────────────
+  // Rå text med flit: `.env.example` är inte TypeScript, och `#` är dess
+  // kommentartecken. En aktiv rad är en rad som INTE inleds med `#`.
+  const aktivaEnvRader = (envExempel ?? '')
+    .split('\n')
+    .map((rad, i) => ({ rad: rad.trim(), nr: i + 1 }))
+    .filter(({ rad }) => !rad.startsWith('#') && rad.startsWith(`${PAUSVARIABEL}=true`))
+  for (const { nr } of aktivaEnvRader) {
+    fel.push(
+      `R6 ${ENV_EXEMPEL}:${nr} — aktiv ${PAUSVARIABEL}=true-rad. validateEnv fäller boot när ` +
+        '.env ger ett annat pausbeslut än processmiljön, och `cp .env.example .env` ' +
+        'är det dokumenterade onboarding-steget — raden hade alltså brutit uppstarten för ' +
+        'varje ny utvecklare, i ett läge där ingenting är pausat. Kommentera ut den; ' +
+        'variabeln sätts som processmiljö.',
+    )
+  }
+
   return {
     fel,
     mätt: {
@@ -263,6 +328,7 @@ function frånDisk() {
     filer,
     appModuleKod: codeMask(readFileSync(join(ROT, APP_MODULE), 'utf8')),
     inventeringKod: codeMask(readFileSync(join(ROT, INVENTERING), 'utf8')),
+    envExempel: readFileSync(join(ROT, ENV_EXEMPEL), 'utf8'),
   }
 }
 
@@ -415,6 +481,39 @@ function självtest() {
     }
   }
 
+  // KANARIE K — en AKTIV rad i .env.example måste fälla R6, en utkommenterad inte.
+  // Båda riktningarna, eftersom regeln annars antingen vore stum eller hade
+  // gjort det omöjligt att dokumentera variabeln över huvud taget.
+  {
+    const aktivTrue = { ...grund, envExempel: '# text\nOPS_AUTOMATION_PAUSED=true\n' }
+    if (!evaluate(aktivTrue).fel.some((f) => f.startsWith('R6'))) {
+      fel.push('KANARIE K: R6 fällde inte på en aktiv rad med värdet true.')
+    }
+    const aktivFalse = { ...grund, envExempel: '# text\nOPS_AUTOMATION_PAUSED=false\n' }
+    if (evaluate(aktivFalse).fel.some((f) => f.startsWith('R6'))) {
+      fel.push('KANARIE K: R6 fällde på =false, som ger samma beslut som osatt och är ofarligt.')
+    }
+    const utkommenterad = {
+      ...grund,
+      envExempel: '# OPS_AUTOMATION_PAUSED=true\n#   OPS_AUTOMATION_PAUSED=false\n',
+    }
+    if (evaluate(utkommenterad).fel.some((f) => f.startsWith('R6'))) {
+      fel.push('KANARIE K: R6 fällde på en UTKOMMENTERAD rad — variabeln måste gå att dokumentera.')
+    }
+  }
+
+  // KANARIE L — en @Processor som faller UR den strukturerade härledningen (men
+  // finns i råtexten) måste fälla R5:s paritet. Utan den regeln hade R1 varit
+  // grön på fel underlag: en klass som inte härleds kan heller inte saknas.
+  {
+    const långtMellanrum = '@Processor(Q)\n' + '// '.padEnd(420, 'x') + '\nclass LångtBortWorker {}\n'
+    const blind = { ...grund, filer: [...grund.filer, { rel: 'syntetisk/langt.ts', kod: långtMellanrum }] }
+    const utfall = evaluate(blind)
+    if (!utfall.fel.some((f) => f.startsWith('R5') && f.includes('parserfri'))) {
+      fel.push('KANARIE L: R5:s paritet fällde inte när en @Processor föll ur härledningen.')
+    }
+  }
+
   // KANARIE I — den delade skannern klarar de mönster som bevisligen lurat oss.
   for (const f of kanariefåglar()) fel.push(`KANARIE I delad skanner: ${f}`)
 
@@ -425,7 +524,7 @@ function självtest() {
   console.warn(
     `SJÄLVTEST GRÖNT — ${grönt.mätt.processorer} @Processor-klasser, ` +
       `${grönt.mätt.grindade} grindade, ${grönt.mätt.könamn} könamn, ` +
-      `${grönt.mätt.inventerade} inventerade. 9 egna kanariefåglar prövade, ` +
+      `${grönt.mätt.inventerade} inventerade. 11 egna kanariefåglar prövade, ` +
       'plus den delade skannerns 7.',
   )
 }

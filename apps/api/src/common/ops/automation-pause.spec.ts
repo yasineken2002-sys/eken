@@ -130,17 +130,24 @@ describe('assertAutomationPauseSource', () => {
       const text = err instanceof Error ? err.message : String(err)
       expect(text).toContain(AUTOMATION_PAUSE_VAR)
       expect(text).toContain('.env')
-      expect(text).toContain('HALV paus')
+      expect(text).toContain('SPLITTRAT')
     }
   })
 
-  it("kastar också åt ANDRA hållet — 'false' i .env över en tom processmiljö", () => {
-    // Mildare i sak, men samma klass av fel: två källor som säger olika saker om
-    // samma spärr. Att släppa igenom den riktningen hade gjort kontrollen till en
-    // halv kontroll.
-    expect(() => assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: 'false' })).toThrow(
-      AutomationPauseSourceError,
-    )
+  it("'false' i .env över en tom processmiljö är TYST — båda betyder inte pausad", () => {
+    // JÄMFÖRELSEN GÄLLER BESLUT, INTE STRÄNGAR. En första version jämförde
+    // råvärden och fällde den här kombinationen — vilket bröt
+    // `cp .env.example .env` och gjorde validateEnv icke-hermetisk, eftersom
+    // snapshoten inte går att nollställa från ett prov. Två värden som ger samma
+    // beslut kan per konstruktion inte ge ett splittrat tillstånd.
+    expect(() => assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: 'false' })).not.toThrow()
+  })
+
+  it('ett OGILTIGT värde ägs av den andra kontrollen — inte två fel för samma sak', () => {
+    // `validateEnv` punkt 8 rapporterar redan felstavningen, med rätt
+    // förklaring. Ett kast även här hade gett två rader om samma variabel, varav
+    // den ena beskrev ett problem som inte var det verkliga.
+    expect(() => assertAutomationPauseSource({ [AUTOMATION_PAUSE_VAR]: 'ture' })).not.toThrow()
   })
 })
 

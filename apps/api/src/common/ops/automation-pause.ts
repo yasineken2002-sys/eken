@@ -108,77 +108,122 @@ export function automationPaused(env: NodeJS.ProcessEnv = process.env): boolean 
 }
 
 /**
- * VÄRDET SOM LÄSTES NÄR DEN HÄR FILEN EVALUERADES — alltså vid det allra
- * tidigaste tillfälle något i appen kan läsa miljön.
+ * ── VARFÖR KÄLLKONTROLLEN NEDAN FINNS (uppmätt, inte härledd) ───────────────
  *
- * ── VARFÖR DEN HÄR KONSTANTEN FINNS (uppmätt defekt) ────────────────────────
+ * Flaggan läses på fyra ställen med olika tidpunkter, och ett värde som bara står
+ * i `apps/api/.env` kan därför ge ett SPLITTRAT tillstånd. Två oberoende
+ * granskare pekade ut det. Den exakta formen mättes efteråt och blev en annan än
+ * den första beskrivningen — därför står den utskriven här i stället för att
+ * återberättas.
  *
- * `pausedUnless` anropas när varje modulfil EVALUERAS, och `app.module.ts`
- * importerar alla feature-moduler på toppen av filen. Konsumentgrinden läser
- * alltså miljön FÖRE `ConfigModule.forRoot()` hunnit köra. Schemaläggargrinden
- * läser den EFTER, eftersom den står som ett element i `imports`-arrayen.
+ * `ConfigModule.forRoot` är ASYNKRON (`config.module.js:63`). Den läser env-filen,
+ * bygger `config = { ...envFil, ...process.env }`, kör `validate`, och FÖRST
+ * DÄREFTER `assignVariablesToProcess` (`:77-80`). `app.module.ts`:s
+ * `imports`-array byggs SYNKRONT, så när arrayens senare element evalueras har
+ * löftet ännu inte löst sig. Uppmätt med en sond som speglar exakt den ordningen,
+ * med `OPS_AUTOMATION_PAUSED=true` enbart i en env-fil:
  *
- * `@nestjs/config` skjuter in `.env`-filens värden i `process.env` inne i
- * `forRoot()`. Ett värde som BARA står i `apps/api/.env` syns därför för
- * schemaläggargrinden, för uppstarts-backfillen och för `/v1/health` — men INTE
- * för de elva konsumenterna. Utfallet är det värsta möjliga:
+ *     SYNKRONT (så arrayen byggs):  pausedUnless -> REGISTRERAR
+ *                                   schedulerShouldRegister -> true
+ *                                   process.env -> undefined
  *
- *     cron pausad · backfill pausad · health säger "paused": true
- *     ELVA BULL-KONSUMENTER REGISTRERADE OCH KONSUMERANDE
+ * De två GRINDARNA är alltså överens med varandra: båda läser processmiljön före
+ * `.env`. Det som glider isär är de två läsningarna som sker vid RUNTIME —
+ * `DepositsService.onApplicationBootstrap` och `/v1/health` — eftersom de kommer
+ * efter tilldelningen. Utfallet av ett `.env`-värde hade blivit:
  *
- * Två oberoende granskare reproducerade det, var för sig. Produktionen (Railway)
- * är inte drabbad — `apps/api/Dockerfile` kopierar ingen `.env` och
- * `migrate-and-start.sh` sätter inga filbaserade variabler, så där är variabeln
- * riktig processmiljö. Men det är i en repetition av proceduren, lokalt eller i
- * en container med `.env`, som man får halv paus och ett hälsosvar som ljuger.
+ *     cron igång · elva konsumenter igång · uppstarts-backfillen PAUSAD
+ *     /v1/health säger "paused": true
  *
- * ── LÖSNINGEN ÄR ATT GÖRA TILLSTÅNDET OMÖJLIGT, INTE ATT DOKUMENTERA DET ────
+ * Alltså ett hälsosvar som påstår full paus om en process som inte pausat något
+ * av betydelse.
  *
- * Snapshoten fryser vad processmiljön sa vid modulladdning.
- * `automationPauseSourceMismatch` jämför den mot vad `ConfigModule` sedan löste
- * ut, och `validateEnv` fäller boot om de skiljer sig. En halv paus kan då inte
- * existera: antingen är variabeln processmiljö och gäller överallt, eller så
- * vägrar appen starta med ett meddelande som säger exakt vad som ska rättas.
+ * ── DÄRFÖR LÄSES process.env LIVE, OCH INTE UR EN FRYST SNAPSHOT ────────────
  *
- * Fail-closed, och på rätt sida: alternativet — att låta `.env`-värdet tyst
- * betyda "inte pausad" — hade gett en operatör som TROR att pausen gäller.
+ * En första version frös processmiljöns värde vid modulladdning. Det var
+ * onödigt OCH skadligt: kontrollen körs inne i `validate`, alltså FÖRE
+ * `assignVariablesToProcess`, så `process.env` bär där fortfarande exakt det
+ * värde grindarna läste. Snapshoten tillförde ingenting — men den gick inte att
+ * nollställa från ett prov, till skillnad från allt annat i `VALIDATED_ENV_VARS`,
+ * och gjorde `validateEnv` ICKE-HERMETISK: med variabeln satt i den ambienta
+ * miljön föll åtta prov i `env.validation.integration.spec.ts`, grönt i CI
+ * (ingen `.env`) och rött lokalt. Uppmätt av en granskare.
  */
-const PROCESSMILJONS_VARDE: string | undefined = process.env[AUTOMATION_PAUSE_VAR]
 
 export class AutomationPauseSourceError extends Error {
   constructor(processvarde: string | undefined, konfigvarde: unknown) {
     super(
-      `[ops] ${AUTOMATION_PAUSE_VAR} har OLIKA värden i processmiljön och i den ` +
+      `[ops] ${AUTOMATION_PAUSE_VAR} ger OLIKA PAUSBESLUT i processmiljön och i den ` +
         `upplösta konfigurationen: processmiljö=${processvarde === undefined ? '(osatt)' : `'${processvarde}'`}, ` +
         `konfiguration=${typeof konfigvarde === 'string' ? `'${konfigvarde}'` : '(osatt)'}. ` +
         'Det inträffar när variabeln står i apps/api/.env i stället för i ' +
-        'processmiljön: köernas konsumenter grindas vid modulimport, alltså INNAN ' +
-        'ConfigModule läser .env, medan schemaläggaren och /v1/health läser efteråt. ' +
-        'Resultatet hade blivit en HALV paus med ett hälsosvar som påstår full paus. ' +
-        `Sätt ${AUTOMATION_PAUSE_VAR} som riktig miljövariabel (Railway, eller ` +
+        'processmiljön: grindarna läser processmiljön innan ConfigModule hunnit ' +
+        'lägga .env-värdena där, medan uppstarts-backfillen och /v1/health läser ' +
+        'efteråt. Resultatet hade blivit ett SPLITTRAT tillstånd — cron och ' +
+        'konsumenter igång, backfillen pausad, och ett hälsosvar som påstår full ' +
+        `paus. Sätt ${AUTOMATION_PAUSE_VAR} som riktig miljövariabel (Railway, eller ` +
         `\`${AUTOMATION_PAUSE_VAR}=true node ...\`) och ta bort den ur .env.`,
     )
   }
 }
 
 /**
+ * Tolkar ett råvärde till ett pausBESLUT, eller `null` när värdet är ogiltigt.
+ *
+ * Ogiltiga värden rapporteras av `validateEnv` punkt 8 (som anropar
+ * `automationPaused` direkt). Att kasta här också hade gett två fel för samma
+ * sak, varav det ena med fel förklaring.
+ */
+function beslutAv(raw: string | undefined): boolean | null {
+  try {
+    return automationPaused({ [AUTOMATION_PAUSE_VAR]: raw } as NodeJS.ProcessEnv)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Jämför den upplösta konfigurationen mot processmiljöns snapshot.
  *
- * Anropas av `validateEnv`, alltså under ConfigModule-upplösningen — före
- * `BullExplorer.onModuleInit` och före `onApplicationBootstrap`. Kastet
- * avbryter därför boot innan en enda konsument kopplats in eller ett enda
- * startjobb körts.
+ * ── BESLUT, INTE STRÄNGAR — och det är inte en detalj ───────────────────────
  *
- * @throws AutomationPauseSourceError när källorna skiljer sig åt.
+ * Första versionen jämförde råvärden. Då blev `(osatt)` och `'false'` OLIKA,
+ * trots att båda betyder "inte pausad" och per konstruktion inte kan ge ett
+ * splittrat tillstånd. Det gav två mätta fel som en granskare fann:
+ *
+ *   1. `cp .env.example .env` — det dokumenterade onboarding-steget — fällde
+ *      uppstarten, med ett meddelande om en halv paus som inte kunde uppstå.
+ *   2. `validateEnv` blev ICKE-HERMETISK. Snapshoten tas vid modulladdning och
+ *      kan därför inte nollställas av ett prov, till skillnad från allt annat i
+ *      `VALIDATED_ENV_VARS`. Med variabeln satt i den ambienta miljön föll åtta
+ *      prov i `env.validation.integration.spec.ts` — grönt i CI (ingen `.env`),
+ *      rött lokalt, och beroende på vilken modul som laddades först.
+ *
+ * En jämförelse av BESLUT har inga falska negativ: två råvärden kan inte ge
+ * samma beslut och ändå ge ett splittrat tillstånd, eftersom det är just
+ * beslutet varje läsare agerar på.
+ *
+ * Anropas av `validateEnv`, alltså inne i `ConfigModule.forRoot()` — före
+ * `assignVariablesToProcess`, före `NestFactory.create()`, och långt före
+ * `BullExplorer.onModuleInit` och `onApplicationBootstrap`. Boot avbryts därför
+ * innan en enda konsument kopplats in eller ett enda startjobb körts.
+ *
+ * @throws AutomationPauseSourceError när källorna leder till olika pausbeslut.
  */
 export function assertAutomationPauseSource(config: Record<string, unknown>): void {
   const konfig = config[AUTOMATION_PAUSE_VAR]
   const konfigStr = typeof konfig === 'string' && konfig !== '' ? konfig : undefined
-  const processStr =
-    PROCESSMILJONS_VARDE !== undefined && PROCESSMILJONS_VARDE !== ''
-      ? PROCESSMILJONS_VARDE
-      : undefined
-  if (konfigStr !== processStr) throw new AutomationPauseSourceError(processStr, konfigStr)
+  // LIVE, inte fryst: `validate` körs före `assignVariablesToProcess`, så
+  // process.env bär här fortfarande det värde grindarna läste. Se docblocket
+  // ovan för varför en snapshot var både onödig och skadlig.
+  const rawProcess = process.env[AUTOMATION_PAUSE_VAR]
+  const processStr = rawProcess !== undefined && rawProcess !== '' ? rawProcess : undefined
+
+  const konfigBeslut = beslutAv(konfigStr)
+  const processBeslut = beslutAv(processStr)
+  // Ett ogiltigt värde (null) ägs av punkt 8 — tig här och låt den tala.
+  if (konfigBeslut === null || processBeslut === null) return
+  if (konfigBeslut !== processBeslut) throw new AutomationPauseSourceError(processStr, konfigStr)
 }
 
 /**
