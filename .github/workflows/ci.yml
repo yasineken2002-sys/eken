@@ -578,6 +578,45 @@ jobs:
       - name: Verify shutdown hooks and the stall budget are wired
         run: node apps/api/scripts/check-graceful-shutdown.mjs
 
+  automation-pause-guard:
+    name: Automation pause wiring guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB).
+      #
+      # Driftpausen är STRUKTURELL: en @Processor-klass som inte står i sin
+      # moduls `providers` kan inte plocka ett jobb, eftersom
+      # BullExplorer.onModuleInit bara anropar queue.process(...) för providers
+      # den hittar. Styrkan är också svagheten — en TOLFTE konsument som läggs
+      # till på vanligt sätt hamnar utanför grinden, och ingenting blir rött.
+      # Den konsumenten hade sedan kört vidare genom ett underhållsfönster som
+      # alla trodde var pausat.
+      #
+      # Vakten härleder BÅDA mängderna ur koden och fäller åt båda håll:
+      # konsument utan grind är rött, grind utan konsument är rött, och
+      # detsamma för könamnen mot `queue-inventory.ts`. R3 kräver dessutom att
+      # `app.module.ts` går genom `schedulerShouldRegister(` — villkoret bor i en
+      # funktion just för att det ska gå att PRÖVA, eftersom app.module.ts inte
+      # går att importera i jest.
+      #
+      # Att grinden GÖR något är mätt separat:
+      # common/ops/automation-pause-startup.spec.ts (riktigt Nest-startförlopp,
+      # riktiga timrar) och common/ops/automation-pause-queue.db.spec.ts (riktig
+      # Bull 4.16.5 mot riktig Redis). Vakten äger påkopplingen, specarna äger
+      # mekaniken.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (52 canaries, 42 of them with a counter-proof)
+        run: node apps/api/scripts/check-automation-pause.mjs --self-test
+
+      - name: Verify every automatic consumer is behind the pause gate
+        run: node apps/api/scripts/check-automation-pause.mjs
+
   module-cycle-guard:
     name: Module cycle guard
     runs-on: ubuntu-latest
@@ -2422,6 +2461,7 @@ jobs:
       - enqueue-cron-context-guard
       - module-cycle-guard
       - graceful-shutdown-guard
+      - automation-pause-guard
       - skip-precondition-guard
       - reminder-fee-guard
       - period-lookup-guard
