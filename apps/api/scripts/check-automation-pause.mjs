@@ -225,12 +225,103 @@ const GRIND_FORM_RE = new RegExp(
 const LISTA_RE = new RegExp(String.raw`export\s+const\s+ALLA_KONAMN(?!${ID})[^=]*=\s*\[`, 'u')
 
 /**
- * Vad som får stå EFTER arrayens `]` i samma initializer. Se
- * `läsInventeringslistan` för de tre mutationer som gjorde regeln nödvändig.
- * `as const` tillåts därför att den är rent typnivå. Kommentarer är redan
- * blankade till mellanslag av `codeMask` och fångas av `\s*`.
+ * Det TILLÅTNA efterledet efter arrayens `]`: `.sort()` utan argument, och
+ * eventuellt `as const` (rent typnivå). Kommentarer är redan blankade till
+ * mellanslag av `codeMask`.
+ *
+ * Whitespace FÖRE `.sort()` får korsa radbrytningar — det är en formatfråga.
+ * EFTER det tillåtna efterledet konsumeras bara whitespace på SAMMA rad, så att
+ * `efterledÄrSlut` får se radbrytningen. Den skillnaden bär hela regeln nedan.
  */
-const EFTERLED_RE = /^\s*(?:\.sort\(\s*\))?\s*(?:as\s+const\b)?\s*;?\s*(?:\r?\n|$)/
+const EFTERLED_TILLATET_RE = /^\s*(?:\.sort\(\s*\))?[^\S\r\n]*(?:as\s+const\b)?[^\S\r\n]*/
+
+/**
+ * ── ATT INITIALIZERN SLUTAR BETYDER INTE ATT MÄNGDEN ÄR FÄRDIG ──────────────
+ *
+ * `efterledÄrSlut` läser bara första token efter arrayen. Så snart den säger
+ * "initializern tog slut" är resten av filen oläst — och `readonly string[]` är
+ * BARA typnivå. Ingenting fryser arrayen, så en senare sats i samma fil kan
+ * mutera den exporterade mängden på plats. Uppmätt mot verkliga `evaluate`, med
+ * repots övriga källor oförändrade:
+ *
+ *   ].sort()
+ *   export const PDF_V2 = ((ALLA_KONAMN as string[])[ALLA_KONAMN.indexOf(QUEUE_PDF)] = 'pdf-v2')
+ *     fel: []   inventerade: 11   faktiskt: pdf-kön utbytt mot pdf-v2
+ *
+ * Det utfallet passerar dessutom HELA mothållet i queue-ops.spec.ts: längden är
+ * elva, namnen unika, och `pdf` är inte ett av de fyra namn provet räknar upp.
+ * Alltså exakt det falska lugn R4-form finns för att omöjliggöra, en sats för
+ * sent. Tre varianter till mättes: `.length = 4`, `.splice(...)` via en
+ * hjälpfunktion, och trunkering på samma rad efter ett `;`.
+ *
+ * Regeln nedan avvisar därför varje SKRIVANDE förekomst av `ALLA_KONAMN` efter
+ * initializern. Den är medvetet grov: en läsning (`ALLA_KONAMN.length`,
+ * `.indexOf`, `.includes`) passerar, allt som kan skriva gör det inte.
+ *
+ * VAD DEN INTE SER: en mutation från en ANNAN fil. `ALLA_KONAMN` är en muterbar
+ * array vid runtime och ingen regel i repot ser det. Att lägga `Object.freeze`
+ * runt listan skulle stänga båda riktningarna och vara billigare att mäta än den
+ * här regeln — men det är en ändring i produktionskoden och ett eget beslut.
+ */
+const SKRIVANDE_METODER = 'push|pop|shift|unshift|splice|sort|reverse|fill|copyWithin'
+const SKRIVANDE_RE = new RegExp(
+  String.raw`ALLA_KONAMN\s*(?:` +
+    String.raw`\.\s*(?:${SKRIVANDE_METODER})\s*\(` + // ALLA_KONAMN.splice(
+    String.raw`|\.\s*length\s*=(?!=)` + //               ALLA_KONAMN.length =
+    String.raw`|\[[^\]]*\]\s*=(?!=)` + //               ALLA_KONAMN[i] =
+    String.raw`|\s+as\s` + //                             (ALLA_KONAMN as string[])
+    String.raw`|\s*=(?!=)` + //                            ALLA_KONAMN =
+    String.raw`)`,
+  'u',
+)
+
+/**
+ * Satser som BEVISBART börjar något nytt. Står en av dem efter en radbrytning
+ * har initializern verkligen tagit slut (ASI), och inget av dem kan fortsätta
+ * ett uttryck.
+ */
+const NY_SATS_RE = new RegExp(
+  String.raw`^(?:export|const|let|var|function|class|import|type|interface|enum|declare|abstract|\})(?!${ID})`,
+  'u',
+)
+
+/**
+ * ── EN RADBRYTNING AVSLUTAR INTE EN METODKEDJA ──────────────────────────────
+ *
+ * Regeln godtog tidigare `\r?\n` som slut på initializern. Det är fel: JavaScript
+ * fortsätter uttrycket över radbrytningen när nästa token kan fortsätta det, och
+ * automatisk semikoloninsättning gäller just DÄRFÖR inte här. Uppmätt mot
+ * verkliga `evaluate`, allt annat pinnat:
+ *
+ *   ].sort()
+ *     .slice(0, 4)                                  fel: [], inventerade: 11
+ *                                                   faktiskt exporterat: 4 namn
+ *   ].sort()
+ *     .map(name => name === QUEUE_PDF ? 'pdf-v2' : name)
+ *                                                   fel: [], inventerade: 11
+ *                                                   faktiskt: 11 namn UTAN pdf-kön
+ *
+ * Och samma sak med en kommentar emellan, eftersom `codeMask` blankar
+ * kommentaren men BEHÅLLER radbrytningarna.
+ *
+ * Initializern räknas nu som avslutad bara i tre bevisbara lägen: filen tar
+ * slut, ett `;` står där, eller en radbrytning följs av en sats ur
+ * `NY_SATS_RE`. Allt annat — en punkt, en parentes, en operator, ett bart namn —
+ * är en form vakten inte kan räkna om, och blir ett granskningskrävande fel.
+ * Det är med flit strängare än JavaScript: en ombyggnad till full AST är inte
+ * beställd, och en vakt som gissar är inget skydd.
+ */
+function efterledÄrSlut(rest) {
+  const tillåtet = EFTERLED_TILLATET_RE.exec(rest)
+  const kvar = rest.slice(tillåtet[0].length)
+
+  if (/^\s*$/.test(kvar)) return true // filen tar slut
+  if (kvar.startsWith(';')) return true // uttryckligen avslutat
+
+  // Härifrån krävs BÅDE en radbrytning och en bevisbart ny sats.
+  if (!/^[^\S\r\n]*\r?\n/.test(kvar)) return false
+  return NY_SATS_RE.test(kvar.replace(/^\s*/, ''))
+}
 
 /**
  * Läser den EXPORTERADE listans medlemmar, inte inventeringsfilens importrad.
@@ -286,16 +377,21 @@ function läsInventeringslistan(kod) {
   // `.sort(jämför)`, som vi inte behöver och därför inte tillåter — är en form
   // vakten inte kan räkna om, och blir ett granskningskrävande fel.
   const efterled = kod.slice(i)
-  if (!EFTERLED_RE.test(efterled)) {
-    const smakprov = efterled.trim().split('\n')[0].slice(0, 60)
+  if (!efterledÄrSlut(efterled)) {
+    // SMAKPROVET MÅSTE VISA FORTSÄTTNINGEN. Med bara första raden hade ett
+    // radbrutet efterled rapporterats som `.sort()` — alltså den enda form som
+    // ÄR tillåten — och felet hade sett obegripligt ut för den som ska granska.
+    const smakprov = efterled.trim().replace(/\s+/gu, ' ').slice(0, 70)
     return {
       fel:
         `ALLA_KONAMN-arrayen följs av ett efterled vakten inte kan räkna om ` +
         `(\`${smakprov}\`). Den exporterade mängden är då något annat än arrayens ` +
         'poster, och R4 skulle jämföra registreringarna mot en lista som inte finns. ' +
         'Enda tillåtna efterledet är `.sort()` utan argument: den ändrar ordning, aldrig ' +
-        'medlemmar. Behövs en annan bearbetning ska den ske i en egen, namngiven konstant ' +
-        'som vakten kan läsa för sig.',
+        'medlemmar. En RADBRYTNING avslutar inte uttrycket — JavaScript fortsätter det, ' +
+        'och `].sort()\\n  .slice(0, 4)` exporterade fyra namn medan vakten räknade elva. ' +
+        'Behövs en annan bearbetning ska den ske i en egen, namngiven konstant som vakten ' +
+        'kan läsa för sig.',
     }
   }
 
@@ -317,7 +413,12 @@ function läsInventeringslistan(kod) {
         'citattecken.)',
     }
   }
-  return { poster }
+  // Resten av filen EFTER initializern: skrivs mängden till där?
+  const efterInitializern = kod.slice(i)
+  const skrivTräff = SKRIVANDE_RE.exec(efterInitializern)
+  const skrivning = skrivTräff ? skrivTräff[0].replace(/\s+/gu, ' ').slice(0, 50) : undefined
+
+  return { poster, ...(skrivning !== undefined ? { skrivning } : {}) }
 }
 
 /** Under dessa tal mäter härledningarna ingenting — se R5. */
@@ -584,6 +685,17 @@ export function evaluate({ filer, appModuleKod, inventeringKod, envExempel }, l�
   if (aktiv('R4-form') && lista.fel) {
     fel.push(`R4-form ${INVENTERING} — ${lista.fel}`)
   }
+  if (aktiv('R4-skrivning') && lista.skrivning) {
+    fel.push(
+      `R4-skrivning ${INVENTERING} — ALLA_KONAMN skrivs till EFTER initializern ` +
+        `(\`${lista.skrivning}\`). \`readonly string[]\` är bara typnivå, så en sådan sats ` +
+        'ändrar den exporterade mängden medan vakten räknar arrayens poster. Uppmätt: en ' +
+        'efterföljande tilldelning bytte ut pdf-kön mot pdf-v2 och gav ändå `fel: []` och ' +
+        '`inventerade: 11` — och passerade hela mothållet i queue-ops.spec.ts. Läsningar ' +
+        '(.length, .indexOf, .includes) är fria; behövs en bearbetad lista ska den bo i en ' +
+        'egen konstant.',
+    )
+  }
   if (aktiv('R4-dubblett')) {
     for (const namn of listDubbletter) {
       fel.push(
@@ -730,6 +842,10 @@ const GILTIG_APPMODULE = [
 function självtest() {
   const fel = []
   const grund = frånDisk()
+  // RÅTEXTEN, omaskerad. Kanariefåglar som injicerar en KOMMENTAR måste mutera
+  // den här och maskera efteråt — annars blankas kommentaren aldrig, och
+  // kanariefågeln mäter en annan väg än den påstår.
+  const grundRåInventering = readFileSync(join(ROT, INVENTERING), 'utf8')
 
   const grönt = evaluate(grund)
   if (grönt.fel.length) {
@@ -981,10 +1097,128 @@ function självtest() {
     )
   }
 
+  // ── KANARIE C5-C7: RADBRUTNA efterled ─────────────────────────────────────
+  //
+  // Slutgranskningens fynd. Regeln godtog `\r?\n` som slut på initializern, men
+  // JavaScript fortsätter uttrycket över radbrytningen. Båda dessa gav `fel: []`
+  // och `inventerade: 11`:
+  //
+  //   ].sort()          →  exporterar 4 namn
+  //     .slice(0, 4)
+  //   ].sort()          →  exporterar 11 namn UTAN pdf-kön
+  //     .map(name => name === QUEUE_PDF ? 'pdf-v2' : name)
+  //
+  // C7 bär dessutom en kommentar emellan: `codeMask` blankar kommentaren men
+  // BEHÅLLER radbrytningarna, så den formen såg ut precis som ett avslutat
+  // uttryck följt av ny kod.
+  for (const [namn, efterled] of [
+    ['C5', '].sort()\n  .slice(0, 4)'],
+    ['C6', "].sort()\n  .map(name => name === QUEUE_PDF ? 'pdf-v2' : name)"],
+    ['C7', '].sort()\n  // en kommentar som ser ut att avsluta\n  .slice(0, 4)'],
+  ]) {
+    fel.push(
+      ...kanarie(
+        namn,
+        {
+          ...grund,
+          // MUTERA RÅTEXTEN OCH MASKERA SEDAN. `grund.inventeringKod` är redan
+          // `codeMask`:ad, så en kommentar injicerad där blankas aldrig — och C7
+          // hade då INTE mätt den väg den påstår sig mäta. Funnet av en granskare.
+          inventeringKod: codeMask(grundRåInventering.replace('].sort()', efterled)),
+        },
+        'R4-form',
+        (f) => f.includes('efterled'),
+      ),
+    )
+  }
+
   // KANARIE C4 — MOTSATSEN: det efterled filen FAKTISKT har måste passera.
-  // Utan den raden vore C1-C3 uppfyllda av att förbjuda varje efterled, och
+  // Utan den raden vore C1-C7 uppfyllda av att förbjuda varje efterled, och
   // nuläget hade varit rött (kanarie 0 fångar det, men inte VARFÖR).
   fel.push(...tystKanarie('C4', grund, 'R4-form'))
+
+  // KANARIE C8 — och en RIKTIG ny sats efter listan får inte fällas. Utan den
+  // vore regeln uppfylld av att förbjuda allt efter `]`, vilket hade gjort det
+  // omöjligt att lägga en andra deklaration i filen.
+  fel.push(
+    ...tystKanarie(
+      'C8',
+      {
+        ...grund,
+        inventeringKod:
+          grund.inventeringKod + '\nexport const ANTAL_KONAMN = ALLA_KONAMN.length\n',
+      },
+      'R4-form',
+    ),
+  )
+
+  // ── KANARIE C10-C13: SKRIVNING EFTER INITIALIZERN ─────────────────────────
+  //
+  // Att initializern slutar betyder inte att mängden är färdig. Alla fyra gav
+  // `fel: []` och `inventerade: 11` innan R4-skrivning fanns, och den första
+  // passerade dessutom hela mothållet i queue-ops.spec.ts.
+  for (const [namn, efterled] of [
+    [
+      'C10',
+      "].sort()\nexport const PDF_V2 = ((ALLA_KONAMN as string[])[ALLA_KONAMN.indexOf(QUEUE_PDF)] = 'pdf-v2')",
+    ],
+    [
+      'C11',
+      '].sort()\n\nexport const ANTAL_KONAMN = ALLA_KONAMN.length\n;(ALLA_KONAMN as string[]).length = 4',
+    ],
+    [
+      'C12',
+      '].sort()\nfunction taBort(lista: string[]): void { lista.splice(0, 7) }\ntaBort(ALLA_KONAMN as string[])',
+    ],
+    ['C13', '].sort();(ALLA_KONAMN as string[]).length = 4'],
+  ]) {
+    fel.push(
+      ...kanarie(
+        namn,
+        { ...grund, inventeringKod: codeMask(grundRåInventering.replace('].sort()', efterled)) },
+        'R4-skrivning',
+      ),
+    )
+  }
+
+  // KANARIE C15 — en KOMMENTAR som ser ut som en fortsättning får INTE fälla.
+  //
+  // Den här bär maskeringsvägen, vilket C7 inte gör: C7 avvisas oavsett om
+  // kommentaren blankats eller inte, så den kan inte skilja de två. Här är
+  // skillnaden hela utfallet — läses råtexten ser vakten `.slice(0, 4)` och
+  // fäller en fil som i själva verket bara har en kommentar.
+  fel.push(
+    ...tystKanarie(
+      'C15',
+      {
+        ...grund,
+        inventeringKod: codeMask(
+          grundRåInventering.replace('].sort()', '].sort() // .slice(0, 4) — bara prosa'),
+        ),
+      },
+      'R4-form',
+    ),
+  )
+
+  // KANARIE C14 — ett `as const`-efterled ska passera. Formen är tillåten i
+  // EFTERLED_TILLATET_RE men hade ingen kanariefågel alls: tillåtelsen kunde tas
+  // bort utan att något blev rött. Funnet av en granskare.
+  fel.push(
+    ...tystKanarie(
+      'C14',
+      { ...grund, inventeringKod: grund.inventeringKod.replace('].sort()', '].sort() as const') },
+      'R4-form',
+    ),
+  )
+
+  // KANARIE C9 — ett uttryckligt semikolon avslutar också, och ska passera.
+  fel.push(
+    ...tystKanarie(
+      'C9',
+      { ...grund, inventeringKod: grund.inventeringKod.replace('].sort()', '].sort();') },
+      'R4-form',
+    ),
+  )
 
   // KANARIE U — en OLÄSLIG listform ska bli ett granskningskrävande fel, inte en
   // tom mängd. En tom mängd hade tystat BÅDA R4-riktningarna på en gång.
@@ -1294,8 +1528,8 @@ function självtest() {
     `SJÄLVTEST GRÖNT — ${grönt.mätt.processorer} @Processor-klasser, ` +
       `${grönt.mätt.grindade} grindade, ${grönt.mätt.könamn} könamn, ` +
       `${grönt.mätt.inventerade} inventerade i den EXPORTERADE listan. ` +
-      '41 egna kanariefåglar prövade: 35 med MOTPROV mot sin egen regel (mutationen ' +
-      'får inte längre fälla när just den regeln stängs av), och 6 tysta som kräver ' +
+      '52 egna kanariefåglar prövade: 42 med MOTPROV mot sin egen regel (mutationen ' +
+      'får inte längre fälla när just den regeln stängs av), och 10 tysta som kräver ' +
       'att en KORREKT källa INTE fälls. Plus den delade skannerns 7.',
   )
 }
