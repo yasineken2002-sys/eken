@@ -71,21 +71,43 @@ describe('queue-ops som CLI', () => {
     expect(ut.length).toBeGreaterThan(50)
   })
 
-  it('A: ett QUERYNAMN i --redis-url läcker inte genom felhanteraren', () => {
-    const { ut, exitkod } = körCli(`--redis-url=redis://h.example:6379/0?${SYNTETISK_HEMLIGHET}`)
-    expect(exitkod).toBe(1)
-    expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
-    // Operatören ska ändå se VILKEN adress som föll, och VARFÖR.
-    expect(ut).toContain('h.example')
-    expect(ut).toContain('queryparameter')
-  })
+  /**
+   * ── INGET UR QUERYN, OAVSETT FORM ─────────────────────────────────────────
+   *
+   * Regeln höll först tillbaka bara led UTAN `=`, med resonemanget att namnet på
+   * ett `namn=värde`-par är säkert. Slutgranskningen visade att det var fel:
+   *
+   *   --redis-url=redis://h.example:6379/0?SYNTHETIC_TEST_VALUE=
+   *     [queue-ops] AVBRUTEN: --redis-url bär 1 queryparameter(rar)
+   *                           (SYNTHETIC_TEST_VALUE). …
+   *
+   * Ett likhetstecken gör inte namnet betrott. Tabellen nedan täcker tomt värde,
+   * icke-tomt värde, hemligheten i NAMNET, hemligheten i VÄRDET, flera led och
+   * formen helt utan `=`.
+   *
+   * Varje rad kräver TRE saker, inte bara frånvaron av hemligheten: rätt
+   * exitkod, rätt felorsak, och att måltexten fortfarande går att läsa. Utan de
+   * två första hade ett trasigt startförlopp — verktyget som kraschar innan det
+   * hinner skriva något — gett falskt grönt.
+   */
+  it.each([
+    ['tomt värde, hemlighet i namnet', `?${SYNTETISK_HEMLIGHET}=`, 1],
+    ['icke-tomt värde, hemlighet i namnet', `?${SYNTETISK_HEMLIGHET}=x`, 1],
+    ['hemlighet i värdet', `?password=${SYNTETISK_HEMLIGHET}`, 1],
+    ['utan likhetstecken', `?${SYNTETISK_HEMLIGHET}`, 1],
+    ['flera led', `?a=1&${SYNTETISK_HEMLIGHET}=2&b=3`, 3],
+    ['led utan värde bland flera', `?a=1&${SYNTETISK_HEMLIGHET}&b=3`, 3],
+  ])('A: %s läcker inte genom någon utskriftsväg', (_namn, query, antal) => {
+    const { ut, exitkod } = körCli(`--redis-url=redis://h.example:6379/0${query}`)
 
-  it('A: ett query-VÄRDE läcker inte heller, i någon av raderna', () => {
-    const { ut, exitkod } = körCli(
-      `--redis-url=redis://h.example:6379/0?password=${SYNTETISK_HEMLIGHET}`,
-    )
-    expect(exitkod).toBe(1)
+    // 1. Hemligheten finns ingenstans i stdout eller stderr.
     expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
+    // 2. Rätt exitkod — inte en krasch som råkar bli tyst.
+    expect(exitkod).toBe(1)
+    // 3. Rätt felorsak, med antalet led, och måltexten fortfarande läsbar.
+    expect(ut).toContain(`bär ${antal} queryparameter(rar)`)
+    expect(ut).toContain('Namn och värden återges inte')
+    expect(ut).toContain('h.example')
   })
 
   it('A: ett FRAGMENT läcker inte', () => {
@@ -135,13 +157,56 @@ describe('queue-ops som CLI', () => {
     expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
   })
 
-  it('KANARIEFÅGELN: en giltig --confirm ekas LÄSBAR — maskeringen är inte total', () => {
-    // Annars vore varje prov ovan grönt av att felutskriften slutat säga något.
-    const { ut } = körCli(
+  it('en FELAKTIG --confirm återges inte som rå text — men den FÖRVÄNTADE syns', () => {
+    // `--confirm` ekades tidigare ordagrant, och maskeringen täckte bara
+    // adressformade strängar. Ekot behövs inte: det operatören måste se är
+    // vilken text som FÖRVÄNTADES, och den är per konstruktion credentialfri.
+    const { ut, exitkod } = körCli(
       '--redis-url=redis://h.example:6379/0',
       '--action=pause',
       '--confirm=redis://fel.example:6379/db0 prefix=bull',
     )
-    expect(ut).toContain('fel.example')
+    expect(exitkod).toBe(1)
+    expect(ut).not.toContain('fel.example')
+    // KANARIEFÅGELN: utskriften säger fortfarande något användbart. Utan de två
+    // raderna vore varje `not.toContain` ovan grönt av ren tystnad.
+    expect(ut).toContain('förväntat: redis://h.example:6379/db0 prefix=bull')
+    expect(ut).toContain('en adress angavs')
+  })
+
+  it('en BAR hemlighet i --confirm återges inte heller', () => {
+    // Formen maskeraAdresser aldrig täckte: inte adressformad alls.
+    const { ut, exitkod } = körCli(
+      '--redis-url=redis://h.example:6379/0',
+      '--action=pause',
+      `--confirm=${SYNTETISK_HEMLIGHET}`,
+    )
+    expect(exitkod).toBe(1)
+    expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
+    expect(ut).toContain('inte ens är en redis-adress')
+  })
+
+  /**
+   * Understreck är inte giltigt i ett URL-schema, så `new URL()` avvisar
+   * `SYNTHETIC_TEST_VALUE:x` som oparserbar. Ett schema som GÅR att tolka måste
+   * därför stavas med bindestreck — och det är just den formen som tidigare
+   * återgavs i sin helhet, eftersom `redactRedisUrl` bara rörde användare,
+   * lösenord, query och fragment.
+   */
+  const SCHEMAHEMLIGHET = SYNTETISK_HEMLIGHET.toLowerCase().replace(/_/gu, '-')
+
+  it.each([
+    [
+      'sökvägen',
+      `redis://h.example:6379/${SYNTETISK_HEMLIGHET}`,
+      SYNTETISK_HEMLIGHET,
+      'databasindex',
+    ],
+    ['schemat', `${SCHEMAHEMLIGHET}:x`, SCHEMAHEMLIGHET, 'schema som inte stöds'],
+  ])('en hemlighet i %s återges inte i någon rad', (_namn, url, hemlighet, orsak) => {
+    const { ut, exitkod } = körCli(`--redis-url=${url}`)
+    expect(ut).not.toContain(hemlighet)
+    expect(exitkod).toBe(1)
+    expect(ut).toContain(orsak)
   })
 })

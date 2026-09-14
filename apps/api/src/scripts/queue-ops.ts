@@ -53,8 +53,21 @@
  * ── VAD DET ALDRIG GÖR ──────────────────────────────────────────────────────
  *
  * Ingen `clean`, `empty`, `remove` eller `obliterate`. Inga jobb raderas, inga
- * markeras klara. Inga jobbpayloads, inga personuppgifter och inga credentials
- * skrivs ut — URL:en redigeras innan den visas, och bara ANTAL rapporteras.
+ * markeras klara. Inga jobbpayloads och inga personuppgifter skrivs ut, och bara
+ * ANTAL rapporteras.
+ *
+ * ── VAD SOM FAKTISKT SKRIVS UT, OCH VAD SOM INTE GÖR DET ────────────────────
+ *
+ * Skrivs ALDRIG: användarnamn, lösenord, query (namn och värden), fragment, en
+ * sökväg som inte är ett databasindex, ett schema som inte är redis/rediss, en
+ * oparserbar sträng, och innehållet i en felaktig `--confirm`.
+ *
+ * Skrivs MED FLIT, därför att måltexten måste gå att upprepa i `--confirm`:
+ * schema, värd, port, databasindex och `--prefix`. Ett `--queues`- eller
+ * `--action`-värde som avvisas skrivs också ut — utan det kan operatören inte se
+ * sitt stavfel. Den som klistrar en hemlighet i NÅGON av de flaggorna får den
+ * alltså i loggen, och det är en gräns värd att känna till snarare än ett
+ * skydd att påstå.
  *
  * `resume` finns med därför att en återöppning ska vara ett lika uttryckligt och
  * lika spårat handgrepp som pausen — inte något som sker av sig självt vid en
@@ -130,8 +143,12 @@ export interface OpsResult {
 }
 
 /**
- * Klipper bort allt som KAN vara en credential ur en redis-URL. Får aldrig
- * kringgås i utskrift.
+ * Klipper bort de led i en redis-URL som kan bära en credential: användare,
+ * lösenord, hela queryn, fragmentet, och en sökväg som inte är ett
+ * databasindex. Är strängen inte en redis-URL återges den inte alls.
+ *
+ * VAD DEN INTE KLIPPER: schema, värd och port, som måste synas för att
+ * operatören ska se vilken adress som föll. Får aldrig kringgås i utskrift.
  *
  * ── QUERYN ÄR OCKSÅ EN CREDENTIALVÄG ────────────────────────────────────────
  *
@@ -155,6 +172,17 @@ export interface OpsResult {
 export function redactRedisUrl(url: string): string {
   try {
     const u = new URL(url)
+
+    // ÄR DET INTE EN REDIS-URL ÅTERGES INGENTING. `new URL()` godtar vilket
+    // schema som helst, så `synthetic-test-value:x` tolkas utan fel — och
+    // returnerades tidigare OFÖRÄNDRAD, alltså precis det den här funktionen
+    // finns för att omöjliggöra. Resonemanget i catch-grenen nedan gällde bara
+    // den ena halvan: en sträng vi inte kan PLACERA är lika farlig som en vi
+    // inte kan tolka. Funnet av en granskare.
+    if (u.protocol !== 'redis:' && u.protocol !== 'rediss:') {
+      return '(inte en redis-url — utelämnad)'
+    }
+
     if (u.password) u.password = '***'
     if (u.username) u.username = '***'
 
@@ -175,6 +203,13 @@ export function redactRedisUrl(url: string): string {
     const hadeFragment = u.hash !== ''
     u.search = ''
     u.hash = ''
+
+    // SÖKVÄGEN FÅR BARA VARA ETT DATABASINDEX. `redis://h:6379/SYNTHETIC_TEST_VALUE`
+    // gick oförändrad genom maskeringen: funktionen rörde bara användare,
+    // lösenord, query och fragment. Är ledet inte ett heltal vet vi inte vad det
+    // är, och då återges det inte. Funnet av en granskare.
+    const bana = u.pathname.replace(/^\//, '')
+    if (bana !== '' && !/^[0-9]{1,5}$/.test(bana)) u.pathname = '/(ej återgivet)'
 
     return (
       u.toString() +
@@ -235,9 +270,33 @@ export function maskeraAdresser(text: string): string {
   const medAdresserMaskerade = text.replace(/rediss?:\/\/\S+/gi, (m) => redactRedisUrl(m))
 
   // SISTA UTVÄGEN: en userinfo-del i något som INTE såg ut som en redis-adress.
-  // Måltexten bär aldrig ett `@`, så en `//nånting:nånting@`-sekvens i en
-  // `--confirm` är per definition inte måltext — och kan vara en credential.
+  // En `//nånting:nånting@`-sekvens är nästan säkert en credential och nästan
+  // säkert inte måltext. NÄSTAN: ett `--prefix` med ett `@` i skulle hamna i
+  // måltexten, så premissen "måltexten bär aldrig ett @" — som stod här — är
+  // inte sann. Regeln är ändå rätt riktning, och `--confirm` ekas numera inte
+  // alls som rå text (se `beskrivConfirm`), så den här är ett bälte till hängslet.
   return medAdresserMaskerade.replace(/\/\/[^\s/@]*:[^\s/@]*@/g, '//***:***@')
+}
+
+/**
+ * Hur en FELAKTIG `--confirm` beskrivs — aldrig som rå användartext.
+ *
+ * `maskeraAdresser` täcker bara ADRESSFORMADE strängar. En felpastad bar
+ * hemlighet (`--confirm=SYNTHETIC_TEST_VALUE`, eller `user:pw@h:6379` utan
+ * snedstreck) ekades oförändrad. Mätt av en granskare.
+ *
+ * Och ekot behövs inte: operatören ser sin egen inmatning i sitt skal, och det
+ * felet ska säga är vilken text som FÖRVÄNTADES. Den står redan på raden ovanför
+ * och är per konstruktion credentialfri. Här räcker därför en beskrivning — om
+ * något angavs, och om det ens liknade en adress.
+ */
+export function beskrivConfirm(confirm: string | undefined): string {
+  if (confirm === undefined) return '(inget)'
+  if (confirm === '') return '(tom sträng)'
+  const adressformad = /^rediss?:\/\//iu.test(confirm)
+  return adressformad
+    ? `(en adress angavs, men den matchar inte måltexten ovan — ${confirm.length} tecken)`
+    : `(något angavs som inte ens är en redis-adress — ${confirm.length} tecken, återges inte)`
 }
 
 /**
@@ -339,33 +398,42 @@ export function parseRedisTarget(redisUrl: string, prefix: string): RedisTarget 
 
   const schema = u.protocol.replace(/:$/, '')
   if (schema !== 'redis' && schema !== 'rediss') {
+    // SCHEMAT ÅTERGES INTE. `--redis-url=SYNTHETIC_TEST_VALUE:x` tolkas av
+    // `new URL()` med hemligheten som schema, och den interpolerades hit.
     throw new Error(
-      `--redis-url har schemat '${schema}'. Endast redis:// och rediss:// stöds. ` +
-        'En form vi inte kan bära vidare utan att tappa en egenskap avvisas före ' +
-        'anslutning — aldrig genom en tyst nedgradering.',
+      '--redis-url har ett schema som inte stöds (det återges inte här — en ' +
+        'felpastad sträng kan tolkas som ett schema). Endast redis:// och rediss:// ' +
+        'stöds. En form vi inte kan bära vidare utan att tappa en egenskap avvisas ' +
+        'före anslutning — aldrig genom en tyst nedgradering.',
     )
   }
 
   if (u.search !== '') {
-    // BARA NAMN SOM HADE ETT VÄRDE ÅTERGES. Ett led utan `=` är inte ett
-    // parameternamn utan okänd text — `?hunter2` är en fullt möjlig felpaste av
-    // ett lösenord, och namnet på ett `namn=värde`-par är det inte. Funnet av en
-    // granskare; kostnaden för att hålla tyst om det är en rad.
-    const led = u.search.slice(1).split('&').filter(Boolean)
-    const namn = [
-      ...new Set(led.filter((d) => d.includes('=')).map((d) => d.slice(0, d.indexOf('=')))),
-    ]
-    const namnlösa = led.length - led.filter((d) => d.includes('=')).length
-    const uppräkning =
-      (namn.length > 0 ? namn.join(', ') : '') +
-      (namnlösa > 0 ? `${namn.length > 0 ? ', ' : ''}${namnlösa} utan värde (ej återgivna)` : '')
+    // INGENTING UR QUERYN ÅTERGES — VARKEN NAMN ELLER VÄRDE.
+    //
+    // Regeln höll tidigare tillbaka bara led UTAN `=`, med resonemanget att ett
+    // `namn=värde`-par har ett namn som är säkert att visa. Det resonemanget var
+    // fel, och motexemplet är trivialt:
+    //
+    //   --redis-url=redis://h.example:6379/0?SYNTHETIC_TEST_VALUE=
+    //     [queue-ops] AVBRUTEN: --redis-url bär 1 queryparameter(rar)
+    //                           (SYNTHETIC_TEST_VALUE). …
+    //
+    // Ett likhetstecken gör inte namnet betrott. Den som klistrar en credential
+    // i fel flagga kan lika gärna få med ett efterföljande `=`, och samma sak
+    // gäller ett par där hemligheten står i NAMNET.
+    //
+    // ANTALET OCH EN FAST ORSAK RÄCKER. Operatören behöver veta att det var
+    // queryn som fällde adressen och hur många led den bar; vilka de hette
+    // tillför ingenting när formen ändå är avvisad. Måltexten är oförändrat
+    // säker och skrivs separat.
+    const antalLed = u.search.slice(1).split('&').filter(Boolean).length
     throw new Error(
-      `--redis-url bär ${led.length} queryparameter(rar) (${uppräkning}). ` +
-        'Den formen avvisas: Bull 4.16.5 låter queryn ersätta värd, port, databas ' +
-        'och keyPrefix EFTER att måltexten räknats fram, alltså ett tyst ' +
-        'alternativt mål. Ange värd, port och databas i URL:ens egen form och ' +
-        'prefixet med --prefix. Värdena återges inte här — ?password= är en ' +
-        'verksam credential.',
+      `--redis-url bär ${antalLed} queryparameter(rar). Namn och värden återges inte — ` +
+        'ett queryled kan bära en credential i BÅDA leden, och formen är ändå avvisad. ' +
+        'Den avvisas därför att Bull 4.16.5 låter queryn ersätta värd, port, databas ' +
+        'och keyPrefix EFTER att måltexten räknats fram, alltså ett tyst alternativt ' +
+        'mål. Ange värd, port och databas i URL:ens egen form och prefixet med --prefix.',
     )
   }
   if (u.hash !== '') {
@@ -385,9 +453,11 @@ export function parseRedisTarget(redisUrl: string, prefix: string): RedisTarget 
 
   const bana = u.pathname.replace(/^\//, '')
   if (bana !== '' && !/^[0-9]{1,5}$/.test(bana)) {
+    // LEDET ÅTERGES INTE. `redis://h:6379/SYNTHETIC_TEST_VALUE` la hemligheten
+    // i sökvägen, och den stod både här och på den maskerade loggraden.
     throw new Error(
-      `--redis-url har ett databasindex som inte är ett heltal ('${bana}'). ` +
-        'Bull läser samma led som ett tal; en sökväg som inte är det hade gett ' +
+      '--redis-url har ett databasindex som inte är ett heltal (värdet återges inte ' +
+        'här). Bull läser samma led som ett tal; en sökväg som inte är det hade gett ' +
         'databas NaN i klienten och db0 i måltexten.',
     )
   }
@@ -429,8 +499,13 @@ export function parseRedisTarget(redisUrl: string, prefix: string): RedisTarget 
  *
  * Den är nu härledd ur `RedisTarget` och INTE ur råsträngen. Det är hela poängen
  * med fynd 1: en måltext som läses ur en annan tolkning än anslutningens kan
- * beskriva ett mål som aldrig kontaktas. Per konstruktion bär den heller ingen
- * credential — fälten den läser är schema, värd, port, databas och prefix.
+ * beskriva ett mål som aldrig kontaktas.
+ *
+ * Den bär varken användarnamn, lösenord eller query — men den ÄR inte
+ * credentialfri "per konstruktion", vilket den här kommentaren tidigare påstod:
+ * `--prefix` går rakt in i texten, så en hemlighet klistrad DÄR skrivs ut, både
+ * i klartextläget och i `--json`. Måltexten måste kunna upprepas ordagrant, så
+ * prefixet kan inte maskeras. Gränsen står i filens huvud.
  *
  * SCHEMAT MÅSTE MED. `redis://h:6379/0` och `rediss://h:6379/0` är två olika mål
  * — ofta en oskyddad och en TLS-skyddad instans — och utan det ledet delade de
@@ -654,7 +729,7 @@ export async function runQueueOps(opts: RunOptions): Promise<OpsResult> {
       throw new Error(
         `--action=${opts.action} kräver --confirm med EXAKT måltexten.\n` +
           `  förväntat: ${target}\n` +
-          `  angivet:   ${opts.confirm === undefined ? '(inget)' : maskeraAdresser(opts.confirm)}\n` +
+          `  angivet:   ${beskrivConfirm(opts.confirm)}\n` +
           'Kör först utan --action och läs måltexten ur rapporten.',
       )
     }

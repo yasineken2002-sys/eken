@@ -138,38 +138,37 @@ describe('parseRedisTarget — EN tolkning, eller inget mål alls', () => {
     expect(() => mal(url)).toThrow('queryparameter')
   })
 
-  it('felet om queryn bär ALDRIG queryvärdet', () => {
-    expect(() => mal(`redis://h:6379/0?password=${SYNTETISK_HEMLIGHET}`)).toThrow(/queryparameter/)
+  /**
+   * INGENTING UR QUERYN ÅTERGES — varken namn eller värde.
+   *
+   * Filen krävde tidigare motsatsen för namnet: `toContain('password')`, med
+   * resonemanget att namnet på ett `namn=värde`-par är säkert att visa. Det var
+   * fel, och provet var därför ett mothåll mot rätt rättning. Ett likhetstecken
+   * gör inte namnet betrott — den som klistrar en credential i fel flagga kan
+   * lika gärna få med ett efterföljande `=`, eller ha hemligheten i namnet.
+   */
+  it.each([
+    ['hemligheten i NAMNET, tomt värde', `?${SYNTETISK_HEMLIGHET}=`],
+    ['hemligheten i NAMNET, med värde', `?${SYNTETISK_HEMLIGHET}=x`],
+    ['hemligheten i VÄRDET', `?password=${SYNTETISK_HEMLIGHET}`],
+    ['hemligheten utan likhetstecken', `?${SYNTETISK_HEMLIGHET}`],
+    ['hemligheten bland flera led', `?a=1&${SYNTETISK_HEMLIGHET}=2&b=3`],
+  ])('felet bär varken namn eller värde ur queryn — %s', (_namn, query) => {
     try {
-      mal(`redis://h:6379/0?password=${SYNTETISK_HEMLIGHET}`)
-    } catch (err) {
-      expect((err as Error).message).not.toContain(SYNTETISK_HEMLIGHET)
-      // Namnet ska däremot stå där — annars vet operatören inte vad som föll.
-      expect((err as Error).message).toContain('password')
-    }
-  })
-
-  it('ett queryled UTAN värde återges inte — det kan vara en felpastad hemlighet', () => {
-    // `?hunter2` är inget parameternamn utan okänd text. Namnet på ett
-    // `namn=värde`-par är säkert att visa; ett ensamt led är det inte.
-    try {
-      mal(`redis://h:6379/0?${SYNTETISK_HEMLIGHET}`)
+      mal(`redis://h:6379/0${query}`)
       throw new Error('skulle ha avvisats')
     } catch (err) {
       const text = (err as Error).message
-      expect(text).toContain('queryparameter')
       expect(text).not.toContain(SYNTETISK_HEMLIGHET)
-      expect(text).toContain('utan värde')
+      expect(text).toContain('queryparameter')
+      expect(text).toContain('Namn och värden återges inte')
     }
   })
 
-  it('KANARIEFÅGELN: ett namn som HADE ett värde återges — annars vore provet ovan stumt', () => {
-    try {
-      mal('redis://h:6379/0?keyPrefix=x')
-      throw new Error('skulle ha avvisats')
-    } catch (err) {
-      expect((err as Error).message).toContain('keyPrefix')
-    }
+  it('KANARIEFÅGELN: felet säger ANTALET, så det inte blivit stumt', () => {
+    // Annars vore proven ovan gröna av att meddelandet slutat säga något alls.
+    expect(() => mal('redis://h:6379/0?a=1&b=2&c=3')).toThrow('bär 3 queryparameter(rar)')
+    expect(() => mal('redis://h:6379/0?a=1')).toThrow('bär 1 queryparameter(rar)')
   })
 
   it('AVVISAR ett fragment', () => {
@@ -392,20 +391,24 @@ describe('confirm-spärren', () => {
     )
   })
 
-  it('en ADRESS som klistrats in i --confirm ekas MASKERAD', async () => {
-    // Nära till hands: --confirm och --redis-url bär båda en redis://-sträng,
-    // och en förväxling hade lagt lösenordet på stderr genom den enda väg som
-    // inte gick genom redactRedisUrl.
-    const felpastad = `redis://anv:${SYNTETISK_HEMLIGHET}@h.example:6379/0`
+  it.each([
+    ['en adress med lösenord', `redis://anv:${SYNTETISK_HEMLIGHET}@h.example:6379/0`],
+    ['en VERSAL adress', `REDIS://anv:${SYNTETISK_HEMLIGHET}@h.example:6379/0`],
+    ['en bar hemlighet', SYNTETISK_HEMLIGHET],
+    ['userinfo utan schema', `//anv:${SYNTETISK_HEMLIGHET}@h.example:6379`],
+  ])('--confirm återges inte som rå text — %s', async (_namn, felpastad) => {
+    // `--confirm` och `--redis-url` bär båda en redis://-sträng, så en förväxling
+    // är nära till hands. Maskeringen täckte bara ADRESSFORMADE strängar; en bar
+    // hemlighet ekades oförändrad. Innehållet återges därför inte alls.
     try {
       await runQueueOps({ redisUrl: url, prefix: 'bull', action: 'pause', confirm: felpastad })
       throw new Error('skulle ha avvisats')
     } catch (err) {
       const text = (err as Error).message
-      expect(text).toContain('--confirm')
       expect(text).not.toContain(SYNTETISK_HEMLIGHET)
-      // KANARIEFÅGELN: adressen syns fortfarande, så operatören ser förväxlingen.
-      expect(text).toContain('h.example')
+      expect(text).toContain('--confirm')
+      // KANARIEFÅGELN: den FÖRVÄNTADE måltexten står kvar, läsbar.
+      expect(text).toContain('förväntat: redis://127.0.0.1:1/db0 prefix=bull')
     }
   })
 
