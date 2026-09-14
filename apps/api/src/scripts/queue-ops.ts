@@ -166,61 +166,84 @@ export interface OpsResult {
  * generell maskering gör det inte. Fragmentet maskeras av samma skäl.
  *
  * Funktionen är sista utvägen, inte förstahandsvalet: den normala utskriften är
- * `describeTarget`, som är härledd ur den validerade formen och per konstruktion
- * inte kan bära en credential.
+ * `describeTarget`, som är härledd ur den VALIDERADE formen. Den bär varken
+ * användarnamn, lösenord, query eller fragment — men "kan per konstruktion inte
+ * bära en credential", som det stod här, är för starkt: `--prefix` går rakt in i
+ * texten. Gränsen står i filens huvud.
  */
 export function redactRedisUrl(url: string): string {
+  let u: URL
   try {
-    const u = new URL(url)
-
-    // ÄR DET INTE EN REDIS-URL ÅTERGES INGENTING. `new URL()` godtar vilket
-    // schema som helst, så `synthetic-test-value:x` tolkas utan fel — och
-    // returnerades tidigare OFÖRÄNDRAD, alltså precis det den här funktionen
-    // finns för att omöjliggöra. Resonemanget i catch-grenen nedan gällde bara
-    // den ena halvan: en sträng vi inte kan PLACERA är lika farlig som en vi
-    // inte kan tolka. Funnet av en granskare.
-    if (u.protocol !== 'redis:' && u.protocol !== 'rediss:') {
-      return '(inte en redis-url — utelämnad)'
-    }
-
-    if (u.password) u.password = '***'
-    if (u.username) u.username = '***'
-
-    // QUERYN UTELÄMNAS HELT — NAMN OCH ALLT. Att maskera värdena räckte inte:
-    // ett queryled utan `=` blir ett NAMN med tomt värde, så
-    //
-    //   --redis-url=redis://h:6379/0?SYNTHETIC_TEST_VALUE
-    //
-    // loggades som `redis://h:6379/0?SYNTHETIC_TEST_VALUE=***` — hemligheten
-    // oförändrad, bara med ett maskerat tomt värde efter sig. Uppmätt genom
-    // verkliga `main` av en granskare.
-    //
-    // Querynamn är ingen betrodd, ofarlig mängd bara för att värdena maskeras.
-    // Och eftersom formen ändå AVVISAS av `parseRedisTarget` finns det ingen som
-    // helst anledning att återge dess innehåll: ANTALET är allt operatören
-    // behöver för att se att det var queryn som fällde adressen.
-    const ledAntal = u.search === '' ? 0 : u.search.slice(1).split('&').filter(Boolean).length
-    const hadeFragment = u.hash !== ''
-    u.search = ''
-    u.hash = ''
-
-    // SÖKVÄGEN FÅR BARA VARA ETT DATABASINDEX. `redis://h:6379/SYNTHETIC_TEST_VALUE`
-    // gick oförändrad genom maskeringen: funktionen rörde bara användare,
-    // lösenord, query och fragment. Är ledet inte ett heltal vet vi inte vad det
-    // är, och då återges det inte. Funnet av en granskare.
-    const bana = u.pathname.replace(/^\//, '')
-    if (bana !== '' && !/^[0-9]{1,5}$/.test(bana)) u.pathname = '/(ej återgivet)'
-
-    return (
-      u.toString() +
-      (ledAntal > 0 ? ` (+${ledAntal} queryparameter(rar) utelämnade)` : '') +
-      (hadeFragment ? ' (+fragment utelämnat)' : '')
-    )
+    u = new URL(url)
   } catch {
     // Går URL:en inte att tolka får ingenting skrivas ut — en oparserbar sträng
     // kan mycket väl vara en hel credential.
     return '(oparserbar redis-url — utelämnad)'
   }
+
+  // ── ÄR DET INTE EN REDIS-URL ÅTERGES INGENTING ────────────────────────────
+  //
+  // `new URL()` godtar vilket schema som helst, så `synthetic-test-value:x`
+  // tolkas utan fel — och returnerades en gång OFÖRÄNDRAD, alltså precis det den
+  // här funktionen finns för att omöjliggöra.
+  if (u.protocol !== 'redis:' && u.protocol !== 'rediss:') {
+    return '(inte en redis-url — utelämnad)'
+  }
+
+  // ── OCH INTE HELLER OM DEN ÄR ICKE-HIERARKISK ─────────────────────────────
+  //
+  // `redis:NÅGOT` (utan `//`) är en giltig URL med en OPAQUE sökväg och tom
+  // värd. Den formen är själva kärnan i den här rättningen:
+  //
+  //   --redis-url=redis:SYNTHETIC_TEST_VALUE
+  //     [queue-ops] avvisad --redis-url: redis:SYNTHETIC_TEST_VALUE
+  //   --redis-url=rediss:user:SYNTHETIC_TEST_VALUE@h.example:6379
+  //     [queue-ops] avvisad --redis-url: rediss:user:SYNTHETIC_TEST_VALUE@h.example:6379
+  //
+  // Den gamla koden försökte städa genom att TILLDELA `u.pathname`. WHATWG:s
+  // URL-standard säger att den settern lämnar en opaque path OFÖRÄNDRAD
+  // (https://url.spec.whatwg.org/#dom-url-pathname), så tilldelningen var en
+  // tyst no-op och den efterföljande serialiseringen återgav originalet.
+  //
+  // Det är skälet att funktionen numera KONSTRUERAR sitt svar ur accepterade
+  // fält i stället för att serialisera indataobjektet. Att lappa med fler
+  // maskeringstilldelningar och sedan serialisera om hade bara flyttat samma
+  // defekt till nästa URL-form vi inte tänkt på.
+  // Ordvalet är med flit "utan värd" och inte "icke-hierarkisk": `redis:///0`
+  // och `redis://` ÄR hierarkiska, de saknar bara värd. Grinden är tom värd.
+  if (u.hostname === '') {
+    return '(redis-url utan värd — utelämnad)'
+  }
+
+  // ── HÄRIFRÅN BYGGS SVARET, ALDRIG SERIALISERAS ────────────────────────────
+  const schema = u.protocol.replace(/:$/, '')
+  const port = u.port === '' ? '6379' : u.port
+
+  // Credentials sammanfattas, aldrig återges.
+  const credential = u.username !== '' || u.password !== '' ? '***:***@' : ''
+
+  // Sökvägen får BARA vara ett databasindex. Är den något annat vet vi inte vad
+  // det är, och då återges den inte.
+  const bana = u.pathname.replace(/^\//, '')
+  const db = bana === '' ? '0' : /^[0-9]{1,5}$/.test(bana) ? bana : '(ej återgivet)'
+
+  // Queryn och fragmentet utelämnas HELT — namn och allt. Att maskera värdena
+  // räckte inte: ett led utan `=` blir ett NAMN med tomt värde, så
+  // `?SYNTHETIC_TEST_VALUE` blev `?SYNTHETIC_TEST_VALUE=***`. Antalet är allt
+  // operatören behöver, eftersom formen ändå avvisas.
+  const ledAntal = u.search === '' ? 0 : u.search.slice(1).split('&').filter(Boolean).length
+  const hadeFragment = u.hash !== ''
+
+  // VÄRDEN ÅTERGES BARA OM DEN ÄR EN VÄRD. Se `GILTIG_VARD`: en opaque host kan
+  // bära en hel procentkodad credential, och då är den inte ett värdnamn utan
+  // okänd indata — samma klass som sökvägen ovan.
+  const värd = GILTIG_VARD.test(u.hostname) ? u.hostname : '(värd ej återgiven)'
+
+  return (
+    `${schema}://${credential}${värd}:${port}/${db}` +
+    (ledAntal > 0 ? ` (+${ledAntal} queryparameter(rar) utelämnade)` : '') +
+    (hadeFragment ? ' (+fragment utelämnat)' : '')
+  )
 }
 
 /**
@@ -247,43 +270,44 @@ export interface RedisTarget {
  */
 const GLOBTECKEN = /[*?[\]\\]/
 
+/**
+ * ── VÄRDEN ÄR EN OPAQUE HOST, OCH MÅSTE DÄRFÖR VALIDERAS ────────────────────
+ *
+ * `redis:` är inget *special scheme* i WHATWG:s URL-standard. Värden blir då en
+ * OPAQUE HOST: procentkodning avkodas aldrig, och parsern förbjuder bara
+ * `NUL TAB LF CR SP # / : ? @ [ \ ] ^ | < >`. Allt annat passerar rått.
+ *
+ * Följden är att `:` och `@` kan procentkodas in i värden, så att en hel
+ * credential hamnar i `u.hostname` medan `u.username`/`u.password` är TOMMA.
+ * Uppmätt av en granskare:
+ *
+ *   redis://user%3ASYNTHETIC_TEST_VALUE%40h.example:6379/0
+ *     u.hostname = "user%3ASYNTHETIC_TEST_VALUE%40h.example"
+ *     u.username = ""
+ *
+ * Den formen ACCEPTERADES, stod i måltexten, i `--confirm` och i `--json`, och
+ * gick vidare till anslutning. Samma sträng med `http://` avvisas av Node —
+ * skillnaden är enbart att `http` är ett special scheme.
+ *
+ * Understreck tillåts med flit: det förekommer i interna tjänstenamn och kan
+ * inte bära vare sig `:` eller `@`. Det som utesluts är allt som gör värden till
+ * något annat än ett värdnamn, en IPv4 eller en klammrad IPv6.
+ */
+const GILTIG_VARD =
+  /^\[[0-9A-Fa-f:.]+\]$|^[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?(?:\.[A-Za-z0-9_](?:[A-Za-z0-9_-]*[A-Za-z0-9_])?)*$/
+
 /** IPv4 i punktform eller IPv6 (som alltid bär kolon). Se `bullQueueOptions`. */
 const ÄR_IP = /^(?:\d{1,3}(?:\.\d{1,3}){3}|.*:)/
 
 /**
- * Maskerar varje redis-adress som råkar ligga inbäddad i en text.
- *
- * Finns för EN väg: `--confirm` ekas tillbaka till operatören, och `--confirm`
- * och `--redis-url` bär båda en `redis://…`-sträng. Att klistra fel av de två är
- * nära till hands, och då hade lösenordet hamnat på stderr genom den enda väg
- * som inte gick genom `redactRedisUrl`. Funnet av en granskare.
- */
-export function maskeraAdresser(text: string): string {
-  // `i`-FLAGGAN BÄR. Utan den gick en versal adress rakt igenom:
-  //
-  //   --confirm=REDIS://user:SYNTHETIC_TEST_VALUE@h:6379/0
-  //     angivet:   REDIS://user:SYNTHETIC_TEST_VALUE@h:6379/0
-  //
-  // Uppmätt genom hela CLI:s felväg av en granskare. `new URL()` normaliserar
-  // schemat, så själva maskeringen klarade formen — det var matchningen som inte
-  // såg den.
-  const medAdresserMaskerade = text.replace(/rediss?:\/\/\S+/gi, (m) => redactRedisUrl(m))
-
-  // SISTA UTVÄGEN: en userinfo-del i något som INTE såg ut som en redis-adress.
-  // En `//nånting:nånting@`-sekvens är nästan säkert en credential och nästan
-  // säkert inte måltext. NÄSTAN: ett `--prefix` med ett `@` i skulle hamna i
-  // måltexten, så premissen "måltexten bär aldrig ett @" — som stod här — är
-  // inte sann. Regeln är ändå rätt riktning, och `--confirm` ekas numera inte
-  // alls som rå text (se `beskrivConfirm`), så den här är ett bälte till hängslet.
-  return medAdresserMaskerade.replace(/\/\/[^\s/@]*:[^\s/@]*@/g, '//***:***@')
-}
-
-/**
  * Hur en FELAKTIG `--confirm` beskrivs — aldrig som rå användartext.
  *
- * `maskeraAdresser` täcker bara ADRESSFORMADE strängar. En felpastad bar
- * hemlighet (`--confirm=SYNTHETIC_TEST_VALUE`, eller `user:pw@h:6379` utan
- * snedstreck) ekades oförändrad. Mätt av en granskare.
+ * Innehållet ekades tidigare rått, och en maskering som bara kände igen
+ * ADRESSFORMADE strängar räckte inte: en felpastad bar hemlighet
+ * (`--confirm=SYNTHETIC_TEST_VALUE`, eller `user:pw@h:6379` utan snedstreck)
+ * gick oförändrad igenom. Mätt av en granskare. Den maskeringen är borttagen —
+ * den blev död kod när ekot försvann, och en oanvänd, oprövad maskerare är en
+ * fälla för nästa som hittar den.
  *
  * Och ekot behövs inte: operatören ser sin egen inmatning i sitt skal, och det
  * felet ska säga är vilken text som FÖRVÄNTADES. Den står redan på raden ovanför
@@ -449,6 +473,20 @@ export function parseRedisTarget(redisUrl: string, prefix: string): RedisTarget 
   const host = rawHost.startsWith('[') && rawHost.endsWith(']') ? rawHost.slice(1, -1) : rawHost
   if (host === '') {
     throw new Error('--redis-url saknar värd. Formen är redis://VÄRD[:port][/db].')
+  }
+  // VÄRDEN VALIDERAS, INTE BARA KONTROLLERAS MOT TOMHET. Se `GILTIG_VARD`:
+  // `redis:` är inget special scheme, så värden är en opaque host och kan bära
+  // en procentkodad credential som varken hamnar i username eller password.
+  // Formen accepterades tidigare och gick vidare till anslutning. Värdet
+  // återges inte här — det kan vara just den credentialen.
+  if (!GILTIG_VARD.test(rawHost)) {
+    throw new Error(
+      '--redis-url har en värd som inte är ett värdnamn, en IPv4 eller en klammrad ' +
+        'IPv6 (värdet återges inte här). `redis:` är inget special scheme, så värden ' +
+        'är en opaque host: procentkodade `:` och `@` hamnar DÄR i stället för i ' +
+        'användare och lösenord, och skulle då stå i måltexten och gå vidare till ' +
+        'anslutningen. Ange värden i klartext.',
+    )
   }
 
   const bana = u.pathname.replace(/^\//, '')
@@ -924,7 +962,11 @@ async function main(): Promise<void> {
   try {
     mal = parseRedisTarget(opts.redisUrl, opts.prefix)
   } catch (err) {
-    log(`avvisad --redis-url: ${redactRedisUrl(opts.redisUrl)}`)
+    // SÄG VAD RADEN ÄR, INTE VAD SOM FÖLL. `parseRedisTarget` validerar även
+    // `--prefix`, så texten "avvisad --redis-url" påstod att adressen var fel
+    // också när det var prefixet — och adressen var felfri. Funnet av en
+    // granskare. Raden är kontext till felet nedan, inte en dom över URL:en.
+    log(`--redis-url (maskerad): ${redactRedisUrl(opts.redisUrl)}`)
     throw err
   }
   log(`mål: ${describeTarget(mal)} · action=${opts.action}`)

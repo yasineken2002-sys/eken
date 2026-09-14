@@ -152,6 +152,49 @@ describe('queue-ops som CLI', () => {
     expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
   })
 
+  /**
+   * ── OPAQUE PATH: `redis:NÅGOT` UTAN `//` ──────────────────────────────────
+   *
+   * Sista grenen av sökvägsredaktorn, funnen i slutgranskningen. Formen är en
+   * giltig URL med tom värd och en OPAQUE sökväg. Redaktorn försökte städa
+   * genom att tilldela `u.pathname`, men WHATWG:s URL-standard säger att den
+   * settern lämnar en opaque path OFÖRÄNDRAD — tilldelningen var en tyst no-op,
+   * och den efterföljande serialiseringen återgav hela strängen:
+   *
+   *   [queue-ops] avvisad --redis-url: redis:SYNTHETIC_TEST_VALUE
+   *   [queue-ops] avvisad --redis-url: rediss:user:SYNTHETIC_TEST_VALUE@h.example:6379
+   *
+   * Rättningen är strukturell: redaktorn KONSTRUERAR sitt svar ur accepterade
+   * fält i stället för att serialisera indataobjektet. Proven körs som PROCESS
+   * eftersom läckan låg i utskriften — inget returvärde visade den — och
+   * avvisningen sker före varje Redis-anrop.
+   */
+  it.each([
+    ['utan värd', 'redis:SYNTHETIC_TEST_VALUE'],
+    ['med userinfo i opaque path', 'rediss:user:SYNTHETIC_TEST_VALUE@h.example:6379'],
+    ['med snedstreck i opaque path', 'redis:SYNTHETIC_TEST_VALUE/0'],
+    ['hierarkisk men utan värd', 'redis:///SYNTHETIC_TEST_VALUE'],
+  ])('en --redis-url UTAN VÄRD återges inte — %s', (_namn, url) => {
+    const { ut, exitkod } = körCli(`--redis-url=${url}`)
+
+    // 1. Hemligheten finns ingenstans i stdout eller stderr.
+    expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
+    // 2. Rätt exitkod — inte en tyst krasch.
+    expect(exitkod).toBe(1)
+    // 3. Fast felorsak, och redaktorn säger VARFÖR den höll tillbaka adressen.
+    expect(ut).toContain('saknar värd')
+    expect(ut).toContain('redis-url utan värd — utelämnad')
+  })
+
+  it('KANARIEFÅGELN: en HIERARKISK adress är fortfarande läsbar i samma rad', () => {
+    // Utan den här raden vore proven ovan gröna av att redaktorn börjat
+    // utelämna allting. Måltexten med schema, värd, port och db måste gå att
+    // läsa — den är hela poängen med utskriften.
+    const { ut } = körCli('--redis-url=redis://h.example:6380/3?a=1')
+    expect(ut).toContain('redis://h.example:6380/3')
+    expect(ut).toContain('queryparameter')
+  })
+
   it('en OPARSERBAR --redis-url skrivs inte ut alls', () => {
     const { ut } = körCli(`--redis-url=inte-en-url-${SYNTETISK_HEMLIGHET}`)
     expect(ut).not.toContain(SYNTETISK_HEMLIGHET)
@@ -175,7 +218,7 @@ describe('queue-ops som CLI', () => {
   })
 
   it('en BAR hemlighet i --confirm återges inte heller', () => {
-    // Formen maskeraAdresser aldrig täckte: inte adressformad alls.
+    // Formen den gamla adressmaskeringen aldrig täckte: inte adressformad alls.
     const { ut, exitkod } = körCli(
       '--redis-url=redis://h.example:6379/0',
       '--action=pause',

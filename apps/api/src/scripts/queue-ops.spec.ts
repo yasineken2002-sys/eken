@@ -72,6 +72,85 @@ describe('redactRedisUrl', () => {
     )
   })
 
+  /**
+   * UTDATA KONSTRUERAS, DEN SERIALISERAS INTE.
+   *
+   * Den bärande egenskapen efter opaque-path-fyndet. Serialiserar man
+   * URL-objektet i stället blir svaret procentkodat —
+   * `redis://h.example:6379/(ej%20%C3%A5tergivet)` — och, viktigare, varje
+   * URL-form vars maskering är en tyst no-op återges oförändrad. Den exakta
+   * jämförelsen nedan faller på båda.
+   */
+  it.each([
+    ['ren adress', 'redis://h.example:6379/3', 'redis://h.example:6379/3'],
+    ['utan port och db', 'redis://h.example', 'redis://h.example:6379/0'],
+    [
+      'credentials sammanfattas',
+      'redis://anv:hem@h.example:6379/1',
+      'redis://***:***@h.example:6379/1',
+    ],
+    [
+      'okänd sökväg, OPROCENTKODAD',
+      'redis://h.example:6379/SYNTHETIC_TEST_VALUE',
+      'redis://h.example:6379/(ej återgivet)',
+    ],
+    ['IPv6 behåller klamrarna', 'redis://[::1]:6379/2', 'redis://[::1]:6379/2'],
+    [
+      'query och fragment sammanfattas',
+      'redis://h.example:6379/0?a=1&b=2#f',
+      'redis://h.example:6379/0 (+2 queryparameter(rar) utelämnade) (+fragment utelämnat)',
+    ],
+    ['opaque path utan värd', 'redis:SYNTHETIC_TEST_VALUE', '(redis-url utan värd — utelämnad)'],
+    [
+      'opaque path med userinfo',
+      'rediss:user:SYNTHETIC_TEST_VALUE@h.example:6379',
+      '(redis-url utan värd — utelämnad)',
+    ],
+    ['hierarkisk MEN utan värd', 'redis:///0', '(redis-url utan värd — utelämnad)'],
+    ['främmande schema', 'https://h.example/0', '(inte en redis-url — utelämnad)'],
+  ])('redactRedisUrl bygger svaret ur accepterade fält — %s', (_namn, url, förväntat) => {
+    expect(redactRedisUrl(url)).toBe(förväntat)
+  })
+
+  /**
+   * ── VÄRDEN ÄR EN OPAQUE HOST ──────────────────────────────────────────────
+   *
+   * `redis:` är inget special scheme, så procentkodning i värden avkodas aldrig
+   * och `:`/`@` kan kodas in där. En hel credential hamnar då i `u.hostname`
+   * medan `u.username`/`u.password` är TOMMA — och formen ACCEPTERADES, stod i
+   * måltexten och gick vidare till anslutning. Samma sträng med `http://`
+   * avvisas av Node; skillnaden är bara att `http` är ett special scheme.
+   */
+  it.each([
+    ['procentkodad userinfo', `redis://user%3A${SYNTETISK_HEMLIGHET}%40h.example:6379/0`],
+    ['semikolon', `redis://h.example;${SYNTETISK_HEMLIGHET}/0`],
+    ['citattecken', `redis://'${SYNTETISK_HEMLIGHET}'/0`],
+    ['skiljetecken', `redis://${SYNTETISK_HEMLIGHET}$%&()*+=~/0`],
+  ])('AVVISAR en värd som inte är en värd — %s', (_namn, url) => {
+    expect(() => mal(url)).toThrow('värd som inte är ett värdnamn')
+    try {
+      mal(url)
+    } catch (err) {
+      expect((err as Error).message).not.toContain(SYNTETISK_HEMLIGHET)
+    }
+    // Och redaktorn håller tillbaka den även om den ändå skulle skrivas ut.
+    expect(redactRedisUrl(url)).not.toContain(SYNTETISK_HEMLIGHET)
+    expect(redactRedisUrl(url)).toContain('(värd ej återgiven)')
+  })
+
+  it.each([
+    ['värdnamn', 'redis://h.example:6379/0'],
+    ['understreck i tjänstenamn', 'redis://redis_service:6379/0'],
+    ['bindestreck', 'redis://eken-redis-1:6379/0'],
+    ['IPv4', 'redis://127.0.0.1:6379/0'],
+    ['IPv6', 'redis://[::1]:6379/0'],
+    ['localhost', 'redis://localhost:6379/0'],
+  ])('KANARIEFÅGELN: en VERKLIG värd passerar — %s', (_namn, url) => {
+    // Utan de här raderna vore proven ovan uppfyllda av att varje värd avvisas.
+    expect(() => mal(url)).not.toThrow()
+    expect(redactRedisUrl(url)).not.toContain('ej återgiven')
+  })
+
   it('KANARIEFÅGELN: värd och port är fortfarande LÄSBARA efter maskeringen', () => {
     // Utan den här raden vore proven ovan gröna av att funktionen returnerade
     // tomt — alltså av att den slutat säga något alls.
