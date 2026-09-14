@@ -29,7 +29,7 @@ import { Test, type TestingModule } from '@nestjs/testing'
 import type { Queue } from 'bull'
 import Bull from 'bull'
 import { AUTOMATION_PAUSE_VAR, pausedUnless } from './automation-pause'
-import { runQueueOps } from '../../scripts/queue-ops'
+import { runQueueOps, scanQueueNames } from '../../scripts/queue-ops'
 
 const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379'
 const QUEUE = 'driftpaus-prov'
@@ -75,6 +75,15 @@ function inkoppladeHandlers(queue: Queue<{ id: string }>): string[] {
     )
   }
   return Object.keys(handlers)
+}
+
+/**
+ * ioredis `scan` är överlastad med literala tokentyper; `scanQueueNames` tar den
+ * smalaste formen den faktiskt använder. Castningen är samlad HÄR i stället för
+ * utspridd på varje anropsställe — samma skäl som för `inkoppladeHandlers` ovan.
+ */
+function somSkanner(client: unknown): { scan: (...a: unknown[]) => Promise<[string, string[]]> } {
+  return client as { scan: (...a: unknown[]) => Promise<[string, string[]]> }
 }
 
 /** Injiceras bara för att komma åt den kö Nest byggde — samma instans workern fick. */
@@ -361,12 +370,22 @@ describe('queue-ops mot riktig Redis', () => {
   const KO_A = 'mail:high'
   const KO_B = 'psd2-sync'
 
+  /**
+   * Städar ALLT filen kan ha skrivit, inte bara verktygsprefixet: proven nedan
+   * använder flera egna underprefix (`:dubblett`, `:urval`, `:glob`), och den
+   * första describe-blockets `afterAll` har redan kört när de skapas. Städningen
+   * VERIFIERAS — en städare som slutat hitta sina nycklar är tyst, inte röd.
+   */
   afterAll(async () => {
     const städare = new Bull(KO_A, REDIS_URL, { prefix: VERKTYGSPREFIX })
     await städare.isReady()
-    const nycklar = await städare.client.keys(`${VERKTYGSPREFIX}:*`)
+    const nycklar = await städare.client.keys(`${PREFIX}:*`)
     if (nycklar.length > 0) await städare.client.del(...nycklar)
+    const kvar = await städare.client.keys(`${PREFIX}:*`)
     await städare.close()
+    if (kvar.length > 0) {
+      throw new Error(`queue-ops-provet lämnade ${kvar.length} nycklar under ${PREFIX}`)
+    }
   })
 
   it('pausar globalt, BEVARAR jobben och rapporterar en ofullständig inventering som sådan', async () => {
@@ -488,5 +507,128 @@ describe('queue-ops mot riktig Redis', () => {
     } finally {
       await städare.close()
     }
+  })
+
+  /**
+   * ── UPPREPADE KÖNAMN ────────────────────────────────────────────────────
+   *
+   * Fyndet mätt före rättningen, i ett nätverksfritt anrop av verkliga
+   * `runQueueOps` med elva förekomster av `pdf`:
+   *
+   *   inventeringKomplett = true
+   *   funnaIRedis         = 11
+   *   åtgärdade           = pdf, elva gånger
+   *
+   * Tio köer stod orörda, och utfallet gick att redovisa som en fullständig
+   * avskärmning. Provet körs mot RIKTIG Redis och inte mot en attrapp, därför
+   * att andra halvan av påståendet är att ingenting SKREVS — och det är en
+   * fråga om nycklar i servern, inte om returvärden.
+   */
+  it('UPPREPADE könamn avvisas, och den avvisade åtgärden skriver ingenting', async () => {
+    const dubblettPrefix = `${PREFIX}:dubblett`
+    const kö = new Bull(KO_A, REDIS_URL, { prefix: dubblettPrefix })
+    try {
+      await kö.isReady()
+      await kö.add({ id: 'dubblett-1' })
+
+      const läst = await runQueueOps({
+        redisUrl: REDIS_URL,
+        prefix: dubblettPrefix,
+        action: 'inspect',
+        queues: [KO_A],
+      })
+
+      await expect(
+        runQueueOps({
+          redisUrl: REDIS_URL,
+          prefix: dubblettPrefix,
+          action: 'pause',
+          queues: Array(11).fill(KO_A),
+          confirm: läst.target,
+        }),
+      ).rejects.toThrow('upprepade namn')
+
+      // Ingen global paus sattes: `meta-paused` är nyckeln Bulls pause-script
+      // skriver, och den skulle ha funnits om åtgärden hunnit köra.
+      expect(await kö.client.keys(`${dubblettPrefix}:*:meta-paused`)).toEqual([])
+      expect(await kö.isPaused(false)).toBe(false)
+    } finally {
+      await kö.close()
+    }
+  })
+
+  it('ETT URVAL kan inte få fullständigt klartecken — mängder, inte listlängder', async () => {
+    // Den gamla jämförelsen var `begarda.length === ALLA_KONAMN.length`. Ett
+    // urval på EN kö som upprepats elva gånger uppfyllde den. Här mäts den
+    // kvarvarande, riktiga riktningen: ett ÄKTA urval är aldrig komplett, hur
+    // många spår målet än bär.
+    const urvalPrefix = `${PREFIX}:urval`
+    const kö = new Bull(KO_A, REDIS_URL, { prefix: urvalPrefix })
+    try {
+      await kö.isReady()
+      await kö.add({ id: 'urval-1' })
+
+      const läst = await runQueueOps({
+        redisUrl: REDIS_URL,
+        prefix: urvalPrefix,
+        action: 'inspect',
+        queues: [KO_A],
+      })
+      expect(läst.funnaIRedis).toBe(1)
+      expect(läst.inventeringKomplett).toBe(false)
+    } finally {
+      await kö.close()
+    }
+  })
+
+  /**
+   * ── GLOBTECKEN I PREFIX, MOT RIKTIG REDIS ───────────────────────────────
+   *
+   * Här mäts SERVERNS regler och inte vår bild av dem. Spec-filens SCAN-attrapp
+   * översatte tidigare bara `*` till `.*`; den kunde alltså per konstruktion
+   * inte pröva den här frågan. `queue-ops.spec.ts` har numera en radvis port av
+   * Redis `stringmatchlen`, men en port är fortfarande en åsikt — det här är
+   * mätningen den kalibreras mot.
+   */
+  it('ett GLOBPREFIX avvisas — och SCAN visar varför det måste avvisas', async () => {
+    const globPrefix = `${PREFIX}:glob`
+    const kö = new Bull('pdf', REDIS_URL, { prefix: globPrefix })
+    try {
+      await kö.isReady()
+      await kö.add({ id: 'glob-1' })
+
+      // FÖRST: att faran är verklig. Ett mönster som inte är det bokstavliga
+      // prefixet träffar ändå nycklarna under det.
+      const mönstrat = globPrefix.replace(/glob$/, 'gl?b')
+      expect(mönstrat).not.toBe(globPrefix)
+      expect(await kö.client.keys(`${mönstrat}:*:id`)).toEqual(
+        await kö.client.keys(`${globPrefix}:*:id`),
+      )
+      expect((await kö.client.keys(`${globPrefix}:*:id`)).length).toBeGreaterThan(0)
+
+      // SEDAN: verktyget vägrar, i stället för att läsa ett nyckelrum och
+      // mutera ett annat.
+      await expect(scanQueueNames(somSkanner(kö.client), mönstrat)).rejects.toThrow('metatecken')
+      await expect(
+        runQueueOps({ redisUrl: REDIS_URL, prefix: mönstrat, action: 'inspect' }),
+      ).rejects.toThrow('metatecken')
+
+      // KANARIEFÅGELN: det BOKSTAVLIGA prefixet läses fortfarande.
+      expect(await scanQueueNames(somSkanner(kö.client), globPrefix)).toContain('pdf')
+    } finally {
+      await kö.close()
+    }
+  })
+
+  it('en URL med query avvisas mot en riktig server — inget alternativt mål', async () => {
+    // Formen är verksam i Bull: `?db=` och `?keyPrefix=` ersätter det måltexten
+    // visade. Mot en riktig server ska den inte ens nå anslutningen.
+    await expect(
+      runQueueOps({
+        redisUrl: `${REDIS_URL}?db=2`,
+        prefix: `${PREFIX}:query`,
+        action: 'inspect',
+      }),
+    ).rejects.toThrow('queryparameter')
   })
 })

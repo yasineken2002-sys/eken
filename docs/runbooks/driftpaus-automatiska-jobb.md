@@ -145,17 +145,49 @@ node -r ts-node/register apps/api/src/scripts/queue-ops.ts \
 # 2. ÅTGÄRD. --confirm måste vara EXAKT måltexten ur steg 1.
 node -r ts-node/register apps/api/src/scripts/queue-ops.ts \
   --redis-url=redis://HOST:PORT/DB --prefix=bull \
-  --action=pause --confirm='HOST:PORT/dbN prefix=bull'
+  --action=pause --confirm='redis://HOST:PORT/dbN prefix=bull'
 
 # 3. ÅTERÖPPNING är ett eget, lika uttryckligt handgrepp.
-  --action=resume --confirm='HOST:PORT/dbN prefix=bull'
+  --action=resume --confirm='redis://HOST:PORT/dbN prefix=bull'
 ```
 
 Tre spärrar mot fel system:
 
-1. `--redis-url` är obligatorisk. Verktyget läser med flit **inte** `REDIS_URL`
-   ur miljön — ett verktyg som kör mot "det som råkade stå i miljön" antar
-   produktion som standard.
+1. `--redis-url` är obligatorisk, och **dess form är snäv**. Verktyget läser med
+   flit **inte** `REDIS_URL` ur miljön — ett verktyg som kör mot "det som råkade
+   stå i miljön" antar produktion som standard.
+
+   Den enda godtagna formen är
+   `redis://[användare:lösenord@]VÄRD[:PORT][/DB]`, eller `rediss://` för TLS.
+   **Query och fragment avvisas**, och det är inte kosmetik: Bull 4.16.5 låter
+   queryparametrar ersätta värd, port, databas och nyckelprefix _efter_ att
+   måltexten räknats fram. Uppmätt mot oförändrad Bull, nätverksfritt:
+
+   ```
+   redis://display.example:6379/0?db=2&host=actual.example&port=6381
+     bekräftelsen visade   redis://display.example:6379/db0 prefix=bull
+     klienten fick         host=actual.example port=6381 db=2
+
+   redis://h.example:6379/0?keyPrefix=actual-prefix
+     inventeringen läste   prefix bull
+     åtgärden muterade     prefix actual-prefix
+   ```
+
+   Den andra raden är den farligaste: verktyget läste ett nyckelrum och pausade
+   ett annat, rakt igenom tommålsspärren i punkt 3. Behöver du sätta en option
+   som bara går att nå genom queryn — hör av dig i stället för att kringgå:
+   flaggan ska bli synlig i måltexten, annars är den inte bekräftad.
+
+   Samma skäl gäller `--prefix`: **Redis-metatecken (`*`, `?`, `[`, `]`, `\`)
+   avvisas**. Ett prefix är en sträng för Bull och ett mönster för `SCAN`, så
+   `bu?l` hade läst nycklarna under `bull:` och sedan pausat under det
+   bokstavliga `bu?l:` — uppmätt mot riktig Redis 7.4.8.
+
+   **`rediss://` ger faktisk TLS**, med certifikatverifiering kvar. Tidigare
+   gjorde det inte det: Bull omvandlar URL:en till ett optionsobjekt utan `tls`,
+   och ioredis egen `rediss`-detektering gäller bara strängargumentet — som
+   ioredis aldrig fick se. Rapporten sa `rediss`, anslutningen var oskyddad.
+
 2. Muterande åtgärder kräver `--confirm` med exakt måltexten (schema, värd, port,
    databasindex, prefix). **Vad den faktiskt är:** en stavfels- och
    ändringsspärr, inte ett bevis för att operatören läst läsläget först —
@@ -169,7 +201,10 @@ Tre spärrar mot fel system:
    så ett fel prefix hade annars rapporterat elva pausade köer. En muterande
    åtgärd **vägrar** mot ett sådant mål. Ett okänt namn i `--queues` avbryter
    också, eftersom `mail-high` (bindestreck) annars hade pausats med framgång
-   medan `mail:high` konsumerade vidare.
+   medan `mail:high` konsumerade vidare. **Ett upprepat namn avbryter likaså:**
+   fullständighetsomdömet jämför mängder, men jämförde tidigare listlängder, och
+   `--queues=pdf,pdf,…` (elva gånger) fick därför fullt klartecken medan tio köer
+   stod orörda.
 
 **Gränserna för punkt 3, utskrivna:** spärren fångar ett **helt tomt** mål. Den
 skiljer inte "rätt mål" från "fel mål" — ett gammalt prefix eller db-index från
