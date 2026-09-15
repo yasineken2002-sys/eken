@@ -15,7 +15,20 @@ import { ContractScanBatchQueue, CONTRACT_SCAN_BATCH_QUEUE } from './contract-sc
 import { ContractScanBatchWorker } from './contract-scan-batch.worker'
 import { LEASE_CREATOR } from './lease-creator.token'
 import { LeasesService } from '../leases/leases.service'
+import { pausedUnless } from '../common/ops/automation-pause'
 
+/**
+ * DRIFTPAUS: `pausedUnless` UTELÄMNAR konsumenten ur `providers` när
+ * OPS_AUTOMATION_PAUSED=true. Det är strukturellt och inte en flagga i
+ * jobbkroppen: `BullExplorer.onModuleInit` anropar `queue.process(...)` för
+ * varje upptäckt @Processor-provider (bull.explorer.js), så en konsument som
+ * aldrig registreras kan aldrig plocka ett jobb — inte heller det första, innan
+ * någon kontroll hunnit köra.
+ *
+ * KÖN SJÄLV REGISTRERAS SOM VANLIGT. Producenter (`*.queue.ts`) fungerar därför
+ * oförändrat, och waiting/delayed-jobb blir kvar i Redis i stället för att tappas
+ * eller kvitteras. Pausen stoppar KONSUMTIONEN, den tömmer ingenting.
+ */
 @Module({
   imports: [
     PrismaModule,
@@ -32,7 +45,7 @@ import { LeasesService } from '../leases/leases.service'
     ContractArchiveService,
     ContractScanBatchService,
     ContractScanBatchQueue,
-    ContractScanBatchWorker,
+    ...pausedUnless(ContractScanBatchWorker),
     // Bind den smala LeaseCreator-token till den riktiga LeasesService.
     { provide: LEASE_CREATOR, useExisting: LeasesService },
   ],

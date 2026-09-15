@@ -194,6 +194,9 @@ function harnast(s: RentCollectionStatus): string {
     case 'REMINDERS_OFF':
       return 'Organisationen har stängt av påminnelser, så kravtrappan prövas inte alls. Slå på dem i Inställningar för att återuppta den.'
     case 'PAUSED_STALE':
+      if (s.freshness.through === null) {
+        return 'En bankimport har påbörjats men betalningsdatum saknas. Kravtrappan är pausad. Kontrollera importens resultat och importera ett aktuellt utdrag.'
+      }
       return `Betalningsdatan är ${s.freshness.ageDays ?? '?'} dygn gammal (gräns ${s.freshness.thresholdDays}). Kravtrappan pausas tills ny betalningsdata lästs in — annars kunde ett krav drivas vidare mot en skuld som redan är betald.`
     case 'WAITING':
       return s.daysUntilEvaluation === 0

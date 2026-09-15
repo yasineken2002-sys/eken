@@ -42,6 +42,7 @@ export class ReconciliationController {
     @Req() req: FastifyRequest,
     @Query('bank') bank?: string,
   ) {
+    await this.reconciliationService.recordImportStarted(organizationId)
     const file = await (
       req as unknown as {
         file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>
@@ -85,6 +86,7 @@ export class ReconciliationController {
   @Post('import-bgmax')
   @Roles('MANAGER', 'ADMIN', 'OWNER')
   async importBgMax(@OrgId() organizationId: string, @Req() req: FastifyRequest) {
+    await this.reconciliationService.recordImportStarted(organizationId)
     const file = await (
       req as unknown as {
         file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>
@@ -122,6 +124,7 @@ export class ReconciliationController {
     @CurrentUser() user: JwtPayload,
     @Req() req: FastifyRequest,
   ) {
+    await this.reconciliationService.recordImportStarted(organizationId)
     const file = await (
       req as unknown as {
         file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>

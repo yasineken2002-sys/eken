@@ -3,8 +3,7 @@
  *
  * Verifierar PaymentFreshnessService:
  *   • evaluate: STALE när paymentDataThrough är äldre än tröskeln; tröskeln är
- *     konfigurerbar per org; NULL through → INTE stale (manuellt avstämmande org
- *     bricks aldrig).
+ *     konfigurerbar per org; NULL utan registrerat försök bevarar passage men bevisar inte manuell kontroll.
  *   • recordPaymentDataThrough: monotont framåt; nollställer larm-markören när datan
  *     blir färsk igen.
  *   • evaluateAndAlert: returnerar stale-org-mängden, larmar EN gång per stale-period
@@ -42,16 +41,36 @@ function makeService(opts?: {
 const NOW = new Date('2026-06-08T09:00:00.000Z')
 
 describe('PaymentFreshnessService.evaluate', () => {
-  it('NULL paymentDataThrough → INTE stale (grinden engagerar ej för manuell-only org)', () => {
+  it('NULL utan registrerat försök bevarar passage, utan färskhetsbevis', () => {
     const { service } = makeService()
-    const r = service.evaluate({ paymentDataThrough: null, paymentDataStaleDays: 3 }, NOW)
+    const r = service.evaluate(
+      { paymentImportStartedAt: null, paymentDataThrough: null, paymentDataStaleDays: 3 },
+      NOW,
+    )
     expect(r.stale).toBe(false)
     expect(r.ageDays).toBe(Infinity)
   })
 
+  it('registrerat försök utan datum pausar och kräver inte FAILED-status', () => {
+    const { service } = makeService()
+    expect(
+      service.evaluate(
+        {
+          paymentImportStartedAt: NOW,
+          paymentDataThrough: null,
+          paymentDataStaleDays: 3,
+        },
+        NOW,
+      ).stale,
+    ).toBe(true)
+  })
+
   it('färsk data (idag) → inte stale', () => {
     const { service } = makeService()
-    const r = service.evaluate({ paymentDataThrough: NOW, paymentDataStaleDays: 3 }, NOW)
+    const r = service.evaluate(
+      { paymentImportStartedAt: null, paymentDataThrough: NOW, paymentDataStaleDays: 3 },
+      NOW,
+    )
     expect(r.stale).toBe(false)
     expect(r.ageDays).toBe(0)
   })
@@ -59,7 +78,10 @@ describe('PaymentFreshnessService.evaluate', () => {
   it('5 dagar gammal data, tröskel 3 → STALE', () => {
     const { service } = makeService()
     const through = new Date('2026-06-03T00:00:00.000Z')
-    const r = service.evaluate({ paymentDataThrough: through, paymentDataStaleDays: 3 }, NOW)
+    const r = service.evaluate(
+      { paymentImportStartedAt: null, paymentDataThrough: through, paymentDataStaleDays: 3 },
+      NOW,
+    )
     expect(r.stale).toBe(true)
     expect(r.ageDays).toBe(5)
   })
@@ -67,19 +89,30 @@ describe('PaymentFreshnessService.evaluate', () => {
   it('tröskeln är KONFIGURERBAR: samma 5-dagars data, tröskel 7 → inte stale', () => {
     const { service } = makeService()
     const through = new Date('2026-06-03T00:00:00.000Z')
-    const r = service.evaluate({ paymentDataThrough: through, paymentDataStaleDays: 7 }, NOW)
+    const r = service.evaluate(
+      { paymentImportStartedAt: null, paymentDataThrough: through, paymentDataStaleDays: 7 },
+      NOW,
+    )
     expect(r.stale).toBe(false)
   })
 
   it('exakt på tröskeln (3 dagar, tröskel 3) → inte stale; 4 dagar → stale', () => {
     const { service } = makeService()
     const onThreshold = service.evaluate(
-      { paymentDataThrough: new Date('2026-06-05T00:00:00.000Z'), paymentDataStaleDays: 3 },
+      {
+        paymentImportStartedAt: null,
+        paymentDataThrough: new Date('2026-06-05T00:00:00.000Z'),
+        paymentDataStaleDays: 3,
+      },
       NOW,
     )
     expect(onThreshold.stale).toBe(false) // 3 dagar, ej > 3
     const over = service.evaluate(
-      { paymentDataThrough: new Date('2026-06-04T00:00:00.000Z'), paymentDataStaleDays: 3 },
+      {
+        paymentImportStartedAt: null,
+        paymentDataThrough: new Date('2026-06-04T00:00:00.000Z'),
+        paymentDataStaleDays: 3,
+      },
       NOW,
     )
     expect(over.stale).toBe(true) // 4 dagar
@@ -138,6 +171,7 @@ describe('PaymentFreshnessService.evaluateAndAlert — paus + idempotent larm', 
   const staleOrg = (over?: Record<string, unknown>) => ({
     id: 'org-stale',
     name: 'Stale AB',
+    paymentImportStartedAt: null,
     paymentDataThrough: new Date('2026-06-01T00:00:00.000Z'), // 7 dagar gammalt
     paymentDataStaleDays: 3,
     paymentDataStaleAlertedAt: null,
@@ -154,6 +188,18 @@ describe('PaymentFreshnessService.evaluateAndAlert — paus + idempotent larm', 
       where: { id: 'org-stale', paymentDataStaleAlertedAt: null },
       data: { paymentDataStaleAlertedAt: NOW },
     })
+  })
+
+  it('saknat datum efter försök ger begriplig orsak och åtgärd i larmet', async () => {
+    const { service, sendCustomEmail } = makeService({
+      orgs: [staleOrg({ paymentImportStartedAt: NOW, paymentDataThrough: null })],
+    })
+    expect(await service.evaluateAndAlert(['org-stale'], NOW)).toEqual(new Set(['org-stale']))
+    expect(sendCustomEmail.mock.calls[0][0].bodyHtml).toContain(
+      'En import har påbörjats men betalningsdatum saknas',
+    )
+    expect(sendCustomEmail.mock.calls[0][0].bodyHtml).toContain('Kontrollera importens resultat')
+    expect(sendCustomEmail.mock.calls[0][0].bodyHtml).not.toContain('äldre än gränsen')
   })
 
   it('EN notis per stale-period: redan alertedAt satt → org pausas men INGET nytt larm', async () => {
@@ -177,6 +223,7 @@ describe('PaymentFreshnessService.evaluateAndAlert — paus + idempotent larm', 
     const freshOrg = {
       id: 'org-fresh',
       name: 'Fresh AB',
+      paymentImportStartedAt: null,
       paymentDataThrough: NOW,
       paymentDataStaleDays: 3,
       paymentDataStaleAlertedAt: null,

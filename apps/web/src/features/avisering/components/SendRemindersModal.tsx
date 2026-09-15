@@ -156,7 +156,7 @@ export function ReminderFreshnessBadge({
   if (!besked?.freshness.stale) return null
   return (
     <Badge variant="warning" dot>
-      Inaktuell betalningsdata
+      {besked.freshness.through === null ? 'Betalningsdatum saknas' : 'Inaktuell betalningsdata'}
     </Badge>
   )
 }

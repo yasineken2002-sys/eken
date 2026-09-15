@@ -19,6 +19,7 @@ import { AiPaymentShadowWorker } from './payment/payment-shadow.worker'
 import { PaymentShadowService } from './payment/payment-shadow.service'
 import { PaymentOutcomeService } from './payment/payment-outcome.service'
 import { QUEUE_AI_PAYMENT_SHADOW } from './payment/payment-shadow.types'
+import { pausedUnless } from '../../common/ops/automation-pause'
 
 /**
  * SKUGGLÄGET (etapp 6).
@@ -34,6 +35,18 @@ import { QUEUE_AI_PAYMENT_SHADOW } from './payment/payment-shadow.types'
  * frånvarande kodväg: ingen fil under `ai/shadow/` importerar exekveraren, och
  * modulen ger den inte heller. `shadow-no-execution.db.spec.ts` mäter samma sak
  * åt andra hållet — noll `AiToolExecution` före och efter en körning.
+ */
+/**
+ * DRIFTPAUS: `pausedUnless` UTELÄMNAR konsumenten ur `providers` när
+ * OPS_AUTOMATION_PAUSED=true. Det är strukturellt och inte en flagga i
+ * jobbkroppen: `BullExplorer.onModuleInit` anropar `queue.process(...)` för
+ * varje upptäckt @Processor-provider (bull.explorer.js), så en konsument som
+ * aldrig registreras kan aldrig plocka ett jobb — inte heller det första, innan
+ * någon kontroll hunnit köra.
+ *
+ * KÖN SJÄLV REGISTRERAS SOM VANLIGT. Producenter (`*.queue.ts`) fungerar därför
+ * oförändrat, och waiting/delayed-jobb blir kvar i Redis i stället för att tappas
+ * eller kvitteras. Pausen stoppar KONSUMTIONEN, den tömmer ingenting.
  */
 @Global()
 @Module({
@@ -68,12 +81,12 @@ import { QUEUE_AI_PAYMENT_SHADOW } from './payment/payment-shadow.types'
   ],
   providers: [
     AiShadowQueue,
-    AiShadowWorker,
+    ...pausedUnless(AiShadowWorker),
     MaintenanceShadowService,
     AiShadowSweepService,
     ShadowOutcomeService,
     AiPaymentShadowQueue,
-    AiPaymentShadowWorker,
+    ...pausedUnless(AiPaymentShadowWorker),
     PaymentShadowService,
     PaymentOutcomeService,
   ],

@@ -1,9 +1,13 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
-import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import {
+  paymentFreshnessTransactionOptions,
+  PaymentFreshnessService,
+} from '../payment-freshness/payment-freshness.service'
 
 // Dröjsmålsränta = referensränta + 8 procentenheter (räntelagen 1975:635 6 §).
 // 8 är en LAGKONSTANT; referensräntan läses dynamiskt ur ReferenceInterestRate.
@@ -71,6 +75,7 @@ export class RentInterestService {
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
     private readonly rentNoticeEvents: RentNoticeEventsService,
+    private readonly freshness: PaymentFreshnessService,
   ) {}
 
   /**
@@ -94,6 +99,7 @@ export class RentInterestService {
     throughDate: Date,
   ): Promise<CrystallizeResult | null> {
     return this.prisma.$transaction(async (tx) => {
+      await this.freshness.assertAutomaticEffectAllowed(tx, organizationId)
       const notice = await tx.rentNotice.findFirst({
         where: { id: noticeId, organizationId },
         include: { credits: { select: { amount: true } } },
@@ -264,7 +270,7 @@ export class RentInterestService {
       )
 
       return { delta, total: totalInterest, effectiveRatePercent, days, segments }
-    }, PRISMA_DEFAULT_TX_LIMITS)
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
   }
 
   /**

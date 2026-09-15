@@ -234,10 +234,54 @@ function parseDate(raw: string | number | undefined): Date | null {
 
 function parseAmount(raw: string | number | undefined): number {
   if (raw === undefined || raw === null) return NaN
-  if (typeof raw === 'number') return raw
-  // Swedish format: "1 234,56" → 1234.56; also handle "-1 234,56"
-  const cleaned = String(raw).trim().replace(/\s/g, '').replace(',', '.')
-  return parseFloat(cleaned)
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : NaN
+  const token = String(raw).trim()
+  // Hela token före normalisering: decimalpunkt/-komma, hela exponenter och
+  // tresiffriga tusengrupper med blanksteg/NBSP/smalt NBSP. Inga valutagissningar.
+  if (
+    !/^[+-]?(?:(?:\d+|\d{1,3}(?:[ \u00a0\u202f]\d{3})+)(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/.test(
+      token,
+    )
+  ) {
+    return NaN
+  }
+  const value = Number(token.replace(/[ \u00a0\u202f]/g, '').replace(',', '.'))
+  return Number.isFinite(value) ? value : NaN
+}
+
+function parseOptionalBalance(
+  raw: string | number | undefined,
+  previousRaw: string | number | undefined = raw,
+): number | undefined {
+  const value = parseAmount(raw)
+  if (Number.isFinite(value)) return value
+  // Enbart kompatibilitetsspärr för tidigare lagringsfel, aldrig en alternativ
+  // källa till ett accepterat prefixvärde. Behåll lagringsgränsen även för
+  // t.ex. "1e999skräp" eller "10000000000skräp"; utelämning skulle frigöra datum.
+  // Uttag/noll och bekräftade dubbletter behåller sina befintliga vägar.
+  const previous =
+    typeof previousRaw === 'number'
+      ? previousRaw
+      : parseFloat(
+          String(previousRaw ?? '')
+            .trim()
+            .replace(/\s/g, '')
+            .replace(',', '.'),
+        )
+  if (Number.isNaN(previous)) return undefined
+  if (!Number.isFinite(previous)) return previous
+  // Befintligt schema: BankTransaction.balance Decimal(12,2). Samma toFixed
+  // som vid lagring; även avrundning över gränsen ska behålla DB-avvisningen.
+  // Detta är ingen ny affärsgräns. Verkliga DB-prov binder den till schemat.
+  return new Decimal(previous.toFixed(2)).abs().gte('10000000000') ? previous : undefined
+}
+
+function csvNumericField(raw: string | undefined): string | undefined {
+  const token = raw?.trim()
+  // Ensidig citatborttagning får inte göra början av ett trasigt fält till ett tal.
+  return token && token.length >= 2 && token.startsWith('"') && token.endsWith('"')
+    ? token.slice(1, -1)
+    : token
 }
 
 // ── OCR extraction ────────────────────────────────────────────────────────────
@@ -551,18 +595,21 @@ export class ReconciliationService {
     for (let i = headerLineIdx + 1; i < lines.length; i++) {
       const line = lines[i]
       if (!line) continue
-      const cells = line.split(delimiter).map((c) => c.trim().replace(/^"|"$/g, ''))
+      const rawCells = line.split(delimiter)
+      const cells = rawCells.map((c) => c.trim().replace(/^"|"$/g, ''))
       const dateRaw: string | undefined = cols.date >= 0 ? cells[cols.date] : undefined
-      const amountRaw: string | undefined = cols.amount >= 0 ? cells[cols.amount] : undefined
+      const amountRaw = cols.amount >= 0 ? csvNumericField(rawCells[cols.amount]) : undefined
       const descRaw: string | undefined = cols.description >= 0 ? cells[cols.description] : cells[1]
-      const balRaw: string | undefined = cols.balance >= 0 ? cells[cols.balance] : undefined
+      const balRaw = cols.balance >= 0 ? csvNumericField(rawCells[cols.balance]) : undefined
       const refRaw: string | undefined = cols.reference >= 0 ? cells[cols.reference] : undefined
 
       const date = parseDate(dateRaw)
       const amount = parseAmount(amountRaw)
       const description = descRaw ?? ''
-      const balNum = parseAmount(balRaw)
-      const balance: number | undefined = isNaN(balNum) ? undefined : balNum
+      const balance = parseOptionalBalance(
+        balRaw,
+        cols.balance >= 0 ? cells[cols.balance] : undefined,
+      )
       const reference: string | undefined = refRaw
 
       rows.push({ date, description, amount, balance, reference })
@@ -579,12 +626,19 @@ export class ReconciliationService {
     const sheet = workbook.Sheets[sheetName]
     if (!sheet) return { rows: [], bank: 'GENERIC' }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const jsonRows: Record<string, any>[] = XLSX.utils.sheet_to_json(sheet, {
+    type SheetRow = Record<string, unknown> & { __rowNum__: number }
+    const jsonRows = XLSX.utils.sheet_to_json<SheetRow>(sheet, {
       raw: false,
       defval: '',
     })
     if (jsonRows.length === 0) return { rows: [], bank: 'GENERIC' }
+    // Samma blad och radnycklar; endast numeriska belopps-/saldoceller läses rått.
+    // Datum, text och radurval kommer fortsatt från den befintliga projektionen.
+    const numericRows = new Map(
+      XLSX.utils
+        .sheet_to_json<SheetRow>(sheet, { raw: true, defval: '' })
+        .map((row) => [row.__rowNum__, row]),
+    )
 
     // Detect column keys from first row keys
     const headers = Object.keys(jsonRows[0] ?? {})
@@ -594,6 +648,7 @@ export class ReconciliationService {
 
     const rows: ParsedRow[] = []
     for (const row of jsonRows) {
+      const numericRow = numericRows.get(row.__rowNum__)
       const dateKey = cols.date >= 0 ? headerByIdx[cols.date] : undefined
       const amountKey = cols.amount >= 0 ? headerByIdx[cols.amount] : undefined
       const descKey = cols.description >= 0 ? headerByIdx[cols.description] : undefined
@@ -602,25 +657,39 @@ export class ReconciliationService {
 
       const dateRaw: string | undefined =
         dateKey !== undefined ? (row[dateKey] as string | undefined) : undefined
-      const amountRaw: string | number | undefined =
-        amountKey !== undefined ? (row[amountKey] as string | number | undefined) : undefined
+      const amountCell = amountKey !== undefined ? numericRow?.[amountKey] : undefined
+      const amountRaw =
+        typeof amountCell === 'number'
+          ? amountCell
+          : amountKey !== undefined
+            ? (row[amountKey] as string | undefined)
+            : undefined
       const descRaw: string | undefined =
         descKey !== undefined ? (row[descKey] as string | undefined) : undefined
-      const balRaw: string | number | undefined =
-        balKey !== undefined ? (row[balKey] as string | number | undefined) : undefined
+      const balanceCell = balKey !== undefined ? numericRow?.[balKey] : undefined
+      const balRaw =
+        typeof balanceCell === 'number'
+          ? balanceCell
+          : balKey !== undefined
+            ? (row[balKey] as string | undefined)
+            : undefined
       const refRaw: string | undefined =
         refKey !== undefined ? (row[refKey] as string | undefined) : undefined
 
       const date = parseDate(dateRaw)
       const amount = parseAmount(amountRaw)
       const description = descRaw ?? ''
-      const balNum = parseAmount(balRaw)
-      const balance: number | undefined = isNaN(balNum) ? undefined : balNum
+      const balance = parseOptionalBalance(balRaw)
       const reference: string | undefined = refRaw
 
       rows.push({ date, description, amount, balance, reference })
     }
     return { rows, bank }
+  }
+
+  // Samma förstmarkör vid autentiserad HTTP/AI-ingång och direkt tjänsteanrop.
+  async recordImportStarted(organizationId: string): Promise<void> {
+    await this.freshness.recordImportStarted(organizationId)
   }
 
   // ── Import ──────────────────────────────────────────────────────────────────
@@ -631,6 +700,7 @@ export class ReconciliationService {
     organizationId: string,
     bankOverride?: BankFormat,
   ): Promise<ImportResult> {
+    await this.recordImportStarted(organizationId)
     const ext = filename.toLowerCase().split('.').pop() ?? ''
     let parsed: { rows: ParsedRow[]; bank: BankFormat }
 
@@ -663,19 +733,26 @@ export class ReconciliationService {
       bank,
     }
 
+    let fileReadComplete = true
+    const incompleteFileMessage =
+      '. Betalningsunderlagets datum uppdaterades inte. Rätta filen och importera igen.'
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       if (!row) continue
 
+      let ingestionConfirmed = false
       try {
         // Skip rows without a valid date
         if (!row.date || isNaN(row.date.getTime())) {
-          result.errors.push(`Rad ${i + 2}: Ogiltigt datum`)
+          fileReadComplete = false
+          result.errors.push(`Rad ${i + 2}: Ogiltigt datum${incompleteFileMessage}`)
           continue
         }
         // Skip rows without a valid amount
-        if (isNaN(row.amount)) {
-          result.errors.push(`Rad ${i + 2}: Ogiltigt belopp`)
+        if (!Number.isFinite(row.amount)) {
+          fileReadComplete = false
+          result.errors.push(`Rad ${i + 2}: Ogiltigt belopp${incompleteFileMessage}`)
           continue
         }
         // Skip debits (outgoing payments)
@@ -708,6 +785,9 @@ export class ReconciliationService {
             ...(rawOcr ? { ocr: rawOcr } : {}),
           },
         })
+        // Ett returnerat utfall bekräftar dubblett eller sparad bankrad.
+        // matchError inträffar efter lagring och behåller sin befintliga policy.
+        ingestionConfirmed = true
         if (outcome.duplicate) {
           result.duplicates++
           continue
@@ -722,17 +802,19 @@ export class ReconciliationService {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        result.errors.push(`Rad ${i + 2}: ${msg}`)
+        if (!ingestionConfirmed) fileReadComplete = false
+        result.errors.push(`Rad ${i + 2}: ${msg}${ingestionConfirmed ? '' : incompleteFileMessage}`)
       }
     }
 
-    // PR 4 (B) — utdraget täcker betalningsdatan t.o.m. dess senaste radslut. Flyttar
-    // fram paymentDataThrough oavsett om raderna var inbetalningar eller uttag: ett
-    // utdrag UTAN inbetalningar är ändå färsk data som bekräftar "inga betalningar än".
-    await this.advancePaymentFreshness(
-      organizationId,
-      this.latestCoverageDate(rows.map((r) => r?.date)),
-    )
+    // Ett radfel får inte maskeras av maxdatum från lyckade rader.
+    // Giltiga uttag, nollbelopp och dubbletter behåller sitt datumunderlag.
+    if (fileReadComplete) {
+      await this.advancePaymentFreshness(
+        organizationId,
+        this.latestCoverageDate(rows.map((r) => r?.date)),
+      )
+    }
 
     return result
   }
@@ -750,6 +832,7 @@ export class ReconciliationService {
     fileName: string,
     organizationId: string,
   ): Promise<ImportResult & { fileName: string }> {
+    await this.recordImportStarted(organizationId)
     // SECURITY (H3): BgMax är ren text (fastformat 80 tecken). Tillåt
     // signaturlösa textfiler men avvisa allt med en binär signatur (en
     // omdöpt .exe/.zip osv) samt filer över taket.

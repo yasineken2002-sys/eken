@@ -4097,6 +4097,7 @@ export class ToolExecutorService {
         }
 
         case 'import_bgmax_file': {
+          await this.reconciliationService.recordImportStarted(organizationId)
           const fileContent = String(toolInput.fileContent ?? '')
           const fileName = String(toolInput.fileName ?? 'bgmax.txt')
           if (!fileContent) {

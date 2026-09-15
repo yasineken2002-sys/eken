@@ -158,7 +158,10 @@ function reminderRigg(notices: FakeNotice[]) {
     {} as never,
     {} as never,
     rentDebt,
-    { evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()) } as never,
+    {
+      assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+      evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()),
+    } as never,
     // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
     // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
     // förbi rapporteringen.
@@ -264,7 +267,10 @@ describe('#518 — steg 6 (kundförlust): cronen skriver aldrig ned ren resträn
       {} as never,
       { record: jest.fn() } as never,
       rentDebt,
-      { evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()) } as never,
+      {
+        assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+        evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()),
+      } as never,
       { createForOrg: jest.fn() } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
@@ -275,7 +281,8 @@ describe('#518 — steg 6 (kundförlust): cronen skriver aldrig ned ren resträn
         },
       } as never,
     )
-    ;(service as unknown as Record<string, unknown>)['reclassifyToProbableLoss'] = reclassify
+    ;(service as unknown as Record<string, unknown>)['automaticallyReclassifyToProbableLoss'] =
+      reclassify
     return { service, reclassify }
   }
 

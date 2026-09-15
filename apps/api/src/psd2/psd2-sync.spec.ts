@@ -38,7 +38,10 @@ function makeService(provider = new MockBankDataProvider()) {
     },
     bankStatementImport: { create: jest.fn().mockResolvedValue({}) },
   }
-  const reconciliation = { ingestFromApi: jest.fn() }
+  const reconciliation = {
+    ingestFromApi: jest.fn(),
+    recordImportStarted: jest.fn().mockResolvedValue(undefined),
+  }
   const crypto = { decrypt: jest.fn().mockReturnValue('access-token') }
   const service = new Psd2SyncService(
     prisma as never,

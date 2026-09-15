@@ -10,6 +10,7 @@
  */
 
 import { HealthController, buildRevision } from './health.controller'
+import { pausedUnless } from '../ops/automation-pause'
 
 const OK_RESULT = {
   status: 'ok' as const,
@@ -29,11 +30,25 @@ function makeController(
   // med en riktig rad — och riggen påstår inget den inte blivit tillsagd.
   const findFirst: jest.Mock = jest.fn().mockResolvedValue(null)
   const prisma = { legalChunkEmbedding: { count }, aiResumptionRun: { findFirst } }
+  // `moduleRef.get(SchedulerRegistry)` KASTAR som default, och det är det
+  // magraste svaret: så beter sig en process där `ScheduleModule.forRoot()`
+  // aldrig laddades — alltså dev, test och pausat läge. Ett prov som passerar
+  // med det passerar också när registret finns.
+  const moduleRefGet: jest.Mock = jest.fn().mockImplementation(() => {
+    throw new Error('SchedulerRegistry finns inte i denna kontext')
+  })
+  const moduleRef = { get: moduleRefGet }
   return {
-    controller: new HealthController(health as never, prismaHealth as never, prisma as never),
+    controller: new HealthController(
+      health as never,
+      prismaHealth as never,
+      prisma as never,
+      moduleRef as never,
+    ),
     check,
     count,
     findFirst,
+    moduleRefGet,
   }
 }
 
@@ -122,6 +137,7 @@ describe('HealthController.check', () => {
     const result = await controller.check()
 
     expect(Object.keys(result).sort()).toEqual([
+      'automation',
       'cron',
       'details',
       'error',
@@ -145,6 +161,19 @@ describe('HealthController.check', () => {
     // felmeddelande när fältet byggs ut. Nycklarna är LÅSNYCKLAR, som kommer ur
     // koden — inte kunddata.
     expect(Object.keys(result.cron).sort()).toEqual(['bootAt', 'jobs', 'staleCount'])
+
+    // Och för driftpausens kvitto. Samma spärr, samma skäl. Fältet bär ett
+    // VARIABELNAMN och tre tal — aldrig variabelns VÄRDE, aldrig ett könamn,
+    // aldrig en organisation. Att räkna nycklarna här är spärren mot att någon
+    // senare lägger till "senaste pausande operatör" eller "väntande jobb per
+    // kö", vilket vore drift- respektive kunddata på en publik endpoint.
+    expect(Object.keys(result.automation).sort()).toEqual([
+      'cronJobs',
+      'paused',
+      'queueConsumers',
+      'variable',
+    ])
+    expect(Object.keys(result.automation.queueConsumers).sort()).toEqual(['registered', 'withheld'])
     for (const puls of Object.values(result.cron.jobs)) {
       expect(Object.keys(puls).sort()).toEqual([
         'ageSec',
@@ -287,5 +316,102 @@ describe('HealthController.check', () => {
       expect(result.status).toBe('ok')
       expect(result.revision).toBeDefined()
     })
+  })
+})
+
+describe('HealthController.check — driftpausens kvitto', () => {
+  const saved = { ...process.env }
+  afterEach(() => {
+    process.env = { ...saved }
+  })
+
+  /**
+   * ── VARFÖR DE HÄR PROVEN FINNS ─────────────────────────────────────────────
+   *
+   * Nyckelprovet ovan låser fältets FORM. Det kan inte skilja ett fungerande
+   * kvitto från ett som alltid svarar `paused: false, cronJobs: null,
+   * registered: 0, withheld: 0` — nycklarna finns ju kvar i båda fallen. Och
+   * fältet är den ENDA vägen att kontrollera pausen efter start, vilket
+   * runbooken uttryckligen gör operatören beroende av.
+   *
+   * "En sond som ger NOLL måste bevisas kunna ge något ANNAT." Proven nedan är
+   * det beviset, i båda riktningar.
+   */
+  it('paused SPEGLAR miljön — och kan ge BÅDA svaren', async () => {
+    const { controller } = makeController()
+
+    delete process.env['OPS_AUTOMATION_PAUSED']
+    expect((await controller.check()).automation.paused).toBe(false)
+
+    process.env['OPS_AUTOMATION_PAUSED'] = 'true'
+    expect((await controller.check()).automation.paused).toBe(true)
+
+    process.env['OPS_AUTOMATION_PAUSED'] = 'false'
+    expect((await controller.check()).automation.paused).toBe(false)
+  })
+
+  it('cronJobs bär ETT TAL när schemaläggaren finns, null när den inte gör det', async () => {
+    const { controller, moduleRefGet } = makeController()
+
+    // Default i riggen: SchedulerRegistry saknas (dev, test, pausat läge).
+    expect((await controller.check()).automation.cronJobs).toBeNull()
+
+    // Och med ett register: talet, inte ett omdöme.
+    moduleRefGet.mockReturnValue({
+      getCronJobs: () =>
+        new Map([
+          ['a', {}],
+          ['b', {}],
+        ]),
+    })
+    expect((await controller.check()).automation.cronJobs).toBe(2)
+  })
+
+  it('ett OGILTIGT värde rapporteras som PAUSAT — åt det säkra hållet', async () => {
+    // Ett sådant värde fäller normalt boot. Når vi ändå hit är processen i ett
+    // läge ingen valt, och då får kvittot inte påstå normal drift.
+    process.env['OPS_AUTOMATION_PAUSED'] = 'ture'
+    const { controller } = makeController()
+    expect((await controller.check()).automation.paused).toBe(true)
+  })
+
+  it('en oläsbar SchedulerRegistry tar ALDRIG ned endpointen', async () => {
+    const { controller, moduleRefGet } = makeController()
+    moduleRefGet.mockImplementation(() => {
+      throw new Error('oväntat')
+    })
+    const result = await controller.check()
+    expect(result.status).toBe('ok')
+    expect(result.automation.cronJobs).toBeNull()
+  })
+
+  it('queueConsumers bär grindens FAKTISKA utfall, inte en konstant', async () => {
+    // Registret fylls av `pausedUnless` självt. Provet grindar två klasser åt
+    // var sitt håll och kräver att BÅDA talen rör sig — en implementation som
+    // returnerar fasta nollor passerar inte.
+    class KvittoRegistrerad {}
+    class KvittoUtelamnad {}
+    const { controller } = makeController()
+    const fore = (await controller.check()).automation.queueConsumers
+
+    pausedUnless(KvittoRegistrerad, { OPS_AUTOMATION_PAUSED: 'false' } as NodeJS.ProcessEnv)
+    pausedUnless(KvittoUtelamnad, { OPS_AUTOMATION_PAUSED: 'true' } as NodeJS.ProcessEnv)
+
+    const efter = (await controller.check()).automation.queueConsumers
+    expect(efter.registered).toBe(fore.registered + 1)
+    expect(efter.withheld).toBe(fore.withheld + 1)
+  })
+
+  it('kvittot påverkar ALDRIG status — en avsiktlig paus får inte bli en omstartsloop', async () => {
+    // railway.toml: healthcheckPath=/v1/health, restartPolicyType=ON_FAILURE.
+    // Sänkte fältet status hade varje ny process startat pausad och fällt samma
+    // healthcheck — en loop utan utgång.
+    process.env['OPS_AUTOMATION_PAUSED'] = 'true'
+    const { controller } = makeController()
+    const result = await controller.check()
+    expect(result.automation.paused).toBe(true)
+    expect(result.status).toBe('ok')
+    expect(result.info).toEqual(OK_RESULT.info)
+    expect(result.error).toEqual(OK_RESULT.error)
   })
 })

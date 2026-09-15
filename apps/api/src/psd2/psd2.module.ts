@@ -12,6 +12,7 @@ import { Psd2SyncWorker } from './psd2-sync.worker'
 import { BankConsentCryptoService } from './bank-consent-crypto.service'
 import { PSD2_PROVIDER, type BankDataProvider } from './psd2.types'
 import { psd2ProviderFactory } from './psd2-provider.factory'
+import { pausedUnless } from '../common/ops/automation-pause'
 
 /**
  * PSD2-bankkopplingsmodulen. Flaggan `PSD2_ENABLED` känns till på EXAKT ett ställe:
@@ -28,6 +29,18 @@ import { psd2ProviderFactory } from './psd2-provider.factory'
  * seamen) men ALDRIG AccountingModule — PSD2-koden kan strukturellt inte röra
  * journal/verifikat direkt, bara via den enda härdade vägen in.
  */
+/**
+ * DRIFTPAUS: `pausedUnless` UTELÄMNAR konsumenten ur `providers` när
+ * OPS_AUTOMATION_PAUSED=true. Det är strukturellt och inte en flagga i
+ * jobbkroppen: `BullExplorer.onModuleInit` anropar `queue.process(...)` för
+ * varje upptäckt @Processor-provider (bull.explorer.js), så en konsument som
+ * aldrig registreras kan aldrig plocka ett jobb — inte heller det första, innan
+ * någon kontroll hunnit köra.
+ *
+ * KÖN SJÄLV REGISTRERAS SOM VANLIGT. Producenter (`*.queue.ts`) fungerar därför
+ * oförändrat, och waiting/delayed-jobb blir kvar i Redis i stället för att tappas
+ * eller kvitteras. Pausen stoppar KONSUMTIONEN, den tömmer ingenting.
+ */
 @Module({
   imports: [
     // CronErrorSinkModule (#605 batch 2) — importerar bara PrismaModule, ingen cykel.
@@ -41,7 +54,7 @@ import { psd2ProviderFactory } from './psd2-provider.factory'
     Psd2ConsentService,
     Psd2SyncService,
     Psd2SyncQueue,
-    Psd2SyncWorker,
+    ...pausedUnless(Psd2SyncWorker),
     BankConsentCryptoService,
     {
       provide: PSD2_PROVIDER,

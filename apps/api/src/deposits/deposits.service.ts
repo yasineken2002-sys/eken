@@ -19,6 +19,7 @@ import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { automationPaused, AUTOMATION_PAUSE_VAR } from '../common/ops/automation-pause'
 
 const INCLUDE = {
   lease: { include: { unit: { include: { property: true } } } },
@@ -47,8 +48,28 @@ export class DepositsService implements OnApplicationBootstrap {
   // orphan-deposition-avier får sin Deposit-rad + 1510 D/2890 K medan ingen
   // räkenskapsperiod ännu stängts. Idempotent (0 orphans efter första körningen)
   // + best-effort (får aldrig blockera app-start). Hoppas i testmiljö.
+  // DRIFTPAUS: den här hooken är den ENDA startjobbs-vägen i appen som SKRIVER
+  // i databasen utan att gå via cron eller en kö — den skapar `Deposit`-rader
+  // och bokför 1510 D / 2890 K. En uppstartspaus som bara stängde
+  // schemaläggaren och konsumenterna hade därför missat exakt den effekt som
+  // inträffar TIDIGAST av alla: före första requesten, före första jobbet.
+  //
+  // `NODE_ENV=test` står kvar oförändrat. Grinden nedan är en ANNAN fråga
+  // ("får den här processen utföra automatiskt arbete?") och inte en andra
+  // stavning av den befintliga; att slå ihop dem hade gjort det omöjligt att
+  // pausa en produktionsprocess utan att också ljuga om NODE_ENV — vilket
+  // avskärmningsordningen uttryckligen förbjuder som genväg.
   async onApplicationBootstrap(): Promise<void> {
     if (process.env.NODE_ENV === 'test') return
+    if (automationPaused(process.env)) {
+      this.logger.warn(
+        '[deposit-backfill] HOPPAS ÖVER: driftpaus aktiv ' +
+          `(${AUTOMATION_PAUSE_VAR}=true). Inga Deposit-rader och inga ` +
+          'bokföringsposter skapas av den här starten. Backfillen är idempotent ' +
+          'och körs vid nästa start i normalt läge.',
+      )
+      return
+    }
     try {
       await this.backfillOrphanDepositNotices()
     } catch (err) {

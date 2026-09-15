@@ -88,7 +88,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         parser as never,
         {} as never,
-        { recordPaymentDataThrough: jest.fn() } as never,
+        {
+          recordPaymentDataThrough: jest.fn(),
+          recordImportStarted: jest.fn().mockResolvedValue(undefined),
+        } as never,
       )
 
       await service.uploadAndParsePdf(Buffer.from('%PDF-1.4'), 'utdrag.pdf', 'org-1', 'user-1')
@@ -126,7 +129,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         reconciliation as never,
-        { recordPaymentDataThrough: jest.fn() } as never,
+        {
+          recordPaymentDataThrough: jest.fn(),
+          recordImportStarted: jest.fn().mockResolvedValue(undefined),
+        } as never,
       )
 
       // Operatören redigerar belopp på rad 1 (8500 → 8400) innan confirm.
@@ -174,7 +180,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         mockReconciliation(true) as never,
-        { recordPaymentDataThrough } as never,
+        {
+          recordPaymentDataThrough,
+          recordImportStarted: jest.fn().mockResolvedValue(undefined),
+        } as never,
       )
 
       await service.confirmImport('imp-1', 'org-1', 'user-1')
@@ -190,7 +199,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         mockReconciliation(true) as never,
-        { recordPaymentDataThrough } as never,
+        {
+          recordPaymentDataThrough,
+          recordImportStarted: jest.fn().mockResolvedValue(undefined),
+        } as never,
       )
 
       // AI_TX-datumen avgör coverage; senaste = 2026-05-02 (se edited nedan).
@@ -210,7 +222,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         reconciliation as never,
-        { recordPaymentDataThrough: jest.fn() } as never,
+        {
+          recordPaymentDataThrough: jest.fn(),
+          recordImportStarted: jest.fn().mockResolvedValue(undefined),
+        } as never,
       )
 
       const edited = [
@@ -240,7 +255,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         prisma as never,
         {} as never,
         reconciliation as never,
-        { recordPaymentDataThrough: jest.fn() } as never,
+        {
+          recordPaymentDataThrough: jest.fn(),
+          recordImportStarted: jest.fn().mockResolvedValue(undefined),
+        } as never,
       )
 
       // Ingen edited-lista → extractFromDraft används.

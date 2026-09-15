@@ -70,7 +70,10 @@ function makeService(opts: { ocrOutstanding?: number; staleOrgs?: Set<string> } 
     {} as never,
     {} as never,
     rentDebt as never,
-    { evaluateAndAlert } as never,
+    {
+      evaluateAndAlert,
+      assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+    } as never,
     // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
     // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
     // förbi rapporteringen.
@@ -340,7 +343,10 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       pdfService as never,
       storage as never,
       { outstanding: jest.fn() } as never, // PR 3a: send-jobbet läser inte skuld
-      { evaluateAndAlert: jest.fn().mockResolvedValue(new Set()) } as never,
+      {
+        assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+        evaluateAndAlert: jest.fn().mockResolvedValue(new Set()),
+      } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
       // förbi rapporteringen.
@@ -616,7 +622,10 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       {} as never,
       {} as never,
       rentDebt as never,
-      { evaluateAndAlert: jest.fn().mockResolvedValue(new Set()) } as never,
+      {
+        assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+        evaluateAndAlert: jest.fn().mockResolvedValue(new Set()),
+      } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
       // förbi rapporteringen.
@@ -803,7 +812,10 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
       {} as never,
       {} as never,
       { outstanding: jest.fn() } as never, // PR 3a: cronen delegerar skuldläsning
-      { evaluateAndAlert } as never,
+      {
+        evaluateAndAlert,
+        assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+      } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
       // förbi rapporteringen.

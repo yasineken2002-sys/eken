@@ -42,11 +42,13 @@ describe('spärrskäl', () => {
     expect(skäl).toContain('redan betalat')
   })
 
-  it('ingen betalningsdata alls formuleras som just det, inte som "null dygn"', () => {
+  it('försök utan datum får rätt orsak och nästa åtgärd', () => {
     const skäl = spärrskäl(
       besked({ freshness: { stale: true, through: null, ageDays: null, thresholdDays: 5 } }),
     )
-    expect(skäl).toContain('ingen betalningsdata är importerad')
+    expect(skäl).toContain('bankimport har påbörjats')
+    expect(skäl).toContain('betalningsdatum saknas')
+    expect(skäl).toContain('Kontrollera importens resultat')
     expect(skäl).not.toContain('null')
   })
 

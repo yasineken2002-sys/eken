@@ -7,6 +7,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import type { JwtPayload } from '@eken/shared'
 import { Psd2ConsentService } from './psd2-consent.service'
 import { Psd2SyncQueue } from './psd2-sync.queue'
+import { ReconciliationService } from '../reconciliation/reconciliation.service'
 
 /**
  * PSD2-API: bankkoppling (samtycke + sync). Hela ytan är INERT när
@@ -22,6 +23,7 @@ export class Psd2Controller {
   constructor(
     private readonly consent: Psd2ConsentService,
     private readonly syncQueue: Psd2SyncQueue,
+    private readonly reconciliation: ReconciliationService,
   ) {}
 
   // Starta bankkoppling → returnerar bankens authUrl (SCA-redirect).
@@ -53,6 +55,7 @@ export class Psd2Controller {
   @Post('sync')
   @Roles('OWNER', 'ADMIN')
   async sync(@OrgId() organizationId: string) {
+    await this.reconciliation.recordImportStarted(organizationId)
     const jobId = await this.syncQueue.enqueueOrgSync(organizationId)
     return { enqueued: true, jobId }
   }

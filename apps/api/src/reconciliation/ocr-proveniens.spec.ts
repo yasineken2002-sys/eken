@@ -116,7 +116,10 @@ function rigg() {
     // arg 5 = freshness, arg 6 = rentNoticeEvents. Byter man plats på dem blir
     // varje fuzzy-träff FALSK — avi-händelsen kan inte skrivas, matchningen
     // avvisas, och testet blir rött av fel skäl.
-    { recordPaymentDataThrough: jest.fn().mockResolvedValue({}) } as never,
+    {
+      recordImportStarted: jest.fn().mockResolvedValue(undefined),
+      recordPaymentDataThrough: jest.fn().mockResolvedValue({}),
+    } as never,
     { record: jest.fn().mockResolvedValue({}) } as never,
     // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
     // dem får kunna fälla en matchning, och det är just det de här proven

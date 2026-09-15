@@ -51,10 +51,13 @@ export function spärrskäl(besked: PaminnelseForhandsbesked | undefined): strin
   if (!besked) return 'Hämtar underlaget…'
 
   if (besked.freshness.stale) {
+    if (besked.freshness.through === null) {
+      return 'En bankimport har påbörjats men betalningsdatum saknas. Kontrollera importens resultat och importera ett aktuellt utdrag innan påminnelser skickas.'
+    }
     const sedan =
       besked.freshness.ageDays === null
         ? 'ingen betalningsdata är importerad'
-        : `senaste kompletta datum är ${besked.freshness.through} (${besked.freshness.ageDays} dygn sedan)`
+        : `registrerat betalningsdatum är ${besked.freshness.through} (${besked.freshness.ageDays} dygn sedan)`
     return (
       `Betalningsdatan är inaktuell — ${sedan}, gränsen är ${besked.freshness.thresholdDays} dygn. ` +
       'Importera en färskare bankfil först, annars kan påminnelser gå till hyresgäster som redan betalat.'
