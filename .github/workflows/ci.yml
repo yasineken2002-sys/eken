@@ -15,6 +15,19 @@ on:
   pull_request:
 
 jobs:
+  restart-safety:
+    name: App restart safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare small runtime (no API image build)
+        run: docker pull node:20-slim
+      - name: Exercise gate, restart budget, signals and separate migrator
+        run: python3 scripts/restart-safety/test_start.py
+      - name: Prove weakened implementations fail the same behavior tests
+        run: python3 scripts/restart-safety/check-negative.py
+
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -2416,6 +2429,7 @@ jobs:
     if: always()
     needs:
       - typecheck
+      - restart-safety
       - lint
       - test
       - di-type-import-guard
