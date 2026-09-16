@@ -121,12 +121,24 @@ Stegen nedan ändrar produktionen och utförs av EN utsedd operatör. Ingen av d
    | en backup SKAPADES            | loggraden `[backup] OK db-backups/eken-…Z.dump (… MB)` **och** objektet finns i R2 med rimlig storlek              |
    | backupen är ÅTERSTÄLLNINGSBAR | dumpen hämtad ur R2, sha256 jämförd, `pg_restore` mot ett tomt PG 18-kluster, och acceptanskriterierna nedan gröna |
 
-   **Ett grönt hjärtslag är INTE ett bevis för en backup.** `dailyBackupUnsafe`
+   **Ett grönt hjärtslag är INTE ett bevis för en backup — mätt i produktion
+   2026-09-16, inte resonerat:**
+
+   ```
+   cron:daily-backup  lastRunAt 2026-09-15T03:00:00.015Z  lastOutcome "success"  stale false
+   ```
+
+   Backupen är avstängd och har aldrig tagit en enda dump. `dailyBackupUnsafe`
    returnerar tyst när `enabled` är falskt och sväljer ett fångat fel, så
    `LockService` skriver `lastOutcome: 'success'` i alla tre världarna: jobbet
    avstängt, jobbet misslyckat, jobbet lyckat. Det som skiljer dem åt är
    färskhetskontrollen 09:00 (`disabled` / `never` / `stale` / `fresh`) och
    loggraden ovan — inte hjärtslaget.
+
+   Samma avläsning fastställer **tidszonen**: `03:00:00.015Z` är 03:00 UTC, alltså
+   05:00 svensk sommartid och 04:00 vintertid. Backup-cronen sätter ingen
+   `timeZone` och `TZ` är osatt i Railway — till skillnad från t.ex. veckobrevet,
+   som kör `0 18 * * 0` i `Europe/Stockholm` och därför syns som `16:00Z`.
 
 6. **Sex timmar senare:** färskhetskontrollen ska logga `OK: senaste backup …`.
    Larmar den `disabled` är konfigurationen ofullständig; `never` betyder att
