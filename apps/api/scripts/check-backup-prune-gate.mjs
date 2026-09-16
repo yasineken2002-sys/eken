@@ -285,6 +285,11 @@ function självtest() {
   return ok
 }
 
-const självtestläge = process.argv.includes('--self-test')
-const grön = självtestläge ? självtest() : kör()
-process.exit(grön ? 0 : 1)
+// Dispatchen skrivs i den kanoniska formen `if (process.argv.includes(…))`.
+// Det är inte stil: `check-self-tests-fail.mjs` känner igen självtestlöftet på
+// just den formen, och en tilldelning till en variabel läses som "vakten saknar
+// självtest" — alltså ett löfte som inte går att pröva.
+if (process.argv.includes('--self-test')) {
+  process.exit(självtest() ? 0 : 1)
+}
+process.exit(kör() ? 0 : 1)
