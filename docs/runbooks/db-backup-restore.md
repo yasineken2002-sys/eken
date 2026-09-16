@@ -1,10 +1,16 @@
 # Runbook: Databasbackup & återställning
 
-> ⚠️ **INTE I DRIFT ÄN (per 2026-08-27).** Mekanismen nedan är byggd och testad,
-> men jobbet är avstängt i produktion: `BACKUP_ENABLED` saknas, och de tre
-> `R2_BACKUP_*`-variablerna likaså — så isoleringsgrinden skulle blockera även
-> med flaggan satt. Noll dumpar har tagits av jobbet. Runbooken beskriver alltså
-> hur det ska fungera, inte vad som pågår. Se #575.
+> ⚠️ **INTE I DRIFT ÄN (ommätt 2026-09-16 mot `30724b17`).** Mekanismen nedan är
+> byggd och testad, men jobbet är avstängt i produktion. Mätt i Railway samma dag:
+> av 40 variabler på tjänsten `eken` finns **noll** av `BACKUP_ENABLED`,
+> `BACKUP_RETENTION_DAYS`, `BACKUP_PRUNE_ENABLED` och de fyra `R2_BACKUP_*` — så
+> isoleringsgrinden skulle blockera även med flaggan satt. Noll dumpar har tagits
+> av jobbet. Runbooken beskriver alltså hur det ska fungera, inte vad som pågår.
+> Se #575.
+>
+> De två dumpar som finns i `eveno-db-backup-prod` är **manuella** (2026-09-13 och
+> 2026-09-15, tagna inför införandet av #896). De är återställningspunkter, inte
+> jobbkörningar — se "Gallringen är avstängd" nedan för varför det skiljer.
 
 Eveno är byggt för **daglig full databasbackup** (`pg_dump` custom-format) som laddas
 upp till Cloudflare R2 — en annan leverantör än Railway-databasen. Integritetspolicyn
@@ -16,7 +22,8 @@ körts skarpt och en återställning verifierats.
 - **Jobb:** `BackupService` + `BackupScheduler` (`apps/api/src/backup/`).
 - **Schema:** `@Cron('0 3 * * *')` — varje natt 03:00 (serverns tidszon).
 - **Steg:** `pg_dump -Fc --no-owner --no-privileges` → temp-fil → upp till R2 under
-  `db-backups/eken-<UTC-tidsstämpel>.dump` → gallra backuper äldre än retention.
+  `db-backups/eken-<UTC-tidsstämpel>.dump` → gallring **endast om
+  `BACKUP_PRUNE_ENABLED=true`** (annars hoppas den över och loggas som avstängd).
 - **Fel:** loggas + rapporteras till Sentry. Nästa nattkörning försöker igen.
 
 ## Aktivering (produktion)
@@ -29,7 +36,8 @@ Jobbet är **avstängt** tills följande env-vars är satta (annars no-op):
 | `R2_BACKUP_BUCKET`                                       | **Krävs i prod:** dedikerad backup-bucket (dumpen = all PII, ska ej dela bucket med dokumentlagringen) |
 | `R2_BACKUP_ACCESS_KEY_ID`, `R2_BACKUP_SECRET_ACCESS_KEY` | **Krävs i prod:** dedikerad, minimalt scopad R2-token (List/Get/Put/Delete enbart på backup-bucketen)  |
 | `R2_BACKUP_ACCOUNT_ID`                                   | _(valfritt)_ annars `R2_ACCOUNT_ID`                                                                    |
-| `BACKUP_RETENTION_DAYS`                                  | _(valfritt)_ standard 30                                                                               |
+| `BACKUP_PRUNE_ENABLED`                                   | _(valfritt)_ **saknas = ingen gallring.** Endast exakt `true` tillåter radering av gamla backuper      |
+| `BACKUP_RETENTION_DAYS`                                  | _(valfritt)_ standard 30 — **inert så länge `BACKUP_PRUNE_ENABLED` inte är `true`**                    |
 | `DATABASE_URL`                                           | redan satt                                                                                             |
 
 > ⚠️ **Produktionskrav (säkerhet):** i `NODE_ENV=production` **blockeras** jobbet
@@ -44,6 +52,91 @@ Jobbet är **avstängt** tills följande env-vars är satta (annars no-op):
 ÄLDRE än servern vägrar (`aborting because of server version mismatch`), en som är
 nyare fungerar. Prod kör PG 18.6. Står det `postgresql-client-16` någonstans är
 det en kvarleva — det stod så i den här runbooken fram till 2026-08-28.
+
+## Gallringen är avstängd, och det är ett eget beslut
+
+`runBackup` laddar upp och anropar sedan `pruneOldBackups`. Fram till 2026-09-16
+styrdes raderingen bara av ett tal (`BACKUP_RETENTION_DAYS`, default 30) — vilket
+betyder att den dag `BACKUP_ENABLED=true` sätts hade radering av äldre
+återställningspunkter blivit påslagen i samma sekund som den första dumpen togs,
+utan att någon beslutat det och innan en enda skarp körning setts lyckas.
+
+`BACKUP_PRUNE_ENABLED` gör raderingen till en egen beslutspunkt. **Fail-closed:**
+osatt, tomt, `false`, felstavat — allt utom exakt `true` betyder att ingenting
+raderas, och `DeleteObjectCommand` nås aldrig. Loggraden säger vilket läge som
+gällde, så `gallrade 0 gamla` inte längre kan betyda två olika saker:
+
+```
+[backup] OK db-backups/eken-…Z.dump (2.1 MB), gallring AVSTÄNGD (BACKUP_PRUNE_ENABLED ≠ "true")
+         — inga gamla backuper raderades, och ingen listning av lagringen gjordes
+```
+
+**Ett högt retentionstal är inte samma sak.** `BACKUP_RETENTION_DAYS=36500` ser ut
+som en spärr men är ett tal: det går att sänka av misstag, det syns inte i en
+variabelnamnslista, och raderingsvägen är fortfarande påslagen — den väntar bara.
+
+**De manuella återställningspunkterna skyddas dubbelt.** De bär en commit-SHA i
+nyckeln (`eken-20260913T143554Z-3b71e905.dump`) och matchar därför inte jobbets
+eget nyckelformat. `isBackupExpired` vägrar tolka en nyckel den inte känner igen,
+så de ligger utanför gallringen även om den slås på. Det är pinnat med de
+faktiska nycklarna i `backup.service.spec.ts`.
+
+**Följdsatsen, och den är inte gratis:** utan gallring växer bucketen obegränsat,
+och `parseBackupKeyDate` räknar inte de manuella punkterna — färskhetskontrollen
+mäter alltså JOBBET, inte lagringen. Innan gallringen någonsin slås på ska det
+finnas ett uttryckligt retentionsbeslut och ett golv som garanterar att minst N
+återställningspunkter alltid behålls. Inget av det är byggt; det är avsiktligt
+utanför den här ändringen.
+
+Formen bevakas av `apps/api/scripts/check-backup-prune-gate.mjs` (eget CI-jobb):
+varje `new DeleteObjectCommand(` i backupvägen måste ligga i `pruneOldBackups`
+bakom grinden, och grinden måste returnera FÖRE första raderingen.
+
+## Aktiveringsordning — och vad som räknas som bevis
+
+Stegen nedan ändrar produktionen och utförs av EN utsedd operatör. Ingen av dem
+är utförd av den här leveransen.
+
+1. **Egen backup-token.** Cloudflare: en API-token scopad till enbart
+   `eveno-db-backup-prod` (Object Read & Write). Bucketen finns redan, i EU.
+   Skapa ingen ny bucket — objekt som redan ligger där är återställningspunkter.
+2. **Säker nyckelöverföring.** Värdena får aldrig passera en terminal vars utdata
+   sparas. Använd `railway variable set <NAMN> --stdin --skip-deploys`, en
+   variabel i taget, och verifiera efteråt med hash mot hash (avsnittet
+   "Verifiera en säkrad nyckel utan att avslöja den"). `--skip-deploys` på alla
+   utom den sista, så sju variabelbyten ger en omstart och inte sju.
+3. **Sätt i denna ordning:** `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCESS_KEY_ID`,
+   `R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_ACCOUNT_ID`,
+   `R2_BACKUP_JURISDICTION=eu` — och SIST `BACKUP_ENABLED=true`. Ordningen är
+   lastbärande: isoleringsgrinden blockerar tills de dedikerade värdena finns,
+   och flaggan sist gör att inget halvkonfigurerat läge kan hinna köra.
+   `BACKUP_PRUNE_ENABLED` sätts INTE. `BACKUP_RETENTION_DAYS` behöver inte sättas.
+4. **Verifiera konfigurationen före första natten:** läs tillbaka variabelNAMNEN
+   (aldrig värdena) och bekräfta att `/v1/health` svarar med rätt revision.
+5. **Första riktiga körningen (03:00 UTC).** Kraven, i stigande styrka:
+
+   | räknas som                    | bevis                                                                                                              |
+   | ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+   | schemaläggaren kördes         | `cron:daily-backup` i `/v1/health` har `lastRunAt` inom dygnet                                                     |
+   | en backup SKAPADES            | loggraden `[backup] OK db-backups/eken-…Z.dump (… MB)` **och** objektet finns i R2 med rimlig storlek              |
+   | backupen är ÅTERSTÄLLNINGSBAR | dumpen hämtad ur R2, sha256 jämförd, `pg_restore` mot ett tomt PG 18-kluster, och acceptanskriterierna nedan gröna |
+
+   **Ett grönt hjärtslag är INTE ett bevis för en backup.** `dailyBackupUnsafe`
+   returnerar tyst när `enabled` är falskt och sväljer ett fångat fel, så
+   `LockService` skriver `lastOutcome: 'success'` i alla tre världarna: jobbet
+   avstängt, jobbet misslyckat, jobbet lyckat. Det som skiljer dem åt är
+   färskhetskontrollen 09:00 (`disabled` / `never` / `stale` / `fresh`) och
+   loggraden ovan — inte hjärtslaget.
+
+6. **Sex timmar senare:** färskhetskontrollen ska logga `OK: senaste backup …`.
+   Larmar den `disabled` är konfigurationen ofullständig; `never` betyder att
+   jobbet kört utan att någon dump landade.
+
+**Återställningsväg om aktiveringen går fel:** sätt `BACKUP_ENABLED=false`
+(`--skip-deploys` + en omstart). Ingen data går förlorad — jobbet skriver bara,
+och gallringen är avstängd, så ingen befintlig återställningspunkt kan ha
+raderats. De två manuella dumparna i `eveno-db-backup-prod` är kvar och är den
+gällande återställningspunkten tills en skarp körning verifierats enligt 5.
 
 ## Verifiera att backuper skapas
 
