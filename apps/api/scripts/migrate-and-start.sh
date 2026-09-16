@@ -8,19 +8,9 @@ log "node=$(node --version) PORT=${PORT:-unset} DATABASE_URL_set=$([ -n "${DATAB
 
 cd /app/apps/api
 
-PRISMA_BIN="/app/apps/api/node_modules/prisma/build/index.js"
-if [ ! -f "$PRISMA_BIN" ]; then
-  PRISMA_BIN="/app/node_modules/prisma/build/index.js"
-fi
-log "prisma binary: $PRISMA_BIN"
-
-log "running prisma migrate deploy..."
-node "$PRISMA_BIN" migrate deploy
-log "migrations done"
-
-# Personnummer-backfillen är BORTTAGEN härifrån. Den behövdes mellan expand- och
-# contract-migrationen; nu finns klartextkolumnen inte kvar att backfilla, och
-# contract-migrationen (20260728000000) vägrar själv köra om någon rad ändå
-# skulle ha klartext kvar.
+# Appstart och omstart får aldrig migrera. Migrering körs separat, en gång,
+# genom identitetsgrindens fasta migrator-kommando med restartPolicyType=NEVER.
+# Filnamnet behålls eftersom Dockerfile och det godkända grindpaketet pekar hit.
+# exec bevarar PID och signalvägen till Nest (inklusive dess shutdown hooks).
 
 exec node /app/apps/api/dist/main.js
