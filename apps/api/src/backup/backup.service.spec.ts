@@ -50,6 +50,8 @@ import {
   parseR2Jurisdiction,
   r2EndpointFor,
   preflightBucketMissingMessage,
+  BACKUP_PRUNE_ENABLED_VAR,
+  prunePausedMessage,
 } from './backup.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { BackupScheduler } from './backup.scheduler'
@@ -199,28 +201,122 @@ describe('BackupService.enabled — säkerhetsgrindar', () => {
 })
 
 describe('BackupService.pruneOldBackups', () => {
-  it('tar bort endast utgångna backuper', async () => {
-    const service = makeService(30)
-    const now = new Date('2026-07-07T03:00:00Z')
-    const expired = 'db-backups/eken-20260501T030000Z.dump'
-    const fresh = 'db-backups/eken-20260701T030000Z.dump'
+  const now = new Date('2026-07-07T03:00:00Z')
+  const expired = 'db-backups/eken-20260501T030000Z.dump'
+  const fresh = 'db-backups/eken-20260701T030000Z.dump'
 
+  /** Spionerar på VARJE S3-anrop, så en radering inte kan ske osedd. */
+  function spionera(service: BackupService, contents: Array<{ Key: string }>) {
     const sent: Array<{ input: Record<string, unknown> }> = []
     ;(service as unknown as { s3: { send: jest.Mock } }).s3 = {
       send: jest.fn((cmd: { input: Record<string, unknown> }) => {
         sent.push(cmd)
-        if (cmd.input.Prefix !== undefined) {
-          return Promise.resolve({ Contents: [{ Key: expired }, { Key: fresh }] })
-        }
+        if (cmd.input.Prefix !== undefined) return Promise.resolve({ Contents: contents })
         return Promise.resolve({})
       }),
     }
+    return {
+      sent,
+      raderade: () =>
+        sent
+          .filter((c) => c.input.Key !== undefined && c.input.Body === undefined)
+          .map((c) => c.input.Key),
+    }
+  }
 
-    const pruned = await service.pruneOldBackups(now)
+  it('gallrar INTE som standard — flaggan osatt betyder att ingenting raderas', async () => {
+    const service = serviceWith({ BACKUP_RETENTION_DAYS: '30' })
+    const spion = spionera(service, [{ Key: expired }, { Key: fresh }])
 
-    expect(pruned).toBe(1)
-    const deletes = sent.filter((c) => c.input.Key !== undefined).map((c) => c.input.Key)
-    expect(deletes).toEqual([expired])
+    const res = await service.pruneOldBackups(now)
+
+    expect(service.pruneEnabled).toBe(false)
+    expect(res).toEqual({ skipped: true, pruned: 0, reason: prunePausedMessage() })
+    // Namnger variabeln som styr den — den som läser loggen ska inte behöva
+    // leta i koden efter vilken knapp som stängde av raderingen.
+    expect(prunePausedMessage()).toContain(BACKUP_PRUNE_ENABLED_VAR)
+    // Ingen R2-trafik alls: en avstängd väg ska inte kunna ha fel.
+    expect(spion.sent).toHaveLength(0)
+  })
+
+  it.each([undefined, '', 'false', 'True', 'ture', '1', 'yes'])(
+    'fail-closed: %p slår INTE på gallringen',
+    async (värde) => {
+      const env: Record<string, string> = { BACKUP_RETENTION_DAYS: '30' }
+      if (värde !== undefined) env[BACKUP_PRUNE_ENABLED_VAR] = värde
+      const service = serviceWith(env)
+      const spion = spionera(service, [{ Key: expired }])
+
+      const res = await service.pruneOldBackups(now)
+
+      expect(service.pruneEnabled).toBe(false)
+      expect(res.skipped).toBe(true)
+      expect(spion.raderade()).toEqual([])
+    },
+  )
+
+  // GRINDEN SITTER PÅ RÄTT DÖRR. Ett källprov kan se att tilldelningen läser
+  // `BACKUP_PRUNE_ENABLED_VAR`; det här provet ser att konstanten faktiskt bär
+  // det variabelnamnet. Bytte någon värdet mot 'BACKUP_ENABLED' vore koden
+  // oförändrad i form och grinden styrd av fel flagga.
+  it('grindkonstanten bär variabelnamnet BACKUP_PRUNE_ENABLED', () => {
+    expect(BACKUP_PRUNE_ENABLED_VAR).toBe('BACKUP_PRUNE_ENABLED')
+  })
+
+  // FEL FLAGGA, mätt på BETEENDET och inte på källtexten. Läste tilldelningen
+  // `BACKUP_ENABLED` i stället för grindvariabeln skulle en påslagen backup
+  // också slå på raderingen — utan att någon rört gallringsinställningen.
+  it('en påslagen BACKUP_ENABLED slår INTE på gallringen', async () => {
+    const service = serviceWith({
+      BACKUP_ENABLED: 'true',
+      R2_ACCOUNT_ID: 'acc',
+      R2_ACCESS_KEY_ID: 'ak',
+      R2_SECRET_ACCESS_KEY: 'sk',
+      R2_BUCKET_NAME: 'eken-files',
+      DATABASE_URL: 'postgresql://u:p@h:5432/db',
+      BACKUP_RETENTION_DAYS: '30',
+    })
+    const spion = spionera(service, [{ Key: expired }])
+
+    expect(service.enabled).toBe(true)
+    expect(service.pruneEnabled).toBe(false)
+    expect((await service.pruneOldBackups(now)).skipped).toBe(true)
+    expect(spion.raderade()).toEqual([])
+  })
+
+  // MOTPROVET. Utan det här fallet kan sviten ovan vara grön därför att
+  // gallringen är trasig i stället för avstängd — "raderade inget" och "kan
+  // inte radera" ser likadana ut. Här SKA exakt en radering ske.
+  it('gallrar när flaggan är satt — och rör bara den utgångna', async () => {
+    const service = serviceWith({ BACKUP_RETENTION_DAYS: '30', [BACKUP_PRUNE_ENABLED_VAR]: 'true' })
+    const spion = spionera(service, [{ Key: expired }, { Key: fresh }])
+
+    const res = await service.pruneOldBackups(now)
+
+    expect(service.pruneEnabled).toBe(true)
+    expect(res).toEqual({ skipped: false, pruned: 1 })
+    expect(spion.raderade()).toEqual([expired])
+  })
+
+  // De två skarpa återställningspunkterna i eveno-db-backup-prod bär en SHA i
+  // nyckeln och matchar därför inte jobbets eget format. `isBackupExpired`
+  // vägrar tolka en nyckel den inte känner igen — men den regeln är bara ett
+  // skydd så länge någon prövar den mot de FAKTISKA nycklarna.
+  it.each([
+    'db-backups/eken-20260913T143554Z-3b71e905.dump',
+    'db-backups/eken-20260915T224603.062838+0000-3b71e905-preinforande896.dump',
+  ])('rör aldrig den manuella återställningspunkten %s, ens med gallring på', async (nyckel) => {
+    const service = serviceWith({
+      BACKUP_RETENTION_DAYS: '1',
+      [BACKUP_PRUNE_ENABLED_VAR]: 'true',
+    })
+    const spion = spionera(service, [{ Key: nyckel }, { Key: expired }])
+
+    const res = await service.pruneOldBackups(new Date('2027-01-01T00:00:00Z'))
+
+    expect(isBackupExpired(nyckel, new Date('2027-01-01T00:00:00Z'), 1)).toBe(false)
+    expect(spion.raderade()).toEqual([expired])
+    expect(res).toEqual({ skipped: false, pruned: 1 })
   })
 })
 

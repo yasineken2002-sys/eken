@@ -467,6 +467,31 @@ jobs:
       - name: Verify the backup endpoint is derived, not hardcoded
         run: node apps/api/scripts/check-backup-endpoint.mjs
 
+  backup-prune-gate-guard:
+    name: Backup prune gate guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rent statisk kontroll (fs-only, inga beroenden, ingen DB) — backupens
+      # RADERINGSVÄG ska ligga bakom BACKUP_PRUNE_ENABLED.
+      #
+      # `runBackup` laddar upp och anropar sedan `pruneOldBackups`, som raderar
+      # objekt i backup-bucketen. Utan grinden styrs raderingen bara av ett tal
+      # (BACKUP_RETENTION_DAYS, default 30) — och den dag BACKUP_ENABLED=true
+      # sätts blir radering av äldre återställningspunkter påslagen i samma
+      # sekund som den första dumpen tas, utan att någon beslutat det.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Self-test the guard (each rule proven by a mutated source)
+        run: node apps/api/scripts/check-backup-prune-gate.mjs --self-test
+
+      - name: Verify every delete path is behind the prune gate
+        run: node apps/api/scripts/check-backup-prune-gate.mjs
+
   action-tool-authorization-guard:
     name: AI action tool authorization guard
     runs-on: ubuntu-latest
@@ -2459,6 +2484,7 @@ jobs:
       - tool-human-path-guard
       - action-tool-authorization-guard
       - backup-endpoint-guard
+      - backup-prune-gate-guard
       - legal-text-version-guard
       - cron-classification-guard
       - pdf-selfcontained-guard
