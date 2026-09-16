@@ -19,6 +19,32 @@ import { join } from 'node:path'
 const BACKUP_PREFIX = 'db-backups/'
 const DEFAULT_RETENTION_DAYS = 30
 
+// ── GALLRINGEN ÄR EN EGEN, UTTRYCKLIG BESLUTSPUNKT ──────────────────────────
+//
+// `runBackup` laddade upp OCH gallrade i samma andetag, och gallringen styrdes
+// bara av ett tal (`BACKUP_RETENTION_DAYS`, default 30). Det betyder att den
+// dag `BACKUP_ENABLED=true` sätts blir radering av äldre återställningspunkter
+// påslagen i samma sekund som den första dumpen tas — utan att någon beslutat
+// det, och utan att någon ännu sett en enda skarp körning lyckas.
+//
+// VARFÖR EN EGEN FLAGGA OCH INTE EN HÖG RETENTION. `BACKUP_RETENTION_DAYS=36500`
+// ser ut som en spärr men är ett TAL: det går att sänka av misstag, det syns
+// inte i en variabelnamnslista, och det säger ingenting om vad som är beslutat.
+// Framför allt är det fortfarande en påslagen raderingsväg — den väntar bara.
+// En flagga som måste sättas till exakt `'true'` är ett beslut som går att läsa,
+// granska och återkalla, och den lämnar `DeleteObjectCommand` helt onåbar
+// däremellan.
+//
+// FAIL-CLOSED. Osatt, tomt, `'false'`, felstavat — allt utom exakt `'true'`
+// betyder att ingenting raderas. Samma riktning som isoleringsgrinden ovan:
+// den som inte kan läsa konfigurationen ska inte radera något.
+//
+// GRINDEN SITTER I `pruneOldBackups`, INTE I `runBackup`. Skälet är att
+// metoden är publik och kan få fler anropare (ett driftskript, en endpoint).
+// En grind i anroparen skyddar den anropare som råkar ha den; en grind i
+// metoden skyddar raderingen.
+export const BACKUP_PRUNE_ENABLED_VAR = 'BACKUP_PRUNE_ENABLED'
+
 // ── R2-JURISDIKTION ─────────────────────────────────────────────────────────
 //
 // I R2 väljs jurisdiktionen av VÄRDNAMNET, inte av ett fält i anropet:
@@ -321,6 +347,26 @@ export function isBackupExpired(key: string, now: Date, retentionDays: number): 
   return now.getTime() - backupTime > retentionDays * 24 * 60 * 60 * 1000
 }
 
+/**
+ * Gallringens utfall. `skipped` är ETT EGET TILLSTÅND, inte `pruned: 0`.
+ *
+ * Skillnaden är hela poängen: "noll backuper hade passerat retention" och
+ * "gallringen är avstängd" är två helt olika saker med samma tal. En logg som
+ * bara säger "gallrade 0 gamla" går inte att skilja åt, och den som läser den
+ * vet alltså inte om raderingsvägen är på eller av.
+ */
+export type BackupPruneResult =
+  | { skipped: false; pruned: number }
+  | { skipped: true; pruned: 0; reason: string }
+
+/** Beskedet i loggen när gallringen är avstängd. Namnger variabeln som styr den. */
+export function prunePausedMessage(): string {
+  return (
+    `gallring AVSTÄNGD (${BACKUP_PRUNE_ENABLED_VAR} ≠ "true") — inga gamla backuper ` +
+    'raderades, och ingen listning av lagringen gjordes'
+  )
+}
+
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name)
@@ -330,6 +376,14 @@ export class BackupService {
   readonly jurisdiction: R2Jurisdiction
   private readonly databaseUrl: string
   readonly retentionDays: number
+  /**
+   * Får gallringen radera? Fail-closed: bara exakt `'true'` slår på den.
+   *
+   * Läses av `pruneOldBackups` och av runbooken/driftrapporten. Den är
+   * AVSIKTLIGT skild från `enabled`: en backup som kör är inte ett beslut om
+   * att gamla återställningspunkter får försvinna.
+   */
+  readonly pruneEnabled: boolean
   readonly enabled: boolean
   /** Kör vi skarpt? Färskhetslarmet larmar bara i produktion. */
   readonly isProduction: boolean
@@ -389,6 +443,10 @@ export class BackupService {
     this.retentionDays = Number(
       config.get<string>('BACKUP_RETENTION_DAYS') ?? DEFAULT_RETENTION_DAYS,
     )
+    // Fail-closed: allt utom exakt 'true' betyder att ingenting raderas. Se
+    // docblocket vid BACKUP_PRUNE_ENABLED_VAR för varför det är en flagga och
+    // inte ett högt retentionstal.
+    this.pruneEnabled = config.get<string>(BACKUP_PRUNE_ENABLED_VAR) === 'true'
 
     // Delar backupen NÅGON del av sin konfiguration med dokumentlagringen? Då är
     // isoleringen inte på plats — förbjud i produktion (fail-closed) tills en
@@ -465,7 +523,7 @@ export class BackupService {
   // Tar en full pg_dump (custom-format), laddar upp till R2 och gallrar gamla
   // backuper. Kastar vid fel så att schemaläggaren kan larma. Custom-format (-Fc)
   // är komprimerat och kan pg_restore:as selektivt.
-  async runBackup(): Promise<{ key: string; bytes: number; pruned: number }> {
+  async runBackup(): Promise<{ key: string; bytes: number; prune: BackupPruneResult }> {
     const key = backupKey(new Date())
     const tmpPath = join(tmpdir(), `eken-backup-${Date.now()}.dump`)
 
@@ -499,11 +557,17 @@ export class BackupService {
         }),
       )
 
-      const pruned = await this.pruneOldBackups()
+      // Uppladdningen är klar HÄR. Allt nedanför rör gallringen, som är en egen
+      // beslutspunkt och avstängd som standard.
+      const prune = await this.pruneOldBackups()
+      // Loggraden säger vilket av de två tillstånden det var. "gallrade 0 gamla"
+      // betydde tidigare både "inget hade passerat retention" och "raderingen är
+      // av" — samma tal, olika världar.
       this.logger.log(
-        `[backup] OK ${key} (${(body.length / 1024 / 1024).toFixed(1)} MB), gallrade ${pruned} gamla`,
+        `[backup] OK ${key} (${(body.length / 1024 / 1024).toFixed(1)} MB), ` +
+          (prune.skipped ? prune.reason : `gallrade ${prune.pruned} gamla`),
       )
-      return { key, bytes: body.length, pruned }
+      return { key, bytes: body.length, prune }
     } catch (err) {
       // Full detalj (kan innehålla pg_dump-stderr med host/user/db) enbart i den
       // lokala loggen. Sentry får ett skrubbat meddelande — dess läsarkrets är
@@ -552,8 +616,24 @@ export class BackupService {
       .sort((a, b) => b.key.localeCompare(a.key))
   }
 
-  // Gallrar backuper äldre än retentionDays. Returnerar antal borttagna.
-  async pruneOldBackups(now: Date = new Date()): Promise<number> {
+  /**
+   * Gallrar backuper äldre än retentionDays — MEN BARA när gallringen är
+   * uttryckligen påslagen.
+   *
+   * Är den avstängd görs INGEN R2-läsning alls. Det är ett medvetet val och
+   * inte en besparing: hade metoden listat lagringen för att kunna rapportera
+   * "så här många skulle ha gallrats", vore ett listningsfel plötsligt ett sätt
+   * för en AVSTÄNGD gallring att fälla en LYCKAD uppladdning (`runBackup`
+   * kastar vidare). En avstängd väg ska inte kunna ha fel.
+   *
+   * Antalet backuper i lagringen syns ändå dagligen: färskhetskontrollen
+   * 09:00 rapporterar `backupCount`.
+   */
+  async pruneOldBackups(now: Date = new Date()): Promise<BackupPruneResult> {
+    if (!this.pruneEnabled) {
+      return { skipped: true, pruned: 0, reason: prunePausedMessage() }
+    }
+
     const res = await this.s3.send(
       new ListObjectsV2Command({ Bucket: this.bucket, Prefix: BACKUP_PREFIX }),
     )
@@ -563,7 +643,7 @@ export class BackupService {
     for (const key of expired) {
       await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
     }
-    return expired.length
+    return { skipped: false, pruned: expired.length }
   }
 
   /**
