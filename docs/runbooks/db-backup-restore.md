@@ -49,9 +49,11 @@ icke-hemliga lästes det faktiska värdet — en namnlista bevisar inte att en f
 | `BACKUP_RETENTION_DAYS`       | valfri — standard 30, inert utan spärren ovan  | SAKNAS            | värde           |
 | `DATABASE_URL`                | obligatorisk, redan satt sedan tidigare        | finns             | ingen avläsning |
 
-**Sju variabler tillhör backupen** (raderna ovan utom `DATABASE_URL`), och
-**noll av dem finns**. Fem är obligatoriska för den här bucketen, två är valfria
-och ska med flit lämnas osatta.
+**Åtta variabler tillhör backupen** (raderna ovan utom `DATABASE_URL`), och
+**noll av dem finns**. Fem är obligatoriska för den här bucketen; tre är valfria
+— `R2_BACKUP_ACCOUNT_ID`, som annars faller tillbaka på `R2_ACCOUNT_ID`, samt
+gallringsflaggan och retentionen, som båda med flit lämnas osatta i den här
+införandeordningen. Räkna alltid ur tabellen; prosan ovan är härledd ur den.
 
 `R2_BACKUP_JURISDICTION` står som obligatorisk trots att koden defaultar till
 `default`: bucketen `eveno-db-backup-prod` skapades i **EU**, och en bucket
@@ -129,8 +131,15 @@ i dag grindat mot en enda revision (avläst 2026-09-16: startkommando
 `sha256:f5a4ab12…`, `GATE_MANIFEST_B64 sha256:c408fee2…`, `expected_revision`
 = `30724b17`). En deployment av någon annan revision avvisas av grinden med
 exit 11 **innan** något startar. Det gäller även om de nio deklarerade filerna
-är oförändrade — backupens källfil är inte en av dem, men revisionsbindningen
-ensam räcker.
+är oförändrade: revisionsbindningen ensam räcker för att avvisa **fel SHA**.
+
+Men den räcker bara till det. Grindens nio deklarerade filer innehåller **inte**
+backupens körbara kod, så ett godkänt grindkvitto bevisar inte byteidentitet för
+kompilerad `BackupService`/`BackupScheduler` — alltså inte att gallringsspärren
+finns i den container som startade. Den framtida releaseverifieringen ska därför
+**separat jämföra de relevanta kompilerade backupfilerna med den granskade
+byggartefakten**. Det är ett verifieringskrav på releasen, inte en ändring av
+grindpaketet.
 
 ### Beroendet till #897, i två lägen
 
@@ -158,7 +167,12 @@ PR-grenens head. Läs träd-SHA och bekräfta att den motsvarar det granskade.
 **Fas C — image och grindpaket.** Bygg grindpaketet för slutrevisionen
 (`expected_revision` = den nya main-SHA:n), kör den lokala drivrutinen grön mot
 en lokalt byggd image av samma träd, och **bevara det tidigare manifestet**.
-Härled aldrig förväntade hashar ur en ostartad kandidat.
+
+De förväntade hasharna ska **frysas ur en oberoende granskad byggartefakt innan
+de används i startgrinden**. Det kräver ingen provstart: ett offlinefacit går att
+beräkna ur artefakten. Det som aldrig får göras är att räkna om facit ur den
+kandidat som håller på att starta — då godkänner kandidaten sig själv, och grinden
+mäter ingenting.
 
 **Fas D — förbered variablerna utan att utlösa något.** En i taget, hemligheter
 via stdin så de aldrig står på kommandoraden:
@@ -183,20 +197,23 @@ Läs deploymentlistan efter varje variabelbyte. Mätt 2026-09-15 med
 git-autodeploy av: en variabeländring skapade **ingen** deployment. Det är en
 mätning på den tjänsten den dagen, inte ett plattformslöfte — kontrollera igen.
 
-**Fas E — den enda avsedda starten.** Efter ett eget uttryckligt driftbeslut:
-starta slutrevisionen genom grinden, enligt tabellen ovan. Verifiera **tillämpat**
+**Fas E — kodutrullningen.** Efter ett eget uttryckligt driftbeslut: starta
+slutrevisionen genom grinden, enligt tabellen ovan. Verifiera **tillämpat**
 manifest (startkommando, `restartPolicyType`, healthcheck), att instansen är
-RUNNING, och att `/v1/health` svarar med den nya revisionen.
+RUNNING, och att `/v1/health` svarar med den nya revisionen. Det här är den enda
+start som kodleveransen kräver.
 
-**Fas F — aktivering.** Först nu `BACKUP_ENABLED=true` (`--skip-deploys`), följt
-av en andra kontrollerad start.
+**Fas F — aktiveringsomstarten.** Först nu `BACKUP_ENABLED=true`
+(`--skip-deploys`), följt av en andra kontrollerad start. Konfigurationen läses
+när tjänsten konstrueras, så en körande process plockar aldrig upp värdet av sig
+själv.
 
-> **Varför två starter och inte en.** Sätts `BACKUP_ENABLED=true` innan den nya
+> **Varför ordningen är låst.** Sätts `BACKUP_ENABLED=true` innan den nya
 > revisionen kör, finns ett fönster där en plattformsinitierad omstart skulle
-> starta den GAMLA revisionen med backupen påslagen och utan gallringsspärr. En
-> extra start är billigare än det fönstret. Vill man ändå ha en enda start ska
-> variabeln sättas omedelbart före den och fönstret bevakas — det är ett val, inte
-> en detalj.
+> starta den GAMLA revisionen med backupen påslagen och utan gallringsspärr. Att
+> "bevaka fönstret" är ingen spärr — bevakning hindrar inte gammal kod från att
+> hinna exekvera. En annan ordning kräver en egen styrkt avskärmning och ett eget
+> beslut, inte ett val i stunden.
 
 **Fas G — verifiera förutsättningarna innan första natten.** En namnlista räcker
 inte. Läs tillbaka, utan att röja hemligheter:
@@ -241,8 +258,10 @@ Samma avläsning fastställer **tidszonen**: `03:00:00.015Z` är 03:00 UTC, allt
 som kör `0 18 * * 0` i `Europe/Stockholm` och därför syns som `16:00Z`.
 
 Sex timmar senare ska färskhetskontrollen logga `OK: senaste backup …`. Larmar
-den `disabled` är konfigurationen ofullständig; `never` betyder att jobbet kört
-utan att någon dump landade.
+den `disabled` är konfigurationen ofullständig. `never` betyder att **inget
+objekt i jobbets namnformat hittades** — inget annat. Det bevisar varken att
+jobbet har kört eller att något lagrat innehåll går att återläsa; ett jobb som
+aldrig schemalagts ger exakt samma svar. Se avsnittet om vad kontrollen mäter.
 
 ### Om aktiveringen måste avbrytas
 
