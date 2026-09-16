@@ -28,17 +28,35 @@ körts skarpt och en återställning verifierats.
 
 ## Aktivering (produktion)
 
-Jobbet är **avstängt** tills följande env-vars är satta (annars no-op):
+Jobbet är **avstängt** tills följande env-vars är satta (annars no-op).
+Tabellen är den enda sanningskällan för mängden; prosa som räknar dem ska
+härledas ur den, inte skrivas för hand.
 
-| Env-var                                                  | Beskrivning                                                                                            |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `BACKUP_ENABLED`                                         | `true` för att aktivera nattjobbet                                                                     |
-| `R2_BACKUP_BUCKET`                                       | **Krävs i prod:** dedikerad backup-bucket (dumpen = all PII, ska ej dela bucket med dokumentlagringen) |
-| `R2_BACKUP_ACCESS_KEY_ID`, `R2_BACKUP_SECRET_ACCESS_KEY` | **Krävs i prod:** dedikerad, minimalt scopad R2-token (List/Get/Put/Delete enbart på backup-bucketen)  |
-| `R2_BACKUP_ACCOUNT_ID`                                   | _(valfritt)_ annars `R2_ACCOUNT_ID`                                                                    |
-| `BACKUP_PRUNE_ENABLED`                                   | _(valfritt)_ **saknas = ingen gallring.** Endast exakt `true` tillåter radering av gamla backuper      |
-| `BACKUP_RETENTION_DAYS`                                  | _(valfritt)_ standard 30 — **inert så länge `BACKUP_PRUNE_ENABLED` inte är `true`**                    |
-| `DATABASE_URL`                                           | redan satt                                                                                             |
+Kolumnen **i prod** är avläst 2026-09-16 via `railway variable list --json` på
+tjänsten `eken` (40 variabler). För de två hemliga lästes bara närvaro; för de
+icke-hemliga lästes det faktiska värdet — en namnlista bevisar inte att en flagga
+är av eller att jurisdiktionen är rätt.
+
+| Env-var                       | Krav i prod                                    | I prod 2026-09-16 | Vad som lästes  |
+| ----------------------------- | ---------------------------------------------- | ----------------- | --------------- |
+| `BACKUP_ENABLED`              | **obligatorisk** — `true` aktiverar nattjobbet | SAKNAS            | värde           |
+| `R2_BACKUP_BUCKET`            | **obligatorisk** — dedikerad backup-bucket     | SAKNAS            | värde           |
+| `R2_BACKUP_ACCESS_KEY_ID`     | **obligatorisk** — bucketbegränsad token       | SAKNAS            | endast närvaro  |
+| `R2_BACKUP_SECRET_ACCESS_KEY` | **obligatorisk** — bucketbegränsad token       | SAKNAS            | endast närvaro  |
+| `R2_BACKUP_JURISDICTION`      | **obligatorisk här** — bucketen ligger i EU    | SAKNAS            | värde           |
+| `R2_BACKUP_ACCOUNT_ID`        | valfri — annars `R2_ACCOUNT_ID`                | SAKNAS            | värde           |
+| `BACKUP_PRUNE_ENABLED`        | valfri — **saknas = ingen gallring**           | SAKNAS            | värde           |
+| `BACKUP_RETENTION_DAYS`       | valfri — standard 30, inert utan spärren ovan  | SAKNAS            | värde           |
+| `DATABASE_URL`                | obligatorisk, redan satt sedan tidigare        | finns             | ingen avläsning |
+
+**Sju variabler tillhör backupen** (raderna ovan utom `DATABASE_URL`), och
+**noll av dem finns**. Fem är obligatoriska för den här bucketen, två är valfria
+och ska med flit lämnas osatta.
+
+`R2_BACKUP_JURISDICTION` står som obligatorisk trots att koden defaultar till
+`default`: bucketen `eveno-db-backup-prod` skapades i **EU**, och en bucket
+tillhör exakt en jurisdiktion. Utan `eu` frågar klienten på default-endpointen
+och får `404 NoSuchBucket` — samma svar som om bucketen inte fanns.
 
 > ⚠️ **Produktionskrav (säkerhet):** i `NODE_ENV=production` **blockeras** jobbet
 > (loggar ett fel, kör inte) om det saknar dedikerad backup-token + bucket och
@@ -81,12 +99,10 @@ eget nyckelformat. `isBackupExpired` vägrar tolka en nyckel den inte känner ig
 så de ligger utanför gallringen även om den slås på. Det är pinnat med de
 faktiska nycklarna i `backup.service.spec.ts`.
 
-**Följdsatsen, och den är inte gratis:** utan gallring växer bucketen obegränsat,
-och `parseBackupKeyDate` räknar inte de manuella punkterna — färskhetskontrollen
-mäter alltså JOBBET, inte lagringen. Innan gallringen någonsin slås på ska det
-finnas ett uttryckligt retentionsbeslut och ett golv som garanterar att minst N
-återställningspunkter alltid behålls. Inget av det är byggt; det är avsiktligt
-utanför den här ändringen.
+**Följdsatsen, och den är inte gratis:** utan gallring växer bucketen obegränsat.
+Innan gallringen någonsin slås på ska det finnas ett uttryckligt retentionsbeslut
+och ett golv som garanterar att minst N återställningspunkter alltid behålls.
+Inget av det är byggt; det är avsiktligt utanför den här ändringen.
 
 Formen bevakas av `apps/api/scripts/check-backup-prune-gate.mjs` (eget CI-jobb):
 varje `new DeleteObjectCommand(` i backupvägen måste ligga i `pruneOldBackups`
@@ -94,61 +110,191 @@ bakom grinden, och grinden måste returnera FÖRE första raderingen.
 
 ## Aktiveringsordning — och vad som räknas som bevis
 
-Stegen nedan ändrar produktionen och utförs av EN utsedd operatör. Ingen av dem
-är utförd av den här leveransen.
+Stegen nedan ändrar produktionen och utförs av EN utsedd operatör efter ett
+uttryckligt driftbeslut. **Ingen av dem är utförd av den här leveransen.**
 
-1. **Egen backup-token.** Cloudflare: en API-token scopad till enbart
-   `eveno-db-backup-prod` (Object Read & Write). Bucketen finns redan, i EU.
-   Skapa ingen ny bucket — objekt som redan ligger där är återställningspunkter.
-2. **Säker nyckelöverföring.** Värdena får aldrig passera en terminal vars utdata
-   sparas. Använd `railway variable set <NAMN> --stdin --skip-deploys`, en
-   variabel i taget, och verifiera efteråt med hash mot hash (avsnittet
-   "Verifiera en säkrad nyckel utan att avslöja den"). `--skip-deploys` på alla
-   utom den sista, så sju variabelbyten ger en omstart och inte sju.
-3. **Sätt i denna ordning:** `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCESS_KEY_ID`,
-   `R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_ACCOUNT_ID`,
-   `R2_BACKUP_JURISDICTION=eu` — och SIST `BACKUP_ENABLED=true`. Ordningen är
-   lastbärande: isoleringsgrinden blockerar tills de dedikerade värdena finns,
-   och flaggan sist gör att inget halvkonfigurerat läge kan hinna köra.
-   `BACKUP_PRUNE_ENABLED` sätts INTE. `BACKUP_RETENTION_DAYS` behöver inte sättas.
-4. **Verifiera konfigurationen före första natten:** läs tillbaka variabelNAMNEN
-   (aldrig värdena) och bekräfta att `/v1/health` svarar med rätt revision.
-5. **Första riktiga körningen (03:00 UTC).** Kraven, i stigande styrka:
+### Förutsättningen som inte får hoppas över
 
-   | räknas som                    | bevis                                                                                                              |
-   | ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-   | schemaläggaren kördes         | `cron:daily-backup` i `/v1/health` har `lastRunAt` inom dygnet                                                     |
-   | en backup SKAPADES            | loggraden `[backup] OK db-backups/eken-…Z.dump (… MB)` **och** objektet finns i R2 med rimlig storlek              |
-   | backupen är ÅTERSTÄLLNINGSBAR | dumpen hämtad ur R2, sha256 jämförd, `pg_restore` mot ett tomt PG 18-kluster, och acceptanskriterierna nedan gröna |
+**Gallringsspärren finns inte i den revision som kör.** Avläst 2026-09-16:
+produktionen kör `30724b17`, och `BACKUP_PRUNE_ENABLED` infördes efter den.
+Sätts `BACKUP_ENABLED=true` mot den revisionen är gallringen styrd enbart av
+`BACKUP_RETENTION_DAYS` — alltså exakt det läge spärren finns för att undvika.
 
-   **Ett grönt hjärtslag är INTE ett bevis för en backup — mätt i produktion
-   2026-09-16, inte resonerat:**
+Ett variabelbyte är därför **inte** en genväg runt införandet. Aktiveringen
+kräver att koden först granskas, mergas och **driftsätts genom ett nytt
+verifierat startpaket för den slutliga revisionen**.
 
-   ```
-   cron:daily-backup  lastRunAt 2026-09-15T03:00:00.015Z  lastOutcome "success"  stale false
-   ```
+Att paketet måste vara nytt är inte en formalitet. Tjänstens startkommando är
+i dag grindat mot en enda revision (avläst 2026-09-16: startkommando
+`sha256:f5a4ab12…`, `GATE_MANIFEST_B64 sha256:c408fee2…`, `expected_revision`
+= `30724b17`). En deployment av någon annan revision avvisas av grinden med
+exit 11 **innan** något startar. Det gäller även om de nio deklarerade filerna
+är oförändrade — backupens källfil är inte en av dem, men revisionsbindningen
+ensam räcker.
 
-   Backupen är avstängd och har aldrig tagit en enda dump. `dailyBackupUnsafe`
-   returnerar tyst när `enabled` är falskt och sväljer ett fångat fel, så
-   `LockService` skriver `lastOutcome: 'success'` i alla tre världarna: jobbet
-   avstängt, jobbet misslyckat, jobbet lyckat. Det som skiljer dem åt är
-   färskhetskontrollen 09:00 (`disabled` / `never` / `stale` / `fresh`) och
-   loggraden ovan — inte hjärtslaget.
+### Beroendet till #897, i två lägen
 
-   Samma avläsning fastställer **tidszonen**: `03:00:00.015Z` är 03:00 UTC, alltså
-   05:00 svensk sommartid och 04:00 vintertid. Backup-cronen sätter ingen
-   `timeZone` och `TZ` är osatt i Railway — till skillnad från t.ex. veckobrevet,
-   som kör `0 18 * * 0` i `Europe/Stockholm` och därför syns som `16:00Z`.
+#897 (`codex/saker-appomstart-896`) levererar en **grindad omstart utan
+migrering**. Backupaktiveringen behöver ingen migration, så de två passar ihop
+— men aktiveringen får inte vila på en tyst förmodan om att #897 redan är inne.
 
-6. **Sex timmar senare:** färskhetskontrollen ska logga `OK: senaste backup …`.
-   Larmar den `disabled` är konfigurationen ofullständig; `never` betyder att
-   jobbet kört utan att någon dump landade.
+| läge                    | startvägen för slutrevisionen                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **#897 är mergad**      | Använd dess omstartsväg. Den startar utan att köra migreringar, vilket är rätt form för en ändring som bara rör env och applikationskod. #897 ändrar `migrate-and-start.sh`, så manifestets filhashar ändras — nytt paket ändå.                                                                                                                                   |
+| **#897 är inte mergad** | Starten går via #896:s procedur: nytt grindpaket, `serviceInstanceDeployV2` med `commitSha`. Den vägen kör `migrate-and-start.sh`, alltså `prisma migrate deploy` före appstart. Med noll väntande migrationer är det en no-op (`No pending migrations`) — men det är fortfarande en migrationsväg, och att köra den ska vara ett medvetet val, inte en bieffekt. |
 
-**Återställningsväg om aktiveringen går fel:** sätt `BACKUP_ENABLED=false`
-(`--skip-deploys` + en omstart). Ingen data går förlorad — jobbet skriver bara,
-och gallringen är avstängd, så ingen befintlig återställningspunkt kan ha
-raderats. De två manuella dumparna i `eveno-db-backup-prod` är kvar och är den
-gällande återställningspunkten tills en skarp körning verifierats enligt 5.
+Kontrollera läget innan ordningen påbörjas; anta det inte.
+
+### Ordningen
+
+**Fas A — kodleverans.** #898 granskad och mergad med vanlig merge-commit.
+Notera den **exakta** nya main-SHA:n. Båda deployspärrarna förblir avstängda
+(Railway git-trigger 0, GitHub Deploy `disabled_manually`); en merge får inte
+kunna rulla ut något av sig själv.
+
+**Fas B — revision och CI.** Grön CI på den faktiska main-commiten, inte på
+PR-grenens head. Läs träd-SHA och bekräfta att den motsvarar det granskade.
+
+**Fas C — image och grindpaket.** Bygg grindpaketet för slutrevisionen
+(`expected_revision` = den nya main-SHA:n), kör den lokala drivrutinen grön mot
+en lokalt byggd image av samma träd, och **bevara det tidigare manifestet**.
+Härled aldrig förväntade hashar ur en ostartad kandidat.
+
+**Fas D — förbered variablerna utan att utlösa något.** En i taget, hemligheter
+via stdin så de aldrig står på kommandoraden:
+
+```bash
+railway variable set R2_BACKUP_ACCESS_KEY_ID --stdin --skip-deploys \
+  --project <projekt> --environment <miljö> --service eken
+```
+
+`--skip-deploys` finns i CLI:ns egen hjälp (`railway variable set --help`,
+Railway CLI 5.57.2) och betyder "skip triggering deploys when setting the
+variable". Sätt `R2_BACKUP_BUCKET`, `R2_BACKUP_ACCESS_KEY_ID`,
+`R2_BACKUP_SECRET_ACCESS_KEY`, `R2_BACKUP_ACCOUNT_ID` och
+`R2_BACKUP_JURISDICTION=eu`. **`BACKUP_ENABLED` sätts INTE här** — se fas F.
+`BACKUP_PRUNE_ENABLED` och `BACKUP_RETENTION_DAYS` sätts inte alls.
+
+Nyckeln är den **redan godkända** bucketbegränsade R2-nyckeln i Apples
+Lösenord. Skapa ingen ny nyckel och ingen ny bucket; objekten i
+`eveno-db-backup-prod` är återställningspunkter.
+
+Läs deploymentlistan efter varje variabelbyte. Mätt 2026-09-15 med
+git-autodeploy av: en variabeländring skapade **ingen** deployment. Det är en
+mätning på den tjänsten den dagen, inte ett plattformslöfte — kontrollera igen.
+
+**Fas E — den enda avsedda starten.** Efter ett eget uttryckligt driftbeslut:
+starta slutrevisionen genom grinden, enligt tabellen ovan. Verifiera **tillämpat**
+manifest (startkommando, `restartPolicyType`, healthcheck), att instansen är
+RUNNING, och att `/v1/health` svarar med den nya revisionen.
+
+**Fas F — aktivering.** Först nu `BACKUP_ENABLED=true` (`--skip-deploys`), följt
+av en andra kontrollerad start.
+
+> **Varför två starter och inte en.** Sätts `BACKUP_ENABLED=true` innan den nya
+> revisionen kör, finns ett fönster där en plattformsinitierad omstart skulle
+> starta den GAMLA revisionen med backupen påslagen och utan gallringsspärr. En
+> extra start är billigare än det fönstret. Vill man ändå ha en enda start ska
+> variabeln sättas omedelbart före den och fönstret bevakas — det är ett val, inte
+> en detalj.
+
+**Fas G — verifiera förutsättningarna innan första natten.** En namnlista räcker
+inte. Läs tillbaka, utan att röja hemligheter:
+
+| ska bevisas                  | hur                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `BACKUP_PRUNE_ENABLED` är av | variabeln saknas, eller har ett värde som inte är `true` — **läs värdet**, inte bara namnet |
+| jurisdiktionen är `eu`       | `R2_BACKUP_JURISDICTION` har värdet `eu`                                                    |
+| rätt startpaket kör          | tillämpat startkommandos sha256 = paketets, och `/v1/health` `revision` = slutrevisionen    |
+| hemligheterna nådde fram     | närvaro + sha256-prefix jämfört mot avläsningen i Apples Lösenord                           |
+| deployspärrarna står kvar    | Railway git-triggers = 0, Deploy-workflow `disabled_manually`                               |
+
+Flaggor, bucketnamn och jurisdiktion är **inte** hemligheter och ska läsas ut i
+klartext; access key och secret ska aldrig lämna processen. Ett färdigt sådant
+läsläge finns i `arbete/backup-aktivering-20260915/prov/las-aktiveringslage.py`.
+
+### Första riktiga körningen (03:00 UTC) — tre nivåer av bevis
+
+| räknas som                    | bevis                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| schemaläggaren kördes         | `cron:daily-backup` i `/v1/health` har `lastRunAt` inom dygnet                                                     |
+| en backup SKAPADES            | loggraden `[backup] OK db-backups/eken-…Z.dump (… MB)` **och** objektet finns i R2 med rimlig storlek              |
+| backupen är ÅTERSTÄLLNINGSBAR | dumpen hämtad ur R2, sha256 jämförd, `pg_restore` mot ett tomt PG 18-kluster, och acceptanskriterierna nedan gröna |
+
+**Ett grönt hjärtslag är INTE ett bevis för en backup — mätt i produktion
+2026-09-16, inte resonerat:**
+
+```
+cron:daily-backup  lastRunAt 2026-09-15T03:00:00.015Z  lastOutcome "success"  stale false
+```
+
+Backupen är avstängd och har aldrig tagit en enda dump. `dailyBackupUnsafe`
+returnerar tyst när `enabled` är falskt och sväljer ett fångat fel, så
+`LockService` skriver `lastOutcome: 'success'` i alla tre världarna: jobbet
+avstängt, jobbet misslyckat, jobbet lyckat. Det som skiljer dem åt är
+färskhetskontrollen 09:00 (`disabled` / `never` / `stale` / `fresh`) och
+loggraden ovan — inte hjärtslaget.
+
+Samma avläsning fastställer **tidszonen**: `03:00:00.015Z` är 03:00 UTC, alltså
+05:00 svensk sommartid och 04:00 vintertid. Backup-cronen sätter ingen
+`timeZone` och `TZ` är osatt i Railway — till skillnad från t.ex. veckobrevet,
+som kör `0 18 * * 0` i `Europe/Stockholm` och därför syns som `16:00Z`.
+
+Sex timmar senare ska färskhetskontrollen logga `OK: senaste backup …`. Larmar
+den `disabled` är konfigurationen ofullständig; `never` betyder att jobbet kört
+utan att någon dump landade.
+
+### Om aktiveringen måste avbrytas
+
+`BACKUP_ENABLED=false` **plus en kontrollerad omstart** gör att nästa nattkörning
+inte tar någon dump, inte laddar upp något och inte gallrar något.
+
+Det är vad avstängningen gör. Det är inte en rollback, och följande gäller:
+
+- **Variabeln får effekt först vid omstart.** Konfigurationen läses när tjänsten
+  konstrueras. Tills processen startat om kör den vidare med sitt gamla värde.
+- **Ingenting som redan hänt ångras.** Uppladdade objekt ligger kvar; ett
+  raderat objekt kommer inte tillbaka.
+- **Att inget raderats är ett PÅSTÅENDE tills det mätts.** Det finns ingen
+  raderingsrevision att läsa i efterhand. Bevis är en objektlista tagen före
+  aktiveringen jämförd med en tagen efter — inklusive de två manuella
+  återställningspunkterna.
+- **Färskhetslarmet blir högljutt**, och det är korrekt: `disabled` varje dygn
+  tills backupen är påslagen igen.
+
+Gällande återställningspunkt är fortsatt de två manuella dumparna i
+`eveno-db-backup-prod`, till dess att en skarp körning verifierats enligt de tre
+bevisnivåerna ovan.
+
+## Vad färskhetskontrollen faktiskt mäter — och inte
+
+`evaluateBackupFreshness` får in **en lista objektnycklar** ur backup-bucketen
+och en klocka. Inget annat. Den läser ingen körningshistorik, inget
+`_prisma_migrations`, ingen cron-tabell och inte en enda byte av en dumps
+innehåll.
+
+Av nycklarna räknas bara de som matchar jobbets eget namnformat
+(`eken-<ÅÅÅÅMMDD>T<HHMMSS>Z.dump`); `parseBackupKeyDate` returnerar `null` för
+allt annat. Tidpunkten härleds ur **nyckelns text**, inte ur objektets
+`LastModified`.
+
+Läs utfallen därefter:
+
+| utfall     | vad det betyder                                          | vad det INTE betyder                                                                        |
+| ---------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `disabled` | konfigurationen blockerar jobbet; R2 lästes inte alls    | att lagringen är tom                                                                        |
+| `never`    | noll nycklar i formatet                                  | **att jobbet har kört.** Ett jobb som aldrig schemalagts ger samma svar                     |
+| `stale`    | den senaste formatmatchande nyckeln är äldre än tröskeln | att just den dumpen är trasig                                                               |
+| `fresh`    | en nyckel i formatet bär en tidsstämpel inom tröskeln    | **att dumpen går att återställa** — varken storlek, innehåll eller `pg_restore` har prövats |
+
+Två praktiska följder. De två **manuella** återställningspunkterna bär en
+commit-SHA i nyckeln och matchar därför inte formatet: de räknas inte, och en
+natt utan jobbkörning larmar `never` trots att bucketen innehåller två giltiga
+dumpar. Och ett `fresh` som bygger på en nyckel utan innehåll — en tom eller
+avbruten uppladdning med rätt namn — är fortfarande `fresh`. Återställningsbarhet
+bevisas bara av proceduren under "Återställningens acceptanskriterier".
+
+Produktlogiken är oförändrad; det här avsnittet rättar bara beskrivningen av den.
 
 ## Verifiera att backuper skapas
 

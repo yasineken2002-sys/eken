@@ -255,6 +255,35 @@ describe('BackupService.pruneOldBackups', () => {
     },
   )
 
+  // GRINDEN SITTER PÅ RÄTT DÖRR. Ett källprov kan se att tilldelningen läser
+  // `BACKUP_PRUNE_ENABLED_VAR`; det här provet ser att konstanten faktiskt bär
+  // det variabelnamnet. Bytte någon värdet mot 'BACKUP_ENABLED' vore koden
+  // oförändrad i form och grinden styrd av fel flagga.
+  it('grindkonstanten bär variabelnamnet BACKUP_PRUNE_ENABLED', () => {
+    expect(BACKUP_PRUNE_ENABLED_VAR).toBe('BACKUP_PRUNE_ENABLED')
+  })
+
+  // FEL FLAGGA, mätt på BETEENDET och inte på källtexten. Läste tilldelningen
+  // `BACKUP_ENABLED` i stället för grindvariabeln skulle en påslagen backup
+  // också slå på raderingen — utan att någon rört gallringsinställningen.
+  it('en påslagen BACKUP_ENABLED slår INTE på gallringen', async () => {
+    const service = serviceWith({
+      BACKUP_ENABLED: 'true',
+      R2_ACCOUNT_ID: 'acc',
+      R2_ACCESS_KEY_ID: 'ak',
+      R2_SECRET_ACCESS_KEY: 'sk',
+      R2_BUCKET_NAME: 'eken-files',
+      DATABASE_URL: 'postgresql://u:p@h:5432/db',
+      BACKUP_RETENTION_DAYS: '30',
+    })
+    const spion = spionera(service, [{ Key: expired }])
+
+    expect(service.enabled).toBe(true)
+    expect(service.pruneEnabled).toBe(false)
+    expect((await service.pruneOldBackups(now)).skipped).toBe(true)
+    expect(spion.raderade()).toEqual([])
+  })
+
   // MOTPROVET. Utan det här fallet kan sviten ovan vara grön därför att
   // gallringen är trasig i stället för avstängd — "raderade inget" och "kan
   // inte radera" ser likadana ut. Här SKA exakt en radering ske.
