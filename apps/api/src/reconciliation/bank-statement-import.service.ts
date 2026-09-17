@@ -231,9 +231,27 @@ export class BankStatementImportService {
       const date = new Date(t.date)
 
       // Delad ingest-kärna (samma pipeline som CSV/BgMax): fält-dedup identisk med
-      // CSV-importen (org, date, description, amount) → create → matchTransaction.
+      // CSV-importen (org, date, description, amount, reference) → create →
+      // matchTransaction.
+      //
+      // `reference` ingår av samma skäl som i CSV-importen: utan den räknades två
+      // hyresgästers lika stora inbetalningar samma dag som EN, och den andras
+      // pengar nådde aldrig databasen. Fältet är det som faktiskt lagras på raden
+      // nedan (`reference: t.ocr`), så nyckeln frågar efter exakt det värde den
+      // själv skriver — och `|| null` gör "ingen OCR" till ett eget värde i
+      // stället för en joker.
+      //
+      // ÄRVD BEGRÄNSNING, inte en ny: PDF-vägens tolkning är AI-buren och
+      // icke-deterministisk (`schema.prisma` vid `originalParsedData`). Laddas
+      // samma PDF upp igen och AI:n läser ett annat OCR blir det en ny rad — men
+      // det gällde redan `description`, som låg i nyckeln före den här ändringen.
       const outcome = await this.reconciliation.ingestFromFile(organizationId, {
-        dedup: { date, description: t.description, amount: amountDecimal },
+        dedup: {
+          date,
+          description: t.description,
+          amount: amountDecimal,
+          reference: t.ocr || null,
+        },
         data: {
           date,
           description: t.description,

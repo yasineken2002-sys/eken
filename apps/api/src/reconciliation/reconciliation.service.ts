@@ -91,7 +91,12 @@ export interface AutoMatchResult {
  * bokföringslogiken (`matchTransaction`, #161-166) rörs ALDRIG av denna refaktor.
  */
 export interface FileIngestInput {
-  // Fält-dedup, bevarad EXAKT per källa (CSV/PDF: description, BgMax: rawOcr).
+  // Fält-dedup, byggd av KÄLLAN — varje filväg äger sin egen identitet, eftersom
+  // varje filformat bär olika fält (CSV/PDF: date+description+amount+reference,
+  // BgMax: date+amount+rawOcr). Kärnan ställer frågan; den formulerar den inte.
+  // Nullbara fält ska anges EXPLICIT som `null` — ett utelämnat fält blir inget
+  // villkor alls, alltså en joker som matchar rader det inte får matcha (F034 i
+  // nattgranskningen 2026-09-17).
   // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
   dedup: Prisma.BankTransactionWhereInput
   data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
@@ -447,7 +452,10 @@ export class ReconciliationService {
       if (apiRow) return { duplicate: true }
     }
 
-    // Fält-dedup — OFÖRÄNDRAD per källa (CSV/PDF: description, BgMax: rawOcr).
+    // Fält-dedup — nyckeln kommer från källan (se `FileIngestInput.dedup`).
+    // Läs-sedan-skriv utan unikt index: två PARALLELLA importer av samma fil kan
+    // fortfarande passera båda. Det är en egen, känd brist (filnivå-idempotens,
+    // kräver migration) och den är varken införd eller lagad här.
     const existing = await this.prisma.bankTransaction.findFirst({
       where: { organizationId, ...input.dedup },
     })
@@ -768,9 +776,43 @@ export class ReconciliationService {
         // mobilnummer i beskrivningen transaktionen omatchbar (se ocr-proveniens.ts).
         const rawOcr = extractOcr(row.reference) ?? extractOcrFromProse(row.description)
 
-        // Delad ingest-kärna: fält-dedup (org, date, description, amount) → create → match.
+        // Delad ingest-kärna: fält-dedup (org, date, description, amount, reference)
+        // → create → match.
+        //
+        // REFERENSKOLUMNEN ÄR IDENTITETEN, OCH DEN SAKNADES. Utan den svarade
+        // nyckeln "samma betalning" om två rader som bara var lika i det banken
+        // skriver: två hyresgäster med samma hyra som betalar samma dag får samma
+        // datum, samma belopp och samma prosa ("Insättning"). Den andra raden
+        // returnerade `{duplicate:true}`, ingen `BankTransaction` skapades, och
+        // eftersom en dubblett är ett normalt importutfall larmade ingenting. Den
+        // hyresgästen stod kvar som obetald hela kravtrappan ut.
+        //
+        // VARFÖR `reference` OCH INTE `rawOcr`. `rawOcr` är HÄRLEDD
+        // (`extractOcr(reference) ?? extractOcrFromProse(description)`, se raden
+        // ovan) och härledningen ÄNDRADES i #556: en siffra ur prosa räknas numera
+        // som OCR bara med giltig Luhn. En rad som lagrades före det bär ett
+        // `rawOcr` som dagens tolkning inte producerar — en nyckel på det fältet
+        // hade missat vid återimport av gammal historik och skapat en ANDRA
+        // bankrad, alltså dubbel allokering och dubbel bokföring. `reference` är
+        // kolumnen rå, lagrad ordagrant sedan importvägen fanns och aldrig
+        // omräknad. Den bär dessutom allt `rawOcr` kunde ha tillfört: `rawOcr` är
+        // en funktion av `reference` och `description`, som båda redan ingår.
+        //
+        // `|| null` och inte villkorad spridning: ett UTELÄMNAT fält är ingen
+        // fråga utan en JOKER som matchar vilken rad som helst. "ingen referens"
+        // måste vara sitt eget värde, annars äter en referenslös rad upp en rad
+        // som bär någon annans OCR.
+        //
+        // `balance` ingår med flit INTE: löpande saldo beror på exportens
+        // radordning och saknas i flera bankexporter — en nyckel med `balance`
+        // hade gjort om-import av samma period till nya rader.
         const outcome = await this.ingestFromFile(organizationId, {
-          dedup: { date: row.date, description: row.description, amount: amountDecimal },
+          dedup: {
+            date: row.date,
+            description: row.description,
+            amount: amountDecimal,
+            reference: row.reference || null,
+          },
           data: {
             date: row.date,
             description: row.description,
@@ -893,8 +935,21 @@ export class ReconciliationService {
         const amountDecimal = new Decimal(amount.toFixed(2))
 
         // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) → create → match.
+        //
+        // `rawOcr: ocr || null` — inte längre villkorad spridning. Utelämnat fält
+        // = inget villkor = JOKER: en BgMax-post UTAN OCR matchade tidigare vilken
+        // rad som helst med samma dag och belopp, även en rad som bär en ANNAN
+        // hyresgästs OCR, och försvann då tyst. Frånvaron av referens måste vara
+        // sitt eget värde.
+        //
+        // Här är det RÄTT att nyckeln är `rawOcr` och inte `reference`: BgMax har
+        // ingen referenskolumn, OCR:et är en rå teckenposition i fastformatet
+        // (`line.slice(12, 37)`) och är alltså inte härlett av någon regel som kan
+        // ändras. `description` utelämnas fortfarande med flit — den är syntetisk
+        // här, och att hålla den utanför är det som gör att samma betalning
+        // importerad via BÅDE BgMax och CSV känns igen som en.
         const outcome = await this.ingestFromFile(organizationId, {
-          dedup: { date: txDate, amount: amountDecimal, ...(ocr ? { rawOcr: ocr } : {}) },
+          dedup: { date: txDate, amount: amountDecimal, rawOcr: ocr || null },
           data: {
             date: txDate,
             description,
