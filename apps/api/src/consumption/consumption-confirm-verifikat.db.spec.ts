@@ -299,6 +299,31 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       include: { lines: true },
     })
 
+  /**
+   * En EGEN anslutning. Överlappsprovet behöver verkliga, skilda anslutningar —
+   * två `$transaction` på samma klient hade kunnat serialiseras av poolen i
+   * stället för av databasen, och då hade provet mätt poolen.
+   */
+  const nyKlient = (): PrismaClient =>
+    new PrismaClient({
+      datasources: { db: { url: urlMedPool(process.env.DATABASE_URL as string, POOL) } },
+    })
+
+  /** Egen anslutning med sin egen hela tjänstegraf ovanpå. */
+  const nyTjänst = (): { klient: PrismaClient; consumption: ConsumptionService } => {
+    const klient = nyKlient()
+    const verif = new VerifikationsnummerService(klient as never)
+    const acc = new AccountingService(klient as never, verif)
+    return {
+      klient,
+      consumption: new ConsumptionService(
+        klient as never,
+        acc,
+        new InvoiceEventsService(klient as never),
+      ),
+    }
+  }
+
   // ── 1. ÖPPEN PERIOD: bekräftelsen håller vad den lovar ────────────────────
 
   it('öppen period: posten blir CONFIRMED OCH får sitt verifikat (1510 D 600 / 3920 K 600)', async () => {
@@ -466,7 +491,13 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     expect(await verifikat(r)).toHaveLength(1)
   })
 
-  it('två SAMTIDIGA confirm: ETT verifikat, CONFIRMED, inget halvfärdigt kvar', async () => {
+  // MÄTER UTFALLET, INTE INTERLEAVINGEN. Två anrop startas utan att det första
+  // inväntas, vilket gör överlapp sannolikt men inte bevisat — `Promise.allSettled`
+  // säger ingenting om huruvida transaktionerna var öppna samtidigt, och
+  // `lastNumber === 1` skiljer inte fallen åt (vid äkta överlapp allokerar
+  // förloraren 2 och rullas tillbaka till 1; vid full serialisering allokerar den
+  // aldrig). Överlappet BEVISAS i provet därefter.
+  it('två confirm startade utan att invänta varandra: ETT verifikat, inget halvfärdigt kvar', async () => {
     const r = await såRigg()
 
     const utfall = await Promise.allSettled([
@@ -501,6 +532,130 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     })
     expect(sekvens).toHaveLength(1)
     expect(sekvens[0]!.lastNumber).toBe(1)
+  })
+
+  // ── ÖVERLAPPET, MÄTT I STÄLLET FÖR ANTAGET ───────────────────────────────
+  //
+  // Provet ovan kan inte skilja äkta samtidighet från två serialiserade anrop.
+  // Det här kan, och gör det utan att röra produktkoden och utan en enda sleep.
+  //
+  // MEKANIKEN. `allocate` tar en radlåsning på `JournalEntrySequence` INNAN
+  // verifikatet skrivs (`verifikationsnummer.service.ts:79`, upsert på
+  // primärnyckeln). En tredje anslutning håller den raden låst i en egen öppen
+  // transaktion. Båda bekräftelserna kör då fram till exakt den punkten och
+  // BLOCKERAS av databasen.
+  //
+  // FASOBSERVATIONEN ÄR BUNDEN OCH MÄTBAR, inte en tidsgissning: vi läser
+  // `pg_locks` och väntar tills exakt TVÅ backends har en ICKE BEVILJAD
+  // låsförfrågan. Det är databasens eget besked om att båda transaktionerna är
+  // öppna samtidigt. Deadline finns, och missas den faller provet — den
+  // frågan kan alltså ge ett annat svar än det önskade.
+  //
+  // DÄRMED BEVISAS OCKSÅ ATT BÅDA PASSERAT IDEMPOTENSUPPSLAGET. `findFirst` på
+  // (org, source, sourceId) ligger FÖRE `allocate` i `createNumberedEntry`, och
+  // vid barriären mäter vi att det ännu inte finns något verifikat alls. Ingen av
+  // dem kan alltså ha tagit snabbvägen "hittade befintligt" — förloraren MÅSTE
+  // gå vidare till `create`, kollidera på (org, source, sourceId) och tas om hand
+  // av omtagsvägen i `confirmCharge`. Det är den riktiga konfliktvägen koden har.
+  //
+  // INGEN SPÄRR SOM KAN AKTIVERAS I PRODUKTION: barriären är en vanlig öppen
+  // transaktion på en testanslutning i den här filen. Produktkoden vet inte om
+  // att den finns och har ingen krok för den.
+  it('två SAMTIDIGA confirm: överlappet är MÄTT via databasens låsvänta', async () => {
+    const r = await såRigg()
+
+    // Sekvensraden finns men inget nummer är allokerat — normaltillståndet för
+    // en organisation vars första verifikat är på väg. Raden måste finnas för
+    // att kunna låsas; `lastNumber: 0` är schemats egen default.
+    await prisma.journalEntrySequence.create({
+      data: { organizationId: r.orgId, fiscalYear: 2026, series: 'A', lastNumber: 0 },
+    })
+
+    const a = nyTjänst()
+    const b = nyTjänst()
+    const spärrKlient = nyKlient()
+    let släpp!: () => void
+    const släppt = new Promise<void>((res) => {
+      släpp = res
+    })
+
+    /** Antal backends i databasen med en ICKE BEVILJAD låsförfrågan just nu. */
+    const blockeradeNu = async (): Promise<number> => {
+      const rader = await prisma.$queryRaw<Array<{ n: number }>>`
+        SELECT count(DISTINCT l.pid)::int AS n
+        FROM pg_locks l
+        JOIN pg_stat_activity act ON act.pid = l.pid
+        WHERE NOT l.granted AND act.datname = current_database()`
+      return rader[0]?.n ?? 0
+    }
+
+    try {
+      // SONDEN MÅSTE KUNNA GE NÅGOT ANNAT ÄN SVARET VI VILL HA. Före barriären
+      // väntar ingen på något lås. Mäts den till 0 här och till 2 nedan är det
+      // samma fråga som gett två olika svar — inte en fråga som alltid säger 2.
+      expect(await blockeradeNu()).toBe(0)
+
+      // Tredje anslutningen håller sekvensraden. Transaktionen står öppen tills
+      // vi släpper den; timeouten är riggens, inte produktens.
+      const spärr = spärrKlient.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1 FROM "JournalEntrySequence"
+            WHERE "organizationId" = ${r.orgId} AND "fiscalYear" = 2026 AND "series" = 'A'
+            FOR UPDATE`
+          await släppt
+        },
+        { maxWait: 5_000, timeout: 20_000 },
+      )
+
+      const pA = a.consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+      const pB = b.consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+
+      // ── BUNDEN FASOBSERVATION ──────────────────────────────────────────────
+      const deadline = Date.now() + 3_000
+      let blockerade = 0
+      while (Date.now() < deadline) {
+        blockerade = await blockeradeNu()
+        if (blockerade >= 2) break
+        await new Promise((res) => setImmediate(res))
+      }
+
+      // DATABASENS EGET BESKED: två transaktioner är öppna samtidigt och väntar.
+      expect(blockerade).toBe(2)
+      // …och ingen av dem kan ha hittat ett befintligt verifikat, för det finns
+      // inget. Båda är alltså förbi idempotensuppslaget.
+      expect(await prisma.journalEntry.count({ where: { organizationId: r.orgId } })).toBe(0)
+
+      släpp()
+      await spärr
+
+      const utfall = await Promise.allSettled([pA, pB])
+
+      // ── SLUTASSERTIONS (oförändrade krav) ─────────────────────────────────
+      const fel = utfall.flatMap((u) => (u.status === 'rejected' ? [String(u.reason)] : []))
+      expect(fel).toEqual([]) // sanningsenliga svar: ingen får ett fel om en post som ÄR bokförd
+      expect(utfall.filter((u) => u.status === 'fulfilled')).toHaveLength(2)
+      expect(await status(r.chargeId)).toBe('CONFIRMED') // en charge-status
+
+      const entries = await verifikat(r)
+      expect(entries).toHaveLength(1) // exakt ett verifikat
+      expect(entries[0]!.lines).toHaveLength(2) // två rätta rader
+      expect(entries[0]!.lines.reduce((s, l) => s + Number(l.debit ?? 0), 0)).toBe(600)
+      expect(entries[0]!.lines.reduce((s, l) => s + Number(l.credit ?? 0), 0)).toBe(600)
+
+      // EN nummerallokering: förlorarens ökning till 2 rullades tillbaka med
+      // hens transaktion, så serien står på 1 och verifikatet bär nummer 1.
+      expect(entries[0]!.verNumber).toBe(1)
+      const sekvens = await prisma.journalEntrySequence.findMany({
+        where: { organizationId: r.orgId },
+      })
+      expect(sekvens).toHaveLength(1)
+      expect(sekvens[0]!.lastNumber).toBe(1)
+    } finally {
+      släpp()
+      await a.klient.$disconnect()
+      await b.klient.$disconnect()
+      await spärrKlient.$disconnect()
+    }
   })
 
   it('stängd period + två SAMTIDIGA confirm: båda avvisas, inget spår lämnas', async () => {
