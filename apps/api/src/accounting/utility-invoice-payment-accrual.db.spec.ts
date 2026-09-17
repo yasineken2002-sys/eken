@@ -534,6 +534,60 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     await expect(betalaManuellt(faktura.id, r, 660)).rejects.toBeInstanceOf(MissingAccrualError)
   })
 
+  // ── 6c. TOM-MÄNGD-SPÄRREN ÄR LOAD-BEARING EFTER AVGIFTSGRENEN ───────────
+  //
+  // U-1 ur den oberoende granskningen. Provet på rad ~339 mäter tom mängd UTAN
+  // avgift, och där nekar BELOPPSKRAVET (Σ(∅)=0 ≠ 600) — inte tom-mängd-raden.
+  // Med en avgift som ensam motsvarar fakturans total ändras det:
+  //
+  //   Σ poster = 0 ≠ 60  → avgiftsgrenen hittar sitt verifikat → täckt = 60
+  //   → beloppskravet PASSERAR → `for` över tom mängd gör ingenting
+  //   → funktionen hade returnerat true, utan EN ENDA bokförd förbrukningsfordran.
+  //
+  // Det är tom-mängd-raden som stoppar det, och ingenting annat.
+  //
+  // TILLSTÅNDET ÄR KONSTRUERAT, inte produktnått: poster lossas bara i
+  // VOID-grenen och en VOID-faktura är inte betalbar. Provet bygger det därför
+  // med rigg-skrivningar, men går sedan in på de RIKTIGA betalningsvägarna —
+  // det är effekten på betalningen som mäts, inte hjälparen i sig.
+  it('REGRESSION U-1: UTILITY utan kopplade poster men med avgift som ensam täcker totalen NEKAS', async () => {
+    const r = await såRigg()
+    const chargeId = await debiteraOchBokfor(r, 1240, 5)
+    const faktura = await fakturera(r)
+
+    // Lossa posten och skriv ned fakturan till enbart avgiftens belopp, så att
+    // avgiften ENSAM motsvarar totalen.
+    await prisma.consumptionCharge.update({ where: { id: chargeId }, data: { invoiceId: null } })
+    await prisma.invoice.update({
+      where: { id: faktura.id },
+      data: { total: 0, subtotal: 0 },
+    })
+    const avgiftsverifikat = await påförAvgift(faktura.id, r, 60)
+    expect(avgiftsverifikat).not.toBeNull() // annars mäter provet fel sak
+
+    const efterPåförande = await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })
+    expect(Number(efterPåförande.total)).toBe(60)
+    expect(await prisma.consumptionCharge.count({
+      where: { organizationId: r.orgId, invoiceId: faktura.id } })).toBe(0)
+
+    // ── BÅDA de riktiga betalningsvägarna ────────────────────────────────────
+    await expect(betalaManuellt(faktura.id, r, 60)).rejects.toBeInstanceOf(MissingAccrualError)
+    await expect(matchaBank(faktura.id, r, 60)).rejects.toBeInstanceOf(MissingAccrualError)
+
+    // ── INGA EFFEKTER COMMITTADE ─────────────────────────────────────────────
+    const efter = await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })
+    expect(efter.status).toBe('SENT')
+    expect(efter.paidAt).toBeNull()
+    expect(await prisma.invoicePayment.count({ where: { invoiceId: faktura.id } })).toBe(0)
+    expect(await prisma.bankTransaction.count({
+      where: { organizationId: r.orgId, status: 'MATCHED' } })).toBe(0)
+    // Inga NYA bokföringseffekter: fortfarande exakt de två verifikat som fanns
+    // före betalningsförsöken (förbrukningen + avgiften), inget PAYMENT-verifikat.
+    expect(await prisma.journalEntry.count({
+      where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(0)
+    expect(await prisma.journalEntry.count({ where: { organizationId: r.orgId } })).toBe(2)
+  })
+
   // ── 7. DELBETALNING OCH OMFÖRSÖK ────────────────────────────────────────
 
   it('delbetalning följd av resten: PARTIAL → PAID, två allokeringar, två verifikat', async () => {

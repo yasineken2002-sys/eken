@@ -2198,9 +2198,11 @@ export class AccountingService {
       return null
     }
 
-    // A2 fail-closed (typ-medveten: en depositionsfaktura bokför sin 1510-debet
-    // under 'deposit-invoice:<depositId>', inte invoice.id — accepteras via länkad
-    // Deposit, annars falsk-nekas varje frisk depositionsbetalning).
+    // A2 fail-closed (typ-medveten: vanlig faktura, depositionsfaktura ELLER
+    // förbrukningsfaktura — tre underlagsvägar, se assertInvoiceReceivableBacked).
+    // En depositionsfaktura bokför sin 1510-debet under 'deposit-invoice:<id>' och
+    // en förbrukningsfaktura under 'consumption-charge:<id>' per post, inte under
+    // invoice.id; utan grenarna falsk-nekas varje frisk betalning av dem.
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
     const sourceId = `invoice-manual-payment:${allocationId}`
@@ -3696,13 +3698,20 @@ export class AccountingService {
     this.failClosedNoAccrual(label, organizationId, accrualSourceId)
   }
 
-  // Faktura-vägen är TYP-medveten: en vanlig faktura bokför sin fordran under
-  // sourceId=invoice.id, men en DEPOSITIONSFAKTURA (Invoice.type='DEPOSIT',
-  // Deposit.invoiceId satt) bokför sin 1510-debet under 'deposit-invoice:<depositId>'
-  // (createJournalEntryForDepositInvoice). Guarden accepterar därför BÅDA: annars
-  // skulle varje frisk depositionsbetalning falsk-nekas. En länkad Deposit ⇔ atomiskt
-  // bokförd deposit-invoice-accrual (T5 A1) — samma strukturgaranti reconciliation
-  // redan litar på (#41/#109). Fail-closed bara om INGEN av nycklarna finns.
+  // Faktura-vägen är TYP-medveten och känner TRE underlagsvägar:
+  //
+  //   1. VANLIG FAKTURA  — fordran under sourceId = invoice.id.
+  //   2. DEPOSITIONSFAKTURA (Invoice.type='DEPOSIT', Deposit.invoiceId satt) —
+  //      1510-debet under 'deposit-invoice:<depositId>'
+  //      (createJournalEntryForDepositInvoice). En länkad Deposit ⇔ atomiskt
+  //      bokförd deposit-invoice-accrual (T5 A1) — samma strukturgaranti
+  //      reconciliation redan litar på (#41/#109).
+  //   3. FÖRBRUKNINGSFAKTURA (Invoice.type='UTILITY') — fordran under
+  //      'consumption-charge:<id>', EN per kopplad post, skriven redan vid
+  //      confirm. Se harForbrukningstackning för vad som krävs.
+  //
+  // Guarden accepterar alla tre: annars falsk-nekas varje frisk depositions-
+  // eller förbrukningsbetalning. Fail-closed bara om INGEN av vägarna bär.
   private async assertInvoiceReceivableBacked(
     db: Prisma.TransactionClient,
     organizationId: string,
@@ -3787,22 +3796,21 @@ export class AccountingService {
     })
     // ── DEN HÄR RADEN KAN INTE FALLA I DAG, OCH DET ÄR MÄTT ──────────────────
     //
-    // Tom mängd är inte täckning: `[].every(…)` är `true`, och utan raden hade
-    // en UTILITY-faktura helt utan kopplade poster godkänts av att det inte
-    // fanns något att kontrollera.
+    // RADEN BÄR. Utan den är loopen längst ned vacuöst sann: `for` över en tom
+    // mängd gör ingenting och funktionen returnerar true.
     //
-    // MUTATIONSMÄTT: tas raden bort passerar hela provsviten ändå (14/14). Den
-    // är alltså SUBSUMERAD av två andra spärrar, inte verksam på egen hand:
-    //   • Σ(∅) är 0, så beloppskravet nedan nekar varje faktura med total > 0.
-    //   • En UTILITY-faktura med total 0 går inte att reglera alls — båda
-    //     betalningsvägarna avvisar den med BadRequestException innan vakten
-    //     ens nås (uppmätt i `utility-invoice-payment-accrual.db.spec.ts`).
+    // Motexemplet är inte hypotetiskt utan konkret: en UTILITY-faktura med NOLL
+    // kopplade poster, `total` 60, och ett verkligt avgiftsverifikat på 60.
+    // Σ poster är då 0 ≠ 60, avgiftsgrenen nedan hittar sitt verifikat, täckt
+    // blir 60 och beloppskravet passerar — varefter en betalning hade släppts
+    // igenom utan en enda bokförd förbrukningsfordran.
     //
-    // Raden står kvar ändå, och skälet är att de två spärrarna är NÅGON ANNANS
-    // beslut. Ändras beloppsbygget i `invoiceSeparateCharges`, eller blir en
-    // nollfaktura betalbar, öppnas hålet tyst — och det är just den sortens
-    // tysta öppning fail-closed-vakten finns för. Att den inte kan falla i dag
-    // är en egenskap hos omgivningen, inte ett bevis för att den är onödig.
+    // (En tidigare version av den här kommentaren kallade raden subsumerad. Den
+    // mätningen gjordes INNAN avgiftsgrenen fanns och gäller inte längre.)
+    //
+    // Tillståndet nås inte av någon produktväg i dag — poster lossas bara i
+    // VOID-grenen, och en VOID-faktura är inte betalbar — men spärren mäts av
+    // ett eget prov som konstruerar det, så att ett borttagande blir rött.
     if (charges.length === 0) return false
 
     let täckt = charges.reduce((acc, c) => acc.plus(c.totalAmount), new Prisma.Decimal(0))
@@ -3825,6 +3833,13 @@ export class AccountingService {
     // HUVUDBOKEN (verifikatets debetsida), inte ur fakturaraden. Det är fordran
     // vi prövar, inte dokumentet: en avgift som bokförts med fel belopp får inte
     // släppas igenom bara för att något verifikat finns.
+    //
+    // VAD UPPSLAGET INTE BEVISAR: `source` är verifikatets URSPRUNG/källtyp, inte
+    // en självständig bokföringsstatus, och debetsumman filtreras inte på
+    // kontonummer. Att raden är 1510-debet följer av att `bookReminderFee` är
+    // enda skrivaren på nyckeln `reminder-fee:<invoiceId>` (1510 D / 3593 K) och
+    // av det unika indexet (org, source, sourceId) — alltså en garanti i
+    // SKRIVVÄGEN, inte något den här frågan mäter.
     //
     // Påminnelseavgiften är den ENDA post som skriver upp `Invoice.total` —
     // räntan (`interest:<noticeId>`) hör till hyresavier, inte fakturor.
