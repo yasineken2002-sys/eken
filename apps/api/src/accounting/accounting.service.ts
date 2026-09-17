@@ -14,6 +14,9 @@ import {
 import {
   CompanyForm,
   EventActorType,
+  // Värde-import: den typmedvetna grenen i assertInvoiceReceivableBacked jämför
+  // mot enumvärdet, inte mot en sträng.
+  InvoiceType,
   PaymentMethod,
   Prisma,
   RentNoticeType,
@@ -2097,7 +2100,8 @@ export class AccountingService {
     const amount = Number(transaction.amount)
     if (amount <= 0) return null
 
-    // A2 fail-closed (typ-medveten: vanlig faktura ELLER depositionsfaktura).
+    // A2 fail-closed (typ-medveten: vanlig faktura, depositionsfaktura ELLER
+    // förbrukningsfaktura — se assertInvoiceReceivableBacked).
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
@@ -3714,7 +3718,90 @@ export class AccountingService {
       (await this.hasReceivableAccrual(db, organizationId, `deposit-invoice:${deposit.id}`))
     )
       return
+    if (await this.harForbrukningstackning(db, organizationId, invoiceId)) return
     this.failClosedNoAccrual(`faktura ${invoiceNumber}`, organizationId, invoiceId)
+  }
+
+  /**
+   * TREDJE TYPMEDVETNA GRENEN: en FÖRBRUKNINGSFAKTURA (UTILITY).
+   *
+   * ── VARFÖR DEN BEHÖVS ──────────────────────────────────────────────────────
+   *
+   * En förbrukningsfaktura bokförs ALDRIG som faktura. Fordran uppstod redan vid
+   * `confirmCharge`, ett verifikat per debiterad post under
+   * `consumption-charge:<id>`, och `invoiceSeparateCharges` bygger därför
+   * dokumentet med en rå `tx.invoice.create` som med flit går förbi
+   * `InvoicesService.create` — annars hade 1510 och intäkten bokförts en andra
+   * gång. Följden var att `hasReceivableAccrual(invoice.id)` aldrig kunde
+   * träffa, och att varje FRISK förbrukningsbetalning falsk-nekades: varken
+   * manuell betalning eller bankmatchning gick igenom, fakturan stod kvar SENT
+   * och banktransaktionen UNMATCHED. Reproducerat på riktig Postgres, och
+   * likadant på revisionen före den här grenen — felet är äldre än rättningen.
+   *
+   * Det är exakt samma form av falsk-nekande som depositionsgrenen ovan finns
+   * för. Den grenen skrevs; den här glömdes.
+   *
+   * ── VAD SOM KRÄVS, OCH VARFÖR INTE MINDRE ─────────────────────────────────
+   *
+   * ALLA kopplade poster måste bära sitt verifikat — inte någon. Fakturans
+   * belopp ÄR summan av posterna (`consumption.service.ts:789-791`), så en enda
+   * bokförd post av fem hade släppt igenom en betalning vars fordran till fyra
+   * femtedelar inte finns i huvudboken.
+   *
+   * En TOM mängd nekas uttryckligen. `[].every(…)` är `true` i JavaScript, och
+   * utan raden hade en UTILITY-faktura helt utan kopplade poster blivit
+   * godkänd av att det inte fanns något att kontrollera — den sortens tomma
+   * godkännande är precis vad fail-closed-vakten finns för att hindra.
+   *
+   * BELOPPET MÅSTE STÄMMA, och det är spärren mot blandade eller okända rader.
+   * Bär fakturan belopp som inte kommer ur de kopplade posterna — en handpåförd
+   * rad, en delvis lossad charge, ett dokument som inte byggdes av
+   * `invoiceSeparateCharges` — går summan inte ihop och betalningen nekas
+   * fortsatt. Jämförelsen görs i `Prisma.Decimal`, som resten av bokföringen;
+   * ingen Number-jämförelse och ingen ny avrundning införs.
+   *
+   * IDENTITETEN ÄR SERVERHÄRLEDD. `InvoiceLine` bär ingen koppling till en
+   * förbrukningspost; den enda kopplingen är `ConsumptionCharge.invoiceId`, som
+   * skapandevägen sätter i samma transaktion som fakturan. Ingenting här kommer
+   * från klienten, och allt slås upp på (id, organizationId).
+   *
+   * LÄSER BARA. Ett saknat förbrukningsverifikat skapas aldrig som bieffekt av
+   * en betalning — då hade betalningen tyst lagat sin egen förutsättning.
+   */
+  private async harForbrukningstackning(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    invoiceId: string,
+  ): Promise<boolean> {
+    const invoice = await db.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { type: true, total: true },
+    })
+    // Grenen gäller EN fakturatyp. Allt annat faller vidare till fail-closed.
+    if (!invoice || invoice.type !== InvoiceType.UTILITY) return false
+
+    const charges = await db.consumptionCharge.findMany({
+      where: { invoiceId, organizationId },
+      select: { id: true, totalAmount: true },
+    })
+    // Tom mängd är inte täckning. Se docblocket: `every([])` är true.
+    if (charges.length === 0) return false
+
+    const summa = charges.reduce(
+      (acc, c) => acc.plus(c.totalAmount),
+      new Prisma.Decimal(0),
+    )
+    if (!summa.equals(invoice.total)) return false
+
+    // ALLA, inte någon. Kortsluter på första post som saknar sitt verifikat.
+    // Anropar den BEFINTLIGA hjälparen per post i stället för att formulera om
+    // samma villkor i en batchfråga: vad som är ett giltigt accrual ska stå på
+    // ETT ställe. Mängden är en fakturas poster, alltså ett fåtal.
+    for (const charge of charges) {
+      if (!(await this.hasReceivableAccrual(db, organizationId, `consumption-charge:${charge.id}`)))
+        return false
+    }
+    return true
   }
 
   async createJournalEntryForRentNoticePayment(
