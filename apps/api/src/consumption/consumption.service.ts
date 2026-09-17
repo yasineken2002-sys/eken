@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import type {
   Meter,
   MeterStatus,
@@ -15,7 +21,11 @@ import type {
 import { PrismaService } from '../common/prisma/prisma.service'
 import { assertPeriodOpen } from '../accounting/closed-period'
 import { fiscalYearBounds } from '../accounting/fiscal-year'
-import { AccountingService, vatRateForRent } from '../accounting/accounting.service'
+import {
+  AccountingService,
+  isIdempotencyRaceConflict,
+  vatRateForRent,
+} from '../accounting/accounting.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { CreateMeterDto } from './dto/create-meter.dto'
 import { UpdateMeterDto } from './dto/update-meter.dto'
@@ -51,8 +61,6 @@ function chargeLineDescription(meterType: MeterType, periodEnd: Date): string {
 
 @Injectable()
 export class ConsumptionService {
-  private readonly logger = new Logger(ConsumptionService.name)
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
@@ -329,13 +337,39 @@ export class ConsumptionService {
       const pricePerUnit = Number(tariff.pricePerUnit)
       const netAmount = round2((quantity as number) * pricePerUnit)
       const vatAmount = round2((netAmount * vatRate) / 100)
+      const totalAmount = round2(netAmount + vatAmount)
+
+      // ── NOLL OCH NEGATIVT ÄR INTE SAMMA HÄNDELSE ─────────────────────────
+      //
+      // Noll betyder "inget att debitera" — en tariff satt till 0 ("ingår i
+      // hyran") eller en förbrukning som avrundas bort. Den posten skapas inte,
+      // se villkoret vid `consumptionCharge.create` nedan.
+      //
+      // NEGATIVT betyder att underlaget är fel. Kvantiteten kan inte bli
+      // negativ (`computeQuantity` kastar på både fallande mätarställning och
+      // negativ periodvolym), och `CreateTariffDto.pricePerUnit` har `@Min(0)`
+      // — så det här ska inte kunna inträffa via API:et. En import, en
+      // migrering eller en direktskrivning kan ändå lägga en negativ tariff,
+      // och då får den INTE tyst falla ut genom samma hål som nollan: att inte
+      // debitera för att beloppet är negativt vore att behandla ett datafel som
+      // gratis förbrukning, och en negativ kundfordran är ingen produkt vi har.
+      // Anropet avvisas i stället, innan något skrivs — samma linje som den
+      // saknade tariffen ovan.
+      if (totalAmount < 0) {
+        throw new BadRequestException(
+          `Beräknad förbrukningsersättning blev negativ (${totalAmount} kr) för ${meter.type} ` +
+            `vid ${dto.periodEnd}. Kontrollera tariffens pris per enhet — en negativ ` +
+            'debitering kan inte bokföras. Ingenting har sparats.',
+        )
+      }
+
       chargeData = {
         pricePerUnit,
         netAmount,
         vatStatus,
         vatRate,
         vatAmount,
-        totalAmount: round2(netAmount + vatAmount),
+        totalAmount,
       }
     }
 
@@ -359,7 +393,23 @@ export class ConsumptionService {
       })
 
       let charge: ConsumptionCharge | null = null
-      if (billable && chargeData && lease && deliveryMode) {
+      // `chargeData.totalAmount > 0` kan här bara utesluta EXAKT NOLL: negativa
+      // belopp avvisades redan ovan, före transaktionen. Nollan är legitim — en
+      // tariff satt till 0 ("ingår i hyran", `@Min(0)`) eller en förbrukning som
+      // avrundas till 0,00 — men posten går inte att bokföra: verifikatet skulle
+      // sakna belopp, och sedan #F017 avvisar `confirmCharge` en bekräftelse som
+      // inte kan ge ett verifikat. Skapades posten ändå fastnade den i DRAFT för
+      // alltid; det finns ingen annulleringsväg för charges. Avläsningen sparas
+      // som vanligt; det är bara debiteringen som uteblir.
+      //
+      // ASYMMETRI SOM ÄR MEDVETEN: bokslutsvägen (`runYearEndAccrual`, `:989`)
+      // buntar fortfarande ihop noll och negativt i ett `if (net <= 0)`. Efter
+      // den här ändringen delar de två vägarna alltså bedömningen om NOLLAN men
+      // inte om det negativa. Det är inte förbisett — bokslutsvägen räknar upp
+      // `skipped` och är därmed inte tyst, och att ändra en periodiseringsväg är
+      // ett eget beslut med egen mätning. Raden står här så att nästa läsare ser
+      // skillnaden i stället för att anta att de följs åt.
+      if (billable && chargeData && chargeData.totalAmount > 0 && lease && deliveryMode) {
         charge = await tx.consumptionCharge.create({
           data: {
             organizationId,
@@ -484,45 +534,151 @@ export class ConsumptionService {
   // ── DRAFT → CONFIRMED: bokför verifikat + 1510-fordran (PR 3) ───────────────
   //
   // Här uppstår intäkten och kundfordran — oberoende av leverans (PR 4 rör detta
-  // aldrig). Verifikatet skapas UTANFÖR transaktionen och är idempotent via
-  // sourceId="consumption-charge:<id>": dubbel confirm skapar inte dubbla
-  // verifikat. Bokföringsfel loggas men fäller aldrig confirm:en (jfr deposits/
-  // avisering). Inget rörs på avi/faktura, ingen consumptionAmount, ingen
+  // aldrig). Inget rörs på avi/faktura, ingen consumptionAmount, ingen
   // RentNoticeLine — det är PR 4.
+  //
+  // ── STATUS OCH VERIFIKAT SKRIVS TILLSAMMANS, ELLER INTE ALLS ──────────────
+  //
+  // Bekräftelsen är den punkt där en MÄNNISKA säger ja till något bindande, och
+  // beskedet hon får ("Posten är bokförd (verifikat skapat)") måste därför vara
+  // sant. Statusflippen skrevs tidigare i ett eget anrop och bokföringen kördes
+  // efteråt i ett try/catch som bara loggade. En post kunde då stå CONFIRMED
+  // UTAN verifikat och UTAN 1510-fordran — och ändå plockas upp av leveransen:
+  // både avi-vägen (`attachRentNoticeLineCharges`) och fakturavägen
+  // (`invoiceSeparateCharges`) filtrerar ENBART på status och slår aldrig upp
+  // verifikatet. Följden var ett betalningskrav på en intäkt som inte fanns i
+  // huvudboken, synligt bara som en loggrad.
+  //
+  // Det var inte ett kantfall. Verifikatets datum är `charge.periodEnd`, alltså
+  // mätperiodens slut — bakåt in i en månad som bokslutet nyss kan ha stängt —
+  // och varje sent inkommen avläsning träffar därför periodspärren i
+  // `assertPeriodOpen`.
+  //
+  // Samma princip tillämpas redan av `createJournalEntryForMiscCharge`
+  // (accounting.service.ts) och av avi-/fakturavägarna längre ned i den här
+  // filen: skrivningarna hör ihop, alltså hör de hemma i samma transaktion.
+  //
+  // IDEMPOTENSEN ÄR OFÖRÄNDRAD. Verifikatet är idempotent via
+  // sourceId="consumption-charge:<id>", och statusflippen är villkorad på DRAFT.
+  // Ett andra confirm (dubbelklick, self-heal av en post vars verifikat saknas)
+  // hittar verifikatet, flippar ingenting och svarar samma sak som det första.
+  //
+  // SELF-HEAL ÄR INTE EN UPPTÄCKTSVÄG, och ska inte läsas som en. Webben visar
+  // Bekräfta-knappen enbart när status är DRAFT (`ConsumptionPage.tsx:898`), så
+  // en post som blev CONFIRMED utan verifikat INNAN den här rättningen kan inte
+  // läkas från gränssnittet — bara genom ett direkt API-anrop. Ingenting letar
+  // heller upp sådana poster. Att hitta och läka dem är ett eget arbete.
   async confirmCharge(
     id: string,
     organizationId: string,
     userId: string,
   ): Promise<ConsumptionCharge> {
-    // Atomär statusövergång DRAFT → CONFIRMED: en villkorad updateMany (status:
-    // 'DRAFT' i WHERE) kan aldrig råka skriva över ett samtidigt CANCELLED till
-    // CONFIRMED — stänger TOCTOU mot ett framtida cancel-flöde. count påverkar
-    // inget: verifikat-anropet nedan körs alltid (self-heal) och är idempotent.
-    await this.prisma.consumptionCharge.updateMany({
-      where: { id, organizationId, status: 'DRAFT' },
-      data: { status: 'CONFIRMED' },
-    })
-
-    const charge = await this.prisma.consumptionCharge.findFirst({ where: { id, organizationId } })
-    if (!charge) throw new NotFoundException('Förbrukningsposten hittades inte')
-    if (charge.status === 'CANCELLED') {
-      throw new BadRequestException('Annullerad förbrukningspost kan inte bokföras')
-    }
-    // CONFIRMED/ATTACHED → redan bokförd; det idempotenta anropet nedan körs ändå
-    // (self-heal om ett tidigare confirm dog efter statusbytet men före verifikatet)
-    // utan att skapa dubbletter, tack vare sourceId-idempotensen.
-
     try {
-      await this.accounting.createJournalEntryForConsumptionCharge(charge, organizationId, userId)
+      await this.bokforOchBekrafta(id, organizationId, userId)
     } catch (err) {
-      this.logger.error(
-        `[Consumption] Bokföring av förbrukningspost ${charge.id} misslyckades: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      )
+      // SAMTIDIGT OMFÖRSÖK. Med en inskickad transaktion äger anroparen
+      // rollbacken, så `createNumberedEntry` gör INTE sin egen race-återhämtning
+      // — kollisionen på idempotensindexet (org, source, sourceId) kommer hit i
+      // stället. Vinnarens verifikat är svaret på förlorarens fråga: samma
+      // affärshändelse, samma nyckel. Ett omtag räcker, och det andra varvet
+      // träffar idempotensuppslaget i stället för att skapa något.
+      //
+      // Disambiguerat på err.meta.target via accounting-modulens egen
+      // `isIdempotencyRaceConflict`, aldrig en blind P2002-fångst: en dubblett i
+      // VERIFIKATIONSSERIEN betyder något helt annat och måste fortsätta upp.
+      if (!isIdempotencyRaceConflict(err)) throw err
+      await this.bokforOchBekrafta(id, organizationId, userId)
     }
 
     return this.findCharge(id, organizationId)
+  }
+
+  /**
+   * Verifikatet och statusövergången i EN transaktion. Faller bokföringen —
+   * stängd period, saknat konto, obalans — rullas statusen tillbaka med den,
+   * och felet fortsätter upp till anroparen med sin egen svenska text.
+   */
+  private async bokforOchBekrafta(
+    id: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const charge = await tx.consumptionCharge.findFirst({ where: { id, organizationId } })
+      if (!charge) throw new NotFoundException('Förbrukningsposten hittades inte')
+      if (charge.status === 'CANCELLED') {
+        throw new BadRequestException('Annullerad förbrukningspost kan inte bokföras')
+      }
+      // CONFIRMED/ATTACHED → redan bokförd; anropet nedan körs ändå (self-heal
+      // om ett tidigare confirm dog mellan de två skrivningarna) utan att skapa
+      // dubbletter, tack vare sourceId-idempotensen.
+
+      const entry = await this.accounting.createJournalEntryForConsumptionCharge(
+        charge,
+        organizationId,
+        userId,
+        tx,
+      )
+
+      // INGEN TYST FRAMGÅNG. `createJournalEntryForConsumptionCharge` svarar
+      // `null` — inte med ett undantag — när kontoplanen saknar 1510, rätt
+      // intäktskonto eller 2611, och när beloppet inte är positivt. Utan raden
+      // nedan hade just de fallen gett tillbaka exakt det tillstånd den här
+      // ändringen finns för att omöjliggöra: CONFIRMED, fakturerbar, utan
+      // verifikat. Felet loggas redan av bokföringen; här blir det ett besked.
+      //
+      // 422 OCH INTE 500, till skillnad från avi- och fakturavägarna som kastar
+      // InternalServerError på samma `null`. Skillnaden är medveten: de tre
+      // orsakerna här är alla KONFIGURATION som hyresvärden själv äger och kan
+      // rätta (kontoplanen, tariffen). Ett 500 hade sagt "systemet är trasigt"
+      // om ett saknat konto, och texten nedan hade aldrig nått fram.
+      if (!entry) {
+        throw new UnprocessableEntityException(
+          'Förbrukningsposten kunde inte bokföras och har därför inte bekräftats. ' +
+            'Kontrollera att kontoplanen innehåller 1510, rätt intäktskonto ' +
+            '(3920 för el/värme, 3970 för vatten) och 2611 vid momspliktig post, ' +
+            'samt att beloppet är större än noll. Posten ligger kvar som utkast ' +
+            'och kan bekräftas igen när felet är avhjälpt.',
+        )
+      }
+
+      // Villkorad på DRAFT: en samtidig annullering kan aldrig råka skrivas över
+      // till CONFIRMED (TOCTOU mot ett framtida cancel-flöde).
+      const { count } = await tx.consumptionCharge.updateMany({
+        where: { id, organizationId, status: 'DRAFT' },
+        data: { status: 'CONFIRMED' },
+      })
+
+      // count === 0 betyder tre olika saker, och ATT SKILJA DEM ÄT KRÄVER EN NY
+      // LÄSNING — inte den vi gjorde i början av transaktionen.
+      //
+      //  1. Posten var redan CONFIRMED/ATTACHED när vi läste den → väntat
+      //     (self-heal), ingenting att säga.
+      //  2. Posten var DRAFT när vi läste den, men en SAMTIDIG bekräftelse hann
+      //     commita före vår `updateMany`. Då är posten bokförd och CONFIRMED —
+      //     av någon annan, med samma verifikat som vårt idempotensuppslag just
+      //     returnerade. Det är ett lyckat utfall, inte ett fel.
+      //  3. Posten var DRAFT och är det inte längre av något ANNAT skäl
+      //     (annullering) → då ska ingenting bokföras, och transaktionen rullas.
+      //
+      // Utan omläsningen kollapsar 2 och 3 till samma gren, eftersom `charge`
+      // bär det värde vi läste FÖRE racet. Följden vore ett 409 med texten
+      // "ingenting har bokförts" till en användare vars post faktiskt ÄR
+      // bokförd — alltså precis den sortens osanna besked den här ändringen
+      // finns för att ta bort.
+      if (count === 0 && charge.status === 'DRAFT') {
+        const nu = await tx.consumptionCharge.findFirst({
+          where: { id, organizationId },
+          select: { status: true },
+        })
+        if (nu?.status !== 'CONFIRMED' && nu?.status !== 'ATTACHED') {
+          throw new ConflictException(
+            'Förbrukningsposten ändrades av någon annan under bekräftelsen. ' +
+              'Ingenting har bokförts — läs om posten och försök igen.',
+          )
+        }
+      }
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ══ Leveranssätt: CONFIRMED → ATTACHED (PR 4) ═══════════════════════════════

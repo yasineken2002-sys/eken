@@ -36,7 +36,8 @@ AccountingService.createNumberedEntry({ organizationId, date, description,
 
 - **Idempotens** hårdgjord på DB-nivå: `@@unique(organizationId, source, sourceId)` på `JournalEntry`. Samma affärshändelse bokförs exakt en gång → "self-heal" vid retry.
 - **Gap-fritt verifikationsnummer** allokeras i samma transaktion (`VerifikationsnummerService.allocate`, serie "A").
-- **Anropsmönster** (consumption som mall): `confirmCharge()` flippar status atomärt → anropar `accounting.createJournalEntryForConsumptionCharge(charge, orgId, userId)` → bokföringsfel loggas men fäller inte källoperationen.
+- **Anropsmönster** (consumption som mall): `confirmCharge()` öppnar EN transaktion, anropar `accounting.createJournalEntryForConsumptionCharge(charge, orgId, userId, tx)` och flippar därefter status DRAFT → CONFIRMED i samma transaktion. Faller bokföringen — stängd period, saknat konto — rullas statusen tillbaka och felet går upp till anroparen.
+  RÄTTAT 2026-09-17 (#F017): raden beskrev tidigare att bokföringsfel bara loggades och inte fällde källoperationen. Det stämde, och var en defekt: posten blev CONFIRMED och därmed fakturerbar utan verifikat och utan 1510-fordran. Mönstret att kopiera är `createJournalEntryForMiscCharge`, som alltid gjort det atomiskt.
 
 **Konteringen för consumption (intäktsmönstret):**
 
@@ -55,8 +56,8 @@ betalningar (1930 D) eller kundförlust. Det finns INGEN leverantörs-/kostnadsb
 
 Ja. `ConsumptionCharge` är referensmönstret och har två redan generiska insticksplatser:
 
-1. **`attachRentNoticeLineCharges()`** (`consumption.service.ts:544`) → lägger charge som rad på hyresavin (`RentNoticeLine.consumptionChargeId`), samma OCR som hyran, 2-mån-lag.
-2. **`invoiceSeparateCharges()`** (`consumption.service.ts:605`) → skapar separat `Invoice` (type=UTILITY).
+1. **`attachRentNoticeLineCharges()`** (`consumption.service.ts:667`) → lägger charge som rad på hyresavin (`RentNoticeLine.consumptionChargeId`), samma OCR som hyran, 2-mån-lag.
+2. **`invoiceSeparateCharges()`** (`consumption.service.ts:734`) → skapar separat `Invoice` (type=UTILITY).
 
 Statusmaskinen `DRAFT → CONFIRMED (bokförs) → ATTACHED (avi/faktura)` är mall. En ny
 intäkts-charge (skada debiterad hyresgäst, nyckelersättning) kan återanvända exakt detta.
