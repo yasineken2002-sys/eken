@@ -20,8 +20,16 @@ ligger kvar på sina befintliga platser.
   blanksteg inte kan bli en tom lagrad beteckning.
 - Adress: obligatoriska gatu-/stadsfält och befintlig svensk postnummerregel.
   Adress är fortfarande en hel adress när den skickas; PATCH är partiell på
-  toppnivån. Utelämnat land blir `SE`. Tomt land är fortsatt tillåtet enligt
-  befintligt delat schema och sparas nu också vid PATCH.
+  toppnivån.
+- Land: **beteendet är ändrat, inte bara gjort valfritt.** `POST` utan land får
+  fortsatt `SE` — defaulten flyttades bara från den gemensamma adressklassen till
+  skapandets egen, så den ligger kvar där den hör hemma. En `PATCH` som skickar
+  en adress men INTE nämner landet BEVARAR nu det lagrade landet; tidigare
+  nollställdes det till `SE`, så en fastighet med `NO` tappade sitt land av en
+  redigering som bara ändrade staden. Ett explicit land följer det befintliga
+  delade schemat: tomt land är fortsatt tillåtet och sparas som tom sträng,
+  `null` avvisas. Tomsträngen likställs alltså inte med frånvaro, och något nytt
+  landskrav införs inte.
 - Area: API:ts befintliga minimum **1 m²** gäller även i formulär och delat schema.
   Detta öppnar ingen ny area under 1; sådana POST/PATCH avvisades redan av API:t.
 - Byggår: valfritt heltal 1800–innevarande år. Tomt formulärfält utelämnas.
@@ -31,10 +39,28 @@ ligger kvar på sina befintliga platser.
 Ingen migration eller automatisk ändring av äldre värden ingår. Ett historiskt
 ogiltigt värde syns oförändrat i formuläret och ger ett fältfel vid full submit;
 användaren måste rätta det för att spara formuläret. En partiell HTTP-PATCH av
-andra fält fungerar och lämnar det historiska värdet orört. Explicit inskickade
-ogiltiga värden avvisas också på äldre rader. Direkta interna tjänsteanrop och
-importvägar går fortsatt utanför HTTP-kontraktet; de inventeras eller ändras
-inte av F056.
+andra fält fungerar och lämnar det historiska värdet orört — det gäller också ett
+historiskt landvärde. Explicit inskickade ogiltiga värden avvisas också på äldre
+rader.
+
+## AI-verktygets skapa-väg
+
+`create_property` i `tool-executor.service.ts` anropar `PropertiesService.create`
+direkt och passerar varken DTO:n eller ValidationPipe. Fälten castades tidigare
+(`toolInput.name as string`), och ett cast gör ingen kontroll — verktyget kunde
+alltså skapa NYA rader med ett 201 tecken långt namn eller postnumret `abc`,
+alltså exakt den rad resten av F056 finns för att förhindra. Kroppen går nu genom
+samma delade `CreatePropertySchema` före skrivningen, på samma sätt som
+`create_inspection` redan gjorde i samma fil. Avslaget är ett svenskt
+`{ success: false }` som namnger fält och regel och sker FÖRE varje DB-effekt;
+ett giltigt anrop skapar fastigheten som förut, på anropets egen organisation.
+`country` och `totalArea` sätts fortsatt av verktyget — de står inte i
+verktygsdefinitionen, och att låta modellen fylla dem vore en vidgning av vad
+AI:n får göra, inte en validering.
+
+`import/import.service.ts` skriver fortfarande via Prisma direkt och ligger
+utanför både HTTP-kontraktet och den här rättningen. Den vägen är inventerad men
+oförändrad; ingen historisk backfill ingår.
 
 ## Reproducerbar regression
 
@@ -46,6 +72,7 @@ gemensamma Codespacet ska samtliga tunga körningar och DB-livscykeln hållas un
 ```sh
 # apps/api, DATABASE_URL måste peka på egen testdatabas
 pnpm exec jest --runInBand src/properties/properties-http.db.spec.ts src/properties/property-designation-unique.db.spec.ts
+pnpm exec jest --runInBand src/ai/tools/create-property-kontrakt.db.spec.ts
 pnpm exec jest --runInBand src/accounting/dto-contract.spec.ts
 # apps/web
 pnpm exec vitest run src/features/properties/components/PropertyForm.test.tsx
@@ -60,9 +87,14 @@ Webbproven renderar det riktiga formuläret och använder de riktiga
 request-grindarna; transporten spioneras där. Basreproduktionen körde dessutom
 formulär och verklig lokal HTTP/DB tillsammans.
 
-Den avgränsade negativkontrollen tar bort endast
-`@PropertyField(CreatePropertySchema.shape.name)` i `create-property.dto.ts`.
-Provet `F056 rejects a 201-character create before it can trap a later form edit`
-ska då falla på HTTP-status **201 i stället för 400**, inte på kompilering.
-Kör först efter commit av alla ändringar och återställ enbart den filen från
-en kopia vars SHA-256 verifierats före och efter.
+Varje bärande skydd har en egen avgränsad negativkontroll. Alla körs först efter
+commit av samtliga ändringar, muterar EN namngiven fil åt gången och återställer
+enbart den filen från en kopia vars SHA-256 verifierats före och efter — och vars
+innehåll dessutom jämförts mot den committade versionen. Ett kompileringsfel
+räknas inte som motprov; mutationen ska kompilera och falla på BETEENDET.
+
+| Kontroll | Mutation | Namngivet prov som ska falla |
+|---|---|---|
+| Ursprunglig | tar bort `@PropertyField(CreatePropertySchema.shape.name)` i `create-property.dto.ts` | `F056 rejects a 201-character create before it can trap a later form edit` — **201 i stället för 400** |
+| NK-A | kopplar bort `CreatePropertySchema.safeParse` i `create_property` i `tool-executor.service.ts` | `F056 avvisar ett 201-teckensnamn från verktyget före DB-effekt` — raden skapas i stället för att avvisas |
+| NK-B | återinför `= 'SE'` som initierare på den gemensamma `AddressDto.country` | `F056 address PATCH without country preserves a stored non-SE country` — `NO` skrivs om till `SE` |
