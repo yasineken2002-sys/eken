@@ -660,6 +660,106 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     expect(await status(r.chargeId)).toBe('ATTACHED')
   })
 
+  // ── 5d. LÄSANDE INVENTERING AV REDAN SKADADE POSTER ──────────────────────
+  //
+  // INTE EN PRODUKTFUNKTION. Frågan nedan är inte kopplad till någon rutt, något
+  // jobb eller någon vy — den finns här för att en inventering av vad F017
+  // redan hunnit lämna efter sig ska kunna beslutas separat, på ett underlag
+  // som är PRÖVAT i stället för påstått. Ingen backfill, ingen rättelse, inget
+  // skrivande: frågan är en ren SELECT.
+  //
+  // Provet är kanariefågeln åt båda hållen. En diagnosfråga som alltid svarar
+  // "noll" ser likadan ut som en frisk databas, och en som alltid svarar
+  // "något" ser likadan ut som en trasig. Därför mäts båda riktningarna på
+  // samma syntetiska data.
+  const INVENTERING_SQL = `
+    SELECT c."organizationId",
+           count(*)                                      AS antal,
+           count(*) FILTER (WHERE c.status = 'ATTACHED')  AS varav_redan_levererade,
+           min(c."periodEnd")                             AS aldsta_period,
+           max(c."periodEnd")                             AS nyaste_period,
+           sum(c."totalAmount")                           AS totalbelopp
+    FROM "ConsumptionCharge" c
+    WHERE c.status IN ('CONFIRMED', 'ATTACHED')
+      AND NOT EXISTS (
+            SELECT 1
+            FROM "JournalEntry" j
+            WHERE j."organizationId" = c."organizationId"
+              AND j.source = 'INVOICE'
+              AND j."sourceId" = 'consumption-charge:' || c.id)
+    GROUP BY c."organizationId"
+    ORDER BY antal DESC`
+
+  interface InventeringsRad {
+    organizationId: string
+    antal: bigint
+    varav_redan_levererade: bigint
+    totalbelopp: unknown
+  }
+
+  const inventera = async (orgId: string): Promise<InventeringsRad | undefined> => {
+    const rader = await prisma.$queryRawUnsafe<InventeringsRad[]>(INVENTERING_SQL)
+    return rader.find((r) => r.organizationId === orgId)
+  }
+
+  it('inventeringsfrågan hittar skadade poster — och tiger om friska', async () => {
+    const r = await såRigg()
+
+    // (1) FRISK: bekräftad på riktigt, alltså med verifikat. Får inte listas.
+    await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+    expect(await verifikat(r)).toHaveLength(1)
+    expect(await inventera(r.orgId)).toBeUndefined()
+
+    // (2) SKADAD: en post som står CONFIRMED utan verifikat, och en som hunnit
+    // bli ATTACHED — exakt de två tillstånd F017 kunde lämna efter sig. Byggda
+    // på syntetiska rader i den här riggen, aldrig på produktionsdata.
+    const skadad = async (status: 'CONFIRMED' | 'ATTACHED') => {
+      const rad = await prisma.consumptionCharge.findFirstOrThrow({
+        where: { organizationId: r.orgId },
+      })
+      const ny = await prisma.consumptionCharge.create({
+        data: {
+          organizationId: rad.organizationId,
+          leaseId: rad.leaseId,
+          unitId: rad.unitId,
+          tenantId: rad.tenantId,
+          meterReadingId: rad.meterReadingId,
+          meterType: rad.meterType,
+          periodStart: rad.periodStart,
+          periodEnd: rad.periodEnd,
+          quantity: rad.quantity,
+          pricePerUnit: rad.pricePerUnit,
+          netAmount: rad.netAmount,
+          vatStatus: rad.vatStatus,
+          vatRate: rad.vatRate,
+          vatAmount: rad.vatAmount,
+          totalAmount: rad.totalAmount,
+          kind: rad.kind,
+          status,
+          deliveryMode: rad.deliveryMode,
+        },
+        select: { id: true },
+      })
+      return ny.id
+    }
+    await skadad('CONFIRMED')
+    await skadad('ATTACHED')
+
+    // (3) Sonden ger nu något ANNAT än noll, och rätt uppdelning.
+    const träff = await inventera(r.orgId)
+    expect(träff).toBeDefined()
+    expect(Number(träff!.antal)).toBe(2)
+    expect(Number(träff!.varav_redan_levererade)).toBe(1)
+    expect(Number(träff!.totalbelopp)).toBe(1200)
+
+    // (4) Den friska posten är fortfarande utanför träffmängden — annars mätte
+    // frågan "alla bekräftade poster", inte "bekräftade poster utan verifikat".
+    const alla = await prisma.consumptionCharge.count({
+      where: { organizationId: r.orgId, status: { in: ['CONFIRMED', 'ATTACHED'] } },
+    })
+    expect(alla).toBe(3)
+  })
+
   // ── 6. ORG-ISOLERING ─────────────────────────────────────────────────────
 
   it('en annan organisations id kan varken bokföra eller flippa posten', async () => {
