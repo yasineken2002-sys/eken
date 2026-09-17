@@ -9,6 +9,7 @@ import { syncUnitStatusFromLeases } from '../units/unit-status.sync'
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { Prisma } from '@prisma/client'
 import { ImportJobStatus, ImportJobType } from '@prisma/client'
+import { CreatePropertySchema } from '@eken/shared'
 import {
   normaliseraBeteckning,
   ärBeteckningskonflikt,
@@ -251,6 +252,51 @@ export class ImportService {
 
   // ─── Validation ────────────────────────────────────────────────────────────
 
+  /**
+   * Raden SOM DEN KOMMER ATT SKRIVAS — en enda källa för både kontrollen och
+   * skrivningen.
+   *
+   * Importens befintliga TOLKNINGAR ligger kvar precis som de var: typens
+   * `?? 'RESIDENTIAL'`, beteckningens normalisering och beloppstolkningen.
+   * Grinden ändrar alltså inte hur en rad TOLKAS — bara om det tolkade värdet
+   * får lagras. Att `importProperties` skriver ur samma kandidat är det som
+   * hindrar att kontrollen och skrivningen glider isär.
+   */
+  private fastighetsradTillKandidat(row: Record<string, string>) {
+    const byggår = row['yearBuilt'] ? parseInt(row['yearBuilt'], 10) || undefined : undefined
+    return {
+      name: row['name'] ?? '',
+      propertyDesignation: normaliseraBeteckning(row['propertyDesignation'] ?? ''),
+      type: this.parsePropertyType(row['type'] ?? '') ?? 'RESIDENTIAL',
+      address: {
+        street: row['street'] ?? '',
+        city: row['city'] ?? '',
+        postalCode: row['postalCode'] ?? '',
+        country: 'SE',
+      },
+      totalArea: this.parseAmount(row['totalArea'] ?? '') ?? 0,
+      ...(byggår !== undefined ? { yearBuilt: byggår } : {}),
+    }
+  }
+
+  /**
+   * Schemats fältväg → kolumnen användaren faktiskt fyllde i. Mallen heter
+   * `Namn,Fastighetsbeteckning,Typ,Gatuadress,Postnummer,Stad,Yta m²,Byggår`,
+   * och ett fel som säger `address.postalCode` hjälper inte den som läser sin
+   * egen fil. Detta är en ETIKETTKARTA, inga fältregler — reglerna kommer ur
+   * `CreatePropertySchema`.
+   */
+  private static readonly FASTIGHETSKOLUMN: Record<string, string> = {
+    name: 'Namn',
+    propertyDesignation: 'Fastighetsbeteckning',
+    type: 'Typ',
+    'address.street': 'Gatuadress',
+    'address.postalCode': 'Postnummer',
+    'address.city': 'Stad',
+    totalArea: 'Yta m²',
+    yearBuilt: 'Byggår',
+  }
+
   validatePropertyRow(row: Record<string, string>): string[] {
     const errors: string[] = []
     if (!row['name']) errors.push('Namn saknas')
@@ -258,6 +304,32 @@ export class ImportService {
     if (!row['street']) errors.push('Gatuadress saknas')
     if (!row['city']) errors.push('Stad saknas')
     if (!row['postalCode']) errors.push('Postnummer saknas')
+    // Saknas ett fält är det INTE meningsfullt att också klaga på dess värde.
+    if (errors.length > 0) return errors
+
+    // ── SAMMA SAKREGLER SOM RESTEN AV PRODUKTEN, FÖRE SKRIVNINGEN ──────────
+    //
+    // Kontrollerna ovan svarar på "finns fältet", inte på "duger värdet". En
+    // rad med ett 201 tecken långt namn, postnumret `abc` eller en tom yta
+    // passerade dem och skrevs rakt in med `prisma.property.create`. Det blev
+    // en ny rad som produktens eget redigeringsformulär inte kan spara — exakt
+    // den oändringsbara raden F056 finns för att förhindra.
+    //
+    // Regelkällan är den DELADE `CreatePropertySchema`: samma schema som
+    // formuläret, HTTP-DTO:n och AI-verktyget. Inga fältregler kopieras hit.
+    //
+    // DEN HÄR METODEN ÄR IMPORTKEDJANS ENDA RADVALIDERING, och den används av
+    // BÅDA vägarna — `importProperties` (skrivningen) och `previewImport`
+    // (löftet till användaren). Att grinden ligger här är därför det som håller
+    // dem överens: en rad som preview kallar giltig kan inte avvisas av
+    // skrivningen, och tvärtom.
+    const kontroll = CreatePropertySchema.safeParse(this.fastighetsradTillKandidat(row))
+    if (!kontroll.success) {
+      for (const issue of kontroll.error.issues) {
+        const väg = issue.path.join('.')
+        errors.push(`${ImportService.FASTIGHETSKOLUMN[väg] ?? väg}: ${issue.message}`)
+      }
+    }
     return errors
   }
 
@@ -330,11 +402,23 @@ export class ImportService {
           continue
         }
 
+        // SKRIVNINGEN TAR DE VALIDERADE VÄRDENA, inte råa kolumner. Grinden i
+        // `validatePropertyRow` ovan prövade exakt den här kandidaten; att
+        // skriva ur samma parsning är det som gör att det prövade och det
+        // lagrade inte kan vara olika saker.
+        const kontroll = CreatePropertySchema.safeParse(this.fastighetsradTillKandidat(data))
+        if (!kontroll.success) {
+          errors.push({ row: rowNumber, message: 'Raden avvisades av fastighetskontraktet.' })
+          errorRows++
+          continue
+        }
+        const fastighet = kontroll.data
+
         // Beteckningen normaliseras med den DELADE regeln. Villkoret
         // `@@unique([organizationId, propertyDesignation])` jämför den lagrade
         // strängen — normaliserar den här vägen annorlunda än PropertiesService
         // gäller villkoret olika saker beroende på vem som skrev.
-        const beteckning = normaliseraBeteckning(data['propertyDesignation'] ?? '')
+        const beteckning = fastighet.propertyDesignation
 
         // Uppslaget står kvar för MEDDELANDETS skull: en rad i en importfil ska
         // få veta vilken beteckning som krockade, inte ett databasfel. Men det
@@ -352,21 +436,17 @@ export class ImportService {
 
         await this.prisma.property.create({
           data: {
+            // Organisationen kommer FORTSATT enbart ur anropet, aldrig ur filen.
             organizationId,
-            name: data['name'] ?? '',
+            name: fastighet.name,
             propertyDesignation: beteckning,
-            type: (this.parsePropertyType(data['type'] ?? '') ?? 'RESIDENTIAL') as
-              | 'RESIDENTIAL'
-              | 'COMMERCIAL'
-              | 'MIXED'
-              | 'INDUSTRIAL'
-              | 'LAND',
-            street: data['street'] ?? '',
-            city: data['city'] ?? '',
-            postalCode: data['postalCode'] ?? '',
-            country: 'SE',
-            totalArea: this.parseAmount(data['totalArea'] ?? '') ?? 0,
-            yearBuilt: data['yearBuilt'] ? parseInt(data['yearBuilt'], 10) || null : null,
+            type: fastighet.type,
+            street: fastighet.address.street,
+            city: fastighet.address.city,
+            postalCode: fastighet.address.postalCode,
+            country: fastighet.address.country,
+            totalArea: fastighet.totalArea,
+            yearBuilt: fastighet.yearBuilt ?? null,
           },
         })
 
