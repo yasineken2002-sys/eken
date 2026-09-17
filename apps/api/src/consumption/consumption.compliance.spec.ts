@@ -322,7 +322,23 @@ describe('createTariff — historik', () => {
 // skulle en charge med belopp 0 fastna i DRAFT för alltid — det finns ingen
 // annulleringsväg. Tariffen får vara 0 ("ingår i hyran"), så fallet är nåbart.
 describe('recordReading — noll-belopp ger ingen debitering', () => {
-  it('tariff 0 kr/enhet: avläsningen sparas, men ingen charge skapas', async () => {
+  // De fyra vägarna till "inget att debitera" är OLIKA händelser och följs var
+  // för sig. Tre av dem är legitima nollor. Den fjärde är ett FEL, och får inte
+  // tyst behandlas som gratis förbrukning.
+
+  it('NOLL FÖRBRUKNING: ingen charge — spärren är `billable`, oförändrad av #F017', async () => {
+    const { service, prisma } = makeService({ previousReading: { value: 1240 } })
+
+    // Samma mätarställning som förra gången → delta 0 → quantity 0.
+    const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
+
+    expect(prisma.meterReading.create).toHaveBeenCalledTimes(1)
+    expect(prisma.consumptionTariff.findMany).not.toHaveBeenCalled() // inte ens prissatt
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(res.charge).toBeNull()
+  })
+
+  it('TARIFF 0 kr/enhet: avläsningen sparas, men ingen charge skapas', async () => {
     const { service, prisma } = makeService({
       previousReading: { value: 1000 },
       tariffs: [defaultTariff({ pricePerUnit: 0 })],
@@ -335,7 +351,41 @@ describe('recordReading — noll-belopp ger ingen debitering', () => {
     expect(res.charge).toBeNull()
   })
 
-  it('positiv tariff: chargen skapas som förut (sonden kan ge något annat än noll)', async () => {
+  it('AVRUNDNING till 0,00: avläsningen sparas, men ingen charge skapas', async () => {
+    const { service, prisma } = makeService({
+      previousReading: { value: 1000 },
+      tariffs: [defaultTariff({ pricePerUnit: 0.001 })],
+    })
+
+    // 0,001 enheter × 0,001 kr = 0,000001 kr → round2 → 0,00.
+    const res = await service.recordReading(
+      { ...dtoBase, value: 1000.001 } as never,
+      'org-1',
+      'user-9',
+    )
+
+    expect(prisma.meterReading.create).toHaveBeenCalledTimes(1)
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(res.charge).toBeNull()
+  })
+
+  it('NEGATIVT belopp är ett FEL, inte gratis förbrukning: avvisas i stället för att tigas ihjäl', async () => {
+    const { service, prisma } = makeService({
+      previousReading: { value: 1000 },
+      // `CreateTariffDto` har @Min(0), så den här raden kan inte komma via API:et
+      // — men en import, en migrering eller en direktskrivning kan lägga den, och
+      // då ska den INTE tolkas som "ingår i hyran".
+      tariffs: [defaultTariff({ pricePerUnit: -2.5 })],
+    })
+
+    await expect(
+      service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9'),
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+  })
+
+  it('POSITIVT belopp: chargen skapas som förut (sonden kan ge något annat än noll)', async () => {
     const { service, prisma } = makeService({ previousReading: { value: 1000 } })
 
     const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
@@ -789,6 +839,66 @@ describe('runYearEndAccrual — estimatmetod + periodisering (PR 5)', () => {
       ConflictException,
     )
     expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+})
+
+// ── API-KONTRAKTET ÄNDRADES, OCH DET MÅSTE SYNAS I ETT PROV ────────────────
+//
+// `confirmCharge` svarade förut ALLTID 200 med posten. Efter #F017 kan den svara
+// 409 (stängd period) och 422 (verifikatet kunde inte skapas). Tjänsteproven
+// mäter databasen; de säger ingenting om vad klienten får. Provet nedan mäter
+// controllern: att den inte sväljer, inte översätter och inte maskerar — det var
+// exakt den defekten på tjänstenivån, och den får inte återuppstå ett lager upp.
+//
+// Vad provet INTE kan se: att Fastify faktiskt skriver statuskoden på tråden.
+// Det ägs av `GlobalExceptionFilter` (`exception.getStatus()`,
+// `global-exception.filter.ts:65`) och prövas där.
+describe('ConsumptionController — confirm-felen når klienten oförändrade', () => {
+  const user = { sub: 'user-9' } as never
+
+  function makeController(fel: unknown) {
+    const consumption = { confirmCharge: jest.fn().mockRejectedValue(fel) }
+    return {
+      controller: new ConsumptionController(consumption as never),
+      consumption,
+    }
+  }
+
+  it('stängd period → ConflictException passerar oförändrad, status 409', async () => {
+    const { controller, consumption } = makeController(
+      new ConflictException(
+        'Bokföringsperioden 2026-05 är stängd — ny verifikation kan inte skapas.',
+      ),
+    )
+
+    const fel = await controller.confirmCharge('charge-1', 'org-1', user).catch((e) => e)
+
+    expect(fel).toBeInstanceOf(ConflictException)
+    expect((fel as ConflictException).getStatus()).toBe(409)
+    expect((fel as ConflictException).message).toMatch(/2026-05.*stängd/s)
+    expect(consumption.confirmCharge).toHaveBeenCalledWith('charge-1', 'org-1', 'user-9')
+  })
+
+  it('verifikatet uteblev → UnprocessableEntityException passerar oförändrad, status 422', async () => {
+    const { controller } = makeController(
+      new UnprocessableEntityException('Förbrukningsposten kunde inte bokföras'),
+    )
+
+    const fel = await controller.confirmCharge('charge-1', 'org-1', user).catch((e) => e)
+
+    expect(fel).toBeInstanceOf(UnprocessableEntityException)
+    expect((fel as UnprocessableEntityException).getStatus()).toBe(422)
+  })
+
+  it('lyckat confirm returnerar posten oförändrad (ingen omslagning)', async () => {
+    const consumption = {
+      confirmCharge: jest.fn().mockResolvedValue(chargeRow({ status: 'CONFIRMED' })),
+    }
+    const controller = new ConsumptionController(consumption as never)
+
+    await expect(controller.confirmCharge('charge-1', 'org-1', user)).resolves.toEqual(
+      expect.objectContaining({ id: 'charge-1', status: 'CONFIRMED' }),
+    )
   })
 })
 

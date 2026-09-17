@@ -49,6 +49,7 @@ import { PrismaClient, UserRole } from '@prisma/client'
 import { AccountingPeriodService } from '../accounting/accounting-period.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { ConsumptionService } from './consumption.service'
 
@@ -91,6 +92,7 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
   let prisma: PrismaClient
   let consumption: ConsumptionService
   let perioder: AccountingPeriodService
+  let accounting: AccountingService
   /** Varje organisation riggen skapat — städas i afterAll, aldrig något annat. */
   const skapadeOrgar: string[] = []
 
@@ -100,7 +102,7 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     })
     await prisma.$connect()
     const verifikationsnummer = new VerifikationsnummerService(prisma as never)
-    const accounting = new AccountingService(prisma as never, verifikationsnummer)
+    accounting = new AccountingService(prisma as never, verifikationsnummer)
     const invoiceEvents = new InvoiceEventsService(prisma as never)
     consumption = new ConsumptionService(prisma as never, accounting, invoiceEvents)
     perioder = new AccountingPeriodService(prisma as never, accounting)
@@ -474,7 +476,23 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     expect(fel).toEqual([])
     expect(utfall.filter((u) => u.status === 'fulfilled')).toHaveLength(2)
     expect(await status(r.chargeId)).toBe('CONFIRMED')
-    expect(await verifikat(r)).toHaveLength(1)
+
+    // ETT verifikat — och det ska vara ett KORREKT verifikat, inte bara ett
+    // ensamt. Ett race som skrivit halva konteringen hade passerat ett blott
+    // `toHaveLength(1)`.
+    const entries = await verifikat(r)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]!.lines).toHaveLength(2)
+    expect(entries[0]!.lines.reduce((s, l) => s + Number(l.debit ?? 0), 0)).toBe(600)
+    expect(entries[0]!.lines.reduce((s, l) => s + Number(l.credit ?? 0), 0)).toBe(600)
+
+    // Och exakt ETT nummer ur serien: två nummer hade betytt att bägge
+    // transaktionerna skrivit, även om bara en rad blev kvar.
+    const sekvens = await prisma.journalEntrySequence.findMany({
+      where: { organizationId: r.orgId },
+    })
+    expect(sekvens).toHaveLength(1)
+    expect(sekvens[0]!.lastNumber).toBe(1)
   })
 
   it('stängd period + två SAMTIDIGA confirm: båda avvisas, inget spår lämnas', async () => {
@@ -489,6 +507,157 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     expect(utfall.every((u) => u.status === 'rejected')).toBe(true)
     expect(await status(r.chargeId)).toBe('DRAFT')
     expect(await verifikat(r)).toHaveLength(0)
+  })
+
+  // ── 5b. ETT REDAN INSATT VERIFIKAT MÅSTE RULLAS TILLBAKA ─────────────────
+  //
+  // VARFÖR DET HÄR PROVET BEHÖVS, OCH VAD DE ANDRA INTE SER.
+  //
+  // Proven ovan visar att en stängd period inte lämnar något verifikat. Men de
+  // bevisar INTE att en redan INSATT rad rullas tillbaka, för i just det fallet
+  // hinner ingen rad skapas: `assertPeriodOpen` ligger FÖRE
+  // `journalEntrySequence.upsert` och före `journalEntry.create`
+  // (`verifikationsnummer.service.ts:77-79`). Spärren fäller alltså innan
+  // skrivningen börjat.
+  //
+  // Hela `confirmCharge` vilar ändå på att en insatt rad KAN rullas tillbaka —
+  // det är det som gör statusflippen och verifikatet till en enhet. Provet nedan
+  // mäter just den egenskapen, på den riktiga skrivvägen, utan attrapp: en äkta
+  // transaktion där verifikatet först skapas på riktigt (rad, rader OCH
+  // sekvensökning), och som därefter fälls.
+  it('verifikat som hunnit skapas rullas tillbaka med transaktionen — rad, rader och nummerserie', async () => {
+    const r = await såRigg()
+    const charge = await prisma.consumptionCharge.findUniqueOrThrow({ where: { id: r.chargeId } })
+
+    class AvsiktligtFel extends Error {}
+    let sedanInutiTx: { id: string; rader: number } | null = null
+
+    await expect(
+      prisma.$transaction(async (tx) => {
+        const entry = await accounting.createJournalEntryForConsumptionCharge(
+          charge,
+          r.orgId,
+          r.userId,
+          tx as never,
+        )
+        // INUTI transaktionen finns verifikatet på riktigt — annars mäter provet
+        // ingenting alls efteråt (en rollback av något som aldrig skrevs är
+        // grön av fel skäl).
+        const inne = await tx.journalEntry.findFirstOrThrow({
+          where: { organizationId: r.orgId, sourceId: `consumption-charge:${r.chargeId}` },
+          include: { lines: true },
+        })
+        sedanInutiTx = { id: inne.id, rader: inne.lines.length }
+        expect(entry).not.toBeNull()
+        throw new AvsiktligtFel('fel efter att verifikatet skrivits')
+      }, PRISMA_DEFAULT_TX_LIMITS),
+    ).rejects.toBeInstanceOf(AvsiktligtFel)
+
+    // Sonden kunde ge något annat än noll: den gav en rad med två konteringsrader.
+    expect(sedanInutiTx).not.toBeNull()
+    expect(sedanInutiTx!.rader).toBe(2)
+
+    // Och efteråt finns ingenting kvar — varken posten, raderna eller numret.
+    expect(await verifikat(r)).toHaveLength(0)
+    expect(
+      await prisma.journalEntryLine.count({ where: { journalEntryId: sedanInutiTx!.id } }),
+    ).toBe(0)
+    expect(
+      await prisma.journalEntrySequence.findMany({ where: { organizationId: r.orgId } }),
+    ).toHaveLength(0)
+    expect(await status(r.chargeId)).toBe('DRAFT')
+  })
+
+  // ── 5c. VAD SOM RÄKNAS SOM "REDAN BOKFÖRD" ───────────────────────────────
+
+  it('en annan organisations verifikat med IDENTISK sourceId ger inget klartecken', async () => {
+    const r = await såRigg()
+    const främmande = await såRigg()
+
+    // Samma sourceId-sträng, men i en annan organisation. Uppslaget får inte
+    // läsa den som "redan bokförd" — då hade posten blivit CONFIRMED utan ett
+    // eget verifikat, alltså exakt F017 igen fast via org-gränsen.
+    const konton = await prisma.account.findMany({ where: { organizationId: främmande.orgId } })
+    const f1510 = konton.find((k) => k.number === 1510)!
+    const f3920 = konton.find((k) => k.number === 3920)!
+    await prisma.journalEntry.create({
+      data: {
+        organizationId: främmande.orgId,
+        date: PERIOD_END,
+        description: 'Främmande post med samma nyckel',
+        source: 'INVOICE',
+        sourceId: `consumption-charge:${r.chargeId}`,
+        series: 'A',
+        verNumber: 9001,
+        fiscalYear: 2026,
+        lines: {
+          create: [
+            { accountId: f1510.id, debit: 1 },
+            { accountId: f3920.id, credit: 1 },
+          ],
+        },
+      },
+    })
+
+    await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+
+    const egna = await verifikat(r)
+    expect(egna).toHaveLength(1)
+    expect(egna[0]!.organizationId).toBe(r.orgId)
+    expect(await status(r.chargeId)).toBe('CONFIRMED')
+  })
+
+  it('gammal CONFIRMED utan verifikat, öppen period: läks och bokförs på periodEnd — inte på idag', async () => {
+    const r = await såRigg()
+    // Efterliknar en post som blev CONFIRMED före rättningen: status satt,
+    // verifikat saknas. Inget fabricerat verifikat, ingen historikändring —
+    // enbart det tillstånd F017 kunde lämna efter sig.
+    await prisma.consumptionCharge.update({
+      where: { id: r.chargeId },
+      data: { status: 'CONFIRMED' },
+    })
+    expect(await verifikat(r)).toHaveLength(0)
+
+    await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+
+    const entries = await verifikat(r)
+    expect(entries).toHaveLength(1)
+    // AVGÖRANDE: mätperiodens slut, aldrig bekräftelsedagen. En self-heal som
+    // bokförde på dagens datum hade flyttat intäkten till ett annat år.
+    expect(entries[0]!.date.toISOString().slice(0, 10)).toBe('2026-05-31')
+    expect(entries[0]!.fiscalYear).toBe(2026)
+    expect(await status(r.chargeId)).toBe('CONFIRMED')
+  })
+
+  it('gammal CONFIRMED utan verifikat, STÄNGD period: avvisas — statusen rörs inte', async () => {
+    const r = await såRigg()
+    await prisma.consumptionCharge.update({
+      where: { id: r.chargeId },
+      data: { status: 'CONFIRMED' },
+    })
+    await stängMaj(r)
+
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+
+    // Statusen får inte nedgraderas av ett misslyckat läkningsförsök, och
+    // ingenting får bokföras i en annan period för att komma runt spärren.
+    expect(await status(r.chargeId)).toBe('CONFIRMED')
+    expect(await verifikat(r)).toHaveLength(0)
+  })
+
+  it('ATTACHED utan verifikat: läks utan att statusen eller fakturakopplingen rörs', async () => {
+    const r = await såRigg()
+    await prisma.consumptionCharge.update({
+      where: { id: r.chargeId },
+      data: { status: 'ATTACHED' },
+    })
+
+    await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+
+    expect(await verifikat(r)).toHaveLength(1)
+    expect(await status(r.chargeId)).toBe('ATTACHED')
   })
 
   // ── 6. ORG-ISOLERING ─────────────────────────────────────────────────────

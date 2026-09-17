@@ -337,13 +337,39 @@ export class ConsumptionService {
       const pricePerUnit = Number(tariff.pricePerUnit)
       const netAmount = round2((quantity as number) * pricePerUnit)
       const vatAmount = round2((netAmount * vatRate) / 100)
+      const totalAmount = round2(netAmount + vatAmount)
+
+      // ── NOLL OCH NEGATIVT ÄR INTE SAMMA HÄNDELSE ─────────────────────────
+      //
+      // Noll betyder "inget att debitera" — en tariff satt till 0 ("ingår i
+      // hyran") eller en förbrukning som avrundas bort. Den posten skapas inte,
+      // se villkoret vid `consumptionCharge.create` nedan.
+      //
+      // NEGATIVT betyder att underlaget är fel. Kvantiteten kan inte bli
+      // negativ (`computeQuantity` kastar på både fallande mätarställning och
+      // negativ periodvolym), och `CreateTariffDto.pricePerUnit` har `@Min(0)`
+      // — så det här ska inte kunna inträffa via API:et. En import, en
+      // migrering eller en direktskrivning kan ändå lägga en negativ tariff,
+      // och då får den INTE tyst falla ut genom samma hål som nollan: att inte
+      // debitera för att beloppet är negativt vore att behandla ett datafel som
+      // gratis förbrukning, och en negativ kundfordran är ingen produkt vi har.
+      // Anropet avvisas i stället, innan något skrivs — samma linje som den
+      // saknade tariffen ovan.
+      if (totalAmount < 0) {
+        throw new BadRequestException(
+          `Beräknad förbrukningsersättning blev negativ (${totalAmount} kr) för ${meter.type} ` +
+            `vid ${dto.periodEnd}. Kontrollera tariffens pris per enhet — en negativ ` +
+            'debitering kan inte bokföras. Ingenting har sparats.',
+        )
+      }
+
       chargeData = {
         pricePerUnit,
         netAmount,
         vatStatus,
         vatRate,
         vatAmount,
-        totalAmount: round2(netAmount + vatAmount),
+        totalAmount,
       }
     }
 
@@ -367,15 +393,15 @@ export class ConsumptionService {
       })
 
       let charge: ConsumptionCharge | null = null
-      // `chargeData.totalAmount > 0` är inte kosmetik. En tariff får vara 0
-      // (`CreateTariffDto.pricePerUnit` är `@Min(0)` — "ingår i hyran"), och
-      // avrundningen till ören kan ge 0,00 vid mycket små kvantiteter. En sådan
-      // post går inte att bokföra: verifikatet skulle sakna belopp, och sedan
-      // #F017 avvisar `confirmCharge` en bekräftelse som inte kan ge ett
-      // verifikat. Skapades posten ändå fastnade den i DRAFT för alltid —
-      // det finns ingen annulleringsväg för charges. Bokslutsvägen gör redan
-      // samma bedömning (`if (net <= 0) { skipped++; continue }`). Avläsningen
-      // sparas som vanligt; det är bara debiteringen som uteblir.
+      // `chargeData.totalAmount > 0` kan här bara utesluta EXAKT NOLL: negativa
+      // belopp avvisades redan ovan, före transaktionen. Nollan är legitim — en
+      // tariff satt till 0 ("ingår i hyran", `@Min(0)`) eller en förbrukning som
+      // avrundas till 0,00 — men posten går inte att bokföra: verifikatet skulle
+      // sakna belopp, och sedan #F017 avvisar `confirmCharge` en bekräftelse som
+      // inte kan ge ett verifikat. Skapades posten ändå fastnade den i DRAFT för
+      // alltid; det finns ingen annulleringsväg för charges. Bokslutsvägen gör
+      // redan samma bedömning (`if (net <= 0) { skipped++; continue }`).
+      // Avläsningen sparas som vanligt; det är bara debiteringen som uteblir.
       if (billable && chargeData && chargeData.totalAmount > 0 && lease && deliveryMode) {
         charge = await tx.consumptionCharge.create({
           data: {
