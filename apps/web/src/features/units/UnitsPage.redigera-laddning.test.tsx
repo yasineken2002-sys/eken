@@ -65,11 +65,18 @@ const RAD_B = listrad(OBJEKT_B, FASTIGHET_B, 'Lokal 1B', 'Ekens Gård 2')
 
 /** Detaljsvaret styrs per objekt-id, så laddning kan hållas kvar med flit. */
 let detaljSvar: Record<string, UnitDetail | undefined> = {}
+/** Sätts när detaljfrågan har AVSLUTATS med fel — inte samma sak som laddning. */
+let detaljFel = false
 const uppdateraMock = vi.fn()
+const hamtaOmMock = vi.fn()
 
 vi.mock('./hooks/useUnits', () => ({
   useUnits: () => ({ data: [RAD_A, RAD_B], isLoading: false, isError: false }),
-  useUnit: (id: string | null) => ({ data: id ? detaljSvar[id] : undefined }),
+  useUnit: (id: string | null) => ({
+    data: id ? detaljSvar[id] : undefined,
+    isError: detaljFel,
+    refetch: hamtaOmMock,
+  }),
   useCreateUnit: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateUnit: () => ({ mutate: uppdateraMock, isPending: false }),
   useDeleteUnit: () => ({ mutate: vi.fn(), isPending: false }),
@@ -109,7 +116,9 @@ function fastighetsvaljare(): HTMLSelectElement | null {
 afterEach(() => {
   cleanup()
   detaljSvar = {}
+  detaljFel = false
   uppdateraMock.mockReset()
+  hamtaOmMock.mockReset()
 })
 
 describe('F057 · redigeringsfliken och sen detaljladdning', () => {
@@ -118,12 +127,12 @@ describe('F057 · redigeringsfliken och sen detaljladdning', () => {
     const { rerender } = render(<UnitsPage />)
     oppnaRedigera(RAD_A)
 
-    // Under laddningen får det INTE finnas ett låst fastighetsfält med tomt
-    // värde — det är fällan: låst och fel, utan väg vidare.
-    const underLaddning = fastighetsvaljare()
-    if (underLaddning) {
-      expect(underLaddning.value).not.toBe('')
-    }
+    // OVILLKORLIGT. En `if (väljaren finns)` hade gjort en UTEBLIVEN assertion
+    // grön: under den rättade koden finns ingen väljare, grenen kördes aldrig,
+    // och provet hade varit grönt även om fliken renderat ingenting alls.
+    // Här krävs i stället det avsedda laddningsutfallet rakt ut.
+    expect(screen.getByText('Laddar objektet…')).toBeTruthy()
+    expect(fastighetsvaljare()).toBeNull()
 
     // Svaret anländer.
     detaljSvar = { [OBJEKT_A]: detalj(RAD_A) }
@@ -181,6 +190,73 @@ describe('F057 · redigeringsfliken och sen detaljladdning', () => {
 
     expect(fastighetsvaljare()!.value).toBe(FASTIGHET_B)
     expect((screen.getByLabelText('Enhetsnamn') as HTMLInputElement).value).toBe('Lokal 1B')
+  })
+
+  /**
+   * ETT AVSLUTAT FEL ÄR INTE LADDNING.
+   *
+   * Laddningsläget infördes av F057:s monteringsgrind. Faller detaljfrågan blir
+   * `data` aldrig satt, och utan den här grenen står "Laddar objektet…" kvar för
+   * alltid — en flik utan väg vidare. Felet är alltså inte nytt, men rättningen
+   * gav det en form som ser ut som väntan.
+   */
+  it('ett misslyckat detaljanrop ger svensk feltext och en väg att försöka igen', () => {
+    detaljSvar = {}
+    detaljFel = true
+    render(<UnitsPage />)
+    oppnaRedigera(RAD_A)
+
+    // Inte kvar i laddning, och inget tomt formulär.
+    expect(screen.queryByText('Laddar objektet…')).toBeNull()
+    expect(fastighetsvaljare()).toBeNull()
+    expect(screen.queryByLabelText('Enhetsnamn')).toBeNull()
+
+    // Svensk feltext ur appens befintliga mönster, och en väg vidare.
+    expect(screen.getByText('Något gick fel')).toBeTruthy()
+    expect(screen.getByText(/Objektet kunde inte hämtas just nu/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Försök igen' }))
+    expect(hamtaOmMock).toHaveBeenCalledTimes(1)
+
+    // Och det går alltid att stänga fliken.
+    expect(screen.getByRole('button', { name: 'Stäng' })).toBeTruthy()
+  })
+
+  it('efter ett fel kan ett lyckat omtag visa rätt objekt och spara', () => {
+    detaljSvar = {}
+    detaljFel = true
+    const { rerender } = render(<UnitsPage />)
+    oppnaRedigera(RAD_A)
+    expect(screen.getByText('Något gick fel')).toBeTruthy()
+
+    // Omtaget lyckas.
+    detaljFel = false
+    detaljSvar = { [OBJEKT_A]: detalj(RAD_A) }
+    rerender(<UnitsPage />)
+
+    expect(screen.queryByText('Något gick fel')).toBeNull()
+    const valjare = fastighetsvaljare()
+    expect(valjare).not.toBeNull()
+    expect(valjare!.value).toBe(FASTIGHET_A)
+    expect(valjare!.disabled).toBe(true)
+    expect((screen.getByLabelText('Enhetsnamn') as HTMLInputElement).value).toBe('Lägenhet 3A')
+  })
+
+  it('ett fel på objekt B visar inte objekt A:s data', () => {
+    detaljSvar = { [OBJEKT_A]: detalj(RAD_A) }
+    const { rerender } = render(<UnitsPage />)
+    oppnaRedigera(RAD_A)
+    expect((screen.getByLabelText('Enhetsnamn') as HTMLInputElement).value).toBe('Lägenhet 3A')
+
+    // Stäng A, öppna B — vars detalj FALLERAR.
+    fireEvent.click(screen.getByRole('button', { name: 'Stäng' }))
+    detaljFel = true
+    rerender(<UnitsPage />)
+    oppnaRedigera(RAD_B)
+
+    expect(screen.getByText('Något gick fel')).toBeTruthy()
+    expect(screen.queryByLabelText('Enhetsnamn')).toBeNull()
+    expect(screen.queryByDisplayValue('Lägenhet 3A')).toBeNull()
   })
 
   it('skapa-formuläret har fortfarande en olåst fastighetsväljare', () => {

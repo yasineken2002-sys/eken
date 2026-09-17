@@ -111,6 +111,20 @@ export class UnitsService {
     // släpps däremot igenom: webbformuläret skickar alltid `propertyId`
     // (`UnitForm.tsx:89`), och med `forbidNonWhitelisted: true` hade ett
     // borttaget DTO-fält gjort varje vanlig redigering till ett 400.
+    // `!= null` HÄR FÖRUTSÄTTER DTO:NS NULL-AVVISNING.
+    //
+    // Jämförelsen släpper igenom `null` med flit: efter
+    // `PartialType(CreateUnitDto, { skipNullProperties: false })` kan ett
+    // uttryckligt `null` inte nå hit via HTTP — pipen fäller det på `@IsUUID()`
+    // innan controllern körs. Typen säger också `string | undefined`, så en
+    // runtime-koll mot `null` hade krävt en cast för något som inte kan hända.
+    //
+    // Det som gör det säkert är att vägen hit är EN: `units.controller.ts:49`,
+    // och den går genom pipen. Det finns inget `update_unit`-AI-verktyg och
+    // ingen annan intern anropare. Införs en sådan — ett verktyg, ett jobb, en
+    // importväg — går den förbi DTO:n, och då måste den här raden bära
+    // null-fallet själv. Grinden är alltså inte fristående, och den som lägger
+    // till en andra anropare ska läsa den här kommentaren som ett villkor.
     if (dto.propertyId != null && dto.propertyId !== unit.propertyId) {
       throw new BadRequestException(
         'Objektet kan inte flyttas till en annan fastighet. ' +

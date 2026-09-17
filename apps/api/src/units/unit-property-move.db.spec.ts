@@ -209,19 +209,62 @@ medDb('PATCH /v1/units/:id · fastighetstillhörighet mot riktig PostgreSQL (F05
     expect(efter).toEqual(fore)
   })
 
-  it('GRÄNS: status/floor/rooms bär eget @IsOptional och behåller sin null-tolerans', async () => {
-    // Detta är INTE ett önskemål utan en mätning av var rättningen slutar.
-    // `skipNullProperties: false` ger `ValidateIf(v !== undefined)`, men
-    // class-validator OCH-ar villkoren, och de tre fälten har ett eget
-    // `@IsOptional()` i CreateUnitDto som säger "null = frånvarande". Ett null
-    // där förblir därför en tyst no-op. Att ändra det hade också ändrat POST.
-    const fore = await las()
-    const res = await patcha({ status: null })
+  /**
+   * RÄTTNINGENS FAKTISKA RÄCKVIDD, FÄLT FÖR FÄLT.
+   *
+   * `skipNullProperties: false` sitter på DTO:n och gäller därför ALLA nio
+   * ärvda fält — inte bara `propertyId`. Sex av dem saknar eget `@IsOptional()`
+   * i `CreateUnitDto` och avvisar nu ett uttryckligt `null`; tre bär ett eget
+   * och behåller sin null-tolerans (se gränsprovet nedan).
+   *
+   * Förändringen för de sex är "tyst no-op med 200" → "uttryckligt 400", inte
+   * "felaktig skrivning" → "stoppad skrivning": tjänstens mappning använde
+   * `!= null` för varje fält, så ett `null` skrevs aldrig ned. Det som var fel
+   * var att ett uttryckligt värde ignorerades och kvitterades med 200.
+   *
+   * Mot det delade schemat: `UpdateUnitSchema` är `CreateUnitSchema.partial()`,
+   * och zod avvisar `null` för samtliga nio. Divergensen DTO↔schema går alltså
+   * från nio fält till tre, och vidgas ingenstans.
+   */
+  it.each([
+    ['name', 'Nytt namn'],
+    ['unitNumber', '302'],
+    ['type', 'OFFICE'],
+    ['area', 80],
+    ['monthlyRent', 10000],
+  ] as const)(
+    'obligatoriskt fält %s: uttryckligt null avvisas och skriver ingenting',
+    async (falt, giltigtVarde) => {
+      const fore = await las()
 
-    expect(res.statusCode).toBe(200)
-    const efter = await las()
-    expect(efter.status).toBe(fore.status)
-  })
+      const nullSvar = await patcha({ [falt]: null })
+      expect(nullSvar.statusCode).toBe(400)
+      expect(await las()).toEqual(fore)
+
+      // KANARIEFÅGEL MOT INSTRUMENTET. Utan den här halvan vore provet grönt
+      // även om VARJE kropp gav 400 av något orelaterat skäl — och då hade det
+      // inte mätt null-regeln utan bara att endpointen svarar.
+      const giltigtSvar = await patcha({ [falt]: giltigtVarde })
+      expect(giltigtSvar.statusCode).toBe(200)
+      expect(await las()).not.toEqual(fore)
+    },
+  )
+
+  it.each(['status', 'floor', 'rooms'] as const)(
+    'GRÄNS: %s bär eget @IsOptional och behåller sin null-tolerans',
+    async (falt) => {
+      // Detta är INTE ett önskemål utan en mätning av var rättningen slutar.
+      // class-validator OCH-ar sina villkor, så det egna `@IsOptional()` i
+      // CreateUnitDto ("null = frånvarande") överlever bytet. Ett null här
+      // förblir en tyst no-op. Att ändra det hade också ändrat POST, och
+      // beställningen lämnar de tre fälten som de är.
+      const fore = await las()
+      const res = await patcha({ [falt]: null })
+
+      expect(res.statusCode).toBe(200)
+      expect(await las()).toEqual(fore)
+    },
+  )
 
   // ── Det som INTE får gå sönder ────────────────────────────────────────────
 
