@@ -80,6 +80,7 @@ interface Rigg {
   userId: string
   chargeId: string
   leaseId: string
+  meterId: string
 }
 
 describe('förutsättningar', () => {
@@ -125,6 +126,7 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       await prisma.consumptionCharge.deleteMany({ where: { organizationId: orgId } })
       await prisma.meterReading.deleteMany({ where: { organizationId: orgId } })
       await prisma.meter.deleteMany({ where: { organizationId: orgId } })
+      await prisma.consumptionTariff.deleteMany({ where: { organizationId: orgId } })
       await prisma.lease.deleteMany({ where: { organizationId: orgId } })
       await prisma.tenant.deleteMany({ where: { organizationId: orgId } })
       await prisma.unit.deleteMany({ where: { property: { organizationId: orgId } } })
@@ -276,7 +278,13 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       select: { id: true },
     })
 
-    return { orgId: org.id, userId: user.id, chargeId: charge.id, leaseId: lease.id }
+    return {
+      orgId: org.id,
+      userId: user.id,
+      chargeId: charge.id,
+      leaseId: lease.id,
+      meterId: meter.id,
+    }
   }
 
   const stängMaj = (r: Rigg) =>
@@ -525,6 +533,13 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
   // mäter just den egenskapen, på den riktiga skrivvägen, utan attrapp: en äkta
   // transaktion där verifikatet först skapas på riktigt (rad, rader OCH
   // sekvensökning), och som därefter fälls.
+  //
+  // VAD PROVET INTE ÄR: felet injiceras av provet, inte av en produktväg.
+  // `confirmCharge`s egen skriv-sedan-fall-gren — verifikatet skapat, `count`
+  // blir 0, omläsningen visar något annat än CONFIRMED/ATTACHED — kräver en
+  // samtidig annullering, och någon annulleringsväg för charges finns inte. Den
+  // grenen mäts i stället på enhetsnivå i `consumption.compliance.spec.ts`.
+  // Här mäts mekanismen den grenen förlitar sig på.
   it('verifikat som hunnit skapas rullas tillbaka med transaktionen — rad, rader och nummerserie', async () => {
     const r = await såRigg()
     const charge = await prisma.consumptionCharge.findUniqueOrThrow({ where: { id: r.chargeId } })
@@ -580,7 +595,7 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     const konton = await prisma.account.findMany({ where: { organizationId: främmande.orgId } })
     const f1510 = konton.find((k) => k.number === 1510)!
     const f3920 = konton.find((k) => k.number === 3920)!
-    await prisma.journalEntry.create({
+    const främmandePost = await prisma.journalEntry.create({
       data: {
         organizationId: främmande.orgId,
         date: PERIOD_END,
@@ -597,13 +612,27 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
           ],
         },
       },
+      select: { id: true },
     })
 
     await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
 
+    // Ett EGET verifikat skapades — inte den främmande raden återanvänd.
+    // (Att `egna[0].organizationId` är r.orgId vore en tautologi: `verifikat()`
+    // filtrerar redan på org. Det som kan falla är att raden är en ANNAN rad.)
     const egna = await verifikat(r)
     expect(egna).toHaveLength(1)
-    expect(egna[0]!.organizationId).toBe(r.orgId)
+    expect(egna[0]!.id).not.toBe(främmandePost.id)
+    expect(egna[0]!.lines).toHaveLength(2)
+    expect(egna[0]!.lines.reduce((s, l) => s + Number(l.debit ?? 0), 0)).toBe(600)
+
+    // Och den främmande posten är orörd — varken läst som vår eller ändrad.
+    const kvar = await prisma.journalEntry.findUniqueOrThrow({
+      where: { id: främmandePost.id },
+      include: { lines: true },
+    })
+    expect(kvar.verNumber).toBe(9001)
+    expect(kvar.lines).toHaveLength(2)
     expect(await status(r.chargeId)).toBe('CONFIRMED')
   })
 
@@ -647,17 +676,28 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     expect(await verifikat(r)).toHaveLength(0)
   })
 
-  it('ATTACHED utan verifikat: läks utan att statusen eller fakturakopplingen rörs', async () => {
+  it('ATTACHED utan verifikat: läks med rätt belopp, och statusen nedgraderas inte', async () => {
     const r = await såRigg()
     await prisma.consumptionCharge.update({
       where: { id: r.chargeId },
       data: { status: 'ATTACHED' },
     })
+    const före = await prisma.consumptionCharge.findUniqueOrThrow({ where: { id: r.chargeId } })
 
     await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
 
-    expect(await verifikat(r)).toHaveLength(1)
-    expect(await status(r.chargeId)).toBe('ATTACHED')
+    const entries = await verifikat(r)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]!.lines.reduce((s, l) => s + Number(l.debit ?? 0), 0)).toBe(600)
+    expect(entries[0]!.date.toISOString().slice(0, 10)).toBe('2026-05-31')
+
+    // Statusen får inte falla tillbaka till CONFIRMED, och kopplingen till
+    // dokumentet får inte skrivas om av en läkning. (Riggen har ingen faktura,
+    // så `invoiceId` är null här — det som mäts är att fältet är OFÖRÄNDRAT,
+    // inte att det har ett visst värde.)
+    const efter = await prisma.consumptionCharge.findUniqueOrThrow({ where: { id: r.chargeId } })
+    expect(efter.status).toBe('ATTACHED')
+    expect(efter.invoiceId).toBe(före.invoiceId)
   })
 
   // ── 5d. LÄSANDE INVENTERING AV REDAN SKADADE POSTER ──────────────────────
@@ -694,6 +734,8 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     organizationId: string
     antal: bigint
     varav_redan_levererade: bigint
+    aldsta_period: Date
+    nyaste_period: Date
     totalbelopp: unknown
   }
 
@@ -751,6 +793,11 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     expect(Number(träff!.antal)).toBe(2)
     expect(Number(träff!.varav_redan_levererade)).toBe(1)
     expect(Number(träff!.totalbelopp)).toBe(1200)
+    // Periodkolumnerna är det som gör träffen handlingsbar — utan dem vet den
+    // som läser inventeringen inte vilka bokföringsperioder som berörs, och de
+    // avgör om posterna alls går att läka (stängd period nekar).
+    expect(new Date(träff!.aldsta_period).toISOString().slice(0, 10)).toBe('2026-05-31')
+    expect(new Date(träff!.nyaste_period).toISOString().slice(0, 10)).toBe('2026-05-31')
 
     // (4) Den friska posten är fortfarande utanför träffmängden — annars mätte
     // frågan "alla bekräftade poster", inte "bekräftade poster utan verifikat".
@@ -758,6 +805,63 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       where: { organizationId: r.orgId, status: { in: ['CONFIRMED', 'ATTACHED'] } },
     })
     expect(alla).toBe(3)
+  })
+
+  // ── 5e. NEGATIV TARIFF PÅ DEN RIKTIGA VÄGEN ──────────────────────────────
+  //
+  // Spärren mot negativt belopp (`recordReading`) prövas på enhetsnivå med en
+  // attrapp som lämnar tillbaka en negativ tariff. Det provet mäter att spärren
+  // FALLER — men det tar premissen på förtroende: att en negativ tariffrad alls
+  // kan ligga i databasen. `CreateTariffDto.pricePerUnit` har `@Min(0)`, och om
+  // kolumnen dessutom hade en CHECK-constraint vore spärren onåbar dekoration.
+  //
+  // Provet nedan mäter premissen i stället för att påstå den: raden SKRIVS mot
+  // riktig Postgres, och först därefter körs den riktiga tjänstevägen. Skulle
+  // någon senare lägga till en CHECK-constraint blir det HÄR provet rött — och
+  // det är det ärliga utfallet, för då ska spärren i tjänsten tas bort.
+  it('negativ tariff går att skriva i databasen — och avvisas av tjänsten, utan att något sparas', async () => {
+    const r = await såRigg()
+
+    // (1) Premissen, mätt: kolumnen tar emot ett negativt pris.
+    const tariff = await prisma.consumptionTariff.create({
+      data: {
+        organizationId: r.orgId,
+        scope: 'ORGANIZATION',
+        meterType: 'ELECTRICITY',
+        pricePerUnit: -2.5,
+        validFrom: d(2026, 1, 1),
+      },
+      select: { id: true, pricePerUnit: true },
+    })
+    expect(Number(tariff.pricePerUnit)).toBeLessThan(0)
+
+    const avläsningarFöre = await prisma.meterReading.count({ where: { organizationId: r.orgId } })
+
+    // (2) Den riktiga tjänstevägen, inte en attrapp.
+    await expect(
+      consumption.recordReading(
+        {
+          meterId: r.meterId,
+          value: 1300,
+          readingDate: '2026-06-30',
+          periodStart: '2026-06-01',
+          periodEnd: '2026-06-30',
+          source: 'MANUAL',
+        } as never,
+        r.orgId,
+        r.userId,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    // (3) Ingenting sparat — varken avläsning eller debitering.
+    expect(await prisma.meterReading.count({ where: { organizationId: r.orgId } })).toBe(
+      avläsningarFöre,
+    )
+    expect(
+      await prisma.consumptionCharge.count({
+        where: { organizationId: r.orgId, periodEnd: d(2026, 6, 30) },
+      }),
+    ).toBe(0)
   })
 
   // ── 6. ORG-ISOLERING ─────────────────────────────────────────────────────

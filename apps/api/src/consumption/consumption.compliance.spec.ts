@@ -382,7 +382,15 @@ describe('recordReading — noll-belopp ger ingen debitering', () => {
       service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9'),
     ).rejects.toBeInstanceOf(BadRequestException)
 
+    // INGENTING får skrivas — inte bara debiteringen. Att enbart hävda att
+    // chargen uteblir hade varit grönt även om kastet flyttades in i
+    // transaktionen efter `meterReading.create`, och då hade avläsningen
+    // sparats mot ett underlag som avvisades. Systerproven ovan hävdar
+    // tvärtom att avläsningen SKA sparas; det är den kontrasten som mäter var
+    // spärren ligger.
     expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(prisma.meterReading.create).not.toHaveBeenCalled()
+    expect(prisma.$transaction).not.toHaveBeenCalled()
   })
 
   it('POSITIVT belopp: chargen skapas som förut (sonden kan ge något annat än noll)', async () => {
@@ -844,8 +852,10 @@ describe('runYearEndAccrual — estimatmetod + periodisering (PR 5)', () => {
 
 // ── API-KONTRAKTET ÄNDRADES, OCH DET MÅSTE SYNAS I ETT PROV ────────────────
 //
-// `confirmCharge` svarade förut ALLTID 200 med posten. Efter #F017 kan den svara
-// 409 (stängd period) och 422 (verifikatet kunde inte skapas). Tjänsteproven
+// `confirmCharge` kunde förut svara 404 (posten finns inte) och 400 (annullerad
+// post), men den svarade ALLTID 200 när bokföringen fallerade — felet sväljdes.
+// Efter #F017 kan den svara 409 (stängd period) och 422 (verifikatet kunde inte
+// skapas), och det är nya utfall för klienten. Tjänsteproven
 // mäter databasen; de säger ingenting om vad klienten får. Provet nedan mäter
 // controllern: att den inte sväljer, inte översätter och inte maskerar — det var
 // exakt den defekten på tjänstenivån, och den får inte återuppstå ett lager upp.

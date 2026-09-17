@@ -399,9 +399,16 @@ export class ConsumptionService {
       // avrundas till 0,00 — men posten går inte att bokföra: verifikatet skulle
       // sakna belopp, och sedan #F017 avvisar `confirmCharge` en bekräftelse som
       // inte kan ge ett verifikat. Skapades posten ändå fastnade den i DRAFT för
-      // alltid; det finns ingen annulleringsväg för charges. Bokslutsvägen gör
-      // redan samma bedömning (`if (net <= 0) { skipped++; continue }`).
-      // Avläsningen sparas som vanligt; det är bara debiteringen som uteblir.
+      // alltid; det finns ingen annulleringsväg för charges. Avläsningen sparas
+      // som vanligt; det är bara debiteringen som uteblir.
+      //
+      // ASYMMETRI SOM ÄR MEDVETEN: bokslutsvägen (`runYearEndAccrual`, `:989`)
+      // buntar fortfarande ihop noll och negativt i ett `if (net <= 0)`. Efter
+      // den här ändringen delar de två vägarna alltså bedömningen om NOLLAN men
+      // inte om det negativa. Det är inte förbisett — bokslutsvägen räknar upp
+      // `skipped` och är därmed inte tyst, och att ändra en periodiseringsväg är
+      // ett eget beslut med egen mätning. Raden står här så att nästa läsare ser
+      // skillnaden i stället för att anta att de följs åt.
       if (billable && chargeData && chargeData.totalAmount > 0 && lease && deliveryMode) {
         charge = await tx.consumptionCharge.create({
           data: {
