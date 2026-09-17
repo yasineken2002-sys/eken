@@ -27,7 +27,7 @@
  */
 import { randomUUID } from 'node:crypto'
 
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 
 // SAMMA MÖNSTER SOM ÖVRIGA SPECAR SOM IMPORTERAR InvoicesService
 // (`invoices/invoice-service-fee-window.db.spec.ts:38-39` m.fl.): PDF- och
@@ -36,6 +36,8 @@ import { PrismaClient } from '@prisma/client'
 // matchningsvägarna rör ingen av dem.
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+
+import { BadRequestException } from '@nestjs/common'
 
 import { AccountingService, MissingAccrualError } from './accounting.service'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
@@ -139,6 +141,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
       [1510, 'Kundfordringar', 'ASSET'], [1930, 'Företagskonto', 'ASSET'],
       [1920, 'Klientmedel', 'ASSET'], [2420, 'Deposition', 'LIABILITY'],
       [3911, 'Hyresintäkt bostad', 'REVENUE'], [3920, 'Förbrukning', 'REVENUE'],
+      // 3593 krävs av `bookReminderFee`; utan det returnerar den null och
+      // avgiften bokförs aldrig (kontoplansfallet, inte avgiftsfallet).
+      [3593, 'Påminnelseavgifter', 'REVENUE'],
     ] as const) {
       await prisma.account.create({
         data: { organizationId: org.id, number: nr, name: namn, type: typ } })
@@ -372,11 +377,13 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     expect(await prisma.journalEntry.count({
       where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(0)
 
-    // Utfallet skrivs ut så att nästa läsare ser VILKEN spärr som bar, och
-    // inte tror att det var den nya grenen om det var en tidigare kontroll.
-    // eslint-disable-next-line no-console
-    console.log('[total-0] manuellt:', manuellt?.constructor.name ?? 'INGET FEL',
-                '| bank:', bank?.constructor.name ?? 'INGET FEL')
+    // VILKEN spärr som bär är också ett facit, inte en loggrad: det är
+    // `assertPaymentWithinDebt` (`common/payments/payment-within-debt.ts:54`)
+    // som avvisar en faktura vars restskuld redan är noll — INTE den nya
+    // grenen. Skulle betalningsvägarna en dag returnera tyst i stället för att
+    // kasta hade ett prov utan den här assertionen förblivit grönt.
+    expect(manuellt).toBeInstanceOf(BadRequestException)
+    expect(bank).toBeInstanceOf(BadRequestException)
   })
 
   // ── 5. FEL ORGANISATION / FEL FAKTURA ───────────────────────────────────
@@ -409,6 +416,18 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
 
     await expect(betalaManuellt(faktura.id, r, Number(faktura.total)))
       .rejects.toBeInstanceOf(MissingAccrualError)
+
+    // Och motsatsen i samma prov: faktura2 bär nu BÅDA posterna och har därmed
+    // full täckning — den ska gå att betala. Utan den raden hade provet kunnat
+    // vara grönt av att ingenting alls går att betala.
+    const f2 = await prisma.invoice.findUniqueOrThrow({ where: { id: faktura2.id } })
+    await prisma.invoice.update({
+      where: { id: faktura2.id },
+      data: { total: Number(f2.total) + Number(faktura.total) },
+    })
+    await betalaManuellt(faktura2.id, r, Number(f2.total) + Number(faktura.total))
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura2.id } })).status)
+      .toBe('PAID')
     expect(b).toBeTruthy()
   })
 
@@ -424,6 +443,95 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     await prisma.invoice.update({ where: { id: faktura.id }, data: { total: 900 } })
 
     await expect(betalaManuellt(faktura.id, r, 900)).rejects.toBeInstanceOf(MissingAccrualError)
+  })
+
+  // ── 6b. PÅMINNELSEAVGIFT: EN ANNAN, MEN BOKFÖRD, FORDRAN PÅ SAMMA FAKTURA ─
+  //
+  // Varken `markOverdueInvoices` (`notifications.service.ts:331`) eller
+  // påminnelseurvalet (`payment-reminder.service.ts:83-87`) filtrerar på
+  // fakturatyp, så en obetald förbrukningsfaktura hamnar i kravtrappan som
+  // vilken annan. Avgiften skriver upp `Invoice.total` OCH bokförs som en egen
+  // fordran. Σ poster är då mindre än totalen — utan avgiftsgrenen hade en
+  // faktura vars HELA fordran står i huvudboken nekats.
+  //
+  // Provet speglar de två skrivningar `payment-reminder.service.ts:558-601`
+  // gör (uppräkningen av total/subtotal och `bookReminderFee`) i stället för
+  // att driva hela kravtrappans cron — den skickar mejl, och det ska inte ske.
+  const påförAvgift = async (fakturaId: string, r: Rigg, avgift: number) => {
+    const faktura = await prisma.invoice.findUniqueOrThrow({ where: { id: fakturaId } })
+    await prisma.invoice.update({
+      where: { id: fakturaId },
+      data: {
+        total: new Prisma.Decimal(faktura.total).plus(avgift),
+        subtotal: new Prisma.Decimal(faktura.subtotal).plus(avgift),
+      },
+    })
+    return accounting.bookReminderFee({
+      organizationId: r.orgId,
+      source: 'INVOICE',
+      sourceId: `reminder-fee:${fakturaId}`,
+      fee: avgift,
+      description: `Påminnelseavgift faktura ${faktura.invoiceNumber}`,
+      // AVTALSSTÖDET ÄR ETT KRAV, INTE EN FORMALITET. `bookReminderFee`
+      // returnerar null om `isReminderFeeContractuallyAllowed` faller
+      // (`debt-origin.ts:105-112`): avgiften enligt 4 § lagen (1981:739)
+      // förutsätter att villkoret fanns INNAN skulden uppstod. Riggen skickar
+      // därför avtalsdatum före förfallodagen — annars hade provet mätt
+      // avsaknaden av avtalsstöd i stället för avgiftsgrenen.
+      debtOrigin: faktura.dueDate as never,
+      termsFrom: d(2026, 1, 1),
+    })
+  }
+
+  it('påminnelseavgift bokförd: betalningen går igenom trots att Σ poster < total', async () => {
+    const r = await såRigg()
+    await debiteraOchBokfor(r, 1240, 5)
+    const faktura = await fakturera(r)
+    const avgiftsverifikat = await påförAvgift(faktura.id, r, 60)
+    expect(avgiftsverifikat).not.toBeNull()
+
+    const efterPåförande = await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })
+    expect(Number(efterPåförande.total)).toBe(660) // 600 förbrukning + 60 avgift
+
+    await betalaManuellt(faktura.id, r, 660)
+
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
+      .toBe('PAID')
+    expect(await betaltBelopp(faktura.id)).toBe(660)
+  })
+
+  it('påminnelseavgift UTAN verifikat: betalningen NEKAS (skillnaden är inte täckt)', async () => {
+    const r = await såRigg()
+    await debiteraOchBokfor(r, 1240, 5)
+    const faktura = await fakturera(r)
+    await påförAvgift(faktura.id, r, 60)
+
+    // Avgiftens verifikat raderas — fakturan kräver 660 men huvudboken bär 600.
+    await prisma.journalEntryLine.deleteMany({
+      where: { journalEntry: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` } } })
+    await prisma.journalEntry.deleteMany({
+      where: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` } })
+
+    await expect(betalaManuellt(faktura.id, r, 660)).rejects.toBeInstanceOf(MissingAccrualError)
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
+      .toBe('SENT')
+  })
+
+  it('påminnelseavgift bokförd med FEL belopp: betalningen NEKAS (täcker inte skillnaden)', async () => {
+    const r = await såRigg()
+    await debiteraOchBokfor(r, 1240, 5)
+    const faktura = await fakturera(r)
+    await påförAvgift(faktura.id, r, 60)
+
+    // Verifikatet finns men bär 10 kr, inte 60. Grenen läser BELOPPET ur
+    // huvudboken, inte ur fakturaraden — annars hade en avgift som bokförts
+    // fel släppts igenom bara för att något verifikat fanns.
+    await prisma.journalEntryLine.updateMany({
+      where: { journalEntry: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` },
+               debit: { not: null } },
+      data: { debit: 10 } })
+
+    await expect(betalaManuellt(faktura.id, r, 660)).rejects.toBeInstanceOf(MissingAccrualError)
   })
 
   // ── 7. DELBETALNING OCH OMFÖRSÖK ────────────────────────────────────────

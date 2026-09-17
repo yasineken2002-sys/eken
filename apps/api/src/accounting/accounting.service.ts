@@ -17,6 +17,8 @@ import {
   // Värde-import: den typmedvetna grenen i assertInvoiceReceivableBacked jämför
   // mot enumvärdet, inte mot en sträng.
   InvoiceType,
+  // Värde-import: avgiftsgrenen filtrerar på enumvärdet.
+  JournalEntrySource,
   PaymentMethod,
   Prisma,
   RentNoticeType,
@@ -28,7 +30,6 @@ import type {
   ConsumptionVatStatus,
   Invoice,
   InvoiceLine,
-  JournalEntrySource,
   MeterType,
 } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
@@ -3804,11 +3805,43 @@ export class AccountingService {
     // är en egenskap hos omgivningen, inte ett bevis för att den är onödig.
     if (charges.length === 0) return false
 
-    const summa = charges.reduce(
-      (acc, c) => acc.plus(c.totalAmount),
-      new Prisma.Decimal(0),
-    )
-    if (!summa.equals(invoice.total)) return false
+    let täckt = charges.reduce((acc, c) => acc.plus(c.totalAmount), new Prisma.Decimal(0))
+
+    // ── PÅMINNELSEAVGIFTEN ÄR EN EGEN BOKFÖRD FORDRAN PÅ SAMMA FAKTURA ──────
+    //
+    // Kravet "Σ poster == fakturans total" var för snävt, och felet var inte
+    // teoretiskt: varken `markOverdueInvoices` (`notifications.service.ts:331`)
+    // eller påminnelseurvalet (`payment-reminder.service.ts:83-87`) filtrerar på
+    // fakturatyp, så en obetald förbrukningsfaktura hamnar i kravtrappan som
+    // vilken annan. Avgiften skrivs då upp på `Invoice.total` (`:562`) OCH
+    // bokförs som en riktig fordran under `reminder-fee:<invoiceId>` (`:596-598`).
+    //
+    // Utan raderna nedan hade en faktura vars HELA fordran står i huvudboken —
+    // 600 under förbrukningen, 60 under avgiften — nekats för att 600 ≠ 660.
+    // Det är exakt det falsk-nekande den här grenen finns för att ta bort, i det
+    // vanligaste fallet av alla: en hyresgäst som betalar sent.
+    //
+    // Skillnaden godtas ENBART mot ett verkligt verifikat, och beloppet läses ur
+    // HUVUDBOKEN (verifikatets debetsida), inte ur fakturaraden. Det är fordran
+    // vi prövar, inte dokumentet: en avgift som bokförts med fel belopp får inte
+    // släppas igenom bara för att något verifikat finns.
+    //
+    // Påminnelseavgiften är den ENDA post som skriver upp `Invoice.total` —
+    // räntan (`interest:<noticeId>`) hör till hyresavier, inte fakturor.
+    if (!täckt.equals(invoice.total)) {
+      const avgift = await db.journalEntry.findFirst({
+        where: {
+          organizationId,
+          source: JournalEntrySource.INVOICE,
+          sourceId: `reminder-fee:${invoiceId}`,
+        },
+        select: { lines: { select: { debit: true } } },
+      })
+      if (!avgift) return false
+      täckt = avgift.lines.reduce((acc, l) => acc.plus(l.debit ?? 0), täckt)
+    }
+
+    if (!täckt.equals(invoice.total)) return false
 
     // ALLA, inte någon. Kortsluter på första post som saknar sitt verifikat.
     // Anropar den BEFINTLIGA hjälparen per post i stället för att formulera om
