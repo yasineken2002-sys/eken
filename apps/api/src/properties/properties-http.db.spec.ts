@@ -163,8 +163,16 @@ withDb('F056 property HTTP contract', () => {
         const get = await request('GET', `/${id}`)
         expect(get.statusCode).toBe(200)
         expect(get.json().data).toMatchObject(patch.json().data)
-        if (fields.address)
-          expect(stored.country).toBe((fields.address as typeof address).country ?? 'SE')
+        if (fields.address) {
+          // ERSÄTTER `?? 'SE'`. Den gamla raden asserterade att ett UTELÄMNAT
+          // land blir `SE`, och gjorde därmed en oavsiktlig återställning till
+          // avsedd produkt. Beslutet: ett explicit land följer det delade
+          // schemat, ett utelämnat land BEVARAR det lagrade. Fixturen här är
+          // skapad med `SE`, så den skillnaden syns först i de namngivna proven
+          // nedan — därför finns de.
+          const skickatLand = (fields.address as Partial<typeof address>).country
+          expect(stored.country).toBe(skickatLand ?? before.country)
+        }
       }
     },
   )
@@ -248,6 +256,80 @@ withDb('F056 property HTTP contract', () => {
     }
     expect((await request('PATCH', `/${id}`, corrected)).statusCode).toBe(200)
     expect((await request('GET', `/${id}`)).json().data).toMatchObject(corrected)
+  })
+
+  it('F056 address PATCH without country preserves a stored non-SE country', async () => {
+    const post = await request('POST', '', { ...body(), address: { ...address, country: 'NO' } })
+    expect(post.statusCode).toBe(201)
+    const id = post.json().data.id as string
+    expect((await prisma.property.findUniqueOrThrow({ where: { id } })).country).toBe('NO')
+
+    const patch = await request('PATCH', `/${id}`, {
+      address: { street: 'Nygatan 2', city: 'Nystad', postalCode: '11122' },
+    })
+    expect(patch.statusCode).toBe(200)
+    const row = await prisma.property.findUniqueOrThrow({ where: { id } })
+    expect(row.country).toBe('NO')
+    expect(row.street).toBe('Nygatan 2')
+    expect(row.city).toBe('Nystad')
+    expect((await request('GET', `/${id}`)).json().data.address.country).toBe('NO')
+  })
+
+  it('F056 an explicit country follows the shared schema, empty string included', async () => {
+    const id = await create()
+    const stored = async () => (await prisma.property.findUniqueOrThrow({ where: { id } })).country
+    for (const land of ['NO', '', 'SE', '']) {
+      expect(
+        (await request('PATCH', `/${id}`, { address: { ...address, country: land } })).statusCode,
+      ).toBe(200)
+      expect(await stored()).toBe(land)
+    }
+    // Den accepterade tomsträngen är INTE frånvaro: ett utelämnat land efter
+    // den lämnar den tomma strängen kvar i stället för att fylla på `SE`.
+    expect(
+      (
+        await request('PATCH', `/${id}`, {
+          address: { street: address.street, city: address.city, postalCode: address.postalCode },
+        })
+      ).statusCode,
+    ).toBe(200)
+    expect(await stored()).toBe('')
+    // `null` är fortsatt inte frånvaro, och avvisas före lagring.
+    expect(
+      (await request('PATCH', `/${id}`, { address: { ...address, country: null } })).statusCode,
+    ).toBe(400)
+    expect(await stored()).toBe('')
+  })
+
+  it('F056 POST without country keeps the existing SE default', async () => {
+    const post = await request('POST', '', {
+      ...body(),
+      address: { street: 'Test 1', city: 'Teststad', postalCode: '11122' },
+    })
+    expect(post.statusCode).toBe(201)
+    const row = await prisma.property.findUniqueOrThrow({ where: { id: post.json().data.id } })
+    expect(row.country).toBe('SE')
+    expect(post.json().data.address.country).toBe('SE')
+  })
+
+  it('F056 a historical country value stays untouched when no PATCH mentions it', async () => {
+    const id = await create()
+    // Historical fixture only; this is NOT proof of the creation contract.
+    await prisma.property.update({ where: { id }, data: { country: 'Landet som var' } })
+    expect((await request('PATCH', `/${id}`, { totalArea: 101 })).statusCode).toBe(200)
+    expect((await prisma.property.findUniqueOrThrow({ where: { id } })).country).toBe(
+      'Landet som var',
+    )
+    expect(
+      (
+        await request('PATCH', `/${id}`, {
+          address: { street: 'Nygatan 3', city: 'Nystad', postalCode: '11122' },
+        })
+      ).statusCode,
+    ).toBe(200)
+    const row = await prisma.property.findUniqueOrThrow({ where: { id } })
+    expect(row.country).toBe('Landet som var')
+    expect(row.street).toBe('Nygatan 3')
   })
 
   it.each(['OWNER', 'ADMIN', 'MANAGER'])('%s can create and edit', async (role) => {

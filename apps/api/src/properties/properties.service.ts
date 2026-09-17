@@ -126,6 +126,15 @@ export class PropertiesService {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(beteckning !== undefined ? { propertyDesignation: beteckning } : {}),
           ...(dto.type !== undefined ? { type: dto.type } : {}),
+          // ADRESSENS DELFÄLT MAPPAS VAR FÖR SIG, OCH LANDET ÄR SKÄLET.
+          //
+          // Gata, stad och postnummer är obligatoriska så snart ett
+          // `address`-objekt skickas — för dem är `!== undefined` alltid sant
+          // och raden är enbart symmetri. Landet är det fält där villkoret
+          // BÄR: `UpdatePropertySchema` och `AddressDto` gör det valfritt i en
+          // uppdatering, så `undefined` betyder "kroppen nämnde inget land" och
+          // det LAGRADE landet ska stå kvar. Ett explicit land skrivs, även den
+          // tomma strängen — den är kontraktsgiltig och är inte frånvaro.
           ...(dto.address?.street !== undefined ? { street: dto.address.street } : {}),
           ...(dto.address?.city !== undefined ? { city: dto.address.city } : {}),
           ...(dto.address?.postalCode !== undefined ? { postalCode: dto.address.postalCode } : {}),
