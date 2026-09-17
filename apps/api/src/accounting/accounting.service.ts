@@ -3784,7 +3784,24 @@ export class AccountingService {
       where: { invoiceId, organizationId },
       select: { id: true, totalAmount: true },
     })
-    // Tom mängd är inte täckning. Se docblocket: `every([])` är true.
+    // ── DEN HÄR RADEN KAN INTE FALLA I DAG, OCH DET ÄR MÄTT ──────────────────
+    //
+    // Tom mängd är inte täckning: `[].every(…)` är `true`, och utan raden hade
+    // en UTILITY-faktura helt utan kopplade poster godkänts av att det inte
+    // fanns något att kontrollera.
+    //
+    // MUTATIONSMÄTT: tas raden bort passerar hela provsviten ändå (14/14). Den
+    // är alltså SUBSUMERAD av två andra spärrar, inte verksam på egen hand:
+    //   • Σ(∅) är 0, så beloppskravet nedan nekar varje faktura med total > 0.
+    //   • En UTILITY-faktura med total 0 går inte att reglera alls — båda
+    //     betalningsvägarna avvisar den med BadRequestException innan vakten
+    //     ens nås (uppmätt i `utility-invoice-payment-accrual.db.spec.ts`).
+    //
+    // Raden står kvar ändå, och skälet är att de två spärrarna är NÅGON ANNANS
+    // beslut. Ändras beloppsbygget i `invoiceSeparateCharges`, eller blir en
+    // nollfaktura betalbar, öppnas hålet tyst — och det är just den sortens
+    // tysta öppning fail-closed-vakten finns för. Att den inte kan falla i dag
+    // är en egenskap hos omgivningen, inte ett bevis för att den är onödig.
     if (charges.length === 0) return false
 
     const summa = charges.reduce(

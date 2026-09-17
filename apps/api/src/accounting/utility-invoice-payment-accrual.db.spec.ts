@@ -347,6 +347,38 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
       .toBe('SENT')
   })
 
+  // ── 4b. TOM MÄNGD DÄR BELOPPSKRAVET INTE HJÄLPER ────────────────────────
+  //
+  // MUTATIONSMÄTT LUCKA. Provet ovan fångar INTE ett borttaget tom-mängd-krav:
+  // Σ(∅) är 0 och fakturans total 600, så beloppskravet nekar ändå. Kraven är
+  // alltså inte oberoende täckta där.
+  //
+  // Den enda situation där `[].every(…) === true` verkligen skulle avgöra är en
+  // UTILITY-faktura vars total också är 0. Provet nedan mäter om den kan
+  // betalas — i stället för att anta det åt något håll.
+  it('UTILITY-faktura med total 0 och inga poster kan inte regleras', async () => {
+    const r = await såRigg()
+    const chargeId = await debiteraOchBokfor(r, 1240, 5)
+    const faktura = await fakturera(r)
+    await prisma.consumptionCharge.update({ where: { id: chargeId }, data: { invoiceId: null } })
+    await prisma.invoice.update({ where: { id: faktura.id }, data: { total: 0, subtotal: 0 } })
+
+    const manuellt = await betalaManuellt(faktura.id, r, 600).then(() => null, (e) => e as Error)
+    const bank = await matchaBank(faktura.id, r, 600).then(() => null, (e) => e as Error)
+
+    // Vad som än stoppar den: ingen allokering, inget betalningsverifikat och
+    // ingen 1510-kredit får uppstå för en faktura utan bokförd fordran.
+    expect(await prisma.invoicePayment.count({ where: { invoiceId: faktura.id } })).toBe(0)
+    expect(await prisma.journalEntry.count({
+      where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(0)
+
+    // Utfallet skrivs ut så att nästa läsare ser VILKEN spärr som bar, och
+    // inte tror att det var den nya grenen om det var en tidigare kontroll.
+    // eslint-disable-next-line no-console
+    console.log('[total-0] manuellt:', manuellt?.constructor.name ?? 'INGET FEL',
+                '| bank:', bank?.constructor.name ?? 'INGET FEL')
+  })
+
   // ── 5. FEL ORGANISATION / FEL FAKTURA ───────────────────────────────────
 
   it('posten tillhör en ANNAN organisation: NEKAS (ingen täckning över org-gränsen)', async () => {
