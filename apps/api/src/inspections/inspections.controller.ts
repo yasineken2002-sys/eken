@@ -24,7 +24,6 @@ import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
-import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import {
   validateUploadedFile,
@@ -40,7 +39,6 @@ export class InspectionsController {
   constructor(
     private readonly inspectionsService: InspectionsService,
     private readonly analyzerService: InspectionAnalyzerService,
-    private readonly prisma: PrismaService,
     private readonly storage: StorageService,
   ) {}
 
@@ -114,7 +112,11 @@ export class InspectionsController {
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
   ) {
-    const inspection = await this.inspectionsService.findOne(id, orgId)
+    // TIDIG AVVISNING: en signerad besiktning nekas INNAN bilder laddas upp och
+    // innan vision-modellen anropas. Det är bekvämlighet, inte spärr — den
+    // riktiga kontrollen görs om under radlås i tjänsten vid varje skrivning,
+    // eftersom en signering hinner ske under modellanropet.
+    await this.inspectionsService.findOneUnsigned(id, orgId)
     // `mimetype` från multiparten läses INTE — se valideringen nedan.
     const files: Array<{ buffer: Buffer; filename: string }> = []
     const captions: Record<string, string> = {}
@@ -146,6 +148,7 @@ export class InspectionsController {
     )
 
     const imageInputs: ImageInput[] = []
+    const bildrader: Parameters<InspectionsService['saveAnalysisImages']>[2] = []
     for (let i = 0; i < files.length; i++) {
       const f = files[i]!
       // Validerad typ hela vägen: nyckelns ändelse, lagringens Content-Type och
@@ -155,16 +158,13 @@ export class InspectionsController {
       const storageKey = `inspections/${orgId}/${safeName}`
       const storageUrl = await this.storage.uploadFile(f.buffer, storageKey, mimeType)
       const caption = captions[`caption_${i}`] ?? null
-      await this.prisma.inspectionImage.create({
-        data: {
-          inspectionId: id,
-          filename: f.filename,
-          storageKey,
-          storageUrl,
-          caption,
-          room: null,
-          size: f.buffer.length,
-        },
+      bildrader.push({
+        filename: f.filename,
+        storageKey,
+        storageUrl,
+        caption,
+        room: null,
+        size: f.buffer.length,
       })
       imageInputs.push({
         buffer: f.buffer,
@@ -173,46 +173,25 @@ export class InspectionsController {
       })
     }
 
+    // Bildraderna gick förut rakt in via `prisma.inspectionImage.create` utan
+    // någon kontroll av besiktningens status. De skrivs nu genom tjänsten, i en
+    // transaktion som tar samma radlås som signeringen.
+    await this.inspectionsService.saveAnalysisImages(id, orgId, bildrader)
+
     const analysis = await this.analyzerService.analyzeImages(imageInputs, orgId, user.sub)
 
-    let updatedCount = 0
-    let createdCount = 0
-    for (const ai of analysis.items) {
-      const existing = inspection.items.find((it) => it.room === ai.room && it.item === ai.item)
-      if (existing) {
-        await this.prisma.inspectionItem.update({
-          where: { id: existing.id },
-          data: {
-            condition: ai.condition,
-            ...(ai.notes ? { notes: ai.notes } : {}),
-            ...(ai.repairCost != null ? { repairCost: ai.repairCost } : {}),
-          },
-        })
-        updatedCount++
-      } else {
-        await this.prisma.inspectionItem.create({
-          data: {
-            inspectionId: id,
-            room: ai.room,
-            item: ai.item,
-            condition: ai.condition,
-            notes: ai.notes ?? null,
-            repairCost: ai.repairCost ?? null,
-          },
-        })
-        createdCount++
-      }
-    }
+    // Skrivningen tillbaka in i protokollet låg förut här, som fyra ogrindade
+    // prisma-anrop mot en `inspection` som lästes FÖRE modellanropet. Mellan den
+    // läsningen och den här raden ligger hela vision-anropet — flera sekunder
+    // där en signering hinner committas. Tjänsten tar om kontrollen under lås
+    // och läser om posterna i samma transaktion.
+    const { updatedItems, createdItems } = await this.inspectionsService.applyAnalysis(
+      id,
+      orgId,
+      analysis,
+    )
 
-    await this.prisma.inspection.update({
-      where: { id },
-      data: {
-        overallCondition: analysis.overallCondition,
-        notes: analysis.notes,
-      },
-    })
-
-    return { analysis, updatedItems: updatedCount, createdItems: createdCount }
+    return { analysis, updatedItems, createdItems }
   }
 
   @Delete(':id')

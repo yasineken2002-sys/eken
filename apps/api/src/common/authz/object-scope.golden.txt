@@ -45,13 +45,12 @@ där scopningen är anroparens ansvar. Den måste skrivas ner i CALLER_SCOPED me
 ett påstående om vem som scopar i stället — se sista sektionen.
 
 
-## Form 1 — update/delete (18 rader)
+## Form 1 — update/delete (17 rader)
 
 AiTenantConversation    delete      ai/tenant-ai.service.ts                                 D annan nyckel
 AiTenantConversation    update      ai/tenant-ai.service.ts                             ×4  C scopat anrop + INGEN UPPTÄCKT
 AiTenantConversation    updateMany  ai/tenant-ai.service.ts                                 C scopat anrop
-InspectionItem          update      inspections/inspections.controller.ts                   C scopat anrop
-InspectionItem          update      inspections/inspections.service.ts                      A kedje-query
+InspectionItem          update      inspections/inspections.service.ts                  ×2  A kedje-query
 InvoiceLine             deleteMany  invoices/invoices.service.ts                        ×3  A kedje-query
 InvoicePayment          deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 PaymentReminder         delete      ai/tools/tool-executor.service.ts                       A kedje-query
@@ -75,8 +74,8 @@ AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts     
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
 AiMessageTenant         createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiTenantConversation    create      ai/tenant-ai.service.ts                                 D annan nyckel
-InspectionImage         create      inspections/inspections.controller.ts                   C scopat anrop
-InspectionItem          create      inspections/inspections.controller.ts                   C scopat anrop
+InspectionImage         create      inspections/inspections.service.ts                      C scopat anrop
+InspectionItem          create      inspections/inspections.service.ts                      A kedje-query
 InspectionItem          createMany  inspections/inspections.service.ts                      B hjälpare
 InvoiceEvent            create      collections/collection-export.service.ts            ×2  A kedje-query + INGEN UPPTÄCKT
 InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT

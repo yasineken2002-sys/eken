@@ -40,6 +40,12 @@ const CONDITIONS: { value: InspectionItemCondition; label: string }[] = [
 export function InspectionDetailPanel({ inspection, onClose }: Props) {
   const updateInspection = useUpdateInspection()
   const updateItem = useUpdateInspectionItem()
+
+  // Gränssnittet dolde tidigare bara ÅTGÄRDSKNAPPARNA när protokollet var
+  // signerat — postlistan var fortfarande redigerbar, och skick och
+  // reparationskostnad gick att ändra rakt i vyn. Servern nekar numera (F025);
+  // fälten låses här så att beskedet kommer före anropet i stället för efter.
+  const protokolletÄrLåst = inspection.status === 'SIGNED'
   const downloadPdf = useDownloadPdf()
   const analyzeInspection = useAnalyzeInspection()
   const [pendingFiles, setPendingFiles] = useState<
@@ -156,6 +162,12 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
               Besiktningsprotokoll
             </p>
+            {protokolletÄrLåst && (
+              <p className="mb-3 text-[12px] text-gray-500">
+                Protokollet är signerat och kan inte ändras. Ett signerat protokoll är bevisunderlag
+                vid en depositionstvist.
+              </p>
+            )}
             <div className="space-y-4">
               {Object.entries(rooms).map(([room, items]) => (
                 <div key={room}>
@@ -171,6 +183,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                           <div className="mt-1.5 flex items-center gap-2">
                             <select
                               value={item.condition}
+                              disabled={protokolletÄrLåst}
                               onChange={(e) =>
                                 void updateItem.mutateAsync({
                                   inspectionId: inspection.id,
@@ -178,7 +191,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                   dto: { condition: e.target.value as InspectionItemCondition },
                                 })
                               }
-                              className="border-input h-7 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              className="border-input h-7 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                             >
                               {CONDITIONS.map((c) => (
                                 <option key={c.value} value={c.value}>
@@ -193,6 +206,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                 type="text"
                                 defaultValue={item.notes ?? ''}
                                 placeholder="Anteckning..."
+                                disabled={protokolletÄrLåst}
                                 onBlur={(e) => {
                                   const val = e.target.value.trim()
                                   if (val !== (item.notes ?? '')) {
@@ -203,12 +217,13 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                     })
                                   }
                                 }}
-                                className="border-input h-7 flex-1 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="border-input h-7 flex-1 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                               />
                               <input
                                 type="number"
                                 defaultValue={item.repairCost ?? ''}
                                 placeholder="kr"
+                                disabled={protokolletÄrLåst}
                                 onBlur={(e) => {
                                   const val = e.target.value ? parseFloat(e.target.value) : null
                                   if (val !== item.repairCost) {
@@ -219,7 +234,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                     })
                                   }
                                 }}
-                                className="border-input h-7 w-20 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="border-input h-7 w-20 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                               />
                             </div>
                           )}
@@ -433,7 +448,7 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                   onClick={() =>
                     void updateInspection.mutateAsync({
                       id: inspection.id,
-                      dto: { status: 'SIGNED', signedAt: new Date().toISOString() },
+                      dto: { status: 'SIGNED' },
                     })
                   }
                 >

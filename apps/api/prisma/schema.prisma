@@ -5404,6 +5404,23 @@ model Inspection {
   landlordSignature String?
   signedAt          DateTime?
 
+  // ── VAD SIGNERINGEN BINDER (F025) ─────────────────────────────────────────
+  //
+  // sha256 över protokollets innehåll vid signeringsögonblicket: poster, skick,
+  // reparationskostnader och bilder. Före det här fältet band `signedAt`
+  // ingenting alls — den sa att någon tryckt på en knapp, inte VAD som skrevs
+  // under, och varje uppgift gick att skriva om efteråt.
+  //
+  // NULL BETYDER "INTE BUNDEN", INTE "OFÖRÄNDRAD". Rader som signerades före
+  // migrationen får NULL och backfillas AVSIKTLIGT inte: att räkna en hash i
+  // dag över innehåll som kan ha ändrats sedan dess, och lagra den som om den
+  // gällde vid signeringen, hade varit att tillverka det bevis fältet finns för
+  // att bära. Samma resonemang som `actorKind` nedan.
+  //
+  // Vad fältet kan bevisa: att innehållet är detsamma som vid signeringen.
+  // Vad det INTE kan bevisa: vem som skrev under. Se `inspection-signature.ts`.
+  signedContentHash String?
+
   items  InspectionItem[]
   images InspectionImage[]
 
@@ -5440,6 +5457,24 @@ model InspectionItem {
   condition    InspectionItemCondition @default(GOOD)
   notes        String?
   repairCost   Decimal?                @db.Decimal(10, 2)
+
+  // ── TIDSSTÄMPLARNA SAKNADES HELT (F025) ───────────────────────────────────
+  //
+  // Raden bär skickbedömningen och reparationskostnaden — de två uppgifter ett
+  // depositionsavdrag vilar på — och hade varken `createdAt` eller `updatedAt`.
+  // Moderraden har båda. Det gick alltså inte ens i efterhand att avgöra om en
+  // skadepost fanns när hyresgästen skrev under.
+  //
+  // BÅDA ÄR NULLBARA, OCH NULL BETYDER OKÄNT. Befintliga rader får NULL i
+  // migrationen och backfillas inte: en `DEFAULT CURRENT_TIMESTAMP` på ett
+  // tillägg hade stämplat varenda gammal post med migrationens tidpunkt, och en
+  // skadepost som ser ut att ha skapats 2026-09-17 när protokollet signerades i
+  // mars är ett sämre spår än inget spår — den ser ut som en uppgift. Samma
+  // resonemang som `actorKind` (G1 steg 3), och det står i migrationen också.
+  //
+  // Nya rader stämplas av kolumndefaulten respektive Prismas `@updatedAt`.
+  createdAt DateTime? @default(now())
+  updatedAt DateTime? @updatedAt
 
   inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 }
