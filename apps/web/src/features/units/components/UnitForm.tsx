@@ -122,6 +122,15 @@ export function UnitForm({
         )}
       />
 
+      {/* Väljaren är låst när fastigheten är given av sammanhanget. Vid
+          redigering är den det alltid: servern avvisar ett ÄNDRAT propertyId,
+          eftersom att flytta ett objekt mellan fastigheter inte är en stödd
+          operation. Utan den här raden erbjuder gränssnittet ett val som bara
+          kan sluta i ett fel. */}
+      {propertyId && (
+        <p className="-mt-2 text-[12px] text-gray-400">Fastigheten kan inte ändras här.</p>
+      )}
+
       {/* Namn + Enhetsnummer */}
       <div className="grid grid-cols-2 gap-3">
         <Input

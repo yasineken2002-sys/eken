@@ -555,6 +555,7 @@ function UnitDetailPanel({
       {detailTab === 'redigera' && (
         <UnitForm
           {...(selectedUnit ? { defaultValues: unitToInput(selectedUnit) } : {})}
+          {...(selectedUnit ? { propertyId: selectedUnit.propertyId } : {})}
           onSubmit={onUpdate}
           onCancel={() => setDetailTab('detaljer')}
           isSubmitting={isUpdating}

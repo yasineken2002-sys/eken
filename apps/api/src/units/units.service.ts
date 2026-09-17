@@ -76,6 +76,48 @@ export class UnitsService {
     })
     if (!unit) throw new NotFoundException('Enheten hittades inte')
 
+    // ── ATT FLYTTA ETT OBJEKT MELLAN FASTIGHETER ÄR INGEN STÖDD OPERATION ────
+    //
+    // `propertyId` går igenom hela kontraktskedjan — `UpdateUnitSchema` är
+    // `CreateUnitSchema.partial()`, `UpdateUnitDto` ärver fältet via
+    // `PartialType`, och pipens `whitelist` strippar det INTE eftersom DTO:n
+    // känner det. Fram till den här raden mappades det ändå aldrig ned i
+    // `data` nedan, så ett byte svarade 200 OK, ekade tillbaka den GAMLA
+    // fastigheten och lämnade raden orörd. Hyresvärden fick alltså besked om
+    // att flytten gått igenom, och den hade aldrig skett.
+    //
+    // Rättningen är en avvisning och INTE en assignment, därför att en flytt
+    // inte är en befintlig operation med garantier att bevara: ingen skrivväg
+    // i kodbasen rör `Unit.propertyId` efter create (de enda två update-vägarna
+    // mot en befintlig rad är den här och `unit-status.sync.ts`, som bara rör
+    // `status`). Att lägga till raden hade infört ny funktion med följder som
+    // ingen ännu beslutat om:
+    //
+    //   • `UnitEquipment` bär en NOT NULL `propertyId` vid sidan av `unitId`,
+    //     och schemat skriver ut invarianten: en satt `unitId` pekar på en
+    //     enhet i SAMMA fastighet som `propertyId`. En FK kan inte uttrycka
+    //     det, och `unit-equipment.db.spec.ts` prövar det med negativ kontroll.
+    //     En flytt här hade brutit den tyst.
+    //   • Samma denormalisering finns på `Document`, `Inspection`,
+    //     `MaintenanceTicket` och `AiAssignment` — alla stämplade vid
+    //     skapandet. Historiken hade delats i två utan att något syns.
+    //   • Intäkt per fastighet (`monthly-report.service.ts`) och tariffen för
+    //     förbrukning (`consumption.service.ts`) härleds vid LÄSNING ur
+    //     `unit.propertyId`. En flytt skriver om redan fakturerade månader.
+    //   • `@@unique([propertyId, unitNumber])` hade gett ett rått `P2002`, och
+    //     målfastighetens organisation prövas ingenstans här — bara enhetens.
+    //
+    // Fältet får inte lova en ändring som ignoreras. Ett OFÖRÄNDRAT värde
+    // släpps däremot igenom: webbformuläret skickar alltid `propertyId`
+    // (`UnitForm.tsx:89`), och med `forbidNonWhitelisted: true` hade ett
+    // borttaget DTO-fält gjort varje vanlig redigering till ett 400.
+    if (dto.propertyId != null && dto.propertyId !== unit.propertyId) {
+      throw new BadRequestException(
+        'Objektet kan inte flyttas till en annan fastighet. ' +
+          'Fastighetstillhörigheten sätts när objektet skapas.',
+      )
+    }
+
     return this.prisma.unit.update({
       where: { id },
       data: {
