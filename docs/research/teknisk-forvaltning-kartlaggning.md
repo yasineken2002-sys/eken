@@ -56,8 +56,8 @@ betalningar (1930 D) eller kundförlust. Det finns INGEN leverantörs-/kostnadsb
 
 Ja. `ConsumptionCharge` är referensmönstret och har två redan generiska insticksplatser:
 
-1. **`attachRentNoticeLineCharges()`** (`consumption.service.ts:544`) → lägger charge som rad på hyresavin (`RentNoticeLine.consumptionChargeId`), samma OCR som hyran, 2-mån-lag.
-2. **`invoiceSeparateCharges()`** (`consumption.service.ts:605`) → skapar separat `Invoice` (type=UTILITY).
+1. **`attachRentNoticeLineCharges()`** (`consumption.service.ts:667`) → lägger charge som rad på hyresavin (`RentNoticeLine.consumptionChargeId`), samma OCR som hyran, 2-mån-lag.
+2. **`invoiceSeparateCharges()`** (`consumption.service.ts:734`) → skapar separat `Invoice` (type=UTILITY).
 
 Statusmaskinen `DRAFT → CONFIRMED (bokförs) → ATTACHED (avi/faktura)` är mall. En ny
 intäkts-charge (skada debiterad hyresgäst, nyckelersättning) kan återanvända exakt detta.

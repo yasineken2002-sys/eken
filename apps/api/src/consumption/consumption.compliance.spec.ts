@@ -316,6 +316,35 @@ describe('createTariff — historik', () => {
   })
 })
 
+// ── En post som aldrig kan bokföras ska inte skapas (#F017) ──────────────────
+//
+// Sedan `confirmCharge` avvisar en bekräftelse som inte kan ge ett verifikat
+// skulle en charge med belopp 0 fastna i DRAFT för alltid — det finns ingen
+// annulleringsväg. Tariffen får vara 0 ("ingår i hyran"), så fallet är nåbart.
+describe('recordReading — noll-belopp ger ingen debitering', () => {
+  it('tariff 0 kr/enhet: avläsningen sparas, men ingen charge skapas', async () => {
+    const { service, prisma } = makeService({
+      previousReading: { value: 1000 },
+      tariffs: [defaultTariff({ pricePerUnit: 0 })],
+    })
+
+    const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
+
+    expect(prisma.meterReading.create).toHaveBeenCalledTimes(1)
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(res.charge).toBeNull()
+  })
+
+  it('positiv tariff: chargen skapas som förut (sonden kan ge något annat än noll)', async () => {
+    const { service, prisma } = makeService({ previousReading: { value: 1000 } })
+
+    const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
+
+    expect(prisma.consumptionCharge.create).toHaveBeenCalledTimes(1)
+    expect(res.charge).not.toBeNull()
+  })
+})
+
 describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
   it('sätter CONFIRMED atomärt (villkorad på DRAFT) och bokför verifikat', async () => {
     const { service, prisma, accounting } = makeService({ existingCharge: chargeRow() })
@@ -382,6 +411,39 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
 
     await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
       UnprocessableEntityException,
+    )
+  })
+
+  // ── count === 0: TVÅ UTFALL SOM INTE FÅR KOLLAPSA TILL ETT ────────────────
+  //
+  // Grenen nås när `updateMany` inte matchade. Skillnaden mellan "någon annan
+  // hann bekräfta först" (lyckat) och "posten är inte längre DRAFT av något
+  // annat skäl" (fel) avgörs av en OMLÄSNING inuti transaktionen — inte av det
+  // värde som lästes innan racet. Utan omläsningen fick en användare vars post
+  // faktiskt ÄR bokförd beskedet "ingenting har bokförts".
+  it('count 0 + posten hann bli CONFIRMED av någon annan: INGET fel, svaret är vinnarens', async () => {
+    const { service, prisma } = makeService({ existingCharge: chargeRow() })
+    prisma.consumptionCharge.updateMany!.mockResolvedValue({ count: 0 })
+    prisma.consumptionCharge
+      .findFirst!.mockResolvedValueOnce(chargeRow()) // läsningen i början: DRAFT
+      .mockResolvedValueOnce({ status: 'CONFIRMED' }) // omläsningen: någon hann före
+      .mockResolvedValue(chargeRow({ status: 'CONFIRMED' })) // findCharge på slutet
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toEqual(
+      expect.objectContaining({ status: 'CONFIRMED' }),
+    )
+  })
+
+  it('count 0 + posten är inte längre DRAFT av annat skäl: fälls, ingenting bokförs', async () => {
+    const { service, prisma } = makeService({ existingCharge: chargeRow() })
+    prisma.consumptionCharge.updateMany!.mockResolvedValue({ count: 0 })
+    prisma.consumptionCharge
+      .findFirst!.mockResolvedValueOnce(chargeRow()) // läsningen i början: DRAFT
+      .mockResolvedValueOnce({ status: 'CANCELLED' }) // omläsningen: annullerad under tiden
+      .mockResolvedValue(chargeRow({ status: 'CANCELLED' }))
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      ConflictException,
     )
   })
 

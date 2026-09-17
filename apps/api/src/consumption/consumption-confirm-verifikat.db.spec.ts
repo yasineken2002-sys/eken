@@ -38,7 +38,12 @@
  */
 import { randomUUID } from 'node:crypto'
 
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import { PrismaClient, UserRole } from '@prisma/client'
 
 import { AccountingPeriodService } from '../accounting/accounting-period.service'
@@ -86,6 +91,8 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
   let prisma: PrismaClient
   let consumption: ConsumptionService
   let perioder: AccountingPeriodService
+  /** Varje organisation riggen skapat — städas i afterAll, aldrig något annat. */
+  const skapadeOrgar: string[] = []
 
   beforeAll(async () => {
     prisma = new PrismaClient({
@@ -100,6 +107,30 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
   })
 
   afterAll(async () => {
+    // Städar ENBART det riggen själv skapade (id:n samlade i `skapadeOrgar`),
+    // aldrig en bred `deleteMany` över tabellen. FK-riktningen är omvänd
+    // skapandeordning; flera relationer är `onDelete: Restrict`.
+    for (const orgId of skapadeOrgar) {
+      await prisma.journalEntryLine.deleteMany({
+        where: { journalEntry: { organizationId: orgId } },
+      })
+      await prisma.journalEntry.deleteMany({ where: { organizationId: orgId } })
+      await prisma.journalEntrySequence.deleteMany({ where: { organizationId: orgId } })
+      await prisma.accountingPeriodEvent.deleteMany({ where: { organizationId: orgId } })
+      // Stängningen skriver TVÅ rader: händelsen ovan och speglingen här. Båda
+      // har `onDelete: Restrict` mot Organization.
+      await prisma.closedAccountingPeriod.deleteMany({ where: { organizationId: orgId } })
+      await prisma.consumptionCharge.deleteMany({ where: { organizationId: orgId } })
+      await prisma.meterReading.deleteMany({ where: { organizationId: orgId } })
+      await prisma.meter.deleteMany({ where: { organizationId: orgId } })
+      await prisma.lease.deleteMany({ where: { organizationId: orgId } })
+      await prisma.tenant.deleteMany({ where: { organizationId: orgId } })
+      await prisma.unit.deleteMany({ where: { property: { organizationId: orgId } } })
+      await prisma.property.deleteMany({ where: { organizationId: orgId } })
+      await prisma.account.deleteMany({ where: { organizationId: orgId } })
+      await prisma.user.deleteMany({ where: { organizationId: orgId } })
+      await prisma.organization.delete({ where: { id: orgId } })
+    }
     await prisma.$disconnect()
   })
 
@@ -121,6 +152,7 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       },
       select: { id: true },
     })
+    skapadeOrgar.push(org.id)
     const user = await prisma.user.create({
       data: {
         organizationId: org.id,
@@ -301,23 +333,49 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
     )
   })
 
-  it('stängd period: inget verifikationsnummer bränns (serien förblir obruten)', async () => {
+  it('stängd period: inget verifikationsnummer bränns — och sonden kan ge något annat', async () => {
     const r = await såRigg()
     await stängMaj(r)
 
-    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeDefined()
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
 
-    const sekvens = await prisma.journalEntrySequence.findMany({
+    const efterNej = await prisma.journalEntrySequence.findMany({
       where: { organizationId: r.orgId },
     })
-    expect(sekvens).toHaveLength(0)
+    expect(efterNej).toHaveLength(0)
+
+    // NOLLSONDENS MOTBEVIS. En tom sekvenstabell är ett svagt påstående så länge
+    // ingen visat att den KAN fyllas av just den här vägen — en trasig `where`
+    // hade gett noll rader av fel skäl. Efter att perioden öppnats igen ska
+    // samma org ha exakt ett allokerat nummer.
+    //
+    // Provet mäter alltså att numret aldrig DELAS UT vid stängd period
+    // (`assertPeriodOpen` ligger före `upsert` i `allocate`), inte att en redan
+    // tagen ökning rullas tillbaka. Den ordningen är själva skyddet.
+    await perioder.reopenPeriod(r.orgId, 2026, 5, {
+      actorRole: UserRole.OWNER,
+      actorUserId: r.userId,
+      reason: 'Sent inkommen mätaravläsning saknas i perioden',
+      reasonCategory: 'MISSING_ENTRY',
+    })
+    await consumption.confirmCharge(r.chargeId, r.orgId, r.userId)
+
+    const efterJa = await prisma.journalEntrySequence.findMany({
+      where: { organizationId: r.orgId },
+    })
+    expect(efterJa).toHaveLength(1)
+    expect(efterJa[0]!.lastNumber).toBe(1)
   })
 
   it('stängd period: posten plockas INTE upp som fakturerbar efteråt', async () => {
     const r = await såRigg()
     await stängMaj(r)
 
-    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeDefined()
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
 
     // Fakturerings-/avi-vägarna filtrerar på status. Står posten kvar i DRAFT
     // kan den inte krävas in — det är hela skyddet mot "krav utan huvudbok".
@@ -332,7 +390,12 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
   it('intäktskonto saknas i kontoplanen: confirm AVVISAS, posten står kvar som DRAFT', async () => {
     const r = await såRigg({ utanIntäktskonto: true })
 
-    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeDefined()
+    // Exakt typ, inte "något fel": 422 är den omdiskuterade delen av rättningen
+    // (husets övriga `null`-vägar kastar 500) och måste pinnas, annars kan den
+    // glida till ett ramverksfel utan att provet märker det.
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    )
 
     expect(await status(r.chargeId)).toBe('DRAFT')
     expect(await verifikat(r)).toHaveLength(0)
@@ -343,7 +406,9 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
   it('omförsök efter att perioden öppnats igen: confirm går igenom och ger ETT verifikat', async () => {
     const r = await såRigg()
     await stängMaj(r)
-    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeDefined()
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
 
     await perioder.reopenPeriod(r.orgId, 2026, 5, {
       actorRole: UserRole.OWNER,
@@ -360,7 +425,9 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
 
   it('omförsök efter att kontoplanen kompletterats: confirm går igenom', async () => {
     const r = await såRigg({ utanIntäktskonto: true })
-    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeDefined()
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    )
 
     await prisma.account.create({
       data: {
@@ -397,9 +464,15 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       consumption.confirmCharge(r.chargeId, r.orgId, r.userId),
     ])
 
-    // Ingen av de två får lämna kvar ett halvfärdigt tillstånd, och ingen får
-    // svara "bokförd" utan att verifikatet finns.
-    expect(utfall.filter((u) => u.status === 'fulfilled').length).toBeGreaterThanOrEqual(1)
+    // BÅDA, inte "minst en". Omtaget i `confirmCharge` och omläsningen i
+    // `count === 0`-grenen finns just för att förloraren i racet ska få
+    // vinnarens svar i stället för ett fel — med `toBeGreaterThanOrEqual(1)`
+    // hade provet varit grönt även om båda de mekanismerna togs bort, och det
+    // hade dolt ett 409 med texten "ingenting har bokförts" till en användare
+    // vars post faktiskt är bokförd.
+    const fel = utfall.flatMap((u) => (u.status === 'rejected' ? [String(u.reason)] : []))
+    expect(fel).toEqual([])
+    expect(utfall.filter((u) => u.status === 'fulfilled')).toHaveLength(2)
     expect(await status(r.chargeId)).toBe('CONFIRMED')
     expect(await verifikat(r)).toHaveLength(1)
   })
@@ -452,7 +525,9 @@ medDb('F017 · confirmCharge — status och verifikat följs åt', () => {
       data: { status: 'CANCELLED' },
     })
 
-    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeDefined()
+    await expect(consumption.confirmCharge(r.chargeId, r.orgId, r.userId)).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
 
     expect(await status(r.chargeId)).toBe('CANCELLED')
     expect(await verifikat(r)).toHaveLength(0)

@@ -367,7 +367,16 @@ export class ConsumptionService {
       })
 
       let charge: ConsumptionCharge | null = null
-      if (billable && chargeData && lease && deliveryMode) {
+      // `chargeData.totalAmount > 0` är inte kosmetik. En tariff får vara 0
+      // (`CreateTariffDto.pricePerUnit` är `@Min(0)` — "ingår i hyran"), och
+      // avrundningen till ören kan ge 0,00 vid mycket små kvantiteter. En sådan
+      // post går inte att bokföra: verifikatet skulle sakna belopp, och sedan
+      // #F017 avvisar `confirmCharge` en bekräftelse som inte kan ge ett
+      // verifikat. Skapades posten ändå fastnade den i DRAFT för alltid —
+      // det finns ingen annulleringsväg för charges. Bokslutsvägen gör redan
+      // samma bedömning (`if (net <= 0) { skipped++; continue }`). Avläsningen
+      // sparas som vanligt; det är bara debiteringen som uteblir.
+      if (billable && chargeData && chargeData.totalAmount > 0 && lease && deliveryMode) {
         charge = await tx.consumptionCharge.create({
           data: {
             organizationId,
@@ -502,7 +511,7 @@ export class ConsumptionService {
   // sant. Statusflippen skrevs tidigare i ett eget anrop och bokföringen kördes
   // efteråt i ett try/catch som bara loggade. En post kunde då stå CONFIRMED
   // UTAN verifikat och UTAN 1510-fordran — och ändå plockas upp av leveransen:
-  // både avi-vägen (`findChargesForRentNotice`) och fakturavägen
+  // både avi-vägen (`attachRentNoticeLineCharges`) och fakturavägen
   // (`invoiceSeparateCharges`) filtrerar ENBART på status och slår aldrig upp
   // verifikatet. Följden var ett betalningskrav på en intäkt som inte fanns i
   // huvudboken, synligt bara som en loggrad.
@@ -520,6 +529,12 @@ export class ConsumptionService {
   // sourceId="consumption-charge:<id>", och statusflippen är villkorad på DRAFT.
   // Ett andra confirm (dubbelklick, self-heal av en post vars verifikat saknas)
   // hittar verifikatet, flippar ingenting och svarar samma sak som det första.
+  //
+  // SELF-HEAL ÄR INTE EN UPPTÄCKTSVÄG, och ska inte läsas som en. Webben visar
+  // Bekräfta-knappen enbart när status är DRAFT (`ConsumptionPage.tsx:898`), så
+  // en post som blev CONFIRMED utan verifikat INNAN den här rättningen kan inte
+  // läkas från gränssnittet — bara genom ett direkt API-anrop. Ingenting letar
+  // heller upp sådana poster. Att hitta och läka dem är ett eget arbete.
   async confirmCharge(
     id: string,
     organizationId: string,
@@ -578,6 +593,12 @@ export class ConsumptionService {
       // nedan hade just de fallen gett tillbaka exakt det tillstånd den här
       // ändringen finns för att omöjliggöra: CONFIRMED, fakturerbar, utan
       // verifikat. Felet loggas redan av bokföringen; här blir det ett besked.
+      //
+      // 422 OCH INTE 500, till skillnad från avi- och fakturavägarna som kastar
+      // InternalServerError på samma `null`. Skillnaden är medveten: de tre
+      // orsakerna här är alla KONFIGURATION som hyresvärden själv äger och kan
+      // rätta (kontoplanen, tariffen). Ett 500 hade sagt "systemet är trasigt"
+      // om ett saknat konto, och texten nedan hade aldrig nått fram.
       if (!entry) {
         throw new UnprocessableEntityException(
           'Förbrukningsposten kunde inte bokföras och har därför inte bekräftats. ' +
@@ -595,17 +616,34 @@ export class ConsumptionService {
         data: { status: 'CONFIRMED' },
       })
 
-      // count === 0 betyder två olika saker, och skillnaden avgörs av vad vi
-      // läste i samma transaktion. Var posten redan CONFIRMED/ATTACHED är noll
-      // rader det väntade (self-heal). Var den DRAFT har någon annan ändrat den
-      // mellan läsningen och skrivningen — då rullas verifikatet tillbaka med
-      // transaktionen i stället för att bokföras mot en post som inte längre
-      // väntar på det.
+      // count === 0 betyder tre olika saker, och ATT SKILJA DEM ÄT KRÄVER EN NY
+      // LÄSNING — inte den vi gjorde i början av transaktionen.
+      //
+      //  1. Posten var redan CONFIRMED/ATTACHED när vi läste den → väntat
+      //     (self-heal), ingenting att säga.
+      //  2. Posten var DRAFT när vi läste den, men en SAMTIDIG bekräftelse hann
+      //     commita före vår `updateMany`. Då är posten bokförd och CONFIRMED —
+      //     av någon annan, med samma verifikat som vårt idempotensuppslag just
+      //     returnerade. Det är ett lyckat utfall, inte ett fel.
+      //  3. Posten var DRAFT och är det inte längre av något ANNAT skäl
+      //     (annullering) → då ska ingenting bokföras, och transaktionen rullas.
+      //
+      // Utan omläsningen kollapsar 2 och 3 till samma gren, eftersom `charge`
+      // bär det värde vi läste FÖRE racet. Följden vore ett 409 med texten
+      // "ingenting har bokförts" till en användare vars post faktiskt ÄR
+      // bokförd — alltså precis den sortens osanna besked den här ändringen
+      // finns för att ta bort.
       if (count === 0 && charge.status === 'DRAFT') {
-        throw new ConflictException(
-          'Förbrukningsposten ändrades av någon annan under bekräftelsen. ' +
-            'Ingenting har bokförts — läs om posten och försök igen.',
-        )
+        const nu = await tx.consumptionCharge.findFirst({
+          where: { id, organizationId },
+          select: { status: true },
+        })
+        if (nu?.status !== 'CONFIRMED' && nu?.status !== 'ATTACHED') {
+          throw new ConflictException(
+            'Förbrukningsposten ändrades av någon annan under bekräftelsen. ' +
+              'Ingenting har bokförts — läs om posten och försök igen.',
+          )
+        }
       }
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
