@@ -1,41 +1,39 @@
 import type { CreatePropertyInput, SammaNycklar } from '@eken/shared'
-import {
-  IsString,
-  IsEnum,
-  IsNumber,
-  IsInt,
-  IsOptional,
-  Min,
-  Max,
-  ValidateNested,
-} from 'class-validator'
+import { AddressSchema, CreatePropertySchema } from '@eken/shared'
+import { IsString, IsDefined, IsObject, ValidateIf, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { ApiProperty } from '@nestjs/swagger'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
+import { PropertyField } from './property-field.decorator'
 
 class AddressDto {
   @ApiProperty()
   @IsString()
   @StrictString()
+  @PropertyField(AddressSchema.shape.street)
   street!: string
   @ApiProperty()
   @IsString()
   @StrictString()
+  @PropertyField(AddressSchema.shape.city)
   city!: string
   @ApiProperty()
   @IsString()
   @StrictString()
+  @PropertyField(AddressSchema.shape.postalCode)
   postalCode!: string
   // DEFAULTEN LIGGER HÄR, inte bara i schemat. `AddressSchema.country` har
   // `.default('SE')`, så `z.infer` säger att fältet ALLTID finns efter parsning
   // — och `properties.service.ts` tar emot `CreatePropertyInput`, alltså den
   // utparsade formen. Utan initieraren nedan var det ett påstående utan täckning:
   // en kropp utan `country` gav `undefined` i en tjänst vars typ sa `string`.
-  // Fältet är fortsatt VALFRITT på tråden (@IsOptional); initieraren fyller i.
+  // Fältet är fortsatt VALFRITT på tråden; initieraren fyller i. Null är fel.
   @ApiProperty({ default: 'SE' })
   @IsString()
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @StrictString()
+  @PropertyField(AddressSchema.shape.country)
   country: string = 'SE'
 }
 
@@ -53,24 +51,33 @@ export class CreatePropertyDto implements CreatePropertyInput {
   @ApiProperty()
   @IsString()
   @StrictString()
+  @PropertyField(CreatePropertySchema.shape.name)
   name!: string
   @ApiProperty()
   @IsString()
   @StrictString()
+  @PropertyField(CreatePropertySchema.shape.propertyDesignation)
   propertyDesignation!: string
   @ApiProperty({ enum: ['RESIDENTIAL', 'COMMERCIAL', 'MIXED', 'INDUSTRIAL', 'LAND'] })
-  @IsEnum(['RESIDENTIAL', 'COMMERCIAL', 'MIXED', 'INDUSTRIAL', 'LAND'])
+  @PropertyField(CreatePropertySchema.shape.type)
   type!: 'RESIDENTIAL' | 'COMMERCIAL' | 'MIXED' | 'INDUSTRIAL' | 'LAND'
 
-  @ApiProperty() @ValidateNested() @Type(() => AddressDto) address!: AddressDto
+  @ApiProperty()
+  @IsDefined()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address!: AddressDto
 
-  @ApiProperty() @IsNumber() @Min(1) totalArea!: number
+  @ApiProperty()
+  @IngenKoercion()
+  @PropertyField(CreatePropertySchema.shape.totalArea)
+  totalArea!: number
 
   @ApiProperty({ required: false })
-  @IsInt()
-  @Min(1800)
-  @Max(new Date().getFullYear())
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
+  @IngenKoercion()
+  @PropertyField(CreatePropertySchema.shape.yearBuilt)
   yearBuilt?: number
 }
 

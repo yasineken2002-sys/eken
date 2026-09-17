@@ -270,8 +270,8 @@ function isValidSwedishPostalCode(value: string): boolean {
 }
 
 export const AddressSchema = z.object({
-  street: z.string().min(1),
-  city: z.string().min(1),
+  street: z.string().min(1, 'Gatuadress krävs'),
+  city: z.string().min(1, 'Stad krävs'),
   postalCode: z.string().refine(isValidSwedishPostalCode, 'Ogiltigt postnummer'),
   country: z.string().default('SE'),
 })
@@ -287,12 +287,18 @@ export const PropertyTypeSchema = z.enum([
 ])
 
 export const CreatePropertySchema = z.object({
-  name: z.string().min(1).max(200),
-  propertyDesignation: z.string().min(1),
+  name: z.string().min(1, 'Namn krävs').max(200, 'Namn får ha högst 200 tecken'),
+  // Tjänsten trimmar redan beteckningen före lagring. Pröva det lagrade värdet.
+  propertyDesignation: z.string().trim().min(1, 'Fastighetsbeteckning krävs'),
   type: PropertyTypeSchema,
   address: AddressSchema,
-  totalArea: z.number().positive(),
-  yearBuilt: z.number().int().min(1800).max(new Date().getFullYear()).optional(),
+  totalArea: z.number().min(1, 'Area måste vara minst 1 m²'),
+  yearBuilt: z
+    .number()
+    .int('Byggår måste vara ett heltal')
+    .min(1800, 'Byggår måste vara minst 1800')
+    .max(new Date().getFullYear(), 'Byggår får inte ligga i framtiden')
+    .optional(),
 })
 
 export const UpdatePropertySchema = CreatePropertySchema.partial()

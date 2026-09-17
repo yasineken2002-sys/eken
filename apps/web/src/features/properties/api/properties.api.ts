@@ -1,6 +1,6 @@
 import { get, post, patch, del } from '@/lib/api'
 import { kontraktsfel } from '@/lib/contract-gate'
-import { UpdatePropertySchema } from '@eken/shared'
+import { CreatePropertySchema, UpdatePropertySchema } from '@eken/shared'
 import type { Property, CreatePropertyInput, UpdatePropertyInput, Unit } from '@eken/shared'
 
 export type PropertyWithCount = Omit<Property, 'units'> & { _count: { units: number } }
@@ -15,6 +15,8 @@ export function fetchProperty(id: string): Promise<PropertyDetail> {
 }
 
 export function createProperty(dto: CreatePropertyInput): Promise<PropertyWithCount> {
+  const kontrakt = kontraktsfel(CreatePropertySchema, dto)
+  if (kontrakt) return Promise.reject(new Error(kontrakt))
   return post<PropertyWithCount>('/properties', dto)
 }
 

@@ -14,7 +14,9 @@ import { CreatePropertyDto } from './create-property.dto'
  * härledningar av samma mängd är inte en härledning, och raden nedan är det som
  * håller dem lika.
  */
-export class UpdatePropertyDto extends PartialType(CreatePropertyDto) {}
+// Utelämnat är partiellt; explicit null är inte ett giltigt fältvärde.
+const partialOptions = { skipNullProperties: false }
+export class UpdatePropertyDto extends PartialType(CreatePropertyDto, partialOptions) {}
 
 const _kontraktUppdateraFastighet: SammaNycklar<UpdatePropertyDto, UpdatePropertyInput> = true
 void _kontraktUppdateraFastighet

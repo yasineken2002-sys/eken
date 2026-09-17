@@ -115,22 +115,23 @@ export class PropertiesService {
 
   async update(id: string, orgId: string, dto: UpdatePropertyInput) {
     await this.ensureOwnership(id, orgId)
-    const beteckning = dto.propertyDesignation
-      ? normaliseraBeteckning(dto.propertyDesignation)
-      : undefined
+    const beteckning =
+      dto.propertyDesignation !== undefined
+        ? normaliseraBeteckning(dto.propertyDesignation)
+        : undefined
     const row = await this.skrivMedBeteckningsgrind(beteckning ?? '', () =>
       this.prisma.property.update({
         where: { id },
         data: {
-          ...(dto.name ? { name: dto.name } : {}),
-          ...(beteckning ? { propertyDesignation: beteckning } : {}),
-          ...(dto.type ? { type: dto.type } : {}),
-          ...(dto.address?.street ? { street: dto.address.street } : {}),
-          ...(dto.address?.city ? { city: dto.address.city } : {}),
-          ...(dto.address?.postalCode ? { postalCode: dto.address.postalCode } : {}),
-          ...(dto.address?.country ? { country: dto.address.country } : {}),
-          ...(dto.totalArea ? { totalArea: dto.totalArea } : {}),
-          ...(dto.yearBuilt ? { yearBuilt: dto.yearBuilt } : {}),
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
+          ...(beteckning !== undefined ? { propertyDesignation: beteckning } : {}),
+          ...(dto.type !== undefined ? { type: dto.type } : {}),
+          ...(dto.address?.street !== undefined ? { street: dto.address.street } : {}),
+          ...(dto.address?.city !== undefined ? { city: dto.address.city } : {}),
+          ...(dto.address?.postalCode !== undefined ? { postalCode: dto.address.postalCode } : {}),
+          ...(dto.address?.country !== undefined ? { country: dto.address.country } : {}),
+          ...(dto.totalArea !== undefined ? { totalArea: dto.totalArea } : {}),
+          ...(dto.yearBuilt !== undefined ? { yearBuilt: dto.yearBuilt } : {}),
         },
         include: { _count: { select: { units: true } } },
       }),
