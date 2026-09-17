@@ -18,7 +18,11 @@ import { PropertiesService } from './properties.service'
 // Actual HTTP routing, DTO metadata, production pipe, JWT/role guards, service
 // and PostgreSQL. No direct service writes, except explicit historical fixtures.
 // CI's Tests job supplies DATABASE_URL and applies the committed migrations.
-const withDb = process.env.DATABASE_URL ? describe : describe.skip
+const hasDatabase = Boolean(process.env.DATABASE_URL)
+const withDb = hasDatabase ? describe : describe.skip
+it('F056 HTTP tests require an explicit test database', () => {
+  expect(hasDatabase).toBe(true)
+})
 const address = { street: 'Testgatan 1', city: 'Teststad', postalCode: '111 22', country: 'SE' }
 const year = new Date().getFullYear()
 const body = () => ({
