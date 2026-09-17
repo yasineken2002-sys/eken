@@ -234,14 +234,36 @@ export class BankStatementImportService {
       // CSV-importen (org, date, description, amount, reference) → create →
       // matchTransaction.
       //
-      // `reference` ingår av samma skäl som i CSV-importen: utan den räknades två
-      // hyresgästers lika stora inbetalningar samma dag som EN, och den andras
+      // `reference` ingår av samma SKADESKÄL som i CSV-importen: utan den räknades
+      // två hyresgästers lika stora inbetalningar samma dag som EN, och den andras
       // pengar nådde aldrig databasen. Fältet är det som faktiskt lagras på raden
       // nedan (`reference: t.ocr`), så nyckeln frågar efter exakt det värde den
       // själv skriver — och `|| null` gör "ingen OCR" till ett eget värde i
       // stället för en joker.
       //
-      // ÄRVD BEGRÄNSNING, inte en ny: PDF-vägens tolkning är AI-buren och
+      // ── MEN CSV:S HÅLLBARHETSARGUMENT GÄLLER INTE HÄR. LÄS INTE IN DET. ──────
+      //
+      // I CSV-vägen motiveras `reference` med att kolumnen lagras ORDAGRANT och
+      // aldrig räknas om av någon kodversion. Det är sant där. Det är INTE sant
+      // här: värdet som skrivs är `t.ocr`, och `t.ocr` har passerat
+      // `sanitizeEdited` nedan, som nollställer ett OCR som inte är Luhn-giltigt.
+      // PDF-vägens `reference` är alltså ett SANERAT värde, inte ett rått.
+      //
+      // Saneringen är YNGRE än skrivningen. `reference: t.ocr` kom med `93f2765e`
+      // (2026-05-28); Luhn-filtret i `sanitizeEdited` kom med `e57ff7bb`
+      // (2026-05-31). En `BankTransaction` som PDF-vägen skrev i det fönstret kan
+      // alltså bära ett `reference` som dagens sanering skulle nollställa.
+      //
+      // KONKRET FORM PÅ RISKEN: en sådan rad bär t.ex. `reference = '20260601'`.
+      // Laddas samma PDF upp och bekräftas i dag blir `t.ocr` null, dedupen frågar
+      // `reference: null`, den lagrade raden svarar inte — och en ANDRA bankrad
+      // skapas för samma betalning, med allokering och bokföring.
+      //
+      // DETTA ÄR INTE MÄTT. Ingen produktionspopulation är räknad och ingen
+      // verklig historisk återimport är körd. Fönstrets längd säger ingenting om
+      // hur många rader som ligger i det, och antalet är okänt — inte litet.
+      //
+      // ÄRVD BEGRÄNSNING DÄRUTÖVER: PDF-vägens tolkning är AI-buren och
       // icke-deterministisk (`schema.prisma` vid `originalParsedData`). Laddas
       // samma PDF upp igen och AI:n läser ett annat OCR blir det en ny rad — men
       // det gällde redan `description`, som låg i nyckeln före den här ändringen.

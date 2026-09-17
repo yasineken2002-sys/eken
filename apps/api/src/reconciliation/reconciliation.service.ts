@@ -794,9 +794,18 @@ export class ReconciliationService {
         // `rawOcr` som dagens tolkning inte producerar — en nyckel på det fältet
         // hade missat vid återimport av gammal historik och skapat en ANDRA
         // bankrad, alltså dubbel allokering och dubbel bokföring. `reference` är
-        // kolumnen rå, lagrad ordagrant sedan importvägen fanns och aldrig
-        // omräknad. Den bär dessutom allt `rawOcr` kunde ha tillfört: `rawOcr` är
-        // en funktion av `reference` och `description`, som båda redan ingår.
+        // I DEN HÄR VÄGEN kolumnen rå: värdet skrivs ordagrant som det står i
+        // filen, det har lagrats så sedan CSV-importen fanns (`9fedfcfc`) och
+        // ingen kodversion räknar om det. Den bär dessutom allt `rawOcr` kunde ha
+        // tillfört: `rawOcr` är en funktion av `reference` och `description`, som
+        // båda redan ingår.
+        //
+        // ARGUMENTET ÄR CSV-VÄGENS OCH FÅR INTE LÅNAS UT. PDF-vägen skriver också
+        // `reference`, men där är värdet SANERAT (Luhn-filtret i
+        // `bank-statement-import.service.ts`), inte rått — och saneringen är yngre
+        // än skrivningen. Vad det betyder för den vägen står vid dess egen
+        // dedupnyckel. BgMax har ingen referenskolumn alls; där bär nyckeln
+        // `rawOcr` som en rå teckenposition, se nedan.
         //
         // `|| null` och inte villkorad spridning: ett UTELÄMNAT fält är ingen
         // fråga utan en JOKER som matchar vilken rad som helst. "ingen referens"
