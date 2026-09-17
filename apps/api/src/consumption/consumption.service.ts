@@ -1,6 +1,5 @@
 import {
   Injectable,
-  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -62,8 +61,6 @@ function chargeLineDescription(meterType: MeterType, periodEnd: Date): string {
 
 @Injectable()
 export class ConsumptionService {
-  private readonly logger = new Logger(ConsumptionService.name)
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
