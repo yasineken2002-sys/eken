@@ -42,7 +42,17 @@ function tenantName(inspection: Inspection): string {
 export function InspectionsPage() {
   const [typeFilter, setTypeFilter] = useState<InspectionType | 'ALL'>('ALL')
   const [statusFilter, setStatusFilter] = useState<InspectionStatus | ''>('')
-  const [selectedInspection, setSelectedInspection] = useState<Inspection | null>(null)
+  // VALET ÄR ETT ID, INTE EN KOPIA AV RADEN.
+  //
+  // Här låg hela `Inspection`-objektet i state, kopierat vid klicket. Panelen
+  // visade alltså en ögonblicksbild som ALDRIG uppdaterades: `invalidateQueries`
+  // hämtade om listan, men det kopierade objektet låg kvar tills användaren
+  // klickade på nytt. Det är precis den inaktuella vy signeringen nu jämför mot
+  // (`expectedContentHash`) — med en kopia i state hade panelen eka:t en gammal
+  // hash och fått konflikt trots att ingen annan ändrat något.
+  //
+  // Med ett id härleds raden ur den färska listan vid varje rendering.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
 
   const filters = {
@@ -52,6 +62,8 @@ export function InspectionsPage() {
 
   const { data: inspections, isLoading } = useInspections(filters)
   const { data: stats } = useInspectionStats()
+
+  const selectedInspection = inspections?.find((i) => i.id === selectedId) ?? null
 
   const STATUS_TABS: { value: InspectionStatus | ''; label: string }[] = [
     { value: '', label: 'Alla' },
@@ -190,12 +202,10 @@ export function InspectionsPage() {
                     <motion.tr
                       key={insp.id}
                       variants={item}
-                      onClick={() =>
-                        setSelectedInspection(selectedInspection?.id === insp.id ? null : insp)
-                      }
+                      onClick={() => setSelectedId(selectedId === insp.id ? null : insp.id)}
                       className={cn(
                         'border-line cursor-pointer border-b transition-colors last:border-0 hover:bg-gray-50/80',
-                        selectedInspection?.id === insp.id && 'bg-blue-50/40',
+                        selectedId === insp.id && 'bg-blue-50/40',
                       )}
                     >
                       <td className="px-4 py-3">
@@ -232,8 +242,13 @@ export function InspectionsPage() {
         <AnimatePresence>
           {selectedInspection && (
             <InspectionDetailPanel
+              // Panelen är SAMMA komponentinstans för alla rader. Utan `key`
+              // följer dess eget tillstånd — felruta, valda filer, AI-resultat —
+              // med när användaren klickar på en annan besiktning, och felrutan
+              // påstår då något om fel protokoll.
+              key={selectedInspection.id}
               inspection={selectedInspection}
-              onClose={() => setSelectedInspection(null)}
+              onClose={() => setSelectedId(null)}
             />
           )}
         </AnimatePresence>

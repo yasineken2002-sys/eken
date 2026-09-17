@@ -22,7 +22,20 @@ function make() {
     tenant: { findFirst: jest.fn() },
     inspection: {
       create: jest.fn().mockResolvedValue({ id: 'i1' }),
-      findUnique: jest.fn().mockResolvedValue({ id: 'i1' }),
+      // `findUnique` läser med FULL_INCLUDE och ger ALLTID en rad med
+      // `items`/`images` och ett `scheduledDate`. Attrappen returnerade bara
+      // ett id, vilket inte motsvarade någon verklig rad — synligt först när
+      // `create` började returnera samma form som läsvägarna (`contentHash`).
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'i1',
+        type: 'PERIODIC',
+        scheduledDate: new Date('2026-05-01T00:00:00Z'),
+        completedAt: null,
+        overallCondition: null,
+        notes: null,
+        items: [],
+        images: [],
+      }),
     },
     inspectionItem: { createMany: jest.fn() },
   }

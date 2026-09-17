@@ -1,10 +1,9 @@
-import { IsEnum, IsString, IsOptional, MaxLength } from 'class-validator'
+import { IsEnum, IsString, IsOptional, MaxLength, Matches } from 'class-validator'
 import { InspectionStatus } from '@prisma/client'
 
 import type { UpdateInspectionInput, SammaNycklar } from '@eken/shared'
 import { INSPECTION_TEXT_MAX } from '@eken/shared'
 import { StrictString } from '../../common/contract/strict-string.decorator'
-import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 /**
  * PATCH /inspections/:id
@@ -22,6 +21,17 @@ import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator
  * besiktningsprotokoll fritt, bakåt eller framåt, i samma anrop som satte
  * status. Protokollet är ett bevismedel i en depositionstvist; tidpunkten ska
  * komma från servern, och gör det nu ensam.
+ *
+ * ── `signedAt` ÄR BORTTAGET AV EXAKT SAMMA SKÄL (F025) ─────────────────────
+ *
+ * Fältet lät klienten bestämma NÄR protokollet skrevs under. Webben skickade
+ * `new Date().toISOString()`, men fältet är en HTTP-parameter: vilket datum som
+ * helst gick igenom, bakåt eller framåt. En signeringstidpunkt som anroparen
+ * väljer själv säger ingenting om verkligheten — och tidpunkten är just det som
+ * avgör om en skadepost fanns före eller efter att hyresgästen skrev under.
+ *
+ * Servern stämplar nu `signedAt` ensam, i samma transaktion som statusbytet och
+ * som hashen över det signerade innehållet. Se `inspections.service.ts`.
  *
  * ── SIGNATURFÄLTEN STÅR KVAR, MED TAK ──────────────────────────────────────
  *
@@ -48,9 +58,22 @@ export class UpdateInspectionDto implements UpdateInspectionInput {
   @StrictString()
   overallCondition?: string
 
-  @StrictIsoDatum()
+  /**
+   * Förutsättningen för signering: `contentHash` ur den version klienten LÄSTE.
+   *
+   * Formen är låst till 64 hex-tecken därför att det är vad `sha256`-hex är —
+   * en fri sträng hade gjort felet till en tyst missmatchning i stället för ett
+   * synligt formatfel. Servern härleder jämförelsevärdet själv; det här fältet
+   * är bara ekot. Se `inspections.service.ts` för kontraktet: obligatoriskt vid
+   * signering, förbjudet annars.
+   */
+  @IsString()
+  @Matches(/^[0-9a-f]{64}$/, {
+    message: 'expectedContentHash måste vara en sha256 i hex (64 tecken, 0-9a-f)',
+  })
   @IsOptional()
-  signedAt?: string
+  @StrictString()
+  expectedContentHash?: string
 
   @IsString()
   @MaxLength(200)

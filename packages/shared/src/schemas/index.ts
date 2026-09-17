@@ -1802,7 +1802,17 @@ export const UpdateInspectionSchema = z
     status: InspectionStatusEnum.optional(),
     notes: z.string().max(INSPECTION_TEXT_MAX).optional(),
     overallCondition: z.string().max(INSPECTION_TEXT_MAX).optional(),
-    signedAt: IsoDatumSchema.optional(),
+    // `signedAt` STOD HÄR och är borttaget (F025): klienten kunde datera en
+    // underskrift fritt. Servern stämplar tidpunkten. Samma skäl som
+    // `completedAt` togs bort för — se `update-inspection.dto.ts`.
+    //
+    // `expectedContentHash` är förutsättningen för signering: `contentHash` ur
+    // den version klienten läste. Obligatorisk vid `status: 'SIGNED'`, förbjuden
+    // annars — kontraktet prövas i tjänsten, formen här.
+    expectedContentHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
     tenantSignature: z.string().max(200).optional(),
     landlordSignature: z.string().max(200).optional(),
   })

@@ -38,25 +38,25 @@ function fakeRequest(files: Array<{ filename: string; mimetype: string; buffer: 
 }
 
 function makeController() {
+  // Skrivningarna gick förut rakt på `PrismaService` härifrån. De går nu genom
+  // tjänsten, som tar radlås och nekar ett signerat protokoll (F025), så riggen
+  // stubbar tjänstens metoder i stället för prisma-modellerna. Påståendena om
+  // magiska byten, storlekstak och 10-bildersgränsen nedan är OFÖRÄNDRADE.
   const inspectionsService = {
-    findOne: jest.fn().mockResolvedValue({ id: 'insp-1', items: [] }),
+    findOneUnsigned: jest.fn().mockResolvedValue({ id: 'insp-1', items: [] }),
+    saveAnalysisImages: jest.fn().mockResolvedValue(undefined),
+    applyAnalysis: jest.fn().mockResolvedValue({ updatedItems: 0, createdItems: 0 }),
   }
   const analyzerService = {
     analyzeImages: jest.fn().mockResolvedValue({ items: [], summary: '', totalRepairCost: 0 }),
-  }
-  const prisma = {
-    inspectionImage: { create: jest.fn().mockResolvedValue({}) },
-    inspectionItem: { update: jest.fn(), create: jest.fn() },
-    inspection: { update: jest.fn().mockResolvedValue({}) },
   }
   const storage = { uploadFile: jest.fn().mockResolvedValue('https://r2/obj') }
   const controller = new InspectionsController(
     inspectionsService as never,
     analyzerService as never,
-    prisma as never,
     storage as never,
   )
-  return { controller, storage, prisma, analyzerService }
+  return { controller, storage, inspectionsService, analyzerService }
 }
 
 const user = { sub: 'user-1', role: 'ADMIN', organizationId: 'org-1' } as never
