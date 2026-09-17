@@ -552,16 +552,26 @@ function UnitDetailPanel({
         </div>
       )}
 
-      {detailTab === 'redigera' && (
-        <UnitForm
-          {...(selectedUnit ? { defaultValues: unitToInput(selectedUnit) } : {})}
-          {...(selectedUnit ? { propertyId: selectedUnit.propertyId } : {})}
-          onSubmit={onUpdate}
-          onCancel={() => setDetailTab('detaljer')}
-          isSubmitting={isUpdating}
-          submitLabel="Spara ändringar"
-        />
-      )}
+      {/* DETALJEN MÅSTE FINNAS INNAN FORMULÄRET MONTERAS.
+          Listraden räcker inte: `useUnit` svarar senare, och react-hook-form
+          initierar sina värden EN gång vid monteringen. Monterades formuläret
+          under laddningen fick fastighetsfältet `''`, och när svaret sedan kom
+          låstes samma tomma fält (mätt: värde "" och disabled=true, sparning
+          utfördes aldrig). Låsningen är rätt — men bara på ett fält som redan
+          bär rätt värde. Därför laddningsläge tills underlaget finns. */}
+      {detailTab === 'redigera' &&
+        (selectedUnit ? (
+          <UnitForm
+            defaultValues={unitToInput(selectedUnit)}
+            propertyId={selectedUnit.propertyId}
+            onSubmit={onUpdate}
+            onCancel={() => setDetailTab('detaljer')}
+            isSubmitting={isUpdating}
+            submitLabel="Spara ändringar"
+          />
+        ) : (
+          <p className="py-8 text-center text-[13px] text-gray-400">Laddar objektet…</p>
+        ))}
     </div>
   )
 }

@@ -30,6 +30,17 @@
  * unitNumber])` och främmande nycklar finns inte i den syntetiska tabellen.
  * Det är avsiktligt: de spärrarna är en del av VARFÖR en flytt inte är en
  * stödd operation, inte en del av det som mäts här.
+ *
+ * Inloggningen är inte heller äkta här: `JwtAuthGuard` ersätts och identiteten
+ * kommer ur provheaders. Rollgrinden är däremot den riktiga.
+ *
+ * ── VAD SOM MÄTER RESTEN ────────────────────────────────────────────────────
+ *
+ * `unit-property-move.db.spec.ts` kör samma rutter mot en RIKTIG `PrismaService`
+ * och PostgreSQL, med riktig `JwtStrategy` och signerade tokens, och läser
+ * tillbaka raden efter varje anrop. Den här filen behålls därför att den är
+ * snabb och isolerar kontraktet; den ersätter inte databasbeviset och påstår
+ * inte att göra det.
  */
 
 import { Module, type CanActivate, type ExecutionContext } from '@nestjs/common'
