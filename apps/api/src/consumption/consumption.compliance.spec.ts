@@ -13,7 +13,12 @@
  *  • PR 2 stannar vid DRAFT-charge: inget verifikat, ingen 1510-fordran.
  *  • RBAC: skriv (mätare/tariff/avläsning) kräver MANAGER/ADMIN/OWNER; läs öppen.
  */
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import type { ExecutionContext } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { RolesGuard } from '../common/guards/roles.guard'
@@ -326,7 +331,7 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
     expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
   })
 
-  it('annullerad post kan inte bokföras (updateMany matchar inte CANCELLED)', async () => {
+  it('annullerad post kan inte bokföras (läses i transaktionen, före bokföringen)', async () => {
     const { service, accounting } = makeService({
       existingCharge: chargeRow({ status: 'CANCELLED' }),
     })
@@ -344,10 +349,57 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
     expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
   })
 
-  it('bokföringsfel fäller inte confirm:en (loggas)', async () => {
+  // ── FACIT ÄNDRAT (#F017) ───────────────────────────────────────────────────
+  //
+  // Provet hette tidigare "bokföringsfel fäller inte confirm:en (loggas)" och
+  // asserterade att `confirmCharge` RESOLVAR när bokföringen kastar. Det var
+  // inte ett prov på en spärr — det var buggen skriven som ett krav, och det är
+  // därför den överlevde: sviten skyddade svälj-beteendet i stället för att
+  // fånga det.
+  //
+  // Beskedet användaren får är "Posten är bokförd (verifikat skapat)", och
+  // posten blir fakturerbar enbart på sin status. Ett sväljt bokföringsfel gav
+  // alltså ett betalningskrav utan motsvarande post i huvudboken. Det gamla
+  // facit går inte att förena med det beskedet, och det är facit som är fel.
+  //
+  // Det gamla utfallet är mätt före bytet: mot revision 14fc0a8b var provet
+  // GRÖNT, och beteendeprovet mot riktig databas
+  // (`consumption-confirm-verifikat.db.spec.ts`) var rött i åtta fall.
+  it('bokföringsfel FÄLLER confirm:en — felet går upp och statusen rullas tillbaka', async () => {
     const { service, accounting } = makeService({ existingCharge: chargeRow() })
-    accounting.createJournalEntryForConsumptionCharge.mockRejectedValueOnce(new Error('boom'))
-    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toBeDefined()
+    accounting.createJournalEntryForConsumptionCharge.mockRejectedValueOnce(
+      new ConflictException('Bokföringsperioden 2026-05 är stängd'),
+    )
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+  })
+
+  it('verifikat uteblev (null, t.ex. saknat konto): confirm avvisas i stället för att tiga', async () => {
+    const { service, accounting } = makeService({ existingCharge: chargeRow() })
+    accounting.createJournalEntryForConsumptionCharge.mockResolvedValueOnce(null)
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    )
+  })
+
+  it('statusflippen ligger i SAMMA transaktion som verifikatet', async () => {
+    const { service, prisma, accounting } = makeService({ existingCharge: chargeRow() })
+
+    await service.confirmCharge('charge-1', 'org-1', 'user-9')
+
+    // Attrappen kan inte pröva rollbacken — det gör db-provet. Den kan däremot
+    // pröva att transaktionen öppnas och att bokföringen får den vidare, vilket
+    // är förutsättningen för att rollbacken ska kunna ske.
+    expect(prisma.$transaction).toHaveBeenCalled()
+    expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'charge-1' }),
+      'org-1',
+      'user-9',
+      expect.anything(),
+    )
   })
 })
 

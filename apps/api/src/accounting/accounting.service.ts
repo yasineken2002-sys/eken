@@ -134,7 +134,7 @@ const REVERSAL_REASON_MIN_LENGTH = 10
  * #214 — inte sträng-formen som äldre kod antar). Sträng-fallbacken finns för
  * säkerhets skull; okänd form klassas som "inte ett race" och kastas vidare.
  */
-function isIdempotencyRaceConflict(err: unknown): boolean {
+export function isIdempotencyRaceConflict(err: unknown): boolean {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false
   const target = (err.meta as { target?: unknown } | undefined)?.target
   const fields = Array.isArray(target)
@@ -2465,10 +2465,18 @@ export class AccountingService {
     },
     organizationId: string,
     createdById: string | null,
+    // Valfri yttre transaktion. Anges av `confirmCharge`, som måste skriva
+    // statusflippen DRAFT → CONFIRMED och verifikatet ATOMISKT: en CONFIRMED
+    // post utan verifikat blir fakturerbar och krävs in utan att finnas i
+    // huvudboken (#F017). Utan tx beter sig metoden som förr —
+    // `createNumberedEntry` öppnar då sin egen transaktion. Speglar
+    // createJournalEntryForRentNotice/bookReminderFee.
+    tx?: Prisma.TransactionClient,
   ) {
+    const db = tx ?? this.prisma
     const sourceId = `consumption-charge:${charge.id}`
 
-    const accounts = await this.prisma.account.findMany({
+    const accounts = await db.account.findMany({
       where: { organizationId },
       select: { id: true, number: true },
     })
@@ -2531,6 +2539,7 @@ export class AccountingService {
       lines,
       idempotencyWhere: { organizationId, sourceId },
       include: { lines: { include: { account: true } } },
+      ...(tx ? { tx } : {}),
     })
   }
 
