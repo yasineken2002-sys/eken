@@ -1,15 +1,26 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
-import { InspectionStatus, InspectionType } from '@prisma/client'
+import { InspectionStatus, InspectionType, Prisma } from '@prisma/client'
 import type { InspectionItemCondition } from '@prisma/client'
 import { CreateInspectionDto } from './dto/create-inspection.dto'
 import { UpdateInspectionDto } from './dto/update-inspection.dto'
 import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import {
+  BESIKTNING_SIGNERAD_MEDDELANDE,
+  computeSignedContentHash,
+  type SignedContent,
+} from './inspection-signature'
 
 const DEFAULT_ITEMS: { room: string; item: string }[] = [
   { room: 'Hall', item: 'Golv' },
@@ -96,6 +107,22 @@ export class InspectionsService {
     private readonly storage: StorageService,
   ) {}
 
+  /**
+   * VERSIONEN KLIENTEN SÅG, HÄRLEDD AV SERVERN.
+   *
+   * `contentHash` är hashen över protokollets innehåll **just nu**, räknad med
+   * samma funktion som signeringen använder. Den lagras inte — den härleds vid
+   * varje läsning, och det är hela poängen: klienten ska inte kunna hitta på
+   * ett jämförelsevärde, bara eka tillbaka det den fick.
+   *
+   * Skiljs från `signedContentHash`, som är värdet FRUSET vid signeringen. För
+   * ett osignerat protokoll är `signedContentHash` null medan `contentHash`
+   * alltid har ett värde; för ett orört signerat protokoll är de lika.
+   */
+  private medContentHash<T extends SignedContent>(rad: T): T & { contentHash: string } {
+    return { ...rad, contentHash: computeSignedContentHash(rad) }
+  }
+
   async findAll(
     orgId: string,
     filters?: {
@@ -105,7 +132,7 @@ export class InspectionsService {
       status?: InspectionStatus
     },
   ) {
-    return this.prisma.inspection.findMany({
+    const rader = await this.prisma.inspection.findMany({
       where: {
         organizationId: orgId,
         ...(filters?.unitId ? { unitId: filters.unitId } : {}),
@@ -116,6 +143,9 @@ export class InspectionsService {
       include: FULL_INCLUDE,
       orderBy: { scheduledDate: 'desc' },
     })
+    // Listan är den vy webben faktiskt signerar ifrån — panelen öppnas ur den.
+    // Saknades hashen här hade klienten inte haft något att eka tillbaka.
+    return rader.map((rad) => this.medContentHash(rad))
   }
 
   async findOne(id: string, orgId: string) {
@@ -124,7 +154,7 @@ export class InspectionsService {
       include: FULL_INCLUDE,
     })
     if (!inspection) throw new NotFoundException('Besiktning hittades inte')
-    return inspection
+    return this.medContentHash(inspection)
   }
 
   // IDOR-spärr: varje klient-skickat relations-id måste tillhöra anropande org
@@ -200,34 +230,215 @@ export class InspectionsService {
       })
     }
 
-    return this.prisma.inspection.findUnique({
+    // Samma form som läsvägarna: en nyskapad besiktning returneras med
+    // `contentHash`, annars hade svaret på POST saknat ett fält som klientens
+    // `Inspection`-typ säger alltid finns.
+    const skapad = await this.prisma.inspection.findUnique({
       where: { id: inspection.id },
       include: FULL_INCLUDE,
     })
+    if (!skapad) throw new NotFoundException('Besiktning hittades inte')
+    return this.medContentHash(skapad)
   }
 
-  async update(id: string, dto: UpdateInspectionDto, orgId: string) {
-    await this.findOne(id, orgId)
+  // ══ FRYSNINGEN AV DET SIGNERADE PROTOKOLLET ═══════════════════════════════
+  //
+  // Ett besiktningsprotokoll är partsbevisning. Det är huvudbeviset när ett
+  // depositionsavdrag bestrids, och `InspectionItem.repairCost` är det belopp
+  // avdraget vilar på. Fram till nu kunde varje uppgift i protokollet skrivas om
+  // EFTER signeringen: `update`, `updateItem`, `analyze` och `delete` läste
+  // aldrig status. En post kunde vändas GOOD → DAMAGED med ett belopp, och hela
+  // protokollet kunde raderas spårlöst — medan `signedAt` stod kvar och påstod
+  // att någon skrivit under.
+  //
+  // ── VARFÖR RADLÅS OCH INTE BARA EN IF-SATS ────────────────────────────────
+  //
+  // En läsning av `status` följd av en skrivning är en TOCTOU: två samtidiga
+  // anrop läser båda "öppen" innan någon skriver. READ COMMITTED visar inte den
+  // andres ocommittade signering. Utan lås hade spärren alltså skyddat mot den
+  // långsamma användaren och inte mot den samtidiga — och det är den samtidiga
+  // som är farlig, för AI-analysen håller sitt fönster öppet i flera sekunder.
+  //
+  // `FOR UPDATE` på BESIKTNINGSRADEN serialiserar båda riktningarna mot samma
+  // rad, även när skrivningen gäller en BARNRAD:
+  //
+  //   redigering vinner  → ändringen committas, signeringen låser sedan, läser
+  //                        det ändrade innehållet och binder DET. Signaturen
+  //                        täcker alltså aldrig annan data än underlaget.
+  //   signering vinner   → signeringen committas, redigeringen låser sedan,
+  //                        läser SIGNED och nekas.
+  //
+  // Låsordningen är Inspection → InspectionItem, och ingen annan väg i kodbasen
+  // tar lås på de här raderna, så ingen cykel kan uppstå.
+  //
+  // ── SPÄRREN NEKAR, DEN ÅTERÖPPNAR ALDRIG ──────────────────────────────────
+  //
+  // Det finns MED FLIT ingen väg att låsa upp ett signerat protokoll. Ett
+  // "återöppna"-läge hade gjort spärren till en formalitet: den som ville ändra
+  // hade tryckt på den knappen först. Att rätta ett signerat protokoll kräver
+  // ett produktbeslut om en rättelse-/omprövningsfunktion (ny version med
+  // hänvisning bakåt, inte överskrivning). Det beslutet är inte fattat och
+  // fattas inte här.
+  private async lockAndAssertUnsigned(
+    tx: Prisma.TransactionClient,
+    id: string,
+    orgId: string,
+  ): Promise<{ id: string; status: InspectionStatus; signedAt: Date | null }> {
+    // Låset tas FÖRE statusläsningen — annars är låset verkningslöst och
+    // kontrollen läser ett värde som hinner bli inaktuellt. Org-scopet ligger i
+    // WHERE:n: en främmande orgs rad låses aldrig och hittas aldrig.
+    await tx.$queryRaw`SELECT id FROM "Inspection" WHERE id = ${id} AND "organizationId" = ${orgId} FOR UPDATE`
 
-    return this.prisma.inspection.update({
-      where: { id },
-      data: {
-        ...(dto.status ? { status: dto.status } : {}),
-        ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-        ...(dto.overallCondition !== undefined ? { overallCondition: dto.overallCondition } : {}),
-        // TIDPUNKTEN ÄR SERVERNS. `dto.completedAt` fanns här på raden under och
-        // skrev över värdet ovan — alltså kunde klienten datera slutförandet av
-        // ett besiktningsprotokoll fritt. Fältet är borttaget ur DTO:n och ur
-        // det delade schemat; se `update-inspection.dto.ts`.
-        ...(dto.status === InspectionStatus.COMPLETED ? { completedAt: new Date() } : {}),
-        ...(dto.signedAt ? { signedAt: new Date(dto.signedAt) } : {}),
-        ...(dto.tenantSignature !== undefined ? { tenantSignature: dto.tenantSignature } : {}),
-        ...(dto.landlordSignature !== undefined
-          ? { landlordSignature: dto.landlordSignature }
-          : {}),
-      },
-      include: FULL_INCLUDE,
+    const besiktning = await tx.inspection.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, status: true, signedAt: true },
     })
+    if (!besiktning) throw new NotFoundException('Besiktning hittades inte')
+
+    // BÅDA villkoren prövas. `status` är vad produkten visar, `signedAt` är vad
+    // som faktiskt påstår att någon skrivit under, och de kan gå isär i data som
+    // skrevs innan den här spärren fanns. Att kräva båda är strängare än att
+    // kräva ett av dem, och en besiktning som är signerad enligt endera
+    // uppgiften ska inte gå att ändra.
+    if (besiktning.status === InspectionStatus.SIGNED || besiktning.signedAt !== null) {
+      throw new ConflictException(BESIKTNING_SIGNERAD_MEDDELANDE)
+    }
+    return besiktning
+  }
+
+  /**
+   * Läser besiktningen och nekar tidigt om den är signerad.
+   *
+   * Används av analysvägen FÖRE uppladdning och modellanrop: den vägen kostar
+   * lagring och pengar innan den skriver något, och ett 409 efter att tio bilder
+   * laddats upp och en vision-modell fakturerats är ett sämre besked än ett 409
+   * direkt. Den är ett FÖRSVAR I DJUPET, inte spärren — spärren är
+   * `lockAndAssertUnsigned`, som körs om under lås vid varje faktisk skrivning.
+   */
+  async findOneUnsigned(id: string, orgId: string) {
+    const besiktning = await this.findOne(id, orgId)
+    if (besiktning.status === InspectionStatus.SIGNED || besiktning.signedAt !== null) {
+      throw new ConflictException(BESIKTNING_SIGNERAD_MEDDELANDE)
+    }
+    return besiktning
+  }
+
+  // ══ VISAD VERSION MOT SIGNERAD VERSION ════════════════════════════════════
+  //
+  // Radlåset serialiserar samtidiga skrivare. Det upptäcker INTE att den som
+  // signerar läste protokollet för fem minuter sedan och inte har sett vad som
+  // hänt sedan dess. Utan en förutsättning band signeringen därför alltid
+  // serverns NUVARANDE innehåll — även innehåll signeraren aldrig fått se.
+  //
+  // `expectedContentHash` är det värde klienten fick ur `contentHash` vid
+  // läsningen. Servern HÄRLEDER jämförelsevärdet själv ur radens eget innehåll
+  // (`computeSignedContentHash`), under samma lås, i samma transaktion som
+  // signeringen. Klienten kan alltså inte hitta på förutsättningen — bara eka
+  // tillbaka den den fick.
+  //
+  // VAD DET SKYDDAR MOT, OCH INTE: det här skyddar mot att signera INAKTUELL
+  // data, inte mot en illvillig anropare. Den som vill kan hämta protokollet
+  // och signera med den färska hashen i nästa andetag, utan att någon människa
+  // läst en rad. Förutsättningen gör signaturen till ett påstående om en
+  // VERSION — den gör den inte till ett påstående om att någon granskat den.
+  //
+  // ── VAD JÄMFÖRELSEN OMFATTAR ──────────────────────────────────────────────
+  //
+  // Exakt `buildSignedContent`: typ, planerat datum, slutförande, övergripande
+  // omdöme, anteckning, samtliga poster (rum, föremål, skick, anteckning,
+  // reparationskostnad) och samtliga bilder (filnamn, lagringsnyckel, bildtext,
+  // rum, storlek, innehållsdigest).
+  //
+  // UTANFÖR jämförelsen, och alltså INGEN konflikt: `status`, `signedAt`,
+  // `signedContentHash`, `tenantSignature`, `landlordSignature`. De beskriver
+  // radens livscykel, inte vad som besiktigades.
+  //
+  // ── ÄNDRING OCH SIGNERING I SAMMA ANROP ───────────────────────────────────
+  //
+  // Tillåtet, med ett uttalat kontrakt: förutsättningen jämförs mot innehållet
+  // FÖRE det här anropets egna ändringar. Anroparens egen redigering är alltså
+  // aldrig en konflikt med sig själv — den är avsiktlig och författad av den
+  // som signerar — medan någon ANNANS ändring sedan läsningen fäller anropet.
+  // Hashen som lagras räknas därefter på slutresultatet.
+  //
+  // ── EN SAKNAD FÖRUTSÄTTNING FÅR INTE TYST SIGNERA ─────────────────────────
+  //
+  // Utelämnad `expectedContentHash` vid signering är 400, inte "hoppa över
+  // kontrollen". En spärr som går att tysta genom att utelämna ett fält är
+  // ingen spärr, och äldre klienter ska fälla synligt i stället för att signera
+  // data de inte sett.
+  async update(id: string, dto: UpdateInspectionDto, orgId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      // Gäller ÄVEN ett andra signeringsförsök: en signerad besiktning är
+      // stängd för all skrivning, och `status: 'SIGNED'` är ingen fribiljett.
+      await this.lockAndAssertUnsigned(tx, id, orgId)
+
+      const signerar = dto.status === InspectionStatus.SIGNED
+
+      if (!signerar && dto.expectedContentHash !== undefined) {
+        throw new BadRequestException(
+          'expectedContentHash är endast meningsfull vid signering och får inte skickas annars.',
+        )
+      }
+      if (signerar) {
+        if (!dto.expectedContentHash) {
+          throw new BadRequestException(
+            'Signering kräver expectedContentHash — värdet ur contentHash på den version du läste.',
+          )
+        }
+        // Innehållet FÖRE anropets egna ändringar, läst under låset.
+        const före = await tx.inspection.findFirst({
+          where: { id, organizationId: orgId },
+          include: FULL_INCLUDE,
+        })
+        if (!före) throw new NotFoundException('Besiktning hittades inte')
+        if (computeSignedContentHash(före) !== dto.expectedContentHash) {
+          throw new ConflictException(
+            'Protokollet har ändrats sedan du läste det. Läs om besiktningen, granska ändringen och signera därefter — inget har signerats.',
+          )
+        }
+      }
+
+      const uppdaterad = await tx.inspection.update({
+        where: { id },
+        data: {
+          ...(dto.status ? { status: dto.status } : {}),
+          ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+          ...(dto.overallCondition !== undefined ? { overallCondition: dto.overallCondition } : {}),
+          // TIDPUNKTEN ÄR SERVERNS. `dto.completedAt` fanns här på raden under och
+          // skrev över värdet ovan — alltså kunde klienten datera slutförandet av
+          // ett besiktningsprotokoll fritt. Fältet är borttaget ur DTO:n och ur
+          // det delade schemat; se `update-inspection.dto.ts`.
+          ...(dto.status === InspectionStatus.COMPLETED ? { completedAt: new Date() } : {}),
+          // `dto.signedAt` LÄSES INTE LÄNGRE, och fältet är borttaget ur DTO:n
+          // och det delade schemat av exakt samma skäl som `completedAt` en gång
+          // togs bort: klienten kunde datera en underskrift fritt, bakåt eller
+          // framåt. En signeringstidpunkt som en anropare väljer själv är ingen
+          // uppgift om verkligheten. Servern stämplar nedan, ensam.
+          ...(dto.tenantSignature !== undefined ? { tenantSignature: dto.tenantSignature } : {}),
+          ...(dto.landlordSignature !== undefined
+            ? { landlordSignature: dto.landlordSignature }
+            : {}),
+        },
+        include: FULL_INCLUDE,
+      })
+
+      if (!signerar) return this.medContentHash(uppdaterad)
+
+      // Hashen räknas över det innehåll som FAKTISKT står i protokollet efter
+      // det här anropet — samma transaktion, samma lås, samma rader. Räknades
+      // den på dto:n i stället hade den bundit vad anroparen SA, inte vad som
+      // lagrades.
+      const signerad = await tx.inspection.update({
+        where: { id },
+        data: {
+          signedAt: new Date(),
+          signedContentHash: computeSignedContentHash(uppdaterad),
+        },
+        include: FULL_INCLUDE,
+      })
+      return this.medContentHash(signerad)
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async updateItem(
@@ -236,31 +447,150 @@ export class InspectionsService {
     dto: UpdateInspectionItemDto,
     orgId: string,
   ) {
-    // Verifiera HELA kedjan i EN query: posten måste tillhöra den besiktning som anges
-    // i URL:en, OCH den besiktningen måste tillhöra anroparens org (från JWT). Tidigare
-    // scopades update:en enbart på itemId → en användare kunde ändra en post i en annan
-    // besiktning/annan organisation genom att byta itemId (IDOR). Samma NotFound oavsett
-    // om posten saknas, hör till en annan besiktning eller en annan org — läck aldrig
-    // existens. organizationId kommer ALLTID från JWT, aldrig från klient-input.
-    const item = await this.prisma.inspectionItem.findFirst({
-      where: { id: itemId, inspectionId, inspection: { organizationId: orgId } },
-      select: { id: true },
-    })
-    if (!item) throw new NotFoundException('Besiktningsobjekt hittades inte')
+    return this.prisma.$transaction(async (tx) => {
+      // Barnraden är den farligaste vägen: det är HÄR skicket vänds från GOOD
+      // till DAMAGED och ett belopp sätts. Låset tas på FÖRÄLDERN, för det är
+      // föräldern signeringen rör.
+      await this.lockAndAssertUnsigned(tx, inspectionId, orgId)
 
-    return this.prisma.inspectionItem.update({
-      where: { id: itemId },
-      data: {
-        ...(dto.condition !== undefined ? { condition: dto.condition } : {}),
-        ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
-        ...(dto.repairCost !== undefined ? { repairCost: dto.repairCost } : {}),
-      },
-    })
+      // Verifiera HELA kedjan i EN query: posten måste tillhöra den besiktning som anges
+      // i URL:en, OCH den besiktningen måste tillhöra anroparens org (från JWT). Tidigare
+      // scopades update:en enbart på itemId → en användare kunde ändra en post i en annan
+      // besiktning/annan organisation genom att byta itemId (IDOR). Samma NotFound oavsett
+      // om posten saknas, hör till en annan besiktning eller en annan org — läck aldrig
+      // existens. organizationId kommer ALLTID från JWT, aldrig från klient-input.
+      const item = await tx.inspectionItem.findFirst({
+        where: { id: itemId, inspectionId, inspection: { organizationId: orgId } },
+        select: { id: true },
+      })
+      if (!item) throw new NotFoundException('Besiktningsobjekt hittades inte')
+
+      return tx.inspectionItem.update({
+        where: { id: itemId },
+        data: {
+          ...(dto.condition !== undefined ? { condition: dto.condition } : {}),
+          ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+          ...(dto.repairCost !== undefined ? { repairCost: dto.repairCost } : {}),
+        },
+      })
+    }, PRISMA_DEFAULT_TX_LIMITS)
+  }
+
+  /**
+   * Bildraderna från en AI-analys, skrivna under samma spärr som allt annat.
+   *
+   * Bilderna ÄR en del av beviset — de är det protokollet hänvisar till — och de
+   * ingår därför i signaturunderlaget. Att kunna lägga till en bild i ett
+   * signerat protokoll hade varit samma brist en våning ned.
+   */
+  async saveAnalysisImages(
+    inspectionId: string,
+    orgId: string,
+    bilder: {
+      filename: string
+      storageKey: string
+      storageUrl: string
+      caption: string | null
+      room: string | null
+      size: number
+      contentSha256: string
+    }[],
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockAndAssertUnsigned(tx, inspectionId, orgId)
+      for (const bild of bilder) {
+        await tx.inspectionImage.create({ data: { inspectionId, ...bild } })
+      }
+    }, PRISMA_DEFAULT_TX_LIMITS)
+  }
+
+  /**
+   * Analysens skrivning tillbaka in i protokollet.
+   *
+   * Låg tidigare rakt i controllern som fyra ogrindade prisma-anrop. Den ligger
+   * här nu därför att fönstret mellan "läs besiktningen" och "skriv resultatet"
+   * är HELA modellanropet — flera sekunder — och en signering hinner med i det
+   * fönstret. Kontrollen måste alltså göras om under lås vid skrivningen, inte
+   * bara när vägen började.
+   *
+   * Posterna läses om inne i transaktionen av samma skäl: listan controllern
+   * hämtade innan analysen kan vara inaktuell när resultatet kommer tillbaka.
+   */
+  async applyAnalysis(
+    inspectionId: string,
+    orgId: string,
+    analys: {
+      overallCondition: string
+      notes: string
+      items: {
+        room: string
+        item: string
+        condition: InspectionItemCondition
+        notes: string | null
+        repairCost: number | null
+      }[]
+    },
+  ): Promise<{ updatedItems: number; createdItems: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockAndAssertUnsigned(tx, inspectionId, orgId)
+
+      // Org-scopningen står i FRÅGAN, inte bara i låset ovan. `lockAndAssertUnsigned`
+      // har redan avvisat en främmande org, så villkoret är strikt sett
+      // överflödigt — men en skrivning mot en förälder-scopad modell ska gå att
+      // granska på plats, utan att läsaren först måste följa ett anrop uppåt.
+      // `object-scope.spec.ts` mäter exakt det.
+      const befintliga = await tx.inspectionItem.findMany({
+        where: { inspectionId, inspection: { organizationId: orgId } },
+        select: { id: true, room: true, item: true },
+      })
+
+      let updatedItems = 0
+      let createdItems = 0
+      for (const ai of analys.items) {
+        const träff = befintliga.find((it) => it.room === ai.room && it.item === ai.item)
+        if (träff) {
+          await tx.inspectionItem.update({
+            where: { id: träff.id },
+            data: {
+              condition: ai.condition,
+              ...(ai.notes ? { notes: ai.notes } : {}),
+              ...(ai.repairCost != null ? { repairCost: ai.repairCost } : {}),
+            },
+          })
+          updatedItems++
+        } else {
+          await tx.inspectionItem.create({
+            data: {
+              inspectionId,
+              room: ai.room,
+              item: ai.item,
+              condition: ai.condition,
+              notes: ai.notes ?? null,
+              repairCost: ai.repairCost ?? null,
+            },
+          })
+          createdItems++
+        }
+      }
+
+      await tx.inspection.update({
+        where: { id: inspectionId },
+        data: { overallCondition: analys.overallCondition, notes: analys.notes },
+      })
+
+      return { updatedItems, createdItems }
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async delete(id: string, orgId: string) {
-    await this.findOne(id, orgId)
-    return this.prisma.inspection.delete({ where: { id } })
+    return this.prisma.$transaction(async (tx) => {
+      // `onDelete: Cascade` tar poster OCH bilder med sig. Att radera en
+      // signerad besiktning är därför inte en mildare variant av att ändra den
+      // — det är att utplåna hela beviset, och till skillnad från en ändring
+      // lämnar det ingenting kvar att jämföra med.
+      await this.lockAndAssertUnsigned(tx, id, orgId)
+      return tx.inspection.delete({ where: { id } })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async generateProtocolPdf(id: string, orgId: string): Promise<Buffer> {

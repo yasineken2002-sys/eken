@@ -57,6 +57,14 @@ export interface Inspection {
   tenantSignature: string | null
   landlordSignature: string | null
   signedAt: string | null
+  /** Hashen som FRÖS vid signeringen. Null för osignerade protokoll. */
+  signedContentHash: string | null
+  /**
+   * Hashen över protokollets innehåll NU, härledd av servern vid varje läsning.
+   * Ekas tillbaka som `expectedContentHash` vid signering — det är så servern
+   * vet vilken version användaren faktiskt såg.
+   */
+  contentHash: string
   createdAt: string
   updatedAt: string
   property: { id: string; name: string; street: string; city: string }

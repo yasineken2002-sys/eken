@@ -13,7 +13,12 @@
  *  • PR 2 stannar vid DRAFT-charge: inget verifikat, ingen 1510-fordran.
  *  • RBAC: skriv (mätare/tariff/avläsning) kräver MANAGER/ADMIN/OWNER; läs öppen.
  */
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
 import type { ExecutionContext } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { RolesGuard } from '../common/guards/roles.guard'
@@ -311,6 +316,93 @@ describe('createTariff — historik', () => {
   })
 })
 
+// ── En post som aldrig kan bokföras ska inte skapas (#F017) ──────────────────
+//
+// Sedan `confirmCharge` avvisar en bekräftelse som inte kan ge ett verifikat
+// skulle en charge med belopp 0 fastna i DRAFT för alltid — det finns ingen
+// annulleringsväg. Tariffen får vara 0 ("ingår i hyran"), så fallet är nåbart.
+describe('recordReading — noll-belopp ger ingen debitering', () => {
+  // De fyra vägarna till "inget att debitera" är OLIKA händelser och följs var
+  // för sig. Tre av dem är legitima nollor. Den fjärde är ett FEL, och får inte
+  // tyst behandlas som gratis förbrukning.
+
+  it('NOLL FÖRBRUKNING: ingen charge — spärren är `billable`, oförändrad av #F017', async () => {
+    const { service, prisma } = makeService({ previousReading: { value: 1240 } })
+
+    // Samma mätarställning som förra gången → delta 0 → quantity 0.
+    const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
+
+    expect(prisma.meterReading.create).toHaveBeenCalledTimes(1)
+    expect(prisma.consumptionTariff.findMany).not.toHaveBeenCalled() // inte ens prissatt
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(res.charge).toBeNull()
+  })
+
+  it('TARIFF 0 kr/enhet: avläsningen sparas, men ingen charge skapas', async () => {
+    const { service, prisma } = makeService({
+      previousReading: { value: 1000 },
+      tariffs: [defaultTariff({ pricePerUnit: 0 })],
+    })
+
+    const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
+
+    expect(prisma.meterReading.create).toHaveBeenCalledTimes(1)
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(res.charge).toBeNull()
+  })
+
+  it('AVRUNDNING till 0,00: avläsningen sparas, men ingen charge skapas', async () => {
+    const { service, prisma } = makeService({
+      previousReading: { value: 1000 },
+      tariffs: [defaultTariff({ pricePerUnit: 0.001 })],
+    })
+
+    // 0,001 enheter × 0,001 kr = 0,000001 kr → round2 → 0,00.
+    const res = await service.recordReading(
+      { ...dtoBase, value: 1000.001 } as never,
+      'org-1',
+      'user-9',
+    )
+
+    expect(prisma.meterReading.create).toHaveBeenCalledTimes(1)
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(res.charge).toBeNull()
+  })
+
+  it('NEGATIVT belopp är ett FEL, inte gratis förbrukning: avvisas i stället för att tigas ihjäl', async () => {
+    const { service, prisma } = makeService({
+      previousReading: { value: 1000 },
+      // `CreateTariffDto` har @Min(0), så den här raden kan inte komma via API:et
+      // — men en import, en migrering eller en direktskrivning kan lägga den, och
+      // då ska den INTE tolkas som "ingår i hyran".
+      tariffs: [defaultTariff({ pricePerUnit: -2.5 })],
+    })
+
+    await expect(
+      service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9'),
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    // INGENTING får skrivas — inte bara debiteringen. Att enbart hävda att
+    // chargen uteblir hade varit grönt även om kastet flyttades in i
+    // transaktionen efter `meterReading.create`, och då hade avläsningen
+    // sparats mot ett underlag som avvisades. Systerproven ovan hävdar
+    // tvärtom att avläsningen SKA sparas; det är den kontrasten som mäter var
+    // spärren ligger.
+    expect(prisma.consumptionCharge.create).not.toHaveBeenCalled()
+    expect(prisma.meterReading.create).not.toHaveBeenCalled()
+    expect(prisma.$transaction).not.toHaveBeenCalled()
+  })
+
+  it('POSITIVT belopp: chargen skapas som förut (sonden kan ge något annat än noll)', async () => {
+    const { service, prisma } = makeService({ previousReading: { value: 1000 } })
+
+    const res = await service.recordReading({ ...dtoBase, value: 1240 } as never, 'org-1', 'user-9')
+
+    expect(prisma.consumptionCharge.create).toHaveBeenCalledTimes(1)
+    expect(res.charge).not.toBeNull()
+  })
+})
+
 describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
   it('sätter CONFIRMED atomärt (villkorad på DRAFT) och bokför verifikat', async () => {
     const { service, prisma, accounting } = makeService({ existingCharge: chargeRow() })
@@ -326,7 +418,7 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
     expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
   })
 
-  it('annullerad post kan inte bokföras (updateMany matchar inte CANCELLED)', async () => {
+  it('annullerad post kan inte bokföras (läses i transaktionen, före bokföringen)', async () => {
     const { service, accounting } = makeService({
       existingCharge: chargeRow({ status: 'CANCELLED' }),
     })
@@ -344,10 +436,90 @@ describe('confirmCharge — DRAFT → CONFIRMED (PR 3)', () => {
     expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledTimes(1)
   })
 
-  it('bokföringsfel fäller inte confirm:en (loggas)', async () => {
+  // ── FACIT ÄNDRAT (#F017) ───────────────────────────────────────────────────
+  //
+  // Provet hette tidigare "bokföringsfel fäller inte confirm:en (loggas)" och
+  // asserterade att `confirmCharge` RESOLVAR när bokföringen kastar. Det var
+  // inte ett prov på en spärr — det var buggen skriven som ett krav, och det är
+  // därför den överlevde: sviten skyddade svälj-beteendet i stället för att
+  // fånga det.
+  //
+  // Beskedet användaren får är "Posten är bokförd (verifikat skapat)", och
+  // posten blir fakturerbar enbart på sin status. Ett sväljt bokföringsfel gav
+  // alltså ett betalningskrav utan motsvarande post i huvudboken. Det gamla
+  // facit går inte att förena med det beskedet, och det är facit som är fel.
+  //
+  // Det gamla utfallet är mätt före bytet: mot revision 14fc0a8b var provet
+  // GRÖNT, och beteendeprovet mot riktig databas
+  // (`consumption-confirm-verifikat.db.spec.ts`) var rött i åtta fall.
+  it('bokföringsfel FÄLLER confirm:en — felet går upp och statusen rullas tillbaka', async () => {
     const { service, accounting } = makeService({ existingCharge: chargeRow() })
-    accounting.createJournalEntryForConsumptionCharge.mockRejectedValueOnce(new Error('boom'))
-    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toBeDefined()
+    accounting.createJournalEntryForConsumptionCharge.mockRejectedValueOnce(
+      new ConflictException('Bokföringsperioden 2026-05 är stängd'),
+    )
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+  })
+
+  it('verifikat uteblev (null, t.ex. saknat konto): confirm avvisas i stället för att tiga', async () => {
+    const { service, accounting } = makeService({ existingCharge: chargeRow() })
+    accounting.createJournalEntryForConsumptionCharge.mockResolvedValueOnce(null)
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    )
+  })
+
+  // ── count === 0: TVÅ UTFALL SOM INTE FÅR KOLLAPSA TILL ETT ────────────────
+  //
+  // Grenen nås när `updateMany` inte matchade. Skillnaden mellan "någon annan
+  // hann bekräfta först" (lyckat) och "posten är inte längre DRAFT av något
+  // annat skäl" (fel) avgörs av en OMLÄSNING inuti transaktionen — inte av det
+  // värde som lästes innan racet. Utan omläsningen fick en användare vars post
+  // faktiskt ÄR bokförd beskedet "ingenting har bokförts".
+  it('count 0 + posten hann bli CONFIRMED av någon annan: INGET fel, svaret är vinnarens', async () => {
+    const { service, prisma } = makeService({ existingCharge: chargeRow() })
+    prisma.consumptionCharge.updateMany!.mockResolvedValue({ count: 0 })
+    prisma.consumptionCharge
+      .findFirst!.mockResolvedValueOnce(chargeRow()) // läsningen i början: DRAFT
+      .mockResolvedValueOnce({ status: 'CONFIRMED' }) // omläsningen: någon hann före
+      .mockResolvedValue(chargeRow({ status: 'CONFIRMED' })) // findCharge på slutet
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).resolves.toEqual(
+      expect.objectContaining({ status: 'CONFIRMED' }),
+    )
+  })
+
+  it('count 0 + posten är inte längre DRAFT av annat skäl: fälls, ingenting bokförs', async () => {
+    const { service, prisma } = makeService({ existingCharge: chargeRow() })
+    prisma.consumptionCharge.updateMany!.mockResolvedValue({ count: 0 })
+    prisma.consumptionCharge
+      .findFirst!.mockResolvedValueOnce(chargeRow()) // läsningen i början: DRAFT
+      .mockResolvedValueOnce({ status: 'CANCELLED' }) // omläsningen: annullerad under tiden
+      .mockResolvedValue(chargeRow({ status: 'CANCELLED' }))
+
+    await expect(service.confirmCharge('charge-1', 'org-1', 'user-9')).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+  })
+
+  it('statusflippen ligger i SAMMA transaktion som verifikatet', async () => {
+    const { service, prisma, accounting } = makeService({ existingCharge: chargeRow() })
+
+    await service.confirmCharge('charge-1', 'org-1', 'user-9')
+
+    // Attrappen kan inte pröva rollbacken — det gör db-provet. Den kan däremot
+    // pröva att transaktionen öppnas och att bokföringen får den vidare, vilket
+    // är förutsättningen för att rollbacken ska kunna ske.
+    expect(prisma.$transaction).toHaveBeenCalled()
+    expect(accounting.createJournalEntryForConsumptionCharge).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'charge-1' }),
+      'org-1',
+      'user-9',
+      expect.anything(),
+    )
   })
 })
 
@@ -675,6 +847,68 @@ describe('runYearEndAccrual — estimatmetod + periodisering (PR 5)', () => {
       ConflictException,
     )
     expect(accounting.createConsumptionAccrualEntry).not.toHaveBeenCalled()
+  })
+})
+
+// ── API-KONTRAKTET ÄNDRADES, OCH DET MÅSTE SYNAS I ETT PROV ────────────────
+//
+// `confirmCharge` kunde förut svara 404 (posten finns inte) och 400 (annullerad
+// post), men den svarade ALLTID 200 när bokföringen fallerade — felet sväljdes.
+// Efter #F017 kan den svara 409 (stängd period) och 422 (verifikatet kunde inte
+// skapas), och det är nya utfall för klienten. Tjänsteproven
+// mäter databasen; de säger ingenting om vad klienten får. Provet nedan mäter
+// controllern: att den inte sväljer, inte översätter och inte maskerar — det var
+// exakt den defekten på tjänstenivån, och den får inte återuppstå ett lager upp.
+//
+// Vad provet INTE kan se: att Fastify faktiskt skriver statuskoden på tråden.
+// Det ägs av `GlobalExceptionFilter` (`exception.getStatus()`,
+// `global-exception.filter.ts:65`) och prövas där.
+describe('ConsumptionController — confirm-felen når klienten oförändrade', () => {
+  const user = { sub: 'user-9' } as never
+
+  function makeController(fel: unknown) {
+    const consumption = { confirmCharge: jest.fn().mockRejectedValue(fel) }
+    return {
+      controller: new ConsumptionController(consumption as never),
+      consumption,
+    }
+  }
+
+  it('stängd period → ConflictException passerar oförändrad, status 409', async () => {
+    const { controller, consumption } = makeController(
+      new ConflictException(
+        'Bokföringsperioden 2026-05 är stängd — ny verifikation kan inte skapas.',
+      ),
+    )
+
+    const fel = await controller.confirmCharge('charge-1', 'org-1', user).catch((e) => e)
+
+    expect(fel).toBeInstanceOf(ConflictException)
+    expect((fel as ConflictException).getStatus()).toBe(409)
+    expect((fel as ConflictException).message).toMatch(/2026-05.*stängd/s)
+    expect(consumption.confirmCharge).toHaveBeenCalledWith('charge-1', 'org-1', 'user-9')
+  })
+
+  it('verifikatet uteblev → UnprocessableEntityException passerar oförändrad, status 422', async () => {
+    const { controller } = makeController(
+      new UnprocessableEntityException('Förbrukningsposten kunde inte bokföras'),
+    )
+
+    const fel = await controller.confirmCharge('charge-1', 'org-1', user).catch((e) => e)
+
+    expect(fel).toBeInstanceOf(UnprocessableEntityException)
+    expect((fel as UnprocessableEntityException).getStatus()).toBe(422)
+  })
+
+  it('lyckat confirm returnerar posten oförändrad (ingen omslagning)', async () => {
+    const consumption = {
+      confirmCharge: jest.fn().mockResolvedValue(chargeRow({ status: 'CONFIRMED' })),
+    }
+    const controller = new ConsumptionController(consumption as never)
+
+    await expect(controller.confirmCharge('charge-1', 'org-1', user)).resolves.toEqual(
+      expect.objectContaining({ id: 'charge-1', status: 'CONFIRMED' }),
+    )
   })
 })
 

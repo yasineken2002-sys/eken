@@ -20,10 +20,34 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { NotFoundException } from '@nestjs/common'
 import { InspectionsService } from './inspections.service'
 
+/**
+ * RIGGEN ÄR NY, PÅSTÅENDENA ÄR DE GAMLA.
+ *
+ * `updateItem` kör numera i en `$transaction` som först tar `FOR UPDATE` på
+ * besiktningsraden och nekar ett signerat protokoll (F025). IDOR-spärren nedan
+ * är oförändrad — samma enda query, samma `where`, samma NotFound — men den
+ * ligger nu inne i transaktionen, så stubben måste bära `$transaction`,
+ * `$queryRaw` och besiktningsraden. Besiktningen är ÖPPEN här; att en signerad
+ * besiktning nekas ägs av `inspection-signature-lock.spec.ts`.
+ */
 function makeService(opts: { itemFound: boolean }) {
   const findFirst = jest.fn().mockResolvedValue(opts.itemFound ? { id: 'item-1' } : null)
   const update = jest.fn().mockResolvedValue({ id: 'item-1', condition: 'DAMAGED' })
-  const prisma = { inspectionItem: { findFirst, update } }
+  const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'insp-1' }]),
+    inspection: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'insp-1',
+        status: 'IN_PROGRESS',
+        signedAt: null,
+      }),
+    },
+    inspectionItem: { findFirst, update },
+    // Tilldelas efter objektet: `$transaction` kör återanropet mot samma stub,
+    // och en självreferens inne i literalen gör typen implicit `any`.
+    $transaction: undefined as unknown as jest.Mock,
+  }
+  prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma))
   // 3:e arg = StorageService (oanvänd i updateItem-vägen som testas här).
   const service = new InspectionsService(prisma as never, {} as never, {} as never)
   return { service, findFirst, update }
