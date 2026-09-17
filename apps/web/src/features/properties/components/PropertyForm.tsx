@@ -1,27 +1,21 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { AddressSchema, CreatePropertySchema } from '@eken/shared'
 import { Input, Select } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ModalFooter } from '@/components/ui/Modal'
 import type { CreatePropertyInput } from '@eken/shared'
 
-const PropertyFormSchema = z.object({
-  name: z.string().min(1, 'Namn krävs'),
-  propertyDesignation: z.string().min(1, 'Fastighetsbeteckning krävs'),
-  type: z.enum(['RESIDENTIAL', 'COMMERCIAL', 'MIXED', 'INDUSTRIAL', 'LAND']),
-  street: z.string().min(1, 'Gatuadress krävs'),
-  city: z.string().min(1, 'Stad krävs'),
-  postalCode: z.string().min(1, 'Postnummer krävs'),
-  country: z.string().default('SE'),
-  totalArea: z.coerce.number().positive('Area måste vara positiv'),
-  yearBuilt: z.coerce
-    .number()
-    .min(1800)
-    .max(2030)
-    .optional()
-    .or(z.literal(''))
-    .transform((v) => (v === '' ? undefined : v === undefined ? undefined : Number(v))),
+// Endast HTML-formens platta adress och sträng→tal anpassas här.
+// Sakreglerna är desamma vid skapande, redigering och API-validering.
+const PropertyFormSchema = CreatePropertySchema.omit({ address: true }).extend({
+  ...AddressSchema.shape,
+  totalArea: z.coerce.number().pipe(CreatePropertySchema.shape.totalArea),
+  yearBuilt: z.preprocess(
+    (v) => (v === '' || v === undefined ? undefined : Number(v)),
+    CreatePropertySchema.shape.yearBuilt,
+  ),
 })
 
 type PropertyFormValues = z.infer<typeof PropertyFormSchema>

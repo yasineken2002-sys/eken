@@ -15,6 +15,8 @@ import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
 import {
   PaymentMethodSchema,
+  CreatePropertySchema,
+  PropertyTypeSchema,
   CreateInspectionSchema,
   InspectionTypeEnum,
   InspectionStatusEnum,
@@ -1664,22 +1666,57 @@ export class ToolExecutorService {
         }
 
         case 'create_property': {
-          const property = await this.propertiesService.create(organizationId, {
-            name: toolInput.name as string,
-            propertyDesignation: toolInput.propertyDesignation as string,
-            type: toolInput.type as 'RESIDENTIAL' | 'COMMERCIAL' | 'MIXED' | 'INDUSTRIAL' | 'LAND',
+          // ── KROPPEN GÅR GENOM SAMMA SAKREGLER SOM HTTP-VÄGEN ─────────────
+          //
+          // Verktyget anropar `PropertiesService.create` DIREKT och passerar
+          // alltså varken `CreatePropertyDto` eller ValidationPipe. Fram till nu
+          // castades därför modellens svar: `name: toolInput.name as string`,
+          // `postalCode: toolInput.postalCode as string`. Ett cast gör ingen
+          // kontroll — det tystar typcheckaren — så ett namn på 201 tecken och
+          // postnumret "abc" blev NYA rader, och tjänsten validerar ingenting.
+          //
+          // Det är exakt den rad F056 finns för att förhindra: formuläret
+          // validerar mot samma delade schema och kan därför inte redigera den
+          // rad verktyget skapade. Mätt genom hela kedjan mot en riktig databas
+          // i `create-property-kontrakt.db.spec.ts`.
+          //
+          // Regelkällan är den DELADE `CreatePropertySchema` — samma som
+          // formuläret, POST-grinden och DTO:ns `@PropertyField`. Inget eget
+          // schema införs här, och feltexterna är schemats egna svenska.
+          // Mönstret är `create_inspection`:s i den här filen.
+          //
+          // `country` och `totalArea` sätts fortsatt av verktyget: de står inte
+          // i verktygsdefinitionen, och att låta modellen gissa dem vore en
+          // vidgning av vad AI:n får göra — inte en validering.
+          const fastighetsKandidat = {
+            name: toolInput.name,
+            propertyDesignation: toolInput.propertyDesignation,
+            type: toolInput.type,
             address: {
-              street: toolInput.street as string,
-              city: toolInput.city as string,
-              postalCode: toolInput.postalCode as string,
+              street: toolInput.street,
+              city: toolInput.city,
+              postalCode: toolInput.postalCode,
               country: 'SE',
             },
             totalArea: 1,
-          })
+          }
+          const fastighetsKropp = CreatePropertySchema.safeParse(fastighetsKandidat)
+          if (!fastighetsKropp.success) {
+            return {
+              success: false,
+              message: `Fastigheten kunde inte skapas: ${fastighetsKropp.error.issues
+                .map((i) => `${i.path.join('.')} — ${i.message}`)
+                .join('; ')}. Giltiga typer: ${PropertyTypeSchema.options.join(', ')}.`,
+            }
+          }
+          const property = await this.propertiesService.create(
+            organizationId,
+            fastighetsKropp.data,
+          )
           return {
             success: true,
             data: property,
-            message: `Fastighet "${toolInput.name as string}" skapad`,
+            message: `Fastighet "${fastighetsKropp.data.name}" skapad`,
           }
         }
 
