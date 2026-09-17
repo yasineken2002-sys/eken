@@ -58,9 +58,40 @@ ett giltigt anrop skapar fastigheten som förut, på anropets egen organisation.
 verktygsdefinitionen, och att låta modellen fylla dem vore en vidgning av vad
 AI:n får göra, inte en validering.
 
-`import/import.service.ts` skriver fortfarande via Prisma direkt och ligger
-utanför både HTTP-kontraktet och den här rättningen. Den vägen är inventerad men
-oförändrad; ingen historisk backfill ingår.
+## CSV-/Excel-importen
+
+Importen var den sista skrivvägen mot `Property` utan sakregler. `importProperties`
+prövade bara att fälten FANNS och skrev sedan rakt in med `prisma.property.create`,
+så en fil kunde skapa ett 201 tecken långt namn, postnumret `abc` eller
+`totalArea: 0` — rader som formuläret sedan inte kan spara.
+
+Raden går nu genom samma delade `CreatePropertySchema` före skrivningen. Grinden
+ligger i `validatePropertyRow`, eftersom det är importkedjans enda radvalidering
+och används av BÅDA vägarna: `importProperties` (skrivningen) och `previewImport`
+(löftet till användaren). En rad som förhandsgranskningen kallar giltig kan därför
+inte avvisas av skrivningen, och tvärtom. `fastighetsradTillKandidat` bygger raden
+som den kommer att skrivas, och skrivningen använder samma parsning.
+
+Importens befintliga TOLKNINGAR är oförändrade — typens `?? 'RESIDENTIAL'`,
+beteckningens normalisering och beloppstolkningen. Grinden ändrar inte hur en rad
+tolkas, bara om det tolkade värdet får lagras. Detsamma gäller importens kontrakt i
+övrigt: organisationen kommer enbart ur anropet och aldrig ur filen, beteckningens
+dubblettregel är oförändrad, och en blandad fil skriver fortfarande sina giltiga
+rader och räknar de ogiltiga. Det är alltså inget atomiskt helfilskontrakt.
+
+En ogiltig rad ger ett svenskt rad-/fältfel som namnger mallens egen kolumn
+(`Namn`, `Postnummer`, `Yta m²` …) och räknas aldrig som lyckat skapad. Inget namn
+trunkeras, inget postnummer hittas på och ingen area faller tillbaka på ett värde
+för att raden ska bli grön. Ingen historisk backfill ingår — befintliga rader rörs
+inte.
+
+Därmed har **alla fyra produktvägar** som skapar `Property` samma sakregler:
+HTTP (`properties.service.ts` via DTO och pipe), plattforms-HTTP
+(`platform-properties.service.ts`), AI-verktyget (`tool-executor.service.ts`) och
+importen. Svepet gjordes över `create`/`createMany`/`upsert`, nästlade
+`property: { create … }` och rå SQL. `history-fixture.ts` används enbart av
+`.db.spec.ts`, och `prisma/seed*.ts` samt `scripts/eval-shadow-agent.ts` nås bara
+via egna npm-script — de är inte produktvägar.
 
 ## Reproducerbar regression
 
@@ -73,6 +104,7 @@ gemensamma Codespacet ska samtliga tunga körningar och DB-livscykeln hållas un
 # apps/api, DATABASE_URL måste peka på egen testdatabas
 pnpm exec jest --runInBand src/properties/properties-http.db.spec.ts src/properties/property-designation-unique.db.spec.ts
 pnpm exec jest --runInBand src/ai/tools/create-property-kontrakt.db.spec.ts
+pnpm exec jest --runInBand src/import/f056-import-fastighetskontrakt.db.spec.ts
 pnpm exec jest --runInBand src/accounting/dto-contract.spec.ts
 # apps/web
 pnpm exec vitest run src/features/properties/components/PropertyForm.test.tsx
@@ -98,3 +130,4 @@ räknas inte som motprov; mutationen ska kompilera och falla på BETEENDET.
 | Ursprunglig | tar bort `@PropertyField(CreatePropertySchema.shape.name)` i `create-property.dto.ts` | `F056 rejects a 201-character create before it can trap a later form edit` — **201 i stället för 400** |
 | NK-A | kopplar bort `CreatePropertySchema.safeParse` i `create_property` i `tool-executor.service.ts` | `F056 avvisar ett 201-teckensnamn från verktyget före DB-effekt` — raden skapas i stället för att avvisas |
 | NK-B | återinför `= 'SE'` som initierare på den gemensamma `AddressDto.country` | `F056 address PATCH without country preserves a stored non-SE country` — `NO` skrivs om till `SE` |
+| NK-import | kopplar bort `CreatePropertySchema`-grinden i `validatePropertyRow` och i skrivvägen | `F056 importen avvisar namn på 201 tecken och skapar ingen rad` m.fl. — raden skapas igen |
