@@ -14,6 +14,11 @@ import {
 import {
   CompanyForm,
   EventActorType,
+  // Värde-import: den typmedvetna grenen i assertInvoiceReceivableBacked jämför
+  // mot enumvärdet, inte mot en sträng.
+  InvoiceType,
+  // Värde-import: avgiftsgrenen filtrerar på enumvärdet.
+  JournalEntrySource,
   PaymentMethod,
   Prisma,
   RentNoticeType,
@@ -25,7 +30,6 @@ import type {
   ConsumptionVatStatus,
   Invoice,
   InvoiceLine,
-  JournalEntrySource,
   MeterType,
 } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
@@ -2097,7 +2101,8 @@ export class AccountingService {
     const amount = Number(transaction.amount)
     if (amount <= 0) return null
 
-    // A2 fail-closed (typ-medveten: vanlig faktura ELLER depositionsfaktura).
+    // A2 fail-closed (typ-medveten: vanlig faktura, depositionsfaktura ELLER
+    // förbrukningsfaktura — se assertInvoiceReceivableBacked).
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
     const counterparty = await this.counterpartyForInvoice(invoice.id, organizationId, tx)
@@ -2193,9 +2198,11 @@ export class AccountingService {
       return null
     }
 
-    // A2 fail-closed (typ-medveten: en depositionsfaktura bokför sin 1510-debet
-    // under 'deposit-invoice:<depositId>', inte invoice.id — accepteras via länkad
-    // Deposit, annars falsk-nekas varje frisk depositionsbetalning).
+    // A2 fail-closed (typ-medveten: vanlig faktura, depositionsfaktura ELLER
+    // förbrukningsfaktura — tre underlagsvägar, se assertInvoiceReceivableBacked).
+    // En depositionsfaktura bokför sin 1510-debet under 'deposit-invoice:<id>' och
+    // en förbrukningsfaktura under 'consumption-charge:<id>' per post, inte under
+    // invoice.id; utan grenarna falsk-nekas varje frisk betalning av dem.
     await this.assertInvoiceReceivableBacked(db, organizationId, invoice.id, invoice.invoiceNumber)
 
     const sourceId = `invoice-manual-payment:${allocationId}`
@@ -3691,13 +3698,20 @@ export class AccountingService {
     this.failClosedNoAccrual(label, organizationId, accrualSourceId)
   }
 
-  // Faktura-vägen är TYP-medveten: en vanlig faktura bokför sin fordran under
-  // sourceId=invoice.id, men en DEPOSITIONSFAKTURA (Invoice.type='DEPOSIT',
-  // Deposit.invoiceId satt) bokför sin 1510-debet under 'deposit-invoice:<depositId>'
-  // (createJournalEntryForDepositInvoice). Guarden accepterar därför BÅDA: annars
-  // skulle varje frisk depositionsbetalning falsk-nekas. En länkad Deposit ⇔ atomiskt
-  // bokförd deposit-invoice-accrual (T5 A1) — samma strukturgaranti reconciliation
-  // redan litar på (#41/#109). Fail-closed bara om INGEN av nycklarna finns.
+  // Faktura-vägen är TYP-medveten och känner TRE underlagsvägar:
+  //
+  //   1. VANLIG FAKTURA  — fordran under sourceId = invoice.id.
+  //   2. DEPOSITIONSFAKTURA (Invoice.type='DEPOSIT', Deposit.invoiceId satt) —
+  //      1510-debet under 'deposit-invoice:<depositId>'
+  //      (createJournalEntryForDepositInvoice). En länkad Deposit ⇔ atomiskt
+  //      bokförd deposit-invoice-accrual (T5 A1) — samma strukturgaranti
+  //      reconciliation redan litar på (#41/#109).
+  //   3. FÖRBRUKNINGSFAKTURA (Invoice.type='UTILITY') — fordran under
+  //      'consumption-charge:<id>', EN per kopplad post, skriven redan vid
+  //      confirm. Se harForbrukningstackning för vad som krävs.
+  //
+  // Guarden accepterar alla tre: annars falsk-nekas varje frisk depositions-
+  // eller förbrukningsbetalning. Fail-closed bara om INGEN av vägarna bär.
   private async assertInvoiceReceivableBacked(
     db: Prisma.TransactionClient,
     organizationId: string,
@@ -3714,7 +3728,145 @@ export class AccountingService {
       (await this.hasReceivableAccrual(db, organizationId, `deposit-invoice:${deposit.id}`))
     )
       return
+    if (await this.harForbrukningstackning(db, organizationId, invoiceId)) return
     this.failClosedNoAccrual(`faktura ${invoiceNumber}`, organizationId, invoiceId)
+  }
+
+  /**
+   * TREDJE TYPMEDVETNA GRENEN: en FÖRBRUKNINGSFAKTURA (UTILITY).
+   *
+   * ── VARFÖR DEN BEHÖVS ──────────────────────────────────────────────────────
+   *
+   * En förbrukningsfaktura bokförs ALDRIG som faktura. Fordran uppstod redan vid
+   * `confirmCharge`, ett verifikat per debiterad post under
+   * `consumption-charge:<id>`, och `invoiceSeparateCharges` bygger därför
+   * dokumentet med en rå `tx.invoice.create` som med flit går förbi
+   * `InvoicesService.create` — annars hade 1510 och intäkten bokförts en andra
+   * gång. Följden var att `hasReceivableAccrual(invoice.id)` aldrig kunde
+   * träffa, och att varje FRISK förbrukningsbetalning falsk-nekades: varken
+   * manuell betalning eller bankmatchning gick igenom, fakturan stod kvar SENT
+   * och banktransaktionen UNMATCHED. Reproducerat på riktig Postgres, och
+   * likadant på revisionen före den här grenen — felet är äldre än rättningen.
+   *
+   * Det är exakt samma form av falsk-nekande som depositionsgrenen ovan finns
+   * för. Den grenen skrevs; den här glömdes.
+   *
+   * ── VAD SOM KRÄVS, OCH VARFÖR INTE MINDRE ─────────────────────────────────
+   *
+   * ALLA kopplade poster måste bära sitt verifikat — inte någon. Fakturans
+   * belopp ÄR summan av posterna (`consumption.service.ts:789-791`), så en enda
+   * bokförd post av fem hade släppt igenom en betalning vars fordran till fyra
+   * femtedelar inte finns i huvudboken.
+   *
+   * En TOM mängd nekas uttryckligen. `[].every(…)` är `true` i JavaScript, och
+   * utan raden hade en UTILITY-faktura helt utan kopplade poster blivit
+   * godkänd av att det inte fanns något att kontrollera — den sortens tomma
+   * godkännande är precis vad fail-closed-vakten finns för att hindra.
+   *
+   * BELOPPET MÅSTE STÄMMA, och det är spärren mot blandade eller okända rader.
+   * Bär fakturan belopp som inte kommer ur de kopplade posterna — en handpåförd
+   * rad, en delvis lossad charge, ett dokument som inte byggdes av
+   * `invoiceSeparateCharges` — går summan inte ihop och betalningen nekas
+   * fortsatt. Jämförelsen görs i `Prisma.Decimal`, som resten av bokföringen;
+   * ingen Number-jämförelse och ingen ny avrundning införs.
+   *
+   * IDENTITETEN ÄR SERVERHÄRLEDD. `InvoiceLine` bär ingen koppling till en
+   * förbrukningspost; den enda kopplingen är `ConsumptionCharge.invoiceId`, som
+   * skapandevägen sätter i samma transaktion som fakturan. Ingenting här kommer
+   * från klienten, och allt slås upp på (id, organizationId).
+   *
+   * LÄSER BARA. Ett saknat förbrukningsverifikat skapas aldrig som bieffekt av
+   * en betalning — då hade betalningen tyst lagat sin egen förutsättning.
+   */
+  private async harForbrukningstackning(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    invoiceId: string,
+  ): Promise<boolean> {
+    const invoice = await db.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      select: { type: true, total: true },
+    })
+    // Grenen gäller EN fakturatyp. Allt annat faller vidare till fail-closed.
+    if (!invoice || invoice.type !== InvoiceType.UTILITY) return false
+
+    const charges = await db.consumptionCharge.findMany({
+      where: { invoiceId, organizationId },
+      select: { id: true, totalAmount: true },
+    })
+    // ── DEN HÄR RADEN KAN INTE FALLA I DAG, OCH DET ÄR MÄTT ──────────────────
+    //
+    // RADEN BÄR. Utan den är loopen längst ned vacuöst sann: `for` över en tom
+    // mängd gör ingenting och funktionen returnerar true.
+    //
+    // Motexemplet är inte hypotetiskt utan konkret: en UTILITY-faktura med NOLL
+    // kopplade poster, `total` 60, och ett verkligt avgiftsverifikat på 60.
+    // Σ poster är då 0 ≠ 60, avgiftsgrenen nedan hittar sitt verifikat, täckt
+    // blir 60 och beloppskravet passerar — varefter en betalning hade släppts
+    // igenom utan en enda bokförd förbrukningsfordran.
+    //
+    // (En tidigare version av den här kommentaren kallade raden subsumerad. Den
+    // mätningen gjordes INNAN avgiftsgrenen fanns och gäller inte längre.)
+    //
+    // Tillståndet nås inte av någon produktväg i dag — poster lossas bara i
+    // VOID-grenen, och en VOID-faktura är inte betalbar — men spärren mäts av
+    // ett eget prov som konstruerar det, så att ett borttagande blir rött.
+    if (charges.length === 0) return false
+
+    let täckt = charges.reduce((acc, c) => acc.plus(c.totalAmount), new Prisma.Decimal(0))
+
+    // ── PÅMINNELSEAVGIFTEN ÄR EN EGEN BOKFÖRD FORDRAN PÅ SAMMA FAKTURA ──────
+    //
+    // Kravet "Σ poster == fakturans total" var för snävt, och felet var inte
+    // teoretiskt: varken `markOverdueInvoices` (`notifications.service.ts:331`)
+    // eller påminnelseurvalet (`payment-reminder.service.ts:83-87`) filtrerar på
+    // fakturatyp, så en obetald förbrukningsfaktura hamnar i kravtrappan som
+    // vilken annan. Avgiften skrivs då upp på `Invoice.total` (`:562`) OCH
+    // bokförs som en riktig fordran under `reminder-fee:<invoiceId>` (`:596-598`).
+    //
+    // Utan raderna nedan hade en faktura vars HELA fordran står i huvudboken —
+    // 600 under förbrukningen, 60 under avgiften — nekats för att 600 ≠ 660.
+    // Det är exakt det falsk-nekande den här grenen finns för att ta bort, i det
+    // vanligaste fallet av alla: en hyresgäst som betalar sent.
+    //
+    // Skillnaden godtas ENBART mot ett verkligt verifikat, och beloppet läses ur
+    // HUVUDBOKEN (verifikatets debetsida), inte ur fakturaraden. Det är fordran
+    // vi prövar, inte dokumentet: en avgift som bokförts med fel belopp får inte
+    // släppas igenom bara för att något verifikat finns.
+    //
+    // VAD UPPSLAGET INTE BEVISAR: `source` är verifikatets URSPRUNG/källtyp, inte
+    // en självständig bokföringsstatus, och debetsumman filtreras inte på
+    // kontonummer. Att raden är 1510-debet följer av att `bookReminderFee` är
+    // enda skrivaren på nyckeln `reminder-fee:<invoiceId>` (1510 D / 3593 K) och
+    // av det unika indexet (org, source, sourceId) — alltså en garanti i
+    // SKRIVVÄGEN, inte något den här frågan mäter.
+    //
+    // Påminnelseavgiften är den ENDA post som skriver upp `Invoice.total` —
+    // räntan (`interest:<noticeId>`) hör till hyresavier, inte fakturor.
+    if (!täckt.equals(invoice.total)) {
+      const avgift = await db.journalEntry.findFirst({
+        where: {
+          organizationId,
+          source: JournalEntrySource.INVOICE,
+          sourceId: `reminder-fee:${invoiceId}`,
+        },
+        select: { lines: { select: { debit: true } } },
+      })
+      if (!avgift) return false
+      täckt = avgift.lines.reduce((acc, l) => acc.plus(l.debit ?? 0), täckt)
+    }
+
+    if (!täckt.equals(invoice.total)) return false
+
+    // ALLA, inte någon. Kortsluter på första post som saknar sitt verifikat.
+    // Anropar den BEFINTLIGA hjälparen per post i stället för att formulera om
+    // samma villkor i en batchfråga: vad som är ett giltigt accrual ska stå på
+    // ETT ställe. Mängden är en fakturas poster, alltså ett fåtal.
+    for (const charge of charges) {
+      if (!(await this.hasReceivableAccrual(db, organizationId, `consumption-charge:${charge.id}`)))
+        return false
+    }
+    return true
   }
 
   async createJournalEntryForRentNoticePayment(
