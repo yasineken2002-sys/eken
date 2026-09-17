@@ -1,4 +1,4 @@
-import { IsEnum, IsString, IsOptional, MaxLength } from 'class-validator'
+import { IsEnum, IsString, IsOptional, MaxLength, Matches } from 'class-validator'
 import { InspectionStatus } from '@prisma/client'
 
 import type { UpdateInspectionInput, SammaNycklar } from '@eken/shared'
@@ -57,6 +57,23 @@ export class UpdateInspectionDto implements UpdateInspectionInput {
   @IsOptional()
   @StrictString()
   overallCondition?: string
+
+  /**
+   * Förutsättningen för signering: `contentHash` ur den version klienten LÄSTE.
+   *
+   * Formen är låst till 64 hex-tecken därför att det är vad `sha256`-hex är —
+   * en fri sträng hade gjort felet till en tyst missmatchning i stället för ett
+   * synligt formatfel. Servern härleder jämförelsevärdet själv; det här fältet
+   * är bara ekot. Se `inspections.service.ts` för kontraktet: obligatoriskt vid
+   * signering, förbjudet annars.
+   */
+  @IsString()
+  @Matches(/^[0-9a-f]{64}$/, {
+    message: 'expectedContentHash måste vara en sha256 i hex (64 tecken, 0-9a-f)',
+  })
+  @IsOptional()
+  @StrictString()
+  expectedContentHash?: string
 
   @IsString()
   @MaxLength(200)

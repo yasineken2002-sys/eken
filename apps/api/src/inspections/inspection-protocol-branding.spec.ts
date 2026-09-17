@@ -37,6 +37,7 @@ function buildService() {
     overallCondition: 'Gott skick & välstädat',
     items: [
       {
+        id: 'item-1',
         room: 'Kök',
         item: '<script>alert(1)</script>',
         condition: 'DAMAGED',
@@ -44,6 +45,10 @@ function buildService() {
         repairCost: 5000,
       },
     ],
+    // `findOne` läser med FULL_INCLUDE och får ALLTID en array här. Attrappen
+    // utelämnade den, vilket inte motsvarade någon verklig rad — och blev
+    // synligt först när läsvägen började härleda `contentHash` ur innehållet.
+    images: [],
   }
 
   const org = {

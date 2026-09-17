@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { PdfService } from '../invoices/pdf.service'
@@ -102,6 +107,22 @@ export class InspectionsService {
     private readonly storage: StorageService,
   ) {}
 
+  /**
+   * VERSIONEN KLIENTEN SÅG, HÄRLEDD AV SERVERN.
+   *
+   * `contentHash` är hashen över protokollets innehåll **just nu**, räknad med
+   * samma funktion som signeringen använder. Den lagras inte — den härleds vid
+   * varje läsning, och det är hela poängen: klienten ska inte kunna hitta på
+   * ett jämförelsevärde, bara eka tillbaka det den fick.
+   *
+   * Skiljs från `signedContentHash`, som är värdet FRUSET vid signeringen. För
+   * ett osignerat protokoll är `signedContentHash` null medan `contentHash`
+   * alltid har ett värde; för ett orört signerat protokoll är de lika.
+   */
+  private medContentHash<T extends SignedContent>(rad: T): T & { contentHash: string } {
+    return { ...rad, contentHash: computeSignedContentHash(rad) }
+  }
+
   async findAll(
     orgId: string,
     filters?: {
@@ -111,7 +132,7 @@ export class InspectionsService {
       status?: InspectionStatus
     },
   ) {
-    return this.prisma.inspection.findMany({
+    const rader = await this.prisma.inspection.findMany({
       where: {
         organizationId: orgId,
         ...(filters?.unitId ? { unitId: filters.unitId } : {}),
@@ -122,6 +143,9 @@ export class InspectionsService {
       include: FULL_INCLUDE,
       orderBy: { scheduledDate: 'desc' },
     })
+    // Listan är den vy webben faktiskt signerar ifrån — panelen öppnas ur den.
+    // Saknades hashen här hade klienten inte haft något att eka tillbaka.
+    return rader.map((rad) => this.medContentHash(rad))
   }
 
   async findOne(id: string, orgId: string) {
@@ -130,7 +154,7 @@ export class InspectionsService {
       include: FULL_INCLUDE,
     })
     if (!inspection) throw new NotFoundException('Besiktning hittades inte')
-    return inspection
+    return this.medContentHash(inspection)
   }
 
   // IDOR-spärr: varje klient-skickat relations-id måste tillhöra anropande org
@@ -206,10 +230,15 @@ export class InspectionsService {
       })
     }
 
-    return this.prisma.inspection.findUnique({
+    // Samma form som läsvägarna: en nyskapad besiktning returneras med
+    // `contentHash`, annars hade svaret på POST saknat ett fält som klientens
+    // `Inspection`-typ säger alltid finns.
+    const skapad = await this.prisma.inspection.findUnique({
       where: { id: inspection.id },
       include: FULL_INCLUDE,
     })
+    if (!skapad) throw new NotFoundException('Besiktning hittades inte')
+    return this.medContentHash(skapad)
   }
 
   // ══ FRYSNINGEN AV DET SIGNERADE PROTOKOLLET ═══════════════════════════════
@@ -294,6 +323,50 @@ export class InspectionsService {
     return besiktning
   }
 
+  // ══ VISAD VERSION MOT SIGNERAD VERSION ════════════════════════════════════
+  //
+  // Radlåset serialiserar samtidiga skrivare. Det upptäcker INTE att den som
+  // signerar läste protokollet för fem minuter sedan och inte har sett vad som
+  // hänt sedan dess. Utan en förutsättning band signeringen därför alltid
+  // serverns NUVARANDE innehåll — även innehåll signeraren aldrig fått se.
+  //
+  // `expectedContentHash` är det värde klienten fick ur `contentHash` vid
+  // läsningen. Servern HÄRLEDER jämförelsevärdet själv ur radens eget innehåll
+  // (`computeSignedContentHash`), under samma lås, i samma transaktion som
+  // signeringen. Klienten kan alltså inte hitta på förutsättningen — bara eka
+  // tillbaka den den fick.
+  //
+  // VAD DET SKYDDAR MOT, OCH INTE: det här skyddar mot att signera INAKTUELL
+  // data, inte mot en illvillig anropare. Den som vill kan hämta protokollet
+  // och signera med den färska hashen i nästa andetag, utan att någon människa
+  // läst en rad. Förutsättningen gör signaturen till ett påstående om en
+  // VERSION — den gör den inte till ett påstående om att någon granskat den.
+  //
+  // ── VAD JÄMFÖRELSEN OMFATTAR ──────────────────────────────────────────────
+  //
+  // Exakt `buildSignedContent`: typ, planerat datum, slutförande, övergripande
+  // omdöme, anteckning, samtliga poster (rum, föremål, skick, anteckning,
+  // reparationskostnad) och samtliga bilder (filnamn, lagringsnyckel, bildtext,
+  // rum, storlek, innehållsdigest).
+  //
+  // UTANFÖR jämförelsen, och alltså INGEN konflikt: `status`, `signedAt`,
+  // `signedContentHash`, `tenantSignature`, `landlordSignature`. De beskriver
+  // radens livscykel, inte vad som besiktigades.
+  //
+  // ── ÄNDRING OCH SIGNERING I SAMMA ANROP ───────────────────────────────────
+  //
+  // Tillåtet, med ett uttalat kontrakt: förutsättningen jämförs mot innehållet
+  // FÖRE det här anropets egna ändringar. Anroparens egen redigering är alltså
+  // aldrig en konflikt med sig själv — den är avsiktlig och författad av den
+  // som signerar — medan någon ANNANS ändring sedan läsningen fäller anropet.
+  // Hashen som lagras räknas därefter på slutresultatet.
+  //
+  // ── EN SAKNAD FÖRUTSÄTTNING FÅR INTE TYST SIGNERA ─────────────────────────
+  //
+  // Utelämnad `expectedContentHash` vid signering är 400, inte "hoppa över
+  // kontrollen". En spärr som går att tysta genom att utelämna ett fält är
+  // ingen spärr, och äldre klienter ska fälla synligt i stället för att signera
+  // data de inte sett.
   async update(id: string, dto: UpdateInspectionDto, orgId: string) {
     return this.prisma.$transaction(async (tx) => {
       // Gäller ÄVEN ett andra signeringsförsök: en signerad besiktning är
@@ -301,6 +374,30 @@ export class InspectionsService {
       await this.lockAndAssertUnsigned(tx, id, orgId)
 
       const signerar = dto.status === InspectionStatus.SIGNED
+
+      if (!signerar && dto.expectedContentHash !== undefined) {
+        throw new BadRequestException(
+          'expectedContentHash är endast meningsfull vid signering och får inte skickas annars.',
+        )
+      }
+      if (signerar) {
+        if (!dto.expectedContentHash) {
+          throw new BadRequestException(
+            'Signering kräver expectedContentHash — värdet ur contentHash på den version du läste.',
+          )
+        }
+        // Innehållet FÖRE anropets egna ändringar, läst under låset.
+        const före = await tx.inspection.findFirst({
+          where: { id, organizationId: orgId },
+          include: FULL_INCLUDE,
+        })
+        if (!före) throw new NotFoundException('Besiktning hittades inte')
+        if (computeSignedContentHash(före) !== dto.expectedContentHash) {
+          throw new ConflictException(
+            'Protokollet har ändrats sedan du läste det. Läs om besiktningen, granska ändringen och signera därefter — inget har signerats.',
+          )
+        }
+      }
 
       const uppdaterad = await tx.inspection.update({
         where: { id },
@@ -326,24 +423,21 @@ export class InspectionsService {
         include: FULL_INCLUDE,
       })
 
-      if (!signerar) return uppdaterad
+      if (!signerar) return this.medContentHash(uppdaterad)
 
       // Hashen räknas över det innehåll som FAKTISKT står i protokollet efter
       // det här anropet — samma transaktion, samma lås, samma rader. Räknades
       // den på dto:n i stället hade den bundit vad anroparen SA, inte vad som
       // lagrades.
-      return tx.inspection.update({
+      const signerad = await tx.inspection.update({
         where: { id },
         data: {
           signedAt: new Date(),
-          // KONTROLLERAD cast, inte `as unknown as`: Prismas payload-typ bär fler
-          // fält än underlaget behöver, men de gemensamma måste stämma — ändrar
-          // någon formen på `SignedContent` faller BYGGET här i stället för att
-          // hashen tyst börjar räknas på `undefined`.
-          signedContentHash: computeSignedContentHash(uppdaterad as SignedContent),
+          signedContentHash: computeSignedContentHash(uppdaterad),
         },
         include: FULL_INCLUDE,
       })
+      return this.medContentHash(signerad)
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
@@ -399,6 +493,7 @@ export class InspectionsService {
       caption: string | null
       room: string | null
       size: number
+      contentSha256: string
     }[],
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {

@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback } from 'react'
+import { useIsFetching, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { X, FileDown, Sparkles, Upload, X as XIcon, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { extractApiError } from '@/lib/api'
 import {
   InspectionTypeBadge,
   InspectionStatusBadge,
@@ -46,6 +48,33 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
   // reparationskostnad gick att ändra rakt i vyn. Servern nekar numera (F025);
   // fälten låses här så att beskedet kommer före anropet i stället för efter.
   const protokolletÄrLåst = inspection.status === 'SIGNED'
+
+  // ── FEL MÅSTE SYNAS ────────────────────────────────────────────────────────
+  //
+  // Alla skrivningar härifrån gick via `void ...mutateAsync()` utan `.catch`.
+  // För signeringen var följden att en 409 försvann. För POSTERNA var den
+  // värre: nekas en `repairCost`-skrivning av statusspärren försvinner beloppet
+  // tyst ur just det fält ett depositionsavdrag vilar på. Samma ruta bär båda.
+  const [panelfel, setPanelfel] = useState<string | null>(null)
+  const qc = useQueryClient()
+
+  // ── SIGNERA FÅR INTE KAPPLÖPA MED EN PÅGÅENDE POSTÄNDRING ──────────────────
+  //
+  // `onBlur` på beloppsfältet och `click` på Signera utlöses av samma
+  // musnedtryckning. Utan spärren nedan skickas `expectedContentHash` från
+  // FÖRE beloppet: antingen committar poständringen först och användaren får
+  // 409 av sin egen inmatning, eller så committar signeringen först och
+  // beloppet nekas efteråt. Knappen väntar därför tills postskrivningen och
+  // omläsningen är klara.
+  const hämtarBesiktningar = useIsFetching({ queryKey: ['inspections'] }) > 0
+  const väntarPåÄndring = updateItem.isPending || hämtarBesiktningar
+
+  /** Visar felet i stället för att svälja det. */
+  const kör = (p: Promise<unknown>) =>
+    p.then(
+      () => setPanelfel(null),
+      (err: unknown) => setPanelfel(extractApiError(err)),
+    )
   const downloadPdf = useDownloadPdf()
   const analyzeInspection = useAnalyzeInspection()
   const [pendingFiles, setPendingFiles] = useState<
@@ -185,11 +214,13 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                               value={item.condition}
                               disabled={protokolletÄrLåst}
                               onChange={(e) =>
-                                void updateItem.mutateAsync({
-                                  inspectionId: inspection.id,
-                                  itemId: item.id,
-                                  dto: { condition: e.target.value as InspectionItemCondition },
-                                })
+                                void kör(
+                                  updateItem.mutateAsync({
+                                    inspectionId: inspection.id,
+                                    itemId: item.id,
+                                    dto: { condition: e.target.value as InspectionItemCondition },
+                                  }),
+                                )
                               }
                               className="border-input h-7 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
                             >
@@ -210,11 +241,13 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                 onBlur={(e) => {
                                   const val = e.target.value.trim()
                                   if (val !== (item.notes ?? '')) {
-                                    void updateItem.mutateAsync({
-                                      inspectionId: inspection.id,
-                                      itemId: item.id,
-                                      dto: val ? { notes: val } : {},
-                                    })
+                                    void kör(
+                                      updateItem.mutateAsync({
+                                        inspectionId: inspection.id,
+                                        itemId: item.id,
+                                        dto: val ? { notes: val } : {},
+                                      }),
+                                    )
                                   }
                                 }}
                                 className="border-input h-7 flex-1 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
@@ -227,11 +260,13 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                                 onBlur={(e) => {
                                   const val = e.target.value ? parseFloat(e.target.value) : null
                                   if (val !== item.repairCost) {
-                                    void updateItem.mutateAsync({
-                                      inspectionId: inspection.id,
-                                      itemId: item.id,
-                                      dto: { repairCost: val },
-                                    })
+                                    void kör(
+                                      updateItem.mutateAsync({
+                                        inspectionId: inspection.id,
+                                        itemId: item.id,
+                                        dto: { repairCost: val },
+                                      }),
+                                    )
                                   }
                                 }}
                                 className="border-input h-7 w-20 rounded-md border px-2 text-[12px] text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500"
@@ -445,17 +480,42 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
                   size="sm"
                   variant="primary"
                   loading={updateInspection.isPending}
-                  onClick={() =>
-                    void updateInspection.mutateAsync({
-                      id: inspection.id,
-                      dto: { status: 'SIGNED' },
-                    })
-                  }
+                  disabled={väntarPåÄndring}
+                  onClick={() => {
+                    setPanelfel(null)
+                    void updateInspection
+                      .mutateAsync({
+                        id: inspection.id,
+                        dto: {
+                          status: 'SIGNED',
+                          // Versionen användaren faktiskt ser. Ändrar någon
+                          // annan protokollet däremellan svarar servern 409 i
+                          // stället för att signera data som aldrig visats.
+                          expectedContentHash: inspection.contentHash,
+                        },
+                      })
+                      .catch((err: unknown) => setPanelfel(extractApiError(err)))
+                  }}
                 >
                   Signera protokoll
                 </Button>
               )}
             </div>
+            {panelfel && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-[12px] font-medium text-amber-900">{panelfel}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPanelfel(null)
+                    void qc.invalidateQueries({ queryKey: ['inspections'] })
+                  }}
+                  className="mt-1.5 text-[12px] font-semibold text-amber-900 underline underline-offset-2"
+                >
+                  Läs om protokollet
+                </button>
+              </div>
+            )}
           </div>
         )}
 

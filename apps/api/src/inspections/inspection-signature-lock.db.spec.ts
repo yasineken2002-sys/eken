@@ -135,8 +135,22 @@ medDb('F025 — frysning av signerat besiktningsprotokoll', () => {
     return { id: insp.id, poster }
   }
 
-  /** Signerar via tjänsten — samma väg produkten använder. */
-  const signera = (id: string) => service.update(id, { status: 'SIGNED' } as never, orgA)
+  /**
+   * Signerar via tjänsten — samma väg produkten använder.
+   *
+   * Läser först ut `contentHash` precis som webben gör, och ekar tillbaka den
+   * som `expectedContentHash`. Signering UTAN förutsättning är numera 400; att
+   * den här hjälparen hämtar en färsk hash är alltså inte en genväg förbi
+   * kontrollen utan exakt vad en klient med en aktuell vy gör.
+   */
+  const signera = async (id: string) => {
+    const vy = await service.findOne(id, orgA)
+    return service.update(
+      id,
+      { status: 'SIGNED', expectedContentHash: vy.contentHash } as never,
+      orgA,
+    )
+  }
 
   beforeAll(async () => {
     prisma = new PrismaClient()
@@ -264,6 +278,7 @@ medDb('F025 — frysning av signerat besiktningsprotokoll', () => {
           caption: 'Efterhandsbild',
           room: null,
           size: 4096,
+          contentSha256: 'c'.repeat(64),
         },
       ]),
     ).rejects.toBeInstanceOf(ConflictException)
@@ -350,10 +365,16 @@ medDb('F025 — frysning av signerat besiktningsprotokoll', () => {
     expect(efter.repairCost).toBeNull()
   })
 
-  it('REDIGERING HÅLLER LÅSET → signeringen BLOCKERAR och binder sedan det redigerade innehållet', async () => {
-    // Den andra riktningen, och den är lika viktig: vinner redigeringen får
-    // signaturen inte binda en bild av protokollet som aldrig fanns.
+  it('REDIGERING HÅLLER LÅSET → signeringen BLOCKERAR, nekas sedan, och lyckas efter omläsning', async () => {
+    // Den andra riktningen. Den mäter två saker på en gång:
+    //   1. LÅSET — signeringen står still medan redigeringen håller raden.
+    //   2. FÖRUTSÄTTNINGEN — signeraren läste FÖRE redigeringen, så när låset
+    //      släpps får hen inte signera det ändrade innehållet. Före
+    //      `expectedContentHash` gjorde hen precis det.
     const { id, poster } = await nyBesiktning()
+
+    // Signerarens vy, hämtad INNAN redigeringen ens börjar.
+    const gammalVy = await service.findOne(id, orgA)
 
     let släpp!: () => void
     const spärr = new Promise<void>((r) => {
@@ -375,20 +396,35 @@ medDb('F025 — frysning av signerat besiktningsprotokoll', () => {
     await new Promise((r) => setTimeout(r, 250))
 
     let avslutad = false
-    const signering = signera(id).then((r) => {
-      avslutad = true
-      return r
-    })
+    const signering = service
+      .update(id, { status: 'SIGNED', expectedContentHash: gammalVy.contentHash } as never, orgA)
+      .then(
+        () => {
+          avslutad = true
+          return 'signerade' as const
+        },
+        (e) => {
+          avslutad = true
+          if (e instanceof ConflictException) return 'nekad' as const
+          throw e
+        },
+      )
 
     await new Promise((r) => setTimeout(r, 500))
     expect(avslutad).toBe(false) // signeringen står still på låset
 
     släpp()
     await redigeringsTx
-    const signerad = await signering
+    expect(await signering).toBe('nekad')
 
-    // Hashen är räknad på det REDIGERADE innehållet — inte på det som stod där
-    // när signeringen började.
+    // Ingen signeringssidoeffekt: protokollet är fortfarande öppet.
+    const efterNekandet = await prisma.inspection.findUniqueOrThrow({ where: { id } })
+    expect(efterNekandet.status).toBe('COMPLETED')
+    expect(efterNekandet.signedAt).toBeNull()
+    expect(efterNekandet.signedContentHash).toBeNull()
+
+    // OMLÄST VY LYCKAS — och binder det redigerade innehållet.
+    const signerad = await signera(id)
     const fullständig = await prisma.inspection.findUniqueOrThrow({
       where: { id },
       include: { items: true, images: true },

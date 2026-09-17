@@ -19,10 +19,14 @@
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
-import { ConflictException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 
 import { InspectionsService } from './inspections.service'
-import { computeSignedContentHash, buildSignedContent } from './inspection-signature'
+import {
+  BESIKTNING_SIGNERAD_MEDDELANDE,
+  buildSignedContent,
+  computeSignedContentHash,
+} from './inspection-signature'
 
 type Läge = {
   status?: string
@@ -70,9 +74,13 @@ function rigg(läge: Läge = {}) {
       return Promise.resolve(finns ? [{ id: 'insp-1' }] : [])
     }),
     inspection: {
-      findFirst: jest.fn(() => {
+      // Två läsningar med olika form: spärrens smala `select` och signeringens
+      // `include: FULL_INCLUDE` (innehållet FÖRE anropets egna ändringar).
+      findFirst: jest.fn((args?: { include?: unknown }) => {
         anropsordning.push('inspection.findFirst')
-        return Promise.resolve(finns ? { id: 'insp-1', status, signedAt } : null)
+        if (!finns) return Promise.resolve(null)
+        if (args?.include) return Promise.resolve(protokoll({ status, signedAt }))
+        return Promise.resolve({ id: 'insp-1', status, signedAt })
       }),
       update: jest.fn((args: { data: Record<string, unknown> }) => {
         anropsordning.push('inspection.update')
@@ -113,6 +121,12 @@ function rigg(läge: Läge = {}) {
 }
 
 const SIGNERAT: Läge = { status: 'SIGNED', signedAt: new Date('2026-03-04T10:00:00.000Z') }
+
+/** Förutsättningen en klient hade fått ur `contentHash` vid läsning av `läge`. */
+const förutsättning = (läge: Läge = {}) =>
+  computeSignedContentHash(
+    protokoll({ status: läge.status ?? 'COMPLETED', signedAt: läge.signedAt ?? null }) as never,
+  )
 
 // ════════════════════════════════════════════════════════════════════════════
 // DET SOM VAR RÖTT FÖRE RÄTTNINGEN
@@ -186,6 +200,7 @@ describe('F025 — signerat protokoll är stängt för skrivning', () => {
           caption: null,
           room: null,
           size: 100,
+          contentSha256: 'e'.repeat(64),
         },
       ]),
     ).rejects.toBeInstanceOf(ConflictException)
@@ -202,7 +217,11 @@ describe('F025 — signerat protokoll är stängt för skrivning', () => {
   it('DUBBEL SIGNERING: ett andra signeringsförsök nekas, det är ingen fribiljett', async () => {
     const { service, prisma } = rigg(SIGNERAT)
     await expect(
-      service.update('insp-1', { status: 'SIGNED' } as never, 'org-1'),
+      service.update(
+        'insp-1',
+        { status: 'SIGNED', expectedContentHash: förutsättning(SIGNERAT) } as never,
+        'org-1',
+      ),
     ).rejects.toBeInstanceOf(ConflictException)
     expect(prisma.inspection.update).not.toHaveBeenCalled()
   })
@@ -270,6 +289,7 @@ describe('spärrens form', () => {
               caption: null,
               room: null,
               size: 1,
+              contentSha256: 'f'.repeat(64),
             },
           ]),
       ],
@@ -339,7 +359,11 @@ describe('signeringen binder innehållet', () => {
   it('TIDPUNKTEN ÄR SERVERNS — en klientskickad signedAt finns inte längre att skicka', async () => {
     const { service, prisma } = rigg({ status: 'COMPLETED' })
     const före = Date.now()
-    await service.update('insp-1', { status: 'SIGNED' } as never, 'org-1')
+    await service.update(
+      'insp-1',
+      { status: 'SIGNED', expectedContentHash: förutsättning() } as never,
+      'org-1',
+    )
     const efter = Date.now()
 
     const sista = prisma.inspection.update.mock.calls.at(-1)![0] as {
@@ -352,7 +376,11 @@ describe('signeringen binder innehållet', () => {
 
   it('hashen skrivs vid signering, och är hashen över det som faktiskt lagrades', async () => {
     const { service, prisma } = rigg({ status: 'COMPLETED' })
-    await service.update('insp-1', { status: 'SIGNED' } as never, 'org-1')
+    await service.update(
+      'insp-1',
+      { status: 'SIGNED', expectedContentHash: förutsättning() } as never,
+      'org-1',
+    )
 
     const [, andra] = prisma.inspection.update.mock.calls
     const data = (andra![0] as { data: { signedContentHash: string } }).data
@@ -376,10 +404,112 @@ describe('signeringen binder innehållet', () => {
 })
 
 // ════════════════════════════════════════════════════════════════════════════
+// FÖRUTSÄTTNINGEN — VISAD VERSION MOT SIGNERAD VERSION
+// ════════════════════════════════════════════════════════════════════════════
+
+describe('signeringens förutsättning (expectedContentHash)', () => {
+  it('SAKNAD förutsättning vid signering → 400, och INGENTING signeras', async () => {
+    // En spärr som går att tysta genom att utelämna ett fält är ingen spärr.
+    const { service, prisma } = rigg({ status: 'COMPLETED' })
+    await expect(
+      service.update('insp-1', { status: 'SIGNED' } as never, 'org-1'),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.inspection.update).not.toHaveBeenCalled()
+  })
+
+  it('FEL förutsättning → 409, och INGENTING signeras', async () => {
+    const { service, prisma } = rigg({ status: 'COMPLETED' })
+    await expect(
+      service.update(
+        'insp-1',
+        { status: 'SIGNED', expectedContentHash: 'b'.repeat(64) } as never,
+        'org-1',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(prisma.inspection.update).not.toHaveBeenCalled()
+  })
+
+  it('konfliktens besked är svenskt och pekar på att läsa om', async () => {
+    const { service } = rigg({ status: 'COMPLETED' })
+    const fel = await service
+      .update('insp-1', { status: 'SIGNED', expectedContentHash: 'b'.repeat(64) } as never, 'org-1')
+      .catch((e: Error) => e)
+    expect((fel as Error).message).toMatch(/ändrats sedan du läste det/i)
+    expect((fel as Error).message).toMatch(/[Ll]äs om/)
+    expect((fel as Error).message).toMatch(/inget har signerats/i)
+  })
+
+  it('RÄTT förutsättning → signeras', async () => {
+    const { service, prisma } = rigg({ status: 'COMPLETED' })
+    await service.update(
+      'insp-1',
+      { status: 'SIGNED', expectedContentHash: förutsättning() } as never,
+      'org-1',
+    )
+    const sista = prisma.inspection.update.mock.calls.at(-1)![0] as {
+      data: { signedContentHash: string }
+    }
+    expect(sista.data.signedContentHash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('förutsättning UTAN signering → 400 (den skyddar inget där och ska inte se ut att göra det)', async () => {
+    const { service, prisma } = rigg({ status: 'IN_PROGRESS' })
+    await expect(
+      service.update(
+        'insp-1',
+        { notes: 'x', expectedContentHash: förutsättning() } as never,
+        'org-1',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.inspection.update).not.toHaveBeenCalled()
+  })
+
+  it('kontrollen sker EFTER spärren: ett signerat protokoll ger konflikt, inte formatfel', async () => {
+    const { service } = rigg(SIGNERAT)
+    const fel = await service
+      .update('insp-1', { status: 'SIGNED' } as never, 'org-1')
+      .catch((e: Error) => e)
+    expect(fel).toBeInstanceOf(ConflictException)
+    expect((fel as Error).message).toBe(BESIKTNING_SIGNERAD_MEDDELANDE)
+  })
+
+  it('ändring OCH signering i samma anrop går igenom (den egna ändringen skrivs)', async () => {
+    // Att jämförelsen sker mot innehållet FÖRE anropets egna ändringar går inte
+    // att mäta här: attrappen svarar med samma rad oavsett vad som skrivits, så
+    // det finns inget "efter"-tillstånd att skilja mot. Det mäts mot riktig
+    // Postgres i `inspection-signing-precondition.db.spec.ts`
+    // ("EGEN ändring i samma anrop är ingen konflikt med sig själv"). Här mäts
+    // bara att kontraktet släpper igenom anropet och skriver den egna ändringen.
+    const { service, prisma } = rigg({ status: 'COMPLETED' })
+    await service.update(
+      'insp-1',
+      {
+        overallCondition: 'Egen slutkommentar',
+        status: 'SIGNED',
+        expectedContentHash: förutsättning(),
+      } as never,
+      'org-1',
+    )
+    expect(prisma.inspection.update).toHaveBeenCalledTimes(2)
+    expect(
+      (prisma.inspection.update.mock.calls[0]![0] as { data: Record<string, unknown> }).data
+        .overallCondition,
+    ).toBe('Egen slutkommentar')
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
 // UNDERLAGET — VAD SIGNERINGEN OMFATTAR
 // ════════════════════════════════════════════════════════════════════════════
 
 describe('signaturunderlaget', () => {
+  it('VERSIONEN ÄR PINNAD — en formändring utan bump blir röd här', () => {
+    // Filens egen regel: ändras formen måste `SIGNATUR_UNDERLAG_VERSION` räknas
+    // upp, annars blir gamla hashar tyst ojämförbara med nya. Utan den här
+    // raden kunde bumpen glömmas utan att något sa ifrån.
+    expect(buildSignedContent(protokoll() as never).v).toBe(2)
+  })
+
   it('täcker de uppgifter ett depositionsavdrag vilar på', () => {
     const underlag = buildSignedContent(protokoll() as never)
     expect(Object.keys(underlag)).toEqual([
@@ -415,6 +545,76 @@ describe('signaturunderlaget', () => {
     expect(efter).not.toBe(före)
   })
 
+  it('underlaget bär contentSha256 för VARJE bild — annars binder det bara nyckeln', () => {
+    // Utan det här fältet beskriver underlaget var bilden ligger, inte vad den
+    // innehöll. `PutObject` mot samma nyckel hade då varit osynlig.
+    const underlag = buildSignedContent(
+      protokoll({
+        images: [
+          {
+            id: 'img-1',
+            filename: 'a.jpg',
+            storageKey: 'k',
+            caption: null,
+            room: null,
+            size: 10,
+            contentSha256: 'a'.repeat(64),
+          },
+        ],
+      }) as never,
+    )
+    expect((underlag.images as Record<string, unknown>[])[0]).toEqual({
+      id: 'img-1',
+      filename: 'a.jpg',
+      storageKey: 'k',
+      caption: null,
+      room: null,
+      size: 10,
+      contentSha256: 'a'.repeat(64),
+    })
+  })
+
+  it('hashen ändras när bildens INNEHÅLL byts men nyckel och storlek är oförändrade', () => {
+    // Exakt det byte som mätningen mot syntetiskt objektlager visade att
+    // lagringsporten tillåter: samma nyckel, samma längd, andra bytes.
+    const bild = {
+      id: 'img-1',
+      filename: 'kok.jpg',
+      storageKey: 'inspections/org-1/kok.jpg',
+      caption: null,
+      room: null,
+      size: 15,
+    }
+    const original = computeSignedContentHash(
+      protokoll({ images: [{ ...bild, contentSha256: 'a'.repeat(64) }] }) as never,
+    )
+    const utbytt = computeSignedContentHash(
+      protokoll({ images: [{ ...bild, contentSha256: 'b'.repeat(64) }] }) as never,
+    )
+    expect(utbytt).not.toBe(original)
+  })
+
+  it('en bild UTAN digest (uppladdad före v2) är ärligt null, inte utelämnad', () => {
+    const underlag = buildSignedContent(
+      protokoll({
+        images: [
+          {
+            id: 'img-1',
+            filename: 'gammal.jpg',
+            storageKey: 'k',
+            caption: null,
+            room: null,
+            size: 10,
+            contentSha256: null,
+          },
+        ],
+      }) as never,
+    )
+    const bild = (underlag.images as Record<string, unknown>[])[0]!
+    expect('contentSha256' in bild).toBe(true)
+    expect(bild.contentSha256).toBeNull()
+  })
+
   it('hashen ändras när en bild läggs till', () => {
     const före = computeSignedContentHash(protokoll() as never)
     const efter = computeSignedContentHash(
@@ -427,6 +627,7 @@ describe('signaturunderlaget', () => {
             caption: null,
             room: null,
             size: 10,
+            contentSha256: 'a'.repeat(64),
           },
         ],
       }) as never,

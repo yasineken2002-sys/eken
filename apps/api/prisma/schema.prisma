@@ -5535,6 +5535,23 @@ model InspectionImage {
   size         Int
   createdAt    DateTime @default(now())
 
+  // ── VAD BILDEN FAKTISKT INNEHÖLL (F025 v2) ────────────────────────────────
+  //
+  // sha256 över de bytes servern tog emot, beräknad ur samma buffer som skrevs
+  // till lagringen. Utan den binder signaturen bara `storageKey` — och en
+  // nyckel säger var objektet ligger, inte vad det innehåller. `PutObject` mot
+  // samma nyckel byter bytes utan att något annat fält på raden ändras.
+  //
+  // NULL BETYDER OKÄNT — bilder uppladdade före migrationen backfillas inte.
+  // En digest beräknad i dag beskriver objektet i dag, inte vid uppladdningen,
+  // och hade varit en retroaktiv bildattest vi inte har täckning för.
+  //
+  // Detta UPPTÄCKER ett byte, det HINDRAR det inte — och ingen kod läser i dag
+  // tillbaka objektet ur lagringen för att jämföra. Fältet gör kontrollen
+  // MÖJLIG; den är inte inkopplad. Se `inspection-signature.ts` för vad
+  // underlaget omfattar.
+  contentSha256 String?
+
   inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
 }
 

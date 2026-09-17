@@ -51,8 +51,28 @@ import { createHash } from 'node:crypto'
  *
  * `v` är underlagets version. Ändras formen nedan måste den räknas upp, annars
  * blir gamla hashar tyst ojämförbara med nya i stället för synligt ojämförbara.
+ *
+ * ── v2: BILAGORNAS BYTES, INTE BARA DERAS NYCKEL ───────────────────────────
+ *
+ * v1 band bilderna via `storageKey`, `filename`, `caption`, `room` och `size`.
+ * Ingen av dem säger något om vad objektet bakom nyckeln FAKTISKT innehåller —
+ * en granskning påpekade det, och den hade rätt: `PutObject` mot samma nyckel
+ * byter bytes utan att någon av de fem fälten ändras, och `size` fångar bara
+ * ett byte som råkar ändra längden.
+ *
+ * v2 tar därför med `contentSha256`, en digest av de bytes servern faktiskt tog
+ * emot, beräknad vid uppladdningen ur samma buffer som skrevs till lagringen.
+ *
+ * NULL BETYDER OKÄNT. Bilder som laddades upp före migrationen har ingen digest
+ * och får `null` — de backfillas inte, eftersom en digest beräknad i dag skulle
+ * beskriva objektets innehåll i dag och inte vid uppladdningen. Ett `null` i
+ * underlaget är alltså ett ärligt "vi vet inte", inte ett tyst godkännande.
+ *
+ * Versionsbumpen gör v1-hashar synligt ojämförbara med v2. Det är avsiktligt
+ * och ofarligt här: v1 fanns bara i den ej mergade, ej driftsatta commiten
+ * `bc5c8841`, så ingen lagrad hash i drift är beräknad med v1.
  */
-export const SIGNATUR_UNDERLAG_VERSION = 1
+export const SIGNATUR_UNDERLAG_VERSION = 2
 
 /**
  * Felmeddelandet när någon försöker skriva i ett signerat protokoll.
@@ -83,6 +103,8 @@ export type SignedContentImage = {
   caption: string | null
   room: string | null
   size: number
+  /** sha256 över de uppladdade byten. `null` = okänt (uppladdad före v2). */
+  contentSha256: string | null
 }
 
 /** Protokollets innehåll — indata till hashen. */
@@ -149,6 +171,8 @@ export function buildSignedContent(besiktning: SignedContent): Record<string, un
       caption: bild.caption,
       room: bild.room,
       size: bild.size,
+      // v2. Nyckeln säger VAR bilden ligger, digesten VAD den innehöll.
+      contentSha256: bild.contentSha256,
     })),
   }
 }

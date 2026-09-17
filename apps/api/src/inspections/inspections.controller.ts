@@ -14,6 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import { createHash } from 'node:crypto'
 import { v4 as uuid } from 'uuid'
 import { InspectionsService } from './inspections.service'
 import { InspectionAnalyzerService } from './inspection-analyzer.service'
@@ -165,6 +166,10 @@ export class InspectionsController {
         caption,
         room: null,
         size: f.buffer.length,
+        // Digesten tas ur SAMMA buffer som skrevs till lagringen på raden ovan,
+        // inte ur en omläsning: en omläsning hade beskrivit vad lagringen råkar
+        // svara med efteråt, vilket är just det digesten ska kunna motsäga.
+        contentSha256: createHash('sha256').update(f.buffer).digest('hex'),
       })
       imageInputs.push({
         buffer: f.buffer,
