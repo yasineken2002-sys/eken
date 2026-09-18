@@ -20,6 +20,7 @@ import { DataTable } from '@/components/ui/DataTable'
 import { StatCard } from '@/components/ui/StatCard'
 import { UnitStatusBadge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { UnitForm } from './components/UnitForm'
 import { useUnits, useUnit, useCreateUnit, useUpdateUnit, useDeleteUnit } from './hooks/useUnits'
 import { formatCurrency, formatDate } from '@eken/shared'
@@ -100,7 +101,11 @@ export function UnitsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const { data: units = [], isLoading, isError } = useUnits()
-  const { data: selectedUnit } = useUnit(selected?.id ?? null)
+  const {
+    data: selectedUnit,
+    isError: detaljFel,
+    refetch: hamtaDetaljIgen,
+  } = useUnit(selected?.id ?? null)
 
   const createMutation = useCreateUnit()
   const updateMutation = useUpdateUnit()
@@ -349,6 +354,8 @@ export function UnitsPage() {
           <UnitDetailPanel
             selected={selected}
             selectedUnit={selectedUnit ?? null}
+            detailError={detaljFel}
+            onRetryDetail={() => void hamtaDetaljIgen()}
             detailTab={detailTab}
             setDetailTab={setDetailTab}
             onUpdate={handleUpdate}
@@ -397,6 +404,9 @@ export function UnitsPage() {
 interface UnitDetailPanelProps {
   selected: UnitWithProperty
   selectedUnit: UnitDetail | null
+  /** Detaljfrågan har AVSLUTATS med fel — inte samma sak som att den pågår. */
+  detailError: boolean
+  onRetryDetail: () => void
   detailTab: DetailTab
   setDetailTab: (t: DetailTab) => void
   onUpdate: (dto: CreateUnitInput) => void
@@ -407,6 +417,8 @@ interface UnitDetailPanelProps {
 function UnitDetailPanel({
   selected,
   selectedUnit,
+  detailError,
+  onRetryDetail,
   detailTab,
   setDetailTab,
   onUpdate,
@@ -552,15 +564,33 @@ function UnitDetailPanel({
         </div>
       )}
 
-      {detailTab === 'redigera' && (
-        <UnitForm
-          {...(selectedUnit ? { defaultValues: unitToInput(selectedUnit) } : {})}
-          onSubmit={onUpdate}
-          onCancel={() => setDetailTab('detaljer')}
-          isSubmitting={isUpdating}
-          submitLabel="Spara ändringar"
-        />
-      )}
+      {/* DETALJEN MÅSTE FINNAS INNAN FORMULÄRET MONTERAS.
+          Listraden räcker inte: `useUnit` svarar senare, och react-hook-form
+          initierar sina värden EN gång vid monteringen. Monterades formuläret
+          under laddningen fick fastighetsfältet `''`, och när svaret sedan kom
+          låstes samma tomma fält (mätt: värde "" och disabled=true, sparning
+          utfördes aldrig). Låsningen är rätt — men bara på ett fält som redan
+          bär rätt värde. Därför laddningsläge tills underlaget finns. */}
+      {detailTab === 'redigera' &&
+        (selectedUnit ? (
+          <UnitForm
+            defaultValues={unitToInput(selectedUnit)}
+            propertyId={selectedUnit.propertyId}
+            onSubmit={onUpdate}
+            onCancel={() => setDetailTab('detaljer')}
+            isSubmitting={isUpdating}
+            submitLabel="Spara ändringar"
+          />
+        ) : detailError ? (
+          /* ETT AVSLUTAT FEL ÄR INTE VÄNTAN. Utan den här grenen står
+             laddningstexten kvar för alltid när detaljfrågan fallerat, och
+             fliken påstår att något pågår som inte gör det. `LoadErrorState`
+             är appens befintliga mönster — svensk text plus "Försök igen" —
+             så ingen ny felarkitektur införs här. */
+          <LoadErrorState vad="Objektet" onRetry={onRetryDetail} />
+        ) : (
+          <p className="py-8 text-center text-[13px] text-gray-400">Laddar objektet…</p>
+        ))}
     </div>
   )
 }
