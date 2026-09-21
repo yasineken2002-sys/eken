@@ -90,6 +90,25 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
     'hade visat ett hashvärde som varken beskriver betalningen eller går att ' +
     'handla på. Att den dessutom avslöjar VILKA fält som bildar identiteten är ' +
     'ett svagare men äkta skäl att hålla den inne.',
+  bankAccountId:
+    'Vilket av organisationens bankkonton raden kom in på (#F034c). Rent ' +
+    'avstämningsmaskineri: fakturavyn visar EN betalning av EN faktura och ' +
+    'kontot tillför inget där, och avstämningstabellen arbetar redan inom en ' +
+    'organisation. Att skicka med det hade dessutom röjt organisationens ' +
+    'kontostruktur för varje läsare av fakturasvaret — en annan grind än den ' +
+    'här filens. Behöver en vy filtrera på konto är det ett BESLUT, och då ' +
+    'hör id:t hemma i form 2 med en egen motivering.',
+  identityReviewAt:
+    'När importen inte kunde avgöra om raden är samma betalning som en ' +
+    'kontolös historisk rad (#F034c). Intern osäkerhetsmarkering: den säger ' +
+    'något om IMPORTENS kunskapsläge, inte om betalningen. Att visa den i ' +
+    'fakturakontexten hade väckt en fråga läsaren inte kan svara på. ' +
+    'Avstämningstabellen är den vy som SKULLE kunna behöva den — den är ' +
+    'arbetsytan där en människa avgör — men att lägga in den är ett beslut ' +
+    'som ska tas med UI:t framför sig, inte i förbifarten här.',
+  identityReviewReason:
+    'Skälet till osäkerheten (i dag bara HISTORIK_UTAN_KONTO). Samma ' +
+    'resonemang som identityReviewAt ovan; de två hör ihop och klassas lika.',
   identitySeq:
     'Radens förekomstnummer inom den fil som skapade den (#F034b). Samma sak: ' +
     'maskineri. Och den vore direkt VILSELEDANDE i en vy — en tvåa betyder ' +

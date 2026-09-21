@@ -63,6 +63,7 @@ import { AviseringService } from '../../avisering/avisering.service'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
 import { ReconciliationService } from '../../reconciliation/reconciliation.service'
+import { BankAccountService } from '../../reconciliation/bank-account.service'
 import { CollectionExportService } from '../../collections/collection-export.service'
 import { PaymentReminderService } from '../../notifications/payment-reminder.service'
 import { StorageService } from '../../storage/storage.service'
@@ -376,6 +377,9 @@ export class ToolExecutorService {
     private readonly inspectionsService: InspectionsService,
     private readonly maintenancePlanService: MaintenancePlanService,
     private readonly reconciliationService: ReconciliationService,
+    // #F034c — målkontots upplösning. Samma tjänst och samma grind som
+    // HTTP-vägen använder; AI:n får ingen egen väg förbi ägandekontrollen.
+    private readonly bankAccounts: BankAccountService,
     private readonly collectionExport: CollectionExportService,
     private readonly paymentReminders: PaymentReminderService,
     private readonly storage: StorageService,
@@ -1709,10 +1713,7 @@ export class ToolExecutorService {
                 .join('; ')}. Giltiga typer: ${PropertyTypeSchema.options.join(', ')}.`,
             }
           }
-          const property = await this.propertiesService.create(
-            organizationId,
-            fastighetsKropp.data,
-          )
+          const property = await this.propertiesService.create(organizationId, fastighetsKropp.data)
           return {
             success: true,
             data: property,
@@ -4134,11 +4135,26 @@ export class ToolExecutorService {
         }
 
         case 'import_bgmax_file': {
-          await this.reconciliationService.recordImportStarted(organizationId)
           const fileContent = String(toolInput.fileContent ?? '')
           const fileName = String(toolInput.fileName ?? 'bgmax.txt')
+          // MARKÖREN FÖRST, OFÖRÄNDRAT — se samma not i reconciliation.controller.ts.
+          await this.reconciliationService.recordImportStarted(organizationId)
+          // ORDNINGEN ÄR OFÖRÄNDRAD: `fileContent` prövas först, precis som
+          // före #F034c. `import-entry-boundary.spec.ts` mäter den ordningen,
+          // och kontokravet är ingen anledning att flytta ett befintligt fel.
           if (!fileContent) {
             return { success: false, message: 'fileContent (base64) krävs' }
+          }
+          // #F034c — AI:n får INTE gissa konto. Saknas det avbryter verktyget
+          // med ett besked som säger vad användaren ska tillfrågas om.
+          const bankAccountId = String(toolInput.bankAccountId ?? '')
+          if (!bankAccountId) {
+            return {
+              success: false,
+              message:
+                'bankAccountId krävs: en BgMax-fil måste importeras till ett namngivet ' +
+                'bankkonto. Fråga användaren vilket konto filen gäller — gissa aldrig.',
+            }
           }
           let buffer: Buffer
           try {
@@ -4149,10 +4165,15 @@ export class ToolExecutorService {
           // Delegera till ReconciliationService — samma parser används av
           // HTTP-endpointen POST /v1/reconciliation/import-bgmax så vi inte
           // har två kodvägar att hålla synkade.
+          // Servern kontrollerar ägandet — AI:ns id passerar samma grind som
+          // operatörens. Kastar med ett svenskt besked om kontot inte finns,
+          // tillhör en annan organisation eller är avvecklat.
+          const konto = await this.bankAccounts.resolveTarget(organizationId, bankAccountId)
           const result = await this.reconciliationService.importBgMaxFile(
             buffer,
             fileName,
             organizationId,
+            konto.id,
           )
           return {
             success: true,

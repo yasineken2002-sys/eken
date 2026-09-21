@@ -89,6 +89,23 @@ export interface ImportResult {
   errors: string[]
   bank?: BankFormat
   /**
+   * #F034c — rader vars identitet INTE gick att avgöra mot kontolös historik.
+   * De är LAGRADE men aldrig matchade. Egen räknare och inte en del av
+   * `unmatched`: "väntar på matchning" och "vi vet inte om det här redan finns"
+   * är olika frågor, och den andra kräver en människa.
+   */
+  behoverGranskas: number
+  /**
+   * #F034c — rader som var IDENTISKA i varje fält filen bär och som därför
+   * lagrades som skilda betalningar (förekomst 0, 1, …).
+   *
+   * ATT DE BEVARADES ÄR INTE ETT BEVIS för att banken avsåg två händelser.
+   * Filen kan inte skilja en dubbelbetalning från en upprepad rad. Räknaren
+   * finns för att tvetydigheten ska REDOVISAS i stället för att tigas ihjäl —
+   * den som ser talet kan kontrollera i banken.
+   */
+  identiskaRader: number
+  /**
    * Sätts av `medFörsöksinfo` på varje väg som går genom
    * `BankImportAttemptService`. Valfri i typen eftersom de många befintliga
    * specarna konstruerar `ImportResult` direkt — INTE för att någon HTTP-väg
@@ -179,6 +196,15 @@ export interface FileIngestInput {
    * glömmer identiteten ska inte kunna se skyddad ut.
    */
   identity: { key: string; seq: number }
+  /**
+   * #F034c — VERIFIERAT målkonto. Servern har kontrollerat att kontot tillhör
+   * `organizationId` innan anropet; kärnan tar emot ett id.
+   *
+   * OBLIGATORISKT. Det finns ingen filväg in utan konto, och typen är det som
+   * gör att det inte går att glömma: en väg som utelämnar det blir ett
+   * kompileringsfel i stället för en rad med okänt konto.
+   */
+  bankAccountId: string
   data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
   // PSD2 P1 — fält för cross-source dedupKey (Stockholm-dag + belopp + OCR). Saknas
   // OCR → ingen dedupKey (betalning utan referens kan inte matchas cross-source).
@@ -191,6 +217,22 @@ export interface FileIngestInput {
 export type FileIngestResult =
   | { duplicate: true }
   | { duplicate: false; transactionId: string; matched: boolean; matchError?: Error }
+  /**
+   * #F034c — IDENTITETEN KUNDE INTE AVGÖRAS, och det är ett EGET utfall.
+   *
+   * Raden matchade en KONTOLÖS historisk rad i allt filen bär. Om det är samma
+   * betalning går inte att veta: den historiska raden säger inte vilket konto
+   * pengarna kom in på.
+   *
+   * Raden ÄR lagrad — en betalning får aldrig kastas tyst — men den är INTE
+   * matchad och inte allokerad. `matchTransaction` kördes aldrig.
+   *
+   * Eget utfall och inte ett fält på `duplicate: false`, därför att varje
+   * anropsställe måste TA STÄLLNING till det. Ett flaggfält hade kunnat
+   * ignoreras av en källa som bara läser `matched`, och då hade det osäkra
+   * utfallet försvunnit in i `unmatched` — alltså blivit osynligt igen.
+   */
+  | { duplicate: false; transactionId: string; granskning: 'HISTORIK_UTAN_KONTO' }
 
 /**
  * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
@@ -396,6 +438,25 @@ export function computeBankDedupKey(day: Date, amount: Decimal, ocr: string): st
     .createHash('sha256')
     .update(`${day.toISOString().slice(0, 10)}|${amount.toFixed(2)}|${ocr}`)
     .digest('hex')
+}
+
+/**
+ * #F034c — samma fältfråga som `input.dedup`, MINUS kontot.
+ *
+ * Används för ETT ändamål: att fråga om en ny rad krockar med KONTOLÖS
+ * historik. Den frågan måste ställas utan `bankAccountId`, eftersom historiska
+ * rader inte har något — men den får inte ställas med FÄRRE fält än så, för då
+ * blir den bredare än identiteten och skulle flagga rader som inte krockar.
+ *
+ * DÄRFÖR ETT AVDRAG OCH INTE EN EGEN LITERAL. Skrevs fältmängden ut en andra
+ * gång här kunde den glida isär från `filIdentitet`/`bgMaxIdentitet` — precis
+ * det fynd T1:s granskning gjorde på #F034b, och vars rättning var att låta de
+ * två lagren ha EN källa. En ny literal här hade återinfört samma klass.
+ */
+function utanKonto(dedup: Prisma.BankTransactionWhereInput): Prisma.BankTransactionWhereInput {
+  const { bankAccountId: _kontot, ...resten } = dedup as Record<string, unknown>
+  void _kontot
+  return resten as Prisma.BankTransactionWhereInput
 }
 
 /**
@@ -625,6 +686,59 @@ export class ReconciliationService {
     })
     if (lagrade >= input.identity.seq + 1) return { duplicate: true }
 
+    // ── LAGER 1b: KROCKAR RADEN MED KONTOLÖS HISTORIK? (#F034c) ─────────────
+    //
+    // Dedupen ovan är KONTOSCOPAD — `input.dedup` bär `bankAccountId`. Det är
+    // hela poängen med #F034c: två verkliga betalningar med identiska fält på
+    // OLIKA konton ska båda bevaras.
+    //
+    // Men det öppnar en fråga kontot inte kan besvara. Rader skrivna innan
+    // kontot fanns har `bankAccountId = NULL`, och en sådan rad säger inte
+    // vilket konto pengarna kom in på. Matchar den nya raden en sådan i allt
+    // filen bär är frågan "är det samma betalning?" UTAN SVAR.
+    //
+    // BÅDA DE ENKLA UTVÄGARNA ÄR FEL:
+    //
+    //   räkna som dubblett     → en verklig betalning kastas TYST bort. Det är
+    //                            exakt felet hela #F034-familjen finns för att
+    //                            ta bort, återinfört mot historiken.
+    //   skapa och auto-matcha  → dubbel allokering och dubbel bokföring, med en
+    //                            säkerhet systemet inte har.
+    //
+    // Vi gör därför det tredje: LAGRA raden (betalningen får inte försvinna),
+    // men MATCHA DEN ALDRIG. Den stämplas, förblir UNMATCHED, och en människa
+    // avgör. Utfallet returneras som ett eget värde så varje källa måste ta
+    // ställning till det i stället för att låta det försvinna in i `unmatched`.
+    //
+    // FRÅGAN STÄLLS BARA NÄR DEN KAN HA ETT SVAR. Är `identitySeq > 0` letar vi
+    // efter filens ANDRA förekomst, och en enstaka historisk rad säger ingenting
+    // om den. Och saknas kontolös historik helt — vilket är normalfallet för en
+    // databas utan äldre rader — kostar uppslaget ett indexerat `count` som ger
+    // noll.
+    const kontolösHistorik = await this.prisma.bankTransaction.count({
+      where: { organizationId, bankAccountId: null, ...utanKonto(input.dedup) },
+    })
+    if (kontolösHistorik > input.identity.seq) {
+      const osäker = await this.prisma.bankTransaction.create({
+        data: {
+          organizationId,
+          ...input.data,
+          identityKey: input.identity.key,
+          identitySeq: input.identity.seq,
+          bankAccountId: input.bankAccountId,
+          identityReviewAt: new Date(),
+          identityReviewReason: 'HISTORIK_UTAN_KONTO',
+          ...(dedupKey ? { dedupKey } : {}),
+        },
+      })
+      this.logger.warn(
+        `[bankimport] Identiteten kunde inte avgöras för tx=${osäker.id}: raden matchar ` +
+          `${kontolösHistorik} kontolös(a) historisk(a) rad(er) i org ${organizationId}. ` +
+          'Raden är LAGRAD men INTE matchad — en människa måste avgöra.',
+      )
+      return { duplicate: false, transactionId: osäker.id, granskning: 'HISTORIK_UTAN_KONTO' }
+    }
+
     // ── LAGER 2: DET UNIKA VILLKORET, ATOMÄRT (#F034b) ──────────────────────
     //
     // Lager 1 är läs-sedan-skriv och kan passeras av två PARALLELLA körningar —
@@ -642,6 +756,7 @@ export class ReconciliationService {
           ...input.data,
           identityKey: input.identity.key,
           identitySeq: input.identity.seq,
+          bankAccountId: input.bankAccountId,
           ...(dedupKey ? { dedupKey } : {}),
         },
       })
@@ -891,6 +1006,13 @@ export class ReconciliationService {
     fileBuffer: Buffer,
     filename: string,
     organizationId: string,
+    /**
+     * #F034c — VERIFIERAT målkonto. Obligatoriskt, och det är en BRYTANDE
+     * ändring med avsikt: uppdraget säger att organisationen ensam inte får
+     * användas som om den vore ett bankkonto. En anropare som inte vet vilket
+     * konto filen gäller ska inte kunna importera den.
+     */
+    bankAccountId: string,
     bankOverride?: BankFormat,
   ): Promise<ImportResult> {
     await this.recordImportStarted(organizationId)
@@ -926,12 +1048,14 @@ export class ReconciliationService {
     const kvittens = await this.attempts.körEnGång<ImportResult>(
       {
         organizationId,
+        bankAccountId,
         kind: ext === 'csv' ? 'CSV' : ext === 'xlsx' ? 'XLSX' : 'XLS',
         fileName: filename,
         contentHash: hashaBytes(fileBuffer),
         mappingHash: hashaBytes(Buffer.from(bankOverride ?? 'AUTO', 'utf8')),
       },
-      ({ pulsa }) => this.körBankStatementImport(parsed, organizationId, bankOverride, pulsa),
+      ({ pulsa }) =>
+        this.körBankStatementImport(parsed, organizationId, bankAccountId, bankOverride, pulsa),
     )
     return medFörsöksinfo(kvittens)
   }
@@ -940,6 +1064,7 @@ export class ReconciliationService {
   private async körBankStatementImport(
     parsed: { rows: ParsedRow[]; bank: BankFormat },
     organizationId: string,
+    bankAccountId: string,
     bankOverride: BankFormat | undefined,
     pulsa: () => Promise<void>,
   ): Promise<{ resultat: ImportResult; partiellt: boolean }> {
@@ -951,6 +1076,8 @@ export class ReconciliationService {
       duplicates: 0,
       autoMatched: 0,
       unmatched: 0,
+      behoverGranskas: 0,
+      identiskaRader: 0,
       errors: [],
       bank,
     }
@@ -1041,15 +1168,21 @@ export class ReconciliationService {
         // här. Se noten i `bank-import-identity.ts` för vad två skilda
         // objektliteraler kostade (T1:s fynd F1).
         const identitet = filIdentitet({
+          bankAccountId,
           date: row.date,
           description: row.description,
           amount: amountDecimal,
           reference: row.reference || null,
         })
+        const förekomst = förekomster.nästa(identitet.key)
+        // #F034c — filens andra förekomst av samma identitet är en TVETYDIGHET
+        // som ska redovisas, inte ett bevis för att banken avsåg två händelser.
+        if (förekomst > 0) result.identiskaRader++
 
         const outcome = await this.ingestFromFile(organizationId, {
           dedup: identitet.dedup,
-          identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
+          bankAccountId,
+          identity: { key: identitet.key, seq: förekomst },
           data: {
             date: row.date,
             description: row.description,
@@ -1072,6 +1205,14 @@ export class ReconciliationService {
           continue
         }
         result.imported++
+        // #F034c — identiteten kunde inte avgöras mot kontolös historik. Raden
+        // är LAGRAD men aldrig matchad. Egen räknare: den får inte försvinna
+        // in i `unmatched`, som betyder "väntar på matchning" och inte "vi vet
+        // inte om den här betalningen redan finns".
+        if ('granskning' in outcome) {
+          result.behoverGranskas++
+          continue
+        }
         // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
         if (outcome.matchError) throw outcome.matchError
         if (outcome.matched) {
@@ -1114,6 +1255,8 @@ export class ReconciliationService {
     fileBuffer: Buffer,
     fileName: string,
     organizationId: string,
+    /** #F034c — verifierat målkonto. Obligatoriskt, se `importBankStatement`. */
+    bankAccountId: string,
   ): Promise<ImportResult & { fileName: string }> {
     await this.recordImportStarted(organizationId)
     // SECURITY (H3): BgMax är ren text (fastformat 80 tecken). Tillåt
@@ -1135,12 +1278,14 @@ export class ReconciliationService {
     const kvittens = await this.attempts.körEnGång<ImportResult & { fileName: string }>(
       {
         organizationId,
+        bankAccountId,
         kind: 'BGMAX',
         fileName,
         contentHash: hashaBytes(fileBuffer),
         mappingHash: hashaBytes(Buffer.from('', 'utf8')),
       },
-      ({ pulsa }) => this.körBgMaxImport(fileBuffer, fileName, organizationId, pulsa),
+      ({ pulsa }) =>
+        this.körBgMaxImport(fileBuffer, fileName, organizationId, bankAccountId, pulsa),
     )
     return medFörsöksinfo(kvittens)
   }
@@ -1150,6 +1295,7 @@ export class ReconciliationService {
     fileBuffer: Buffer,
     fileName: string,
     organizationId: string,
+    bankAccountId: string,
     pulsa: () => Promise<void>,
   ): Promise<{ resultat: ImportResult & { fileName: string }; partiellt: boolean }> {
     const text = fileBuffer.toString('utf8')
@@ -1161,6 +1307,8 @@ export class ReconciliationService {
       duplicates: 0,
       autoMatched: 0,
       unmatched: 0,
+      behoverGranskas: 0,
+      identiskaRader: 0,
       errors: [],
     }
 
@@ -1226,14 +1374,18 @@ export class ReconciliationService {
         // är en annan (ingen textkolumn) och dess `description` är syntetisk.
         // EN källa för båda lagren, se CSV-vägen ovan.
         const identitet = bgMaxIdentitet({
+          bankAccountId,
           date: txDate,
           amount: amountDecimal,
           rawOcr: ocr || null,
         })
+        const förekomst = förekomster.nästa(identitet.key)
+        if (förekomst > 0) result.identiskaRader++
 
         const outcome = await this.ingestFromFile(organizationId, {
           dedup: identitet.dedup,
-          identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
+          bankAccountId,
+          identity: { key: identitet.key, seq: förekomst },
           data: {
             date: txDate,
             description,
@@ -1247,6 +1399,10 @@ export class ReconciliationService {
           continue
         }
         result.imported++
+        if ('granskning' in outcome) {
+          result.behoverGranskas++
+          continue
+        }
         // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
         if (outcome.matchError) throw outcome.matchError
         if (outcome.matched) result.autoMatched++

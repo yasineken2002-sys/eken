@@ -1,4 +1,9 @@
-import type { ConfirmImportInput, EditedTransactionInput, SammaNycklar } from '@eken/shared'
+import type {
+  ConfirmImportInput,
+  CreateBankAccountInput,
+  EditedTransactionInput,
+  SammaNycklar,
+} from '@eken/shared'
 import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator'
 import { Type } from 'class-transformer'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
@@ -45,6 +50,26 @@ export class ConfirmImportDto implements ConfirmImportInput {
   @ValidateNested({ each: true })
   @Type(() => EditedTransactionDto)
   transactions?: EditedTransactionDto[]
+
+  // #F034c — målkontot. Valfritt i DTO:n så att felet kommer från
+  // kontoupplösningen, som kan skilja "organisationen saknar konton" från
+  // "du glömde välja". Se ConfirmImportSchema.
+  @IsOptional()
+  @IsString()
+  @StrictString()
+  bankAccountId?: string
+}
+
+/** #F034c — lägga upp ett målkonto. Egen DTO, se CreateBankAccountSchema. */
+export class CreateBankAccountDto implements CreateBankAccountInput {
+  @IsString()
+  @StrictString()
+  name!: string
+
+  @IsOptional()
+  @IsString()
+  @StrictString()
+  accountNumber?: string
 }
 
 /**
@@ -58,3 +83,7 @@ void _kontraktBekraftaImport
 /** OCH RADTYPEN — se #801: toppnivåns paritet ser inte en nästlad typ. */
 const _kontraktImportRad: SammaNycklar<EditedTransactionDto, EditedTransactionInput> = true
 void _kontraktImportRad
+
+/** #F034c — samma paritet för målkontots DTO. */
+const _kontraktBankkonto: SammaNycklar<CreateBankAccountDto, CreateBankAccountInput> = true
+void _kontraktBankkonto

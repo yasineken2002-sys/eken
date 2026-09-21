@@ -32,13 +32,14 @@ import {
   useReconciliationStats,
   useImportStatement,
   useImportPdfStatement,
+  useBankAccounts,
   useManualMatch,
   useIgnoreTransaction,
   useUnmatchTransaction,
   useAutoMatch,
 } from './hooks/useReconciliation'
 import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
-import { importbesked, tolkaImportPagar } from './api/reconciliation.api'
+import { importbesked, kontobesked, kontoläge, tolkaImportPagar } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
 import { useBankConsents } from './hooks/usePsd2'
 import { aktivaSamtycken } from './api/psd2.api'
@@ -106,6 +107,17 @@ function ImportModal({
   const dragCounter = useRef(0)
   const importMutation = useImportStatement()
   const pdfImportMutation = useImportPdfStatement()
+  // #F034c — MÅLKONTOT. Filen bär ingen säker kontoidentitet, så valet är
+  // operatörens. Organisationen får inte användas som om den vore ett konto.
+  const { data: bankkonton, isLoading: kontonLaddar, isError: kontonFel } = useBankAccounts()
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+  const aktivaKonton = (bankkonton ?? []).filter((k) => k.isActive)
+  // Ett ENDA konto väljs åt operatören — det är inget val, det är den enda
+  // möjligheten. Finns FLERA måste hen ta ställning.
+  const effektivtKonto =
+    bankAccountId ?? (aktivaKonton.length === 1 ? (aktivaKonton[0]?.id ?? null) : null)
+  const läge = kontoläge(bankkonton, effektivtKonto)
+  const kontotext = kontobesked(läge)
 
   const handleFile = (f: File) => {
     const ext = f.name.toLowerCase().split('.').pop() ?? ''
@@ -196,21 +208,23 @@ function ImportModal({
   }, [open])
 
   const handleImport = () => {
-    if (!file) return
+    if (!file || !effektivtKonto) return
     if (isPdf) {
       // PDF-flödet: ladda upp, AI-tolkar, returnerar DRAFT. Stäng denna modal
       // och öppna preview-modalen (managed av parent). Commit sker först
       // efter användarens granskning.
       pdfImportMutation.mutate(file, {
         onSuccess: (draft) => {
-          onPdfDraft(draft)
+          // Kontot följer med till bekräftelsemodalen: PDF-flödet är två steg,
+          // och det är BEKRÄFTELSEN som skriver bankrader.
+          onPdfDraft({ ...draft, bankAccountId: effektivtKonto })
           handleClose()
         },
       })
       return
     }
     importMutation.mutate(
-      { file, ...(bank !== 'AUTO' ? { bank } : {}) },
+      { file, bankAccountId: effektivtKonto, ...(bank !== 'AUTO' ? { bank } : {}) },
       {
         onSuccess: (data) => {
           setResult(data)
@@ -295,6 +309,44 @@ function ImportModal({
                 <p className="mt-2 rounded-md bg-gray-100 px-2.5 py-1 text-[11.5px] text-gray-400">
                   PDF (AI-tolkning), CSV, Excel (.xlsx, .xls) eller BgMax (.txt) — max 10 MB
                 </p>
+              </>
+            )}
+          </div>
+
+          {/* #F034c — KONTOVÄLJAREN. Ligger först: vilket konto utdraget gäller
+              är en förutsättning för importen, inte en detalj efteråt. */}
+          <div>
+            <label
+              htmlFor="bankkonto"
+              className="mb-1.5 block text-[12.5px] font-medium text-gray-700"
+            >
+              Bankkonto
+            </label>
+            {kontonLaddar ? (
+              <p className="text-[12.5px] text-gray-500">Hämtar konton…</p>
+            ) : kontonFel ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
+                Kontona kunde inte hämtas. Försök igen — importen kan inte göras utan ett valt
+                konto.
+              </p>
+            ) : (
+              <>
+                <select
+                  id="bankkonto"
+                  value={effektivtKonto ?? ''}
+                  onChange={(e) => setBankAccountId(e.target.value || null)}
+                  disabled={aktivaKonton.length === 0}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  <option value="">Välj konto…</option>
+                  {aktivaKonton.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                      {k.accountNumber ? ` (${k.accountNumber})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {kontotext && <p className="mt-1.5 text-[12px] text-amber-700">{kontotext}</p>}
               </>
             )}
           </div>
@@ -475,7 +527,7 @@ function ImportModal({
             <Button
               variant="primary"
               onClick={handleImport}
-              disabled={!file}
+              disabled={!file || !effektivtKonto}
               loading={importMutation.isPending || pdfImportMutation.isPending}
             >
               {isPdf ? (

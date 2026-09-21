@@ -2,6 +2,7 @@ import { api, del, get, patch, post } from '@/lib/api'
 import type {
   BankTransaction,
   ConfirmImportInput,
+  CreateBankAccountInput,
   ImportAttemptInfo,
   ImportResult,
   ManualMatchInput,
@@ -42,6 +43,14 @@ export interface ParsedBankStatement {
 
 export interface PdfImportDraft {
   id: string
+  /**
+   * #F034c — kontot som valdes vid UPPLADDNINGEN, buret vidare till
+   * bekräftelsen. PDF-flödet är två steg och det är BEKRÄFTELSEN som skriver
+   * bankrader; att låta operatören välja konto två gånger hade inbjudit till
+   * att de blir olika. Sätts av klienten, inte av servern — därför valfritt i
+   * typen (serverns uppladdningssvar bär det inte).
+   */
+  bankAccountId?: string
   // CONFIRMING (#F034b) = commiten har TAGIT draften och skriver bankrader.
   // Eget läge och inte återanvänt PARSING — se enumet i schema.prisma.
   status: 'PARSING' | 'PARSED' | 'CONFIRMING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED'
@@ -141,21 +150,39 @@ export function importbesked(forsok: ImportAttemptInfo | undefined): Importbeske
   return { ton: 'klar', rubrik: 'Import klar!', text: null }
 }
 
-export async function importBankStatement(file: File, bank?: BankFormat): Promise<ImportResult> {
+/**
+ * #F034c — MÅLKONTOT ÄR OBLIGATORISKT.
+ *
+ * Servern avvisar en import utan konto med ett svenskt besked. Parametern är
+ * därför inte valfri här heller: en anropare som kunde utelämna den hade fått
+ * felet i runtime i stället för i kompilatorn.
+ */
+export async function importBankStatement(
+  file: File,
+  bankAccountId: string,
+  bank?: BankFormat,
+): Promise<ImportResult> {
   const formData = new FormData()
   formData.append('statement', file)
-  const url = bank ? `/reconciliation/import?bank=${bank}` : '/reconciliation/import'
+  // URLSearchParams kodar värdena; BgMax-raden nedan kodar för hand eftersom
+  // den bara har en parameter.
+  const fråga = new URLSearchParams({ bankAccountId })
+  if (bank) fråga.set('bank', bank)
+  const url = `/reconciliation/import?${fråga.toString()}`
   const { data } = await api.post<{ data: ImportResult }>(url, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return data.data
 }
 
-export async function importBgMaxFile(file: File): Promise<ImportResult & { fileName: string }> {
+export async function importBgMaxFile(
+  file: File,
+  bankAccountId: string,
+): Promise<ImportResult & { fileName: string }> {
   const formData = new FormData()
   formData.append('statement', file)
   const { data } = await api.post<{ data: ImportResult & { fileName: string } }>(
-    '/reconciliation/import-bgmax',
+    `/reconciliation/import-bgmax?bankAccountId=${encodeURIComponent(bankAccountId)}`,
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } },
   )
@@ -208,10 +235,68 @@ export async function importPdfStatement(file: File): Promise<PdfImportDraft> {
 
 export async function confirmPdfImport(
   importId: string,
+  bankAccountId: string,
   transactions?: ParsedTransaction[],
 ): Promise<ImportCommitResult> {
-  const kropp: ConfirmImportInput = { ...(transactions ? { transactions } : {}) }
+  const kropp: ConfirmImportInput = {
+    bankAccountId,
+    ...(transactions ? { transactions } : {}),
+  }
   return post<ImportCommitResult>(`/reconciliation/imports/${importId}/confirm`, kropp)
+}
+
+// ─── #F034c: målkontona ─────────────────────────────────────────────────────
+
+export interface Bankkonto {
+  id: string
+  name: string
+  accountNumber: string | null
+  isActive: boolean
+}
+
+export function getBankAccounts(): Promise<Bankkonto[]> {
+  return get<Bankkonto[]>('/reconciliation/bank-accounts')
+}
+
+/**
+ * Nyttolastens typ kommer från `@eken/shared` (`CreateBankAccountSchema`), inte
+ * från ett objektlitteral här — `check-request-contract.mjs` kräver det, och
+ * skälet är att webben och API:t annars kan drifta isär i tysthet.
+ */
+export function createBankAccount(input: CreateBankAccountInput): Promise<Bankkonto> {
+  return post<Bankkonto>('/reconciliation/bank-accounts', input)
+}
+
+/**
+ * Vad kontoväljaren ska säga när den är tom eller ofullständig.
+ *
+ * REN FUNKTION, samma skäl som `importbesked`: webs vitest renderar i jsdom men
+ * provet ska kunna ställa frågan utan DOM. Och OKÄNT ÄR INTE "VÄLJ" — en
+ * organisation som saknar konton behöver en annan uppmaning än en som har konton
+ * men inget valt, och att ge samma text åt båda hade skickat operatören till fel
+ * åtgärd.
+ */
+export type Kontoläge = 'inga-konton' | 'valj' | 'valt'
+
+export function kontoläge(konton: Bankkonto[] | undefined, valt: string | null): Kontoläge {
+  const valbara = (konton ?? []).filter((k) => k.isActive)
+  if (valbara.length === 0) return 'inga-konton'
+  if (!valt || !valbara.some((k) => k.id === valt)) return 'valj'
+  return 'valt'
+}
+
+export function kontobesked(läge: Kontoläge): string | null {
+  switch (läge) {
+    case 'inga-konton':
+      return (
+        'Organisationen har inget bankkonto upplagt. Lägg upp kontot importen gäller ' +
+        'innan du importerar — ett kontoutdrag måste höra till ett namngivet konto.'
+      )
+    case 'valj':
+      return 'Välj vilket bankkonto importen gäller. Filen bär ingen säker kontoidentitet.'
+    case 'valt':
+      return null
+  }
 }
 
 export async function cancelPdfImport(importId: string): Promise<void> {

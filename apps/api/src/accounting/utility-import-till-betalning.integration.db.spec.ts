@@ -144,6 +144,7 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
       await prisma.account.deleteMany({ where: { organizationId: orgId } })
       await prisma.user.deleteMany({ where: { organizationId: orgId } })
       await prisma.invoiceNumberSequence.deleteMany({ where: { organizationId: orgId } })
+      await prisma.bankAccount.deleteMany({ where: { organizationId: orgId } })
       await prisma.organization.delete({ where: { id: orgId } })
     }
     await prisma.$disconnect()
@@ -154,6 +155,8 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
     userId: string
     leaseId: string
     meterId: string
+    /** #F034c — målkontot importen gäller. */
+    bankAccountId: string
   }
 
   /** Samma syntetiska rigg som #903:s spec — organisation, kontoplan, mätare, tariff. */
@@ -265,7 +268,18 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
       org.id,
       user.id,
     )
-    return { orgId: org.id, userId: user.id, leaseId: lease.id, meterId: meter.id }
+    // #F034c — målkontot för importen.
+    const bankkonto = await prisma.bankAccount.create({
+      data: { organizationId: org.id, name: 'Företagskonto' },
+      select: { id: true },
+    })
+    return {
+      orgId: org.id,
+      userId: user.id,
+      leaseId: lease.id,
+      meterId: meter.id,
+      bankAccountId: bankkonto.id,
+    }
   }
 
   /** CSV med svenska kolumnnamn — samma form importvägen känner igen. */
@@ -322,7 +336,12 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
       [BETALDAG, BANKTEXT, '600,00', REF_A],
       [BETALDAG, BANKTEXT, '600,00', REF_B],
     ])
-    const imp = await reconciliation.importBankStatement(fil, 'kontoutdrag.csv', r.orgId)
+    const imp = await reconciliation.importBankStatement(
+      fil,
+      'kontoutdrag.csv',
+      r.orgId,
+      r.bankAccountId,
+    )
 
     expect(imp.errors).toEqual([])
     expect(imp.imported).toBe(2)
@@ -386,7 +405,12 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
     // ── STEG 4: BYTEIDENTISK ÅTERIMPORT ──────────────────────────────────
     const verifikatFore = await prisma.journalEntry.count({ where: { organizationId: r.orgId } })
 
-    const omimport = await reconciliation.importBankStatement(fil, 'kontoutdrag.csv', r.orgId)
+    const omimport = await reconciliation.importBankStatement(
+      fil,
+      'kontoutdrag.csv',
+      r.orgId,
+      r.bankAccountId,
+    )
 
     expect(omimport.errors).toEqual([])
 

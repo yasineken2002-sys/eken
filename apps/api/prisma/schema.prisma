@@ -896,6 +896,7 @@ model Organization {
   bankTransactions          BankTransaction[]
   bankStatementImports      BankStatementImport[]
   bankImportAttempts        BankImportAttempt[]
+  bankAccounts              BankAccount[]
   bankConsents              BankConsent[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -2581,6 +2582,8 @@ model BankTransaction {
   // Bokföringslagen (1999:1078): banktransaktioner är räkenskapsinformation, bevaras 7 år.
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   invoice            Invoice?            @relation(fields: [invoiceId], references: [id])
+  // Restrict: ett konto med bokförda bankrader får inte kunna raderas under dem.
+  bankAccount        BankAccount?        @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
   matchedRentNotice  RentNotice?         @relation(fields: [matchedRentNoticeId], references: [id])
   // Härledda betalningsallokeringar. Var 1:1 (`bankTransactionId @unique`), men
   // H3 PR A bytte den spärren mot @@unique([bankTransactionId, rentNoticeId]) så
@@ -2639,6 +2642,56 @@ model BankTransaction {
   identityKey String @default("")
   identitySeq Int    @default(0)
 
+  // ── MÅLKONTOT (#F034c) ────────────────────────────────────────────────────
+  //
+  // Vilket av organisationens bankkonton raden kom in på. Ingår i
+  // `identityKey`, så två VERKLIGA betalningar med identiska fält på OLIKA
+  // konton får olika identitet och bevaras båda — vilket de inte gjorde när
+  // organisationen var det grövsta målet systemet kunde uttrycka.
+  //
+  // NULL BETYDER "KONTOT ÄR OKÄNT", INTE "inget konto".
+  //
+  // Två slags rader bär NULL, och båda gör det med avsikt:
+  //
+  //   HISTORISKA rader, skrivna innan kontot fanns. Migrationen hittar INTE på
+  //   en tillhörighet åt dem — att gissa hade varit att skriva in ett påstående
+  //   om var pengarna kom in som ingen kan belägga.
+  //
+  //   PSD2-API-rader (`ingestFromApi`). Den vägen har ingen kontoväljare, och
+  //   uppdraget som införde kontot säger uttryckligen att ingen ny bankkoppling
+  //   ska byggas. Rader därifrån identifieras av `externalId` och `dedupKey`
+  //   precis som förr.
+  //
+  // VARJE NY FILRAD SÄTTER DET. Importvägarna kräver ett konto som servern
+  // verifierat mot organisationen; det finns ingen väg in utan.
+  bankAccountId String?
+
+  // ── NÄR IDENTITETEN INTE GICK ATT AVGÖRA (#F034c) ─────────────────────────
+  //
+  // Sätts när en ny rad matchar en KONTOLÖS historisk rad i allt filen bär, och
+  // frågan "är det samma betalning?" därför saknar svar: den historiska raden
+  // säger inte vilket konto den kom in på.
+  //
+  // DE TVÅ ENKLA UTVÄGARNA ÄR BÅDA FEL, och det är därför fältet finns:
+  //
+  //   räkna som dubblett     → en verklig betalning kastas TYST bort
+  //   skapa och auto-matcha  → en dubbel allokering och dubbel bokföring, med
+  //                            en säkerhet systemet inte har
+  //
+  // Raden LAGRAS därför (betalningen får inte försvinna) men auto-matchas
+  // ALDRIG: `matchTransaction` hoppas över, raden förblir UNMATCHED, och en
+  // människa avgör. Importsvaret räknar dem separat så utfallet syns i stället
+  // för att gömma sig i `duplicates` eller `unmatched`.
+  //
+  // NOLLSTÄLLS ALDRIG AUTOMATISKT. Att en människa senare matchar raden manuellt
+  // ändrar inte att identiteten var oavgjord vid importen, och spåret ska finnas
+  // kvar.
+  identityReviewAt     DateTime?
+  /// Varför identiteten inte kunde avgöras. I dag bara 'HISTORIK_UTAN_KONTO'.
+  /// Egen kolumn och inte en bool: nästa skäl ska inte behöva byta betydelse
+  /// på ett befintligt fält.
+  identityReviewReason String?
+
   @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([status])
@@ -2646,6 +2699,68 @@ model BankTransaction {
   @@index([matchedRentNoticeId])
   @@index([organizationId, dedupKey])
   @@index([organizationId, identityKey])
+  @@index([bankAccountId])
+  // Uppslaget som avgör om en ny rad kolliderar med KONTOLÖS historik.
+  @@index([organizationId, identityReviewAt])
+}
+
+// ─── Bankimportens MÅLKONTO (#F034c) ──────────────────────────────────────────
+//
+// MINSTA NÖDVÄNDIGA IMPORTMÅL, INTE EN KONTOENTITET.
+//
+// Raden finns för att besvara EN fråga: *vilket av organisationens bankkonton
+// gäller den här importen?* Den bär inget saldo, ingen bankkoppling, ingen
+// transaktionsrelation utöver identiteten, och den synkroniserar ingenting.
+// Skriv inte in sådant här utan att först fråga om det hör hemma i en annan
+// modell.
+//
+// ── VARFÖR EN NY MODELL OCH INTE EN BEFINTLIG ────────────────────────────────
+//
+// Tre kandidater prövades och förkastades, var och en av ett eget skäl:
+//
+//   Organization.bankgiro   EN nullbar sträng, och den är en BETALNINGSADRESS
+//                           organisationen trycker på fakturor — inte en mängd
+//                           konton att importera till. Ett fält kan inte bära
+//                           flera konton.
+//   BankConsent             ett PSD2-SAMTYCKE med tokens och provider, alltså
+//                           en KOPPLING och inte ett konto. Uppdraget säger
+//                           dessutom uttryckligen att ingen ny bankkoppling
+//                           behövs.
+//   Account                 KONTOPLANEN (number/type, 1510/1930/3911). Att låna
+//                           den hade varit att svara på "vilket bokföringskonto"
+//                           när frågan är "vilket bankkonto" — precis det
+//                           CLAUDE.md § "Återanvänd inte ett fält som svarar på
+//                           en ANNAN fråga" handlar om.
+//
+// ── NAMNET ÄR DET OPERATÖREN VÄLJER PÅ ───────────────────────────────────────
+//
+// `name` är obligatoriskt och unikt per organisation, därför att det är DET som
+// visas i väljaren när filen inte bär någon säker kontoidentitet. Ett konto som
+// heter samma sak som ett annat gör valet till en gissning.
+//
+// `accountNumber` är VALFRITT och bär den bankidentitet operatören råkar känna
+// till (clearing+konto, bankgiro, IBAN). Det används ALDRIG för att VÄLJA konto
+// — bara för att KONTROLLERA ett val mot vad filen råkar bära. Se
+// `bank-import-identity.ts` för varför den riktningen är den enda säkra.
+model BankAccount {
+  id             String  @id @default(uuid())
+  organizationId String
+  /// Operatörens namn på kontot. Det som visas i väljaren.
+  name           String
+  /// Valfri bankidentitet. Används för KONTROLL, aldrig för VAL.
+  accountNumber  String?
+  /// Ett avvecklat konto ska inte gå att välja, men dess historik består.
+  isActive       Boolean @default(true)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  transactions   BankTransaction[]
+  importAttempts BankImportAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 // ─── Bankimportens FÖRSÖKSRAD (#F034b) ────────────────────────────────────────
@@ -2683,6 +2798,15 @@ enum BankImportAttemptStatus {
 model BankImportAttempt {
   id             String @id @default(uuid())
   organizationId String
+
+  /// #F034c — MÅLKONTOT, verifierat mot organisationen av servern innan
+  /// avtrycket räknas. Ingår i `fingerprint`, så samma fil mot TVÅ konton är
+  /// två skilda importer och blockerar inte varandra.
+  ///
+  /// NULLBART BARA FÖR HISTORIKENS SKULL: rader skrivna innan kontot fanns har
+  /// NULL, och migrationen hittar inte på något åt dem. Varje NY rad sätter
+  /// det — `körEnGång` kräver ett verifierat konto.
+  bankAccountId String?
 
   /// SHA-256 (hex) över organisation ‖ mål ‖ kind ‖ contentHash ‖ mappingHash.
   /// Härleds av `beräknaImportavtryck`; lagras för att `@@unique` ska kunna
@@ -2735,12 +2859,21 @@ model BankImportAttempt {
   // frågan besvaras av bankraderna och av `BankStatementImport`, som båda
   // bevaras.
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // CASCADE av samma skäl som organisationsrelationen ovan: raden är en
+  // DRIFTKVITTENS, inte räkenskapsinformation. Är kontot borta är frågan
+  // "har den här filen redan importerats mot det kontot?" meningslös.
+  //
+  // `BankTransaction.bankAccountId` är DÄREMOT Restrict — bankraderna ÄR
+  // räkenskapsinformation och får inte försvinna under sitt konto. De två
+  // relationerna pekar på samma tabell och har olika hållning med avsikt.
+  bankAccount  BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, fingerprint])
   @@index([organizationId, status])
+  @@index([bankAccountId])
 }
 
 // ─── Bank Statement Import (AI-tolkat kontoutdrag i PDF) ──────────────────────

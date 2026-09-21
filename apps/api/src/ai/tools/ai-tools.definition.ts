@@ -861,8 +861,20 @@ export const TOOLS: Anthropic.Tool[] = [
       properties: {
         fileContent: { type: 'string', description: 'Filinnehåll i base64' },
         fileName: { type: 'string', description: 'Filnamn (för loggning)' },
+        // #F034c — MÅLKONTOT, och det är OBLIGATORISKT även för AI:n.
+        //
+        // En BgMax-fil bär mottagarens bankgiro men inget bankkonto, och ett
+        // bankgiro kan peka på flera konto. AI:n får därför inte gissa: den ska
+        // fråga användaren vilket konto filen gäller och skicka id:t. Servern
+        // kontrollerar ägandet mot organisationen oavsett vad som skickas.
+        bankAccountId: {
+          type: 'string',
+          description:
+            'ID för bankkontot importen gäller. Hämta organisationens konton med ' +
+            'get_bank_accounts och FRÅGA användaren vilket som gäller — gissa aldrig.',
+        },
       },
-      required: ['fileContent', 'fileName'],
+      required: ['fileContent', 'fileName', 'bankAccountId'],
     },
   },
 

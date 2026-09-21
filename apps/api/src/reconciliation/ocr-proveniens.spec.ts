@@ -1,3 +1,8 @@
+// #F034c — MÅLKONTOT är obligatoriskt sedan kontoseparationen. Ett
+// syntetiskt id räcker här: provet mäter något annat, och servern
+// verifierar ägandet i controllern/`resolveTarget`, inte i tjänsten.
+const KONTO = 'konto-1'
+
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 /**
@@ -164,6 +169,7 @@ async function importera(beskrivning: string, referens?: string) {
     utdrag(beskrivning, referens),
     'utdrag.csv',
     'org-1',
+    KONTO,
   )
   const skapad = (prisma.bankTransaction.create.mock.calls[0]?.[0]?.data ?? {}) as {
     rawOcr?: string

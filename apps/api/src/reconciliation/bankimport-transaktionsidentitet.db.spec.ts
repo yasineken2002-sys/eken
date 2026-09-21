@@ -69,7 +69,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { randomUUID } from 'node:crypto'
 
-import { PrismaClient, RentNoticeType } from '@prisma/client'
+import { Prisma, PrismaClient, RentNoticeType } from '@prisma/client'
 import { generateOcrNumber, isValidOcrNumber } from '@eken/shared'
 
 import { AccountingService } from '../accounting/accounting.service'
@@ -78,6 +78,7 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { ReconciliationService } from './reconciliation.service'
+import { filIdentitet } from './bank-import-identity'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -128,6 +129,10 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
   let prisma: PrismaClient
   let service: ReconciliationService
   let pdfImport: BankStatementImportService
+  // #F034c — MÅLKONTOT. Riggen lägger upp ett riktigt konto i sin EGEN
+  // organisation; servern verifierar ägandet i `resolveTarget` (controllern),
+  // och tjänsten tar emot ett id som redan är kontrollerat.
+  let kontoId: string
   let orgId: string
   let unitA: string
   let unitB: string
@@ -156,6 +161,12 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       select: { id: true },
     })
     orgId = org.id
+    kontoId = (
+      await prisma.bankAccount.create({
+        data: { organizationId: orgId, name: 'Företagskonto', accountNumber: '1234-5678' },
+        select: { id: true },
+      })
+    ).id
 
     await prisma.account.createMany({
       data: [
@@ -297,6 +308,17 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
     await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: orgId } } })
     await prisma.journalEntry.deleteMany({ where: { organizationId: orgId } })
     await prisma.bankTransaction.deleteMany({ where: { organizationId: orgId } })
+    // #F034b/#F034c — IMPORTFÖRSÖKEN MÅSTE STÄDAS MED. En försöksrad som
+    // överlever sina bankrader gör nästa prov med samma filinnehåll till en
+    // UPPSPELNING: tjänsten svarar med det lagrade resultatet och skapar inget,
+    // och provet mäter då städningen i stället för koden. Det inträffade under
+    // #F034c-arbetet och kostade en felsökningsrunda.
+    await prisma.bankImportAttempt.deleteMany({ where: { organizationId: orgId } })
+    // Konton som ett enskilt prov lagt upp (FALL F3). Det riggade huvudkontot
+    // skapas i beforeAll och städas i afterAll.
+    await prisma.bankAccount.deleteMany({
+      where: { organizationId: orgId, id: { not: kontoId } },
+    })
     await prisma.rentNotice.deleteMany({ where: { organizationId: orgId } })
     await prisma.bankStatementImport.deleteMany({ where: { organizationId: orgId } })
     // BARA `paymentDataThrough` nollställs. `paymentImportStartedAt` är
@@ -318,6 +340,8 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
     await prisma.journalEntrySequence.deleteMany({ where: { organizationId: orgId } })
     await prisma.rentNoticeNumberSequence.deleteMany({ where: { organizationId: orgId } })
     await prisma.tenantOcrSequence.deleteMany({ where: { organizationId: orgId } })
+    // #F034c — kontot har Restrict mot organisationen och måste bort först.
+    await prisma.bankAccount.deleteMany({ where: { organizationId: orgId } })
     await prisma.organization.deleteMany({ where: { id: orgId } })
     await prisma.$disconnect()
   })
@@ -422,6 +446,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       ]),
       'kontoutdrag.csv',
       orgId,
+      kontoId,
     )
 
     expect(resultat.errors).toEqual([])
@@ -458,7 +483,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       [BETALDAG, BANKTEXT, '8500,00', ocrB],
     ])
 
-    await service.importBankStatement(fil, 'kontoutdrag.csv', orgId)
+    await service.importBankStatement(fil, 'kontoutdrag.csv', orgId, kontoId)
     const efterFörsta = {
       rader: (await bankrader()).map((r) => r.id).sort(),
       allokeringar: await prisma.rentNoticePayment.count({
@@ -467,7 +492,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       verifikat: await prisma.journalEntry.count({ where: { organizationId: orgId } }),
     }
 
-    const andra = await service.importBankStatement(fil, 'kontoutdrag.csv', orgId)
+    const andra = await service.importBankStatement(fil, 'kontoutdrag.csv', orgId, kontoId)
 
     // ── VAD #F034b ÄNDRADE HÄR, OCH VAD DET INTE ÄNDRADE ───────────────────
     //
@@ -544,6 +569,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       ]),
       'kontoutdrag.csv',
       orgId,
+      kontoId,
     )
 
     // Basen gav 1/1 och EN rad. Den andra betalningen fanns inte i databasen.
@@ -565,6 +591,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       bgmax(BETALDAG, [{ ocr: ocrA, belopp: HYRA }]),
       'bgmax.txt',
       orgId,
+      kontoId,
     )
     expect(första.imported).toBe(1)
 
@@ -574,6 +601,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       bgmax(BETALDAG, [{ ocr: '', belopp: HYRA }]),
       'bgmax-2.txt',
       orgId,
+      kontoId,
     )
 
     expect(andra.imported).toBe(1)
@@ -592,6 +620,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       bgmax(BETALDAG, [{ ocr: '', belopp: HYRA }]),
       'bgmax-2.txt',
       orgId,
+      kontoId,
     )
     expect(tredje.forsok?.replayed).toBe(true)
     expect(await bankrader()).toHaveLength(2)
@@ -619,7 +648,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       select: { id: true },
     })
 
-    const resultat = await pdfImport.confirmImport(draft.id, orgId, null)
+    const resultat = await pdfImport.confirmImport(draft.id, orgId, null, kontoId)
 
     expect(resultat.created).toBe(2)
     expect(resultat.duplicates).toBe(0)
@@ -636,6 +665,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       csv([[BETALDAG, BANKTEXT, '8500,00', ocrA]]),
       'ren.csv',
       orgId,
+      kontoId,
     )
     const före = await färskhet()
     expect(före).not.toBeNull()
@@ -649,6 +679,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       ]),
       'trasig.csv',
       orgId,
+      kontoId,
     )
 
     expect(trasig.imported).toBe(1)
@@ -662,7 +693,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
   })
 
   // ── FALL F ────────────────────────────────────────────────────────────────
-  it('FALL F — gammal historik: en rad vars lagrade rawOcr dagens tolkning inte längre producerar känns ändå igen som dubblett', async () => {
+  it('FALL F — gammal historik UTAN konto: identiteten kan inte avgöras, raden lagras men matchas aldrig (#F034c)', async () => {
     // Prosasiffran som #556 (f3f47dc0) slutade räkna som OCR. Kanariefågel: om
     // den någon gång blir Luhn-giltig mäter fallet inte längre det det påstår.
     const PROSASIFFRA = '20260601'
@@ -688,10 +719,132 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       csv([[BETALDAG, text, '4200,00', '']]),
       'gammal-historik.csv',
       orgId,
+      kontoId,
+    )
+
+    // ██ UTFALLET ÄNDRADES AV #F034c. LÄS DET HÄR INNAN DU "RÄTTAR" RADEN. ██
+    //
+    // Före kontoseparationen svarade dedupen `duplicates: 1, imported: 0` här:
+    // den historiska raden och den nya var samma fråga, och frågan hade ett
+    // svar.
+    //
+    // Nu är dedupen KONTOSCOPAD, och den historiska raden har inget konto —
+    // den säger inte vilket av organisationens konton pengarna kom in på.
+    // Frågan "är det samma betalning?" har därför INGET svar, och båda de
+    // enkla utvägarna är fel:
+    //
+    //   räkna som dubblett     → om det ÄR två olika konton kastas en verklig
+    //                            betalning tyst bort
+    //   skapa och auto-matcha  → om det ÄR samma betalning blir det dubbel
+    //                            allokering och dubbel bokföring
+    //
+    // Raden LAGRAS därför men MATCHAS ALDRIG, och utfallet räknas separat.
+    // Det är uppdragets krav ordagrant: "Osäker historisk matchning får varken
+    // tyst kasta bort en betalning eller automatiskt skapa en säkerförklarad
+    // dubblett. Ge ett uttryckligt granskningsutfall när identiteten inte kan
+    // avgöras."
+    expect(resultat.behoverGranskas).toBe(1)
+    expect(resultat.duplicates).toBe(0)
+    expect(resultat.imported).toBe(1)
+    expect(resultat.autoMatched).toBe(0)
+
+    const rader = await bankrader()
+    expect(rader).toHaveLength(2)
+
+    // Den NYA raden bär stämpeln och är omatchad. Den HISTORISKA är orörd —
+    // migrationen hittade inte på någon kontotillhörighet åt den, och importen
+    // gör det inte heller.
+    const nya = await prisma.bankTransaction.findMany({
+      where: { organizationId: orgId, identityReviewAt: { not: null } },
+      select: {
+        identityReviewReason: true,
+        status: true,
+        bankAccountId: true,
+        matchedRentNoticeId: true,
+        invoiceId: true,
+      },
+    })
+    expect(nya).toHaveLength(1)
+    expect(nya[0]).toMatchObject({
+      identityReviewReason: 'HISTORIK_UTAN_KONTO',
+      status: 'UNMATCHED',
+      bankAccountId: kontoId,
+      matchedRentNoticeId: null,
+      invoiceId: null,
+    })
+    expect(
+      await prisma.bankTransaction.count({
+        where: { organizationId: orgId, bankAccountId: null },
+      }),
+    ).toBe(1)
+  })
+
+  // ── FALL F2 — DEN OMVÄNDA RIKTNINGEN (#F034c) ─────────────────────────────
+  it('FALL F2 — historik MED konto känns igen som dubblett, precis som förr', async () => {
+    // Utan det här provet hade FALL F kunnat vara grönt av att koden ALLTID
+    // flaggar. Här har den historiska raden ett konto, frågan HAR ett svar, och
+    // svaret ska vara det gamla: dubblett, ingen ny rad, ingen granskning.
+    const text = 'Insattning med konto'
+    await prisma.bankTransaction.create({
+      data: {
+        organizationId: orgId,
+        bankAccountId: kontoId,
+        date: new Date(BETALDAG),
+        description: text,
+        amount: 4200,
+        status: 'UNMATCHED',
+        identityKey: filIdentitet({
+          bankAccountId: kontoId,
+          date: new Date(BETALDAG),
+          description: text,
+          amount: new Prisma.Decimal('4200.00'),
+          reference: null,
+        }).key,
+        identitySeq: 0,
+      },
+    })
+
+    const resultat = await service.importBankStatement(
+      csv([[BETALDAG, text, '4200,00', '']]),
+      'historik-med-konto.csv',
+      orgId,
+      kontoId,
     )
 
     expect(resultat.duplicates).toBe(1)
     expect(resultat.imported).toBe(0)
+    expect(resultat.behoverGranskas).toBe(0)
     expect(await bankrader()).toHaveLength(1)
+  })
+
+  // ── FALL F3 — TVÅ KONTON, SAMMA BETALNINGSFÄLT (#F034c) ───────────────────
+  it('FALL F3 — lika fält på TVÅ olika konton i samma organisation: båda bevaras', async () => {
+    // Detta är luckan #F034c stänger. Före kontoseparationen var de två
+    // oskiljbara och den andra räknades som dubblett — en verklig betalning
+    // försvann tyst.
+    const kontoB = await prisma.bankAccount.create({
+      data: { organizationId: orgId, name: 'Klientmedelskonto' },
+      select: { id: true },
+    })
+
+    const fil = csv([[BETALDAG, BANKTEXT, '8500,00', ocrA]])
+
+    const påA = await service.importBankStatement(fil, 'utdrag-a.csv', orgId, kontoId)
+    const påB = await service.importBankStatement(fil, 'utdrag-b.csv', orgId, kontoB.id)
+
+    expect(påA.imported).toBe(1)
+    expect(påB.imported).toBe(1)
+    expect(påB.duplicates).toBe(0)
+    expect(påB.behoverGranskas).toBe(0)
+
+    const rader = await prisma.bankTransaction.findMany({
+      where: { organizationId: orgId },
+      select: { bankAccountId: true, identityKey: true },
+    })
+    expect(rader).toHaveLength(2)
+    expect(new Set(rader.map((r) => r.bankAccountId))).toEqual(new Set([kontoId, kontoB.id]))
+    // OLIKA identitet, inte bara olika rader: kontot ingår i nyckeln, så det
+    // unika villkoret kan inte slå ihop dem.
+    expect(new Set(rader.map((r) => r.identityKey)).size).toBe(2)
   })
 })

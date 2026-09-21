@@ -34,6 +34,9 @@ export interface ImportCommitResult {
   duplicates: number
   autoMatched: number
   unmatched: number
+  /** #F034c — se ImportResult i reconciliation.service.ts. */
+  behoverGranskas: number
+  identiskaRader: number
   /** #F034b — se `ImportAttemptInfo` i reconciliation.service.ts. */
   forsok?: ImportAttemptInfo
 }
@@ -203,6 +206,8 @@ export class BankStatementImportService {
     id: string,
     organizationId: string,
     userId: string | null,
+    /** #F034c — verifierat målkonto. Obligatoriskt, se `importBankStatement`. */
+    bankAccountId: string,
     edited?: unknown[],
   ): Promise<ImportCommitResult> {
     const draft = await this.prisma.bankStatementImport.findFirst({
@@ -258,6 +263,7 @@ export class BankStatementImportService {
     const kvittens = await this.attempts.körEnGång<ImportCommitResult>(
       {
         organizationId,
+        bankAccountId,
         kind: 'PDF_CONFIRM',
         fileName: draft.fileName,
         contentHash: hashaBytes(Buffer.from(draft.id, 'utf8')),
@@ -270,7 +276,8 @@ export class BankStatementImportService {
           ),
         ),
       },
-      ({ övertagande }) => this.körPdfConfirm(draft, organizationId, userId, finalTx, övertagande),
+      ({ övertagande }) =>
+        this.körPdfConfirm(draft, organizationId, userId, bankAccountId, finalTx, övertagande),
     )
     return {
       ...kvittens.resultat,
@@ -306,6 +313,7 @@ export class BankStatementImportService {
     },
     organizationId: string,
     userId: string | null,
+    bankAccountId: string,
     finalTx: ParsedTransaction[],
     övertagande: boolean,
   ): Promise<{ resultat: ImportCommitResult; partiellt: boolean }> {
@@ -366,7 +374,7 @@ export class BankStatementImportService {
     // draften vidare rör vi den inte. Och det får aldrig maskera det
     // ursprungliga felet — därför `.catch(() => undefined)` och `throw err`.
     try {
-      return await this.skrivPdfCommit(draft, organizationId, userId, finalTx)
+      return await this.skrivPdfCommit(draft, organizationId, userId, bankAccountId, finalTx)
     } catch (err) {
       await this.prisma.bankStatementImport
         .updateMany({
@@ -383,6 +391,7 @@ export class BankStatementImportService {
     draft: { id: string; fileName: string; periodEnd: Date | null },
     organizationId: string,
     userId: string | null,
+    bankAccountId: string,
     finalTx: ParsedTransaction[],
   ): Promise<{ resultat: ImportCommitResult; partiellt: boolean }> {
     const id = draft.id
@@ -400,6 +409,9 @@ export class BankStatementImportService {
     // Slås de ihop kan ett driftfel inte skilja ut sig, och körningen hade
     // rapporterats som KLAR.
     let matchFel = 0
+    // #F034c — se ImportResult i reconciliation.service.ts för vad de två betyder.
+    let behoverGranskas = 0
+    let identiskaRader = 0
     // #F034b — förekomstnummer per radidentitet INOM DEN HÄR bekräftade listan.
     const förekomster = new Förekomsträknare()
 
@@ -449,15 +461,19 @@ export class BankStatementImportService {
       // varandra i dag (identisk fältuppsättning mot samma tabell), och att
       // namnrymda på filväg hade tagit bort det skyddet ur indexet.
       const identitet = filIdentitet({
+        bankAccountId,
         date,
         description: t.description,
         amount: amountDecimal,
         reference: t.ocr || null,
       })
+      const förekomst = förekomster.nästa(identitet.key)
+      if (förekomst > 0) identiskaRader++
 
       const outcome = await this.reconciliation.ingestFromFile(organizationId, {
         dedup: identitet.dedup,
-        identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
+        bankAccountId,
+        identity: { key: identitet.key, seq: förekomst },
         data: {
           date,
           description: t.description,
@@ -471,6 +487,13 @@ export class BankStatementImportService {
         continue
       }
       created++
+
+      // #F034c — identiteten kunde inte avgöras mot kontolös historik. Raden är
+      // LAGRAD men aldrig matchad.
+      if ('granskning' in outcome) {
+        behoverGranskas++
+        continue
+      }
 
       if (outcome.matchError) {
         // Matchning kan kasta vid kantfall (t.ex. korrupt journal-state).
@@ -528,7 +551,15 @@ export class BankStatementImportService {
     // ligger som UNMATCHED — policyn är oförändrad — men körningen lämnade ett
     // fel efter sig och får därför inte spelas upp som ett klart resultat.
     return {
-      resultat: { importId: id, created, duplicates, autoMatched, unmatched },
+      resultat: {
+        importId: id,
+        created,
+        duplicates,
+        autoMatched,
+        unmatched,
+        behoverGranskas,
+        identiskaRader,
+      },
       partiellt: matchFel > 0,
     }
   }
