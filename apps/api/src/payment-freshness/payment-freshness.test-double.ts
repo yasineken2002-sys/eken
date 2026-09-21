@@ -24,9 +24,19 @@
  *
  * Det som är kontrollerbart står i stället i filerna själva:
  *
- *     grep -rl "färskhetsdubbel" apps/api/src --include=*.spec.ts
+ *     grep -rlE "^import .*färskhetsdubbel" apps/api/src --include=*.spec.ts
  *
  * En importlista går att räkna om; en siffra i ett docblock åldras tyst.
+ *
+ * `^import` OCH INTE BARA ORDET, påpekat av terminal 1: en spec som NÄMNER
+ * dubbeln i en kommentar utan att importera den hade annars kommit med. Det är
+ * exakt den fällan de själva gick i samma dag, när ett `git grep -l` matchade
+ * ett docblock och nästan gav ett falskt fynd. Ett kommando som över-rapporterar
+ * är en svagare kontroll än det ser ut att vara — och att lämna kvar en sådan i
+ * noten om just den formen vore illa.
+ *
+ * Mätt: båda varianterna ger samma åtta filer i dag; bara den skarpa utesluter
+ * en ren omnämnande-rad.
  *
  * ── VAD DEN GÖR, OCH VAD DEN INTE PÅSTÅR ────────────────────────────────────
  *
