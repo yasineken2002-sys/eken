@@ -41,6 +41,11 @@ export class CreateInspectionCorrectionDto implements CreateInspectionCorrection
   @Matches(/^[0-9a-f]{64}$/, {
     message: 'expectedContentHash måste vara en 64 tecken lång hexsträng (sha256).',
   })
+  // Samma dekorator som på signeringens `expectedContentHash`. Utan den kör
+  // pipen `String(värdet)` före validatorn, och `{ "a": 1 }` blir
+  // "[object Object]" — en sträng som SER UT som data. Regeln är absolut och
+  // har ingen baslinje; se `common/contract/strict-string.decorator`.
+  @StrictString()
   expectedContentHash!: string
 }
 
