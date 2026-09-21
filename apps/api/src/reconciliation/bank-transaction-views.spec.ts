@@ -83,6 +83,19 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   externalId: 'Bankens/aggregatorns transaktions-id (PSD2-källidentitet).',
   dedupKey: 'Deterministisk cross-source-nyckel — rent avstämningsmaskineri.',
   organizationId: 'Internt scopingfält utan klientanvändning.',
+  identityKey:
+    'Filimportens radidentitet (#F034b) — en SHA-256 över de fält filvägens ' +
+    'fält-dedup frågar efter. Rent avstämningsmaskineri, precis som dedupKey ' +
+    'ovan, och av samma skäl utanför båda formerna: en klient som visade den ' +
+    'hade visat ett hashvärde som varken beskriver betalningen eller går att ' +
+    'handla på. Att den dessutom avslöjar VILKA fält som bildar identiteten är ' +
+    'ett svagare men äkta skäl att hålla den inne.',
+  identitySeq:
+    'Radens förekomstnummer inom den fil som skapade den (#F034b). Samma sak: ' +
+    'maskineri. Och den vore direkt VILSELEDANDE i en vy — en tvåa betyder ' +
+    '"andra förekomsten i SIN fil", inte "andra betalningen" och inte "en ' +
+    'dubblett". Sentinelen 0 bärs dessutom av varje rad som skrevs före ' +
+    'migrationen, så talet säger olika saker om olika rader.',
 }
 
 describe('#440-rättelse: BankTransaction i fakturasvar', () => {

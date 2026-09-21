@@ -16,6 +16,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 // In-memory BankTransaction-tabell med de where-former ingest-vägarna använder.
 function makeFake() {
@@ -47,6 +48,12 @@ function makeFake() {
     bankTransaction: {
       findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) =>
         Promise.resolve(rows.find((r) => matches(r, where)) ?? null),
+      ),
+      // #F034b — fält-dedupens läsning är numera förekomstmedveten och frågar
+      // `count`, inte `findFirst`. Båda finns kvar i attrappen: `findFirst`
+      // bärs fortfarande av cross-source-uppslaget mot API-rader.
+      count: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+        Promise.resolve(rows.filter((r) => matches(r, where)).length),
       ),
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
         // Speglar @@unique(organizationId, externalId): dubblett (icke-null) → P2002.
@@ -88,6 +95,10 @@ function makeService() {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(fake.prisma as never),
   )
   const matchSpy = jest.spyOn(service, 'matchTransaction').mockResolvedValue(true)
   return { service, matchSpy, ...fake }
@@ -154,6 +165,9 @@ describe('ReconciliationService.ingestFromApi — PSD2 P1', () => {
     // 1) Betalning ingestas via FIL (stämplar dedupKey), matchas → allokerad EN gång.
     const fileOutcome = await service.ingestFromFile('org-1', {
       dedup: { date: new Date('2026-05-01'), description: 'Hyra', amount: new Decimal('8500.00') },
+      // #F034b — radidentiteten. Provet mäter CROSS-SOURCE-dedupen (dedupKey),
+      // inte identitetsindexet; nyckeln är därför bara ett giltigt värde.
+      identity: { key: 'fil-hyra-20260501', seq: 0 },
       data: {
         date: new Date('2026-05-01'),
         description: 'Hyra',
@@ -187,6 +201,8 @@ describe('ReconciliationService.ingestFromApi — PSD2 P1', () => {
         description: 'Annan text',
         amount: new Decimal('8500.00'),
       },
+      // #F034b — se noten i föregående prov.
+      identity: { key: 'fil-annantext-20260501', seq: 0 },
       data: {
         date: new Date('2026-05-01'),
         description: 'Annan text',

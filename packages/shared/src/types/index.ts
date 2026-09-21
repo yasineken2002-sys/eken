@@ -423,6 +423,34 @@ export interface BankTransaction {
   invoice?: { id: string; invoiceNumber: string; status: string }
 }
 
+/**
+ * #F034b — vad ett importFÖRSÖK slutade i, till skillnad från vad det RÄKNADE.
+ *
+ * Siffrorna säger hur många rader som blev vad. De säger ingenting om
+ * körningen var klar, halvfärdig eller en uppspelning av ett tidigare svar —
+ * och det är den skillnaden en operatör behöver för att veta om något återstår.
+ *
+ * Speglar `ImportAttemptInfo` i apps/api/src/reconciliation/reconciliation.service.ts.
+ */
+export interface ImportAttemptInfo {
+  /**
+   * `KLAR` = körningen slutfördes utan radfel.
+   * `DELVIS` = den slutfördes men lämnade radfel eller kunde inte läsa hela
+   * filen. Ett `DELVIS` spelas ALDRIG upp igen — filen får rättas och köras om.
+   */
+  status: 'KLAR' | 'DELVIS'
+  /**
+   * `true` när svaret kommer från en TIDIGARE lyckad körning av exakt samma
+   * fil och mappning. Noll nya bankrader, noll nya allokeringar, noll nya
+   * verifikat.
+   */
+  replayed: boolean
+  /** Hur många gånger samma fil har körts, övertaganden inräknade. */
+  forsokNr: number
+  /** När den körning svaret gäller startade (ISO-sträng). */
+  kordesAt: string
+}
+
 export interface ImportResult {
   imported: number
   duplicates: number
@@ -430,6 +458,12 @@ export interface ImportResult {
   unmatched: number
   errors: string[]
   bank?: 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
+  /**
+   * VALFRI I TYPEN, INTE I SVARET. Fältet saknas bara i de många befintliga
+   * proven som konstruerar ett `ImportResult` direkt; varje HTTP-väg som går
+   * genom `BankImportAttemptService` sätter det.
+   */
+  forsok?: ImportAttemptInfo
 }
 
 export interface ReconciliationStats {

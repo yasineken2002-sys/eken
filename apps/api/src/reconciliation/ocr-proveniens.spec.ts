@@ -29,6 +29,8 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 import { extractOcr, extractOcrFromProse } from './ocr-proveniens'
+import { BankImportAttemptService } from './bank-import-attempt.service'
+import { bankImportAttemptAttrapp } from './bank-import-attempt.test-double'
 
 const dec = (v: string | number) => new Decimal(v)
 
@@ -103,7 +105,13 @@ function rigg() {
         ),
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
+      // #F034b — fält-dedupens läsning frågar numera `count`, inte `findFirst`.
+      count: jest.fn().mockResolvedValue(0),
     },
+    // #F034b — filnivåns importskydd ligger i vägen. RIKTIG attrapp med det
+    // unika villkoret, inte ett genomsläpp: proven nedan kör importen och ska
+    // göra det genom samma grenar som drift.
+    bankImportAttempt: bankImportAttemptAttrapp().delegat,
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)),
   }
   const service = new ReconciliationService(
@@ -130,6 +138,10 @@ function rigg() {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, prisma }
 }

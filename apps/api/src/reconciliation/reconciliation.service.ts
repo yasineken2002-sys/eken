@@ -46,6 +46,40 @@ import {
   type ReconciliationTransactionView,
 } from './bank-transaction-views'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import {
+  Förekomsträknare,
+  IMPORT_PULSE_EVERY_ROWS,
+  bgMaxIdentitet,
+  filIdentitet,
+  hashaBytes,
+} from './bank-import-identity'
+import { BankImportAttemptService, type Importkvittens } from './bank-import-attempt.service'
+
+/**
+ * #F034b — vad ett importFÖRSÖK slutade i, till skillnad från vad det RÄKNADE.
+ *
+ * Siffrorna i `ImportResult` säger hur många rader som blev vad. De säger
+ * ingenting om körningen som helhet var klar, halvfärdig eller en uppspelning
+ * av ett tidigare svar — och det är just den skillnaden en operatör behöver för
+ * att veta om något återstår att göra.
+ */
+export interface ImportAttemptInfo {
+  /**
+   * `KLAR` = körningen slutfördes utan radfel.
+   * `DELVIS` = den slutfördes men lämnade radfel eller kunde inte läsa hela
+   * filen. Ett `DELVIS` spelas ALDRIG upp igen — filen får rättas och köras om.
+   */
+  status: 'KLAR' | 'DELVIS'
+  /**
+   * `true` när svaret kommer från en TIDIGARE lyckad körning av exakt samma
+   * avtryck. Noll nya bankrader, noll nya allokeringar, noll nya verifikat.
+   */
+  replayed: boolean
+  /** Hur många gånger avtrycket har körts, övertaganden inräknade. */
+  forsokNr: number
+  /** När den körning svaret gäller startade (ISO). */
+  kordesAt: string
+}
 
 export interface ImportResult {
   imported: number
@@ -54,6 +88,34 @@ export interface ImportResult {
   unmatched: number
   errors: string[]
   bank?: BankFormat
+  /**
+   * Sätts av `medFörsöksinfo` på varje väg som går genom
+   * `BankImportAttemptService`. Valfri i typen eftersom de många befintliga
+   * specarna konstruerar `ImportResult` direkt — INTE för att någon HTTP-väg
+   * får utelämna den.
+   */
+  forsok?: ImportAttemptInfo
+}
+
+/**
+ * Lägger försöksinfon på resultatet. Egen funktion och inte inline på tre
+ * ställen: formen ska vara densamma på alla tre vägarna, annars visar UI:t
+ * "delvis misslyckad" för CSV och ingenting för BgMax.
+ */
+function medFörsöksinfo<T extends object>(
+  kvittens: Importkvittens<T>,
+): T & {
+  forsok: ImportAttemptInfo
+} {
+  return {
+    ...kvittens.resultat,
+    forsok: {
+      status: kvittens.status === 'PARTIAL' ? 'DELVIS' : 'KLAR',
+      replayed: kvittens.replayed,
+      forsokNr: kvittens.försöksnummer,
+      kordesAt: kvittens.kördesAt.toISOString(),
+    },
+  }
 }
 
 export type BankFormat = 'GENERIC' | 'HANDELSBANKEN' | 'SEB' | 'SWEDBANK'
@@ -99,6 +161,24 @@ export interface FileIngestInput {
   // nattgranskningen 2026-09-17).
   // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
   dedup: Prisma.BankTransactionWhereInput
+  /**
+   * #F034b — radidentiteten som ett DB-BÄRBART villkor, plus radens
+   * förekomstnummer inom den fil som skapade den.
+   *
+   * `key` byggs av EXAKT de fält `dedup` ovan frågar efter (se
+   * `bank-import-identity.ts`). De två är alltså samma fråga i två former:
+   * `dedup` är den form en LÄSNING kan ställa mot historiska rader utan
+   * identitet, `key` är den form ett UNIKT INDEX kan bära.
+   *
+   * `seq` är 0 för första förekomsten av en identitet i filen, 1 för nästa, och
+   * så vidare. Utan det ledet hade det unika villkoret slagit ihop två VERKLIGT
+   * skilda betalningar som råkar vara lika i allt filen bär.
+   *
+   * OBLIGATORISKT, inte valfritt: ett utelämnat fält hade gett sentinelen `''`,
+   * alltså tyst placerat raden UTANFÖR det partiella unika indexet. En väg som
+   * glömmer identiteten ska inte kunna se skyddad ut.
+   */
+  identity: { key: string; seq: number }
   data: Omit<Prisma.BankTransactionUncheckedCreateInput, 'organizationId'>
   // PSD2 P1 — fält för cross-source dedupKey (Stockholm-dag + belopp + OCR). Saknas
   // OCR → ingen dedupKey (betalning utan referens kan inte matchas cross-source).
@@ -319,6 +399,68 @@ export function computeBankDedupKey(day: Date, amount: Decimal, ocr: string): st
 }
 
 /**
+ * Det partiella unika indexet i migration 20260921100000 — i BÅDA de former
+ * Prisma kan rapportera det.
+ */
+const IDENTITETSINDEX_NAMN = 'bank_transaction_identity_unique'
+const IDENTITETSINDEX_KOLUMNER = ['organizationId', 'identityKey', 'identitySeq'] as const
+
+/**
+ * #F034b — skiljer identitetskollisionen från ALLA ANDRA P2002.
+ *
+ * ── VARFÖR AVGRÄNSNINGEN FINNS ──────────────────────────────────────────────
+ *
+ * `BankTransaction` bär TVÅ unika villkor: `@@unique([organizationId,
+ * externalId])` (PSD2-API-vägens idempotens) och det partiella
+ * identitetsindexet. Ett blint `code === 'P2002'` hade svalt ett brott mot det
+ * FÖRSTA och rapporterat det som "dubblett — allt bra", alltså tystat exakt det
+ * fel API-vägens skydd finns för att göra synligt.
+ *
+ * Filvägarna sätter aldrig `externalId`, så kollisionen kan i dag inte uppstå
+ * här — men "kan inte uppstå i dag" är inte ett skydd, det är ett antagande med
+ * utgångsdatum. Ett okänt P2002 kastas därför vidare.
+ *
+ * ── FORMEN ÄR MÄTT, INTE GISSAD ─────────────────────────────────────────────
+ *
+ * Första versionen av den här funktionen matchade på indexNAMNET. Det var fel,
+ * och felet upptäcktes för att provet kördes: mot Postgres 16 och Prisma 5.22
+ * rapporteras
+ *
+ *     code = P2002
+ *     meta = {"modelName":"BankTransaction",
+ *             "target":["organizationId","identityKey","identitySeq"]}
+ *
+ * alltså KOLUMNLISTAN, inte namnet — och det trots att indexet bara finns i
+ * migrations-SQL. Med namnmatchningen kastades kollisionen vidare i stället för
+ * att räknas som dubblett, och A9 i `bankimport-filidempotens.db.spec.ts` blev
+ * röd med ett radfel i stället för en dubblett.
+ *
+ * BÅDA FORMERNA ACCEPTERAS ändå: kolumnlistan är den uppmätta, namnet är den
+ * form andra Prisma-versioner använder för råa index. Att bara bära den
+ * uppmätta hade gjort en versionsuppgradering till en tyst regression — och
+ * riktningen på den regressionen är att importer FALLER, inte att dubbletter
+ * släpps igenom, vilket är den säkrare av de två men fortfarande fel.
+ *
+ * Provet `reconciliation-ingest-core.spec.ts` prövar båda formerna OCH att
+ * externalId-villkorets P2002 kastas vidare.
+ */
+function ärIdentitetskollision(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false
+  if (err.code !== 'P2002') return false
+  const target = err.meta?.['target']
+  if (typeof target === 'string') return target.includes(IDENTITETSINDEX_NAMN)
+  if (!Array.isArray(target)) return false
+  const fält = target.map((t) => String(t))
+  if (fält.some((f) => f.includes(IDENTITETSINDEX_NAMN))) return true
+  // EXAKT samma mängd — inte "innehåller". En delmängd (t.ex. bara
+  // `organizationId`) är ett ANNAT villkor och får inte tolkas som det här.
+  return (
+    fält.length === IDENTITETSINDEX_KOLUMNER.length &&
+    IDENTITETSINDEX_KOLUMNER.every((k) => fält.includes(k))
+  )
+}
+
+/**
  * #326 A — texten när avmatchning nekas för en överlämnad fordran.
  *
  * EN källa, TVÅ kontrollpunkter: den snabba förkontrollen och omprövningen
@@ -370,6 +512,11 @@ export class ReconciliationService {
     // En mätrad som inte kunde skrivas får inte rulla tillbaka en bokföring.
     private readonly betalningsSkugga: AiPaymentShadowQueue,
     private readonly betalningsFacit: PaymentOutcomeService,
+    // #F034b — filnivåns idempotens och samtidighetsskydd. Egen tjänst och inte
+    // en metod här, av samma skäl som `PaymentFreshnessService`: skyddet ska gå
+    // att pröva utan att dra in hela avstämningen, och det delas med
+    // PDF-vägen i `BankStatementImportService`.
+    private readonly attempts: BankImportAttemptService,
   ) {}
 
   /**
@@ -452,18 +599,56 @@ export class ReconciliationService {
       if (apiRow) return { duplicate: true }
     }
 
-    // Fält-dedup — nyckeln kommer från källan (se `FileIngestInput.dedup`).
-    // Läs-sedan-skriv utan unikt index: två PARALLELLA importer av samma fil kan
-    // fortfarande passera båda. Det är en egen, känd brist (filnivå-idempotens,
-    // kräver migration) och den är varken införd eller lagad här.
-    const existing = await this.prisma.bankTransaction.findFirst({
+    // ── LAGER 1: FÄLT-DEDUPENS LÄSNING, NU FÖREKOMSTMEDVETEN (#F034b) ───────
+    //
+    // Nyckeln kommer från källan (se `FileIngestInput.dedup`). Frågan är inte
+    // längre "finns raden?" utan "finns det redan MINST `seq + 1` rader med den
+    // här identiteten?".
+    //
+    // VARFÖR RÄKNING OCH INTE `findFirst`. Med `findFirst` svarade nyckeln
+    // "samma betalning" om två rader som var lika i allt filen bär — även när
+    // de var två VERKLIGA betalningar. Den andras pengar nådde då aldrig
+    // databasen, och eftersom en dubblett är ett normalt importutfall larmade
+    // ingenting. Med räkningen får filens andra förekomst `seq = 1` och
+    // efterfrågar två lagrade rader.
+    //
+    // ANTALET SUMMERAR INTE ÖVER FILER. En överlappande ANNAN fil som bär
+    // betalningen en gång får `seq = 0`, ser den lagrade raden och räknas som
+    // dubblett. Lagrat antal konvergerar mot MAX över filer av "antal
+    // förekomster i den filen".
+    //
+    // LAGRET ÄR KVAR FÖR HISTORIKENS SKULL. Rader skrivna före #F034b bär
+    // sentinelen `identityKey = ''` och ligger utanför det partiella unika
+    // indexet nedan. Den här läsningen är det enda som ser dem.
+    const lagrade = await this.prisma.bankTransaction.count({
       where: { organizationId, ...input.dedup },
     })
-    if (existing) return { duplicate: true }
+    if (lagrade >= input.identity.seq + 1) return { duplicate: true }
 
-    const tx = await this.prisma.bankTransaction.create({
-      data: { organizationId, ...input.data, ...(dedupKey ? { dedupKey } : {}) },
-    })
+    // ── LAGER 2: DET UNIKA VILLKORET, ATOMÄRT (#F034b) ──────────────────────
+    //
+    // Lager 1 är läs-sedan-skriv och kan passeras av två PARALLELLA körningar —
+    // mätt på basen `661e79e6`: två samtidiga importer av en CSV med EN
+    // inbetalningsrad gav TVÅ bankrader, båda med `imported: 1`.
+    //
+    // `bank_transaction_identity_unique` (partiellt, migration
+    // 20260921100000) gör Postgres till skiljedomare. P2002 = någon annan hann
+    // skriva exakt den här (identitet, förekomst) → dubblett, inte fel.
+    let tx: BankTransaction
+    try {
+      tx = await this.prisma.bankTransaction.create({
+        data: {
+          organizationId,
+          ...input.data,
+          identityKey: input.identity.key,
+          identitySeq: input.identity.seq,
+          ...(dedupKey ? { dedupKey } : {}),
+        },
+      })
+    } catch (err) {
+      if (ärIdentitetskollision(err)) return { duplicate: true }
+      throw err
+    }
 
     try {
       const matched = await this.matchTransaction(tx, organizationId)
@@ -729,6 +914,35 @@ export class ReconciliationService {
       throw new BadRequestException('Endast CSV och Excel-filer (.csv, .xlsx, .xls) stöds')
     }
 
+    // ── FILNIVÅNS AVTRYCK (#F034b) ─────────────────────────────────────────
+    //
+    // Formatvalidering och tolkning ligger FÖRE anspråket med flit: en fil som
+    // inte ens är en CSV ska avvisas utan att lämna ett importförsök efter sig.
+    //
+    // `mappingHash` bär `?bank=`-parametern — det enda som styr HUR innehållet
+    // blir bankrader i den här vägen. Utan ledet hade samma fil med ändrad
+    // bankmappning tyst fått det gamla lyckade svaret, alltså en tolkning som
+    // aldrig kördes.
+    const kvittens = await this.attempts.körEnGång<ImportResult>(
+      {
+        organizationId,
+        kind: ext === 'csv' ? 'CSV' : ext === 'xlsx' ? 'XLSX' : 'XLS',
+        fileName: filename,
+        contentHash: hashaBytes(fileBuffer),
+        mappingHash: hashaBytes(Buffer.from(bankOverride ?? 'AUTO', 'utf8')),
+      },
+      ({ pulsa }) => this.körBankStatementImport(parsed, organizationId, bankOverride, pulsa),
+    )
+    return medFörsöksinfo(kvittens)
+  }
+
+  /** Radloopen. Körs av `attempts.körEnGång` — högst en gång per avtryck. */
+  private async körBankStatementImport(
+    parsed: { rows: ParsedRow[]; bank: BankFormat },
+    organizationId: string,
+    bankOverride: BankFormat | undefined,
+    pulsa: () => Promise<void>,
+  ): Promise<{ resultat: ImportResult; partiellt: boolean }> {
     const rows = parsed.rows
     const bank: BankFormat = bankOverride ?? parsed.bank
 
@@ -745,9 +959,16 @@ export class ReconciliationService {
     const incompleteFileMessage =
       '. Betalningsunderlagets datum uppdaterades inte. Rätta filen och importera igen.'
 
+    // #F034b — förekomstnummer per radidentitet INOM DEN HÄR FILEN.
+    const förekomster = new Förekomsträknare()
+
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
       if (!row) continue
+
+      // Arrendets puls. Utan den hade en långsam men LEVANDE import kunnat
+      // övertas mitt i sig själv när TTL:en löper ut.
+      if (i > 0 && i % IMPORT_PULSE_EVERY_ROWS === 0) await pulsa()
 
       let ingestionConfirmed = false
       try {
@@ -815,13 +1036,20 @@ export class ReconciliationService {
         // `balance` ingår med flit INTE: löpande saldo beror på exportens
         // radordning och saknas i flera bankexporter — en nyckel med `balance`
         // hade gjort om-import av samma period till nya rader.
+        // #F034b — EN källa för båda lagren. `filIdentitet` returnerar både
+        // fält-dedupens `where` och hashen, så de två kan inte skrivas olika
+        // här. Se noten i `bank-import-identity.ts` för vad två skilda
+        // objektliteraler kostade (T1:s fynd F1).
+        const identitet = filIdentitet({
+          date: row.date,
+          description: row.description,
+          amount: amountDecimal,
+          reference: row.reference || null,
+        })
+
         const outcome = await this.ingestFromFile(organizationId, {
-          dedup: {
-            date: row.date,
-            description: row.description,
-            amount: amountDecimal,
-            reference: row.reference || null,
-          },
+          dedup: identitet.dedup,
+          identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
           data: {
             date: row.date,
             description: row.description,
@@ -867,7 +1095,11 @@ export class ReconciliationService {
       )
     }
 
-    return result
+    // PARTIELLT = radfel ELLER ofullständigt läst fil. Båda måste gå att köra
+    // om, och inget av dem får spelas upp som ett klart resultat. `errors` kan
+    // bära ett radfel som inträffade EFTER lagringen (matchError) utan att
+    // `fileReadComplete` faller — därför båda villkoren, inte bara det ena.
+    return { resultat: result, partiellt: !fileReadComplete || result.errors.length > 0 }
   }
 
   // ── BgMax-import (Bankgirot) ─────────────────────────────────────────────
@@ -893,6 +1125,33 @@ export class ReconciliationService {
       allowTextWithoutSignature: true,
     })
 
+    // ── FILNIVÅNS AVTRYCK (#F034b) ─────────────────────────────────────────
+    //
+    // `mappingHash` är TOM för BgMax, och det är ett svar och inte en lucka:
+    // formatet är fastpositionellt (80 tecken, TC-koder) och har ingen
+    // mappning att styra. Fältet står kvar i avtrycket så att alla tre vägarna
+    // har samma form — en väg som saknade ledet hade sett ut som en väg där
+    // ingen tänkt på frågan.
+    const kvittens = await this.attempts.körEnGång<ImportResult & { fileName: string }>(
+      {
+        organizationId,
+        kind: 'BGMAX',
+        fileName,
+        contentHash: hashaBytes(fileBuffer),
+        mappingHash: hashaBytes(Buffer.from('', 'utf8')),
+      },
+      ({ pulsa }) => this.körBgMaxImport(fileBuffer, fileName, organizationId, pulsa),
+    )
+    return medFörsöksinfo(kvittens)
+  }
+
+  /** Radloopen. Körs av `attempts.körEnGång` — högst en gång per avtryck. */
+  private async körBgMaxImport(
+    fileBuffer: Buffer,
+    fileName: string,
+    organizationId: string,
+    pulsa: () => Promise<void>,
+  ): Promise<{ resultat: ImportResult & { fileName: string }; partiellt: boolean }> {
     const text = fileBuffer.toString('utf8')
     const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
 
@@ -907,7 +1166,13 @@ export class ReconciliationService {
 
     let sectionDate: Date | null = null
     let latestCoverage: Date | null = null
+    // #F034b — förekomstnummer per radidentitet INOM DEN HÄR FILEN.
+    const förekomster = new Förekomsträknare()
+    let radnr = 0
     for (const line of lines) {
+      // Arrendets puls — se motsvarande not i CSV-loopen.
+      if (radnr > 0 && radnr % IMPORT_PULSE_EVERY_ROWS === 0) await pulsa()
+      radnr++
       const tc = line.slice(0, 2)
 
       // TC 05: 0-1=tc, 2-11=BG(10), 12-21=PG(10), 22-29=date(8 YYYYMMDD)
@@ -957,8 +1222,18 @@ export class ReconciliationService {
         // ändras. `description` utelämnas fortfarande med flit — den är syntetisk
         // här, och att hålla den utanför är det som gör att samma betalning
         // importerad via BÅDE BgMax och CSV känns igen som en.
+        // #F034b — BgMax har sin EGEN namnrymd i radidentiteten: fältuppsättningen
+        // är en annan (ingen textkolumn) och dess `description` är syntetisk.
+        // EN källa för båda lagren, se CSV-vägen ovan.
+        const identitet = bgMaxIdentitet({
+          date: txDate,
+          amount: amountDecimal,
+          rawOcr: ocr || null,
+        })
+
         const outcome = await this.ingestFromFile(organizationId, {
-          dedup: { date: txDate, amount: amountDecimal, rawOcr: ocr || null },
+          dedup: identitet.dedup,
+          identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
           data: {
             date: txDate,
             description,
@@ -991,7 +1266,10 @@ export class ReconciliationService {
     // PR 4 (B) — flytta fram paymentDataThrough till BgMax-filens senaste sektionsdatum.
     await this.advancePaymentFreshness(organizationId, latestCoverage)
 
-    return result
+    // PARTIELLT = radfel. BgMax har ingen motsvarighet till CSV:s
+    // `fileReadComplete`: en TC-rad som inte går att tolka blir ett radfel, och
+    // filen som helhet avvisas redan ovan om INGEN post kunde läsas.
+    return { resultat: result, partiellt: result.errors.length > 0 }
   }
 
   // ── Match ───────────────────────────────────────────────────────────────────

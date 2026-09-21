@@ -9,6 +9,7 @@ import { ReconciliationController } from './reconciliation.controller'
 import { ReconciliationService } from './reconciliation.service'
 import { PdfStatementParserService } from './pdf-statement-parser.service'
 import { BankStatementImportService } from './bank-statement-import.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 @Module({
   imports: [
@@ -21,7 +22,15 @@ import { BankStatementImportService } from './bank-statement-import.service'
     forwardRef(() => AviseringModule),
   ],
   controllers: [ReconciliationController],
-  providers: [ReconciliationService, PdfStatementParserService, BankStatementImportService],
+  providers: [
+    ReconciliationService,
+    PdfStatementParserService,
+    BankStatementImportService,
+    // #F034b — filnivåns idempotens. Provider i den här modulen och inte global:
+    // den ÄGS av bankimporten, och en global tjänst hade inbjudit andra vägar
+    // att ta arrenden på ett avtryck vars innebörd är definierad här.
+    BankImportAttemptService,
+  ],
   exports: [ReconciliationService],
 })
 export class ReconciliationModule {}

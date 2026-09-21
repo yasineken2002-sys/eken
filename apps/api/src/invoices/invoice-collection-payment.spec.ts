@@ -34,6 +34,7 @@ import { InvoicesService } from './invoices.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import type { InvoiceStatus } from '@prisma/client'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const TOTAL = 10_000
 
@@ -152,6 +153,10 @@ function makeReconciliation(opts: { status: InvoiceStatus; priorAllocations?: nu
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(undefined as never),
   )
   const applyMatch = (amount: number, allowPartial = true): Promise<boolean> =>
     (

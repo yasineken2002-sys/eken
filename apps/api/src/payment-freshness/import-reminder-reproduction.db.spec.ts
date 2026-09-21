@@ -30,6 +30,7 @@ import type { BankDataProvider } from '../psd2/psd2.types'
 import { BankStatementImportService } from '../reconciliation/bank-statement-import.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
 import { PaymentDataPausedError, PaymentFreshnessService } from './payment-freshness.service'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const NOW = new Date('2026-09-13T12:00:00.000Z')
 const TODAY = '2026-09-13'
@@ -295,6 +296,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       events,
       shadowQueue as never,
       outside as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     interest = new RentInterestService(db as never, accounting, events, freshness)
     badDebt = new RentBadDebtService(
@@ -635,6 +640,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       { parse } as never,
       importer,
       freshness,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     await expect(pdfImport.uploadAndParsePdf(PDF, 'test.pdf', orgId!, null)).rejects.toThrow(
       'Syntetiskt parserfel',
@@ -788,6 +797,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       { parse } as never,
       importer,
       freshness,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     await expect(
       pdfImport.uploadAndParsePdf(Buffer.from('detta är inte en PDF'), 'fel.pdf', orgId!, null),
@@ -987,6 +1000,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       { parse } as never,
       importer,
       freshness,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     await expect(pdfImport.uploadAndParsePdf(PDF, 'test.pdf', orgId!, null)).rejects.toThrow(
       failure.message,

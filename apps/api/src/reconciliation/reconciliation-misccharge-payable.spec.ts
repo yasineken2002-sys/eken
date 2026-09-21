@@ -15,6 +15,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 function candidate(over: Record<string, unknown> = {}) {
   return {
@@ -66,6 +67,10 @@ function makeService(candidates: Array<Record<string, unknown>>) {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(db as never),
   )
   const apply = jest.fn().mockResolvedValue(true)
   ;(service as unknown as { applyMatchToRentNotice: unknown }).applyMatchToRentNotice = apply

@@ -26,12 +26,16 @@ jest.mock('../common/utils/file-validation', () => ({
 }))
 
 import { BankStatementImportService } from './bank-statement-import.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
+import { bankImportAttemptAttrapp } from './bank-import-attempt.test-double'
 
 type AnyFn = jest.Mock
 
 interface PrismaMock {
-  bankStatementImport: { create: AnyFn; update: AnyFn; findFirst: AnyFn }
-  bankTransaction: { findFirst: AnyFn; create: AnyFn }
+  bankStatementImport: { create: AnyFn; update: AnyFn; findFirst: AnyFn; updateMany: AnyFn }
+  bankTransaction: { findFirst: AnyFn; create: AnyFn; count: AnyFn }
+  // #F034b — filnivåns importskydd ligger i bekräftelsevägen.
+  bankImportAttempt: Record<string, unknown>
   organization: { findUnique: AnyFn }
 }
 
@@ -41,8 +45,12 @@ function makePrismaMock(): PrismaMock {
       create: jest.fn(),
       update: jest.fn(),
       findFirst: jest.fn(),
+      // #F034b — bekräftelsen tar draften med en status-guardad updateMany
+      // (PARSED → CONFIRMING). Attrappen svarar `count: 1` = anspråket vanns.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    bankTransaction: { findFirst: jest.fn(), create: jest.fn() },
+    bankTransaction: { findFirst: jest.fn(), create: jest.fn(), count: jest.fn() },
+    bankImportAttempt: bankImportAttemptAttrapp().delegat,
     // #36: resolveMaxTxAmount slår upp org-gränsen (default 5 MSEK).
     organization: { findUnique: jest.fn().mockResolvedValue({ maxBankTxAmount: 5_000_000 }) },
   }
@@ -92,6 +100,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           recordPaymentDataThrough: jest.fn(),
           recordImportStarted: jest.fn().mockResolvedValue(undefined),
         } as never,
+        // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+        // resten av riggen: proven nedan som inte kör en import når den aldrig,
+        // och de som gör det ska se skyddet och inte ett genomsläpp.
+        new BankImportAttemptService(prisma as never),
       )
 
       await service.uploadAndParsePdf(Buffer.from('%PDF-1.4'), 'utdrag.pdf', 'org-1', 'user-1')
@@ -133,6 +145,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           recordPaymentDataThrough: jest.fn(),
           recordImportStarted: jest.fn().mockResolvedValue(undefined),
         } as never,
+        // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+        // resten av riggen: proven nedan som inte kör en import når den aldrig,
+        // och de som gör det ska se skyddet och inte ett genomsläpp.
+        new BankImportAttemptService(prisma as never),
       )
 
       // Operatören redigerar belopp på rad 1 (8500 → 8400) innan confirm.
@@ -184,6 +200,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           recordPaymentDataThrough,
           recordImportStarted: jest.fn().mockResolvedValue(undefined),
         } as never,
+        // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+        // resten av riggen: proven nedan som inte kör en import når den aldrig,
+        // och de som gör det ska se skyddet och inte ett genomsläpp.
+        new BankImportAttemptService(prisma as never),
       )
 
       await service.confirmImport('imp-1', 'org-1', 'user-1')
@@ -203,6 +223,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           recordPaymentDataThrough,
           recordImportStarted: jest.fn().mockResolvedValue(undefined),
         } as never,
+        // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+        // resten av riggen: proven nedan som inte kör en import når den aldrig,
+        // och de som gör det ska se skyddet och inte ett genomsläpp.
+        new BankImportAttemptService(prisma as never),
       )
 
       // AI_TX-datumen avgör coverage; senaste = 2026-05-02 (se edited nedan).
@@ -226,6 +250,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           recordPaymentDataThrough: jest.fn(),
           recordImportStarted: jest.fn().mockResolvedValue(undefined),
         } as never,
+        // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+        // resten av riggen: proven nedan som inte kör en import når den aldrig,
+        // och de som gör det ska se skyddet och inte ett genomsläpp.
+        new BankImportAttemptService(prisma as never),
       )
 
       const edited = [
@@ -259,6 +287,10 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           recordPaymentDataThrough: jest.fn(),
           recordImportStarted: jest.fn().mockResolvedValue(undefined),
         } as never,
+        // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+        // resten av riggen: proven nedan som inte kör en import når den aldrig,
+        // och de som gör det ska se skyddet och inte ett genomsläpp.
+        new BankImportAttemptService(prisma as never),
       )
 
       // Ingen edited-lista → extractFromDraft används.
