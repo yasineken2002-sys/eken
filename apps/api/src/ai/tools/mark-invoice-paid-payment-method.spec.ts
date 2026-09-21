@@ -93,6 +93,7 @@ function makeExecutor(markAsPaidManually: jest.Mock) {
     noop,
 
     noop,
+    {} as never, // #F034c bankAccounts (sist)
   )
   return svc
 }

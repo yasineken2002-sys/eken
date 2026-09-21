@@ -51,6 +51,7 @@ function makeExecutor(periods: Record<string, unknown>) {
     noop, // 23 signingService
     periods as never, // 24 accountingPeriods,
     noop,
+    {} as never, // #F034c bankAccounts (sist)
   )
 }
 

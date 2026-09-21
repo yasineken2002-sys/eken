@@ -167,6 +167,19 @@ function makeService(opts: {
     // enqueueSafely fått sin cron-kontext rapporteras felet där. En kastande
     // attrapp hade fällt just de test som bevisar att sänkan nås.
     cronErrorsSpy as never,
+    // G2 — granskningsspärren. TILLÅTANDE attrapp (svarar "inga olösta rader"),
+    // därför att de här proven mäter AVGIFTEN och inte pausen: en kastande
+    // attrapp hade fällt dem på fel grund och dolt vad de finns för. Pausens
+    // eget beteende mäts i kravpaus-provet, mot riktig databas.
+    {
+      assertIngenOlostIdentitetsgranskning: jest.fn().mockResolvedValue(undefined),
+      // Cronen anropar TVÅ metoder: gallringen före loopen och spärren vid
+      // skrivningen. En stubb som bara bär den ena gav `undefined is not a
+      // function` inne i `runCronSafely`, som rapporterade till felsänkan — och
+      // den kastande sänkan visade sitt eget meddelande i stället för orsaken.
+      // Båda måste finnas, och tom mängd = ingen organisation pausad.
+      pausadeAvGranskning: jest.fn().mockResolvedValue(new Set<string>()),
+    } as never,
   )
   return { service, prisma, mail, accounting, rec, invoice, txClient }
 }

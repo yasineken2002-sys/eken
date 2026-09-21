@@ -123,6 +123,26 @@ export class NotificationsController {
           'Importera en färskare bankfil innan du skickar krav — annars kan påminnelser gå till hyresgäster som redan betalat.',
       )
     }
+    // ── G2: SAMMA GRIND, ANDRA ORSAKEN ──────────────────────────────────
+    //
+    // Skälet är ordagrant det som står om färskheten ovan: spärren ska ligga
+    // där effekten uppstår, och knappen är den snabbaste vägen förbi en grind
+    // som bara gäller cronen. Den som trycker här startar exakt den automatik
+    // som pausats.
+    //
+    // EGEN TEXT, inte färskhetens. De två pauserna åtgärdas på olika sätt —
+    // en import löser den ena, ett mänskligt beslut om en enskild rad den
+    // andra — och en operatör som får fel besked gör fel sak.
+    const olosta = await this.freshness.raknaOlostIdentitetsgranskning(organizationId)
+    if (olosta > 0) {
+      throw new ConflictException(
+        `${olosta} importerad(e) betalning(ar) väntar på identitetsgranskning. ` +
+          'Importen kunde inte avgöra om de är egna betalningar eller kopior av rader ' +
+          'som redan fanns, så de är lagrade men aldrig matchade. Avgör dem i ' +
+          'bankavstämningen — matcha mot rätt underlag, eller lägg åt sidan — innan du ' +
+          'skickar krav. Annars kan krav gå till hyresgäster som redan betalat.',
+      )
+    }
     const resultat = await this.service.sendOverdueRemindersForOrg(organizationId)
     return {
       ...resultat,

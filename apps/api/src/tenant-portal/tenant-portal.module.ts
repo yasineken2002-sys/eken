@@ -9,6 +9,7 @@ import { TenantBankIdService } from './tenant-bankid.service'
 import { StorageModule } from '../storage/storage.module'
 import { InvoicesModule } from '../invoices/invoices.module'
 import { AviseringModule } from '../avisering/avisering.module'
+import { InspectionsModule } from '../inspections/inspections.module'
 import { TenantAuthService } from './tenant-auth.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { TenantPortalService } from './tenant-portal.service'
@@ -29,6 +30,15 @@ import {
     StorageModule,
     InvoicesModule,
     AviseringModule,
+    // Besiktningsmodulen exporterar tjänsten OCH bildkontrollen. Ingen cykel:
+    // den importerar ConfigModule, PrismaModule, InvoicesModule och
+    // AiUsageModule — ingen av dem känner till portalen.
+    //
+    // Delad med flit. Portalen härleder ALDRIG själv vilken version som gäller
+    // och jämför ALDRIG själv en bilddigest; den frågar samma kod som
+    // hyresvärdens vy. Två uträkningar av samma sak är två tillfällen att ge
+    // parterna olika svar om det underlag ett depositionsavdrag vilar på.
+    InspectionsModule,
     forwardRef(() => ContractsModule),
     // BankidModule exporterar BANKID_PROVIDER. Ingen cykel: den importerar
     // AuthModule, som inte känner till portalen. Providern DELAS med web-flödet

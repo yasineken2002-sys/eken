@@ -19,6 +19,7 @@ jest.mock('./reconciliation.service', () => ({ ReconciliationService: class {} }
 
 import { BankStatementImportService } from './bank-statement-import.service'
 import { MAX_TX_AMOUNT, DEFAULT_MAX_BANK_TX_AMOUNT } from './pdf-statement-parser.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 interface ServiceAccess {
   resolveMaxTxAmount(organizationId: string): Promise<number>
@@ -38,6 +39,10 @@ function makeService(orgRow?: { maxBankTxAmount: number } | null) {
     {} as never,
     {} as never,
     { recordPaymentDataThrough: jest.fn() } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service: service as unknown as ServiceAccess, prisma }
 }

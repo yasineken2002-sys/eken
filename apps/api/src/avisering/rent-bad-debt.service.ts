@@ -15,6 +15,7 @@ import { RentDebtService } from './rent-debt.service'
 import {
   paymentFreshnessTransactionOptions,
   PaymentDataPausedError,
+  IdentityReviewPausedError,
   PaymentFreshnessService,
 } from '../payment-freshness/payment-freshness.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -206,6 +207,16 @@ export class RentBadDebtService {
             if (res.booked) summary.reclassified++
             else summary.skipped++
           } catch (err) {
+            // G2 — se noten vid samma gren i `rent-reminder.service.ts`.
+            if (err instanceof IdentityReviewPausedError) {
+              summary.pausedStale++
+              this.logger.warn(
+                `Kundförlust PAUSAD för avi ${notice.id}: ${err.antal} betalning(ar) väntar på ` +
+                  'identitetsgranskning. Att skriva bort en skuld som kanske är betald är samma ' +
+                  'fel som att kräva in den.',
+              )
+              continue
+            }
             if (err instanceof PaymentDataPausedError) {
               summary.pausedStale++
               await this.freshness

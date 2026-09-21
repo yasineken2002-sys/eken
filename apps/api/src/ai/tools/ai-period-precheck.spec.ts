@@ -71,6 +71,7 @@ function makeExecutor(prisma: unknown) {
     noop,
 
     noop,
+    {} as never, // #F034c bankAccounts (sist)
   )
 }
 

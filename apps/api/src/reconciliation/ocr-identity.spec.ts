@@ -11,6 +11,7 @@ import {
   SYSTEM_ASSIGNED_OCR_FIELDS,
   FREE_TEXT_OCR_FIELDS,
 } from './ocr-identity'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 /**
  * H2 — en förhoppning får aldrig vinna över en identitet.
@@ -150,6 +151,10 @@ function makeService(opts: { identitetFinns: boolean }) {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, prisma, invoiceFindFirst }
 }

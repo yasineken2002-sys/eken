@@ -11,8 +11,12 @@ import {
   ignoreTransaction,
   unmatchTransaction,
   autoMatchAll,
+  getBankAccounts,
+  getIdentityReview,
+  createBankAccount,
 } from '../api/reconciliation.api'
 import type { BankFormat, ParsedTransaction } from '../api/reconciliation.api'
+import type { CreateBankAccountInput } from '@eken/shared'
 
 export function useTransactions(filters?: { status?: string; from?: string; to?: string }) {
   return useQuery({
@@ -36,12 +40,21 @@ export function useImportStatement() {
     // Filändelsen styr endpoint: .txt → BgMax, .csv/.xlsx/.xls → bankutdrag.
     // Detekteringen ligger här istället för i UI så alla anrop (inkl. drag-
     // and-drop, programmatic) får samma routing.
-    mutationFn: ({ file, bank }: { file: File; bank?: BankFormat }) => {
+    mutationFn: ({
+      file,
+      bankAccountId,
+      bank,
+    }: {
+      file: File
+      // #F034c — obligatoriskt. Servern avvisar en import utan konto.
+      bankAccountId: string
+      bank?: BankFormat
+    }) => {
       const ext = file.name.toLowerCase().split('.').pop() ?? ''
       if (ext === 'txt' || ext === 'bgmax') {
-        return importBgMaxFile(file)
+        return importBgMaxFile(file, bankAccountId)
       }
-      return importBankStatement(file, bank)
+      return importBankStatement(file, bankAccountId, bank)
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })
@@ -69,11 +82,13 @@ export function useConfirmPdfImport() {
   return useMutation({
     mutationFn: ({
       importId,
+      bankAccountId,
       transactions,
     }: {
       importId: string
+      bankAccountId: string
       transactions?: ParsedTransaction[]
-    }) => confirmPdfImport(importId, transactions),
+    }) => confirmPdfImport(importId, bankAccountId, transactions),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })
       void qc.invalidateQueries({ queryKey: ['invoices'] })
@@ -85,6 +100,38 @@ export function useConfirmPdfImport() {
 export function useCancelPdfImport() {
   return useMutation({
     mutationFn: (importId: string) => cancelPdfImport(importId),
+  })
+}
+
+/** #F034c — organisationens målkonton, för väljaren i importmodalen. */
+export function useBankAccounts() {
+  return useQuery({
+    queryKey: ['reconciliation', 'bank-accounts'],
+    queryFn: getBankAccounts,
+    staleTime: 300_000,
+  })
+}
+
+/**
+ * G2 — kravpausens läge. Kortare `staleTime` än kontolistan: det här är ett
+ * tillstånd operatören AKTIVT arbetar bort, och ett gammalt svar hade visat en
+ * paus som just släppts.
+ */
+export function useIdentityReview() {
+  return useQuery({
+    queryKey: ['reconciliation', 'identity-review'],
+    queryFn: getIdentityReview,
+    staleTime: 15_000,
+  })
+}
+
+export function useCreateBankAccount() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateBankAccountInput) => createBankAccount(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['reconciliation', 'bank-accounts'] })
+    },
   })
 }
 

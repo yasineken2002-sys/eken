@@ -40,6 +40,7 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: async () => ''
  * lånar omgivningens rader mäter omgivningen. Id:n bär en körningsstämpel så två
  * samtidiga körningar inte kan ta varandras rader.
  */
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { PrismaClient, Prisma } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
@@ -50,6 +51,7 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { BadRequestException } from '@nestjs/common'
 import { assertPeriodOpen } from '../accounting/closed-period'
 import type { PrismaService } from '../common/prisma/prisma.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -133,7 +135,8 @@ medDb('vattenfallet mot riktig Postgres', () => {
       invoices,
       invoiceEvents,
       accounting,
-      { markPaymentDataThrough: async () => undefined } as never,
+      // G2-AVSLUT — skrivvägarna anropar numera färskhetstjänsten.
+      { ...färskhetsdubbel(), markPaymentDataThrough: async () => undefined } as never,
       new RentNoticeEventsService(p),
       // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
       // dem får kunna fälla en matchning, och det är just det de här proven
@@ -144,6 +147,10 @@ medDb('vattenfallet mot riktig Postgres', () => {
         skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
         nollstallFacit: jest.fn().mockResolvedValue(undefined),
       } as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(p as never),
     )
 
     await prisma.organization.create({

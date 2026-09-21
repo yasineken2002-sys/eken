@@ -83,6 +83,35 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   externalId: 'Bankens/aggregatorns transaktions-id (PSD2-källidentitet).',
   dedupKey: 'Deterministisk cross-source-nyckel — rent avstämningsmaskineri.',
   organizationId: 'Internt scopingfält utan klientanvändning.',
+  identityKey:
+    'Filimportens radidentitet (#F034b) — en SHA-256 över de fält filvägens ' +
+    'fält-dedup frågar efter. Rent avstämningsmaskineri, precis som dedupKey ' +
+    'ovan, och av samma skäl utanför båda formerna: en klient som visade den ' +
+    'hade visat ett hashvärde som varken beskriver betalningen eller går att ' +
+    'handla på. Att den dessutom avslöjar VILKA fält som bildar identiteten är ' +
+    'ett svagare men äkta skäl att hålla den inne.',
+  bankAccountId:
+    'Vilket av organisationens bankkonton raden kom in på (#F034c). Rent ' +
+    'avstämningsmaskineri: fakturavyn visar EN betalning av EN faktura och ' +
+    'kontot tillför inget där, och avstämningstabellen arbetar redan inom en ' +
+    'organisation. Att skicka med det hade dessutom röjt organisationens ' +
+    'kontostruktur för varje läsare av fakturasvaret — en annan grind än den ' +
+    'här filens. Behöver en vy filtrera på konto är det ett BESLUT, och då ' +
+    'hör id:t hemma i form 2 med en egen motivering.',
+  // identityReviewAt / identityReviewReason stod här tidigare, med noteringen
+  // att avstämningstabellen SKULLE kunna behöva dem men att det var ett beslut
+  // att ta med UI:t framför sig. Beslutet är taget: markeringen stoppar numera
+  // automatiken (spärren i `matchTransaction`), och ett fält som styr vad
+  // systemet gör med raden måste synas för den som ska handla på den. De ligger
+  // därför i form 2 och INTE i form 1 — fakturakontexten visar en betalning av
+  // en faktura, och en oavgjord identitet där hade väckt en fråga läsaren inte
+  // kan svara på.
+  identitySeq:
+    'Radens förekomstnummer inom den fil som skapade den (#F034b). Samma sak: ' +
+    'maskineri. Och den vore direkt VILSELEDANDE i en vy — en tvåa betyder ' +
+    '"andra förekomsten i SIN fil", inte "andra betalningen" och inte "en ' +
+    'dubblett". Sentinelen 0 bärs dessutom av varje rad som skrevs före ' +
+    'migrationen, så talet säger olika saker om olika rader.',
 }
 
 describe('#440-rättelse: BankTransaction i fakturasvar', () => {

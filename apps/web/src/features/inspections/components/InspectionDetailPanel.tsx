@@ -9,6 +9,7 @@ import {
   InspectionStatusBadge,
   InspectionConditionBadge,
 } from './InspectionBadges'
+import { InspectionVersionSection } from './InspectionVersionSection'
 import {
   useUpdateInspection,
   useUpdateInspectionItem,
@@ -21,6 +22,8 @@ import type { Inspection, InspectionItemCondition, AnalysisResult } from '../api
 interface Props {
   inspection: Inspection
   onClose: () => void
+  /** Byter vilken version panelen visar. Används av versionshistoriken. */
+  onOppnaVersion: (id: string) => void
 }
 
 function InfoItem({ label, value }: { label: string; value: React.ReactNode }) {
@@ -39,7 +42,7 @@ const CONDITIONS: { value: InspectionItemCondition; label: string }[] = [
   { value: 'MISSING', label: 'Saknas' },
 ]
 
-export function InspectionDetailPanel({ inspection, onClose }: Props) {
+export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: Props) {
   const updateInspection = useUpdateInspection()
   const updateItem = useUpdateInspectionItem()
 
@@ -141,9 +144,22 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
       {/* Header */}
       <div className="border-line flex items-start justify-between border-b px-5 py-4">
         <div className="min-w-0 flex-1 pr-3">
-          <div className="mb-1 flex items-center gap-2">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
             <InspectionTypeBadge type={inspection.type} />
             <InspectionStatusBadge status={inspection.status} />
+            {/* Versionsmärket står i HUVUDET, inte bara i historiken längre ned.
+                Den som scrollar aldrig dit ska ändå se att protokollet framför
+                hen är en rättad version — eller en ersatt. */}
+            {inspection.version > 1 && (
+              <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-[12px] font-medium text-gray-600">
+                Version {inspection.version}
+              </span>
+            )}
+            {inspection.correction !== null && (
+              <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[12px] font-medium text-amber-700">
+                Rättad
+              </span>
+            )}
           </div>
           <h3 className="text-[15px] font-semibold leading-snug text-gray-900">
             {inspection.property.name} – {inspection.unit.unitNumber}
@@ -518,6 +534,8 @@ export function InspectionDetailPanel({ inspection, onClose }: Props) {
             )}
           </div>
         )}
+
+        <InspectionVersionSection inspection={inspection} onOppnaVersion={onOppnaVersion} />
 
         {/* PDF download */}
         <div className="border-line border-t pt-4">

@@ -127,6 +127,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
       testPersonalNumberService(),
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     )
 
     const result = await service.getMaintenanceTickets('tenant-1')
@@ -157,6 +160,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )
@@ -194,6 +200,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
       testPersonalNumberService(),
       maintenanceService as never,
       notifications as never,
+      {} as never,
+      {} as never,
+      {} as never,
     )
 
     const result = await service.submitMaintenanceRequest('tenant-1', {
@@ -221,6 +230,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )
@@ -278,6 +290,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
       testPersonalNumberService(),
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     )
 
     await service.getLease('tenant-1')
@@ -305,6 +320,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )
@@ -339,6 +357,9 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )

@@ -71,6 +71,7 @@ function makeExecutor(collectionExport: Record<string, unknown>) {
     noop,
 
     noop,
+    {} as never, // #F034c bankAccounts (sist)
   )
 }
 

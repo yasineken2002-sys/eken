@@ -5,9 +5,13 @@ import type {
   PortalAuthResult,
   PortalBankIdCollect,
   PortalBankIdStart,
+  PortalBildkontroll,
   PortalConsumptionCharge,
   PortalDashboard,
+  PortalDeposit,
   PortalDocument,
+  PortalInspection,
+  PortalInspectionListItem,
   PortalInvoice,
   PortalLease,
   PortalMaintenanceTicket,
@@ -290,3 +294,33 @@ export const fetchAiConversation = (id: string) =>
 export async function deleteAiConversation(id: string): Promise<void> {
   await portalApi.delete(`/tenant-portal/ai/conversations/${id}`)
 }
+
+// ── Besiktning och deposition ────────────────────────────────────────────────
+
+export const fetchInspections = () => get<PortalInspectionListItem[]>('/portal/inspections')
+
+export const fetchInspection = (id: string) =>
+  get<PortalInspection>(`/portal/inspections/${encodeURIComponent(id)}`)
+
+/**
+ * Begär en FAKTISK kontroll av bilagornas innehåll.
+ *
+ * Anropas bara när hyresgästen ber om den: varje bilaga hämtas ur lagringen och
+ * jämförs. En vy som körde den automatiskt hade visat ett utfall ingen bett om
+ * och betalat för det vid varje sidöppning.
+ */
+export const fetchInspectionImageCheck = (id: string) =>
+  get<PortalBildkontroll>(`/portal/inspections/${encodeURIComponent(id)}/bildkontroll`)
+
+export const fetchInspectionImageUrl = (inspectionId: string, imageId: string) =>
+  get<{ url: string; filename: string }>(
+    `/portal/inspections/${encodeURIComponent(inspectionId)}/images/${encodeURIComponent(imageId)}`,
+  )
+
+export const downloadInspectionPdf = (id: string, version: number) =>
+  downloadPdfBlob(
+    `/portal/inspections/${encodeURIComponent(id)}/pdf`,
+    `besiktningsprotokoll-v${version}.pdf`,
+  )
+
+export const fetchDeposits = () => get<PortalDeposit[]>('/portal/deposits')

@@ -25,6 +25,8 @@ import { BankStatementImportService } from '../reconciliation/bank-statement-imp
 import { Psd2Controller } from '../psd2/psd2.controller'
 import { Psd2SyncService } from '../psd2/psd2-sync.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
+import { BankAccountService } from '../reconciliation/bank-account.service'
 
 const ORG = 'boundary-org'
 const USER = { sub: 'boundary-user', organizationId: ORG, role: 'OWNER' }
@@ -46,12 +48,26 @@ function ports() {
 function uploads() {
   const reconciliation = ports()
   const statement = { uploadAndParsePdf: jest.fn().mockResolvedValue({}) }
-  const controller = new ReconciliationController(reconciliation as never, statement as never)
-  return { controller, reconciliation, statement }
+  // #F034c — kontoupplösningen. Attrappen svarar med ett giltigt konto: provet
+  // mäter MARKÖRENS ORDNING, inte ägandekontrollen (den ägs av DB-provet).
+  const bankAccounts = {
+    resolveTarget: jest.fn().mockResolvedValue({
+      id: 'konto-1',
+      name: 'Företagskonto',
+      accountNumber: null,
+      isActive: true,
+    }),
+  }
+  const controller = new ReconciliationController(
+    reconciliation as never,
+    statement as never,
+    bankAccounts as never,
+  )
+  return { controller, reconciliation, statement, bankAccounts }
 }
 function upload(controller: ReconciliationController, kind: Upload, request: unknown) {
-  if (kind === 'csv') return controller.importStatement(ORG, request as never)
-  if (kind === 'bgmax') return controller.importBgMax(ORG, request as never)
+  if (kind === 'csv') return controller.importStatement(ORG, request as never, 'konto-1')
+  if (kind === 'bgmax') return controller.importBgMax(ORG, request as never, 'konto-1')
   return controller.importPdf(ORG, USER as never, request as never)
 }
 function expectNoImport(
@@ -143,6 +159,20 @@ describe('verklig Nest/Fastify-auktorisering före importmarkören', () => {
       providers: [
         { provide: ReconciliationService, useValue: reconciliation },
         { provide: BankStatementImportService, useValue: statement },
+        // #F034c — kontoupplösningen. Svarar med ett giltigt konto: den här
+        // filen mäter MARKÖRENS ORDNING och auktoriseringen före den, inte
+        // ägandekontrollen (den ägs av DB-provet).
+        {
+          provide: BankAccountService,
+          useValue: {
+            resolveTarget: jest.fn().mockResolvedValue({
+              id: 'konto-1',
+              name: 'Företagskonto',
+              accountNumber: null,
+              isActive: true,
+            }),
+          },
+        },
         { provide: ConfigService, useValue: new ConfigService({ JWT_SECRET: secret }) },
         JwtStrategy,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -236,6 +266,10 @@ describe('PDF-service och bekräftelsens organisationsgräns', () => {
       parser as never,
       ports() as never,
       freshness as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
     return { service, prisma, parser, freshness }
   }
@@ -260,9 +294,9 @@ describe('PDF-service och bekräftelsens organisationsgräns', () => {
   test('främmande/saknad PDF-import markerar ingen organisation', async () => {
     const f = fixture()
     f.prisma.bankStatementImport.findFirst.mockResolvedValue(null)
-    await expect(f.service.confirmImport('foreign-import', ORG, USER.sub)).rejects.toThrow(
-      'Importen hittades inte',
-    )
+    await expect(
+      f.service.confirmImport('foreign-import', ORG, USER.sub, 'konto-1'),
+    ).rejects.toThrow('Importen hittades inte')
     // Attrappen prövar inte SQL-scopet: denna separata assertion äger den frågan.
     expect(f.prisma.bankStatementImport.findFirst).toHaveBeenCalledWith({
       where: { id: 'foreign-import', organizationId: ORG },
@@ -276,7 +310,7 @@ describe('PDF-service och bekräftelsens organisationsgräns', () => {
       organizationId: ORG,
       status: 'FAILED',
     })
-    await expect(f.service.confirmImport('own-import', ORG, USER.sub)).rejects.toThrow(
+    await expect(f.service.confirmImport('own-import', ORG, USER.sub, 'konto-1')).rejects.toThrow(
       'status FAILED',
     )
     expect(f.freshness.recordImportStarted).toHaveBeenCalledWith(ORG)
@@ -471,9 +505,10 @@ describe('ytterligare tidiga valideringsgränser', () => {
     const { controller, reconciliation, statement } = uploads()
     const toBuffer = jest.fn()
     const request = { file: jest.fn().mockResolvedValue({ filename: 'bank.csv', toBuffer }) }
-    await expect(controller.importStatement(ORG, request as never, 'unknown-bank')).rejects.toThrow(
-      'Ogiltig bank',
-    )
+    // #F034c — signaturen bär numera målkontot FÖRE bankvalet.
+    await expect(
+      controller.importStatement(ORG, request as never, 'konto-1', 'unknown-bank'),
+    ).rejects.toThrow('Ogiltig bank')
     expect(reconciliation.recordImportStarted).toHaveBeenCalledWith(ORG)
     expect(toBuffer).not.toHaveBeenCalled()
     expectNoImport(reconciliation, statement)

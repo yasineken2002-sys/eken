@@ -32,6 +32,8 @@ type Läge = {
   status?: string
   signedAt?: Date | null
   finns?: boolean
+  /** Har raden en rättelseversion som pekar på den? Styr `delete`-spärren. */
+  harEfterfoljare?: boolean
 }
 
 const PLANERAT = new Date('2026-03-02T00:00:00.000Z')
@@ -65,6 +67,7 @@ function rigg(läge: Läge = {}) {
   const status = läge.status ?? 'COMPLETED'
   const signedAt = läge.signedAt ?? null
   const finns = läge.finns ?? true
+  const harEfterfoljare = läge.harEfterfoljare ?? false
 
   const anropsordning: string[] = []
 
@@ -76,8 +79,16 @@ function rigg(läge: Läge = {}) {
     inspection: {
       // Två läsningar med olika form: spärrens smala `select` och signeringens
       // `include: FULL_INCLUDE` (innehållet FÖRE anropets egna ändringar).
-      findFirst: jest.fn((args?: { include?: unknown }) => {
+      findFirst: jest.fn((args?: { include?: unknown; where?: { correctionOfId?: string } }) => {
         anropsordning.push('inspection.findFirst')
+        // EFTERFÖLJARFRÅGAN har egen form och eget svar. Den ställs av
+        // `delete` för att se om raden har en rättelseversion, och den
+        // frågar på `correctionOfId` — inte på `id`. Utan den här grenen
+        // hade stubben svarat "ja, det finns en efterföljare" på varje
+        // radering, och provet nedan hade mätt stubben i stället för koden.
+        if (args?.where?.correctionOfId !== undefined) {
+          return Promise.resolve(harEfterfoljare ? { id: 'insp-2', version: 2 } : null)
+        }
         if (!finns) return Promise.resolve(null)
         if (args?.include) return Promise.resolve(protokoll({ status, signedAt }))
         return Promise.resolve({ id: 'insp-1', status, signedAt })
@@ -116,7 +127,12 @@ function rigg(läge: Läge = {}) {
   }
   prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma))
 
-  const service = new InspectionsService(prisma as never, {} as never, {} as never)
+  const service = new InspectionsService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    { kontrolleraBilder: async () => [], sammanfatta: () => 'INGA_BILDER' } as never,
+  )
   return { service, prisma, anropsordning }
 }
 
@@ -348,6 +364,16 @@ describe('öppet protokoll — befintliga flöden bevaras', () => {
     const { service, prisma } = rigg({ status: 'IN_PROGRESS' })
     await service.delete('insp-1', 'org-1')
     expect(prisma.inspection.delete).toHaveBeenCalledTimes(1)
+  })
+
+  it('ett öppet protokoll som NÅGON HAR RÄTTAT går inte att radera', async () => {
+    // Fallet är inte hypotetiskt: originalet kan vara COMPLETED men osignerat,
+    // och då släpper `lockAndAssertUnsigned` igenom raderingen. Utan den här
+    // spärren hade rättelsen blivit en föräldralös version som pekar på en rad
+    // som inte finns — och kedjan hade tappat just det den ska bevara.
+    const { service, prisma } = rigg({ status: 'IN_PROGRESS', harEfterfoljare: true })
+    await expect(service.delete('insp-1', 'org-1')).rejects.toBeInstanceOf(ConflictException)
+    expect(prisma.inspection.delete).not.toHaveBeenCalled()
   })
 })
 

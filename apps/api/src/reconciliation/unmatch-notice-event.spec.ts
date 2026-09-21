@@ -15,9 +15,11 @@
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const TX_ID = 'tx-avi'
 
@@ -119,7 +121,10 @@ function makeService(
     {} as never,
     {} as never,
     { reverseJournalEntryForPayment } as never,
-    {} as never,
+    // G2-AVSLUT — femte argumentet är PaymentFreshnessService.
+    // `unmatchTransaction` tar numera det exklusiva organisationslåset
+    // FÖRST, så tjänsten ÄR använd i unmatch-vägen.
+    färskhetsdubbel() as never,
     // SKARP tjänst, inte en attrapp: det som ska bevisas är att aktörsetiketten
     // FAKTISKT denormaliseras, och en attrapp av `record` hade bevisat att
     // attrappen anropades.
@@ -133,6 +138,10 @@ function makeService(
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, tx, order }
 }

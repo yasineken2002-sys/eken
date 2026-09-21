@@ -146,6 +146,19 @@ export const DELETION_STEPS: readonly Step[] = [
   { model: 'ClosedAccountingPeriod', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankTransaction', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankStatementImport', restrictAgainst: 'Organization', where: byOrg },
+  // #F034b — importförsökets driftkvittens. FK:n är CASCADE (se schema.prisma
+  // för varför den skiljer sig från de två raderna ovan), så raderna skulle
+  // följa med ändå. Steget står ÄNDÅ uttryckligen, av samma skäl som
+  // `AiToolEffect` nedan: ordningen blir deterministisk, och den dag någon
+  // ändrar FK:n till Restrict är vägen redan rätt i stället för att bli röd i
+  // drift.
+  { model: 'BankImportAttempt', restrictAgainst: '— (Cascade mot Organization)', where: byOrg },
+  // #F034c — MÅLKONTOT, och det måste ligga EFTER bankraderna och
+  // importförsöken. `BankTransaction.bankAccountId` är Restrict mot kontot, så
+  // ett konto med bankrader under sig går inte att radera — raderna ovan tar
+  // dem först. Ordningen är alltså inte kosmetisk; byter man plats faller
+  // organisationsraderingen på en FK.
+  { model: 'BankAccount', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankConsent', restrictAgainst: 'Organization', where: byOrg },
   { model: 'AiUsageLog', restrictAgainst: 'Organization', where: byOrg },
   // FÖRE AiToolExecution: effekterna har en Cascade-FK dit, så de skulle följa

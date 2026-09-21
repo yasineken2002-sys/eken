@@ -53,6 +53,7 @@ function makeExecutor() {
     noop, // 23 signingService
     noop, // 24 accountingPeriods,
     noop,
+    {} as never, // #F034c bankAccounts (sist)
   )
   return { executor, manualMatch }
 }
