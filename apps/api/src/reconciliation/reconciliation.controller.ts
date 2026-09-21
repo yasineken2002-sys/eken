@@ -51,6 +51,25 @@ export class ReconciliationController {
   }
 
   /**
+   * GET /reconciliation/identity-review
+   *
+   * G2 — varför de automatiska kraven är pausade, och vilka rader som måste
+   * avgöras för att de ska släppas.
+   *
+   * SAMMA ROLLER SOM ÖVRIGA LÄSNINGAR här. Den som får se avstämningstabellen
+   * får se varför den stoppar kravtrappan; svaret bär inget som tabellen inte
+   * redan bär.
+   *
+   * EN LÄSNING. Att öppna sidan rör ingenting — varken pausen, färskheten eller
+   * raderna.
+   */
+  @Get('identity-review')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async identityReview(@OrgId() organizationId: string) {
+    return this.reconciliationService.identitetsgranskning(organizationId)
+  }
+
+  /**
    * POST /reconciliation/bank-accounts
    *
    * MANAGER+ som skrivningarna i övrigt: att lägga upp ett målkonto styr vart

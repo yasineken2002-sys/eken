@@ -3,6 +3,12 @@ import { Prisma, UserRole } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
 import { PRISMA_DEFAULT_TX_LIMITS, TransactionLimits } from '../common/prisma/transaction-limits'
+// G2 — VILLKORET, inte tjänsten. En ren konstant ur avstämningen; ingen
+// modulkant och därmed ingen cykel (se filens egen not).
+import {
+  OLOST_IDENTITETSGRANSKNING,
+  olostGranskningForOrg,
+} from '../reconciliation/identitetsgranskning'
 
 /**
  * Nivå 1 mäter registrerat första importförsök och det befintliga datumets ålder.
@@ -20,6 +26,34 @@ export class PaymentDataPausedError extends Error {
   constructor() {
     super('Automatiska krav är pausade: betalningsunderlaget behöver uppdateras.')
     this.name = 'PaymentDataPausedError'
+  }
+}
+
+/**
+ * G2 — automatiska krav pausade av en OLÖST IDENTITETSGRANSKNING.
+ *
+ * EGEN KLASS OCH INTE ETT SKÄL PÅ `PaymentDataPausedError`, därför att de två
+ * pauserna svarar på olika frågor och åtgärdas på olika sätt:
+ *
+ *   färskhet  → "vi vet inte om nyare betalningar finns"   → importera en fil
+ *   granskning→ "vi vet inte om EN viss betalning finns"   → avgör raden
+ *
+ * En operatör som får fel besked gör fel sak. Att slå ihop dem hade dessutom
+ * gjort det omöjligt för en anropare att skilja ett tillstånd som en import
+ * löser från ett som kräver ett mänskligt beslut om en enskild rad.
+ *
+ * `antal` bärs med så att HTTP-lagret kan säga hur många rader det gäller utan
+ * att fråga databasen en andra gång.
+ */
+export class IdentityReviewPausedError extends Error {
+  readonly code = 'GRANSKNING_PAGAR'
+  constructor(readonly antal: number) {
+    super(
+      `Automatiska krav är pausade: ${antal} importerad(e) betalning(ar) väntar på ` +
+        'identitetsgranskning. Avgör raderna i bankavstämningen — matcha dem mot rätt ' +
+        'underlag, eller lägg dem åt sidan — innan krav går vidare.',
+    )
+    this.name = 'IdentityReviewPausedError'
   }
 }
 
@@ -123,6 +157,108 @@ export class PaymentFreshnessService {
       select: ORG_FRESHNESS_SELECT,
     })
     if (this.evaluate(org, now).stale) throw new PaymentDataPausedError()
+
+    // ── G2: OLÖST IDENTITETSGRANSKNING PAUSAR OCKSÅ ─────────────────────
+    //
+    // EFTER färskhetskontrollen med flit. En organisation som är både ofärsk
+    // och har olösta rader ska få EXAKT samma svar som förut — den nya spärren
+    // får inte ändra vad en befintlig paus säger, bara lägga till ett fall som
+    // tidigare släpptes igenom.
+    await this.assertIngenOlostIdentitetsgranskning(tx, organizationId)
+  }
+
+  /**
+   * G2 — kravklockan stannar medan en importerad betalnings identitet är
+   * oavgjord.
+   *
+   * ── VARFÖR SPÄRREN BEHÖVS ───────────────────────────────────────────────
+   *
+   * #F034c lät importen lagra en betalning den inte kunde identifiera och
+   * aldrig matcha den. Beslutet var rätt, men det stannade vid matchningen:
+   * raden ger ingen allokering, avin förblir OVERDUE, och påminnelse, avgift,
+   * ränta och kravsteg fortsatte enligt schema — mot en hyresgäst som kan ha
+   * betalat. Före spärren i `matchTransaction` var det en fördröjning, eftersom
+   * nästa `autoMatchAll` kunde lösa raden. Efter den är enda utgången ett
+   * mänskligt beslut, så fönstret stänger sig inte längre självt.
+   *
+   * ── ORGANISATIONSNIVÅ, MED FLIT TRUBBIGT ────────────────────────────────
+   *
+   * Organisationen är känd för varje granskningsrad. Kopplingen till en viss
+   * avi är det som INTE går att veta — det är hela skälet att raden väntar. Att
+   * pausa "den avi raden kan höra till" skulle pausa antingen ingenting eller
+   * en gissning, och gissningen är precis vad granskningsutfallet vägrar.
+   *
+   * En enda oavgjord rad pausar därför hela organisationens automatiska krav.
+   * Det är den säkra riktningen: kostnaden är en fördröjd påminnelse, priset
+   * för motsatsen är ett krav mot någon som redan betalat.
+   *
+   * ── SAMTIDIGHET ─────────────────────────────────────────────────────────
+   *
+   * Körs inne i effektens transaktion, efter det delade rådgivande låset och
+   * under `read committed`. Garantin: varje granskningsrad som är COMMITAD före
+   * räkningens statement stoppar effekten. En rad som commitas efteråt stoppar
+   * den inte, och ska inte göra det — effekten inträffade före raden.
+   *
+   * Upplösningsriktningen är fail-safe: en för gammal läsning kan bara göra
+   * pausen för lång, aldrig för kort.
+   *
+   * ── INGEN FÖRFALSKAD FÄRSKHET ───────────────────────────────────────────
+   *
+   * `paymentDataThrough` rörs inte. Att backa färskhetsdatumet hade gett samma
+   * paus med fel orsak, och sedan ljugit för nästa läsare om vad som var känt.
+   */
+  async assertIngenOlostIdentitetsgranskning(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+  ): Promise<void> {
+    if ('$transaction' in tx) throw new Error('PAYMENT_EFFECT_REQUIRES_TRANSACTION')
+    // Samma delade lås som färskheten. Att ta det två gånger i samma
+    // transaktion är gratis (rådgivande lås är reentranta per transaktion), och
+    // metoden måste kunna stå ensam: fakturavägen anropar den UTAN
+    // `assertAutomaticEffectAllowed`, eftersom den vägen aldrig har haft någon
+    // färskhetsgrind och inte ska få en nu.
+    await this.lockOrganization(tx, organizationId, true)
+    const antal = await tx.bankTransaction.count({
+      where: olostGranskningForOrg(organizationId),
+    })
+    if (antal > 0) throw new IdentityReviewPausedError(antal)
+  }
+
+  /**
+   * Samma fråga utan transaktion — för operatörens vy och för cronens
+   * förhandsgallring.
+   *
+   * LARMAR INTE och SPÄRRAR INTE. Skilt från assert-varianten av samma skäl som
+   * `evaluateForOrg` är skilt från `evaluateAndAlert`: att titta på en sida ska
+   * inte kunna utlösa något.
+   */
+  async raknaOlostIdentitetsgranskning(organizationId: string): Promise<number> {
+    return this.prisma.bankTransaction.count({
+      where: olostGranskningForOrg(organizationId),
+    })
+  }
+
+  /**
+   * Vilka organisationer i en mängd som är pausade av olöst granskning.
+   *
+   * EN fråga för hela mängden, inte en per organisation. Fakturacronen går över
+   * alla organisationers förfallna fakturor i en loop, och ett uppslag per
+   * faktura hade varit N frågor för ett svar som är detsamma för alla fakturor
+   * i samma organisation.
+   *
+   * DEN HÄR ÄR EN GALLRING, INTE GARANTIN. Svaret läses före loopen och kan
+   * hinna bli gammalt medan loopen går — åt båda håll. Garantin bärs av
+   * `assertIngenOlostIdentitetsgranskning` inne i varje effekts egen
+   * transaktion.
+   */
+  async pausadeAvGranskning(organizationIds: string[]): Promise<Set<string>> {
+    if (organizationIds.length === 0) return new Set()
+    const rader = await this.prisma.bankTransaction.groupBy({
+      by: ['organizationId'],
+      where: { organizationId: { in: organizationIds }, ...OLOST_IDENTITETSGRANSKNING },
+      _count: { _all: true },
+    })
+    return new Set(rader.map((r) => r.organizationId))
   }
 
   private async lockOrganization(

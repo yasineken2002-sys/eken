@@ -711,9 +711,20 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
     // egen rigg, så ingen framtida ändring kunde nå den. En läsare hade kunnat
     // ta räkningen för en täckning den inte gav.
     //
-    // VARFÖR DEN ÄNDÅ SKA STÅ HÄR. `collectionStage: 'NONE'` ovan är
-    // HYRESAVINS pausbegrepp, och det är den stege riggen går igenom.
-    // `remindersPaused` är FAKTURASTEGENS, och fakturastegen är just där
+    // VARFÖR DEN ÄNDÅ SKA STÅ HÄR.
+    //
+    // RÄTTELSE: `collectionStage: 'NONE'` ovan är INTE ett pausbegrepp, vilket
+    // den här noten först påstod. `NONE` är kravtrappans INGÅNGSLÄGE —
+    // `rent-reminder.service.ts` väljer kandidater PÅ `collectionStage: 'NONE'`,
+    // alltså är det motsatsen till en paus. Assertionen ovan mäter därför att
+    // avin står kvar i trappans ingång, inte att någon pausat den. Den mätningen
+    // är fortfarande rätt; beskrivningen av den var fel.
+    //
+    // Hyresavin har över huvud taget inget eget pausfält. Dess kravklocka
+    // stannas av att avin lämnar urvalet (`status`, `collectionStage`,
+    // `isBackfill`) eller av den centrala effektspärren.
+    //
+    // `remindersPaused` är FAKTURANS pausfält, och fakturasidan är just där
     // terminal 1:s "väg 1" skulle införas om ägaren beslutar att en oavgjord
     // identitet ska hålla kravklockan. Räkningen är alltså en livrem för en
     // ANNAN väg än den som prövas — och en livrem som inte sitter fast i något

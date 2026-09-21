@@ -33,6 +33,7 @@ import {
   useImportStatement,
   useImportPdfStatement,
   useBankAccounts,
+  useIdentityReview,
   useManualMatch,
   useIgnoreTransaction,
   useUnmatchTransaction,
@@ -781,6 +782,10 @@ const item = {
 }
 
 export function ReconciliationPage() {
+  // G2 — kravpausens läge. Egen fråga och inte härledd ur transaktionslistan:
+  // listan är filtrerad och sidindelad, och en paus får inte försvinna för att
+  // operatören råkar stå på fliken "Matchade".
+  const granskning = useIdentityReview()
   const [tab, setTab] = useState<TabId>('ALL')
   const [importOpen, setImportOpen] = useState(false)
   const [pdfDraft, setPdfDraft] = useState<PdfImportDraft | null>(null)
@@ -925,6 +930,53 @@ export function ReconciliationPage() {
           />
         </motion.div>
       </motion.div>
+
+      {/* ── G2: KRAVPAUSEN SYNS ──────────────────────────────────────────
+          Kravtrappan slutar röra sig när en importerad betalnings identitet är
+          oavgjord. Utan den här rutan säger ingenting varför — påminnelser
+          uteblir, avgifter uteblir, och operatören upptäcker det när någon
+          ringer. Det är exakt den tystnad spärren finns för att ersätta med ett
+          besked.
+
+          ORSAKEN KOMMER FRÅN SERVERN och renderas som den är. Att formulera om
+          den här hade gett två versioner av samma besked — en i 409-svaret från
+          "skicka krav nu", en här — och den som är fel är den ingen jämför. */}
+      {granskning.data?.pausad && (
+        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-semibold text-amber-900">
+                Automatiska krav är pausade
+              </p>
+              <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
+                {granskning.data.orsak}
+              </p>
+              {granskning.data.rader.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {granskning.data.rader.map((r) => (
+                    <li key={r.id} className="text-[12.5px] text-amber-900">
+                      <span className="font-mono">{formatDate(r.date)}</span>
+                      {' · '}
+                      <span className="font-semibold">{formatCurrency(r.amount)}</span>
+                      {' · '}
+                      {r.description}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {/* Talet och listan kan skilja sig: listan har ett tak, antalet
+                  har det inte. Att tiga om skillnaden hade fått operatören att
+                  tro att hon sett allt. */}
+              {granskning.data.antal > granskning.data.rader.length && (
+                <p className="mt-2 text-[12px] text-amber-700">
+                  Visar {granskning.data.rader.length} av {granskning.data.antal} rader.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <BankConnectionCard />
 

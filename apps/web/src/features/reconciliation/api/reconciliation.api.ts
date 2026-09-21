@@ -259,6 +259,25 @@ export function getBankAccounts(): Promise<Bankkonto[]> {
 }
 
 /**
+ * G2 — varför de automatiska kraven är pausade, och vilka rader som måste
+ * avgöras för att de ska släppas.
+ *
+ * `orsak` är serverns text och renderas som den är. Att formulera om den i
+ * klienten hade gett två versioner av samma besked — en i 409-svaret från
+ * knappen "skicka krav nu", en här — och den som är fel är den ingen jämför.
+ */
+export interface Granskningsläge {
+  pausad: boolean
+  antal: number
+  orsak: string | null
+  rader: BankTransaction[]
+}
+
+export function getIdentityReview(): Promise<Granskningsläge> {
+  return get<Granskningsläge>('/reconciliation/identity-review')
+}
+
+/**
  * Nyttolastens typ kommer från `@eken/shared` (`CreateBankAccountSchema`), inte
  * från ett objektlitteral här — `check-request-contract.mjs` kräver det, och
  * skälet är att webben och API:t annars kan drifta isär i tysthet.
