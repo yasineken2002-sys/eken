@@ -895,6 +895,7 @@ model Organization {
   journalEntries            JournalEntry[]
   bankTransactions          BankTransaction[]
   bankStatementImports      BankStatementImport[]
+  bankImportAttempts        BankImportAttempt[]
   bankConsents              BankConsent[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -2603,12 +2604,125 @@ model BankTransaction {
   // efter migrationens brytpunkt görs synligt.
   actorKind ActorKind?
 
+  // ── FILIMPORTENS RADIDENTITET (#F034b) ────────────────────────────────────
+  //
+  // `identityKey` = SHA-256 över EXAKT de fält filvägens fält-dedup redan
+  // frågar efter (se `bank-import-identity.ts`). Inget nytt fält, ingen ny
+  // regel — bara samma fråga i en form ett unikt DB-index kan bära.
+  //
+  // `identitySeq` = radens FÖREKOMSTNUMMER inom den fil som skapade den,
+  // 0-baserat. Det är ledet som gör att två VERKLIGT skilda betalningar som är
+  // lika i varje fält filen bär kan lagras båda: de får 0 och 1. Ett unikt
+  // villkor på bara datum, belopp och text hade slagit ihop dem.
+  //
+  // ── VARFÖR NOT NULL MED SENTINEL OCH PARTIELLT INDEX ──────────────────────
+  //
+  // CLAUDE.md § "Ett unikt villkor över en NULLBAR kolumn skyddar inte raderna
+  // utan värde": två NULL är DISTINKTA i ett unikt index. Kolumnen är därför
+  // NOT NULL med sentinel `''`.
+  //
+  // Men sentinelen kolliderar med SIG SJÄLV, och alla befintliga rader får
+  // `''` i migrationen — ett totalt unikt index hade därför varit omöjligt att
+  // skapa. Indexet är alltså PARTIELLT (`WHERE "identityKey" <> ''`) och
+  // lever bara i migrations-SQL; `check-critical-indexes.mjs` bär invarianten
+  // så en framtida `prisma migrate dev` inte kan DROP:a det tyst.
+  //
+  // INGEN BACKFILL. Historiska rader behåller `''` och faller utanför
+  // predikatet. De skyddas fortfarande av fält-dedupens LÄSNING, som är kvar
+  // som första lager just för dem. Att stämpla dem i efterhand hade varit
+  // historikläkning.
+  //
+  // API-VÄGEN (`ingestFromApi`) SÄTTER INTE HELLER FÄLTEN. Dess identitet är
+  // bankens `externalId` (@@unique nedan) plus `dedupKey` för cross-source.
+  // Sentinelen betyder där "täcks inte av filidentitetens index", vilket är
+  // sant och inte ett förbiseende.
+  identityKey String @default("")
+  identitySeq Int    @default(0)
+
   @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([status])
   @@index([invoiceId])
   @@index([matchedRentNoticeId])
   @@index([organizationId, dedupKey])
+  @@index([organizationId, identityKey])
+}
+
+// ─── Bankimportens FÖRSÖKSRAD (#F034b) ────────────────────────────────────────
+//
+// Filnivåns idempotens. En rad per AVTRYCK (se `bank-import-identity.ts`):
+// organisation + filväg + filens råa bytes + mappning/bekräftat underlag.
+//
+// ── VARFÖR EN DB-RAD OCH INTE ETT PROCESSLOKALT LÅS ──────────────────────────
+//
+// Ett `Map` eller en mutex i processen syns inte för en ANDRA appinstans. Den
+// unika nyckeln nedan gör Postgres till skiljedomare: `create` och fånga P2002.
+// Vinnaren är den som fick skriva raden, och det gäller över instansgränsen.
+//
+// ── ARRENDE, INTE LÅS ────────────────────────────────────────────────────────
+//
+// `heartbeatAt` pulsas under körningen. En RUNNING-rad vars puls är äldre än
+// `IMPORT_LEASE_TTL_MS` har tappat sitt arrende och får ÖVERTAS av ett
+// återförsök (villkorad `updateMany` på det gamla `heartbeatAt` — exakt en
+// vinner). Utan det hade en dödad process lämnat importen permanent upptagen,
+// vilket är precis det krav 3 förbjuder.
+//
+// ── `PARTIAL` ÄR INTE `SUCCEEDED` ────────────────────────────────────────────
+//
+// En körning som slutfördes men lämnade radfel, eller som inte kunde läsa hela
+// filen (F19-spärren `fileReadComplete`), får `PARTIAL`. Bara `SUCCEEDED`
+// spelas upp igen. Ett partiellt utfall MÅSTE gå att göra om — annars hade ett
+// halvt resultat cementerats som ett klart.
+enum BankImportAttemptStatus {
+  RUNNING // pågår, arrendet giltigt så länge heartbeatAt är färskt
+  SUCCEEDED // klar UTAN radfel — enda läget som spelas upp igen
+  PARTIAL // klar MED radfel / ofullständigt läst fil — får köras om
+  FAILED // kastade — får köras om
+}
+
+model BankImportAttempt {
+  id             String @id @default(uuid())
+  organizationId String
+
+  /// SHA-256 (hex) över organisation ‖ mål ‖ kind ‖ contentHash ‖ mappingHash.
+  /// Härleds av `beräknaImportavtryck`; lagras för att `@@unique` ska kunna
+  /// bära den.
+  fingerprint String
+  /// CSV | XLSX | XLS | BGMAX | PDF_CONFIRM
+  kind        String
+  fileName    String
+  /// SHA-256 över filens RÅA bytes (PDF: över draftens id — det är
+  /// bekräftelsen som skriver bankrader, inte uppladdningen).
+  contentHash String
+  /// SHA-256 över det som styr HUR innehållet blir bankrader: `?bank=` för
+  /// CSV/XLSX/XLS, det kanoniserade bekräftade underlaget för PDF. Ledet är
+  /// det som gör att samma fil med ÄNDRAD mappning inte tyst får ett gammalt
+  /// lyckat svar.
+  mappingHash String
+
+  status  BankImportAttemptStatus @default(RUNNING)
+  /// Räknare över hur många gånger avtrycket har körts (övertaganden ingår).
+  /// Ett tal som växer är signalen att någon försöker om och om igen.
+  attempt Int                     @default(1)
+
+  startedAt   DateTime  @default(now())
+  /// Arrendets puls. Uppdateras under körningen; styr övertagande.
+  heartbeatAt DateTime  @default(now())
+  finishedAt  DateTime?
+
+  /// Det resultat som returneras vid en upprepning av ett SUCCEEDED-avtryck.
+  /// Lagras EN gång när körningen lyckas. Inte räkenskapsinformation — det är
+  /// en kvittens på ett importförsök, och bankraderna är underlaget.
+  resultJson   Json?
+  errorMessage String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, fingerprint])
+  @@index([organizationId, status])
 }
 
 // ─── Bank Statement Import (AI-tolkat kontoutdrag i PDF) ──────────────────────
@@ -2671,6 +2785,25 @@ model BankStatementImport {
 enum BankStatementImportStatus {
   PARSING // Skickad till AI, väntar (transient — sync-flödet hoppar normalt över denna)
   PARSED // AI gav giltig JSON, väntar på användarens granskning
+  // #F034b — bekräftelsen HAR TAGIT draften men skriver fortfarande bankrader.
+  //
+  // Eget värde och inte återanvänt `PARSING`. De två svarar på OLIKA frågor:
+  // `PARSING` betyder "AI:n läser filen", `CONFIRMING` betyder "commiten
+  // pågår". Att låna det ena för det andra hade gjort ett AI-fel oskiljbart
+  // från ett avbrutet commit — och det är just den sortens sammanblandning
+  // CLAUDE.md § "Återanvänd inte ett fält som svarar på en ANNAN fråga" handlar
+  // om.
+  //
+  // VARFÖR LÄGET BEHÖVS: övergången PARSED → CONFIRMING görs med en
+  // status-guardad `updateMany`, vars `count` är anspråket. Utan den kunde TVÅ
+  // bekräftelser av samma draft med OLIKA redigerade listor (alltså två olika
+  // avtryck, som filnivåskyddet med rätta släpper igenom båda) båda skriva
+  // bankrader från samma underlag.
+  //
+  // Ett avbrutet commit lämnar draften i CONFIRMING. Den släpps tillbaka till
+  // PARSED av återförsöket när importförsökets arrende har fallit — se
+  // `confirmImport`.
+  CONFIRMING
   CONFIRMED // Användaren har bekräftat — BankTransaction-rader skapade
   FAILED // Tolkning misslyckades (AI-fel / ogiltig JSON)
   CANCELLED // Användaren avbröt granskningen

@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
 } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -16,7 +17,9 @@ import {
   type ParsedBankStatement,
   type ParsedTransaction,
 } from './pdf-statement-parser.service'
-import { ReconciliationService } from './reconciliation.service'
+import { ReconciliationService, type ImportAttemptInfo } from './reconciliation.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
+import { Förekomsträknare, hashaBytes, radIdentitetFil } from './bank-import-identity'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import {
   validateUploadedFile,
@@ -31,6 +34,8 @@ export interface ImportCommitResult {
   duplicates: number
   autoMatched: number
   unmatched: number
+  /** #F034b — se `ImportAttemptInfo` i reconciliation.service.ts. */
+  forsok?: ImportAttemptInfo
 }
 
 /**
@@ -67,6 +72,9 @@ export class BankStatementImportService {
     // PR 4 (B) — en bekräftad PDF-import flyttar fram paymentDataThrough till
     // utdragets periodslut (eller senaste transaktionsdatum om periodslut saknas).
     private readonly freshness: PaymentFreshnessService,
+    // #F034b — samma filnivåskydd som CSV/BgMax. Se noten på `confirmImport`
+    // för vad som är avtryckets innehåll i den HÄR vägen.
+    private readonly attempts: BankImportAttemptService,
   ) {}
 
   // ── Steg 1: ladda upp PDF, parse, spara som DRAFT (PARSED) ────────────
@@ -202,10 +210,29 @@ export class BankStatementImportService {
     })
     if (!draft) throw new NotFoundException('Importen hittades inte')
     await this.freshness.recordImportStarted(organizationId)
-    if (draft.status === 'CONFIRMED') {
-      throw new BadRequestException('Importen är redan bekräftad och kan inte bekräftas igen.')
-    }
-    if (draft.status !== 'PARSED') {
+    // ── VARFÖR `CONFIRMED` INTE AVVISAS HÄR (#F034b) ───────────────────────
+    //
+    // Basen kastade "redan bekräftad" direkt på en CONFIRMED draft. Det svaret
+    // är rätt för en bekräftelse med ett NYTT underlag — men fel för en
+    // UPPREPNING av exakt samma bekräftelse, som kan uppstå av ett omtryck, ett
+    // nätverksavbrott eller en klient som skickar om. Där ska operatören få se
+    // vad som faktiskt hände, inte ett felmeddelande om sitt eget lyckade
+    // arbete.
+    //
+    // Frågan kan därför bara avgöras EFTER att avtrycket är räknat, och den
+    // avgörs på två ställen med två olika svar:
+    //
+    //   samma avtryck  → `körEnGång` spelar upp den lagrade kvittensen
+    //   annat avtryck  → körningen startar, draft-anspråket nedan nekar, och
+    //                    DÄR kastas "redan bekräftad"
+    //
+    // CANCELLED, FAILED och PARSING avvisas fortfarande direkt: för dem finns
+    // ingen lyckad körning att spela upp och ingen väg framåt.
+    if (
+      draft.status !== 'PARSED' &&
+      draft.status !== 'CONFIRMING' &&
+      draft.status !== 'CONFIRMED'
+    ) {
       throw new BadRequestException(
         `Importen är i status ${draft.status} och kan inte bekräftas — bara PARSED-importer.`,
       )
@@ -216,6 +243,149 @@ export class BankStatementImportService {
       ? this.sanitizeEdited(edited, maxTxAmount)
       : this.extractFromDraft(draft.parsedData, maxTxAmount)
 
+    // ── FILNIVÅNS AVTRYCK (#F034b) ─────────────────────────────────────────
+    //
+    // `contentHash` är draftens id, INTE PDF:ens bytes. Det är BEKRÄFTELSEN som
+    // skriver bankrader; uppladdningen skapar bara ett utkast. Laddas samma PDF
+    // upp två gånger får den två draft-id:n och alltså två avtryck — det är en
+    // ärvd egenskap av att AI-tolkningen är icke-deterministisk, inte något det
+    // här skyddet kan eller ska dölja.
+    //
+    // `mappingHash` är det KANONISERADE BEKRÄFTADE UNDERLAGET, efter
+    // `sanitizeEdited`. Det är exakt den lista operatören godkände. Ändras
+    // listan ändras avtrycket, och bekräftelsen körs om i stället för att tyst
+    // få det gamla lyckade svaret (krav 6).
+    const kvittens = await this.attempts.körEnGång<ImportCommitResult>(
+      {
+        organizationId,
+        kind: 'PDF_CONFIRM',
+        fileName: draft.fileName,
+        contentHash: hashaBytes(Buffer.from(draft.id, 'utf8')),
+        mappingHash: hashaBytes(
+          Buffer.from(
+            JSON.stringify(
+              finalTx.map((t) => [t.date, t.description, t.ocr ?? '', t.amount, t.isIncoming]),
+            ),
+            'utf8',
+          ),
+        ),
+      },
+      ({ övertagande }) => this.körPdfConfirm(draft, organizationId, userId, finalTx, övertagande),
+    )
+    return {
+      ...kvittens.resultat,
+      forsok: {
+        status: kvittens.status === 'PARTIAL' ? 'DELVIS' : 'KLAR',
+        replayed: kvittens.replayed,
+        forsokNr: kvittens.försöksnummer,
+        kordesAt: kvittens.kördesAt.toISOString(),
+      },
+    }
+  }
+
+  /**
+   * Commiten. Körs av `attempts.körEnGång` — högst en gång per avtryck.
+   *
+   * ── ANSPRÅKET PÅ DRAFTEN, OCH VARFÖR DET INTE RÄCKER MED AVTRYCKET ───────
+   *
+   * Avtrycket bär den bekräftade LISTAN. Två bekräftelser av samma draft med
+   * OLIKA listor är därför två olika avtryck, och filnivåskyddet släpper med
+   * rätta igenom båda — de är inte samma import. Utan ett anspråk på själva
+   * DRAFTEN hade de två då kunnat skriva bankrader från samma underlag
+   * samtidigt.
+   *
+   * Anspråket är en status-guardad `updateMany` PARSED → CONFIRMING. Dess
+   * `count` är svaret: exakt en kan ta en draft som står i PARSED.
+   */
+  private async körPdfConfirm(
+    draft: {
+      id: string
+      fileName: string
+      periodEnd: Date | null
+      status: BankStatementImportStatus
+    },
+    organizationId: string,
+    userId: string | null,
+    finalTx: ParsedTransaction[],
+    övertagande: boolean,
+  ): Promise<{ resultat: ImportCommitResult; partiellt: boolean }> {
+    const id = draft.id
+    const anspråk = await this.prisma.bankStatementImport.updateMany({
+      where: { id, organizationId, status: 'PARSED' },
+      data: { status: 'CONFIRMING' },
+    })
+    if (anspråk.count !== 1) {
+      const nu = await this.prisma.bankStatementImport.findFirst({
+        where: { id, organizationId },
+        select: { status: true },
+      })
+      if (nu?.status === 'CONFIRMED') {
+        // Draften är färdigbekräftad, och det här avtrycket är ett ANNAT
+        // underlag än det som bekräftades (samma underlag hade spelats upp av
+        // `körEnGång` och aldrig nått hit). Ett nytt underlag mot en redan
+        // bekräftad import är inte en upprepning — det är en andra bokföring.
+        throw new BadRequestException('Importen är redan bekräftad och kan inte bekräftas igen.')
+      }
+      if (nu?.status !== 'CONFIRMING') {
+        throw new BadRequestException(
+          `Importen är i status ${nu?.status ?? 'okänd'} och kan inte bekräftas — bara PARSED-importer.`,
+        )
+      }
+      // ── CONFIRMING: TVÅ HELT OLIKA SITUATIONER MED SAMMA UTSEENDE ───────
+      //
+      // (a) VI återupptar vår EGEN avbrutna commit. Arrendet på importförsöket
+      //     hade fallit, vi tog över det, och draften står kvar där processen
+      //     dog. Att neka här hade låst draften för alltid.
+      //
+      // (b) NÅGON ANNAN bekräftar just nu, med ett ANNAT underlag. Två olika
+      //     listor ger två olika avtryck, så filnivåskyddet släpper med rätta
+      //     igenom båda — och utan den här grenen hade båda skrivit bankrader
+      //     från samma draft. Det är en andra bokföring, inte en upprepning.
+      //
+      // `övertagande` är det enda som skiljer dem åt, och det kommer från
+      // importförsökets rad: bara ett övertagande av ett FALLET arrende får
+      // plocka upp en CONFIRMING-draft.
+      if (!övertagande) {
+        throw new ConflictException({
+          code: 'BEKRAFTELSE_PAGAR',
+          message:
+            'Importen bekräftas redan just nu av ett annat försök. ' +
+            'Vänta tills det är klart — inga rader har skapats av det här försöket.',
+        })
+      }
+    }
+
+    // ── SLÄPP DRAFTEN OM KÖRNINGEN KASTAR ──────────────────────────────────
+    //
+    // Utan det här hade varje avbrutet commit lämnat draften i `CONFIRMING`,
+    // och nästa försök hade fått vänta ut importförsökets hela arrende (15 min)
+    // innan det ens fick plocka upp den. Ett fel som går att rätta direkt ska
+    // inte kosta ett arrende.
+    //
+    // Släppet är status-GUARDAT på `CONFIRMING`: har någon annan hunnit ta
+    // draften vidare rör vi den inte. Och det får aldrig maskera det
+    // ursprungliga felet — därför `.catch(() => undefined)` och `throw err`.
+    try {
+      return await this.skrivPdfCommit(draft, organizationId, userId, finalTx)
+    } catch (err) {
+      await this.prisma.bankStatementImport
+        .updateMany({
+          where: { id, organizationId, status: 'CONFIRMING' },
+          data: { status: 'PARSED' },
+        })
+        .catch(() => undefined)
+      throw err
+    }
+  }
+
+  /** Själva commiten. Anropas först när draft-anspråket är taget. */
+  private async skrivPdfCommit(
+    draft: { id: string; fileName: string; periodEnd: Date | null },
+    organizationId: string,
+    userId: string | null,
+    finalTx: ParsedTransaction[],
+  ): Promise<{ resultat: ImportCommitResult; partiellt: boolean }> {
+    const id = draft.id
     // Endast inbetalningar (positiva belopp) ska skapa BankTransactions —
     // samma som CSV/BgMax-flödena. Uttag/avgifter visas i preview men
     // commitas inte (de matchas inte mot fakturor/avier).
@@ -225,6 +395,13 @@ export class BankStatementImportService {
     let duplicates = 0
     let autoMatched = 0
     let unmatched = 0
+    // #F034b — matchfel räknas separat från `unmatched`. `unmatched` är ett
+    // FÖRVÄNTAT utfall (väntar på manuell matchning); ett matchfel är ett fel.
+    // Slås de ihop kan ett driftfel inte skilja ut sig, och körningen hade
+    // rapporterats som KLAR.
+    let matchFel = 0
+    // #F034b — förekomstnummer per radidentitet INOM DEN HÄR bekräftade listan.
+    const förekomster = new Förekomsträknare()
 
     for (const t of incoming) {
       const amountDecimal = new Decimal(t.amount.toFixed(2))
@@ -267,6 +444,18 @@ export class BankStatementImportService {
       // icke-deterministisk (`schema.prisma` vid `originalParsedData`). Laddas
       // samma PDF upp igen och AI:n läser ett annat OCR blir det en ny rad — men
       // det gällde redan `description`, som låg i nyckeln före den här ändringen.
+      // #F034b — samma fält som `dedup` nedan, i den form det partiella unika
+      // indexet kan bära. SAMMA NAMNRYMD som CSV-vägen med flit: de två vägarna
+      // dedupar redan mot varandra i dag (identisk fältuppsättning mot samma
+      // tabell), och att namnrymda på filväg hade tagit bort det skyddet ur
+      // indexet.
+      const identityKey = radIdentitetFil({
+        date,
+        description: t.description,
+        amount: amountDecimal,
+        reference: t.ocr || null,
+      })
+
       const outcome = await this.reconciliation.ingestFromFile(organizationId, {
         dedup: {
           date,
@@ -274,6 +463,7 @@ export class BankStatementImportService {
           amount: amountDecimal,
           reference: t.ocr || null,
         },
+        identity: { key: identityKey, seq: förekomster.nästa(identityKey) },
         data: {
           date,
           description: t.description,
@@ -295,6 +485,7 @@ export class BankStatementImportService {
         this.logger.error(
           `matchTransaction failed för tx=${outcome.transactionId}: ${outcome.matchError.message}`,
         )
+        matchFel++
         unmatched++
       } else if (outcome.matched) {
         autoMatched++
@@ -339,7 +530,13 @@ export class BankStatementImportService {
       }
     }
 
-    return { importId: id, created, duplicates, autoMatched, unmatched }
+    // PARTIELLT när matchningen kastade för minst en rad. Raden ÄR lagrad och
+    // ligger som UNMATCHED — policyn är oförändrad — men körningen lämnade ett
+    // fel efter sig och får därför inte spelas upp som ett klart resultat.
+    return {
+      resultat: { importId: id, created, duplicates, autoMatched, unmatched },
+      partiellt: matchFel > 0,
+    }
   }
 
   async cancelImport(id: string, organizationId: string): Promise<void> {
@@ -350,10 +547,34 @@ export class BankStatementImportService {
     if (draft.status === 'CONFIRMED') {
       throw new ForbiddenException('En bekräftad import kan inte avbrytas.')
     }
-    await this.prisma.bankStatementImport.update({
-      where: { id },
+    // #F034b — CONFIRMING är ett NYTT läge, och utan den här raden hade det
+    // öppnat en lucka som inte fanns på basen: en avbrytning mitt i en pågående
+    // commit hade satt CANCELLED, commiten hade sedan skrivit CONFIRMED över
+    // den, och bankraderna hade legat under en import operatören tror är
+    // avbruten. Avbrytningen är inte förbjuden — den är för TIDIG.
+    if (draft.status === 'CONFIRMING') {
+      throw new ConflictException({
+        code: 'BEKRAFTELSE_PAGAR',
+        message:
+          'Importen bekräftas just nu och kan inte avbrytas mitt i. ' +
+          'Vänta tills bekräftelsen är klar.',
+      })
+    }
+    // Status-GUARDAT: avbrytningen får bara träffa den draft vi faktiskt läste.
+    // Hann en bekräftelse ta den mellan läsningen och skrivningen ska vi inte
+    // skriva över dess läge — `count: 0` betyder att någon annan hann före.
+    const avbruten = await this.prisma.bankStatementImport.updateMany({
+      where: { id, organizationId, status: draft.status },
       data: { status: 'CANCELLED' },
     })
+    if (avbruten.count !== 1) {
+      throw new ConflictException({
+        code: 'BEKRAFTELSE_PAGAR',
+        message:
+          'Importens läge ändrades precis av ett annat försök och den kunde inte avbrytas. ' +
+          'Ladda om och försök igen.',
+      })
+    }
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────

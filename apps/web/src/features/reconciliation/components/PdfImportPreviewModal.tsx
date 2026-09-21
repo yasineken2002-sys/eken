@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { ParsedTransaction, PdfImportDraft } from '../api/reconciliation.api'
+import { tolkaImportPagar } from '../api/reconciliation.api'
 import { useConfirmPdfImport, useCancelPdfImport } from '../hooks/useReconciliation'
 
 interface Props {
@@ -33,6 +34,8 @@ function buildRows(transactions: ParsedTransaction[]): EditableRow[] {
 export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
   const [rows, setRows] = useState<EditableRow[]>(() => buildRows(draft.parsed.transactions))
   const confirmMut = useConfirmPdfImport()
+  // #F034b — 409 IMPORT_PAGAR skiljs från övriga fel. Se noten vid felrutan.
+  const pagar = tolkaImportPagar(confirmMut.error)
   const cancelMut = useCancelPdfImport()
 
   const incomingActive = useMemo(() => rows.filter((r) => !r._removed && r.amount > 0), [rows])
@@ -213,7 +216,16 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
         <span>Belopp- och OCR-fältet kan redigeras direkt — klicka på cellen</span>
       </div>
 
-      {confirmMut.isError && (
+      {/* #F034b — "bekräftelsen pågår redan" är inte ett fel som ska lösas
+          genom att trycka igen. Trycker operatören igen på ett faktiskt fel är
+          det rätt; gör hen det på ett pågående commit väntar hen i onödan på
+          ett andra svar som aldrig kommer. De två måste därför säga olika sak. */}
+      {pagar && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
+          {pagar.message}
+        </p>
+      )}
+      {confirmMut.isError && !pagar && (
         <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
           Bekräftelse misslyckades. Försök igen.
         </p>

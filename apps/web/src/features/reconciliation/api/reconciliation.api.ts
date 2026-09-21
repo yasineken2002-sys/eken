@@ -2,6 +2,7 @@ import { api, del, get, patch, post } from '@/lib/api'
 import type {
   BankTransaction,
   ConfirmImportInput,
+  ImportAttemptInfo,
   ImportResult,
   ManualMatchInput,
   ReconciliationStats,
@@ -41,7 +42,9 @@ export interface ParsedBankStatement {
 
 export interface PdfImportDraft {
   id: string
-  status: 'PARSING' | 'PARSED' | 'CONFIRMED' | 'FAILED' | 'CANCELLED'
+  // CONFIRMING (#F034b) = commiten har TAGIT draften och skriver bankrader.
+  // Eget läge och inte återanvänt PARSING — se enumet i schema.prisma.
+  status: 'PARSING' | 'PARSED' | 'CONFIRMING' | 'CONFIRMED' | 'FAILED' | 'CANCELLED'
   parsed: ParsedBankStatement
 }
 
@@ -51,6 +54,91 @@ export interface ImportCommitResult {
   duplicates: number
   autoMatched: number
   unmatched: number
+  forsok?: ImportAttemptInfo
+}
+
+// ─── #F034b: importförsökets utfall, tolkat för UI ──────────────────────────
+
+/**
+ * Backends 409-kropp när samma fil redan importeras. Skickas som ett OBJEKT
+ * (inte bara en sträng) därför att UI:t ska kunna visa NÄR den pågående
+ * körningen startade — ett "importen pågår" utan klockslag går inte att skilja
+ * från en hängning.
+ */
+export interface ImportPagarSvar {
+  code: 'IMPORT_PAGAR'
+  message: string
+  startadAt: string
+  forsokNr: number
+}
+
+/**
+ * Tolkar ett fångat fel som "samma fil importeras redan".
+ *
+ * REN FUNKTION MED FLIT: webs vitest kör med `environment: 'node'` och
+ * renderar ingenting (apps/web/vitest.config.ts). Ett prov på att rätt
+ * meddelande visas måste därför ställas mot en ren funktion, inte mot DOM.
+ *
+ * OKÄNT FEL BLIR `null`, INTE ett påstående. Ett nätverksavbrott och ett
+ * pågående importförsök är olika saker, och att tolka allt 409-liknande som
+ * det senare hade gjort ett driftfel till en lugnande text.
+ */
+export function tolkaImportPagar(fel: unknown): ImportPagarSvar | null {
+  const kropp = (fel as { response?: { status?: number; data?: unknown } })?.response
+  if (kropp?.status !== 409) return null
+  const rå = kropp.data as { code?: unknown; startadAt?: unknown; message?: unknown } | undefined
+  const inre = (rå as { data?: Record<string, unknown> })?.data ?? rå
+  const d = inre as {
+    code?: unknown
+    startadAt?: unknown
+    message?: unknown
+    forsokNr?: unknown
+  }
+  if (d?.code !== 'IMPORT_PAGAR') return null
+  return {
+    code: 'IMPORT_PAGAR',
+    message: typeof d.message === 'string' ? d.message : 'Samma fil importeras redan just nu.',
+    startadAt: typeof d.startadAt === 'string' ? d.startadAt : '',
+    forsokNr: typeof d.forsokNr === 'number' ? d.forsokNr : 0,
+  }
+}
+
+/** Vad UI:t ska säga om ett importförsök. En källa för alla tre filvägarna. */
+export interface Importbesked {
+  ton: 'klar' | 'uppspelad' | 'delvis'
+  rubrik: string
+  text: string | null
+}
+
+export function importbesked(forsok: ImportAttemptInfo | undefined): Importbesked {
+  // SAKNAT FÄLT ÄR INTE "KLAR". Ett svar utan försöksinfo kommer från en väg
+  // som inte går genom filnivåskyddet, och då ska UI:t inte påstå något om
+  // uppspelning eller partiellt utfall — bara att importen är genomförd.
+  if (!forsok) return { ton: 'klar', rubrik: 'Import klar!', text: null }
+  const tid = forsok.kordesAt ? new Date(forsok.kordesAt) : null
+  const klockslag =
+    tid && !Number.isNaN(tid.getTime())
+      ? `${tid.toLocaleDateString('sv-SE')} ${tid.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}`
+      : null
+  if (forsok.status === 'DELVIS') {
+    return {
+      ton: 'delvis',
+      rubrik: 'Importen blev delvis klar',
+      text:
+        'Några rader kunde inte läsas eller lagras. Betalningsunderlagets datum flyttades inte fram. ' +
+        'Rätta filen och importera igen — rader som redan lagrats räknas som dubbletter.',
+    }
+  }
+  if (forsok.replayed) {
+    return {
+      ton: 'uppspelad',
+      rubrik: 'Filen är redan importerad',
+      text: klockslag
+        ? `Resultatet nedan är från körningen ${klockslag}. Inga nya rader har skapats.`
+        : 'Resultatet nedan är från en tidigare körning. Inga nya rader har skapats.',
+    }
+  }
+  return { ton: 'klar', rubrik: 'Import klar!', text: null }
 }
 
 export async function importBankStatement(file: File, bank?: BankFormat): Promise<ImportResult> {

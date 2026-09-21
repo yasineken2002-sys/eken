@@ -15,6 +15,8 @@ import {
   Sparkles,
   Landmark,
   ChevronRight,
+  AlertTriangle,
+  History,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -36,6 +38,7 @@ import {
   useAutoMatch,
 } from './hooks/useReconciliation'
 import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
+import { importbesked, tolkaImportPagar } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
 import { useBankConsents } from './hooks/usePsd2'
 import { aktivaSamtycken } from './api/psd2.api'
@@ -122,6 +125,20 @@ function ImportModal({
   const ext = file?.name.toLowerCase().split('.').pop() ?? ''
   const isPdf = ext === 'pdf'
   const isBgMax = ext === 'txt' || ext === 'bgmax'
+
+  // #F034b — 409 IMPORT_PAGAR skiljs från övriga fel. `tolkaImportPagar`
+  // returnerar null för allt annat, så ett nätverksavbrott aldrig kan visas som
+  // "importen pågår".
+  const pagar = tolkaImportPagar(importMutation.error) ?? tolkaImportPagar(pdfImportMutation.error)
+  const pagarTid = pagar?.startadAt ? new Date(pagar.startadAt) : null
+  const pagarKlockslag =
+    pagarTid && !Number.isNaN(pagarTid.getTime())
+      ? `${pagarTid.toLocaleDateString('sv-SE')} ${pagarTid.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}`
+      : null
+
+  // EN källa för besked-texten på alla tre filvägarna. Låg den inline hade
+  // BgMax kunnat sakna "delvis misslyckad" medan CSV visade den.
+  const besked = importbesked(result?.forsok)
 
   const onDropZoneDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -345,7 +362,16 @@ function ImportModal({
           {dropError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">{dropError}</p>
           )}
-          {importMutation.isError && (
+          {/* #F034b — "samma fil importeras redan" är INTE ett filformatsfel och
+              får inte se ut som ett. Operatören som möts av "kontrollera
+              filformatet" byter fil, och då blir det en ANDRA import. */}
+          {pagar && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
+              {pagar.message}
+              {pagarKlockslag && <> Den pågående körningen startade {pagarKlockslag}.</>}
+            </p>
+          )}
+          {importMutation.isError && !pagar && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
               Import misslyckades. Kontrollera filformatet och försök igen.
             </p>
@@ -360,11 +386,32 @@ function ImportModal({
 
       {step === 'result' && result && (
         <div className="space-y-4">
+          {/* #F034b — rubriken följer FÖRSÖKETS utfall, inte bara siffrorna.
+              "Import klar!" över ett delvis misslyckat resultat är det svar som
+              gör att ingen rättar filen. */}
           <div className="flex flex-col items-center py-2">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
-              <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={1.8} />
+            <div
+              className={cn(
+                'flex h-14 w-14 items-center justify-center rounded-full',
+                besked.ton === 'delvis'
+                  ? 'bg-amber-100'
+                  : besked.ton === 'uppspelad'
+                    ? 'bg-gray-100'
+                    : 'bg-emerald-100',
+              )}
+            >
+              {besked.ton === 'delvis' ? (
+                <AlertTriangle size={28} className="text-amber-600" strokeWidth={1.8} />
+              ) : besked.ton === 'uppspelad' ? (
+                <History size={28} className="text-gray-500" strokeWidth={1.8} />
+              ) : (
+                <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={1.8} />
+              )}
             </div>
-            <p className="mt-3 text-[16px] font-semibold text-gray-900">Import klar!</p>
+            <p className="mt-3 text-[16px] font-semibold text-gray-900">{besked.rubrik}</p>
+            {besked.text && (
+              <p className="mt-1 max-w-sm text-center text-[12.5px] text-gray-500">{besked.text}</p>
+            )}
           </div>
 
           <div className="space-y-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">

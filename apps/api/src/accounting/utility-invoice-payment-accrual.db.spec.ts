@@ -46,6 +46,7 @@ import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -78,11 +79,28 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // den inerta attrappen gav en Promise där Prisma väntade en sträng.
     // Resten (PDF, mail, notiser, kö) rörs inte av betalningsvägarna.
     invoices = new InvoicesService(
-      prisma as never, events, inert, inert, accounting, inert, new OcrService(prisma as never), inert,
+      prisma as never,
+      events,
+      inert,
+      inert,
+      accounting,
+      inert,
+      new OcrService(prisma as never),
+      inert,
     )
     reconciliation = new ReconciliationService(
-      prisma as never, invoices as never, events as never, accounting,
-      inert, inert, inert, inert,
+      prisma as never,
+      invoices as never,
+      events as never,
+      accounting,
+      inert,
+      inert,
+      inert,
+      inert,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
   })
 
@@ -91,7 +109,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
       await prisma.invoicePayment.deleteMany({ where: { invoice: { organizationId: orgId } } })
       await prisma.bankTransaction.deleteMany({ where: { organizationId: orgId } })
       await prisma.invoiceEvent.deleteMany({ where: { invoice: { organizationId: orgId } } })
-      await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: orgId } } })
+      await prisma.journalEntryLine.deleteMany({
+        where: { journalEntry: { organizationId: orgId } },
+      })
       await prisma.journalEntry.deleteMany({ where: { organizationId: orgId } })
       await prisma.journalEntrySequence.deleteMany({ where: { organizationId: orgId } })
       await prisma.consumptionCharge.deleteMany({ where: { organizationId: orgId } })
@@ -101,7 +121,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
       // Org-flyttprovet lämnar en charge i en ANNAN organisation som fortfarande
       // pekar på DEN HÄR organisationens avläsning. Rensa via relationen, annars
       // faller `ConsumptionCharge_meterReadingId_fkey`.
-      await prisma.consumptionCharge.deleteMany({ where: { meterReading: { organizationId: orgId } } })
+      await prisma.consumptionCharge.deleteMany({
+        where: { meterReading: { organizationId: orgId } },
+      })
       await prisma.meterReading.deleteMany({ where: { organizationId: orgId } })
       await prisma.meter.deleteMany({ where: { organizationId: orgId } })
       await prisma.consumptionTariff.deleteMany({ where: { organizationId: orgId } })
@@ -131,58 +153,140 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
   const såRigg = async (): Promise<Rigg> => {
     const sfx = randomUUID().slice(0, 8)
     const org = await prisma.organization.create({
-      data: { name: `ub-${sfx}`, email: `ub-${sfx}@example.se`, street: 'a', city: 'b',
-              postalCode: '11111', fiscalYearStartMonth: 1 }, select: { id: true } })
+      data: {
+        name: `ub-${sfx}`,
+        email: `ub-${sfx}@example.se`,
+        street: 'a',
+        city: 'b',
+        postalCode: '11111',
+        fiscalYearStartMonth: 1,
+      },
+      select: { id: true },
+    })
     skapadeOrgar.push(org.id)
     const user = await prisma.user.create({
-      data: { organizationId: org.id, email: `ub-${sfx}@example.se`, firstName: 'Ä',
-              lastName: 'Ö', role: 'OWNER' }, select: { id: true } })
+      data: {
+        organizationId: org.id,
+        email: `ub-${sfx}@example.se`,
+        firstName: 'Ä',
+        lastName: 'Ö',
+        role: 'OWNER',
+      },
+      select: { id: true },
+    })
     for (const [nr, namn, typ] of [
-      [1510, 'Kundfordringar', 'ASSET'], [1930, 'Företagskonto', 'ASSET'],
-      [1920, 'Klientmedel', 'ASSET'], [2420, 'Deposition', 'LIABILITY'],
-      [3911, 'Hyresintäkt bostad', 'REVENUE'], [3920, 'Förbrukning', 'REVENUE'],
+      [1510, 'Kundfordringar', 'ASSET'],
+      [1930, 'Företagskonto', 'ASSET'],
+      [1920, 'Klientmedel', 'ASSET'],
+      [2420, 'Deposition', 'LIABILITY'],
+      [3911, 'Hyresintäkt bostad', 'REVENUE'],
+      [3920, 'Förbrukning', 'REVENUE'],
       // 3593 krävs av `bookReminderFee`; utan det returnerar den null och
       // avgiften bokförs aldrig (kontoplansfallet, inte avgiftsfallet).
       [3593, 'Påminnelseavgifter', 'REVENUE'],
     ] as const) {
       await prisma.account.create({
-        data: { organizationId: org.id, number: nr, name: namn, type: typ } })
+        data: { organizationId: org.id, number: nr, name: namn, type: typ },
+      })
     }
     const property = await prisma.property.create({
-      data: { organizationId: org.id, name: sfx, propertyDesignation: sfx, type: 'RESIDENTIAL',
-              street: 'a', city: 'b', postalCode: '11111', totalArea: 100,
-              consumptionBillingMode: 'SEPARATE_INVOICE' }, select: { id: true } })
+      data: {
+        organizationId: org.id,
+        name: sfx,
+        propertyDesignation: sfx,
+        type: 'RESIDENTIAL',
+        street: 'a',
+        city: 'b',
+        postalCode: '11111',
+        totalArea: 100,
+        consumptionBillingMode: 'SEPARATE_INVOICE',
+      },
+      select: { id: true },
+    })
     const unit = await prisma.unit.create({
-      data: { propertyId: property.id, name: '1001', unitNumber: '1001', type: 'APARTMENT',
-              area: 60, monthlyRent: 9000 }, select: { id: true } })
+      data: {
+        propertyId: property.id,
+        name: '1001',
+        unitNumber: '1001',
+        type: 'APARTMENT',
+        area: 60,
+        monthlyRent: 9000,
+      },
+      select: { id: true },
+    })
     const tenant = await prisma.tenant.create({
-      data: { organizationId: org.id, type: 'INDIVIDUAL', firstName: 'H', lastName: 'G',
-              email: `t-${sfx}@example.se` }, select: { id: true } })
+      data: {
+        organizationId: org.id,
+        type: 'INDIVIDUAL',
+        firstName: 'H',
+        lastName: 'G',
+        email: `t-${sfx}@example.se`,
+      },
+      select: { id: true },
+    })
     const lease = await prisma.lease.create({
-      data: { organizationId: org.id, unitId: unit.id, tenantId: tenant.id, status: 'ACTIVE',
-              startDate: d(2026, 1, 1), tenancyStartDate: d(2026, 1, 1), monthlyRent: 9000,
-              depositAmount: 0, consumptionBillingMode: 'SEPARATE_INVOICE' },
-      select: { id: true } })
+      data: {
+        organizationId: org.id,
+        unitId: unit.id,
+        tenantId: tenant.id,
+        status: 'ACTIVE',
+        startDate: d(2026, 1, 1),
+        tenancyStartDate: d(2026, 1, 1),
+        monthlyRent: 9000,
+        depositAmount: 0,
+        consumptionBillingMode: 'SEPARATE_INVOICE',
+      },
+      select: { id: true },
+    })
     const meter = await prisma.meter.create({
       data: { organizationId: org.id, unitId: unit.id, type: 'ELECTRICITY', unitOfMeasure: 'kWh' },
-      select: { id: true } })
+      select: { id: true },
+    })
     await prisma.consumptionTariff.create({
-      data: { organizationId: org.id, scope: 'ORGANIZATION', meterType: 'ELECTRICITY',
-              pricePerUnit: 2.5, validFrom: d(2026, 1, 1) } })
+      data: {
+        organizationId: org.id,
+        scope: 'ORGANIZATION',
+        meterType: 'ELECTRICITY',
+        pricePerUnit: 2.5,
+        validFrom: d(2026, 1, 1),
+      },
+    })
     // Öppningsavläsning — baslinje, ingen debitering.
-    await consumption.recordReading({ meterId: meter.id, value: 1000, readingDate: '2026-04-30',
-      periodStart: '2026-04-01', periodEnd: '2026-04-30', source: 'MANUAL' } as never,
-      org.id, user.id)
-    return { orgId: org.id, userId: user.id, leaseId: lease.id, meterId: meter.id,
-             tenantId: tenant.id }
+    await consumption.recordReading(
+      {
+        meterId: meter.id,
+        value: 1000,
+        readingDate: '2026-04-30',
+        periodStart: '2026-04-01',
+        periodEnd: '2026-04-30',
+        source: 'MANUAL',
+      } as never,
+      org.id,
+      user.id,
+    )
+    return {
+      orgId: org.id,
+      userId: user.id,
+      leaseId: lease.id,
+      meterId: meter.id,
+      tenantId: tenant.id,
+    }
   }
 
   /** Registrerar en avläsning och bekräftar dess charge. Returnerar charge-id. */
   const debiteraOchBokfor = async (r: Rigg, värde: number, månad: number): Promise<string> => {
-    const res = await consumption.recordReading({
-      meterId: r.meterId, value: värde, readingDate: `2026-0${månad}-28`,
-      periodStart: `2026-0${månad}-01`, periodEnd: `2026-0${månad}-28`, source: 'MANUAL',
-    } as never, r.orgId, r.userId)
+    const res = await consumption.recordReading(
+      {
+        meterId: r.meterId,
+        value: värde,
+        readingDate: `2026-0${månad}-28`,
+        periodStart: `2026-0${månad}-01`,
+        periodEnd: `2026-0${månad}-28`,
+        source: 'MANUAL',
+      } as never,
+      r.orgId,
+      r.userId,
+    )
     const chargeId = (res.charge as { id: string }).id
     await consumption.confirmCharge(chargeId, r.orgId, r.userId)
     return chargeId
@@ -205,7 +309,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
    */
   const betaltBelopp = async (fakturaId: string): Promise<number> => {
     const rader = await prisma.invoicePayment.findMany({
-      where: { invoiceId: fakturaId }, select: { amount: true } })
+      where: { invoiceId: fakturaId },
+      select: { amount: true },
+    })
     return rader.reduce((s, r) => s + Number(r.amount), 0)
   }
 
@@ -217,14 +323,22 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     })
 
   const betalaManuellt = (fakturaId: string, r: Rigg, belopp: number) =>
-    invoices.markAsPaidManually(fakturaId, r.orgId, 'BANK' as never, r.userId, 'USER',
-      { enteredAmount: belopp, paidAt: d(2026, 6, 10) })
+    invoices.markAsPaidManually(fakturaId, r.orgId, 'BANK' as never, r.userId, 'USER', {
+      enteredAmount: belopp,
+      paidAt: d(2026, 6, 10),
+    })
 
   const matchaBank = async (fakturaId: string, r: Rigg, belopp: number) => {
     const btx = await prisma.bankTransaction.create({
-      data: { organizationId: r.orgId, date: d(2026, 6, 10), amount: belopp,
-              description: 'SYNTETISK TESTRAD — ingen riktig bankdata', status: 'UNMATCHED' },
-      select: { id: true } })
+      data: {
+        organizationId: r.orgId,
+        date: d(2026, 6, 10),
+        amount: belopp,
+        description: 'SYNTETISK TESTRAD — ingen riktig bankdata',
+        status: 'UNMATCHED',
+      },
+      select: { id: true },
+    })
     await reconciliation.manualMatch(btx.id, { invoiceId: fakturaId }, r.orgId, r.userId)
     return btx.id
   }
@@ -258,14 +372,21 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // Ingen post under fakturans id, och fortfarande exakt ETT
     // förbrukningsverifikat. Betalningen krediterar 1510 mot 1930; den bokför
     // inte om vare sig fordran eller intäkt.
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, sourceId: faktura.id } })).toBe(0)
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, sourceId: `consumption-charge:${chargeId}` } })).toBe(1)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, sourceId: faktura.id },
+      }),
+    ).toBe(0)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, sourceId: `consumption-charge:${chargeId}` },
+      }),
+    ).toBe(1)
 
     const betV = await prisma.journalEntry.findFirstOrThrow({
       where: { organizationId: r.orgId, source: 'PAYMENT' },
-      include: { lines: { include: { account: true } } } })
+      include: { lines: { include: { account: true } } },
+    })
     expect(betV.lines.find((l) => l.account.number === 1930)?.debit?.toString()).toBe('600')
     expect(betV.lines.find((l) => l.account.number === 1510)?.credit?.toString()).toBe('600')
   })
@@ -277,15 +398,23 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
 
     const btxId = await matchaBank(faktura.id, r, 600)
 
-    expect((await prisma.bankTransaction.findUniqueOrThrow({ where: { id: btxId } })).status)
-      .toBe('MATCHED')
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('PAID')
+    expect((await prisma.bankTransaction.findUniqueOrThrow({ where: { id: btxId } })).status).toBe(
+      'MATCHED',
+    )
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'PAID',
+    )
     expect(await prisma.invoicePayment.count({ where: { invoiceId: faktura.id } })).toBe(1)
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(1)
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, sourceId: faktura.id } })).toBe(0)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, source: 'PAYMENT' },
+      }),
+    ).toBe(1)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, sourceId: faktura.id },
+      }),
+    ).toBe(0)
   })
 
   // ── 2. FLERA POSTER ──────────────────────────────────────────────────────
@@ -300,11 +429,15 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
 
     await betalaManuellt(faktura.id, r, 750)
 
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('PAID')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'PAID',
+    )
     for (const id of [a, b, c]) {
-      expect(await prisma.journalEntry.count({
-        where: { organizationId: r.orgId, sourceId: `consumption-charge:${id}` } })).toBe(1)
+      expect(
+        await prisma.journalEntry.count({
+          where: { organizationId: r.orgId, sourceId: `consumption-charge:${id}` },
+        }),
+      ).toBe(1)
     }
   })
 
@@ -320,9 +453,11 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // Efterliknar en post som blev CONFIRMED utan verifikat (det tillstånd F017
     // kunde lämna efter sig). Verifikatet tas bort, posten står kvar ATTACHED.
     await prisma.journalEntryLine.deleteMany({
-      where: { journalEntry: { organizationId: r.orgId, sourceId: `consumption-charge:${b}` } } })
+      where: { journalEntry: { organizationId: r.orgId, sourceId: `consumption-charge:${b}` } },
+    })
     await prisma.journalEntry.deleteMany({
-      where: { organizationId: r.orgId, sourceId: `consumption-charge:${b}` } })
+      where: { organizationId: r.orgId, sourceId: `consumption-charge:${b}` },
+    })
 
     await expect(betalaManuellt(faktura.id, r, 750)).rejects.toBeInstanceOf(MissingAccrualError)
     await expect(matchaBank(faktura.id, r, 750)).rejects.toBeInstanceOf(MissingAccrualError)
@@ -345,11 +480,14 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // inga poster att bära det — exakt det fall `[].every(…) === true` hade
     // släppt igenom.
     await prisma.consumptionCharge.update({
-      where: { id: chargeId }, data: { invoiceId: null } })
+      where: { id: chargeId },
+      data: { invoiceId: null },
+    })
 
     await expect(betalaManuellt(faktura.id, r, 600)).rejects.toBeInstanceOf(MissingAccrualError)
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('SENT')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'SENT',
+    )
   })
 
   // ── 4b. TOM MÄNGD DÄR BELOPPSKRAVET INTE HJÄLPER ────────────────────────
@@ -368,14 +506,23 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     await prisma.consumptionCharge.update({ where: { id: chargeId }, data: { invoiceId: null } })
     await prisma.invoice.update({ where: { id: faktura.id }, data: { total: 0, subtotal: 0 } })
 
-    const manuellt = await betalaManuellt(faktura.id, r, 600).then(() => null, (e) => e as Error)
-    const bank = await matchaBank(faktura.id, r, 600).then(() => null, (e) => e as Error)
+    const manuellt = await betalaManuellt(faktura.id, r, 600).then(
+      () => null,
+      (e) => e as Error,
+    )
+    const bank = await matchaBank(faktura.id, r, 600).then(
+      () => null,
+      (e) => e as Error,
+    )
 
     // Vad som än stoppar den: ingen allokering, inget betalningsverifikat och
     // ingen 1510-kredit får uppstå för en faktura utan bokförd fordran.
     expect(await prisma.invoicePayment.count({ where: { invoiceId: faktura.id } })).toBe(0)
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(0)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, source: 'PAYMENT' },
+      }),
+    ).toBe(0)
 
     // VILKEN spärr som bär är också ett facit, inte en loggrad: det är
     // `assertPaymentWithinDebt` (`common/payments/payment-within-debt.ts:54`)
@@ -397,7 +544,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // Posten pekar fortfarande på fakturan, men flyttas till en annan org.
     // Uppslaget är org-scopat, så den får inte räknas som täckning.
     await prisma.consumptionCharge.update({
-      where: { id: chargeId }, data: { organizationId: främmande.orgId } })
+      where: { id: chargeId },
+      data: { organizationId: främmande.orgId },
+    })
 
     await expect(betalaManuellt(faktura.id, egen, 600)).rejects.toBeInstanceOf(MissingAccrualError)
   })
@@ -412,10 +561,13 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // Flytta första fakturans post till den andra fakturan. Första fakturan har
     // då inga egna poster kvar.
     await prisma.consumptionCharge.update({
-      where: { id: chargeId }, data: { invoiceId: faktura2.id } })
+      where: { id: chargeId },
+      data: { invoiceId: faktura2.id },
+    })
 
-    await expect(betalaManuellt(faktura.id, r, Number(faktura.total)))
-      .rejects.toBeInstanceOf(MissingAccrualError)
+    await expect(betalaManuellt(faktura.id, r, Number(faktura.total))).rejects.toBeInstanceOf(
+      MissingAccrualError,
+    )
 
     // Och motsatsen i samma prov: faktura2 bär nu BÅDA posterna och har därmed
     // full täckning — den ska gå att betala. Utan den raden hade provet kunnat
@@ -426,8 +578,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
       data: { total: Number(f2.total) + Number(faktura.total) },
     })
     await betalaManuellt(faktura2.id, r, Number(f2.total) + Number(faktura.total))
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura2.id } })).status)
-      .toBe('PAID')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura2.id } })).status).toBe(
+      'PAID',
+    )
     expect(b).toBeTruthy()
   })
 
@@ -495,8 +648,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
 
     await betalaManuellt(faktura.id, r, 660)
 
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('PAID')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'PAID',
+    )
     expect(await betaltBelopp(faktura.id)).toBe(660)
   })
 
@@ -508,13 +662,16 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
 
     // Avgiftens verifikat raderas — fakturan kräver 660 men huvudboken bär 600.
     await prisma.journalEntryLine.deleteMany({
-      where: { journalEntry: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` } } })
+      where: { journalEntry: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` } },
+    })
     await prisma.journalEntry.deleteMany({
-      where: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` } })
+      where: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` },
+    })
 
     await expect(betalaManuellt(faktura.id, r, 660)).rejects.toBeInstanceOf(MissingAccrualError)
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('SENT')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'SENT',
+    )
   })
 
   it('påminnelseavgift bokförd med FEL belopp: betalningen NEKAS (täcker inte skillnaden)', async () => {
@@ -527,9 +684,12 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // huvudboken, inte ur fakturaraden — annars hade en avgift som bokförts
     // fel släppts igenom bara för att något verifikat fanns.
     await prisma.journalEntryLine.updateMany({
-      where: { journalEntry: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` },
-               debit: { not: null } },
-      data: { debit: 10 } })
+      where: {
+        journalEntry: { organizationId: r.orgId, sourceId: `reminder-fee:${faktura.id}` },
+        debit: { not: null },
+      },
+      data: { debit: 10 },
+    })
 
     await expect(betalaManuellt(faktura.id, r, 660)).rejects.toBeInstanceOf(MissingAccrualError)
   })
@@ -567,8 +727,11 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
 
     const efterPåförande = await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })
     expect(Number(efterPåförande.total)).toBe(60)
-    expect(await prisma.consumptionCharge.count({
-      where: { organizationId: r.orgId, invoiceId: faktura.id } })).toBe(0)
+    expect(
+      await prisma.consumptionCharge.count({
+        where: { organizationId: r.orgId, invoiceId: faktura.id },
+      }),
+    ).toBe(0)
 
     // ── BÅDA de riktiga betalningsvägarna ────────────────────────────────────
     await expect(betalaManuellt(faktura.id, r, 60)).rejects.toBeInstanceOf(MissingAccrualError)
@@ -579,12 +742,18 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     expect(efter.status).toBe('SENT')
     expect(efter.paidAt).toBeNull()
     expect(await prisma.invoicePayment.count({ where: { invoiceId: faktura.id } })).toBe(0)
-    expect(await prisma.bankTransaction.count({
-      where: { organizationId: r.orgId, status: 'MATCHED' } })).toBe(0)
+    expect(
+      await prisma.bankTransaction.count({
+        where: { organizationId: r.orgId, status: 'MATCHED' },
+      }),
+    ).toBe(0)
     // Inga NYA bokföringseffekter: fortfarande exakt de två verifikat som fanns
     // före betalningsförsöken (förbrukningen + avgiften), inget PAYMENT-verifikat.
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(0)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, source: 'PAYMENT' },
+      }),
+    ).toBe(0)
     expect(await prisma.journalEntry.count({ where: { organizationId: r.orgId } })).toBe(2)
   })
 
@@ -606,11 +775,17 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     expect(await betaltBelopp(faktura.id)).toBe(600)
 
     expect(await prisma.invoicePayment.count({ where: { invoiceId: faktura.id } })).toBe(2)
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, source: 'PAYMENT' } })).toBe(2)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, source: 'PAYMENT' },
+      }),
+    ).toBe(2)
     // Fordran fortfarande EN gång bokförd, trots två betalningar.
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, source: 'INVOICE' } })).toBe(1)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, source: 'INVOICE' },
+      }),
+    ).toBe(1)
   })
 
   // ── 8. REGRESSION: VANLIG FAKTURA OCH DEPOSITION ────────────────────────
@@ -618,23 +793,33 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
   it('REGRESSION vanlig faktura: bokförd via InvoicesService → betalning går igenom', async () => {
     const r = await såRigg()
     const faktura = await invoices.create(r.orgId, r.userId, {
-      leaseId: r.leaseId, type: 'RENT', dueDate: '2026-06-30', issueDate: '2026-06-01',
+      leaseId: r.leaseId,
+      type: 'RENT',
+      dueDate: '2026-06-30',
+      issueDate: '2026-06-01',
       lines: [{ description: 'Hyra juni', quantity: 1, unitPrice: 1000, vatRate: 0 }],
     } as never)
     await invoices.transitionStatus(faktura.id, r.orgId, 'SENT' as never, r.userId, 'USER')
     // Den vanliga vägen bokför fakturan under sitt EGET id.
-    expect(await prisma.journalEntry.count({
-      where: { organizationId: r.orgId, sourceId: faktura.id } })).toBe(1)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: r.orgId, sourceId: faktura.id },
+      }),
+    ).toBe(1)
 
     await betalaManuellt(faktura.id, r, 1000)
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('PAID')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'PAID',
+    )
   })
 
   it('REGRESSION vanlig faktura UTAN fordran: NEKAS fortfarande (vakten är inte uppluckrad)', async () => {
     const r = await såRigg()
     const faktura = await invoices.create(r.orgId, r.userId, {
-      leaseId: r.leaseId, type: 'RENT', dueDate: '2026-06-30', issueDate: '2026-06-01',
+      leaseId: r.leaseId,
+      type: 'RENT',
+      dueDate: '2026-06-30',
+      issueDate: '2026-06-01',
       lines: [{ description: 'Hyra juni', quantity: 1, unitPrice: 1000, vatRate: 0 }],
     } as never)
     await invoices.transitionStatus(faktura.id, r.orgId, 'SENT' as never, r.userId, 'USER')
@@ -642,9 +827,11 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
     // Orphan: intäktsverifikatet raderas. Vakten ska neka — och den nya grenen
     // får inte rädda den, för fakturan är inte UTILITY.
     await prisma.journalEntryLine.deleteMany({
-      where: { journalEntry: { organizationId: r.orgId, sourceId: faktura.id } } })
+      where: { journalEntry: { organizationId: r.orgId, sourceId: faktura.id } },
+    })
     await prisma.journalEntry.deleteMany({
-      where: { organizationId: r.orgId, sourceId: faktura.id } })
+      where: { organizationId: r.orgId, sourceId: faktura.id },
+    })
 
     await expect(betalaManuellt(faktura.id, r, 1000)).rejects.toBeInstanceOf(MissingAccrualError)
   })
@@ -652,24 +839,38 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
   it('REGRESSION deposition: fordran under deposit-invoice:<id> accepteras fortfarande', async () => {
     const r = await såRigg()
     const faktura = await invoices.create(r.orgId, r.userId, {
-      leaseId: r.leaseId, type: 'DEPOSIT', dueDate: '2026-06-30', issueDate: '2026-06-01',
+      leaseId: r.leaseId,
+      type: 'DEPOSIT',
+      dueDate: '2026-06-30',
+      issueDate: '2026-06-01',
       lines: [{ description: 'Deposition', quantity: 1, unitPrice: 5000, vatRate: 0 }],
     } as never)
     await invoices.transitionStatus(faktura.id, r.orgId, 'SENT' as never, r.userId, 'USER')
 
     const deposit = await prisma.deposit.create({
-      data: { organizationId: r.orgId, leaseId: r.leaseId, tenantId: r.tenantId,
-              amount: 5000, status: 'PENDING', invoiceId: faktura.id }, select: { id: true } })
+      data: {
+        organizationId: r.orgId,
+        leaseId: r.leaseId,
+        tenantId: r.tenantId,
+        amount: 5000,
+        status: 'PENDING',
+        invoiceId: faktura.id,
+      },
+      select: { id: true },
+    })
 
     // Depositionsvägen bokför under deposit-invoice:<id>, inte fakturans id.
     await prisma.journalEntryLine.deleteMany({
-      where: { journalEntry: { organizationId: r.orgId, sourceId: faktura.id } } })
+      where: { journalEntry: { organizationId: r.orgId, sourceId: faktura.id } },
+    })
     await prisma.journalEntry.updateMany({
       where: { organizationId: r.orgId, sourceId: faktura.id },
-      data: { sourceId: `deposit-invoice:${deposit.id}` } })
+      data: { sourceId: `deposit-invoice:${deposit.id}` },
+    })
 
     await betalaManuellt(faktura.id, r, 5000)
-    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status)
-      .toBe('PAID')
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: faktura.id } })).status).toBe(
+      'PAID',
+    )
   })
 })

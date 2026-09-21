@@ -30,6 +30,7 @@ import type { BankDataProvider } from '../psd2/psd2.types'
 import { BankStatementImportService } from '../reconciliation/bank-statement-import.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
 import { PaymentDataPausedError, PaymentFreshnessService } from './payment-freshness.service'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const NOW = new Date('2026-09-13T12:00:00.000Z')
 const TODAY = '2026-09-13'
@@ -295,6 +296,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       events,
       shadowQueue as never,
       outside as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     interest = new RentInterestService(db as never, accounting, events, freshness)
     badDebt = new RentBadDebtService(
@@ -334,6 +339,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     await db.journalEntrySequence.deleteMany({ where })
     await db.bankTransaction.deleteMany({ where })
     await db.bankStatementImport.deleteMany({ where })
+    // #F034b — importförsökets kvittens har `onDelete: Restrict` mot
+    // Organization, samma hållning som de två raderna ovan. Utan den här
+    // raden faller `organization.delete` nedan på en FK och HELA sviten blir
+    // röd i städningen i stället för i det den mäter. Samma rad finns i
+    // `delete-organization.ts`, som `delete-organization.spec.ts` bevakar.
+    await db.bankImportAttempt.deleteMany({ where })
     await db.bankConsent.deleteMany({ where })
     await db.rentNotice.deleteMany({ where })
     await db.account.deleteMany({ where })
@@ -345,6 +356,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     await db.organization.delete({ where: { id: orgId } })
     orgId = undefined
     for (const extraOrgId of extraOrgIds.splice(0)) {
+      // Samma Restrict-skäl som ovan: F16 skapar en ANDRA organisation som
+      // också kör en import.
+      await db.bankImportAttempt.deleteMany({ where: { organizationId: extraOrgId } })
+      await db.bankTransaction.deleteMany({ where: { organizationId: extraOrgId } })
       await db.organization.delete({ where: { id: extraOrgId } })
     }
   })
@@ -635,6 +650,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       { parse } as never,
       importer,
       freshness,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     await expect(pdfImport.uploadAndParsePdf(PDF, 'test.pdf', orgId!, null)).rejects.toThrow(
       'Syntetiskt parserfel',
@@ -788,6 +807,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       { parse } as never,
       importer,
       freshness,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     await expect(
       pdfImport.uploadAndParsePdf(Buffer.from('detta är inte en PDF'), 'fel.pdf', orgId!, null),
@@ -987,6 +1010,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       { parse } as never,
       importer,
       freshness,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(db as never),
     )
     await expect(pdfImport.uploadAndParsePdf(PDF, 'test.pdf', orgId!, null)).rejects.toThrow(
       failure.message,

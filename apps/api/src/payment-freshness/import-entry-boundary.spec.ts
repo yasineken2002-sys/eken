@@ -25,6 +25,7 @@ import { BankStatementImportService } from '../reconciliation/bank-statement-imp
 import { Psd2Controller } from '../psd2/psd2.controller'
 import { Psd2SyncService } from '../psd2/psd2-sync.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const ORG = 'boundary-org'
 const USER = { sub: 'boundary-user', organizationId: ORG, role: 'OWNER' }
@@ -236,6 +237,10 @@ describe('PDF-service och bekräftelsens organisationsgräns', () => {
       parser as never,
       ports() as never,
       freshness as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
     return { service, prisma, parser, freshness }
   }

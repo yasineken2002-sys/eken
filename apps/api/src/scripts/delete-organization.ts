@@ -146,6 +146,12 @@ export const DELETION_STEPS: readonly Step[] = [
   { model: 'ClosedAccountingPeriod', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankTransaction', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankStatementImport', restrictAgainst: 'Organization', where: byOrg },
+  // #F034b — importförsökets kvittens. `Restrict` mot Organization av samma
+  // skäl som raderna ovan: kvittensen på att en import kördes får inte
+  // försvinna under underlaget. Inga FK:er pekar PÅ den, så steget kan ligga
+  // var som helst före org-steget; det står här för att hålla bankvägens tre
+  // tabeller samlade.
+  { model: 'BankImportAttempt', restrictAgainst: 'Organization', where: byOrg },
   { model: 'BankConsent', restrictAgainst: 'Organization', where: byOrg },
   { model: 'AiUsageLog', restrictAgainst: 'Organization', where: byOrg },
   // FÖRE AiToolExecution: effekterna har en Cascade-FK dit, så de skulle följa

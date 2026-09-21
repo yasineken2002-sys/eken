@@ -33,6 +33,7 @@ import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 /**
  * Skarp ReconciliationService med attrapp-Prisma. Attrappen räknar VARJE
@@ -136,6 +137,10 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, prisma, tx, $transaction, reverseJournalEntryForPayment }
 }

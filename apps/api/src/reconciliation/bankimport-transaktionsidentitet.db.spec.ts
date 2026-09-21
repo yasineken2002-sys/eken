@@ -78,6 +78,7 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { ReconciliationService } from './reconciliation.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -266,6 +267,10 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
         skrivFacitIngen: async () => undefined,
         nollstallFacit: async () => undefined,
       } as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
     Object.assign(service, {
       logger: { log: () => undefined, warn: () => undefined, error: () => undefined },
@@ -276,6 +281,10 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       kastare as never, // PDF-parsern — confirmImport läser draften, tolkar inte om
       service,
       freshness as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
     Object.assign(pdfImport, {
       logger: { log: () => undefined, warn: () => undefined, error: () => undefined },

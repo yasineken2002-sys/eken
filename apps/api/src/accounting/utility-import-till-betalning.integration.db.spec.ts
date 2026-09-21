@@ -55,6 +55,7 @@ import { InvoicesService } from '../invoices/invoices.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -113,6 +114,10 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
       inert,
       inert,
       inert,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
   })
 
