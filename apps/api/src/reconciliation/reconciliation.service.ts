@@ -45,6 +45,7 @@ import {
   projectReconciliationTransaction,
   type ReconciliationTransactionView,
 } from './bank-transaction-views'
+import { olostGranskningForOrg } from './identitetsgranskning'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import {
   Förekomsträknare,
@@ -2699,6 +2700,61 @@ export class ReconciliationService {
     }
 
     return stats
+  }
+
+  /**
+   * G2 — KRAVPAUSENS ORSAK OCH DESS RADER, för operatören.
+   *
+   * ── VARFÖR DEN HÄR VYN FINNS ────────────────────────────────────────────
+   *
+   * Pausen får inte vara osynlig. Kravtrappan slutar röra sig, påminnelser
+   * uteblir, och utan den här vyn säger ingenting varför — vilket är exakt den
+   * sortens tystnad G2 handlade om från början. En paus som operatören inte kan
+   * se är inte skonsammare än ett felaktigt krav, bara tystare.
+   *
+   * SVARET BÄR RADERNA, inte bara antalet. "3 rader väntar" utan att säga
+   * VILKA ger operatören ett tal men ingen handling. Raderna går genom
+   * avstämningsvyns egen projicering, så vyn kan inte bära ut mer än tabellen
+   * redan gör.
+   *
+   * LÄSNING, INGEN SIDOEFFEKT. Att öppna sidan får inte röra något.
+   */
+  async identitetsgranskning(organizationId: string): Promise<{
+    pausad: boolean
+    antal: number
+    orsak: string | null
+    rader: ReconciliationTransactionView[]
+  }> {
+    const rader = await this.prisma.bankTransaction.findMany({
+      where: olostGranskningForOrg(organizationId),
+      orderBy: { date: 'asc' },
+      // Taket är en visningsgräns, inte en sanningsgräns: `antal` räknas
+      // separat nedan, så en org med fler rader än taket får rätt tal och en
+      // lista att börja arbeta av.
+      take: 100,
+      include: {
+        invoice: { select: { id: true, invoiceNumber: true, status: true } },
+        matchedRentNotice: {
+          select: { id: true, noticeNumber: true, status: true, totalAmount: true },
+        },
+      },
+    })
+    const antal = await this.prisma.bankTransaction.count({
+      where: olostGranskningForOrg(organizationId),
+    })
+    return {
+      pausad: antal > 0,
+      antal,
+      orsak:
+        antal > 0
+          ? `${antal} importerad(e) betalning(ar) väntar på identitetsgranskning. ` +
+            'Importen kunde inte avgöra om de är egna betalningar eller kopior av rader som ' +
+            'redan fanns, så de är lagrade men aldrig matchade. Automatiska krav — ' +
+            'påminnelser, avgifter, ränta och kravsteg — är pausade för hela organisationen ' +
+            'tills raderna är avgjorda. Matcha dem mot rätt underlag, eller lägg dem åt sidan.'
+          : null,
+      rader: rader.map((r) => projectReconciliationTransaction(r)),
+    }
   }
 
   // ── Bulk auto-match (kör matchTransaction på alla UNMATCHED) ────────────────

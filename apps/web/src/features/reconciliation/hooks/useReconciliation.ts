@@ -12,6 +12,7 @@ import {
   unmatchTransaction,
   autoMatchAll,
   getBankAccounts,
+  getIdentityReview,
   createBankAccount,
 } from '../api/reconciliation.api'
 import type { BankFormat, ParsedTransaction } from '../api/reconciliation.api'
@@ -108,6 +109,19 @@ export function useBankAccounts() {
     queryKey: ['reconciliation', 'bank-accounts'],
     queryFn: getBankAccounts,
     staleTime: 300_000,
+  })
+}
+
+/**
+ * G2 — kravpausens läge. Kortare `staleTime` än kontolistan: det här är ett
+ * tillstånd operatören AKTIVT arbetar bort, och ett gammalt svar hade visat en
+ * paus som just släppts.
+ */
+export function useIdentityReview() {
+  return useQuery({
+    queryKey: ['reconciliation', 'identity-review'],
+    queryFn: getIdentityReview,
+    staleTime: 15_000,
   })
 }
 

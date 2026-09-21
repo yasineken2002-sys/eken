@@ -25,6 +25,11 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
+import {
+  IdentityReviewPausedError,
+  PaymentFreshnessService,
+  paymentFreshnessTransactionOptions,
+} from '../payment-freshness/payment-freshness.service'
 
 interface ProcessSummary {
   friendlySent: number
@@ -46,6 +51,14 @@ export class PaymentReminderService {
     // #605 — varaktig felsänka. SIST i listan: nya beroenden läggs till på
     // slutet så befintliga positionsanrop inte tyst byter betydelse.
     private readonly cronErrors: CronErrorSink,
+    // G2 — kravpausen vid olöst identitetsgranskning. Samma regel: SIST.
+    //
+    // FAKTURAVÄGEN FÅR BARA GRANSKNINGSSPÄRREN, inte hela
+    // `assertAutomaticEffectAllowed`. Den här vägen har aldrig haft någon
+    // färskhetsgrind, och att smyga in en genom att återanvända hela metoden
+    // hade varit en beteendeändring ingen bett om — fakturor som i dag påminns
+    // med gammalt betalningsunderlag hade tystnat utan att det stod någonstans.
+    private readonly freshness: PaymentFreshnessService,
   ) {}
 
   /**
@@ -107,10 +120,35 @@ export class PaymentReminderService {
           },
         })
 
+        // ── G2: ORGANISATIONER MED OLÖST IDENTITETSGRANSKNING GALLRAS ──
+        //
+        // EN fråga för hela mängden i stället för en per faktura: svaret är
+        // detsamma för alla fakturor i samma organisation, och loopen går över
+        // alla organisationers förfallna fakturor.
+        //
+        // DET HÄR ÄR GALLRINGEN, INTE GARANTIN. Svaret läses före loopen och
+        // kan hinna bli gammalt medan den går — loopen väntar upp till 5 s per
+        // faktura på köandet. Garantin bärs av
+        // `assertIngenOlostIdentitetsgranskning` inne i varje effekts egen
+        // transaktion nedan. Samma tvålagerskonstruktion som #F034c:
+        // kandidatfiltret håller raden utanför körningen, spärren vid
+        // skrivningen bär löftet.
+        const pausadeAvGranskning = await this.freshness.pausadeAvGranskning([
+          ...new Set(overdue.map((i) => i.organizationId)),
+        ])
+
         for (const invoice of overdue) {
           try {
             const org = invoice.organization
             if (!org.remindersEnabled) {
+              summary.skipped++
+              continue
+            }
+
+            // Räknas som `skipped` och inte som `errors`: en paus är ett
+            // NORMALT tillstånd med en känd åtgärd, inte ett fel. Att räkna den
+            // som fel hade fyllt driftlarmet med rader ingen ska agera på.
+            if (pausadeAvGranskning.has(invoice.organizationId)) {
               summary.skipped++
               continue
             }
@@ -170,7 +208,24 @@ export class PaymentReminderService {
             }
 
             // ── Dag 1-7 → vänlig påminnelse, ingen avgift ────────────────────
+            //
+            // ── G2: SPÄRREN LIGGER HÄR, INTE VID SKRIVNINGEN ──────────────
+            //
+            // `sendFriendlyReminder` KÖAR BREVET FÖRST och skriver markören
+            // efteråt. En spärr vid skrivningen hade alltså fällt efter att
+            // brevet redan gått till hyresgästen — det enda stället som hjälper
+            // henne är före köandet.
+            //
+            // Att strukturera om metoden så att den tar ett anspråk först vore
+            // rätt i sig, men det är en annan ändring än den här och skulle
+            // flytta en fungerande idempotens mitt i en kravväg. Avgränsningen
+            // är utskriven i kontraktet i stället för att döljas.
             if (daysOverdue >= 1 && daysOverdue <= 7 && !sentTypes.has('REMINDER_FRIENDLY')) {
+              await this.prisma.$transaction(
+                (tx) =>
+                  this.freshness.assertIngenOlostIdentitetsgranskning(tx, invoice.organizationId),
+                paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS),
+              )
               await this.sendFriendlyReminder(invoice, party.email, daysOverdue)
               summary.friendlySent++
               continue
@@ -178,6 +233,20 @@ export class PaymentReminderService {
 
             summary.skipped++
           } catch (err) {
+            // G2 — EGEN GREN. Gallringen före loopen fångar normalfallet, men
+            // en granskningsrad som commitas MEDAN loopen går (den väntar upp
+            // till 5 s per faktura på köandet) når skrivspärren i stället. Utan
+            // den här grenen hade den kapplöpningen räknats som ett FEL och
+            // loggats som ett misslyckande — en avsiktlig paus rapporterad som
+            // haveri. (Terminal 1:s fynd H1.)
+            if (err instanceof IdentityReviewPausedError) {
+              this.logger.warn(
+                `Faktura ${invoice.id} PAUSAD: ${err.antal} betalning(ar) väntar på ` +
+                  'identitetsgranskning i bankavstämningen.',
+              )
+              summary.skipped++
+              continue
+            }
             this.logger.error(
               `Reminder failed for invoice ${invoice.id}: ${err instanceof Error ? err.message : String(err)}`,
             )
@@ -505,6 +574,11 @@ export class PaymentReminderService {
     // "någon annan har redan tagit avgiften" — utan att göra undantag till
     // styrflöde, och race-säkert eftersom villkoret ligger i databasen.
     const claimed = await this.prisma.$transaction(async (tx) => {
+      // G2 — FÖRST i transaktionen, före anspråket. Ligger den efter hade
+      // markören `REMINDER_FORMAL` redan varit tagen när spärren fällde, och
+      // fakturan hade räknats som påmind utan att något brev gått. Samma skäl
+      // som `assertAutomaticEffectAllowed` anger för sin egen placering.
+      await this.freshness.assertIngenOlostIdentitetsgranskning(tx, invoice.organizationId)
       const claim = await tx.paymentReminder.createMany({
         data: [
           {
@@ -755,13 +829,24 @@ export class PaymentReminderService {
     organizationId: string,
     daysOverdue: number,
   ): Promise<void> {
-    await this.prisma.paymentReminder.create({
-      data: {
-        invoiceId,
-        type: 'READY_FOR_COLLECTION',
-        feeAmount: 0,
-      },
-    })
+    // G2 — anspråket får en transaktion så spärren kan ligga FÖRST i den.
+    // Markören `READY_FOR_COLLECTION` är det som flyttar fram kravtrappan; är
+    // den skriven är steget taget, och en spärr efteråt hade kommit för sent.
+    //
+    // Bara anspråket lindas. Händelseloggen och notisen nedan är oförändrade
+    // och ligger kvar utanför: de är följder av steget, och att dra in dem i
+    // transaktionen hade ändrat felbeteendet för något den här ändringen inte
+    // handlar om.
+    await this.prisma.$transaction(async (tx) => {
+      await this.freshness.assertIngenOlostIdentitetsgranskning(tx, organizationId)
+      await tx.paymentReminder.create({
+        data: {
+          invoiceId,
+          type: 'READY_FOR_COLLECTION',
+          feeAmount: 0,
+        },
+      })
+    }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
 
     await this.prisma.invoiceEvent.create({
       data: {
