@@ -23,6 +23,16 @@ const INVOICE_LABELS: Record<string, BadgeStyle> = {
   PAID: { label: 'Betald', bg: 'var(--ev-success-50)', color: 'var(--ev-success-800)' },
   OVERDUE: { label: 'Förfallen', bg: 'var(--ev-danger-50)', color: 'var(--ev-danger-700)' },
   VOID: { label: 'Makulerad', bg: 'var(--ev-neutral-50)', color: 'var(--ev-text-muted)' },
+  // #913 — SENT_TO_COLLECTION saknade etikett, men når portalen: getInvoices
+  // filtrerar bara bort DRAFT. Fallbacken nedan renderar då `label: status`,
+  // alltså den råa texten SENT_TO_COLLECTION rakt i hyresgästens vy.
+  // Lydelsen är web/admins befintliga ('Hos inkasso', Badge.tsx) — samma
+  // tillstånd ska inte heta två saker i två appar.
+  SENT_TO_COLLECTION: {
+    label: 'Hos inkasso',
+    bg: 'var(--ev-danger-50)',
+    color: 'var(--ev-danger-700)',
+  },
 }
 
 const LEASE_LABELS: Record<string, BadgeStyle> = {
