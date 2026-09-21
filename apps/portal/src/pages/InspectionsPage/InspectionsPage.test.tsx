@@ -336,14 +336,21 @@ describe('bevisnivån i statusmärken och belopp', () => {
           registreradAt: '2024-01-05T00:00:00.000Z',
           proveniens: 'BANKMATCHNING_FINNS' as const,
           kommentar:
-            'En matchad bankbetalning är kopplad till depositionens underlag. ' +
-            'Uppgiften vilar därmed på en bankhändelse och inte bara på en registrering i appen.',
+            'En matchad bankbetalning är kopplad till underlaget. Det visar inte i sig ' +
+            'att hela depositionen är bankbekräftad eller hur mottagningsdatumet registrerades.',
         },
       },
     ])
     rendera()
 
     expect(await screen.findByText('Kopplad till en matchad bankbetalning.')).toBeInTheDocument()
+    // AVGRÄNSNINGEN SKA SYNAS, inte bara finnas i svaret: en matchning gör
+    // varken hela depositionen bankbekräftad eller säger hur datumet
+    // registrerades.
+    expect(
+      screen.getByText(/inte i sig att hela depositionen är bankbekräftad/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/hur mottagningsdatumet registrerades/)).toBeInTheDocument()
     // Och fortfarande ingen påstådd bankBEKRÄFTELSE av utbetalningen.
     expect(screen.getByText('Uppgift saknas')).toBeInTheDocument()
   })

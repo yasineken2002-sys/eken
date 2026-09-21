@@ -740,7 +740,15 @@ medDb('portalen: besiktningar och deposition', () => {
 
     const [vy] = await portal.getDeposits(hgNuvarande)
     expect(vy!.mottagenBetalning!.proveniens).toBe('BANKMATCHNING_FINNS')
+    // Texten får inte säga mer än uppslaget mätte. Den bekräftar att en
+    // matchning finns OCH att det inte i sig gör hela depositionen
+    // bankbekräftad eller säger hur mottagningsdatumet registrerades.
     expect(vy!.mottagenBetalning!.kommentar).toContain('matchad bankbetalning')
+    expect(vy!.mottagenBetalning!.kommentar).toContain('inte i sig')
+    expect(vy!.mottagenBetalning!.kommentar).toContain('bankbekräftad')
+    expect(vy!.mottagenBetalning!.kommentar).toContain('mottagningsdatumet')
+    // Och den påstår inte att uppgiften VILAR på bankhändelsen.
+    expect(vy!.mottagenBetalning!.kommentar).not.toContain('vilar därmed')
     // Bankradens och fakturans id är interna och får inte följa med.
     expect(JSON.stringify(vy)).not.toContain(bankradId)
     expect(JSON.stringify(vy)).not.toContain(invoiceId)

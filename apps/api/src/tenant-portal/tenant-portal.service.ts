@@ -1407,10 +1407,29 @@ export class TenantPortalService {
   /**
    * DEPOSITIONEN — UR VERKLIGA KÄLLOR, OCH MED TYSTNADEN UTSKRIVEN.
    *
-   * Varje tal nedan läses ur `Deposit`. Ingen omräkning sker här: avdragen är
-   * bokförda tillsammans med ett verifikat (`createJournalEntryForDepositRefund`),
-   * och en portal som räknade om dem hade byggt ett andra ekonomisystem vars
-   * enda uppgift vore att förr eller senare säga något annat än bokföringen.
+   * Varje tal nedan läses ur `Deposit`. Beloppet, återbetalningsbeslutet och
+   * datumen återges som de står i raden — de räknas inte om.
+   *
+   * ── AVDRAGEN SUMMERAS, OCH DET SÄGS RAKT UT ───────────────────────────────
+   *
+   * Docblocket påstod tidigare att "ingen omräkning sker här". Det var inte
+   * sant: `avdragSumma` ÄR en summering, och en beskrivning som säger motsatsen
+   * är värre än ingen — nästa läsare tror på den.
+   *
+   * Raderna summeras med `summeraDepositionsavdrag` (@eken/shared), samma
+   * funktion som `DepositsService.refund` använder när den prövar att
+   * återbetalning plus avdrag går jämnt ut innan verifikatet skrivs. EN
+   * funktion och inte två, av precis det skäl den gamla texten pekade på: två
+   * beskrivningar av samma summa är två tillfällen att förr eller senare säga
+   * något annat än bokföringen.
+   *
+   * SUMMAN ÄR INGET BOKFÖRT SALDO. Den är en presentationssumma av de
+   * avdragsrader som visas intill, och det står i svaret självt
+   * (`avdragSummaAr`) och inte bara här. Det bokförda underlaget är verifikatet
+   * (`createJournalEntryForDepositRefund`); portalen läser det inte och gör
+   * inget anspråk på att spegla det. Saknar en rad belopp räknas den inte in,
+   * och `avdragSummaFullstandig` säger att något lämnats utanför i stället för
+   * att summan tyst blir för låg.
    *
    * ── TRE SKILDA UPPGIFTER SOM INTE FÅR SLÅS IHOP ───────────────────────────
    *
@@ -1621,9 +1640,24 @@ export class TenantPortalService {
     return bankmatchning
       ? {
           proveniens: 'BANKMATCHNING_FINNS',
+          // ── TEXTEN FÅR INTE SÄGA MER ÄN UPPSLAGET MÄTTE ─────────────────
+          //
+          // Den stod tidigare: "Uppgiften vilar därmed på en bankhändelse och
+          // inte bara på en registrering i appen." Det är ett steg för långt i
+          // två riktningar, och båda är utskrivna i metodens huvud utan att
+          // texten följde med dit:
+          //
+          //   • Den säger inget om HELA depositionen. En matchad bankbetalning
+          //     kan vara en delbetalning; att en sådan finns gör inte beloppet
+          //     bankbekräftat.
+          //   • Den säger inget om hur `paidAt` registrerades. Uppslaget visar
+          //     att en matchning finns, inte att just datumet härleddes ur den.
+          //
+          // Texten är den enda delen av det här som hyresgästen läser, så den
+          // måste bära samma avgränsning som koden.
           kommentar:
-            'En matchad bankbetalning är kopplad till depositionens underlag. ' +
-            'Uppgiften vilar därmed på en bankhändelse och inte bara på en registrering i appen.',
+            'En matchad bankbetalning är kopplad till underlaget. Det visar inte i sig ' +
+            'att hela depositionen är bankbekräftad eller hur mottagningsdatumet registrerades.',
         }
       : {
           proveniens: 'KALLA_EJ_FASTSTALLD',
