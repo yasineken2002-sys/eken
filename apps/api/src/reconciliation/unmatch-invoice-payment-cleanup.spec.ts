@@ -15,6 +15,7 @@
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
@@ -137,7 +138,10 @@ function makeService(
     {} as never,
     new InvoiceEventsService(prisma as never) as never,
     { reverseJournalEntryForPayment } as never,
-    {} as never,
+    // G2-AVSLUT — femte argumentet är PaymentFreshnessService.
+    // `unmatchTransaction` tar numera det exklusiva organisationslåset
+    // FÖRST, så tjänsten ÄR använd i unmatch-vägen.
+    färskhetsdubbel() as never,
     { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
     // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
     // dem får kunna fälla en matchning, och det är just det de här proven

@@ -161,6 +161,10 @@ function reminderRigg(notices: FakeNotice[]) {
     {
       assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
       evaluateAndAlert: jest.fn().mockResolvedValue(new Set<string>()),
+      // G2-AVSLUT — dygnskörningen sveper granskningspauser. Attrappen svarar
+      // "inget att ta igen"; svepets beteende mäts mot riktig databas i
+      // `kravpaus-samtidighet.db.spec.ts`.
+      sveparGranskningspauser: jest.fn().mockResolvedValue({ behandlade: 0 }),
     } as never,
     // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
     // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
