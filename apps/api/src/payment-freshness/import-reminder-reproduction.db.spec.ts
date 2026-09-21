@@ -339,12 +339,6 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     await db.journalEntrySequence.deleteMany({ where })
     await db.bankTransaction.deleteMany({ where })
     await db.bankStatementImport.deleteMany({ where })
-    // #F034b — importförsökets kvittens har `onDelete: Restrict` mot
-    // Organization, samma hållning som de två raderna ovan. Utan den här
-    // raden faller `organization.delete` nedan på en FK och HELA sviten blir
-    // röd i städningen i stället för i det den mäter. Samma rad finns i
-    // `delete-organization.ts`, som `delete-organization.spec.ts` bevakar.
-    await db.bankImportAttempt.deleteMany({ where })
     await db.bankConsent.deleteMany({ where })
     await db.rentNotice.deleteMany({ where })
     await db.account.deleteMany({ where })
@@ -356,10 +350,6 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     await db.organization.delete({ where: { id: orgId } })
     orgId = undefined
     for (const extraOrgId of extraOrgIds.splice(0)) {
-      // Samma Restrict-skäl som ovan: F16 skapar en ANDRA organisation som
-      // också kör en import.
-      await db.bankImportAttempt.deleteMany({ where: { organizationId: extraOrgId } })
-      await db.bankTransaction.deleteMany({ where: { organizationId: extraOrgId } })
       await db.organization.delete({ where: { id: extraOrgId } })
     }
   })

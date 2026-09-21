@@ -383,6 +383,9 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
         rawOcr: true,
         status: true,
         matchedRentNoticeId: true,
+        // #F034b — radidentiteten och förekomstnumret. FALL B2 assertar dem.
+        identityKey: true,
+        identitySeq: true,
       },
     })
   }
@@ -466,8 +469,25 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
 
     const andra = await service.importBankStatement(fil, 'kontoutdrag.csv', orgId)
 
-    expect(andra.imported).toBe(0)
-    expect(andra.duplicates).toBe(2)
+    // ── VAD #F034b ÄNDRADE HÄR, OCH VAD DET INTE ÄNDRADE ───────────────────
+    //
+    // DET SOM RADEN MÄTER är oförändrat och står kvar nedan: inga nya
+    // bankrader, inga nya allokeringar, inga nya verifikat. Det är garantin.
+    //
+    // DET SOM ÄNDRADES är vad RÄKNARNA säger. Förr kördes filen om rad för rad
+    // och varje rad föll på fält-dedupen, alltså `imported: 0, duplicates: 2`.
+    // Nu stoppar filnivåskyddet körningen INNAN radloopen och spelar upp det
+    // lagrade resultatet från första körningen — samma tal som då, plus
+    // `forsok.replayed: true`.
+    //
+    // Skillnaden är inte kosmetisk för den som läser svaret: `duplicates: 2`
+    // påstår att två rader prövades och avvisades, och det gjorde de inte.
+    // Uppspelningen säger i stället sanningen — "den här filen är redan
+    // importerad, här är vad den gav" — och `replayed` är fältet som gör det
+    // påståendet synligt i stället för underförstått.
+    expect(andra.forsok?.replayed).toBe(true)
+    expect(andra.imported).toBe(2)
+    expect(andra.duplicates).toBe(0)
     expect((await bankrader()).map((r) => r.id).sort()).toEqual(efterFörsta.rader)
     expect(
       await prisma.rentNoticePayment.count({ where: { rentNotice: { organizationId: orgId } } }),
@@ -478,7 +498,43 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
   })
 
   // ── FALL B2 ───────────────────────────────────────────────────────────────
-  it('FALL B2 — verklig dubblettrad INNE i filen (identisk i varje fält) räknas som dubblett, inte som betalning', async () => {
+  //
+  // ██ BETEENDET ÄR OMVÄNT AV #F034b. LÄS DET HÄR INNAN DU "RÄTTAR" RADEN. ██
+  //
+  // F034 assertade här att en identisk rad INNE i filen räknas som dubblett:
+  // `imported: 1, duplicates: 1`, en bankrad. Det var ett MEDVETET val, och
+  // F034:s egen rapport skrev ut att alternativet — förekomsträkning inom filen
+  // — "byter en tyst förlust mot en möjlig tyst dubbelbokföring, och det valet
+  // hör till den som bär risken. Punkt 2 är ett ägarval, inte ett kodval, och
+  // det är inte taget här."
+  //
+  // #F034b TAR det valet. Det är alltså inte en bugg som rättas utan ett beslut
+  // som vänds, och skälen står här så att den som vill vända tillbaka kan göra
+  // det med samma underlag:
+  //
+  // 1. UPPDRAGET KRÄVER DET. "Skilda verkliga betalningar ska bevaras … Hantera
+  //    förekomster inom samma fil uttryckligt." Basens svar var att tappa den
+  //    andra betalningen tyst.
+  //
+  // 2. RISKASYMMETRIN PEKAR ÅT DET HÄLLET. Efter F034 bär nyckeln `reference`,
+  //    så TVÅ OLIKA hyresgäster skiljs redan åt av sin OCR. Kvar i kollisionen
+  //    är SAMMA hyresgäst som betalar två gånger samma dag med samma OCR — en
+  //    dubbelbetalning, eller två månader betalda i två överföringar. Det är
+  //    ett verkligt och inte sällsynt fall, och basen förlorade den andra
+  //    betalningen utan att något larmade (en dubblett är ett normalt utfall).
+  //    Motsatt risk är en bankfil som LISTAR samma betalning två gånger. Den
+  //    har jag inte kunnat konstruera ur de fyra format `detectBankFormat`
+  //    känner igen eller ur BgMax TC 20/21 (skilda poster, inte ett par) — men
+  //    "inte konstruerad" är inte "finns inte", och det är restrisken.
+  //
+  // 3. DEN GAMLA SKYDDSVERKAN ÄR TILL STOR DEL ÖVERTAGEN. Det vanligaste sättet
+  //    att få två identiska rader var att importera SAMMA FIL igen. Den vägen
+  //    når numera inte ens radnivån: filnivåns avtryck stoppar den (FALL B).
+  //
+  // Vad regeln INTE gör: den summerar aldrig över filer. En överlappande ANNAN
+  // fil som bär betalningen en gång får förekomst 0, ser den lagrade raden och
+  // räknas som dubblett — se `bankimport-filidempotens.db.spec.ts` A8b.
+  it('FALL B2 — två IDENTISKA rader inne i filen är två betalningar (#F034b vände detta)', async () => {
     await avi({ tenantId: tenantA, leaseId: leaseA, unitId: unitA, ocr: ocrA, månad: 5 })
 
     const resultat = await service.importBankStatement(
@@ -490,9 +546,15 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       orgId,
     )
 
-    expect(resultat.imported).toBe(1)
-    expect(resultat.duplicates).toBe(1)
-    expect(await bankrader()).toHaveLength(1)
+    // Basen gav 1/1 och EN rad. Den andra betalningen fanns inte i databasen.
+    expect(resultat.imported).toBe(2)
+    expect(resultat.duplicates).toBe(0)
+    const rader = await bankrader()
+    expect(rader).toHaveLength(2)
+    // Förekomstnumret är det som gör att de kan samexistera under det unika
+    // villkoret — utan det ledet hade indexet slagit ihop dem igen.
+    expect(rader.map((r) => r.identitySeq).sort()).toEqual([0, 1])
+    expect(new Set(rader.map((r) => r.identityKey)).size).toBe(1)
   })
 
   // ── FALL C ────────────────────────────────────────────────────────────────
@@ -522,13 +584,16 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
     expect(rader.filter((r) => r.rawOcr === null)).toHaveLength(1)
 
     // …och en tredje körning av den OCR-lösa filen får inte skapa en tredje rad.
+    //
+    // #F034b: det är SAMMA fil (byte-identisk), alltså samma avtryck. Körningen
+    // spelas upp i stället för att köras om — se noten i FALL B om varför
+    // räknarna då säger något annat än förr. GARANTIN, två rader, är densamma.
     const tredje = await service.importBgMaxFile(
       bgmax(BETALDAG, [{ ocr: '', belopp: HYRA }]),
       'bgmax-2.txt',
       orgId,
     )
-    expect(tredje.imported).toBe(0)
-    expect(tredje.duplicates).toBe(1)
+    expect(tredje.forsok?.replayed).toBe(true)
     expect(await bankrader()).toHaveLength(2)
   })
 

@@ -88,12 +88,20 @@ CREATE UNIQUE INDEX "BankImportAttempt_organizationId_fingerprint_key"
 CREATE INDEX "BankImportAttempt_organizationId_status_idx"
   ON "BankImportAttempt" ("organizationId", "status");
 
--- Restrict speglar BankTransaction/BankStatementImport: importkvittensen får
--- inte försvinna under underlaget.
+-- CASCADE, TILL SKILLNAD FRÅN GRANNARNA. `BankTransaction` och
+-- `BankStatementImport` har `Restrict` därför att de är räkenskapsinformation
+-- respektive underlag för sådan (BFL 1999:1078, 7 år). Den här raden är en
+-- DRIFTKVITTENS på ett importförsök och besvarar en enda fråga — "har filen
+-- redan importerats?" — som är meningslös när organisationen är borta. Det
+-- verkliga underlaget, bankraderna, skyddas av sin egen Restrict.
+--
+-- Valet är inte bekvämlighet: `Restrict` hade tvingat varje väg som raderar en
+-- organisation att först tömma en tabell vars innehåll inget skyddar, och den
+-- friktionen hade betalats i varje provfixtur utan att någon rad blev säkrare.
 ALTER TABLE "BankImportAttempt"
   ADD CONSTRAINT "BankImportAttempt_organizationId_fkey"
   FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
-  ON DELETE RESTRICT ON UPDATE CASCADE;
+  ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ── 3. PDF-BEKRÄFTELSENS ANSPRÅK PÅ DRAFTEN ─────────────────────────────────
 --

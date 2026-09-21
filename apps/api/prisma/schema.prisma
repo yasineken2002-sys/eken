@@ -2716,7 +2716,25 @@ model BankImportAttempt {
   resultJson   Json?
   errorMessage String?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  // ── CASCADE, OCH DET SKILJER SIG FRÅN GRANNARNA MED AVSIKT ────────────────
+  //
+  // `BankTransaction` och `BankStatementImport` har båda `Restrict`, och det är
+  // rätt för dem: de ÄR räkenskapsinformation respektive underlag för sådan
+  // (BFL 1999:1078, bevaras 7 år). Underlaget får inte kunna försvinna under
+  // bokföringen.
+  //
+  // Den här raden är något annat. Den är en DRIFTKVITTENS på ett importförsök,
+  // och den finns för att besvara en enda fråga: "har den här filen redan
+  // importerats?". Är organisationen borta är frågan meningslös — och
+  // bankraderna, som är det verkliga underlaget, är då redan borta via sin egen
+  // Restrict. Att stämpla kvittensen som bevarandepliktig hade varit att låna
+  // BFL:s tyngd till något lagen inte talar om.
+  //
+  // Priset, uttryckligt: en organisationsradering tar kvittenserna med sig, och
+  // frågan "vilka filer importerades" går inte att ställa i efterhand. Den
+  // frågan besvaras av bankraderna och av `BankStatementImport`, som båda
+  // bevaras.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

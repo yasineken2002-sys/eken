@@ -389,8 +389,23 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
     const omimport = await reconciliation.importBankStatement(fil, 'kontoutdrag.csv', r.orgId)
 
     expect(omimport.errors).toEqual([])
-    expect(omimport.imported).toBe(0)
-    expect(omimport.duplicates).toBe(2)
+
+    // ── VAD #F034b ÄNDRADE HÄR ────────────────────────────────────────────
+    //
+    // GARANTIN är oförändrad och står kvar nedan: inga nya bankrader, inga nya
+    // betalningseffekter, inga nya verifikat. Det är vad raden mäter.
+    //
+    // RÄKNARNA säger något annat än förr. Basen körde filen om rad för rad och
+    // varje rad föll på fält-dedupen (`imported: 0, duplicates: 2`). Nu stoppar
+    // filnivåns avtryck körningen FÖRE radloopen och spelar upp det lagrade
+    // resultatet från första körningen, med `forsok.replayed: true`.
+    //
+    // `duplicates: 2` hade påstått att två rader prövades och avvisades, och
+    // det gjorde de inte. Samma not, utförligare, står vid FALL B i
+    // `reconciliation/bankimport-transaktionsidentitet.db.spec.ts`.
+    expect(omimport.forsok?.replayed).toBe(true)
+    expect(omimport.imported).toBe(2)
+    expect(omimport.duplicates).toBe(0)
 
     // Inga nya bankrader, inga nya betalningseffekter, inga nya verifikat.
     expect(await prisma.bankTransaction.count({ where: { organizationId: r.orgId } })).toBe(2)
