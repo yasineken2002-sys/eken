@@ -47,7 +47,7 @@ function formatMonthYear(dateStr: string): string {
 
 // ── SVG icons for quick-action cards ──────────────────
 
-function AvierSvg() {
+function FakturorSvg() {
   return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
       <rect x="3" y="4" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.5" />
@@ -259,11 +259,30 @@ export function DashboardPage() {
 
         {/* 2×2 Quick action grid */}
         <div className={styles.actionGrid}>
-          <button className={styles.actionCard} onClick={() => navigate('/notices')}>
+          {/* #915 — kortet hette "Avier" men visade `overdueInvoices`, som är
+              `invoice.count({ status: 'OVERDUE' })`: FAKTUROR. Det länkade
+              dessutom till `/notices`, som öppnar AVI-fliken, så den som klickade
+              på talet kom till en lista där talet inte fanns.
+
+              Byggbeslutet: kortet heter Fakturor, behåller sitt tal och går till
+              fakturafliken. Talet är alltså oförändrat — rubriken följer talet,
+              inte tvärtom.
+
+              `?tab=invoices` är samma väg som varningslänken ovan redan använder
+              (`NoticesPage` läser `searchParams.get('tab')`), inte en ny
+              mekanism. Att den verkligen öppnar rätt flik är prövat, inte antaget.
+
+              Avierna når hyresgästen fortfarande via bottennavigeringens
+              "Avier" (`PortalLayout` NAV_ITEMS) och via "Visa alla →" i kortet
+              "Senaste avi" nedan. Båda orörda. */}
+          <button
+            className={styles.actionCard}
+            onClick={() => navigate('/notices?tab=invoices')}
+          >
             <div className={styles.actionIcon} style={{ background: '#e8f0fd', color: '#3b82f6' }}>
-              <AvierSvg />
+              <FakturorSvg />
             </div>
-            <p className={styles.actionTitle}>Avier</p>
+            <p className={styles.actionTitle}>Fakturor</p>
             {/* #913 — underraden sa `${overdueInvoices} obetalda`, och
                 `overdueInvoices` är `invoice.count({ status: 'OVERDUE' })`:
                 bara FAKTUROR, bara statusen OVERDUE. Två fel på en rad. Dels
