@@ -74,6 +74,12 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
     invoiceLine: { create: jest.fn().mockResolvedValue({}) },
     invoice: {
       findMany: jest.fn().mockResolvedValue([]),
+      // G2-AVSLUT — den vänliga påminnelsens anspråk omprövar numera fakturan
+      // ORG-BUNDET inne i transaktionen (status, pausflagga, organisation),
+      // eftersom cronens `findMany` läste dem FÖRE loopen. Svarar attrappen
+      // null tolkas det som "inte längre aktuell" och inget brev går —
+      // vilket är rätt beteende och fel för de HÄR proven, som mäter BELOPPEN.
+      findFirst: jest.fn().mockResolvedValue({ id: invoice.id }),
       update: invoiceUpdate,
       updateMany: invoiceBump,
     },

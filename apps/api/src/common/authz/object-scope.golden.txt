@@ -55,7 +55,7 @@ InvoiceLine             deleteMany  invoices/invoices.service.ts                
 InvoicePayment          deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 PaymentReminder         delete      ai/tools/tool-executor.service.ts                       A kedje-query
 PaymentReminder         update      ai/tools/tool-executor.service.ts                       A kedje-query
-PaymentReminder         updateMany  notifications/payment-reminder.service.ts               C scopat anrop
+PaymentReminder         updateMany  notifications/payment-reminder.service.ts           ×2  C scopat anrop
 RentNoticeLine          deleteMany  avisering/avisering.service.ts                          A kedje-query
 RentNoticePayment       deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 RentNoticeSend          updateMany  mail/mail.worker.ts                                     C scopat anrop
@@ -98,7 +98,7 @@ MaintenanceComment      create      tenant-portal/tenant-portal.service.ts      
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
 PaymentReminder         create      ai/tools/tool-executor.service.ts                       A kedje-query
 PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  C scopat anrop
-PaymentReminder         createMany  notifications/payment-reminder.service.ts               C scopat anrop
+PaymentReminder         createMany  notifications/payment-reminder.service.ts           ×2  A kedje-query + C scopat anrop
 RentNoticeCreditLine    createMany  avisering/rent-notice-credit.service.ts                 P förälder org-bunden  ← nästlad via RentNoticeCredit.lines
 RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT
 RentNoticeEvent         create      collections/rent-collection-export.service.ts       ×2  C scopat anrop

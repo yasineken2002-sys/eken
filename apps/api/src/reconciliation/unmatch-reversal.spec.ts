@@ -14,6 +14,7 @@
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { BadRequestException, ForbiddenException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
@@ -108,7 +109,7 @@ function makeService(opts: {
     {} as never,
     {} as never,
     accounting as never,
-    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen,
+    färskhetsdubbel() as never, // G2-AVSLUT: unmatch tar organisationslåset
     { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
     // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
     // dem får kunna fälla en matchning, och det är just det de här proven

@@ -139,6 +139,34 @@ const CRITICAL_INDEXES = [
     // organisation, alltså bryta API-vägens rader.
     where: "identityKey<>''",
   },
+  {
+    label: 'granskningspausens period — EN öppen paus per organisation (G2-AVSLUT)',
+    expectedName: 'bank_identity_review_pause_open_unique',
+    migrationRef: '20260921180000_bank_identity_review_pause',
+    unique: true,
+    table: 'BankIdentityReviewPause',
+    columns: ['organizationId'],
+    // ── PREDIKATET ÄR HELA KONSTRUKTIONEN ─────────────────────────────────
+    //
+    // Utan `WHERE "endedAt" IS NULL` vore villkoret "en period per organisation
+    // NÅGONSIN", och då kan en organisation som löst sin första paus aldrig få
+    // en andra — alltså skulle nästa granskningspaus bli TYST, utan notis och
+    // utan mejl. Det är precis det fel perioden finns för att ta bort.
+    //
+    // Med predikatet är villkoret "ett ÖPPET aviseringstillfälle åt gången".
+    // Det är det som gör två samtidiga importer till ett brev i stället för
+    // två, och det avgörs av databasen — inte av en läs-sedan-skriv som båda
+    // kan passera.
+    //
+    // Indexet bärs av `INSERT … ON CONFLICT ("organizationId") WHERE "endedAt"
+    // IS NULL DO NOTHING`. Byter någon namn eller predikat slutar konflikten
+    // att infereras, och då kastar insättningen i stället för att svara
+    // "redan öppen".
+    // Utan blanksteg: vakten normaliserar bort dem ur den faktiska
+    // definitionen, och den förväntade måste skrivas i samma form. Samma
+    // skrivsätt som `identityKey<>''` ovan.
+    where: 'endedAtISNULL',
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

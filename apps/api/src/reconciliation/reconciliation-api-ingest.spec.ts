@@ -13,6 +13,7 @@
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
@@ -88,6 +89,10 @@ function makeFake() {
         return Promise.resolve(row)
       }),
     },
+    // G2-AVSLUT — granskningsradens skrivning ligger i en transaktion (det
+    // exklusiva organisationslåset tas först). Återanropet går mot SAMMA
+    // attrapp, så in-memory-tabellen ser skrivningen.
+    $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
   }
   return { prisma, rows }
 }
@@ -99,7 +104,9 @@ function makeService() {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    // G2-AVSLUT — femte argumentet är PaymentFreshnessService, och ingest
+    // anropar den numera (organisationslåset + pausperioden).
+    färskhetsdubbel() as never,
     { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
     // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
     // dem får kunna fälla en matchning, och det är just det de här proven

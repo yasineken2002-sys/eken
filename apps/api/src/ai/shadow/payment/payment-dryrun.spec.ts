@@ -94,16 +94,14 @@ describe('betalningsförslag ansluts till torrläget', () => {
   it('riktiga delegationsgrinden blockerar automatisk matchning och skriver bara domen', async () => {
     const prisma = {
       aiAssignment: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'forslag',
-            toolName: 'match_bank_transaction',
-            prediction: { avi: 'avi', belopp: 'FULL', motpart: 'person' },
-            propertyId: null,
-            unitId: null,
-            executionVerdict: null,
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'forslag',
+          toolName: 'match_bank_transaction',
+          prediction: { avi: 'avi', belopp: 'FULL', motpart: 'person' },
+          propertyId: null,
+          unitId: null,
+          executionVerdict: null,
+        }),
         update: jest.fn().mockResolvedValue({}),
       },
       aiDelegation: { findMany: jest.fn() },

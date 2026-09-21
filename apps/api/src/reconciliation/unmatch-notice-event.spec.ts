@@ -15,6 +15,7 @@
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
@@ -120,7 +121,10 @@ function makeService(
     {} as never,
     {} as never,
     { reverseJournalEntryForPayment } as never,
-    {} as never,
+    // G2-AVSLUT — femte argumentet är PaymentFreshnessService.
+    // `unmatchTransaction` tar numera det exklusiva organisationslåset
+    // FÖRST, så tjänsten ÄR använd i unmatch-vägen.
+    färskhetsdubbel() as never,
     // SKARP tjänst, inte en attrapp: det som ska bevisas är att aktörsetiketten
     // FAKTISKT denormaliseras, och en attrapp av `record` hade bevisat att
     // attrappen anropades.

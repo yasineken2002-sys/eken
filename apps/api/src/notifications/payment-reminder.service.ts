@@ -221,11 +221,72 @@ export class PaymentReminderService {
             // flytta en fungerande idempotens mitt i en kravväg. Avgränsningen
             // är utskriven i kontraktet i stället för att döljas.
             if (daysOverdue >= 1 && daysOverdue <= 7 && !sentTypes.has('REMINDER_FRIENDLY')) {
-              await this.prisma.$transaction(
-                (tx) =>
-                  this.freshness.assertIngenOlostIdentitetsgranskning(tx, invoice.organizationId),
-                paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS),
-              )
+              // ── G2-AVSLUT: ANSPRÅKET TAS INNE I SPÄRRENS TRANSAKTION ────
+              //
+              // Förut: förkontrollens transaktion STÄNGDE, därefter köades
+              // brevet, därefter skrevs markören. Mellan de två första fanns
+              // ingen gemensam skyddad livslängd, och en granskningsrad som
+              // commitades däremellan stoppade ingenting — mätt i S2, vid
+              // KÖGRÄNSEN och inte på en räknare.
+              //
+              // Nu tas anspråket (`REMINDER_FRIENDLY`-markören) i SAMMA
+              // transaktion som spärren, med `skipDuplicates` som
+              // idempotensvillkor — exakt formen den formella påminnelsen
+              // redan använder. Transaktionen håller det delade låset tills
+              // den commitar, så ordningen mot skrivsidans exklusiva lås är
+              // total.
+              //
+              // BREVET KÖAS EFTER COMMIT, aldrig inuti. Att flytta ett
+              // nätverksanrop in i en DB-transaktion gör den inte atomär, den
+              // blir bara lång — och en kö som svarar långsamt hade hållit
+              // organisationens lås under tiden.
+              //
+              // VAD SOM HÄNDER MED ETT REDAN KÖAT BREV: ingenting. Pausen
+              // återkallar det inte och kan inte göra det. Poängen med
+              // anspråk-före-köande är att fönstret där ett brev köas utan
+              // giltigt anspråk stängs helt: antingen vinner pausen och
+              // ingenting köades, eller så vann påminnelsen och anspråket är
+              // varaktigt. Något däremellan finns inte kvar.
+              const anspråk = await this.prisma.$transaction(async (tx) => {
+                await this.freshness.assertIngenOlostIdentitetsgranskning(
+                  tx,
+                  invoice.organizationId,
+                )
+                // ── FÖRUTSÄTTNINGARNA OMPRÖVAS INNE I TRANSAKTIONEN ─────
+                //
+                // Samma grepp som den formella vägen redan gör, och av samma
+                // skäl: `status` och `remindersPaused` lästes i cronens
+                // `findMany` FÖRE loopen, och loopen kan gå länge — varje
+                // faktura väntar upp till 5 s på köandet. Betalar hyresgästen
+                // eller pausar operatören kravtrappan mitt i körningen skulle
+                // brevet gå ändå.
+                //
+                // Läsningen är ORG-BUNDEN. Den binder skrivningen nedan till
+                // anroparens organisation: `PaymentReminder` har ingen egen
+                // `organizationId`, den scopas genom sin faktura, och det är
+                // här den kopplingen kontrolleras i stället för att ärvas från
+                // en läsning gjord före loopen.
+                const fortfarandeAktuell = await tx.invoice.findFirst({
+                  where: {
+                    id: invoice.id,
+                    organizationId: invoice.organizationId,
+                    status: 'OVERDUE',
+                    remindersPaused: false,
+                  },
+                  select: { id: true },
+                })
+                if (!fortfarandeAktuell) return false
+                const c = await tx.paymentReminder.createMany({
+                  data: [{ invoiceId: invoice.id, type: 'REMINDER_FRIENDLY', feeAmount: 0 }],
+                  skipDuplicates: true,
+                })
+                return c.count > 0
+              }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
+              if (!anspråk) {
+                // Någon annan hann ta anspråket — normalt utfall, inget fel.
+                summary.skipped++
+                continue
+              }
               await this.sendFriendlyReminder(invoice, party.email, daysOverdue)
               summary.friendlySent++
               continue
@@ -446,14 +507,29 @@ export class PaymentReminderService {
       idempotencyKey: `reminder-friendly-${invoice.id}`,
     })
 
-    await this.prisma.paymentReminder.create({
-      data: {
-        invoiceId: invoice.id,
-        type: 'REMINDER_FRIENDLY',
-        feeAmount: 0,
-        mailJobId: jobId,
-      },
+    // ── G2-AVSLUT: ANSPRÅKET FINNS REDAN — HÄR SKRIVS BARA JOBB-ID ──────
+    //
+    // `REMINDER_FRIENDLY`-markören tas numera i spärrens transaktion, FÖRE
+    // köandet (se cronloopen). Ett `create` här hade brutit mot
+    // `@@unique([invoiceId, type])` och fällt varje vänlig påminnelse.
+    //
+    // `updateMany` och inte `update`: metoden anropas också från den manuella
+    // vägen, där något anspråk kanske inte tagits. Då är `count` noll och
+    // ingenting skrivs — i stället för ett kast om en rad som inte finns.
+    const uppdaterade = await this.prisma.paymentReminder.updateMany({
+      where: { invoiceId: invoice.id, type: 'REMINDER_FRIENDLY' },
+      data: { mailJobId: jobId },
     })
+    if (uppdaterade.count === 0) {
+      await this.prisma.paymentReminder.create({
+        data: {
+          invoiceId: invoice.id,
+          type: 'REMINDER_FRIENDLY',
+          feeAmount: 0,
+          mailJobId: jobId,
+        },
+      })
+    }
 
     await this.prisma.invoiceEvent.create({
       data: {

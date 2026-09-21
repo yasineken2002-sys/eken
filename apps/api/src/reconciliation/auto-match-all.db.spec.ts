@@ -60,6 +60,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { randomUUID } from 'node:crypto'
 
 import { Prisma, PrismaClient, RentNoticeType } from '@prisma/client'
@@ -221,14 +222,10 @@ medDb('autoMatchAll som bulkkörning', () => {
           },
         },
       ),
-      freshness: new Proxy(
-        {},
-        {
-          get: () => () => {
-            throw new Error('freshness orört')
-          },
-        },
-      ),
+      // G2-AVSLUT — var en Proxy som kastade 'freshness orört'. Den
+      // stämmer inte längre: `unmatchTransaction` tar det exklusiva
+      // organisationslåset, så tjänsten RÖRS på den här vägen.
+      freshness: färskhetsdubbel(),
       logger: { log: () => undefined, warn: () => undefined, error: () => undefined },
       // ── AGENT 2 (etapp A): KÖN OCH FACIT ────────────────────────────────
       //

@@ -40,6 +40,7 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: async () => ''
  * lånar omgivningens rader mäter omgivningen. Id:n bär en körningsstämpel så två
  * samtidiga körningar inte kan ta varandras rader.
  */
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { PrismaClient, Prisma } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
@@ -134,7 +135,8 @@ medDb('vattenfallet mot riktig Postgres', () => {
       invoices,
       invoiceEvents,
       accounting,
-      { markPaymentDataThrough: async () => undefined } as never,
+      // G2-AVSLUT — skrivvägarna anropar numera färskhetstjänsten.
+      { ...färskhetsdubbel(), markPaymentDataThrough: async () => undefined } as never,
       new RentNoticeEventsService(p),
       // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
       // dem får kunna fälla en matchning, och det är just det de här proven
