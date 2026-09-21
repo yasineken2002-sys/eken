@@ -128,6 +128,30 @@ function ForbrukningIcon() {
   )
 }
 
+function BesiktningIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <rect x="5" y="3" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M8.5 10.5l1.8 1.8 3.4-3.6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line
+        x1="8"
+        y1="15.5"
+        x2="14"
+        y2="15.5"
+        stroke="currentColor"
+        strokeWidth="1"
+        opacity="0.5"
+      />
+    </svg>
+  )
+}
+
 const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolean }[] = [
   { to: '/', label: 'Hem', icon: <HemIcon />, end: true },
   { to: '/notices', label: 'Avier', icon: <AvierIcon />, end: false },
@@ -135,6 +159,7 @@ const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolea
   { to: '/maintenance', label: 'Felanmälan', icon: <FelanmalanIcon />, end: false },
   { to: '/news', label: 'Nyheter', icon: <NyheterIcon />, end: false },
   { to: '/documents', label: 'Dokument', icon: <DokumentIcon />, end: false },
+  { to: '/besiktning', label: 'Besiktning', icon: <BesiktningIcon />, end: false },
   { to: '/installningar', label: 'Konto', icon: <InstallningarIcon />, end: false },
 ]
 

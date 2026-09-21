@@ -245,3 +245,106 @@ export interface PortalActivationLease {
     }
   }
 }
+
+// ── Besiktning och deposition ────────────────────────────────────────────────
+//
+// Formerna speglar `SAFE_PORTAL_INSPECTION_SELECT` och `getDeposits` i API:et.
+// Fält som med flit INTE finns där finns inte heller här: ingen lagringsnyckel,
+// ingen organisation, ingen besiktningsman, ingen innehållshash.
+
+export type PortalInspectionCondition = 'GOOD' | 'ACCEPTABLE' | 'DAMAGED' | 'MISSING'
+export type PortalInspectionType = 'MOVE_IN' | 'MOVE_OUT' | 'PERIODIC' | 'DAMAGE'
+
+export interface PortalInspectionItem {
+  id: string
+  room: string
+  item: string
+  condition: PortalInspectionCondition
+  notes: string | null
+  repairCost: string | number | null
+}
+
+export interface PortalInspectionImage {
+  id: string
+  filename: string
+  caption: string | null
+  room: string | null
+  size: number
+  createdAt: string
+}
+
+/** En länk i rättelsehistoriken, så som hyresgästen får se den. */
+export interface PortalInspectionVersion {
+  id: string
+  version: number
+  arGallande: boolean
+  correctionReason: string | null
+  correctedAt: string | null
+  signedAt: string | null
+  completedAt: string | null
+}
+
+export interface PortalInspectionListItem {
+  id: string
+  type: PortalInspectionType
+  status: string
+  scheduledDate: string
+  completedAt: string | null
+  signedAt: string | null
+  version: number
+  antalVersioner: number
+  harRattelser: boolean
+  unit: { id: string; name: string; unitNumber: string; property: { name: string } }
+}
+
+export interface PortalInspection extends Omit<
+  PortalInspectionListItem,
+  'antalVersioner' | 'harRattelser'
+> {
+  overallCondition: string | null
+  notes: string | null
+  correctionReason: string | null
+  correctedAt: string | null
+  items: PortalInspectionItem[]
+  images: PortalInspectionImage[]
+  versioner: PortalInspectionVersion[]
+  arGallande: boolean
+}
+
+/**
+ * Fyra utfall, inte två. `VERIFIERAD` betyder att bilagans innehåll lästes
+ * tillbaka och stämde; de tre andra är skilda sorters okunskap och får aldrig
+ * ritas som ett godkännande.
+ */
+export type PortalBildkontrollUtfall = 'VERIFIERAD' | 'AVVIKANDE' | 'SAKNAS' | 'DIGEST_SAKNAS'
+
+export interface PortalBildkontroll {
+  inspectionId: string
+  sammanfattning: PortalBildkontrollUtfall | 'INGA_BILDER'
+  kontrolleradAt: string
+  bilder: { imageId: string; filename: string; utfall: PortalBildkontrollUtfall }[]
+}
+
+export interface PortalDeposit {
+  id: string
+  belopp: number
+  status: string
+  lease: {
+    id: string
+    startDate: string
+    endDate: string | null
+    unit: { id: string; name: string; unitNumber: string; property: { name: string } }
+  } | null
+  /** Null = depositionen är inte registrerad som betald. */
+  mottagenBetalning: { registreradAt: string } | null
+  avdrag: { anledning: string; belopp: number }[]
+  avdragSumma: number
+  /** Hyresvärdens BESLUT om återbetalning. Inte detsamma som en utbetalning. */
+  beslutadAterbetalning: { belopp: number; beslutadAt: string | null } | null
+  /**
+   * `kalla` är ALLTID null: det finns ingen källa i systemet som bekräftar att
+   * pengarna lämnat hyresvärdens konto. Fältet finns just för att tystnaden ska
+   * gå att visa i stället för att gissas.
+   */
+  genomfordUtbetalning: { kalla: null; kommentar: string }
+}

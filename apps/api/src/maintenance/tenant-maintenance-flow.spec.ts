@@ -137,7 +137,15 @@ function fixture(
   )
   const execute = jest.spyOn(executor, 'executeTool')
   const ai = new TenantAiService(prisma as never, { get: () => '' } as never, executor, {} as never)
-  const portal = new TenantPortalService(prisma as never, {} as never, maintenance, notify)
+  const portal = new TenantPortalService(
+    prisma as never,
+    {} as never,
+    maintenance,
+    notify,
+    {} as never,
+    {} as never,
+    {} as never,
+  )
   const confirm = () =>
     ai.confirmAction(toolName, input, conversationId, true, tenantId, organizationId)
   const manual = () => portal.submitMaintenanceRequest(tenantId, input)

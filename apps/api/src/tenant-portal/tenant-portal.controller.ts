@@ -588,6 +588,102 @@ export class TenantPortalController {
     return { url, filename: `${doc.name}.pdf`, mimeType: doc.mimeType }
   }
 
+  // ══ BESIKTNING OCH DEPOSITION ═════════════════════════════════════════════
+  //
+  // Fem LÄSANDE endpoints. Ingen av dem skriver, och portalen får med flit
+  // ingen väg att signera, invända eller betala — det är en annan leverans med
+  // andra frågor (vem binder vem, och till vad).
+  //
+  // Behörigheten härleds i tjänsten ur den inloggade hyresgästen, aldrig ur
+  // något klienten skickar. `tenant.id` kommer från `TenantAuthGuard`.
+
+  /**
+   * Hyresgästens tillgängliggjorda protokoll — en rad per kedja, den version
+   * som gäller.
+   */
+  @Get('inspections')
+  async getInspections(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+  ) {
+    return this.portalService.getInspections(tenant.id)
+  }
+
+  /** Ett protokoll med rättelsehistorik. */
+  @Get('inspections/:id')
+  async getInspection(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') id: string,
+  ) {
+    return this.portalService.getInspection(tenant.id, id)
+  }
+
+  /**
+   * FAKTISK kontroll av bilagornas innehåll.
+   *
+   * Egen endpoint, på begäran: kontrollen gör en läsning per bilaga mot
+   * lagringen. Hyresgästen får samma fyra utfall som hyresvärden — ordet
+   * "verifierad" står aldrig någonstans utan att den här vägen körts.
+   */
+  @Get('inspections/:id/bildkontroll')
+  async getInspectionImageCheck(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') id: string,
+  ) {
+    return this.portalService.getInspectionImageCheck(tenant.id, id)
+  }
+
+  /**
+   * Protokollets PDF.
+   *
+   * DIREKTLÄNKEN ÄR SKYDDAD: behörigheten prövas i tjänsten innan en enda byte
+   * renderas, och en främmande hyresgäst får 404 — inte ett tomt dokument och
+   * inte ett 403 som bekräftar att protokollet finns.
+   */
+  @Get('inspections/:id/pdf')
+  async downloadInspectionPdf(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') id: string,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const buffer = await this.portalService.getInspectionPdf(tenant.id, id)
+    void reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="besiktningsprotokoll.pdf"`)
+      .header('Content-Length', buffer.length)
+      .send(buffer)
+  }
+
+  /**
+   * Presignerad URL till EN bilaga.
+   *
+   * Samma form som dokumentnedladdningen: sessionstoken ligger i headern, den
+   * interna lagringsnyckeln lämnar aldrig servern, och URL:en lever fem
+   * minuter. Bilden måste tillhöra det protokoll som står i sökvägen OCH det
+   * protokollet måste vara hyresgästens.
+   */
+  @Get('inspections/:id/images/:imageId')
+  async getInspectionImageUrl(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+    @Param('id') id: string,
+    @Param('imageId') imageId: string,
+  ): Promise<{ url: string; filename: string }> {
+    return this.portalService.getInspectionImageUrl(tenant.id, id, imageId)
+  }
+
+  /**
+   * Depositionens läge ur verkliga källor.
+   *
+   * Svaret skiljer BESLUTAD återbetalning från GENOMFÖRD utbetalning, och den
+   * andra är alltid okänd — det finns ingen bankbekräftelse i systemet. Se
+   * `getDeposits`.
+   */
+  @Get('deposits')
+  async getDeposits(
+    @CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } },
+  ) {
+    return this.portalService.getDeposits(tenant.id)
+  }
+
   @Get('news')
   async getNews(@CurrentTenant() tenant: Tenant & { organization: { id: string; name: string } }) {
     return this.portalService.getNews(tenant.id)

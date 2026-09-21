@@ -46,6 +46,9 @@ function makeService(rows: ReturnType<typeof invoiceRow>[]) {
     testPersonalNumberService(),
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
   )
 }
 

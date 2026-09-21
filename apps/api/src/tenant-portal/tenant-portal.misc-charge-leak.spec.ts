@@ -70,6 +70,9 @@ describe('TenantPortalService — 5b MiscCharge-läcktätning + DRAFT/IDOR', () 
       testPersonalNumberService(),
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     )
 
     const result = await service.getMiscCharges('tenant-1')
@@ -99,6 +102,9 @@ describe('TenantPortalService — 5b MiscCharge-läcktätning + DRAFT/IDOR', () 
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )
@@ -132,6 +138,9 @@ describe('TenantPortalService — 5b MiscCharge-läcktätning + DRAFT/IDOR', () 
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )
