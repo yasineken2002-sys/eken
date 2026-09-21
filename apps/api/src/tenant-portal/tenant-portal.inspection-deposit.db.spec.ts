@@ -69,6 +69,7 @@ medDb('portalen: besiktningar och deposition', () => {
   let hgAnnanOrg: string
 
   const LAGRING: Record<string, Buffer> = {}
+  let renderadHtml = ''
 
   const nyOrg = async (märke: string) => {
     const sfx = randomUUID().slice(0, 8)
@@ -177,7 +178,15 @@ medDb('portalen: besiktningar och deposition', () => {
     const bildkontroll = new InspectionImageIntegrityService(lagringsstub as never)
     inspections = new InspectionsService(
       prisma as never,
-      { generateFromHtml: async () => Buffer.from('%PDF-1.4') } as never,
+      {
+        // HTML:en fångas, inte bara kasseras: provet nedan mäter vad PDF:en
+        // FAKTISKT innehåller, och en stubb som bara svarar med bytes kan
+        // inte svara på den frågan.
+        generateFromHtml: async (html: string) => {
+          renderadHtml = html
+          return Buffer.from('%PDF-1.4')
+        },
+      } as never,
       lagringsstub as never,
       bildkontroll,
     )
@@ -346,6 +355,35 @@ medDb('portalen: besiktningar och deposition', () => {
     const detalj = await portal.getInspection(hgNuvarande, id)
     expect(detalj.arGallande).toBe(true)
     expect(detalj.versioner.map((v) => v.version)).toEqual([1])
+
+    await prisma.inspection.delete({ where: { id: utkast.id } })
+    await prisma.inspection.delete({ where: { id } })
+  })
+
+  it('PDF:EN BÄR INTE ETT UTKASTS ORSAKSTEXT UT TILL HYRESGÄSTEN', async () => {
+    // Listan och detaljvyn filtrerar bort utkast. PDF:en renderades av SAMMA
+    // metod som hyresvärdens och hade burit utkastets versionsnummer och dess
+    // orsakstext — hyresvärdens ofärdiga bedömning av en skada — rakt ut till
+    // motparten. Tre vyer med spärr och en utan.
+    const id = await nyBesiktning()
+    const vy = await inspections.findOne(id, orgA)
+    const utkast = await inspections.skapaRattelse(
+      id,
+      { orsak: 'HEMLIG PÅGÅENDE BEDÖMNING av badrumsskadan', expectedContentHash: vy.contentHash },
+      orgA,
+      userA,
+    )
+
+    renderadHtml = ''
+    await portal.getInspectionPdf(hgNuvarande, id)
+    expect(renderadHtml).not.toContain('HEMLIG PÅGÅENDE BEDÖMNING')
+    expect(renderadHtml).not.toContain('UTKAST')
+
+    // Hyresvärdens egen export ser den däremot — att en rättelse är påbörjad
+    // är en uppgift hen ska ha.
+    renderadHtml = ''
+    await inspections.generateProtocolPdf(id, orgA)
+    expect(renderadHtml).toContain('HEMLIG PÅGÅENDE BEDÖMNING')
 
     await prisma.inspection.delete({ where: { id: utkast.id } })
     await prisma.inspection.delete({ where: { id } })

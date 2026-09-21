@@ -1316,10 +1316,20 @@ export class TenantPortalService {
     return besiktning
   }
 
-  /** Protokollets PDF. Samma rendering som hyresvärdens, samma innehåll. */
+  /**
+   * Protokollets PDF — samma rendering som hyresvärdens, med EN skillnad.
+   *
+   * `doljUtkast` stryker pågående rättelser ur versionstabellen. Utan den hade
+   * PDF:en burit ut ett utkasts versionsnummer och dess orsakstext till
+   * hyresgästen — hyresvärdens ofärdiga bedömning av en skada — trots att
+   * listan och detaljvyn filtrerar bort exakt samma rad. Tre vyer med spärr och
+   * en utan är den vanligaste formen på ett läckage.
+   */
   async getInspectionPdf(tenantId: string, inspectionId: string): Promise<Buffer> {
     const besiktning = await this.hamtaAgdBesiktning(tenantId, inspectionId)
-    return this.inspections.generateProtocolPdf(besiktning.id, besiktning.organizationId)
+    return this.inspections.generateProtocolPdf(besiktning.id, besiktning.organizationId, {
+      doljUtkast: true,
+    })
   }
 
   /**
