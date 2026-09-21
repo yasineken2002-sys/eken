@@ -18,6 +18,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { CreateDepositDto } from './dto/create-deposit.dto'
 import { RefundDepositDto } from './dto/refund-deposit.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { summeraDepositionsavdrag } from '@eken/shared'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { automationPaused, AUTOMATION_PAUSE_VAR } from '../common/ops/automation-pause'
 
@@ -675,7 +676,21 @@ export class DepositsService implements OnApplicationBootstrap {
 
     const total = Number(deposit.amount)
     const deductions = (dto.deductions ?? []) as DepositDeduction[]
-    const deductionsTotal = deductions.reduce((sum, d) => sum + Number(d.amount), 0)
+    // ── EN SUMMERING, TVÅ LÄSARE ──────────────────────────────────────────
+    //
+    // Raden var `deductions.reduce((sum, d) => sum + Number(d.amount), 0)`, och
+    // hyresgästportalen hade sin egen kopia av samma räkning. T2:s granskning
+    // pekade på att två beskrivningar av samma summa är precis den form som
+    // senare säger något annat än bokföringen.
+    //
+    // `summeraDepositionsavdrag` har MED FLIT identisk semantik för giltig
+    // indata: ett oavrundat tal, avrundat först i jämförelsen nedan. Den lägger
+    // inte till någon regel — DTO:n (`@IsNumber() @Min(0)` per rad) är
+    // fortfarande det som bestämmer vad som får skrivas in, och för den indatan
+    // kan `antalUtanBelopp` inte bli annat än noll. Portalen läser samma
+    // funktion mot en JSON-kolumn som inte har någon DTO bakom sig, och det är
+    // där gränsen betyder något.
+    const deductionsTotal = summeraDepositionsavdrag(deductions).summa
 
     if (dto.refundAmount < 0) {
       throw new BadRequestException('Återbetalningsbelopp får inte vara negativt')

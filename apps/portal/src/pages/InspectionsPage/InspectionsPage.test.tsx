@@ -48,14 +48,26 @@ function rendera() {
   )
 }
 
+const SUMMA_AR = 'En summering av de avdragsrader som visas här, inte ett saldo ur bokföringen.'
+
 const DEPOSITION_BESLUTAD = {
   id: 'dep-1',
   belopp: 19000,
   status: 'PARTIALLY_REFUNDED',
   lease: null,
-  mottagenBetalning: { registreradAt: '2024-01-05T00:00:00.000Z' },
+  mottagenBetalning: {
+    registreradAt: '2024-01-05T00:00:00.000Z',
+    proveniens: 'KALLA_EJ_FASTSTALLD' as const,
+    kommentar:
+      'Ingen matchad bankbetalning är kopplad till depositionens underlag. ' +
+      'Uppgiften kan komma från en manuell registrering hos hyresvärden — ' +
+      'Eveno kan inte fastställa källan.',
+  },
   avdrag: [{ anledning: 'Skada badrumsgolv', belopp: 4500 }],
   avdragSumma: 4500,
+  avdragSummaFullstandig: true,
+  avdragUtanBelopp: 0,
+  avdragSummaAr: SUMMA_AR,
   beslutadAterbetalning: { belopp: 14500, beslutadAt: '2026-03-10T00:00:00.000Z' },
   genomfordUtbetalning: {
     kalla: null,
@@ -81,7 +93,6 @@ const PROTOKOLL_RAD = {
 const PROTOKOLL_DETALJ = {
   ...PROTOKOLL_RAD,
   overallCondition: 'Godtagbart skick',
-  notes: null,
   correctionReason: 'Reparationskostnaden avsåg fel lägenhet',
   correctedAt: '2026-03-05T00:00:00.000Z',
   items: [
@@ -140,7 +151,9 @@ describe('depositionen — tre uppgifter som inte får glida ihop', () => {
 
     // Beslutet finns, med sitt belopp.
     expect(await screen.findByText('Beslutad återbetalning')).toBeInTheDocument()
-    expect(screen.getByText(/Beslutad och bokförd av hyresvärden/)).toBeInTheDocument()
+    // Texten säger nu uttryckligen att beslutet inte är en utförd betalning.
+    expect(screen.getByText(/Beslutad och bokförd/)).toBeInTheDocument()
+    expect(screen.getByText(/inte att det skett/)).toBeInTheDocument()
 
     // Utbetalningen är en EGEN rad, och den är okänd.
     expect(screen.getByText('Genomförd utbetalning')).toBeInTheDocument()
@@ -165,9 +178,7 @@ describe('depositionen — tre uppgifter som inte får glida ihop', () => {
     rendera()
 
     expect(await screen.findByText('Ej registrerad')).toBeInTheDocument()
-    expect(
-      screen.getByText('Hyresvärden har inte registrerat depositionen som betald.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Depositionen är inte registrerad som mottagen.')).toBeInTheDocument()
     expect(screen.getByText('Ingen återbetalning är beslutad ännu.')).toBeInTheDocument()
   })
 
@@ -284,6 +295,104 @@ describe('bilagornas kontroll', () => {
       ).toBeGreaterThan(0),
     )
     expect(screen.queryByText(/är oförändrat sedan det laddades upp/)).toBeNull()
+  })
+})
+
+describe('bevisnivån i statusmärken och belopp', () => {
+  it('STATUSMÄRKET PÅSTÅR INTE EN UTFÖRD BETALNING', async () => {
+    // Märket sa "Återbetald med avdrag" samtidigt som raden under sa att
+    // genomförd utbetalning är okänd. Av de två läses märket först.
+    api.fetchDeposits.mockResolvedValue([DEPOSITION_BESLUTAD])
+    rendera()
+
+    expect(await screen.findByText('Återbetalning beslutad — med avdrag')).toBeInTheDocument()
+    expect(screen.queryByText('Återbetald med avdrag')).toBeNull()
+    expect(screen.queryByText('Återbetald')).toBeNull()
+  })
+
+  it('en FÖRVERKAD deposition beskrivs som ett beslut', async () => {
+    api.fetchDeposits.mockResolvedValue([{ ...DEPOSITION_BESLUTAD, status: 'FORFEITED' }])
+    rendera()
+    expect(
+      await screen.findByText('Förverkad genom beslut — ingen återbetalning'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Förverkad')).toBeNull()
+  })
+
+  it('INGET AKTÖRSPÅSTÅENDE om vem som registrerade betalningen', async () => {
+    api.fetchDeposits.mockResolvedValue([DEPOSITION_BESLUTAD])
+    rendera()
+
+    expect(await screen.findByText('Källa ej fastställd.')).toBeInTheDocument()
+    expect(screen.queryByText(/Registrerad av hyresvärden/)).toBeNull()
+    expect(screen.getByText(/kan komma från en manuell registrering/)).toBeInTheDocument()
+  })
+
+  it('en BANKMATCHAD betalning säger att den är kopplad till en bankbetalning', async () => {
+    api.fetchDeposits.mockResolvedValue([
+      {
+        ...DEPOSITION_BESLUTAD,
+        mottagenBetalning: {
+          registreradAt: '2024-01-05T00:00:00.000Z',
+          proveniens: 'BANKMATCHNING_FINNS' as const,
+          kommentar:
+            'En matchad bankbetalning är kopplad till depositionens underlag. ' +
+            'Uppgiften vilar därmed på en bankhändelse och inte bara på en registrering i appen.',
+        },
+      },
+    ])
+    rendera()
+
+    expect(await screen.findByText('Kopplad till en matchad bankbetalning.')).toBeInTheDocument()
+    // Och fortfarande ingen påstådd bankBEKRÄFTELSE av utbetalningen.
+    expect(screen.getByText('Uppgift saknas')).toBeInTheDocument()
+  })
+
+  it('ÖREN VISAS när de finns, hela kronor visas utan decimaler', async () => {
+    api.fetchDeposits.mockResolvedValue([
+      {
+        ...DEPOSITION_BESLUTAD,
+        belopp: 19000,
+        avdrag: [
+          { anledning: 'Skada badrumsgolv', belopp: 4500.5 },
+          { anledning: 'Städning', belopp: 300 },
+        ],
+        avdragSumma: 4800.5,
+      },
+    ])
+    rendera()
+
+    expect(await screen.findByText(/4\s?500,50/)).toBeInTheDocument()
+    expect(screen.getByText(/Städning: 300 kr/)).toBeInTheDocument()
+    // Summan bär också örena — ingen avrundning till hela kronor.
+    expect(screen.getByText(/4\s?800,50/)).toBeInTheDocument()
+  })
+
+  it('ETT SAKNAT AVDRAGSBELOPP VISAS SOM SAKNAT, inte som noll kronor', async () => {
+    api.fetchDeposits.mockResolvedValue([
+      {
+        ...DEPOSITION_BESLUTAD,
+        avdrag: [
+          { anledning: 'Skada badrumsgolv', belopp: 4500 },
+          { anledning: null, belopp: null },
+        ],
+        avdragSumma: 4500,
+        avdragSummaFullstandig: false,
+        avdragUtanBelopp: 1,
+      },
+    ])
+    rendera()
+
+    expect(await screen.findByText(/Anledning saknas: belopp saknas/)).toBeInTheDocument()
+    expect(screen.getByText(/Summan är ofullständig: 1 rad saknar belopp/)).toBeInTheDocument()
+    // Och ingen rad som ser ut som ett avdrag på noll kronor.
+    expect(screen.queryByText(/: 0 kr/)).toBeNull()
+  })
+
+  it('SUMMANS INNEBÖRD STÅR UTSKRIVEN — den är ingen bokförd siffra', async () => {
+    api.fetchDeposits.mockResolvedValue([DEPOSITION_BESLUTAD])
+    rendera()
+    expect(await screen.findByText(SUMMA_AR)).toBeInTheDocument()
   })
 })
 

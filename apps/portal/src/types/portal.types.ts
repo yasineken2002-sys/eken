@@ -302,7 +302,10 @@ export interface PortalInspection extends Omit<
   'antalVersioner' | 'harRattelser'
 > {
   overallCondition: string | null
-  notes: string | null
+  // `notes` (toppnivå) finns INTE här, därför att servern inte skickar det.
+  // Se `SAFE_PORTAL_INSPECTION_SELECT` i API:et: fältets publik är aldrig
+  // klassificerad och det renderas inte i protokollets PDF. `items[].notes` är
+  // en annan sak och står kvar — det ÄR protokollets text.
   correctionReason: string | null
   correctedAt: string | null
   items: PortalInspectionItem[]
@@ -325,6 +328,25 @@ export interface PortalBildkontroll {
   bilder: { imageId: string; filename: string; utfall: PortalBildkontrollUtfall }[]
 }
 
+/**
+ * VAD UNDERLAGET STYRKER OM DEN MOTTAGNA BETALNINGEN.
+ *
+ * `BANKMATCHNING_FINNS` — en matchad bankbetalning är kopplad till
+ * depositionens underlag. Inte ett påstående om att just datumet härleddes ur
+ * den bankraden.
+ * `KALLA_EJ_FASTSTALLD` — ingen sådan koppling finns. Sant både för en manuell
+ * registrering och för en bankrad som avmatchats, och därför inget påstående om
+ * vem som gjorde vad.
+ */
+export type PortalBetalningsproveniens = 'BANKMATCHNING_FINNS' | 'KALLA_EJ_FASTSTALLD'
+
+export interface PortalDepositAvdrag {
+  /** `null` = ingen anledning står i raden. */
+  anledning: string | null
+  /** `null` = beloppet saknas eller går inte att läsa. Aldrig 0 som ersättning. */
+  belopp: number | null
+}
+
 export interface PortalDeposit {
   id: string
   belopp: number
@@ -335,10 +357,19 @@ export interface PortalDeposit {
     endDate: string | null
     unit: { id: string; name: string; unitNumber: string; property: { name: string } }
   } | null
-  /** Null = depositionen är inte registrerad som betald. */
-  mottagenBetalning: { registreradAt: string } | null
-  avdrag: { anledning: string; belopp: number }[]
+  /** Null = depositionen är inte registrerad som mottagen. */
+  mottagenBetalning: {
+    registreradAt: string
+    proveniens: PortalBetalningsproveniens
+    kommentar: string
+  } | null
+  avdrag: PortalDepositAvdrag[]
+  /** Summering av raderna ovan — inte ett saldo ur bokföringen. */
   avdragSumma: number
+  /** Falskt när minst en rad saknade belopp och därför inte ingår i summan. */
+  avdragSummaFullstandig: boolean
+  avdragUtanBelopp: number
+  avdragSummaAr: string
   /** Hyresvärdens BESLUT om återbetalning. Inte detsamma som en utbetalning. */
   beslutadAterbetalning: { belopp: number; beslutadAt: string | null } | null
   /**

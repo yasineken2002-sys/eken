@@ -164,6 +164,45 @@ medDb('portalen: besiktningar och deposition', () => {
     return insp.id
   }
 
+  /** En faktura att hänga depositionen och en bankrad på. */
+  const nyFaktura = async () => {
+    const f = await prisma.invoice.create({
+      data: {
+        organizationId: orgA,
+        tenantId: hgNuvarande,
+        invoiceNumber: `F-${randomUUID().slice(0, 8)}`,
+        // DEPOSIT — samma typ som depositionsfakturan har i produkten, så att
+        // fixturen inte är en faktura av ett slag som aldrig kopplas till en
+        // Deposit.
+        type: 'DEPOSIT',
+        subtotal: 19000,
+        vatTotal: 0,
+        total: 19000,
+        issueDate: new Date('2024-01-01T00:00:00Z'),
+        dueDate: new Date('2024-01-31T00:00:00Z'),
+      },
+      select: { id: true },
+    })
+    return f.id
+  }
+
+  /** En MATCHAD bankrad kopplad till fakturan — proveniensens enda källa. */
+  const nyMatchadBankrad = async (invoiceId: string) => {
+    const b = await prisma.bankTransaction.create({
+      data: {
+        organizationId: orgA,
+        date: new Date('2024-01-05T00:00:00Z'),
+        description: 'Inbetalning deposition',
+        amount: 19000,
+        status: 'MATCHED',
+        invoiceId,
+        matchedAt: new Date('2024-01-05T00:00:00Z'),
+      },
+      select: { id: true },
+    })
+    return b.id
+  }
+
   beforeAll(async () => {
     prisma = new PrismaClient()
     await prisma.$connect()
@@ -557,9 +596,13 @@ medDb('portalen: besiktningar och deposition', () => {
     const [vy] = await portal.getDeposits(hgNuvarande)
     expect(vy!.belopp).toBe(19000)
     expect(vy!.status).toBe('PARTIALLY_REFUNDED')
-    expect(vy!.mottagenBetalning).toEqual({ registreradAt: new Date('2024-01-05T00:00:00Z') })
+    // Formen bär nu proveniensen. Datumet står kvar oförändrat; det som lagts
+    // till är vad underlaget styrker OM datumet.
+    expect(vy!.mottagenBetalning!.registreradAt).toEqual(new Date('2024-01-05T00:00:00Z'))
+    expect(vy!.mottagenBetalning!.proveniens).toBe('KALLA_EJ_FASTSTALLD')
     expect(vy!.avdrag).toEqual([{ anledning: 'Skada badrumsgolv', belopp: 4500 }])
     expect(vy!.avdragSumma).toBe(4500)
+    expect(vy!.avdragSummaFullstandig).toBe(true)
     expect(vy!.beslutadAterbetalning).toEqual({
       belopp: 14500,
       beslutadAt: new Date('2026-03-10T00:00:00Z'),
@@ -606,6 +649,217 @@ medDb('portalen: besiktningar och deposition', () => {
     expect(vy!.mottagenBetalning).toBeNull()
     expect(vy!.beslutadAterbetalning).toBeNull()
     expect(vy!.avdrag).toEqual([])
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+  })
+
+  // ══ F3: TOPPNIVÅANTECKNINGEN LÄMNAR INTE SERVERN ══════════════════════════
+
+  it('INTERN MARKÖR I Inspection.notes NÅR ALDRIG HYRESGÄSTEN — lista, detalj, versioner, PDF', async () => {
+    // Fältet har aldrig renderats i protokollets PDF och dess publik är inte
+    // klassificerad. Markören är avsiktligt omöjlig att förväxla med
+    // protokolltext, så att ett läckage syns direkt i stället för att drunkna.
+    const MARKOR = 'INTERN-MARKOR-SOM-INTE-FAR-LAMNA-SERVERN-4711'
+    const id = await nyBesiktning({ notes: MARKOR })
+
+    // Uppgiften ligger KVAR i databasen — den döljs, den raderas inte.
+    const lagrad = await prisma.inspection.findUniqueOrThrow({
+      where: { id },
+      select: { notes: true },
+    })
+    expect(lagrad.notes).toBe(MARKOR)
+
+    // Ingen av hyresgästens fyra vyer bär den.
+    expect(JSON.stringify(await portal.getInspections(hgNuvarande))).not.toContain(MARKOR)
+
+    const detalj = await portal.getInspection(hgNuvarande, id)
+    expect(JSON.stringify(detalj)).not.toContain(MARKOR)
+    expect('notes' in detalj).toBe(false)
+    expect(JSON.stringify(detalj.versioner)).not.toContain(MARKOR)
+
+    renderadHtml = ''
+    await portal.getInspectionPdf(hgNuvarande, id)
+    expect(renderadHtml).not.toContain(MARKOR)
+
+    // Och hyresvärdens väg ser den fortfarande — åtkomsten är inte borttagen.
+    const hyresvardensVy = await inspections.findOne(id, orgA)
+    expect(hyresvardensVy.notes).toBe(MARKOR)
+
+    await prisma.inspection.delete({ where: { id } })
+  })
+
+  it('POSTENS anteckning och helhetsbedömningen visas fortfarande — inget urskillningslöst döljande', async () => {
+    const id = await nyBesiktning({ notes: 'toppnivå, dold', overallCondition: 'Godtagbart skick' })
+
+    const detalj = await portal.getInspection(hgNuvarande, id)
+    // `item.notes` ÄR protokollets text och motiveringen till skadeposten.
+    expect(detalj.items[0]!.notes).toBe('Spricka i klinker')
+    expect(detalj.overallCondition).toBe('Godtagbart skick')
+
+    await prisma.inspection.delete({ where: { id } })
+  })
+
+  // ══ F1: VAD UNDERLAGET STYRKER OM DEN MOTTAGNA BETALNINGEN ════════════════
+
+  it('MANUELLT REGISTRERAD BETALNING: källa ej fastställd, inget aktörspåstående', async () => {
+    // Ingen bankrad finns. `paidAt` kan komma från en manuell markering — och
+    // vyn säger just det, inte "registrerad av hyresvärden".
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        amount: 19000,
+        status: 'PAID',
+        paidAt: new Date('2024-01-05T00:00:00Z'),
+      },
+    })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.mottagenBetalning!.proveniens).toBe('KALLA_EJ_FASTSTALLD')
+    expect(vy!.mottagenBetalning!.kommentar).toContain('manuell registrering')
+    expect(JSON.stringify(vy)).not.toContain('Registrerad av hyresvärden')
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+  })
+
+  it('BANKMATCHNING FINNS: proveniensen härleds ur en matchad bankrad', async () => {
+    const invoiceId = await nyFaktura()
+    const bankradId = await nyMatchadBankrad(invoiceId)
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        invoiceId,
+        amount: 19000,
+        status: 'PAID',
+        paidAt: new Date('2024-01-05T00:00:00Z'),
+      },
+    })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.mottagenBetalning!.proveniens).toBe('BANKMATCHNING_FINNS')
+    expect(vy!.mottagenBetalning!.kommentar).toContain('matchad bankbetalning')
+    // Bankradens och fakturans id är interna och får inte följa med.
+    expect(JSON.stringify(vy)).not.toContain(bankradId)
+    expect(JSON.stringify(vy)).not.toContain(invoiceId)
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+    await prisma.bankTransaction.delete({ where: { id: bankradId } })
+    await prisma.invoice.delete({ where: { id: invoiceId } })
+  })
+
+  it('EN AVMATCHAD bankrad ger INTE bankproveniens — okänt sägs som okänt', async () => {
+    const invoiceId = await nyFaktura()
+    const bankradId = await nyMatchadBankrad(invoiceId)
+    // Någon avmatchade raden efteråt. Då finns ingen matchning att vila på.
+    await prisma.bankTransaction.update({
+      where: { id: bankradId },
+      data: { status: 'UNMATCHED', invoiceId: null, matchedAt: null },
+    })
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        invoiceId,
+        amount: 19000,
+        status: 'PAID',
+        paidAt: new Date('2024-01-05T00:00:00Z'),
+      },
+    })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.mottagenBetalning!.proveniens).toBe('KALLA_EJ_FASTSTALLD')
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+    await prisma.bankTransaction.delete({ where: { id: bankradId } })
+    await prisma.invoice.delete({ where: { id: invoiceId } })
+  })
+
+  it('ETT ÅTERBETALNINGSBESLUT UTAN BANKBEKRÄFTELSE: beslutet visas, utbetalningen okänd', async () => {
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        amount: 19000,
+        status: 'PARTIALLY_REFUNDED',
+        paidAt: new Date('2024-01-05T00:00:00Z'),
+        refundedAt: new Date('2026-03-10T00:00:00Z'),
+        refundAmount: 14500,
+        deductions: [{ reason: 'Skada badrumsgolv', amount: 4500 }],
+      },
+    })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.beslutadAterbetalning).toEqual({
+      belopp: 14500,
+      beslutadAt: new Date('2026-03-10T00:00:00Z'),
+    })
+    // Beslutet finns. Utbetalningen är en annan uppgift och saknas fortfarande.
+    expect(vy!.genomfordUtbetalning.kalla).toBeNull()
+    // Och ingen bankmatchning finns, så inbetalningssidan påstår inget heller.
+    expect(vy!.mottagenBetalning!.proveniens).toBe('KALLA_EJ_FASTSTALLD')
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+  })
+
+  // ══ F2: BELOPPEN ══════════════════════════════════════════════════════════
+
+  it('ÖREN BEVARAS i avdragsrader och i summan', async () => {
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        amount: 19000,
+        status: 'PARTIALLY_REFUNDED',
+        refundedAt: new Date('2026-03-10T00:00:00Z'),
+        refundAmount: 14199.3,
+        deductions: [
+          { reason: 'Skada badrumsgolv', amount: 4500.5 },
+          { reason: 'Städning', amount: 300.2 },
+        ],
+      },
+    })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.avdrag.map((r) => r.belopp)).toEqual([4500.5, 300.2])
+    expect(vy!.avdragSumma).toBeCloseTo(4800.7, 2)
+    expect(vy!.avdragSummaFullstandig).toBe(true)
+    expect(vy!.beslutadAterbetalning!.belopp).toBeCloseTo(14199.3, 2)
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+  })
+
+  it('ETT SAKNAT AVDRAGSBELOPP BLIR INTE NOLL — raden märks och summan sägs ofullständig', async () => {
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        amount: 19000,
+        status: 'PARTIALLY_REFUNDED',
+        refundedAt: new Date('2026-03-10T00:00:00Z'),
+        refundAmount: 14500,
+        // Andra raden saknar belopp, tredje bär en tom sträng. Ingen av dem är
+        // ett avdrag på noll kronor.
+        deductions: [
+          { reason: 'Skada badrumsgolv', amount: 4500 },
+          { reason: 'Okänt' },
+          { reason: 'Tomt belopp', amount: '' },
+        ],
+      },
+    })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.avdrag.map((r) => r.belopp)).toEqual([4500, null, null])
+    expect(vy!.avdragSumma).toBe(4500)
+    expect(vy!.avdragSummaFullstandig).toBe(false)
+    expect(vy!.avdragUtanBelopp).toBe(2)
+    expect(vy!.avdragSummaAr).toContain('inte ett saldo ur bokföringen')
 
     await prisma.deposit.delete({ where: { id: d.id } })
   })
