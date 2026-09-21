@@ -280,6 +280,10 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
   })
 
   afterEach(async () => {
+    // Fakturan G6 skapar. Ligger först: en kvarlämnad rad hade gjort nästa
+    // körnings `fakturor > 0` sann av fel skäl — alltså kanariefågeln grön utan
+    // att provet självt hade skapat något.
+    await prisma.invoice.deleteMany({ where: { organizationId: orgId } })
     await prisma.rentNoticePayment.deleteMany({ where: { rentNotice: { organizationId: orgId } } })
     await prisma.rentNoticeEvent.deleteMany({ where: { rentNotice: { organizationId: orgId } } })
     await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: orgId } } })
@@ -526,6 +530,27 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
     }
   })
 
+  /**
+   * DET HÄR PROVET BÄR SPÄRREN. G2 BÄR BULKFILTRET. De är inte två mätningar av
+   * samma sak, och skillnaden är MÄTT och inte resonerad:
+   *
+   * Terminal 1 tog bort spärren i `matchTransaction` och körde om (deras fynd
+   * G3):
+   *
+   *     G2  ✓ passerade FORTFARANDE   — raden blir aldrig kandidat i
+   *                                     autoMatchAll, så att spärren är borta
+   *                                     märks inte där
+   *     G3  ✕ FÖLL                    — bäraren
+   *     G6  ✓ passerade               — den mäter GRÄNSEN, inte spärren
+   *
+   * Att G6 stod kvar är det som gör den till en gränsmätning och inte en
+   * spärrmätning i förklädnad. Hade den fallit vore konstruktionen fel.
+   *
+   * MIN EGEN ANVISNING till terminal 1 sa "G2 ska falla". Den var fel, och de
+   * mätte i stället för att följa den. Skillnaden står här därför att nästa
+   * läsare annars gör om samma slutledning: två lager ser ut som en dubblett
+   * ända tills man tar bort det ena.
+   */
   it('G3: spärren sitter i matchTransaction, inte bara i bulkfrågans where', async () => {
     const ocr = nyttOcr()
     const noticeId = await avi(ocr)
@@ -676,13 +701,53 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
     expect(avin.isBackfill).toBe(false)
     expect(avin.paidAt).toBeNull()
 
-    // Och ingenting i vår kod har satt någon pausmarkering — vi har inte smugit
-    // in halva regel nr 1.
+    // ── OCH INGENTING HAR SATT NÅGON PAUSMARKERING ──────────────────────
+    //
+    // FAKTURAN SKAPAS AV RIGGEN, och det är hela skillnaden mellan en spärr och
+    // en tom mängd. Terminal 1 mätte (deras fynd G4) att den här räkningen
+    // tidigare gick över NOLL fakturor: filen bygger `RentNotice` via `avi()`
+    // och skapade aldrig någon `Invoice`. Assertionen var LEVANDE — en faktura
+    // med `remindersPaused: true` fick provet att falla — men OÅTKOMLIG i sin
+    // egen rigg, så ingen framtida ändring kunde nå den. En läsare hade kunnat
+    // ta räkningen för en täckning den inte gav.
+    //
+    // VARFÖR DEN ÄNDÅ SKA STÅ HÄR. `collectionStage: 'NONE'` ovan är
+    // HYRESAVINS pausbegrepp, och det är den stege riggen går igenom.
+    // `remindersPaused` är FAKTURASTEGENS, och fakturastegen är just där
+    // terminal 1:s "väg 1" skulle införas om ägaren beslutar att en oavgjord
+    // identitet ska hålla kravklockan. Räkningen är alltså en livrem för en
+    // ANNAN väg än den som prövas — och en livrem som inte sitter fast i något
+    // är ingen livrem.
+    //
+    // Fakturan är OPAUSAD och obetald: exakt det tillstånd en halvt införd
+    // väg 1 skulle ändra på.
+    //
+    // MÄTT ATT DEN KAN FALLA (NK18, bevis/29): med `remindersPaused: true` på
+    // den här fakturan föll provet med Expected 0 / Received 1, på just den här
+    // raden. Mutationen återställdes och filen kontrollerades mot sha256.
+    await prisma.invoice.create({
+      data: {
+        organizationId: orgId,
+        invoiceNumber: `F-${randomUUID().slice(0, 8)}`,
+        type: 'RENT',
+        status: 'SENT',
+        tenantId,
+        subtotal: BELOPP,
+        vatTotal: 0,
+        total: BELOPP,
+        issueDate: new Date(`${DATUM}T00:00:00.000Z`),
+        dueDate: new Date('2026-03-31T00:00:00.000Z'),
+      },
+    })
+    const fakturor = await prisma.invoice.count({ where: { organizationId: orgId } })
     const pausade = await prisma.invoice.count({
       where: { organizationId: orgId, remindersPaused: true },
     })
+    // Kanariefågeln för räkningen själv: finns ingen faktura är `pausade: 0`
+    // sant om ingenting, och provet hade varit grönt av tomhet.
+    expect(fakturor).toBeGreaterThan(0)
     expect(pausade).toBe(0)
-    utfall.G6 = { avin, pausade, gräns: 'KRAVTRAPPAN_KANNER_INTE_GRANSKNINGSKON' }
+    utfall.G6 = { avin, fakturor, pausade, gräns: 'KRAVTRAPPAN_KANNER_INTE_GRANSKNINGSKON' }
   })
 
   // ══ PUNKT 4: CROSS-SOURCE-DEDUPEN RESPEKTERAR KONTOT ══════════════════════
