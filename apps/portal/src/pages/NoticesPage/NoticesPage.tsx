@@ -170,19 +170,39 @@ export function NoticesPage() {
       </div>
 
       {/* Status-filter — gäller bara avier/fakturor (debiteringar har ingen
-          betald/obetald-status att filtrera på). */}
+          registrerad betalstatus att filtrera på).
+
+          #913 — chippen hette "Obetalda"/"Betalda". Båda påstod mer än urvalet
+          vet. `UNPAID_INVOICE_STATUSES` innehåller PARTIAL, så en delbetald
+          faktura låg under "Obetalda" samtidigt som kortet bredvid visade
+          "Delvis betald" och "Kvar av X — Y betalt". Och det som står i Eveno är
+          en REGISTRERING: att en betalning inte är registrerad här betyder inte
+          att hyresgästen inte har betalat. Lydelsen säger därför vad appen vet
+          och inte vad hyresgästen har gjort. Mängderna är oförändrade. */}
       {topTab !== 'misc-charges' && (
-        <div className={styles.filters}>
-          {(['all', 'unpaid', 'paid'] as const).map((f) => (
-            <button
-              key={f}
-              className={`${styles.filterChip} ${filter === f ? styles.filterChipActive : ''}`}
-              onClick={() => setFilter(f)}
-            >
-              {f === 'all' ? 'Alla' : f === 'unpaid' ? 'Obetalda' : 'Betalda'}
-            </button>
-          ))}
-        </div>
+        <>
+          <div className={styles.filters}>
+            {(['all', 'unpaid', 'paid'] as const).map((f) => (
+              <button
+                key={f}
+                className={`${styles.filterChip} ${filter === f ? styles.filterChipActive : ''}`}
+                onClick={() => setFilter(f)}
+              >
+                {f === 'all'
+                  ? 'Alla'
+                  : f === 'unpaid'
+                    ? 'Inte registrerade som betalda'
+                    : 'Registrerade som betalda'}
+              </button>
+            ))}
+          </div>
+          <p className={styles.sectionHint}>
+            Statusen visar vad som är registrerat hos hyresvärden. En betalning
+            kan vara gjord utan att ännu synas här.
+            {topTab === 'invoices' &&
+              ' Makulerade fakturor och fakturor som lämnats till inkasso visas bara under Alla.'}
+          </p>
+        </>
       )}
 
       {topTab === 'rent-notices' && (

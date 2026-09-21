@@ -264,8 +264,20 @@ export function DashboardPage() {
               <AvierSvg />
             </div>
             <p className={styles.actionTitle}>Avier</p>
+            {/* #913 — underraden sa `${overdueInvoices} obetalda`, och
+                `overdueInvoices` är `invoice.count({ status: 'OVERDUE' })`:
+                bara FAKTUROR, bara statusen OVERDUE. Två fel på en rad. Dels
+                kallades ett fakturatal för avier, dels sades "obetalda" om ett
+                tal som bara vet något om förfallodatum — och en förfallen rad
+                kan vara betald utan att betalningen hunnit registreras.
+                `else`-grenen var värre: "Inga förfallna" är direkt falskt för
+                den som har en förfallen AVI men ingen förfallen faktura, sedan
+                avier aldrig räknas in. Båda grenarna säger nu vad talet är.
+                Talet självt och länkmålet är oförändrade. */}
             <p className={styles.actionSub}>
-              {overdueInvoices > 0 ? `${overdueInvoices} obetalda` : 'Inga förfallna'}
+              {overdueInvoices > 0
+                ? `${overdueInvoices} ${overdueInvoices > 1 ? 'förfallna fakturor' : 'förfallen faktura'}`
+                : 'Inga förfallna fakturor'}
             </p>
           </button>
 
