@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common'
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
 import type {
   MaintenanceCategory,
   MaintenancePriority,
@@ -16,6 +16,9 @@ import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { readTenantWithCredentials } from './tenant-credential-read'
 import { anonymizeTenantWithin } from '../common/gdpr/anonymize-tenant'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { StorageService } from '../storage/storage.service'
+import { InspectionsService } from '../inspections/inspections.service'
+import { InspectionImageIntegrityService } from '../inspections/inspection-image-integrity.service'
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -142,6 +145,79 @@ export const SAFE_PORTAL_PROPERTY_SELECT = {
   city: true,
   postalCode: true,
 } as const satisfies Prisma.PropertySelect
+
+/**
+ * ── BESIKTNINGSPROTOKOLLET, SÅ MYCKET SOM HYRESGÄSTEN FÅR SE ────────────────
+ *
+ * Allow-list, inte deny-list, av samma skäl som `SAFE_TICKET_SELECT`: ett nytt
+ * fält på modellen hamnar utanför tills någon aktivt släpper in det.
+ *
+ * EXPLICIT EXKLUDERADE — LÄGG ALDRIG TILL:
+ *  - `organizationId`, `propertyId`, `unitId`, `leaseId`, `tenantId` (interna
+ *    nycklar; hyresgästen behöver ingen av dem för att läsa sitt protokoll)
+ *  - `inspectedById`, `correctedById` (användar-id inom hyresvärdens org)
+ *  - `actorKind` (internt spår om människa/agent)
+ *  - `tenantSignature`, `landlordSignature`, `signedContentHash` (livscykel-
+ *    och bevisfält som inte betyder något i portalen och som inbjuder till
+ *    feltolkning — en hash är inte en underskrift)
+ *  - `InspectionImage.storageKey` / `storageUrl` (intern R2-nyckel; bilden nås
+ *    via en presignerad URL från en egen endpoint, precis som dokument)
+ *
+ * ── `notes` OCH `overallCondition` ÄR MED, OCH DET ÄR ETT VAL ──────────────
+ *
+ * Modellen har INGET fält för interna anteckningar på besiktningen — till
+ * skillnad från `MaintenanceComment.isInternal`, som portalen filtrerar på.
+ * Att ändå dölja `notes` hade varit att uppfinna en gräns datan inte bär, och
+ * att dölja fel sak: anteckningen är själva motiveringen till en skadepost, och
+ * det är den hyresgästen måste kunna läsa för att kunna invända mot ett
+ * depositionsavdrag. Protokollets PDF — som hyresgästen redan får — innehåller
+ * samma text.
+ *
+ * VAD SOM SKULLE ÄNDRA BESLUTET: att ett `isInternal`-fält införs på
+ * besiktningen. Då är frågan vilka rader som är interna, inte om texten ska
+ * visas. Det är en egen ändring och står som känd gräns i leveransen.
+ */
+export const SAFE_PORTAL_INSPECTION_SELECT = {
+  id: true,
+  type: true,
+  status: true,
+  scheduledDate: true,
+  completedAt: true,
+  signedAt: true,
+  overallCondition: true,
+  notes: true,
+  version: true,
+  correctionOfId: true,
+  correctionReason: true,
+  correctedAt: true,
+  createdAt: true,
+  items: {
+    select: {
+      id: true,
+      room: true,
+      item: true,
+      condition: true,
+      notes: true,
+      repairCost: true,
+    },
+  },
+  images: {
+    select: {
+      id: true,
+      filename: true,
+      caption: true,
+      room: true,
+      size: true,
+      createdAt: true,
+    },
+  },
+  unit: {
+    select: {
+      ...SAFE_PORTAL_UNIT_SELECT,
+      property: { select: SAFE_PORTAL_PROPERTY_SELECT },
+    },
+  },
+} as const satisfies Prisma.InspectionSelect
 
 export const SAFE_PORTAL_DOCUMENT_SELECT = {
   id: true,
@@ -566,6 +642,9 @@ export class TenantPortalService {
     private readonly pn: PersonalNumberService,
     private readonly maintenanceService: MaintenanceService,
     private readonly notificationsService: NotificationsService,
+    private readonly inspections: InspectionsService,
+    private readonly bildkontroll: InspectionImageIntegrityService,
+    private readonly storage: StorageService,
   ) {}
 
   async getDashboard(tenantId: string) {
@@ -1079,5 +1158,331 @@ export class TenantPortalService {
         }),
       PRISMA_DEFAULT_TX_LIMITS,
     )
+  }
+
+  // ══ BESIKTNING OCH DEPOSITION ═════════════════════════════════════════════
+
+  /**
+   * VILKA PROTOKOLL SOM ÄR HYRESGÄSTENS — OCH VARFÖR `unitId` INTE STÅR HÄR.
+   *
+   * Bostaden är den enda kopplingen som ÖVERLEVER hyresförhållandet. Matchade
+   * vi på `unitId` hade nästa hyresgäst i samma lägenhet fått läsa den förras
+   * utflyttningsbesiktning — med skador, belopp och anteckningar om en annan
+   * människa. Det är ett läckage som ser ut som en rimlig join.
+   *
+   * Villkoret är därför HYRESFÖRHÅLLANDET: protokollet pekar antingen direkt på
+   * hyresgästen (`tenantId`) eller på ett avtal hyresgästen har eller har haft
+   * (`leaseId`). Båda är bundna till personen, inte till väggarna.
+   *
+   * Organisationen står med som ett eget villkor och inte bara implicit via
+   * avtalet: en `tenantId` räcker inte som org-bevis i en fråga som också har
+   * ett `OR`, och en grind som vilar på att den andra grenen råkar vara scopad
+   * är ingen grind.
+   */
+  private async besiktningsVillkor(tenantId: string): Promise<Prisma.InspectionWhereInput> {
+    const hyresgast = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, organizationId: true },
+    })
+    if (!hyresgast) throw new NotFoundException('Hyresgästen hittades inte')
+
+    const avtal = await this.prisma.lease.findMany({
+      where: { tenantId, organizationId: hyresgast.organizationId },
+      select: { id: true },
+    })
+    const avtalsIdn = avtal.map((a) => a.id)
+
+    return {
+      organizationId: hyresgast.organizationId,
+      OR: [{ tenantId }, ...(avtalsIdn.length > 0 ? [{ leaseId: { in: avtalsIdn } }] : [])],
+      // ── BARA SLUTFÖRDA PROTOKOLL ──────────────────────────────────────
+      //
+      // Ett utkast — inklusive en pågående rättelse — är inte tillgängliggjort.
+      // Att visa det hade betytt att hyresgästen läser halvfärdiga
+      // skadebedömningar och belopp som ännu kan ändras fritt av hyresvärden,
+      // och som inte gäller.
+      //
+      // Villkoret är SAMMA tre som `arSlutford` (inspection-versions.ts) prövar,
+      // och av samma skäl: `status` och `signedAt` kan gå isär i rader som
+      // skrevs innan F025:s spärr fanns. Det står som SQL här och inte som ett
+      // anrop därför att filtreringen måste ske i databasen — ett filter i
+      // minnet hade krävt att alla rader först hämtas, och en `findFirst` på
+      // ett enskilt id hade inte filtrerat alls.
+      //
+      // Bindningen mellan de två är provet "ett PÅGÅENDE protokoll är inte
+      // tillgängliggjort" i `tenant-portal.inspection-deposit.db.spec.ts`.
+      AND: [{ OR: [{ status: 'COMPLETED' }, { status: 'SIGNED' }, { NOT: { signedAt: null } }] }],
+    }
+  }
+
+  /**
+   * Hyresgästens protokoll — EN rad per kedja, den version som gäller.
+   *
+   * Kedjorna grupperas i minnet ur den redan hämtade mängden, inte med en
+   * fråga per rad. Det fungerar därför att alla SLUTFÖRDA versioner av en kedja
+   * tillhör samma hyresförhållande och alltså ligger i samma svar; ett utkast
+   * saknas ur mängden, vilket är rätt — ett utkast gäller aldrig.
+   */
+  async getInspections(tenantId: string) {
+    const rader = await this.prisma.inspection.findMany({
+      where: await this.besiktningsVillkor(tenantId),
+      select: SAFE_PORTAL_INSPECTION_SELECT,
+      orderBy: { scheduledDate: 'desc' },
+    })
+
+    const idn = new Set(rader.map((r) => r.id))
+    const efterfoljare = new Map<string, (typeof rader)[number]>()
+    for (const rad of rader) {
+      if (rad.correctionOfId) efterfoljare.set(rad.correctionOfId, rad)
+    }
+
+    // Kedjans rot i den här mängden: raden vars föregångare inte finns med.
+    const rotter = rader.filter((r) => !r.correctionOfId || !idn.has(r.correctionOfId))
+
+    return rotter.map((rot) => {
+      const kedja = [rot]
+      let nuvarande = rot
+      const sedda = new Set([rot.id])
+      for (;;) {
+        const nasta = efterfoljare.get(nuvarande.id)
+        if (!nasta || sedda.has(nasta.id)) break
+        sedda.add(nasta.id)
+        kedja.push(nasta)
+        nuvarande = nasta
+      }
+      const gallande = kedja[kedja.length - 1]!
+      return {
+        ...gallande,
+        antalVersioner: kedja.length,
+        harRattelser: kedja.length > 1,
+      }
+    })
+  }
+
+  /**
+   * Ett protokoll med dess rättelsehistorik.
+   *
+   * Historiken byggs av `InspectionsService.hamtaVersioner` — SAMMA härledning
+   * som hyresvärdens vy använder. Två uträkningar av "vilken version gäller"
+   * hade varit två tillfällen att ge hyresvärden och hyresgästen olika svar på
+   * exakt den fråga som avgör vilket underlag ett depositionsavdrag vilar på.
+   *
+   * Utkast filtreras bort EFTER härledningen, inte före: ett utkast ska inte
+   * synas, men det ska inte heller kunna flytta vilken version som gäller.
+   */
+  async getInspection(tenantId: string, inspectionId: string) {
+    const villkor = await this.besiktningsVillkor(tenantId)
+    const besiktning = await this.prisma.inspection.findFirst({
+      where: { AND: [{ id: inspectionId }, villkor] },
+      select: { ...SAFE_PORTAL_INSPECTION_SELECT, organizationId: true },
+    })
+    if (!besiktning) throw new NotFoundException('Besiktningsprotokollet hittades inte')
+
+    const { organizationId, ...synligt } = besiktning
+    const kedja = await this.inspections.hamtaVersioner(inspectionId, organizationId)
+
+    return {
+      ...synligt,
+      versioner: kedja
+        .filter((v) => !v.arUtkast)
+        .map((v) => ({
+          id: v.id,
+          version: v.version,
+          arGallande: v.arGallande,
+          correctionReason: v.correctionReason,
+          correctedAt: v.correctedAt,
+          signedAt: v.signedAt,
+          completedAt: v.completedAt,
+        })),
+      arGallande: kedja.find((v) => v.id === inspectionId)?.arGallande ?? false,
+    }
+  }
+
+  /**
+   * Behörighetskontrollen som de tre direktlänkarna (PDF, bild, bildkontroll)
+   * delar.
+   *
+   * EN funktion och inte tre kopior: tre egna `findFirst` med var sitt `where`
+   * är tre tillfällen att glömma ett villkor, och den som glöms syns inte —
+   * endpointen svarar precis som förut, bara för fler.
+   */
+  private async hamtaAgdBesiktning(tenantId: string, inspectionId: string) {
+    const villkor = await this.besiktningsVillkor(tenantId)
+    const besiktning = await this.prisma.inspection.findFirst({
+      where: { AND: [{ id: inspectionId }, villkor] },
+      select: { id: true, organizationId: true },
+    })
+    if (!besiktning) throw new NotFoundException('Besiktningsprotokollet hittades inte')
+    return besiktning
+  }
+
+  /**
+   * Protokollets PDF — samma rendering som hyresvärdens, med EN skillnad.
+   *
+   * `doljUtkast` stryker pågående rättelser ur versionstabellen. Utan den hade
+   * PDF:en burit ut ett utkasts versionsnummer och dess orsakstext till
+   * hyresgästen — hyresvärdens ofärdiga bedömning av en skada — trots att
+   * listan och detaljvyn filtrerar bort exakt samma rad. Tre vyer med spärr och
+   * en utan är den vanligaste formen på ett läckage.
+   */
+  async getInspectionPdf(tenantId: string, inspectionId: string): Promise<Buffer> {
+    const besiktning = await this.hamtaAgdBesiktning(tenantId, inspectionId)
+    return this.inspections.generateProtocolPdf(besiktning.id, besiktning.organizationId, {
+      doljUtkast: true,
+    })
+  }
+
+  /**
+   * En presignerad URL till EN bilaga.
+   *
+   * `storageKey` lämnar aldrig servern — samma mönster som dokumentvägen.
+   * Bilden måste tillhöra det protokoll som anges i URL:en OCH det protokollet
+   * måste vara hyresgästens; att bara kontrollera bild-id hade varit samma
+   * IDOR som `updateItem` en gång hade.
+   */
+  async getInspectionImageUrl(tenantId: string, inspectionId: string, imageId: string) {
+    const besiktning = await this.hamtaAgdBesiktning(tenantId, inspectionId)
+    const bild = await this.prisma.inspectionImage.findFirst({
+      where: { id: imageId, inspectionId: besiktning.id },
+      select: { id: true, filename: true, storageKey: true },
+    })
+    if (!bild) throw new NotFoundException('Bilagan hittades inte')
+    return { url: await this.storageUrl(bild.storageKey), filename: bild.filename }
+  }
+
+  /**
+   * FAKTISK kontroll av bilagornas innehåll, på hyresgästens begäran.
+   *
+   * Samma tjänst som hyresvärdens vy använder. Hyresgästen får alltså exakt
+   * samma fyra utfall — inte en förenklad "OK/inte OK", som hade gjort ett
+   * `DIGEST_SAKNAS` till ett godkännande eller ett underkännande. Digesterna
+   * själva följer inte med: de säger hyresgästen ingenting och är interna spår.
+   */
+  async getInspectionImageCheck(tenantId: string, inspectionId: string) {
+    const besiktning = await this.hamtaAgdBesiktning(tenantId, inspectionId)
+    const bilder = await this.prisma.inspectionImage.findMany({
+      where: { inspectionId: besiktning.id },
+      select: { id: true, filename: true, storageKey: true, contentSha256: true },
+    })
+    const utfall = await this.bildkontroll.kontrolleraBilder(bilder)
+    return {
+      inspectionId: besiktning.id,
+      sammanfattning: this.bildkontroll.sammanfatta(utfall),
+      kontrolleradAt: new Date(),
+      bilder: utfall.map((u) => ({
+        imageId: u.imageId,
+        filename: u.filename,
+        utfall: u.utfall,
+      })),
+    }
+  }
+
+  /**
+   * DEPOSITIONEN — UR VERKLIGA KÄLLOR, OCH MED TYSTNADEN UTSKRIVEN.
+   *
+   * Varje tal nedan läses ur `Deposit`. Ingen omräkning sker här: avdragen är
+   * bokförda tillsammans med ett verifikat (`createJournalEntryForDepositRefund`),
+   * och en portal som räknade om dem hade byggt ett andra ekonomisystem vars
+   * enda uppgift vore att förr eller senare säga något annat än bokföringen.
+   *
+   * ── TRE SKILDA UPPGIFTER SOM INTE FÅR SLÅS IHOP ───────────────────────────
+   *
+   *   `mottagenBetalning`   — `paidAt`. Hyresvärden har registrerat att
+   *                           depositionen kommit in.
+   *   `beslutadAterbetalning` — `refundAmount` + `refundedAt`. Hyresvärden har
+   *                           BESLUTAT och bokfört återbetalningen.
+   *   `genomfordUtbetalning` — ALLTID okänd. Se nedan.
+   *
+   * ── VARFÖR DEN TREDJE ALLTID ÄR OKÄND ─────────────────────────────────────
+   *
+   * Mätt i kodbasen: det finns ingen källa som bekräftar att pengarna lämnat
+   * hyresvärdens konto. `refundedAt` sätts i samma transaktion som beslutet och
+   * verifikatet — den beskriver alltså beslutet, inte banken. Att visa den som
+   * "utbetald" hade varit att låta hyresgästen tro att en betalning är
+   * bekräftad av en part som aldrig tillfrågats.
+   *
+   * Fältet returneras därför med `kalla: null` i stället för att utelämnas.
+   * Ett utelämnat fält läses som "inte tillämpligt"; ett `null` med en
+   * förklaring läses som "vi vet inte", vilket är sanningen.
+   */
+  async getDeposits(tenantId: string) {
+    const hyresgast = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { organizationId: true },
+    })
+    if (!hyresgast) throw new NotFoundException('Hyresgästen hittades inte')
+
+    const depositioner = await this.prisma.deposit.findMany({
+      where: { tenantId, organizationId: hyresgast.organizationId },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        paidAt: true,
+        refundAmount: true,
+        refundedAt: true,
+        deductions: true,
+        createdAt: true,
+        lease: {
+          select: {
+            id: true,
+            startDate: true,
+            endDate: true,
+            unit: {
+              select: {
+                ...SAFE_PORTAL_UNIT_SELECT,
+                property: { select: SAFE_PORTAL_PROPERTY_SELECT },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return depositioner.map((d) => {
+      const avdrag = Array.isArray(d.deductions)
+        ? (d.deductions as { reason?: unknown; amount?: unknown }[])
+            .filter((rad) => rad && typeof rad === 'object')
+            .map((rad) => ({
+              anledning: typeof rad.reason === 'string' ? rad.reason : 'Ej angiven',
+              belopp: Number(rad.amount ?? 0),
+            }))
+        : []
+
+      return {
+        id: d.id,
+        belopp: Number(d.amount),
+        status: d.status,
+        lease: d.lease,
+
+        mottagenBetalning: d.paidAt
+          ? { registreradAt: d.paidAt }
+          : // Null och inte `{ registreradAt: null }`: depositionen är
+            // fakturerad men inte registrerad som betald, och det är en annan
+            // uppgift än ett saknat datum på en betald deposition.
+            null,
+
+        avdrag,
+        avdragSumma: avdrag.reduce((summa, rad) => summa + rad.belopp, 0),
+
+        beslutadAterbetalning:
+          d.refundAmount !== null
+            ? { belopp: Number(d.refundAmount), beslutadAt: d.refundedAt }
+            : null,
+
+        genomfordUtbetalning: {
+          kalla: null,
+          kommentar:
+            'Eveno har ingen källa som bekräftar att pengarna lämnat hyresvärdens konto. ' +
+            'Uppgiften ovan är hyresvärdens beslut och bokföring, inte en bankbekräftelse.',
+        },
+      }
+    })
+  }
+
+  /** Presignerad URL. Bryts ut så att bildvägen inte känner till lagringen. */
+  private async storageUrl(key: string): Promise<string> {
+    return this.storage.getPresignedUrl(key, 300)
   }
 }

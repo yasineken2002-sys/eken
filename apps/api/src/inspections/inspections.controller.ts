@@ -22,6 +22,7 @@ import { ImageInput } from './inspection-analyzer.service'
 import { CreateInspectionDto } from './dto/create-inspection.dto'
 import { UpdateInspectionDto } from './dto/update-inspection.dto'
 import { UpdateInspectionItemDto } from './dto/update-inspection-item.dto'
+import { CreateInspectionCorrectionDto } from './dto/create-inspection-correction.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -103,6 +104,51 @@ export class InspectionsController {
     @Body() dto: UpdateInspectionItemDto,
   ) {
     return this.inspectionsService.updateItem(id, itemId, dto, orgId)
+  }
+
+  /**
+   * Versionskedjan: vilka versioner som finns, vilken som gäller, varför varje
+   * rättelse gjordes och av vem.
+   *
+   * Egen endpoint UTÖVER att kedjan följer med `GET /inspections/:id`, därför
+   * att historikpanelen ska kunna läsas om utan att dra hela protokollet med
+   * poster och bilder.
+   */
+  @Get(':id/versioner')
+  async versioner(@OrgId() orgId: string, @Param('id') id: string) {
+    return this.inspectionsService.hamtaVersioner(id, orgId)
+  }
+
+  /**
+   * FAKTISK kontroll av bilagornas bytes mot den lagrade digesten.
+   *
+   * GET och inte POST fastän den gör ett nätverksanrop per bilaga: den skriver
+   * ingenting och är omkörbar. Att den kostar är skälet till att den är en EGEN
+   * endpoint i stället för ett fält i detaljsvaret — inte ett skäl att göra den
+   * muterande.
+   */
+  @Get(':id/bildkontroll')
+  async bildkontroll(@OrgId() orgId: string, @Param('id') id: string) {
+    return this.inspectionsService.kontrolleraBilder(id, orgId)
+  }
+
+  /**
+   * Rättelseversion av ett slutfört protokoll.
+   *
+   * Samma rollkrav som övriga skrivvägar in i ett protokoll. `VIEWER` och
+   * `ACCOUNTANT` ska inte kunna öppna ett nytt utkast ovanpå ett signerat
+   * bevisunderlag, och `userId` kommer ur JWT — aldrig ur body.
+   */
+  @Post(':id/rattelse')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  @HttpCode(HttpStatus.CREATED)
+  async rattelse(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateInspectionCorrectionDto,
+  ) {
+    return this.inspectionsService.skapaRattelse(id, dto, orgId, user.sub)
   }
 
   @Post(':id/analyze')

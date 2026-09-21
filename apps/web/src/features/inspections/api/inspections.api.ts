@@ -1,6 +1,7 @@
 import { get, post, patch, del, api } from '@/lib/api'
 import type {
   CreateInspectionInput,
+  CreateInspectionCorrectionInput,
   UpdateInspectionInput,
   UpdateInspectionItemInput,
   InspectionTypeValue,
@@ -67,6 +68,35 @@ export interface Inspection {
   contentHash: string
   createdAt: string
   updatedAt: string
+
+  /** Kedjans ordningstal. 1 = originalet. */
+  version: number
+  /** Versionen den här raden rättar, eller null för ett original. */
+  correctionOfId: string | null
+  correctionReason: string | null
+  correctedById: string | null
+  correctedAt: string | null
+  /**
+   * Efterföljaren, när någon har rättat den här versionen. Null betyder att
+   * raden är kedjans sista — inte att den gäller; det avgörs av `arGallande`.
+   */
+  correction: {
+    id: string
+    version: number
+    status: InspectionStatus
+    signedAt: string | null
+    completedAt: string | null
+  } | null
+  /**
+   * Hela kedjan. Följer BARA med detaljsvaret (`GET /inspections/:id`) — listan
+   * får den inte, eftersom den hade blivit en fråga per rad.
+   */
+  versioner?: InspectionVersion[]
+  /** Gäller den här versionen? Finns bara i detaljsvaret. */
+  arGallande?: boolean
+  /** Är den här versionen ett utkast? Finns bara i detaljsvaret. */
+  arUtkast?: boolean
+
   property: { id: string; name: string; street: string; city: string }
   unit: { id: string; name: string; unitNumber: string }
   tenant: {
@@ -80,6 +110,62 @@ export interface Inspection {
   lease: { id: string } | null
   items: InspectionItem[]
   images: InspectionImage[]
+}
+
+/** En länk i versionskedjan, som servern härleder den. */
+export interface InspectionVersion {
+  id: string
+  version: number
+  status: InspectionStatus
+  signedAt: string | null
+  completedAt: string | null
+  correctionOfId: string | null
+  correctionReason: string | null
+  correctedById: string | null
+  correctedAt: string | null
+  createdAt: string
+  /** Exakt en länk i kedjan är sann — eller ingen, om inget slutförts. */
+  arGallande: boolean
+  arUtkast: boolean
+}
+
+/**
+ * Utfallet av en FAKTISK kontroll av en bilagas bytes.
+ *
+ * `VERIFIERAD` betyder att innehållet lästes tillbaka ur lagringen och att
+ * digesten stämde. De tre andra är skilda sorters okunskap och får aldrig
+ * ritas som ett godkännande.
+ */
+export type BildkontrollUtfall = 'VERIFIERAD' | 'AVVIKANDE' | 'SAKNAS' | 'DIGEST_SAKNAS'
+
+export interface Bildkontroll {
+  imageId: string
+  filename: string
+  utfall: BildkontrollUtfall
+  kontrolleradAt: string
+  forvantadDigest: string | null
+  faktiskDigest: string | null
+}
+
+export interface Bildkontrollsvar {
+  inspectionId: string
+  sammanfattning: BildkontrollUtfall | 'INGA_BILDER'
+  kontrolleradAt: string
+  bilder: Bildkontroll[]
+}
+
+/** Upplysningen om att ett avdrag redan är beslutat. Null = inget att säga. */
+export interface Depositionsvarning {
+  depositId: string
+  status: string
+  avdragAntal: number
+  refundAmount: string | null
+  refundedAt: string | null
+}
+
+export interface RattelseSvar extends Inspection {
+  rattelseAv: { id: string; version: number; status: InspectionStatus; signedAt: string | null }
+  depositionsvarning: Depositionsvarning | null
 }
 
 export interface InspectionStats {
@@ -107,7 +193,12 @@ export interface InspectionFilter {
  * fanns alltså på riktigt. Typerna re-exporteras för att vyerna importerar dem
  * härifrån.
  */
-export type { CreateInspectionInput, UpdateInspectionInput, UpdateInspectionItemInput }
+export type {
+  CreateInspectionInput,
+  CreateInspectionCorrectionInput,
+  UpdateInspectionInput,
+  UpdateInspectionItemInput,
+}
 
 export function fetchInspections(filters?: InspectionFilter) {
   const params = new URLSearchParams()
@@ -141,6 +232,25 @@ export function updateInspectionItem(
   dto: UpdateInspectionItemInput,
 ) {
   return patch<InspectionItem>(`/inspections/${inspectionId}/items/${itemId}`, dto)
+}
+
+export function fetchInspectionVersions(id: string) {
+  return get<InspectionVersion[]>(`/inspections/${id}/versioner`)
+}
+
+/**
+ * Begär en FAKTISK kontroll av bilagornas bytes.
+ *
+ * Anropas bara när någon ber om den: kontrollen hämtar varje objekt ur
+ * lagringen, och en vy som gjorde det automatiskt hade betalat för en mätning
+ * ingen frågat efter.
+ */
+export function fetchImageCheck(id: string) {
+  return get<Bildkontrollsvar>(`/inspections/${id}/bildkontroll`)
+}
+
+export function createInspectionCorrection(id: string, dto: CreateInspectionCorrectionInput) {
+  return post<RattelseSvar>(`/inspections/${id}/rattelse`, dto)
 }
 
 export function deleteInspection(id: string) {

@@ -1,0 +1,227 @@
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 24px 16px 4px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ev-neutral-900);
+}
+
+.pageLead {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ev-neutral-600);
+}
+
+.section {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ev-neutral-500);
+  padding: 0 2px;
+}
+
+/* ── Kort ────────────────────────────────────────────── */
+
+.card {
+  background: var(--ev-surface);
+  border-radius: 18px;
+  border: 0.5px solid var(--ev-brand-300);
+  padding: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ev-neutral-900);
+}
+
+.cardMeta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ev-neutral-600);
+}
+
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--ev-neutral-100);
+  color: var(--ev-neutral-700);
+}
+
+.badgeGallande {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+/* ── Rader ───────────────────────────────────────────── */
+
+.rowList {
+  margin-top: 10px;
+  border-radius: 14px;
+  border: 0.5px solid var(--ev-brand-300);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--ev-brand-300);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.rowLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-neutral-900);
+}
+
+.rowSub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ev-neutral-600);
+}
+
+.rowValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-neutral-900);
+  white-space: nowrap;
+}
+
+.rowValueOkant {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ev-neutral-500);
+  white-space: nowrap;
+}
+
+/* ── Knappar ─────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn {
+  border-radius: 999px;
+  border: 0.5px solid var(--ev-brand-300);
+  background: var(--ev-surface);
+  color: var(--ev-neutral-800);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btnLank {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ── Upplysningsrutor ────────────────────────────────── */
+
+.notis {
+  margin-top: 10px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notisNeutral {
+  background: var(--ev-neutral-100);
+  color: var(--ev-neutral-700);
+}
+
+.notisVarning {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.notisOk {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.notisFel {
+  background: var(--ev-danger-100);
+  color: var(--ev-danger-600);
+}
+
+/* ── Tomt ────────────────────────────────────────────── */
+
+.empty {
+  margin: 8px 16px 16px;
+  padding: 28px 16px;
+  text-align: center;
+  border-radius: 18px;
+  border: 0.5px dashed var(--ev-brand-300);
+}
+
+.emptyText {
+  font-size: 14px;
+  color: var(--ev-neutral-600);
+}
+
+.emptySub {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ev-neutral-500);
+}

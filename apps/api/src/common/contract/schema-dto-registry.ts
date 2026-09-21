@@ -119,6 +119,7 @@ import {
   CreateInspectionSchema,
   UpdateInspectionSchema,
   UpdateInspectionItemSchema,
+  CreateInspectionCorrectionSchema,
   SendDocumentToTenantSchema,
 } from '@eken/shared'
 import { CreateJournalEntryDto } from '../../accounting/dto/create-journal-entry.dto'
@@ -203,6 +204,7 @@ import { AddTicketCommentDto } from '../../maintenance/dto/add-ticket-comment.dt
 import { CreateInspectionDto } from '../../inspections/dto/create-inspection.dto'
 import { UpdateInspectionDto } from '../../inspections/dto/update-inspection.dto'
 import { UpdateInspectionItemDto } from '../../inspections/dto/update-inspection-item.dto'
+import { CreateInspectionCorrectionDto } from '../../inspections/dto/create-inspection-correction.dto'
 import { SendDocumentToTenantDto } from '../../documents/dto/send-document-to-tenant.dto'
 import {
   BulkExportDto,
@@ -1008,6 +1010,23 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     ogiltig: { repairCost: 100_000_000 },
     ogiltigVarfor:
       'kolumnen är Decimal(10,2) — ett större tal föll förr som numeric field overflow, alltså ett 500',
+  },
+  {
+    endpoint: 'POST /inspections/:id/rattelse',
+    inputTyp: 'CreateInspectionCorrectionInput',
+    schema: CreateInspectionCorrectionSchema,
+    dto: CreateInspectionCorrectionDto,
+    giltig: {
+      orsak: 'Badrumsposten avsåg fel lägenhet och ska strykas.',
+      expectedContentHash: 'a'.repeat(64),
+    },
+    // Ett tomt `orsak` är det fall som betyder något: fältets hela syfte är att
+    // någon i efterhand ska kunna läsa VARFÖR originalet inte dög, och ett
+    // obligatoriskt fält som accepterar en blanksträng är obligatoriskt bara på
+    // pappret.
+    ogiltig: { orsak: '   ', expectedContentHash: 'a'.repeat(64) },
+    ogiltigVarfor:
+      'orsaken har ett golv, inte bara ett tak — en rättelse utan motivering är ett spår utan innehåll',
   },
   // ─── Dokument ─────────────────────────────────────────────────────────────
   {

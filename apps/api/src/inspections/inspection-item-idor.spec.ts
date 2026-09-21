@@ -48,8 +48,14 @@ function makeService(opts: { itemFound: boolean }) {
     $transaction: undefined as unknown as jest.Mock,
   }
   prisma.$transaction = jest.fn((fn: (tx: unknown) => unknown) => fn(prisma))
-  // 3:e arg = StorageService (oanvänd i updateItem-vägen som testas här).
-  const service = new InspectionsService(prisma as never, {} as never, {} as never)
+  // 3:e arg = StorageService, 4:e = bildkontrollen. Båda oanvända i den
+  // updateItem-väg som testas här; stubben finns bara för att konstruktorn ska gå.
+  const service = new InspectionsService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    { kontrolleraBilder: async () => [], sammanfatta: () => 'INGA_BILDER' } as never,
+  )
   return { service, findFirst, update }
 }
 

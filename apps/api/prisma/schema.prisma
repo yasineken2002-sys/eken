@@ -5421,6 +5421,47 @@ model Inspection {
   // Vad det INTE kan bevisa: vem som skrev under. Se `inspection-signature.ts`.
   signedContentHash String?
 
+  // ── RÄTTELSEVERSIONER: EN KEDJA, INTE EN ÖVERSKRIVNING ────────────────────
+  //
+  // Ett slutfört protokoll ändras aldrig på plats — spärren i
+  // `inspections.service.ts` ser till det. Frågan den spärren lämnade obesvarad
+  // är vad en förvaltare ska göra när protokollet är FEL: fram till nu fanns
+  // bara två utvägar, att låta felet stå eller att radera hela beviset.
+  //
+  // `correctionOfId` pekar på den version den här raden rättar. Kedjan är
+  // enkelriktad och EN länk bred: `@unique` betyder att en given version kan ha
+  // HÖGST EN rättelse. Det är inte en smaksak utan samtidighetsgarantin — två
+  // förvaltare som rättar samma version samtidigt kan inte båda lyckas, och
+  // vinnaren avgörs av databasen, inte av en läs-sedan-skriv-kontroll som två
+  // transaktioner kan passera i tur och ordning.
+  //
+  // `onDelete: NoAction` och INTE `Restrict`: båda hindrar att en version med
+  // rättelse raderas styckvis, men `Restrict` prövar villkoret omedelbart och
+  // hade då fällt även organisationens kaskadradering, där BÅDA raderna
+  // försvinner i samma sats. `NoAction` prövar vid satsens slut och släpper
+  // igenom just det fallet.
+  //
+  // `version` är kedjans ordningstal, 1 för originalet. Det är denormaliserat
+  // med flit: utan det kan ingen lista sorteras eller märkas utan att först
+  // vandra hela kedjan.
+  version          Int         @default(1)
+  correctionOfId   String?     @unique
+  correctionOf     Inspection? @relation("InspectionRattelse", fields: [correctionOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  correction       Inspection? @relation("InspectionRattelse")
+
+  // VARFÖR rättelsen gjordes, av VEM och NÄR. Alla tre är NULL på ett original
+  // och satta på varje rättelse — tjänsten kräver dem, och `correctedAt` är
+  // serverns tid, aldrig klientens (samma skäl som `completedAt` och `signedAt`
+  // togs ur DTO:n i F025).
+  //
+  // `correctedById` bär ett användar-id UTAN främmande nyckel, precis som
+  // `inspectedById` på raden ovan. Skälet är detsamma: spåret ska överleva att
+  // användaren tas bort. Ett raderat konto gör uppgiften omöjlig att slå upp —
+  // det ska inte göra den omöjlig att LAGRA.
+  correctionReason String?     @db.Text
+  correctedById    String?
+  correctedAt      DateTime?
+
   items  InspectionItem[]
   images InspectionImage[]
 
