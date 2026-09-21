@@ -24,19 +24,33 @@
  *
  * Det som är kontrollerbart står i stället i filerna själva:
  *
- *     grep -rlE "^import .*färskhetsdubbel" apps/api/src --include=*.spec.ts
+ *     grep -rl "payment-freshness.test-double" apps/api/src --include=*.spec.ts
  *
  * En importlista går att räkna om; en siffra i ett docblock åldras tyst.
  *
- * `^import` OCH INTE BARA ORDET, påpekat av terminal 1: en spec som NÄMNER
- * dubbeln i en kommentar utan att importera den hade annars kommit med. Det är
- * exakt den fällan de själva gick i samma dag, när ett `git grep -l` matchade
- * ett docblock och nästan gav ett falskt fynd. Ett kommando som över-rapporterar
- * är en svagare kontroll än det ser ut att vara — och att lämna kvar en sådan i
- * noten om just den formen vore illa.
+ * ── VARFÖR SÖKVÄGEN OCH INTE SYMBOLNAMNET ───────────────────────────────────
  *
- * Mätt: båda varianterna ger samma åtta filer i dag; bara den skarpa utesluter
- * en ren omnämnande-rad.
+ * Kommandot har varit fel två gånger, åt var sitt håll, och den andra gången
+ * var värre än den första.
+ *
+ *   grep -rl "färskhetsdubbel"          ÖVER-rapporterar: en spec som bara
+ *                                        NÄMNER dubbeln i en kommentar kommer med
+ *   grep -rlE "^import .*färskhetsdubbel"  UNDER-rapporterar: en FLERRADIG import
+ *                                        (prettier delar raden så fort någon
+ *                                        lägger till ett andra namn) matchar inte,
+ *                                        eftersom symbolen inte står på
+ *                                        `import`-raden
+ *
+ * RIKTNINGEN ÄR HELA POÄNGEN. Över-rapportering visar en fil för mycket, och
+ * den som tittar på listan ser den. Under-rapportering DÖLJER en fil och listan
+ * ser korrekt ut — samma asymmetri som resten av det här arbetet: den tysta
+ * nollan är värre än den högljudda felträffen.
+ *
+ * Modulsökvägen står bara i en import, oavsett formatering. Mätt mot fyra
+ * konstruerade fall (kommentar, enradig, flerradig, typ-import före) av terminal
+ * 1 och kontrollerat om av mig: sökvägsvarianten är rätt i alla fyra. De tre
+ * varianterna ger samma åtta filer i dag — skillnaden är bara vilket håll
+ * kontrollen kan falla åt sedan.
  *
  * ── VAD DEN GÖR, OCH VAD DEN INTE PÅSTÅR ────────────────────────────────────
  *
