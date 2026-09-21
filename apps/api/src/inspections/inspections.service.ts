@@ -995,8 +995,33 @@ export class InspectionsService {
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
-  async generateProtocolPdf(id: string, orgId: string): Promise<Buffer> {
-    const inspection = await this.findOne(id, orgId)
+  /**
+   * ── `doljUtkast` FINNS FÖR HYRESGÄSTEN, INTE FÖR BEKVÄMLIGHET ─────────────
+   *
+   * Versionstabellen nedan ritas ur HELA kedjan, och kedjan innehåller
+   * pågående rättelser. För hyresvärden är det rätt: att se att en rättelse är
+   * påbörjad är en uppgift hen ska ha.
+   *
+   * För hyresgästen är det en läcka. Portalen filtrerar bort utkast ur sina
+   * listor och sin detaljvy — men PDF:en renderades av samma metod och hade
+   * burit utkastets versionsnummer OCH dess orsakstext rakt ut till motparten,
+   * alltså hyresvärdens ofärdiga bedömning av en skada. Att spärren satt i tre
+   * vyer men inte i den fjärde är den vanligaste formen: den väg som inte
+   * byggdes för hyresgästen var den som släppte igenom.
+   *
+   * Flaggan är `false` som default. En spärr som måste slås PÅ glöms av den som
+   * inte vet att den finns; den här ska slås på av precis en anropare, och den
+   * anroparen är `TenantPortalService.getInspectionPdf`.
+   */
+  async generateProtocolPdf(
+    id: string,
+    orgId: string,
+    val: { doljUtkast?: boolean } = {},
+  ): Promise<Buffer> {
+    const hamtad = await this.findOne(id, orgId)
+    const inspection = val.doljUtkast
+      ? { ...hamtad, versioner: hamtad.versioner.filter((v) => !v.arUtkast) }
+      : hamtad
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 

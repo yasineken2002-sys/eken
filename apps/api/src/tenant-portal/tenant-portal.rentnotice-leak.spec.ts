@@ -212,6 +212,9 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
       testPersonalNumberService(),
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     )
 
     const result = await service.getNotices('tenant-1')
@@ -232,6 +235,9 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )
@@ -262,6 +268,9 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     const service = new TenantPortalService(
       prisma as never,
       testPersonalNumberService(),
+      {} as never,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
     )

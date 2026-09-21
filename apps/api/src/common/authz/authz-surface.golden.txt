@@ -238,7 +238,7 @@ POST /users/invite                                              ADMIN, OWNER
 POST /work-orders/:id/cancel                                    ADMIN, MANAGER, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (177 st)
+## 1b. HTTP-endpoints UTAN rollgrind (183 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -720,7 +720,7 @@ Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
 läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
 
 
-### b) Styrda av en ANNAN mekanism (68 st)
+### b) Styrda av en ANNAN mekanism (74 st)
 
 @UseGuards(...) med en guard som faktiskt BYTER mekanism. Frånvaro av
 @Roles betyder inte ostyrd: plattformsadmin går via PlatformGuard,
@@ -759,8 +759,14 @@ GET /platform/stats/plan-breakdown                              PlatformGuard   
 GET /platform/stats/top-organizations                           PlatformGuard                 platform-stats.controller.ts
 GET /portal/consumption                                         TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/dashboard                                           TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/deposits                                            TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/documents/:id/download                              TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/documents                                           TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id/bildkontroll                        TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id/images/:imageId                     TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id/pdf                                 TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id                                     TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections                                         TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/invoices/:id/download                               TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/invoices                                            TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/lease                                               TenantAuthGuard               tenant-portal.controller.ts
