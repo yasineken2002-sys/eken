@@ -952,6 +952,8 @@ model Organization {
   updatedAt        DateTime          @updatedAt
   supplierInvoices SupplierInvoice[]
 
+  // G2-AVSLUT — granskningspausens perioder.
+  bankIdentityReviewPauses BankIdentityReviewPause[]
   @@index([orgNumber])
   @@index([customerNumber])
   @@index([subscriptionPlan])
@@ -2742,6 +2744,59 @@ model BankTransaction {
 // till (clearing+konto, bankgiro, IBAN). Det används ALDRIG för att VÄLJA konto
 // — bara för att KONTROLLERA ett val mot vad filen råkar bära. Se
 // `bank-import-identity.ts` för varför den riktningen är den enda säkra.
+// G2-AVSLUT — EN GRANSKNINGSPAUS SOM PERIOD, inte som en flagga.
+//
+// ── VARFÖR INTE EN TIDSSTÄMPEL PÅ Organization ──────────────────────────────
+//
+// Kodbasen har två markörer av den formen redan:
+// `Organization.paymentDataStaleAlertedAt` och `RentNotice.blockedAlertedAt`.
+// Jag inventerade dem först, och de räcker inte här — av ett skäl som står i
+// byggbeslutet: NOTIS SKAPAD, E-POST KÖAD och E-POST LEVERERAD är olika
+// tillstånd. En enda tidsstämpel kan inte skilja dem åt, och då blir varje
+// köfel antingen en evig "redan aviserat" (sätts före köandet) eller en risk
+// för dubbletter vid timeout (sätts efter).
+//
+// `enqueueSafely` avbryter UTTRYCKLIGEN inte det underliggande anropet vid
+// timeout — en timeout kan alltså betyda att jobbet KÖADES. Därför krävs både
+// skilda tillstånd och en idempotensnyckel som överlever omstart.
+//
+// ── PERIODEN ────────────────────────────────────────────────────────────────
+//
+//   första olösta raden      → perioden ÖPPNAS (endedAt null)
+//   fler rader under samma   → ingen ny period, alltså ingen nattlig storm
+//   sista lösta/ignorerade   → perioden AVSLUTAS
+//   ny olöst rad senare      → NY period, nytt aviseringstillfälle
+//
+// `id` är periodnyckeln. Den bär e-postens `idempotencyKey`, så ett återförsök
+// efter en timeout kollapsar i kön i stället för att skicka två brev.
+//
+// ── ETT ÖPPET PER ORGANISATION ──────────────────────────────────────────────
+//
+// Partiellt unikt index `WHERE "endedAt" IS NULL`, i rå SQL (Prisma kan inte
+// deklarera partiella index). Det gör databasen till skiljedomare vid samtidiga
+// skapanden — create-och-fånga-P2002, samma form som #F034b — i stället för en
+// läs-sedan-skriv som två importer kan passera samtidigt.
+//
+model BankIdentityReviewPause {
+  id             String    @id @default(uuid())
+  organizationId String
+  startedAt      DateTime  @default(now())
+  /// Null = perioden pågår. Bärs av det partiella unika indexet.
+  endedAt        DateTime?
+  /// Beständig notis skapad för behöriga operatörer.
+  notifiedAt     DateTime?
+  /// E-post ACCEPTERAD av kön. Skilt från levererad, som kön äger.
+  mailQueuedAt   DateTime?
+  /// Köns jobb-id, för spårning när någon undrar vad som hände med brevet.
+  mailJobId      String?
+  /// Antal köförsök. Ett köfel ger INGEN evig markör — återförsök ska fungera.
+  mailAttempts   Int       @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, endedAt])
+}
+
 model BankAccount {
   id             String  @id @default(uuid())
   organizationId String

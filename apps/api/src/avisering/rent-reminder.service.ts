@@ -276,6 +276,31 @@ export class RentReminderService {
           candidates.map((n) => n.organizationId),
         )
 
+        // ── G2-AVSLUT: SVEPET FÖR GRANSKNINGSPAUSER ───────────────────────
+        //
+        // Tar igen aviseringstillfällen som inte fullbordades — efter ett
+        // köfel, en omstart, eller en period som öppnades medan kön var nere.
+        //
+        // HÄR OCH INTE I EN EGEN CRON: det här är kravtrappans dygnskörning,
+        // och en paus på kravtrappan hör hemma i samma puls som det den pausar.
+        // En egen `@Cron` hade dessutom krävt en egen klassificering för en
+        // körning som inte gör något nytt.
+        //
+        // IDEMPOTENT PER PERIOD, inte per dygn: en pågående paus som redan
+        // aviserats ger ingenting. Det är vad som skiljer en påminnelse från
+        // en nattlig storm.
+        //
+        // KASTAR ALDRIG UPPÅT. Ett svep som fallerar får inte fälla
+        // kravtrappans körning — pausen har redan stoppat effekterna, och det
+        // som uteblir är beskedet, inte skyddet.
+        await this.freshness.sveparGranskningspauser().catch((err: unknown) => {
+          this.logger.error(
+            `[granskningspaus] svepet fallerade: ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          )
+          return { behandlade: 0 }
+        })
+
         for (const notice of candidates) {
           try {
             if (staleOrgs.has(notice.organizationId)) {

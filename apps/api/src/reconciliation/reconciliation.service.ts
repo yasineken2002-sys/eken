@@ -22,7 +22,10 @@ import {
 } from '../invoices/invoice-payment-reversal'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService, bankPaymentSourceId } from '../accounting/accounting.service'
-import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
+import {
+  PaymentFreshnessService,
+  paymentFreshnessTransactionOptions,
+} from '../payment-freshness/payment-freshness.service'
 import { computeRentDebt } from '../avisering/rent-debt.service'
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
@@ -793,23 +796,56 @@ export class ReconciliationService {
     // kvar utan att påstå att den är bokförbar, och ett beslut som skrivs två
     // gånger är ett beslut som glider isär.
     if (osäkerhet) {
-      const osäker = await this.prisma.bankTransaction.create({
-        data: {
-          organizationId,
-          ...input.data,
-          identityKey: input.identity.key,
-          identitySeq: input.identity.seq,
-          bankAccountId: input.bankAccountId,
-          identityReviewAt: new Date(),
-          identityReviewReason: osäkerhet.skäl,
-          ...(dedupKey ? { dedupKey } : {}),
-        },
-      })
+      // ── G2-AVSLUT: RADEN BLIR OLÖST UNDER DET EXKLUSIVA LÅSET ─────────
+      //
+      // Skrevs tidigare med ett bart `create` — ingen transaktion, inget lås.
+      // Effektsidan tog ett DELAT lås och räknade, så de två sidorna hade
+      // ingen gemensam ordning alls, och en effekt kunde bokföra en avgift
+      // efter att den här raden commitats. Mätt i S1.
+      //
+      // Nu tas det exklusiva låset FÖRST i transaktionen som gör raden olöst.
+      // Antingen ser effekten raden och pausas, eller så väntar den här
+      // skrivningen tills effektens transaktion commitat — och då var kravet
+      // bevisligen taget i anspråk innan pausen fanns.
+      let nyPeriod: string | null = null
+      const osäker = await this.prisma.$transaction(async (tx) => {
+        await this.freshness.lasOrdningForOlostGranskning(tx, organizationId)
+        // G2-AVSLUT — perioden öppnas i SAMMA transaktion som raden blir olöst.
+        // `null` betyder att en paus redan pågick: fler rader under samma paus
+        // ska inte ge ett nytt aviseringstillfälle, alltså ingen nattlig storm.
+        nyPeriod = await this.freshness.oppnaGranskningsperiod(tx, organizationId)
+        return tx.bankTransaction.create({
+          data: {
+            organizationId,
+            ...input.data,
+            identityKey: input.identity.key,
+            identitySeq: input.identity.seq,
+            bankAccountId: input.bankAccountId,
+            identityReviewAt: new Date(),
+            identityReviewReason: osäkerhet.skäl,
+            ...(dedupKey ? { dedupKey } : {}),
+          },
+        })
+      }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
       this.logger.warn(
         `[bankimport] Identiteten kunde inte avgöras för tx=${osäker.id} i org ` +
           `${organizationId} (${osäkerhet.skäl}): ${osäkerhet.detalj}. Raden är LAGRAD ` +
           'men INTE matchad — automatiken rör den aldrig, en människa måste avgöra.',
       )
+      // AVISERINGEN SKER EFTER COMMIT, aldrig inuti transaktionen: ett
+      // nätverksanrop i en DB-transaktion gör den inte atomär, bara lång — och
+      // skulle hålla organisationens exklusiva lås medan kön funderar. Den
+      // varaktiga ankaren är periodraden, så ett avbrott här tas igen av svepet.
+      if (nyPeriod) {
+        await this.freshness
+          .aviseraGranskningspaus(organizationId)
+          .catch((err: unknown) =>
+            this.logger.error(
+              `[granskningspaus] avisering misslyckades för org ${organizationId}: ` +
+                `${err instanceof Error ? err.message : String(err)} — svepet tar igen den.`,
+            ),
+          )
+      }
       // INGET SKUGGFÖRSLAG. Ett förslag är en uppmaning att bokföra, och frågan
       // här är inte "mot vilken avi?" utan "finns betalningen alls?". Att föreslå
       // en matchning för en rad som kanske inte är en betalning är att be
@@ -3316,6 +3352,15 @@ export class ReconciliationService {
     // Skrivningen är en no-op när ingen skuggrad finns, vilket är normalfallet:
     // flaggan är av för nästan alla organisationer.
     await this.skrivBetalningsfacit(transactionId, organizationId, target)
+
+    // G2-AVSLUT — var det här den SISTA olösta raden avslutas pausperioden, så
+    // att en SENARE ny olöst rad kan starta en NY period med ett eget
+    // aviseringstillfälle. Utan avslutningen hade den andra pausen blivit tyst.
+    //
+    // Villkorat på markeringen: en vanlig manuell matchning rör ingen paus.
+    if (transaction.identityReviewAt) {
+      await this.freshness.avslutaGranskningsperiodOmLost(organizationId)
+    }
   }
 
   /** Facit: vad bankraden VISADE SIG höra till. Se `PaymentOutcomeService`. */
@@ -3406,6 +3451,13 @@ export class ReconciliationService {
       where: { id: transactionId },
       data: { status: 'IGNORED' },
     })
+
+    // G2-AVSLUT — var det här den SISTA olösta raden avslutas pausperioden.
+    // Metoden räknar inne i sitt eget lås och gör ingenting om rader står kvar.
+    // Villkorat på markeringen: att lägga en vanlig rad åt sidan rör ingen paus.
+    if (transaction.identityReviewAt) {
+      await this.freshness.avslutaGranskningsperiodOmLost(organizationId)
+    }
 
     // FACIT: att lägga raden åt sidan ÄR ett svar — den hörde inte till någon
     // avi. Ett aktivt nej ska kunna vara en TRÄFF för agenten (se `INGEN_AVI`).
@@ -3560,9 +3612,22 @@ export class ReconciliationService {
     // flera verifikat att reversera. Fakturagrenen fyller den med exakt ett
     // element (dess bankTransactionId är fortsatt @unique).
     let reversalSourceIds: string[] = []
+    let nyPeriodEfterAvmatchning: string | null = null
 
     await this.prisma.$transaction(async (tx) => {
+      // ── G2-AVSLUT: FÖRST AV ALLT, FÖRE ÖVRIGA LÅS ─────────────────────
+      //
+      // Avmatchningen återöppnar en olöst granskning (status tillbaka till
+      // UNMATCHED med markeringen kvar). Utan det här låset kunde en kraveffekt
+      // som passerat spärren bokföra sin avgift efteråt — mätt i S3.
+      //
+      // ORDNINGEN ÄR INTE VALFRI. `assertAutomaticEffectAllowed` deklarerar att
+      // färskhetslåset tas före andra lås. Läggs det här efter `FOR UPDATE`
+      // nedan finns två motsatta låsordningar i samma kodbas, och det är en
+      // cykel som väntar på två samtidiga anropare.
+      await this.freshness.lasOrdningForOlostGranskning(tx, organizationId)
       // Samma yttersta lås i båda avmatchningsgrenarna som vid matchning:
+      // (perioden öppnas längst ned, när raden bevisligen blivit olöst igen)
       // BankTransaction → Invoice/RentNotice → Deposit.
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
       // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
@@ -3983,6 +4048,14 @@ export class ReconciliationService {
           autoMatchExcludedAt: new Date(),
         },
       })
+      // ── G2-AVSLUT: ÅTERÖPPNAD GRANSKNING ÖPPNAR EN NY PERIOD ──────────
+      //
+      // Bara om raden faktiskt BLEV olöst. En avmatchning av en vanlig rad
+      // (utan `identityReviewAt`) rör ingen paus, och ett villkorslöst
+      // öppnande hade gett aviseringar för något som inte pausar något.
+      if (transaction.identityReviewAt) {
+        nyPeriodEfterAvmatchning = await this.freshness.oppnaGranskningsperiod(tx, organizationId)
+      }
 
       // Motverifikatet inom samma transaktion. reverseJournalEntryForPayment
       // slår sedan #326 D på ALLOKERINGENS nyckel (`reversalSourceId` ovan) med
@@ -4038,5 +4111,17 @@ export class ReconciliationService {
             `${err instanceof Error ? err.message : String(err)}`,
         ),
       )
+
+    // G2-AVSLUT — aviseringen EFTER commit, av samma skäl som i importen.
+    if (nyPeriodEfterAvmatchning) {
+      await this.freshness
+        .aviseraGranskningspaus(organizationId)
+        .catch((err: unknown) =>
+          this.logger.error(
+            `[granskningspaus] avisering efter avmatchning misslyckades för org ` +
+              `${organizationId}: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        )
+    }
   }
 }

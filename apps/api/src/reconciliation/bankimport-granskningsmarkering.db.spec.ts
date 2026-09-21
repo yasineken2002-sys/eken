@@ -264,6 +264,22 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
       freshness: {
         recordImportStarted: async () => undefined,
         recordPaymentDataThrough: async () => undefined,
+        // G2-AVSLUT — ingest tar numera det exklusiva låset och öppnar en
+        // pausperiod i samma transaktion som gör raden olöst. Stubben måste
+        // bära båda, annars faller radskrivningen och provet mäter riggen.
+        //
+        // `oppnaGranskningsperiod` svarar null = "en paus pågick redan", så
+        // ingen avisering försöks. Den här filen äger GRANSKNINGSMARKERINGEN,
+        // inte aviseringen; periodens eget beteende mäts i
+        // `kravpaus-samtidighet.db.spec.ts` mot riktiga tjänster.
+        lasOrdningForOlostGranskning: async () => undefined,
+        oppnaGranskningsperiod: async () => null,
+        avslutaGranskningsperiodOmLost: async () => false,
+        aviseraGranskningspaus: async () => ({
+          period: null,
+          notisSkapad: false,
+          mejlKoat: false,
+        }),
       },
       // Riktiga stubbar: kön och facit ANROPAS på de vägar som mäts här, och
       // en Proxy som kastar hade gjort dem till en förutsättning för
