@@ -252,6 +252,30 @@ export class PaymentReminderService {
                   tx,
                   invoice.organizationId,
                 )
+                // ── FÖRUTSÄTTNINGARNA OMPRÖVAS INNE I TRANSAKTIONEN ─────
+                //
+                // Samma grepp som den formella vägen redan gör, och av samma
+                // skäl: `status` och `remindersPaused` lästes i cronens
+                // `findMany` FÖRE loopen, och loopen kan gå länge — varje
+                // faktura väntar upp till 5 s på köandet. Betalar hyresgästen
+                // eller pausar operatören kravtrappan mitt i körningen skulle
+                // brevet gå ändå.
+                //
+                // Läsningen är ORG-BUNDEN. Den binder skrivningen nedan till
+                // anroparens organisation: `PaymentReminder` har ingen egen
+                // `organizationId`, den scopas genom sin faktura, och det är
+                // här den kopplingen kontrolleras i stället för att ärvas från
+                // en läsning gjord före loopen.
+                const fortfarandeAktuell = await tx.invoice.findFirst({
+                  where: {
+                    id: invoice.id,
+                    organizationId: invoice.organizationId,
+                    status: 'OVERDUE',
+                    remindersPaused: false,
+                  },
+                  select: { id: true },
+                })
+                if (!fortfarandeAktuell) return false
                 const c = await tx.paymentReminder.createMany({
                   data: [{ invoiceId: invoice.id, type: 'REMINDER_FRIENDLY', feeAmount: 0 }],
                   skipDuplicates: true,
