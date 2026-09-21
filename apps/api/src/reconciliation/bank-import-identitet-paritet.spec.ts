@@ -74,6 +74,7 @@ describe('fält-dedupen och radidentiteten frågar efter SAMMA fältmängd', () 
     // som är hela F034:s poäng om att frånvaro är ett eget värde — går inte
     // att skriva.
     const bas: FilRadFält = {
+      bankAccountId: 'konto-A',
       date: new Date('2026-03-02T00:00:00.000Z'),
       description: 'Insattning',
       amount: new Decimal('9000.00'),
@@ -82,6 +83,10 @@ describe('fält-dedupen och radidentiteten frågar efter SAMMA fältmängd', () 
 
     /** Varje fält, och ett värde som SKILJER SIG från basen. */
     const störningar: Array<[string, Partial<FilRadFält>]> = [
+      // #F034c — MÅLKONTOT är ett fält som alla andra i pariteten. Faller det
+      // ur hashen blir två konton oskiljbara igen; faller det ur where-satsen
+      // blir dedupen kontoblind. Båda är den lucka #F034c stänger.
+      ['bankAccountId', { bankAccountId: 'konto-B' }],
       ['date', { date: new Date('2026-03-03T00:00:00.000Z') }],
       ['description', { description: 'Overforing' }],
       ['amount', { amount: new Decimal('9000.01') }],
@@ -106,6 +111,7 @@ describe('fält-dedupen och radidentiteten frågar efter SAMMA fältmängd', () 
       // i hashen fälls här; det behöver alltså inte upptäckas av en störning.
       expect(Object.keys(filIdentitet(bas).dedup).sort()).toEqual([
         'amount',
+        'bankAccountId',
         'date',
         'description',
         'reference',
@@ -134,12 +140,14 @@ describe('fält-dedupen och radidentiteten frågar efter SAMMA fältmängd', () 
 
   describe('BgMax-vägen', () => {
     const bas: BgMaxRadFält = {
+      bankAccountId: 'konto-A',
       date: new Date('2026-03-02T00:00:00.000Z'),
       amount: new Decimal('9000.00'),
       rawOcr: '1234567897',
     }
 
     const störningar: Array<[string, Partial<BgMaxRadFält>]> = [
+      ['bankAccountId', { bankAccountId: 'konto-B' }],
       ['date', { date: new Date('2026-03-03T00:00:00.000Z') }],
       ['amount', { amount: new Decimal('9000.01') }],
       ['rawOcr', { rawOcr: '9876543210' }],
@@ -160,7 +168,13 @@ describe('fält-dedupen och radidentiteten frågar efter SAMMA fältmängd', () 
       // `description` är syntetisk i BgMax (`BgMax inbetalning (OCR …)`). Att
       // hålla den utanför är det som gör att samma betalning importerad via
       // BÅDE BgMax och CSV känns igen som en. Kommer den in här faller provet.
-      expect(Object.keys(bgMaxIdentitet(bas).dedup).sort()).toEqual(['amount', 'date', 'rawOcr'])
+      expect(Object.keys(bgMaxIdentitet(bas).dedup).sort()).toEqual([
+        'amount',
+        'bankAccountId',
+        'date',
+        'rawOcr',
+      ])
+      expect(Object.keys(bgMaxIdentitet(bas).dedup)).not.toContain('description')
     })
   })
 
@@ -170,8 +184,19 @@ describe('fält-dedupen och radidentiteten frågar efter SAMMA fältmängd', () 
     // i det unika indexet trots att deras where-satser frågar olika saker.
     const datum = new Date('2026-03-02T00:00:00.000Z')
     const belopp = new Decimal('9000.00')
-    const fil = filIdentitet({ date: datum, description: '', amount: belopp, reference: null })
-    const bg = bgMaxIdentitet({ date: datum, amount: belopp, rawOcr: null })
+    const fil = filIdentitet({
+      bankAccountId: 'konto-A',
+      date: datum,
+      description: '',
+      amount: belopp,
+      reference: null,
+    })
+    const bg = bgMaxIdentitet({
+      bankAccountId: 'konto-A',
+      date: datum,
+      amount: belopp,
+      rawOcr: null,
+    })
     expect(fil.key).not.toBe(bg.key)
   })
 })

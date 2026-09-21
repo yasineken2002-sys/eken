@@ -110,6 +110,10 @@ const outside = new Proxy(
 
 describe('betalningsfärskhet — import till verklig påminnelse', () => {
   let db: PrismaClient
+  // #F034c — MÅLKONTOT. Riggen lägger upp ett riktigt konto i sin EGEN
+  // organisation; servern verifierar ägandet i `resolveTarget` (controllern),
+  // och tjänsten tar emot ett id som redan är kontrollerat.
+  let kontoId: string | undefined
   let orgId: string | undefined
   let noticeId: string
   let rateId: string | undefined
@@ -213,6 +217,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       },
     })
     orgId = org.id
+    kontoId = (
+      await db.bankAccount.create({
+        data: { organizationId: orgId, name: 'Företagskonto' },
+        select: { id: true },
+      })
+    ).id
     await db.account.createMany({
       data: [
         { organizationId: org.id, number: 1510, name: 'Kundfordringar', type: 'ASSET' },
@@ -347,9 +357,13 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     await db.property.deleteMany({ where })
     await db.notification.deleteMany({ where })
     await db.tenant.deleteMany({ where })
+    // #F034c — kontot har Restrict mot organisationen och måste bort först.
+    await db.bankAccount.deleteMany({ where: { organizationId: orgId } })
     await db.organization.delete({ where: { id: orgId } })
     orgId = undefined
+    kontoId = undefined
     for (const extraOrgId of extraOrgIds.splice(0)) {
+      await db.bankAccount.deleteMany({ where: { organizationId: extraOrgId } })
       await db.organization.delete({ where: { id: extraOrgId } })
     }
   })
@@ -658,7 +672,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
   }
 
   it('F06 KANARIEFÅGEL: daterat syntetiskt utdrag med endast uttag registrerar datum och avgiftsverifikat', async () => {
-    const result = await importer.importBankStatement(CSV_WITHDRAWAL, 'test.csv', orgId!)
+    const result = await importer.importBankStatement(CSV_WITHDRAWAL, 'test.csv', orgId!, kontoId!)
     expect(result).toMatchObject({ imported: 0, errors: [] })
     expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
     const observed = await runCron('F06')
@@ -679,7 +693,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
 
   it('F07 KANARIEFÅGEL: verklig äldre täckning pausar samma kandidat utan avgift eller köning', async () => {
     const csv = Buffer.from(CSV_WITHDRAWAL.toString().replace(TODAY, '2026-09-01'))
-    await importer.importBankStatement(csv, 'gammalt.csv', orgId!)
+    await importer.importBankStatement(csv, 'gammalt.csv', orgId!, kontoId!)
     const observed = await runCron('F07')
     expect(observed.through).toBe('2026-09-01')
     expectPaused(observed)
@@ -748,7 +762,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
   })
 
   it('F04 SÄKERHET: CSV med enbart ogiltiga datum ska pausa automatisk avgift', async () => {
-    const result = await importer.importBankStatement(CSV_BAD, 'fel.csv', orgId!)
+    const result = await importer.importBankStatement(CSV_BAD, 'fel.csv', orgId!, kontoId!)
     expect(result).toMatchObject({
       imported: 0,
       errors: [
@@ -766,7 +780,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     const section = '05' + ' '.repeat(20) + '20260913'
     const payment = '20' + ' '.repeat(10) + '12345'.padEnd(25) + 'X'.repeat(18)
     await expect(
-      importer.importBgMaxFile(Buffer.from(section + '\n' + payment + '\n'), 'fel.txt', orgId!),
+      importer.importBgMaxFile(
+        Buffer.from(section + '\n' + payment + '\n'),
+        'fel.txt',
+        orgId!,
+        kontoId!,
+      ),
     ).rejects.toThrow('Inga giltiga BgMax-poster')
     expect(await db.bankTransaction.count({ where: { organizationId: orgId! } })).toBe(0)
     expect(await db.bankStatementImport.count({ where: { organizationId: orgId! } })).toBe(0)
@@ -778,7 +797,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
 
   it('F08: ett gammalt PDF-fel får inte hindra ett senare registrerat aktuellt datum', async () => {
     await failedPdf()
-    await importer.importBankStatement(CSV_WITHDRAWAL, 'senare.csv', orgId!)
+    await importer.importBankStatement(CSV_WITHDRAWAL, 'senare.csv', orgId!, kontoId!)
     const observed = await runCron('F08')
     expect(observed.through).toBe(TODAY)
     expectEffect(observed)
@@ -1092,7 +1111,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     const csv = Buffer.from(
       'Datum;Beskrivning;Belopp\n2026-09-13;Syntetisk felaktig rad;ogiltigt\n',
     )
-    const result = await importer.importBankStatement(csv, 'felbelopp.csv', orgId!)
+    const result = await importer.importBankStatement(csv, 'felbelopp.csv', orgId!, kontoId!)
     expect(result).toMatchObject({
       imported: 0,
       errors: [
@@ -1127,6 +1146,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       fileBuffer(format, rows, headers),
       'syntetiskt.' + format,
       orgId!,
+      kontoId!,
     )
   }
 
@@ -1248,7 +1268,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         await db.$executeRawUnsafe(
           `CREATE TRIGGER "${trigger}" BEFORE INSERT ON "BankTransaction" FOR EACH ROW EXECUTE FUNCTION "${trigger}"()`,
         )
-        const first = await importer.importBankStatement(buffer, 'syntetiskt.' + format, orgId!)
+        const first = await importer.importBankStatement(
+          buffer,
+          'syntetiskt.' + format,
+          orgId!,
+          kontoId!,
+        )
         expect(first).toMatchObject({ imported: 1, duplicates: 0, unmatched: 1 })
         expectFileError(first)
         expect(first.errors[0]).toContain('Ogiltigt belopp')
@@ -1270,7 +1295,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         await db.$executeRawUnsafe(`DROP FUNCTION "${trigger}"()`)
       }
       // Samma bytes, felet avhjälpt. findFirst/create/matchTransaction är verkliga.
-      const second = await importer.importBankStatement(buffer, 'syntetiskt.' + format, orgId!)
+      const second = await importer.importBankStatement(
+        buffer,
+        'syntetiskt.' + format,
+        orgId!,
+        kontoId!,
+      )
       expect(second).toMatchObject({
         imported: 1,
         duplicates: 1,
@@ -1325,7 +1355,17 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         const seeded =
           kind === 'dubblett'
             ? await db.bankTransaction.create({
-                data: { organizationId: orgId!, date: new Date(TODAY), description, amount },
+                // #F034c — raden sås PÅ SAMMA KONTO som importen. Provet mäter
+                // DUBBLETTFALLET (att färskhetsdatumet behålls när inget nytt
+                // lagras), och en kontolös rad hade i stället gett ett
+                // granskningsutfall — alltså mätt något annat än raden påstår.
+                data: {
+                  organizationId: orgId!,
+                  bankAccountId: kontoId!,
+                  date: new Date(TODAY),
+                  description,
+                  amount,
+                },
               })
             : null
         const result = await importRows(format, [[TODAY, description, amount]])
@@ -1384,12 +1424,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         } else buffer = fileBuffer(format, kind === 'blankrader' ? [[], [], []] : [])
         let result: Awaited<ReturnType<typeof importRows>> | { rejectedEmptyFile: true }
         if (kind === 'tom' && format === 'csv') {
-          await expect(importer.importBankStatement(buffer, 'tom.csv', orgId!)).rejects.toThrow(
-            BadRequestException,
-          )
+          await expect(
+            importer.importBankStatement(buffer, 'tom.csv', orgId!, kontoId!),
+          ).rejects.toThrow(BadRequestException)
           result = { rejectedEmptyFile: true }
         } else {
-          result = await importer.importBankStatement(buffer, 'tom.' + format, orgId!)
+          result = await importer.importBankStatement(buffer, 'tom.' + format, orgId!, kontoId!)
           expect(result).toMatchObject({ imported: 0, duplicates: 0, unmatched: 0, errors: [] })
         }
         const observed = await runCron(`F30 ${format} ${kind}`)
@@ -1665,8 +1705,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
           const seeded =
             kind === 'dubblett'
               ? await db.bankTransaction.create({
+                  // #F034c — samma konto som importen, se F28 ovan.
                   data: {
                     organizationId: orgId!,
+                    bankAccountId: kontoId!,
                     date: new Date(TODAY),
                     description,
                     amount,
@@ -1746,7 +1788,12 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         const read = XLSX.read(buffer, { type: 'buffer', cellDates: true }).Sheets['Syntetiskt']!
         expect(read['C2']).toMatchObject({ t: 'n', v: value })
         expect(read['D2']).toMatchObject({ t: 'n', v: balance })
-        const result = await importer.importBankStatement(buffer, 'syntetiskt.' + format, orgId!)
+        const result = await importer.importBankStatement(
+          buffer,
+          'syntetiskt.' + format,
+          orgId!,
+          kontoId!,
+        )
         expect(result).toMatchObject({ imported: 1, autoMatched: 0, unmatched: 1, errors: [] })
         const saved = await bankRows()
         expect(
@@ -1790,6 +1837,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         XLSX.write(book, { type: 'buffer', bookType: format }) as Buffer,
         'offset.' + format,
         orgId!,
+        kontoId!,
       )
       expect(result).toMatchObject({
         imported: 2,
@@ -1932,6 +1980,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         XLSX.write(book, { type: 'buffer', bookType: format }) as Buffer,
         'overflow.' + format,
         orgId!,
+        kontoId!,
       )
       expect(result.imported).toBe(0)
       expectFileError(result)

@@ -54,6 +54,7 @@ import { AiPaymentShadowQueue } from '../ai/shadow/payment/payment-shadow.queue'
 import { PaymentOutcomeService } from '../ai/shadow/payment/payment-outcome.service'
 import { PdfStatementParserService } from './pdf-statement-parser.service'
 import { BankImportAttemptService } from './bank-import-attempt.service'
+import { BankAccountService } from './bank-account.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { ReconciliationController } from './reconciliation.controller'
 import { ReconciliationService } from './reconciliation.service'
@@ -130,15 +131,19 @@ medDb('bankimportens filnivåskydd över HTTP (#F034b)', () => {
   let app: NestFastifyApplication
   let prisma: PrismaService
   let orgId: string
+  let kontoId: string
+  let annanOrgId: string
+  let annanOrgKonto: string
   const jwt = new JwtService({ secret: HEMLIGHET })
   const token = (role = 'OWNER', organizationId = orgId) =>
     jwt.sign({ sub: randomUUID(), organizationId, role })
 
-  function ladda(filnamn: string, innehåll: string, auth = token(), fråga = '') {
+  function ladda(filnamn: string, innehåll: string, auth = token(), fråga?: string) {
+    const q = fråga ?? `?bankAccountId=${kontoId}`
     const { body, gräns } = multipartKropp(filnamn, innehåll)
     return app.inject({
       method: 'POST',
-      url: `/v1/reconciliation/import${fråga}`,
+      url: `/v1/reconciliation/import${q}`,
       headers: {
         authorization: `Bearer ${auth}`,
         'content-type': `multipart/form-data; boundary=${gräns}`,
@@ -154,6 +159,9 @@ medDb('bankimportens filnivåskydd över HTTP (#F034b)', () => {
         ReconciliationService,
         BankStatementImportService,
         BankImportAttemptService,
+        // #F034c — RIKTIG tjänst, inte attrapp: ägandekontrollen är precis det
+        // den här filen ska pröva över tråden.
+        BankAccountService,
         PrismaService,
         JwtStrategy,
         { provide: ConfigService, useValue: { getOrThrow: () => HEMLIGHET } },
@@ -213,6 +221,32 @@ medDb('bankimportens filnivåskydd över HTTP (#F034b)', () => {
       select: { id: true },
     })
     orgId = org.id
+    kontoId = (
+      await prisma.bankAccount.create({
+        data: { organizationId: orgId, name: 'Företagskonto' },
+        select: { id: true },
+      })
+    ).id
+
+    const annan = await prisma.organization.create({
+      data: {
+        name: `http-annan-${sfx}`,
+        email: `http-annan-${sfx}@example.invalid`,
+        street: 'a',
+        city: 'Stockholm',
+        postalCode: '11122',
+        orgNumber: `5563${sfx.slice(0, 6)}`,
+        fiscalYearStartMonth: 1,
+      },
+      select: { id: true },
+    })
+    annanOrgId = annan.id
+    annanOrgKonto = (
+      await prisma.bankAccount.create({
+        data: { organizationId: annanOrgId, name: 'Annans konto' },
+        select: { id: true },
+      })
+    ).id
   }, 60_000)
 
   afterEach(async () => {
@@ -221,10 +255,13 @@ medDb('bankimportens filnivåskydd över HTTP (#F034b)', () => {
   })
 
   afterAll(async () => {
-    if (prisma && orgId) {
-      await prisma.bankTransaction.deleteMany({ where: { organizationId: orgId } })
-      await prisma.bankImportAttempt.deleteMany({ where: { organizationId: orgId } })
-      await prisma.organization.delete({ where: { id: orgId } })
+    if (prisma) {
+      for (const o of [orgId, annanOrgId].filter(Boolean)) {
+        await prisma.bankTransaction.deleteMany({ where: { organizationId: o } })
+        await prisma.bankImportAttempt.deleteMany({ where: { organizationId: o } })
+        await prisma.bankAccount.deleteMany({ where: { organizationId: o } })
+        await prisma.organization.delete({ where: { id: o } })
+      }
     }
     if (app) await app.close()
   })
@@ -292,11 +329,69 @@ medDb('bankimportens filnivåskydd över HTTP (#F034b)', () => {
 
   it('A12: ändrad ?bank= körs om — inget tyst uppspelat svar', async () => {
     await ladda('utdrag.csv', CSV)
-    const svar = await ladda('utdrag.csv', CSV, token(), '?bank=SEB')
+    const svar = await ladda('utdrag.csv', CSV, token(), `?bankAccountId=${kontoId}&bank=SEB`)
 
     expect(svar.statusCode).toBe(201)
     expect(svar.json().data.forsok.replayed).toBe(false)
     expect(svar.json().data.bank).toBe('SEB')
+  })
+
+  // ── #F034c: MÅLKONTOT ÖVER TRÅDEN ─────────────────────────────────────────
+
+  it('K-HTTP1: konto från ANNAN organisation nekas — 404, inga rader, inget försök', async () => {
+    const svar = await ladda('utdrag.csv', CSV, token(), `?bankAccountId=${annanOrgKonto}`)
+
+    // 404 och inte 403: att skilja "finns inte" från "tillhör någon annan" hade
+    // låtit en anropare räkna ut vilka konto-id som finns i andra organisationer.
+    expect(svar.statusCode).toBe(404)
+    expect(await prisma.bankTransaction.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await prisma.bankTransaction.count({ where: { organizationId: annanOrgId } })).toBe(0)
+    expect(await prisma.bankImportAttempt.count({ where: { organizationId: orgId } })).toBe(0)
+  })
+
+  it('K-HTTP2: utan konto nekas importen med ett besked som säger vad man ska göra', async () => {
+    const svar = await ladda('utdrag.csv', CSV, token(), '')
+
+    expect(svar.statusCode).toBe(400)
+    const kropp = JSON.stringify(svar.json())
+    // Organisationen HAR ett konto här, så beskedet ska säga VÄLJ — inte
+    // "lägg upp ett konto". De två leder till olika åtgärder.
+    expect(kropp).toMatch(/Välj vilket bankkonto/)
+    expect(await prisma.bankTransaction.count({ where: { organizationId: orgId } })).toBe(0)
+  })
+
+  it('K-HTTP3: samma fil på TVÅ konton i samma organisation — båda importeras', async () => {
+    const kontoTvå = await prisma.bankAccount.create({
+      data: { organizationId: orgId, name: 'Klientmedelskonto' },
+      select: { id: true },
+    })
+
+    const ettSvar = await ladda('utdrag.csv', CSV, token(), `?bankAccountId=${kontoId}`)
+    const tvåSvar = await ladda('utdrag.csv', CSV, token(), `?bankAccountId=${kontoTvå.id}`)
+
+    expect(ettSvar.statusCode).toBe(201)
+    expect(tvåSvar.statusCode).toBe(201)
+    // INGEN uppspelning: olika konto = olika import.
+    expect(tvåSvar.json().data.forsok.replayed).toBe(false)
+    expect(tvåSvar.json().data.imported).toBe(1)
+    expect(await prisma.bankTransaction.count({ where: { organizationId: orgId } })).toBe(2)
+
+    await prisma.bankTransaction.deleteMany({ where: { bankAccountId: kontoTvå.id } })
+    await prisma.bankImportAttempt.deleteMany({ where: { bankAccountId: kontoTvå.id } })
+    await prisma.bankAccount.delete({ where: { id: kontoTvå.id } })
+  })
+
+  it('K-HTTP4: kontolistan är org-scopad — andras konton syns inte', async () => {
+    const svar = await app.inject({
+      method: 'GET',
+      url: '/v1/reconciliation/bank-accounts',
+      headers: { authorization: `Bearer ${token()}` },
+    })
+
+    expect(svar.statusCode).toBe(200)
+    const idn = (svar.json().data as Array<{ id: string }>).map((k) => k.id)
+    expect(idn).toContain(kontoId)
+    expect(idn).not.toContain(annanOrgKonto)
   })
 
   it('rollgrinden gäller fortfarande: VIEWER nekas, inget importförsök skapas', async () => {

@@ -85,6 +85,23 @@ export const RECONCILIATION_TRANSACTION_FIELDS = [
   // Fältet exponeras så gränssnittet kan skilja "väntar på matchning" från
   // "automatiken hade fel här"; utan det ser de två identiska ut i tabellen.
   'autoMatchExcludedAt',
+  // ── #F034c: BESLUTET SOM SKULLE TAS MED UI:T FRAMFÖR SIG ─────────────────
+  //
+  // Klassningen i `bank-transaction-views.spec.ts` lämnade tidigare de här två
+  // utanför båda formerna, med motiveringen att en osäkerhetsmarkering säger
+  // något om IMPORTENS kunskapsläge och inte om betalningen. Det höll så länge
+  // markeringen bara var en anteckning.
+  //
+  // Den är det inte längre. Sedan spärren i `matchTransaction` STOPPAR den
+  // automatiken, och då gäller exakt samma skäl som står vid
+  // `autoMatchExcludedAt` två rader upp: utan fältet ser "väntar på matchning"
+  // och "automatiken får inte röra den här" identiska ut i tabellen, och raden
+  // blir liggande i tysthet utan att någon vet att den väntar på ett beslut.
+  //
+  // Skälet följer med, inte bara tidpunkten — "identiteten är oavgjord" utan VAD
+  // som var oklart ger operatören inget att titta efter.
+  'identityReviewAt',
+  'identityReviewReason',
   'createdAt',
 ] as const
 
@@ -128,6 +145,8 @@ export function projectReconciliationTransaction(
     matchedRentNoticeId: rad.matchedRentNoticeId,
     matchedAt: rad.matchedAt,
     autoMatchExcludedAt: rad.autoMatchExcludedAt,
+    identityReviewAt: rad.identityReviewAt,
+    identityReviewReason: rad.identityReviewReason,
     createdAt: rad.createdAt,
     invoice: rad.invoice ?? null,
     matchedRentNotice: rad.matchedRentNotice ?? null,

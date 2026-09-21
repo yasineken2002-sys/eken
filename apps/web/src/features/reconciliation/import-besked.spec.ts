@@ -27,7 +27,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { importbesked, tolkaImportPagar } from './api/reconciliation.api'
+import { importbesked, kontobesked, kontoläge, tolkaImportPagar } from './api/reconciliation.api'
 
 describe('importbesked — vad operatören får veta', () => {
   it('KLAR utan uppspelning: normal rubrik, ingen extra text', () => {
@@ -140,5 +140,47 @@ describe('tolkaImportPagar — 409 skiljs från allt annat', () => {
     // pågående körning operatören ska vänta på.
     expect(tolkaImportPagar(new Error('Network Error'))).toBeNull()
     expect(tolkaImportPagar(undefined)).toBeNull()
+  })
+})
+
+describe('kontoläget — #F034c', () => {
+  const aktivt = { id: 'k1', name: 'Företagskonto', accountNumber: '1234', isActive: true }
+  const avvecklat = { id: 'k2', name: 'Gammalt', accountNumber: null, isActive: false }
+
+  it('inga konton alls → "inga-konton", och beskedet säger LÄGG UPP', () => {
+    expect(kontoläge([], null)).toBe('inga-konton')
+    expect(kontobesked('inga-konton')).toContain('Lägg upp')
+  })
+
+  it('bara AVVECKLADE konton räknas som inga konton', () => {
+    // Ett avvecklat konto går inte att välja. Att räkna det som valbart hade
+    // gett operatören en lista där inget val fungerar.
+    expect(kontoläge([avvecklat], null)).toBe('inga-konton')
+  })
+
+  it('konton finns men inget valt → "valj", och beskedet säger VÄLJ', () => {
+    expect(kontoläge([aktivt], null)).toBe('valj')
+    expect(kontobesked('valj')).toContain('Välj')
+    // DE TVÅ BESKEDEN MÅSTE SKILJA SIG. "Lägg upp ett konto" och "välj ett
+    // konto" leder till olika åtgärder, och samma text åt båda hade skickat
+    // operatören fel.
+    expect(kontobesked('valj')).not.toBe(kontobesked('inga-konton'))
+  })
+
+  it('valt konto som INTE finns i listan räknas som ovalt', () => {
+    // Ett id som blivit kvar i state efter att kontot avvecklats eller raderats
+    // ska inte se ut som ett giltigt val.
+    expect(kontoläge([aktivt], 'k-borta')).toBe('valj')
+    expect(kontoläge([avvecklat], 'k2')).toBe('inga-konton')
+  })
+
+  it('giltigt val → "valt", och då finns inget besked att visa', () => {
+    expect(kontoläge([aktivt], 'k1')).toBe('valt')
+    expect(kontobesked('valt')).toBeNull()
+  })
+
+  it('odefinierad lista (hämtningen pågår) behandlas som inga konton', () => {
+    // Fail-closed: under laddning ska knappen inte gå att trycka.
+    expect(kontoläge(undefined, null)).toBe('inga-konton')
   })
 })

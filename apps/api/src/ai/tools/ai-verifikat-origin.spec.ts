@@ -104,6 +104,7 @@ function makeExecutor(prisma: unknown) {
     noop,
 
     noop,
+    {} as never, // #F034c bankAccounts (sist)
   )
   // Verifikationsnummerserien injiceras positionellt i konstruktorn; hitta den
   // egenskap som bär allocate() och ersätt den, så testet inte pinnas till ett

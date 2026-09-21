@@ -63,8 +63,11 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
         void _unusedRemoved
         return rest
       })
+    // #F034c — kontot valdes vid uppladdningen och bärs hit. Utan det kan
+    // bekräftelsen inte göras, och servern skulle avvisa den ändå.
+    if (!draft.bankAccountId) return
     confirmMut.mutate(
-      { importId: draft.id, transactions: final },
+      { importId: draft.id, bankAccountId: draft.bankAccountId, transactions: final },
       {
         onSuccess: (data) => {
           onConfirmed({

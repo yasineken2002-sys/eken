@@ -1742,11 +1742,40 @@ export const EditedTransactionSchema = z.object({
 export const ConfirmImportSchema = z.object({
   /** Utelämnad = bekräfta utkastet som det står. */
   transactions: z.array(EditedTransactionSchema).optional(),
+  /**
+   * #F034c — VILKET BANKKONTO bekräftelsen gäller.
+   *
+   * Obligatoriskt i praktiken: servern avvisar en bekräftelse utan konto med
+   * ett svenskt besked. Fältet är `optional()` i SCHEMAT bara för att felet ska
+   * komma från kontoupplösningen — som vet om organisationen saknar konton
+   * eller om operatören bara glömde välja — i stället för från en generisk
+   * valideringsrad som inte kan skilja de två.
+   *
+   * PDF-utdragets AI-extraherade `accountNumber` väljer ALDRIG konto. Det
+   * kontrolleras mot valet, se `BankAccountService.jamforKontonummer`.
+   */
+  bankAccountId: z.string().min(1).optional(),
+})
+
+/** #F034c — lägga upp ett målkonto för bankimport. */
+export const CreateBankAccountSchema = z.object({
+  /**
+   * Operatörens namn på kontot. Unikt per organisation — det är DET valet görs
+   * på när filen saknar säker kontoidentitet, och två lika namn gör valet till
+   * en gissning.
+   */
+  name: z.string().min(1).max(120),
+  /**
+   * Valfri bankidentitet (clearing+konto, bankgiro, IBAN). Används för
+   * KONTROLL mot vad filen råkar bära, aldrig för att VÄLJA konto.
+   */
+  accountNumber: z.string().max(64).optional(),
 })
 
 export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
 export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
 export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>
+export type CreateBankAccountInput = z.infer<typeof CreateBankAccountSchema>
 
 // ─── Besiktningar ─────────────────────────────────────────────────────────────
 

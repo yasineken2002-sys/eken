@@ -72,14 +72,18 @@ function kanonisera(delar: Array<string | null>): string {
  *
  * `organizationId ‖ mål ‖ kind ‖ contentHash ‖ mappingHash`.
  *
- * MÅLET ÄR ORGANISATIONEN, OCH DET ÄR EN REDOVISAD GRÄNS. `BankTransaction`
- * har inget kontofält — raden hör till organisationen, inte till ett bankkonto.
- * CSV- och BgMax-vägarna tar aldrig emot ett kontonummer, och PDF-vägens
- * `BankStatementImport.accountNumber` är AI-extraherat ur utdraget, alltså inte
- * en styrd måladress. Parametern finns kvar i signaturen så att dagen då flera
- * bankkonton per organisation införs har EN plats att ändra — men i dag är
- * `mål === organizationId`, och att påstå något annat hade varit att låtsas om
- * ett skydd som inte finns.
+ * MÅLET ÄR NU BANKKONTOT (#F034c). Fram till dess var det organisationen, och
+ * den gränsen stod som en uttrycklig kvarstående lucka i #F034b:s leverans —
+ * två verkliga betalningar med identiska fält på OLIKA konton i samma
+ * organisation var oskiljbara, och den andra räknades som dubblett.
+ *
+ * `mål` är ett VERIFIERAT `BankAccount.id`. Anroparen har låtit servern
+ * kontrollera ägandet mot organisationen innan avtrycket räknas; den här
+ * funktionen har ingen databas att fråga och kan inte göra det åt den.
+ *
+ * FÖLJDEN ÄR AVSIKTLIG: samma fil mot TVÅ konton är två skilda importer och
+ * blockerar inte varandra. Samma fil mot SAMMA konto är en import, och det är
+ * den frågan filnivåskyddet finns för att besvara.
  */
 export function beräknaImportavtryck(input: {
   organizationId: string
@@ -109,8 +113,19 @@ export function beräknaImportavtryck(input: {
  * namnrymd. Det speglar basen exakt: BgMax läsning kan hitta en CSV-rad, men
  * inte tvärtom. Indexet lägger ingenting till och tar ingenting bort där.
  */
-const NAMNRYMD_FIL = 'FIL_V1'
-const NAMNRYMD_BGMAX = 'BGMAX_V1'
+// V2 SEDAN #F034c: namnrymden bumpades när MÅLKONTOT kom in i identiteten.
+//
+// Bumpen är inte kosmetisk. En rad som skrevs av #F034b bär en V1-hash över
+// samma fält UTAN konto. Hade V2 återanvänt namnet hade två olika fältmängder
+// delat namnrymd, och en V1-nyckel kunnat kollidera med en V2-nyckel som
+// betyder något annat. Med bumpen är de två mängderna disjunkta, och en
+// V1-rad kan aldrig av misstag läsas som en V2-rad.
+//
+// Följden — att en #F034b-rad inte längre får samma hash som samma betalning
+// importerad i dag — är avsiktlig och ofarlig: fält-dedupens LÄSNING är kvar
+// som första lager och ser dem ändå (den frågar efter fälten, inte hashen).
+const NAMNRYMD_FIL = 'FIL_V2_KONTO'
+const NAMNRYMD_BGMAX = 'BGMAX_V2_KONTO'
 
 /** Tomt värde är ett EGET värde, aldrig en joker. Se F034. */
 function text(v: string | null | undefined): string {
@@ -159,8 +174,25 @@ function belopp(a: Decimal): string {
  * påstående om det.
  */
 
+/**
+ * MÅLKONTOT (#F034c) — det första ledet i varje radidentitet.
+ *
+ * Ett VERIFIERAT `BankAccount.id`. Anroparen har låtit servern kontrollera att
+ * kontot tillhör organisationen; identitetsmodulen tar emot ett id och litar på
+ * det, eftersom den inte har någon databas att fråga.
+ *
+ * ── VARFÖR KONTOT LIGGER FÖRST OCH INTE SIST ────────────────────────────────
+ *
+ * Bara läsbarhet i en felsökning: kanoniseringen är en JSON-array, så ordningen
+ * spelar ingen roll för entydigheten. Men en hash som börjar med kontot går att
+ * gruppera på i huvudet när man läser två nycklar bredvid varandra.
+ */
+export type Målkonto = string
+
 /** Fälten CSV/XLSX/XLS och PDF-bekräftelsen identifierar en rad med. */
 export interface FilRadFält {
+  /** Verifierat BankAccount.id. Obligatoriskt — se `Målkonto`. */
+  bankAccountId: Målkonto
   date: Date
   description: string
   amount: Decimal
@@ -170,6 +202,8 @@ export interface FilRadFält {
 
 /** Fälten BgMax identifierar en rad med. */
 export interface BgMaxRadFält {
+  /** Verifierat BankAccount.id. Obligatoriskt — se `Målkonto`. */
+  bankAccountId: Målkonto
   date: Date
   amount: Decimal
   rawOcr: string | null
@@ -190,6 +224,7 @@ export interface Radidentitet {
 export function filIdentitet(rad: FilRadFält): Radidentitet {
   return {
     dedup: {
+      bankAccountId: rad.bankAccountId,
       date: rad.date,
       description: rad.description,
       amount: rad.amount,
@@ -198,6 +233,7 @@ export function filIdentitet(rad: FilRadFält): Radidentitet {
     key: sha256(
       kanonisera([
         NAMNRYMD_FIL,
+        rad.bankAccountId,
         datum(rad.date),
         rad.description,
         belopp(rad.amount),
@@ -217,12 +253,19 @@ export function filIdentitet(rad: FilRadFält): Radidentitet {
 export function bgMaxIdentitet(rad: BgMaxRadFält): Radidentitet {
   return {
     dedup: {
+      bankAccountId: rad.bankAccountId,
       date: rad.date,
       amount: rad.amount,
       rawOcr: rad.rawOcr,
     },
     key: sha256(
-      kanonisera([NAMNRYMD_BGMAX, datum(rad.date), belopp(rad.amount), text(rad.rawOcr)]),
+      kanonisera([
+        NAMNRYMD_BGMAX,
+        rad.bankAccountId,
+        datum(rad.date),
+        belopp(rad.amount),
+        text(rad.rawOcr),
+      ]),
     ),
   }
 }

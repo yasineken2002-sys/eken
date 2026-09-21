@@ -64,6 +64,7 @@ import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { BankImportAttemptService } from './bank-import-attempt.service'
+import { BankAccountService } from './bank-account.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { IMPORT_LEASE_TTL_MS, hashaBytes } from './bank-import-identity'
 import { ReconciliationService } from './reconciliation.service'
@@ -248,6 +249,12 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
   let prisma: PrismaClient
   let orgId: string
   let orgB: string
+  // #F034c — MÅLKONTON. `kontoA2` ligger i SAMMA organisation som `kontoA`
+  // och är det som gör kontoseparationen prövbar; `kontoB` ligger i den andra
+  // organisationen och används för att pröva att en korsning nekas.
+  let kontoA: string
+  let kontoA2: string
+  let kontoB: string
 
   async function nyOrg(): Promise<string> {
     const sfx = randomUUID().slice(0, 8)
@@ -304,9 +311,27 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     await kräv('BankImportAttempt_organizationId_fingerprint_key', 'BankImportAttempt')
     orgId = await nyOrg()
     orgB = await nyOrg()
+    const konto = async (org: string, namn: string, nummer?: string) =>
+      (
+        await prisma.bankAccount.create({
+          data: { organizationId: org, name: namn, ...(nummer ? { accountNumber: nummer } : {}) },
+          select: { id: true },
+        })
+      ).id
+    kontoA = await konto(orgId, 'Företagskonto', '1234-5678')
+    kontoA2 = await konto(orgId, 'Klientmedelskonto', '8765-4321')
+    kontoB = await konto(orgB, 'Företagskonto')
   })
 
   afterAll(async () => {
+    // #F034c — kontona har Restrict från BankTransaction; raderna städas i
+    // beforeEach, så kontona kan tas här. Organisationerna lämnas kvar för en
+    // granskares omkörning, precis som förr.
+    for (const o of [orgId, orgB]) {
+      await prisma.bankImportAttempt.deleteMany({ where: { organizationId: o } })
+      await prisma.bankTransaction.deleteMany({ where: { organizationId: o } })
+      await prisma.bankAccount.deleteMany({ where: { organizationId: o } })
+    }
     await prisma.$disconnect()
   })
 
@@ -331,8 +356,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const fil = csv(RAD_A)
 
     const utfall = await Promise.allSettled([
-      nyaTjänster(a).recon.importBankStatement(fil, 'utdrag.csv', orgId),
-      nyaTjänster(b).recon.importBankStatement(fil, 'utdrag.csv', orgId),
+      nyaTjänster(a).recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
+      nyaTjänster(b).recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
     ])
     await a.$disconnect()
     await b.$disconnect()
@@ -360,13 +385,13 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const { recon } = nyaTjänster(prisma)
     const fil = csv(RAD_A, RAD_B)
 
-    const först = await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    const först = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
     expect(först.imported).toBe(2)
     expect(först.forsok?.replayed).toBe(false)
     expect(först.forsok?.status).toBe('KLAR')
     const efterFörst = await räknaRader()
 
-    const igen = await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    const igen = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
 
     expect(igen.forsok?.replayed).toBe(true)
     expect(igen.imported).toBe(först.imported)
@@ -384,7 +409,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
 
     // Efterlikna ett avbrott: raden ligger kvar RUNNING, och en av filens två
     // betalningar hann lagras innan processen dog.
-    await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
     await prisma.bankTransaction.deleteMany({
       where: { organizationId: orgId, amount: new Decimal('7500.00') },
     })
@@ -399,7 +424,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     })
     expect(await räknaRader()).toBe(1)
 
-    const igen = await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    const igen = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
 
     expect(igen.forsok?.replayed).toBe(false)
     expect(igen.forsok?.forsokNr).toBe(2)
@@ -412,15 +437,17 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
   it('A3b: RUNNING med FÄRSKT arrende nekas — inget övertagande', async () => {
     const { recon } = nyaTjänster(prisma)
     const fil = csv(RAD_A)
-    await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
     await prisma.bankImportAttempt.updateMany({
       where: { organizationId: orgId },
       data: { status: 'RUNNING', heartbeatAt: new Date() },
     })
 
-    await expect(recon.importBankStatement(fil, 'utdrag.csv', orgId)).rejects.toMatchObject({
-      status: 409,
-    })
+    await expect(recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)).rejects.toMatchObject(
+      {
+        status: 409,
+      },
+    )
     expect(await räknaRader()).toBe(1)
   })
 
@@ -431,7 +458,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     // Rad 2 har ogiltigt belopp → F19:s filfelspolicy slår till.
     const trasig = csv(RAD_A, '2026-03-03,Insattning,INTE-ETT-BELOPP,9876543210')
 
-    const först = await recon.importBankStatement(trasig, 'utdrag.csv', orgId)
+    const först = await recon.importBankStatement(trasig, 'utdrag.csv', orgId, kontoA)
     expect(först.errors.length).toBeGreaterThan(0)
     expect(först.forsok?.status).toBe('DELVIS')
     expect(först.forsok?.replayed).toBe(false)
@@ -442,7 +469,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     expect(attempt?.status).toBe('PARTIAL')
 
     // Ett PARTIAL spelas ALDRIG upp — det körs om.
-    const igen = await recon.importBankStatement(trasig, 'utdrag.csv', orgId)
+    const igen = await recon.importBankStatement(trasig, 'utdrag.csv', orgId, kontoA)
     expect(igen.forsok?.replayed).toBe(false)
     expect(igen.forsok?.forsokNr).toBe(2)
     // Den lyckade raden bevarades och räknas nu som dubblett.
@@ -455,11 +482,11 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
   it('A5: RÄTTAD fil får nytt avtryck — den rättade raden lagras', async () => {
     const { recon } = nyaTjänster(prisma)
     const trasig = csv(RAD_A, '2026-03-03,Insattning,INTE-ETT-BELOPP,9876543210')
-    await recon.importBankStatement(trasig, 'utdrag.csv', orgId)
+    await recon.importBankStatement(trasig, 'utdrag.csv', orgId, kontoA)
     expect(await räknaRader()).toBe(1)
 
     const rättad = csv(RAD_A, RAD_B)
-    const efter = await recon.importBankStatement(rättad, 'utdrag.csv', orgId)
+    const efter = await recon.importBankStatement(rättad, 'utdrag.csv', orgId, kontoA)
 
     expect(efter.forsok?.replayed).toBe(false)
     expect(efter.errors).toHaveLength(0)
@@ -477,10 +504,10 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const { recon } = nyaTjänster(prisma)
     const fil = csv(RAD_A)
 
-    const auto = await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    const auto = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
     expect(auto.forsok?.replayed).toBe(false)
 
-    const medBank = await recon.importBankStatement(fil, 'utdrag.csv', orgId, 'SEB')
+    const medBank = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA, 'SEB')
 
     // Körningen SKA ske på nytt — mappningen är en annan. Att den inte skapar
     // en andra rad är radnivåns förtjänst, inte filnivåns.
@@ -497,7 +524,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     // Samma dag, samma belopp, samma text OCH samma referens. Basen lagrade EN.
     const fil = csv(RAD_A, RAD_A)
 
-    const r = await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    const r = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
 
     expect(r.imported).toBe(2)
     expect(r.duplicates).toBe(0)
@@ -512,11 +539,11 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
 
   it('A8b: en ANNAN fil med samma rad EN gång räknas som dubblett (summerar inte)', async () => {
     const { recon } = nyaTjänster(prisma)
-    await recon.importBankStatement(csv(RAD_A, RAD_A), 'ett.csv', orgId)
+    await recon.importBankStatement(csv(RAD_A, RAD_A), 'ett.csv', orgId, kontoA)
     expect(await räknaRader()).toBe(2)
 
     // Annan fil (annat innehåll → annat avtryck) som bär betalningen EN gång.
-    const andra = await recon.importBankStatement(csv(RAD_A, RAD_B), 'tva.csv', orgId)
+    const andra = await recon.importBankStatement(csv(RAD_A, RAD_B), 'tva.csv', orgId, kontoA)
 
     expect(andra.forsok?.replayed).toBe(false)
     expect(andra.duplicates).toBe(1) // RAD_A
@@ -536,8 +563,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     // låta namnet skilja dem hade gjort skyddet kringgåeligt med en `mv`.
     // Filerna delar RAD_A; fil två bär dessutom RAD_B.
     const utfall = await Promise.allSettled([
-      nyaTjänster(a).recon.importBankStatement(csv(RAD_A), 'ett.csv', orgId),
-      nyaTjänster(b).recon.importBankStatement(csv(RAD_A, RAD_B), 'tva.csv', orgId),
+      nyaTjänster(a).recon.importBankStatement(csv(RAD_A), 'ett.csv', orgId, kontoA),
+      nyaTjänster(b).recon.importBankStatement(csv(RAD_A, RAD_B), 'tva.csv', orgId, kontoA),
     ])
     await a.$disconnect()
     await b.$disconnect()
@@ -563,8 +590,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const { recon } = nyaTjänster(prisma)
     const fil = csv(RAD_A)
 
-    const iA = await recon.importBankStatement(fil, 'utdrag.csv', orgId)
-    const iB = await recon.importBankStatement(fil, 'utdrag.csv', orgB)
+    const iA = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
+    const iB = await recon.importBankStatement(fil, 'utdrag.csv', orgB, kontoB)
 
     expect(iA.forsok?.replayed).toBe(false)
     expect(iB.forsok?.replayed).toBe(false)
@@ -579,7 +606,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
   it('A11: en låskonflikt flyttar ALDRIG fram betalningstäckningen', async () => {
     const { recon } = nyaTjänster(prisma)
     const fil = csv(RAD_A)
-    await recon.importBankStatement(fil, 'utdrag.csv', orgId)
+    await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
     const efterLyckad = await prisma.organization.findUniqueOrThrow({
       where: { id: orgId },
       select: { paymentDataThrough: true },
@@ -593,7 +620,9 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
 
     const rigg = nyaTjänster(prisma)
     // En SENARE fil som skulle ha flyttat fram täckningen — men samma avtryck.
-    await expect(rigg.recon.importBankStatement(fil, 'utdrag.csv', orgId)).rejects.toMatchObject({
+    await expect(
+      rigg.recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
+    ).rejects.toMatchObject({
       status: 409,
     })
 
@@ -639,13 +668,13 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const { pdf } = nyaTjänster(prisma)
     const id = await nyDraft([PDF_RAD])
 
-    const först = await pdf.confirmImport(id, orgId, null, [PDF_RAD])
+    const först = await pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD])
     expect(först.created).toBe(1)
     expect(först.forsok?.replayed).toBe(false)
     expect(await räknaRader()).toBe(1)
 
     // Samma lista → samma avtryck → uppspelning, inte "redan bekräftad"-fel.
-    const igen = await pdf.confirmImport(id, orgId, null, [PDF_RAD])
+    const igen = await pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD])
     expect(igen.forsok?.replayed).toBe(true)
     expect(igen.created).toBe(1)
     expect(await räknaRader()).toBe(1)
@@ -654,7 +683,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     // bekräftelsen NEKAS uttryckligen. Det viktiga är att svaret inte blir ett
     // tyst uppspelat "klart" för ett underlag som aldrig kördes.
     await expect(
-      pdf.confirmImport(id, orgId, null, [{ ...PDF_RAD, amount: 9500 }]),
+      pdf.confirmImport(id, orgId, null, kontoA, [{ ...PDF_RAD, amount: 9500 }]),
     ).rejects.toMatchObject({ status: 400 })
     expect(await räknaRader()).toBe(1)
   })
@@ -666,8 +695,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const id = await nyDraft([PDF_RAD])
 
     const utfall = await Promise.allSettled([
-      nyaTjänster(a).pdf.confirmImport(id, orgId, null, [PDF_RAD]),
-      nyaTjänster(b).pdf.confirmImport(id, orgId, null, [PDF_RAD]),
+      nyaTjänster(a).pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD]),
+      nyaTjänster(b).pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD]),
     ])
     await a.$disconnect()
     await b.$disconnect()
@@ -694,8 +723,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const id = await nyDraft([PDF_RAD])
 
     const utfall = await Promise.allSettled([
-      nyaTjänster(a).pdf.confirmImport(id, orgId, null, [PDF_RAD]),
-      nyaTjänster(b).pdf.confirmImport(id, orgId, null, [{ ...PDF_RAD, amount: 9500 }]),
+      nyaTjänster(a).pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD]),
+      nyaTjänster(b).pdf.confirmImport(id, orgId, null, kontoA, [{ ...PDF_RAD, amount: 9500 }]),
     ])
     await a.$disconnect()
     await b.$disconnect()
@@ -716,7 +745,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
 
     // Efterlikna ett avbrott EFTER draft-anspråket men FÖRE commiten: draften
     // står i CONFIRMING, importförsöket i RUNNING med fallet arrende.
-    await pdf.confirmImport(id, orgId, null, [PDF_RAD])
+    await pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD])
     await prisma.bankTransaction.deleteMany({ where: { organizationId: orgId } })
     await prisma.bankStatementImport.update({
       where: { id },
@@ -731,7 +760,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
       },
     })
 
-    const igen = await pdf.confirmImport(id, orgId, null, [PDF_RAD])
+    const igen = await pdf.confirmImport(id, orgId, null, kontoA, [PDF_RAD])
 
     // Utan `övertagande`-flaggan hade den här körningen nekats och draften
     // legat låst i CONFIRMING tills någon rättade den för hand.
@@ -751,7 +780,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     // en helt ny bekräftelse får det inte, för då är CONFIRMING någon ANNANS
     // pågående arbete.
     await expect(
-      pdf.confirmImport(id, orgId, null, [{ ...PDF_RAD, amount: 9500 }]),
+      pdf.confirmImport(id, orgId, null, kontoA, [{ ...PDF_RAD, amount: 9500 }]),
     ).rejects.toMatchObject({ status: 409 })
     expect(await räknaRader()).toBe(0)
   })
@@ -769,9 +798,195 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     expect(draft.status).toBe('CONFIRMING')
   })
 
+  // ── #F034c: KONTOSEPARATIONEN ─────────────────────────────────────────────
+
+  it('K1: SAMMA fil på SAMMA konto, upprepat — uppspelas, noll nya rader', async () => {
+    const { recon } = nyaTjänster(prisma)
+    const fil = csv(RAD_A)
+
+    const först = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
+    const igen = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
+
+    expect(först.forsok?.replayed).toBe(false)
+    expect(igen.forsok?.replayed).toBe(true)
+    expect(await räknaRader()).toBe(1)
+  })
+
+  it('K2: SAMMA fil på SAMMA konto, PARALLELLT — en kör, en får 409, EN rad', async () => {
+    const barriär = new Barriär(2)
+    const a = klientMedBarriär(barriär, 'anspråk')
+    const b = klientMedBarriär(barriär, 'anspråk')
+    const fil = csv(RAD_A)
+
+    const utfall = await Promise.allSettled([
+      nyaTjänster(a).recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
+      nyaTjänster(b).recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
+    ])
+    await a.$disconnect()
+    await b.$disconnect()
+
+    expect(utfall.filter((u) => u.status === 'fulfilled')).toHaveLength(1)
+    expect(
+      utfall.filter(
+        (u) => u.status === 'rejected' && (u.reason as { status?: number })?.status === 409,
+      ),
+    ).toHaveLength(1)
+    expect(await räknaRader()).toBe(1)
+  }, 30_000)
+
+  it('K3: LIKA betalningsfält på TVÅ konton i samma organisation — BÅDA bevaras', async () => {
+    // Detta är luckan #F034c stänger. Före kontot var de två oskiljbara och den
+    // andra räknades som dubblett — en verklig betalning försvann tyst.
+    const { recon } = nyaTjänster(prisma)
+    const fil = csv(RAD_A)
+
+    const påA = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA)
+    const påA2 = await recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA2)
+
+    // SAMMA fil, SAMMA organisation, OLIKA konto → två skilda importer.
+    expect(påA.forsok?.replayed).toBe(false)
+    expect(påA2.forsok?.replayed).toBe(false)
+    expect(påA2.duplicates).toBe(0)
+    expect(påA2.behoverGranskas).toBe(0)
+
+    const rader = await prisma.bankTransaction.findMany({
+      where: { organizationId: orgId },
+      select: { bankAccountId: true, identityKey: true },
+    })
+    expect(rader).toHaveLength(2)
+    expect(new Set(rader.map((r) => r.bankAccountId))).toEqual(new Set([kontoA, kontoA2]))
+    // OLIKA identitet — kontot ingår i nyckeln, så det unika villkoret kan inte
+    // slå ihop dem. Utan det ledet hade detta varit EN rad.
+    expect(new Set(rader.map((r) => r.identityKey)).size).toBe(2)
+  })
+
+  it('K4: konto från ANNAN organisation NEKAS av serverns upplösning', async () => {
+    const konton = new BankAccountService(prisma as never)
+
+    // `kontoB` finns — men i orgB. Frågan ställs som orgId.
+    await expect(konton.resolveTarget(orgId, kontoB)).rejects.toMatchObject({ status: 404 })
+    // Och samma konto NÅS av sin egen organisation, så provet mäter gränsen och
+    // inte att uppslaget alltid misslyckas.
+    await expect(konton.resolveTarget(orgB, kontoB)).resolves.toMatchObject({ id: kontoB })
+  })
+
+  it('K4b: saknat och avvecklat konto nekas, med olika besked', async () => {
+    const konton = new BankAccountService(prisma as never)
+
+    await expect(konton.resolveTarget(orgId, undefined)).rejects.toMatchObject({ status: 400 })
+    await expect(konton.resolveTarget(orgId, 'finns-inte')).rejects.toMatchObject({ status: 404 })
+
+    const avvecklat = await prisma.bankAccount.create({
+      data: { organizationId: orgId, name: 'Avvecklat konto', isActive: false },
+      select: { id: true },
+    })
+    await expect(konton.resolveTarget(orgId, avvecklat.id)).rejects.toMatchObject({ status: 400 })
+    await prisma.bankAccount.delete({ where: { id: avvecklat.id } })
+  })
+
+  it('K5: HISTORIK utan kontotillhörighet — lagras, flaggas, matchas ALDRIG', async () => {
+    // En rad som fanns före kontot. Migrationen hittade inte på någon
+    // tillhörighet åt den, och importen gör det inte heller.
+    await prisma.bankTransaction.create({
+      data: {
+        organizationId: orgId,
+        date: new Date('2026-03-02T00:00:00.000Z'),
+        description: 'Insattning',
+        amount: new Decimal('9000.00'),
+        reference: '1234567897',
+      },
+    })
+
+    const r = await nyaTjänster(prisma).recon.importBankStatement(
+      csv(RAD_A),
+      'utdrag.csv',
+      orgId,
+      kontoA,
+    )
+
+    // VARKEN tyst bortkastad …
+    expect(r.duplicates).toBe(0)
+    // … ELLER en automatiskt säkerförklarad dubblett.
+    expect(r.behoverGranskas).toBe(1)
+    expect(r.autoMatched).toBe(0)
+
+    const flaggade = await prisma.bankTransaction.findMany({
+      where: { organizationId: orgId, identityReviewAt: { not: null } },
+      select: { identityReviewReason: true, status: true, bankAccountId: true },
+    })
+    expect(flaggade).toHaveLength(1)
+    expect(flaggade[0]).toMatchObject({
+      identityReviewReason: 'HISTORIK_UTAN_KONTO',
+      status: 'UNMATCHED',
+      bankAccountId: kontoA,
+    })
+    // Den historiska raden är ORÖRD — ingen påhittad kontotillhörighet.
+    expect(
+      await prisma.bankTransaction.count({
+        where: { organizationId: orgId, bankAccountId: null },
+      }),
+    ).toBe(1)
+  })
+
+  it('K5b: NEGATIVKONTROLL — utan kontolös historik flaggas ingenting', async () => {
+    // Den omvända riktningen. Utan den här hade K5 varit grönt även om koden
+    // ALLTID stämplade varje rad som osäker.
+    const r = await nyaTjänster(prisma).recon.importBankStatement(
+      csv(RAD_A),
+      'utdrag.csv',
+      orgId,
+      kontoA,
+    )
+    expect(r.behoverGranskas).toBe(0)
+    expect(r.imported).toBe(1)
+    expect(
+      await prisma.bankTransaction.count({
+        where: { organizationId: orgId, identityReviewAt: { not: null } },
+      }),
+    ).toBe(0)
+  })
+
+  it('K6: PARTIELLT fel + återförsök på samma konto — färskheten oförändrad', async () => {
+    const rigg = nyaTjänster(prisma)
+    const trasig = csv(RAD_A, '2026-03-03,Insattning,INTE-ETT-BELOPP,9876543210')
+
+    const först = await rigg.recon.importBankStatement(trasig, 'utdrag.csv', orgId, kontoA)
+    expect(först.forsok?.status).toBe('DELVIS')
+    // F19 STÅR KVAR: en ofullständigt läst fil flyttar inte fram täckningen.
+    expect(rigg.täckning).toHaveLength(0)
+
+    const igen = await rigg.recon.importBankStatement(trasig, 'utdrag.csv', orgId, kontoA)
+    expect(igen.forsok?.replayed).toBe(false)
+    expect(igen.duplicates).toBe(1)
+    expect(rigg.täckning).toHaveLength(0)
+
+    const rättad = csv(RAD_A, RAD_B)
+    const efter = await rigg.recon.importBankStatement(rättad, 'utdrag.csv', orgId, kontoA)
+    expect(efter.forsok?.status).toBe('KLAR')
+    // …och när filen är hel flyttas den fram. Utan den här raden hade provet
+    // ovan kunnat vara grönt av att täckningen ALDRIG flyttas.
+    expect(rigg.täckning.length).toBeGreaterThan(0)
+  })
+
+  it('K7: identiska rader inne i filen REDOVISAS som tvetydiga', async () => {
+    const r = await nyaTjänster(prisma).recon.importBankStatement(
+      csv(RAD_A, RAD_A),
+      'utdrag.csv',
+      orgId,
+      kontoA,
+    )
+
+    // Båda bevaras enligt kontraktet …
+    expect(r.imported).toBe(2)
+    // … OCH tvetydigheten redovisas. Att de bevarades är inte ett bevis för att
+    // banken avsåg två händelser; filen kan inte skilja en dubbelbetalning från
+    // en upprepad rad.
+    expect(r.identiskaRader).toBe(1)
+  })
+
   // ── Historiska rader ───────────────────────────────────────────────────────
 
-  it('rader utan identitet (sentinel) skyddas av LÄSNINGEN, inte av indexet', async () => {
+  it('rader utan identitet (sentinel) SES av läsningen — men utan konto blir svaret granskning', async () => {
     // Efterlikna en rad skriven före migrationen: identityKey = '' (sentinel).
     await prisma.bankTransaction.create({
       data: {
@@ -799,12 +1014,27 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
       },
     })
 
-    const r = await nyaTjänster(prisma).recon.importBankStatement(csv(RAD_A), 'utdrag.csv', orgId)
+    const r = await nyaTjänster(prisma).recon.importBankStatement(
+      csv(RAD_A),
+      'utdrag.csv',
+      orgId,
+      kontoA,
+    )
 
-    // Läsningen ser den historiska raden trots att indexet inte gör det.
-    expect(r.duplicates).toBe(1)
-    expect(r.imported).toBe(0)
-    expect(await räknaRader()).toBe(2)
+    // ── UTFALLET ÄNDRADES AV #F034c ────────────────────────────────────────
+    //
+    // Läsningen SER fortfarande den historiska raden — det är fortfarande
+    // enda vägen till en rad med sentinel-identitet, och det är vad den här
+    // raden mäter. Men den historiska raden har inget KONTO, så läsningen kan
+    // inte längre svara "samma betalning": den vet inte vilket konto pengarna
+    // kom in på.
+    //
+    // Utfallet är därför granskning, inte dubblett. Betalningen kastas inte
+    // bort, och ingen säkerförklarad dubblett skapas.
+    expect(r.behoverGranskas).toBe(1)
+    expect(r.duplicates).toBe(0)
+    // Två historiska rader + den nya flaggade.
+    expect(await räknaRader()).toBe(3)
   })
 
   // ── NEGATIVKONTROLLER ──────────────────────────────────────────────────────
@@ -824,8 +1054,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
       const a = klientMedBarriär(barriär, 'dedupläsning')
       const b = klientMedBarriär(barriär, 'dedupläsning')
       await Promise.allSettled([
-        nyaTjänster(a).recon.importBankStatement(fil, 'ett.csv', orgId),
-        nyaTjänster(b).recon.importBankStatement(csv(RAD_A, RAD_B), 'tva.csv', orgId),
+        nyaTjänster(a).recon.importBankStatement(fil, 'ett.csv', orgId, kontoA),
+        nyaTjänster(b).recon.importBankStatement(csv(RAD_A, RAD_B), 'tva.csv', orgId, kontoA),
       ])
       await a.$disconnect()
       await b.$disconnect()
@@ -867,8 +1097,8 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
       const a = klientMedBarriär(barriär, 'anspråk')
       const b = klientMedBarriär(barriär, 'anspråk')
       const utfall = await Promise.allSettled([
-        nyaTjänster(a).recon.importBankStatement(fil, 'utdrag.csv', orgId),
-        nyaTjänster(b).recon.importBankStatement(fil, 'utdrag.csv', orgId),
+        nyaTjänster(a).recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
+        nyaTjänster(b).recon.importBankStatement(fil, 'utdrag.csv', orgId, kontoA),
       ])
       await a.$disconnect()
       await b.$disconnect()
@@ -896,6 +1126,7 @@ medDb('bankimportens filnivå-idempotens (#F034b)', () => {
     const fil = csv(RAD_A)
     const gemensam = {
       organizationId: orgId,
+      bankAccountId: kontoA,
       kind: 'CSV' as const,
       fileName: 'utdrag.csv',
       contentHash: hashaBytes(fil),

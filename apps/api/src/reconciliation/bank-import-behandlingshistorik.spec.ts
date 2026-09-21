@@ -39,6 +39,11 @@ interface PrismaMock {
   organization: { findUnique: AnyFn }
 }
 
+// #F034c — MÅLKONTOT är obligatoriskt sedan kontoseparationen. Ett
+// syntetiskt id räcker här: provet mäter något annat, och servern
+// verifierar ägandet i controllern/`resolveTarget`, inte i tjänsten.
+const KONTO = 'konto-1'
+
 function makePrismaMock(): PrismaMock {
   return {
     bankStatementImport: {
@@ -169,7 +174,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         },
       ]
 
-      await service.confirmImport('imp-1', 'org-1', 'user-1', edited)
+      await service.confirmImport('imp-1', 'org-1', 'user-1', KONTO, edited)
 
       const update = prisma.bankStatementImport.update.mock.calls.at(-1)![0]
       expect(update.data.status).toBe('CONFIRMED')
@@ -206,7 +211,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
         new BankImportAttemptService(prisma as never),
       )
 
-      await service.confirmImport('imp-1', 'org-1', 'user-1')
+      await service.confirmImport('imp-1', 'org-1', 'user-1', KONTO)
 
       expect(recordPaymentDataThrough).toHaveBeenCalledWith('org-1', new Date('2026-05-31'))
     })
@@ -230,7 +235,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
       )
 
       // AI_TX-datumen avgör coverage; senaste = 2026-05-02 (se edited nedan).
-      await service.confirmImport('imp-1', 'org-1', 'user-1', [
+      await service.confirmImport('imp-1', 'org-1', 'user-1', KONTO, [
         { date: '2026-05-01', description: 'A', ocr: null, amount: 8400, isIncoming: true },
         { date: '2026-05-02', description: 'B', ocr: null, amount: 7200, isIncoming: true },
       ])
@@ -265,7 +270,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
           isIncoming: true,
         },
       ]
-      await service.confirmImport('imp-1', 'org-1', 'user-1', edited)
+      await service.confirmImport('imp-1', 'org-1', 'user-1', KONTO, edited)
 
       const update = prisma.bankStatementImport.update.mock.calls.at(-1)![0]
       const draft = await prisma.bankStatementImport.findFirst.mock.results[0]!.value
@@ -294,7 +299,7 @@ describe('BankStatementImport — behandlingshistorik (BFL 5 kap 11 §, issue #3
       )
 
       // Ingen edited-lista → extractFromDraft används.
-      await service.confirmImport('imp-1', 'org-1', 'user-1')
+      await service.confirmImport('imp-1', 'org-1', 'user-1', KONTO)
 
       const update = prisma.bankStatementImport.update.mock.calls.at(-1)![0]
       expect(update.data.confirmedData.transactions).toHaveLength(AI_TX.length)

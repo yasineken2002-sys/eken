@@ -75,6 +75,7 @@ import {
   CreateRentNoticeCreditSchema,
   ManualMatchSchema,
   ConfirmImportSchema,
+  CreateBankAccountSchema,
   UpdateMeterSchema,
   CreateDelegationFromAssignmentSchema,
   RevokeDelegationSchema,
@@ -216,7 +217,7 @@ import { SendNoticesDto } from '../../avisering/dto/send-notices.dto'
 import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
-import { ConfirmImportDto } from '../../reconciliation/dto/confirm-import.dto'
+import { ConfirmImportDto, CreateBankAccountDto } from '../../reconciliation/dto/confirm-import.dto'
 import { AnswerQuestionDto } from '../../ai/assignments/dto/answer-question.dto'
 import { RequestUndoDto } from '../../ai/assignments/dto/request-undo.dto'
 import { RevokeDelegationDto } from '../../ai/delegation/dto/revoke-delegation.dto'
@@ -910,6 +911,21 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       transactions: [{ date: '2026-09-01', description: 'Hyra sep', amount: 'tolvtusen' }],
     },
     ogiltigVarfor: 'beloppet måste vara ett tal',
+  },
+  {
+    // #F034c — målkontot för bankimport. Pariteten prövar NAMNETS GRÄNSER, och
+    // posten skrevs innan de fanns på båda sidor: schemat hade min(1)/max(120),
+    // DTO:n bara `@IsString()`. Provet mätte `{ zod: false, dto: true }` för
+    // `name: ''` och det var ett verkligt fel — ett konto utan namn hade kunnat
+    // skapas via API:t och sedan inte gått att välja i importens kontoväljare,
+    // eftersom väljaren visar namnet. DTO:n bär nu samma gränser.
+    endpoint: 'POST /reconciliation/bank-accounts',
+    inputTyp: 'CreateBankAccountInput',
+    schema: CreateBankAccountSchema,
+    dto: CreateBankAccountDto,
+    giltig: { name: 'Företagskonto', accountNumber: '1234-5678' },
+    ogiltig: { name: '' },
+    ogiltigVarfor: 'ett konto utan namn går inte att välja i importens kontoväljare',
   },
   {
     // Etapp 7 (G2). "Gör alltid så här" — delegationen som föds ur ett godkänt

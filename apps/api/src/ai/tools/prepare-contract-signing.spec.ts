@@ -74,6 +74,7 @@ describe('AI-seam: prepare_contract_signing (prepare-only)', () => {
       signing, // 23 signingService
       noop, // 24 accountingPeriods,
       noop,
+      {} as never, // #F034c bankAccounts (sist)
     )
   }
 

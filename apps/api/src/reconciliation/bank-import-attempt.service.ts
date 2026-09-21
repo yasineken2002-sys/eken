@@ -51,6 +51,15 @@ import {
 /** Vad som identifierar samma import. Se `KONTRAKT-IMPORTIDENTITET.md` §1. */
 export interface Importavtryck {
   organizationId: string
+  /**
+   * #F034c — VERIFIERAT `BankAccount.id`. Anroparen har låtit
+   * `resolveBankAccount` kontrollera ägandet mot organisationen.
+   *
+   * Ingår i avtrycket, så samma fil mot TVÅ konton är två skilda importer och
+   * blockerar inte varandra. Lagras dessutom på raden, så en granskare kan se
+   * vilket konto ett försök gällde utan att räkna om en hash.
+   */
+  bankAccountId: string
   kind: BankImportKind
   fileName: string
   /** SHA-256 över filens råa bytes (PDF: över draftens id). */
@@ -139,9 +148,9 @@ export class BankImportAttemptService {
   ): Promise<Importkvittens<T>> {
     const fingerprint = beräknaImportavtryck({
       organizationId: avtryck.organizationId,
-      // Målet är organisationen. Se noten i bank-import-identity.ts — det är en
-      // redovisad gräns i datamodellen, inte ett val som gjorts här.
-      mål: avtryck.organizationId,
+      // #F034c — målet är BANKKONTOT. Fram till dess var det organisationen,
+      // och den gränsen stod som en uttrycklig kvarstående lucka i #F034b.
+      mål: avtryck.bankAccountId,
       kind: avtryck.kind,
       contentHash: avtryck.contentHash,
       mappingHash: avtryck.mappingHash,
@@ -229,6 +238,7 @@ export class BankImportAttemptService {
       const skapad = await this.prisma.bankImportAttempt.create({
         data: {
           organizationId: avtryck.organizationId,
+          bankAccountId: avtryck.bankAccountId,
           fingerprint,
           kind: avtryck.kind,
           fileName: avtryck.fileName,
