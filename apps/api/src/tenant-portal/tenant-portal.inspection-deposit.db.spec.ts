@@ -38,6 +38,7 @@ import { PrismaClient } from '@prisma/client'
 import { TenantPortalService } from './tenant-portal.service'
 import { InspectionsService } from '../inspections/inspections.service'
 import { InspectionImageIntegrityService } from '../inspections/inspection-image-integrity.service'
+import { arSlutford } from '../inspections/inspection-versions'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -431,6 +432,51 @@ medDb('portalen: besiktningar och deposition', () => {
 
     await prisma.inspection.delete({ where: { id: rattelse.id } })
     await prisma.inspection.delete({ where: { id } })
+  })
+
+  // ══ PARITET MELLAN DE TVÅ BESKRIVNINGARNA AV "SLUTFÖRD" ═══════════════════
+
+  /**
+   * SQL-FILTRET OCH `arSlutford` MÅSTE SVARA LIKA — PRÖVAT, INTE PÅSTÅTT.
+   *
+   * "Slutförd" beskrivs på TVÅ ställen: som en TS-predikatfunktion
+   * (`inspection-versions.ts`, som avgör vilken version som gäller) och som ett
+   * `where` i portalens behörighetsvillkor (som avgör vad hyresgästen ser).
+   * Två beskrivningar av samma begrepp är två tillfällen att svara olika, och
+   * kommentaren "samma tre villkor" i tjänsten är prosa — den faller inte om
+   * någon skärper den ena och glömmer den andra.
+   *
+   * Mängden är liten nog att prövas UTTÖMMANDE: fyra statusvärden gånger
+   * {signerad, osignerad} är åtta fall. Ett stickprov hade missat exakt det
+   * fall där de två går isär.
+   *
+   * VAD PROVET INTE SER: att båda är RIKTIGA. Om begreppet "slutförd" en dag
+   * ska betyda något annat säger det här provet bara att de ändrats i takt.
+   */
+  it('PARITET: SQL-filtret och arSlutford ger samma svar för alla åtta fall', async () => {
+    const statusar = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'SIGNED'] as const
+    const signaturer = [null, new Date('2026-03-04T10:00:00Z')]
+
+    for (const status of statusar) {
+      for (const signedAt of signaturer) {
+        const id = await nyBesiktning({
+          status,
+          signedAt,
+          completedAt: status === 'COMPLETED' || status === 'SIGNED' ? new Date() : null,
+        })
+
+        const synligIPortalen = (await portal.getInspections(hgNuvarande)).some((i) => i.id === id)
+        const enligtPredikatet = arSlutford({ status, signedAt })
+
+        expect({ status, signerad: signedAt !== null, synlig: synligIPortalen }).toEqual({
+          status,
+          signerad: signedAt !== null,
+          synlig: enligtPredikatet,
+        })
+
+        await prisma.inspection.delete({ where: { id } })
+      }
+    }
   })
 
   // ══ SVARSYTAN ═════════════════════════════════════════════════════════════
