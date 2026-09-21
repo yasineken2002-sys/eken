@@ -42,10 +42,14 @@ import type { Prisma } from '@prisma/client'
  * En granskningsrad som matchats manuellt och sedan avmatchats går tillbaka
  * till `UNMATCHED` med markeringen kvar, och räknas då som olöst igen.
  *
- * Det följer av definitionen, och det är rätt: avmatchningen tar tillbaka
- * människans svar, och raden är åter en oallokerad betalning vars identitet
- * aldrig fastställdes. Att låta pausen stå kvar släppt hade betytt att ett
- * återtaget svar ändå räknades som ett svar.
+ * Det följer av definitionen, och det är rätt av två skäl. Det varsamma:
+ * avmatchningen tar tillbaka människans svar, och raden är åter en oallokerad
+ * betalning vars identitet aldrig fastställdes.
+ *
+ * Det bärande är strukturellt (terminal 1): hade avmatchning INTE återöppnat
+ * pausen vore avmatchning en TYST FÖRBIGÅNG — matcha fel med flit, ångra dig,
+ * och pausen är hävd utan att identiteten avgjorts. Den här riktningen är
+ * alltså den enda som inte öppnar ett hål i spärren.
  *
  * Inget dödläge: raden har fortfarande båda utgångarna kvar.
  */

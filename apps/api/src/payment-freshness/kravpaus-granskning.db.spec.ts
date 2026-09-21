@@ -609,10 +609,19 @@ medDb('G2 — kravpaus vid olöst identitetsgranskning', () => {
     // som matchats och sedan avmatchas går tillbaka till UNMATCHED med
     // markeringen kvar, och räknas då som olöst IGEN.
     //
-    // Det är avsiktligt: avmatchningen tar tillbaka människans svar, och raden
-    // är åter en oallokerad betalning vars identitet aldrig fastställdes. Det
-    // står inte i byggbeslutet, så det mäts här i stället för att upptäckas i
-    // drift.
+    // Det är avsiktligt, och det finns två skäl. Det svagare är mitt: att
+    // avmatchningen tar tillbaka människans svar, och att raden åter är en
+    // oallokerad betalning vars identitet aldrig fastställdes.
+    //
+    // Det STARKARE är terminal 1:s, och det är strukturellt i stället för
+    // försiktigt: hade avmatchning INTE återöppnat pausen vore avmatchning en
+    // TYST FÖRBIGÅNG. Matcha fel med flit, ångra dig, och pausen är hävd utan
+    // att identiteten någonsin avgjorts. Den konservativa riktningen är alltså
+    // inte bara den varsamma — den är den enda som inte öppnar ett hål i
+    // spärren.
+    //
+    // Tolkningen står utanför byggbeslutet, så den mäts här i stället för att
+    // upptäckas i drift.
     const rad = await granskningsrad(orgA)
     await prisma.bankTransaction.update({ where: { id: rad }, data: { status: 'MATCHED' } })
     await expect(
