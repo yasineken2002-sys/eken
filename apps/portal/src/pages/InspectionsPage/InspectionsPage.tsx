@@ -58,13 +58,26 @@ const SKICK_TEXT: Record<PortalInspectionCondition, string> = {
   MISSING: 'Saknas',
 }
 
+/**
+ * STATUSMÄRKENA SÄGER VAD SOM ÄR BESLUTAT, INTE VAD SOM ÄR BETALT.
+ *
+ * Texterna var "Återbetald" och "Återbetald med avdrag" samtidigt som kortet
+ * intill sa att genomförd utbetalning är okänd. Det är en motsägelse i samma
+ * vy: märket påstod en utförd betalning som raden under uttryckligen inte kunde
+ * styrka, och av de två är märket det som läses först.
+ *
+ * `DepositStatus` beskriver var i handläggningen depositionen står — vilket
+ * BESLUT som fattats och bokförts. Det säger ingenting om huruvida pengarna
+ * lämnat kontot, eftersom ingen källa i systemet vet det. Texterna säger nu
+ * samma sak som statusen faktiskt bär.
+ */
 const STATUS_TEXT: Record<string, string> = {
-  PENDING: 'Fakturerad, ej betald',
-  PAID: 'Betald och förvaras',
-  REFUND_PENDING: 'Väntar på återbetalning',
-  REFUNDED: 'Återbetald',
-  PARTIALLY_REFUNDED: 'Återbetald med avdrag',
-  FORFEITED: 'Förverkad',
+  PENDING: 'Ej registrerad som mottagen',
+  PAID: 'Registrerad som mottagen',
+  REFUND_PENDING: 'Väntar på beslut om återbetalning',
+  REFUNDED: 'Återbetalning beslutad — hela beloppet',
+  PARTIALLY_REFUNDED: 'Återbetalning beslutad — med avdrag',
+  FORFEITED: 'Förverkad genom beslut — ingen återbetalning',
 }
 
 const KONTROLL_TEXT: Record<PortalBildkontrollUtfall | 'INGA_BILDER', string> = {
@@ -84,13 +97,30 @@ function datum(värde: string | null | undefined): string {
   }).format(new Date(värde))
 }
 
-function kronor(belopp: number | string | null): string {
-  if (belopp === null) return '—'
+/**
+ * ÖRE VISAS NÄR DE FINNS.
+ *
+ * Formateringen hade `maximumFractionDigits: 0`, alltså avrundning till hela
+ * kronor. På ett depositionsavdrag är det fel sorts förenkling: 4 500,50 kr
+ * blev "4 501 kr", och hyresgästen som jämför med hyresvärdens uppgift ser två
+ * olika tal utan att något säger varför.
+ *
+ * Hela kronor visas fortfarande utan decimaler — ett avdrag på jämnt 4 500 kr
+ * ska inte skrivas "4 500,00 kr" bara för att ett annat kan ha ören.
+ *
+ * `null` betyder att beloppet SAKNAS, och det renderas av anroparen som text —
+ * inte här som "0 kr" eller ett tankstreck som kan läsas som noll.
+ */
+function kronor(belopp: number | string): string {
+  const tal = Number(belopp)
+  if (!Number.isFinite(tal)) return 'Okänt belopp'
+  const harOren = Math.abs(tal % 1) > Number.EPSILON
   return new Intl.NumberFormat('sv-SE', {
     style: 'currency',
     currency: 'SEK',
-    maximumFractionDigits: 0,
-  }).format(Number(belopp))
+    minimumFractionDigits: harOren ? 2 : 0,
+    maximumFractionDigits: harOren ? 2 : 0,
+  }).format(tal)
 }
 
 /* ── Depositionen ──────────────────────────────────────────────────────────── */
@@ -111,36 +141,78 @@ function Depositionskort({ deposition }: { deposition: PortalDeposit }) {
       </div>
 
       <div className={styles.rowList}>
+        {/* ── MOTTAGEN BETALNING: VAD UNDERLAGET STYRKER ────────────────── */}
+        {/*
+            Texten sa "Registrerad av hyresvärden". Det är ett påstående om en
+            AKTÖR, och `Deposit.paidAt` kan sättas både av en matchad bankrad
+            (automatiskt, i avstämningen) och av en manuell markering. Vyn vet
+            inte vilket, och ska därför inte säga vilket.
+
+            Den vet däremot om en matchad bankbetalning är kopplad till
+            depositionens underlag, och det är den uppgiften som visas.
+        */}
         <div className={styles.row}>
           <div>
-            <p className={styles.rowLabel}>Mottagen betalning</p>
-            <p className={styles.rowSub}>
-              {deposition.mottagenBetalning
-                ? `Registrerad av hyresvärden ${datum(deposition.mottagenBetalning.registreradAt)}`
-                : 'Hyresvärden har inte registrerat depositionen som betald.'}
-            </p>
+            <p className={styles.rowLabel}>Registrerad som mottagen</p>
+            {deposition.mottagenBetalning ? (
+              <>
+                <p className={styles.rowSub}>
+                  Registrerad {datum(deposition.mottagenBetalning.registreradAt)}.
+                </p>
+                <p className={styles.rowSub}>
+                  <strong>
+                    {deposition.mottagenBetalning.proveniens === 'BANKMATCHNING_FINNS'
+                      ? 'Kopplad till en matchad bankbetalning.'
+                      : 'Källa ej fastställd.'}
+                  </strong>{' '}
+                  {deposition.mottagenBetalning.kommentar}
+                </p>
+              </>
+            ) : (
+              <p className={styles.rowSub}>Depositionen är inte registrerad som mottagen.</p>
+            )}
           </div>
           <span className={deposition.mottagenBetalning ? styles.rowValue : styles.rowValueOkant}>
             {deposition.mottagenBetalning ? kronor(deposition.belopp) : 'Ej registrerad'}
           </span>
         </div>
 
+        {/* ── AVDRAGEN: EN SUMMERING AV DE VISADE RADERNA ───────────────── */}
         <div className={styles.row}>
           <div>
             <p className={styles.rowLabel}>Beslutade avdrag</p>
             {deposition.avdrag.length === 0 ? (
               <p className={styles.rowSub}>Inga avdrag är beslutade.</p>
             ) : (
-              <ul className={styles.rowSub}>
-                {deposition.avdrag.map((avdrag, i) => (
-                  <li key={i}>
-                    {avdrag.anledning}: {kronor(avdrag.belopp)}
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className={styles.rowSub}>
+                  {deposition.avdrag.map((avdrag, i) => (
+                    <li key={i}>
+                      {avdrag.anledning ?? 'Anledning saknas'}:{' '}
+                      {/* Ett saknat belopp är inte noll kronor. */}
+                      {avdrag.belopp === null ? 'belopp saknas' : kronor(avdrag.belopp)}
+                    </li>
+                  ))}
+                </ul>
+                <p className={styles.rowSub}>{deposition.avdragSummaAr}</p>
+                {!deposition.avdragSummaFullstandig && (
+                  <p className={styles.rowSub}>
+                    <strong>
+                      Summan är ofullständig: {deposition.avdragUtanBelopp} rad
+                      {deposition.avdragUtanBelopp === 1 ? '' : 'er'} saknar belopp och ingår inte.
+                    </strong>
+                  </p>
+                )}
+              </>
             )}
           </div>
-          <span className={styles.rowValue}>
+          <span
+            className={
+              deposition.avdrag.length > 0 && !deposition.avdragSummaFullstandig
+                ? styles.rowValueOkant
+                : styles.rowValue
+            }
+          >
             {deposition.avdrag.length === 0 ? '—' : kronor(deposition.avdragSumma)}
           </span>
         </div>
@@ -150,9 +222,9 @@ function Depositionskort({ deposition }: { deposition: PortalDeposit }) {
             <p className={styles.rowLabel}>Beslutad återbetalning</p>
             <p className={styles.rowSub}>
               {deposition.beslutadAterbetalning
-                ? `Beslutad och bokförd av hyresvärden ${datum(
+                ? `Beslutad och bokförd ${datum(
                     deposition.beslutadAterbetalning.beslutadAt,
-                  )}`
+                  )}. Beslutet säger vad som ska betalas ut, inte att det skett.`
                 : 'Ingen återbetalning är beslutad ännu.'}
             </p>
           </div>
@@ -356,10 +428,6 @@ function Protokolldetalj({
         </p>
       )}
 
-      {protokoll.notes && (
-        <p className={`${styles.notis} ${styles.notisNeutral}`}>{protokoll.notes}</p>
-      )}
-
       <p className={styles.sectionTitle} style={{ marginTop: 14 }}>
         Noterade skador
       </p>
@@ -380,8 +448,11 @@ function Protokolldetalj({
                   {post.notes ? ` · ${post.notes}` : ''}
                 </p>
               </div>
-              <span className={post.repairCost ? styles.rowValue : styles.rowValueOkant}>
-                {post.repairCost ? kronor(post.repairCost) : 'Inget belopp'}
+              {/* `0` är ett belopp och `null` är ett saknat belopp. Den gamla
+                  sanningsprövningen slog ihop dem, så en post bedömd till noll
+                  kronor visades som "Inget belopp". */}
+              <span className={post.repairCost === null ? styles.rowValueOkant : styles.rowValue}>
+                {post.repairCost === null ? 'Belopp saknas' : kronor(post.repairCost)}
               </span>
             </div>
           ))}

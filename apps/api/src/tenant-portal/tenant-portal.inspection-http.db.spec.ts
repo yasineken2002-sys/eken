@@ -78,6 +78,7 @@ medDb('portalens besiktningsendpoints över HTTP', () => {
   let hgAnnanOrg: string
   let inspectionId: string
   let imageId: string
+  let leaseNuvarandeId: string
 
   /** Klartexttoken per hyresgäst. Databasen bär sha256 av dem. */
   const token: Record<string, string> = {}
@@ -247,6 +248,7 @@ medDb('portalens besiktningsendpoints över HTTP', () => {
       ).id
 
     const leaseNuvarande = await avtal(hgNuvarande)
+    leaseNuvarandeId = leaseNuvarande
     // SAMMA lägenhet, en annan människa.
     await avtal(hgForegaende)
 
@@ -364,6 +366,72 @@ medDb('portalens besiktningsendpoints över HTTP', () => {
     const svar = await hämta(`/inspections/${inspectionId}`, hgNuvarande)
     for (const förbjudet of ['storageKey', 'storageUrl', 'organizationId', 'inspectedById']) {
       expect(svar.body).not.toContain(förbjudet)
+    }
+  })
+
+  it('INTERN MARKÖR I Inspection.notes NÅR INTE UT ÖVER LEDNINGEN — lista, detalj, PDF', async () => {
+    // Samma spärr som tjänsteprovet mäter, men på den yta en direktlänk
+    // faktiskt träffar. Den bär vikten: en allow-list kan vara riktig i
+    // tjänsten och ändå kringgås av en controller som returnerar något annat.
+    const MARKOR = 'HTTP-INTERN-MARKOR-SOM-INTE-FAR-LAMNA-SERVERN-8150'
+    await prisma.inspection.update({ where: { id: inspectionId }, data: { notes: MARKOR } })
+    try {
+      const lista = await hämta('/inspections', hgNuvarande)
+      const detalj = await hämta(`/inspections/${inspectionId}`, hgNuvarande)
+      const pdf = await hämta(`/inspections/${inspectionId}/pdf`, hgNuvarande)
+
+      expect(lista.body).not.toContain(MARKOR)
+      expect(detalj.body).not.toContain(MARKOR)
+      expect(pdf.rawPayload.toString('latin1')).not.toContain(MARKOR)
+
+      // Uppgiften finns kvar i databasen — den döljs, den raderas inte.
+      const lagrad = await prisma.inspection.findUniqueOrThrow({
+        where: { id: inspectionId },
+        select: { notes: true },
+      })
+      expect(lagrad.notes).toBe(MARKOR)
+    } finally {
+      await prisma.inspection.update({ where: { id: inspectionId }, data: { notes: null } })
+    }
+  })
+
+  it('DEPOSITIONEN över HTTP: proveniens och ofullständig summa följer med, inga interna id:n', async () => {
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarandeId,
+        tenantId: hgNuvarande,
+        amount: 19000,
+        status: 'PARTIALLY_REFUNDED',
+        paidAt: new Date('2024-01-05T00:00:00Z'),
+        refundedAt: new Date('2026-03-10T00:00:00Z'),
+        refundAmount: 14500,
+        deductions: [{ reason: 'Skada badrumsgolv', amount: 4500.5 }, { reason: 'Okänt belopp' }],
+      },
+    })
+    try {
+      const svar = await hämta('/deposits', hgNuvarande)
+      expect(svar.statusCode).toBe(200)
+      const [vy] = JSON.parse(svar.body).data as {
+        mottagenBetalning: { proveniens: string }
+        avdrag: { belopp: number | null }[]
+        avdragSumma: number
+        avdragSummaFullstandig: boolean
+        genomfordUtbetalning: { kalla: null }
+      }[]
+
+      expect(vy!.mottagenBetalning.proveniens).toBe('KALLA_EJ_FASTSTALLD')
+      expect(vy!.avdrag.map((r) => r.belopp)).toEqual([4500.5, null])
+      expect(vy!.avdragSumma).toBeCloseTo(4500.5, 2)
+      expect(vy!.avdragSummaFullstandig).toBe(false)
+      expect(vy!.genomfordUtbetalning.kalla).toBeNull()
+
+      // Inga interna nycklar över ledningen.
+      for (const förbjudet of ['organizationId', 'invoiceId', 'rentNoticeId', 'tenantId']) {
+        expect(svar.body).not.toContain(förbjudet)
+      }
+    } finally {
+      await prisma.deposit.delete({ where: { id: d.id } })
     }
   })
 })

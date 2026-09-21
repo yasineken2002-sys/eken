@@ -19,6 +19,7 @@ import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { StorageService } from '../storage/storage.service'
 import { InspectionsService } from '../inspections/inspections.service'
 import { InspectionImageIntegrityService } from '../inspections/inspection-image-integrity.service'
+import { summeraDepositionsavdrag } from '@eken/shared'
 
 /**
  * Safe Prisma SELECT för MaintenanceTicket som exponeras mot hyresgästportalen.
@@ -162,20 +163,44 @@ export const SAFE_PORTAL_PROPERTY_SELECT = {
  *    feltolkning — en hash är inte en underskrift)
  *  - `InspectionImage.storageKey` / `storageUrl` (intern R2-nyckel; bilden nås
  *    via en presignerad URL från en egen endpoint, precis som dokument)
+ *  - **`Inspection.notes` (toppnivåfältet)** — se nedan.
  *
- * ── `notes` OCH `overallCondition` ÄR MED, OCH DET ÄR ETT VAL ──────────────
+ * ── `Inspection.notes` ÄR UTELÄMNAT, OCH DEN GAMLA MOTIVERINGEN HÖLL INTE ───
  *
- * Modellen har INGET fält för interna anteckningar på besiktningen — till
- * skillnad från `MaintenanceComment.isInternal`, som portalen filtrerar på.
- * Att ändå dölja `notes` hade varit att uppfinna en gräns datan inte bär, och
- * att dölja fel sak: anteckningen är själva motiveringen till en skadepost, och
- * det är den hyresgästen måste kunna läsa för att kunna invända mot ett
- * depositionsavdrag. Protokollets PDF — som hyresgästen redan får — innehåller
- * samma text.
+ * Fältet stod först med i listan, med skälet *"protokollets PDF — som
+ * hyresgästen redan får — innehåller samma text"*. Bägge leden var fel, och
+ * granskningen mätte det:
  *
- * VAD SOM SKULLE ÄNDRA BESLUTET: att ett `isInternal`-fält införs på
- * besiktningen. Då är frågan vilka rader som är interna, inte om texten ska
- * visas. Det är en egen ändring och står som känd gräns i leveransen.
+ *   1. **Cirkulärt.** På basrevisionen hade hyresgästportalen NOLL
+ *      besiktningsåtkomst. Hyresgästen får PDF:en på grund av den här
+ *      leveransen — att använda den som skäl för vad leveransen ska visa är
+ *      att låta premissen skapas av slutsatsen.
+ *   2. **Osant för just det fältet.** PDF-mallen i `generateProtocolPdf`
+ *      renderar `item.notes` och `overallCondition` men INTE
+ *      `inspection.notes`. Mätt: noll träffar, både på basen och i dag.
+ *      Toppnivåfältet har alltså aldrig funnits i någon text hyresgästen
+ *      kunnat läsa.
+ *
+ * Det som återstår är ett fritextfält vars publik ingen har klassificerat.
+ * Modellen saknar `isInternal` — och det betyder inte att fältet är publikt,
+ * det betyder att frågan aldrig ställts. Ett fält som byter publik utan att
+ * någon tagit ställning ska inte byta publik.
+ *
+ * Uppgiften RADERAS INTE och hyresvärdens åtkomst rörs inte: fältet lagras som
+ * förut, visas i personalens vy och ingår i signaturunderlaget. Det lämnar bara
+ * inte organisationen.
+ *
+ * ── `item.notes` OCH `overallCondition` STÅR KVAR, MED SITT RIKTIGA SKÄL ────
+ *
+ * De ÄR protokollets text: de renderas i PDF:en, de är motiveringen till en
+ * skadepost, och de är vad hyresgästen behöver för att kunna invända mot ett
+ * depositionsavdrag. Att dölja dem hade varit att dölja fel sak — det är inte
+ * ett urskillningslöst döljande som efterfrågas, utan att varje fält bär ett
+ * skäl som går att kontrollera till sant.
+ *
+ * VAD SOM SKULLE ÄNDRA BESLUTET om `notes`: en klassificering av fältet, eller
+ * att PDF-mallen börjar bära det så att påståendet blir sant i stället för
+ * borttaget. Båda är egna ändringar.
  */
 export const SAFE_PORTAL_INSPECTION_SELECT = {
   id: true,
@@ -185,7 +210,9 @@ export const SAFE_PORTAL_INSPECTION_SELECT = {
   completedAt: true,
   signedAt: true,
   overallCondition: true,
-  notes: true,
+  // `notes` UTELÄMNAT MED FLIT — se docblocket ovan. Raden står här som en
+  // markör så att nästa läsare ser att frånvaron är ett beslut och inte ett
+  // förbiseende.
   version: true,
   correctionOfId: true,
   correctionReason: true,
@@ -1380,10 +1407,29 @@ export class TenantPortalService {
   /**
    * DEPOSITIONEN — UR VERKLIGA KÄLLOR, OCH MED TYSTNADEN UTSKRIVEN.
    *
-   * Varje tal nedan läses ur `Deposit`. Ingen omräkning sker här: avdragen är
-   * bokförda tillsammans med ett verifikat (`createJournalEntryForDepositRefund`),
-   * och en portal som räknade om dem hade byggt ett andra ekonomisystem vars
-   * enda uppgift vore att förr eller senare säga något annat än bokföringen.
+   * Varje tal nedan läses ur `Deposit`. Beloppet, återbetalningsbeslutet och
+   * datumen återges som de står i raden — de räknas inte om.
+   *
+   * ── AVDRAGEN SUMMERAS, OCH DET SÄGS RAKT UT ───────────────────────────────
+   *
+   * Docblocket påstod tidigare att "ingen omräkning sker här". Det var inte
+   * sant: `avdragSumma` ÄR en summering, och en beskrivning som säger motsatsen
+   * är värre än ingen — nästa läsare tror på den.
+   *
+   * Raderna summeras med `summeraDepositionsavdrag` (@eken/shared), samma
+   * funktion som `DepositsService.refund` använder när den prövar att
+   * återbetalning plus avdrag går jämnt ut innan verifikatet skrivs. EN
+   * funktion och inte två, av precis det skäl den gamla texten pekade på: två
+   * beskrivningar av samma summa är två tillfällen att förr eller senare säga
+   * något annat än bokföringen.
+   *
+   * SUMMAN ÄR INGET BOKFÖRT SALDO. Den är en presentationssumma av de
+   * avdragsrader som visas intill, och det står i svaret självt
+   * (`avdragSummaAr`) och inte bara här. Det bokförda underlaget är verifikatet
+   * (`createJournalEntryForDepositRefund`); portalen läser det inte och gör
+   * inget anspråk på att spegla det. Saknar en rad belopp räknas den inte in,
+   * och `avdragSummaFullstandig` säger att något lämnats utanför i stället för
+   * att summan tyst blir för låg.
    *
    * ── TRE SKILDA UPPGIFTER SOM INTE FÅR SLÅS IHOP ───────────────────────────
    *
@@ -1423,6 +1469,11 @@ export class TenantPortalService {
         refundedAt: true,
         deductions: true,
         createdAt: true,
+        // Länkarna proveniensen härleds ur. De lämnar ALDRIG servern — de läses
+        // för att kunna ställa frågan "finns en matchad bankbetalning kopplad
+        // till det här underlaget?" och strippas i mappningen nedan.
+        invoiceId: true,
+        rentNoticeId: true,
         lease: {
           select: {
             id: true,
@@ -1440,45 +1491,181 @@ export class TenantPortalService {
       orderBy: { createdAt: 'desc' },
     })
 
-    return depositioner.map((d) => {
-      const avdrag = Array.isArray(d.deductions)
-        ? (d.deductions as { reason?: unknown; amount?: unknown }[])
-            .filter((rad) => rad && typeof rad === 'object')
-            .map((rad) => ({
-              anledning: typeof rad.reason === 'string' ? rad.reason : 'Ej angiven',
-              belopp: Number(rad.amount ?? 0),
-            }))
-        : []
+    return Promise.all(
+      depositioner.map(async (d) => {
+        // ── AVDRAGEN: EN PRESENTATIONSSUMMA, INTE ETT SALDO ────────────────
+        //
+        // Räkningen bor i `summeraDepositionsavdrag` (@eken/shared) och delas
+        // med `DepositsService.refund`, som använder den när den prövar att
+        // återbetalning plus avdrag går jämnt ut innan verifikatet skrivs.
+        // Portalen hade en egen `reduce`; två beskrivningar av samma summa är
+        // den form som senare säger något annat än bokföringen.
+        //
+        // Summan är fortfarande en SUMMERING AV DE VISADE RADERNA och inte ett
+        // bokfört saldo — det står i `avdragSummaAr` nedan, så att koden och
+        // texten säger samma sak. Ett saknat belopp blir `null` och räknas inte
+        // in; `fullstandig: false` säger att något lämnats utanför i stället
+        // för att summan tyst blir för låg.
+        const avdrag = summeraDepositionsavdrag(d.deductions)
 
-      return {
-        id: d.id,
-        belopp: Number(d.amount),
-        status: d.status,
-        lease: d.lease,
+        return {
+          id: d.id,
+          belopp: Number(d.amount),
+          status: d.status,
+          lease: d.lease,
 
-        mottagenBetalning: d.paidAt
-          ? { registreradAt: d.paidAt }
-          : // Null och inte `{ registreradAt: null }`: depositionen är
-            // fakturerad men inte registrerad som betald, och det är en annan
-            // uppgift än ett saknat datum på en betald deposition.
-            null,
+          mottagenBetalning: d.paidAt
+            ? {
+                registreradAt: d.paidAt,
+                ...(await this.betalningsproveniens({
+                  organizationId: hyresgast.organizationId,
+                  invoiceId: d.invoiceId,
+                  rentNoticeId: d.rentNoticeId,
+                })),
+              }
+            : // Null och inte `{ registreradAt: null }`: depositionen är
+              // fakturerad men inte registrerad som mottagen, och det är en
+              // annan uppgift än ett saknat datum på en mottagen deposition.
+              null,
 
-        avdrag,
-        avdragSumma: avdrag.reduce((summa, rad) => summa + rad.belopp, 0),
+          avdrag: avdrag.rader,
+          avdragSumma: avdrag.summa,
+          avdragSummaFullstandig: avdrag.fullstandig,
+          avdragUtanBelopp: avdrag.antalUtanBelopp,
+          avdragSummaAr:
+            'En summering av de avdragsrader som visas här, inte ett saldo ur bokföringen.',
 
-        beslutadAterbetalning:
-          d.refundAmount !== null
-            ? { belopp: Number(d.refundAmount), beslutadAt: d.refundedAt }
-            : null,
+          beslutadAterbetalning:
+            d.refundAmount !== null
+              ? { belopp: Number(d.refundAmount), beslutadAt: d.refundedAt }
+              : null,
 
-        genomfordUtbetalning: {
-          kalla: null,
+          genomfordUtbetalning: {
+            kalla: null,
+            kommentar:
+              'Eveno har ingen källa som bekräftar att pengarna lämnat hyresvärdens konto. ' +
+              'Uppgiften ovan är hyresvärdens beslut och bokföring, inte en bankbekräftelse.',
+          },
+        }
+      }),
+    )
+  }
+
+  /**
+   * VAD UNDERLAGET FAKTISKT STYRKER OM DEN MOTTAGNA BETALNINGEN.
+   *
+   * ── PROBLEMET ───────────────────────────────────────────────────────────
+   *
+   * `Deposit.paidAt` sätts från TVÅ vägar, och raden skiljer dem inte åt:
+   *
+   *   `reconciliation.service.ts` — `transactionDate` från en bankrad som
+   *                                 matchats mot depositionens underlag
+   *   `deposits.service.ts`       — `now`, någon markerade den betald i appen
+   *
+   * Den första vilar på en bankhändelse. Den andra är samma sorts påstående som
+   * `refundedAt`, alltså det som återbetalningssidan med rätta vägrar kalla
+   * bekräftat. Att visa dem identiskt var en asymmetri: frågan ställdes
+   * noggrant åt ena hållet och inte alls åt det andra.
+   *
+   * ── VAD KONTROLLEN MÄTER, OCH VAD DEN INTE MÄTER ────────────────────────
+   *
+   * Den mäter att det finns en MATCHAD bankbetalning kopplad till
+   * depositionens underlag — dess faktura eller dess avi. Det är också precis
+   * så långt påståendet sträcker sig, och därför heter utfallet
+   * `BANKMATCHNING_FINNS` och inte "bankbekräftad".
+   *
+   * Den mäter INTE att `paidAt` självt härleddes ur den bankraden. En
+   * delbetalning kan ha matchats mot fakturan utan att reglera den, varefter
+   * någon markerade depositionen betald manuellt — då finns båda sakerna, och
+   * raden bär inget spår av vilken som satte datumet. Att då påstå
+   * "bankbekräftad" hade varit att hitta på den precision datan inte har.
+   *
+   * `KALLA_EJ_FASTSTALLD` är på samma sätt inte ett påstående om att
+   * registreringen var manuell. Det säger att ingen bankmatchning är kopplad,
+   * vilket är sant både för en manuell markering och för en bankrad som senare
+   * avmatchats. Okänt sägs som okänt.
+   *
+   * ── EN OMATCHAD RAD RÄKNAS INTE, OCH DET GÄLLER ÄVEN DEN SOM VÄNTAR PÅ
+   *    MÄNSKLIG GRANSKNING ────────────────────────────────────────────────
+   *
+   * `status: 'MATCHED'` är inte ett bekvämlighetsvillkor. Bankimportens
+   * kontoseparation (T2:s #F034c) inför ett tredje ingest-utfall: en rad som
+   * matchar en KONTOLÖS historisk rad i allt filen bär LAGRAS men MATCHAS
+   * ALDRIG, eftersom identiteten inte går att avgöra. Sådana rader står
+   * UNMATCHED med tomma länkar och bär `identityReviewAt`.
+   *
+   * De får inte räknas som proveniens, och skälet är starkare än att de saknar
+   * länk: de ÄR inte kopplade till någon deposition. Att visa dem som "en
+   * möjlig betalning väntar på granskning" hade krävt att den här koden gissar
+   * VILKEN deposition den omatchade raden angår — och en gissad koppling mellan
+   * en betalning och en deposition är precis det påstående hela den här
+   * funktionen finns för att inte göra.
+   *
+   * Utfallet blir därför `KALLA_EJ_FASTSTALLD`, vilket är sant: källan är inte
+   * fastställd. Att en människa ännu inte avgjort något är inte ett underlag.
+   *
+   * VAD SOM SKULLE ÄNDRA BESLUTET: att en granskningsväntande rad får en
+   * kontrollerad koppling till depositionens underlag. Då är frågan vad man
+   * kallar tillståndet, inte om det går att peka ut.
+   *
+   * ── VARFÖR INGEN NY KOLUMN ──────────────────────────────────────────────
+   *
+   * Ett `paidAtSource`-fält hade svarat exakt, men bara framåt: befintliga
+   * rader hade fått NULL eller en gissning, och en gissning om hur en gammal
+   * betalning registrerades är precis den sortens retroaktiva stämpel som
+   * `signedContentHash` och `contentSha256` avstod från i besiktningen. Den här
+   * härledningen är en LÄSNING och ger samma svar för gamla som för nya rader.
+   */
+  private async betalningsproveniens(länkar: {
+    organizationId: string
+    invoiceId: string | null
+    rentNoticeId: string | null
+  }): Promise<{ proveniens: 'BANKMATCHNING_FINNS' | 'KALLA_EJ_FASTSTALLD'; kommentar: string }> {
+    const grenar: Prisma.BankTransactionWhereInput[] = [
+      ...(länkar.invoiceId ? [{ invoiceId: länkar.invoiceId }] : []),
+      ...(länkar.rentNoticeId ? [{ matchedRentNoticeId: länkar.rentNoticeId }] : []),
+    ]
+
+    // Ingen länk alls → ingenting att slå upp. Frågan ställs inte med ett tomt
+    // `OR`, som i Prisma matchar noll rader och därför hade sett ut som ett
+    // mätt negativt svar i stället för som ett uteblivet försök.
+    const bankmatchning =
+      grenar.length === 0
+        ? null
+        : await this.prisma.bankTransaction.findFirst({
+            where: { organizationId: länkar.organizationId, status: 'MATCHED', OR: grenar },
+            select: { id: true },
+          })
+
+    return bankmatchning
+      ? {
+          proveniens: 'BANKMATCHNING_FINNS',
+          // ── TEXTEN FÅR INTE SÄGA MER ÄN UPPSLAGET MÄTTE ─────────────────
+          //
+          // Den stod tidigare: "Uppgiften vilar därmed på en bankhändelse och
+          // inte bara på en registrering i appen." Det är ett steg för långt i
+          // två riktningar, och båda är utskrivna i metodens huvud utan att
+          // texten följde med dit:
+          //
+          //   • Den säger inget om HELA depositionen. En matchad bankbetalning
+          //     kan vara en delbetalning; att en sådan finns gör inte beloppet
+          //     bankbekräftat.
+          //   • Den säger inget om hur `paidAt` registrerades. Uppslaget visar
+          //     att en matchning finns, inte att just datumet härleddes ur den.
+          //
+          // Texten är den enda delen av det här som hyresgästen läser, så den
+          // måste bära samma avgränsning som koden.
           kommentar:
-            'Eveno har ingen källa som bekräftar att pengarna lämnat hyresvärdens konto. ' +
-            'Uppgiften ovan är hyresvärdens beslut och bokföring, inte en bankbekräftelse.',
-        },
-      }
-    })
+            'En matchad bankbetalning är kopplad till underlaget. Det visar inte i sig ' +
+            'att hela depositionen är bankbekräftad eller hur mottagningsdatumet registrerades.',
+        }
+      : {
+          proveniens: 'KALLA_EJ_FASTSTALLD',
+          kommentar:
+            'Ingen matchad bankbetalning är kopplad till depositionens underlag. ' +
+            'Uppgiften kan komma från en manuell registrering hos hyresvärden — ' +
+            'Eveno kan inte fastställa källan.',
+        }
   }
 
   /** Presignerad URL. Bryts ut så att bildvägen inte känner till lagringen. */
