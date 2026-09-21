@@ -10,10 +10,23 @@
  * `{} as never` — med kommentaren "ej använd i unmatch-vägen" — plötsligt föll
  * på `undefined is not a function`.
  *
- * Fyra specar med fyra olika attrappformer hade behövt fyra olika lappar, och
- * nästa spec som rör en skrivväg hade behövt en femte. Kodbasens egen läxa är
- * att en regel som skrivs på flera ställen glider isär; samma sak gäller en
- * attrapp.
+ * Formerna som fanns: `{} as never` med kommentaren "ej använd i unmatch-vägen",
+ * en `Proxy` som kastade 'freshness orört', och två olika delmängdsattrapper.
+ * Var och en hade behövt sin egen lapp, och nästa spec som rör en skrivväg hade
+ * behövt ännu en. Kodbasens egen läxa är att en regel som skrivs på flera
+ * ställen glider isär; samma sak gäller en attrapp.
+ *
+ * HUR MÅNGA SPECAR DET GÄLLER STÅR INTE HÄR, med flit. Den här noten sa först
+ * "fyra", vilket var sant om de fyra jag hade framför mig när jag skrev den och
+ * fel så fort mängden växte — och jag sa "nio" i ett meddelande samtidigt, om
+ * en TREDJE mängd (de som föll i CI, varav flera löstes på annat sätt). Tre tal
+ * för vad som lät som samma sak. Funnet av terminal 1.
+ *
+ * Det som är kontrollerbart står i stället i filerna själva:
+ *
+ *     grep -rl "färskhetsdubbel" apps/api/src --include=*.spec.ts
+ *
+ * En importlista går att räkna om; en siffra i ett docblock åldras tyst.
  *
  * ── VAD DEN GÖR, OCH VAD DEN INTE PÅSTÅR ────────────────────────────────────
  *
