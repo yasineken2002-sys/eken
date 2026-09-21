@@ -104,8 +104,19 @@ test('VIEWER får ett ärligt nekande på bankavstämningen, inte "Inga transakt
     '2026-08-02;INBETALNING ERIK LIND;8200,00;87654321',
   ].join('\n')
 
+  // #F034c — MÅLKONTOT. En import måste höra till ett namngivet bankkonto;
+  // organisationen ensam duger inte. Riggen lägger upp ett konto och skickar
+  // dess id, precis som operatören gör i kontoväljaren.
+  const bankkonto = await unwrap<{ id: string }>(
+    await request.post(`${API}/reconciliation/bank-accounts`, {
+      headers: ownerHeaders,
+      data: { name: 'E2E företagskonto' },
+    }),
+    'Skapa bankkonto',
+  )
+
   const imported = await unwrap<{ imported: number; errors: string[] }>(
-    await request.post(`${API}/reconciliation/import`, {
+    await request.post(`${API}/reconciliation/import?bankAccountId=${bankkonto.id}`, {
       headers: ownerHeaders,
       multipart: {
         statement: {

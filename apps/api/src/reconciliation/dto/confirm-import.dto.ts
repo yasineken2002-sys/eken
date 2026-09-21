@@ -4,7 +4,16 @@ import type {
   EditedTransactionInput,
   SammaNycklar,
 } from '@eken/shared'
-import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator'
+import {
+  IsArray,
+  IsBoolean,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator'
 import { Type } from 'class-transformer'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
@@ -60,15 +69,33 @@ export class ConfirmImportDto implements ConfirmImportInput {
   bankAccountId?: string
 }
 
-/** #F034c — lägga upp ett målkonto. Egen DTO, se CreateBankAccountSchema. */
+/**
+ * #F034c — lägga upp ett målkonto. Egen DTO, se `CreateBankAccountSchema`.
+ *
+ * ── GRÄNSERNA STÅR HÄR, INTE BARA I ZOD ────────────────────────────────────
+ *
+ * Första versionen hade bara `@IsString()`. `SammaNycklar`-raden nedan var
+ * grön — nycklarna stämde — och paritetsPROVET fällde ändå, för det kör samma
+ * ogiltiga kropp genom BÅDA sidorna och kräver samma svar.
+ *
+ * Utfallet: `{ zod: false, dto: true }` för `name: ''`. Zod avvisade via
+ * `min(1)`, DTO:n släppte igenom. Ett konto utan namn hade alltså kunnat skapas
+ * via API:t — och sedan inte gått att välja i importens kontoväljare, eftersom
+ * det är NAMNET valet görs på. En rad som bara går att skapa, aldrig använda.
+ *
+ * Gränserna speglar nu schemat exakt: name 1–120, accountNumber max 64.
+ */
 export class CreateBankAccountDto implements CreateBankAccountInput {
   @IsString()
   @StrictString()
+  @MinLength(1)
+  @MaxLength(120)
   name!: string
 
   @IsOptional()
   @IsString()
   @StrictString()
+  @MaxLength(64)
   accountNumber?: string
 }
 
