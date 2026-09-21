@@ -377,9 +377,6 @@ export class ToolExecutorService {
     private readonly inspectionsService: InspectionsService,
     private readonly maintenancePlanService: MaintenancePlanService,
     private readonly reconciliationService: ReconciliationService,
-    // #F034c — målkontots upplösning. Samma tjänst och samma grind som
-    // HTTP-vägen använder; AI:n får ingen egen väg förbi ägandekontrollen.
-    private readonly bankAccounts: BankAccountService,
     private readonly collectionExport: CollectionExportService,
     private readonly paymentReminders: PaymentReminderService,
     private readonly storage: StorageService,
@@ -399,6 +396,14 @@ export class ToolExecutorService {
     // förskjutit alla efterföljande argument hos dem, och felet hade synts
     // som ett obegripligt attrappfel långt från orsaken.
     private readonly workOrders: WorkOrderService,
+    // #F034c — målkontots upplösning. SIST, enligt raden ovan: jag satte den
+    // först efter `reconciliationService` (där den hör hemma semantiskt) och
+    // förskjöt då tyst nio beroenden hos fjorton specar. CI fällde det som
+    // "Expected 26 arguments, but got 25" — regeln finns av exakt det skälet.
+    //
+    // Samma tjänst och samma grind som HTTP-vägen använder; AI:n får ingen egen
+    // väg förbi ägandekontrollen mot organisationen.
+    private readonly bankAccounts: BankAccountService,
   ) {}
 
   /**

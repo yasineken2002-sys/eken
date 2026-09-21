@@ -330,6 +330,7 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
       noop, // 23 signingService
       noop, // 24 accountingPeriods,
       noop,
+      {} as never, // #F034c bankAccounts (sist)
     )
     return { executor, ...rig }
   }

@@ -52,9 +52,13 @@ function makeFake() {
       // #F034b — fält-dedupens läsning är numera förekomstmedveten och frågar
       // `count`, inte `findFirst`. Båda finns kvar i attrappen: `findFirst`
       // bärs fortfarande av cross-source-uppslaget mot API-rader.
-      count: jest.fn(({ where }: { where: Record<string, unknown> }) =>
-        Promise.resolve(rows.filter((r) => matches(r, where)).length),
-      ),
+      count: jest.fn(({ where }: { where: Record<string, unknown> }) => {
+        // #F034c — kärnan frågar TVÅ gånger: kontoscopad dedup och KONTOLÖS
+        // historik. Attrappen svarar 0 på den andra (inga historiska rader i
+        // den här riggen), annars hade varje prov blivit ett granskningsutfall.
+        if (where['bankAccountId'] === null) return Promise.resolve(0)
+        return Promise.resolve(rows.filter((r) => matches(r, where)).length)
+      }),
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
         // Speglar @@unique(organizationId, externalId): dubblett (icke-null) → P2002.
         if (
@@ -168,6 +172,9 @@ describe('ReconciliationService.ingestFromApi — PSD2 P1', () => {
       // #F034b — radidentiteten. Provet mäter CROSS-SOURCE-dedupen (dedupKey),
       // inte identitetsindexet; nyckeln är därför bara ett giltigt värde.
       identity: { key: 'fil-hyra-20260501', seq: 0 },
+      // #F034c — målkontot. Provet mäter cross-source-dedupen, inte
+      // kontoseparationen; id:t är bara ett giltigt värde.
+      bankAccountId: 'konto-1',
       data: {
         date: new Date('2026-05-01'),
         description: 'Hyra',
@@ -203,6 +210,7 @@ describe('ReconciliationService.ingestFromApi — PSD2 P1', () => {
       },
       // #F034b — se noten i föregående prov.
       identity: { key: 'fil-annantext-20260501', seq: 0 },
+      bankAccountId: 'konto-1',
       data: {
         date: new Date('2026-05-01'),
         description: 'Annan text',

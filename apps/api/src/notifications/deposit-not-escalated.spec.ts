@@ -117,6 +117,7 @@ describe('#352 · steg 7 — AI-verktyget exkluderar DEPOSIT', () => {
       noop,
 
       noop,
+      {} as never, // #F034c bankAccounts (sist)
     )
   }
 

@@ -51,6 +51,7 @@ describe('AI-gränsen kopplar in ursprungskontexten', () => {
       noop,
 
       noop,
+      {} as never, // #F034c bankAccounts (sist)
     )
 
     let seen: ReturnType<typeof currentAiOrigin>

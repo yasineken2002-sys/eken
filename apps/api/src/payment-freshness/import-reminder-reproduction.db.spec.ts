@@ -1143,9 +1143,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
 
   async function importRows(format: FileFormat, rows: Cell[][], headers?: string[]) {
     return importer.importBankStatement(
-      fileBuffer(format, rows, headers, kontoId!),
+      fileBuffer(format, rows, headers),
       'syntetiskt.' + format,
       orgId!,
+      kontoId!,
     )
   }
 
@@ -1354,7 +1355,17 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         const seeded =
           kind === 'dubblett'
             ? await db.bankTransaction.create({
-                data: { organizationId: orgId!, date: new Date(TODAY), description, amount },
+                // #F034c — raden sås PÅ SAMMA KONTO som importen. Provet mäter
+                // DUBBLETTFALLET (att färskhetsdatumet behålls när inget nytt
+                // lagras), och en kontolös rad hade i stället gett ett
+                // granskningsutfall — alltså mätt något annat än raden påstår.
+                data: {
+                  organizationId: orgId!,
+                  bankAccountId: kontoId!,
+                  date: new Date(TODAY),
+                  description,
+                  amount,
+                },
               })
             : null
         const result = await importRows(format, [[TODAY, description, amount]])
@@ -1694,8 +1705,10 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
           const seeded =
             kind === 'dubblett'
               ? await db.bankTransaction.create({
+                  // #F034c — samma konto som importen, se F28 ovan.
                   data: {
                     organizationId: orgId!,
+                    bankAccountId: kontoId!,
                     date: new Date(TODAY),
                     description,
                     amount,
