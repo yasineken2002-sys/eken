@@ -1566,6 +1566,29 @@ export class TenantPortalService {
    * vilket är sant både för en manuell markering och för en bankrad som senare
    * avmatchats. Okänt sägs som okänt.
    *
+   * ── EN OMATCHAD RAD RÄKNAS INTE, OCH DET GÄLLER ÄVEN DEN SOM VÄNTAR PÅ
+   *    MÄNSKLIG GRANSKNING ────────────────────────────────────────────────
+   *
+   * `status: 'MATCHED'` är inte ett bekvämlighetsvillkor. Bankimportens
+   * kontoseparation (T2:s #F034c) inför ett tredje ingest-utfall: en rad som
+   * matchar en KONTOLÖS historisk rad i allt filen bär LAGRAS men MATCHAS
+   * ALDRIG, eftersom identiteten inte går att avgöra. Sådana rader står
+   * UNMATCHED med tomma länkar och bär `identityReviewAt`.
+   *
+   * De får inte räknas som proveniens, och skälet är starkare än att de saknar
+   * länk: de ÄR inte kopplade till någon deposition. Att visa dem som "en
+   * möjlig betalning väntar på granskning" hade krävt att den här koden gissar
+   * VILKEN deposition den omatchade raden angår — och en gissad koppling mellan
+   * en betalning och en deposition är precis det påstående hela den här
+   * funktionen finns för att inte göra.
+   *
+   * Utfallet blir därför `KALLA_EJ_FASTSTALLD`, vilket är sant: källan är inte
+   * fastställd. Att en människa ännu inte avgjort något är inte ett underlag.
+   *
+   * VAD SOM SKULLE ÄNDRA BESLUTET: att en granskningsväntande rad får en
+   * kontrollerad koppling till depositionens underlag. Då är frågan vad man
+   * kallar tillståndet, inte om det går att peka ut.
+   *
    * ── VARFÖR INGEN NY KOLUMN ──────────────────────────────────────────────
    *
    * Ett `paidAtSource`-fält hade svarat exakt, men bara framåt: befintliga

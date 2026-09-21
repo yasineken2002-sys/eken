@@ -778,6 +778,53 @@ medDb('portalen: besiktningar och deposition', () => {
     await prisma.invoice.delete({ where: { id: invoiceId } })
   })
 
+  it('EN LAGRAD MEN OMATCHAD bankrad ger INTE bankproveniens — status-villkoret bär ensamt', async () => {
+    // ── VARFÖR DET HÄR PROVET BEHÖVS UTÖVER "avmatchad" OVAN ──────────────
+    //
+    // Provet ovan nollar BÅDE `status` och `invoiceId`, och kan därför inte
+    // säga vilket av de två villkoren som gjorde jobbet. Här är länken KVAR och
+    // bara statusen är fel — så om `status: 'MATCHED'` någon gång faller ur
+    // where-satsen fälls det här provet, och bara det.
+    //
+    // Formen är inte hypotetisk. T2:s kontoseparation (#F034c) inför ett tredje
+    // ingest-utfall: en rad som matchar en KONTOLÖS historisk rad i allt filen
+    // bär LAGRAS men MATCHAS ALDRIG, eftersom identiteten inte går att avgöra.
+    // Sådana rader står UNMATCHED med tomma länkar, och de får inte räknas som
+    // proveniens — de väntar på en människa, och att en människa ännu inte
+    // avgjort något är inte ett underlag.
+    const invoiceId = await nyFaktura()
+    const bankradId = await nyMatchadBankrad(invoiceId)
+    await prisma.bankTransaction.update({
+      where: { id: bankradId },
+      data: { status: 'UNMATCHED', matchedAt: null },
+    })
+    const d = await prisma.deposit.create({
+      data: {
+        organizationId: orgA,
+        leaseId: leaseNuvarande,
+        tenantId: hgNuvarande,
+        invoiceId,
+        amount: 19000,
+        status: 'PAID',
+        paidAt: new Date('2024-01-05T00:00:00Z'),
+      },
+    })
+
+    // Länken finns kvar på bankraden — bara matchningen saknas.
+    const kvar = await prisma.bankTransaction.findUniqueOrThrow({
+      where: { id: bankradId },
+      select: { invoiceId: true, status: true },
+    })
+    expect(kvar).toEqual({ invoiceId, status: 'UNMATCHED' })
+
+    const [vy] = await portal.getDeposits(hgNuvarande)
+    expect(vy!.mottagenBetalning!.proveniens).toBe('KALLA_EJ_FASTSTALLD')
+
+    await prisma.deposit.delete({ where: { id: d.id } })
+    await prisma.bankTransaction.delete({ where: { id: bankradId } })
+    await prisma.invoice.delete({ where: { id: invoiceId } })
+  })
+
   it('ETT ÅTERBETALNINGSBESLUT UTAN BANKBEKRÄFTELSE: beslutet visas, utbetalningen okänd', async () => {
     const d = await prisma.deposit.create({
       data: {
