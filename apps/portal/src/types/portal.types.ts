@@ -50,7 +50,11 @@ export interface PortalInvoice {
   id: string
   invoiceNumber: string
   type: string
-  status: 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'VOID'
+  // #913 — unionen saknade SENT_TO_COLLECTION, som `getInvoices` kan
+  // returnera (den filtrerar bara bort DRAFT) och som finns i den delade
+  // InvoiceStatus. Typen påstod att ett värde inte kunde komma, och
+  // etiketten saknades därefter i StatusBadge.
+  status: 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'VOID' | 'SENT_TO_COLLECTION'
   /** Fakturans nominella belopp, som den utfärdades. */
   total: number
   /** #342 — summan av registrerade betalningar. 0 när inget är betalt. */
