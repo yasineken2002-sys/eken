@@ -419,6 +419,20 @@ export interface BankTransaction {
    * avstämmas över huvud taget?
    */
   autoMatchExcludedAt?: string
+  /**
+   * #F034c — satt när IMPORTEN inte kunde avgöra om raden är en egen betalning
+   * eller en andra kopia av en som redan finns. Raden är lagrad (en betalning
+   * får aldrig kastas tyst) men automatiken rör den ALDRIG: varken matchning
+   * eller förslag. Den väntar på ett mänskligt beslut — matcha manuellt, eller
+   * lägg åt sidan.
+   *
+   * Skilj den från `autoMatchExcludedAt`, som svarar på en annan fråga:
+   * "automatiken hade fel" är ett omdöme om en matchning som GJORDES. Det här
+   * är att frågan aldrig gick att ställa.
+   */
+  identityReviewAt?: string
+  /** Vad som var oklart: `HISTORIK_UTAN_KONTO` eller `API_UTAN_KONTO`. */
+  identityReviewReason?: string
   createdAt: string
   invoice?: { id: string; invoiceNumber: string; status: string }
 }

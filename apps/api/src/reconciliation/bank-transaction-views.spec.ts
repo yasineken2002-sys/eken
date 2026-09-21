@@ -98,17 +98,14 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
     'kontostruktur för varje läsare av fakturasvaret — en annan grind än den ' +
     'här filens. Behöver en vy filtrera på konto är det ett BESLUT, och då ' +
     'hör id:t hemma i form 2 med en egen motivering.',
-  identityReviewAt:
-    'När importen inte kunde avgöra om raden är samma betalning som en ' +
-    'kontolös historisk rad (#F034c). Intern osäkerhetsmarkering: den säger ' +
-    'något om IMPORTENS kunskapsläge, inte om betalningen. Att visa den i ' +
-    'fakturakontexten hade väckt en fråga läsaren inte kan svara på. ' +
-    'Avstämningstabellen är den vy som SKULLE kunna behöva den — den är ' +
-    'arbetsytan där en människa avgör — men att lägga in den är ett beslut ' +
-    'som ska tas med UI:t framför sig, inte i förbifarten här.',
-  identityReviewReason:
-    'Skälet till osäkerheten (i dag bara HISTORIK_UTAN_KONTO). Samma ' +
-    'resonemang som identityReviewAt ovan; de två hör ihop och klassas lika.',
+  // identityReviewAt / identityReviewReason stod här tidigare, med noteringen
+  // att avstämningstabellen SKULLE kunna behöva dem men att det var ett beslut
+  // att ta med UI:t framför sig. Beslutet är taget: markeringen stoppar numera
+  // automatiken (spärren i `matchTransaction`), och ett fält som styr vad
+  // systemet gör med raden måste synas för den som ska handla på den. De ligger
+  // därför i form 2 och INTE i form 1 — fakturakontexten visar en betalning av
+  // en faktura, och en oavgjord identitet där hade väckt en fråga läsaren inte
+  // kan svara på.
   identitySeq:
     'Radens förekomstnummer inom den fil som skapade den (#F034b). Samma sak: ' +
     'maskineri. Och den vore direkt VILSELEDANDE i en vy — en tvåa betyder ' +

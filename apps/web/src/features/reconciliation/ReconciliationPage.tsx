@@ -1029,6 +1029,21 @@ export function ReconciliationPage() {
                         {tx.autoMatchExcludedAt ? (
                           <Badge variant="ghost">Avmatchad manuellt</Badge>
                         ) : null}
+                        {/* #F034c — importen kunde inte avgöra om raden är en
+                            egen betalning eller en kopia av en som redan finns.
+                            Automatiken rör den aldrig: varken matchning eller
+                            förslag. Utan märket ser raden ut som vilken
+                            omatchad rad som helst, och den blir liggande tills
+                            någon råkar undra varför "Matcha alla" hoppade över
+                            just den. Knapparna Matcha/Ignorera står kvar —
+                            beslutet är precis vad märket ber om. */}
+                        {tx.identityReviewAt ? (
+                          <Badge variant="warning" dot>
+                            {tx.identityReviewReason === 'API_UTAN_KONTO'
+                              ? 'Identitet oavgjord — krockar med bankhämtad rad utan konto'
+                              : 'Identitet oavgjord — krockar med äldre rad utan konto'}
+                          </Badge>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">
