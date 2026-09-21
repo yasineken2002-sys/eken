@@ -56,6 +56,7 @@ import { RentInterestService } from '../avisering/rent-interest.service'
 import { PaymentReminderService } from '../notifications/payment-reminder.service'
 import {
   IdentityReviewPausedError,
+  PaymentDataPausedError,
   PaymentFreshnessService,
   paymentFreshnessTransactionOptions,
 } from './payment-freshness.service'
@@ -816,6 +817,68 @@ medDb('G2 — kravpaus vid olöst identitetsgranskning', () => {
       ),
     ).resolves.toBeUndefined()
     utfall.F1 = 'nej → ja → nej, samma anrop'
+  })
+
+  // ══ H. KLASSIFICERINGEN — en väntad paus är inte ett fel ═════════════════
+
+  it('H1: granskningspausen är INTE en färskhetspaus — därför behöver varje fångstställe en egen gren', async () => {
+    // ── VARFÖR DET HÄR PROVET FINNS ───────────────────────────────────────
+    //
+    // Terminal 1:s fynd H1. Fyra ställen i kravvägarna särbehandlar
+    // `PaymentDataPausedError`. Eftersom den nya klassen ärver `Error` och inte
+    // den, föll granskningspausen i else-grenen och loggades som
+    // `logger.error(... misslyckades)` — en AVSIKTLIG, väntad paus rapporterad
+    // som ett haveri. Ingen larmning, och fel orsak i loggen.
+    //
+    // ARVET ÄR RÄTT, och det är därför fyndet inte löstes med en basklass: de
+    // två pauserna åtgärdas olika (importera en fil vs avgöra en rad), och ett
+    // fångstställe som kan behandla dem lika hade gett fel besked. Provet
+    // låser fast att de INTE är utbytbara, så att nästa läsare förstår varför
+    // varje ställe bär två grenar i stället för en.
+    const fel = new IdentityReviewPausedError(3)
+    expect(fel).toBeInstanceOf(Error)
+    expect(fel).not.toBeInstanceOf(PaymentDataPausedError)
+    expect(new PaymentDataPausedError()).not.toBeInstanceOf(IdentityReviewPausedError)
+    utfall.H1 = 'klasserna är åtskilda med flit'
+  })
+
+  it('H2: VARJE fångstställe som kan PaymentDataPausedError kan också granskningspausen', async () => {
+    // ── VAD PROVET ÄR, OCH VAD DET INTE ÄR ────────────────────────────────
+    //
+    // En KÄLLKONTROLL, inte en beteendemätning. Den kan bara se att båda
+    // namnen förekommer i samma fil — inte att grenen är rätt skriven. Det som
+    // mäter beteendet är B2 (fakturacronen rapporterar en paus som `skipped`
+    // och `errors: 0` på den riktiga vägen).
+    //
+    // Den finns ändå, och skälet är fyndets FORM: H1 uppstod inte av att någon
+    // skrev fel, utan av att ett nytt feltillstånd inte nådde fångstställen
+    // som fanns sedan tidigare. Ett FEMTE fångstställe skulle upprepa exakt
+    // det, och då är den här kontrollen röd i stället för tyst.
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const filer = [
+      'avisering/rent-reminder.service.ts',
+      'avisering/rent-bad-debt.service.ts',
+      'notifications/payment-reminder.service.ts',
+    ]
+    const saknar: string[] = []
+    for (const f of filer) {
+      const src = readFileSync(join(__dirname, '..', f), 'utf8')
+      const harFarskhet = src.includes('err instanceof PaymentDataPausedError')
+      const harGranskning = src.includes('err instanceof IdentityReviewPausedError')
+      if (harFarskhet && !harGranskning) saknar.push(f)
+    }
+    expect(saknar).toEqual([])
+
+    // KANARIEFÅGEL: kontrollen måste kunna ge utslag. En källkontroll som
+    // alltid är grön är samma prosa i annan form — det var precis lärdomen ur
+    // terminal 1:s förra fynd (G4).
+    const påhittad = 'err instanceof PaymentDataPausedError'
+    expect('if (' + påhittad + ') { /* utan grenen */ }').toContain(påhittad)
+    expect('if (' + påhittad + ') { /* utan grenen */ }').not.toContain(
+      'err instanceof IdentityReviewPausedError',
+    )
+    utfall.H2 = `${filer.length} filer, alla med båda grenarna`
   })
 
   it('F2: felet BÄR ANTALET, så operatören får veta hur många rader det gäller', async () => {

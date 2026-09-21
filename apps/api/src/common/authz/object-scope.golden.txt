@@ -82,7 +82,7 @@ InspectionItem          createMany  inspections/inspections.service.ts          
 InvoiceEvent            create      collections/collection-export.service.ts            ×2  A kedje-query + INGEN UPPTÄCKT
 InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT
 InvoiceEvent            create      notifications/notifications.service.ts                  A kedje-query
-InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  C scopat anrop + INGEN UPPTÄCKT
+InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  C scopat anrop
 InvoiceLine             create      consumption/consumption.service.ts                      P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             create      deposits/deposits.service.ts                            P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             createMany  invoices/credit-note.service.ts                         P förälder org-bunden  ← nästlad via Invoice.lines
@@ -97,7 +97,7 @@ MaintenanceComment      create      maintenance/maintenance.service.ts          
 MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
 PaymentReminder         create      ai/tools/tool-executor.service.ts                       A kedje-query
-PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  C scopat anrop + INGEN UPPTÄCKT
+PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  C scopat anrop
 PaymentReminder         createMany  notifications/payment-reminder.service.ts               C scopat anrop
 RentNoticeCreditLine    createMany  avisering/rent-notice-credit.service.ts                 P förälder org-bunden  ← nästlad via RentNoticeCredit.lines
 RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT

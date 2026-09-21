@@ -26,6 +26,7 @@ import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import {
+  IdentityReviewPausedError,
   PaymentFreshnessService,
   paymentFreshnessTransactionOptions,
 } from '../payment-freshness/payment-freshness.service'
@@ -232,6 +233,20 @@ export class PaymentReminderService {
 
             summary.skipped++
           } catch (err) {
+            // G2 — EGEN GREN. Gallringen före loopen fångar normalfallet, men
+            // en granskningsrad som commitas MEDAN loopen går (den väntar upp
+            // till 5 s per faktura på köandet) når skrivspärren i stället. Utan
+            // den här grenen hade den kapplöpningen räknats som ett FEL och
+            // loggats som ett misslyckande — en avsiktlig paus rapporterad som
+            // haveri. (Terminal 1:s fynd H1.)
+            if (err instanceof IdentityReviewPausedError) {
+              this.logger.warn(
+                `Faktura ${invoice.id} PAUSAD: ${err.antal} betalning(ar) väntar på ` +
+                  'identitetsgranskning i bankavstämningen.',
+              )
+              summary.skipped++
+              continue
+            }
             this.logger.error(
               `Reminder failed for invoice ${invoice.id}: ${err instanceof Error ? err.message : String(err)}`,
             )
