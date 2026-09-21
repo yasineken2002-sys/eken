@@ -49,9 +49,9 @@ import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import {
   Förekomsträknare,
   IMPORT_PULSE_EVERY_ROWS,
+  bgMaxIdentitet,
+  filIdentitet,
   hashaBytes,
-  radIdentitetBgMax,
-  radIdentitetFil,
 } from './bank-import-identity'
 import { BankImportAttemptService, type Importkvittens } from './bank-import-attempt.service'
 
@@ -1036,9 +1036,11 @@ export class ReconciliationService {
         // `balance` ingår med flit INTE: löpande saldo beror på exportens
         // radordning och saknas i flera bankexporter — en nyckel med `balance`
         // hade gjort om-import av samma period till nya rader.
-        // #F034b — samma fält som `dedup` nedan, i den form det partiella
-        // unika indexet kan bära. `seq` är radens förekomstnummer i filen.
-        const identityKey = radIdentitetFil({
+        // #F034b — EN källa för båda lagren. `filIdentitet` returnerar både
+        // fält-dedupens `where` och hashen, så de två kan inte skrivas olika
+        // här. Se noten i `bank-import-identity.ts` för vad två skilda
+        // objektliteraler kostade (T1:s fynd F1).
+        const identitet = filIdentitet({
           date: row.date,
           description: row.description,
           amount: amountDecimal,
@@ -1046,13 +1048,8 @@ export class ReconciliationService {
         })
 
         const outcome = await this.ingestFromFile(organizationId, {
-          dedup: {
-            date: row.date,
-            description: row.description,
-            amount: amountDecimal,
-            reference: row.reference || null,
-          },
-          identity: { key: identityKey, seq: förekomster.nästa(identityKey) },
+          dedup: identitet.dedup,
+          identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
           data: {
             date: row.date,
             description: row.description,
@@ -1227,15 +1224,16 @@ export class ReconciliationService {
         // importerad via BÅDE BgMax och CSV känns igen som en.
         // #F034b — BgMax har sin EGEN namnrymd i radidentiteten: fältuppsättningen
         // är en annan (ingen textkolumn) och dess `description` är syntetisk.
-        const identityKey = radIdentitetBgMax({
+        // EN källa för båda lagren, se CSV-vägen ovan.
+        const identitet = bgMaxIdentitet({
           date: txDate,
           amount: amountDecimal,
           rawOcr: ocr || null,
         })
 
         const outcome = await this.ingestFromFile(organizationId, {
-          dedup: { date: txDate, amount: amountDecimal, rawOcr: ocr || null },
-          identity: { key: identityKey, seq: förekomster.nästa(identityKey) },
+          dedup: identitet.dedup,
+          identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
           data: {
             date: txDate,
             description,

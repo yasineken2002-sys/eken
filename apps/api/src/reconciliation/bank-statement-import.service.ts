@@ -19,7 +19,7 @@ import {
 } from './pdf-statement-parser.service'
 import { ReconciliationService, type ImportAttemptInfo } from './reconciliation.service'
 import { BankImportAttemptService } from './bank-import-attempt.service'
-import { Förekomsträknare, hashaBytes, radIdentitetFil } from './bank-import-identity'
+import { Förekomsträknare, filIdentitet, hashaBytes } from './bank-import-identity'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import {
   validateUploadedFile,
@@ -444,12 +444,11 @@ export class BankStatementImportService {
       // icke-deterministisk (`schema.prisma` vid `originalParsedData`). Laddas
       // samma PDF upp igen och AI:n läser ett annat OCR blir det en ny rad — men
       // det gällde redan `description`, som låg i nyckeln före den här ändringen.
-      // #F034b — samma fält som `dedup` nedan, i den form det partiella unika
-      // indexet kan bära. SAMMA NAMNRYMD som CSV-vägen med flit: de två vägarna
-      // dedupar redan mot varandra i dag (identisk fältuppsättning mot samma
-      // tabell), och att namnrymda på filväg hade tagit bort det skyddet ur
-      // indexet.
-      const identityKey = radIdentitetFil({
+      // #F034b — EN källa för både fält-dedupen och identiteten (T1:s fynd F1).
+      // SAMMA NAMNRYMD som CSV-vägen med flit: de två vägarna dedupar redan mot
+      // varandra i dag (identisk fältuppsättning mot samma tabell), och att
+      // namnrymda på filväg hade tagit bort det skyddet ur indexet.
+      const identitet = filIdentitet({
         date,
         description: t.description,
         amount: amountDecimal,
@@ -457,13 +456,8 @@ export class BankStatementImportService {
       })
 
       const outcome = await this.reconciliation.ingestFromFile(organizationId, {
-        dedup: {
-          date,
-          description: t.description,
-          amount: amountDecimal,
-          reference: t.ocr || null,
-        },
-        identity: { key: identityKey, seq: förekomster.nästa(identityKey) },
+        dedup: identitet.dedup,
+        identity: { key: identitet.key, seq: förekomster.nästa(identitet.key) },
         data: {
           date,
           description: t.description,

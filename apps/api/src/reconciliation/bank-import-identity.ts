@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import type { Prisma } from '@prisma/client'
 import type { Decimal } from '@prisma/client/runtime/library'
 
 /**
@@ -11,7 +12,7 @@ import type { Decimal } from '@prisma/client/runtime/library'
  *   AVTRYCKET (`beräknaImportavtryck`)  "är det här SAMMA IMPORT igen?"
  *                                       → filnivå, avgörs av BankImportAttempt
  *
- *   RADIDENTITETEN (`radIdentitet*`)    "är det här SAMMA BETALNING igen?"
+ *   RADIDENTITETEN (`filIdentitet` / `bgMaxIdentitet`)  "är det här SAMMA BETALNING igen?"
  *                                       → radnivå, avgörs av det partiella
  *                                         unika indexet på BankTransaction
  *
@@ -125,26 +126,85 @@ function belopp(a: Decimal): string {
 }
 
 /**
- * CSV/XLSX/XLS och PDF-bekräftelsen. Fälten är EXAKT dem respektive vägs
- * fält-dedup frågar efter i dag — `reference` inkluderad, vilket var F034:s
- * rättning. Inget fält är tillagt och inget borttaget: identiteten är samma
- * fråga i en form ett DB-index kan bära.
+ * ── EN KÄLLA FÖR BÅDA LAGREN (rättar T1:s fynd F1) ──────────────────────────
+ *
+ * Fält-dedupens `where` och radidentitetens hash MÅSTE fråga efter samma
+ * fältmängd. Första versionen skrev dem som två objektliteraler i rad på
+ * anropsstället, med en kommentar om att de var lika. Terminal 1:s läsgranskning
+ * pekade ut vad det betyder: *"En regel som frågar prosa i stället för kod är
+ * alltid uppfylld."*
+ *
+ * ── FELLÄGET DE BESKREV, OCH VARFÖR DET ÄR VERKLIGT ─────────────────────────
+ *
+ * Läggs ett fält till i `dedup` men inte i hashen får två rader som skiljer sig
+ * BARA i det fältet samma `identityKey`. Fil A lagrar den ena som `(K, 0)`.
+ * Fil B bär den andra: dess räknare börjar om, så den får också `seq = 0`,
+ * lager 1 räknar med det nya fältet och hittar noll — och lager 2 möter `(K, 0)`
+ * som redan finns, kastar P2002, och raden räknas som DUBBLETT. En verklig,
+ * skild betalning försvinner tyst. Det är exakt det felläge #F034b finns för att
+ * ta bort, återinfört från andra hållet.
+ *
+ * Motsatt riktning är lika illa: tas ett fält BORT ur `dedup` blir lager 1
+ * lösare och avvisar som dubblett innan lager 2 ens tillfrågas.
+ *
+ * ── LÖSNINGEN: `dedup` HÄRLEDS UR SAMMA OBJEKT SOM HASHEN ───────────────────
+ *
+ * Funktionerna nedan returnerar BÅDA. Det finns alltså ingen anropsplats där de
+ * två kan skrivas olika, och fältmängden står på ETT ställe.
+ *
+ * Att de två uttrycken inuti funktionen fortfarande kan glida isär bärs av
+ * `bank-import-identitet-paritet.spec.ts`, som STÖR varje fält i tur och ordning
+ * och kräver att störningen syns i BÅDA — alltså en mekanisk mätning av att
+ * hashens fältmängd och `where`-satsens fältmängd är samma mängd, inte ett
+ * påstående om det.
  */
-export function radIdentitetFil(rad: {
+
+/** Fälten CSV/XLSX/XLS och PDF-bekräftelsen identifierar en rad med. */
+export interface FilRadFält {
   date: Date
   description: string
   amount: Decimal
+  /** Tomt värde är ett EGET värde, aldrig en joker. Se F034. */
   reference: string | null
-}): string {
-  return sha256(
-    kanonisera([
-      NAMNRYMD_FIL,
-      datum(rad.date),
-      rad.description,
-      belopp(rad.amount),
-      text(rad.reference),
-    ]),
-  )
+}
+
+/** Fälten BgMax identifierar en rad med. */
+export interface BgMaxRadFält {
+  date: Date
+  amount: Decimal
+  rawOcr: string | null
+}
+
+export interface Radidentitet {
+  /** Fält-dedupens `where`, utan `organizationId` (injiceras av kärnan). */
+  dedup: Prisma.BankTransactionWhereInput
+  /** SHA-256 över samma fält, i den form det unika indexet kan bära. */
+  key: string
+}
+
+/**
+ * CSV/XLSX/XLS och PDF-bekräftelsen. Fälten är EXAKT dem respektive vägs
+ * fält-dedup frågade efter före #F034b — F034:s identitet, oförändrad. Inget
+ * fält är tillagt och inget borttaget.
+ */
+export function filIdentitet(rad: FilRadFält): Radidentitet {
+  return {
+    dedup: {
+      date: rad.date,
+      description: rad.description,
+      amount: rad.amount,
+      reference: rad.reference,
+    },
+    key: sha256(
+      kanonisera([
+        NAMNRYMD_FIL,
+        datum(rad.date),
+        rad.description,
+        belopp(rad.amount),
+        text(rad.reference),
+      ]),
+    ),
+  }
 }
 
 /**
@@ -154,12 +214,17 @@ export function radIdentitetFil(rad: {
  * fastformatet, inte ett härlett värde, och kan därför inte drifta mellan
  * kodversioner.
  */
-export function radIdentitetBgMax(rad: {
-  date: Date
-  amount: Decimal
-  rawOcr: string | null
-}): string {
-  return sha256(kanonisera([NAMNRYMD_BGMAX, datum(rad.date), belopp(rad.amount), text(rad.rawOcr)]))
+export function bgMaxIdentitet(rad: BgMaxRadFält): Radidentitet {
+  return {
+    dedup: {
+      date: rad.date,
+      amount: rad.amount,
+      rawOcr: rad.rawOcr,
+    },
+    key: sha256(
+      kanonisera([NAMNRYMD_BGMAX, datum(rad.date), belopp(rad.amount), text(rad.rawOcr)]),
+    ),
+  }
 }
 
 /**
