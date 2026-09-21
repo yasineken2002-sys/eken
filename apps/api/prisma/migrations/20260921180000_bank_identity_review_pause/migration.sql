@@ -28,8 +28,20 @@ CREATE INDEX "BankIdentityReviewPause_organizationId_endedAt_idx"
 -- Varför ett unikt villkor och inte en läs-sedan-skriv: två samtidiga importer
 -- kan båda läsa "ingen öppen period" och båda skapa en. Då finns två
 -- aviseringstillfällen för samma paus, och operatören får två brev. Med
--- indexet blir den andra en P2002 som anroparen tolkar som "redan öppen" —
--- samma konstruktion som identitetsindexet i #F034b.
+-- indexet avgörs kapplöpningen av databasen.
+--
+-- HUR ANROPAREN ANVÄNDER DET: `INSERT … ON CONFLICT ("organizationId")
+-- WHERE "endedAt" IS NULL DO NOTHING RETURNING "id"`. Ingen returnerad rad
+-- betyder "en period var redan öppen".
+--
+-- INTE create-och-fånga-P2002. Öppnandet sker inne i anroparens transaktion,
+-- och ett misslyckat statement FÖRGIFTAR transaktionen i Postgres — att fånga
+-- felet i JavaScript häver inte det. Mätt: nästa statement föll med 25P02 och
+-- granskningsraden skrevs aldrig. Skyddet hade blivit en ny lucka.
+--
+-- Den som bygger nästa vakt efter den här förlagan ska ärva ON CONFLICT, inte
+-- fångsten. (Identitetsindexet i #F034b använder create-och-fånga, och det är
+-- rätt DÄR: create:t är transaktionens sista handling.)
 CREATE UNIQUE INDEX "bank_identity_review_pause_open_unique"
     ON "BankIdentityReviewPause"("organizationId")
     WHERE "endedAt" IS NULL;

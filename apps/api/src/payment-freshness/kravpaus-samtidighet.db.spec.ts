@@ -557,22 +557,10 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
     return { verifikat, avgiftsrader, avier }
   }
 
-  /** Väntar tills N olösta rader är COMMITADE och synliga. Kastar annars. */
-  async function väntaPåOlösta(n: number, timeoutMs = 15_000): Promise<void> {
-    const slut = Date.now() + timeoutMs
-    while (Date.now() < slut) {
-      if ((await olösta()) >= n) return
-      await new Promise((r) => setTimeout(r, 25))
-    }
-    throw new Error(`GRANSKNINGSRADEN BLEV ALDRIG SYNLIG (väntade ${n})`)
-  }
-
   const olösta = () =>
     a.bankTransaction.count({
       where: { organizationId: orgId, identityReviewAt: { not: null }, status: 'UNMATCHED' },
     })
-
-  // ══ S1: HYRESAVIN — import commitar MELLAN kontroll och effekt ════════════
 
   /**
    * UPPVÄRMNING — och ett SKYDD som är värt att skriva ut.
@@ -588,8 +576,8 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
    * skydd och det ska redovisas som ett.
    *
    * Men det skyddar bara den första gången. Så fort en täckning finns är
-   * organisationen färsk igen, och nästa import öppnar fönstret. Uppvärmningen
-   * nedan gör exakt det — den flyttar riggen till det normala driftläget.
+   * organisationen färsk igen. Uppvärmningen flyttar riggen till det normala
+   * driftläget.
    */
   async function uppvärmdImport(): Promise<void> {
     const ocr = nyttOcr()
@@ -609,7 +597,22 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
     expect(org.paymentDataThrough).not.toBeNull() // organisationen är nu FÄRSK
   }
 
-  it('S1: granskningsrad commitad efter spärren men FÖRE effektens commit — hyresavin', async () => {
+  // ══ S1: HYRESAVIN — skrivaren BLOCKERAR på effekten ══════════════════════
+
+  it('S1: en import kan inte commita en granskningsrad medan en effekt är öppen', async () => {
+    // ── VAD PROVET MÄTTE FÖRE RÄTTELSEN, OCH VAD DET MÄTER NU ────────────
+    //
+    // Före: importen commitade sin granskningsrad MELLAN spärren och effektens
+    // commit, och avgiften bokfördes ändå. Domen blev 'LUCKA'.
+    //
+    // Efter: det scenariot är OMÖJLIGT ATT KONSTRUERA. Skrivsidan tar det
+    // exklusiva låset, effekten håller det delade, så importen kan inte
+    // commita förrän effektens transaktion är slut. Det är hela rättelsen —
+    // och därför bytte provet fråga, från "vad blev utfallet?" till "vem
+    // väntar på vem?".
+    //
+    // Att mäta det gamla scenariot igen hade bara gett en transaktions-timeout,
+    // vilket är en mätning av Prismas klocka och inte av skyddet.
     await uppvärmdImport()
     const noticeId = await förfallenAvi()
     const ocr = nyttOcr()
@@ -620,47 +623,82 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
     const kravet = hyresPåminnelse(a, medGrind(färskhet(a), grindEffekt))
     const importen = medGrindFöreRadskrivning(avstämning(b, färskhet(b)), grindImport)
 
-    // 1) Importen startar. Den passerar `recordImportStarted` (tar och SLÄPPER
-    //    det exklusiva låset), parsar filen, och stannar precis före raden.
     const imp = importen.importBankStatement(csv(ocr), 'utdrag.csv', orgId, kontoId)
     await grindImport.väntaPåAnkomst()
 
-    // 2) Effekten startar och passerar spärren — noll olösta rader, sant.
     const effekt = kravet.escalateNoticeToReminded(noticeId, orgId, 20, 60)
     await grindEffekt.väntaPåAnkomst()
     expect(await olösta()).toBe(0)
 
-    // 3) Importen släpps och COMMITAR granskningsraden.
-    //
-    // VÄNTA PÅ RADEN, INTE PÅ HELA IMPORTEN. Importens SISTA steg är
-    // `recordPaymentDataThrough`, som tar det EXKLUSIVA låset och därför
-    // blockerar på effektens delade — hela importen kan alltså inte slutföras
-    // medan effekten står vid grinden. Uppmätt: `await imp` här gav 10 s
-    // tidsgräns i stället för en mätning.
-    //
-    // Det är i sig ett fynd: importens FÄRSKHETSSKRIVNING är ordnad mot
-    // effekter. RADSKRIVNINGEN är det inte, och det är den som bär pausen.
+    // Importen släpps. Den NÅR sin radskrivning men kan inte ta låset.
     grindImport.öppna()
-    await väntaPåOlösta(1)
+    let importKlar = false
+    void imp.then(() => (importKlar = true))
+    await new Promise((r) => setTimeout(r, 400))
 
-    // 4) Effekten släpps. Frågan är om den fullbordar.
+    // DEN BÄRANDE MÄTNINGEN: raden finns inte, och importen väntar. Före
+    // rättelsen hade raden varit commitad här.
+    expect(await olösta()).toBe(0)
+    expect(importKlar).toBe(false)
+
+    // Effekten släpps och fullbordar — kravet var taget i anspråk FÖRE pausen,
+    // och då ska det få gå igenom. Det är kontraktets andra halva.
     grindEffekt.öppna()
-    const flippad = await effekt.catch((err: unknown) => err)
+    const flippad = await effekt
+    expect(flippad).toBe(true)
+    const läge = await effektläge()
+    expect(läge.avgiftsrader).toBeGreaterThan(0)
+
+    // Först NU kan importen commita sin rad.
     const r = await imp
     expect(r.behoverGranskas).toBe(1)
+    expect(await olösta()).toBe(1)
 
-    const läge = await effektläge()
-    utfall.S1 = {
-      flippad: flippad instanceof Error ? flippad.constructor.name : flippad,
-      ...läge,
-    }
-    utfall['S1-dom'] =
-      läge.avgiftsrader > 0 ? 'LUCKA: avgiften bokfördes trots commitad granskningsrad' : 'STOPPAD'
+    // Och nästa effekt är pausad. Ordningen är total: inget hamnade emellan.
+    const nästaAvi = await förfallenAvi()
+    await expect(
+      hyresPåminnelse(a, färskhet(a)).escalateNoticeToReminded(nästaAvi, orgId, 20, 60),
+    ).rejects.toBeInstanceOf(IdentityReviewPausedError)
+
+    utfall.S1 = { importVäntade: true, kravetVann: true, nästaPausad: true }
   })
 
-  // ══ S2: FAKTURANS VÄNLIGA PÅMINNELSE — fönstret mellan två await ══════════
+  // ══ S2: FAKTURANS VÄNLIGA PÅMINNELSE — BÅDA ORDNINGARNA ══════════════════
 
-  it('S2: förkontrollen släpper, granskningsrad commitas, brevet köas ändå', async () => {
+  it('S2a: PAUSEN FÖRST — inget brev når kögränsen, och inget anspråk blir kvar', async () => {
+    // Deterministiskt utan barriär: granskningsraden är commitad INNAN cronen
+    // startar. Den ena av de två ordningarna, mätt vid KÖGRÄNSEN och inte på
+    // en räknare.
+    await uppvärmdImport()
+    await förfallenFaktura(3)
+    const ocr = nyttOcr()
+    await kontolösHistorik(ocr)
+    await avstämning(b, färskhet(b)).importBankStatement(csv(ocr), 'ett.csv', orgId, kontoId)
+    expect(await olösta()).toBe(1)
+
+    const summary = await fakturaPåminnelse(a, färskhet(a)).processOverdueReminders()
+
+    expect(köade).toEqual([])
+    expect(summary?.friendlySent).toBe(0)
+    expect(summary?.errors).toBe(0) // en paus är inte ett fel
+    // INGET ANSPRÅK LIGGER KVAR. Hade markören skrivits före spärren vore
+    // fakturan "redan påmind" utan att något brev gått, och en senare giltig
+    // påminnelse hade uteblivit för alltid.
+    expect(await a.paymentReminder.count({ where: { invoice: { organizationId: orgId } } })).toBe(0)
+    utfall.S2a = { köade: köade.length, summary }
+  })
+
+  it('S2b: PÅMINNELSEN FÖRST — importen väntar, brevet går, anspråket är varaktigt', async () => {
+    // ── VARFÖR PROVET BYTTE FORM ─────────────────────────────────────────
+    //
+    // Förut höll det cronen vid grinden och lät importen commita emellan. Det
+    // går inte längre: anspråket tas i spärrens transaktion, som håller det
+    // delade låset, och importens radskrivning tar det exklusiva. Den gamla
+    // riggen mätte därför Prismas transaktionsklocka (5 s) och inte skyddet —
+    // provet var grönt för att transaktionen DOG, inte för att pausen vann.
+    //
+    // Nu mäts ordningen: vem väntar på vem, och vad blev varaktigt.
+    await uppvärmdImport()
     await förfallenFaktura(3)
     const ocr = nyttOcr()
     await kontolösHistorik(ocr)
@@ -677,32 +715,38 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
     await grindCron.väntaPåAnkomst()
     expect(await olösta()).toBe(0)
 
+    // Importen släpps men kan inte ta låset så länge anspråkets transaktion lever.
     grindImport.öppna()
-    await väntaPåOlösta(1) // se noten i S1 om varför inte `await imp` här
+    let importKlar = false
+    void imp.then(() => (importKlar = true))
+    await new Promise((r) => setTimeout(r, 400))
+    expect(await olösta()).toBe(0)
+    expect(importKlar).toBe(false)
 
+    // Cronen släpps: anspråket commitar och brevet KÖAS efter commit.
     grindCron.öppna()
     const summary = await körning
-    expect((await imp).behoverGranskas).toBe(1)
+    expect(summary?.friendlySent).toBe(1)
+    expect(köade).toHaveLength(1)
+    // ANSPRÅKET ÄR VARAKTIGT — det är det som gör brevet legitimt.
+    expect(
+      await a.paymentReminder.count({
+        where: { invoice: { organizationId: orgId }, type: 'REMINDER_FRIENDLY' },
+      }),
+    ).toBe(1)
 
-    utfall.S2 = {
-      friendlySent: summary?.friendlySent,
-      // MÄTPUNKTEN: faktiska anrop till kögränsen, inte räknaren.
-      köadeBrev: köade.length,
-      köade: [...köade],
-    }
-    utfall['S2-dom'] =
-      köade.length > 0 ? 'LUCKA: brevet köades trots commitad granskningsrad' : 'STOPPAD'
-    // FACIT EFTER RÄTTELSEN: INGET brev når kögränsen. Mätt där brevet
-    // faktiskt lämnar tjänsten, inte på summary-räknaren.
-    expect(köade).toEqual([])
-    expect(summary?.friendlySent).toBe(0)
-    // Och inget anspråk ligger kvar som hindrar en senare, giltig påminnelse.
-    expect(await a.paymentReminder.count({ where: { invoice: { organizationId: orgId } } })).toBe(0)
+    // Och först nu blir raden olöst.
+    expect((await imp).behoverGranskas).toBe(1)
+    expect(await olösta()).toBe(1)
+    utfall.S2b = { köade: köade.length, importVäntade: true }
   })
 
-  // ══ S3: AVMATCHNING som återöppnar, mellan kontroll och effekt ════════════
+  // ══ S3: AVMATCHNING — samma ordning, andra ingången ══════════════════════
 
-  it('S3: avmatchning som återöppnar granskning mellan spärr och effekt', async () => {
+  it('S3: en avmatchning kan inte återöppna granskning medan en effekt är öppen', async () => {
+    // Den ANDRA vägen som gör en rad olöst. Hade den glömts vore rättelsen
+    // halv — definitionen gör `unmatchTransaction` till en återöppning.
+    await uppvärmdImport()
     const noticeId = await förfallenAvi()
     const ocr = nyttOcr()
     await kontolösHistorik(ocr)
@@ -712,35 +756,58 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
       where: { organizationId: orgId, bankAccountId: kontoId },
       select: { id: true },
     })
-
-    // Människan avgör raden via den RIKTIGA vägen — pausen släpper.
-    const avstämningA = avstämning(a, färskhet(a))
-    await avstämningA.manualMatch(rad.id, { rentNoticeId: noticeId }, orgId, userId)
+    await avstämning(a, färskhet(a)).manualMatch(rad.id, { rentNoticeId: noticeId }, orgId, userId)
     expect(await olösta()).toBe(0)
 
-    // Ny avi för kravet, så att S3 inte mäter den redan matchade.
     const kravavi = await förfallenAvi()
     const grind = new Grind()
     const kravet = hyresPåminnelse(a, medGrind(färskhet(a), grind))
-
     const effekt = kravet.escalateNoticeToReminded(kravavi, orgId, 20, 60)
     await grind.väntaPåAnkomst()
-    expect(await olösta()).toBe(0)
 
-    // Avmatchningen via den RIKTIGA tjänsten, från den andra klienten.
-    const avstämningB = avstämning(b, färskhet(b))
-    await avstämningB.unmatchTransaction(rad.id, orgId, userId, 'prov')
-    expect(await olösta()).toBe(1)
+    // `unmatchTransaction` tar numera det exklusiva låset FÖRST, före sina
+    // `FOR UPDATE`, så den blockerar på effektens delade lås.
+    let avmatchad = false
+    const avmatchning = avstämning(b, färskhet(b))
+      .unmatchTransaction(rad.id, orgId, userId, 'prov')
+      .then(() => {
+        avmatchad = true
+      })
+    await new Promise((r) => setTimeout(r, 400))
+
+    expect(await olösta()).toBe(0)
+    expect(avmatchad).toBe(false)
 
     grind.öppna()
-    const flippad = await effekt.catch((err: unknown) => err)
-    const läge = await effektläge()
-    utfall.S3 = {
-      flippad: flippad instanceof Error ? flippad.constructor.name : flippad,
-      avgiftsrader: läge.avgiftsrader,
-    }
-    utfall['S3-dom'] =
-      läge.avgiftsrader > 0 ? 'LUCKA: avgiften bokfördes trots återöppnad granskning' : 'STOPPAD'
+    expect(await effekt).toBe(true)
+    expect((await effektläge()).avgiftsrader).toBeGreaterThan(0)
+
+    await avmatchning
+    expect(await olösta()).toBe(1)
+    utfall.S3 = { avmatchningVäntade: true, kravetVann: true }
+  })
+
+  it('S2-ANKARE: utan granskningsrad NÅR brevet kögränsen — mätpunkten lever', async () => {
+    // ── VARFÖR DET HÄR PROVET FINNS ───────────────────────────────────────
+    //
+    // `köade` prövades bara med `toEqual([])`. Ingenstans visades att listan
+    // KAN bli icke-tom. Stubben är hopsatt med `Object.assign` på en prototyp,
+    // så byter `PaymentReminderService` namn på `sendReminderFriendly` — eller
+    // går via en annan väg — fylls den aldrig, och S2 blir grön för att
+    // MÄTPUNKTEN ÄR DÖD. (Terminal 1:s fynd G2.)
+    //
+    // S5-KONTROLL duger inte som ankare: den går via hyresavins väg och mäter
+    // avgiftsrader, inte fakturavägens kögräns. Två olika mätpunkter.
+    await uppvärmdImport()
+    await förfallenFaktura(3)
+    const cron = fakturaPåminnelse(a, färskhet(a))
+
+    const summary = await cron.processOverdueReminders()
+
+    expect(summary?.friendlySent).toBe(1)
+    expect(köade).toHaveLength(1)
+    expect(köade[0]!.mall).toBe('friendly')
+    utfall['S2-ankare'] = { köade: köade.length }
   })
 
   // ══ S4: OMVÄND ORDNING — pausen finns FÖRE kontrollen ═════════════════════

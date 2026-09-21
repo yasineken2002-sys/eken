@@ -77,8 +77,7 @@ medDb('F056: fastighetsimportens kontrakt', () => {
   const kor = (buffer: Buffer) =>
     importService.processImport(buffer, 'fastigheter.csv', 'PROPERTIES', orgId, userId)
 
-  const rader = (organizationId = orgId) =>
-    prisma.property.findMany({ where: { organizationId } })
+  const rader = (organizationId = orgId) => prisma.property.findMany({ where: { organizationId } })
 
   const skapaOrg = async (namn: string) => {
     const sfx = randomUUID().slice(0, 8)
@@ -249,12 +248,7 @@ medDb('F056: fastighetsimportens kontrakt', () => {
   })
 
   it('F056 en kolumn i filen kan inte välja organisation', async () => {
-    const jobb = await kor(
-      csv(
-        [`${rad()},${annanOrgId}`],
-        `${MALLENS_RUBRIKER},organizationId`,
-      ),
-    )
+    const jobb = await kor(csv([`${rad()},${annanOrgId}`], `${MALLENS_RUBRIKER},organizationId`))
 
     expect(jobb.successRows).toBe(1)
     expect(await rader(orgId)).toHaveLength(1)

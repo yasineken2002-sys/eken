@@ -200,6 +200,22 @@ function nyaTjänster(p: PrismaClient): Riggtjänster {
     recordPaymentDataThrough: async (_org: string, through: Date) => {
       täckning.push(through)
     },
+    // G2-AVSLUT — ingest tar numera det exklusiva organisationslåset och
+    // öppnar en pausperiod i SAMMA transaktion som gör raden olöst. Bär inte
+    // attrappen dem faller radskrivningen, och provet mäter riggen.
+    //
+    // `oppnaGranskningsperiod` svarar null = "en paus pågick redan", så ingen
+    // avisering försöks. Den här filen äger FILNIVÅNS IDEMPOTENS, inte
+    // aviseringen; periodens eget beteende mäts mot riktiga tjänster i
+    // `kravpaus-samtidighet.db.spec.ts`.
+    lasOrdningForOlostGranskning: async () => undefined,
+    oppnaGranskningsperiod: async () => null,
+    avslutaGranskningsperiodOmLost: async () => false,
+    aviseraGranskningspaus: async () => ({
+      period: null,
+      notisSkapad: false,
+      mejlKoat: false,
+    }),
   }
   const attempts = new BankImportAttemptService(p as never)
 
