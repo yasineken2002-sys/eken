@@ -77,7 +77,12 @@ function buildService() {
   const pdfService = { generateFromHtml }
   const storage = {}
 
-  const service = new InspectionsService(prisma as never, pdfService as never, storage as never)
+  const service = new InspectionsService(
+    prisma as never,
+    pdfService as never,
+    storage as never,
+    { kontrolleraBilder: async () => [], sammanfatta: () => 'INGA_BILDER' } as never,
+  )
   return { service, generateFromHtml }
 }
 

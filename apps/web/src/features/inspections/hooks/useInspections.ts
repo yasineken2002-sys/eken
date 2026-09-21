@@ -9,8 +9,12 @@ import {
   deleteInspection,
   downloadProtocolPdf,
   analyzeInspection,
+  fetchInspectionVersions,
+  fetchImageCheck,
+  createInspectionCorrection,
 } from '../api/inspections.api'
 import type {
+  CreateInspectionCorrectionInput,
   InspectionFilter,
   CreateInspectionInput,
   UpdateInspectionInput,
@@ -86,6 +90,46 @@ export function useDeleteInspection() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteInspection(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['inspections'] })
+    },
+  })
+}
+
+export function useInspectionVersions(id: string | null) {
+  return useQuery({
+    queryKey: ['inspections', id, 'versioner'],
+    queryFn: () => fetchInspectionVersions(id!),
+    enabled: !!id,
+    staleTime: 60_000,
+  })
+}
+
+/**
+ * Bildkontrollen körs BARA när någon ber om den.
+ *
+ * `enabled: false` är inte en optimering utan en hållning: kontrollen läser
+ * varje bilagas bytes ur lagringen, och ett resultat som dyker upp av sig självt
+ * vid varje panelöppning hade blivit en siffra ingen beställt och ingen läser.
+ * `refetch()` från knappen är vad som startar den.
+ */
+export function useImageCheck(id: string | null) {
+  return useQuery({
+    queryKey: ['inspections', id, 'bildkontroll'],
+    queryFn: () => fetchImageCheck(id!),
+    enabled: false,
+    // Utfallet gäller den sekund det mättes. Att servera ett gammalt svar ur
+    // cachen hade varit att visa en kontroll som inte utfördes nu.
+    gcTime: 0,
+    staleTime: 0,
+  })
+}
+
+export function useCreateCorrection() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: CreateInspectionCorrectionInput }) =>
+      createInspectionCorrection(id, dto),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['inspections'] })
     },

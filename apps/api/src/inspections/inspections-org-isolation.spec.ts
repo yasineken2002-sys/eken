@@ -39,7 +39,12 @@ function make() {
     },
     inspectionItem: { createMany: jest.fn() },
   }
-  const service = new InspectionsService(prisma as never, {} as never, {} as never)
+  const service = new InspectionsService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    { kontrolleraBilder: async () => [], sammanfatta: () => 'INGA_BILDER' } as never,
+  )
   return { service, prisma }
 }
 

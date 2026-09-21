@@ -21,6 +21,13 @@ import {
   computeSignedContentHash,
   type SignedContent,
 } from './inspection-signature'
+import { ordnaKedja, arSlutford, type VersionsRad, type VersionsLank } from './inspection-versions'
+import {
+  InspectionImageIntegrityService,
+  type Bildkontroll,
+  type BildkontrollUtfall,
+} from './inspection-image-integrity.service'
+import { CreateInspectionCorrectionDto } from './dto/create-inspection-correction.dto'
 
 const DEFAULT_ITEMS: { room: string; item: string }[] = [
   { room: 'Hall', item: 'Golv' },
@@ -97,6 +104,36 @@ const FULL_INCLUDE = {
   lease: true,
   items: true,
   images: true,
+  // EFTERFÖLJAREN, I SAMMA FRÅGA. Listan måste kunna märka en rad som "rättad"
+  // utan att slå en fråga per rad — och den enda uppgift som svarar på det är
+  // om någon annan rad pekar hit med `correctionOfId`. En join är billig; N+1
+  // över en lista är det inte.
+  //
+  // Fälten är avsiktligt få: listan ska kunna säga ATT en rättelse finns och om
+  // den är slutförd, inte visa hela den.
+  correction: {
+    select: { id: true, version: true, status: true, signedAt: true, completedAt: true },
+  },
+} as const
+
+/**
+ * Kedjans rader, så lite av dem som versionslogiken behöver.
+ *
+ * Egen select och inte `FULL_INCLUDE`: kedjan hämtas en rad i taget och läses
+ * bara för att ordnas. Att dra poster, bilder och hyresgästuppgifter för varje
+ * länk hade varit att betala för data ingen läser.
+ */
+const KEDJE_SELECT = {
+  id: true,
+  version: true,
+  status: true,
+  signedAt: true,
+  completedAt: true,
+  correctionOfId: true,
+  correctionReason: true,
+  correctedById: true,
+  correctedAt: true,
+  createdAt: true,
 } as const
 
 @Injectable()
@@ -105,6 +142,7 @@ export class InspectionsService {
     private readonly prisma: PrismaService,
     private readonly pdfService: PdfService,
     private readonly storage: StorageService,
+    private readonly bildkontroll: InspectionImageIntegrityService,
   ) {}
 
   /**
@@ -148,13 +186,33 @@ export class InspectionsService {
     return rader.map((rad) => this.medContentHash(rad))
   }
 
+  /**
+   * Detaljvyn — med hela versionskedjan.
+   *
+   * Kedjan ligger HÄR och inte bakom en egen endpoint därför att frågan "vilken
+   * version tittar jag på, och gäller den?" inte är en fördjupning. Den är en
+   * förutsättning för att läsa svaret rätt. En detaljvy som visar ett protokoll
+   * utan att säga att en nyare version gäller visar fel uppgift, inte mindre.
+   *
+   * Kostnaden är en enradig indexslagning per länk, och kedjor är korta. Listan
+   * (`findAll`) får den INTE av samma skäl: där hade den blivit N+1.
+   */
   async findOne(id: string, orgId: string) {
     const inspection = await this.prisma.inspection.findFirst({
       where: { id, organizationId: orgId },
       include: FULL_INCLUDE,
     })
     if (!inspection) throw new NotFoundException('Besiktning hittades inte')
-    return this.medContentHash(inspection)
+
+    const versioner = ordnaKedja(await this.hamtaKedja(this.prisma, id, orgId))
+    return {
+      ...this.medContentHash(inspection),
+      versioner,
+      // Den HÄR radens roll i kedjan, uträknad en gång så att klienten inte
+      // behöver leta rätt på sig själv i listan.
+      arGallande: versioner.find((v) => v.id === id)?.arGallande ?? false,
+      arUtkast: versioner.find((v) => v.id === id)?.arUtkast ?? false,
+    }
   }
 
   // IDOR-spärr: varje klient-skickat relations-id måste tillhöra anropande org
@@ -582,6 +640,329 @@ export class InspectionsService {
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
+  // ══ RÄTTELSEVERSIONER ═════════════════════════════════════════════════════
+
+  /**
+   * Hela versionskedjan raden ingår i, org-scopad, i versionsordning.
+   *
+   * Vandringen går först BAKÅT till roten via `correctionOfId` och sedan FRAMÅT
+   * via det unika villkoret på samma kolumn. Båda stegen är enradiga
+   * indexslagningar, och kedjor är korta — ett protokoll rättas en eller två
+   * gånger, inte hundra.
+   *
+   * `sedda` är inte paranoia utan en terminationsgaranti: skulle data någon gång
+   * bli cyklisk — genom rå SQL eller en återställd säkerhetskopia — ska den här
+   * funktionen sluta, inte snurra. En vakt som aldrig löser ut kostar en
+   * Set-slagning per länk.
+   *
+   * Org-scopet står i VARJE fråga och inte bara i den första: en kedja får inte
+   * kunna vandras in i en annan organisations rader ens om en `correctionOfId`
+   * pekar dit.
+   */
+  private async hamtaKedja(
+    db: Prisma.TransactionClient | PrismaService,
+    id: string,
+    orgId: string,
+  ): Promise<VersionsRad[]> {
+    const start = await db.inspection.findFirst({
+      where: { id, organizationId: orgId },
+      select: KEDJE_SELECT,
+    })
+    if (!start) throw new NotFoundException('Besiktning hittades inte')
+
+    const kedja: VersionsRad[] = [start]
+    const sedda = new Set<string>([start.id])
+
+    let bakat = start
+    while (bakat.correctionOfId) {
+      const foregaende = await db.inspection.findFirst({
+        where: { id: bakat.correctionOfId, organizationId: orgId },
+        select: KEDJE_SELECT,
+      })
+      if (!foregaende || sedda.has(foregaende.id)) break
+      sedda.add(foregaende.id)
+      kedja.push(foregaende)
+      bakat = foregaende
+    }
+
+    let framat = start
+    for (;;) {
+      const efterfoljande = await db.inspection.findFirst({
+        where: { correctionOfId: framat.id, organizationId: orgId },
+        select: KEDJE_SELECT,
+      })
+      if (!efterfoljande || sedda.has(efterfoljande.id)) break
+      sedda.add(efterfoljande.id)
+      kedja.push(efterfoljande)
+      framat = efterfoljande
+    }
+
+    return kedja
+  }
+
+  /**
+   * Versionskedjan, märkt med vilken version som gäller och vilka som är utkast.
+   *
+   * Publik därför att BÅDE webbens detaljpanel och hyresgästportalen behöver
+   * samma svar på samma fråga. Två härledningar av "vilken version gäller" hade
+   * varit två tillfällen att svara olika.
+   */
+  async hamtaVersioner(id: string, orgId: string): Promise<VersionsLank<VersionsRad>[]> {
+    return ordnaKedja(await this.hamtaKedja(this.prisma, id, orgId))
+  }
+
+  /**
+   * Skapar en länkad rättelseversion av ett slutfört protokoll.
+   *
+   * ── VAD SOM ALDRIG HÄNDER HÄR ─────────────────────────────────────────────
+   *
+   * Originalet skrivs inte. Inte en kolumn, inte en post, inte en bild, inte
+   * dess `signedAt` eller `signedContentHash`. Rättelsen är en NY rad; att den
+   * finns ändrar ingenting om den gamla annat än att den gamla nu har en
+   * efterföljare. Det är hela skillnaden mot att "låsa upp och redigera".
+   *
+   * Lagringsobjekten rörs inte heller: bildraderna KOPIERAS med samma
+   * `storageKey` och samma `contentSha256`. Ingen fil laddas upp igen och ingen
+   * fil raderas. Två rader som pekar på samma objekt är avsiktligt — objektet är
+   * oförändrat, och det är just det digesten ska kunna visa.
+   *
+   * ── SAMTIDIGHET: TVÅ SPÄRRAR, INTE EN ────────────────────────────────────
+   *
+   * Radlåset på KÄLLAN serialiserar två samtidiga rättelseförsök. Det unika
+   * villkoret på `correctionOfId` GARANTERAR utfallet. Låset räcker inom en
+   * databas, men villkoret räcker även om en framtida skrivväg glömmer låset —
+   * och det är den ordningen garantier ska staplas i.
+   *
+   * ── GAMMAL KLIENTVY ───────────────────────────────────────────────────────
+   *
+   * `expectedContentHash` jämförs under låset mot innehållet som det faktiskt
+   * står, med samma funktion signeringen använder. Den som rättar ett protokoll
+   * hen inte sett hela fälls — annars hade rättelsens orsak beskrivit en version
+   * som inte längre fanns.
+   *
+   * ── DEPOSITIONEN RÖRS INTE, OCH DET SÄGS UT ───────────────────────────────
+   *
+   * Ett beslutat avdrag är bokfört: `Deposit.deductions` har ett verifikat bakom
+   * sig (`createJournalEntryForDepositRefund`). Att låta en protokollrättelse
+   * räkna om det hade varit att ändra bokförd räkenskapsinformation som en
+   * sidoeffekt av en textändring. Rättelsen läser depositionen och VARNAR;
+   * den skriver aldrig. Åtgärden är en egen, medveten handling i
+   * depositionsvyn.
+   */
+  async skapaRattelse(
+    id: string,
+    dto: CreateInspectionCorrectionDto,
+    orgId: string,
+    userId: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      // Låset tas FÖRE läsningen, av samma skäl som i `lockAndAssertUnsigned`:
+      // annars läses ett värde som hinner bli inaktuellt.
+      await tx.$queryRaw`SELECT id FROM "Inspection" WHERE id = ${id} AND "organizationId" = ${orgId} FOR UPDATE`
+
+      const kalla = await tx.inspection.findFirst({
+        where: { id, organizationId: orgId },
+        include: FULL_INCLUDE,
+      })
+      if (!kalla) throw new NotFoundException('Besiktning hittades inte')
+
+      // Bara ett SLUTFÖRT protokoll kan rättas. Ett utkast ändras på plats —
+      // att ge det en rättelseversion hade skapat en kedja av halvfärdiga
+      // protokoll där ingen någonsin varit gällande.
+      if (!arSlutford(kalla)) {
+        throw new ConflictException(
+          'Bara ett slutfört eller signerat protokoll kan rättas. Ett pågående protokoll ändras direkt.',
+        )
+      }
+
+      if (computeSignedContentHash(kalla) !== dto.expectedContentHash) {
+        throw new ConflictException(
+          'Protokollet har ändrats sedan du läste det. Läs om besiktningen, granska ändringen och skapa rättelsen därefter — ingen rättelse har skapats.',
+        )
+      }
+
+      // Läst under låset. Det unika villkoret nedan är garantin; den här
+      // kontrollen finns för att felmeddelandet ska säga VAD som hänt i stället
+      // för att läcka ett databasfel.
+      if (kalla.correction) {
+        throw new ConflictException(
+          `Den här versionen är redan rättad (version ${kalla.correction.version}). Rätta den senaste versionen i stället.`,
+        )
+      }
+
+      const nu = new Date()
+      let skapad
+      try {
+        skapad = await tx.inspection.create({
+          data: {
+            organizationId: kalla.organizationId,
+            propertyId: kalla.propertyId,
+            unitId: kalla.unitId,
+            leaseId: kalla.leaseId,
+            tenantId: kalla.tenantId,
+            // Vem som UTFÖRDE besiktningen bärs över — det är samma besiktning,
+            // rättad. Vem som RÄTTADE står i `correctedById` nedan, och de två
+            // ska inte gå att blanda ihop.
+            inspectedById: kalla.inspectedById,
+            type: kalla.type,
+            scheduledDate: kalla.scheduledDate,
+            overallCondition: kalla.overallCondition,
+            notes: kalla.notes,
+
+            // UTKAST. Ingen `completedAt`, ingen `signedAt`, ingen
+            // `signedContentHash` och inga signaturnamn: den nya versionen har
+            // inte slutförts och får inte se ut som om den hade det.
+            status: InspectionStatus.IN_PROGRESS,
+
+            version: kalla.version + 1,
+            correctionOfId: kalla.id,
+            correctionReason: dto.orsak,
+            correctedById: userId,
+            correctedAt: nu,
+
+            items: {
+              create: kalla.items.map((post) => ({
+                room: post.room,
+                item: post.item,
+                condition: post.condition,
+                notes: post.notes,
+                repairCost: post.repairCost,
+              })),
+            },
+            images: {
+              create: kalla.images.map((bild) => ({
+                filename: bild.filename,
+                // SAMMA nyckel och SAMMA digest. Originalets fil bevaras och
+                // kopieras inte — objektet är oförändrat, och digesten ska
+                // fortsätta beskriva exakt det objektet.
+                storageKey: bild.storageKey,
+                storageUrl: bild.storageUrl,
+                caption: bild.caption,
+                room: bild.room,
+                size: bild.size,
+                contentSha256: bild.contentSha256,
+              })),
+            },
+          },
+          include: FULL_INCLUDE,
+        })
+      } catch (fel) {
+        // P2002 = det unika villkoret på `correctionOfId`. Den här grenen nås
+        // när två transaktioner tagit sig förbi kontrollen ovan — alltså exakt
+        // det fall låset ensamt inte kan utesluta.
+        if (fel instanceof Prisma.PrismaClientKnownRequestError && fel.code === 'P2002') {
+          throw new ConflictException(
+            'En rättelse av den här versionen skapades precis av någon annan. Läs om besiktningen och utgå från den senaste versionen.',
+          )
+        }
+        throw fel
+      }
+
+      return {
+        ...this.medContentHash(skapad),
+        rattelseAv: {
+          id: kalla.id,
+          version: kalla.version,
+          status: kalla.status,
+          signedAt: kalla.signedAt,
+        },
+        // LÄST, INTE SKRIVET. Se metodens huvud.
+        depositionsvarning: await this.depositionsvarning(tx, kalla.leaseId, orgId),
+      }
+    }, PRISMA_DEFAULT_TX_LIMITS)
+  }
+
+  /**
+   * Upplysning om att protokollet som rättas redan ligger bakom ett beslutat
+   * depositionsavdrag eller en genomförd återbetalning.
+   *
+   * Returnerar `null` när det inte finns något att upplysa om — inte ett objekt
+   * med nollor. Skillnaden syns i gränssnittet: en ruta som alltid visas med
+   * "0 kr i avdrag" lär användaren att inte läsa den.
+   *
+   * Tjänsten SKRIVER aldrig något här. Den enda vägen som ändrar ett avdrag är
+   * `DepositsService.refund`, och den ska förbli det.
+   */
+  private async depositionsvarning(
+    db: Prisma.TransactionClient | PrismaService,
+    leaseId: string | null,
+    orgId: string,
+  ): Promise<{
+    depositId: string
+    status: string
+    avdragAntal: number
+    refundAmount: string | null
+    refundedAt: Date | null
+  } | null> {
+    if (!leaseId) return null
+
+    const deposition = await db.deposit.findFirst({
+      where: { leaseId, organizationId: orgId },
+      select: {
+        id: true,
+        status: true,
+        deductions: true,
+        refundAmount: true,
+        refundedAt: true,
+      },
+    })
+    if (!deposition) return null
+
+    const avdrag = Array.isArray(deposition.deductions) ? deposition.deductions.length : 0
+    const reglerad = deposition.refundedAt !== null
+    if (avdrag === 0 && !reglerad) return null
+
+    return {
+      depositId: deposition.id,
+      status: deposition.status,
+      avdragAntal: avdrag,
+      refundAmount: deposition.refundAmount ? deposition.refundAmount.toFixed(2) : null,
+      refundedAt: deposition.refundedAt,
+    }
+  }
+
+  // ══ BILDKONTROLL ══════════════════════════════════════════════════════════
+
+  /**
+   * Läser tillbaka varje bilagas bytes ur lagringen och jämför med den lagrade
+   * digesten.
+   *
+   * Det här är kontrollen `InspectionImage.contentSha256` skrevs för och som
+   * kolumnens egen kommentar sa saknades: "ingen kod läser i dag tillbaka
+   * objektet ur lagringen för att jämföra".
+   *
+   * Den ligger BAKOM en egen endpoint och inte i `findOne`, därför att den
+   * kostar en nätverkshämtning per bilaga. En lista som tyst hämtade hundra
+   * objekt ur R2 för att rita en badge hade varit en mätning ingen bett om.
+   * Den körs alltså när någon faktiskt vill veta, och vid PDF-export.
+   */
+  async kontrolleraBilder(
+    id: string,
+    orgId: string,
+  ): Promise<{
+    inspectionId: string
+    sammanfattning: BildkontrollUtfall | 'INGA_BILDER'
+    kontrolleradAt: Date
+    bilder: Bildkontroll[]
+  }> {
+    const besiktning = await this.prisma.inspection.findFirst({
+      where: { id, organizationId: orgId },
+      select: {
+        id: true,
+        images: { select: { id: true, filename: true, storageKey: true, contentSha256: true } },
+      },
+    })
+    if (!besiktning) throw new NotFoundException('Besiktning hittades inte')
+
+    const bilder = await this.bildkontroll.kontrolleraBilder(besiktning.images)
+    return {
+      inspectionId: besiktning.id,
+      sammanfattning: this.bildkontroll.sammanfatta(bilder),
+      kontrolleradAt: new Date(),
+      bilder,
+    }
+  }
+
   async delete(id: string, orgId: string) {
     return this.prisma.$transaction(async (tx) => {
       // `onDelete: Cascade` tar poster OCH bilder med sig. Att radera en
@@ -589,6 +970,27 @@ export class InspectionsService {
       // — det är att utplåna hela beviset, och till skillnad från en ändring
       // lämnar det ingenting kvar att jämföra med.
       await this.lockAndAssertUnsigned(tx, id, orgId)
+
+      // ── EN VERSION MED EFTERFÖLJARE RADERAS INTE ────────────────────────
+      //
+      // Främmande nyckeln (`NO ACTION`) fäller redan den här raderingen i
+      // databasen. Kontrollen finns ändå, av två skäl: felet blir ett begripligt
+      // 409 i stället för ett rått databasfel, och kedjans invariant blir
+      // LÄSBAR på det ställe den gäller. Att ett skydd finns två gånger är
+      // billigare än att den som läser tjänsten måste gissa att det finns alls.
+      //
+      // Konsekvensen är avsiktlig: ett utkast till rättelse går att kasta, men
+      // en version som någon HAR rättat går inte att radera under rättelsen.
+      const efterfoljare = await tx.inspection.findFirst({
+        where: { correctionOfId: id, organizationId: orgId },
+        select: { id: true, version: true },
+      })
+      if (efterfoljare) {
+        throw new ConflictException(
+          `Besiktningen har en rättelseversion (version ${efterfoljare.version}) och kan inte raderas. Ta bort rättelsen först.`,
+        )
+      }
+
       return tx.inspection.delete({ where: { id } })
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
@@ -597,6 +999,18 @@ export class InspectionsService {
     const inspection = await this.findOne(id, orgId)
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
+
+    // ── EXPORTEN ÄR EN "RELEVANT VISNING", OCH DÄRFÖR KONTROLLERAS BILAGORNA ──
+    //
+    // PDF:en är det protokollet lämnas ut SOM — till hyresgästen, till en
+    // motpart, till en hyresnämnd. Att exportera en bilageförteckning utan att
+    // ha läst bilagorna hade varit att intyga något ingen kontrollerat.
+    //
+    // Kontrollen sker HÄR och inte i `findOne`, därför att exporten redan är en
+    // tung, avsiktlig handling — en extra läsning per bilaga syns inte i den,
+    // medan samma läsning i varje detaljvy hade gjort visningen dyr.
+    const bildutfall = await this.bildkontroll.kontrolleraBilder(inspection.images)
+    const bildsammanfattning = this.bildkontroll.sammanfatta(bildutfall)
 
     const tenantName = inspection.tenant
       ? inspection.tenant.type === 'INDIVIDUAL'
@@ -686,7 +1100,107 @@ export class InspectionsService {
     .sig-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; }
     .sig-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 32px; }
     .sig-line { border-top: 1px solid #374151; padding-top: 8px;
-                font-size: 12px; color: #6b7280; }`
+                font-size: 12px; color: #6b7280; }
+    .version-block { margin: 32px 0; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; }
+    .block-title { font-size: 15px; font-weight: 700; color: ${brandColor}; margin-bottom: 12px; }
+    .version-status { font-size: 13px; margin-bottom: 14px; padding: 10px 12px; border-radius: 8px; }
+    .version-status.gallande { background: #ecfdf5; color: #065f46; }
+    .version-status.ersatt { background: #fef3c7; color: #92400e; }
+    .block-note { font-size: 11px; color: #6b7280; margin-top: 12px; line-height: 1.5; }`
+
+    // ── VILKEN VERSION DEN HÄR UTSKRIFTEN ÄR ──────────────────────────────
+    //
+    // Blocket ritas bara när det finns mer än en version. Ett original som
+    // aldrig rättats ska inte bära en rubrik om rättelser — en tom sektion lär
+    // läsaren att hoppa över den, och då missas den dagen den betyder något.
+    //
+    // Att utskriften säger om den är GÄLLANDE är hela poängen: en PDF vandrar
+    // vidare utan sitt sammanhang, och en rättad version som ser ut som ett
+    // giltigt protokoll är värre än inget protokoll.
+    const versionHtml =
+      inspection.versioner.length > 1
+        ? `
+  <div class="version-block">
+    <div class="block-title">Versioner och rättelser</div>
+    <div class="version-status ${inspection.arGallande ? 'gallande' : 'ersatt'}">
+      ${
+        inspection.arGallande
+          ? `Denna utskrift är version ${inspection.version} och är den gällande versionen.`
+          : inspection.arUtkast
+            ? `Denna utskrift är version ${inspection.version} och är ett UTKAST som ännu inte slutförts. Den gäller inte.`
+            : `Denna utskrift är version ${inspection.version} och har ersatts av en senare version.`
+      }
+    </div>
+    <table class="items-table">
+      <thead>
+        <tr><th>Version</th><th>Status</th><th>Rättelsedatum</th><th>Orsak</th></tr>
+      </thead>
+      <tbody>
+        ${inspection.versioner
+          .map(
+            (v) => `
+        <tr>
+          <td>${v.version}${v.arGallande ? ' (gäller)' : ''}${v.arUtkast ? ' (utkast)' : ''}</td>
+          <td>${escapeHtml(v.status)}</td>
+          <td>${v.correctedAt ? formatDateStr(v.correctedAt) : '—'}</td>
+          <td>${v.correctionReason ? escapeHtml(v.correctionReason) : '—'}</td>
+        </tr>`,
+          )
+          .join('')}
+      </tbody>
+    </table>
+  </div>`
+        : ''
+
+    // ── BILAGORNA OCH VAD KONTROLLEN FAKTISKT VISADE ──────────────────────
+    //
+    // Fyra utfall, fyra texter. Ordet "verifierad" står BARA där bytena lästes
+    // och digesten stämde. En bilaga utan lagrad digest får sin egen rad som
+    // säger att kontroll inte är möjlig — inte ett kryss, inte ett kors.
+    const bilagetext: Record<string, string> = {
+      VERIFIERAD: 'Verifierad — innehållet är oförändrat sedan uppladdningen',
+      AVVIKANDE: 'AVVIKER — innehållet är INTE detsamma som vid uppladdningen',
+      SAKNAS: 'Kunde inte läsas ur lagringen — innehållet är okänt',
+      DIGEST_SAKNAS:
+        'Ingen digest lagrad (uppladdad före kontrollen fanns) — kan inte kontrolleras',
+    }
+    const bilagefarg: Record<string, string> = {
+      VERIFIERAD: '#059669',
+      AVVIKANDE: '#DC2626',
+      SAKNAS: '#D97706',
+      DIGEST_SAKNAS: '#6b7280',
+    }
+    const bilageHtml =
+      bildutfall.length > 0
+        ? `
+  <div class="version-block">
+    <div class="block-title">Bilagor — integritetskontroll</div>
+    <div class="version-status ${bildsammanfattning === 'VERIFIERAD' ? 'gallande' : 'ersatt'}">
+      Kontrollen utfördes ${formatDateStr(new Date())} genom att varje bilagas
+      innehåll lästes tillbaka ur lagringen och jämfördes med den digest som
+      sparades vid uppladdningen. Sammantaget utfall: ${escapeHtml(bildsammanfattning)}.
+    </div>
+    <table class="items-table">
+      <thead><tr><th>Filnamn</th><th>Utfall</th></tr></thead>
+      <tbody>
+        ${bildutfall
+          .map(
+            (b) => `
+        <tr>
+          <td>${escapeHtml(b.filename)}</td>
+          <td style="color:${bilagefarg[b.utfall] ?? '#6b7280'};font-weight:600">${escapeHtml(bilagetext[b.utfall] ?? b.utfall)}</td>
+        </tr>`,
+          )
+          .join('')}
+      </tbody>
+    </table>
+    <div class="block-note">
+      Kontrollen visar om innehållet ändrats. Den säger ingenting om vem som
+      laddade upp bilagan eller vem som eventuellt ändrat den, och den är ingen
+      utfästelse om att lagringen är oföränderlig.
+    </div>
+  </div>`
+        : ''
 
     const contentHtml = `<style>${contentCss}</style>
   <div class="protocol-sub">${translateType(inspection.type)}</div>
@@ -723,6 +1237,10 @@ export class InspectionsService {
     </div>
     ${inspection.overallCondition ? `<div class="summary-item" style="flex:2"><div class="summary-label">Övergripande kommentar</div><div style="font-size:14px;margin-top:4px">${escapeHtml(inspection.overallCondition)}</div></div>` : ''}
   </div>
+
+  ${versionHtml}
+
+  ${bilageHtml}
 
   <div class="signatures">
     <div class="sig-box">

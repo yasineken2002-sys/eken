@@ -155,7 +155,12 @@ medDb('F025 — frysning av signerat besiktningsprotokoll', () => {
   beforeAll(async () => {
     prisma = new PrismaClient()
     await prisma.$connect()
-    service = new InspectionsService(prisma as never, {} as never, {} as never)
+    service = new InspectionsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      { kontrolleraBilder: async () => [], sammanfatta: () => 'INGA_BILDER' } as never,
+    )
 
     orgA = await nyOrg('f025-a')
     orgB = await nyOrg('f025-b')

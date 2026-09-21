@@ -55,7 +55,12 @@ medDb('signeringens förutsättning — visad version mot signerad version', () 
   beforeAll(async () => {
     prisma = new PrismaClient()
     await prisma.$connect()
-    service = new InspectionsService(prisma as never, {} as never, {} as never)
+    service = new InspectionsService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      { kontrolleraBilder: async () => [], sammanfatta: () => 'INGA_BILDER' } as never,
+    )
 
     const sfx = randomUUID().slice(0, 8)
     const org = await prisma.organization.create({
