@@ -745,6 +745,13 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
     })
     // Kanariefågeln för räkningen själv: finns ingen faktura är `pausade: 0`
     // sant om ingenting, och provet hade varit grönt av tomhet.
+    //
+    // OCH KANARIEFÅGELN ÄR SJÄLV PRÖVAD. Terminal 1 tog bort `invoice.create`
+    // ovan och krävde att DEN här raden föll — `Expected > 0, Received 0`
+    // (deras NK19, mätt på den sammanförda koden). En vaktpost som inte kan
+    // falla är samma vakuum en våning upp, och det var steget jag själv missade
+    // efter att ha fått fyndet: jag mätte att assertionen biter, inte att
+    // vakten gör det.
     expect(fakturor).toBeGreaterThan(0)
     expect(pausade).toBe(0)
     utfall.G6 = { avin, fakturor, pausade, gräns: 'KRAVTRAPPAN_KANNER_INTE_GRANSKNINGSKON' }
