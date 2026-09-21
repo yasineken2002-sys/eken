@@ -911,11 +911,12 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     ogiltigVarfor: 'beloppet måste vara ett tal',
   },
   {
-    // #F034c — målkontot för bankimport. Pariteten prövar NAMNETS GRÄNSER, som
-    // är det enda i nyttolasten som kan glida isär: schemat har max(120) och
-    // min(1), DTO:n har bara `@IsString`. Ett tomt namn är det verkliga
-    // felfallet — kontot är det operatören VÄLJER PÅ, och ett namnlöst konto
-    // gör väljaren obrukbar.
+    // #F034c — målkontot för bankimport. Pariteten prövar NAMNETS GRÄNSER, och
+    // posten skrevs innan de fanns på båda sidor: schemat hade min(1)/max(120),
+    // DTO:n bara `@IsString()`. Provet mätte `{ zod: false, dto: true }` för
+    // `name: ''` och det var ett verkligt fel — ett konto utan namn hade kunnat
+    // skapas via API:t och sedan inte gått att välja i importens kontoväljare,
+    // eftersom väljaren visar namnet. DTO:n bär nu samma gränser.
     endpoint: 'POST /reconciliation/bank-accounts',
     inputTyp: 'CreateBankAccountInput',
     schema: CreateBankAccountSchema,

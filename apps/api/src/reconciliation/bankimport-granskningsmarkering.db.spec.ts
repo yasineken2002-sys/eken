@@ -50,6 +50,13 @@
  * matchningsreglerna (`auto-match-all.db.spec.ts`), och inte heller vad en
  * operatör SER — webbmärket har sitt eget prov.
  *
+ * ── GRÄNSEN, MÄTT I STÄLLET FÖR PÅSTÅDD ─────────────────────────────────────
+ *
+ * G6 mäter något spärren INTE gör: kravtrappan känner inte till granskningskön.
+ * Den gränsen är redovisad och oavgjord, inte löst — se noten i provet och
+ * RAPPORT.md. Att den ligger som ett PROV och inte bara som en mening är
+ * poängen: en gräns som bara står i prosa märker ingen när den ändras.
+ *
  * ── NEGATIVKONTROLLEN ───────────────────────────────────────────────────────
  *
  * Varje spärrprov kör bulkmatchningen med TVÅ rader: den stämplade och en
@@ -612,6 +619,70 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
     })
     expect(efter.status).toBe('IGNORED')
     utfall.G5 = efter
+  })
+
+  it('G6: GRÄNSEN — spärren håller kravtrappan helt oinformerad (känd, oavgjord)', async () => {
+    // ── VAD DET HÄR PROVET ÄR, OCH VAD DET INTE ÄR ────────────────────────
+    //
+    // Det är INTE ett krav på att kravtrappan ska pausas. Det är en MÄTNING av
+    // att den inte gör det, så att gränsen är ett faktum och inte en mening i
+    // en rapport. Funnet av terminal 1 (fynd G2) ur vår egen underrättelse om
+    // spärren, mätt i deras gren: `rent-reminder.service.ts:237` väljer
+    // kandidater på `status: 'OVERDUE'`, `collectionStage: 'NONE'`,
+    // `isBackfill: false` — och ingenting i hela kedjan läser något
+    // identitetsspår. `identityReview` förekommer inte i `src/` utanför
+    // avstämningen.
+    //
+    // VARFÖR DET ÄR NYTT. Före spärren kunde en omatchad rad plockas upp av
+    // nästa `autoMatchAll` — fördröjningen var en fördröjning. Nu är
+    // granskningsraderna uttryckligen undantagna från varje automatisk väg, så
+    // enda utgången är att en människa avgör. Fönstret stänger sig inte längre
+    // självt, och kravklockan går hela tiden: påminnelse, påminnelseavgift,
+    // ränta och kravsteg fortsätter enligt schema för en betalning systemet
+    // självt sagt att det inte kan avgöra.
+    //
+    // VARFÖR VI INTE RÄTTAR DET HÄR. Att fördröja ett krav mot en hyresgäst är
+    // ett ägarbeslut, och kodbasen har redan en granne som visar hur ett sådant
+    // beslut ser ut när det tagits: `isBackfill: false` i samma urval, med
+    // skälet utskrivet (JB 12 kap 42 §). Men det finns också ett hinder som
+    // inget ägarbeslut tar bort: EN GRANSKNINGSRAD HAR INGEN FASTSTÄLLD
+    // KOPPLING TILL NÅGON AVI — det är hela skälet att den väntar. Att pausa
+    // "den avi raden kan höra till" skulle antingen pausa ingenting, eller
+    // pausa på en GISSNING om vilken avi det är — alltså återinföra exakt den
+    // gissning granskningsutfallet finns för att vägra.
+    //
+    // Gränsen är därför redovisad, inte löst, och den står som ett eget stycke
+    // i RAPPORT.md och i READY-FOR-REVIEW.json.
+    const ocr = nyttOcr()
+    const noticeId = await avi(ocr)
+    await historiskRadUtanKonto(ocr)
+    await recon.importBankStatement(csv(ocr), 'utdrag.csv', orgId, kontoA)
+
+    // Avin försätts i kravtrappans ingångsläge, precis som tiden hade gjort.
+    await prisma.rentNotice.update({ where: { id: noticeId }, data: { status: 'OVERDUE' } })
+    await recon.autoMatchAll(orgId)
+
+    const avin = await prisma.rentNotice.findUniqueOrThrow({
+      where: { id: noticeId },
+      select: { status: true, collectionStage: true, isBackfill: true, paidAt: true },
+    })
+
+    // MÄTNINGEN: avin uppfyller varje villkor i kravtrappans kandidaturval,
+    // trots att den enda betalning som kan gälla den ligger och väntar på ett
+    // mänskligt beslut. Faller det här provet har NÅGON ÄNDRAT gränsen — och då
+    // ska ändringen vara avsiktlig och motiverad, inte upptäckas i drift.
+    expect(avin.status).toBe('OVERDUE')
+    expect(avin.collectionStage).toBe('NONE')
+    expect(avin.isBackfill).toBe(false)
+    expect(avin.paidAt).toBeNull()
+
+    // Och ingenting i vår kod har satt någon pausmarkering — vi har inte smugit
+    // in halva regel nr 1.
+    const pausade = await prisma.invoice.count({
+      where: { organizationId: orgId, remindersPaused: true },
+    })
+    expect(pausade).toBe(0)
+    utfall.G6 = { avin, pausade, gräns: 'KRAVTRAPPAN_KANNER_INTE_GRANSKNINGSKON' }
   })
 
   // ══ PUNKT 4: CROSS-SOURCE-DEDUPEN RESPEKTERAR KONTOT ══════════════════════

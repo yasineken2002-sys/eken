@@ -1547,6 +1547,34 @@ export class ReconciliationService {
     // MARKERINGEN NOLLSTÄLLS INTE när människan svarat. Den säger vad IMPORTEN
     // visste, och det ändras inte av att någon senare avgjorde frågan. Att sudda
     // den hade tagit bort det enda spåret av varför raden krävde ett beslut.
+    //
+    // ── GRÄNSEN: KRAVTRAPPAN KÄNNER INTE TILL GRANSKNINGSKÖN ────────────
+    //
+    // Skriven här därför att det är HÄR nästa läsare får för sig att den gör
+    // det. Spärren stoppar matchningen, inte klockan.
+    // `rent-reminder.service.ts` väljer kandidater på `status: 'OVERDUE'`,
+    // `collectionStage: 'NONE'`, `isBackfill: false` och läser inget
+    // identitetsspår. En granskningsspärrad rad ger ingen allokering, avin
+    // förblir OVERDUE, och påminnelse, påminnelseavgift, ränta och kravsteg
+    // fortsätter enligt schema — för en betalning systemet självt sagt att det
+    // inte kan avgöra.
+    //
+    // FÖRE SPÄRREN var det en fördröjning: nästa `autoMatchAll` kunde plocka
+    // upp raden. Nu är enda utgången ett mänskligt beslut, så fönstret stänger
+    // sig inte längre självt. (Funnet av terminal 1, fynd G2.)
+    //
+    // VARFÖR DET INTE ÄR RÄTTAT HÄR. Att fördröja ett krav mot en hyresgäst är
+    // ett ägarbeslut — grannen `isBackfill: false` i samma urval visar hur ett
+    // sådant beslut ser ut när det TAGITS, med skälet utskrivet (JB 12 kap
+    // 42 §). Och ett hinder som inget ägarbeslut tar bort: en granskningsrad
+    // har INGEN fastställd koppling till någon avi — det är hela skälet att den
+    // väntar. Att pausa "den avi raden kan höra till" skulle antingen pausa
+    // ingenting eller pausa på en GISSNING, alltså återinföra precis den
+    // gissning granskningsutfallet finns för att vägra.
+    //
+    // Gränsen är MÄTT och inte bara skriven: se G6 i
+    // `bankimport-granskningsmarkering.db.spec.ts`. Ändras den ska ändringen
+    // vara avsiktlig.
     if (transaction.identityReviewAt) {
       this.logger.warn(
         `[reconciliation] automatisk matchning avbruten för banktransaktion ${transaction.id} ` +
