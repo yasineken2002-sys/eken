@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { ParsedTransaction, PdfImportDraft } from '../api/reconciliation.api'
-import { tolkaImportPagar } from '../api/reconciliation.api'
+import { importmål, kontolistläge, tolkaImportPagar } from '../api/reconciliation.api'
 import {
   useConfirmPdfImport,
   useCancelPdfImport,
@@ -48,9 +48,30 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
   // Att visa det är inte pynt: PDF-flödet är två steg, och det är BEKRÄFTELSEN
   // som skriver bankrader. Står det fel konto här är det sista tillfället att
   // upptäcka det.
-  const { data: bankkonton } = useBankAccounts()
+  const {
+    data: bankkonton,
+    isPending: kontonLaddar,
+    isError: kontonFel,
+    refetch: hämtaKontonIgen,
+  } = useBankAccounts()
   const målkonto = (bankkonton ?? []).find((k) => k.id === draft.bankAccountId)
   const saknarKonto = !draft.bankAccountId
+  // RÄTTNING-1 (G2) — SAMMA grind som CSV/BgMax. Tidigare frågade den här
+  // modalen bara om ett id FANNS, trots att den redan hämtade kontolistan: ett
+  // konto som avvecklats mellan uppladdning och bekräftelse passerade, och
+  // granskaren mätte `submittedAccount: "account-b"` med kontot inaktivt.
+  //
+  // Ett SAKNAT mål har ett eget besked och går INTE genom `importmål` — ett
+  // obestämt mål hade där kunnat lösas upp till "det enda aktiva kontot", och
+  // en PDF får aldrig få ett konto tilldelat i efterhand.
+  const utfall =
+    saknarKonto || !draft.bankAccountId
+      ? null
+      : importmål(
+          kontolistläge({ data: bankkonton, isPending: kontonLaddar, isError: kontonFel }),
+          { typ: 'valt', id: draft.bankAccountId },
+        )
+  const målSpärrat = saknarKonto || utfall?.id == null
 
   const incomingActive = useMemo(() => rows.filter((r) => !r._removed && r.amount > 0), [rows])
   const outgoingCount = useMemo(
@@ -79,7 +100,9 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
       })
     // #F034c — kontot valdes vid uppladdningen och bärs hit. Utan det kan
     // bekräftelsen inte göras, och servern skulle avvisa den ändå.
-    if (!draft.bankAccountId) return
+    // RÄTTNING-1 (G2) — samma giltighetsvillkor som knappen: ett mål som blivit
+    // inaktivt, borttaget eller okänt får inte skickas.
+    if (!draft.bankAccountId || målSpärrat) return
     confirmMut.mutate(
       { importId: draft.id, bankAccountId: draft.bankAccountId, transactions: final },
       {
@@ -269,10 +292,39 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
           konto om den kommer från en annan väg än importmodalen — vilket är
           just det fall ingen hade upptäckt. */}
       {saknarKonto && (
-        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
+        <p
+          className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700"
+          data-testid="pdf-malbesked"
+        >
           Den här tolkningen bär inget målkonto. Avbryt och ladda upp PDF:en igen från Importera
           kontoutdrag, där du väljer vilket bankkonto utdraget gäller.
         </p>
+      )}
+      {!saknarKonto && utfall?.besked && (
+        <div
+          className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700"
+          role="alert"
+          data-testid="pdf-malbesked"
+        >
+          <p>{utfall.besked}</p>
+          {utfall.kräverNyttVal && (
+            <p className="mt-1">
+              Avbryt och ladda upp PDF:en igen från Importera kontoutdrag, där du väljer ett konto
+              som går att importera till.
+            </p>
+          )}
+          {utfall.kanHämtasOm && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-2"
+              onClick={() => void hämtaKontonIgen()}
+              data-testid="pdf-hamta-konton-igen"
+            >
+              Försök igen
+            </Button>
+          )}
+        </div>
       )}
 
       <ModalFooter>
@@ -283,7 +335,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
           variant="primary"
           onClick={handleConfirm}
           loading={confirmMut.isPending}
-          disabled={incomingActive.length === 0 || saknarKonto}
+          disabled={incomingActive.length === 0 || målSpärrat}
         >
           <CheckCircle2 size={14} /> Bekräfta & matcha {incomingActive.length} inbetalningar
         </Button>
