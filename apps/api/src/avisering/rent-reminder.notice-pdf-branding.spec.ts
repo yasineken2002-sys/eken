@@ -134,3 +134,11 @@ describe('RentReminderService.buildReminderPdfHtml — brandad shell + betalning
     expect(html).toContain('1981:739')
   })
 })
+
+it('påminnelsen visar samma svenska förfallodag som avin', async () => {
+  const html = await makeService().buildReminderPdfHtml(
+    { ...NOTICE, dueDate: new Date('2026-05-31T22:00:00Z') } as never,
+    ORG,
+  )
+  expect(html).toContain('förföll 2026-06-01')
+})

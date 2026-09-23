@@ -4,7 +4,7 @@ import { AlertTriangle, Info, PauseCircle, Scissors } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { formatCurrency, formatDate, swedishDateKey } from '@eken/shared'
 import { RentNoticeBadge } from './RentNoticeBadge'
 import { CreditRentNoticeModal } from './CreditRentNoticeModal'
 import {
@@ -89,7 +89,7 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
               {notice.ocrNumber}
             </span>
             <span className="text-[12px] text-gray-400">
-              Förfaller {formatDate(notice.dueDate)}
+              Förfaller {swedishDateKey(new Date(notice.dueDate))}
             </span>
           </div>
 

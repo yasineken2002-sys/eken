@@ -111,6 +111,13 @@ export class AviseringController {
     })
   }
 
+  @Post('generate/preview')
+  @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
+  @HttpCode(HttpStatus.OK)
+  async generatePreview(@OrgId() orgId: string, @Body() dto: GenerateNoticesDto) {
+    return this.aviseringService.previewMonthlyNotices(orgId, dto.month, dto.year)
+  }
+
   @Post('generate')
   @Roles(UserRole.MANAGER, UserRole.ADMIN, UserRole.OWNER)
   async generate(@OrgId() orgId: string, @Body() dto: GenerateNoticesDto) {

@@ -27,7 +27,12 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from './rent-debt.service'
 import { getLogoDataUrl } from './avisering.service'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import {
+  DEFAULT_BRAND_COLOR,
+  swedishDaysBetween,
+  startOfSwedishDay,
+  swedishDateKey,
+} from '@eken/shared'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
@@ -307,8 +312,8 @@ export class RentReminderService {
               summary.pausedStale++
               continue
             }
-            const daysOverdue = this.daysSince(notice.dueDate, new Date())
-            if (daysOverdue < notice.organization.rentReminderDay) {
+            const daysOverdue = swedishDaysBetween(notice.dueDate, new Date())
+            if (daysOverdue <= 0 || daysOverdue < notice.organization.rentReminderDay) {
               summary.skipped++
               continue
             }
@@ -520,6 +525,7 @@ export class RentReminderService {
           organizationId,
           status: 'OVERDUE',
           collectionStage: 'NONE',
+          dueDate: { lt: startOfSwedishDay(now) },
           // T1.4 / #44: försvar-i-djupet — även ett direkt anrop får aldrig
           // eskalera en efterdebiterad avi (samma isolering som cron-urvalet).
           isBackfill: false,
@@ -930,10 +936,10 @@ export class RentReminderService {
     //
     // Loopen behåller sitt URVAL (`findMany` på OVERDUE/RENT/REMINDED). Den
     // avgränsningen är en prestandafråga; den här är en rättighetsfråga.
-    const daysOverdue = this.daysSince(notice.dueDate, now)
+    const daysOverdue = swedishDaysBetween(notice.dueDate, now)
     const threshold =
       notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
-    if (daysOverdue < threshold) {
+    if (daysOverdue <= 0 || daysOverdue < threshold) {
       // Inte ett fel och inte ett ofullständigt underlag: fristen har bara
       // inte löpt ut. Eget fält i stället för ett kast, så anroparen kan
       // skilja "för tidigt" från "underlaget saknar något".
@@ -1042,12 +1048,12 @@ export class RentReminderService {
         'SYSTEM',
         null,
         {
-          daysOverdue: this.daysSince(fresh.dueDate, now),
+          daysOverdue: swedishDaysBetween(fresh.dueDate, now),
           capital,
           reminderFeeAmount: Number(fresh.reminderFeeAmount),
           interestAccruedAmount: Number(fresh.interestAccruedAmount),
           interestAccruedThrough: fresh.interestAccruedThrough
-            ? toYmd(fresh.interestAccruedThrough)
+            ? swedishDateKey(fresh.interestAccruedThrough)
             : null,
           totalClaim,
           // Bara en flagga att kopian finns — INTE själva R2-nyckeln
@@ -1281,7 +1287,7 @@ export class RentReminderService {
         paidSoFar: paid,
         overpaidAmount: overpaid,
         dueDate: notice.dueDate,
-        daysOverdue: this.daysSince(notice.dueDate, new Date()),
+        daysOverdue: swedishDaysBetween(notice.dueDate, new Date()),
         organizationName: org.name,
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         pdfBuffer,
@@ -1415,8 +1421,8 @@ export class RentReminderService {
     // och ett mejl med restskulden vore värre än två fel siffror — de hade
     // motsagt varandra i samma försändelse.
     const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
-    const daysOverdue = this.daysSince(notice.dueDate, new Date())
-    const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE')
+    const daysOverdue = swedishDaysBetween(notice.dueDate, new Date())
+    const dueDateStr = swedishDateKey(notice.dueDate)
 
     const tenantName =
       notice.tenant.type === 'INDIVIDUAL'
@@ -1609,7 +1615,7 @@ export class RentReminderService {
     const org = notice.organization
     const freshness = this.freshness.evaluate(org, now)
     const thresholdDays = org.rentReminderDay + org.rentInkassoDaysAfterReminder
-    const daysOverdue = this.daysSince(notice.dueDate, now)
+    const daysOverdue = swedishDaysBetween(notice.dueDate, now)
 
     const senaste = (t: RentNoticeEventType): Date | null => {
       let träff: Date | null = null
@@ -1633,7 +1639,7 @@ export class RentReminderService {
           ? 'REMINDERS_OFF'
           : freshness.stale
             ? 'PAUSED_STALE'
-            : daysOverdue < thresholdDays
+            : daysOverdue <= 0 || daysOverdue < thresholdDays
               ? 'WAITING'
               : missing.length > 0
                 ? 'BLOCKED'
@@ -1784,8 +1790,4 @@ export class RentReminderService {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
-}
-
-function toYmd(d: Date): string {
-  return d.toISOString().slice(0, 10)
 }

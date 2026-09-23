@@ -36,7 +36,7 @@ import {
   useSendOverdueReminders,
 } from './hooks/useAvisering'
 import { useNavigate } from '@tanstack/react-router'
-import { formatDate, formatCurrency } from '@eken/shared'
+import { swedishDateKey, formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { RentNotice, NoticeFilter, RentNoticeStatus } from './api/avisering.api'
 
@@ -421,7 +421,7 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
                         {formatCurrency(Number(notice.totalAmount))}
                       </td>
                       <td className="px-4 py-3 text-[12.5px] text-gray-500">
-                        {formatDate(notice.dueDate)}
+                        {swedishDateKey(new Date(notice.dueDate))}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
