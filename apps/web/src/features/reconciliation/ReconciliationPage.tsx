@@ -248,6 +248,11 @@ function ImportModal({
     setStep('upload')
     setFile(null)
     setBank('AUTO')
+    // K1 — skapa-panelen stängs med modalen. Gjorde den inte det stod ett halvt
+    // ifyllt kontoformulär kvar nästa gång operatören öppnade importen, som om
+    // hon vore mitt i något hon för länge sedan lämnat. Det VALDA kontot står
+    // däremot kvar — det är ett svar hon redan gett.
+    setSkaparKonto(false)
     setResult(null)
     setShowErrors(false)
     setDropError(null)
