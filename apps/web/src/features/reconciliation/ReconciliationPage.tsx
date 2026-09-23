@@ -337,16 +337,24 @@ function ImportModal({
               <label htmlFor="bankkonto" className="block text-[12.5px] font-medium text-gray-700">
                 Bankkonto
               </label>
-              {kanSkriva && !kontonLaddar && !kontonFel && !skaparKonto && (
-                <button
-                  type="button"
-                  onClick={() => setSkaparKonto(true)}
-                  data-testid="import-lagg-till-konto"
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-blue-700 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
-                >
-                  <Plus size={13} strokeWidth={2} /> Lägg till konto
-                </button>
-              )}
+              {/* EN skapa-knapp i taget. Den lilla länken här är genvägen när det
+                  REDAN finns konton; saknas de helt tar den stora knappen nedan
+                  över, vid beskedet om vad som saknas. Två knappar för samma sak
+                  i samma ruta är inte två vägar, det är en tvekan. */}
+              {kanSkriva &&
+                !kontonLaddar &&
+                !kontonFel &&
+                !skaparKonto &&
+                läge !== 'inga-konton' && (
+                  <button
+                    type="button"
+                    onClick={() => setSkaparKonto(true)}
+                    data-testid="import-lagg-till-konto"
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-blue-700 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
+                  >
+                    <Plus size={13} strokeWidth={2} /> Lägg till konto
+                  </button>
+                )}
             </div>
             {kontonLaddar ? (
               <p className="text-[12.5px] text-gray-500">Hämtar konton…</p>
