@@ -182,7 +182,20 @@ export async function seedActiveLease(request: APIRequestContext): Promise<Seede
 // annars enbart i välkomstmejlet, som vi inte kan läsa i ett E2E-test. Genom
 // att skriva hashen själva kan vi sedan anropa det RIKTIGA /activate-endpointet
 // (som i sin tur bcrypt:ar lösenordet) och få en hyresgäst som kan logga in.
-const DB = { host: 'localhost', user: 'eken', database: 'eken_dev', password: 'eken' }
+// Databasnamnet är ÖVERSKRIVBART, resten inte.
+//
+// CI kör API:t mot `eken_dev` och det är rätt default. Men namnet var hårdkodat,
+// och en isolerad rigg som kör API:t mot en EGEN databas fick då psql att fråga
+// fel databas — uppmätt som `relation "BankAccount" does not exist` mitt i ett
+// annars grönt flöde, vilket ser ut som ett schemafel och inte som en
+// riggkonfiguration. `E2E_PGDATABASE` gör kopplingen synlig och ställbar utan
+// att ändra vad CI gör.
+const DB = {
+  host: 'localhost',
+  user: 'eken',
+  database: process.env.E2E_PGDATABASE ?? 'eken_dev',
+  password: 'eken',
+}
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex')
@@ -197,6 +210,26 @@ function runSql(sql: string): void {
       stdio: 'pipe',
     },
   )
+}
+
+/**
+ * Läser ETT värde ur databasen. Samma anslutning och samma mönster som
+ * `runSql` ovan; skillnaden är att den här returnerar svaret.
+ *
+ * Finns för att vissa utfall inte går att se genom API:t. Avstämningsvyn
+ * projicerar med flit bort `bankAccountId` (`RECONCILIATION_TRANSACTION_FIELDS`),
+ * så frågan "hamnade raden på RÄTT konto" — som är hela poängen med
+ * importmålet — måste ställas mot lagringen. Ett grönt importsvar säger inte
+ * vilket konto raden hör till.
+ */
+export function sqlValue(sql: string): string {
+  return execFileSync(
+    'psql',
+    ['-h', DB.host, '-U', DB.user, '-d', DB.database, '-v', 'ON_ERROR_STOP=1', '-tAc', sql],
+    { env: { ...process.env, PGPASSWORD: DB.password }, stdio: 'pipe' },
+  )
+    .toString()
+    .trim()
 }
 
 export interface PortalTenant {

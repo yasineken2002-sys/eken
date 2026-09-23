@@ -15,7 +15,7 @@ import {
   getIdentityReview,
   createBankAccount,
 } from '../api/reconciliation.api'
-import type { BankFormat, ParsedTransaction } from '../api/reconciliation.api'
+import type { BankFormat, Bankkonto, ParsedTransaction } from '../api/reconciliation.api'
 import type { CreateBankAccountInput } from '@eken/shared'
 
 export function useTransactions(filters?: { status?: string; from?: string; to?: string }) {
@@ -125,11 +125,36 @@ export function useIdentityReview() {
   })
 }
 
+/**
+ * K1 — lägga upp ett målkonto.
+ *
+ * ── VARFÖR BÅDE `setQueryData` OCH `invalidateQueries` ──────────────────────
+ *
+ * Kravet är att listan uppdateras UTAN sidladdning. Enbart invalidering ger det
+ * också, men först efter en tur till servern — och under den turen står det
+ * nyss skapade kontot inte i väljaren, vars `value` då pekar på ett id som inte
+ * finns bland `<option>`-elementen. Webbläsaren visar då ingen markering alls,
+ * och operatören som just skapade kontot ser en tom väljare.
+ *
+ * Cacheskrivningen stänger det glappet; invalideringen står kvar därför att
+ * SERVERN äger listan — ordningen (`isActive desc, name asc`) och eventuella
+ * rader som skapats av någon annan i samma organisation kommer därifrån, inte
+ * härifrån. Den lokala sorteringen speglar serverns bara för att raden inte ska
+ * hoppa när svaret kommer.
+ */
 export function useCreateBankAccount() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: CreateBankAccountInput) => createBankAccount(input),
-    onSuccess: () => {
+    onSuccess: (konto) => {
+      qc.setQueryData<Bankkonto[]>(['reconciliation', 'bank-accounts'], (gamla) =>
+        gamla
+          ? [...gamla.filter((k) => k.id !== konto.id), konto].sort(
+              (a, b) =>
+                Number(b.isActive) - Number(a.isActive) || a.name.localeCompare(b.name, 'sv'),
+            )
+          : [konto],
+      )
       void qc.invalidateQueries({ queryKey: ['reconciliation', 'bank-accounts'] })
     },
   })
