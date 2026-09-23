@@ -68,7 +68,11 @@ test('ny organisation: skapa importkonto i UI → välj → importera kontoutdra
   await expect(page.getByTestId('bank-connection-card')).toBeVisible()
 
   // ── 2. Importmodalen: beskedet OCH vägen framåt ───────────────────────────
-  await page.getByRole('button', { name: 'Importera kontoutdrag' }).click()
+  // TVÅ knappar heter 'Importera kontoutdrag': sidhuvudets och tomt-lägets CTA.
+  // Playwright är strikt och vägrar klicka på en tvetydig träff — mätt i första
+  // riggkörningen. Sidhuvudets står först i DOM:en och finns oavsett om tabellen
+  // är tom, alltså i BÅDA lägena specen passerar.
+  await page.getByRole('button', { name: 'Importera kontoutdrag' }).first().click()
   await expect(page.getByRole('heading', { name: 'Importera kontoutdrag' })).toBeVisible()
   await expect(page.getByText('Organisationen har inget bankkonto upplagt')).toBeVisible()
 
