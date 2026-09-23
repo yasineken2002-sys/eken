@@ -409,7 +409,10 @@ describe('T5 C2b · retrigger av aktiveringens avier (#58)', () => {
 
       const res = await service.sendNotices('org-1', ['n-1', 'n-2'])
 
-      expect(res).toEqual({ queued: 0, failed: 2, jobIds: [] })
+      // K2 lade till `blocked`/`blockedReason`. De är NOLL respektive null här
+      // med flit: organisationen HAR ett giltigt betalningsmål, så det som
+      // fallerade är kön — och de två talen ska gå att skilja åt.
+      expect(res).toEqual({ queued: 0, failed: 2, jobIds: [], blocked: 0, blockedReason: null })
     })
   })
 })
