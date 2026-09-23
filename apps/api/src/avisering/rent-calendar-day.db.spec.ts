@@ -509,4 +509,136 @@ it('requires a real database', () => expect(hasDb).toBe(true))
       existingDueDates: [],
     })
   })
+
+  it('repeated preview preserves persisted rows, sequences and queue effects with existing notices in two organizations', async () => {
+    // Generera först på riktigt: en tom tabell kan inte avslöja att preview
+    // skriver över status/datum/belopp på en befintlig avi eller dess verifikat.
+    const generated = await avisering.generateMonthlyNotices(orgId, 10, 2026)
+    expect(generated.created).toBe(1)
+    const ownNoticeId = generated.notices[0]!.id
+    await prisma.rentNotice.update({
+      where: { id: ownNoticeId },
+      data: { status: 'SENT', dueDate: new Date('2026-10-15T00:00:00Z') },
+    })
+
+    const otherOrg = orgIds[1]!
+    const otherTenant = await prisma.tenant.create({
+      data: { organizationId: otherOrg, type: 'INDIVIDUAL', email: 'preview@example.test' },
+    })
+    const otherProperty = await prisma.property.create({
+      data: {
+        organizationId: otherOrg,
+        name: 'Preview annan org',
+        propertyDesignation: randomUUID(),
+        type: 'RESIDENTIAL',
+        street: 'Testgatan 2',
+        city: 'Teststad',
+        postalCode: '11111',
+        totalArea: 50,
+      },
+    })
+    const otherUnit = await prisma.unit.create({
+      data: {
+        propertyId: otherProperty.id,
+        name: 'Annan lägenhet',
+        unitNumber: '2',
+        type: 'APARTMENT',
+        area: 50,
+        monthlyRent: 7000,
+      },
+    })
+    const otherLease = await prisma.lease.create({
+      data: {
+        organizationId: otherOrg,
+        tenantId: otherTenant.id,
+        unitId: otherUnit.id,
+        contractNumber: randomUUID(),
+        monthlyRent: 7000,
+        depositAmount: 0,
+        startDate: new Date('2026-01-01'),
+        status: 'ACTIVE',
+      },
+    })
+    await prisma.rentNotice.create({
+      data: {
+        organizationId: otherOrg,
+        tenantId: otherTenant.id,
+        leaseId: otherLease.id,
+        noticeNumber: 'OTHER-PREVIEW',
+        ocrNumber: '987654',
+        month: 10,
+        year: 2026,
+        amount: 7000,
+        totalAmount: 7000,
+        dueDate: new Date('2026-10-20T00:00:00Z'),
+        status: 'SENT',
+      },
+    })
+    // Kögränsen observeras; ingen Redis eller leverantör får en leverans.
+    const enqueue = jest.fn().mockResolvedValue('unexpected-preview-job')
+    Object.assign(avisering, { pdfQueue: { enqueue } })
+    const scope = { organizationId: { in: orgIds } }
+    const snapshot = async () => ({
+      notices: await prisma.rentNotice.findMany({ where: scope, orderBy: { id: 'asc' } }),
+      lines: await prisma.rentNoticeLine.findMany({
+        where: { rentNotice: scope },
+        orderBy: { id: 'asc' },
+      }),
+      journals: await prisma.journalEntry.findMany({
+        where: scope,
+        orderBy: { id: 'asc' },
+        include: { lines: { orderBy: { id: 'asc' } } },
+      }),
+      sends: await prisma.rentNoticeSend.findMany({ where: scope, orderBy: { id: 'asc' } }),
+      events: await prisma.rentNoticeEvent.findMany({ where: scope, orderBy: { id: 'asc' } }),
+      noticeNumbers: await prisma.rentNoticeNumberSequence.findMany({
+        where: scope,
+        orderBy: [{ organizationId: 'asc' }, { year: 'asc' }, { month: 'asc' }],
+      }),
+      journalNumbers: await prisma.journalEntrySequence.findMany({
+        where: scope,
+        orderBy: [{ organizationId: 'asc' }, { fiscalYear: 'asc' }, { series: 'asc' }],
+      }),
+      ocrNumbers: await prisma.tenantOcrSequence.findMany({
+        where: scope,
+        orderBy: { organizationId: 'asc' },
+      }),
+      tenants: await prisma.tenant.findMany({ where: scope, orderBy: { id: 'asc' } }),
+      organizations: await prisma.organization.findMany({
+        where: { id: { in: orgIds } },
+        orderBy: { id: 'asc' },
+      }),
+      queued: [...enqueue.mock.calls],
+    })
+    const before = await snapshot()
+    expect(before.notices).toHaveLength(2)
+    expect(before.journals).toHaveLength(1)
+    expect(before.journals[0]!.lines).toHaveLength(2)
+    expect(before.noticeNumbers.length).toBeGreaterThan(0)
+    expect(before.ocrNumbers.length).toBeGreaterThan(0)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      expect(await avisering.previewMonthlyNotices(orgId, 10, 2026)).toMatchObject({
+        toCreate: 0,
+        existingDueDates: [{ dueDate: '2026-10-15', count: 1 }],
+      })
+      expect(await avisering.previewMonthlyNotices(otherOrg, 10, 2026)).toMatchObject({
+        toCreate: 0,
+        existingDueDates: [{ dueDate: '2026-10-20', count: 1 }],
+      })
+      expect(await avisering.previewMonthlyNotices(orgId, 11, 2026)).toMatchObject({
+        toCreate: 1,
+        dueDates: [{ dueDate: '2026-10-30', count: 1 }],
+        existingDueDates: [],
+      })
+      expect(await snapshot()).toEqual(before)
+    }
+    expect(enqueue).not.toHaveBeenCalled()
+    // Positiv kontroll: samma mätning ser den verkliga skrivvägens effekt.
+    expect((await avisering.generateMonthlyNotices(orgId, 11, 2026)).created).toBe(1)
+    const afterGeneration = await snapshot()
+    expect(afterGeneration.notices).toHaveLength(before.notices.length + 1)
+    expect(afterGeneration.journals).toHaveLength(before.journals.length + 1)
+    expect(afterGeneration.noticeNumbers).not.toEqual(before.noticeNumbers)
+    expect(afterGeneration.journalNumbers).not.toEqual(before.journalNumbers)
+  })
 })

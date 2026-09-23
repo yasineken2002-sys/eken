@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { formatSwedishDate, swedishDaysBetween } from '@eken/shared'
 import {
   fetchInvoices,
   fetchRentNotices,
@@ -56,8 +57,9 @@ function isInvoiceOverdue(invoice: PortalInvoice): boolean {
 
 function isNoticeOverdue(notice: PortalRentNotice): boolean {
   return (
-    notice.status === 'OVERDUE' ||
-    (notice.status === 'SENT' && new Date(notice.dueDate) < new Date())
+    UNPAID_NOTICE_STATUSES.has(notice.status) &&
+    notice.payableTotal > 0 &&
+    swedishDaysBetween(new Date(notice.dueDate), new Date()) > 0
   )
 }
 
@@ -197,8 +199,8 @@ export function NoticesPage() {
             ))}
           </div>
           <p className={styles.sectionHint}>
-            Statusen visar vad som är registrerat hos hyresvärden. En betalning
-            kan vara gjord utan att ännu synas här.
+            Statusen visar vad som är registrerat hos hyresvärden. En betalning kan vara gjord utan
+            att ännu synas här.
             {topTab === 'invoices' &&
               ' Makulerade fakturor och fakturor som lämnats till inkasso visas bara under Alla.'}
           </p>
@@ -275,13 +277,20 @@ function RentNoticesList({
     <div className={styles.list}>
       {filtered.map((notice) => {
         const overdue = isNoticeOverdue(notice)
+        // Äldre OVERDUE kan ha satts redan på förfallodagen. Samma dagsgrind
+        // styr badge och varning; belopp, filter och lagrad status ändras inte.
+        const displayStatus = overdue
+          ? 'OVERDUE'
+          : notice.status === 'OVERDUE'
+            ? 'SENT'
+            : notice.status
         return (
           <div key={notice.id} className={`${styles.card} ${overdue ? styles.cardOverdue : ''}`}>
             <div className={styles.cardTop}>
               <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
                 {formatMonthYear(notice.month, notice.year)}
               </p>
-              <StatusBadge type="rent-notice" status={notice.status} />
+              <StatusBadge type="rent-notice" status={displayStatus} />
             </div>
 
             {/* #344 — payableTotal är RESTSKULDEN (OCR-raden minus redan
@@ -306,7 +315,9 @@ function RentNoticesList({
               >
                 {overdue ? '⚠️ Förfallen' : 'Förfaller'}
               </span>
-              <span className={styles.cardDueDate}>{formatDateSv(notice.dueDate)}</span>
+              <span className={styles.cardDueDate}>
+                {formatSwedishDate(new Date(notice.dueDate))}
+              </span>
             </div>
 
             {notice.paidAt && (

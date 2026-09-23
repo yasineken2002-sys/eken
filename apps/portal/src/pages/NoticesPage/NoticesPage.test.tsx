@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NoticesPage } from './NoticesPage'
+import type { PortalRentNotice } from '@/types/portal.types'
 
 /**
  * #913 — VAD FILTERTEXTEN FÅR PÅSTÅ.
@@ -100,6 +101,68 @@ beforeEach(() => {
   api.fetchInvoices.mockResolvedValue([FAKTURA_DELBETALD, FAKTURA_BETALD])
   api.fetchRentNotices.mockResolvedValue([AVI_DELBETALD])
   api.fetchMiscCharges.mockResolvedValue([])
+})
+
+afterEach(() => vi.useRealTimers())
+
+describe('hyresavins svenska förfallodag', () => {
+  it.each([
+    ['SENT', '2026-06-30T21:59:59Z', false],
+    ['SENT', '2026-07-01T10:00:00Z', false],
+    ['SENT', '2026-07-01T21:59:59Z', false],
+    ['SENT', '2026-07-01T22:00:00Z', true],
+    ['OVERDUE', '2026-06-30T21:59:59Z', false],
+    ['OVERDUE', '2026-07-01T10:00:00Z', false],
+    ['OVERDUE', '2026-07-01T21:59:59Z', false],
+    ['OVERDUE', '2026-07-01T22:00:00Z', true],
+  ] as const)('%s vid %s: förfallen=%s i både badge och datumrad', async (status, now, overdue) => {
+    vi.useFakeTimers({ toFake: ['Date'] }).setSystemTime(new Date(now))
+    api.fetchRentNotices.mockResolvedValue([
+      { ...AVI_DELBETALD, status, dueDate: '2026-07-01T00:00:00Z' },
+    ])
+    rendera()
+    await screen.findByText(AVI_DELBETALD.ocrNumber)
+    expect(Boolean(screen.queryByText('Förfallen'))).toBe(overdue)
+    expect(Boolean(screen.queryByText('⚠️ Förfallen'))).toBe(overdue)
+    expect(Boolean(screen.queryByText('Skickad'))).toBe(!overdue)
+    // Bevara restskuld, delbetalningsförklaring och filtret även för gammal OVERDUE.
+    expect(screen.getByText(/Kvar av .* — .* betalt/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Inte registrerade som betalda'))
+    expect(screen.getByText(AVI_DELBETALD.ocrNumber)).toBeTruthy()
+  })
+
+  it.each([
+    ['PAID', 0],
+    ['CANCELLED', 5000],
+    ['PENDING', 5000],
+    ['FAILED', 5000],
+    ['SENT', 0],
+    ['OVERDUE', 0],
+    ['OVERDUE', -100],
+  ] satisfies [PortalRentNotice['status'], number][])(
+    '%s med payableTotal=%s märks aldrig förfallen',
+    async (status, payableTotal) => {
+      vi.useFakeTimers({ toFake: ['Date'] }).setSystemTime(new Date('2026-07-02T10:00:00Z'))
+      api.fetchRentNotices.mockResolvedValue([
+        { ...AVI_DELBETALD, status, payableTotal, dueDate: '2026-07-01T00:00:00Z' },
+      ])
+      rendera()
+      await screen.findByText(AVI_DELBETALD.ocrNumber)
+      expect(screen.queryByText(/Förfallen/)).toBeNull()
+      if (status === 'PAID') expect(screen.getByText('Betald')).toBeTruthy()
+      if (status === 'CANCELLED') expect(screen.getByText('Makulerad')).toBeTruthy()
+    },
+  )
+
+  it.each(['2026-07-01T00:00:00Z', '2026-06-30T22:00:00Z'])(
+    'visar 1 juli för %s även i en Los Angeles-process',
+    async (dueDate) => {
+      api.fetchRentNotices.mockResolvedValue([{ ...AVI_DELBETALD, dueDate }])
+      rendera()
+      expect(await screen.findByText('1 juli 2026')).toBeTruthy()
+      expect(screen.queryByText('30 juni 2026')).toBeNull()
+    },
+  )
 })
 
 describe('#913 — filtertexten påstår inte mer än registreringen vet', () => {

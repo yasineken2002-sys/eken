@@ -23,6 +23,16 @@ export function swedishDateKey(date: Date): string {
   return `${p.year}-${p.month}-${p.day}`
 }
 
+/** Läsbart svenskt kalenderdatum, även när läsaren befinner sig i en annan zon. */
+export function formatSwedishDate(date: Date): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: SWEDISH_TIME_ZONE,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
 /** Kalenderdatum kodat som UTC-midnatt för dagaritmetik, INTE en lokal tidpunkt. */
 export function swedishCalendarDate(date: Date): Date {
   const p = parts(date)
