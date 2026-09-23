@@ -18,6 +18,7 @@ import {
   DETECTED_WEB_IMAGE_TYPES,
   MAX_LOGO_BYTES,
 } from '../common/utils/file-validation'
+import { validateSwedishBankgiro } from '@eken/shared'
 
 interface MultipartFile {
   toBuffer(): Promise<Buffer>
@@ -191,13 +192,39 @@ export class OrganizationsService {
       return {}
     })()
 
+    // ── K2: BETALNINGSMÅLET VALIDERAS VID SKRIVNINGEN ─────────────────────
+    //
+    // Fältet var `z.string().optional()` + `@IsString()`, alltså fri text. Ett
+    // ogiltigt bankgiro kunde sparas utan invändning och upptäcktes först när en
+    // avi inte gick att skicka — eller, före K2, aldrig, eftersom renderingen
+    // hittade på ett mål i stället.
+    //
+    // HÄR OCH INTE BARA I DTO:N: servicen är chokepunkten (samma val som
+    // rollgrindarna ovan), och samma funktion används av utskicksgrinden och av
+    // webbformuläret. En regel, ett ställe.
+    //
+    // TOMT BETYDER RENSA, inte "ogiltigt". Hyresvärden måste kunna ta bort ett
+    // felaktigt nummer utan att formuläret låser sig — och ett rensat mål stoppar
+    // utskicken, vilket är rätt utfall och inte ett fel att avvisa här.
+    const bankgiroUpdate = (() => {
+      if (dto.bankgiro === undefined) return {}
+      if (!dto.bankgiro.trim()) return { bankgiro: null }
+      const kontroll = validateSwedishBankgiro(dto.bankgiro)
+      if (!kontroll.valid || !kontroll.normalized) {
+        throw new BadRequestException(kontroll.error ?? 'Ogiltigt bankgiro')
+      }
+      // Normaliserad form lagras, så PDF, mejl och portal visar samma sträng
+      // oavsett om hyresvärden skrev bindestreck eller inte.
+      return { bankgiro: kontroll.normalized }
+    })()
+
     return this.prisma.organization.update({
       where: { id: organizationId },
       data: {
         ...(dto.lateBookingMaterialityThreshold != null
           ? { lateBookingMaterialityThreshold: dto.lateBookingMaterialityThreshold }
           : {}),
-        ...(dto.bankgiro != null ? { bankgiro: dto.bankgiro } : {}),
+        ...bankgiroUpdate,
         ...(dto.paymentTermsDays != null ? { paymentTermsDays: dto.paymentTermsDays } : {}),
         ...(dto.invoiceColor != null ? { invoiceColor: dto.invoiceColor } : {}),
         ...(dto.invoiceTemplate != null ? { invoiceTemplate: dto.invoiceTemplate } : {}),

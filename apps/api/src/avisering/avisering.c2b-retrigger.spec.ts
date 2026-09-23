@@ -128,7 +128,12 @@ function makeRig(seed: LeaseSeed, opts: { withDeposit?: boolean; enqueueFails?: 
       ),
     },
     organization: {
-      findUnique: jest.fn().mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7 }),
+      // K2: ett giltigt betalningsmål hör numera till en NORMAL organisation —
+      // `sendNotices` vägrar köa utan det. `5050-1055` är ett verkligt,
+      // kontrollerbart bankgiro (samma som övriga avisering-riggar använder).
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7, bankgiro: '5050-1055' }),
     },
     deposit: {
       findFirst: jest.fn(({ where }: { where: { leaseId: string } }) =>

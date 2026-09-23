@@ -22,6 +22,7 @@ import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { QUEUE_PDF } from '../pdf-jobs/pdf.types'
 import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
+import { checkPaymentTarget } from './payment-target'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from './rent-debt.service'
@@ -326,6 +327,25 @@ export class RentReminderService {
             // förutsätter att en påminnelse kan skickas). Avin förblir NONE och
             // omprövas nästa dygn.
             if (!notice.tenant.email) {
+              summary.skipped++
+              continue
+            }
+
+            // ── K2: INGET BETALNINGSMÅL → INGEN AVGIFT ──────────────────────
+            //
+            // EXAKT samma form och samma skäl som adressgrinden ovan: en
+            // påminnelseavgift förutsätter att hyresgästen KAN betala det som
+            // krävs. Utan mottagarens bankgiro finns ingenting att betala till,
+            // och att ta ut avgiften ändå vore att debitera för ett krav som
+            // inte går att följa.
+            //
+            // GRINDEN ÄR FÖRE `escalateNoticeToReminded`, inte efter: efter den
+            // är avgiften bokförd och kravsteget flyttat, och ingen av dem går
+            // att ångra genom att avstå från utskicket.
+            //
+            // Avin förblir NONE och omprövas nästa dygn — samma självläkning:
+            // hyresvärden fyller i bankgirot och trappan fortsätter.
+            if (!checkPaymentTarget(notice.organization).ok) {
               summary.skipped++
               continue
             }
@@ -1223,6 +1243,32 @@ export class RentReminderService {
           reason: 'Hyresgästen saknar e-postadress',
         })
         .catch(() => undefined)
+      return
+    }
+
+    // ── K2: SAMMA FÖRKONTROLL, ANDRA SIDAN AV KÖN ───────────────────────────
+    //
+    // Cron-grinden ovan avstår innan avgiften tas ut. Den här finns för jobbet
+    // som redan låg i kön när målet rensades, och för den MANUELLA omsändningen
+    // (`begarOmsandning` → direkt enqueue), som inte går genom cron-loopen.
+    //
+    // Delar exakt samma funktion som avin och som cron-grinden — två
+    // uppsättningar regler om vad ett giltigt betalningsmål är hade glidit isär.
+    //
+    // KASTAR INTE: ett saknat bankgiro löser sig inte av fem Bull-retries.
+    // Händelsen skrivs så att avins tidslinje i UI:t säger VAD som hände — utan
+    // den hade påminnelsen bara uteblivit tyst.
+    const paymentTarget = checkPaymentTarget(org)
+    if (!paymentTarget.ok) {
+      await this.rentNoticeEvents
+        .record(noticeId, 'SEND_FAILED', 'SYSTEM', null, {
+          reason: paymentTarget.block.message,
+          code: paymentTarget.block.code,
+        })
+        .catch(() => undefined)
+      this.logger.warn(
+        `[Kravtrappa] Påminnelse EJ skickad för avi ${noticeId}: ${paymentTarget.block.code}`,
+      )
       return
     }
 

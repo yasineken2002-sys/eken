@@ -65,6 +65,16 @@ export interface GenerateResult {
 export interface SendResult {
   sent: number
   failed: number
+  /**
+   * K2 — avier som INTE köades därför att organisationens betalningsmål fattas.
+   *
+   * EGET fält och inte en del av `failed`: `failed` betyder "kön svarade inte"
+   * och är ett driftfel, det här betyder "ett fält är ofyllt" och är något
+   * hyresvärden själv rättar. Valfritt, eftersom äldre svar saknar det.
+   */
+  blocked?: number
+  /** Skrivet för en människa. `null` när inget blockerades. */
+  blockedReason?: string | null
 }
 
 export interface AviseringStats {
