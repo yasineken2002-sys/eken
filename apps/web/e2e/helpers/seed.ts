@@ -199,6 +199,26 @@ function runSql(sql: string): void {
   )
 }
 
+/**
+ * Läser ETT värde ur databasen. Samma anslutning och samma mönster som
+ * `runSql` ovan; skillnaden är att den här returnerar svaret.
+ *
+ * Finns för att vissa utfall inte går att se genom API:t. Avstämningsvyn
+ * projicerar med flit bort `bankAccountId` (`RECONCILIATION_TRANSACTION_FIELDS`),
+ * så frågan "hamnade raden på RÄTT konto" — som är hela poängen med
+ * importmålet — måste ställas mot lagringen. Ett grönt importsvar säger inte
+ * vilket konto raden hör till.
+ */
+export function sqlValue(sql: string): string {
+  return execFileSync(
+    'psql',
+    ['-h', DB.host, '-U', DB.user, '-d', DB.database, '-v', 'ON_ERROR_STOP=1', '-tAc', sql],
+    { env: { ...process.env, PGPASSWORD: DB.password }, stdio: 'pipe' },
+  )
+    .toString()
+    .trim()
+}
+
 export interface PortalTenant {
   /** Hyresgästens portal-inloggning. */
   email: string
