@@ -556,6 +556,7 @@ it('requires a real database', () => expect(hasDb).toBe(true))
         monthlyRent: 7000,
         depositAmount: 0,
         startDate: new Date('2026-01-01'),
+        tenancyStartDate: new Date('2026-01-01'),
         status: 'ACTIVE',
       },
     })
@@ -589,8 +590,14 @@ it('requires a real database', () => expect(hasDb).toBe(true))
         orderBy: { id: 'asc' },
         include: { lines: { orderBy: { id: 'asc' } } },
       }),
-      sends: await prisma.rentNoticeSend.findMany({ where: scope, orderBy: { id: 'asc' } }),
-      events: await prisma.rentNoticeEvent.findMany({ where: scope, orderBy: { id: 'asc' } }),
+      sends: await prisma.rentNoticeSend.findMany({
+        where: { rentNotice: scope },
+        orderBy: { id: 'asc' },
+      }),
+      events: await prisma.rentNoticeEvent.findMany({
+        where: { rentNotice: scope },
+        orderBy: { id: 'asc' },
+      }),
       noticeNumbers: await prisma.rentNoticeNumberSequence.findMany({
         where: scope,
         orderBy: [{ organizationId: 'asc' }, { year: 'asc' }, { month: 'asc' }],
