@@ -752,6 +752,39 @@ const GRANSKAD_HINK_A: ReadonlyMap<string, string> = new Map([
   ['GET /inspections/stats', 'Enbart räknare per status och typ.'],
   ['GET /inspections/:id/pdf', 'Renderar samma domändata som detaljvyn.'],
   [
+    'GET /inspections/:id/versioner',
+    'Versionskedjan för ETT protokoll: versionsnummer, status, rättelseorsak,\n' +
+      'rättande användar-id och datum. Öppen för varje roll av samma skäl som\n' +
+      '`GET /inspections/:id` — vilken version som gäller är en förutsättning för\n' +
+      'att läsa protokollet rätt, inte en fördjupning, och en VIEWER som ser\n' +
+      'detaljvyn ska inte se den UTAN beskedet att den ersatts.\n' +
+      '\n' +
+      'GRINDEN ÄR ORG-SCOPNINGEN: `hamtaKedja` bär organizationId i VARJE fråga,\n' +
+      'inte bara den första, så en kedja kan inte vandras in i en annan\n' +
+      'organisations rader ens om en `correctionOfId` pekar dit. Prövat mot\n' +
+      'riktig Postgres i inspection-correction.db.spec.ts ("ORG-ISOLERING: en\n' +
+      'främmande org kan varken rätta eller läsa kedjan").\n' +
+      '\n' +
+      'SVARSYTAN bär inga personuppgifter: inga poster, inga bilder, ingen\n' +
+      'hyresgäst. `correctedById` är ett användar-id inom den egna\n' +
+      'organisationen.',
+  ],
+  [
+    'GET /inspections/:id/bildkontroll',
+    'Läser tillbaka bilagornas bytes ur lagringen och jämför med den lagrade\n' +
+      'digesten. Svaret är fyra utfall plus filnamn och digester — ingen bild och\n' +
+      'ingen lagringsnyckel. Öppen för varje roll som detaljvyn: den som får se\n' +
+      'att en bilaga finns ska också få veta om den är oförändrad.\n' +
+      '\n' +
+      'GRINDEN ÄR ORG-SCOPNINGEN: `kontrolleraBilder` slår upp besiktningen med\n' +
+      'organizationId i sitt where och kastar 404 — inte en tom lista — för en\n' +
+      'annan organisations id.\n' +
+      '\n' +
+      'KOSTNAD, INTE BEHÖRIGHET, är skälet att den är en egen endpoint: den gör\n' +
+      'en läsning per bilaga mot lagringen. Den skriver ingenting och är\n' +
+      'omkörbar.',
+  ],
+  [
     'GET /documents',
     'REDAN GRINDAD — i tjänsten, inte på controllern, och därför osynlig för den\n' +
       'här kolumnen. common/authz/documents-authz.ts filtrerar bort CONTRACT-rader\n' +

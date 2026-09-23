@@ -31,6 +31,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const dec = (v: string | number) => new Decimal(v)
 
@@ -122,6 +123,10 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, prisma, txMock }
 }
@@ -197,6 +202,10 @@ describe('autoMatchAll räknar dem för sig', () => {
         skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
         nollstallFacit: jest.fn().mockResolvedValue(undefined),
       } as never,
+      // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+      // resten av riggen: proven nedan som inte kör en import når den aldrig,
+      // och de som gör det ska se skyddet och inte ett genomsläpp.
+      new BankImportAttemptService(prisma as never),
     )
     jest
       .spyOn(service, 'matchTransaction')

@@ -249,6 +249,10 @@ export function InspectionsPage() {
               key={selectedInspection.id}
               inspection={selectedInspection}
               onClose={() => setSelectedId(null)}
+              // Versionshistoriken byter vilken rad panelen visar. Raden
+              // hämtas ur samma lista som allt annat; `key` ovan gör att
+              // panelens eget tillstånd nollställs vid bytet.
+              onOppnaVersion={(id) => setSelectedId(id)}
             />
           )}
         </AnimatePresence>

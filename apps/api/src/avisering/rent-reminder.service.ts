@@ -36,6 +36,7 @@ import { resolveReminderFee, reminderFeeCapMessage } from '../accounting/reminde
 import {
   paymentFreshnessTransactionOptions,
   PaymentDataPausedError,
+  IdentityReviewPausedError,
   PaymentFreshnessService,
 } from '../payment-freshness/payment-freshness.service'
 import { bedömOmsändning, hashaAdress } from './resend-verdict'
@@ -275,6 +276,31 @@ export class RentReminderService {
           candidates.map((n) => n.organizationId),
         )
 
+        // ── G2-AVSLUT: SVEPET FÖR GRANSKNINGSPAUSER ───────────────────────
+        //
+        // Tar igen aviseringstillfällen som inte fullbordades — efter ett
+        // köfel, en omstart, eller en period som öppnades medan kön var nere.
+        //
+        // HÄR OCH INTE I EN EGEN CRON: det här är kravtrappans dygnskörning,
+        // och en paus på kravtrappan hör hemma i samma puls som det den pausar.
+        // En egen `@Cron` hade dessutom krävt en egen klassificering för en
+        // körning som inte gör något nytt.
+        //
+        // IDEMPOTENT PER PERIOD, inte per dygn: en pågående paus som redan
+        // aviserats ger ingenting. Det är vad som skiljer en påminnelse från
+        // en nattlig storm.
+        //
+        // KASTAR ALDRIG UPPÅT. Ett svep som fallerar får inte fälla
+        // kravtrappans körning — pausen har redan stoppat effekterna, och det
+        // som uteblir är beskedet, inte skyddet.
+        await this.freshness.sveparGranskningspauser().catch((err: unknown) => {
+          this.logger.error(
+            `[granskningspaus] svepet fallerade: ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          )
+          return { behandlade: 0 }
+        })
+
         for (const notice of candidates) {
           try {
             if (staleOrgs.has(notice.organizationId)) {
@@ -327,7 +353,18 @@ export class RentReminderService {
                 new Date(),
               )
             } catch (err) {
-              if (err instanceof PaymentDataPausedError) {
+              if (err instanceof IdentityReviewPausedError) {
+                // G2 — EGEN GREN, INTE else-grenen. Utan den föll den här
+                // pausen ned i `logger.error(... misslyckades)`: en AVSIKTLIG,
+                // väntad paus rapporterad som ett fel. Det förgiftar
+                // driftsignalen åt båda håll — larmet fylls av rader ingen ska
+                // agera på, och den som läser loggen får fel orsak.
+                // (Terminal 1:s fynd H1.)
+                this.logger.warn(
+                  `Ränta PAUSAD för avi ${notice.id}: ${err.antal} betalning(ar) väntar på ` +
+                    'identitetsgranskning i bankavstämningen.',
+                )
+              } else if (err instanceof PaymentDataPausedError) {
                 // Avgiften är redan committad; endast den separata räntan pausas.
                 this.logger.warn(`Ränta pausad för avi ${notice.id}: betalningsunderlag saknas.`)
                 await this.freshness
@@ -377,6 +414,20 @@ export class RentReminderService {
             }
             summary.reminded++
           } catch (err) {
+            // G2 — EGEN GREN FÖRE färskhetens. `evaluateAndAlert` anropas MED
+            // FLIT INTE här: den utvärderar FÄRSKHETEN, och en organisation som
+            // pausats av en granskningsrad kan vara helt färsk — larmet hade då
+            // varit tyst och dessutom om fel sak. Klassificeringen är det som
+            // rättas: en väntad paus är inte ett fel. (Terminal 1:s fynd H1.)
+            if (err instanceof IdentityReviewPausedError) {
+              summary.pausedStale++
+              this.logger.warn(
+                `Avi ${notice.id} PAUSAD: ${err.antal} betalning(ar) väntar på ` +
+                  'identitetsgranskning i bankavstämningen. Automatiska krav är pausade för ' +
+                  'hela organisationen tills raderna är avgjorda.',
+              )
+              continue
+            }
             if (err instanceof PaymentDataPausedError) {
               summary.pausedStale++
               await this.freshness
@@ -616,6 +667,20 @@ export class RentReminderService {
             if (res.flipped) summary.ready++
             else summary.skipped++
           } catch (err) {
+            // G2 — EGEN GREN FÖRE färskhetens. `evaluateAndAlert` anropas MED
+            // FLIT INTE här: den utvärderar FÄRSKHETEN, och en organisation som
+            // pausats av en granskningsrad kan vara helt färsk — larmet hade då
+            // varit tyst och dessutom om fel sak. Klassificeringen är det som
+            // rättas: en väntad paus är inte ett fel. (Terminal 1:s fynd H1.)
+            if (err instanceof IdentityReviewPausedError) {
+              summary.pausedStale++
+              this.logger.warn(
+                `Avi ${notice.id} PAUSAD: ${err.antal} betalning(ar) väntar på ` +
+                  'identitetsgranskning i bankavstämningen. Automatiska krav är pausade för ' +
+                  'hela organisationen tills raderna är avgjorda.',
+              )
+              continue
+            }
             if (err instanceof PaymentDataPausedError) {
               summary.pausedStale++
               await this.freshness

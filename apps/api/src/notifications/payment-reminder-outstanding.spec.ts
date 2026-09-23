@@ -74,6 +74,12 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
     invoiceLine: { create: jest.fn().mockResolvedValue({}) },
     invoice: {
       findMany: jest.fn().mockResolvedValue([]),
+      // G2-AVSLUT — den vänliga påminnelsens anspråk omprövar numera fakturan
+      // ORG-BUNDET inne i transaktionen (status, pausflagga, organisation),
+      // eftersom cronens `findMany` läste dem FÖRE loopen. Svarar attrappen
+      // null tolkas det som "inte längre aktuell" och inget brev går —
+      // vilket är rätt beteende och fel för de HÄR proven, som mäter BELOPPEN.
+      findFirst: jest.fn().mockResolvedValue({ id: invoice.id }),
       update: invoiceUpdate,
       updateMany: invoiceBump,
     },
@@ -87,6 +93,15 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
     },
     invoiceEvent: { create: jest.fn().mockResolvedValue({}) },
     account: { findMany: jest.fn().mockResolvedValue([]) },
+    // G2 — cronens förhandsgallring frågar vilka organisationer som är pausade
+    // av en olöst identitetsgranskning. Tom lista = ingen pausad, vilket är vad
+    // de här proven mäter mot (de äger BELOPPEN i breven, inte pausen).
+    //
+    // ATT DEN MÅSTE FINNAS ÄR EN EGENSKAP, INTE EN OLÄGENHET: utan den kastade
+    // frågan, `runCronSafely` fångade, och HELA cronen dog innan ett enda brev
+    // gick. Det är rätt riktning — hellre inga påminnelser än fel — och den
+    // riktningen upptäcktes just för att attrappen var fail-closed.
+    bankTransaction: { groupBy: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)),
   }
   const mail = {
@@ -108,6 +123,19 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
       report: () => {
         throw new Error('#605: cronErrors.report anropades oväntat i test')
       },
+    } as never,
+    // G2 — granskningsspärren. TILLÅTANDE attrapp (svarar "inga olösta rader"),
+    // därför att de här proven mäter AVGIFTEN och inte pausen: en kastande
+    // attrapp hade fällt dem på fel grund och dolt vad de finns för. Pausens
+    // eget beteende mäts i kravpaus-provet, mot riktig databas.
+    {
+      assertIngenOlostIdentitetsgranskning: jest.fn().mockResolvedValue(undefined),
+      // Cronen anropar TVÅ metoder: gallringen före loopen och spärren vid
+      // skrivningen. En stubb som bara bär den ena gav `undefined is not a
+      // function` inne i `runCronSafely`, som rapporterade till felsänkan — och
+      // den kastande sänkan visade sitt eget meddelande i stället för orsaken.
+      // Båda måste finnas, och tom mängd = ingen organisation pausad.
+      pausadeAvGranskning: jest.fn().mockResolvedValue(new Set<string>()),
     } as never,
   )
   return { service, prisma, mail, tx, invoiceUpdate, invoiceBump }

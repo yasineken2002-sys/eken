@@ -73,6 +73,10 @@ function makeService(opts: { ocrOutstanding?: number; staleOrgs?: Set<string> } 
     {
       evaluateAndAlert,
       assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+      // G2-AVSLUT — dygnskörningen sveper granskningspauser. Attrappen svarar
+      // "inget att ta igen"; svepets eget beteende mäts mot riktig databas i
+      // `kravpaus-samtidighet.db.spec.ts`.
+      sveparGranskningspauser: jest.fn().mockResolvedValue({ behandlade: 0 }),
     } as never,
     // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
     // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
@@ -346,6 +350,7 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       {
         assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
         evaluateAndAlert: jest.fn().mockResolvedValue(new Set()),
+        sveparGranskningspauser: jest.fn().mockResolvedValue({ behandlade: 0 }),
       } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
@@ -625,6 +630,7 @@ describe('escalateNoticeToInkassoReady — INV-B-grind + slutkristallisering (PR
       {
         assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
         evaluateAndAlert: jest.fn().mockResolvedValue(new Set()),
+        sveparGranskningspauser: jest.fn().mockResolvedValue({ behandlade: 0 }),
       } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar
@@ -815,6 +821,8 @@ describe('escalateRemindedToInkassoReady (cron)', () => {
       {
         evaluateAndAlert,
         assertAutomaticEffectAllowed: jest.fn().mockResolvedValue(undefined),
+        // G2-AVSLUT — se noten vid samma stubb ovan.
+        sveparGranskningspauser: jest.fn().mockResolvedValue({ behandlade: 0 }),
       } as never,
       // #605: cronErrors — den varaktiga felsänkan. Attrappen KASTAR om den
       // anropas, så ett test som råkar gå in i en felväg inte tyst passerar

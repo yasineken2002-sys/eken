@@ -1742,11 +1742,40 @@ export const EditedTransactionSchema = z.object({
 export const ConfirmImportSchema = z.object({
   /** Utelämnad = bekräfta utkastet som det står. */
   transactions: z.array(EditedTransactionSchema).optional(),
+  /**
+   * #F034c — VILKET BANKKONTO bekräftelsen gäller.
+   *
+   * Obligatoriskt i praktiken: servern avvisar en bekräftelse utan konto med
+   * ett svenskt besked. Fältet är `optional()` i SCHEMAT bara för att felet ska
+   * komma från kontoupplösningen — som vet om organisationen saknar konton
+   * eller om operatören bara glömde välja — i stället för från en generisk
+   * valideringsrad som inte kan skilja de två.
+   *
+   * PDF-utdragets AI-extraherade `accountNumber` väljer ALDRIG konto. Det
+   * kontrolleras mot valet, se `BankAccountService.jamforKontonummer`.
+   */
+  bankAccountId: z.string().min(1).optional(),
+})
+
+/** #F034c — lägga upp ett målkonto för bankimport. */
+export const CreateBankAccountSchema = z.object({
+  /**
+   * Operatörens namn på kontot. Unikt per organisation — det är DET valet görs
+   * på när filen saknar säker kontoidentitet, och två lika namn gör valet till
+   * en gissning.
+   */
+  name: z.string().min(1).max(120),
+  /**
+   * Valfri bankidentitet (clearing+konto, bankgiro, IBAN). Används för
+   * KONTROLL mot vad filen råkar bära, aldrig för att VÄLJA konto.
+   */
+  accountNumber: z.string().max(64).optional(),
 })
 
 export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
 export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
 export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>
+export type CreateBankAccountInput = z.infer<typeof CreateBankAccountSchema>
 
 // ─── Besiktningar ─────────────────────────────────────────────────────────────
 
@@ -1864,9 +1893,42 @@ export const UpdateInspectionItemSchema = z
   })
   .strict()
 
+/**
+ * POST /inspections/:id/rattelse — rättelse av ett slutfört protokoll.
+ *
+ * TRE FÄLT SAKNAS HÄR MED FLIT: vem som rättar, när det sker och vilken version
+ * som blir följden. Alla tre är serverns. `correctedById` läses ur JWT,
+ * `correctedAt` är serverns klocka och `version` räknas ur kedjan — exakt samma
+ * skäl som `completedAt` och `signedAt` togs ur `UpdateInspectionSchema` i
+ * F025. En aktör eller en tidpunkt som anroparen väljer själv är ingen uppgift
+ * om verkligheten, och i ett rättelsespår är det just aktören och tidpunkten
+ * som ska gå att lita på.
+ *
+ * `orsak` har ett GOLV och inte bara ett tak. Taket är kolumnens
+ * (`INSPECTION_TEXT_MAX`, samma som protokollets övriga fritext). Golvet finns
+ * därför att fältets hela syfte är att någon ska kunna läsa VARFÖR originalet
+ * inte dög, och ett obligatoriskt fält som accepterar "x" är obligatoriskt bara
+ * på pappret. Tio tecken är inte en garanti för en bra motivering — det är en
+ * spärr mot den tomma.
+ *
+ * `expectedContentHash` är OBLIGATORISK, med samma mekanik och samma skäl som
+ * vid signering: värdet ur `contentHash` på den version anroparen läste.
+ * Servern härleder jämförelsevärdet själv under radlåset. Den som rättar ett
+ * protokoll hen inte har sett hela ska fällas, inte skrivas in i spåret.
+ */
+export const INSPECTION_CORRECTION_REASON_MIN = 10
+
+export const CreateInspectionCorrectionSchema = z
+  .object({
+    orsak: z.string().min(INSPECTION_CORRECTION_REASON_MIN).max(INSPECTION_TEXT_MAX),
+    expectedContentHash: z.string().regex(/^[0-9a-f]{64}$/),
+  })
+  .strict()
+
 export type CreateInspectionInput = z.infer<typeof CreateInspectionSchema>
 export type UpdateInspectionInput = z.infer<typeof UpdateInspectionSchema>
 export type UpdateInspectionItemInput = z.infer<typeof UpdateInspectionItemSchema>
+export type CreateInspectionCorrectionInput = z.infer<typeof CreateInspectionCorrectionSchema>
 
 // ─── Dokument ─────────────────────────────────────────────────────────────────
 

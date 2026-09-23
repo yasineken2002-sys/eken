@@ -96,6 +96,9 @@ describe('TenantPortalService — getInvoices defense-in-depth', () => {
       testPersonalNumberService(),
       {} as never,
       {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
     )
 
     const result = await service.getInvoices('tenant-1')

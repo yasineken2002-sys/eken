@@ -31,8 +31,10 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { ConflictException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
+import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 /**
  * Skarp ReconciliationService med attrapp-Prisma. Attrappen räknar VARJE
@@ -125,7 +127,11 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
     {} as never,
     new InvoiceEventsService(prisma as never) as never,
     { reverseJournalEntryForPayment } as never,
-    {} as never, // PaymentFreshnessService — ej använd i unmatch-vägen,
+    // G2-AVSLUT — `unmatchTransaction` tar numera det exklusiva
+    // organisationslåset FÖRST, så tjänsten ÄR använd i unmatch-vägen.
+    // Dubbeln är tillåtande; pausens beteende mäts i
+    // `kravpaus-samtidighet.db.spec.ts` mot riktiga tjänster.
+    färskhetsdubbel() as never,
     { record: jest.fn().mockResolvedValue({}) } as never, // #326 C — RentNoticeEventsService,
     // Agent 2 (etapp A): skuggkön och facitskrivningen. STUBBAR — ingen av
     // dem får kunna fälla en matchning, och det är just det de här proven
@@ -136,6 +142,10 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, prisma, tx, $transaction, reverseJournalEntryForPayment }
 }
@@ -325,6 +335,7 @@ describe('#326 A — AI-verktyget unmatch_transaction nekas av SAMMA spärr', ()
       noop, // 23 signingService
       noop, // 24 accountingPeriods,
       noop,
+      {} as never, // #F034c bankAccounts (sist)
     )
     return { executor, ...rig }
   }

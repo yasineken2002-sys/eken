@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (217 st)
+## 1. HTTP-endpoints med rollgrind (221 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -83,6 +83,8 @@ GET /invoices/:id/events                                        ACCOUNTANT, ADMI
 GET /misc-charges/:id                                           ADMIN, MANAGER, OWNER
 GET /misc-charges                                               ADMIN, MANAGER, OWNER
 GET /notifications/overdue-reminders/preview                    ADMIN, OWNER
+GET /reconciliation/bank-accounts                               ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /reconciliation/identity-review                             ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /reconciliation/imports/:id                                 ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /reconciliation/psd2/consents                               ADMIN, OWNER
 GET /reconciliation/stats                                       ACCOUNTANT, ADMIN, MANAGER, OWNER
@@ -190,6 +192,7 @@ POST /import/execute                                            ADMIN, OWNER
 POST /import/preview                                            ADMIN, OWNER
 POST /import/scan-contract                                      ADMIN, OWNER
 POST /inspections/:id/analyze                                   ADMIN, MANAGER, OWNER
+POST /inspections/:id/rattelse                                  ADMIN, MANAGER, OWNER
 POST /inspections                                               ADMIN, MANAGER, OWNER
 POST /invoices/:id/credit-note                                  ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /invoices/:id/pay                                          ADMIN, MANAGER, OWNER
@@ -214,6 +217,7 @@ POST /news                                                      ADMIN, MANAGER, 
 POST /notifications/send-overdue-reminders                      ADMIN, OWNER
 POST /properties                                                ADMIN, MANAGER, OWNER
 POST /reconciliation/auto-match                                 ADMIN, MANAGER, OWNER
+POST /reconciliation/bank-accounts                              ADMIN, MANAGER, OWNER
 POST /reconciliation/import-bgmax                               ADMIN, MANAGER, OWNER
 POST /reconciliation/import-pdf                                 ADMIN, MANAGER, OWNER
 POST /reconciliation/imports/:id/confirm                        ADMIN, MANAGER, OWNER
@@ -237,7 +241,7 @@ POST /users/invite                                              ADMIN, OWNER
 POST /work-orders/:id/cancel                                    ADMIN, MANAGER, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (175 st)
+## 1b. HTTP-endpoints UTAN rollgrind (183 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -251,7 +255,7 @@ konstruktion osynlig för driftbevakningen. #81 visade vad det kostade —
 GET /import/jobs var varken självscopad eller avsedd att vara öppen, låg
 öppen för VIEWER, och fanns inte i den här filen medan hålet var öppet.
 
-### a) Org-inloggad, öppen för VARJE roll (74 st)
+### a) Org-inloggad, öppen för VARJE roll (76 st)
 
 Enbart globala guards — antingen ingen @UseGuards alls, eller en som bara
 räknar upp JwtAuthGuard/RolesGuard och därmed inte ändrar något (#441).
@@ -265,7 +269,7 @@ det är precis vad VIEWER ska betyda. Frågan är: läser VIEWER DOMÄNDATA,
 eller det OPERATIVA SPÅRET av en handling som kräver högre roll? Spåren
 grindas och flyttar därmed till avsnitt 1.
 
-GRANSKADE — avsiktligt öppna, med skälet (74 st)
+GRANSKADE — avsiktligt öppna, med skälet (76 st)
 
 RÄCKVIDD: granskad som ANROPSYTA — vem som får anropa. INTE som SVARSYTA:
 vad svaret bär är inte prövat här. Se #445.
@@ -505,8 +509,39 @@ GET /history/units/:unitId                                      history.controll
     läsning, ingen andra kopia) — prövat mot den RIKTIGA
     anonymizeTenantWithin i object-history.db.spec.ts.
 
+GET /inspections/:id/bildkontroll                               inspections.controller.ts
+    Läser tillbaka bilagornas bytes ur lagringen och jämför med den lagrade
+    digesten. Svaret är fyra utfall plus filnamn och digester — ingen bild och
+    ingen lagringsnyckel. Öppen för varje roll som detaljvyn: den som får se
+    att en bilaga finns ska också få veta om den är oförändrad.
+
+    GRINDEN ÄR ORG-SCOPNINGEN: `kontrolleraBilder` slår upp besiktningen med
+    organizationId i sitt where och kastar 404 — inte en tom lista — för en
+    annan organisations id.
+
+    KOSTNAD, INTE BEHÖRIGHET, är skälet att den är en egen endpoint: den gör
+    en läsning per bilaga mot lagringen. Den skriver ingenting och är
+    omkörbar.
+
 GET /inspections/:id/pdf                                        inspections.controller.ts
     Renderar samma domändata som detaljvyn.
+
+GET /inspections/:id/versioner                                  inspections.controller.ts
+    Versionskedjan för ETT protokoll: versionsnummer, status, rättelseorsak,
+    rättande användar-id och datum. Öppen för varje roll av samma skäl som
+    `GET /inspections/:id` — vilken version som gäller är en förutsättning för
+    att läsa protokollet rätt, inte en fördjupning, och en VIEWER som ser
+    detaljvyn ska inte se den UTAN beskedet att den ersatts.
+
+    GRINDEN ÄR ORG-SCOPNINGEN: `hamtaKedja` bär organizationId i VARJE fråga,
+    inte bara den första, så en kedja kan inte vandras in i en annan
+    organisations rader ens om en `correctionOfId` pekar dit. Prövat mot
+    riktig Postgres i inspection-correction.db.spec.ts ("ORG-ISOLERING: en
+    främmande org kan varken rätta eller läsa kedjan").
+
+    SVARSYTAN bär inga personuppgifter: inga poster, inga bilder, ingen
+    hyresgäst. `correctedById` är ett användar-id inom den egna
+    organisationen.
 
 GET /inspections/:id                                            inspections.controller.ts
     Domändata, som listan.
@@ -688,7 +723,7 @@ Ingen har intygat att de ska vara öppna. En NY rad hamnar här tills någon
 läst servicemetoden och skrivit skälet i GRANSKAD_HINK_A i authz-surface.ts.
 
 
-### b) Styrda av en ANNAN mekanism (68 st)
+### b) Styrda av en ANNAN mekanism (74 st)
 
 @UseGuards(...) med en guard som faktiskt BYTER mekanism. Frånvaro av
 @Roles betyder inte ostyrd: plattformsadmin går via PlatformGuard,
@@ -727,8 +762,14 @@ GET /platform/stats/plan-breakdown                              PlatformGuard   
 GET /platform/stats/top-organizations                           PlatformGuard                 platform-stats.controller.ts
 GET /portal/consumption                                         TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/dashboard                                           TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/deposits                                            TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/documents/:id/download                              TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/documents                                           TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id/bildkontroll                        TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id/images/:imageId                     TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id/pdf                                 TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections/:id                                     TenantAuthGuard               tenant-portal.controller.ts
+GET /portal/inspections                                         TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/invoices/:id/download                               TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/invoices                                            TenantAuthGuard               tenant-portal.controller.ts
 GET /portal/lease                                               TenantAuthGuard               tenant-portal.controller.ts

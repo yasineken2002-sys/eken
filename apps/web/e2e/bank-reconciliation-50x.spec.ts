@@ -96,14 +96,35 @@ async function patchJson<T>(
   return { status: res.status(), body: (await res.json()) as never }
 }
 
+/**
+ * Skapar ett målkonto för importen (#F034c).
+ *
+ * En import måste höra till ett namngivet bankkonto — organisationen ensam
+ * duger inte. Riggen gör här det operatören gör i kontoväljaren.
+ */
+async function skapaBankkonto(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+): Promise<string> {
+  const res = await request.post(`${API}/reconciliation/bank-accounts`, {
+    headers,
+    data: { name: 'E2E företagskonto' },
+  })
+  if (res.status() !== 201 && res.status() !== 200) {
+    throw new Error(`Kunde inte skapa bankkonto (${res.status()}): ${await res.text()}`)
+  }
+  return ((await res.json()) as { data: { id: string } }).data.id
+}
+
 /** Laddar upp en bank-CSV (fält "statement") och returnerar import-resultatet. */
 async function importCsv(
   request: APIRequestContext,
   csv: string,
   headers: Record<string, string>,
+  bankAccountId: string,
 ): Promise<{ status: number; body: { success?: boolean; data?: { autoMatched: number } } }> {
   const res = await paced(() =>
-    request.post(`${API}/reconciliation/import`, {
+    request.post(`${API}/reconciliation/import?bankAccountId=${bankAccountId}`, {
       headers,
       multipart: {
         statement: {
@@ -178,6 +199,11 @@ test('bankavstämning: 50 betalningar matchas mot rätt faktura + korrekt verifi
   const orgId = (
     JSON.parse(Buffer.from(token.split('.')[1]!, 'base64').toString()) as { organizationId: string }
   ).organizationId
+
+  // #F034c — målkontot, skapat en gång och återanvänt av alla 50 varven plus
+  // negativfallet. Att skapa ett konto PER varv hade prövat kontoupplägget
+  // femtio gånger i stället för matchningen.
+  const bankAccountId = await skapaBankkonto(request, headers)
 
   const prop = await postJson<{ id: string }>(
     request,
@@ -271,7 +297,12 @@ test('bankavstämning: 50 betalningar matchas mot rätt faktura + korrekt verifi
       const invoice = await createSentInvoice(amount)
       invId = invoice.id
       const desc = `E2E-recon-${stamp}-match-${i}`
-      const imp = await importCsv(request, bankCsv(desc, invoice.total, invoice.ocr), headers)
+      const imp = await importCsv(
+        request,
+        bankCsv(desc, invoice.total, invoice.ocr),
+        headers,
+        bankAccountId,
+      )
       if (!is2xx(imp.status)) throw new Error(`import misslyckades (status ${imp.status})`)
 
       // ── BEVIS mot DB (rad-nivå) ──────────────────────────────────────────
@@ -343,7 +374,12 @@ test('bankavstämning: 50 betalningar matchas mot rätt faktura + korrekt verifi
   const negDesc = `E2E-recon-${stamp}-negativ`
   // Belopp 99 999,99 — matchar varken lås-fakturan (55 555) eller någon match-
   // faktura (10 001..10 050), så även fuzzy-matchning (belopp + datum) faller.
-  const negImp = await importCsv(request, bankCsv(negDesc, 99_999.99, wrongOcr), headers)
+  const negImp = await importCsv(
+    request,
+    bankCsv(negDesc, 99_999.99, wrongOcr),
+    headers,
+    bankAccountId,
+  )
   expect(is2xx(negImp.status), `negativ import (status ${negImp.status})`).toBe(true)
 
   const negRow = queryRow(`

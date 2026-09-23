@@ -152,6 +152,11 @@ export const INÅT = {
   PropertiesService: 'CRUD på fastigheter.',
   UnitsService: 'CRUD på lägenheter.',
   AccountingService: 'Bokföring i databasen.',
+  BankAccountService:
+    '#F034c — bankimportens målkonton. Läser och skapar rader i databasen och ' +
+    'inget annat: ingen mottagare, inget nätverk utanför systemet, ingen fil ut. ' +
+    'Verktyget `import_bgmax_file` injicerar den ENBART för `resolveTarget`, som ' +
+    'är ägandekontrollen mot organisationen — alltså en grind, inte en förmåga.',
   VerifikationsnummerService: 'Nummerserie i databasen.',
   MaintenanceService: 'Ärenden i databasen.',
   AviseringService: 'Avidomänen. `generateMonthlyNotices` skriver bara; sändningen är en EGEN metod, och räckviddsregeln skiljer dem åt.',

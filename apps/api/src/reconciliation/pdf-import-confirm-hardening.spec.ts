@@ -13,6 +13,7 @@ jest.mock('./pdf-statement-parser.service', () => ({
 jest.mock('./reconciliation.service', () => ({ ReconciliationService: class {} }))
 
 import { BankStatementImportService } from './bank-statement-import.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 interface SanitizeAccess {
   sanitizeEdited(edited: unknown[]): Array<{
@@ -23,7 +24,16 @@ interface SanitizeAccess {
 }
 
 function makeService() {
-  const service = new BankStatementImportService({} as never, {} as never, {} as never, {} as never)
+  const service = new BankStatementImportService(
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(undefined as never),
+  )
   return service as unknown as SanitizeAccess
 }
 

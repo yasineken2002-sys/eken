@@ -112,6 +112,61 @@ const CRITICAL_INDEXES = [
     where:
       "typeIN('EMAIL_DELIVERED','EMAIL_BOUNCED','NOTICE_EMAIL_DELIVERED','NOTICE_EMAIL_BOUNCED')",
   },
+  {
+    label: 'filimportens radidentitet — en bankrad per (identitet, förekomst) (#F034b)',
+    expectedName: 'bank_transaction_identity_unique',
+    migrationRef: '20260921100000_bank_import_file_idempotency',
+    unique: true,
+    table: 'BankTransaction',
+    // ── VARFÖR `identitySeq` STÅR I INVARIANTEN ────────────────────────────
+    //
+    // Utan förekomstledet är villkoret "en bankrad per identitet", och då slås
+    // två VERKLIGT skilda betalningar som är lika i allt filen bär ihop till
+    // en. Det är exakt det fel dedupen hade före #F034b, fast nu cementerat i
+    // databasen — och den andra hyresgästens pengar skulle inte bara utebli,
+    // de skulle bli omöjliga att lagra.
+    //
+    // Tas ledet bort en dag ska den ändringen kräva en rad här, inte gå igenom
+    // som en förenkling.
+    columns: ['organizationId', 'identityKey', 'identitySeq'],
+    // PREDIKATET ÄR KONSTRUKTIONEN, inte en optimering. `identityKey` är NOT
+    // NULL med sentinel `''` (CLAUDE.md § "Ett unikt villkor över en NULLBAR
+    // kolumn skyddar inte raderna utan värde" — två NULL är distinkta, två ''
+    // är det inte). Men sentinelen kolliderar då med SIG SJÄLV, och alla rader
+    // som fanns före migrationen bär den. Faller predikatet bort går indexet
+    // inte att skapa alls på en databas med historik — och på en tom databas
+    // skulle det i stället tillåta högst EN rad utan identitet per
+    // organisation, alltså bryta API-vägens rader.
+    where: "identityKey<>''",
+  },
+  {
+    label: 'granskningspausens period — EN öppen paus per organisation (G2-AVSLUT)',
+    expectedName: 'bank_identity_review_pause_open_unique',
+    migrationRef: '20260921180000_bank_identity_review_pause',
+    unique: true,
+    table: 'BankIdentityReviewPause',
+    columns: ['organizationId'],
+    // ── PREDIKATET ÄR HELA KONSTRUKTIONEN ─────────────────────────────────
+    //
+    // Utan `WHERE "endedAt" IS NULL` vore villkoret "en period per organisation
+    // NÅGONSIN", och då kan en organisation som löst sin första paus aldrig få
+    // en andra — alltså skulle nästa granskningspaus bli TYST, utan notis och
+    // utan mejl. Det är precis det fel perioden finns för att ta bort.
+    //
+    // Med predikatet är villkoret "ett ÖPPET aviseringstillfälle åt gången".
+    // Det är det som gör två samtidiga importer till ett brev i stället för
+    // två, och det avgörs av databasen — inte av en läs-sedan-skriv som båda
+    // kan passera.
+    //
+    // Indexet bärs av `INSERT … ON CONFLICT ("organizationId") WHERE "endedAt"
+    // IS NULL DO NOTHING`. Byter någon namn eller predikat slutar konflikten
+    // att infereras, och då kastar insättningen i stället för att svara
+    // "redan öppen".
+    // Utan blanksteg: vakten normaliserar bort dem ur den faktiska
+    // definitionen, och den förväntade måste skrivas i samma form. Samma
+    // skrivsätt som `identityKey<>''` ovan.
+    where: 'endedAtISNULL',
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

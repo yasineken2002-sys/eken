@@ -12,8 +12,9 @@ import {
 import type { FastifyRequest } from 'fastify'
 import { ReconciliationService, type BankFormat } from './reconciliation.service'
 import { BankStatementImportService } from './bank-statement-import.service'
+import { BankAccountService } from './bank-account.service'
 import { ManualMatchDto } from './dto/manual-match.dto'
-import { ConfirmImportDto } from './dto/confirm-import.dto'
+import { ConfirmImportDto, CreateBankAccountDto } from './dto/confirm-import.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
@@ -28,7 +29,60 @@ export class ReconciliationController {
   constructor(
     private readonly reconciliationService: ReconciliationService,
     private readonly statementImports: BankStatementImportService,
+    // #F034c — målkontot. Upplösningen ligger i tjänsten så alla tre filvägar
+    // får samma ägandekontroll; se `resolveTarget`.
+    private readonly bankAccounts: BankAccountService,
   ) {}
+
+  /**
+   * GET /reconciliation/bank-accounts
+   *
+   * Organisationens målkonton. Behövs för att operatören ska KUNNA välja —
+   * utan listan är kravet "välj ett namngivet konto" inte uppfyllbart.
+   *
+   * Rollistan speglar de andra LÄSNINGARNA i den här controllern (se getImport
+   * för ACCOUNTANT-beslutet). Svaret bär bara id, namn, kontonummer och
+   * aktivflagga; det finns inget saldo och ingen bankkoppling att röja.
+   */
+  @Get('bank-accounts')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async listBankAccounts(@OrgId() organizationId: string) {
+    return this.bankAccounts.list(organizationId)
+  }
+
+  /**
+   * GET /reconciliation/identity-review
+   *
+   * G2 — varför de automatiska kraven är pausade, och vilka rader som måste
+   * avgöras för att de ska släppas.
+   *
+   * SAMMA ROLLER SOM ÖVRIGA LÄSNINGAR här. Den som får se avstämningstabellen
+   * får se varför den stoppar kravtrappan; svaret bär inget som tabellen inte
+   * redan bär.
+   *
+   * EN LÄSNING. Att öppna sidan rör ingenting — varken pausen, färskheten eller
+   * raderna.
+   */
+  @Get('identity-review')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async identityReview(@OrgId() organizationId: string) {
+    return this.reconciliationService.identitetsgranskning(organizationId)
+  }
+
+  /**
+   * POST /reconciliation/bank-accounts
+   *
+   * MANAGER+ som skrivningarna i övrigt: att lägga upp ett målkonto styr vart
+   * framtida bankrader bokförs, och är alltså inte en läsning.
+   */
+  @Post('bank-accounts')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  async createBankAccount(@OrgId() organizationId: string, @Body() dto: CreateBankAccountDto) {
+    return this.bankAccounts.create(organizationId, {
+      name: dto.name,
+      ...(dto.accountNumber ? { accountNumber: dto.accountNumber } : {}),
+    })
+  }
 
   /**
    * POST /reconciliation/import
@@ -40,9 +94,21 @@ export class ReconciliationController {
   async importStatement(
     @OrgId() organizationId: string,
     @Req() req: FastifyRequest,
+    @Query('bankAccountId') bankAccountId?: string,
     @Query('bank') bank?: string,
   ) {
+    // MARKÖREN FÖRST, OFÖRÄNDRAT. `recordImportStarted` pausar kravtrappan och
+    // ska stå före allt som kan fallera — det är F19:s invariant och den mäts
+    // av `import-entry-boundary.spec.ts`.
+    //
+    // Jag flyttade den först under arbetet med #F034c, med argumentet att ett
+    // anrop utan konto inte borde registrera ett försök. Det var att ändra en
+    // ordning ingen bett om: markören i onödan är den SÄKRA riktningen (den
+    // pausar), medan en utebliven markör är den osäkra. Ordningen står kvar.
     await this.reconciliationService.recordImportStarted(organizationId)
+    // #F034c — målkontot. Kastar med ett svenskt besked om kontot saknas,
+    // tillhör en annan organisation eller är avvecklat.
+    const konto = await this.bankAccounts.resolveTarget(organizationId, bankAccountId)
     const file = await (
       req as unknown as {
         file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>
@@ -70,6 +136,7 @@ export class ReconciliationController {
       buffer,
       filename,
       organizationId,
+      konto.id,
       bankOverride,
     )
   }
@@ -85,8 +152,13 @@ export class ReconciliationController {
    */
   @Post('import-bgmax')
   @Roles('MANAGER', 'ADMIN', 'OWNER')
-  async importBgMax(@OrgId() organizationId: string, @Req() req: FastifyRequest) {
+  async importBgMax(
+    @OrgId() organizationId: string,
+    @Req() req: FastifyRequest,
+    @Query('bankAccountId') bankAccountId?: string,
+  ) {
     await this.reconciliationService.recordImportStarted(organizationId)
+    const konto = await this.bankAccounts.resolveTarget(organizationId, bankAccountId)
     const file = await (
       req as unknown as {
         file: () => Promise<{ filename: string; toBuffer: () => Promise<Buffer> } | null>
@@ -103,7 +175,7 @@ export class ReconciliationController {
     }
 
     const buffer = await file.toBuffer()
-    return this.reconciliationService.importBgMaxFile(buffer, filename, organizationId)
+    return this.reconciliationService.importBgMaxFile(buffer, filename, organizationId, konto.id)
   }
 
   /**
@@ -195,7 +267,17 @@ export class ReconciliationController {
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.statementImports.confirmImport(id, organizationId, user.sub, dto.transactions)
+    // #F034c — kontot kommer i BODYN här och inte som query, eftersom
+    // bekräftelsen redan har en body och ett halvt kontrakt är svårare att läsa
+    // än ett helt. `resolveTarget` kastar om det saknas.
+    const konto = await this.bankAccounts.resolveTarget(organizationId, dto.bankAccountId)
+    return this.statementImports.confirmImport(
+      id,
+      organizationId,
+      user.sub,
+      konto.id,
+      dto.transactions,
+    )
   }
 
   /**

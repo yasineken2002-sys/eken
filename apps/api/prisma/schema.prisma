@@ -895,6 +895,8 @@ model Organization {
   journalEntries            JournalEntry[]
   bankTransactions          BankTransaction[]
   bankStatementImports      BankStatementImport[]
+  bankImportAttempts        BankImportAttempt[]
+  bankAccounts              BankAccount[]
   bankConsents              BankConsent[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -950,6 +952,8 @@ model Organization {
   updatedAt        DateTime          @updatedAt
   supplierInvoices SupplierInvoice[]
 
+  // G2-AVSLUT — granskningspausens perioder.
+  bankIdentityReviewPauses BankIdentityReviewPause[]
   @@index([orgNumber])
   @@index([customerNumber])
   @@index([subscriptionPlan])
@@ -2580,6 +2584,8 @@ model BankTransaction {
   // Bokföringslagen (1999:1078): banktransaktioner är räkenskapsinformation, bevaras 7 år.
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   invoice            Invoice?            @relation(fields: [invoiceId], references: [id])
+  // Restrict: ett konto med bokförda bankrader får inte kunna raderas under dem.
+  bankAccount        BankAccount?        @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
   matchedRentNotice  RentNotice?         @relation(fields: [matchedRentNoticeId], references: [id])
   // Härledda betalningsallokeringar. Var 1:1 (`bankTransactionId @unique`), men
   // H3 PR A bytte den spärren mot @@unique([bankTransactionId, rentNoticeId]) så
@@ -2603,12 +2609,326 @@ model BankTransaction {
   // efter migrationens brytpunkt görs synligt.
   actorKind ActorKind?
 
+  // ── FILIMPORTENS RADIDENTITET (#F034b) ────────────────────────────────────
+  //
+  // `identityKey` = SHA-256 över EXAKT de fält filvägens fält-dedup redan
+  // frågar efter (se `bank-import-identity.ts`). Inget nytt fält, ingen ny
+  // regel — bara samma fråga i en form ett unikt DB-index kan bära.
+  //
+  // `identitySeq` = radens FÖREKOMSTNUMMER inom den fil som skapade den,
+  // 0-baserat. Det är ledet som gör att två VERKLIGT skilda betalningar som är
+  // lika i varje fält filen bär kan lagras båda: de får 0 och 1. Ett unikt
+  // villkor på bara datum, belopp och text hade slagit ihop dem.
+  //
+  // ── VARFÖR NOT NULL MED SENTINEL OCH PARTIELLT INDEX ──────────────────────
+  //
+  // CLAUDE.md § "Ett unikt villkor över en NULLBAR kolumn skyddar inte raderna
+  // utan värde": två NULL är DISTINKTA i ett unikt index. Kolumnen är därför
+  // NOT NULL med sentinel `''`.
+  //
+  // Men sentinelen kolliderar med SIG SJÄLV, och alla befintliga rader får
+  // `''` i migrationen — ett totalt unikt index hade därför varit omöjligt att
+  // skapa. Indexet är alltså PARTIELLT (`WHERE "identityKey" <> ''`) och
+  // lever bara i migrations-SQL; `check-critical-indexes.mjs` bär invarianten
+  // så en framtida `prisma migrate dev` inte kan DROP:a det tyst.
+  //
+  // INGEN BACKFILL. Historiska rader behåller `''` och faller utanför
+  // predikatet. De skyddas fortfarande av fält-dedupens LÄSNING, som är kvar
+  // som första lager just för dem. Att stämpla dem i efterhand hade varit
+  // historikläkning.
+  //
+  // API-VÄGEN (`ingestFromApi`) SÄTTER INTE HELLER FÄLTEN. Dess identitet är
+  // bankens `externalId` (@@unique nedan) plus `dedupKey` för cross-source.
+  // Sentinelen betyder där "täcks inte av filidentitetens index", vilket är
+  // sant och inte ett förbiseende.
+  identityKey String @default("")
+  identitySeq Int    @default(0)
+
+  // ── MÅLKONTOT (#F034c) ────────────────────────────────────────────────────
+  //
+  // Vilket av organisationens bankkonton raden kom in på. Ingår i
+  // `identityKey`, så två VERKLIGA betalningar med identiska fält på OLIKA
+  // konton får olika identitet och bevaras båda — vilket de inte gjorde när
+  // organisationen var det grövsta målet systemet kunde uttrycka.
+  //
+  // NULL BETYDER "KONTOT ÄR OKÄNT", INTE "inget konto".
+  //
+  // Två slags rader bär NULL, och båda gör det med avsikt:
+  //
+  //   HISTORISKA rader, skrivna innan kontot fanns. Migrationen hittar INTE på
+  //   en tillhörighet åt dem — att gissa hade varit att skriva in ett påstående
+  //   om var pengarna kom in som ingen kan belägga.
+  //
+  //   PSD2-API-rader (`ingestFromApi`). Den vägen har ingen kontoväljare, och
+  //   uppdraget som införde kontot säger uttryckligen att ingen ny bankkoppling
+  //   ska byggas. Rader därifrån identifieras av `externalId` och `dedupKey`
+  //   precis som förr.
+  //
+  // VARJE NY FILRAD SÄTTER DET. Importvägarna kräver ett konto som servern
+  // verifierat mot organisationen; det finns ingen väg in utan.
+  bankAccountId String?
+
+  // ── NÄR IDENTITETEN INTE GICK ATT AVGÖRA (#F034c) ─────────────────────────
+  //
+  // Sätts när en ny rad matchar en KONTOLÖS historisk rad i allt filen bär, och
+  // frågan "är det samma betalning?" därför saknar svar: den historiska raden
+  // säger inte vilket konto den kom in på.
+  //
+  // DE TVÅ ENKLA UTVÄGARNA ÄR BÅDA FEL, och det är därför fältet finns:
+  //
+  //   räkna som dubblett     → en verklig betalning kastas TYST bort
+  //   skapa och auto-matcha  → en dubbel allokering och dubbel bokföring, med
+  //                            en säkerhet systemet inte har
+  //
+  // Raden LAGRAS därför (betalningen får inte försvinna) men auto-matchas
+  // ALDRIG: `matchTransaction` hoppas över, raden förblir UNMATCHED, och en
+  // människa avgör. Importsvaret räknar dem separat så utfallet syns i stället
+  // för att gömma sig i `duplicates` eller `unmatched`.
+  //
+  // NOLLSTÄLLS ALDRIG AUTOMATISKT. Att en människa senare matchar raden manuellt
+  // ändrar inte att identiteten var oavgjord vid importen, och spåret ska finnas
+  // kvar.
+  identityReviewAt     DateTime?
+  /// Varför identiteten inte kunde avgöras. I dag bara 'HISTORIK_UTAN_KONTO'.
+  /// Egen kolumn och inte en bool: nästa skäl ska inte behöva byta betydelse
+  /// på ett befintligt fält.
+  identityReviewReason String?
+
   @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([status])
   @@index([invoiceId])
   @@index([matchedRentNoticeId])
   @@index([organizationId, dedupKey])
+  @@index([organizationId, identityKey])
+  @@index([bankAccountId])
+  // Uppslaget som avgör om en ny rad kolliderar med KONTOLÖS historik.
+  @@index([organizationId, identityReviewAt])
+}
+
+// ─── Bankimportens MÅLKONTO (#F034c) ──────────────────────────────────────────
+//
+// MINSTA NÖDVÄNDIGA IMPORTMÅL, INTE EN KONTOENTITET.
+//
+// Raden finns för att besvara EN fråga: *vilket av organisationens bankkonton
+// gäller den här importen?* Den bär inget saldo, ingen bankkoppling, ingen
+// transaktionsrelation utöver identiteten, och den synkroniserar ingenting.
+// Skriv inte in sådant här utan att först fråga om det hör hemma i en annan
+// modell.
+//
+// ── VARFÖR EN NY MODELL OCH INTE EN BEFINTLIG ────────────────────────────────
+//
+// Tre kandidater prövades och förkastades, var och en av ett eget skäl:
+//
+//   Organization.bankgiro   EN nullbar sträng, och den är en BETALNINGSADRESS
+//                           organisationen trycker på fakturor — inte en mängd
+//                           konton att importera till. Ett fält kan inte bära
+//                           flera konton.
+//   BankConsent             ett PSD2-SAMTYCKE med tokens och provider, alltså
+//                           en KOPPLING och inte ett konto. Uppdraget säger
+//                           dessutom uttryckligen att ingen ny bankkoppling
+//                           behövs.
+//   Account                 KONTOPLANEN (number/type, 1510/1930/3911). Att låna
+//                           den hade varit att svara på "vilket bokföringskonto"
+//                           när frågan är "vilket bankkonto" — precis det
+//                           CLAUDE.md § "Återanvänd inte ett fält som svarar på
+//                           en ANNAN fråga" handlar om.
+//
+// ── NAMNET ÄR DET OPERATÖREN VÄLJER PÅ ───────────────────────────────────────
+//
+// `name` är obligatoriskt och unikt per organisation, därför att det är DET som
+// visas i väljaren när filen inte bär någon säker kontoidentitet. Ett konto som
+// heter samma sak som ett annat gör valet till en gissning.
+//
+// `accountNumber` är VALFRITT och bär den bankidentitet operatören råkar känna
+// till (clearing+konto, bankgiro, IBAN). Det används ALDRIG för att VÄLJA konto
+// — bara för att KONTROLLERA ett val mot vad filen råkar bära. Se
+// `bank-import-identity.ts` för varför den riktningen är den enda säkra.
+// G2-AVSLUT — EN GRANSKNINGSPAUS SOM PERIOD, inte som en flagga.
+//
+// ── VARFÖR INTE EN TIDSSTÄMPEL PÅ Organization ──────────────────────────────
+//
+// Kodbasen har två markörer av den formen redan:
+// `Organization.paymentDataStaleAlertedAt` och `RentNotice.blockedAlertedAt`.
+// Jag inventerade dem först, och de räcker inte här — av ett skäl som står i
+// byggbeslutet: NOTIS SKAPAD, E-POST KÖAD och E-POST LEVERERAD är olika
+// tillstånd. En enda tidsstämpel kan inte skilja dem åt, och då blir varje
+// köfel antingen en evig "redan aviserat" (sätts före köandet) eller en risk
+// för dubbletter vid timeout (sätts efter).
+//
+// `enqueueSafely` avbryter UTTRYCKLIGEN inte det underliggande anropet vid
+// timeout — en timeout kan alltså betyda att jobbet KÖADES. Därför krävs både
+// skilda tillstånd och en idempotensnyckel som överlever omstart.
+//
+// ── PERIODEN ────────────────────────────────────────────────────────────────
+//
+//   första olösta raden      → perioden ÖPPNAS (endedAt null)
+//   fler rader under samma   → ingen ny period, alltså ingen nattlig storm
+//   sista lösta/ignorerade   → perioden AVSLUTAS
+//   ny olöst rad senare      → NY period, nytt aviseringstillfälle
+//
+// `id` är periodnyckeln. Den bär e-postens `idempotencyKey`, så ett återförsök
+// efter en timeout kollapsar i kön i stället för att skicka två brev.
+//
+// ── ETT ÖPPET PER ORGANISATION ──────────────────────────────────────────────
+//
+// Partiellt unikt index `WHERE "endedAt" IS NULL`, i rå SQL (Prisma kan inte
+// deklarera partiella index). Det gör databasen till skiljedomare vid samtidiga
+// skapanden — create-och-fånga-P2002, samma form som #F034b — i stället för en
+// läs-sedan-skriv som två importer kan passera samtidigt.
+//
+model BankIdentityReviewPause {
+  id             String    @id @default(uuid())
+  organizationId String
+  startedAt      DateTime  @default(now())
+  /// Null = perioden pågår. Bärs av det partiella unika indexet.
+  endedAt        DateTime?
+  /// Beständig notis skapad för behöriga operatörer.
+  notifiedAt     DateTime?
+  /// E-post ACCEPTERAD av kön. Skilt från levererad, som kön äger.
+  mailQueuedAt   DateTime?
+  /// Köns jobb-id, för spårning när någon undrar vad som hände med brevet.
+  mailJobId      String?
+  /// Antal köförsök. Ett köfel ger INGEN evig markör — återförsök ska fungera.
+  mailAttempts   Int       @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, endedAt])
+}
+
+model BankAccount {
+  id             String  @id @default(uuid())
+  organizationId String
+  /// Operatörens namn på kontot. Det som visas i väljaren.
+  name           String
+  /// Valfri bankidentitet. Används för KONTROLL, aldrig för VAL.
+  accountNumber  String?
+  /// Ett avvecklat konto ska inte gå att välja, men dess historik består.
+  isActive       Boolean @default(true)
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  transactions   BankTransaction[]
+  importAttempts BankImportAttempt[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// ─── Bankimportens FÖRSÖKSRAD (#F034b) ────────────────────────────────────────
+//
+// Filnivåns idempotens. En rad per AVTRYCK (se `bank-import-identity.ts`):
+// organisation + filväg + filens råa bytes + mappning/bekräftat underlag.
+//
+// ── VARFÖR EN DB-RAD OCH INTE ETT PROCESSLOKALT LÅS ──────────────────────────
+//
+// Ett `Map` eller en mutex i processen syns inte för en ANDRA appinstans. Den
+// unika nyckeln nedan gör Postgres till skiljedomare: `create` och fånga P2002.
+// Vinnaren är den som fick skriva raden, och det gäller över instansgränsen.
+//
+// ── ARRENDE, INTE LÅS ────────────────────────────────────────────────────────
+//
+// `heartbeatAt` pulsas under körningen. En RUNNING-rad vars puls är äldre än
+// `IMPORT_LEASE_TTL_MS` har tappat sitt arrende och får ÖVERTAS av ett
+// återförsök (villkorad `updateMany` på det gamla `heartbeatAt` — exakt en
+// vinner). Utan det hade en dödad process lämnat importen permanent upptagen,
+// vilket är precis det krav 3 förbjuder.
+//
+// ── `PARTIAL` ÄR INTE `SUCCEEDED` ────────────────────────────────────────────
+//
+// En körning som slutfördes men lämnade radfel, eller som inte kunde läsa hela
+// filen (F19-spärren `fileReadComplete`), får `PARTIAL`. Bara `SUCCEEDED`
+// spelas upp igen. Ett partiellt utfall MÅSTE gå att göra om — annars hade ett
+// halvt resultat cementerats som ett klart.
+enum BankImportAttemptStatus {
+  RUNNING // pågår, arrendet giltigt så länge heartbeatAt är färskt
+  SUCCEEDED // klar UTAN radfel — enda läget som spelas upp igen
+  PARTIAL // klar MED radfel / ofullständigt läst fil — får köras om
+  FAILED // kastade — får köras om
+}
+
+model BankImportAttempt {
+  id             String @id @default(uuid())
+  organizationId String
+
+  /// #F034c — MÅLKONTOT, verifierat mot organisationen av servern innan
+  /// avtrycket räknas. Ingår i `fingerprint`, så samma fil mot TVÅ konton är
+  /// två skilda importer och blockerar inte varandra.
+  ///
+  /// NULLBART BARA FÖR HISTORIKENS SKULL: rader skrivna innan kontot fanns har
+  /// NULL, och migrationen hittar inte på något åt dem. Varje NY rad sätter
+  /// det — `körEnGång` kräver ett verifierat konto.
+  bankAccountId String?
+
+  /// SHA-256 (hex) över organisation ‖ mål ‖ kind ‖ contentHash ‖ mappingHash.
+  /// Härleds av `beräknaImportavtryck`; lagras för att `@@unique` ska kunna
+  /// bära den.
+  fingerprint String
+  /// CSV | XLSX | XLS | BGMAX | PDF_CONFIRM
+  kind        String
+  fileName    String
+  /// SHA-256 över filens RÅA bytes (PDF: över draftens id — det är
+  /// bekräftelsen som skriver bankrader, inte uppladdningen).
+  contentHash String
+  /// SHA-256 över det som styr HUR innehållet blir bankrader: `?bank=` för
+  /// CSV/XLSX/XLS, det kanoniserade bekräftade underlaget för PDF. Ledet är
+  /// det som gör att samma fil med ÄNDRAD mappning inte tyst får ett gammalt
+  /// lyckat svar.
+  mappingHash String
+
+  status  BankImportAttemptStatus @default(RUNNING)
+  /// Räknare över hur många gånger avtrycket har körts (övertaganden ingår).
+  /// Ett tal som växer är signalen att någon försöker om och om igen.
+  attempt Int                     @default(1)
+
+  startedAt   DateTime  @default(now())
+  /// Arrendets puls. Uppdateras under körningen; styr övertagande.
+  heartbeatAt DateTime  @default(now())
+  finishedAt  DateTime?
+
+  /// Det resultat som returneras vid en upprepning av ett SUCCEEDED-avtryck.
+  /// Lagras EN gång när körningen lyckas. Inte räkenskapsinformation — det är
+  /// en kvittens på ett importförsök, och bankraderna är underlaget.
+  resultJson   Json?
+  errorMessage String?
+
+  // ── CASCADE, OCH DET SKILJER SIG FRÅN GRANNARNA MED AVSIKT ────────────────
+  //
+  // `BankTransaction` och `BankStatementImport` har båda `Restrict`, och det är
+  // rätt för dem: de ÄR räkenskapsinformation respektive underlag för sådan
+  // (BFL 1999:1078, bevaras 7 år). Underlaget får inte kunna försvinna under
+  // bokföringen.
+  //
+  // Den här raden är något annat. Den är en DRIFTKVITTENS på ett importförsök,
+  // och den finns för att besvara en enda fråga: "har den här filen redan
+  // importerats?". Är organisationen borta är frågan meningslös — och
+  // bankraderna, som är det verkliga underlaget, är då redan borta via sin egen
+  // Restrict. Att stämpla kvittensen som bevarandepliktig hade varit att låna
+  // BFL:s tyngd till något lagen inte talar om.
+  //
+  // Priset, uttryckligt: en organisationsradering tar kvittenserna med sig, och
+  // frågan "vilka filer importerades" går inte att ställa i efterhand. Den
+  // frågan besvaras av bankraderna och av `BankStatementImport`, som båda
+  // bevaras.
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // CASCADE av samma skäl som organisationsrelationen ovan: raden är en
+  // DRIFTKVITTENS, inte räkenskapsinformation. Är kontot borta är frågan
+  // "har den här filen redan importerats mot det kontot?" meningslös.
+  //
+  // `BankTransaction.bankAccountId` är DÄREMOT Restrict — bankraderna ÄR
+  // räkenskapsinformation och får inte försvinna under sitt konto. De två
+  // relationerna pekar på samma tabell och har olika hållning med avsikt.
+  bankAccount  BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, fingerprint])
+  @@index([organizationId, status])
+  @@index([bankAccountId])
 }
 
 // ─── Bank Statement Import (AI-tolkat kontoutdrag i PDF) ──────────────────────
@@ -2671,6 +2991,25 @@ model BankStatementImport {
 enum BankStatementImportStatus {
   PARSING // Skickad till AI, väntar (transient — sync-flödet hoppar normalt över denna)
   PARSED // AI gav giltig JSON, väntar på användarens granskning
+  // #F034b — bekräftelsen HAR TAGIT draften men skriver fortfarande bankrader.
+  //
+  // Eget värde och inte återanvänt `PARSING`. De två svarar på OLIKA frågor:
+  // `PARSING` betyder "AI:n läser filen", `CONFIRMING` betyder "commiten
+  // pågår". Att låna det ena för det andra hade gjort ett AI-fel oskiljbart
+  // från ett avbrutet commit — och det är just den sortens sammanblandning
+  // CLAUDE.md § "Återanvänd inte ett fält som svarar på en ANNAN fråga" handlar
+  // om.
+  //
+  // VARFÖR LÄGET BEHÖVS: övergången PARSED → CONFIRMING görs med en
+  // status-guardad `updateMany`, vars `count` är anspråket. Utan den kunde TVÅ
+  // bekräftelser av samma draft med OLIKA redigerade listor (alltså två olika
+  // avtryck, som filnivåskyddet med rätta släpper igenom båda) båda skriva
+  // bankrader från samma underlag.
+  //
+  // Ett avbrutet commit lämnar draften i CONFIRMING. Den släpps tillbaka till
+  // PARSED av återförsöket när importförsökets arrende har fallit — se
+  // `confirmImport`.
+  CONFIRMING
   CONFIRMED // Användaren har bekräftat — BankTransaction-rader skapade
   FAILED // Tolkning misslyckades (AI-fel / ogiltig JSON)
   CANCELLED // Användaren avbröt granskningen
@@ -5420,6 +5759,47 @@ model Inspection {
   // Vad fältet kan bevisa: att innehållet är detsamma som vid signeringen.
   // Vad det INTE kan bevisa: vem som skrev under. Se `inspection-signature.ts`.
   signedContentHash String?
+
+  // ── RÄTTELSEVERSIONER: EN KEDJA, INTE EN ÖVERSKRIVNING ────────────────────
+  //
+  // Ett slutfört protokoll ändras aldrig på plats — spärren i
+  // `inspections.service.ts` ser till det. Frågan den spärren lämnade obesvarad
+  // är vad en förvaltare ska göra när protokollet är FEL: fram till nu fanns
+  // bara två utvägar, att låta felet stå eller att radera hela beviset.
+  //
+  // `correctionOfId` pekar på den version den här raden rättar. Kedjan är
+  // enkelriktad och EN länk bred: `@unique` betyder att en given version kan ha
+  // HÖGST EN rättelse. Det är inte en smaksak utan samtidighetsgarantin — två
+  // förvaltare som rättar samma version samtidigt kan inte båda lyckas, och
+  // vinnaren avgörs av databasen, inte av en läs-sedan-skriv-kontroll som två
+  // transaktioner kan passera i tur och ordning.
+  //
+  // `onDelete: NoAction` och INTE `Restrict`: båda hindrar att en version med
+  // rättelse raderas styckvis, men `Restrict` prövar villkoret omedelbart och
+  // hade då fällt även organisationens kaskadradering, där BÅDA raderna
+  // försvinner i samma sats. `NoAction` prövar vid satsens slut och släpper
+  // igenom just det fallet.
+  //
+  // `version` är kedjans ordningstal, 1 för originalet. Det är denormaliserat
+  // med flit: utan det kan ingen lista sorteras eller märkas utan att först
+  // vandra hela kedjan.
+  version          Int         @default(1)
+  correctionOfId   String?     @unique
+  correctionOf     Inspection? @relation("InspectionRattelse", fields: [correctionOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  correction       Inspection? @relation("InspectionRattelse")
+
+  // VARFÖR rättelsen gjordes, av VEM och NÄR. Alla tre är NULL på ett original
+  // och satta på varje rättelse — tjänsten kräver dem, och `correctedAt` är
+  // serverns tid, aldrig klientens (samma skäl som `completedAt` och `signedAt`
+  // togs ur DTO:n i F025).
+  //
+  // `correctedById` bär ett användar-id UTAN främmande nyckel, precis som
+  // `inspectedById` på raden ovan. Skälet är detsamma: spåret ska överleva att
+  // användaren tas bort. Ett raderat konto gör uppgiften omöjlig att slå upp —
+  // det ska inte göra den omöjlig att LAGRA.
+  correctionReason String?     @db.Text
+  correctedById    String?
+  correctedAt      DateTime?
 
   items  InspectionItem[]
   images InspectionImage[]

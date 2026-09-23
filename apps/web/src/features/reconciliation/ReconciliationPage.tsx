@@ -15,6 +15,8 @@ import {
   Sparkles,
   Landmark,
   ChevronRight,
+  AlertTriangle,
+  History,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -30,12 +32,15 @@ import {
   useReconciliationStats,
   useImportStatement,
   useImportPdfStatement,
+  useBankAccounts,
+  useIdentityReview,
   useManualMatch,
   useIgnoreTransaction,
   useUnmatchTransaction,
   useAutoMatch,
 } from './hooks/useReconciliation'
 import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
+import { importbesked, kontobesked, kontoläge, tolkaImportPagar } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
 import { useBankConsents } from './hooks/usePsd2'
 import { aktivaSamtycken } from './api/psd2.api'
@@ -103,6 +108,17 @@ function ImportModal({
   const dragCounter = useRef(0)
   const importMutation = useImportStatement()
   const pdfImportMutation = useImportPdfStatement()
+  // #F034c — MÅLKONTOT. Filen bär ingen säker kontoidentitet, så valet är
+  // operatörens. Organisationen får inte användas som om den vore ett konto.
+  const { data: bankkonton, isLoading: kontonLaddar, isError: kontonFel } = useBankAccounts()
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+  const aktivaKonton = (bankkonton ?? []).filter((k) => k.isActive)
+  // Ett ENDA konto väljs åt operatören — det är inget val, det är den enda
+  // möjligheten. Finns FLERA måste hen ta ställning.
+  const effektivtKonto =
+    bankAccountId ?? (aktivaKonton.length === 1 ? (aktivaKonton[0]?.id ?? null) : null)
+  const läge = kontoläge(bankkonton, effektivtKonto)
+  const kontotext = kontobesked(läge)
 
   const handleFile = (f: File) => {
     const ext = f.name.toLowerCase().split('.').pop() ?? ''
@@ -122,6 +138,20 @@ function ImportModal({
   const ext = file?.name.toLowerCase().split('.').pop() ?? ''
   const isPdf = ext === 'pdf'
   const isBgMax = ext === 'txt' || ext === 'bgmax'
+
+  // #F034b — 409 IMPORT_PAGAR skiljs från övriga fel. `tolkaImportPagar`
+  // returnerar null för allt annat, så ett nätverksavbrott aldrig kan visas som
+  // "importen pågår".
+  const pagar = tolkaImportPagar(importMutation.error) ?? tolkaImportPagar(pdfImportMutation.error)
+  const pagarTid = pagar?.startadAt ? new Date(pagar.startadAt) : null
+  const pagarKlockslag =
+    pagarTid && !Number.isNaN(pagarTid.getTime())
+      ? `${pagarTid.toLocaleDateString('sv-SE')} ${pagarTid.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}`
+      : null
+
+  // EN källa för besked-texten på alla tre filvägarna. Låg den inline hade
+  // BgMax kunnat sakna "delvis misslyckad" medan CSV visade den.
+  const besked = importbesked(result?.forsok)
 
   const onDropZoneDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -179,21 +209,23 @@ function ImportModal({
   }, [open])
 
   const handleImport = () => {
-    if (!file) return
+    if (!file || !effektivtKonto) return
     if (isPdf) {
       // PDF-flödet: ladda upp, AI-tolkar, returnerar DRAFT. Stäng denna modal
       // och öppna preview-modalen (managed av parent). Commit sker först
       // efter användarens granskning.
       pdfImportMutation.mutate(file, {
         onSuccess: (draft) => {
-          onPdfDraft(draft)
+          // Kontot följer med till bekräftelsemodalen: PDF-flödet är två steg,
+          // och det är BEKRÄFTELSEN som skriver bankrader.
+          onPdfDraft({ ...draft, bankAccountId: effektivtKonto })
           handleClose()
         },
       })
       return
     }
     importMutation.mutate(
-      { file, ...(bank !== 'AUTO' ? { bank } : {}) },
+      { file, bankAccountId: effektivtKonto, ...(bank !== 'AUTO' ? { bank } : {}) },
       {
         onSuccess: (data) => {
           setResult(data)
@@ -282,6 +314,44 @@ function ImportModal({
             )}
           </div>
 
+          {/* #F034c — KONTOVÄLJAREN. Ligger först: vilket konto utdraget gäller
+              är en förutsättning för importen, inte en detalj efteråt. */}
+          <div>
+            <label
+              htmlFor="bankkonto"
+              className="mb-1.5 block text-[12.5px] font-medium text-gray-700"
+            >
+              Bankkonto
+            </label>
+            {kontonLaddar ? (
+              <p className="text-[12.5px] text-gray-500">Hämtar konton…</p>
+            ) : kontonFel ? (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
+                Kontona kunde inte hämtas. Försök igen — importen kan inte göras utan ett valt
+                konto.
+              </p>
+            ) : (
+              <>
+                <select
+                  id="bankkonto"
+                  value={effektivtKonto ?? ''}
+                  onChange={(e) => setBankAccountId(e.target.value || null)}
+                  disabled={aktivaKonton.length === 0}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] disabled:bg-gray-50 disabled:text-gray-400"
+                >
+                  <option value="">Välj konto…</option>
+                  {aktivaKonton.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                      {k.accountNumber ? ` (${k.accountNumber})` : ''}
+                    </option>
+                  ))}
+                </select>
+                {kontotext && <p className="mt-1.5 text-[12px] text-amber-700">{kontotext}</p>}
+              </>
+            )}
+          </div>
+
           {/* BgMax-info — bank-väljaren är irrelevant för Bankgirots format */}
           {isBgMax && (
             <div className="rounded-lg border border-gray-300 bg-gray-200/60 px-3 py-2.5 text-[12.5px] text-gray-500">
@@ -345,7 +415,16 @@ function ImportModal({
           {dropError && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">{dropError}</p>
           )}
-          {importMutation.isError && (
+          {/* #F034b — "samma fil importeras redan" är INTE ett filformatsfel och
+              får inte se ut som ett. Operatören som möts av "kontrollera
+              filformatet" byter fil, och då blir det en ANDRA import. */}
+          {pagar && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
+              {pagar.message}
+              {pagarKlockslag && <> Den pågående körningen startade {pagarKlockslag}.</>}
+            </p>
+          )}
+          {importMutation.isError && !pagar && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
               Import misslyckades. Kontrollera filformatet och försök igen.
             </p>
@@ -360,11 +439,32 @@ function ImportModal({
 
       {step === 'result' && result && (
         <div className="space-y-4">
+          {/* #F034b — rubriken följer FÖRSÖKETS utfall, inte bara siffrorna.
+              "Import klar!" över ett delvis misslyckat resultat är det svar som
+              gör att ingen rättar filen. */}
           <div className="flex flex-col items-center py-2">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
-              <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={1.8} />
+            <div
+              className={cn(
+                'flex h-14 w-14 items-center justify-center rounded-full',
+                besked.ton === 'delvis'
+                  ? 'bg-amber-100'
+                  : besked.ton === 'uppspelad'
+                    ? 'bg-gray-100'
+                    : 'bg-emerald-100',
+              )}
+            >
+              {besked.ton === 'delvis' ? (
+                <AlertTriangle size={28} className="text-amber-600" strokeWidth={1.8} />
+              ) : besked.ton === 'uppspelad' ? (
+                <History size={28} className="text-gray-500" strokeWidth={1.8} />
+              ) : (
+                <CheckCircle2 size={28} className="text-emerald-600" strokeWidth={1.8} />
+              )}
             </div>
-            <p className="mt-3 text-[16px] font-semibold text-gray-900">Import klar!</p>
+            <p className="mt-3 text-[16px] font-semibold text-gray-900">{besked.rubrik}</p>
+            {besked.text && (
+              <p className="mt-1 max-w-sm text-center text-[12.5px] text-gray-500">{besked.text}</p>
+            )}
           </div>
 
           <div className="space-y-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
@@ -428,7 +528,7 @@ function ImportModal({
             <Button
               variant="primary"
               onClick={handleImport}
-              disabled={!file}
+              disabled={!file || !effektivtKonto}
               loading={importMutation.isPending || pdfImportMutation.isPending}
             >
               {isPdf ? (
@@ -682,6 +782,10 @@ const item = {
 }
 
 export function ReconciliationPage() {
+  // G2 — kravpausens läge. Egen fråga och inte härledd ur transaktionslistan:
+  // listan är filtrerad och sidindelad, och en paus får inte försvinna för att
+  // operatören råkar stå på fliken "Matchade".
+  const granskning = useIdentityReview()
   const [tab, setTab] = useState<TabId>('ALL')
   const [importOpen, setImportOpen] = useState(false)
   const [pdfDraft, setPdfDraft] = useState<PdfImportDraft | null>(null)
@@ -827,6 +931,53 @@ export function ReconciliationPage() {
         </motion.div>
       </motion.div>
 
+      {/* ── G2: KRAVPAUSEN SYNS ──────────────────────────────────────────
+          Kravtrappan slutar röra sig när en importerad betalnings identitet är
+          oavgjord. Utan den här rutan säger ingenting varför — påminnelser
+          uteblir, avgifter uteblir, och operatören upptäcker det när någon
+          ringer. Det är exakt den tystnad spärren finns för att ersätta med ett
+          besked.
+
+          ORSAKEN KOMMER FRÅN SERVERN och renderas som den är. Att formulera om
+          den här hade gett två versioner av samma besked — en i 409-svaret från
+          "skicka krav nu", en här — och den som är fel är den ingen jämför. */}
+      {granskning.data?.pausad && (
+        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 flex-shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="text-[13.5px] font-semibold text-amber-900">
+                Automatiska krav är pausade
+              </p>
+              <p className="mt-1 text-[13px] leading-relaxed text-amber-800">
+                {granskning.data.orsak}
+              </p>
+              {granskning.data.rader.length > 0 && (
+                <ul className="mt-3 space-y-1">
+                  {granskning.data.rader.map((r) => (
+                    <li key={r.id} className="text-[12.5px] text-amber-900">
+                      <span className="font-mono">{formatDate(r.date)}</span>
+                      {' · '}
+                      <span className="font-semibold">{formatCurrency(r.amount)}</span>
+                      {' · '}
+                      {r.description}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {/* Talet och listan kan skilja sig: listan har ett tak, antalet
+                  har det inte. Att tiga om skillnaden hade fått operatören att
+                  tro att hon sett allt. */}
+              {granskning.data.antal > granskning.data.rader.length && (
+                <p className="mt-2 text-[12px] text-amber-700">
+                  Visar {granskning.data.rader.length} av {granskning.data.antal} rader.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <BankConnectionCard />
 
       {/* Filter tabs */}
@@ -929,6 +1080,21 @@ export function ReconciliationPage() {
                             och "automatiken hade fel här" identiska ut. */}
                         {tx.autoMatchExcludedAt ? (
                           <Badge variant="ghost">Avmatchad manuellt</Badge>
+                        ) : null}
+                        {/* #F034c — importen kunde inte avgöra om raden är en
+                            egen betalning eller en kopia av en som redan finns.
+                            Automatiken rör den aldrig: varken matchning eller
+                            förslag. Utan märket ser raden ut som vilken
+                            omatchad rad som helst, och den blir liggande tills
+                            någon råkar undra varför "Matcha alla" hoppade över
+                            just den. Knapparna Matcha/Ignorera står kvar —
+                            beslutet är precis vad märket ber om. */}
+                        {tx.identityReviewAt ? (
+                          <Badge variant="warning" dot>
+                            {tx.identityReviewReason === 'API_UTAN_KONTO'
+                              ? 'Identitet oavgjord — krockar med bankhämtad rad utan konto'
+                              : 'Identitet oavgjord — krockar med äldre rad utan konto'}
+                          </Badge>
                         ) : null}
                       </div>
                     </td>

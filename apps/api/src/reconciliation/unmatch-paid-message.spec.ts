@@ -27,6 +27,7 @@ import { BadRequestException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 /**
  * UPPMANINGEN, inte ordet. Varje form som gör kreditnotan till något
@@ -98,6 +99,10 @@ function makeService(transaction: unknown) {
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, tx, $transaction }
 }

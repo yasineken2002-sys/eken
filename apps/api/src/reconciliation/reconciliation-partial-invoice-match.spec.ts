@@ -17,6 +17,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
 import { ReconciliationService } from './reconciliation.service'
+import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const dec = (n: number | string) => new Decimal(n)
 const INVOICE = { id: 'inv-1', invoiceNumber: 'F-2026-0001', total: dec('10000') }
@@ -79,6 +80,10 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
       skrivFacitIngen: jest.fn().mockResolvedValue(undefined),
       nollstallFacit: jest.fn().mockResolvedValue(undefined),
     } as never,
+    // #F034b — filnivåns importskydd. Riktig tjänst över samma prisma som
+    // resten av riggen: proven nedan som inte kör en import når den aldrig,
+    // och de som gör det ska se skyddet och inte ett genomsläpp.
+    new BankImportAttemptService(prisma as never),
   )
   return { service, txMock, claimPaidWithinTx, notifyInvoicePaid, createJournalEntryForPayment }
 }

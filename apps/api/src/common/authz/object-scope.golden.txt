@@ -55,7 +55,7 @@ InvoiceLine             deleteMany  invoices/invoices.service.ts                
 InvoicePayment          deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 PaymentReminder         delete      ai/tools/tool-executor.service.ts                       A kedje-query
 PaymentReminder         update      ai/tools/tool-executor.service.ts                       A kedje-query
-PaymentReminder         updateMany  notifications/payment-reminder.service.ts               C scopat anrop
+PaymentReminder         updateMany  notifications/payment-reminder.service.ts           ×2  C scopat anrop
 RentNoticeLine          deleteMany  avisering/avisering.service.ts                          A kedje-query
 RentNoticePayment       deleteMany  reconciliation/reconciliation.service.ts                A kedje-query
 RentNoticeSend          updateMany  mail/mail.worker.ts                                     C scopat anrop
@@ -65,7 +65,7 @@ Unit                    update      units/units.service.ts                      
 UserBankIdIdentity      deleteMany  bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 UserBankIdIdentity      upsert      bankid/bankid-auth.service.ts                           INGEN UPPTÄCKT
 
-## Form 2 — create (44 rader)
+## Form 2 — create (46 rader)
 
 AiAssignmentEvent       create      ai/assignments/ai-assignments.service.ts                A kedje-query
 AiDelegationEvent       create      ai/delegation/delegation.service.ts                     A kedje-query
@@ -75,12 +75,14 @@ AiMessage               create      common/ai-subjects/ai-subject-writer.ts     
 AiMessageTenant         createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiTenantConversation    create      ai/tenant-ai.service.ts                                 D annan nyckel
 InspectionImage         create      inspections/inspections.service.ts                      C scopat anrop
+InspectionImage         create      inspections/inspections.service.ts                      P förälder org-bunden  ← nästlad via Inspection.images
 InspectionItem          create      inspections/inspections.service.ts                      A kedje-query
+InspectionItem          create      inspections/inspections.service.ts                      P förälder org-bunden  ← nästlad via Inspection.items
 InspectionItem          createMany  inspections/inspections.service.ts                      B hjälpare
 InvoiceEvent            create      collections/collection-export.service.ts            ×2  A kedje-query + INGEN UPPTÄCKT
 InvoiceEvent            create      invoices/invoice-events.service.ts                      INGEN UPPTÄCKT
 InvoiceEvent            create      notifications/notifications.service.ts                  A kedje-query
-InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  C scopat anrop + INGEN UPPTÄCKT
+InvoiceEvent            create      notifications/payment-reminder.service.ts           ×3  C scopat anrop
 InvoiceLine             create      consumption/consumption.service.ts                      P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             create      deposits/deposits.service.ts                            P förälder org-bunden  ← nästlad via Invoice.lines
 InvoiceLine             createMany  invoices/credit-note.service.ts                         P förälder org-bunden  ← nästlad via Invoice.lines
@@ -95,8 +97,8 @@ MaintenanceComment      create      maintenance/maintenance.service.ts          
 MaintenanceComment      create      tenant-portal/tenant-portal.service.ts                  D annan nyckel
 MaintenanceImage        create      maintenance/maintenance.service.ts                      INGEN UPPTÄCKT
 PaymentReminder         create      ai/tools/tool-executor.service.ts                       A kedje-query
-PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  C scopat anrop + INGEN UPPTÄCKT
-PaymentReminder         createMany  notifications/payment-reminder.service.ts               C scopat anrop
+PaymentReminder         create      notifications/payment-reminder.service.ts           ×2  C scopat anrop
+PaymentReminder         createMany  notifications/payment-reminder.service.ts           ×2  A kedje-query + C scopat anrop
 RentNoticeCreditLine    createMany  avisering/rent-notice-credit.service.ts                 P förälder org-bunden  ← nästlad via RentNoticeCredit.lines
 RentNoticeEvent         create      avisering/rent-notice-events.service.ts                 INGEN UPPTÄCKT
 RentNoticeEvent         create      collections/rent-collection-export.service.ts       ×2  C scopat anrop
