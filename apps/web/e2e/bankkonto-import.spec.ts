@@ -113,14 +113,21 @@ test('ny organisation: skapa importkonto i UI → välj → importera kontoutdra
   await expect(kontokort).toContainText(KONTONAMN)
   await expect(kontokort).toContainText(KONTONUMMER)
 
-  // ── 7. DUBBLETT: samma namn en gång till avvisas, av servern ──────────────
-  // Den lokala kontrollen i formuläret är en artighet; det unika villkoret bor
-  // i Postgres. Provet går via hanteringskortets modal, där listan redan är
-  // laddad — och kräver att beskedet syns, inte bara att anropet misslyckas.
+  // ── 7. DUBBLETT: samma namn en gång till avvisas ──────────────────────────
+  //
+  // VILKET LAGER SOM SVARAR — mätt, inte antaget. Specen krävde först ett
+  // `role="alert"`, alltså SERVERNS 409-text. Det elementet kom aldrig, och
+  // skälet är att den lokala dubblettkontrollen (`bankkontoFältfel`) hinner
+  // först och renderar ett FÄLTFEL. Så är det byggt: det unika villkoret bor i
+  // Postgres och är spärren, men formuläret slipper en tur till servern för ett
+  // svar det redan kan ge. Meningen är ordagrant densamma i båda lagren.
+  //
+  // Serverns 409-väg prövas därför inte här utan i `bankkonto.test.tsx`
+  // ("409 från servern visas som SERVERNS text"), där felet kan matas in.
   await page.getByTestId('lagg-till-bankkonto').click()
   await page.getByLabel('Namn på kontot').fill(KONTONAMN)
   await page.getByRole('button', { name: 'Spara konto' }).click()
-  await expect(page.getByRole('alert')).toContainText('redan ett konto som heter')
+  await expect(page.getByText(`Det finns redan ett konto som heter "${KONTONAMN}".`)).toBeVisible()
 
   // Inget andra konto skapades: exakt en förekomst av namnet i listan.
   await page.getByRole('button', { name: 'Avbryt' }).click()
