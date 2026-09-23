@@ -321,3 +321,80 @@ export function kontobesked(läge: Kontoläge): string | null {
 export async function cancelPdfImport(importId: string): Promise<void> {
   await del(`/reconciliation/imports/${importId}`)
 }
+
+// ─── K1: lägga upp importkontot FRÅN WEBBEN ─────────────────────────────────
+//
+// `createBankAccount` ovan och `useCreateBankAccount` fanns sedan #F034c men
+// hade NOLL anropare i `apps/web/src` — mätt över hook-filens tretton exporter,
+// där de övriga tolv hade exakt en var. En ny organisation kunde alltså inte
+// importera alls utan ett API-anrop vid sidan av webben, vilket är precis vad
+// kundprovet fick göra (UI 0079–0081).
+//
+// Funktionerna nedan är RENA av samma skäl som `importbesked` och `kontoläge`:
+// frågan "vad ska formuläret säga" ska gå att ställa utan att rendera.
+
+/** Fältvisa fel i formuläret. Tomt objekt förekommer inte — `null` = inga fel. */
+export interface BankkontoFältfel {
+  name?: string
+  accountNumber?: string
+}
+
+/** Gränserna är schemats (`CreateBankAccountSchema`), inte egna. */
+export const BANKKONTO_NAMN_MAX = 120
+export const BANKKONTO_NUMMER_MAX = 64
+
+/**
+ * Formulärets EGNA regler, som körs FÖRE kontraktsgrinden och säger vilket fält
+ * man ska tillbaka till. Grinden (`kontraktsfel`) är ett sista nej mot samma
+ * schema och ska normalt aldrig tala — se `lib/contract-gate.ts`.
+ *
+ * DUBBLETTKONTROLLEN ÄR EN ARTIGHET, INTE SPÄRREN. Det unika villkoret är
+ * `@@unique([organizationId, name])` i Prisma, alltså en EXAKT jämförelse på det
+ * trimmade namnet — samma jämförelse görs här. Att göra den skiftlägesokänslig
+ * här hade blockerat ett namn servern tillåter, och att hoppa över den hade
+ * gjort 409:an till enda beskedet. Servern är fortfarande skiljedomaren: svarar
+ * den 409 visas dess text.
+ */
+export function bankkontoFältfel(
+  input: { name: string; accountNumber: string },
+  befintliga: Bankkonto[] | undefined,
+): BankkontoFältfel | null {
+  const namn = input.name.trim()
+  const nummer = input.accountNumber.trim()
+  const fel: BankkontoFältfel = {}
+  if (!namn) {
+    fel.name = 'Kontot måste ha ett namn.'
+  } else if (namn.length > BANKKONTO_NAMN_MAX) {
+    fel.name = `Namnet får vara högst ${BANKKONTO_NAMN_MAX} tecken (är ${namn.length}).`
+  } else if ((befintliga ?? []).some((k) => k.name === namn)) {
+    fel.name = `Det finns redan ett konto som heter "${namn}".`
+  }
+  if (nummer.length > BANKKONTO_NUMMER_MAX) {
+    fel.accountNumber = `Kontonumret får vara högst ${BANKKONTO_NUMMER_MAX} tecken (är ${nummer.length}).`
+  }
+  return fel.name || fel.accountNumber ? fel : null
+}
+
+/**
+ * Nyttolasten som skickas. ANNOTERAD med den delade typen med flit: utan
+ * annotering är literalen en inferrerad `const` och TypeScript kör ingen
+ * överskottskontroll, så ett fält som finns i webben men inte i kontraktet
+ * passerar tyst (CLAUDE.md, "Kontraktet webb↔API").
+ *
+ * Tomt kontonummer UTELÄMNAS i stället för att skickas som `''`. Schemat
+ * tillåter tomma strängar (`max(64)` utan `min`), så ett `''` hade lagrats som
+ * ett kontonummer — och `jamforKontonummer` hade då fortsatt behandla kontot
+ * som "saknar nummer", eftersom den läser falsy. Ett fält som lagras men aldrig
+ * kan betyda något är skräp i tabellen.
+ */
+export function bankkontoNyttolast(input: {
+  name: string
+  accountNumber: string
+}): CreateBankAccountInput {
+  const nummer = input.accountNumber.trim()
+  const kropp: CreateBankAccountInput = {
+    name: input.name.trim(),
+    ...(nummer ? { accountNumber: nummer } : {}),
+  }
+  return kropp
+}

@@ -6,7 +6,11 @@ import { formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { ParsedTransaction, PdfImportDraft } from '../api/reconciliation.api'
 import { tolkaImportPagar } from '../api/reconciliation.api'
-import { useConfirmPdfImport, useCancelPdfImport } from '../hooks/useReconciliation'
+import {
+  useConfirmPdfImport,
+  useCancelPdfImport,
+  useBankAccounts,
+} from '../hooks/useReconciliation'
 
 interface Props {
   draft: PdfImportDraft
@@ -37,6 +41,16 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
   // #F034b — 409 IMPORT_PAGAR skiljs från övriga fel. Se noten vid felrutan.
   const pagar = tolkaImportPagar(confirmMut.error)
   const cancelMut = useCancelPdfImport()
+  // K1 — VILKET KONTO bekräftelsen gäller. Valet gjordes vid uppladdningen och
+  // bärs hit i draften; namnet slås upp i den redan cachade kontolistan så att
+  // operatören ser VAD hon bekräftar mot, inte bara ett id hon aldrig ser.
+  //
+  // Att visa det är inte pynt: PDF-flödet är två steg, och det är BEKRÄFTELSEN
+  // som skriver bankrader. Står det fel konto här är det sista tillfället att
+  // upptäcka det.
+  const { data: bankkonton } = useBankAccounts()
+  const målkonto = (bankkonton ?? []).find((k) => k.id === draft.bankAccountId)
+  const saknarKonto = !draft.bankAccountId
 
   const incomingActive = useMemo(() => rows.filter((r) => !r._removed && r.amount > 0), [rows])
   const outgoingCount = useMemo(
@@ -113,6 +127,20 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
           </p>
         </div>
       </div>
+
+      {/* K1 — MÅLKONTOT, buret från uppladdningen. Kontonumret i raden ovan är
+          AI-EXTRAHERAT ur utdraget och väljer aldrig konto; det kontrolleras mot
+          valet på servern (`BankAccountService.jamforKontonummer`). Raden här
+          säger vad valet VAR. */}
+      {!saknarKonto && (
+        <p className="mb-2 text-[12px] text-gray-500" data-testid="pdf-malkonto">
+          Bokförs mot importkontot{' '}
+          <strong className="font-semibold text-gray-700">
+            {målkonto ? målkonto.name : 'som valdes vid uppladdningen'}
+          </strong>
+          {målkonto?.accountNumber ? ` (${målkonto.accountNumber})` : ''}.
+        </p>
+      )}
 
       {/* Hint */}
       <p className="mb-2 flex items-center gap-1.5 text-[12px] text-gray-500">
@@ -234,6 +262,19 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
         </p>
       )}
 
+      {/* K1 — EN AVSTÄNGD KNAPP MED SKÄL, inte en tyst retur. `handleConfirm`
+          returnerade utan effekt när draften saknade konto: knappen såg
+          användbar ut, klicket gjorde ingenting, och det finns inget sätt för
+          operatören att skilja det från en hängning. Draften kan bara sakna
+          konto om den kommer från en annan väg än importmodalen — vilket är
+          just det fall ingen hade upptäckt. */}
+      {saknarKonto && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
+          Den här tolkningen bär inget målkonto. Avbryt och ladda upp PDF:en igen från Importera
+          kontoutdrag, där du väljer vilket bankkonto utdraget gäller.
+        </p>
+      )}
+
       <ModalFooter>
         <Button variant="ghost" onClick={handleCancel} loading={cancelMut.isPending}>
           Avbryt
@@ -242,7 +283,7 @@ export function PdfImportPreviewModal({ draft, onClose, onConfirmed }: Props) {
           variant="primary"
           onClick={handleConfirm}
           loading={confirmMut.isPending}
-          disabled={incomingActive.length === 0}
+          disabled={incomingActive.length === 0 || saknarKonto}
         >
           <CheckCircle2 size={14} /> Bekräfta & matcha {incomingActive.length} inbetalningar
         </Button>

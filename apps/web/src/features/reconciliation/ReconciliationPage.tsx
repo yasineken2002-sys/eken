@@ -17,6 +17,7 @@ import {
   ChevronRight,
   AlertTriangle,
   History,
+  Plus,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -42,6 +43,8 @@ import {
 import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
 import { importbesked, kontobesked, kontoläge, tolkaImportPagar } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
+import { BankAccountForm, ImportkontoForklaring } from './components/BankAccountForm'
+import { BankAccountsCard } from './components/BankAccountsCard'
 import { useBankConsents } from './hooks/usePsd2'
 import { aktivaSamtycken } from './api/psd2.api'
 import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
@@ -112,6 +115,11 @@ function ImportModal({
   // operatörens. Organisationen får inte användas som om den vore ett konto.
   const { data: bankkonton, isLoading: kontonLaddar, isError: kontonFel } = useBankAccounts()
   const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+  // K1 — skapa-panelen inuti modalen. Rollen frågas här och inte bara hos
+  // föräldern: en knapp som svarar 403 är ett falskt löfte, och den som inte
+  // får skapa behöver i stället veta vem hon ska be.
+  const [skaparKonto, setSkaparKonto] = useState(false)
+  const kanSkriva = useCanWrite()
   const aktivaKonton = (bankkonton ?? []).filter((k) => k.isActive)
   // Ett ENDA konto väljs åt operatören — det är inget val, det är den enda
   // möjligheten. Finns FLERA måste hen ta ställning.
@@ -315,14 +323,26 @@ function ImportModal({
           </div>
 
           {/* #F034c — KONTOVÄLJAREN. Ligger först: vilket konto utdraget gäller
-              är en förutsättning för importen, inte en detalj efteråt. */}
+              är en förutsättning för importen, inte en detalj efteråt.
+              K1 — och SKAPA-VÄGEN ligger här, i samma ruta. Kundprovet fastnade
+              exakt här: texten sa vad som saknades, men det fanns ingen väg att
+              åtgärda det utan ett API-anrop vid sidan av webben. */}
           <div>
-            <label
-              htmlFor="bankkonto"
-              className="mb-1.5 block text-[12.5px] font-medium text-gray-700"
-            >
-              Bankkonto
-            </label>
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="bankkonto" className="block text-[12.5px] font-medium text-gray-700">
+                Bankkonto
+              </label>
+              {kanSkriva && !kontonLaddar && !kontonFel && !skaparKonto && (
+                <button
+                  type="button"
+                  onClick={() => setSkaparKonto(true)}
+                  data-testid="import-lagg-till-konto"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-blue-700 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
+                >
+                  <Plus size={13} strokeWidth={2} /> Lägg till konto
+                </button>
+              )}
+            </div>
             {kontonLaddar ? (
               <p className="text-[12.5px] text-gray-500">Hämtar konton…</p>
             ) : kontonFel ? (
@@ -348,6 +368,47 @@ function ImportModal({
                   ))}
                 </select>
                 {kontotext && <p className="mt-1.5 text-[12px] text-amber-700">{kontotext}</p>}
+                {/* Skapa-knappen ovan är liten och ligger till höger. När det
+                    inte finns NÅGOT konto är den inte en genväg utan hela
+                    vägen framåt, och då ska den stå där blicken redan är — vid
+                    beskedet om vad som saknas. */}
+                {läge === 'inga-konton' && kanSkriva && !skaparKonto && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => setSkaparKonto(true)}
+                    data-testid="import-lagg-upp-forsta-kontot"
+                  >
+                    <Plus size={14} /> Lägg upp bankkonto
+                  </Button>
+                )}
+                {läge === 'inga-konton' && !kanSkriva && (
+                  <p className="mt-1.5 text-[12px] text-gray-500">
+                    Din roll får inte lägga upp bankkonton. Be en administratör göra det.
+                  </p>
+                )}
+                {skaparKonto && (
+                  <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                    <p className="text-[12.5px] font-semibold text-gray-800">Nytt importkonto</p>
+                    <ImportkontoForklaring kompakt />
+                    <div className="mt-3">
+                      <BankAccountForm
+                        befintliga={bankkonton}
+                        kompakt
+                        idPrefix="import-bankkonto"
+                        onAvbryt={() => setSkaparKonto(false)}
+                        onSkapat={(konto) => {
+                          // VÄLJ DET DIREKT. Operatören skapade kontot för att
+                          // kunna importera nu; att lämna väljaren tom hade
+                          // varit ett andra steg utan innehåll.
+                          setBankAccountId(konto.id)
+                          setSkaparKonto(false)
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -977,6 +1038,11 @@ export function ReconciliationPage() {
           </div>
         </div>
       )}
+
+      {/* K1 — importkontona FÖRE bankkopplingen. Det är importens förutsättning;
+          bankkopplingen (PSD2) är ett alternativ till att importera filer alls.
+          Kundprovet gick till Bankkoppling när importen krävde ett konto. */}
+      <BankAccountsCard />
 
       <BankConnectionCard />
 
