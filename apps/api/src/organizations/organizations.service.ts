@@ -18,6 +18,7 @@ import {
   DETECTED_WEB_IMAGE_TYPES,
   MAX_LOGO_BYTES,
 } from '../common/utils/file-validation'
+import { validateSwedishBankgiro } from '@eken/shared'
 
 interface MultipartFile {
   toBuffer(): Promise<Buffer>
@@ -191,13 +192,65 @@ export class OrganizationsService {
       return {}
     })()
 
+    // ── K2: BETALNINGSMÅLET VALIDERAS VID SKRIVNINGEN ─────────────────────
+    //
+    // Fältet var `z.string().optional()` + `@IsString()`, alltså fri text. Ett
+    // ogiltigt bankgiro kunde sparas utan invändning och upptäcktes först när en
+    // avi inte gick att skicka — eller, före K2, aldrig, eftersom renderingen
+    // hittade på ett mål i stället.
+    //
+    // HÄR OCH INTE BARA I DTO:N: servicen är chokepunkten (samma val som
+    // rollgrindarna ovan), och samma funktion används av utskicksgrinden och av
+    // webbformuläret. En regel, ett ställe.
+    //
+    // TOMT BETYDER RENSA, inte "ogiltigt". Hyresvärden måste kunna ta bort ett
+    // felaktigt nummer utan att formuläret låser sig — och ett rensat mål stoppar
+    // utskicken, vilket är rätt utfall och inte ett fel att avvisa här.
+    //
+    // ── B1: `null` ÄR "INGEN ÄNDRING", OCH DET MÅSTE STÅ HÄR ─────────────────
+    //
+    // Raden hette `=== undefined`, och det räckte inte. `@IsOptional()` i
+    // class-validator 0.14.4 registrerar en CONDITIONAL_VALIDATION vars villkor
+    // är `value !== null && value !== undefined` — är värdet `null` hoppas
+    // ALLA validatorer över, även `@StrictString()`. Nyttolasten nådde därmed
+    // hit, och `null.trim()` kastade ett ohanterat `TypeError` → HTTP 500.
+    //
+    // Mätt (T1:s granskning av #919, `raw/null-sond.out`): `undefined`, `null`
+    // och `""` ger alla noll valideringsfel genom pipen, medan talet 42 ger ett
+    // — sonden kan alltså ge utslag, och nollan för `null` betyder något.
+    //
+    // DET VAR EN REGRESSION SOM #919 INFÖRDE. Basen skrev
+    // `dto.bankgiro != null ? … : {}` och täckte båda. `== null` återställer
+    // den semantiken: utelämnat och `null` betyder båda "rör inte fältet".
+    //
+    // VARFÖR INTE "null = rensa": ett PATCH-fält som saknas och ett som är
+    // `null` kommer från samma vanliga klientmönster — hämta med
+    // `GET /organizations/me` (som returnerar `bankgiro: null` för en org utan
+    // mål), ändra ett ANNAT fält, skicka tillbaka hela objektet. Skulle `null`
+    // rensa vore det en no-op i det fallet, men för en org som HAR ett mål
+    // hade samma mönster tyst raderat betalningsmålet. Rensning ska vara en
+    // handling, inte en bieffekt av att skicka tillbaka det man läste.
+    // Den uttryckliga rensningen är tom sträng, vilket är vad formuläret
+    // skickar när fältet töms (`SettingsPage.tsx`).
+    const bankgiroUpdate = (() => {
+      if (dto.bankgiro == null) return {}
+      if (!dto.bankgiro.trim()) return { bankgiro: null }
+      const kontroll = validateSwedishBankgiro(dto.bankgiro)
+      if (!kontroll.valid || !kontroll.normalized) {
+        throw new BadRequestException(kontroll.error ?? 'Ogiltigt bankgiro')
+      }
+      // Normaliserad form lagras, så PDF, mejl och portal visar samma sträng
+      // oavsett om hyresvärden skrev bindestreck eller inte.
+      return { bankgiro: kontroll.normalized }
+    })()
+
     return this.prisma.organization.update({
       where: { id: organizationId },
       data: {
         ...(dto.lateBookingMaterialityThreshold != null
           ? { lateBookingMaterialityThreshold: dto.lateBookingMaterialityThreshold }
           : {}),
-        ...(dto.bankgiro != null ? { bankgiro: dto.bankgiro } : {}),
+        ...bankgiroUpdate,
         ...(dto.paymentTermsDays != null ? { paymentTermsDays: dto.paymentTermsDays } : {}),
         ...(dto.invoiceColor != null ? { invoiceColor: dto.invoiceColor } : {}),
         ...(dto.invoiceTemplate != null ? { invoiceTemplate: dto.invoiceTemplate } : {}),

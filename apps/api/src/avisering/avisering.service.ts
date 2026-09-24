@@ -21,6 +21,7 @@ import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { computeRentDebt } from './rent-debt.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
+import { checkPaymentTarget, PAYMENT_TARGET_FIX_HINT } from './payment-target'
 
 // Speglar REVERSAL_REASON_MIN_LENGTH i AccountingService: ett skäl som bara är
 // "fel" hjälper ingen som granskar huvudboken ett år senare.
@@ -594,6 +595,8 @@ export class AviseringService {
     deposit: RentNotice | null
     firstRent: RentNotice | null
     mailed: boolean
+    /** K2 — se `createInitialNoticesForLease`. */
+    blockedReason: string | null
     skippedDeposit: boolean
     skipDepositReason: 'succession' | 'deposit-finns' | 'depositionsavi-finns' | null
   }> {
@@ -672,6 +675,14 @@ export class AviseringService {
     deposit: RentNotice | null
     firstRent: RentNotice | null
     mailed: boolean
+    /**
+     * K2 — VARFÖR inget mejl gick ut, när `mailed` är falskt av ett KÄNT skäl.
+     *
+     * `mailed: false` ensamt är tvetydigt: det betyder också "hyresgästen saknar
+     * e-post" och "inga avier skapades". Aktiveringsvyn behöver kunna säga
+     * exakt vad hyresvärden ska göra, och `null` betyder "inget känt hinder".
+     */
+    blockedReason: string | null
   }> {
     const lease = await this.prisma.lease.findUnique({
       where: { id: leaseId },
@@ -682,7 +693,7 @@ export class AviseringService {
     })
     if (!lease) throw new NotFoundException('Kontraktet hittades inte')
     if (lease.status !== 'ACTIVE') {
-      return { deposit: null, firstRent: null, mailed: false }
+      return { deposit: null, firstRent: null, mailed: false, blockedReason: null }
     }
 
     const orgId = lease.organizationId
@@ -856,6 +867,7 @@ export class AviseringService {
 
     // ── 3. Mejla hyresgästen med båda avier som bilagor ─────────────────
     let mailed = false
+    let blockedReason: string | null = null
     if (lease.tenant.email && (depositNotice || firstRentNotice)) {
       try {
         const idsToSend = [depositNotice?.id, firstRentNotice?.id].filter((id): id is string =>
@@ -863,6 +875,10 @@ export class AviseringService {
         )
         const result = await this.sendNotices(orgId, idsToSend)
         mailed = result.queued > 0
+        // K2: avierna ÄR skapade och bokförda — det är utskicket som stoppades.
+        // Aktiveringen får inte returnera `mailed: true`, och skälet får inte
+        // stanna i en loggrad ingen läser.
+        blockedReason = result.blockedReason
       } catch (err) {
         // Mejlfel ska inte krascha lease-aktiveringen — avier är skapade,
         // admin kan trigga "Skicka" manuellt om mejlet failar.
@@ -872,7 +888,7 @@ export class AviseringService {
       }
     }
 
-    return { deposit: depositNotice, firstRent: firstRentNotice, mailed }
+    return { deposit: depositNotice, firstRent: firstRentNotice, mailed, blockedReason }
   }
 
   /**
@@ -888,9 +904,75 @@ export class AviseringService {
     // createInitialNoticesForLease. Den kan inte veta vilken vägen är, och
     // gissar därför inte: utan kontext beter den sig exakt som förut.
     cron?: { name: string; sink: CronErrorSink } | undefined,
-  ): Promise<{ queued: number; failed: number; jobIds: string[] }> {
+  ): Promise<{
+    queued: number
+    failed: number
+    jobIds: string[]
+    /** Antal avier som INTE köades därför att betalningsmålet fattas (K2). */
+    blocked: number
+    /** Skrivet för en människa. `null` när inget blockerades. */
+    blockedReason: string | null
+  }> {
     const jobIds: string[] = []
     let failed = 0
+
+    // ── K2: FÖRKONTROLLEN LIGGER HÄR, FÖRE KÖN ─────────────────────────────
+    //
+    // `sendNotices` är chokepunkten för VARJE avsett aviutskick: den manuella
+    // knappen (`POST /avisering/send`), batchen (`send-all`), aktiveringen
+    // (`createInitialNoticesForLease`), återtriggen (`retriggerInitialNotices`)
+    // och månadscronen (`AviseringScheduler.runForMonth`). Grinden ska därför
+    // stå här och inte i fem anropare — en anropare som glöms bort är precis
+    // det hål K2 var.
+    //
+    // FÖRE KÖN och inte i workern, av två skäl. Dels blir svaret SYNKRONT: den
+    // som tryckte på knappen får beskedet direkt i stället för att avin
+    // försvinner in i en kö och kommer tillbaka som FAILED. Dels köas inget
+    // jobb alls, så Bull får ingen anledning till fem retries av ett
+    // konfigurationsfel som inte kan lösa sig av sig självt.
+    //
+    // Workern har ändå sin egen kontroll (`processNoticeSendJob`) — ett jobb kan
+    // ligga i kön sedan innan målet rensades, och renderingen får aldrig lita
+    // på att någon annan redan frågat.
+    if (noticeIds.length > 0) {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { bankgiro: true },
+      })
+      const target = checkPaymentTarget(org ?? {})
+      if (!target.ok) {
+        // Avierna FINNS och är korrekt bokförda — det är utskicket som uteblir.
+        // Samma permanenta markering som saknad e-postadress får: FAILED med en
+        // läsbar orsak, som UI:t redan visar i Misslyckade-fliken och i
+        // radens felikon. Ingen status ljuger om ett utskick som inte skedde.
+        for (const noticeId of noticeIds) {
+          await this.prisma.rentNotice
+            .updateMany({
+              // Rör ALDRIG en avi som redan gått ut: en tidigare SENT/PAID avi
+              // ska inte flippa till FAILED av att bankgirot rensats efteråt.
+              where: {
+                id: noticeId,
+                organizationId: orgId,
+                status: { in: [RentNoticeStatus.PENDING, RentNoticeStatus.FAILED] },
+              },
+              data: { status: RentNoticeStatus.FAILED, sendError: target.block.message },
+            })
+            .catch(() => undefined)
+        }
+        this.logger.warn(
+          `[Avisering] ${noticeIds.length} avi(er) EJ skickade för org ${orgId}: ` +
+            `${target.block.code} — ${target.block.message}`,
+        )
+        return {
+          queued: 0,
+          failed: 0,
+          jobIds: [],
+          blocked: noticeIds.length,
+          blockedReason: target.block.message,
+        }
+      }
+    }
+
     for (const noticeId of noticeIds) {
       // T5 C2b: samma klass som #58 och oadresserad av C2a. Anropas den här
       // metoden från createInitialNoticesForLease ligger den i en try/catch som
@@ -915,7 +997,7 @@ export class AviseringService {
       if (outcome.status === 'ok') jobIds.push(outcome.jobId)
       else failed++
     }
-    return { queued: jobIds.length, failed, jobIds }
+    return { queued: jobIds.length, failed, jobIds, blocked: 0, blockedReason: null }
   }
 
   /**
@@ -944,6 +1026,31 @@ export class AviseringService {
 
     // Idempotens: hoppa över avier som redan skickats.
     if (notice.sentAt || notice.status === RentNoticeStatus.SENT) return
+
+    // ── K2: SAMMA FÖRKONTROLL, ANDRA SIDAN AV KÖN ──────────────────────────
+    //
+    // `sendNotices` grindar före köandet. Den här grinden finns för jobbet som
+    // REDAN låg i kön när målet rensades, och för varje framtida väg som köar
+    // direkt. Den delar exakt samma funktion — två uppsättningar regler om vad
+    // ett giltigt betalningsmål är hade varit en garanterad glidning.
+    //
+    // PERMANENT FEL, alltså INGET KAST: ett saknat bankgiro löser sig inte av
+    // att Bull försöker fyra gånger till. Samma form som grinden för saknad
+    // e-postadress nedan, och av samma skäl.
+    const paymentTarget = checkPaymentTarget(org)
+    if (!paymentTarget.ok) {
+      await this.prisma.rentNotice
+        .update({
+          where: { id: noticeId },
+          data: { status: RentNoticeStatus.FAILED, sendError: paymentTarget.block.message },
+        })
+        .catch(() => undefined)
+      this.logger.warn(
+        `[Avisering] Avi ${noticeId} EJ skickad: ${paymentTarget.block.code} — ` +
+          paymentTarget.block.message,
+      )
+      return
+    }
 
     // Saknad e-post är ett permanent fel — markera FAILED utan att kasta,
     // annars gör Bull fem meningslösa retries.
@@ -1049,7 +1156,68 @@ export class AviseringService {
     // Steg 3, PR 3b/3c: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
     // alltså pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
     const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
-    const bankgiro = org.bankgiro ?? '0000-0000'
+    // ── BETALNINGSMÅLET: INGET PÅHITT ───────────────────────────────────────
+    //
+    // Raden här hette `org.bankgiro ?? '0000-0000'` fram till K2. Den gjorde ett
+    // saknat bankgiro till ett betalningsmål som ser riktigt ut men inte går att
+    // betala till — och kundprovet 2026-09-23 har tre PDF-kvitton på att det
+    // nådde en hyresgäst.
+    //
+    // Utskicket grindas i `sendNotices`/`processNoticeSendJob`, så en avi som når
+    // hit UTAN giltigt mål är ett FÖRBEREDANDE dokument: nedladdad PDF eller
+    // förhandsvisning. Den får renderas — men den får inte låtsas vara betalbar.
+    const paymentTarget = checkPaymentTarget(org)
+    const payableDocument = paymentTarget.ok
+
+    // ── B2: BETALBARHET ÄR ORGANISATIONENS FRÅGA, LEVERANS ÄR AVINS ─────────
+    //
+    // `payableDocument` ovan beror ENBART på organisationens nuvarande fält, och
+    // det är rätt för betalbarheten: en kopia som renderas i dag utan giltigt
+    // mål går inte att betala i dag.
+    //
+    // Men texten sa också "HAR INTE SKICKATS", och det påståendet har inget med
+    // organisationen att göra. Villkoret saknade varje referens till avin, så
+    // meningen skrevs ut för VARJE avi i en org vars bankgiro just nu fattas —
+    // även en som gått ut. Den som laddar ner en kopia gör det oftast för att
+    // kontrollera vad hyresgästen fick, och fick då motsatsen till sanningen om
+    // en leverans.
+    //
+    // ── VAD SOM ÄR BEVIS FÖR ATT AVIN SKICKATS, OCH VAD SOM INTE ÄR DET ─────
+    //
+    // `sentAt` ÄR beviset. Den sätts på exakt ett ställe i hela `apps/api/src` —
+    // i `processNoticeSendJob`, i samma skrivning som `status: SENT`, efter att
+    // mejlet köats. En avi som aldrig gått ut har `sentAt = null`.
+    //
+    // `status === SENT` står kvar som andra disjunkt för en avi vars stämpel av
+    // någon anledning inte finns men vars status säger att den gått ut. Den är i
+    // praktiken redundant mot raden ovan, och den är inte falsk.
+    //
+    // `status === OVERDUE` STOD HÄR OCH ÄR BORTTAGEN. Det var ett falskt bevis,
+    // och felet uppstod av K2:s egna delar i samverkan:
+    //
+    //   1. `checkAndMarkOverdue` väljer `status: { in: [PENDING, SENT] }` och
+    //      skriver `OVERDUE`. PENDING INGÅR.
+    //   2. Den anropas av `findAll` och `getStats` — alltså varje gång
+    //      hyresvärden öppnar avilistan.
+    //   3. Utan giltigt betalningsmål hindrar grinden utskicket och UI:t låser
+    //      sändknapparna, så avin står kvar PENDING till förfallodagen passerat.
+    //   4. Listan flippar den då till OVERDUE — utan att någon leverans skett.
+    //
+    // Dokumentet sa därefter "Avin har skickats till hyresgästen" om en avi som
+    // aldrig gått ut. Mätt, inte härlett: `b2-pending-overdue-pdf.db.spec.ts`
+    // kör den riktiga listvägen och renderar den riktiga templaten, och provet
+    // skiljer de två OVERDUE-fallen åt — en verkligt skickad avi som förfaller
+    // har `sentAt` satt och ska fortsätta säga att den skickats.
+    //
+    // INGET DATUM I TEXTEN, med flit. Ett utskrivet datum har ett
+    // tidszonsankare, och det ankaret ägs av det delade kalenderkontraktet i
+    // #917 som inte finns på den här grenen. Ett eget `toLocaleDateString` här
+    // hade infört exakt den serverlokala formateringen den PR:en tar bort.
+    //
+    // INGET NYTT VERSIONSSYSTEM. Dokumentet säger vad DEN HÄR KOPIAN vet: att
+    // avin skickades, och att kopian saknar aktuella betalningsuppgifter. Vad
+    // hyresgästen faktiskt fick i sitt mejl rekonstrueras inte.
+    const harSkickats = notice.sentAt != null || notice.status === RentNoticeStatus.SENT
 
     // Konsekvent beloppsformat med hyresfakturan: alltid två decimaler (ören).
     // Tidigare visade avin ören bara när de fanns medan fakturan rundade till
@@ -1104,7 +1272,12 @@ export class AviseringService {
       return `# ${ocrNumber} # ${kronor} ${oren} ${checkDigit} > ${bgFormatted}#41#`
     }
 
-    const ocrLine = formatBankgiroLine(notice.ocrNumber, payable, bankgiro)
+    // Den maskinläsbara giro-raden är det som en bankterminal FAKTISKT läser.
+    // Utan ett mål finns ingen rad att skriva — och en rad med nollor är precis
+    // det påhitt som lagades.
+    const ocrLine = paymentTarget.ok
+      ? formatBankgiroLine(notice.ocrNumber, payable, paymentTarget.bankgiro)
+      : null
 
     const monthLabel = new Date(notice.year, notice.month - 1, 1).toLocaleDateString('sv-SE', {
       month: 'long',
@@ -1432,6 +1605,25 @@ export class AviseringService {
     letter-spacing: normal;
   }
 
+  /* Visas i stället för den maskinläsbara giro-raden när betalningsmålet
+     fattas. Den ersätter alltså raden — dokumentet får inte samtidigt säga
+     "kan inte betalas" och bära en läsbar betalningsrad. */
+  .ej-betalbar {
+    margin-top: 8px;
+    padding: 8px 10px;
+    /* Samma röda som förfallonotisen längre ned i samma dokument (#c0392b) —
+       ingen NY färg införs i en PDF-mall som färggrinden redan godtar.
+       Palettens danger-värde får inte skrivas här — det är LÅST, och
+       färggrinden läser kommentarer lika gärna som kod. */
+    border: 1px solid #c0392b;
+    border-radius: 4px;
+    color: #c0392b;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.5;
+  }
+
   @page { margin: 10mm; size: A4; }`
 
     const contentHtml = `<style>${contentCss}</style>
@@ -1443,7 +1635,7 @@ export class AviseringService {
       <div class="org-name">${escapeHtml(org.name)}</div>
       <div class="org-details">
         ${org.street ? `${escapeHtml(org.street)}, ${escapeHtml(org.postalCode ?? '')} ${escapeHtml(org.city ?? '')}<br>` : ''}
-        ${org.bankgiro ? `Bankgiro: ${bankgiro}<br>` : ''}
+        ${paymentTarget.ok ? `Bankgiro: ${paymentTarget.bankgiro}<br>` : ''}
         ${org.email ? `E-post: ${escapeHtml(org.email)}` : ''}
       </div>
     </div>
@@ -1565,7 +1757,7 @@ export class AviseringService {
   <div class="bankgiro-row">
     <div>
       <div style="font-size:9px; color:#666; margin-bottom:3px">TILL BANKGIRO</div>
-      <div class="bankgiro-number">${bankgiro}</div>
+      <div class="bankgiro-number">${paymentTarget.ok ? paymentTarget.bankgiro : 'SAKNAS'}</div>
     </div>
     <div class="amount-box">
       <div class="amount-label">ATT BETALA</div>
@@ -1575,13 +1767,31 @@ export class AviseringService {
     </div>
   </div>
 
-  <!-- Machine-readable OCR line -->
+  ${
+    payableDocument
+      ? `<!-- Machine-readable OCR line -->
   <div class="ocr-machine-line">
     ${ocrLine}
   </div>
   <div class="ocr-warning">
     VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
-  </div>
+  </div>`
+      : `<div class="ej-betalbar">
+    ${
+      harSkickats
+        ? `BETALNINGSUPPGIFTER SAKNAS I DEN HÄR KOPIAN — DEN KAN INTE BETALAS.
+    <div style="font-weight:400;margin-top:3px">
+      Avin har skickats till hyresgästen. Det här är en ny utskrift, och
+      organisationens betalningsuppgifter saknas eller är ogiltiga i dag — vad
+      hyresgästen fick vid utskicket framgår inte av det här dokumentet.
+    </div>`
+        : `BETALNINGSUPPGIFTER SAKNAS — DEN HÄR AVIN KAN INTE BETALAS OCH HAR INTE SKICKATS.`
+    }
+    <div style="font-weight:400;margin-top:3px">
+      ${escapeHtml(PAYMENT_TARGET_FIX_HINT)}
+    </div>
+  </div>`
+  }
 </div>`
 
     return buildBrandedPdfHtml({

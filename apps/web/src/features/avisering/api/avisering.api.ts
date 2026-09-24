@@ -65,6 +65,16 @@ export interface GenerateResult {
 export interface SendResult {
   sent: number
   failed: number
+  /**
+   * K2 — avier som INTE köades därför att organisationens betalningsmål fattas.
+   *
+   * EGET fält och inte en del av `failed`: `failed` betyder "kön svarade inte"
+   * och är ett driftfel, det här betyder "ett fält är ofyllt" och är något
+   * hyresvärden själv rättar. Valfritt, eftersom äldre svar saknar det.
+   */
+  blocked?: number
+  /** Skrivet för en människa. `null` när inget blockerades. */
+  blockedReason?: string | null
 }
 
 export interface AviseringStats {
@@ -300,12 +310,28 @@ export type RentCollectionState =
   | 'PAUSED_STALE'
   | 'WAITING'
   | 'BLOCKED'
+  /** K2/F4 — organisationens betalningsmål fattas och stoppar nästa steg. */
+  | 'BLOCKED_PAYMENT_TARGET'
   | 'READY'
 
 export interface RentCollectionStatus {
   state: RentCollectionState
   collectionStage: RentCollectionStage
   missing: string[]
+  /**
+   * K2/F4 — betalningsmålet, ur samma förkontroll som kravtrappans cron och
+   * påminnelsejobbet grindar på. Speglar API:ets fält rakt av.
+   *
+   * `ok` och `blockerarNastaSteg` är SKILDA: målet kan fattas utan att stoppa
+   * något just nu, eftersom inkasso-steget inte läser det. Klienten härleder
+   * aldrig det ena ur det andra.
+   */
+  paymentTarget: {
+    ok: boolean
+    code: 'PAYMENT_TARGET_MISSING' | 'PAYMENT_TARGET_INVALID' | null
+    reason: string | null
+    blockerarNastaSteg: boolean
+  }
   daysOverdue: number
   thresholdDays: number
   daysUntilEvaluation: number
