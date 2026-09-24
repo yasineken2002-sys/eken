@@ -128,7 +128,12 @@ function makeRig(seed: LeaseSeed, opts: { withDeposit?: boolean; enqueueFails?: 
       ),
     },
     organization: {
-      findUnique: jest.fn().mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7 }),
+      // K2: ett giltigt betalningsmål hör numera till en NORMAL organisation —
+      // `sendNotices` vägrar köa utan det. `5050-1055` är ett verkligt,
+      // kontrollerbart bankgiro (samma som övriga avisering-riggar använder).
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7, bankgiro: '5050-1055' }),
     },
     deposit: {
       findFirst: jest.fn(({ where }: { where: { leaseId: string } }) =>
@@ -404,7 +409,10 @@ describe('T5 C2b · retrigger av aktiveringens avier (#58)', () => {
 
       const res = await service.sendNotices('org-1', ['n-1', 'n-2'])
 
-      expect(res).toEqual({ queued: 0, failed: 2, jobIds: [] })
+      // K2 lade till `blocked`/`blockedReason`. De är NOLL respektive null här
+      // med flit: organisationen HAR ett giltigt betalningsmål, så det som
+      // fallerade är kön — och de två talen ska gå att skilja åt.
+      expect(res).toEqual({ queued: 0, failed: 2, jobIds: [], blocked: 0, blockedReason: null })
     })
   })
 })

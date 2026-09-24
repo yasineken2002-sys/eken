@@ -14,6 +14,7 @@ import {
   Search,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
+import { PaymentTargetBanner, usePaymentTargetOk } from '@/components/PaymentTargetBanner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { extractApiError } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
@@ -132,6 +133,10 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
   const reminderPreview = useReminderPreview(remindersOpen)
   const sendReminders = useSendOverdueReminders()
   const downloadPdf = useDownloadPdf()
+  // K2 — utan giltigt betalningsmål finns inget att skicka till. Servern vägrar
+  // ändå (`sendNotices`-grinden); den här raden gör att hyresvärden ser VARFÖR
+  // innan klicket, i stället för att avin kommer tillbaka som Misslyckad.
+  const betalningsmal = usePaymentTargetOk()
 
   // Djuplänk → detaljmodal. TVÅ STEG, av samma skäl som MaintenancePage: listan
   // är MÅNADSFILTRERAD, och en notis om en avi som stått stilla i en vecka
@@ -209,8 +214,13 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="secondary"
-                disabled={sendAll.isPending || notices.length === 0}
+                disabled={sendAll.isPending || notices.length === 0 || !betalningsmal.ok}
                 loading={sendAll.isPending}
+                title={
+                  betalningsmal.ok
+                    ? undefined
+                    : 'Organisationens bankgiro saknas eller är ogiltigt — fyll i det under Inställningar först'
+                }
                 onClick={() => void sendAll.mutateAsync({ month, year })}
               >
                 <Mail size={13} strokeWidth={1.8} />
@@ -235,6 +245,12 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
             </div>
           }
         />
+
+        {!betalningsmal.ok && (
+          <div className="mt-4">
+            <PaymentTargetBanner vad="Inga avier kan skickas förrän betalningsuppgifterna är ifyllda." />
+          </div>
+        )}
 
         {/* Period selector + search */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -451,11 +467,17 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
                         <div className="flex items-center gap-1.5">
                           {(notice.status === 'PENDING' || notice.status === 'FAILED') && (
                             <button
-                              title={notice.status === 'FAILED' ? 'Skicka om avi' : 'Skicka avi'}
-                              disabled={sendNotices.isPending}
+                              title={
+                                betalningsmal.ok
+                                  ? notice.status === 'FAILED'
+                                    ? 'Skicka om avi'
+                                    : 'Skicka avi'
+                                  : 'Organisationens bankgiro saknas eller är ogiltigt — fyll i det under Inställningar först'
+                              }
+                              disabled={sendNotices.isPending || !betalningsmal.ok}
                               onClick={() => void sendNotices.mutateAsync([notice.id])}
                               className={cn(
-                                'flex h-7 w-7 items-center justify-center rounded-lg transition-colors',
+                                'flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40',
                                 notice.status === 'FAILED'
                                   ? 'text-red-500 hover:bg-red-50 hover:text-red-700'
                                   : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600',

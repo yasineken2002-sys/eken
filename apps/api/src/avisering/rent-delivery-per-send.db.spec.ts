@@ -157,6 +157,9 @@ medDb('leveransutfall per utskick', () => {
         remindersEnabled: true,
         rentReminderDay: 5,
         rentInkassoDaysAfterReminder: 14,
+        // K2: utskicksgrinden avstår utan giltigt betalningsmål. Verkligt,
+        // kontrollerbart bankgiro så riggen mäter leveransen och inte grinden.
+        bankgiro: '5050-1055',
       },
       select: { id: true },
     })

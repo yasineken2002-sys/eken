@@ -1,4 +1,8 @@
-import { UpdateOrganizationSchema, type UpdateOrganizationInput } from '@eken/shared'
+import {
+  UpdateOrganizationSchema,
+  validateSwedishBankgiro,
+  type UpdateOrganizationInput,
+} from '@eken/shared'
 import { kontraktsfel } from '@/lib/contract-gate'
 import { toast } from 'sonner'
 import { useState, useEffect, useRef } from 'react'
@@ -53,7 +57,7 @@ import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
 import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
-import { get, del } from '@/lib/api'
+import { get, del, extractApiError } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 import { tint, TINT } from '@/lib/tint'
@@ -70,7 +74,19 @@ const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
 // ─── Form schema ──────────────────────────────────────────────────────────────
 
 const PaymentFormSchema = z.object({
-  bankgiro: z.string().optional(),
+  // K2 — betalningsmålet. TOMT ÄR TILLÅTET och betyder "inget mål": hyresvärden
+  // måste kunna ta bort ett felaktigt nummer utan att formuläret låser sig.
+  // Ett ifyllt värde valideras med EXAKT samma funktion som servern använder
+  // före ett aviutskick (`validateSwedishBankgiro` i @eken/shared) — en egen
+  // regex här hade kunnat godkänna något servern sedan avvisar, och
+  // hyresvärden hade då fått ett sparat värde som ändå stoppar utskicken.
+  bankgiro: z
+    .string()
+    .optional()
+    .refine((v) => !v || !v.trim() || validateSwedishBankgiro(v).valid, {
+      message:
+        'Ogiltigt bankgiro. Ange 7 eller 8 siffror (XXX-XXXX eller XXXX-XXXX) med rätt kontrollsiffra.',
+    }),
   paymentTermsDays: z.coerce.number().min(1).optional(),
 })
 
@@ -191,7 +207,13 @@ export function SettingsPage() {
       toast.error(fel)
       return
     }
-    updateMutation.mutate(kropp, options)
+    updateMutation.mutate(kropp, {
+      // Servern avvisar numera ett ogiltigt bankgiro med 400. Utan den här raden
+      // hände ingenting synligt på skärmen — knappen slutade snurra och värdet
+      // var osparat. Anroparens egen onError vinner om den finns.
+      onError: (err: unknown) => toast.error(extractApiError(err)),
+      ...options,
+    })
   }
 
   const handleSaveTaxInfo = () => {
@@ -257,7 +279,10 @@ export function SettingsPage() {
 
   const handleSave = (v: PaymentFormValues) => {
     const kropp: UpdateOrganizationInput = {
-      ...(v.bankgiro ? { bankgiro: v.bankgiro } : {}),
+      // `v.bankgiro ? …` utelämnade fältet när rutan var tom, så ett felaktigt
+      // sparat bankgiro gick inte att RENSA genom formuläret. Tom sträng skickas
+      // nu med och betyder "ta bort målet" i organizations.service.
+      ...(v.bankgiro !== undefined ? { bankgiro: v.bankgiro } : {}),
       ...(v.paymentTermsDays != null ? { paymentTermsDays: v.paymentTermsDays } : {}),
     }
     sparaOrganisation(kropp, {
