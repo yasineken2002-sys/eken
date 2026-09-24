@@ -1169,6 +1169,37 @@ export class AviseringService {
     const paymentTarget = checkPaymentTarget(org)
     const payableDocument = paymentTarget.ok
 
+    // ── B2: BETALBARHET ÄR ORGANISATIONENS FRÅGA, LEVERANS ÄR AVINS ─────────
+    //
+    // `payableDocument` ovan beror ENBART på organisationens nuvarande fält, och
+    // det är rätt för betalbarheten: en kopia som renderas i dag utan giltigt
+    // mål går inte att betala i dag.
+    //
+    // Men texten sa också "HAR INTE SKICKATS", och det påståendet har inget med
+    // organisationen att göra. Villkoret saknade varje referens till avin, så
+    // meningen skrevs ut för VARJE avi i en org vars bankgiro just nu fattas —
+    // även en som gått ut. Den som laddar ner en kopia gör det oftast för att
+    // kontrollera vad hyresgästen fick, och fick då motsatsen till sanningen om
+    // en leverans.
+    //
+    // `sentAt` är avins egen leveransstämpel och sätts av `processNoticeSendJob`
+    // i samma skrivning som `status: SENT`. Statusen läses också, eftersom en
+    // avi kan ha markerats betald eller makulerad efter utskicket — `sentAt`
+    // står kvar då, men `status` är inte längre `SENT`.
+    //
+    // INGET DATUM I TEXTEN, med flit. Ett utskrivet datum har ett
+    // tidszonsankare, och det ankaret ägs av det delade kalenderkontraktet i
+    // #917 som inte finns på den här grenen. Ett eget `toLocaleDateString` här
+    // hade infört exakt den serverlokala formateringen den PR:en tar bort.
+    //
+    // INGET NYTT VERSIONSSYSTEM. Dokumentet säger vad DEN HÄR KOPIAN vet: att
+    // avin skickades, och att kopian saknar aktuella betalningsuppgifter. Vad
+    // hyresgästen faktiskt fick i sitt mejl rekonstrueras inte.
+    const harSkickats =
+      notice.sentAt != null ||
+      notice.status === RentNoticeStatus.SENT ||
+      notice.status === RentNoticeStatus.OVERDUE
+
     // Konsekvent beloppsformat med hyresfakturan: alltid två decimaler (ören).
     // Tidigare visade avin ören bara när de fanns medan fakturan rundade till
     // hela kronor — nu använder båda dokumenten samma 2-decimalsformat.
@@ -1727,7 +1758,16 @@ export class AviseringService {
     VAR GOD GÖR INGA ÄNDRINGAR — DEN AVLÄSES MASKINELLT
   </div>`
       : `<div class="ej-betalbar">
-    BETALNINGSUPPGIFTER SAKNAS — DEN HÄR AVIN KAN INTE BETALAS OCH HAR INTE SKICKATS.
+    ${
+      harSkickats
+        ? `BETALNINGSUPPGIFTER SAKNAS I DEN HÄR KOPIAN — DEN KAN INTE BETALAS.
+    <div style="font-weight:400;margin-top:3px">
+      Avin har skickats till hyresgästen. Det här är en ny utskrift, och
+      organisationens betalningsuppgifter saknas eller är ogiltiga i dag — vad
+      hyresgästen fick vid utskicket framgår inte av det här dokumentet.
+    </div>`
+        : `BETALNINGSUPPGIFTER SAKNAS — DEN HÄR AVIN KAN INTE BETALAS OCH HAR INTE SKICKATS.`
+    }
     <div style="font-weight:400;margin-top:3px">
       ${escapeHtml(PAYMENT_TARGET_FIX_HINT)}
     </div>

@@ -124,6 +124,82 @@ describe('K2 — avi-PDF:en hittar inte på ett betalningsmål', () => {
     expect(html).not.toContain('0000-0000')
   })
 
+  // ── B2: TEXTEN OM LEVERANS FÅR INTE HÄRLEDAS UR DAGENS MÅL ───────────────
+  //
+  // Granskningen av #919 (T1) fann att grenvillkoret berodde ENBART på
+  // organisationens nuvarande fält. Meningen "…HAR INTE SKICKATS" skrevs därför
+  // för varje avi i en org vars bankgiro just nu fattas — även en som gått ut.
+  // Fyndet var källhärlett; proven nedan gör det mätbart.
+  describe('B2 — vad dokumentet får säga om leverans', () => {
+    const SKICKAD = { sentAt: new Date('2026-07-01T09:00:00Z'), status: 'SENT' }
+
+    it('SKICKAD avi utan mål: säger INTE att den inte skickats', async () => {
+      const html = await render(ORG_UTAN_MAL, SKICKAD)
+      expect(html).not.toContain('HAR INTE SKICKATS')
+      // Och den säger vad den FAKTISKT vet: kopian saknar uppgifter i dag.
+      expect(html).toContain('BETALNINGSUPPGIFTER SAKNAS I DEN HÄR KOPIAN')
+      expect(html).toContain('Avin har skickats till hyresgästen')
+      // Inget påhittat mål, ingen maskinläsbar giro-rad.
+      expect(html).not.toContain('0000-0000')
+      expect(html).not.toContain('#41#')
+    })
+
+    it('OSKICKAD avi utan mål: får säga att den inte skickats', async () => {
+      const html = await render(ORG_UTAN_MAL, { sentAt: null, status: 'PENDING' })
+      expect(html).toContain('HAR INTE SKICKATS')
+      expect(html).not.toContain('Avin har skickats')
+      expect(html).not.toContain('0000-0000')
+    })
+
+    it.each([
+      ['OVERDUE utan sentAt — status ensam räcker', { sentAt: null, status: 'OVERDUE' }],
+      [
+        'PAID efter utskick — sentAt står kvar',
+        { sentAt: new Date('2026-07-01T09:00:00Z'), status: 'PAID' },
+      ],
+      [
+        'CANCELLED efter utskick',
+        { sentAt: new Date('2026-07-01T09:00:00Z'), status: 'CANCELLED' },
+      ],
+    ])('%s: ingen osann mening om utebliven leverans', async (_namn, over) => {
+      const html = await render(ORG_UTAN_MAL, over)
+      expect(html).not.toContain('HAR INTE SKICKATS')
+      expect(html).toContain('Avin har skickats till hyresgästen')
+    })
+
+    it('PENDING som aldrig skickats i en org MED mål: betalbart dokument, ingen leveransmening', async () => {
+      // Positiv kontroll åt andra hållet: grenen får inte skrivas när målet finns.
+      const html = await render(ORG_MED_MAL, { sentAt: null, status: 'PENDING' })
+      expect(html).not.toContain('BETALNINGSUPPGIFTER SAKNAS')
+      expect(html).not.toContain('HAR INTE SKICKATS')
+      expect(html).toContain('5050-1055')
+      expect(html).toContain('#41#')
+    })
+
+    it('B2.4 återställt mål: samma SKICKADE avi blir betalbar igen', async () => {
+      const utan = await render(ORG_UTAN_MAL, SKICKAD)
+      const med = await render(ORG_MED_MAL, SKICKAD)
+      expect(utan).toContain('BETALNINGSUPPGIFTER SAKNAS I DEN HÄR KOPIAN')
+      expect(med).not.toContain('BETALNINGSUPPGIFTER SAKNAS')
+      expect(med).toContain('TILL BANKGIRO')
+      expect(med).toContain('5050-1055')
+      expect(med).toContain('#41#')
+    })
+
+    it('B2.7 inget måltillstånd ger ett påhittat mål', async () => {
+      for (const org of [
+        ORG_UTAN_MAL,
+        { ...ORG_UTAN_MAL, bankgiro: '   ' },
+        { ...ORG_UTAN_MAL, bankgiro: '0000-0000' },
+        ORG_MED_MAL,
+      ]) {
+        for (const over of [SKICKAD, { sentAt: null, status: 'PENDING' }]) {
+          expect(await render(org, over)).not.toContain('0000-0000')
+        }
+      }
+    })
+  })
+
   it('org MED giltigt bankgiro: målet står kvar i dokumentet', async () => {
     const html = await render(ORG_MED_MAL)
     expect(html).toContain('5050-1055')

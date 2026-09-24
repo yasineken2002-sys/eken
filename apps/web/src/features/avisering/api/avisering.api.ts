@@ -310,12 +310,28 @@ export type RentCollectionState =
   | 'PAUSED_STALE'
   | 'WAITING'
   | 'BLOCKED'
+  /** K2/F4 — organisationens betalningsmål fattas och stoppar nästa steg. */
+  | 'BLOCKED_PAYMENT_TARGET'
   | 'READY'
 
 export interface RentCollectionStatus {
   state: RentCollectionState
   collectionStage: RentCollectionStage
   missing: string[]
+  /**
+   * K2/F4 — betalningsmålet, ur samma förkontroll som kravtrappans cron och
+   * påminnelsejobbet grindar på. Speglar API:ets fält rakt av.
+   *
+   * `ok` och `blockerarNastaSteg` är SKILDA: målet kan fattas utan att stoppa
+   * något just nu, eftersom inkasso-steget inte läser det. Klienten härleder
+   * aldrig det ena ur det andra.
+   */
+  paymentTarget: {
+    ok: boolean
+    code: 'PAYMENT_TARGET_MISSING' | 'PAYMENT_TARGET_INVALID' | null
+    reason: string | null
+    blockerarNastaSteg: boolean
+  }
   daysOverdue: number
   thresholdDays: number
   daysUntilEvaluation: number
