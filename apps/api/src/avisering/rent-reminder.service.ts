@@ -1745,8 +1745,21 @@ export class RentReminderService {
     // av det. Följden är att `blockerarNastaSteg` kan vara sant för en avi som
     // ändå hade hoppats över av adresskäl; skälet det ger är då riktigt men inte
     // det enda som saknas.
+    //
+    // F4-a: `org.remindersEnabled` HÖR TILL URVALET. Cron-loopens `findMany`
+    // filtrerar på `organization: { remindersEnabled: true }`, och utan den här
+    // termen fick en avi i stage NONE i en org som STÄNGT AV påminnelser skälet
+    // `BLOCKED_PAYMENT_TARGET`. Cronen plockar aldrig avin, så målet stoppar
+    // ingenting: hyresvärden fick ett åtgärdbart skäl som inte var orsaken,
+    // fyllde i bankgirot och såg ingen förändring.
+    //
+    // För stage REMINDED fanns luckan inte, eftersom `REMINDERS_OFF` ligger före
+    // det nya skälet i state-kedjan. Bara NONE-grenen passerade förbi den.
     const arPaminnelsekandidat =
-      notice.status === 'OVERDUE' && !notice.isBackfill && debt.ocrOutstanding > 0
+      notice.status === 'OVERDUE' &&
+      !notice.isBackfill &&
+      debt.ocrOutstanding > 0 &&
+      org.remindersEnabled
 
     const malBlockerarNastaSteg =
       !betalningsmal.ok &&

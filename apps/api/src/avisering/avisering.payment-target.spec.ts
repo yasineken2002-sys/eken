@@ -152,7 +152,6 @@ describe('K2 — avi-PDF:en hittar inte på ett betalningsmål', () => {
     })
 
     it.each([
-      ['OVERDUE utan sentAt — status ensam räcker', { sentAt: null, status: 'OVERDUE' }],
       [
         'PAID efter utskick — sentAt står kvar',
         { sentAt: new Date('2026-07-01T09:00:00Z'), status: 'PAID' },
@@ -165,6 +164,33 @@ describe('K2 — avi-PDF:en hittar inte på ett betalningsmål', () => {
       const html = await render(ORG_UTAN_MAL, over)
       expect(html).not.toContain('HAR INTE SKICKATS')
       expect(html).toContain('Avin har skickats till hyresgästen')
+    })
+
+    // ── DET HÄR FALLET LÅSTE IN DEFEKTEN, OCH ÄR OMVÄNT NU ──────────────────
+    //
+    // Raden hette "OVERDUE utan sentAt — status ensam räcker" och krävde att
+    // dokumentet INTE sa "HAR INTE SKICKATS". Den var fel: `OVERDUE` är inget
+    // bevis för leverans, eftersom `checkAndMarkOverdue` flippar även `PENDING`
+    // — alltså en avi som aldrig gått ut. Provet skyddade alltså det falska
+    // påståendet i stället för mot det.
+    //
+    // Täckningen minskar inte: fallet finns kvar med motsatt krav, och
+    // `b2-pending-overdue-pdf.db.spec.ts` kör dessutom hela vägen dit genom den
+    // riktiga listvägen mot riktig Postgres.
+    it('OVERDUE UTAN sentAt: ingen leverans har skett, och dokumentet påstår inte det', async () => {
+      const html = await render(ORG_UTAN_MAL, { sentAt: null, status: 'OVERDUE' })
+      expect(html).toContain('HAR INTE SKICKATS')
+      expect(html).not.toContain('Avin har skickats')
+      expect(html).not.toContain('0000-0000')
+    })
+
+    it('OVERDUE MED sentAt: leveransen har skett, och det syns', async () => {
+      const html = await render(ORG_UTAN_MAL, {
+        sentAt: new Date('2026-07-01T09:00:00Z'),
+        status: 'OVERDUE',
+      })
+      expect(html).toContain('Avin har skickats till hyresgästen')
+      expect(html).not.toContain('HAR INTE SKICKATS')
     })
 
     it('PENDING som aldrig skickats i en org MED mål: betalbart dokument, ingen leveransmening', async () => {

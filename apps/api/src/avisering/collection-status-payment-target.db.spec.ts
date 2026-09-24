@@ -339,6 +339,84 @@ medDb('F4 · collectionStatus och betalningsmålet', () => {
     expect(s.state).toBe('BLOCKED_PAYMENT_TARGET')
   })
 
+  // ── F4-a: PÅMINNELSER AV → målet blockerar ingenting ─────────────────────
+  //
+  // Cron-loopens urval filtrerar på `organization: { remindersEnabled: true }`.
+  // Utan den termen i `arPaminnelsekandidat` fick en avi i stage NONE i en org
+  // som stängt av påminnelser skälet `BLOCKED_PAYMENT_TARGET` — ett hinder som
+  // inte finns, eftersom cronen aldrig plockar avin.
+  //
+  // BÅDA riktningarna mäts i samma beskrivning: AV ska ge NOT_APPLICABLE, PÅ
+  // ska ge BLOCKED_PAYMENT_TARGET. Bara det första hade varit oskiljbart från
+  // en gren som alltid säger NOT_APPLICABLE.
+  describe('F4-a · remindersEnabled hör till kandidaturvalet', () => {
+    const satPaminnelser = (pa: boolean) =>
+      prisma.organization.update({ where: { id: orgId }, data: { remindersEnabled: pa } })
+
+    afterEach(async () => {
+      await satPaminnelser(true)
+    })
+
+    it('F4a-1 stage NONE, påminnelser AV, mål saknas: NOT_APPLICABLE och inget hinder', async () => {
+      await satMal(null)
+      await satPaminnelser(false)
+      const id = await avi({ dagarSedanForfall: 10, stage: 'NONE' })
+      const s = await status(id)
+      // Formatdiagnosen står kvar — målet ÄR ogiltigt.
+      expect(s.paymentTarget.ok).toBe(false)
+      expect(s.paymentTarget.reason).toMatch(/[Bb]ankgiro/)
+      // Men det blockerar inget steg, och statusbeskedet säger inte att det gör det.
+      expect(s.paymentTarget.blockerarNastaSteg).toBe(false)
+      expect(s.state).toBe('NOT_APPLICABLE')
+    })
+
+    it('F4a-2 POSITIV MOTSVARIGHET: samma avi med påminnelser PÅ blockeras', async () => {
+      await satMal(null)
+      await satPaminnelser(true)
+      const id = await avi({ dagarSedanForfall: 10, stage: 'NONE' })
+      const s = await status(id)
+      expect(s.paymentTarget.ok).toBe(false)
+      expect(s.paymentTarget.blockerarNastaSteg).toBe(true)
+      expect(s.state).toBe('BLOCKED_PAYMENT_TARGET')
+    })
+
+    it('F4a-3 stage REMINDED med påminnelser AV: REMINDERS_OFF behåller prioriteten', async () => {
+      await satMal(null)
+      await satPaminnelser(false)
+      const id = await avi({ dagarSedanForfall: 30, stage: 'REMINDED' })
+      expect((await status(id)).state).toBe('REMINDERS_OFF')
+    })
+
+    it('F4a-4 stage REMINDED med påminnelser PÅ och utskick kvar: blockeras', async () => {
+      await satMal(null)
+      await satPaminnelser(true)
+      const id = await avi({ dagarSedanForfall: 30, stage: 'REMINDED' })
+      const s = await status(id)
+      expect(s.paymentTarget.blockerarNastaSteg).toBe(true)
+      expect(s.state).toBe('BLOCKED_PAYMENT_TARGET')
+    })
+
+    it('F4a AVGIFT OCH UTSKICK oförändrade: påminnelser AV → cronen gör ingenting', async () => {
+      await satMal(null)
+      await satPaminnelser(false)
+      skickadePaminnelser.length = 0
+      const id = await avi({ dagarSedanForfall: 30, stage: 'NONE' })
+      await service.escalateOverdueRentNotices()
+      const efter = await prisma.rentNotice.findUniqueOrThrow({
+        where: { id },
+        select: { collectionStage: true, reminderFeeAmount: true },
+      })
+      expect(efter.collectionStage).toBe('NONE')
+      expect(Number(efter.reminderFeeAmount)).toBe(0)
+      expect(skickadePaminnelser).not.toContain(id)
+      expect(
+        await prisma.journalEntry.count({
+          where: { organizationId: orgId, sourceId: `reminder-fee:${id}` },
+        }),
+      ).toBe(0)
+    }, 40_000)
+  })
+
   // ── Ett tillstånd som INTE ska få betalningsmålsskäl ──────────────────────
   it('BETALD avi i org utan mål: NOT_APPLICABLE, inget skäl om nästa steg', async () => {
     await satMal(null)

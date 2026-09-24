@@ -1182,10 +1182,32 @@ export class AviseringService {
     // kontrollera vad hyresgästen fick, och fick då motsatsen till sanningen om
     // en leverans.
     //
-    // `sentAt` är avins egen leveransstämpel och sätts av `processNoticeSendJob`
-    // i samma skrivning som `status: SENT`. Statusen läses också, eftersom en
-    // avi kan ha markerats betald eller makulerad efter utskicket — `sentAt`
-    // står kvar då, men `status` är inte längre `SENT`.
+    // ── VAD SOM ÄR BEVIS FÖR ATT AVIN SKICKATS, OCH VAD SOM INTE ÄR DET ─────
+    //
+    // `sentAt` ÄR beviset. Den sätts på exakt ett ställe i hela `apps/api/src` —
+    // i `processNoticeSendJob`, i samma skrivning som `status: SENT`, efter att
+    // mejlet köats. En avi som aldrig gått ut har `sentAt = null`.
+    //
+    // `status === SENT` står kvar som andra disjunkt för en avi vars stämpel av
+    // någon anledning inte finns men vars status säger att den gått ut. Den är i
+    // praktiken redundant mot raden ovan, och den är inte falsk.
+    //
+    // `status === OVERDUE` STOD HÄR OCH ÄR BORTTAGEN. Det var ett falskt bevis,
+    // och felet uppstod av K2:s egna delar i samverkan:
+    //
+    //   1. `checkAndMarkOverdue` väljer `status: { in: [PENDING, SENT] }` och
+    //      skriver `OVERDUE`. PENDING INGÅR.
+    //   2. Den anropas av `findAll` och `getStats` — alltså varje gång
+    //      hyresvärden öppnar avilistan.
+    //   3. Utan giltigt betalningsmål hindrar grinden utskicket och UI:t låser
+    //      sändknapparna, så avin står kvar PENDING till förfallodagen passerat.
+    //   4. Listan flippar den då till OVERDUE — utan att någon leverans skett.
+    //
+    // Dokumentet sa därefter "Avin har skickats till hyresgästen" om en avi som
+    // aldrig gått ut. Mätt, inte härlett: `b2-pending-overdue-pdf.db.spec.ts`
+    // kör den riktiga listvägen och renderar den riktiga templaten, och provet
+    // skiljer de två OVERDUE-fallen åt — en verkligt skickad avi som förfaller
+    // har `sentAt` satt och ska fortsätta säga att den skickats.
     //
     // INGET DATUM I TEXTEN, med flit. Ett utskrivet datum har ett
     // tidszonsankare, och det ankaret ägs av det delade kalenderkontraktet i
@@ -1195,10 +1217,7 @@ export class AviseringService {
     // INGET NYTT VERSIONSSYSTEM. Dokumentet säger vad DEN HÄR KOPIAN vet: att
     // avin skickades, och att kopian saknar aktuella betalningsuppgifter. Vad
     // hyresgästen faktiskt fick i sitt mejl rekonstrueras inte.
-    const harSkickats =
-      notice.sentAt != null ||
-      notice.status === RentNoticeStatus.SENT ||
-      notice.status === RentNoticeStatus.OVERDUE
+    const harSkickats = notice.sentAt != null || notice.status === RentNoticeStatus.SENT
 
     // Konsekvent beloppsformat med hyresfakturan: alltid två decimaler (ören).
     // Tidigare visade avin ören bara när de fanns medan fakturan rundade till
