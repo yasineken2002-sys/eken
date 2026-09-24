@@ -4,7 +4,7 @@ import { AlertTriangle, Info, PauseCircle, Scissors } from 'lucide-react'
 
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { formatCurrency, formatDate, swedishDateKey } from '@eken/shared'
+import { formatCurrency, formatDate, swedishDateKey, rentNoticeDisplayStatus } from '@eken/shared'
 import { RentNoticeBadge } from './RentNoticeBadge'
 import { CreditRentNoticeModal } from './CreditRentNoticeModal'
 import {
@@ -83,7 +83,7 @@ export function RentNoticeDetailModal({ notice, onClose }: Props) {
       >
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <RentNoticeBadge status={notice.status} />
+            <RentNoticeBadge status={rentNoticeDisplayStatus(notice)} />
             {preview && <StageBadge stage={preview.collectionStage} />}
             <span className="rounded-md bg-gray-200 px-2 py-0.5 font-mono text-[12px] font-semibold text-gray-500">
               {notice.ocrNumber}

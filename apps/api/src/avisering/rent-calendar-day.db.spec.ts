@@ -3,6 +3,24 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { randomUUID } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
+import { ValidationPipe } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
+import { ConfigService } from '@nestjs/config'
+import { Test } from '@nestjs/testing'
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
+import { PassportModule } from '@nestjs/passport'
+import { JwtService } from '@nestjs/jwt'
+import { JwtStrategy } from '../auth/strategies/jwt.strategy'
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
+import { RolesGuard } from '../common/guards/roles.guard'
+import { TransformInterceptor } from '../common/interceptors/transform.interceptor'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { TenantPortalController } from '../tenant-portal/tenant-portal.controller'
+import { TenantPortalService } from '../tenant-portal/tenant-portal.service'
+import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
+import { TenantAuthGuard } from '../tenant-portal/tenant-auth.guard'
+import { AviseringController } from './avisering.controller'
 import { PrismaClient, type RentNoticeStatus } from '@prisma/client'
 import { AviseringService } from './avisering.service'
 import { AccountingService } from '../accounting/accounting.service'
@@ -13,7 +31,7 @@ import { RentReminderService } from './rent-reminder.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentDebtService } from './rent-debt.service'
-import { swedishDateKey } from '@eken/shared'
+import { swedishDateKey, rentNoticeDisplayStatus } from '@eken/shared'
 import { NotificationsService } from '../notifications/notifications.service'
 
 const hasDb = Boolean(process.env.DATABASE_URL)
@@ -172,6 +190,7 @@ it('requires a real database', () => expect(hasDb).toBe(true))
     ).map((n) => n.id)
     await prisma.rentNoticeEvent.deleteMany({ where: { rentNoticeId: { in: noticeIds } } })
     await prisma.rentNoticeSend.deleteMany({ where: { rentNoticeId: { in: noticeIds } } })
+    await prisma.rentNoticeCredit.deleteMany({ where: { rentNoticeId: { in: noticeIds } } })
     await prisma.journalEntryLine.deleteMany({
       where: { journalEntry: { organizationId: { in: orgIds } } },
     })
@@ -577,7 +596,9 @@ it('requires a real database', () => expect(hasDb).toBe(true))
     })
     // Kögränsen observeras; ingen Redis eller leverantör får en leverans.
     const enqueue = jest.fn().mockResolvedValue('unexpected-preview-job')
-    Object.assign(avisering, { pdfQueue: { enqueue } })
+    const previewService = Object.assign(Object.create(AviseringService.prototype), avisering, {
+      pdfQueue: { enqueue },
+    }) as AviseringService
     const scope = { organizationId: { in: orgIds } }
     const snapshot = async () => ({
       notices: await prisma.rentNotice.findMany({ where: scope, orderBy: { id: 'asc' } }),
@@ -624,15 +645,15 @@ it('requires a real database', () => expect(hasDb).toBe(true))
     expect(before.noticeNumbers.length).toBeGreaterThan(0)
     expect(before.ocrNumbers.length).toBeGreaterThan(0)
     for (let attempt = 0; attempt < 3; attempt++) {
-      expect(await avisering.previewMonthlyNotices(orgId, 10, 2026)).toMatchObject({
+      expect(await previewService.previewMonthlyNotices(orgId, 10, 2026)).toMatchObject({
         toCreate: 0,
         existingDueDates: [{ dueDate: '2026-10-15', count: 1 }],
       })
-      expect(await avisering.previewMonthlyNotices(otherOrg, 10, 2026)).toMatchObject({
+      expect(await previewService.previewMonthlyNotices(otherOrg, 10, 2026)).toMatchObject({
         toCreate: 0,
         existingDueDates: [{ dueDate: '2026-10-20', count: 1 }],
       })
-      expect(await avisering.previewMonthlyNotices(orgId, 11, 2026)).toMatchObject({
+      expect(await previewService.previewMonthlyNotices(orgId, 11, 2026)).toMatchObject({
         toCreate: 1,
         dueDates: [{ dueDate: '2026-10-30', count: 1 }],
         existingDueDates: [],
@@ -641,11 +662,248 @@ it('requires a real database', () => expect(hasDb).toBe(true))
     }
     expect(enqueue).not.toHaveBeenCalled()
     // Positiv kontroll: samma mätning ser den verkliga skrivvägens effekt.
-    expect((await avisering.generateMonthlyNotices(orgId, 11, 2026)).created).toBe(1)
+    expect((await previewService.generateMonthlyNotices(orgId, 11, 2026)).created).toBe(1)
     const afterGeneration = await snapshot()
     expect(afterGeneration.notices).toHaveLength(before.notices.length + 1)
     expect(afterGeneration.journals).toHaveLength(before.journals.length + 1)
     expect(afterGeneration.noticeNumbers).not.toEqual(before.noticeNumbers)
     expect(afterGeneration.journalNumbers).not.toEqual(before.journalNumbers)
+    // Positiv kontroll för KÖN: samma tjänstinstans och snapshot ser sendNotices.
+    // Enqueue stannar vid lokal attrapp; ingen worker eller extern leverantör startas.
+    const toSend = afterGeneration.notices.find((row) => row.month === 11)!
+    const sent = await previewService.sendNotices(orgId, [toSend.id])
+    expect(sent.queued).toBe(1)
+    expect((await snapshot()).queued).toEqual([
+      [{ kind: 'avisering-send', organizationId: orgId, noticeId: toSend.id }],
+    ])
+    expect(Object.hasOwn(avisering, 'pdfQueue')).toBe(false)
   })
+
+  it('HTTP list/detail/statistics and tenant sessions share real remaining debt without rewriting legacy rows', async () => {
+    const auth = Object.assign(Object.create(TenantAuthService.prototype), {
+      prisma,
+    }) as TenantAuthService
+    const portal = Object.assign(Object.create(TenantPortalService.prototype), {
+      prisma,
+    }) as TenantPortalService
+    const secret = 'synthetic-t3-display-http-key'
+    const jwt = new JwtService({ secret })
+    const controllers = [AviseringController, TenantPortalController]
+    const values = new Map<unknown, unknown>([
+      [AviseringService, avisering],
+      [TenantPortalService, portal],
+      [PrismaService, prisma],
+      [TenantAuthService, auth],
+    ])
+    const dependencies = new Set(
+      controllers.flatMap(
+        (controller) =>
+          Reflect.getMetadata('design:paramtypes', controller) as Array<
+            new (...args: never[]) => unknown
+          >,
+      ),
+    )
+    const module = await Test.createTestingModule({
+      imports: [PassportModule],
+      controllers,
+      providers: [
+        ...[...dependencies].map((provide) => ({ provide, useValue: values.get(provide) ?? {} })),
+        { provide: TenantAuthService, useValue: auth },
+        TenantAuthGuard,
+        JwtStrategy,
+        { provide: ConfigService, useValue: new ConfigService({ JWT_SECRET: secret }) },
+      ],
+    }).compile()
+    const app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter())
+    app.setGlobalPrefix('v1')
+    app.useGlobalGuards(new JwtAuthGuard(new Reflector()), new RolesGuard(new Reflector()))
+    app.useGlobalInterceptors(new TransformInterceptor())
+    app.useGlobalPipes(
+      new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
+    )
+    await app.init()
+    await app.getHttpAdapter().getInstance().ready()
+    const http = (url: string, token?: string) =>
+      app.inject({
+        method: 'GET',
+        url,
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+      })
+    const orgToken = (organizationId = orgId, role = 'VIEWER') =>
+      jwt.sign({ sub: 'synthetic-viewer', organizationId, role })
+    try {
+      const baseLease = await prisma.lease.findUniqueOrThrow({ where: { id: leaseId } })
+      const baseUnit = await prisma.unit.findUniqueOrThrow({ where: { id: baseLease.unitId } })
+      const cases: Array<[string, RentNoticeStatus, string, number, number]> = [
+        ['legacy-utc', 'OVERDUE', '2026-07-01T00:00:00Z', 4000, 0],
+        ['legacy-stockholm', 'OVERDUE', '2026-06-30T22:00:00Z', 4000, 0],
+        ['paid', 'PAID', '2026-07-01T00:00:00Z', 9000, 0],
+        ['cancelled', 'CANCELLED', '2026-07-01T00:00:00Z', 0, 0],
+        ['zero-paid', 'OVERDUE', '2026-07-01T00:00:00Z', 9000, 0],
+        ['zero-credit', 'OVERDUE', '2026-07-01T00:00:00Z', 0, 9000],
+      ]
+      const ids: string[] = []
+      for (const [name, status, dueDate, payment, credit] of cases) {
+        const unit = await prisma.unit.create({
+          data: {
+            ...baseUnit,
+            id: randomUUID(),
+            unitNumber: randomUUID(),
+            name,
+          },
+        })
+        const lease = await prisma.lease.create({
+          data: {
+            ...baseLease,
+            id: randomUUID(),
+            contractNumber: randomUUID(),
+            unitId: unit.id,
+          },
+        })
+        const n = await prisma.rentNotice.create({
+          data: {
+            organizationId: orgId,
+            tenantId,
+            leaseId: lease.id,
+            noticeNumber: name,
+            ocrNumber: String(700001 + ids.length),
+            month: 7,
+            year: 2026,
+            status,
+            dueDate: new Date(dueDate),
+            amount: 9000,
+            totalAmount: 9000,
+            // Avsiktligt fel cache: visningen måste läsa allokeringarna.
+            paidAmount: 0,
+            sentAt: new Date('2026-06-20T10:00:00Z'),
+          },
+        })
+        ids.push(n.id)
+        if (payment)
+          await prisma.rentNoticePayment.create({
+            data: {
+              rentNoticeId: n.id,
+              amount: payment,
+              paidAt: new Date('2026-06-21'),
+              source: 'MANUAL',
+            },
+          })
+        if (credit)
+          await prisma.rentNoticeCredit.create({
+            data: {
+              rentNoticeId: n.id,
+              organizationId: orgId,
+              amount: credit,
+              reason: 'Syntetisk full kreditering för visningsprovet',
+              creditedAt: new Date('2026-06-21'),
+            },
+          })
+      }
+      const ownSession = await auth.createSessionForTenant(tenantId)
+      const otherTenant = await prisma.tenant.create({
+        data: {
+          organizationId: orgId,
+          type: 'INDIVIDUAL',
+          email: `${randomUUID()}@example.test`,
+        },
+      })
+      const otherSession = await auth.createSessionForTenant(otherTenant.id)
+      const snapshot = async () => ({
+        notices: await prisma.rentNotice.findMany({
+          where: { id: { in: ids } },
+          orderBy: { id: 'asc' },
+          include: { payments: true, credits: true, events: true, sends: true, lines: true },
+        }),
+        journals: await prisma.journalEntry.findMany({
+          where: { organizationId: orgId },
+          include: { lines: true },
+        }),
+        noticeNumbers: await prisma.rentNoticeNumberSequence.findMany({
+          where: { organizationId: orgId },
+        }),
+        journalNumbers: await prisma.journalEntrySequence.findMany({
+          where: { organizationId: orgId },
+        }),
+      })
+      const before = await snapshot()
+      const proof: unknown[] = []
+      for (const [now, expectedOverdue] of [
+        ['2026-07-01T21:59:59Z', 0],
+        ['2026-07-01T22:00:00Z', 2],
+      ] as const) {
+        jest
+          .useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout'] })
+          .setSystemTime(new Date(now))
+        const webResponse = await http('/v1/avisering?month=7&year=2026', orgToken())
+        const portalResponse = await http('/v1/portal/rent-notices', ownSession.sessionToken)
+        const statsResponse = await http('/v1/avisering/stats/7/2026', orgToken())
+        expect([
+          webResponse.statusCode,
+          portalResponse.statusCode,
+          statsResponse.statusCode,
+        ]).toEqual([200, 200, 200])
+        const web = webResponse.json().data as Array<{
+          id: string
+          noticeNumber: string
+          dueDate: string
+          status: RentNoticeStatus
+          payableTotal: number
+        }>
+        const tenant = portalResponse.json().data as typeof web
+        expect(web).toHaveLength(6)
+        expect(tenant).toHaveLength(5) // CANCELLED är inte en nåbar portalrad.
+        expect(statsResponse.json().data.overdue).toBe(expectedOverdue)
+        expect(web.filter((row) => rentNoticeDisplayStatus(row) === 'OVERDUE')).toHaveLength(
+          expectedOverdue,
+        )
+        for (const row of web) {
+          const detail = await http(`/v1/avisering/${row.id}`, orgToken(orgId, 'ACCOUNTANT'))
+          expect(detail.statusCode).toBe(200)
+          expect(detail.json().data.payableTotal).toBe(row.payableTotal)
+          const n = tenant.find((item) => item.id === row.id)
+          if (n) {
+            expect(n.payableTotal).toBe(row.payableTotal)
+            expect(rentNoticeDisplayStatus(n)).toBe(rentNoticeDisplayStatus(row))
+          }
+          expect(row).not.toHaveProperty('payments')
+          expect(row).not.toHaveProperty('credits')
+          expect(row).not.toHaveProperty('reminderPdfStorageKey')
+          expect(row).not.toHaveProperty('reminderMessageId')
+        }
+        expect(
+          web.filter((row) => row.noticeNumber.startsWith('legacy')).map((row) => row.payableTotal),
+        ).toEqual([5000, 5000])
+        expect(
+          web.filter((row) => row.noticeNumber.startsWith('zero')).map((row) => row.payableTotal),
+        ).toEqual([0, 0])
+        expect((await http('/v1/avisering')).statusCode).toBe(401)
+        expect((await http('/v1/portal/rent-notices')).statusCode).toBe(401)
+        expect((await http(`/v1/avisering/${ids[0]}`, orgToken(orgIds[1]!))).statusCode).toBe(404)
+        expect(
+          (await http('/v1/avisering?month=7&year=2026', orgToken(orgIds[1]!))).json().data,
+        ).toEqual([])
+        expect(
+          (await http('/v1/portal/rent-notices', otherSession.sessionToken)).json().data,
+        ).toEqual([])
+        expect(
+          (await http(`/v1/portal/rent-notices/${ids[0]}/download`, otherSession.sessionToken))
+            .statusCode,
+        ).toBe(404)
+        expect(await snapshot()).toEqual(before)
+        proof.push({
+          now,
+          web: webResponse.json(),
+          portal: portalResponse.json(),
+          stats: statsResponse.json(),
+          before,
+          after: await snapshot(),
+        })
+      }
+      if (process.env.T3_DISPLAY_PROOF)
+        writeFileSync(process.env.T3_DISPLAY_PROOF, JSON.stringify(proof, null, 2) + '\n')
+    } finally {
+      await app.close()
+      jest.useRealTimers()
+    }
+  }, 60_000)
 })

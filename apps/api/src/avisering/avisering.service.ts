@@ -19,7 +19,7 @@ import { AccountingService, vatRateForRent } from '../accounting/accounting.serv
 import { ConsumptionService } from '../consumption/consumption.service'
 import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { DepositsService } from '../deposits/deposits.service'
-import { computeRentDebt } from './rent-debt.service'
+import { computeRentDebt, rentNoticeOutstanding } from './rent-debt.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 
 // Speglar REVERSAL_REASON_MIN_LENGTH i AccountingService: ett skäl som bara är
@@ -51,6 +51,7 @@ import {
   DEFAULT_BRAND_COLOR,
   swedishDateKey,
   startOfSwedishDay,
+  rentNoticeDisplayStatus,
   type GenerateNoticesPreview,
 } from '@eken/shared'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
@@ -2631,7 +2632,7 @@ export class AviseringService {
     // månad/år så hela hyresgästens historik visas över alla perioder.
     const search = filters?.search?.trim()
 
-    return this.prisma.rentNotice.findMany({
+    const notices = await this.prisma.rentNotice.findMany({
       where: {
         organizationId: orgId,
         ...(filters?.month ? { month: filters.month } : {}),
@@ -2653,6 +2654,8 @@ export class AviseringService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
+        payments: { select: { amount: true } },
+        credits: { select: { amount: true } },
       },
       // Interna infrastrukturfält ska aldrig nå klienten (security-auditor MEDIUM):
       // R2-lagringsnyckeln och Resends message-id är inte presigned URL:er och har
@@ -2660,6 +2663,7 @@ export class AviseringService {
       omit: { reminderPdfStorageKey: true, reminderMessageId: true },
       orderBy: { dueDate: 'desc' },
     })
+    return notices.map(withPayableTotal)
   }
 
   async findOne(noticeId: string, orgId: string) {
@@ -2668,22 +2672,34 @@ export class AviseringService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
+        payments: { select: { amount: true } },
+        credits: { select: { amount: true } },
       },
       // Interna fält döljs för klienten (se findMany ovan).
       omit: { reminderPdfStorageKey: true, reminderMessageId: true },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
-    return notice
+    return withPayableTotal(notice)
   }
 
   async getStats(orgId: string, month: number, year: number) {
     await this.checkAndMarkOverdue(orgId)
 
-    const [grouped, aggregate] = await Promise.all([
-      this.prisma.rentNotice.groupBy({
-        by: ['status'],
+    const [notices, aggregate] = await Promise.all([
+      this.prisma.rentNotice.findMany({
         where: { organizationId: orgId, month, year },
-        _count: true,
+        select: {
+          status: true,
+          dueDate: true,
+          type: true,
+          totalAmount: true,
+          consumptionAmount: true,
+          miscChargeAmount: true,
+          reminderFeeAmount: true,
+          interestAccruedAmount: true,
+          payments: { select: { amount: true } },
+          credits: { select: { amount: true } },
+        },
       }),
       this.prisma.rentNotice.aggregate({
         where: { organizationId: orgId, month, year },
@@ -2693,8 +2709,10 @@ export class AviseringService {
     ])
 
     const byStatus: Record<string, number> = {}
-    for (const g of grouped) {
-      byStatus[g.status] = g._count
+    const now = new Date()
+    for (const notice of notices) {
+      const status = rentNoticeDisplayStatus(withPayableTotal(notice), now)
+      byStatus[status] = (byStatus[status] ?? 0) + 1
     }
 
     const totalAmount = Number(aggregate._sum.totalAmount ?? 0)
@@ -2711,5 +2729,14 @@ export class AviseringService {
       paidAmount,
       outstandingAmount: totalAmount - paidAmount,
     }
+  }
+}
+
+/** Lägg till samma restskuld som portalen utan att exponera relationsraderna. */
+function withPayableTotal<T extends Parameters<typeof rentNoticeOutstanding>[0]>(notice: T) {
+  const { payments, credits, ...row } = notice
+  return {
+    ...row,
+    payableTotal: rentNoticeOutstanding({ ...row, payments, credits }).payable,
   }
 }

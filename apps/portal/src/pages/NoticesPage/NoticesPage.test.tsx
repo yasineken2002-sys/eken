@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -106,6 +106,16 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('hyresavins svenska förfallodag', () => {
+  const originalTZ = process.env.TZ
+  beforeAll(() => {
+    process.env.TZ = 'America/Los_Angeles'
+    expect(new Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/Los_Angeles')
+    expect(new Date('2026-07-01T00:00:00Z').getDate()).toBe(30)
+  })
+  afterAll(() => {
+    if (originalTZ === undefined) delete process.env.TZ
+    else process.env.TZ = originalTZ
+  })
   it.each([
     ['SENT', '2026-06-30T21:59:59Z', false],
     ['SENT', '2026-07-01T10:00:00Z', false],
@@ -138,7 +148,7 @@ describe('hyresavins svenska förfallodag', () => {
     ['FAILED', 5000],
     ['SENT', 0],
     ['OVERDUE', 0],
-    ['OVERDUE', -100],
+    ['OVERDUE', -100], // Defensivt komponentprov; API:s mapper klampar restskulden vid noll.
   ] satisfies [PortalRentNotice['status'], number][])(
     '%s med payableTotal=%s märks aldrig förfallen',
     async (status, payableTotal) => {
@@ -157,6 +167,7 @@ describe('hyresavins svenska förfallodag', () => {
   it.each(['2026-07-01T00:00:00Z', '2026-06-30T22:00:00Z'])(
     'visar 1 juli för %s även i en Los Angeles-process',
     async (dueDate) => {
+      expect(new Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/Los_Angeles')
       api.fetchRentNotices.mockResolvedValue([{ ...AVI_DELBETALD, dueDate }])
       rendera()
       expect(await screen.findByText('1 juli 2026')).toBeTruthy()

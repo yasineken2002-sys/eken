@@ -23,6 +23,8 @@ export interface RentNotice {
   amount: number
   vatAmount: number
   totalAmount: number
+  /** Beräknad OCR-restskuld från API:s läsning, inklusive betalningar/krediteringar. */
+  payableTotal: number
   dueDate: string
   paidAt: string | null
   paidAmount: number | null

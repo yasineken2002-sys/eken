@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { formatSwedishDate, swedishDaysBetween } from '@eken/shared'
+import { formatSwedishDate, rentNoticeDisplayStatus } from '@eken/shared'
 import {
   fetchInvoices,
   fetchRentNotices,
@@ -52,14 +52,6 @@ function isInvoiceOverdue(invoice: PortalInvoice): boolean {
   return (
     invoice.status === 'OVERDUE' ||
     (UNPAID_INVOICE_STATUSES.has(invoice.status) && new Date(invoice.dueDate) < new Date())
-  )
-}
-
-function isNoticeOverdue(notice: PortalRentNotice): boolean {
-  return (
-    UNPAID_NOTICE_STATUSES.has(notice.status) &&
-    notice.payableTotal > 0 &&
-    swedishDaysBetween(new Date(notice.dueDate), new Date()) > 0
   )
 }
 
@@ -276,14 +268,8 @@ function RentNoticesList({
   return (
     <div className={styles.list}>
       {filtered.map((notice) => {
-        const overdue = isNoticeOverdue(notice)
-        // Äldre OVERDUE kan ha satts redan på förfallodagen. Samma dagsgrind
-        // styr badge och varning; belopp, filter och lagrad status ändras inte.
-        const displayStatus = overdue
-          ? 'OVERDUE'
-          : notice.status === 'OVERDUE'
-            ? 'SENT'
-            : notice.status
+        const displayStatus = rentNoticeDisplayStatus(notice)
+        const overdue = displayStatus === 'OVERDUE'
         return (
           <div key={notice.id} className={`${styles.card} ${overdue ? styles.cardOverdue : ''}`}>
             <div className={styles.cardTop}>
