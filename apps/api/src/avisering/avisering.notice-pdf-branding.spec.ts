@@ -202,3 +202,8 @@ describe('AviseringService.buildNoticePdfHtml — brandad shell + betalningsinte
     expect(html).not.toContain('Efterfakturerad hyra')
   })
 })
+
+it('hyresavins PDF visar svensk förfallodag för ett datum sparat som lokal midnatt', async () => {
+  const html = await render({ dueDate: new Date('2026-06-30T22:00:00Z') })
+  expect(html).toContain('Förfallodatum: <strong>2026-07-01</strong>')
+})
