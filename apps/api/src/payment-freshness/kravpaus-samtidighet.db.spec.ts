@@ -478,7 +478,9 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
         year: 2026,
         amount: HYRA,
         totalAmount: HYRA,
-        dueDate: new Date(Date.UTC(2026, månad - 1, 27)),
+        // Periodräknaren garanterar unik avi, inte att dess månad redan passerat.
+        // Kraveffekten måste prövas med en faktiskt förfallen avi (även i S3).
+        dueDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         status: 'OVERDUE',
         collectionStage: 'NONE',
         periodStart: new Date(Date.UTC(2026, månad - 1, 1)),

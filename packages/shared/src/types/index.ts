@@ -861,3 +861,14 @@ export interface MiscCharge {
   createdAt: string
   updatedAt: string
 }
+
+/** Serverberäknade datum för månadsgenerering. Datum är svenska YYYY-MM-DD. */
+export interface GenerateNoticesPreview {
+  month: number
+  year: number
+  toCreate: number
+  skipped: number
+  dueDates: { dueDate: string; count: number }[]
+  /** Avier som redan finns ändras inte och kan ha andra förfallodagar. */
+  existingDueDates: { dueDate: string; count: number }[]
+}

@@ -19,7 +19,7 @@ import { AccountingService, vatRateForRent } from '../accounting/accounting.serv
 import { ConsumptionService } from '../consumption/consumption.service'
 import { MiscChargeService } from '../misc-charges/misc-charge.service'
 import { DepositsService } from '../deposits/deposits.service'
-import { computeRentDebt } from './rent-debt.service'
+import { computeRentDebt, rentNoticeOutstanding } from './rent-debt.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 
 // Speglar REVERSAL_REASON_MIN_LENGTH i AccountingService: ett skäl som bara är
@@ -49,6 +49,10 @@ import {
   calculateProratedRent,
   calculateFirstPaymentDueDate,
   DEFAULT_BRAND_COLOR,
+  swedishDateKey,
+  startOfSwedishDay,
+  rentNoticeDisplayStatus,
+  type GenerateNoticesPreview,
 } from '@eken/shared'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
@@ -217,7 +221,7 @@ export class AviseringService {
   // det som serialiserar samtidig generering inom (org, år, månad). Se
   // kommentaren i rent-notice-number.ts innan du flyttar det.
 
-  async generateMonthlyNotices(orgId: string, month: number, year: number) {
+  private async monthlyNoticePlan(orgId: string, month: number, year: number) {
     const genMonthStart = new Date(year, month - 1, 1)
     const leases = await this.prisma.lease.findMany({
       where: {
@@ -241,26 +245,20 @@ export class AviseringService {
       },
     })
 
-    if (leases.length === 0) {
-      return { created: 0, skipped: 0, failed: 0, notices: [] }
-    }
-
     // Idempotens på (lease, year, month, type=RENT) — generering kan köras
     // om utan att dubbla avier skapas (cron-retry, manuell knapptryckning).
     const existing = await this.prisma.rentNotice.findMany({
       where: { organizationId: orgId, month, year, type: RentNoticeType.RENT },
-      select: { leaseId: true },
+      select: { leaseId: true, dueDate: true },
     })
     const existingLeaseIds = new Set(existing.map((n) => n.leaseId))
 
-    let created = 0
     let skipped = 0
-    // T5 A1 (#54): ett fel på EN lease får INTE avbryta resten av orgens avier.
-    // Varje lease körs i egen try/catch; ett fel loggas, räknas och hoppas —
-    // nästa lease fortsätter. (Tidigare kraschade ett enskilt lease-fel hela
-    // orgens körning så efterföljande leases fick ingen avi den månaden.)
-    let failed = 0
-    const notices: RentNotice[] = []
+    const candidates: {
+      lease: (typeof leases)[number]
+      proration: ReturnType<typeof calculateProratedRent>
+      dueDate: Date
+    }[] = []
 
     for (const lease of leases) {
       if (existingLeaseIds.has(lease.id)) {
@@ -294,13 +292,49 @@ export class AviseringService {
         continue
       }
 
+      // Samma befintliga genereringsregel: sista vardagen före hyresmånaden.
+      candidates.push({ lease, proration, dueDate: rentDueDateForMonth(year, month) })
+    }
+    return { candidates, skipped, existing }
+  }
+
+  /** Läsande förhandsbesked: samma urval, proration och datum som skrivvägen. */
+  async previewMonthlyNotices(
+    orgId: string,
+    month: number,
+    year: number,
+  ): Promise<GenerateNoticesPreview> {
+    const plan = await this.monthlyNoticePlan(orgId, month, year)
+    const groupDates = (rows: { dueDate: Date }[]) => {
+      const counts = new Map<string, number>()
+      for (const row of rows) {
+        const key = swedishDateKey(row.dueDate)
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
+      return [...counts]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([dueDate, count]) => ({ dueDate, count }))
+    }
+    return {
+      month,
+      year,
+      toCreate: plan.candidates.length,
+      skipped: plan.skipped,
+      dueDates: groupDates(plan.candidates),
+      existingDueDates: groupDates(plan.existing),
+    }
+  }
+
+  async generateMonthlyNotices(orgId: string, month: number, year: number) {
+    const { candidates, skipped } = await this.monthlyNoticePlan(orgId, month, year)
+    let created = 0
+    // Varje avtal behåller sin egen atomiska avi + intäktsverifikation.
+    let failed = 0
+    const notices: RentNotice[] = []
+    for (const { lease, proration, dueDate } of candidates) {
       let notice: RentNotice
       try {
         const ocrNumber = await this.ocrService.assignOcrToTenant(lease.tenantId, orgId)
-        // Hyreslagen 12 kap. 20 § JB: hyran ska betalas senast sista
-        // vardagen i månaden FÖRE den hyresperiod avin avser.
-        const dueDate = rentDueDateForMonth(year, month)
-
         // Moms enligt upplåtelsetyp (ML 10 kap. 35 § / 9 kap). Bostad → 0.
         const { vatAmount, totalAmount } = this.rentVat(
           proration.amount,
@@ -1520,7 +1554,7 @@ export class AviseringService {
 
   <div class="due-notice">
     &#9888; Dröjsmål debiteras med referensränta + 8% —
-    Förfallodatum: <strong>${notice.dueDate.toLocaleDateString('sv-SE')}</strong>
+    Förfallodatum: <strong>${swedishDateKey(notice.dueDate)}</strong>
   </div>
 </div>
 
@@ -1545,7 +1579,7 @@ export class AviseringService {
     <div class="slip-field">
       <div class="label">Förfallodatum</div>
       <div class="value" style="color:#c0392b">
-        ${notice.dueDate.toLocaleDateString('sv-SE')}
+        ${swedishDateKey(notice.dueDate)}
       </div>
     </div>
     <div class="slip-field">
@@ -2560,18 +2594,20 @@ export class AviseringService {
   }
 
   async checkAndMarkOverdue(orgId: string) {
-    const now = new Date()
-    const overdue = await this.prisma.rentNotice.findMany({
-      where: {
-        organizationId: orgId,
-        status: { in: [RentNoticeStatus.PENDING, RentNoticeStatus.SENT] },
-        dueDate: { lt: now },
-      },
-    })
+    // dueDate är DateTime i DB men avser en svensk kalenderdag. Hela dagen
+    // får passera före statusbytet, oberoende av serverns tidszon.
+    const where: Prisma.RentNoticeWhereInput = {
+      organizationId: orgId,
+      status: { in: [RentNoticeStatus.PENDING, RentNoticeStatus.SENT] },
+      dueDate: { lt: startOfSwedishDay(new Date()) },
+    }
+    const overdue = await this.prisma.rentNotice.findMany({ where })
 
     if (overdue.length > 0) {
       await this.prisma.rentNotice.updateMany({
-        where: { id: { in: overdue.map((n) => n.id) } },
+        // Behåll villkoren i skrivningen: en samtidig betalning/annullering
+        // mellan läsning och skrivning får aldrig skrivas över.
+        where: { ...where, organizationId: orgId, id: { in: overdue.map((n) => n.id) } },
         data: { status: RentNoticeStatus.OVERDUE },
       })
     }
@@ -2596,7 +2632,7 @@ export class AviseringService {
     // månad/år så hela hyresgästens historik visas över alla perioder.
     const search = filters?.search?.trim()
 
-    return this.prisma.rentNotice.findMany({
+    const notices = await this.prisma.rentNotice.findMany({
       where: {
         organizationId: orgId,
         ...(filters?.month ? { month: filters.month } : {}),
@@ -2618,6 +2654,8 @@ export class AviseringService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
+        payments: { select: { amount: true } },
+        credits: { select: { amount: true } },
       },
       // Interna infrastrukturfält ska aldrig nå klienten (security-auditor MEDIUM):
       // R2-lagringsnyckeln och Resends message-id är inte presigned URL:er och har
@@ -2625,6 +2663,7 @@ export class AviseringService {
       omit: { reminderPdfStorageKey: true, reminderMessageId: true },
       orderBy: { dueDate: 'desc' },
     })
+    return notices.map(withPayableTotal)
   }
 
   async findOne(noticeId: string, orgId: string) {
@@ -2633,22 +2672,34 @@ export class AviseringService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         lease: { include: { unit: { include: { property: true } } } },
+        payments: { select: { amount: true } },
+        credits: { select: { amount: true } },
       },
       // Interna fält döljs för klienten (se findMany ovan).
       omit: { reminderPdfStorageKey: true, reminderMessageId: true },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
-    return notice
+    return withPayableTotal(notice)
   }
 
   async getStats(orgId: string, month: number, year: number) {
     await this.checkAndMarkOverdue(orgId)
 
-    const [grouped, aggregate] = await Promise.all([
-      this.prisma.rentNotice.groupBy({
-        by: ['status'],
+    const [notices, aggregate] = await Promise.all([
+      this.prisma.rentNotice.findMany({
         where: { organizationId: orgId, month, year },
-        _count: true,
+        select: {
+          status: true,
+          dueDate: true,
+          type: true,
+          totalAmount: true,
+          consumptionAmount: true,
+          miscChargeAmount: true,
+          reminderFeeAmount: true,
+          interestAccruedAmount: true,
+          payments: { select: { amount: true } },
+          credits: { select: { amount: true } },
+        },
       }),
       this.prisma.rentNotice.aggregate({
         where: { organizationId: orgId, month, year },
@@ -2658,8 +2709,10 @@ export class AviseringService {
     ])
 
     const byStatus: Record<string, number> = {}
-    for (const g of grouped) {
-      byStatus[g.status] = g._count
+    const now = new Date()
+    for (const notice of notices) {
+      const status = rentNoticeDisplayStatus(withPayableTotal(notice), now)
+      byStatus[status] = (byStatus[status] ?? 0) + 1
     }
 
     const totalAmount = Number(aggregate._sum.totalAmount ?? 0)
@@ -2676,5 +2729,14 @@ export class AviseringService {
       paidAmount,
       outstandingAmount: totalAmount - paidAmount,
     }
+  }
+}
+
+/** Lägg till samma restskuld som portalen utan att exponera relationsraderna. */
+function withPayableTotal<T extends Parameters<typeof rentNoticeOutstanding>[0]>(notice: T) {
+  const { payments, credits, ...row } = notice
+  return {
+    ...row,
+    payableTotal: rentNoticeOutstanding({ ...row, payments, credits }).payable,
   }
 }

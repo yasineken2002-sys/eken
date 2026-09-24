@@ -374,3 +374,35 @@ describe('crystallizeInterest', () => {
     expect(Number(tx.rentNotice.update.mock.calls[0]![0].data.interestAccruedAmount)).toBe(69.04)
   })
 })
+
+// Gränserna är svenska kalenderdagar även när UTC-datumet ännu är det gamla.
+describe('räntedagar i Europe/Stockholm', () => {
+  it.each([
+    ['2026-05-01T00:00:00Z', '2026-05-01T22:00:00Z', '2026-05-02'],
+    ['2026-03-29T00:00:00Z', '2026-03-29T22:00:00Z', '2026-03-30'],
+    ['2026-10-25T00:00:00Z', '2026-10-25T23:00:00Z', '2026-10-26'],
+    ['2026-12-31T00:00:00Z', '2026-12-31T23:00:00Z', '2027-01-01'],
+  ])('%s till %s är en räntedag', async (due, through, day) => {
+    const { service, accounting } = makeService({
+      notice: { ...baseNotice, dueDate: new Date(due) },
+      ratePercent: 2,
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date(through))
+    expect(result?.days).toBe(1)
+    expect(result?.segments).toEqual([expect.objectContaining({ from: day, to: day, days: 1 })])
+    expect(accounting.bookInterest).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceId: `interest:rn-1:${day}` }),
+    )
+  })
+
+  it('ingen ränta under förfallodagen, även när datumet sparats som svensk midnatt', async () => {
+    const { service, accounting } = makeService({
+      notice: { ...baseNotice, dueDate: new Date('2026-04-30T22:00:00Z') },
+      ratePercent: 2,
+    })
+    expect(
+      await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-01T21:59:59Z')),
+    ).toBeNull()
+    expect(accounting.bookInterest).not.toHaveBeenCalled()
+  })
+})

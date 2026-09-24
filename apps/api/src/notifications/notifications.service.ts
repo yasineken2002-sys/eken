@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
-import { formatCurrency, DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { formatCurrency, DEFAULT_BRAND_COLOR, startOfSwedishDay } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../invoices/invoice-debt'
 import { runCronSafely } from '../common/cron/cron-safety'
@@ -362,7 +362,7 @@ export class NotificationsService implements OnModuleInit {
       async () => {
         const now = new Date()
         const result = await this.prisma.rentNotice.updateMany({
-          where: { status: 'SENT', dueDate: { lt: now } },
+          where: { status: 'SENT', dueDate: { lt: startOfSwedishDay(now) } },
           data: { status: 'OVERDUE' },
         })
         this.logger.log(`Marked ${result.count} rent notices as OVERDUE`)

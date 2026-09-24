@@ -2,6 +2,7 @@ import { get, post, patch, del, api } from '@/lib/api'
 import type {
   CreateRentNoticeCreditInput,
   GenerateNoticesInput,
+  GenerateNoticesPreview,
   MarkNoticePaidInput,
   SendNoticesInput,
 } from '@eken/shared'
@@ -22,6 +23,8 @@ export interface RentNotice {
   amount: number
   vatAmount: number
   totalAmount: number
+  /** Beräknad OCR-restskuld från API:s läsning, inklusive betalningar/krediteringar. */
+  payableTotal: number
   dueDate: string
   paidAt: string | null
   paidAmount: number | null
@@ -108,6 +111,11 @@ export function fetchNotice(id: string) {
 
 // NYTTOLASTERNA ÄR ANNOTERADE med de delade typerna — utan annotering körs ingen
 // överskottskontroll på literalen.
+export function previewGenerateNotices(month: number, year: number) {
+  const kropp: GenerateNoticesInput = { month, year }
+  return post<GenerateNoticesPreview>('/avisering/generate/preview', kropp)
+}
+
 export function generateNotices(month: number, year: number) {
   const kropp: GenerateNoticesInput = { month, year }
   return post<GenerateResult>('/avisering/generate', kropp)

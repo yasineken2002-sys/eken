@@ -3,6 +3,7 @@ import {
   fetchNotices,
   fetchStats,
   generateNotices,
+  previewGenerateNotices,
   sendNotices,
   sendAllNotices,
   markAsPaid,
@@ -32,6 +33,16 @@ export function useNoticeStats(month: number, year: number) {
     queryKey: ['avisering', 'stats', month, year],
     queryFn: () => fetchStats(month, year),
     staleTime: 30_000,
+  })
+}
+
+export function useGenerateNoticesPreview(month: number, year: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['avisering', 'generate-preview', month, year],
+    queryFn: () => previewGenerateNotices(month, year),
+    enabled,
+    staleTime: 0,
+    retry: false,
   })
 }
 

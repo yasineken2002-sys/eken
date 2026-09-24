@@ -36,7 +36,7 @@ import {
   useSendOverdueReminders,
 } from './hooks/useAvisering'
 import { useNavigate } from '@tanstack/react-router'
-import { formatDate, formatCurrency } from '@eken/shared'
+import { swedishDateKey, formatCurrency, rentNoticeDisplayStatus } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { RentNotice, NoticeFilter, RentNoticeStatus } from './api/avisering.api'
 
@@ -114,13 +114,16 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
   const searching = debouncedSearch.trim().length > 0
 
   // Vid sök släpps månadslåset: utelämna month/year så hela hyresgästens
-  // historik visas över alla perioder. Status-filtret kombineras fortfarande.
+  // historik visas över alla perioder. Status filtreras efter samma kalender-
+  // och skuldregel som badgen; API:s råstatusfilter skulle förkasta fel rader.
   const filter: NoticeFilter = {
     ...(searching ? { search: debouncedSearch.trim() } : { month, year }),
-    ...(statusTab !== 'ALL' ? { status: statusTab } : {}),
   }
 
-  const { data: notices = [], isLoading } = useNotices(filter)
+  const { data: allNotices = [], isLoading } = useNotices(filter)
+  const notices = allNotices.filter(
+    (notice) => statusTab === 'ALL' || rentNoticeDisplayStatus(notice, now) === statusTab,
+  )
   const { data: stats } = useNoticeStats(month, year)
   const sendNotices = useSendNotices()
   const sendAll = useSendAllNotices()
@@ -195,6 +198,7 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
     <PageWrapper id="avisering">
       <div>
         <PageHeader
+          className="flex-col items-stretch sm:flex-row sm:items-start"
           title="Hyresavier"
           description={
             searching
@@ -202,7 +206,7 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
               : `${stats?.total ?? 0} avier för ${MONTHS[month - 1]} ${year}`
           }
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="secondary"
                 disabled={sendAll.isPending || notices.length === 0}
@@ -316,7 +320,7 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
         </div>
 
         {/* Status tabs */}
-        <div className="mt-6 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        <div className="mt-6 flex w-fit max-w-full flex-wrap gap-1 rounded-xl bg-gray-100 p-1">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -356,7 +360,12 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
               }
             />
           ) : (
-            <motion.div variants={container} initial="hidden" animate="show">
+            <motion.div
+              className="overflow-x-auto"
+              variants={container}
+              initial="hidden"
+              animate="show"
+            >
               <table className="w-full">
                 <thead>
                   <tr className="border-line border-b">
@@ -421,11 +430,11 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
                         {formatCurrency(Number(notice.totalAmount))}
                       </td>
                       <td className="px-4 py-3 text-[12.5px] text-gray-500">
-                        {formatDate(notice.dueDate)}
+                        {swedishDateKey(new Date(notice.dueDate))}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <RentNoticeBadge status={notice.status} />
+                          <RentNoticeBadge status={rentNoticeDisplayStatus(notice, now)} />
                           {notice.status === 'FAILED' && notice.sendError && (
                             <span
                               title={notice.sendError}
