@@ -123,6 +123,8 @@ medDb('G2 — kravpaus vid olöst identitetsgranskning', () => {
         city: 'Stockholm',
         orgNumber: `5563${sfx.slice(0, 6)}`,
         fiscalYearStartMonth: 1,
+        // F8 — en påminnelse kräver ett giltigt betalningsmål (t2-fakturakontrakt).
+        bankgiro: '5050-1055',
         // Färskhetsgrinden ska ALDRIG vara det som fäller proven nedan. Med
         // paymentImportStartedAt = null är organisationen färsk oavsett datum,
         // så varje paus vi mäter kommer bevisligen från granskningen.

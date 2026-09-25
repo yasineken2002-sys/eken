@@ -9,9 +9,14 @@ import {
   Matches,
   Min,
   Max,
+  MaxLength,
 } from 'class-validator'
 import { InvoiceTemplate, BrandFont, VatReportingPeriod } from '@prisma/client'
-import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import {
+  DEFAULT_BRAND_COLOR,
+  ORGANIZATION_ADDRESS_MAX_LENGTH,
+  REMINDER_FEE_MAX_SEK,
+} from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
@@ -190,6 +195,28 @@ export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @Min(1)
   @Max(50_000_000)
   maxBankTxAmount?: number
+
+  // ── Företagsadress (F-10) ────────────────────────────────────────────────
+  // Valfri som GRUPP: alla tre eller inget. Grupp- och innehållsregeln
+  // (ifylld efter trim, svensk postnummerform bara för `country = 'SE'`) ligger
+  // i OrganizationsService.update, som känner organisationens land.
+  @IsString()
+  @IsOptional()
+  @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.street)
+  @StrictString()
+  street?: string
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.postalCode)
+  @StrictString()
+  postalCode?: string
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.city)
+  @StrictString()
+  city?: string
 }
 
 const _kontrakt: SammaNycklar<UpdateOrganizationDto, UpdateOrganizationInput> = true

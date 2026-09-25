@@ -180,6 +180,24 @@ jobs:
       - name: Verify no tests were skipped
         run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report.json
 
+      # ── KD-4: DAGSGRÄNSEN I EN VERKLIG America/Los_Angeles-PROCESS ─────────
+      #
+      # `process.env.TZ = …` inne i jest når inte Node (jest ger testet en kopia
+      # av env; uppmätt av T2 och T3). Därför körs dagsgränsfilen HÄR en gång
+      # till, i en egen process med TZ satt FÖRE processtart. Filens zonankare
+      # (`KD4_KRAV_ZON`) fäller om processens verkliga IANA-zon eller offset inte
+      # är den begärda — en körning i fel zon blir röd, inte grön av misstag.
+      # Huvudsviten ovan kör samma fil i runnerns zon utan att påstå LA.
+      - name: KD-4 dagsgräns i America/Los_Angeles (egen process)
+        working-directory: apps/api
+        env:
+          TZ: America/Los_Angeles
+          KD4_KRAV_ZON: America/Los_Angeles
+        run: npx jest --ci --runInBand --json --outputFile=jest-report-kd4.json src/avisering/integration-ka-dagsgrans.db.spec.ts
+
+      - name: KD-4 — inga hoppade tester i zonkörningen
+        run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report-kd4.json
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest

@@ -775,9 +775,11 @@ curl -fsS http://localhost:3000/v1/health | jq .
 #                 Utelämnas fältet blir felet "acceptTerms must be a boolean
 #                 value", vilket läses som ett typfel och inte som ett saknat
 #                 samtycke.
+#   street/postalCode/city  krävs sedan 2026-09-25 (F-10), trimmade och
+#                 ifyllda; postnumret i svensk form (organizationAddressIssues).
 curl -sS --fail-with-body -X POST http://localhost:3000/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@test.se","password":"TestLosen123!","firstName":"Test","lastName":"User","organizationName":"Test AB","orgNumber":"556000-0001","acceptTerms":true}' | jq .
+  -d '{"email":"test@test.se","password":"TestLosen123!","firstName":"Test","lastName":"User","organizationName":"Test AB","street":"Storgatan 1","postalCode":"111 22","city":"Stockholm","orgNumber":"556000-0001","acceptTerms":true}' | jq .
 
 # Logga in och hämta token. Kontrollen är inte pynt: misslyckas inloggningen blir
 # TOKEN tom eller "null", och nästa anrop svarar 401 — ett fel som ser ut att

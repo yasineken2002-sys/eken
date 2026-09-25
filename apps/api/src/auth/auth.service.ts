@@ -19,7 +19,13 @@ import { validateSwedishOrgNumber } from '../common/validators/swedish-org-numbe
 import { normalizeEmail } from '../common/utils/normalize-email'
 import type { JwtPayload, TokenPair } from '@eken/shared'
 import type { LoginInput } from '@eken/shared'
-import { TRIAL_DAYS, CURRENT_TERMS_VERSION, LEGAL_DOCUMENT_HASHES } from '@eken/shared'
+import {
+  TRIAL_DAYS,
+  CURRENT_TERMS_VERSION,
+  LEGAL_DOCUMENT_HASHES,
+  organizationAddressIssues,
+  REGISTRATION_COUNTRY,
+} from '@eken/shared'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 
 const MAX_LOGIN_ATTEMPTS = 10
@@ -35,6 +41,11 @@ interface RegisterPayload {
   firstName: string
   lastName: string
   organizationName: string
+  // Företagsadress — krävs sedan 2026-09-25 (F-10). Prövas med
+  // organizationAddressIssues innan något skrivs.
+  street: string
+  postalCode: string
+  city: string
   orgNumber?: string
   accountType?: string
   companyForm?: CompanyForm
@@ -142,6 +153,14 @@ export class AuthService {
       normalizedOrgNumber = result.normalized ?? dto.orgNumber
     }
 
+    // Företagsadress (F-10): prövas FÖRE första skrivningen, så ett avvisat
+    // anrop aldrig lämnar en halvskapad organisation eller användare efter sig.
+    // Samma regel som RegisterSchema — se organization-address.ts i @eken/shared.
+    const adressfel = organizationAddressIssues(dto, REGISTRATION_COUNTRY)
+    if (adressfel.length > 0) {
+      throw new BadRequestException(adressfel.map((f) => f.message).join('. '))
+    }
+
     // F-skatt: datum bara om checkboxen är ikryssad. Skickas datum utan
     // checkbox så ignorerar vi det istället för att kasta — schemat på
     // shared-sidan har redan blockerat den kombinationen.
@@ -175,9 +194,10 @@ export class AuthService {
           fSkattApprovedDate,
           ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
           email,
-          street: '',
-          city: '',
-          postalCode: '',
+          street: dto.street.trim(),
+          city: dto.city.trim(),
+          postalCode: dto.postalCode.trim(),
+          country: REGISTRATION_COUNTRY,
           subscriptionPlan: 'TRIAL',
           status: 'TRIAL',
           trialEndsAt,

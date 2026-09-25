@@ -15,6 +15,7 @@ import { computeInvoiceDebt, invoiceOutstanding, invoiceOverpaid } from './invoi
 import { computeInvoiceAmounts } from './invoice-amounts'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import { REMINDER_FEE_LINE_DESCRIPTION } from './reminder-fee-line'
+import { checkInvoicePaymentTarget } from './invoice-payment-target'
 
 // Speglar avi-sidans konstant och AccountingService.REVERSAL_REASON_MIN_LENGTH.
 const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
@@ -531,6 +532,13 @@ export class InvoicesService {
     actorId: string | null,
     actorType: 'USER' | 'SYSTEM',
     payload: Record<string, unknown> = {},
+    /**
+     * F8 — sätts ENBART av `processInvoiceSendJob`, som redan prövat målet mot
+     * organisationen innan dokumentet renderades och mejlet köades. Där har
+     * utskicket skett; att då vägra statusen hade gjort ett verkligt utskick
+     * osynligt. Alla andra vägar till DRAFT→SENT prövas här.
+     */
+    opts: { betalningsmalProvatVidUtskick?: boolean } = {},
   ): Promise<Invoice> {
     // ── SENT_TO_COLLECTION ÄR INGET MANUELLT MÅLVÄRDE (#307 PR 2b) ───────────
     //
@@ -643,6 +651,32 @@ export class InvoicesService {
 
       if (!isValidTransition(invoice.status as InvoiceStatus, newStatus)) {
         throw new BadRequestException(`Ogiltig statusövergång: ${invoice.status} → ${newStatus}`)
+      }
+
+      // ── F8: "SKICKA FAKTURA" UTAN MEJL BOKFÖR ÄNDÅ ETT UTSKICK ─────────────
+      //
+      // PATCH /:id/status {SENT} är knappen "Skicka faktura" i UI:t: hyresvärden
+      // intygar att dokumentet lämnats på annat sätt, och fakturan börjar leva
+      // som skickad (förfallobevakning, kravtrappa). Dokumentet som då lämnats är
+      // samma PDF — och utan giltigt mål bär den `Bankgiro: –`. Samma grind som
+      // e-postvägen, läst inne i transaktionen efter radlåset.
+      if (
+        newStatus === 'SENT' &&
+        invoice.status === 'DRAFT' &&
+        !opts.betalningsmalProvatVidUtskick
+      ) {
+        const underlag = await tx.invoice.findFirstOrThrow({
+          where: { id, organizationId },
+          select: {
+            isCreditNote: true,
+            total: true,
+            payments: { select: { amount: true } },
+            creditNotes: { select: { total: true } },
+            organization: { select: { bankgiro: true } },
+          },
+        })
+        const betalningsmal = checkInvoicePaymentTarget(underlag, underlag.organization)
+        if (!betalningsmal.ok) throw new BadRequestException(betalningsmal.block.message)
       }
 
       // En faktura med MOTTAGEN BETALNING får inte makuleras rakt av — pengarna
@@ -1624,6 +1658,9 @@ export class InvoicesService {
       include: {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
+        organization: { select: { bankgiro: true } },
+        payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
@@ -1635,6 +1672,16 @@ export class InvoicesService {
     const recipient = invoice.tenant ?? invoice.customer
     if (!recipient) throw new BadRequestException('Fakturan saknar mottagare')
     if (!recipient.email) throw new BadRequestException('Mottagaren saknar e-postadress')
+
+    // ── F8: BETALNINGSMÅLET FÖRE KÖN ──────────────────────────────────────
+    //
+    // Samma skäl som avins `sendNotices`: svaret blir SYNKRONT (den som tryckte
+    // får skälet direkt), och inget jobb köas för ett konfigurationsfel som fem
+    // Bull-retries inte kan laga. INGENTING skrivs — varken status, `sendError`
+    // eller händelse — så en redan skickad faktura behåller exakt sin historik.
+    // Workern har sin egen kontroll för jobbet som redan låg i kön.
+    const betalningsmal = checkInvoicePaymentTarget(invoice, invoice.organization)
+    if (!betalningsmal.ok) throw new BadRequestException(betalningsmal.block.message)
 
     const jobId = await this.pdfQueue.enqueue({
       kind: 'invoice-send',
@@ -1659,6 +1706,8 @@ export class InvoicesService {
         tenant: { select: SAFE_TENANT_SELECT },
         customer: { select: SAFE_CUSTOMER_SELECT },
         organization: true,
+        payments: { select: { amount: true } },
+        creditNotes: { select: { total: true } },
       },
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
@@ -1666,6 +1715,25 @@ export class InvoicesService {
     // Status kan ha ändrats mellan enqueue och körning — hoppa tyst över.
     if (invoice.status === 'VOID' || invoice.status === 'PAID') {
       this.logger.warn(`[pdf] hoppar över invoice-send för ${id} — status ${invoice.status}`)
+      return
+    }
+
+    // ── F8: SAMMA KONTROLL, ANDRA SIDAN AV KÖN ──────────────────────────────
+    //
+    // För jobbet som låg i kön när målet rensades. Organisationen läses i den
+    // här frågan, alltså NU — inte vid köandet. PERMANENT fel: inget kast, inga
+    // retries, ingen PDF, inget mejl, ingen statusövergång och inget SENT-event.
+    //
+    // Det som skrivs är sant om DET HÄR försöket: `sendError` + `SEND_FAILED`.
+    // Status rörs aldrig — en faktura som redan gått ut förblir SENT/OVERDUE med
+    // oförändrad historik; UI:t skiljer "skickades aldrig" från "senaste
+    // försöket stoppades" på status, inte på felet.
+    const betalningsmal = checkInvoicePaymentTarget(invoice, invoice.organization)
+    if (!betalningsmal.ok) {
+      this.logger.warn(
+        `[pdf] Faktura ${id} EJ skickad: ${betalningsmal.block.code} — ${betalningsmal.block.message}`,
+      )
+      await this.recordSendFailure(id, betalningsmal.block.message)
       return
     }
 
@@ -1700,7 +1768,17 @@ export class InvoicesService {
 
       // Transition DRAFT → SENT
       if (invoice.status === 'DRAFT') {
-        await this.transitionStatus(id, organizationId, 'SENT', userId, 'USER')
+        await this.transitionStatus(
+          id,
+          organizationId,
+          'SENT',
+          userId,
+          'USER',
+          {},
+          {
+            betalningsmalProvatVidUtskick: true,
+          },
+        )
       } else {
         // Record send event without status transition
         await this.eventsService.record(id, 'SENT', 'USER', userId, {

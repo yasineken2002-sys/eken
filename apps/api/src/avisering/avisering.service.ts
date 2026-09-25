@@ -52,6 +52,7 @@ import {
   DEFAULT_BRAND_COLOR,
   swedishDateKey,
   startOfSwedishDay,
+  formatPostalAddress,
   rentNoticeDisplayStatus,
   type GenerateNoticesPreview,
 } from '@eken/shared'
@@ -1682,6 +1683,29 @@ export class AviseringService {
 
   @page { margin: 10mm; size: A4; }`
 
+    // ── F-9: DATUMET ÄR RENDERINGENS, OCH DET ÄR SVENSKT ────────────────────
+    //
+    // Raden skrev `new Date().toLocaleDateString('sv-SE')` under etiketten
+    // "Datum". Två fel i en rad:
+    //
+    //   ZONEN   `toLocaleDateString` utan `timeZone` läser SERVERNS zon. I en
+    //           UTC-container skrev dokumentet gårdagens datum mellan svensk
+    //           midnatt och 01:00/02:00 (mätt: 2026-07-01T22:30Z → "2026-07-01",
+    //           svenskt datum 2026-07-02).
+    //   ORDET   `RentNotice` har inget dokumentdatum och PDF:en lagras inte — den
+    //           renderas om vid varje nedladdning. Talet är alltså dagen då
+    //           JUST DEN HÄR KOPIAN skrevs ut, inte ett utställnings- eller
+    //           utskicksdatum. "Datum" lät som det senare.
+    //
+    // `swedishDateKey` är samma formatterare som förfallodatumet nedan läser, så
+    // dokumentets två datum har samma zon och samma form (ÅÅÅÅ-MM-DD). Ett
+    // lagrat dokumentdatum kräver ett fält och ett produktbeslut; det är
+    // medvetet INTE infört här.
+    const renderingsdatum = swedishDateKey(new Date())
+    // Avsändaradressen (F-10): utelämnas helt när ingen del finns, och en
+    // ofullständig adress skrivs utan separator som saknar innehåll.
+    const orgAddress = formatPostalAddress(org)
+
     const contentHtml = `<style>${contentCss}</style>
 
 <!-- ═══ UPPER SECTION ═══ -->
@@ -1690,14 +1714,14 @@ export class AviseringService {
     <div>
       <div class="org-name">${escapeHtml(org.name)}</div>
       <div class="org-details">
-        ${org.street ? `${escapeHtml(org.street)}, ${escapeHtml(org.postalCode ?? '')} ${escapeHtml(org.city ?? '')}<br>` : ''}
+        ${orgAddress ? `${escapeHtml(orgAddress)}<br>` : ''}
         ${paymentTarget.ok ? `Bankgiro: ${paymentTarget.bankgiro}<br>` : ''}
         ${org.email ? `E-post: ${escapeHtml(org.email)}` : ''}
       </div>
     </div>
     <div class="avi-header">
       <div class="avi-meta">
-        Datum: <span>${new Date().toLocaleDateString('sv-SE')}</span><br>
+        Utskriftsdatum: <span>${renderingsdatum}</span><br>
         Avinummer: <span>${notice.noticeNumber}</span><br>
         ${isDeposit ? '' : `Period: <span>${monthLabel}</span><br>`}
         Kundnr: <span>${notice.ocrNumber.slice(-6)}</span>

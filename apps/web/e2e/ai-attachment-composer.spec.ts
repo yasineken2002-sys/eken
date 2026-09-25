@@ -76,6 +76,10 @@ test('AI-kompositören: bilagor via filväljare, inklistring och släpp', async 
       firstName: 'E2E',
       lastName: 'Attach',
       organizationName: `E2E Attach ${stamp}`,
+      // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+      street: 'Storgatan 1',
+      postalCode: '111 22',
+      city: 'Stockholm',
       acceptTerms: true,
     },
   })

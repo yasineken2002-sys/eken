@@ -1,11 +1,17 @@
 import type { OnModuleInit } from '@nestjs/common'
-import { Injectable, Logger } from '@nestjs/common'
+import { ConflictException, Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
-import { formatCurrency, DEFAULT_BRAND_COLOR, startOfSwedishDay } from '@eken/shared'
+import {
+  formatCurrency,
+  DEFAULT_BRAND_COLOR,
+  startOfSwedishDay,
+  swedishCalendarDate,
+} from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../invoices/invoice-debt'
+import { checkPaymentTarget } from '../avisering/payment-target'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
@@ -328,7 +334,25 @@ export class NotificationsService implements OnModuleInit {
           // ändå: skickas en kreditnota någon gång ut som dokument hade den
           // annars flippats till OVERDUE av sitt eget utfärdandedatum och
           // därmed hamnat i kravtrappan, som grindar på just OVERDUE.
-          where: { status: 'SENT', dueDate: { lt: now }, isCreditNote: false },
+          //
+          // ── F7: FÖRFALLODAGEN ÄR EN SVENSK KALENDERDAG ────────────────────
+          //
+          // `dueDate` är `@db.Date`, och Prisma trunkerar jämförelseparametern
+          // till dess UTC-DATUM (mätt i #730, se `common/time/stockholm-period`).
+          // `lt: now` betydde därför "före dagens UTC-datum": mellan svensk och
+          // UTC-midnatt (22:00/23:00–24:00 UTC) låg fakturan kvar som SENT en
+          // dag efter att den förfallit i Sverige. `swedishCalendarDate` ger den
+          // svenska dagen som UTC-midnatt — Prismas form för en DATE — så
+          // gränsen betyder samma sak dygnet runt och i varje server-TZ.
+          //
+          // `startOfSwedishDay` (avins form) är RÄTT mot avins `DateTime`-kolumn
+          // men FEL här: ögonblicket 22:00Z trunkeras till föregående datum.
+          // Regeln är densamma; kolumntypen avgör vilken form den skrivs i.
+          where: {
+            status: 'SENT',
+            dueDate: { lt: swedishCalendarDate(now) },
+            isCreditNote: false,
+          },
           data: { status: 'OVERDUE' },
         })
         this.logger.log(`Marked ${result.count} invoices as OVERDUE`)
@@ -382,6 +406,22 @@ export class NotificationsService implements OnModuleInit {
   async sendOverdueRemindersForOrg(
     organizationId: string,
   ): Promise<{ sent: number; failed: number; skipped: number }> {
+    // ── F8: INGET BETALNINGSMÅL → INGA PÅMINNELSEBREV ─────────────────────
+    //
+    // Varje brev i den här loopen är en förfallen FAKTURA MED RESTSKULD, alltså
+    // ett krav på betalning. Utan organisationens bankgiro finns inget att
+    // betala till. Stoppet ligger FÖRE urvalet: inget brev köas, ingen
+    // `REMINDER_SENT` skrivs, och svaret bär skälet och var det rättas — i
+    // stället för räknare som säger "0 skickade" utan förklaring.
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { bankgiro: true },
+    })
+    const betalningsmal = checkPaymentTarget(org ?? {})
+    if (!betalningsmal.ok) {
+      throw new ConflictException(`Påminnelserna kan inte skickas: ${betalningsmal.block.message}`)
+    }
+
     const invoices: InvoiceWithRelations[] = await this.prisma.invoice.findMany({
       // ── #352: DEPOSITIONER PÅMINNS INTE HÄRIFRÅN ──────────────────────────
       //
