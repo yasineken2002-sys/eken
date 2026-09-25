@@ -9,6 +9,24 @@ vi.mock('@tanstack/react-router', async (original) => ({
   ...(await original<object>()),
   useNavigate: () => vi.fn(),
 }))
+// ── KOMBINATIONSREGRESSION, rättad i integrationen ─────────────────────────
+//
+// Ingen av grenarna faller ensam. #917 lade det här provet, som renderar
+// `AviseringPage` UTAN `QueryClientProvider` och i stället mockar de hooks sidan
+// då använde. #919 lade `usePaymentTargetOk()` i samma sida (betalningsmålets
+// banner och sändknapparnas läge), och den anropar `useQuery` — så i
+// kombinationen kastade renderingen "No QueryClient set".
+//
+// Rättningen följer filens egen metod: hooken mockas som de övriga, i stället
+// för att provet får en riktig QueryClient som skulle utlösa ett verkligt
+// HTTP-anrop i jsdom. `ok: true` håller bannern borta så provets DOM-frågor mäter
+// samma sak som förut — betalningsmålets egna ytor har sina egna prov
+// (`collection-status-payment-target.db.spec.ts`, `bankgiro-patch-http.db.spec.ts`
+// och webbläsarprovet i integrationens rapport).
+vi.mock('@/components/PaymentTargetBanner', async (original) => ({
+  ...(await original<object>()),
+  usePaymentTargetOk: () => ({ ok: true, loading: false }),
+}))
 vi.mock('./hooks/useAvisering', async (original) => ({
   ...(await original<object>()),
   useNotices: (filter: NoticeFilter) => {
