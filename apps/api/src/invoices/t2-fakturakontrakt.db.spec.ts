@@ -170,7 +170,11 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     // DB-spärren `Invoice_credit_note_requires_original_chk`: en kreditnota
     // måste peka på en faktura. Originalet skapas här, orört av provet.
     const original = opts.isCreditNote
-      ? await faktura({ status: 'SENT', org: opts.org, tenant: opts.tenant })
+      ? await faktura({
+          status: 'SENT',
+          ...(opts.org ? { org: opts.org } : {}),
+          ...(opts.tenant ? { tenant: opts.tenant } : {}),
+        })
       : null
     nr++
     const total = new Prisma.Decimal(opts.total ?? 1000)
