@@ -12,13 +12,18 @@
  * fast `RentNotice` inte har något sådant fält och PDF:en renderas om vid varje
  * nedladdning. Etiketten är nu "Utskriftsdatum".
  *
- * ── VARFÖR PROCESSENS ZON BYTS I PROVET ─────────────────────────────────────
+ * ── VILKEN ZON PROVET MÄTER I — OCH VARFÖR DET INTE BYTS HÄR ────────────────
  *
- * Felet syns bara när serverns zon INTE är svensk. Kör provet på en maskin i
- * Europe/Stockholm hade den gamla raden varit grön. Provet sätter därför
- * `process.env.TZ` (Node läser om den vid tilldelning) och kräver SAMMA
- * utskrift i tre zoner för samma instant — och den gamla uttrycksformen står
- * kvar som negativ referens, så att det syns att zonbytet faktiskt biter.
+ * Felet syns bara när processens zon INTE är svensk. Ett första utkast bytte
+ * `process.env.TZ` inne i testet. Det är en attrapp: jest ger testet en EGEN
+ * `process.env`, så tilldelningen når aldrig Node, och "tre zoner" kördes i en.
+ * Uppmätt: det gamla uttrycket gav samma dag efter "bytet" till Stockholm.
+ *
+ * Provet mäter därför i processens egen zon, som i CI är UTC. Instanterna är
+ * valda där UTC-dagen och den svenska dagen SKILJER sig, och den negativa
+ * referensen visar vad en UTC-server skrev med det gamla uttrycket. Att
+ * utskriften är densamma i flera zoner visas genom att köra FILEN med olika
+ * `TZ` på jest-processen (T3-leveransens raw/f9-*.log), inte här.
  */
 
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
@@ -55,7 +60,11 @@ function buildNotice() {
     },
     lease: {
       monthlyRent: 10000,
-      unit: { unitNumber: '1101', name: 'Lägenhet', property: { street: 'Storgatan 1', name: 'F' } },
+      unit: {
+        unitNumber: '1101',
+        name: 'Lägenhet',
+        property: { street: 'Storgatan 1', name: 'F' },
+      },
     },
     lines: [],
   }
@@ -97,43 +106,29 @@ function render(org: Record<string, unknown> = ORG): Promise<string> {
 const datumRad = (html: string) => /Utskriftsdatum: <span>([^<]*)<\/span>/.exec(html)?.[1]
 
 describe('F-9 · avins utskriftsdatum i svensk kalender', () => {
-  const ursprungligZon = process.env.TZ
+  afterEach(() => jest.useRealTimers())
 
-  afterEach(() => {
-    jest.useRealTimers()
-    if (ursprungligZon === undefined) delete process.env.TZ
-    else process.env.TZ = ursprungligZon
-  })
-
-  it.each([
+  const fall: Array<[string, string]> = [
     // [instant, svenskt kalenderdatum]
     ['2026-07-01T21:59:59Z', '2026-07-01'], // 23:59:59 sommartid
     ['2026-07-01T22:00:00Z', '2026-07-02'], // 00:00:00 sommartid
     ['2026-07-01T22:30:00Z', '2026-07-02'],
     ['2026-12-31T22:59:59Z', '2026-12-31'], // 23:59:59 vintertid
     ['2026-12-31T23:30:00Z', '2027-01-01'], // 00:30 vintertid, nytt år
-  ])('%s → %s i UTC, Europe/Stockholm och America/New_York', async (instant, forvantat) => {
-    const utfall: Record<string, string | undefined> = {}
-    for (const zon of ['UTC', 'Europe/Stockholm', 'America/New_York']) {
-      process.env.TZ = zon
-      jest.useFakeTimers({ now: new Date(instant), doNotFake: ['nextTick', 'setImmediate'] })
-      utfall[zon] = datumRad(await render())
-      jest.useRealTimers()
-    }
-    expect(utfall).toEqual({
-      UTC: forvantat,
-      'Europe/Stockholm': forvantat,
-      'America/New_York': forvantat,
-    })
+  ]
+
+  it.each(fall)('%s → %s oavsett processens zon', async (instant, forvantat) => {
+    jest.useFakeTimers({ now: new Date(instant), doNotFake: ['nextTick', 'setImmediate'] })
+    expect(datumRad(await render())).toBe(forvantat)
   })
 
-  it('negativ referens: det GAMLA uttrycket ger fel dag i en UTC-process', () => {
-    // Visar att zonbytet i provet biter — annars hade raden ovan kunnat vara
-    // grön av att processen redan råkade stå i svensk zon.
-    process.env.TZ = 'UTC'
-    expect(new Date('2026-07-01T22:30:00Z').toLocaleDateString('sv-SE')).toBe('2026-07-01')
-    process.env.TZ = 'Europe/Stockholm'
-    expect(new Date('2026-07-01T22:30:00Z').toLocaleDateString('sv-SE')).toBe('2026-07-02')
+  it('negativ referens: vid dygnsgränsen skrev en UTC-server med det GAMLA uttrycket fel dag', () => {
+    // Det gamla uttrycket, med UTC-servern uttryckt explicit så att referensen
+    // inte beror på den här processens zon.
+    const gammaltIUtc = (s: string) => new Date(s).toLocaleDateString('sv-SE', { timeZone: 'UTC' })
+    expect(gammaltIUtc('2026-07-01T22:30:00Z')).toBe('2026-07-01')
+    expect(gammaltIUtc('2026-12-31T23:30:00Z')).toBe('2026-12-31')
+    // …medan rätt svar (fallen ovan) är 2026-07-02 och 2027-01-01.
   })
 
   it('etiketten påstår inte ett utskicks- eller utställningsdatum', async () => {

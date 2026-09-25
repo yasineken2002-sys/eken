@@ -143,7 +143,8 @@ withDb('F-10 · POST /auth/register — företagsadressen', () => {
   })
 
   it.each([
-    ['gatuadress saknas helt', { street: undefined }, 'Gatuadress'],
+    // Ett SAKNAT fält fälls redan av DTO:n (formen), före tjänstens regel.
+    ['gatuadress saknas helt', { street: undefined }, 'street måste vara text'],
     ['gatuadress enbart blanktecken', { street: '   ' }, 'Gatuadress krävs'],
     ['postnummer tomt', { postalCode: '' }, 'Postnummer krävs'],
     ['postnummer fyra siffror', { postalCode: '1234' }, 'Postnummer måste vara fem siffror'],
