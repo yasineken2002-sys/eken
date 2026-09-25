@@ -298,19 +298,21 @@ export class PaymentReminderService {
                 if (!fortfarandeAktuell) return false
                 // F8 — målet OMPRÖVAT i anspråkets transaktion: `org` lästes
                 // före loopen och kan ha rensats medan den gick.
-                if (!(await this.betalningsmalINu(tx, invoice.organizationId))) return false
+                // N4 — det prövade bankgirot bärs ut ur transaktionen till brevet.
+                const mal = await this.betalningsmalINu(tx, invoice.organizationId)
+                if (!mal) return false
                 const c = await tx.paymentReminder.createMany({
                   data: [{ invoiceId: invoice.id, type: 'REMINDER_FRIENDLY', feeAmount: 0 }],
                   skipDuplicates: true,
                 })
-                return c.count > 0
+                return c.count > 0 ? mal : false
               }, paymentFreshnessTransactionOptions(PRISMA_DEFAULT_TX_LIMITS))
               if (!anspråk) {
                 // Någon annan hann ta anspråket — normalt utfall, inget fel.
                 summary.skipped++
                 continue
               }
-              await this.sendFriendlyReminder(invoice, party.email, daysOverdue)
+              await this.sendFriendlyReminder(invoice, party.email, daysOverdue, anspråk)
               summary.friendlySent++
               continue
             }
@@ -480,16 +482,26 @@ export class PaymentReminderService {
    * Cronloopen grindade på en läsning gjord FÖRE loopen; ett bankgiro som
    * rensats under körningen ska stoppa anspråk och avgift, inte upptäckas efter
    * att avgiften bokförts.
+   *
+   * N4 — RETURNERAR DET PRÖVADE, NORMALISERADE BANKGIROT (eller `null`). Brevet
+   * ska bära exakt det mål som anspråket godkändes mot, inte `invoice.
+   * organization.bankgiro` från cronens läsning före loopen: byttes målet till
+   * ett annat giltigt värde mitt i körningen godkändes anspråket mot det nya
+   * medan brevet bar det gamla. Uppmätt i `n4-paminnelse-bankgiro.db.spec.ts`.
+   *
+   * Lovar INTE att ett brev som redan köats efter commit byter innehåll om
+   * målet ändras senare.
    */
   private async betalningsmalINu(
     tx: Prisma.TransactionClient,
     organizationId: string,
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const org = await tx.organization.findUnique({
       where: { id: organizationId },
       select: { bankgiro: true },
     })
-    return checkPaymentTarget(org ?? {}).ok
+    const mal = checkPaymentTarget(org ?? {})
+    return mal.ok ? mal.bankgiro : null
   }
 
   /**
@@ -528,6 +540,8 @@ export class PaymentReminderService {
     }>,
     email: string,
     daysOverdue: number,
+    /** N4 — bankgirot som omprövades i anspråkets transaktion. */
+    bankgiro: string,
   ): Promise<void> {
     const party = invoice.tenant ?? invoice.customer
     const tenantName = party
@@ -549,7 +563,7 @@ export class PaymentReminderService {
       daysOverdue,
       organizationName: invoice.organization.name,
       ocrNumber: invoice.ocrNumber,
-      bankgiro: invoice.organization.bankgiro,
+      bankgiro,
       idempotencyKey: `reminder-friendly-${invoice.id}`,
     })
 
@@ -701,7 +715,8 @@ export class PaymentReminderService {
       // fakturan hade räknats som påmind utan att något brev gått. Samma skäl
       // som `assertAutomaticEffectAllowed` anger för sin egen placering.
       await this.freshness.assertIngenOlostIdentitetsgranskning(tx, invoice.organizationId)
-      if (!(await this.betalningsmalINu(tx, invoice.organizationId))) return false // F8
+      const mal = await this.betalningsmalINu(tx, invoice.organizationId) // F8/N4
+      if (!mal) return false
       const claim = await tx.paymentReminder.createMany({
         data: [
           {
@@ -822,7 +837,7 @@ export class PaymentReminderService {
           payload: { reminderType: 'REMINDER_FORMAL', daysOverdue, fee: safeFee },
         },
       })
-      return true
+      return mal // N4 — det prövade bankgirot, till brevet nedan
     }, PRISMA_DEFAULT_TX_LIMITS)
 
     // Anspråket togs av någon annan (dubbel cron-fire, retry efter lyckad
@@ -853,7 +868,8 @@ export class PaymentReminderService {
           daysOverdue,
           organizationName: invoice.organization.name,
           ocrNumber: invoice.ocrNumber,
-          bankgiro: invoice.organization.bankgiro,
+          // N4 — målet som omprövades i anspråkets transaktion, inte före loopen.
+          bankgiro: claimed,
           collectionDay: invoice.organization.reminderCollectionDay,
           idempotencyKey: `reminder-formal-${invoice.id}`,
         }),
