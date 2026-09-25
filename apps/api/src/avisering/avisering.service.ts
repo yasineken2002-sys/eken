@@ -1251,7 +1251,29 @@ export class AviseringService {
     // INGET NYTT VERSIONSSYSTEM. Dokumentet säger vad DEN HÄR KOPIAN vet: att
     // avin skickades, och att kopian saknar aktuella betalningsuppgifter. Vad
     // hyresgästen faktiskt fick i sitt mejl rekonstrueras inte.
-    const harSkickats = notice.sentAt != null || notice.status === RentNoticeStatus.SENT
+    // ── R-1: `SENT` ÄR ETT TILLSTÅND, INTE ETT UTSKICKSBEVIS ────────────────
+    //
+    // Disjunkten `|| notice.status === RentNoticeStatus.SENT` är BORTTAGEN här i
+    // integrationen. T1:s återgranskning av #919 hittade en smal men verklig väg
+    // där `SENT` skrivs UTAN `sentAt`: bankavstämningens avmatchning återöppnar
+    // en avi med kvarvarande restskuld och sätter `status: 'SENT', paidAt: null`
+    // utan att röra `sentAt` (`reconciliation.service.ts`, `reopen`-grenen).
+    //
+    // Kedjan: avi skapas `PENDING` med `sentAt = null` → en bankbetalning med
+    // matchande OCR accepteras även för `PENDING` → `PAID` → operatören
+    // avmatchar med restskuld kvar → `SENT` utan `sentAt`. Renderas dokumentet
+    // då utan giltigt mål hade texten åter påstått ett utskick som inte skett.
+    //
+    // ROTEN LIGGER I BASEN, inte i någon av de tre grenarna, och den rättas inte
+    // här: ingen ändring görs i bokföring eller i avstämningens statusmodell.
+    // `SENT` får förbli ett internt tillstånd. Det som ändras är att DOKUMENTET
+    // slutar läsa leverans ur det.
+    //
+    // INGET SANT FALL GÅR FÖRLORAT. `sentAt` sätts på exakt ett ställe i hela
+    // `apps/api/src` — `processNoticeSendJob`, i samma atomiska `update` som
+    // `status: SENT` — så varje genuint skickad avi har den. Kvarvarande `sentAt`
+    // ger därför fortfarande rätt besked även efter att målet rensats.
+    const harSkickats = notice.sentAt != null
 
     // Konsekvent beloppsformat med hyresfakturan: alltid två decimaler (ören).
     // Tidigare visade avin ören bara när de fanns medan fakturan rundade till
