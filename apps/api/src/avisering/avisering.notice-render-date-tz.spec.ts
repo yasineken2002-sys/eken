@@ -17,10 +17,12 @@
  *
  * ── VARFÖR EN EGEN FIL ─────────────────────────────────────────────────────
  *
- * Den här filen importerar INTE tjänsten. Jest-processen förblir då liten, och
- * bara barnet laddar avins importgraf. I samma fil som de övriga avi-proven
- * låg jest på ~900 MB och barnet på ~300 MB till; på en maskin med lite ledigt
- * minne dödades körningen utifrån (exit 143) när barnet startade.
+ * Den här filen importerar INTE tjänsten: avins kod utvärderas bara i barnen,
+ * alltså bara i processer vars zon provet själv har satt och mätt. Ingen del
+ * av zonbeviset kan då bero på jest-processens egen zon.
+ *
+ * (Det är inte en minnesåtgärd. Jest-processen låg på samma ~1,2 GB RSS med och
+ * utan tjänstimporten — uppmätt i T3:s RATTNING-A1-A3-20260925/raw.)
  */
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
