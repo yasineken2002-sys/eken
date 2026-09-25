@@ -45,6 +45,9 @@ function makeService(opts: {
 }) {
   const alreadySent = new Set(opts.alreadySentIds ?? [])
   const prisma = {
+    // F8 — betalningsmålet läses före urvalet; giltigt här, vägran prövas i
+    // t2-fakturakontrakt.db.spec.ts.
+    organization: { findUnique: jest.fn().mockResolvedValue({ bankgiro: '5050-1055' }) },
     invoice: { findMany: jest.fn().mockResolvedValue(opts.invoices) },
     invoiceEvent: {
       findFirst: jest
