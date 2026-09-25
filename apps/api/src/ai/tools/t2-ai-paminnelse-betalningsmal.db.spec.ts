@@ -267,12 +267,16 @@ medDb('RÄTTNING-A1 · AI send_overdue_reminders prövar betalningsmålet', () =
 
       const { resultat, kast, sparRad } = await kor(a, 'OWNER', a.agare)
 
+      // EFFEKTERNA FÖRST: jest stannar vid första fallande assertion, och det
+      // är effekterna (brev, PaymentReminder, fakturornas tillstånd) som grinden
+      // finns för. Faller grinden ska det synas HÄR, inte bara i svarsflaggan.
+      expect(mejl).toEqual([])
+      expect(await avtryck(a.id)).toEqual(fore)
+      // … och avslaget ska vara sant och säga var det rättas.
       expect(kast).toBeNull()
       expect(resultat?.success).toBe(false)
       expect(resultat?.message).toMatch(/^Påminnelserna kan inte skickas: Bankgiro saknas/)
       expect(resultat?.message).toContain('Inställningar → Betalningsinformation')
-      expect(mejl).toEqual([])
-      expect(await avtryck(a.id)).toEqual(fore)
       // Spåret säger att körningen misslyckades och att den inte orsakade något.
       expect(sparRad?.success).toBe(false)
       expect(sparRad?.effects).toEqual([])
