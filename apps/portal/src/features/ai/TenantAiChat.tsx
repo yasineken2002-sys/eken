@@ -319,14 +319,16 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
 interface FabProps {
   onClick: () => void
   hidden?: boolean
+  /** I sidans flöde i stället för flytande — kan då aldrig täcka en kontroll i innehållet. */
+  inline?: boolean
 }
 
-export function TenantAiFab({ onClick, hidden }: FabProps) {
+export function TenantAiFab({ onClick, hidden, inline }: FabProps) {
   if (hidden) return null
   return (
     <button
       type="button"
-      className={styles.fab}
+      className={inline ? styles.fabInline : styles.fab}
       onClick={onClick}
       aria-label="Öppna AI-assistent"
       title="Hjälp"

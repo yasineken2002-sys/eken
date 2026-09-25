@@ -152,6 +152,19 @@ function BesiktningIcon() {
   )
 }
 
+/**
+ * Visningsform för bottenmenyns etiketter på smal skärm: MJUKA bindestreck (U+00AD) så att
+ * långa namn bryts på en rad till i stället för att flyta in i grannen (8 poster på 390 px).
+ * Tillgängligt namn sätts separat (aria-label = det rena namnet).
+ */
+const TAB_ETIKETT: Record<string, string> = {
+  Förbrukning: 'För\u00adbruk\u00adning',
+  Felanmälan: 'Fel\u00adanmä\u00adlan',
+  Nyheter: 'Ny\u00adheter',
+  Dokument: 'Doku\u00adment',
+  Besiktning: 'Be\u00adsikt\u00adning',
+}
+
 const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolean }[] = [
   { to: '/', label: 'Hem', icon: <HemIcon />, end: true },
   { to: '/notices', label: 'Avier', icon: <AvierIcon />, end: false },
@@ -201,11 +214,13 @@ export function PortalLayout() {
   return (
     <div className={styles.shell}>
       <main className={styles.main}>
+        {/* Chattens ingång ligger i flödet högst upp (inte flytande över innehållet). */}
+        <div className={styles.chatRow}>
+          <TenantAiFab inline onClick={() => setAiOpen(true)} hidden={aiOpen} />
+        </div>
         <Outlet />
         <PortalFooter onLogout={() => void handleLogout()} />
       </main>
-
-      <TenantAiFab onClick={() => setAiOpen(true)} hidden={aiOpen} />
 
       <TenantAiChat
         open={aiOpen}
@@ -222,12 +237,13 @@ export function PortalLayout() {
             key={item.to}
             to={item.to}
             end={item.end}
+            aria-label={item.label}
             className={({ isActive }) =>
               `${styles.tabItem} ${isActive ? styles.tabItemActive : ''}`
             }
           >
             <span className={styles.tabIcon}>{item.icon}</span>
-            <span className={styles.tabLabel}>{item.label}</span>
+            <span className={styles.tabLabel}>{TAB_ETIKETT[item.label] ?? item.label}</span>
           </NavLink>
         ))}
       </nav>
