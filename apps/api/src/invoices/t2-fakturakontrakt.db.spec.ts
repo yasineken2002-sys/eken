@@ -47,8 +47,26 @@ import { formatDate as mejlDatum } from '../mail/templates/shared/format'
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
 
+/**
+ * SERVERNS TIDSZON STYRS UTIFRÅN, inte i provet. Uppmätt: `process.env.TZ = …`
+ * inne i en jest-test når inte processens ICU — jest ger testet en KOPIA av
+ * `process.env` — och ett prov som "byter zon" inuti mäter därför UTC och är
+ * grönt av fel skäl. Hela filen körs i stället en gång per zon:
+ *
+ *   TZ=America/Los_Angeles T2_KRAV_TZ=America/Los_Angeles npx jest <filen>
+ *   TZ=Asia/Tokyo          T2_KRAV_TZ=Asia/Tokyo          npx jest <filen>
+ *
+ * Kanariefågeln nedan kräver att den begärda zonen faktiskt GÄLLER.
+ */
+const KRAV_TZ = process.env.T2_KRAV_TZ
+
 describe('förutsättningar', () => {
   it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => expect(HAR_DB).toBe(true))
+  it('KANARIEFÅGEL: den begärda server-TZ:n gäller i processen', () => {
+    const zon = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (KRAV_TZ) expect(zon).toBe(KRAV_TZ)
+    else expect(typeof zon).toBe('string')
+  })
 })
 
 const GILTIGT = '5050-1055'
@@ -86,15 +104,40 @@ async function vid<T>(nu: Date, fn: () => Promise<T>): Promise<T> {
  */
 const GRANSER: Array<{ namn: string; due: string; sista: string; forsta: string }> = [
   // Sommartid, UTC+2.
-  { namn: 'sommar', due: '2026-07-01', sista: '2026-07-01T21:59:59Z', forsta: '2026-07-01T22:00:00Z' },
+  {
+    namn: 'sommar',
+    due: '2026-07-01',
+    sista: '2026-07-01T21:59:59Z',
+    forsta: '2026-07-01T22:00:00Z',
+  },
   // Vintertid, UTC+1.
-  { namn: 'vinter', due: '2026-01-15', sista: '2026-01-15T22:59:59Z', forsta: '2026-01-15T23:00:00Z' },
+  {
+    namn: 'vinter',
+    due: '2026-01-15',
+    sista: '2026-01-15T22:59:59Z',
+    forsta: '2026-01-15T23:00:00Z',
+  },
   // Dagen före omställningen till sommartid (29 mars): midnatt är fortfarande CET.
-  { namn: 'före vår-DST', due: '2026-03-28', sista: '2026-03-28T22:59:59Z', forsta: '2026-03-28T23:00:00Z' },
+  {
+    namn: 'före vår-DST',
+    due: '2026-03-28',
+    sista: '2026-03-28T22:59:59Z',
+    forsta: '2026-03-28T23:00:00Z',
+  },
   // Omställningsdygnet (23 h): nästa midnatt är CEST.
-  { namn: 'vår-DST-dygnet', due: '2026-03-29', sista: '2026-03-29T21:59:59Z', forsta: '2026-03-29T22:00:00Z' },
+  {
+    namn: 'vår-DST-dygnet',
+    due: '2026-03-29',
+    sista: '2026-03-29T21:59:59Z',
+    forsta: '2026-03-29T22:00:00Z',
+  },
   // Omställningsdygnet till vintertid (25 h): nästa midnatt är CET.
-  { namn: 'höst-DST-dygnet', due: '2026-10-25', sista: '2026-10-25T22:59:59Z', forsta: '2026-10-25T23:00:00Z' },
+  {
+    namn: 'höst-DST-dygnet',
+    due: '2026-10-25',
+    sista: '2026-10-25T22:59:59Z',
+    forsta: '2026-10-25T23:00:00Z',
+  },
 ]
 
 medDb('T2 · fakturans förfallodag och betalningsmål', () => {
@@ -124,6 +167,11 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     org?: string
     tenant?: string
   }): Promise<string> {
+    // DB-spärren `Invoice_credit_note_requires_original_chk`: en kreditnota
+    // måste peka på en faktura. Originalet skapas här, orört av provet.
+    const original = opts.isCreditNote
+      ? await faktura({ status: 'SENT', org: opts.org, tenant: opts.tenant })
+      : null
     nr++
     const total = new Prisma.Decimal(opts.total ?? 1000)
     const rad = await prisma.invoice.create({
@@ -139,10 +187,9 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
         dueDate: new Date(`${opts.dueDate ?? '2040-01-31'}T00:00:00Z`),
         issueDate: new Date('2026-01-01T00:00:00Z'),
         isCreditNote: opts.isCreditNote ?? false,
+        ...(original ? { creditedInvoiceId: original } : {}),
         lines: {
-          create: [
-            { description: 'Provrad', quantity: 1, unitPrice: total, vatRate: 0, total },
-          ],
+          create: [{ description: 'Provrad', quantity: 1, unitPrice: total, vatRate: 0, total }],
         },
       },
       select: { id: true },
@@ -200,7 +247,11 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
       ocrService: {},
       pdfQueue: {
         enqueue: async (j: { organizationId: string; invoiceId: string; actorId: string }) => {
-          koade.push({ organizationId: j.organizationId, invoiceId: j.invoiceId, actorId: j.actorId })
+          koade.push({
+            organizationId: j.organizationId,
+            invoiceId: j.invoiceId,
+            actorId: j.actorId,
+          })
           return `jobb-${koade.length}`
         },
       },
@@ -224,12 +275,26 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     Object.assign(reminders, {
       prisma,
       mail: {
-        sendReminderFriendly: async (a: { to: string; invoiceNumber: string; bankgiro: unknown }) => {
-          mejl.push({ kind: 'friendly', to: a.to, invoiceNumber: a.invoiceNumber, bankgiro: a.bankgiro })
+        sendReminderFriendly: async (a: {
+          to: string
+          invoiceNumber: string
+          bankgiro: unknown
+        }) => {
+          mejl.push({
+            kind: 'friendly',
+            to: a.to,
+            invoiceNumber: a.invoiceNumber,
+            bankgiro: a.bankgiro,
+          })
           return 'job-friendly'
         },
         sendReminderFormal: async (a: { to: string; invoiceNumber: string; bankgiro: unknown }) => {
-          mejl.push({ kind: 'formal', to: a.to, invoiceNumber: a.invoiceNumber, bankgiro: a.bankgiro })
+          mejl.push({
+            kind: 'formal',
+            to: a.to,
+            invoiceNumber: a.invoiceNumber,
+            bankgiro: a.bankgiro,
+          })
           return 'job-formal'
         },
       },
@@ -365,7 +430,9 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
 
     await satMal(null)
     // Före kön: avvisad, INGENTING skrivs.
-    await expect(invoices.sendInvoiceEmail(id, orgId, 'aktor')).rejects.toMatchObject({ status: 400 })
+    await expect(invoices.sendInvoiceEmail(id, orgId, 'aktor')).rejects.toMatchObject({
+      status: 400,
+    })
     expect(koade).toHaveLength(0)
     const efterApi = await rad(id)
     expect(efterApi.status).toBe('SENT')
@@ -379,7 +446,9 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     const efterWorker = await rad(id)
     expect(efterWorker.status).toBe('SENT')
     const h = await handelser(id)
-    expect(h.filter((t) => t === 'SENT')).toHaveLength(historikFore.filter((t) => t === 'SENT').length)
+    expect(h.filter((t) => t === 'SENT')).toHaveLength(
+      historikFore.filter((t) => t === 'SENT').length,
+    )
     // Det enda som tillkommer är det SANNA försöket.
     expect(h.slice(historikFore.length)).toEqual(['SEND_FAILED'])
   })
@@ -409,9 +478,10 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
   it('F8.5 PATCH-vägen DRAFT→SENT utan mål: 400, status DRAFT, ingen händelse', async () => {
     await satMal(null)
     const id = await faktura({})
-    await expect(
-      invoices.transitionStatus(id, orgId, 'SENT', null, 'USER'),
-    ).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/[Bb]ankgiro/) })
+    await expect(invoices.transitionStatus(id, orgId, 'SENT', null, 'USER')).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringMatching(/[Bb]ankgiro/),
+    })
     expect((await rad(id)).status).toBe('DRAFT')
     expect(await handelser(id)).toEqual([])
   })
@@ -439,7 +509,9 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     await satMal(null) // org A saknar mål
     await satMal(GILTIGT, annanOrgId) // org B har
     const idA = await faktura({})
-    await expect(invoices.sendInvoiceEmail(idA, orgId, 'aktor')).rejects.toMatchObject({ status: 400 })
+    await expect(invoices.sendInvoiceEmail(idA, orgId, 'aktor')).rejects.toMatchObject({
+      status: 400,
+    })
     // Org B kan inte skicka A:s faktura, oavsett sitt eget giltiga mål.
     await expect(invoices.sendInvoiceEmail(idA, annanOrgId, 'aktor')).rejects.toMatchObject({
       status: 404,
@@ -522,22 +594,6 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     60_000,
   )
 
-  it('F7.1 samma utfall när serverns TZ är America/Los_Angeles och Asia/Tokyo', async () => {
-    const tidigare = process.env.TZ
-    try {
-      for (const tz of ['America/Los_Angeles', 'Asia/Tokyo']) {
-        process.env.TZ = tz
-        const id = await faktura({ status: 'SENT', dueDate: '2026-07-01' })
-        await vid(new Date('2026-07-01T21:59:59Z'), () => notifications.markOverdueInvoices())
-        expect([tz, (await rad(id)).status]).toEqual([tz, 'SENT'])
-        await vid(new Date('2026-07-01T22:00:00Z'), () => notifications.markOverdueInvoices())
-        expect([tz, (await rad(id)).status]).toEqual([tz, 'OVERDUE'])
-      }
-    } finally {
-      process.env.TZ = tidigare
-    }
-  }, 60_000)
-
   it('F7.1 kreditnota flippas aldrig till OVERDUE (oförändrat villkor)', async () => {
     const id = await faktura({ status: 'SENT', dueDate: '2026-07-01', isCreditNote: true })
     await vid(new Date('2026-07-05T12:00:00Z'), () => notifications.markOverdueInvoices())
@@ -563,10 +619,8 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
 
   // ═══ F7 · UTSKRIVET DATUM I DOKUMENT OCH MEJL ════════════════════════════
 
-  it('F7.3 PDF och mejl skriver den AVTALADE förfallodagen även i en server-TZ väster om UTC', async () => {
-    const tidigare = process.env.TZ
-    try {
-      process.env.TZ = 'America/Los_Angeles'
+  it('F7.3 PDF och mejl skriver den AVTALADE förfallodagen i processens server-TZ', async () => {
+    {
       const due = new Date('2026-07-01T00:00:00Z') // som Prisma returnerar ett @db.Date
       const issue = new Date('2026-06-01T00:00:00Z')
       const html = generateInvoiceHtml({
@@ -614,8 +668,6 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
       expect(html).not.toContain('2026-06-30')
       expect(html).not.toContain('2026-05-31')
       expect(mejlDatum(due)).toBe('1 juli 2026')
-    } finally {
-      process.env.TZ = tidigare
     }
   })
 })
