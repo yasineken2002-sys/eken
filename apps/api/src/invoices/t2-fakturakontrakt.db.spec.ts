@@ -584,6 +584,38 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
     expect((await paminnelseRader(formell)).map((r) => r.type)).toEqual(['REMINDER_FORMAL'])
   }, 60_000)
 
+  it('F8.9 målet rensas MITT I cron-körningen (efter urvalet): omprövningen i transaktionen stoppar anspråk, avgift och brev', async () => {
+    const nu = new Date()
+    const dag = (n: number) => new Date(nu.getTime() - n * 86_400_000).toISOString().slice(0, 10)
+    const vanlig = await faktura({ status: 'OVERDUE', dueDate: dag(3) })
+    const formell = await faktura({ status: 'OVERDUE', dueDate: dag(20) })
+    const totalFore = (await rad(formell)).total
+
+    // Cronen läser organisationen i sitt `findMany` FÖRE loopen. Färskhets-
+    // gallringen anropas mellan urvalet och loopen — där rensas målet, alltså
+    // efter att loopens förhandsgrind fått ett giltigt bankgiro att titta på.
+    const riktig = (reminders as unknown as { freshness: PaymentFreshnessService }).freshness
+    const mitti = Object.create(riktig) as PaymentFreshnessService
+    mitti.pausadeAvGranskning = async (orgIds: string[]) => {
+      await satMal(null)
+      return riktig.pausadeAvGranskning(orgIds)
+    }
+    const rigg = Object.create(reminders) as PaymentReminderService
+    Object.assign(rigg, { freshness: mitti })
+
+    await rigg.processOverdueReminders()
+
+    expect(await paminnelseRader(vanlig)).toEqual([])
+    expect(await paminnelseRader(formell)).toEqual([])
+    expect((await rad(formell)).total).toEqual(totalFore)
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: orgId, sourceId: `reminder-fee:${formell}` },
+      }),
+    ).toBe(0)
+    expect(mejl.filter((m) => m.kind === 'friendly' || m.kind === 'formal')).toHaveLength(0)
+  }, 60_000)
+
   // ═══ F7 · CRONENS STATUSFLIPP VID SVENSK MIDNATT ═════════════════════════
 
   it.each(GRANSER)(
