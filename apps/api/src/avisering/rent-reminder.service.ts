@@ -22,12 +22,18 @@ import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { QUEUE_PDF } from '../pdf-jobs/pdf.types'
 import { enqueueSafely, isEnqueueProblem } from '../common/queue/enqueue-safety'
+import { checkPaymentTarget, type PaymentTargetBlockCode } from './payment-target'
 import { AccountingService } from '../accounting/accounting.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from './rent-debt.service'
 import { getLogoDataUrl } from './avisering.service'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import {
+  DEFAULT_BRAND_COLOR,
+  swedishDaysBetween,
+  startOfSwedishDay,
+  swedishDateKey,
+} from '@eken/shared'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { RentInterestService } from './rent-interest.service'
 import { RentDebtService } from './rent-debt.service'
@@ -82,6 +88,18 @@ export type RentCollectionState =
   | 'WAITING'
   /** Tröskeln passerad, men INV-B saknar något. Står stilla. */
   | 'BLOCKED'
+  /**
+   * K2/F4 — organisationens BETALNINGSMÅL fattas, och det stoppar nästa steg.
+   *
+   * EGEN STATE och inte ett värde i `BLOCKED`, av samma skäl som schemaläggaren
+   * fick ett eget `blocked`-tal i stället för att slås ihop med `failed`: de två
+   * kräver olika handling. `BLOCKED` betyder att INV-B:s krav på LEVERANSEN inte
+   * är uppfyllda — studsad påminnelse, saknad PDF — och åtgärden ligger hos
+   * hyresgästens uppgifter. Det här betyder att ett fält i organisationens
+   * inställningar är ofyllt, och åtgärden ligger hos hyresvärden själv.
+   * Slås de samman får hyresvärden ett skäl hen inte kan agera på.
+   */
+  | 'BLOCKED_PAYMENT_TARGET'
   /** Inget saknas — nästa körning flyttar fram den. */
   | 'READY'
 
@@ -90,6 +108,27 @@ export interface RentCollectionStatus {
   collectionStage: RentNotice['collectionStage']
   /** INV-B:s saknade krav. FYLLS ALLTID, oavsett `state`. */
   missing: string[]
+  /**
+   * K2/F4 — BETALNINGSMÅLET, ur samma `checkPaymentTarget` som cron-loopen och
+   * påminnelsejobbet grindar på. EN regel, inte två.
+   *
+   * FYLLS ALLTID, oavsett `state`, av samma skäl som `missing` gör det: ingen
+   * kan rätta ett fält hen inte vet är ofyllt, och visas bristen först den dag
+   * den blivit ett stopp har vyn kommit för sent. Det är panelens egen princip.
+   *
+   * `blockerarNastaSteg` är SKILT från `ok`: målet kan fattas utan att det
+   * stoppar något just nu — en avi vars påminnelse redan gått ut eskalerar
+   * vidare till inkasso utan att målet läses (mätt: `escalateNoticeToInkassoReady`
+   * har ingen sådan grind).
+   */
+  paymentTarget: {
+    ok: boolean
+    /** Stabil kod för loggar; `null` när målet är giltigt. */
+    code: PaymentTargetBlockCode | null
+    /** Skrivet för hyresvärden; `null` när målet är giltigt. */
+    reason: string | null
+    blockerarNastaSteg: boolean
+  }
   daysOverdue: number
   thresholdDays: number
   daysUntilEvaluation: number
@@ -307,8 +346,8 @@ export class RentReminderService {
               summary.pausedStale++
               continue
             }
-            const daysOverdue = this.daysSince(notice.dueDate, new Date())
-            if (daysOverdue < notice.organization.rentReminderDay) {
+            const daysOverdue = swedishDaysBetween(notice.dueDate, new Date())
+            if (daysOverdue <= 0 || daysOverdue < notice.organization.rentReminderDay) {
               summary.skipped++
               continue
             }
@@ -326,6 +365,25 @@ export class RentReminderService {
             // förutsätter att en påminnelse kan skickas). Avin förblir NONE och
             // omprövas nästa dygn.
             if (!notice.tenant.email) {
+              summary.skipped++
+              continue
+            }
+
+            // ── K2: INGET BETALNINGSMÅL → INGEN AVGIFT ──────────────────────
+            //
+            // EXAKT samma form och samma skäl som adressgrinden ovan: en
+            // påminnelseavgift förutsätter att hyresgästen KAN betala det som
+            // krävs. Utan mottagarens bankgiro finns ingenting att betala till,
+            // och att ta ut avgiften ändå vore att debitera för ett krav som
+            // inte går att följa.
+            //
+            // GRINDEN ÄR FÖRE `escalateNoticeToReminded`, inte efter: efter den
+            // är avgiften bokförd och kravsteget flyttat, och ingen av dem går
+            // att ångra genom att avstå från utskicket.
+            //
+            // Avin förblir NONE och omprövas nästa dygn — samma självläkning:
+            // hyresvärden fyller i bankgirot och trappan fortsätter.
+            if (!checkPaymentTarget(notice.organization).ok) {
               summary.skipped++
               continue
             }
@@ -520,6 +578,7 @@ export class RentReminderService {
           organizationId,
           status: 'OVERDUE',
           collectionStage: 'NONE',
+          dueDate: { lt: startOfSwedishDay(now) },
           // T1.4 / #44: försvar-i-djupet — även ett direkt anrop får aldrig
           // eskalera en efterdebiterad avi (samma isolering som cron-urvalet).
           isBackfill: false,
@@ -930,10 +989,10 @@ export class RentReminderService {
     //
     // Loopen behåller sitt URVAL (`findMany` på OVERDUE/RENT/REMINDED). Den
     // avgränsningen är en prestandafråga; den här är en rättighetsfråga.
-    const daysOverdue = this.daysSince(notice.dueDate, now)
+    const daysOverdue = swedishDaysBetween(notice.dueDate, now)
     const threshold =
       notice.organization.rentReminderDay + notice.organization.rentInkassoDaysAfterReminder
-    if (daysOverdue < threshold) {
+    if (daysOverdue <= 0 || daysOverdue < threshold) {
       // Inte ett fel och inte ett ofullständigt underlag: fristen har bara
       // inte löpt ut. Eget fält i stället för ett kast, så anroparen kan
       // skilja "för tidigt" från "underlaget saknar något".
@@ -1042,12 +1101,12 @@ export class RentReminderService {
         'SYSTEM',
         null,
         {
-          daysOverdue: this.daysSince(fresh.dueDate, now),
+          daysOverdue: swedishDaysBetween(fresh.dueDate, now),
           capital,
           reminderFeeAmount: Number(fresh.reminderFeeAmount),
           interestAccruedAmount: Number(fresh.interestAccruedAmount),
           interestAccruedThrough: fresh.interestAccruedThrough
-            ? toYmd(fresh.interestAccruedThrough)
+            ? swedishDateKey(fresh.interestAccruedThrough)
             : null,
           totalClaim,
           // Bara en flagga att kopian finns — INTE själva R2-nyckeln
@@ -1226,6 +1285,32 @@ export class RentReminderService {
       return
     }
 
+    // ── K2: SAMMA FÖRKONTROLL, ANDRA SIDAN AV KÖN ───────────────────────────
+    //
+    // Cron-grinden ovan avstår innan avgiften tas ut. Den här finns för jobbet
+    // som redan låg i kön när målet rensades, och för den MANUELLA omsändningen
+    // (`begarOmsandning` → direkt enqueue), som inte går genom cron-loopen.
+    //
+    // Delar exakt samma funktion som avin och som cron-grinden — två
+    // uppsättningar regler om vad ett giltigt betalningsmål är hade glidit isär.
+    //
+    // KASTAR INTE: ett saknat bankgiro löser sig inte av fem Bull-retries.
+    // Händelsen skrivs så att avins tidslinje i UI:t säger VAD som hände — utan
+    // den hade påminnelsen bara uteblivit tyst.
+    const paymentTarget = checkPaymentTarget(org)
+    if (!paymentTarget.ok) {
+      await this.rentNoticeEvents
+        .record(noticeId, 'SEND_FAILED', 'SYSTEM', null, {
+          reason: paymentTarget.block.message,
+          code: paymentTarget.block.code,
+        })
+        .catch(() => undefined)
+      this.logger.warn(
+        `[Kravtrappa] Påminnelse EJ skickad för avi ${noticeId}: ${paymentTarget.block.code}`,
+      )
+      return
+    }
+
     try {
       const html = await this.buildReminderPdfHtml(notice, org)
       const pdfBuffer = await this.pdfService.generateFromHtml(html)
@@ -1281,7 +1366,7 @@ export class RentReminderService {
         paidSoFar: paid,
         overpaidAmount: overpaid,
         dueDate: notice.dueDate,
-        daysOverdue: this.daysSince(notice.dueDate, new Date()),
+        daysOverdue: swedishDaysBetween(notice.dueDate, new Date()),
         organizationName: org.name,
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         pdfBuffer,
@@ -1415,8 +1500,8 @@ export class RentReminderService {
     // och ett mejl med restskulden vore värre än två fel siffror — de hade
     // motsagt varandra i samma försändelse.
     const { payable, nominalBeforeFee, fee, paid, overpaid } = rentNoticeOutstanding(notice)
-    const daysOverdue = this.daysSince(notice.dueDate, new Date())
-    const dueDateStr = notice.dueDate.toLocaleDateString('sv-SE')
+    const daysOverdue = swedishDaysBetween(notice.dueDate, new Date())
+    const dueDateStr = swedishDateKey(notice.dueDate)
 
     const tenantName =
       notice.tenant.type === 'INDIVIDUAL'
@@ -1609,7 +1694,7 @@ export class RentReminderService {
     const org = notice.organization
     const freshness = this.freshness.evaluate(org, now)
     const thresholdDays = org.rentReminderDay + org.rentInkassoDaysAfterReminder
-    const daysOverdue = this.daysSince(notice.dueDate, now)
+    const daysOverdue = swedishDaysBetween(notice.dueDate, now)
 
     const senaste = (t: RentNoticeEventType): Date | null => {
       let träff: Date | null = null
@@ -1626,23 +1711,124 @@ export class RentReminderService {
       if (p?.action === 'inkasso-ready-blocked') senastBlockerad = e.createdAt
     }
 
+    // ── K2/F4: BETALNINGSMÅLET, SAMMA FÖRKONTROLL SOM GRINDARNA ─────────────
+    //
+    // `checkPaymentTarget` är exakt den funktion cron-loopen avstår på och som
+    // påminnelsejobbet vägrar på. Ingen andra uppsättning regler om vad ett
+    // giltigt betalningsmål är — det var hela poängen med att lägga den i en
+    // egen fil.
+    const betalningsmal = checkPaymentTarget(org)
+
+    // STOPPAR MÅLET NÄSTA STEG? Det är en annan fråga än om målet är giltigt,
+    // och svaret beror på var i trappan avin står. Mätt i koden:
+    //
+    //   stage NONE      → cron-loopen grindar (rad ~348), FÖRE avgiften.
+    //                     Målet stoppar alltså påminnelsen.
+    //   stage REMINDED  → avgiften är redan tagen. Återstår påminnelsens
+    //     utan utskick     UTSKICK, som `processReminderSendJob` grindar.
+    //   stage REMINDED  → nästa steg är inkasso-redo, och
+    //     med utskick      `escalateNoticeToInkassoReady` läser INTE målet.
+    //                     Ett saknat mål stoppar då ingenting, och statusen ska
+    //                     inte påstå att det gör det.
+    //
+    // MÄTPUNKTEN ÄR `reminderPdfStorageKey`, INTE `REMINDER_SENT`. De skrivs av
+    // olika steg: `REMINDER_SENT` av `escalateNoticeToReminded` (eskaleringen,
+    // som tar avgiften), `reminderPdfStorageKey` av `processReminderSendJob`
+    // (utskicket, som lagrar den faktiskt skickade PDF:en). Frågan här är om
+    // ett UTSKICK återstår, så det är den senare som svarar på den.
+    const paminnelseUtskickKvar = !notice.reminderPdfStorageKey
+
+    // ÄR AVIN ÖVERHUVUDTAGET EN KANDIDAT? Ett saknat mål stoppar ingenting för
+    // en avi cronen aldrig plockar. Villkoren nedan är cron-loopens EGNA
+    // urvalsfilter, lästa ur `escalateOverdueRentNotices` — inte ett nytt
+    // regelverk, och inte en andra definition av vad ett giltigt mål är. Den
+    // enda regeln om MÅLET är fortfarande `checkPaymentTarget`.
+    //
+    // KÄND GRÄNS: cronen hoppar också över en avi vars hyresgäst saknar
+    // e-postadress. Det villkoret replikeras INTE här — det har sin egen yta i
+    // avins leveransfält (`delivery`), och att bygga in det hade gjort det här
+    // predikatet till en andra kopia av kandidaturvalet i stället för en läsning
+    // av det. Följden är att `blockerarNastaSteg` kan vara sant för en avi som
+    // ändå hade hoppats över av adresskäl; skälet det ger är då riktigt men inte
+    // det enda som saknas.
+    //
+    // F4-a: `org.remindersEnabled` HÖR TILL URVALET. Cron-loopens `findMany`
+    // filtrerar på `organization: { remindersEnabled: true }`, och utan den här
+    // termen fick en avi i stage NONE i en org som STÄNGT AV påminnelser skälet
+    // `BLOCKED_PAYMENT_TARGET`. Cronen plockar aldrig avin, så målet stoppar
+    // ingenting: hyresvärden fick ett åtgärdbart skäl som inte var orsaken,
+    // fyllde i bankgirot och såg ingen förändring.
+    //
+    // För stage REMINDED fanns luckan inte, eftersom `REMINDERS_OFF` ligger före
+    // det nya skälet i state-kedjan. Bara NONE-grenen passerade förbi den.
+    // ── K-a: DAGSREGELN, INTE LAGRAD STATUS ─────────────────────────────────
+    //
+    // Felet uppstår FÖRST I KOMBINATIONEN, och ingen av grenarna har det ensam.
+    // Efter #917 kan en avi ha LAGRAD `OVERDUE` medan dess svenska förfallodag
+    // inte passerat — det är precis den radklass #917:s visningslager döljer.
+    // Cron-loopen hoppar då över avin (`daysOverdue <= 0`, rad ~349), men
+    // predikatet här litade på `status === 'OVERDUE'` och hade sagt
+    // `BLOCKED_PAYMENT_TARGET` om ett hinder som inte finns.
+    //
+    // `daysOverdue` några rader ovan ÄR cronens regel: båda är
+    // `swedishDaysBetween(notice.dueDate, …)`. Termen återanvänder den i stället
+    // för att räkna om något — ingen andra kalenderimplementation, ingen egen
+    // import. `status === 'OVERDUE'` står kvar: den är fortfarande cronens eget
+    // urvalsfilter, den är bara inte längre ENSAM bärare av åldern.
+    //
+    // DAGSREGELN HÖR TILL PÅMINNELSESTEGET. För stage `REMINDED` är avgiften
+    // redan tagen och det som återstår är påminnelsens UTSKICK, som inte har
+    // någon dagsgrind — därför får `REMINDED`-grenen nedan ingen datumterm.
+    // `READY`/inkasso har annan semantik och får ingen målgrind alls.
+    const arPaminnelsekandidat =
+      notice.status === 'OVERDUE' &&
+      daysOverdue > 0 &&
+      !notice.isBackfill &&
+      debt.ocrOutstanding > 0 &&
+      org.remindersEnabled
+
+    const malBlockerarNastaSteg =
+      !betalningsmal.ok &&
+      ((notice.collectionStage === 'NONE' && arPaminnelsekandidat) ||
+        (notice.collectionStage === 'REMINDED' && paminnelseUtskickKvar))
+
+    // ORDNINGEN ÄR BEVARAD. `REMINDERS_OFF` och `PAUSED_STALE` ligger kvar före
+    // det nya skälet: en org som stängt av påminnelser eskalerar inte oavsett
+    // betalningsmål, och en pausad betalningsdata är ett tyngre stopp som redan
+    // larmar. Det nya skälet läggs in EFTER dem och FÖRE `WAITING`, eftersom en
+    // avi vars mål fattas inte "väntar" — den står stilla.
+    //
+    // För stage NONE ersätter det `NOT_APPLICABLE` bara när målet faktiskt
+    // stoppar steget. `NOT_APPLICABLE` betyder "trappan prövas inte i det här
+    // steget", vilket är sant för en betald eller makulerad avi — och en sådan
+    // ska inte få ett betalningsmålsskäl den inte behöver.
     const state: RentCollectionState =
       notice.collectionStage !== 'REMINDED'
-        ? 'NOT_APPLICABLE'
+        ? malBlockerarNastaSteg
+          ? 'BLOCKED_PAYMENT_TARGET'
+          : 'NOT_APPLICABLE'
         : !org.remindersEnabled
           ? 'REMINDERS_OFF'
           : freshness.stale
             ? 'PAUSED_STALE'
-            : daysOverdue < thresholdDays
-              ? 'WAITING'
-              : missing.length > 0
-                ? 'BLOCKED'
-                : 'READY'
+            : malBlockerarNastaSteg
+              ? 'BLOCKED_PAYMENT_TARGET'
+              : daysOverdue <= 0 || daysOverdue < thresholdDays
+                ? 'WAITING'
+                : missing.length > 0
+                  ? 'BLOCKED'
+                  : 'READY'
 
     return {
       state,
       collectionStage: notice.collectionStage,
       missing,
+      paymentTarget: {
+        ok: betalningsmal.ok,
+        code: betalningsmal.ok ? null : betalningsmal.block.code,
+        reason: betalningsmal.ok ? null : betalningsmal.block.message,
+        blockerarNastaSteg: malBlockerarNastaSteg,
+      },
       daysOverdue,
       thresholdDays,
       /** Dygn kvar tills cronet prövar avin. 0 när den redan prövas. */
@@ -1784,8 +1970,4 @@ export class RentReminderService {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
-}
-
-function toYmd(d: Date): string {
-  return d.toISOString().slice(0, 10)
 }

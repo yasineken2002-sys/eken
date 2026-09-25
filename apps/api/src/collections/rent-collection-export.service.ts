@@ -10,7 +10,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
 import { RentDebtService } from '../avisering/rent-debt.service'
 import { buildBrandedPdfHtml, escapeHtml, getLogoDataUrl } from '../common/branding'
-import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, REMINDER_FEE_MAX_SEK, swedishDateKey } from '@eken/shared'
 import { UserRole } from '@prisma/client'
 import { assertMayActOnCollections } from '../common/authz/collections-authz'
 import { resolveActorType } from '../common/ai-origin/ai-origin.context'
@@ -428,7 +428,7 @@ export class RentCollectionExportService {
     const interestEvent = [...notice.events].reverse().find((e) => e.type === 'INTEREST_ACCRUED')
     const segments = readSegments(interestEvent?.payload)
     const interestThrough = notice.interestAccruedThrough
-      ? notice.interestAccruedThrough.toISOString().slice(0, 10)
+      ? swedishDateKey(notice.interestAccruedThrough)
       : null
 
     return { capital, reminderFee, interest, interestThrough, totalClaim, segments }
@@ -472,7 +472,7 @@ export class RentCollectionExportService {
       return [
         notice.noticeNumber,
         notice.ocrNumber,
-        notice.dueDate.toISOString().slice(0, 10),
+        swedishDateKey(notice.dueDate),
         f.capital.toFixed(2),
         f.reminderFee.toFixed(2),
         f.interest.toFixed(2),
@@ -573,7 +573,7 @@ export class RentCollectionExportService {
     <div class="docref">
       <div class="meta"><strong>Hyresavi</strong></div>
       <div class="docnum">${escapeHtml(notice.noticeNumber)}</div>
-      <div class="meta">Förfallodatum ${notice.dueDate.toLocaleDateString('sv-SE')}</div>
+      <div class="meta">Förfallodatum ${swedishDateKey(notice.dueDate)}</div>
       <div class="meta">OCR ${escapeHtml(notice.ocrNumber)}</div>
     </div>
   </div>

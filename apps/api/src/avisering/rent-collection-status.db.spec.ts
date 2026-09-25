@@ -151,6 +151,12 @@ medDb('collectionStatus', () => {
         remindersEnabled: true,
         rentReminderDay: 5,
         rentInkassoDaysAfterReminder: 14,
+        // K2/F4: ett giltigt betalningsmål hör till en NORMAL organisation.
+        // Utan raden får varje fall här `BLOCKED_PAYMENT_TARGET`, och filen
+        // hade slutat mäta det den finns för — vilket steg avin står i och
+        // varför INV-B nekar. Betalningsmålets egna fall ligger i
+        // `collection-status-payment-target.db.spec.ts`.
+        bankgiro: '5050-1055',
       },
       select: { id: true },
     })

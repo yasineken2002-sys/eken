@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, SWEDISH_TIME_ZONE } from '@eken/shared'
 import { MailQueue } from './mail.queue'
 import type {
   EnqueueMailOptions,
@@ -282,6 +282,7 @@ function formatSek(amount: number): string {
 
 function formatDateSv(d: Date | string): string {
   return new Date(d).toLocaleDateString('sv-SE', {
+    timeZone: SWEDISH_TIME_ZONE,
     year: 'numeric',
     month: 'long',
     day: 'numeric',

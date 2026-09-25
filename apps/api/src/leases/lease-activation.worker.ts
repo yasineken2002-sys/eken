@@ -62,13 +62,26 @@ export class LeaseActivationWorker {
     }
 
     if (data.type === 'create-initial-notices') {
-      await this.avisering.createInitialNoticesForLease(data.leaseId, {
+      const result = await this.avisering.createInitialNoticesForLease(data.leaseId, {
         skipDeposit: data.skipDeposit ?? false,
         // Bakåtkompatibelt: in-flight-jobb från före T1.3 saknar `succession`
         // — då är skipDeposit den enda succession-signalen (T1.2 satte den
         // uteslutande vid förnyelse).
         succession: data.succession ?? data.skipDeposit ?? false,
       })
+      // ── K2: ETT VÄNTAT KONFIGURATIONSFEL FÅR INTE SE UT SOM FRAMGÅNG ──────
+      //
+      // Jobbet LYCKADES — avierna är skapade och bokförda, och det är rätt att
+      // inte kasta: ett kast hade gett fyra retries av ett fel som bara
+      // hyresvärden kan rätta, och sedan ett permanent-fail-larm om fel sak.
+      // Men en ren `log`-rad hade begravt skälet. WARN, med orsaken i klartext,
+      // så raden går att hitta i driftloggen.
+      if (result.blockedReason) {
+        this.logger.warn(
+          `[lease-activation] avier skapade men EJ skickade lease=${data.leaseId}: ` +
+            result.blockedReason,
+        )
+      }
       return
     }
   }

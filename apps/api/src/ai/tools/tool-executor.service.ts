@@ -32,6 +32,7 @@ import {
   MAINTENANCE_STATUSES,
   RENT_NOTICE_STATUSES,
   AI_SETTABLE_MAINTENANCE_STATUSES,
+  swedishDateKey,
 } from '@eken/shared'
 import type { MaintenanceStatusValue } from '@eken/shared'
 import { InvoicesService } from '../../invoices/invoices.service'
@@ -3934,7 +3935,7 @@ export class ToolExecutorService {
             lines.push(
               `- [${n.noticeNumber}] ${name} — OCR: ${n.ocrNumber}, ` +
                 `${Number(n.totalAmount).toLocaleString('sv-SE')} kr, ` +
-                `Förfaller: ${new Date(n.dueDate).toLocaleDateString('sv-SE')}, ` +
+                `Förfaller: ${swedishDateKey(new Date(n.dueDate))}, ` +
                 `Status: ${translateNoticeStatus(n.status)}`,
             )
           }

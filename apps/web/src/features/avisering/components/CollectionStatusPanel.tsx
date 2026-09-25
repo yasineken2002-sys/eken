@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Link } from '@tanstack/react-router'
 import {
   AlertTriangle,
   Send,
@@ -177,6 +178,13 @@ const LAGE: Record<
     text: 'text-red-700',
     prick: 'bg-red-500',
   },
+  BLOCKED_PAYMENT_TARGET: {
+    rubrik: 'Betalningsuppgifter saknas',
+    ikon: XCircle,
+    ram: 'border-red-100 bg-red-50',
+    text: 'text-red-700',
+    prick: 'bg-red-500',
+  },
   READY: {
     rubrik: 'Redo för nästa steg',
     ikon: CheckCircle2,
@@ -206,6 +214,14 @@ function harnast(s: RentCollectionStatus): string {
       return s.blockedDays !== null
         ? `Tröskeln passerades för ${s.daysOverdue - s.thresholdDays} dygn sedan. Avin prövas varje dygn och nekas varje gång — senast för ${s.blockedDays} dygn sedan.`
         : 'Tröskeln är passerad, men underlaget är ofullständigt. Avin prövas varje dygn och nekas varje gång.'
+    case 'BLOCKED_PAYMENT_TARGET':
+      // Skälet kommer FRÅN SERVERN och skrivs inte om här: det är samma text som
+      // grinden lägger i avins `sendError` och i påminnelsens händelselogg. Två
+      // formuleringar av samma hinder hade gett hyresvärden två olika besked.
+      return (
+        (s.paymentTarget.reason ?? 'Organisationens betalningsmål saknas eller är ogiltigt.') +
+        ' Kravtrappan står stilla tills det är ifyllt — ingen påminnelseavgift tas ut och ingen påminnelse skickas.'
+      )
     case 'READY':
       return 'Inget saknas. Nästa dygnskörning flyttar avin till inkasso-redo.'
   }
@@ -268,6 +284,40 @@ export function CollectionStatusPanel({ status, noticeId }: Props) {
           </p>
         </div>
       </div>
+
+      {/* BETALNINGSMÅLET — och VÄGEN dit. En status som säger "blockerad" utan
+          väg vidare lämnar hyresvärden med ett besked hen inte kan agera på.
+          Rutan visas även när målet inte stoppar något just nu (samma princip
+          som bristerna nedan: ingen kan rätta ett fält hen inte vet är ofyllt),
+          men ordalydelsen skiljer de två lägena åt. */}
+      {!status.paymentTarget.ok && (
+        <div
+          data-testid="collection-payment-target"
+          className="mt-3 rounded-xl border border-red-100 bg-white p-3"
+        >
+          <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-red-700">
+            <AlertTriangle size={13} strokeWidth={1.8} />
+            {status.paymentTarget.blockerarNastaSteg
+              ? 'Betalningsuppgifter saknas — kravtrappan står stilla'
+              : 'Betalningsuppgifter saknas'}
+          </p>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-gray-700">
+            {status.paymentTarget.reason}
+          </p>
+          {!status.paymentTarget.blockerarNastaSteg && (
+            <p className="mt-1.5 text-[12px] leading-relaxed text-gray-500">
+              Den här avins nästa steg stoppas inte av det — men inga nya avier kan skickas, och en
+              ny påminnelse kan inte gå ut.
+            </p>
+          )}
+          <Link
+            to="/settings"
+            className="mt-2.5 inline-flex h-8 items-center rounded-[10px] bg-red-600 px-3.5 text-[12.5px] font-medium text-white transition-colors hover:bg-red-700"
+          >
+            Fyll i bankgiro under Inställningar
+          </Link>
+        </div>
+      )}
 
       {/* BRISTERNA — visas även när avin väntar, se docblocket överst. */}
       {status.missing.length > 0 && (
