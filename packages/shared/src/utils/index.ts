@@ -520,3 +520,4 @@ export function calculateFirstPaymentDueDate(leaseStartDate: Date, daysBeforeMov
 
 export * from './swedish-calendar'
 export * from './rent-notice-display'
+export * from './vat-rate-for-rent'

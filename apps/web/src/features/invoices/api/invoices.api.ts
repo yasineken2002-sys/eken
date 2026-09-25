@@ -1,5 +1,6 @@
 import { get, post } from '@/lib/api'
 import type { CreateCreditNoteInput, RegisterPaymentInput, Invoice } from '@eken/shared'
+import type { InvoiceWithOutstanding } from '../hooks/useInvoiceQueries'
 
 export function downloadInvoicePdf(id: string): void {
   window.open(`/api/v1/invoices/${id}/pdf`, '_blank')
@@ -7,8 +8,11 @@ export function downloadInvoicePdf(id: string): void {
 
 // Bokför inbetalningen på servern (likvidkonto D / 1510 K). Ersätter den gamla
 // vägen som satte status PAID utan verifikat.
-export function registerInvoicePayment(id: string, dto: RegisterPaymentInput): Promise<Invoice> {
-  return post<Invoice>(`/invoices/${id}/pay`, dto)
+export function registerInvoicePayment(
+  id: string,
+  dto: RegisterPaymentInput,
+): Promise<InvoiceWithOutstanding> {
+  return post<InvoiceWithOutstanding>(`/invoices/${id}/pay`, dto)
 }
 
 export function sendInvoiceEmail(id: string): Promise<{ message: string }> {

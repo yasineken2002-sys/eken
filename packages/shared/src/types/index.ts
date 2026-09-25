@@ -182,6 +182,12 @@ export interface Unit {
   floor?: number
   rooms?: number
   monthlyRent: number // SEK
+  /**
+   * Frivillig skattskyldighet för lokalen. API:t skickar fältet med hela enheten
+   * (bl.a. i avtalslistan); fakturaformuläret läser det för `vatRateForRent`.
+   * Valfritt här därför att alla vägar som bygger en `Unit` inte bär det.
+   */
+  voluntaryTaxLiability?: boolean
   createdAt: string
   updatedAt: string
 }
