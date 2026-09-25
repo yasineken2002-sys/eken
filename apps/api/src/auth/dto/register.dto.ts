@@ -12,6 +12,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { CompanyForm } from '@prisma/client'
 import { IsStrongPassword } from './password.decorators'
 import type { SammaNycklar, RegisterInput } from '@eken/shared'
+import { ORGANIZATION_ADDRESS_MAX_LENGTH } from '@eken/shared'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
@@ -44,6 +45,29 @@ export class RegisterDto implements RegisterInput {
   @MaxLength(200)
   @StrictString()
   organizationName!: string
+
+  // ─── Företagsadress (krävs sedan 2026-09-25, F-10) ───────────────────────
+  // Dekoratorerna säger bara FORMEN (sträng, längdtak). Att fälten är ifyllda
+  // efter trim och att postnumret har svensk form prövas i
+  // AuthService.register() med `organizationAddressIssues` — samma funktion som
+  // RegisterSchema kör, så att regeln inte finns i två avskrifter.
+  @ApiProperty({ example: 'Storgatan 1' })
+  @IsString()
+  @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.street)
+  @StrictString()
+  street!: string
+
+  @ApiProperty({ example: '111 22' })
+  @IsString()
+  @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.postalCode)
+  @StrictString()
+  postalCode!: string
+
+  @ApiProperty({ example: 'Stockholm' })
+  @IsString()
+  @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.city)
+  @StrictString()
+  city!: string
 
   // ─── Företagsform och organisationsnummer ────────────────────────────────
   // Validering av att orgNumber faktiskt matchar companyForm görs i

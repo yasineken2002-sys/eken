@@ -10,6 +10,9 @@ import {
   PASSWORD_MIN_LENGTH,
   PASSWORD_SPECIAL_CHAR_REGEX,
   validateSwedishOrgNumber,
+  isValidSwedishPostalCode,
+  organizationAddressIssues,
+  REGISTRATION_COUNTRY,
 } from '../utils'
 
 /**
@@ -88,6 +91,18 @@ export const RegisterSchema = z
     firstName: z.string().min(1).max(100),
     lastName: z.string().min(1).max(100),
     organizationName: z.string().min(1).max(200),
+    // ── FÖRETAGSADRESS — KRÄVS VID REGISTRERING SEDAN 2026-09-25 (F-10) ─────
+    //
+    // Fram till dess skrev registreringen tomma strängar i alla tre fälten, och
+    // dokumenten fick en avsändaradress som bestod av ett kommatecken. Reglerna
+    // (trimmad, ifylld, svensk postnummerform för `REGISTRATION_COUNTRY`) står i
+    // `organizationAddressIssues` och prövas i superRefine nedan — samma
+    // funktion som `AuthService.register` kör, så webb och API inte kan svara
+    // olika. Landet skickas inte: registreringen skapar alltid en svensk
+    // organisation, se `REGISTRATION_COUNTRY`.
+    street: z.string(),
+    postalCode: z.string(),
+    city: z.string(),
     companyForm: CompanyFormSchema.default('AB'),
     orgNumber: z.string().optional(),
     // F-skatt: frivillig uppgift på faktura, inte lagkrav (#392). Defaultar
@@ -125,6 +140,11 @@ export const RegisterSchema = z
         message: result.error ?? 'Ogiltigt organisationsnummer',
         path: ['orgNumber'],
       })
+    }
+  })
+  .superRefine((data, ctx) => {
+    for (const issue of organizationAddressIssues(data, REGISTRATION_COUNTRY)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] })
     }
   })
   // F-skatt-datum får inte ligga i framtiden och ska bara anges när
@@ -255,19 +275,8 @@ export type ForgotPasswordRequestInput = z.infer<typeof ForgotPasswordRequestSch
 
 // ─── Address ─────────────────────────────────────────────────────────────────
 
-// Svenska postnummer: första tre siffrorna pekar ut PostNord-områden i
-// intervallet 100 (Stockholm) till 984 (Pajala). Allt utanför dvs. 0XX
-// och 985–999 är ogiltigt. Ett frivilligt mellanslag mellan siffergrupperna
-// accepteras (t.ex. "111 22").
-const SWEDISH_POSTAL_CODE_REGEX = /^[1-9]\d{2}\s?\d{2}$/
-const SWEDISH_POSTAL_AREA_MIN = 100
-const SWEDISH_POSTAL_AREA_MAX = 984
-
-function isValidSwedishPostalCode(value: string): boolean {
-  if (!SWEDISH_POSTAL_CODE_REGEX.test(value)) return false
-  const area = parseInt(value.slice(0, 3), 10)
-  return area >= SWEDISH_POSTAL_AREA_MIN && area <= SWEDISH_POSTAL_AREA_MAX
-}
+// Svenska postnummer: regeln bor i `utils/organization-address.ts`, där även
+// organisationens adressregel läser den. En kopia här hade kunnat glida isär.
 
 export const AddressSchema = z.object({
   street: z.string().min(1, 'Gatuadress krävs'),
@@ -2558,6 +2567,14 @@ export const UpdateOrganizationSchema = z
     vatReportingPeriod: z.enum(['MONTHLY', 'QUARTERLY', 'YEARLY']).optional(),
     daysBeforeMoveInForFirstPayment: z.number().min(1).optional(),
     maxBankTxAmount: z.number().min(1).max(50_000_000).optional(),
+    // Företagsadressen (F-10). Valfri i PATCH, men som GRUPP: skickas något av
+    // de tre fälten måste alla tre skickas, och de prövas då med
+    // `organizationAddressIssues` mot organisationens EGET land. Den prövningen
+    // sker i `OrganizationsService.update`, eftersom landet inte finns i
+    // kroppen — schemat här kan inte veta om den svenska postnummerregeln gäller.
+    street: z.string().optional(),
+    postalCode: z.string().optional(),
+    city: z.string().optional(),
   })
   .strict()
 export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>

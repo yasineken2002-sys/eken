@@ -12,7 +12,13 @@ import { registerApi } from './api/auth.api'
 import { passwordSchema } from './lib/password-schema'
 import { PasswordRequirements } from './components/PasswordRequirements'
 import { useAuthStore } from '@/stores/auth.store'
-import { COMPANY_FORM_OPTIONS, LEGAL_PATHS, validateSwedishOrgNumber } from '@eken/shared'
+import {
+  COMPANY_FORM_OPTIONS,
+  LEGAL_PATHS,
+  REGISTRATION_COUNTRY,
+  organizationAddressIssues,
+  validateSwedishOrgNumber,
+} from '@eken/shared'
 import type { SwedishCompanyForm } from '@eken/shared'
 import { useNavigate } from '@tanstack/react-router'
 
@@ -34,6 +40,9 @@ const schema = z
     confirmPassword: z.string(),
     organizationName: z.string().min(1, 'Namn krävs'),
     orgNumber: z.string().optional(),
+    street: z.string(),
+    postalCode: z.string(),
+    city: z.string(),
     hasFSkatt: z.boolean().default(false),
     fSkattApprovedDate: z.string().optional(),
     vatNumber: z.string().optional(),
@@ -67,6 +76,13 @@ const schema = z
         message: result.error ?? 'Ogiltigt organisationsnummer',
         path: ['orgNumber'],
       })
+    }
+  })
+  .superRefine((data, ctx) => {
+    // Företagsadressen (F-10) — samma regel som RegisterSchema och
+    // AuthService.register kör, inte en egen avskrift.
+    for (const issue of organizationAddressIssues(data, REGISTRATION_COUNTRY)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: [issue.path] })
     }
   })
   .superRefine(({ hasFSkatt, fSkattApprovedDate }, ctx) => {
@@ -197,7 +213,7 @@ export function RegisterPage() {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: 'onTouched',
-    defaultValues: { companyForm: 'AB', hasFSkatt: false },
+    defaultValues: { companyForm: 'AB', hasFSkatt: false, street: '', postalCode: '', city: '' },
   })
 
   const companyForm = watch('companyForm')
@@ -221,6 +237,9 @@ export function RegisterPage() {
         firstName: data.firstName,
         lastName: data.lastName,
         organizationName: data.organizationName,
+        street: data.street.trim(),
+        postalCode: data.postalCode.trim(),
+        city: data.city.trim(),
         companyForm: data.companyForm,
         // accountType bevaras för bakåtkompatibilitet — enskild firma
         // mappas till PRIVATE, övriga former till COMPANY.
@@ -429,6 +448,33 @@ export function RegisterPage() {
                     {!errors.orgNumber && (
                       <p className="text-[12px] text-gray-500">{orgNumberField.helpText}</p>
                     )}
+                  </div>
+
+                  {/* Företagsadress (F-10) — krävs. Blir hyresvärdens adress på
+                      kontrakt och avsändare på avier. */}
+                  <Input
+                    label={isPrivate ? 'Adress' : 'Företagets gatuadress'}
+                    placeholder="Storgatan 1"
+                    autoComplete="street-address"
+                    error={errors.street?.message}
+                    {...register('street')}
+                  />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[130px_1fr]">
+                    <Input
+                      label="Postnummer"
+                      placeholder="111 22"
+                      autoComplete="postal-code"
+                      inputMode="numeric"
+                      error={errors.postalCode?.message}
+                      {...register('postalCode')}
+                    />
+                    <Input
+                      label="Ort"
+                      placeholder="Stockholm"
+                      autoComplete="address-level2"
+                      error={errors.city?.message}
+                      {...register('city')}
+                    />
                   </div>
 
                   {/* F-skatt — frivillig uppgift på faktura för arbete, inte lagkrav.

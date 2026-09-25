@@ -40,6 +40,10 @@ test('charges: bokföringsnot på DRAFT + SEPARATE_INVOICE utan faktura-knapp + 
       firstName: 'E2E',
       lastName: 'Charge',
       organizationName: `E2E Charge ${stamp}`,
+      // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+      street: 'Storgatan 1',
+      postalCode: '111 22',
+      city: 'Stockholm',
       acceptTerms: true,
     },
   })
