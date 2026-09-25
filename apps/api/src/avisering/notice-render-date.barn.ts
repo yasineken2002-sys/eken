@@ -1,5 +1,5 @@
 /**
- * BARNPROCESS för `avisering.notice-render-date.spec.ts` (F-9, A3).
+ * BARNPROCESS för `avisering.notice-render-date-tz.spec.ts` (F-9, A3).
  *
  * Varför en egen process: jest ger testet en egen `process.env`, så
  * `process.env.TZ = …` inne i ett test når aldrig Node (uppmätt). Den enda
