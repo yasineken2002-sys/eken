@@ -35,7 +35,12 @@ const ORG = 'org-1'
 describe('#352 · steg 6 — manuell org-trigger exkluderar DEPOSIT', () => {
   function makeService() {
     const findMany = jest.fn().mockResolvedValue([])
-    const prisma = { invoice: { findMany } }
+    const prisma = {
+      invoice: { findMany },
+      // F8 — betalningsmålet läses före urvalet; giltigt här, vägran prövas i
+      // t2-fakturakontrakt.db.spec.ts.
+      organization: { findUnique: jest.fn().mockResolvedValue({ bankgiro: '5050-1055' }) },
+    }
     const service = new NotificationsService(
       prisma as never,
       { sendOverdueReminder: jest.fn() } as never,
@@ -86,7 +91,11 @@ describe('#352 · steg 7 — AI-verktyget exkluderar DEPOSIT', () => {
   function makeExecutor(findMany: jest.Mock) {
     const noop = {} as never
     return new ToolExecutorService(
-      { invoice: { findMany } } as never,
+      {
+        invoice: { findMany },
+        // F8 — betalningsmålet läses före urvalet; giltigt här.
+        organization: { findUnique: jest.fn().mockResolvedValue({ bankgiro: '5050-1055' }) },
+      } as never,
       noop,
       noop,
       noop,

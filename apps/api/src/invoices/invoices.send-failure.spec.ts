@@ -31,8 +31,10 @@ interface MockInvoice {
   sendError: string | null
   tenant: { type: string; firstName: string; lastName: string; email: string | null } | null
   customer: null
-  organization: { name: string; invoiceColor: string | null }
+  organization: { name: string; invoiceColor: string | null; bankgiro: string | null }
   lines: unknown[]
+  payments: unknown[]
+  creditNotes: unknown[]
 }
 
 function makeService(overrides: Partial<MockInvoice> = {}) {
@@ -45,8 +47,11 @@ function makeService(overrides: Partial<MockInvoice> = {}) {
     sendError: null,
     tenant: { type: 'INDIVIDUAL', firstName: 'Test', lastName: 'Hyresgäst', email: 'h@test.se' },
     customer: null,
-    organization: { name: 'Org AB', invoiceColor: null },
+    // F8 — workern prövar betalningsmålet (giltigt här) och restskulden.
+    organization: { name: 'Org AB', invoiceColor: null, bankgiro: '5050-1055' },
     lines: [],
+    payments: [],
+    creditNotes: [],
     ...overrides,
   }
 
@@ -130,12 +135,16 @@ describe('InvoicesService.processInvoiceSendJob — synlig felhantering', () => 
 
     await service.processInvoiceSendJob('inv-1', 'org-1', 'user-1')
 
+    // F8 — workern har redan prövat betalningsmålet före renderingen och säger
+    // det uttryckligen; statusövergången ska inte vägra ett skett utskick.
     expect(service.transitionStatus).toHaveBeenCalledWith(
       'inv-1',
       'org-1',
       'SENT',
       'user-1',
       'USER',
+      {},
+      { betalningsmalProvatVidUtskick: true },
     )
     // sendError nollställs.
     expect(prisma.invoice.update).toHaveBeenCalledWith({

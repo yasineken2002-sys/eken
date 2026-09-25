@@ -205,6 +205,12 @@ test('bankavstämning: 50 betalningar matchas mot rätt faktura + korrekt verifi
   // femtio gånger i stället för matchningen.
   const bankAccountId = await skapaBankkonto(request, headers)
 
+  // F8 — DRAFT→SENT vägras för en betalbar faktura utan giltigt bankgiro, och
+  // en ny organisation har inget. Kontoval för bankimporten ovan är INTE
+  // betalningsmålet; bankgirot sätts separat.
+  const mal = await patchJson(request, '/organizations/me', { bankgiro: '5050-1055' }, headers)
+  if (!is2xx(mal.status)) throw new Error(`bankgiro kunde inte sparas (status ${mal.status})`)
+
   const prop = await postJson<{ id: string }>(
     request,
     '/properties',

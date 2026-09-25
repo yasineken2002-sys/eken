@@ -171,6 +171,8 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
         orgNumber: `5564${sfx.slice(0, 6)}`,
         fiscalYearStartMonth: 1,
         remindersEnabled: true,
+        // F8 — en påminnelse kräver ett giltigt betalningsmål (t2-fakturakontrakt).
+        bankgiro: '5050-1055',
         // ── FÄRSKHETSPAUSEN SKA ALDRIG VARA DET SOM FÄLLER ──────────────
         //
         // `importBankStatement` sätter den OMUTBARA `paymentImportStartedAt`

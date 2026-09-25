@@ -159,7 +159,9 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
         street: 'a',
         city: 'b',
         postalCode: '11111',
-        fiscalYearStartMonth: 1,
+        fiscalYearStartMonth: 1, // F8 — fakturorna markeras skickade och begär betalning; utan giltigt
+        // bankgiro vägras DRAFT→SENT (t2-fakturakontrakt.db.spec.ts).
+        bankgiro: '5050-1055',
       },
       select: { id: true },
     })
