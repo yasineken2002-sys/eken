@@ -1586,7 +1586,12 @@ jobs:
       # — huvudvägen (ny org → skapa importkonto i UI → välj → importera) och
       # samma väg vid 390 px. Kundprovet samma dag fastnade på att skapa-vägen
       # inte fanns; en spec som kan försvinna tyst hade inte skyddat mot återfall.
-      E2E_EXPECTED_TESTS: '16'
+      # 2026-09-25 (K-2): 16 → 18. `kundresa-slutprov.spec.ts` lägger till TVÅ
+      # tester — hela kundresan i EN hyresvärdssession, en org och en objektkedja,
+      # vid 1280×900 och 390×844. Granskningen fällde att de tre befintliga
+      # specarna gör var sin bit av resan mot VARSIN seedad org, så SKARVEN mellan
+      # bitarna aldrig hade körts i en vy.
+      E2E_EXPECTED_TESTS: '18'
 
     steps:
       - uses: actions/checkout@v4
