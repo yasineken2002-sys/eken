@@ -12,6 +12,7 @@ import { Input, Label, Select, Textarea } from '@/components/ui/Input'
 import { get, post, delWithBody } from '@/lib/api'
 import { resolveWebUrl } from '@/lib/webUrl'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
+import { formatPostalAddress, ORGANIZATION_ADDRESS_MISSING } from '@eken/shared'
 
 interface OrgDetail {
   id: string
@@ -204,7 +205,7 @@ function OverviewTab({ org }: { org: OrgDetail }) {
           <Row label="Faktura-mail" value={org.billingEmail ?? '—'} />
           <Row
             label="Adress"
-            value={`${org.address.street}, ${org.address.postalCode} ${org.address.city}`}
+            value={formatPostalAddress(org.address) ?? ORGANIZATION_ADDRESS_MISSING}
           />
         </CardBody>
       </Card>

@@ -45,7 +45,11 @@ import { normalizeEmail } from '../../common/utils/normalize-email'
 import { escapeHtml, safeColor } from '../../common/branding'
 import { renderUserParagraphs } from '../../mail/user-html'
 import { hittaFärskDubblett } from '../../maintenance/duplicate-ticket-window'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import {
+  DEFAULT_BRAND_COLOR,
+  formatPostalAddress,
+  ORGANIZATION_ADDRESS_MISSING,
+} from '@eken/shared'
 import { PropertiesService } from '../../properties/properties.service'
 import { UnitsService } from '../../units/units.service'
 import { AccountingService } from '../../accounting/accounting.service'
@@ -3095,7 +3099,7 @@ export class ToolExecutorService {
     <div class="party">
       <strong>HYRESVÄRD</strong>
       <div class="field"><div class="label">Namn/Företag</div><div class="value">${org.name}</div></div>
-      <div class="field"><div class="label">Adress</div><div class="value">${org.street}, ${org.postalCode} ${org.city}</div></div>
+      <div class="field"><div class="label">Adress</div><div class="value">${formatPostalAddress(org) ?? ORGANIZATION_ADDRESS_MISSING}</div></div>
       ${org.bankgiro ? `<div class="field"><div class="label">Bankgiro</div><div class="value">${org.bankgiro}</div></div>` : ''}
     </div>
     <div class="party">

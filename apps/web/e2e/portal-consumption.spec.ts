@@ -39,6 +39,10 @@ test('portal: förbruknings-kort renderas + röd hög-markering', async ({ page,
       firstName: 'E2E',
       lastName: 'Hyresvärd',
       organizationName: `E2E IMD Portal ${stamp}`,
+      // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+      street: 'Storgatan 1',
+      postalCode: '111 22',
+      city: 'Stockholm',
       acceptTerms: true,
     },
   })

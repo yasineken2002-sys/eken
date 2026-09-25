@@ -1243,6 +1243,9 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       firstName: 'Anna',
       lastName: 'Andersson',
       organizationName: 'Test AB',
+      street: 'Storgatan 1',
+      postalCode: '111 22',
+      city: 'Stockholm',
       acceptTerms: true,
     },
     ogiltig: {
@@ -1251,6 +1254,9 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       firstName: 'Anna',
       lastName: 'Andersson',
       organizationName: 'Test AB',
+      street: 'Storgatan 1',
+      postalCode: '111 22',
+      city: 'Stockholm',
       acceptTerms: false,
     },
     ogiltigVarfor:

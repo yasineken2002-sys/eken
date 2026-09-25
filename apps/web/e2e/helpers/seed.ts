@@ -65,6 +65,10 @@ export async function registerOrg(request: APIRequestContext): Promise<Registere
         firstName: 'E2E',
         lastName: 'Hyresvärd',
         organizationName: `E2E Fastigheter ${stamp}`,
+        // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+        street: 'Storgatan 1',
+        postalCode: '111 22',
+        city: 'Stockholm',
         acceptTerms: true,
       },
     }),
@@ -102,6 +106,10 @@ export async function seedActiveLease(request: APIRequestContext): Promise<Seede
         firstName: 'E2E',
         lastName: 'Hyresvärd',
         organizationName: `E2E Fastigheter ${stamp}`,
+        // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+        street: 'Storgatan 1',
+        postalCode: '111 22',
+        city: 'Stockholm',
         acceptTerms: true,
       },
     }),
@@ -273,6 +281,10 @@ export async function seedPortalTenant(request: APIRequestContext): Promise<Port
         firstName: 'E2E',
         lastName: 'Hyresvärd',
         organizationName: `E2E Fastigheter ${stamp}`,
+        // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+        street: 'Storgatan 1',
+        postalCode: '111 22',
+        city: 'Stockholm',
         acceptTerms: true,
       },
     }),
