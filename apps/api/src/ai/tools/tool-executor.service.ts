@@ -61,6 +61,7 @@ import { MailService } from '../../mail/mail.service'
 import { MaintenanceService } from '../../maintenance/maintenance.service'
 import { WorkOrderService } from '../../contractors/work-order.service'
 import { AviseringService } from '../../avisering/avisering.service'
+import { checkPaymentTarget } from '../../avisering/payment-target'
 import { InspectionsService } from '../../inspections/inspections.service'
 import { MaintenancePlanService } from '../../maintenance-plan/maintenance-plan.service'
 import { ReconciliationService } from '../../reconciliation/reconciliation.service'
@@ -1364,6 +1365,21 @@ export class ToolExecutorService {
 
         case 'send_overdue_reminders': {
           const invoiceIds = toolInput.invoiceIds as string[] | undefined
+
+          // F8 — samma betalningsmålsgrind som cronens och knappens påminnelser:
+          // ett krav utan bankgiro att betala till skickas inte, och inget
+          // `PaymentReminder`-spår skrivs. Stoppet ligger före urvalet.
+          const betalningsmalOrg = await this.prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { bankgiro: true },
+          })
+          const betalningsmal = checkPaymentTarget(betalningsmalOrg ?? {})
+          if (!betalningsmal.ok) {
+            return {
+              success: false,
+              message: `Påminnelserna kan inte skickas: ${betalningsmal.block.message}`,
+            }
+          }
 
           const overdueInvoices = await this.prisma.invoice.findMany({
             // #352 — depositioner påminns inte via AI-verktyget heller. Samma

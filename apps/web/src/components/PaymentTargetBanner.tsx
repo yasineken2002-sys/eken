@@ -37,9 +37,15 @@ export function usePaymentTargetOk(): { ok: boolean; loading: boolean } {
 interface Props {
   /** Vad blockeringen gäller på just den här sidan. Svensk, kort mening. */
   vad: string
+  /**
+   * Dokumentet i bestämd form, för meningen om vad som annars skulle hända.
+   * Default "avin" — avisidornas text är oförändrad. Fakturavyn skickar
+   * "fakturan" (F8).
+   */
+  dokument?: string
 }
 
-export function PaymentTargetBanner({ vad }: Props) {
+export function PaymentTargetBanner({ vad, dokument = 'avin' }: Props) {
   const { data: org, isLoading } = useOrganization()
   if (isLoading || !org) return null
 
@@ -62,8 +68,8 @@ export function PaymentTargetBanner({ vad }: Props) {
             {harVarde ? 'Organisationens bankgiro är ogiltigt' : 'Organisationens bankgiro saknas'}
           </p>
           <p className="mt-1 text-[13px] leading-relaxed text-red-800/90">
-            {vad} Hyresgästen behöver ett riktigt bankgiro att betala till — utan det skulle avin
-            bära ett betalningsmål som inte fungerar.
+            {vad} Hyresgästen behöver ett riktigt bankgiro att betala till — utan det skulle{' '}
+            {dokument} bära ett betalningsmål som inte fungerar.
           </p>
           {harVarde && kontroll.error && (
             <p className="mt-1 text-[12.5px] text-red-700/90">{kontroll.error}.</p>

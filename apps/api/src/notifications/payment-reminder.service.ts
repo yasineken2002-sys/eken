@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { Prisma } from '@prisma/client'
+import { swedishDaysBetween } from '@eken/shared'
 import type { PaymentReminderType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
@@ -25,6 +26,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { resolveActorType, aiOriginColumns } from '../common/ai-origin/ai-origin.context'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { checkPaymentTarget } from '../avisering/payment-target'
 import {
   IdentityReviewPausedError,
   PaymentFreshnessService,
@@ -195,6 +197,24 @@ export class PaymentReminderService {
               continue
             }
 
+            // ── F8: INGET BETALNINGSMÅL → INGEN PÅMINNELSE, INGEN AVGIFT ─────
+            //
+            // Samma form och samma skäl som avivägens K2-grind: ett brev som
+            // kräver betalning — och en avgift för det — förutsätter att det
+            // finns något att betala till. Grinden står FÖRE båda brevgrenarna
+            // och därmed före varje anspråk, avgiftsrad och verifikat.
+            //
+            // Inkasso-redo-markeringen ovan grindas INTE, precis som på avin:
+            // den skickar inget till hyresgästen och tar ingen avgift.
+            //
+            // `skipped`, inte `errors`: ett normalt tillstånd med en känd
+            // åtgärd. Fakturan omprövas nästa körning — hyresvärden fyller i
+            // bankgirot och trappan fortsätter.
+            if (!checkPaymentTarget(org).ok) {
+              summary.skipped++
+              continue
+            }
+
             // ── Dag formal+ → formell påminnelse + 60 kr avgift ──────────────
             if (daysOverdue >= org.reminderFormalDay && !sentTypes.has('REMINDER_FORMAL')) {
               // #357: utfallet avgör räknaren. `enqueueSafely` kastar aldrig, så
@@ -276,6 +296,9 @@ export class PaymentReminderService {
                   select: { id: true },
                 })
                 if (!fortfarandeAktuell) return false
+                // F8 — målet OMPRÖVAT i anspråkets transaktion: `org` lästes
+                // före loopen och kan ha rensats medan den gick.
+                if (!(await this.betalningsmalINu(tx, invoice.organizationId))) return false
                 const c = await tx.paymentReminder.createMany({
                   data: [{ invoiceId: invoice.id, type: 'REMINDER_FRIENDLY', feeAmount: 0 }],
                   skipDuplicates: true,
@@ -452,6 +475,21 @@ export class PaymentReminderService {
   // ── Privata hjälpare ─────────────────────────────────────────────────────
 
   /**
+   * F8 — organisationens betalningsmål läst INNE i en transaktion. Samma
+   * `checkPaymentTarget` som cronloopen; skillnaden är bara NÄR frågan ställs.
+   */
+  private async betalningsmalINu(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+  ): Promise<boolean> {
+    const org = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { bankgiro: true },
+    })
+    return checkPaymentTarget(org ?? {}).ok
+  }
+
+  /**
    * Hela dygn mellan `date` och `now`.
    *
    * `now` är OBLIGATORISK av samma skäl som i `RentReminderService`: en
@@ -464,8 +502,13 @@ export class PaymentReminderService {
    * Se `rent-reminder.service.ts` för det uppmätta fallet (#690/#693-serien).
    */
   private daysSince(date: Date, now: Date): number {
-    const ms = now.getTime() - date.getTime()
-    return Math.floor(ms / (24 * 60 * 60 * 1000))
+    // F7 — SVENSKA KALENDERDAGAR, samma uttryck som avins kravtrappa
+    // (`rent-reminder.service.ts`). Här stod `floor((now − dueDate) / 24 h)`:
+    // `dueDate` är `@db.Date` (UTC-midnatt), så mellan svensk och UTC-midnatt
+    // räknades dagen EFTER förfallodagen som dag 0, och ett DST-dygn på 23/25 h
+    // flyttade gränsen ytterligare. Trösklarna (`reminderFormalDay` m.fl.) är
+    // oförändrade — det är bara räkningen av dagar som följer den svenska dagen.
+    return swedishDaysBetween(date, now)
   }
 
   private async sendFriendlyReminder(
@@ -655,6 +698,10 @@ export class PaymentReminderService {
       // fakturan hade räknats som påmind utan att något brev gått. Samma skäl
       // som `assertAutomaticEffectAllowed` anger för sin egen placering.
       await this.freshness.assertIngenOlostIdentitetsgranskning(tx, invoice.organizationId)
+      // F8 — målet OMPRÖVAT före anspråk, avgiftsrad och verifikat. Cronloopen
+      // grindade på en läsning gjord före loopen; ett bankgiro som rensats
+      // under körningen ska stoppa avgiften här, inte efter att den bokförts.
+      if (!(await this.betalningsmalINu(tx, invoice.organizationId))) return false
       const claim = await tx.paymentReminder.createMany({
         data: [
           {
