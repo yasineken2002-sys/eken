@@ -24,6 +24,7 @@ import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { Input, Select } from '@/components/ui/Input'
 import { DataTable } from '@/components/ui/DataTable'
 import { InvoiceStatusBadge, Badge } from '@/components/ui/Badge'
+import { PaymentTargetBanner, usePaymentTargetOk } from '@/components/PaymentTargetBanner'
 import { InvoiceTimeline } from './components/InvoiceTimeline'
 import { InvoiceForm } from './components/InvoiceForm'
 import { CreditNoteModal } from './components/CreditNoteModal'
@@ -40,7 +41,7 @@ import {
   useCreditNotePreview,
 } from './hooks/useInvoiceQueries'
 import type { InvoiceWithOutstanding } from './hooks/useInvoiceQueries'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { formatCurrency, formatDate, formatSwedishDate } from '@eken/shared'
 import type {
   RegisterPaymentInput,
   Invoice,
@@ -256,6 +257,21 @@ export function InvoicesPage() {
   const statusMutation = useTransitionStatus()
   const payMutation = useRegisterPayment()
   const sendEmailMutation = useSendInvoiceEmail()
+
+  // ── F8: BETALNINGSMÅLET ───────────────────────────────────────────────────
+  //
+  // Samma fråga som API:ts `invoiceRequestsPayment` (kreditnota eller nollsaldo
+  // begär ingen betalning), ställd på SERVERNS egna svar — `outstanding` räknas
+  // i API:t, inte här. Knapparna stängs och bannern förklarar; SKYDDET är
+  // servergrinden, som svarar med samma svenska skäl om något ändå når fram.
+  const { ok: betalningsmalOk } = usePaymentTargetOk()
+  const begarBetalning = selected
+    ? !selected.isCreditNote && (selected.outstanding ?? Number(selected.total)) > 0
+    : false
+  const sandningSparrad = begarBetalning && !betalningsmalOk
+  const sparrTitel = sandningSparrad
+    ? 'Organisationens bankgiro saknas eller är ogiltigt — fyll i det under Inställningar'
+    : undefined
 
   // ── Statistik (beräknas från hämtad data, tab=ALL) ─────────────────────────
   const { data: allInvoices = [] } = useInvoices()
@@ -573,7 +589,9 @@ export function InvoicesPage() {
               key: 'issue',
               header: 'Utfärdat',
               cell: (i) => (
-                <span className="text-[12.5px] text-gray-500">{formatDate(i.issueDate)}</span>
+                <span className="text-[12.5px] text-gray-500">
+                  {formatSwedishDate(new Date(i.issueDate))}
+                </span>
               ),
             },
             {
@@ -583,7 +601,7 @@ export function InvoicesPage() {
                 <span
                   className={`text-[12.5px] font-medium ${i.status === 'OVERDUE' ? 'text-red-600' : 'text-gray-500'}`}
                 >
-                  {formatDate(i.dueDate)}
+                  {formatSwedishDate(new Date(i.dueDate))}
                 </span>
               ),
             },
@@ -674,8 +692,11 @@ export function InvoicesPage() {
                 {[
                   { label: 'Hyresgäst', value: getTenantName(selected.tenantId, tenants) },
                   { label: 'Status', value: <InvoiceStatusBadge status={selected.status} /> },
-                  { label: 'Utfärdat', value: formatDate(selected.issueDate) },
-                  { label: 'Förfaller', value: formatDate(selected.dueDate) },
+                  // F7 — civila datum (@db.Date) läses i SVENSK tid, inte i
+                  // webbläsarens: i en klient väster om UTC visade `formatDate`
+                  // förfallodagen en dag för tidigt. Samma text i Sverige.
+                  { label: 'Utfärdat', value: formatSwedishDate(new Date(selected.issueDate)) },
+                  { label: 'Förfaller', value: formatSwedishDate(new Date(selected.dueDate)) },
                 ].map((i) => (
                   <div key={i.label} className="rounded-xl bg-gray-50 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -751,8 +772,13 @@ export function InvoicesPage() {
                     Utskick misslyckades
                   </p>
                   <p className="mt-1 text-[12px] text-red-600/90">{selected.sendError}</p>
+                  {/* F8 — status, historisk leverans och dagens försök hålls
+                      isär: en faktura som redan gått ut har INTE "aldrig
+                      skickats" för att ett senare försök stoppades. */}
                   <p className="mt-1.5 text-[11px] text-gray-500">
-                    Fakturan skickades aldrig. Försök skicka igen nedan.
+                    {selected.status === 'DRAFT'
+                      ? 'Fakturan skickades aldrig. Försök skicka igen nedan.'
+                      : 'Det senaste utskicksförsöket gick inte iväg. Fakturans status och tidigare utskick påverkas inte.'}
                   </p>
                 </div>
               )}
@@ -801,7 +827,7 @@ export function InvoicesPage() {
                             {cn.invoiceNumber}
                           </p>
                           <p className="truncate text-[12px] text-gray-400">
-                            {formatDate(cn.issueDate)}
+                            {formatSwedishDate(new Date(cn.issueDate))}
                             {cn.reason ? ` · ${cn.reason}` : ''}
                           </p>
                         </div>
@@ -842,6 +868,13 @@ export function InvoicesPage() {
                 </div>
               )}
 
+              {sandningSparrad && (selected.status === 'DRAFT' || selected.status === 'SENT') && (
+                <PaymentTargetBanner
+                  dokument="fakturan"
+                  vad="Fakturan kan inte skickas förrän betalningsuppgifterna är ifyllda."
+                />
+              )}
+
               {/* Åtgärdsknappar baserade på status */}
               <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4">
                 {/* DRAFT: redigera, skicka, ta bort */}
@@ -854,7 +887,8 @@ export function InvoicesPage() {
                     <Button
                       size="sm"
                       variant="primary"
-                      disabled={statusMutation.isPending}
+                      disabled={statusMutation.isPending || sandningSparrad}
+                      title={sparrTitel}
                       onClick={handleSend}
                     >
                       <Send size={13} strokeWidth={1.8} />
@@ -917,6 +951,8 @@ export function InvoicesPage() {
                   <Button
                     size="sm"
                     loading={sendEmailMutation.isPending}
+                    disabled={sandningSparrad}
+                    title={sparrTitel}
                     onClick={() => {
                       const tenantEmail = tenants.find((t) => t.id === selected.tenantId)?.email
                       sendEmailMutation.mutate(selected.id, {

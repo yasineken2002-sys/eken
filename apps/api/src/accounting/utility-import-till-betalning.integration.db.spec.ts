@@ -170,6 +170,9 @@ medDb('INTEGRATION: förbrukningsfordran → filimport → betalningsmatchning',
         city: 'b',
         postalCode: '11111',
         fiscalYearStartMonth: 1,
+        // F8 — fakturan skickas i kedjan och begär betalning; utan giltigt
+        // bankgiro stoppas utskicket (t2-fakturakontrakt.db.spec.ts).
+        bankgiro: '5050-1055',
       },
       select: { id: true },
     })

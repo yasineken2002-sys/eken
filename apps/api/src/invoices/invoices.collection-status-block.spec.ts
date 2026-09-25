@@ -46,6 +46,14 @@ function makeService(invoiceStatus: string, allocations: Array<{ id: string }> =
       findFirst: jest
         .fn()
         .mockResolvedValue({ id: 'inv-1', status: invoiceStatus, invoiceNumber: 'F-2026-0001' }),
+      // F8 — DRAFT→SENT läser underlaget för betalningsmålet i transaktionen.
+      findFirstOrThrow: jest.fn().mockResolvedValue({
+        isCreditNote: false,
+        total: 1000,
+        payments: [],
+        creditNotes: [],
+        organization: { bankgiro: '5050-1055' },
+      }),
       update: jest
         .fn()
         .mockImplementation((arg: { data: Record<string, unknown> }) =>

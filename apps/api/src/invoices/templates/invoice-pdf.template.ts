@@ -1,5 +1,5 @@
 import type { Decimal } from '@prisma/client/runtime/library'
-import { DEFAULT_BRAND_COLOR } from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, swedishDateKey } from '@eken/shared'
 
 interface InvoicePdfData {
   invoiceColor?: string
@@ -108,8 +108,13 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
+// F7 — DATUMET LÄSES I SVENSK TID, inte i serverns. `toLocaleDateString('sv-SE')`
+// utan tidszon formaterade i processens TZ: fakturans `@db.Date` (UTC-midnatt)
+// blev föregående dag på en server väster om UTC — förfallodagen på dokumentet
+// en dag tidigare än den avtalade. `swedishDateKey` är samma delade svenska
+// kalender som avins dokument använder, och formen (ÅÅÅÅ-MM-DD) är oförändrad.
 function formatDate(value: Date | string): string {
-  return new Date(value).toLocaleDateString('sv-SE')
+  return swedishDateKey(new Date(value))
 }
 
 function tenantName(t: InvoicePdfData['invoice']['tenant']): string {
