@@ -13,6 +13,7 @@ import { get, post, delWithBody } from '@/lib/api'
 import { resolveWebUrl } from '@/lib/webUrl'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
 import { formatPostalAddress, ORGANIZATION_ADDRESS_MISSING } from '@eken/shared'
+import { organizationHeaderDescription } from './organization-header'
 
 interface OrgDetail {
   id: string
@@ -88,7 +89,7 @@ export function OrganizationDetailPage() {
     <>
       <PageHeader
         title={org.name}
-        description={`${org.customerNumber ?? '—'} · ${org.orgNumber ?? '—'} · ${org.address.street}, ${org.address.postalCode} ${org.address.city}`}
+        description={organizationHeaderDescription(org)}
         action={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setImpersonateOpen(true)}>

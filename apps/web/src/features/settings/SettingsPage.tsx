@@ -951,7 +951,15 @@ export function SettingsPage() {
                 {org && !formatPostalAddress(org) && (
                   <div className="flex items-start gap-1.5 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
                     <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                    Företagsadressen saknas. Dokument visar "Adress saknas" tills du fyller i den.
+                    {/* A7 — texten påstår bara det som gäller: kontraktet skriver
+                        att adressen saknas, avin utelämnar avsändarraden, och
+                        redan skapade dokument skrivs inte om. */}
+                    <span>
+                      Företagsadressen saknas, så den kommer inte med i dokument du skapar nu — till
+                      exempel anges den som saknad i kontrakt och utelämnas på avier. Dokument som
+                      redan skapats uppdateras inte automatiskt; skapa ett nytt kontrakt efter att
+                      du sparat adressen.
+                    </span>
                   </div>
                 )}
                 <Input
