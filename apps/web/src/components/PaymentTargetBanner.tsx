@@ -76,7 +76,7 @@ export function PaymentTargetBanner({ vad, dokument = 'avin' }: Props) {
           )}
           <Link
             to="/settings"
-            className="mt-3 inline-flex h-8 items-center rounded-[10px] bg-red-600 px-3.5 text-[13px] font-medium text-white transition-colors hover:bg-red-700"
+            className="mt-3 inline-flex min-h-8 items-center rounded-[10px] bg-red-600 px-3.5 py-1.5 text-[13px] font-medium leading-tight text-white transition-colors hover:bg-red-700"
           >
             Fyll i bankgiro under Inställningar
           </Link>

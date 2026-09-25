@@ -41,7 +41,7 @@ import {
   useCreditNotePreview,
 } from './hooks/useInvoiceQueries'
 import type { InvoiceWithOutstanding } from './hooks/useInvoiceQueries'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { formatCurrency, formatDate, formatSwedishDate } from '@eken/shared'
 import type {
   RegisterPaymentInput,
   Invoice,
@@ -589,7 +589,9 @@ export function InvoicesPage() {
               key: 'issue',
               header: 'Utfärdat',
               cell: (i) => (
-                <span className="text-[12.5px] text-gray-500">{formatDate(i.issueDate)}</span>
+                <span className="text-[12.5px] text-gray-500">
+                  {formatSwedishDate(new Date(i.issueDate))}
+                </span>
               ),
             },
             {
@@ -599,7 +601,7 @@ export function InvoicesPage() {
                 <span
                   className={`text-[12.5px] font-medium ${i.status === 'OVERDUE' ? 'text-red-600' : 'text-gray-500'}`}
                 >
-                  {formatDate(i.dueDate)}
+                  {formatSwedishDate(new Date(i.dueDate))}
                 </span>
               ),
             },
@@ -690,8 +692,11 @@ export function InvoicesPage() {
                 {[
                   { label: 'Hyresgäst', value: getTenantName(selected.tenantId, tenants) },
                   { label: 'Status', value: <InvoiceStatusBadge status={selected.status} /> },
-                  { label: 'Utfärdat', value: formatDate(selected.issueDate) },
-                  { label: 'Förfaller', value: formatDate(selected.dueDate) },
+                  // F7 — civila datum (@db.Date) läses i SVENSK tid, inte i
+                  // webbläsarens: i en klient väster om UTC visade `formatDate`
+                  // förfallodagen en dag för tidigt. Samma text i Sverige.
+                  { label: 'Utfärdat', value: formatSwedishDate(new Date(selected.issueDate)) },
+                  { label: 'Förfaller', value: formatSwedishDate(new Date(selected.dueDate)) },
                 ].map((i) => (
                   <div key={i.label} className="rounded-xl bg-gray-50 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -822,7 +827,7 @@ export function InvoicesPage() {
                             {cn.invoiceNumber}
                           </p>
                           <p className="truncate text-[12px] text-gray-400">
-                            {formatDate(cn.issueDate)}
+                            {formatSwedishDate(new Date(cn.issueDate))}
                             {cn.reason ? ` · ${cn.reason}` : ''}
                           </p>
                         </div>
