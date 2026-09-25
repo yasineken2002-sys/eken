@@ -18,7 +18,7 @@ import {
   DETECTED_WEB_IMAGE_TYPES,
   MAX_LOGO_BYTES,
 } from '../common/utils/file-validation'
-import { validateSwedishBankgiro } from '@eken/shared'
+import { organizationAddressIssues, validateSwedishBankgiro } from '@eken/shared'
 
 interface MultipartFile {
   toBuffer(): Promise<Buffer>
@@ -142,7 +142,7 @@ export class OrganizationsService {
     // det lagrade värdet, eftersom det är det som gäller efter skrivningen.
     const nuvarande = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { shadowAgentEnabled: true, agentExecutionEnabled: true },
+      select: { shadowAgentEnabled: true, agentExecutionEnabled: true, country: true },
     })
     if (!nuvarande) throw new NotFoundException('Organisationen hittades inte')
 
@@ -244,9 +244,38 @@ export class OrganizationsService {
       return { bankgiro: kontroll.normalized }
     })()
 
+    // ── FÖRETAGSADRESSEN (F-10): EN GRUPP, ORGANISATIONENS EGET LAND ────────
+    //
+    // Här och inte i DTO:n, av två skäl. Landet finns inte i kroppen — det är
+    // organisationens lagrade `country` som avgör om den svenska
+    // postnummerregeln gäller, och en utländsk organisation ska inte få den.
+    // Och de tre fälten är EN uppgift: att ändra bara orten hade kunnat lämna en
+    // adress som aldrig funnits. Skickas något av dem krävs därför alla tre.
+    //
+    // `null` betyder "ingen ändring", av samma skäl som bankgirot nedan:
+    // GET-svaret skickas ofta tillbaka orört. Att RENSA en adress går inte här —
+    // en tom adress är just det tillstånd F-10 lagar.
+    const adressUpdate = (() => {
+      const delar = [dto.street, dto.postalCode, dto.city]
+      if (delar.every((d) => d == null)) return {}
+      if (delar.some((d) => d == null)) {
+        throw new BadRequestException(
+          'Ange gatuadress, postnummer och ort tillsammans — adressen sparas som en helhet.',
+        )
+      }
+      const fel = organizationAddressIssues(dto, nuvarande.country)
+      if (fel.length > 0) throw new BadRequestException(fel.map((f) => f.message).join('. '))
+      return {
+        street: dto.street!.trim(),
+        postalCode: dto.postalCode!.trim(),
+        city: dto.city!.trim(),
+      }
+    })()
+
     return this.prisma.organization.update({
       where: { id: organizationId },
       data: {
+        ...adressUpdate,
         ...(dto.lateBookingMaterialityThreshold != null
           ? { lateBookingMaterialityThreshold: dto.lateBookingMaterialityThreshold }
           : {}),

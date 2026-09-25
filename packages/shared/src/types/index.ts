@@ -96,7 +96,15 @@ export interface Organization {
   fSkattApprovedDate?: string | null
   email: string
   phone?: string
-  address: Address
+  // PLATTA adressfält — så som `GET /organizations/me` faktiskt svarar
+  // (SAFE_ORGANIZATION_SELECT). Typen sa `address: Address` fram till
+  // 2026-09-25, och inställningssidan läste därför `org.address`, som aldrig
+  // fanns: adressraden visade "–" även för en organisation med adress.
+  // Historiska organisationer har tomma strängar här (F-10).
+  street: string
+  postalCode: string
+  city: string
+  country: string
   logoStorageKey?: string
   logoStorageUrl?: string
   bankgiro?: string

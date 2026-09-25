@@ -2,6 +2,7 @@ import { LOCALE, CURRENCY } from '../constants'
 
 export * from './swedish-org-number'
 export * from './swedish-bankgiro'
+export * from './organization-address'
 export * from './group-sent-messages'
 export * from './deposit-deductions'
 
