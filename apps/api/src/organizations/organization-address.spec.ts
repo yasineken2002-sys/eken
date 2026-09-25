@@ -52,7 +52,9 @@ describe('organizationAddressIssues', () => {
 
   it('saknade fält (undefined/null) ger fel, inte krasch', () => {
     expect(organizationAddressIssues({}, 'SE')).toHaveLength(3)
-    expect(organizationAddressIssues({ street: null, postalCode: null, city: null }, 'SE')).toHaveLength(3)
+    expect(
+      organizationAddressIssues({ street: null, postalCode: null, city: null }, 'SE'),
+    ).toHaveLength(3)
   })
 
   it('längdtak', () => {
