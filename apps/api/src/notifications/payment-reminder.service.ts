@@ -477,6 +477,9 @@ export class PaymentReminderService {
   /**
    * F8 — organisationens betalningsmål läst INNE i en transaktion. Samma
    * `checkPaymentTarget` som cronloopen; skillnaden är bara NÄR frågan ställs.
+   * Cronloopen grindade på en läsning gjord FÖRE loopen; ett bankgiro som
+   * rensats under körningen ska stoppa anspråk och avgift, inte upptäckas efter
+   * att avgiften bokförts.
    */
   private async betalningsmalINu(
     tx: Prisma.TransactionClient,
@@ -698,10 +701,7 @@ export class PaymentReminderService {
       // fakturan hade räknats som påmind utan att något brev gått. Samma skäl
       // som `assertAutomaticEffectAllowed` anger för sin egen placering.
       await this.freshness.assertIngenOlostIdentitetsgranskning(tx, invoice.organizationId)
-      // F8 — målet OMPRÖVAT före anspråk, avgiftsrad och verifikat. Cronloopen
-      // grindade på en läsning gjord före loopen; ett bankgiro som rensats
-      // under körningen ska stoppa avgiften här, inte efter att den bokförts.
-      if (!(await this.betalningsmalINu(tx, invoice.organizationId))) return false
+      if (!(await this.betalningsmalINu(tx, invoice.organizationId))) return false // F8
       const claim = await tx.paymentReminder.createMany({
         data: [
           {
