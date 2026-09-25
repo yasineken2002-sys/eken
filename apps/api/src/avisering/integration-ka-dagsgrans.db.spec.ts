@@ -43,8 +43,60 @@ import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
 
+/**
+ * ── KD-4: SERVERNS ZON BEVISAS I EN EGEN PROCESS, ALDRIG INNE I JEST ────────
+ *
+ * Tidigare tilldelade KD-4 `process.env.TZ = 'America/Los_Angeles'` inne i ett
+ * test. Uppmätt (T2 och T3, processbunden sond): jest ger testet en KOPIA av
+ * `process.env`, tilldelningen når inte Node, och fallet mätte UTC två gånger.
+ *
+ * Nu körs HELA filen en extra gång i ett eget CI-steg:
+ *
+ *   TZ=America/Los_Angeles KD4_KRAV_ZON=America/Los_Angeles jest <den här filen>
+ *
+ * och ankaret nedan kräver att processens verkliga zon — IANA-namn OCH offset
+ * vid dygnsgränsen — är den begärda. I huvudsviten är `KD4_KRAV_ZON` osatt, och
+ * då påstår inget fall en annan zon än processens egen.
+ */
+const KRAV_ZON = process.env.KD4_KRAV_ZON
+
+/** Offset (minuter, som `getTimezoneOffset`) som zonen `zon` har vid `t`. */
+function offsetI(zon: string, t: Date): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zon,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(t)
+      .map((x) => [x.type, x.value]),
+  )
+  const lokal = Date.UTC(+p.year!, +p.month! - 1, +p.day!, +p.hour!, +p.minute!, +p.second!)
+  return (t.getTime() - lokal) / 60_000
+}
+
 describe('förutsättningar', () => {
   it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => expect(HAR_DB).toBe(true))
+
+  it('KD-4 ZONANKARE: processens verkliga zon och offset är den begärda (när KD4_KRAV_ZON är satt)', () => {
+    const verklig = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (!KRAV_ZON) {
+      // Huvudsviten: ingen zon begärd. Ankaret registrerar bara processens zon.
+      expect(typeof verklig).toBe('string')
+      return
+    }
+    expect(verklig).toBe(KRAV_ZON)
+    // Offset vid den svenska dygnsgränsen som provet använder, mätt på två sätt:
+    // processens lokala tid (`getTimezoneOffset`) mot zonens IANA-regel.
+    for (const t of [new Date('2026-07-01T21:59:59Z'), new Date('2026-07-01T22:00:00Z')]) {
+      expect(t.getTimezoneOffset()).toBe(offsetI(KRAV_ZON, t))
+    }
+  })
 })
 
 const GILTIGT = '5050-1055'
@@ -269,20 +321,15 @@ medDb('K-a · betalningsmålet mot den svenska dygnsgränsen', () => {
     expect(efter.state).toBe('BLOCKED_PAYMENT_TARGET')
   }, 40_000)
 
-  it('KD-4 samma utfall i America/Los_Angeles — zonen är serverns, regeln är svensk', async () => {
+  it('KD-4 samma utfall i processens zon — zonen är serverns, regeln är svensk (LA: eget CI-steg)', async () => {
     // Regeln läser Europe/Stockholm ur den delade kalendern, inte processens zon.
-    // Provet kör i samma process, så det som visas är att UTFALLET inte beror på
-    // en lokal tolkning av tidpunkten: samma två instanter ger samma svar.
+    // Vilken zon processen har avgörs UTANFÖR provet (se ZONANKARET överst):
+    // huvudsviten kör runnerns zon, CI-steget "KD-4 i America/Los_Angeles" kör
+    // hela filen med TZ satt före processtart och ankaret bundet.
     await satMal(null)
     const id = await avi({ stage: 'NONE' })
-    const tidigare = process.env.TZ
-    try {
-      process.env.TZ = 'America/Los_Angeles'
-      expect((await status(id, SISTA_SEKUNDEN)).state).toBe('NOT_APPLICABLE')
-      expect((await status(id, FORSTA_EFTER)).state).toBe('BLOCKED_PAYMENT_TARGET')
-    } finally {
-      process.env.TZ = tidigare
-    }
+    expect((await status(id, SISTA_SEKUNDEN)).state).toBe('NOT_APPLICABLE')
+    expect((await status(id, FORSTA_EFTER)).state).toBe('BLOCKED_PAYMENT_TARGET')
   }, 40_000)
 
   it('KD-3 ingen ekonomisk effekt vid sista sekunden: avgift, verifikat och kö orörda', async () => {
