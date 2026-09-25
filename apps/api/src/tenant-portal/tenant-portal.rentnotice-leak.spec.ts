@@ -54,10 +54,17 @@ const INTERNAL_FIELDS = [
  */
 const CALCULATION_ONLY_FIELDS = ['type', 'interestAccruedAmount', 'payments'] as const
 
+// 2026-09-25 (portal-mobil) — `type` SLÄPPS i vyns utflöde (RENT | DEPOSIT, hyresgästens
+// egen avi): portalen skiljer annars inte depositionsavin från hyresavin samma månad.
+// Fältet får fortfarande INTE finnas i GDPR-exportens select (kontrollen nedan är kvar).
+const RELEASED_IN_VIEW_OUTPUT = ['type'] as const
+
 const FORBIDDEN_IN_OUTPUT = [
   ...INTERNAL_FIELDS,
   'reminderFeeAmount',
-  ...CALCULATION_ONLY_FIELDS,
+  ...CALCULATION_ONLY_FIELDS.filter(
+    (f) => !(RELEASED_IN_VIEW_OUTPUT as readonly string[]).includes(f),
+  ),
 ] as const
 
 const EXPECTED_OUTPUT_KEYS = [
@@ -82,6 +89,8 @@ const EXPECTED_OUTPUT_KEYS = [
   'sentAt',
   'status',
   'totalAmount',
+  // 2026-09-25 (portal-mobil): avitypen, se RELEASED_IN_VIEW_OUTPUT ovan.
+  'type',
   'unitName',
   'vatAmount',
   'year',

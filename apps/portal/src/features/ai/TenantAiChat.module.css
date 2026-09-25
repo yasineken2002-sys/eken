@@ -23,6 +23,16 @@
   max-width: 100vw;
 }
 
+/* Chattknappen i sidans flöde (PortalLayout). Samma utseende som .fab, men utan fast
+   position: en flytande knapp täckte "Ladda ned PDF" och andra kontroller i listor på mobil. */
+.fabInline {
+  composes: fab;
+  position: static;
+  width: 44px;
+  height: 44px;
+  box-shadow: 0 2px 8px rgb(var(--ev-brand-500-ch) / 0.25);
+}
+
 .fab:hover {
   transform: translateY(-2px);
 }

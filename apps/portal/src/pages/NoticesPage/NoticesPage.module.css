@@ -15,11 +15,13 @@
 
 /* ── Filter chips ────────────────────────────────────── */
 
+/* Chipsen BRYTS på flera rader i stället för att rulla i sidled: på 390 px klipptes
+   tredje chipet av utan synlig markering om att raden gick att rulla. */
 .filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px 16px 16px;
-  overflow-x: auto;
 }
 
 .filterChip {
@@ -70,6 +72,22 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+}
+
+/* Avins typ (Hyresavi / Deposition) ur API:t — skiljer två avier samma månad. */
+.cardType {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ev-neutral-500);
+  margin-bottom: 2px;
+}
+
+.cardAmountLabel {
+  font-size: 12px;
+  color: var(--ev-neutral-500);
+  margin-bottom: 2px;
 }
 
 .cardMonth {

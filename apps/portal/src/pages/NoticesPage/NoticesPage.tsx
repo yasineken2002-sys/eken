@@ -23,6 +23,12 @@ const UNPAID_INVOICE_STATUSES = new Set(['SENT', 'OVERDUE', 'PARTIAL'])
 const PAID_INVOICE_STATUSES = new Set(['PAID'])
 
 const UNPAID_NOTICE_STATUSES = new Set(['SENT', 'OVERDUE'])
+
+/** Avins typ i klartext — ur API:ts `type`, aldrig gissad. Okänd/saknad typ → neutral etikett. */
+const AVI_TYP_TEXT: Record<string, string> = { RENT: 'Hyresavi', DEPOSIT: 'Deposition' }
+export function aviTypText(type: string | undefined): string {
+  return (type && AVI_TYP_TEXT[type]) || 'Avi'
+}
 const PAID_NOTICE_STATUSES = new Set(['PAID'])
 
 function formatCurrencySv(amount: number): string {
@@ -273,9 +279,12 @@ function RentNoticesList({
         return (
           <div key={notice.id} className={`${styles.card} ${overdue ? styles.cardOverdue : ''}`}>
             <div className={styles.cardTop}>
-              <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
-                {formatMonthYear(notice.month, notice.year)}
-              </p>
+              <div>
+                <p className={styles.cardType}>{aviTypText(notice.type)}</p>
+                <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
+                  {formatMonthYear(notice.month, notice.year)}
+                </p>
+              </div>
               <StatusBadge type="rent-notice" status={displayStatus} />
             </div>
 
@@ -287,7 +296,15 @@ function RentNoticesList({
                 fakturakortet visar raden så fort paid > 0, avin döljer den även
                 vid exakt full betalning (paid === nominalTotal) — då är payable
                 0 och raden skulle inte förklara något. */}
+            {/* Beloppet är RESTSKULDEN (payableTotal) — märkt som det, så att 0 kr på en betald
+                avi inte läses som avins belopp. Avins belopp visas bara med egen etikett. */}
+            <p className={styles.cardAmountLabel}>Kvar att betala</p>
             <p className={styles.cardAmount}>{formatCurrencySv(notice.payableTotal)}</p>
+            {notice.payableTotal === 0 && notice.nominalTotal > 0 && (
+              <p className={styles.cardAmountSub}>
+                Avins belopp {formatCurrencySv(notice.nominalTotal)}
+              </p>
+            )}
             {notice.paid > 0 && notice.paid !== notice.nominalTotal && (
               <p className={styles.cardAmountSub}>
                 Kvar av {formatCurrencySv(notice.nominalTotal)} — {formatCurrencySv(notice.paid)}{' '}
