@@ -1761,8 +1761,28 @@ export class RentReminderService {
     //
     // För stage REMINDED fanns luckan inte, eftersom `REMINDERS_OFF` ligger före
     // det nya skälet i state-kedjan. Bara NONE-grenen passerade förbi den.
+    // ── K-a: DAGSREGELN, INTE LAGRAD STATUS ─────────────────────────────────
+    //
+    // Felet uppstår FÖRST I KOMBINATIONEN, och ingen av grenarna har det ensam.
+    // Efter #917 kan en avi ha LAGRAD `OVERDUE` medan dess svenska förfallodag
+    // inte passerat — det är precis den radklass #917:s visningslager döljer.
+    // Cron-loopen hoppar då över avin (`daysOverdue <= 0`, rad ~349), men
+    // predikatet här litade på `status === 'OVERDUE'` och hade sagt
+    // `BLOCKED_PAYMENT_TARGET` om ett hinder som inte finns.
+    //
+    // `daysOverdue` några rader ovan ÄR cronens regel: båda är
+    // `swedishDaysBetween(notice.dueDate, …)`. Termen återanvänder den i stället
+    // för att räkna om något — ingen andra kalenderimplementation, ingen egen
+    // import. `status === 'OVERDUE'` står kvar: den är fortfarande cronens eget
+    // urvalsfilter, den är bara inte längre ENSAM bärare av åldern.
+    //
+    // DAGSREGELN HÖR TILL PÅMINNELSESTEGET. För stage `REMINDED` är avgiften
+    // redan tagen och det som återstår är påminnelsens UTSKICK, som inte har
+    // någon dagsgrind — därför får `REMINDED`-grenen nedan ingen datumterm.
+    // `READY`/inkasso har annan semantik och får ingen målgrind alls.
     const arPaminnelsekandidat =
       notice.status === 'OVERDUE' &&
+      daysOverdue > 0 &&
       !notice.isBackfill &&
       debt.ocrOutstanding > 0 &&
       org.remindersEnabled
