@@ -74,7 +74,7 @@ AiMemoryTenant          createMany  common/ai-subjects/ai-subject-writer.ts     
 AiMessage               create      common/ai-subjects/ai-subject-writer.ts                 A kedje-query
 AiMessageTenant         createMany  common/ai-subjects/ai-subject-writer.ts                 INGEN UPPTÄCKT
 AiTenantConversation    create      ai/tenant-ai.service.ts                                 D annan nyckel
-InspectionImage         create      inspections/inspections.service.ts                      C scopat anrop
+InspectionImage         create      inspections/inspections.service.ts                      A kedje-query
 InspectionImage         create      inspections/inspections.service.ts                      P förälder org-bunden  ← nästlad via Inspection.images
 InspectionItem          create      inspections/inspections.service.ts                      A kedje-query
 InspectionItem          create      inspections/inspections.service.ts                      P förälder org-bunden  ← nästlad via Inspection.items

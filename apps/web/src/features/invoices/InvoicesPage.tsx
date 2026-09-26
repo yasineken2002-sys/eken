@@ -398,8 +398,15 @@ export function InvoicesPage() {
 
   function handleDelete() {
     if (!selected) return
-    deleteMutation.mutate(selected.id, {
+    const id = selected.id
+    deleteMutation.mutate(id, {
       onSuccess: () => {
+        // H1 — samma id-grind som `visaOmFortfarandeVald` (#925 A4). Svaret
+        // gäller utkastet som togs bort. Har användaren hunnit stänga det eller
+        // öppna en annan faktura — kanske mitt i en redigering — ska svaret inte
+        // stänga den vyn eller dess bekräftelse. Listan invalideras av hooken
+        // oavsett, så det makulerade utkastet försvinner ändå ur "Alla".
+        if (valdId.current !== id) return
         setSelected(null)
         setShowDeleteConfirm(false)
       },

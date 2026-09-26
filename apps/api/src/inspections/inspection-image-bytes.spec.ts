@@ -50,12 +50,37 @@ describe('härledning: ingen produktväg kan peka ut en befintlig besiktningsnyc
   const utanKommentarer = (t: string) =>
     t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
+  // ÄNDRAD MEDVETET (OB5, CLAUDE1 2026-09-26): analysvägen tar nu emot en ÅTERFÖRSÖKSNYCKEL per
+  // användarval och återanvänder en redan sparad bilaga för samma val. Vaktens fråga står kvar
+  // oförändrad — kan en klient peka ut en BEFINTLIG lagringsnyckel? — och svaret ska fortfarande
+  // vara nej:
+  //   • varje uppladdad nyckel slutar på en ny server-uuid(), aldrig på klientdata;
+  //   • klientens nyckel är ett UUID-validerat SEGMENT under <org>/<besiktning>/, aldrig en hel nyckel;
+  //   • återanvändning gäller RADEN — ingen PutObject mot en befintlig nyckel (återanvända filer
+  //     hoppas över före uppladdningen).
+  // Blir något av detta falskt ska provet bli rött, som förut.
   it('besiktningsnyckeln myntas ur uuid() — aldrig ur klientdata', () => {
-    const controller = läs('inspections/inspections.controller.ts')
+    // Blankstegsnormaliserad: formateringen får inte avgöra utfallet.
+    const controller = utanKommentarer(läs('inspections/inspections.controller.ts')).replace(
+      /\s+/g,
+      ' ',
+    )
     expect(controller).toContain(
       'const safeName = `${uuid()}.${extensionForDetectedMime(mimeType)}`',
     )
-    expect(controller).toContain('const storageKey = `inspections/${orgId}/${safeName}`')
+    expect(controller).toContain(
+      'const storageKey = nyckel ? `${prefixFor(nyckel)}${safeName}` : `inspections/${orgId}/${safeName}`',
+    )
+    expect(controller).toContain(
+      'const prefixFor = (nyckel: string) => `inspections/${orgId}/${id}/${nyckel}/`',
+    )
+    expect(controller).toContain('if (!ATERFORSOKSNYCKEL.test(nyckel))')
+    // Återanvänd bilaga → ingen uppladdning: `continue` före `uploadFile`.
+    expect(controller).toMatch(
+      /if \(återanvända\.has\(i\)\) continue[\s\S]*?this\.storage\.uploadFile\(f\.buffer, storageKey, mimeType\)/,
+    )
+    // Ingen uppladdning till en nyckel läst ur en befintlig rad.
+    expect(controller).not.toMatch(/uploadFile\([^)]*befintlig/)
     // Filnamnet klienten skickar används till `filename` (visning), aldrig till nyckeln.
     expect(controller).not.toMatch(/storageKey\s*=\s*`[^`]*\$\{f\.filename\}/)
   })

@@ -14,7 +14,7 @@
  * att kroken begär omläsningen i båda utfallen.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as InspectionsApi from '../api/inspections.api'
@@ -60,5 +60,56 @@ describe('useAnalyzeInspection — omläsning efter försöket', () => {
       await result.current.mutateAsync({ id: 'b1', files: [bild] })
     })
     expect(lasteOm()).toBe(1)
+  })
+})
+
+/**
+ * BILD-02 (CODEX1 deltabesked 17:37Z): mutationen ska stå kvar som PÅGÅENDE tills
+ * omläsningen efter försöket är klar. Annars öppnar panelen bildtexten i glappet
+ * mellan felsvaret och det inlästa sparutfallet, och en ändring där ersätts tyst.
+ */
+describe('useAnalyzeInspection — pågående tills sparutfallet är inläst (BILD-02)', () => {
+  function riggMedHallenOmlasning() {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    let slapp!: () => void
+    const hallen = new Promise<void>((r) => (slapp = r))
+    vi.spyOn(qc, 'invalidateQueries').mockImplementation(() => hallen)
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useAnalyzeInspection(), { wrapper })
+    return { result, slapp }
+  }
+
+  it.each([
+    ['misslyckat', () => analyzeInspection.mockRejectedValueOnce(new Error('400'))],
+    [
+      'lyckat',
+      () =>
+        analyzeInspection.mockResolvedValueOnce({
+          analysis: {},
+          updatedItems: 0,
+          createdItems: 0,
+          bildIds: [],
+        }),
+    ],
+  ])('%s försök: isPending sant tills omläsningen släpps', async (_namn, utfall) => {
+    utfall()
+    const { result, slapp } = riggMedHallenOmlasning()
+    let klar = false
+    act(() => {
+      void result.current
+        .mutateAsync({ id: 'b1', files: [bild] })
+        .catch(() => undefined)
+        .finally(() => (klar = true))
+    })
+    await waitFor(() => expect(analyzeInspection).toHaveBeenCalled())
+    // Svaret har kommit, men omläsningen hålls: fortfarande pågående.
+    await new Promise((r) => setTimeout(r, 30))
+    expect(result.current.isPending).toBe(true)
+    expect(klar).toBe(false)
+    await act(async () => slapp())
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(klar).toBe(true)
   })
 })

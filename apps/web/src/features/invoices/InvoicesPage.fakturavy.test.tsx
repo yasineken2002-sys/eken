@@ -63,6 +63,8 @@ const HYRESGAST = '44444444-4444-4444-8444-000000000001'
 const AVTAL = '11111111-1111-4111-8111-000000000001'
 const A = '33333333-3333-4333-8333-00000000000a'
 const B = '33333333-3333-4333-8333-00000000000b'
+/** Ett andra UTKAST — H1 kräver en faktura som går att redigera medan A:s DELETE väntar. */
+const C = '33333333-3333-4333-8333-00000000000c'
 
 type Status = 'DRAFT' | 'SENT' | 'PAID' | 'VOID'
 interface Rad {
@@ -144,7 +146,7 @@ function fullFaktura(f: Lagrad) {
 
 // ─── Riggens server ──────────────────────────────────────────────────────────
 
-type Vag = 'status' | 'update' | 'pay'
+type Vag = 'status' | 'update' | 'pay' | 'delete'
 interface Anrop {
   metod: string
   url: string
@@ -226,6 +228,17 @@ beforeEach(() => {
         invoiceNumber: 'F-2026-0002',
         status: 'SENT',
         lines: [rad('rad-b1', 'Hyra oktober lgh 1102', 3400)],
+        paidAt: null,
+        betalt: 0,
+      },
+    ],
+    [
+      C,
+      {
+        id: C,
+        invoiceNumber: 'F-2026-0003',
+        status: 'DRAFT',
+        lines: [rad('rad-c1', 'Hyra oktober lgh 1103', 2100)],
         paidAt: null,
         betalt: 0,
       },
@@ -324,6 +337,15 @@ beforeEach(() => {
       f.status = 'PAID'
       f.paidAt = '2026-10-15T00:00:00.000Z'
       return avslutaMutation(config, 'pay', f, 201)
+    }
+    // DELETE /invoices/:id makulerar ett utkast (soft-delete, BFL) — samma
+    // riggform: ändringen UTFÖRS, sedan hålls eller fälls svaret.
+    if (metod === 'DELETE' && f && !m![2]) {
+      f.status = 'VOID'
+      const sparr = hallInne.get('delete')
+      if (sparr) await sparr.vantar
+      if (felEfterCommit.has('delete')) fel(config, 502)
+      return svar(config, null)
     }
     fel(config, 404)
   }
@@ -626,6 +648,125 @@ describe('A4: svaret på en handling öppnar inte en faktura användaren lämnat
       1200,
       'Skickad',
     )
+    stang()
+  })
+})
+
+// ─── H1 — sent svar på "Ta bort utkast" ──────────────────────────────────────
+
+describe('H1: ett sent DELETE-svar stänger inte en faktura användaren bytt till', () => {
+  /** Tar bort A och håller svaret; returnerar släppet. */
+  async function taBortAOchHall(utfall: 'lyckat' | 'fel' = 'lyckat') {
+    if (utfall === 'fel') felEfterCommit.add('delete')
+    const slapp = spar('delete')
+    const r = rendera()
+    const dialogA = await oppna('F-2026-0001')
+    fireEvent.click(within(dialogA).getByRole('button', { name: /Ta bort/ }))
+    const bekrafta = await screen.findByRole('dialog', { name: 'Ta bort utkast' })
+    fireEvent.click(within(bekrafta).getByRole('button', { name: 'Ta bort utkast' }))
+    await waitFor(() => expect(antal('DELETE', `/invoices/${A}`)).toBe(1))
+    return { ...r, slapp, dialogA }
+  }
+
+  /** Medan svaret väntar: avbryt bekräftelsen, stäng A, öppna C och börja redigera. */
+  async function bytTillCOchRedigera(dialogA: HTMLElement) {
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Ta bort utkast' })).getByRole('button', {
+        name: 'Avbryt',
+      }),
+    )
+    fireEvent.click(within(dialogA).getByRole('button', { name: 'Stäng' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'F-2026-0001' })).toBeNull())
+    const dialogC = await oppna('F-2026-0003')
+    fireEvent.click(within(dialogC).getByRole('button', { name: /Redigera/ }))
+    const form = await screen.findByRole('dialog', { name: 'Redigera faktura' })
+    const beskr = (await within(form).findAllByPlaceholderText('Beskrivning'))[0] as HTMLInputElement
+    fireEvent.change(beskr, { target: { value: 'Osparad ändring på C' } })
+    return beskr
+  }
+
+  it('lyckat svar efter byte: A makulerad, C och dess osparade fält står kvar', async () => {
+    const { slapp, dialogA, renderfel, stang } = await taBortAOchHall()
+    await bytTillCOchRedigera(dialogA)
+
+    await act(async () => {
+      slapp()
+    })
+    await tickar()
+
+    expect(fakturor.get(A)!.status).toBe('VOID')
+    expect(antal('DELETE', `/invoices/${A}`)).toBe(1)
+    expect(screen.getByRole('dialog', { name: 'F-2026-0003' })).toBeTruthy()
+    const form = screen.getByRole('dialog', { name: 'Redigera faktura' })
+    const beskr = within(form).getAllByPlaceholderText('Beskrivning')[0] as HTMLInputElement
+    expect(beskr.value).toBe('Osparad ändring på C')
+    // Ingen sparning av C har skett av sig självt.
+    expect(antal('PATCH', `/invoices/${C}`)).toBe(0)
+    expect(renderfel).toEqual([])
+    stang()
+  })
+
+  it('stängt läge förblir stängt när A-svaret kommer', async () => {
+    const { slapp, dialogA, renderfel, stang } = await taBortAOchHall()
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Ta bort utkast' })).getByRole('button', {
+        name: 'Avbryt',
+      }),
+    )
+    fireEvent.click(within(dialogA).getByRole('button', { name: 'Stäng' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await act(async () => {
+      slapp()
+    })
+    await tickar()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(fakturor.get(A)!.status).toBe('VOID')
+    expect(renderfel).toEqual([])
+    stang()
+  })
+
+  it('stängt och sedan C öppnat (utan redigering): C står kvar', async () => {
+    const { slapp, dialogA, stang } = await taBortAOchHall()
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Ta bort utkast' })).getByRole('button', {
+        name: 'Avbryt',
+      }),
+    )
+    fireEvent.click(within(dialogA).getByRole('button', { name: 'Stäng' }))
+    await oppna('F-2026-0003')
+    await act(async () => {
+      slapp()
+    })
+    await tickar()
+    expect(screen.getByRole('dialog', { name: 'F-2026-0003' })).toBeTruthy()
+    stang()
+  })
+
+  it('felsvar för A efter byte: C och dess osparade fält står kvar', async () => {
+    const { slapp, dialogA, renderfel, stang } = await taBortAOchHall('fel')
+    await bytTillCOchRedigera(dialogA)
+    await act(async () => {
+      slapp()
+    })
+    await tickar()
+    expect(screen.getByRole('dialog', { name: 'F-2026-0003' })).toBeTruthy()
+    const form = screen.getByRole('dialog', { name: 'Redigera faktura' })
+    expect(
+      (within(form).getAllByPlaceholderText('Beskrivning')[0] as HTMLInputElement).value,
+    ).toBe('Osparad ändring på C')
+    expect(antal('DELETE', `/invoices/${A}`)).toBe(1)
+    expect(renderfel).toEqual([])
+    stang()
+  })
+
+  it('positiv kontroll: A fortfarande vald → A och bekräftelsen stängs som förut', async () => {
+    const { slapp, stang } = await taBortAOchHall()
+    await act(async () => {
+      slapp()
+    })
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(fakturor.get(A)!.status).toBe('VOID')
+    expect(antal('DELETE', `/invoices/${A}`)).toBe(1)
     stang()
   })
 })
