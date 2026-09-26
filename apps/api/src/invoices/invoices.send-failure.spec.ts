@@ -62,7 +62,9 @@ function makeService(overrides: Partial<MockInvoice> = {}) {
     },
   }
   const eventsService = { record: jest.fn().mockResolvedValue({ id: 'evt-1' }) }
-  const pdfService = { generateInvoicePdf: jest.fn().mockResolvedValue(Buffer.from('%PDF')) }
+  const pdfService = {
+    generateInvoicePdfFromSnapshot: jest.fn().mockResolvedValue(Buffer.from('%PDF')),
+  }
   const mailService = { sendInvoice: jest.fn().mockResolvedValue('mail-1') }
 
   const service = new InvoicesService(
@@ -81,7 +83,7 @@ function makeService(overrides: Partial<MockInvoice> = {}) {
 describe('InvoicesService.processInvoiceSendJob — synlig felhantering', () => {
   it('transient fel: sätter sendError, loggar SEND_FAILED och kastar vidare (Bull retry)', async () => {
     const { service, prisma, eventsService, pdfService } = makeService()
-    pdfService.generateInvoicePdf.mockRejectedValueOnce(new Error('Chromium kraschade'))
+    pdfService.generateInvoicePdfFromSnapshot.mockRejectedValueOnce(new Error('Chromium kraschade'))
 
     await expect(service.processInvoiceSendJob('inv-1', 'org-1', 'user-1')).rejects.toThrow(
       'Chromium kraschade',
@@ -111,7 +113,7 @@ describe('InvoicesService.processInvoiceSendJob — synlig felhantering', () => 
 
     await expect(service.processInvoiceSendJob('inv-1', 'org-1', 'user-1')).resolves.toBeUndefined()
 
-    expect(pdfService.generateInvoicePdf).not.toHaveBeenCalled()
+    expect(pdfService.generateInvoicePdfFromSnapshot).not.toHaveBeenCalled()
     expect(prisma.invoice.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { sendError: 'Fakturan saknar mottagare med e-postadress' },

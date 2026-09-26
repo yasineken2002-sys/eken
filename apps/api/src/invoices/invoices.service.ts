@@ -534,8 +534,8 @@ export class InvoicesService {
     payload: Record<string, unknown> = {},
     /**
      * F8 — sätts ENBART av `processInvoiceSendJob`, som redan prövat målet mot
-     * organisationen innan dokumentet renderades och mejlet köades. Där har
-     * utskicket skett; att då vägra statusen hade gjort ett verkligt utskick
+     * samma organisationssnapshot som dokumentet renderades från och mejlet
+     * köades med. Där har utskicket skett; att då vägra statusen hade gjort det
      * osynligt. Alla andra vägar till DRAFT→SENT prövas här.
      */
     opts: { betalningsmalProvatVidUtskick?: boolean } = {},
@@ -1746,7 +1746,9 @@ export class InvoicesService {
     }
 
     try {
-      const pdfBuffer = await this.pdfService.generateInvoicePdf(id, organizationId)
+      // Bind bilagan till den prövade läsningen ovan, även om organisationen
+      // ändras under renderingen eller efter färdig PDF. Nästa jobb läser om.
+      const pdfBuffer = await this.pdfService.generateInvoicePdfFromSnapshot(invoice)
 
       const recipientName =
         recipient.type === 'INDIVIDUAL'

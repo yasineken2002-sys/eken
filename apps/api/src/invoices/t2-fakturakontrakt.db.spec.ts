@@ -235,8 +235,8 @@ medDb('T2 · fakturans förfallodag och betalningsmål', () => {
       prisma,
       eventsService: new InvoiceEventsService(prisma as never),
       pdfService: {
-        generateInvoicePdf: async (id: string) => {
-          pdf.push(id)
+        generateInvoicePdfFromSnapshot: async (invoice: { id: string }) => {
+          pdf.push(invoice.id)
           return Buffer.from('%PDF-1.4 lokal provbuffert')
         },
       },
