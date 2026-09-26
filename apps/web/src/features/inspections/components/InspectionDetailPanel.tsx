@@ -137,9 +137,12 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
     try {
       const result = await analyzeInspection.mutateAsync({
         id: inspection.id,
-        files: pendingFiles.map(({ file, caption, nyckel }) =>
-          caption ? { file, caption, nyckel } : { file, nyckel },
-        ),
+        // Är bilagan redan sparad gäller den SPARADE bildtexten (den som visas och
+        // står i protokollet) — servern använder den också (OB5, BILD-02).
+        files: pendingFiles.map(({ file, caption, nyckel }) => {
+          const text = sparadBilaga(nyckel)?.caption ?? caption
+          return text ? { file, caption: text, nyckel } : { file, nyckel }
+        }),
       })
       setAnalysisResult(result.analysis)
       setPendingFiles([])
@@ -405,7 +408,11 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
                       <input
                         type="text"
                         value={sparad ? (sparad.caption ?? '') : pf.caption}
-                        readOnly={Boolean(sparad)}
+                        // Låst medan en analys pågår och när bilagan är sparad: då är
+                        // texten redan skickad, och en ändring här skulle inte nå
+                        // protokollet (OB5, BILD-02).
+                        readOnly={Boolean(sparad) || analyzeInspection.isPending}
+                        aria-readonly={Boolean(sparad) || analyzeInspection.isPending}
                         onChange={(e) =>
                           setPendingFiles((prev) =>
                             prev.map((f, idx) =>
@@ -430,7 +437,7 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
                       <p
                         data-testid="bild-sparad"
                         data-bild-id={sparad.id}
-                        className="mt-1.5 text-[11px] text-emerald-700"
+                        className="mt-1.5 max-w-[calc(100vw-3rem)] text-[11px] text-emerald-700"
                       >
                         Sparad som bilaga · id {sparad.id.slice(0, 8)} ·{' '}
                         {pf.sha256 === null || sparad.contentSha256 === null
@@ -438,6 +445,14 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
                           : pf.sha256 === sparad.contentSha256
                             ? 'samma innehåll som din fil'
                             : 'innehållet skiljer sig från din fil'}
+                      </p>
+                    )}
+                    {sparad && (
+                      <p
+                        data-testid="bildtext-last"
+                        className="mt-0.5 max-w-[calc(100vw-3rem)] text-[11px] text-gray-500"
+                      >
+                        Bildtexten sparades med bilden och kan inte ändras här.
                       </p>
                     )}
                   </div>
@@ -465,7 +480,10 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
           )}
 
           {nagonSparad && !analyzeInspection.isPending && (
-            <p className="mt-2 text-[11px] text-gray-500">
+            <p
+              data-testid="aterforsok-forklaring"
+              className="mt-2 max-w-[calc(100vw-3rem)] text-[11px] text-gray-500"
+            >
               Bilden är sparad som bilaga på besiktningen. Ett nytt försök analyserar samma bilaga —
               den laddas inte upp igen.
             </p>

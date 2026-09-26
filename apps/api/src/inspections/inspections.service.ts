@@ -555,10 +555,10 @@ export class InspectionsService {
       /** Återförsöksnyckelns prefix (OB5). Finns en bilaga under det redan, återanvänds den. */
       aterforsokPrefix?: string
     }[],
-  ): Promise<{ ids: string[]; foraldralosa: string[] }> {
+  ): Promise<{ rader: { id: string; caption: string | null }[]; foraldralosa: string[] }> {
     return this.prisma.$transaction(async (tx) => {
       await this.lockAndAssertUnsigned(tx, inspectionId, orgId)
-      const ids: string[] = []
+      const rader: { id: string; caption: string | null }[] = []
       const foraldralosa: string[] = []
       for (const { aterforsokPrefix, ...bild } of bilder) {
         // Kontrollen görs om UNDER radlåset: två samtidiga försök med samma
@@ -572,7 +572,7 @@ export class InspectionsService {
               inspection: { organizationId: orgId },
               storageKey: { startsWith: aterforsokPrefix },
             },
-            select: { id: true, contentSha256: true },
+            select: { id: true, contentSha256: true, caption: true },
           })
           if (befintlig) {
             if (befintlig.contentSha256 !== bild.contentSha256) {
@@ -580,18 +580,18 @@ export class InspectionsService {
                 'Återförsöksnyckeln hör redan till en annan bild. Välj bilden på nytt.',
               )
             }
-            ids.push(befintlig.id)
+            rader.push({ id: befintlig.id, caption: befintlig.caption })
             foraldralosa.push(bild.storageKey)
             continue
           }
         }
         const rad = await tx.inspectionImage.create({
           data: { inspectionId, ...bild },
-          select: { id: true },
+          select: { id: true, caption: true },
         })
-        ids.push(rad.id)
+        rader.push(rad)
       }
-      return { ids, foraldralosa }
+      return { rader, foraldralosa }
     }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
@@ -607,7 +607,7 @@ export class InspectionsService {
         inspection: { organizationId: orgId },
         storageKey: { startsWith: prefix },
       },
-      select: { id: true, contentSha256: true },
+      select: { id: true, contentSha256: true, caption: true },
     })
   }
 

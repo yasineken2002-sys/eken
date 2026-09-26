@@ -31,7 +31,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { createHash, randomUUID } from 'node:crypto'
 
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
 
 import { InspectionsController } from './inspections.controller'
@@ -96,15 +96,35 @@ medDb('OB5 — återförsök av besiktningsanalys', () => {
     uppladdningar: 0,
     raderingar: 0,
     kasta: false,
+    /** Kasta på uppladdning nummer N (1-baserat, räknat per test) — partiell batch. */
+    kastaPaNr: 0,
+    /** Radering svarar falskt, som den riktiga `deleteFile` när lagringen fallerar. */
+    raderaFaller: false,
+    /** Spärr: varje uppladdning väntar tills så många uppladdningar har påbörjats. */
+    sparrAntal: 0,
+    paborjade: 0,
+    sparrSlapp: null as null | (() => void),
+    sparr: null as null | Promise<void>,
+    loggRaderade: [] as string[],
     uploadFile: jest.fn(async (buf: Buffer, key: string) => {
-      if (lagring.kasta) throw new Error('lagringen svarar inte')
+      lagring.paborjade++
+      if (lagring.sparrAntal > 0) {
+        if (!lagring.sparr) lagring.sparr = new Promise<void>((r) => (lagring.sparrSlapp = r))
+        if (lagring.paborjade >= lagring.sparrAntal) lagring.sparrSlapp!()
+        await lagring.sparr
+      }
+      if (lagring.kasta || lagring.paborjade === lagring.kastaPaNr)
+        throw new Error('lagringen svarar inte')
       lagring.uppladdningar++
       lagring.objekt.set(key, buf)
       return `https://lokal/${key}`
     }),
     deleteFile: jest.fn(async (key: string) => {
+      if (lagring.raderaFaller) return false
       lagring.raderingar++
+      lagring.loggRaderade.push(key)
       lagring.objekt.delete(key)
+      return true
     }),
   }
   /** Analysattrapp: kastar samma 400 som den riktiga vid AI-fel, eller svarar. */
@@ -258,7 +278,15 @@ medDb('OB5 — återförsök av besiktningsanalys', () => {
     lagring.uppladdningar = 0
     lagring.raderingar = 0
     lagring.kasta = false
+    lagring.kastaPaNr = 0
+    lagring.raderaFaller = false
+    lagring.sparrAntal = 0
+    lagring.paborjade = 0
+    lagring.sparr = null
+    lagring.sparrSlapp = null
+    lagring.loggRaderade = []
     ai.lage = 'fel'
+    ai.analyzeImages.mockClear()
   })
 
   it('R1+R2: AI-fel två gånger och sedan lyckat återförsök — EN rad, ETT objekt, samma bytes och bildtext, analysen tillämpad', async () => {
@@ -353,12 +381,107 @@ medDb('OB5 — återförsök av besiktningsanalys', () => {
     expect((await bilder(id2))[0]!.id).not.toBe(förstaRad.id)
   })
 
-  it('R8: två SAMTIDIGA försök med samma nyckel (dubbelklick/okänt nätutfall) — en rad, inget föräldralöst objekt', async () => {
+  it('R8′: STYRD överlapp — båda passerar uppslaget före sparandet: 2 PUT, 1 DELETE av objektet utan rad, 1 rad, 1 objekt, samma id', async () => {
     const id = await nyBesiktning(orgA, propA, unitA)
     const fil = { buffer: png(9), nyckel: randomUUID() }
-    await Promise.all([forsok(orgA, id, [fil]), forsok(orgA, id, [fil])])
+    lagring.sparrAntal = 2 // ingen uppladdning släpps förrän BÅDA anropen har passerat uppslaget
+    const [a, b] = await Promise.all([forsok(orgA, id, [fil]), forsok(orgA, id, [fil])])
+    const rader = await bilder(id)
+    expect(lagring.uppladdningar).toBe(2)
+    expect(lagring.raderingar).toBe(1)
+    expect(rader).toHaveLength(1)
+    expect(objektFor(fil.nyckel)).toEqual([rader[0]!.storageKey])
+    expect(lagring.loggRaderade[0]).not.toBe(rader[0]!.storageKey)
+    // båda anropen föll på AI-felet, men båda sparade mot samma rad — ett andra lyckat försök bekräftar id:t
+    expect(a.ok || b.ok).toBe(false)
+    ai.lage = 'ok'
+    const c = await forsok(orgA, id, [fil])
+    expect(c.ok && (c.svar as { bildIds?: string[] }).bildIds).toEqual([rader[0]!.id])
+    expect(lagring.uppladdningar).toBe(2)
+  })
+
+  it('R10: DB-fel EFTER uppladdning (sparandet faller) — objektet tas bort, 0 rader; återförsök ger 1 rad och 1 objekt med filens bytes', async () => {
+    const id = await nyBesiktning(orgA, propA, unitA)
+    const fil = { buffer: png(12), caption: 'Före DB-fel', nyckel: randomUUID() }
+    // Simulerat DB-fel i sparsteget (transaktionen rullas tillbaka); lagringen och kompensationen är riktiga.
+    const spion = jest
+      .spyOn(service, 'saveAnalysisImages')
+      .mockRejectedValueOnce(new Error('databasen svarar inte'))
+    const f1 = await forsok(orgA, id, [fil])
+    spion.mockRestore()
+    expect(f1.ok).toBe(false)
+    expect(await bilder(id)).toHaveLength(0)
+    expect(lagring.uppladdningar).toBe(1)
+    expect(lagring.raderingar).toBe(1)
+    expect(objektFor(fil.nyckel)).toHaveLength(0)
+    await forsok(orgA, id, [fil])
+    const rader = await bilder(id)
+    expect(rader).toHaveLength(1)
+    const nycklar = objektFor(fil.nyckel)
+    expect(nycklar).toEqual([rader[0]!.storageKey])
+    expect(sha(lagring.objekt.get(nycklar[0]!)!)).toBe(sha(fil.buffer))
+  })
+
+  it('R11: partiell batch — första uppladdningen lyckas, andra faller: 0 rader, 0 objekt; återförsök ger 2 rader och 2 objekt', async () => {
+    const id = await nyBesiktning(orgA, propA, unitA)
+    const f1 = { buffer: png(13), nyckel: randomUUID() }
+    const f2 = { buffer: png(14), nyckel: randomUUID() }
+    lagring.kastaPaNr = 2
+    const r = await forsok(orgA, id, [f1, f2])
+    expect(r.ok).toBe(false)
+    expect(await bilder(id)).toHaveLength(0)
+    expect(objektFor(f1.nyckel)).toHaveLength(0)
+    expect(objektFor(f2.nyckel)).toHaveLength(0)
+    expect(lagring.raderingar).toBe(1)
+    lagring.kastaPaNr = 0
+    await forsok(orgA, id, [f1, f2])
+    expect(await bilder(id)).toHaveLength(2)
+    expect(objektFor(f1.nyckel)).toHaveLength(1)
+    expect(objektFor(f2.nyckel)).toHaveLength(1)
+  })
+
+  it('R12: kompensationen FALLERAR (deleteFile svarar falskt) — redovisas i svaret och loggen, 1 rad; nästa återförsök ingen ny PUT', async () => {
+    const id = await nyBesiktning(orgA, propA, unitA)
+    const fil = { buffer: png(15), nyckel: randomUUID() }
+    const logg = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+    lagring.sparrAntal = 2
+    lagring.raderaFaller = true
+    ai.lage = 'ok'
+    const [a, b] = await Promise.all([forsok(orgA, id, [fil]), forsok(orgA, id, [fil])])
+    lagring.sparrAntal = 0
+    lagring.raderaFaller = false
+    const rader = await bilder(id)
+    expect(rader).toHaveLength(1)
+    const kvar = objektFor(fil.nyckel)
+    expect(kvar).toHaveLength(2) // ärligt: det överblivna objektet ligger kvar
+    const ostadade = [a, b].map((x) =>
+      x.ok ? ((x.svar as { ostadadeObjekt?: number }).ostadadeObjekt ?? 0) : -1,
+    )
+    expect(ostadade.sort()).toEqual([0, 1])
+    const föräldralöst = kvar.find((k) => k !== rader[0]!.storageKey)!
+    expect(
+      logg.mock.calls.some(
+        (c) => String(c[0]).includes('[bild-kompensation]') && String(c[0]).includes(föräldralöst),
+      ),
+    ).toBe(true)
+    logg.mockRestore()
+    const före = lagring.uppladdningar
+    const c = await forsok(orgA, id, [fil])
+    expect(c.ok && (c.svar as { bildIds?: string[] }).bildIds).toEqual([rader[0]!.id])
+    expect(lagring.uppladdningar).toBe(före)
     expect(await bilder(id)).toHaveLength(1)
-    expect(objektFor(fil.nyckel)).toHaveLength(1)
+  })
+
+  it('R13: återanvändning med ANNAN text i begäran — analysen får den SPARADE texten, raden oförändrad', async () => {
+    const id = await nyBesiktning(orgA, propA, unitA)
+    const nyckel = randomUUID()
+    await forsok(orgA, id, [{ buffer: png(16), caption: 'Text A', nyckel }])
+    ai.lage = 'ok'
+    ai.analyzeImages.mockClear()
+    await forsok(orgA, id, [{ buffer: png(16), caption: 'Text B', nyckel }])
+    const skickat = ai.analyzeImages.mock.calls.at(-1) as unknown as [Array<{ caption?: string }>]
+    expect(skickat[0][0]!.caption).toBe('Text A')
+    expect((await bilder(id))[0]!.caption).toBe('Text A')
   })
 
   it('R9: utan nyckel (äldre klient) — oförändrat beteende, en ny bilaga per anrop', async () => {
