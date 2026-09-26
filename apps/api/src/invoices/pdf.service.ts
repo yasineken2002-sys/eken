@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, OnModuleDestroy } from '@nestjs/common'
 import { Logger } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import puppeteer, { type Browser, type Page } from 'puppeteer'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -8,6 +9,15 @@ import { generateInvoiceHtml } from './templates/invoice-pdf.template'
 import { PDF_WAIT_UNTIL } from './pdf-wait-until'
 import { SAFE_CUSTOMER_SELECT } from '../customers/customers.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+
+type InvoicePdfSnapshot = Prisma.InvoiceGetPayload<{
+  include: {
+    lines: true
+    tenant: { select: typeof SAFE_TENANT_SELECT }
+    customer: { select: typeof SAFE_CUSTOMER_SELECT }
+    organization: true
+  }
+}>
 
 // Liten HTML-escape för values vi väver in i Puppeteers header/footer-
 // templates (kontraktsnummer, orgnamn). Templates tolkas som HTML, så vi
@@ -144,6 +154,16 @@ export class PdfService implements OnModuleDestroy {
     })
     if (!invoice) throw new NotFoundException('Faktura hittades inte')
 
+    return this.generateInvoicePdfFromSnapshot(invoice)
+  }
+
+  /**
+   * Intern rendering från en organisationsscopad läsning. Utskicksworkern
+   * lämnar samma underlag som betalningsgrinden prövade vid körning; ingen
+   * omläsning får byta betalningsmål mellan godkännandet och bilagan.
+   * Senare organisationsändringar återkallar inte ett redan byggt dokument.
+   */
+  async generateInvoicePdfFromSnapshot(invoice: InvoicePdfSnapshot): Promise<Buffer> {
     // En faktura har antingen tenant eller customer (XOR-constraint).
     // Normalisera till ett gemensamt "party"-objekt för mall-rendering.
     const party = invoice.tenant ?? invoice.customer
