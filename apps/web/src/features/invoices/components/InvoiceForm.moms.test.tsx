@@ -114,15 +114,51 @@ function avtal(
   }
 }
 
-const BOSTAD = avtal('11111111-1111-4111-8111-000000000001', '1101', 'APARTMENT', false, 'Bostad AB')
+const BOSTAD = avtal(
+  '11111111-1111-4111-8111-000000000001',
+  '1101',
+  'APARTMENT',
+  false,
+  'Bostad AB',
+)
 // Frivillig beskattning får aldrig avse bostad — regeln ger 0 % ändå. Provet
 // finns för att ett formulär som läste FLAGGAN i stället för regeln skulle
 // föreslå 25 % här.
-const BOSTAD_FLAGGAD = avtal('11111111-1111-4111-8111-000000000002', '1102', 'APARTMENT', true, 'Bostad Flagga AB')
-const LOKAL_MED = avtal('11111111-1111-4111-8111-000000000003', '0101', 'OFFICE', true, 'Kontor Moms AB')
-const LOKAL_UTAN = avtal('11111111-1111-4111-8111-000000000004', '0102', 'RETAIL', false, 'Butik Momsfri AB')
-const PARKERING = avtal('11111111-1111-4111-8111-000000000005', 'P-7', 'PARKING', false, 'Parkering AB')
-const UTAN_UPPGIFT = avtal('11111111-1111-4111-8111-000000000006', '0103', 'OFFICE', undefined, 'Okänd AB')
+const BOSTAD_FLAGGAD = avtal(
+  '11111111-1111-4111-8111-000000000002',
+  '1102',
+  'APARTMENT',
+  true,
+  'Bostad Flagga AB',
+)
+const LOKAL_MED = avtal(
+  '11111111-1111-4111-8111-000000000003',
+  '0101',
+  'OFFICE',
+  true,
+  'Kontor Moms AB',
+)
+const LOKAL_UTAN = avtal(
+  '11111111-1111-4111-8111-000000000004',
+  '0102',
+  'RETAIL',
+  false,
+  'Butik Momsfri AB',
+)
+const PARKERING = avtal(
+  '11111111-1111-4111-8111-000000000005',
+  'P-7',
+  'PARKING',
+  false,
+  'Parkering AB',
+)
+const UTAN_UPPGIFT = avtal(
+  '11111111-1111-4111-8111-000000000006',
+  '0103',
+  'OFFICE',
+  undefined,
+  'Okänd AB',
+)
 
 const KUND = {
   id: '22222222-2222-4222-8222-000000000001',
@@ -226,7 +262,7 @@ describe('momsförvalet följer avtalets upplåtelse (vatRateForRent)', () => {
     { namn: 'parkering', avtal: PARKERING, sats: 25 },
   ] as const
 
-  it.each(fall)('$namn → $sats %, samma tal som regeln', async ({ avtal: a, sats }) => {
+  it.each(fall)('$namn → $sats procent, samma tal som regeln', async ({ avtal: a, sats }) => {
     // Förväntan står som tal; att den är regelns tal kontrolleras här, så en
     // ändrad regel fäller provet i stället för att tyst bli ny förväntan.
     const u = a.unit as { type: UnitType; voluntaryTaxLiability: boolean }
@@ -238,7 +274,7 @@ describe('momsförvalet följer avtalets upplåtelse (vatRateForRent)', () => {
   })
 
   it.each(fall)(
-    '$namn: ett korrekt ifyllt formulär skickas med $sats % på alla rader',
+    '$namn: ett korrekt ifyllt formulär skickas med $sats procent på alla rader',
     async ({ avtal: a, sats }) => {
       const { onSubmit } = rendera()
       await valjAvtal(a.id)
@@ -343,7 +379,9 @@ describe('byte av avtal', () => {
     fyllRad(0, 'Hyra', 9500)
     skicka()
     expect(
-      await screen.findByText('Upplåtelsen saknar frivillig beskattning och är momsfri — välj 0 %.'),
+      await screen.findByText(
+        'Upplåtelsen saknar frivillig beskattning och är momsfri — välj 0 %.',
+      ),
     ).toBeTruthy()
     expect(onSubmit).not.toHaveBeenCalled()
   })
@@ -352,7 +390,7 @@ describe('byte av avtal', () => {
 // ─── Irrelevant omrendering ──────────────────────────────────────────────────
 
 describe('ett eget giltigt val står kvar vid omrendering som inte byter avtal', () => {
-  it('bostad: eget 0 % överlever skrivning, ny rad, omhämtad avtalslista och lägesväxling utan byte', async () => {
+  it('bostad: eget 0 % överlever skrivning, omhämtad avtalslista och ny rad', async () => {
     const { qc, onSubmit } = rendera()
     await valjAvtal(BOSTAD.id)
     await waitFor(() => expect(momsvarden()).toEqual(['0']))

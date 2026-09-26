@@ -176,7 +176,11 @@ function fel(config: InternalAxiosRequestConfig, status: number): never {
     status >= 500 ? 'ERR_BAD_RESPONSE' : 'ERR_BAD_REQUEST',
     config,
     null,
-    svar(config, { success: false, error: { code: 'BAD_GATEWAY', message: 'Bad Gateway' } }, status),
+    svar(
+      config,
+      { success: false, error: { code: 'BAD_GATEWAY', message: 'Bad Gateway' } },
+      status,
+    ),
   )
 }
 
@@ -304,7 +308,9 @@ beforeEach(() => {
       return avslutaMutation(config, 'status', f)
     }
     if (metod === 'PATCH' && f && !m![2]) {
-      const b = body as { lines?: Array<{ description: string; unitPrice: number; quantity: number }> }
+      const b = body as {
+        lines?: Array<{ description: string; unitPrice: number; quantity: number }>
+      }
       if (b.lines)
         f.lines = b.lines.map((l, i) =>
           rad(`${f.id}-r${i}`, l.description, Number(l.unitPrice) * Number(l.quantity)),
@@ -462,9 +468,9 @@ describe('servern utförde ändringen men svaret kom inte fram', () => {
     await arKomplett(efter, 'Hyra oktober lgh 1101', 1200, 'Skickad')
     // Omläsningen gick mot servern efter felet — inte mot en gammal cache.
     const felIndex = anrop.findIndex((a) => a.metod === 'PATCH')
-    expect(anrop.slice(felIndex + 1).some((a) => a.metod === 'GET' && a.url === `/invoices/${A}`)).toBe(
-      true,
-    )
+    expect(
+      anrop.slice(felIndex + 1).some((a) => a.metod === 'GET' && a.url === `/invoices/${A}`),
+    ).toBe(true)
     await tickar()
     expect(antal('PATCH', `/invoices/${A}/status`)).toBe(1)
     expect(anrop.filter((a) => a.metod !== 'GET')).toHaveLength(1)
@@ -558,6 +564,10 @@ describe('A4: svaret på en handling öppnar inte en faktura användaren lämnat
     // Beskedet får inte påstå att DEN VISADE fakturan lästs om.
     expect(toastInfo).not.toHaveBeenCalledWith(
       'Fakturan har lästs om och visar det som faktiskt sparats.',
+    )
+    // … utan att tiga: beskedet nämner fakturan det gäller.
+    expect(toastInfo).toHaveBeenCalledWith(
+      'Faktura F-2026-0001 har lästs om. Öppna den för att se vad som faktiskt sparats.',
     )
     expect(antal('PATCH', `/invoices/${A}/status`)).toBe(1)
     expect(renderfel).toEqual([])

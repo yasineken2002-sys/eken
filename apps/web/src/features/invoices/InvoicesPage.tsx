@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -261,6 +261,22 @@ export function InvoicesPage() {
   const sendEmailMutation = useSendInvoiceEmail()
   const qc = useQueryClient()
 
+  // ── SVARET HÖR TILL FAKTURAN HANDLINGEN GÄLLDE (#925 A4) ──────────────────
+  //
+  // Ett svar — lyckat eller omläst efter fel — kommer när det kommer. Har
+  // användaren hunnit stänga fakturan eller öppna en annan ska svaret inte
+  // öppna den gamla igen: då byts vyn under användaren till en faktura hen
+  // lämnat. Svaret uppdaterar ändå cachen (useInvoiceQueries), så fakturan är
+  // aktuell nästa gång den öppnas. Id läses ur en ref, inte ur `selected` i
+  // handlingens closure — den är värdet vid KLICKET, inte nu.
+  const valdId = useRef<string | null>(null)
+  valdId.current = selected?.id ?? null
+  function visaOmFortfarandeVald(faktura: InvoiceWithOutstanding): boolean {
+    if (valdId.current !== faktura.id) return false
+    setSelected(faktura)
+    return true
+  }
+
   // ── NÄR EN FAKTURAHANDLING MISSLYCKAS ─────────────────────────────────────
   //
   // Felet i sig toastas globalt (serverns svenska meddelande). Men "misslyckades"
@@ -275,8 +291,13 @@ export function InvoicesPage() {
         queryFn: () => get<InvoiceWithOutstanding>(`/invoices/${id}`),
         staleTime: 0,
       })
-      setSelected(faktisk)
-      toast.info('Fakturan har lästs om och visar det som faktiskt sparats.')
+      if (visaOmFortfarandeVald(faktisk)) {
+        toast.info('Fakturan har lästs om och visar det som faktiskt sparats.')
+      } else {
+        toast.info(
+          `Faktura ${faktisk.invoiceNumber} har lästs om. Öppna den för att se vad som faktiskt sparats.`,
+        )
+      }
     } catch {
       toast.error(
         'Fakturans aktuella läge kunde inte läsas. Stäng och öppna fakturan igen innan du försöker på nytt.',
@@ -367,7 +388,7 @@ export function InvoicesPage() {
       { id: selected.id, ...data },
       {
         onSuccess: (updated) => {
-          setSelected(updated)
+          visaOmFortfarandeVald(updated)
           setShowEdit(false)
         },
         onError: () => void visaSparatEfterFel(selected.id),
@@ -391,7 +412,7 @@ export function InvoicesPage() {
       { id: selected.id, status: 'SENT' },
       {
         // Svaret är den fullständiga fakturan (invoices.controller.ts `fullFaktura`).
-        onSuccess: (updated) => setSelected(updated),
+        onSuccess: (updated) => void visaOmFortfarandeVald(updated),
         onError: () => void visaSparatEfterFel(selected.id),
       },
     )
@@ -430,7 +451,7 @@ export function InvoicesPage() {
       { id: selected.id, ...kropp },
       {
         onSuccess: (updated) => {
-          setSelected(updated)
+          visaOmFortfarandeVald(updated)
           setShowPayment(false)
         },
         onError: () => void visaSparatEfterFel(selected.id),
@@ -450,7 +471,7 @@ export function InvoicesPage() {
     statusMutation.mutate(
       { id: selected.id, status: 'VOID' },
       {
-        onSuccess: (updated) => setSelected(updated),
+        onSuccess: (updated) => void visaOmFortfarandeVald(updated),
         onError: () => void visaSparatEfterFel(selected.id),
       },
     )
