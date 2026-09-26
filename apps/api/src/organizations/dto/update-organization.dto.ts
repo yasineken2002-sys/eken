@@ -22,10 +22,12 @@ import { StrictString } from '../../common/contract/strict-string.decorator'
 import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 export class UpdateOrganizationDto implements UpdateOrganizationInput {
+  // `null` når tjänsten (`@IsOptional` hoppar över alla validatorer) och
+  // betyder där "ingen ändring" — typen säger det, samma som schemat (A6).
   @IsString()
   @IsOptional()
   @StrictString()
-  bankgiro?: string
+  bankgiro?: string | null
 
   @IsNumber()
   @IsOptional()
@@ -204,19 +206,19 @@ export class UpdateOrganizationDto implements UpdateOrganizationInput {
   @IsOptional()
   @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.street)
   @StrictString()
-  street?: string
+  street?: string | null
 
   @IsString()
   @IsOptional()
   @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.postalCode)
   @StrictString()
-  postalCode?: string
+  postalCode?: string | null
 
   @IsString()
   @IsOptional()
   @MaxLength(ORGANIZATION_ADDRESS_MAX_LENGTH.city)
   @StrictString()
-  city?: string
+  city?: string | null
 }
 
 const _kontrakt: SammaNycklar<UpdateOrganizationDto, UpdateOrganizationInput> = true

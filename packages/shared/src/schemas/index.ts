@@ -2540,7 +2540,12 @@ export type UpdateTicketInput = z.infer<typeof UpdateTicketSchema>
 
 export const UpdateOrganizationSchema = z
   .object({
-    bankgiro: z.string().optional(),
+    // `null` = ingen ändring, samma som utelämnat (A6, #923). Det är den
+    // semantik `OrganizationsService.update` redan har för bankgirot (B1) och
+    // adressgruppen nedan, och DTO:n släppte redan `null` (`@IsOptional`).
+    // Tom sträng är den UTTRYCKLIGA rensningen av bankgirot. Gäller bara dessa
+    // fyra fält — övriga fälts `null` är ett eget ärende.
+    bankgiro: z.string().nullish(),
     paymentTermsDays: z.number().min(1).optional(),
     invoiceColor: z
       .string()
@@ -2572,9 +2577,11 @@ export const UpdateOrganizationSchema = z
     // `organizationAddressIssues` mot organisationens EGET land. Den prövningen
     // sker i `OrganizationsService.update`, eftersom landet inte finns i
     // kroppen — schemat här kan inte veta om den svenska postnummerregeln gäller.
-    street: z.string().optional(),
-    postalCode: z.string().optional(),
-    city: z.string().optional(),
+    // `null` = ingen ändring (se bankgiro ovan); en tom eller blank del
+    // avvisas av tjänsten, eftersom en adress inte kan rensas här.
+    street: z.string().nullish(),
+    postalCode: z.string().nullish(),
+    city: z.string().nullish(),
   })
   .strict()
 export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>
