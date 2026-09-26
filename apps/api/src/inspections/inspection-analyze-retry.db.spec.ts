@@ -88,6 +88,7 @@ medDb('OB5 — återförsök av besiktningsanalys', () => {
   let unitA: string
   let propB: string
   let unitB: string
+  const inspektor: Record<string, string> = {}
 
   /** Räknande lagringsattrapp: nyckel → bytes. `kasta` simulerar fel FÖRE lagring. */
   const lagring = {
@@ -184,6 +185,7 @@ medDb('OB5 — återförsök av besiktningsanalys', () => {
         organizationId: org,
         propertyId,
         unitId,
+        inspectedById: inspektor[org]!,
         type: 'MOVE_OUT',
         status: 'IN_PROGRESS',
         scheduledDate: new Date('2026-09-26T09:00:00Z'),
@@ -227,6 +229,20 @@ medDb('OB5 — återförsök av besiktningsanalys', () => {
     controller = new InspectionsController(service, ai as never, lagring as never)
     orgA = await nyOrg('ob5-a')
     orgB = await nyOrg('ob5-b')
+    for (const org of [orgA, orgB]) {
+      const u = await prisma.user.create({
+        data: {
+          organizationId: org,
+          email: `ob5-${randomUUID().slice(0, 8)}@example.se`,
+          firstName: 'Besiktnings',
+          lastName: 'Ansvarig',
+          role: 'ADMIN',
+          passwordHash: 'x',
+        },
+        select: { id: true },
+      })
+      inspektor[org] = u.id
+    }
     ;({ propertyId: propA, unitId: unitA } = await nyFastighet(orgA))
     ;({ propertyId: propB, unitId: unitB } = await nyFastighet(orgB))
   })
