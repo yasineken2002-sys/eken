@@ -36,3 +36,19 @@ export function vatRateForRent(
       return 0
   }
 }
+
+/**
+ * PÅVERKAR FRIVILLIG SKATTSKYLDIGHET SATSEN FÖR DEN HÄR UPPLÅTELSETYPEN?
+ *
+ * Härledd UR `vatRateForRent` ovan — ingen egen typlista och ingen egen
+ * skatteregel. Svaret är sant exakt när regeln ger olika sats med och utan
+ * flaggan (i dag lokaler, förråd och övrigt). För bostad och parkering ger
+ * flaggan ingen skillnad, och därför erbjuds den inte där: ett reglage som
+ * inte kan ändra något vore ett påstående som ingen läser.
+ *
+ * Läses av objektformuläret (om reglaget visas) och av API:ts skrivväg (om
+ * `true` får sparas). Ändras regeln följer båda med.
+ */
+export function frivilligSkattskyldighetPaverkarSatsen(type: UnitType | null | undefined): boolean {
+  return vatRateForRent(type, true) !== vatRateForRent(type, false)
+}
