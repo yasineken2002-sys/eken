@@ -65,7 +65,8 @@ withDb('EMPTY_JSON · tom JSON-kropp genom riktig Fastify', () => {
   let orgId: string
   const logInternalError = jest.fn(async () => undefined)
   const jwt = new JwtService({ secret: HEMLIGHET })
-  const auth = () => `Bearer ${jwt.sign({ sub: randomUUID(), organizationId: orgId, role: 'OWNER' })}`
+  const auth = () =>
+    `Bearer ${jwt.sign({ sub: randomUUID(), organizationId: orgId, role: 'OWNER' })}`
 
   // Rå begäran — `payload` är exakt de bytes som skickas, och headern sätts
   // uttryckligen, så "tom kropp" och "{}" inte kan förväxlas av inject.
@@ -151,7 +152,7 @@ withDb('EMPTY_JSON · tom JSON-kropp genom riktig Fastify', () => {
         success: false,
         error: { code: 'BAD_REQUEST', path: '/v1/organizations/me' },
       })
-      expect(kropp.error.message).toMatch(/tom/i)
+      expect(kropp.error.message).toMatch(/saknar innehåll/)
       // Parserns engelska text är inte vårt kontrakt och ska inte eka tillbaka.
       expect(JSON.stringify(kropp)).not.toContain('FST_ERR')
       expect(uppdatera).not.toHaveBeenCalled()
@@ -185,12 +186,20 @@ withDb('EMPTY_JSON · tom JSON-kropp genom riktig Fastify', () => {
     expect({ ...(await rad()), updatedAt: null }).toEqual({ ...fore, updatedAt: null })
   })
 
-  // Grannfelet ogiltig JSON bär ingen felkod (SyntaxError + statusCode) och
-  // ingår INTE i rättningen. Uppmätt på basen; ska vara identiskt efter.
-  it('EJ.5 ogiltig JSON: oförändrat mot basen (utanför mandatet)', async () => {
+  // Grannfelet ogiltig JSON har REDAN ett kontrakt, och det är inte filtrets:
+  // Nests errorHandler-proxy gör varje SyntaxError till en
+  // `BadRequestException(err.message)` innan filtret nås
+  // (`@nestjs/core/router/routes-resolver.js`, `mapExternalException`). Uppmätt
+  // på basen 8ddc5263: 400. Texten är parserns och beror på Node-versionen, så
+  // den låses inte här — bara att kontraktet består och att inget loggas som
+  // serverfel.
+  it('EJ.5 ogiltig JSON: befintligt 400-kontrakt består', async () => {
+    const fore = await rad()
     const svar = await skicka('{', 'application/json')
     expect(svar.statusCode).toBe(OGILTIG_JSON_STATUS)
-    expect(JSON.stringify(svar.json())).not.toContain('Unexpected')
+    expect(svar.json().error.code).toBe('BAD_REQUEST')
+    expect(logInternalError).not.toHaveBeenCalled()
+    expect(await rad()).toEqual(fore)
   })
 
   // ── INTERNA FEL ÄR FORTFARANDE 500 ────────────────────────────────────────
@@ -244,4 +253,4 @@ withDb('EMPTY_JSON · tom JSON-kropp genom riktig Fastify', () => {
 // Uppmätta på basen 8ddc5263 (se FACIT/logg). Ett ändrat tal här är ett ändrat
 // kontrakt och ska motiveras, inte justeras.
 const UTAN_CT_STATUS = 200
-const OGILTIG_JSON_STATUS = 500
+const OGILTIG_JSON_STATUS = 400
