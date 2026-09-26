@@ -150,7 +150,11 @@ export function useAnalyzeInspection() {
     { id: string; files: Array<{ file: File; caption?: string }> }
   >({
     mutationFn: ({ id, files }) => analyzeInspection(id, files),
-    onSuccess: () => {
+    // onSettled, inte onSuccess: servern sparar bilderna FÖRE AI-anropet
+    // (saveAnalysisImages → analyzeImages), så även ett misslyckat försök kan ha
+    // lagt till bilagor. Utan omläsning syns de inte, och ett nytt försök laddar
+    // upp samma bild igen.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: ['inspections'] })
     },
   })

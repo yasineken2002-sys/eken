@@ -107,12 +107,17 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
   }
 
   const handleAnalyze = async () => {
-    const result = await analyzeInspection.mutateAsync({
-      id: inspection.id,
-      files: pendingFiles.map(({ file, caption }) => (caption ? { file, caption } : { file })),
-    })
-    setAnalysisResult(result.analysis)
-    setPendingFiles([])
+    try {
+      const result = await analyzeInspection.mutateAsync({
+        id: inspection.id,
+        files: pendingFiles.map(({ file, caption }) => (caption ? { file, caption } : { file })),
+      })
+      setAnalysisResult(result.analysis)
+      setPendingFiles([])
+    } catch {
+      // Beskedet visas redan av den globala mutationstoasten (serverns text). Fångas
+      // här så att ett misslyckat försök inte blir ett ohanterat löfte i sidan.
+    }
   }
 
   const tenantName = inspection.tenant
