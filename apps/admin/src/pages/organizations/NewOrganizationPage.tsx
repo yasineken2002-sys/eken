@@ -11,6 +11,8 @@ import {
   type NewOrganizationAddressErrors,
 } from './new-organization-address'
 
+const ADRESSFALT = ['street', 'postalCode', 'city'] as const
+
 interface CreatedOrg {
   organization: { id: string; name: string }
   admin: { id: string; email: string; temporaryPassword: string }
@@ -57,10 +59,11 @@ export function NewOrganizationPage() {
 
   function onChange<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
-    if (key === 'street' || key === 'postalCode' || key === 'city') {
+    const falt = ADRESSFALT.find((f) => f === key)
+    if (falt) {
       setAdressFel((fel) => {
         const kvar = { ...fel }
-        delete kvar[key]
+        delete kvar[falt]
         return kvar
       })
     }

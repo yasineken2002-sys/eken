@@ -178,17 +178,25 @@ withDb('A5 · POST /platform/organizations — företagsadressen', () => {
     ['ogiltigt svenskt postnummer', { postalCode: '12' }, 'Postnummer måste vara fem siffror'],
     ['svenskt postnummer utanför PostNord-intervallet', { postalCode: '012 34' }, 'fem siffror'],
     ['uttryckligt SE med ogiltigt postnummer', { country: 'SE', postalCode: 'ABC' }, 'fem siffror'],
-  ])('A5.2 %s → 400 före delskrivning (0 org, 0 user, inget kundnummer)', async (_n, over, text) => {
-    const k = kropp(over)
-    const svar = await skapa(k)
-    expect(svar.statusCode).toBe(400)
-    expect(svar.json().error.message).toContain(text)
-    expect(await raderFor(k)).toEqual({ orgs: 0, users: 0 })
-    expect(allocate).not.toHaveBeenCalled()
-  })
+  ])(
+    'A5.2 %s → 400 före delskrivning (0 org, 0 user, inget kundnummer)',
+    async (_n, over, text) => {
+      const k = kropp(over)
+      const svar = await skapa(k)
+      expect(svar.statusCode).toBe(400)
+      expect(svar.json().error.message).toContain(text)
+      expect(await raderFor(k)).toEqual({ orgs: 0, users: 0 })
+      expect(allocate).not.toHaveBeenCalled()
+    },
+  )
 
   it('A5.3 utländsk giltig adress (NO, fyrsiffrigt postnummer) → 201, ingen svensk regel', async () => {
-    const k = kropp({ country: 'NO', street: 'Karl Johans gate 1', postalCode: '0154', city: 'Oslo' })
+    const k = kropp({
+      country: 'NO',
+      street: 'Karl Johans gate 1',
+      postalCode: '0154',
+      city: 'Oslo',
+    })
     const svar = await skapa(k)
     expect(svar.statusCode).toBe(201)
     const org = await prisma.organization.findFirstOrThrow({ where: { email: k.email } })
