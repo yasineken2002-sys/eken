@@ -236,7 +236,8 @@ export function UnitForm({
             Objektet är frivilligt skattskyldigt för moms
             <span className="mt-0.5 block text-[11.5px] text-gray-500">
               Markera bara om frivillig skattskyldighet gäller för uthyrningen. Nya fakturor och
-              avier för objektet får då moms. Redan skapade dokument ändras inte.
+              avier för objektet får då moms. Redan skapade dokument ändras inte av detta val; ett
+              utkast som redigeras får objektets aktuella momssats föreslagen.
             </span>
           </span>
         </label>
