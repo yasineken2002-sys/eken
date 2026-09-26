@@ -10,6 +10,7 @@ import { PrismaService } from '../../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../../common/prisma/transaction-limits'
 import { CustomerNumberService } from '../../common/customer-number/customer-number.service'
 import { normalizeEmail } from '../../common/utils/normalize-email'
+import { organizationAddressIssues } from '@eken/shared'
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto/platform-organization.dto'
 
 type OrgStatus = 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'SUSPENDED' | 'CANCELLED'
@@ -155,6 +156,18 @@ export class PlatformOrganizationsService {
   }
 
   async create(dto: CreateOrganizationDto) {
+    // Företagsadressen (A5, #923): SAMMA regel som registreringen och
+    // inställningarna — `organizationAddressIssues`, ifylld efter trim och den
+    // svenska postnummerformen bara för `country = 'SE'`. Prövas FÖRST, före
+    // varje läsning och skrivning, så ett avvisat anrop aldrig tilldelar ett
+    // kundnummer eller lämnar en halvskapad organisation eller ADMIN-användare.
+    // Landet är det som LAGRAS nedan, så regeln och raden kan inte säga olika.
+    const country = dto.country ?? 'SE'
+    const adressfel = organizationAddressIssues(dto, country)
+    if (adressfel.length > 0) {
+      throw new BadRequestException(adressfel.map((f) => f.message).join('. '))
+    }
+
     const existingOrg = dto.orgNumber
       ? await this.prisma.organization.findUnique({ where: { orgNumber: dto.orgNumber } })
       : null
@@ -191,10 +204,10 @@ export class PlatformOrganizationsService {
           ...(dto.vatNumber ? { vatNumber: dto.vatNumber } : {}),
           email: orgEmail,
           ...(dto.phone ? { phone: dto.phone } : {}),
-          street: dto.street,
-          city: dto.city,
-          postalCode: dto.postalCode,
-          country: dto.country ?? 'SE',
+          street: dto.street.trim(),
+          city: dto.city.trim(),
+          postalCode: dto.postalCode.trim(),
+          country,
           subscriptionPlan: plan,
           status,
           ...(trialEndsAt ? { trialEndsAt } : {}),
