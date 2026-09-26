@@ -488,12 +488,15 @@ function UnitDetailPanel({
                 value: formatCurrency(Number(selected.monthlyRent)),
               },
               // I2 — bara där flaggan påverkar momsen; samma härledning som formuläret.
-              ...(frivilligSkattskyldighetPaverkarSatsen(selected.type)
+              // Läses ur DETALJFRÅGAN (`selectedUnit`), som invalideras vid sparning:
+              // `selected` är listraden från klicket och vore inaktuell direkt efter
+              // en ändring (uppmätt i webbläsaren: "Nej" efter att flaggan sparats).
+              ...(frivilligSkattskyldighetPaverkarSatsen(selectedUnit?.type ?? selected.type)
                 ? [
                     {
                       icon: Hash,
                       label: 'Frivillig skattskyldighet',
-                      value: selected.voluntaryTaxLiability ? 'Ja' : 'Nej',
+                      value: (selectedUnit ?? selected).voluntaryTaxLiability ? 'Ja' : 'Nej',
                     },
                   ]
                 : []),
