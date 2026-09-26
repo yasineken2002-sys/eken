@@ -60,7 +60,10 @@ export class CreateUnitDto implements CreateUnitInput {
    * fält är frånvarande, men ett uttryckligt `null` VALIDERAS och avvisas av
    * `@IsBoolean()` — både här och i PATCH (som ärver). Med `@IsOptional()` hade
    * `null` blivit en tyst no-op med 200 (se update-unit.dto.ts).
-   * `@StrictBoolean()` avvisar `"true"`/`1` i stället för att koercera dem.
+   * `@StrictBoolean()` godtar strängformerna `"true"`/`"false"` (normaliseras till
+   * booleaner, husets kontrakt) och avvisar allt annat — `1`, `"ja"`, `""`, objekt —
+   * i stället för att koercera. Det delade schemat godtar exakt samma värden
+   * (R2, `unit-frivillig-kontrakt.spec.ts` prövar pariteten genom den riktiga pipen).
    */
   @ValidateIf((_, v) => v !== undefined)
   @IsBoolean()

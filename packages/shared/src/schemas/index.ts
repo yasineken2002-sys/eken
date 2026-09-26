@@ -365,6 +365,21 @@ export const UnitStatusSchema = z.enum(['VACANT', 'OCCUPIED', 'UNDER_RENOVATION'
  * Schemat beskriver nu DTO:n. Det är inte en utvidgning av vad som accepteras:
  * servern tog emot precis detta hela tiden.
  */
+/**
+ * R2 (#933) — SAMMA ACCEPTERADE VÄRDEN SOM DTO:NS `@StrictBoolean`.
+ *
+ * API:ts booleska fält bär `@StrictBoolean()` (krävs av check-strict-koercion),
+ * som MED FLIT godtar strängformerna "true"/"false" och normaliserar dem till
+ * booleaner, och avvisar allt annat (strict-boolean.decorator.ts). Ett
+ * `z.boolean()` här avvisade strängformerna — webbens kontraktsgrind och API:ts
+ * pipe sa då olika saker om samma värde. Används BARA av `voluntaryTaxLiability`
+ * nedan; andra fälts kontrakt är orörda. Webben skickar fortsatt en boolean.
+ */
+const husetsBoolean = z.preprocess(
+  (v) => (v === 'true' ? true : v === 'false' ? false : v),
+  z.boolean(),
+)
+
 export const CreateUnitSchema = z.object({
   propertyId: z.string().uuid(),
   name: z.string().min(1).max(200),
@@ -384,7 +399,7 @@ export const CreateUnitSchema = z.object({
    * (`frivilligSkattskyldighetPaverkarSatsen`) prövas av servern, eftersom den
    * beror på objektets SPARADE typ vid en partiell uppdatering.
    */
-  voluntaryTaxLiability: z.boolean().optional(),
+  voluntaryTaxLiability: husetsBoolean.optional(),
 })
 
 export const UpdateUnitSchema = CreateUnitSchema.partial()
