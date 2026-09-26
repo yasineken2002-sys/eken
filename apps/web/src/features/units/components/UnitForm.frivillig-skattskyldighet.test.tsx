@@ -26,7 +26,7 @@ import { UnitForm } from './UnitForm'
 
 afterEach(cleanup)
 
-const ETIKETT = /frivilligt skattskyldig för moms/i
+const ETIKETT = /frivilligt skattskyldigt för moms/i
 
 function rendera(defaultValues: Partial<CreateUnitInput> = {}) {
   const onSubmit = vi.fn<(d: CreateUnitInput) => void>()
