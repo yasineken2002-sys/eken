@@ -472,7 +472,9 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
             >
               <Sparkles size={12} strokeWidth={1.8} />
               {analyzeInspection.isPending
-                ? 'Analyserar bilder...'
+                ? hämtarBesiktningar
+                  ? 'Läser in sparat utfall…'
+                  : 'Analyserar bilder...'
                 : nagonSparad
                   ? 'Försök analysera igen'
                   : 'Analysera med AI'}
@@ -489,7 +491,7 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
             </p>
           )}
 
-          {analyzeInspection.isPending && (
+          {analyzeInspection.isPending && !hämtarBesiktningar && (
             <p className="mt-2 text-center text-[11px] text-gray-400">Det kan ta 15–30 sekunder</p>
           )}
 

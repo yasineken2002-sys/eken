@@ -154,8 +154,12 @@ export function useAnalyzeInspection() {
     // (saveAnalysisImages → analyzeImages), så även ett misslyckat försök kan ha
     // lagt till bilagor. Utan omläsning syns de inte, och ett nytt försök laddar
     // upp samma bild igen.
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['inspections'] })
-    },
+    //
+    // Löftet RETURNERAS (BILD-02): mutationen står då kvar som pågående tills
+    // omläsningen är klar. Felbeskedet visas ändå direkt — MutationCache.onError
+    // körs före onSettled — men panelen öppnar inte bildtexten för redigering i
+    // glappet mellan felsvaret och det inlästa sparutfallet, där en ändring
+    // annars ersattes tyst av den sparade texten.
+    onSettled: () => qc.invalidateQueries({ queryKey: ['inspections'] }),
   })
 }
