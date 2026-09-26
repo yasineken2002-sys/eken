@@ -158,7 +158,9 @@ let felEfterCommit: Set<Vag>
 /** Vägar vars svar hålls inne tills provet släpper dem. */
 let hallInne: Map<Vag, { slapp: () => void; vantar: Promise<void> }>
 
-const ursprungligAdapter = api.defaults.adapter
+// Sätts alltid av axios (standardadaptrarna) — `!` i stället för att tyst
+// återställa till undefined under exactOptionalPropertyTypes.
+const ursprungligAdapter = api.defaults.adapter!
 
 function svar(config: InternalAxiosRequestConfig, data: unknown, status = 200): AxiosResponse {
   return {

@@ -176,7 +176,9 @@ const KUND = {
 
 let avtalslista: unknown[] = []
 const anrop: string[] = []
-const ursprungligAdapter = api.defaults.adapter
+// Sätts alltid av axios (standardadaptrarna) — `!` i stället för att tyst
+// återställa till undefined under exactOptionalPropertyTypes.
+const ursprungligAdapter = api.defaults.adapter!
 
 function svar(config: InternalAxiosRequestConfig, data: unknown, status = 200): AxiosResponse {
   return { data: { success: true, data }, status, statusText: String(status), headers: {}, config }
@@ -389,6 +391,11 @@ describe('byte av avtal', () => {
 
 // ─── Irrelevant omrendering ──────────────────────────────────────────────────
 
+// På ett AVTAL finns bara en giltig sats, så ett eget giltigt val är per
+// konstruktion regelns sats — en överskrivning där syns inte. Bostadsprovet
+// mäter därför att omhämtning och ny rad inte flyttar något; att ett eget val
+// SOM SKILJER SIG från ett förval står kvar bärs av kundprovet (ingen regel,
+// alla satser giltiga). Negativkontrollen i CLAUDE2:s leverans (N7) fäller det.
 describe('ett eget giltigt val står kvar vid omrendering som inte byter avtal', () => {
   it('bostad: eget 0 % överlever skrivning, omhämtad avtalslista och ny rad', async () => {
     const { qc, onSubmit } = rendera()
