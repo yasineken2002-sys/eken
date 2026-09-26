@@ -247,9 +247,14 @@ export function InvoiceForm({
   const grandTotal = subtotal + vatTotal
 
   return (
-    <div className="flex min-h-0 gap-0">
+    // Under md (390 px m.fl.) staplas formuläret i full bredd och förhandsgranskningen döljs — en
+    // 794 px-förhandsgranskning bredvid en 44 %-kolumn gjorde fälten några tecken breda (I1).
+    <div className="flex min-h-0 flex-col gap-0 md:flex-row">
       {/* ── Left: Form ─────────────────────────────────────────────────────── */}
-      <div className="w-[44%] shrink-0 overflow-y-auto pr-5" style={{ maxHeight: '78vh' }}>
+      <div
+        className="w-full overflow-y-auto md:w-[44%] md:shrink-0 md:pr-5"
+        style={{ maxHeight: '78vh' }}
+      >
         <form id="invoice-form" onSubmit={handleSubmit(sparaMedMomskontroll)} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             {/* Faktura till — växel mellan hyresgäst (lease) och extern kund */}
@@ -490,10 +495,10 @@ export function InvoiceForm({
       </div>
 
       {/* ── Divider ────────────────────────────────────────────────────────── */}
-      <div className="bg-line mx-5 w-px shrink-0" />
+      <div className="bg-line mx-5 hidden w-px shrink-0 md:block" />
 
       {/* ── Right: Live preview ─────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden">
+      <div className="hidden flex-1 overflow-hidden md:block">
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
           Förhandsgranskning
         </p>
