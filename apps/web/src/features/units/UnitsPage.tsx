@@ -23,7 +23,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { UnitForm } from './components/UnitForm'
 import { useUnits, useUnit, useCreateUnit, useUpdateUnit, useDeleteUnit } from './hooks/useUnits'
-import { formatCurrency, formatDate } from '@eken/shared'
+import { formatCurrency, formatDate, frivilligSkattskyldighetPaverkarSatsen } from '@eken/shared'
 import type { UnitStatus } from '@eken/shared'
 import type { UnitWithProperty, UnitDetail, CreateUnitInput } from './api/units.api'
 import { cn } from '@/lib/cn'
@@ -80,6 +80,9 @@ function unitToInput(u: UnitDetail): Partial<CreateUnitInput> {
     ...(u.floor != null ? { floor: u.floor } : {}),
     ...(u.rooms != null ? { rooms: u.rooms } : {}),
     monthlyRent: u.monthlyRent,
+    ...(u.voluntaryTaxLiability !== undefined
+      ? { voluntaryTaxLiability: u.voluntaryTaxLiability }
+      : {}),
   }
 }
 
@@ -484,6 +487,16 @@ function UnitDetailPanel({
                 label: 'Månadshyra',
                 value: formatCurrency(Number(selected.monthlyRent)),
               },
+              // I2 — bara där flaggan påverkar momsen; samma härledning som formuläret.
+              ...(frivilligSkattskyldighetPaverkarSatsen(selected.type)
+                ? [
+                    {
+                      icon: Hash,
+                      label: 'Frivillig skattskyldighet',
+                      value: selected.voluntaryTaxLiability ? 'Ja' : 'Nej',
+                    },
+                  ]
+                : []),
             ].map((row) => (
               <div
                 key={row.label}

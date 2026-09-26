@@ -376,6 +376,15 @@ export const CreateUnitSchema = z.object({
   floor: z.number().int().optional(),
   rooms: z.number().int().positive().optional(),
   monthlyRent: z.number().nonnegative(),
+  /**
+   * Frivillig skattskyldighet för moms (`Unit.voluntaryTaxLiability`, default
+   * false). Ett UTTRYCKLIGT användarval — systemet bedömer inte rätten till
+   * frivillig skattskyldighet. `null` är inte ett värde: utelämna fältet.
+   * Att `true` bara gäller typer där det påverkar satsen
+   * (`frivilligSkattskyldighetPaverkarSatsen`) prövas av servern, eftersom den
+   * beror på objektets SPARADE typ vid en partiell uppdatering.
+   */
+  voluntaryTaxLiability: z.boolean().optional(),
 })
 
 export const UpdateUnitSchema = CreateUnitSchema.partial()
