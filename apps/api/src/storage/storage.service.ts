@@ -115,11 +115,14 @@ export class StorageService {
     }
   }
 
-  async deleteFile(key: string): Promise<void> {
+  /** Svarar falskt i stället för att kasta när lagringen fallerar — felet loggas. */
+  async deleteFile(key: string): Promise<boolean> {
     try {
       await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
+      return true
     } catch (err) {
       this.logger.error(`Misslyckades att radera fil i R2: ${key}`, err as Error)
+      return false
     }
   }
 

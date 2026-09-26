@@ -34,7 +34,10 @@ export interface InspectionImage {
   id: string
   inspectionId: string
   filename: string
-  path: string
+  /** Lagringsnyckeln. För en bilaga från ett återförsök (OB5) innehåller den valets nyckel. */
+  storageKey: string
+  /** sha256 över de bytes servern tog emot; null för bilder före F025 v2. */
+  contentSha256: string | null
   caption: string | null
   room: string | null
   size: number
@@ -287,16 +290,21 @@ export interface AnalyzeInspectionResult {
   analysis: AnalysisResult
   updatedItems: number
   createdItems: number
+  /** Bilagornas id i samma ordning som filerna — återanvända vid återförsök. */
+  bildIds: string[]
 }
 
 export async function analyzeInspection(
   id: string,
-  files: Array<{ file: File; caption?: string }>,
+  files: Array<{ file: File; caption?: string; nyckel?: string }>,
 ): Promise<AnalyzeInspectionResult> {
   const formData = new FormData()
-  files.forEach(({ file, caption }, i) => {
+  files.forEach(({ file, caption, nyckel }, i) => {
     formData.append('images', file)
     if (caption) formData.append(`caption_${i}`, caption)
+    // Återförsöksnyckeln för VALET (OB5): samma val som skickas igen återanvänder
+    // den bilaga servern redan sparat, i stället för att lagra bilden en gång till.
+    if (nyckel) formData.append(`uploadKey_${i}`, nyckel)
   })
   const res = await api.post<{ success: boolean; data: AnalyzeInspectionResult }>(
     `/inspections/${id}/analyze`,
