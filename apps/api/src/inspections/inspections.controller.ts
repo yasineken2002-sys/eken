@@ -12,6 +12,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { createHash } from 'node:crypto'
@@ -35,6 +36,9 @@ import {
 } from '../common/utils/file-validation'
 import type { JwtPayload } from '@eken/shared'
 import type { InspectionType, InspectionStatus } from '@prisma/client'
+
+/** Återförsöksnyckel för ett användarval (OB5): en UUID, inget annat — den hamnar i en lagringsnyckel. */
+const ATERFORSOKSNYCKEL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 @Controller('inspections')
 export class InspectionsController {
@@ -194,17 +198,68 @@ export class InspectionsController {
       }),
     )
 
+    // ── ÅTERFÖRSÖK AV SAMMA VAL (OB5) ─────────────────────────────────────────
+    //
+    // Bilderna sparas FÖRE AI-anropet. Svarar AI:n fel finns bilagan redan, och
+    // ett nytt klick laddade förut upp samma bild igen. Webben ger därför varje
+    // användarVAL en återförsöksnyckel (`uploadKey_<i>`, UUID). Samma val som
+    // skickas igen bär samma nyckel; ett nytt val av samma fil får en ny — det
+    // är en identitet för OPERATIONEN, inte en deduplicering på bytes.
+    //
+    // Nyckeln bärs i lagringsnyckelns prefix, under DEN besiktning som
+    // `findOneUnsigned(id, orgId)` ovan redan verifierat. Uppslaget sker bara
+    // där, så en klient kan aldrig nå en annan besiktnings eller orgs bilaga
+    // med en nyckel — och klientens bild-id används aldrig. Utan nyckel gäller
+    // det tidigare beteendet (en ny bilaga per anrop).
+    const nycklar = files.map((_, i) => {
+      const nyckel = captions[`uploadKey_${i}`]
+      if (nyckel === undefined) return null
+      if (!ATERFORSOKSNYCKEL.test(nyckel)) {
+        throw new BadRequestException(`Ogiltig återförsöksnyckel för bild ${i + 1}`)
+      }
+      return nyckel.toLowerCase()
+    })
+    const digester = files.map((f) => createHash('sha256').update(f.buffer).digest('hex'))
+    const prefixFor = (nyckel: string) => `inspections/${orgId}/${id}/${nyckel}/`
+
+    // Uppslag FÖRE varje uppladdning, så att en avvisad nyckel inte lämnar
+    // objekt efter sig.
+    const återanvända = new Map<number, string>()
+    for (let i = 0; i < files.length; i++) {
+      const nyckel = nycklar[i]
+      if (!nyckel) continue
+      const befintlig = await this.inspectionsService.findRetryImage(id, orgId, prefixFor(nyckel))
+      if (!befintlig) continue
+      if (befintlig.contentSha256 !== digester[i]) {
+        throw new ConflictException(
+          `Bild ${i + 1} har en återförsöksnyckel som redan hör till en annan bild. Välj bilden på nytt.`,
+        )
+      }
+      återanvända.set(i, befintlig.id)
+    }
+
     const imageInputs: ImageInput[] = []
     const bildrader: Parameters<InspectionsService['saveAnalysisImages']>[2] = []
+    const radIndex: number[] = []
     for (let i = 0; i < files.length; i++) {
       const f = files[i]!
       // Validerad typ hela vägen: nyckelns ändelse, lagringens Content-Type och
       // vision-modellens media_type kommer alla från samma detektion.
       const mimeType = detectedMimes[i] ?? 'image/jpeg'
-      const safeName = `${uuid()}.${extensionForDetectedMime(mimeType)}`
-      const storageKey = `inspections/${orgId}/${safeName}`
-      const storageUrl = await this.storage.uploadFile(f.buffer, storageKey, mimeType)
       const caption = captions[`caption_${i}`] ?? null
+      imageInputs.push({
+        buffer: f.buffer,
+        mimeType: mimeType as ImageInput['mimeType'],
+        ...(caption ? { caption } : {}),
+      })
+      if (återanvända.has(i)) continue
+      const nyckel = nycklar[i]
+      const safeName = `${uuid()}.${extensionForDetectedMime(mimeType)}`
+      const storageKey = nyckel
+        ? `${prefixFor(nyckel)}${safeName}`
+        : `inspections/${orgId}/${safeName}`
+      const storageUrl = await this.storage.uploadFile(f.buffer, storageKey, mimeType)
+      radIndex.push(i)
       bildrader.push({
         filename: f.filename,
         storageKey,
@@ -215,19 +270,19 @@ export class InspectionsController {
         // Digesten tas ur SAMMA buffer som skrevs till lagringen på raden ovan,
         // inte ur en omläsning: en omläsning hade beskrivit vad lagringen råkar
         // svara med efteråt, vilket är just det digesten ska kunna motsäga.
-        contentSha256: createHash('sha256').update(f.buffer).digest('hex'),
-      })
-      imageInputs.push({
-        buffer: f.buffer,
-        mimeType: mimeType as ImageInput['mimeType'],
-        ...(caption ? { caption } : {}),
+        contentSha256: digester[i]!,
+        ...(nyckel ? { aterforsokPrefix: prefixFor(nyckel) } : {}),
       })
     }
 
     // Bildraderna gick förut rakt in via `prisma.inspectionImage.create` utan
     // någon kontroll av besiktningens status. De skrivs nu genom tjänsten, i en
     // transaktion som tar samma radlås som signeringen.
-    await this.inspectionsService.saveAnalysisImages(id, orgId, bildrader)
+    const sparat = await this.inspectionsService.saveAnalysisImages(id, orgId, bildrader)
+    // En samtidig begäran med samma nyckel hann först (dubbelklick, okänt
+    // nätutfall): dess bilaga används och det nyss uppladdade objektet tas bort.
+    for (const key of sparat.foraldralosa) await this.storage.deleteFile(key)
+    const bildIds = files.map((_, i) => återanvända.get(i) ?? sparat.ids[radIndex.indexOf(i)]!)
 
     const analysis = await this.analyzerService.analyzeImages(imageInputs, orgId, user.sub)
 
@@ -242,7 +297,7 @@ export class InspectionsController {
       analysis,
     )
 
-    return { analysis, updatedItems, createdItems }
+    return { analysis, updatedItems, createdItems, bildIds }
   }
 
   @Delete(':id')

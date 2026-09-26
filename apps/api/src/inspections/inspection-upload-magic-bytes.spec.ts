@@ -44,7 +44,8 @@ function makeController() {
   // magiska byten, storlekstak och 10-bildersgränsen nedan är OFÖRÄNDRADE.
   const inspectionsService = {
     findOneUnsigned: jest.fn().mockResolvedValue({ id: 'insp-1', items: [] }),
-    saveAnalysisImages: jest.fn().mockResolvedValue(undefined),
+    saveAnalysisImages: jest.fn().mockResolvedValue({ ids: [], foraldralosa: [] }),
+    findRetryImage: jest.fn().mockResolvedValue(null),
     applyAnalysis: jest.fn().mockResolvedValue({ updatedItems: 0, createdItems: 0 }),
   }
   const analyzerService = {

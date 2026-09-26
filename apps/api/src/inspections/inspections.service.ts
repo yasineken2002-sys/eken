@@ -552,14 +552,63 @@ export class InspectionsService {
       room: string | null
       size: number
       contentSha256: string
+      /** Återförsöksnyckelns prefix (OB5). Finns en bilaga under det redan, återanvänds den. */
+      aterforsokPrefix?: string
     }[],
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  ): Promise<{ ids: string[]; foraldralosa: string[] }> {
+    return this.prisma.$transaction(async (tx) => {
       await this.lockAndAssertUnsigned(tx, inspectionId, orgId)
-      for (const bild of bilder) {
-        await tx.inspectionImage.create({ data: { inspectionId, ...bild } })
+      const ids: string[] = []
+      const foraldralosa: string[] = []
+      for (const { aterforsokPrefix, ...bild } of bilder) {
+        // Kontrollen görs om UNDER radlåset: två samtidiga försök med samma
+        // nyckel passerar båda controllerns uppslag, men bara det första
+        // skapar raden. Det andra återanvänder den och lämnar sitt objekt
+        // till controllern att radera.
+        if (aterforsokPrefix) {
+          const befintlig = await tx.inspectionImage.findFirst({
+            where: {
+              inspectionId,
+              inspection: { organizationId: orgId },
+              storageKey: { startsWith: aterforsokPrefix },
+            },
+            select: { id: true, contentSha256: true },
+          })
+          if (befintlig) {
+            if (befintlig.contentSha256 !== bild.contentSha256) {
+              throw new ConflictException(
+                'Återförsöksnyckeln hör redan till en annan bild. Välj bilden på nytt.',
+              )
+            }
+            ids.push(befintlig.id)
+            foraldralosa.push(bild.storageKey)
+            continue
+          }
+        }
+        const rad = await tx.inspectionImage.create({
+          data: { inspectionId, ...bild },
+          select: { id: true },
+        })
+        ids.push(rad.id)
       }
+      return { ids, foraldralosa }
     }, PRISMA_DEFAULT_TX_LIMITS)
+  }
+
+  /**
+   * Bilaga som redan sparats för en återförsöksnyckel (OB5), inom EN besiktning
+   * i EN org. Används av analysvägen före uppladdning; kontrollen görs om under
+   * lås i `saveAnalysisImages`.
+   */
+  async findRetryImage(inspectionId: string, orgId: string, prefix: string) {
+    return this.prisma.inspectionImage.findFirst({
+      where: {
+        inspectionId,
+        inspection: { organizationId: orgId },
+        storageKey: { startsWith: prefix },
+      },
+      select: { id: true, contentSha256: true },
+    })
   }
 
   /**

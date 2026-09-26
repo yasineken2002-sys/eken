@@ -147,7 +147,7 @@ export function useAnalyzeInspection() {
   return useMutation<
     AnalyzeInspectionResult,
     Error,
-    { id: string; files: Array<{ file: File; caption?: string }> }
+    { id: string; files: Array<{ file: File; caption?: string; nyckel?: string }> }
   >({
     mutationFn: ({ id, files }) => analyzeInspection(id, files),
     // onSettled, inte onSuccess: servern sparar bilderna FÖRE AI-anropet

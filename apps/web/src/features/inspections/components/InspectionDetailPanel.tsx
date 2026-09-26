@@ -80,8 +80,18 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
     )
   const downloadPdf = useDownloadPdf()
   const analyzeInspection = useAnalyzeInspection()
+  // Varje köpost är ett användarVAL med en egen återförsöksnyckel (OB5). Samma
+  // post som skickas igen bär samma nyckel och återanvänder bilagan servern redan
+  // sparat; ett nytt val av samma fil får en ny nyckel. `sha256` räknas här så
+  // att sparbeskedet kan jämföra serverns bilaga med just den här filens bytes.
   const [pendingFiles, setPendingFiles] = useState<
-    Array<{ file: File; caption: string; previewUrl: string }>
+    Array<{
+      file: File
+      caption: string
+      previewUrl: string
+      nyckel: string
+      sha256: string | null
+    }>
   >([])
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -93,8 +103,25 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
       const entries = Array.from(fileList)
         .filter((f) => allowed.includes(f.type))
         .slice(0, 10 - pendingFiles.length)
-        .map((f) => ({ file: f, caption: '', previewUrl: URL.createObjectURL(f) }))
+        .map((f) => ({
+          file: f,
+          caption: '',
+          previewUrl: URL.createObjectURL(f),
+          nyckel: crypto.randomUUID(),
+          sha256: null as string | null,
+        }))
       setPendingFiles((prev) => [...prev, ...entries].slice(0, 10))
+      for (const e of entries) {
+        void e.file
+          .arrayBuffer()
+          .then((b) => crypto.subtle.digest('SHA-256', b))
+          .then((d) => {
+            const hex = [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join('')
+            setPendingFiles((prev) =>
+              prev.map((p) => (p.nyckel === e.nyckel ? { ...p, sha256: hex } : p)),
+            )
+          })
+      }
     },
     [pendingFiles.length],
   )
@@ -110,7 +137,9 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
     try {
       const result = await analyzeInspection.mutateAsync({
         id: inspection.id,
-        files: pendingFiles.map(({ file, caption }) => (caption ? { file, caption } : { file })),
+        files: pendingFiles.map(({ file, caption, nyckel }) =>
+          caption ? { file, caption, nyckel } : { file, nyckel },
+        ),
       })
       setAnalysisResult(result.analysis)
       setPendingFiles([])
@@ -119,6 +148,13 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
       // här så att ett misslyckat försök inte blir ett ohanterat löfte i sidan.
     }
   }
+
+  // Bilagan servern redan sparat för ett val — ur den omlästa besiktningen, inte
+  // ur ett HTTP-status. Analysvägen sparar bilderna före AI-anropet, så ett
+  // misslyckat försök kan ha lämnat en bilaga; ett fel före lagringen lämnar ingen.
+  const sparadBilaga = (nyckel: string) =>
+    inspection.images.find((b) => b.storageKey.includes(`/${nyckel}/`))
+  const nagonSparad = pendingFiles.some((pf) => sparadBilaga(pf.nyckel))
 
   const tenantName = inspection.tenant
     ? inspection.tenant.type === 'INDIVIDUAL'
@@ -356,35 +392,57 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
 
           {pendingFiles.length > 0 && (
             <div className="mt-3 space-y-2">
-              {pendingFiles.map((pf, i) => (
-                <div
-                  key={i}
-                  className="border-line flex items-center gap-2 rounded-xl border px-3 py-2"
-                >
-                  <img
-                    src={pf.previewUrl}
-                    alt=""
-                    className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
-                  />
-                  <input
-                    type="text"
-                    value={pf.caption}
-                    onChange={(e) =>
-                      setPendingFiles((prev) =>
-                        prev.map((f, idx) => (idx === i ? { ...f, caption: e.target.value } : f)),
-                      )
-                    }
-                    placeholder="Bildtext (valfri)..."
-                    className="min-w-0 flex-1 bg-transparent text-[12px] text-gray-700 placeholder:text-gray-400 focus:outline-none"
-                  />
-                  <button
-                    onClick={() => removeFile(i)}
-                    className="flex-shrink-0 text-gray-400 hover:text-gray-600"
-                  >
-                    <XIcon size={13} strokeWidth={1.8} />
-                  </button>
-                </div>
-              ))}
+              {pendingFiles.map((pf, i) => {
+                const sparad = sparadBilaga(pf.nyckel)
+                return (
+                  <div key={pf.nyckel} className="border-line rounded-xl border px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={pf.previewUrl}
+                        alt=""
+                        className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
+                      />
+                      <input
+                        type="text"
+                        value={sparad ? (sparad.caption ?? '') : pf.caption}
+                        readOnly={Boolean(sparad)}
+                        onChange={(e) =>
+                          setPendingFiles((prev) =>
+                            prev.map((f, idx) =>
+                              idx === i ? { ...f, caption: e.target.value } : f,
+                            ),
+                          )
+                        }
+                        placeholder="Bildtext (valfri)..."
+                        className="min-w-0 flex-1 bg-transparent text-[12px] text-gray-700 placeholder:text-gray-400 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => removeFile(i)}
+                        title={
+                          sparad ? 'Ta bort ur kön — bilagan finns kvar på besiktningen' : 'Ta bort'
+                        }
+                        className="flex-shrink-0 text-gray-400 hover:text-gray-600"
+                      >
+                        <XIcon size={13} strokeWidth={1.8} />
+                      </button>
+                    </div>
+                    {sparad && (
+                      <p
+                        data-testid="bild-sparad"
+                        data-bild-id={sparad.id}
+                        className="mt-1.5 text-[11px] text-emerald-700"
+                      >
+                        Sparad som bilaga · id {sparad.id.slice(0, 8)} ·{' '}
+                        {pf.sha256 === null || sparad.contentSha256 === null
+                          ? 'innehållet kontrolleras…'
+                          : pf.sha256 === sparad.contentSha256
+                            ? 'samma innehåll som din fil'
+                            : 'innehållet skiljer sig från din fil'}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -398,8 +456,19 @@ export function InspectionDetailPanel({ inspection, onClose, onOppnaVersion }: P
               onClick={() => void handleAnalyze()}
             >
               <Sparkles size={12} strokeWidth={1.8} />
-              {analyzeInspection.isPending ? 'Analyserar bilder...' : 'Analysera med AI'}
+              {analyzeInspection.isPending
+                ? 'Analyserar bilder...'
+                : nagonSparad
+                  ? 'Försök analysera igen'
+                  : 'Analysera med AI'}
             </Button>
+          )}
+
+          {nagonSparad && !analyzeInspection.isPending && (
+            <p className="mt-2 text-[11px] text-gray-500">
+              Bilden är sparad som bilaga på besiktningen. Ett nytt försök analyserar samma bilaga —
+              den laddas inte upp igen.
+            </p>
           )}
 
           {analyzeInspection.isPending && (
