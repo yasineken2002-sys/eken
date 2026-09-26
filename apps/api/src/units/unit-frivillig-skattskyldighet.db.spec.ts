@@ -14,7 +14,10 @@
  *   utelämnat   POST → false (DB-default) · PATCH → oförändrat
  *   true/false  sparas som de är — ett giltigt `false` är ett värde, inte "inget"
  *   null        400, ingen skrivning (samma regel som `propertyId`)
- *   "true", 1   400 — ingen tyst koercion (`@StrictBoolean`)
+ *   fel typ     400 — `"ja"`, `"0"`, `""`, 1 och objekt koerceras inte
+ *               (`@StrictBoolean`). Strängformerna `"true"`/`"false"` godtas
+ *               med flit — husets dokumenterade kontrakt i
+ *               strict-boolean.decorator.ts — och sparas som booleaner.
  *   typgräns    `true` avvisas (400) på en typ där flaggan INTE påverkar
  *               regelns sats — härlett ur `vatRateForRent` själv, inte ur en
  *               egen lista. Bostad och parkering kan alltså inte bli
@@ -69,7 +72,12 @@ medDb('Unit.voluntaryTaxLiability — skrivväg mot riktig PostgreSQL (I2)', () 
   const token = (role = 'MANAGER', organizationId = orgA) =>
     jwt.sign({ sub: randomUUID(), email: 'provare@example.invalid', organizationId, role })
 
-  const anrop = (metod: 'POST' | 'PATCH', url: string, kropp: unknown, auth: string | null = token()) =>
+  const anrop = (
+    metod: 'POST' | 'PATCH',
+    url: string,
+    kropp: unknown,
+    auth: string | null = token(),
+  ) =>
     app.inject({
       method: metod,
       url,
@@ -223,7 +231,9 @@ medDb('Unit.voluntaryTaxLiability — skrivväg mot riktig PostgreSQL (I2)', () 
 
   it.each([
     ['null', null],
-    ['strängen "true"', 'true'],
+    ['strängen "ja"', 'ja'],
+    ['strängen "0"', '0'],
+    ['tomma strängen', ''],
     ['talet 1', 1],
     ['ett objekt', { varde: true }],
   ])('PATCH med %s avvisas med 400 och skriver ingenting', async (_n, varde) => {
@@ -236,12 +246,19 @@ medDb('Unit.voluntaryTaxLiability — skrivväg mot riktig PostgreSQL (I2)', () 
 
   it.each([
     ['null', null],
-    ['strängen "false"', 'false'],
+    ['strängen "nej"', 'nej'],
   ])('POST med %s avvisas med 400 och skapar inget objekt', async (_n, varde) => {
     const fore = await prisma.unit.count({ where: { propertyId: fastighet } })
     const res = await anrop('POST', '/v1/units', nytt({ voluntaryTaxLiability: varde }))
     expect(res.statusCode).toBe(400)
     expect(await prisma.unit.count({ where: { propertyId: fastighet } })).toBe(fore)
+  })
+
+  it('strängformerna "true"/"false" (husets kontrakt) sparas som booleaner', async () => {
+    expect((await patcha({ voluntaryTaxLiability: 'true' })).statusCode).toBe(200)
+    expect((await las()).voluntaryTaxLiability).toBe(true)
+    expect((await patcha({ voluntaryTaxLiability: 'false' })).statusCode).toBe(200)
+    expect((await las()).voluntaryTaxLiability).toBe(false)
   })
 
   // ── Typgränsen: bostad och parkering ─────────────────────────────────────
@@ -252,7 +269,9 @@ medDb('Unit.voluntaryTaxLiability — skrivväg mot riktig PostgreSQL (I2)', () 
       const fore = await prisma.unit.count({ where: { propertyId: fastighet } })
       const res = await anrop('POST', '/v1/units', nytt({ type, voluntaryTaxLiability: true }))
       expect(res.statusCode).toBe(400)
-      expect(res.json().error.message).toMatch(/Frivillig skattskyldighet/)
+      // Provappen saknar det globala felfiltret, så kroppen är Nests
+      // standardform; meddelandet söks i hela svaret.
+      expect(JSON.stringify(res.json())).toMatch(/Frivillig skattskyldighet/)
       expect(await prisma.unit.count({ where: { propertyId: fastighet } })).toBe(fore)
 
       const ok = await anrop('POST', '/v1/units', nytt({ type, voluntaryTaxLiability: false }))
@@ -300,12 +319,15 @@ medDb('Unit.voluntaryTaxLiability — skrivväg mot riktig PostgreSQL (I2)', () 
 
   // ── Behörighet och organisationsgräns ─────────────────────────────────────
 
-  it.each(['VIEWER', 'ACCOUNTANT'])('%s får inte skriva flaggan (403), ingen ändring', async (roll) => {
-    const fore = await las()
-    const res = await patcha({ voluntaryTaxLiability: true }, token(roll))
-    expect(res.statusCode).toBe(403)
-    expect(await las()).toEqual(fore)
-  })
+  it.each(['VIEWER', 'ACCOUNTANT'])(
+    '%s får inte skriva flaggan (403), ingen ändring',
+    async (roll) => {
+      const fore = await las()
+      const res = await patcha({ voluntaryTaxLiability: true }, token(roll))
+      expect(res.statusCode).toBe(403)
+      expect(await las()).toEqual(fore)
+    },
+  )
 
   it('en MANAGER i en annan organisation når inte objektet (404), ingen ändring', async () => {
     const fore = await las()
