@@ -42,6 +42,13 @@ export function useUpdateUnit() {
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['units', 'list'] })
       void queryClient.invalidateQueries({ queryKey: UNIT_DETAIL(variables.id) })
+      // R1 (#933) — AVTALSUNDERLAGET BÄR OBJEKTET. Avtalslistan och avtalsdetaljen
+      // inkluderar enheten (typ, frivillig skattskyldighet), och fakturaformulärets
+      // momsförval läser just därifrån. Med appens staleTime (60 s) låg listan kvar
+      // som färsk efter en flaggsparning, och nästa faktura förvalde den GAMLA
+      // satsen — som servern sedan avvisar. Samma nycklar som useLeases.ts.
+      void queryClient.invalidateQueries({ queryKey: ['leases', 'list'] })
+      void queryClient.invalidateQueries({ queryKey: ['lease', 'detail'] })
     },
   })
 }
