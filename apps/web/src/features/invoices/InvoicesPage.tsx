@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { kontraktsfel } from '@/lib/contract-gate'
 import {
@@ -62,6 +63,7 @@ import { useTenants } from '@/features/tenants/hooks/useTenants'
 import { useFocusStore } from '@/stores/focus.store'
 import { useCanWrite } from '@/hooks/useCanWrite'
 import { cn } from '@/lib/cn'
+import { get } from '@/lib/api'
 import { isForbidden } from '@/lib/api'
 
 // Stagger på listor — designsystemets standard.
@@ -257,6 +259,51 @@ export function InvoicesPage() {
   const statusMutation = useTransitionStatus()
   const payMutation = useRegisterPayment()
   const sendEmailMutation = useSendInvoiceEmail()
+  const qc = useQueryClient()
+
+  // ── SVARET HÖR TILL FAKTURAN HANDLINGEN GÄLLDE (#925 A4) ──────────────────
+  //
+  // Ett svar — lyckat eller omläst efter fel — kommer när det kommer. Har
+  // användaren hunnit stänga fakturan eller öppna en annan ska svaret inte
+  // öppna den gamla igen: då byts vyn under användaren till en faktura hen
+  // lämnat. Svaret uppdaterar ändå cachen (useInvoiceQueries), så fakturan är
+  // aktuell nästa gång den öppnas. Id läses ur en ref, inte ur `selected` i
+  // handlingens closure — den är värdet vid KLICKET, inte nu.
+  const valdId = useRef<string | null>(null)
+  valdId.current = selected?.id ?? null
+  function visaOmFortfarandeVald(faktura: InvoiceWithOutstanding): boolean {
+    if (valdId.current !== faktura.id) return false
+    setSelected(faktura)
+    return true
+  }
+
+  // ── NÄR EN FAKTURAHANDLING MISSLYCKAS ─────────────────────────────────────
+  //
+  // Felet i sig toastas globalt (serverns svenska meddelande). Men "misslyckades"
+  // säger inte vad som SPARADES: servern kan ha hunnit ändra fakturan innan
+  // svaret föll bort. Därför läses fakturan om från servern och visas som den
+  // faktiskt är. Ingenting skickas om — en redan genomförd åtgärd får inte
+  // upprepas för att svaret inte kom fram.
+  async function visaSparatEfterFel(id: string) {
+    try {
+      const faktisk = await qc.fetchQuery({
+        queryKey: ['invoice', id],
+        queryFn: () => get<InvoiceWithOutstanding>(`/invoices/${id}`),
+        staleTime: 0,
+      })
+      if (visaOmFortfarandeVald(faktisk)) {
+        toast.info('Fakturan har lästs om och visar det som faktiskt sparats.')
+      } else {
+        toast.info(
+          `Faktura ${faktisk.invoiceNumber} har lästs om. Öppna den för att se vad som faktiskt sparats.`,
+        )
+      }
+    } catch {
+      toast.error(
+        'Fakturans aktuella läge kunde inte läsas. Stäng och öppna fakturan igen innan du försöker på nytt.',
+      )
+    }
+  }
 
   // ── F8: BETALNINGSMÅLET ───────────────────────────────────────────────────
   //
@@ -341,9 +388,10 @@ export function InvoicesPage() {
       { id: selected.id, ...data },
       {
         onSuccess: (updated) => {
-          setSelected(updated)
+          visaOmFortfarandeVald(updated)
           setShowEdit(false)
         },
+        onError: () => void visaSparatEfterFel(selected.id),
       },
     )
   }
@@ -362,7 +410,11 @@ export function InvoicesPage() {
     if (!selected) return
     statusMutation.mutate(
       { id: selected.id, status: 'SENT' },
-      { onSuccess: (updated) => setSelected(updated) },
+      {
+        // Svaret är den fullständiga fakturan (invoices.controller.ts `fullFaktura`).
+        onSuccess: (updated) => void visaOmFortfarandeVald(updated),
+        onError: () => void visaSparatEfterFel(selected.id),
+      },
     )
   }
 
@@ -399,9 +451,10 @@ export function InvoicesPage() {
       { id: selected.id, ...kropp },
       {
         onSuccess: (updated) => {
-          setSelected(updated)
+          visaOmFortfarandeVald(updated)
           setShowPayment(false)
         },
+        onError: () => void visaSparatEfterFel(selected.id),
       },
     )
   }
@@ -417,7 +470,10 @@ export function InvoicesPage() {
     if (!selected) return
     statusMutation.mutate(
       { id: selected.id, status: 'VOID' },
-      { onSuccess: (updated) => setSelected(updated) },
+      {
+        onSuccess: (updated) => void visaOmFortfarandeVald(updated),
+        onError: () => void visaSparatEfterFel(selected.id),
+      },
     )
   }
 
@@ -1068,10 +1124,9 @@ export function InvoicesPage() {
           }
         >
           {/* #349: formuläret får fakturan från DETALJQUERYN, inte från `selected`.
-              `selected` sätts både från listan och från mutationssvar (setSelected(updated)),
-              och mutationssvaren bär inte restskulden — att typa hela state:t hade
-              tvingat fram `outstanding` på fyra endpoints och en DB-läsning per
-              mutation. Att hämta här är dessutom MER korrekt: beloppet bygger på
+              `selected` sätts både från listan och från mutationssvar (setSelected(updated)).
+              Mutationssvaren är sedan FAKTURAVY-RÄTTNINGEN den fullständiga fakturan
+              (med `outstanding`), men beloppet läses fortfarande här: det bygger på
               serverns sanning när modalen öppnas, inte på en möjligen inaktuell
               listrad. */}
           {paymentInvoice ? (

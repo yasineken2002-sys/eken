@@ -9,6 +9,8 @@ import {
   CreateInvoiceSchema,
   formatDate,
   DEFAULT_BRAND_COLOR,
+  vatRateForRent,
+  VAT_RATES as VAT_RATE_VALUES,
   type CreateInvoiceInput,
 } from '@eken/shared'
 import { useLeases } from '@/features/leases/hooks/useLeases'
@@ -79,6 +81,8 @@ export function InvoiceForm({
     handleSubmit,
     watch,
     setValue,
+    setError,
+    getFieldState,
     formState: { errors },
   } = useForm<CreateInvoiceInput>({
     resolver: zodResolver(CreateInvoiceSchema),
@@ -140,6 +144,63 @@ export function InvoiceForm({
   // ── Preview calculations ───────────────────────────────────────────────────
 
   const selectedLease = billableLeases.find((l) => l.id === watched.leaseId)
+
+  // ── MOMSEN FÖLJER AVTALETS UPPLÅTELSE ─────────────────────────────────────
+  //
+  // Servern avvisar varje avtalsfaktura vars rad inte har exakt den sats
+  // `vatRateForRent(enhetstyp, frivillig skattskyldighet)` ger — samma delade
+  // regel läses här, så att formuläret inte börjar med ett förbjudet värde
+  // (kundprovet på #924: 25 % förvalt på ett bostadsavtal → tekniskt fel om
+  // "vatRate"). Ingen egen skatteregel: saknas uppgiften om frivillig
+  // skattskyldighet i svaret gissas inget, och förvalet står kvar.
+  //
+  // Kundfakturor (utan avtal) rörs inte: där finns ingen upplåtelse att läsa
+  // och alla satser är giltiga.
+  const regelSats =
+    recipientMode === 'tenant' &&
+    selectedLease?.unit &&
+    typeof selectedLease.unit.voluntaryTaxLiability === 'boolean'
+      ? vatRateForRent(selectedLease.unit.type, selectedLease.unit.voluntaryTaxLiability)
+      : null
+  // Regeln ger alltid en av formulärets satser; skulle den någon gång inte göra
+  // det förvals ingenting hellre än att ett värde utanför listan tvingas in.
+  const tillatenMoms =
+    regelSats !== null && (VAT_RATE_VALUES as readonly number[]).includes(regelSats)
+      ? (regelSats as CreateInvoiceInput['lines'][number]['vatRate'])
+      : null
+  const momsFel = (sats: number) =>
+    sats === 0
+      ? selectedLease?.unit?.type === 'APARTMENT'
+        ? 'Bostadshyra är momsfri — välj 0 %.'
+        : 'Upplåtelsen saknar frivillig beskattning och är momsfri — välj 0 %.'
+      : `Upplåtelsen är momspliktig — välj ${sats} %.`
+
+  // Rader som användaren INTE själv har ändrat moms på får avtalets sats. Ett
+  // eget val skrivs aldrig över; är det fel fångas det vid sparandet nedan.
+  useEffect(() => {
+    if (tillatenMoms === null) return
+    ;(watched.lines ?? []).forEach((_, i) => {
+      if (!getFieldState(`lines.${i}.vatRate`).isDirty) {
+        setValue(`lines.${i}.vatRate`, tillatenMoms)
+      }
+    })
+    // Endast när avtalets sats ändras (avtal valt/bytt), inte vid varje tangent.
+  }, [tillatenMoms])
+
+  function sparaMedMomskontroll(data: CreateInvoiceInput) {
+    if (tillatenMoms !== null) {
+      const felRader = data.lines
+        .map((l, i) => ({ i, sats: Number(l.vatRate) }))
+        .filter((r) => r.sats !== tillatenMoms)
+      if (felRader.length > 0) {
+        for (const r of felRader) {
+          setError(`lines.${r.i}.vatRate`, { type: 'moms', message: momsFel(tillatenMoms) })
+        }
+        return
+      }
+    }
+    return onSubmit(data)
+  }
   const selectedCustomer = customers.find((c) => c.id === watched.customerId)
 
   const customerLabel = (c: {
@@ -186,10 +247,15 @@ export function InvoiceForm({
   const grandTotal = subtotal + vatTotal
 
   return (
-    <div className="flex min-h-0 gap-0">
+    // Under md (390 px m.fl.) staplas formuläret i full bredd och förhandsgranskningen döljs — en
+    // 794 px-förhandsgranskning bredvid en 44 %-kolumn gjorde fälten några tecken breda (I1).
+    <div className="flex min-h-0 flex-col gap-0 md:flex-row">
       {/* ── Left: Form ─────────────────────────────────────────────────────── */}
-      <div className="w-[44%] shrink-0 overflow-y-auto pr-5" style={{ maxHeight: '78vh' }}>
-        <form id="invoice-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div
+        className="w-full overflow-y-auto md:w-[44%] md:shrink-0 md:pr-5"
+        style={{ maxHeight: '78vh' }}
+      >
+        <form id="invoice-form" onSubmit={handleSubmit(sparaMedMomskontroll)} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             {/* Faktura till — växel mellan hyresgäst (lease) och extern kund */}
             <div className="col-span-2">
@@ -394,7 +460,14 @@ export function InvoiceForm({
             <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-4 py-2.5">
               <button
                 type="button"
-                onClick={() => append({ description: '', quantity: 1, unitPrice: 0, vatRate: 25 })}
+                onClick={() =>
+                  append({
+                    description: '',
+                    quantity: 1,
+                    unitPrice: 0,
+                    vatRate: tillatenMoms ?? 25,
+                  })
+                }
                 className={cn(
                   'flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-blue-600',
                   'transition-all hover:bg-blue-50 active:scale-[0.97]',
@@ -422,10 +495,10 @@ export function InvoiceForm({
       </div>
 
       {/* ── Divider ────────────────────────────────────────────────────────── */}
-      <div className="bg-line mx-5 w-px shrink-0" />
+      <div className="bg-line mx-5 hidden w-px shrink-0 md:block" />
 
       {/* ── Right: Live preview ─────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-hidden">
+      <div className="hidden flex-1 overflow-hidden md:block">
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
           Förhandsgranskning
         </p>

@@ -245,3 +245,89 @@ describe('#913 — filtertexten påstår inte mer än registreringen vet', () =>
     expect(screen.queryByText('F-1001')).toBeNull()
   })
 })
+
+/**
+ * 2026-09-25 (portal-mobil) — DEPOSITION OCH HYRESAVI SAMMA MÅNAD, BÅDA BETALDA.
+ *
+ * Före ändringen var de två korten identiska ("September 2026 · 0 kr"): kunden kunde inte
+ * se vilken avi som var depositionen. Provet binder varje korts synliga typ till AVINS
+ * id via nedladdningen (onDownload får kortets id) — en etikett på fel kort fäller det,
+ * inte bara en saknad etikett. Beloppet är restskulden och ska vara märkt som sådan.
+ */
+describe('avins typ och restskuldens etikett', () => {
+  const bas = {
+    ...AVI_DELBETALD,
+    month: 9,
+    year: 2026,
+    payableTotal: 0,
+    paid: 0,
+    status: 'PAID' as const,
+    paidAt: '2026-09-25T00:00:00.000Z',
+  }
+  const DEPOSITION = {
+    ...bas,
+    id: 'rn-dep',
+    noticeNumber: 'AVI-2026-09-0001',
+    type: 'DEPOSIT' as const,
+    totalAmount: 5000,
+    nominalTotal: 5000,
+    paid: 5000,
+  }
+  const HYRA = {
+    ...bas,
+    id: 'rn-hyra',
+    noticeNumber: 'AVI-2026-09-0002',
+    type: 'RENT' as const,
+    totalAmount: 9500,
+    nominalTotal: 9500,
+    paid: 9500,
+  }
+
+  beforeEach(() => {
+    api.fetchRentNotices.mockResolvedValue([DEPOSITION, HYRA])
+    api.downloadRentNoticePdf.mockResolvedValue(undefined)
+  })
+
+  it('varje kort bär sin EGEN typ — bunden till avins id via kortets nedladdning', async () => {
+    rendera()
+    const knappar = await screen.findAllByRole('button', { name: /Ladda ned PDF/ })
+    expect(knappar).toHaveLength(2)
+    const parningar: Array<[string, string]> = []
+    for (const knapp of knappar) {
+      // Kortet = närmaste förfader som rymmer hela avikortet (OCR-raden ingår).
+      let kort = knapp.parentElement as HTMLElement
+      while (kort && !/OCR-nummer/i.test(kort.textContent ?? ''))
+        kort = kort.parentElement as HTMLElement
+      api.downloadRentNoticePdf.mockClear()
+      fireEvent.click(knapp)
+      await waitFor(() => expect(api.downloadRentNoticePdf).toHaveBeenCalledTimes(1))
+      const id = api.downloadRentNoticePdf.mock.calls[0]![0] as string
+      const typ = /Deposition/.test(kort.textContent ?? '')
+        ? 'Deposition'
+        : /Hyresavi/.test(kort.textContent ?? '')
+          ? 'Hyresavi'
+          : 'ingen'
+      parningar.push([id, typ])
+    }
+    expect(Object.fromEntries(parningar)).toEqual({ 'rn-dep': 'Deposition', 'rn-hyra': 'Hyresavi' })
+  })
+
+  it('0 kr är märkt som kvar att betala, och avins belopp står bara med egen etikett', async () => {
+    rendera()
+    await screen.findAllByRole('button', { name: /Ladda ned PDF/ })
+    expect(screen.getAllByText('Kvar att betala')).toHaveLength(2)
+    expect(screen.getByText(/Avins belopp\s+5\s000\s+kr/)).toBeTruthy()
+    expect(screen.getByText(/Avins belopp\s+9\s500\s+kr/)).toBeTruthy()
+  })
+
+  it('saknas typ i svaret gissas den inte — neutral etikett', async () => {
+    const utanTyp: Partial<typeof HYRA> = { ...HYRA }
+    delete utanTyp.type
+    api.fetchRentNotices.mockResolvedValue([utanTyp])
+    rendera()
+    await screen.findAllByRole('button', { name: /Ladda ned PDF/ })
+    expect(screen.queryByText('Hyresavi')).toBeNull()
+    expect(screen.queryByText('Deposition')).toBeNull()
+    expect(screen.getByText('Avi')).toBeTruthy()
+  })
+})
