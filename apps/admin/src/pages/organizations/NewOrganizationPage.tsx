@@ -5,7 +5,13 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input, Label, Select } from '@/components/ui/Input'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
-import { post } from '@/lib/api'
+import { extractApiError, post } from '@/lib/api'
+import {
+  newOrganizationAddressErrors,
+  type NewOrganizationAddressErrors,
+} from './new-organization-address'
+
+const ADRESSFALT = ['street', 'postalCode', 'city'] as const
 
 interface CreatedOrg {
   organization: { id: string; name: string }
@@ -31,11 +37,17 @@ export function NewOrganizationPage() {
     adminLastName: '',
   })
   const [created, setCreated] = useState<CreatedOrg | null>(null)
+  const [adressFel, setAdressFel] = useState<NewOrganizationAddressErrors>({})
 
   const mutation = useMutation({
     mutationFn: (payload: typeof form) =>
       post<CreatedOrg>('/platform/organizations', {
         ...payload,
+        // Lagras trimmat av servern; skickas trimmat så förkontrollen och
+        // servern prövar samma värden.
+        street: payload.street.trim(),
+        postalCode: payload.postalCode.trim(),
+        city: payload.city.trim(),
         orgNumber: payload.orgNumber || undefined,
         phone: payload.phone || undefined,
         billingEmail: payload.billingEmail || undefined,
@@ -47,6 +59,14 @@ export function NewOrganizationPage() {
 
   function onChange<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }))
+    const falt = ADRESSFALT.find((f) => f === key)
+    if (falt) {
+      setAdressFel((fel) => {
+        const kvar = { ...fel }
+        delete kvar[falt]
+        return kvar
+      })
+    }
   }
 
   if (created) {
@@ -93,6 +113,11 @@ export function NewOrganizationPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault()
+          // Samma adressregel som servern (A5): stoppa före anropet och visa
+          // felet vid fältet i stället för ett generiskt serverfel.
+          const fel = newOrganizationAddressErrors(form)
+          setAdressFel(fel)
+          if (Object.keys(fel).length > 0) return
           mutation.mutate(form)
         }}
         className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2"
@@ -147,7 +172,11 @@ export function NewOrganizationPage() {
                 value={form.street}
                 onChange={(e) => onChange('street', e.target.value)}
                 required
+                aria-invalid={adressFel.street ? true : undefined}
               />
+              {adressFel.street ? (
+                <p className="mt-1 text-[12px] text-red-500">{adressFel.street}</p>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -157,7 +186,11 @@ export function NewOrganizationPage() {
                   value={form.postalCode}
                   onChange={(e) => onChange('postalCode', e.target.value)}
                   required
+                  aria-invalid={adressFel.postalCode ? true : undefined}
                 />
+                {adressFel.postalCode ? (
+                  <p className="mt-1 text-[12px] text-red-500">{adressFel.postalCode}</p>
+                ) : null}
               </div>
               <div>
                 <Label htmlFor="city">Ort</Label>
@@ -166,7 +199,11 @@ export function NewOrganizationPage() {
                   value={form.city}
                   onChange={(e) => onChange('city', e.target.value)}
                   required
+                  aria-invalid={adressFel.city ? true : undefined}
                 />
+                {adressFel.city ? (
+                  <p className="mt-1 text-[12px] text-red-500">{adressFel.city}</p>
+                ) : null}
               </div>
             </div>
           </CardBody>
@@ -267,7 +304,7 @@ export function NewOrganizationPage() {
 
         {mutation.error ? (
           <div className="rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700 lg:col-span-2">
-            {(mutation.error as Error).message}
+            {extractApiError(mutation.error, 'Kunden kunde inte skapas')}
           </div>
         ) : null}
 
