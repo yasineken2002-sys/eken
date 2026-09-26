@@ -3,6 +3,7 @@ import { Catch, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/co
 import * as Sentry from '@sentry/nestjs'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { PlatformErrorsService } from '../../platform/errors/platform-errors.service'
+import { trustedFrameworkClientError } from './trusted-framework-errors'
 
 interface AuthedRequest extends FastifyRequest {
   user?: { sub?: string; organizationId?: string }
@@ -61,8 +62,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const reply = ctx.getResponse<FastifyReply>()
     const request = ctx.getRequest<AuthedRequest>()
 
+    // Ett betrott parserfel (tom JSON-kropp) är ett klientfel, inte ett
+    // serverfel — status och text ur listan, aldrig ur felet självt. Se
+    // trusted-framework-errors.ts för varför bara felets KLASS betros.
+    const ramverksfel =
+      exception instanceof HttpException ? null : trustedFrameworkClientError(exception)
+
     const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : (ramverksfel?.status ?? HttpStatus.INTERNAL_SERVER_ERROR)
 
     if (status >= 500) {
       const message = exception instanceof Error ? exception.message : String(exception)
@@ -102,7 +111,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       )
     }
 
-    let message = 'Internal server error'
+    let message = ramverksfel?.message ?? 'Internal server error'
     let details: Record<string, string[]> | undefined
 
     if (exception instanceof HttpException) {
