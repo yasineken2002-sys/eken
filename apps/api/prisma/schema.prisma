@@ -954,6 +954,9 @@ model Organization {
 
   // G2-AVSLUT — granskningspausens perioder.
   bankIdentityReviewPauses BankIdentityReviewPause[]
+
+  // Fortnox skiva 01 (draft, oansluten) — utkorgen. Se model FortnoxOutboxEntry.
+  fortnoxOutboxEntries FortnoxOutboxEntry[]
   @@index([orgNumber])
   @@index([customerNumber])
   @@index([subscriptionPlan])
@@ -7479,4 +7482,95 @@ model AiDelegationEvent {
   delegation AiDelegation @relation(fields: [delegationId], references: [id], onDelete: Cascade)
 
   @@index([delegationId, createdAt])
+}
+
+// ── Fortnox skiva 01 (DRAFT, OANSLUTEN) ─────────────────────────────────────
+//
+// Beständig utkorg för framtida export till Fortnox. I skiva 01 skrivs tabellen
+// BARA av prov: ingen affärstjänst, hook, kö eller endpoint matar den, och
+// modulen är inte registrerad i AppModule. Kontrakt: CODEX-FORTNOX/KONTRAKT.md v1.
+//
+// Varje rad är EN extern operation (skapa ELLER bokföra), med fryst payload och
+// hash. Tillståndet ändras bara genom villkorade uppdateringar (org, anslutning,
+// företag, tillstånd, försökstoken) — en muterbar tillståndsmaskin, inte en logg.
+//
+// DUBBLETTSKYDDET är (organizationId, eventKey), båda NOT NULL. `externalId` är
+// med flit INTE unikt: en tom sentinel i ett unikt extern-id-index hade krockat
+// mellan olika osända händelser, och ett nullbart unikt index skyddar inte rader
+// utan värde. Det är bara ett uppslagsindex.
+//
+// Restrict mot Organization: raden kan vara det enda lokala spåret av en extern
+// ekonomisk effekt, och ska inte försvinna tyst med en org-radering.
+model FortnoxOutboxEntry {
+  id              String @id @default(uuid())
+  organizationId  String
+  /// Stabil identitet för anslutningen org → Fortnox-företag.
+  connectionId    String
+  /// Det externa Fortnox-företaget (inte Evenos hyresgäst).
+  fortnoxTenantId String
+
+  /// fnx1:sha256(org, anslutning, företag, händelsetyp, källid, version, operation).
+  eventKey         String
+  eventType        FortnoxEventType
+  sourceId         String
+  immutableVersion Int
+  operation        FortnoxOperation
+  /// Föregångarens eventKey (bokföringssteg, betalning/kredit mot original).
+  dependsOnEventKey String?
+
+  /// Fryst neutral avsikt. Ändras aldrig efter köning.
+  payload     Json
+  payloadHash String
+
+  state         FortnoxOutboxState @default(READY)
+  attempts      Int                @default(0)
+  nextAttemptAt DateTime           @default(now())
+  /// Fencing: satt vid claim, krävs för att avsluta försöket.
+  attemptToken  String?
+  leaseUntil    DateTime?
+
+  externalId       String?
+  /// Sant endast när motparten uttryckligen bekräftat bokföring (bokföringssteg).
+  bookedConfirmed  Boolean   @default(false)
+  /// Redigerad felklass — aldrig rå payload, token eller persondata.
+  lastErrorClass   String?
+  lastErrorAt      DateTime?
+  lastLookupAt     DateTime?
+  acknowledgedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, eventKey])
+  /// Explicit namn: det härledda överskrider Postgres 63-teckensgräns.
+  @@index([organizationId, connectionId, state, nextAttemptAt], map: "FortnoxOutboxEntry_organizationId_connectionId_state_nextAt_idx")
+  @@index([organizationId, externalId])
+}
+
+enum FortnoxEventType {
+  RENT_NOTICE
+  RENT_PAYMENT
+  RENT_CREDIT
+}
+
+enum FortnoxOperation {
+  INVOICE_CREATE
+  INVOICE_BOOKKEEP
+  PAYMENT_CREATE
+  PAYMENT_BOOKKEEP
+  CREDIT_CREATE
+  CREDIT_BOOKKEEP
+}
+
+enum FortnoxOutboxState {
+  READY
+  SENDING
+  RETRY_WAIT
+  ACKNOWLEDGED
+  UNKNOWN
+  AUTH_REQUIRED
+  REJECTED
+  MANUAL_REVIEW
 }
