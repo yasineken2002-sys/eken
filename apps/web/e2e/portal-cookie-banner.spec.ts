@@ -1,14 +1,20 @@
 import { test, expect, type Browser, type BrowserContextOptions } from '@playwright/test'
 
 /**
- * Portalens cookie-dialog ska gå att stänga när hyresgästen är INLOGGAD utan
- * tidigare samtycke — med ett vanligt klick/tap, inte bara med tangentbordet.
+ * Portalens cookie-dialog och bottenmeny ska BÅDA gå att använda när hyresgästen
+ * är INLOGGAD utan tidigare samtycke — utan att kunden först måste välja.
  *
  * Fyndet (2026-09-27, KLIENTER PORTAL-COOKIE-TACKT): dialogen låg på z-index 50
- * och bottenmenyn (PortalLayout .bottomNav) på 100. Menyn täckte knapparna —
+ * och bottenmenyn (PortalLayout .tabBar) på 100. Menyn täckte knapparna —
  * vid 390 px BÅDA, på desktop "Endast nödvändiga" — och dialogen gick inte att
  * stänga med pekare. Samma fel fanns redan i ed3d0ef2; utloggat (/login, ingen
  * meny) syntes det aldrig, och ingen annan spec rör dialogen.
+ *
+ * Den OMVÄNDA riktningen är lika viktig och fälldes av CI på första rättningen
+ * (bara z-index 150): då täckte dialogen menyn, och portal-tenant-flow — som
+ * navigerar utan att välja samtycke — kunde inte klicka "Avier". Därför mäts
+ * här också att dialogen och menyn inte överlappar, att varje menyflik träffas
+ * och att navigering fungerar MEDAN dialogen är öppen.
  *
  * Varför webbläsare och inte jsdom: felet är en STAPLINGSORDNING. Beviset är att
  * knappens mittpunkt träffar knappen (`elementFromPoint`) och att Playwrights
@@ -96,6 +102,37 @@ async function provaKnapp(
   const btn = dialog.getByRole('button', { name: knapp.namn, exact: true })
   await expect(btn).toBeVisible()
 
+  // Med öppen dialog: ytorna överlappar inte, varje menyflik träffas vid sin
+  // mitt, och menyn navigerar medan dialogen ligger kvar.
+  const geo = await page.evaluate(() => {
+    const d = document.querySelector('[role=dialog][aria-label="Cookies"]')!.getBoundingClientRect()
+    const n = document.querySelector('nav')!.getBoundingClientRect()
+    return { dialogNederkant: d.bottom, navOverkant: n.top }
+  })
+  expect(geo.dialogNederkant, 'dialogen ska sluta ovanför menyn').toBeLessThanOrEqual(
+    geo.navOverkant,
+  )
+  const taeckta = await nav.locator('a').evaluateAll((els) =>
+    els
+      .filter((el) => {
+        const r = el.getBoundingClientRect()
+        const t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+        return !(t === el || el.contains(t))
+      })
+      .map((el) => el.getAttribute('aria-label')),
+  )
+  expect(taeckta, 'menyflikar täckta med öppen dialog').toEqual([])
+  const flik = async (namn: string) => {
+    const l = nav.getByRole('link', { name: namn })
+    if (pekare === 'tap') await l.tap({ timeout: 5_000 })
+    else await l.click({ timeout: 5_000 })
+  }
+  await flik('Felanmälan')
+  await expect(page).toHaveURL(`${PORTAL}/maintenance`)
+  await flik('Avier')
+  await expect(page).toHaveURL(`${PORTAL}/notices`)
+  await expect(btn, 'dialogen ligger kvar efter navigering').toBeVisible()
+
   // Staplingen: knappens mittpunkt ska träffa knappen, inte en menyflik.
   const overst = await btn.evaluate((el) => {
     const r = el.getBoundingClientRect()
@@ -115,11 +152,6 @@ async function provaKnapp(
   expect(await page.evaluate((k) => localStorage.getItem(`${k}-at`), CONSENT_KEY)).not.toBeNull()
 
   // Menyn fungerar efter stängning, och sidan har ingen horisontell scroll.
-  const flik = async (namn: string) => {
-    const l = nav.getByRole('link', { name: namn })
-    if (pekare === 'tap') await l.tap({ timeout: 5_000 })
-    else await l.click({ timeout: 5_000 })
-  }
   await flik('Hem')
   await expect(page).toHaveURL(`${PORTAL}/`)
   await flik('Avier')
@@ -132,16 +164,17 @@ async function provaKnapp(
   await ctx.close()
 }
 
-test('portal: cookie-dialogen går att stänga med tap ovanför bottenmenyn vid 390 px', async ({
+test('portal: cookie-dialog och bottenmeny fungerar båda med tap vid 390 px', async ({
   browser,
 }) => {
   const vy = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
   for (const knapp of KNAPPAR) await provaKnapp(browser, vy, knapp, 'tap')
 })
 
-test('portal: cookie-dialogen går att stänga med klick ovanför bottenmenyn på desktop', async ({
+test('portal: cookie-dialog och bottenmeny fungerar båda med klick på desktop', async ({
   browser,
 }) => {
-  const vy = { viewport: { width: 1440, height: 900 } }
+  // 1280×720 = Playwrights Desktop Chrome, den vy där portal-tenant-flow föll.
+  const vy = { viewport: { width: 1280, height: 720 } }
   for (const knapp of KNAPPAR) await provaKnapp(browser, vy, knapp, 'click')
 })

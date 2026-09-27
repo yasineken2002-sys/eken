@@ -1610,9 +1610,9 @@ jobs:
       # specarna gör var sin bit av resan mot VARSIN seedad org, så SKARVEN mellan
       # bitarna aldrig hade körts i en vy.
       # 2026-09-27 (COOKIE): 18 → 20. `portal-cookie-banner.spec.ts` lägger till
-      # TVÅ tester — portalens cookie-dialog stängd med tap vid 390 px och med
-      # klick på desktop, inloggad utan samtycke. Bottenmenyn täckte knapparna;
-      # ingen annan spec rör dialogen, så inget prov kunde se det.
+      # TVÅ tester — inloggad utan samtycke, tap vid 390 px och klick vid
+      # 1280×720: menyn navigerar med dialogen ÖPPEN, och dialogens båda val
+      # fungerar. Bottenmenyn täckte knapparna; ingen annan spec rör dialogen.
       E2E_EXPECTED_TESTS: '20'
 
     steps:
