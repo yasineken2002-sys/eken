@@ -88,24 +88,31 @@ function spärr(): {
 }
 
 /**
- * F02: en klient vars FÖRSTA `fortnoxOutboxEntry.updateMany` — i `processOne`
- * är det claimen, efter läsningen — hålls tills provet släpper den. Så
- * efterliknas en arbetare vars läsning blivit gammal (sent SELECT-svar,
- * pausad process) utan sleep och utan att produktkoden får en testkrok.
- * Alla andra anrop går rakt igenom till den riktiga klienten.
+ * F02: en klient vars FÖRSTA `fortnoxOutboxEntry.findFirst` får sitt svar
+ * FÖRDRÖJT — SELECT:en har körts och läst raden, men svaret når arbetaren
+ * först när provet släpper det. Det är GRANSKNINGSFYNDETS form (sent
+ * SELECT-svar / pausad process mellan läsning och claim): claimens tidpunkt
+ * och villkor byggs först EFTER fördröjningen, av en arbetare som tror på en
+ * gammal räknare. Alla andra anrop går rakt igenom till den riktiga klienten.
+ *
+ * Första versionen höll i stället själva claim-anropet. Den var grön även på
+ * den felaktiga koden (CI 36342500874): claimens `nu` var då redan beräknat
+ * före fördröjningen, så `nextAttemptAt <= nu` stoppade den gamla arbetaren av
+ * ett annat skäl än räknaren. En sond som inte kan falla mäter ingenting.
  */
-function medFördröjdClaim(klient: PrismaClient, s: ReturnType<typeof spärr>): PrismaClient {
+function medFördröjdLäsning(klient: PrismaClient, s: ReturnType<typeof spärr>): PrismaClient {
   let första = true
   const delegat = klient.fortnoxOutboxEntry
   const hållen = new Proxy(delegat, {
     get(mål, namn) {
-      if (namn === 'updateMany' && första) {
-        const äkta = mål.updateMany as unknown as (a: unknown) => Promise<unknown>
+      if (namn === 'findFirst' && första) {
+        const äkta = mål.findFirst as unknown as (a: unknown) => Promise<unknown>
         return async (args: unknown) => {
           första = false
+          const svar = await äkta.call(mål, args)
           s.markeraNådd()
           await s.vänta
-          return äkta.call(mål, args)
+          return svar
         }
       }
       const v: unknown = Reflect.get(mål, namn)
@@ -710,8 +717,8 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       expect((await svc.findScoped(c, nyckel))!.attempts).toBe(3)
 
       const s = spärr()
-      const gammalA = tjänst(world, medFördröjdClaim(prisma, s)).processOne(c, nyckel)
-      await s.nådd // A har läst attempts = 3 och står vid sin claim
+      const gammalA = tjänst(world, medFördröjdLäsning(prisma, s)).processOne(c, nyckel)
+      await s.nådd // A har läst attempts = 3; svaret är ännu inte levererat
 
       expect(await svc.processOne(c, nyckel)).toEqual({ status: 'DONE', state: 'RETRY_WAIT' })
       nuMs = (await svc.findScoped(c, nyckel))!.nextAttemptAt.getTime()
@@ -720,12 +727,13 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       s.släpp()
       const utfallA = await gammalA
 
-      // Dränera som en vanlig arbetare tills inget mer går att ta.
+      // Dränera som en vanlig arbetare: låt varje väntetid löpa ut och ta allt
+      // som går att ta. Så syns ett eventuellt SJÄTTE adapteranrop i räknaren.
       for (let varv = 0; varv < 10; varv++) {
+        const rad = await svc.findScoped(c, nyckel)
+        if (rad!.state === 'RETRY_WAIT') nuMs = Math.max(nuMs, rad!.nextAttemptAt.getTime())
         const r = await svc.processOne(c, nyckel)
         if (r.status !== 'DONE') break
-        const rad = await svc.findScoped(c, nyckel)
-        if (rad!.state === 'RETRY_WAIT') nuMs = rad!.nextAttemptAt.getTime()
       }
 
       expect(world.sendCount(nyckel)).toBe(5)
