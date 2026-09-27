@@ -17,5 +17,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // Datumprovet ändrar TZ lokalt och verifierar verklig Intl/Date-rendering.
+    // En egen process behövs: worker_threads byter inte Nodes tidszon via env.
+    poolMatchGlobs: [['**/NoticesPage.test.tsx', 'forks']],
   },
 })

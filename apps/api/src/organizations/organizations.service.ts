@@ -18,6 +18,7 @@ import {
   DETECTED_WEB_IMAGE_TYPES,
   MAX_LOGO_BYTES,
 } from '../common/utils/file-validation'
+import { organizationAddressIssues, validateSwedishBankgiro } from '@eken/shared'
 
 interface MultipartFile {
   toBuffer(): Promise<Buffer>
@@ -141,7 +142,7 @@ export class OrganizationsService {
     // det lagrade värdet, eftersom det är det som gäller efter skrivningen.
     const nuvarande = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { shadowAgentEnabled: true, agentExecutionEnabled: true },
+      select: { shadowAgentEnabled: true, agentExecutionEnabled: true, country: true },
     })
     if (!nuvarande) throw new NotFoundException('Organisationen hittades inte')
 
@@ -191,13 +192,94 @@ export class OrganizationsService {
       return {}
     })()
 
+    // ── K2: BETALNINGSMÅLET VALIDERAS VID SKRIVNINGEN ─────────────────────
+    //
+    // Fältet var `z.string().optional()` + `@IsString()`, alltså fri text. Ett
+    // ogiltigt bankgiro kunde sparas utan invändning och upptäcktes först när en
+    // avi inte gick att skicka — eller, före K2, aldrig, eftersom renderingen
+    // hittade på ett mål i stället.
+    //
+    // HÄR OCH INTE BARA I DTO:N: servicen är chokepunkten (samma val som
+    // rollgrindarna ovan), och samma funktion används av utskicksgrinden och av
+    // webbformuläret. En regel, ett ställe.
+    //
+    // TOMT BETYDER RENSA, inte "ogiltigt". Hyresvärden måste kunna ta bort ett
+    // felaktigt nummer utan att formuläret låser sig — och ett rensat mål stoppar
+    // utskicken, vilket är rätt utfall och inte ett fel att avvisa här.
+    //
+    // ── B1: `null` ÄR "INGEN ÄNDRING", OCH DET MÅSTE STÅ HÄR ─────────────────
+    //
+    // Raden hette `=== undefined`, och det räckte inte. `@IsOptional()` i
+    // class-validator 0.14.4 registrerar en CONDITIONAL_VALIDATION vars villkor
+    // är `value !== null && value !== undefined` — är värdet `null` hoppas
+    // ALLA validatorer över, även `@StrictString()`. Nyttolasten nådde därmed
+    // hit, och `null.trim()` kastade ett ohanterat `TypeError` → HTTP 500.
+    //
+    // Mätt (T1:s granskning av #919, `raw/null-sond.out`): `undefined`, `null`
+    // och `""` ger alla noll valideringsfel genom pipen, medan talet 42 ger ett
+    // — sonden kan alltså ge utslag, och nollan för `null` betyder något.
+    //
+    // DET VAR EN REGRESSION SOM #919 INFÖRDE. Basen skrev
+    // `dto.bankgiro != null ? … : {}` och täckte båda. `== null` återställer
+    // den semantiken: utelämnat och `null` betyder båda "rör inte fältet".
+    //
+    // VARFÖR INTE "null = rensa": ett PATCH-fält som saknas och ett som är
+    // `null` kommer från samma vanliga klientmönster — hämta med
+    // `GET /organizations/me` (som returnerar `bankgiro: null` för en org utan
+    // mål), ändra ett ANNAT fält, skicka tillbaka hela objektet. Skulle `null`
+    // rensa vore det en no-op i det fallet, men för en org som HAR ett mål
+    // hade samma mönster tyst raderat betalningsmålet. Rensning ska vara en
+    // handling, inte en bieffekt av att skicka tillbaka det man läste.
+    // Den uttryckliga rensningen är tom sträng, vilket är vad formuläret
+    // skickar när fältet töms (`SettingsPage.tsx`).
+    const bankgiroUpdate = (() => {
+      if (dto.bankgiro == null) return {}
+      if (!dto.bankgiro.trim()) return { bankgiro: null }
+      const kontroll = validateSwedishBankgiro(dto.bankgiro)
+      if (!kontroll.valid || !kontroll.normalized) {
+        throw new BadRequestException(kontroll.error ?? 'Ogiltigt bankgiro')
+      }
+      // Normaliserad form lagras, så PDF, mejl och portal visar samma sträng
+      // oavsett om hyresvärden skrev bindestreck eller inte.
+      return { bankgiro: kontroll.normalized }
+    })()
+
+    // ── FÖRETAGSADRESSEN (F-10): EN GRUPP, ORGANISATIONENS EGET LAND ────────
+    //
+    // Här och inte i DTO:n, av två skäl. Landet finns inte i kroppen — det är
+    // organisationens lagrade `country` som avgör om den svenska
+    // postnummerregeln gäller, och en utländsk organisation ska inte få den.
+    // Och de tre fälten är EN uppgift: att ändra bara orten hade kunnat lämna en
+    // adress som aldrig funnits. Skickas något av dem krävs därför alla tre.
+    //
+    // `null` betyder "ingen ändring", av samma skäl som bankgirot nedan:
+    // GET-svaret skickas ofta tillbaka orört. Att RENSA en adress går inte här —
+    // en tom adress är just det tillstånd F-10 lagar.
+    const adressUpdate = (() => {
+      const delar = [dto.street, dto.postalCode, dto.city]
+      if (delar.every((d) => d == null)) return {}
+      if (delar.some((d) => d == null)) {
+        throw new BadRequestException(
+          'Ange gatuadress, postnummer och ort tillsammans — adressen sparas som en helhet.',
+        )
+      }
+      const fel = organizationAddressIssues(dto, nuvarande.country)
+      if (fel.length > 0) throw new BadRequestException(fel.map((f) => f.message).join('. '))
+      return {
+        street: dto.street!.trim(),
+        postalCode: dto.postalCode!.trim(),
+        city: dto.city!.trim(),
+      }
+    })()
+
     return this.prisma.organization.update({
       where: { id: organizationId },
       data: {
+        ...adressUpdate,
         ...(dto.lateBookingMaterialityThreshold != null
           ? { lateBookingMaterialityThreshold: dto.lateBookingMaterialityThreshold }
           : {}),
-        ...(dto.bankgiro != null ? { bankgiro: dto.bankgiro } : {}),
+        ...bankgiroUpdate,
         ...(dto.paymentTermsDays != null ? { paymentTermsDays: dto.paymentTermsDays } : {}),
         ...(dto.invoiceColor != null ? { invoiceColor: dto.invoiceColor } : {}),
         ...(dto.invoiceTemplate != null ? { invoiceTemplate: dto.invoiceTemplate } : {}),

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from '@tanstack/react-router'
 import {
@@ -17,6 +17,7 @@ import {
   ChevronRight,
   AlertTriangle,
   History,
+  Plus,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -39,9 +40,18 @@ import {
   useUnmatchTransaction,
   useAutoMatch,
 } from './hooks/useReconciliation'
-import type { BankFormat, PdfImportDraft } from './api/reconciliation.api'
-import { importbesked, kontobesked, kontoläge, tolkaImportPagar } from './api/reconciliation.api'
+import type { BankFormat, Importmål, PdfImportDraft } from './api/reconciliation.api'
+import {
+  bindEnkonto,
+  importbesked,
+  importmål,
+  kontolistläge,
+  nyImportomgång,
+  tolkaImportPagar,
+} from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
+import { BankAccountForm, ImportkontoForklaring } from './components/BankAccountForm'
+import { BankAccountsCard } from './components/BankAccountsCard'
 import { useBankConsents } from './hooks/usePsd2'
 import { aktivaSamtycken } from './api/psd2.api'
 import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
@@ -82,7 +92,14 @@ const TABS: { id: TabId; label: string }[] = [
 
 type ImportStep = 'upload' | 'result'
 
-function ImportModal({
+/**
+ * EXPORTERAD FÖR PROV, med flit. Granskarens fynd G1/G2 sitter i den här
+ * komponentens tillståndsmodell, och de går inte att mäta på sidan som helhet
+ * utan att dra in router, PSD2 och fakturor. Granskaren tvingades klistra på ett
+ * `export { ImportModal }` på källfilen för att alls kunna prova den — att den
+ * raden behövdes är i sig ett skäl att den ska finnas på riktigt.
+ */
+export function ImportModal({
   open,
   onClose,
   onSuccess,
@@ -110,15 +127,40 @@ function ImportModal({
   const pdfImportMutation = useImportPdfStatement()
   // #F034c — MÅLKONTOT. Filen bär ingen säker kontoidentitet, så valet är
   // operatörens. Organisationen får inte användas som om den vore ett konto.
-  const { data: bankkonton, isLoading: kontonLaddar, isError: kontonFel } = useBankAccounts()
-  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+  const {
+    data: bankkonton,
+    isPending: kontonLaddar,
+    isError: kontonFel,
+    refetch: hämtaKontonIgen,
+  } = useBankAccounts()
+  // Memoiserat på frågans EGNA fält, inte på objektet: React Query ger ett nytt
+  // objekt varje rendering, och effekten nedan hade då fyrat i varje varv.
+  const listläge = useMemo(
+    () => kontolistläge({ data: bankkonton, isPending: kontonLaddar, isError: kontonFel }),
+    [bankkonton, kontonLaddar, kontonFel],
+  )
+  // RÄTTNING-1 (G1) — målet är ett TILLSTÅND, inte ett uttryck som räknas om.
+  // Se `Importmål` i api-lagret för varför.
+  const [mål, setMål] = useState<Importmål>({ typ: 'obestämt' })
+  // K1 — skapa-panelen inuti modalen. Rollen frågas här och inte bara hos
+  // föräldern: en knapp som svarar 403 är ett falskt löfte, och den som inte
+  // får skapa behöver i stället veta vem hon ska be.
+  const [skaparKonto, setSkaparKonto] = useState(false)
+  const kanSkriva = useCanWrite()
   const aktivaKonton = (bankkonton ?? []).filter((k) => k.isActive)
-  // Ett ENDA konto väljs åt operatören — det är inget val, det är den enda
-  // möjligheten. Finns FLERA måste hen ta ställning.
-  const effektivtKonto =
-    bankAccountId ?? (aktivaKonton.length === 1 ? (aktivaKonton[0]?.id ?? null) : null)
-  const läge = kontoläge(bankkonton, effektivtKonto)
-  const kontotext = kontobesked(läge)
+  // RÄTTNING-1 (G2) — ETT svar bär både knappens `disabled` och handlern.
+  // Härlett under renderingen: det finns inget varv där knappen är aktiv med ett
+  // id som inte längre är ett aktivt konto.
+  const utfall = importmål(listläge, mål)
+  const effektivtKonto = utfall.id
+
+  // Binder enkontovalet en gång. Effekten får BARA binda, aldrig byta: `bindEnkonto`
+  // svarar `null` för allt utom ett obestämt mål med exakt ett aktivt konto.
+  useEffect(() => {
+    if (!open) return
+    const bundet = bindEnkonto(listläge, mål)
+    if (bundet) setMål(bundet)
+  }, [open, listläge, mål])
 
   const handleFile = (f: File) => {
     const ext = f.name.toLowerCase().split('.').pop() ?? ''
@@ -240,6 +282,15 @@ function ImportModal({
     setStep('upload')
     setFile(null)
     setBank('AUTO')
+    // K1 — skapa-panelen stängs med modalen. Gjorde den inte det stod ett halvt
+    // ifyllt kontoformulär kvar nästa gång operatören öppnade importen, som om
+    // hon vore mitt i något hon för länge sedan lämnat.
+    setSkaparKonto(false)
+    // RÄTTNING-1 (G1/A5) — ny importomgång. Ett UTTRYCKLIGT val följer med (det
+    // är ett svar operatören redan gett); en AUTOMATISK bindning gör det inte.
+    // Skälet står vid `nyImportomgång`. En redan uppladdad PDF-draft bär sitt
+    // eget konto och rörs inte av det här.
+    setMål(nyImportomgång)
     setResult(null)
     setShowErrors(false)
     setDropError(null)
@@ -315,27 +366,71 @@ function ImportModal({
           </div>
 
           {/* #F034c — KONTOVÄLJAREN. Ligger först: vilket konto utdraget gäller
-              är en förutsättning för importen, inte en detalj efteråt. */}
+              är en förutsättning för importen, inte en detalj efteråt.
+              K1 — och SKAPA-VÄGEN ligger här, i samma ruta. Kundprovet fastnade
+              exakt här: texten sa vad som saknades, men det fanns ingen väg att
+              åtgärda det utan ett API-anrop vid sidan av webben. */}
           <div>
-            <label
-              htmlFor="bankkonto"
-              className="mb-1.5 block text-[12.5px] font-medium text-gray-700"
-            >
-              Bankkonto
-            </label>
-            {kontonLaddar ? (
-              <p className="text-[12.5px] text-gray-500">Hämtar konton…</p>
-            ) : kontonFel ? (
-              <p className="rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
-                Kontona kunde inte hämtas. Försök igen — importen kan inte göras utan ett valt
-                konto.
-              </p>
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="bankkonto" className="block text-[12.5px] font-medium text-gray-700">
+                Bankkonto
+              </label>
+              {/* EN skapa-knapp i taget. Den lilla länken här är genvägen när det
+                  REDAN finns konton; saknas de helt tar den stora knappen nedan
+                  över, vid beskedet om vad som saknas. Två knappar för samma sak
+                  i samma ruta är inte två vägar, det är en tvekan. */}
+              {kanSkriva &&
+                listläge.typ === 'användbar' &&
+                !skaparKonto &&
+                aktivaKonton.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSkaparKonto(true)}
+                    data-testid="import-lagg-till-konto"
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-blue-700 underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2"
+                  >
+                    <Plus size={13} strokeWidth={2} /> Lägg till konto
+                  </button>
+                )}
+            </div>
+            {listläge.typ === 'okänt' ? (
+              // RÄTTNING-1 (G2/B3) — laddning och FEL är olika lägen och får
+              // olika svar. Felet får dessutom en väg tillbaka i stället för en
+              // återvändsgränd.
+              <div
+                className={
+                  utfall.kanHämtasOm
+                    ? 'rounded-lg bg-red-50 px-3 py-2 text-[12.5px] text-red-600'
+                    : 'text-[12.5px] text-gray-500'
+                }
+                role={utfall.kanHämtasOm ? 'alert' : 'status'}
+                data-testid="import-kontolage"
+              >
+                <p>{utfall.besked}</p>
+                {utfall.kanHämtasOm && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => void hämtaKontonIgen()}
+                    data-testid="import-hamta-konton-igen"
+                  >
+                    Försök igen
+                  </Button>
+                )}
+              </div>
             ) : (
               <>
                 <select
                   id="bankkonto"
                   value={effektivtKonto ?? ''}
-                  onChange={(e) => setBankAccountId(e.target.value || null)}
+                  onChange={(e) =>
+                    // Uttryckligt val. `valt` och inte `bundet`: det här är
+                    // operatörens svar och följer med till nästa omgång.
+                    setMål(
+                      e.target.value ? { typ: 'valt', id: e.target.value } : { typ: 'obestämt' },
+                    )
+                  }
                   disabled={aktivaKonton.length === 0}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] disabled:bg-gray-50 disabled:text-gray-400"
                 >
@@ -347,7 +442,58 @@ function ImportModal({
                     </option>
                   ))}
                 </select>
-                {kontotext && <p className="mt-1.5 text-[12px] text-amber-700">{kontotext}</p>}
+                {utfall.besked && (
+                  <p
+                    className="mt-1.5 text-[12px] text-amber-700"
+                    role={utfall.kräverNyttVal ? 'alert' : undefined}
+                    data-testid="import-kontobesked"
+                  >
+                    {utfall.besked}
+                  </p>
+                )}
+                {/* Skapa-knappen ovan är liten och ligger till höger. När det
+                    inte finns NÅGOT konto är den inte en genväg utan hela
+                    vägen framåt, och då ska den stå där blicken redan är — vid
+                    beskedet om vad som saknas. */}
+                {aktivaKonton.length === 0 && kanSkriva && !skaparKonto && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => setSkaparKonto(true)}
+                    data-testid="import-lagg-upp-forsta-kontot"
+                  >
+                    <Plus size={14} /> Lägg upp bankkonto
+                  </Button>
+                )}
+                {aktivaKonton.length === 0 && !kanSkriva && (
+                  <p className="mt-1.5 text-[12px] text-gray-500">
+                    Din roll får inte lägga upp bankkonton. Be en administratör göra det.
+                  </p>
+                )}
+                {skaparKonto && (
+                  <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                    <p className="text-[12.5px] font-semibold text-gray-800">Nytt importkonto</p>
+                    <ImportkontoForklaring kompakt />
+                    <div className="mt-3">
+                      <BankAccountForm
+                        befintliga={bankkonton}
+                        kompakt
+                        idPrefix="import-bankkonto"
+                        onAvbryt={() => setSkaparKonto(false)}
+                        onSkapat={(konto) => {
+                          // VÄLJ DET DIREKT. Operatören skapade kontot för att
+                          // kunna importera nu; att lämna väljaren tom hade
+                          // varit ett andra steg utan innehåll. `valt` och inte
+                          // `bundet`: att skapa ett konto här ÄR ett uttryckligt
+                          // val, och det får inte räknas om av en liständring.
+                          setMål({ typ: 'valt', id: konto.id })
+                          setSkaparKonto(false)
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -977,6 +1123,11 @@ export function ReconciliationPage() {
           </div>
         </div>
       )}
+
+      {/* K1 — importkontona FÖRE bankkopplingen. Det är importens förutsättning;
+          bankkopplingen (PSD2) är ett alternativ till att importera filer alls.
+          Kundprovet gick till Bankkoppling när importen krävde ett konto. */}
+      <BankAccountsCard />
 
       <BankConnectionCard />
 

@@ -112,6 +112,8 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
         street: 'a',
         city: 'b',
         postalCode: '11111',
+        // F8 — en påminnelse kräver ett giltigt betalningsmål (t2-fakturakontrakt).
+        bankgiro: '5050-1055',
       },
     })
     orgId = org.id
@@ -241,9 +243,11 @@ medDb('send_overdue_reminders — enheten är effekten, inte anropet', () => {
     //
     // Fasaden ersätter bara den ena delegaten. `executeTool`-prologen rör inte
     // `this.prisma` alls, och verktygets gren rör bara `invoice` och
-    // `paymentReminder`.
+    // `paymentReminder` — plus en LÄSNING av `organization` (F8: betalningsmålet
+    // prövas före urvalet), som passerar orörd.
     let skapade = 0
     const kraschandePrisma = {
+      organization: prisma.organization,
       invoice: prisma.invoice,
       paymentReminder: {
         create: async (args: never) => {

@@ -124,7 +124,25 @@ export class InvoicesController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: UpdateInvoiceDto,
   ) {
-    return this.invoicesService.update(id, organizationId, user.sub, dto)
+    await this.invoicesService.update(id, organizationId, user.sub, dto)
+    return this.fullFaktura(id, organizationId)
+  }
+
+  /**
+   * SVARET PÅ EN MUTATION ÄR DEN FULLSTÄNDIGA FAKTURAN — samma form som GET /:id.
+   *
+   * Uppmätt i kundprovet på #924 (T1, DEFEKT-1): PATCH /:id/status svarade med
+   * fakturaraden UTAN `lines`, webben satte svaret som den valda fakturan och
+   * vyn kraschade på `selected.lines.map` — efter att statusen redan sparats.
+   * Egen uppräkning visade samma form på PATCH /:id och POST /:id/pay.
+   *
+   * Tjänstemetoderna är oförändrade (workern, AI-verktygen och övriga interna
+   * anropare får samma retur som förut). Det är HTTP-kontraktet som lovar en
+   * faktura, och det ska vara en hel: `lines`, relationer och `outstanding`.
+   * Samma mönster som `reverseReminderFee`, som redan returnerar `findOne`.
+   */
+  private fullFaktura(id: string, organizationId: string) {
+    return this.invoicesService.findOne(id, organizationId)
   }
 
   @Patch(':id/status')
@@ -143,7 +161,7 @@ export class InvoicesController {
         'Använd betalningsregistrering (POST /invoices/:id/pay) för att markera en faktura som betald',
       )
     }
-    return this.invoicesService.transitionStatus(
+    await this.invoicesService.transitionStatus(
       id,
       organizationId,
       dto.status as InvoiceStatus,
@@ -151,6 +169,7 @@ export class InvoicesController {
       'USER',
       dto.payload ?? {},
     )
+    return this.fullFaktura(id, organizationId)
   }
 
   // G4a — stryk en felaktigt debiterad påminnelseavgift utan att makulera
@@ -216,7 +235,7 @@ export class InvoicesController {
     @CurrentUser() user: JwtPayload,
     @Body() dto: RegisterPaymentDto,
   ) {
-    return this.invoicesService.markAsPaidManually(
+    await this.invoicesService.markAsPaidManually(
       id,
       organizationId,
       // INGEN textmappning längre. Kroppen bär enumen; utelämnat = MANUAL, och
@@ -237,6 +256,7 @@ export class InvoicesController {
         ...(dto.senBokforingSkal ? this.senBokforing(user, dto.senBokforingSkal) : {}),
       },
     )
+    return this.fullFaktura(id, organizationId)
   }
 
   /**

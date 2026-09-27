@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Plus, FileX, FileText, Home, User, Download, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageWrapper } from '@/components/ui/PageWrapper'
+import { PaymentTargetBanner } from '@/components/PaymentTargetBanner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -624,6 +625,16 @@ function LeaseDetailPanel({
               Tydlig varning + stor primär aktivera-knapp så administratören
               inte missar steg 2. Tonen är amber/orange för att skilja från
               fel (röd) och status-info (blå). */}
+          {/* K2 — betalningsmålet först. Aktiveringen skapar OCH skickar
+              depositionsavin och första hyran; utan giltigt bankgiro stoppas
+              utskicket av servern. Rutan står FÖRE utkast-bannern så
+              hyresvärden ser hindret innan hen trycker på aktiveringsknappen. */}
+          {status === 'DRAFT' && (
+            <div className="mb-5">
+              <PaymentTargetBanner vad="Avierna skapas vid aktiveringen, men inget mejl kan skickas förrän betalningsuppgifterna är ifyllda." />
+            </div>
+          )}
+
           {status === 'DRAFT' && (
             <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
               <div className="flex items-start gap-3">

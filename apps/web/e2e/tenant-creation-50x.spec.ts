@@ -55,6 +55,10 @@ test('skapa hyresgäst + kontrakt 50 gånger — alla 50 ska lyckas', async ({ p
     firstName: 'E2E',
     lastName: 'Hyresvärd',
     organizationName: `E2E 50x ${stamp}`,
+    // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+    street: 'Storgatan 1',
+    postalCode: '111 22',
+    city: 'Stockholm',
     acceptTerms: true,
   })
   const is2xx = (s: number) => s >= 200 && s < 300

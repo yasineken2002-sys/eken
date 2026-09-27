@@ -110,6 +110,22 @@
   border-bottom: 0;
 }
 
+/* Bilagans miniatyr (visas i vyn i stället för bara som nedladdning). */
+.bildMiniatyr {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 0.5px solid var(--ev-brand-300);
+  background: var(--ev-brand-50);
+}
+
+.bildText {
+  flex: 1;
+  min-width: 0;
+}
+
 .rowLabel {
   font-size: 13px;
   font-weight: 600;

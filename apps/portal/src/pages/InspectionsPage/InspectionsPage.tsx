@@ -495,7 +495,12 @@ function Protokolldetalj({
           <div className={styles.rowList}>
             {protokoll.images.map((bild) => (
               <div key={bild.id} className={styles.row}>
-                <div>
+                <BildMiniatyr
+                  inspectionId={protokoll.id}
+                  bildId={bild.id}
+                  filnamn={bild.filename}
+                />
+                <div className={styles.bildText}>
                   <p className={styles.rowLabel}>{bild.filename}</p>
                   <p className={styles.rowSub}>
                     {bild.room ? `${bild.room} · ` : ''}
@@ -516,6 +521,39 @@ function Protokolldetalj({
         </>
       )}
     </>
+  )
+}
+
+/**
+ * Bilagans bild visad I vyn. Samma behörighetsprövade väg som "Öppna"
+ * (GET /portal/inspections/:id/images/:imageId → presignerad URL, fem minuter) — ingen ny
+ * backendväg och ingen intern lagringsnyckel i klienten. Misslyckas hämtningen står
+ * raden kvar med "Öppna" som förut.
+ */
+function BildMiniatyr({
+  inspectionId,
+  bildId,
+  filnamn,
+}: {
+  inspectionId: string
+  bildId: string
+  filnamn: string
+}) {
+  const url = useQuery({
+    queryKey: ['portal', 'inspection-image', inspectionId, bildId],
+    queryFn: () => fetchInspectionImageUrl(inspectionId, bildId),
+    staleTime: 4 * 60 * 1000,
+  })
+  if (!url.data?.url) return null
+  return (
+    <img
+      className={styles.bildMiniatyr}
+      src={url.data.url}
+      alt={`Bilaga: ${filnamn}`}
+      loading="lazy"
+      width={72}
+      height={72}
+    />
   )
 }
 

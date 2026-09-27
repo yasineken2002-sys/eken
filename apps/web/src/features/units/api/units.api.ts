@@ -18,6 +18,8 @@ export interface UnitWithProperty {
   floor?: number | null
   rooms?: number | null
   monthlyRent: number
+  /** Frivillig skattskyldighet (I2). API:t skickar alltid fältet för objekt. */
+  voluntaryTaxLiability?: boolean
   createdAt: string
   updatedAt: string
   property: { id: string; name: string }

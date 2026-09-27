@@ -14,6 +14,7 @@ import {
   Search,
 } from 'lucide-react'
 import { PageWrapper } from '@/components/ui/PageWrapper'
+import { PaymentTargetBanner, usePaymentTargetOk } from '@/components/PaymentTargetBanner'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { extractApiError } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
@@ -36,7 +37,7 @@ import {
   useSendOverdueReminders,
 } from './hooks/useAvisering'
 import { useNavigate } from '@tanstack/react-router'
-import { formatDate, formatCurrency } from '@eken/shared'
+import { swedishDateKey, formatCurrency, rentNoticeDisplayStatus } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import type { RentNotice, NoticeFilter, RentNoticeStatus } from './api/avisering.api'
 
@@ -114,13 +115,16 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
   const searching = debouncedSearch.trim().length > 0
 
   // Vid sök släpps månadslåset: utelämna month/year så hela hyresgästens
-  // historik visas över alla perioder. Status-filtret kombineras fortfarande.
+  // historik visas över alla perioder. Status filtreras efter samma kalender-
+  // och skuldregel som badgen; API:s råstatusfilter skulle förkasta fel rader.
   const filter: NoticeFilter = {
     ...(searching ? { search: debouncedSearch.trim() } : { month, year }),
-    ...(statusTab !== 'ALL' ? { status: statusTab } : {}),
   }
 
-  const { data: notices = [], isLoading } = useNotices(filter)
+  const { data: allNotices = [], isLoading } = useNotices(filter)
+  const notices = allNotices.filter(
+    (notice) => statusTab === 'ALL' || rentNoticeDisplayStatus(notice, now) === statusTab,
+  )
   const { data: stats } = useNoticeStats(month, year)
   const sendNotices = useSendNotices()
   const sendAll = useSendAllNotices()
@@ -129,6 +133,10 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
   const reminderPreview = useReminderPreview(remindersOpen)
   const sendReminders = useSendOverdueReminders()
   const downloadPdf = useDownloadPdf()
+  // K2 — utan giltigt betalningsmål finns inget att skicka till. Servern vägrar
+  // ändå (`sendNotices`-grinden); den här raden gör att hyresvärden ser VARFÖR
+  // innan klicket, i stället för att avin kommer tillbaka som Misslyckad.
+  const betalningsmal = usePaymentTargetOk()
 
   // Djuplänk → detaljmodal. TVÅ STEG, av samma skäl som MaintenancePage: listan
   // är MÅNADSFILTRERAD, och en notis om en avi som stått stilla i en vecka
@@ -195,6 +203,7 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
     <PageWrapper id="avisering">
       <div>
         <PageHeader
+          className="flex-col items-stretch sm:flex-row sm:items-start"
           title="Hyresavier"
           description={
             searching
@@ -202,11 +211,16 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
               : `${stats?.total ?? 0} avier för ${MONTHS[month - 1]} ${year}`
           }
           action={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="secondary"
-                disabled={sendAll.isPending || notices.length === 0}
+                disabled={sendAll.isPending || notices.length === 0 || !betalningsmal.ok}
                 loading={sendAll.isPending}
+                title={
+                  betalningsmal.ok
+                    ? undefined
+                    : 'Organisationens bankgiro saknas eller är ogiltigt — fyll i det under Inställningar först'
+                }
                 onClick={() => void sendAll.mutateAsync({ month, year })}
               >
                 <Mail size={13} strokeWidth={1.8} />
@@ -231,6 +245,12 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
             </div>
           }
         />
+
+        {!betalningsmal.ok && (
+          <div className="mt-4">
+            <PaymentTargetBanner vad="Inga avier kan skickas förrän betalningsuppgifterna är ifyllda." />
+          </div>
+        )}
 
         {/* Period selector + search */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -316,7 +336,7 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
         </div>
 
         {/* Status tabs */}
-        <div className="mt-6 flex w-fit gap-1 rounded-xl bg-gray-100 p-1">
+        <div className="mt-6 flex w-fit max-w-full flex-wrap gap-1 rounded-xl bg-gray-100 p-1">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -356,7 +376,12 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
               }
             />
           ) : (
-            <motion.div variants={container} initial="hidden" animate="show">
+            <motion.div
+              className="overflow-x-auto"
+              variants={container}
+              initial="hidden"
+              animate="show"
+            >
               <table className="w-full">
                 <thead>
                   <tr className="border-line border-b">
@@ -421,11 +446,11 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
                         {formatCurrency(Number(notice.totalAmount))}
                       </td>
                       <td className="px-4 py-3 text-[12.5px] text-gray-500">
-                        {formatDate(notice.dueDate)}
+                        {swedishDateKey(new Date(notice.dueDate))}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
-                          <RentNoticeBadge status={notice.status} />
+                          <RentNoticeBadge status={rentNoticeDisplayStatus(notice, now)} />
                           {notice.status === 'FAILED' && notice.sendError && (
                             <span
                               title={notice.sendError}
@@ -442,11 +467,17 @@ export function AviseringPage({ focusNoticeId }: AviseringPageProps = {}) {
                         <div className="flex items-center gap-1.5">
                           {(notice.status === 'PENDING' || notice.status === 'FAILED') && (
                             <button
-                              title={notice.status === 'FAILED' ? 'Skicka om avi' : 'Skicka avi'}
-                              disabled={sendNotices.isPending}
+                              title={
+                                betalningsmal.ok
+                                  ? notice.status === 'FAILED'
+                                    ? 'Skicka om avi'
+                                    : 'Skicka avi'
+                                  : 'Organisationens bankgiro saknas eller är ogiltigt — fyll i det under Inställningar först'
+                              }
+                              disabled={sendNotices.isPending || !betalningsmal.ok}
                               onClick={() => void sendNotices.mutateAsync([notice.id])}
                               className={cn(
-                                'flex h-7 w-7 items-center justify-center rounded-lg transition-colors',
+                                'flex h-7 w-7 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40',
                                 notice.status === 'FAILED'
                                   ? 'text-red-500 hover:bg-red-50 hover:text-red-700'
                                   : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600',

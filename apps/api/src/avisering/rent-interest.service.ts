@@ -1,3 +1,4 @@
+import { swedishCalendarDate, swedishDateKey, swedishDaysBetween } from '@eken/shared'
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -110,7 +111,7 @@ export class RentInterestService {
       if (notice.status === 'PAID' || notice.status === 'CANCELLED') return null
 
       // Från dagen EFTER förfallodagen → antal hela dagar sedan förfall.
-      const days = this.daysBetween(notice.dueDate, throughDate)
+      const days = swedishDaysBetween(notice.dueDate, throughDate)
       if (days <= 0) return null
 
       // Beräkningsbas = obetalt KAPITAL (hyra + förbrukning). Aldrig ränta på
@@ -147,10 +148,10 @@ export class RentInterestService {
       // Segmentera dröjsmålet [förfallodag+1, förfallodag+days] vid halvårs-
       // gränserna. Varje segment ligger helt inom ETT halvår och slås upp mot
       // SITT halvårs referensränta (raden vars effectiveFrom ≤ segmentets start).
-      // Räknat på kalenderdatum förankrade i förfallodagen (UTC-midnatt) så
+      // Svenska kalenderdatum kodas som UTC-midnatt för dagaritmetik så
       // segmentens dagar alltid summerar till `days`, oberoende av throughDates
       // klockslag.
-      const dueMid = utcMidnight(notice.dueDate)
+      const dueMid = swedishCalendarDate(notice.dueDate)
       const periodStart = addDays(dueMid, 1)
       const periodEnd = addDays(dueMid, days)
       const ranges = halfYearRanges(periodStart, periodEnd)
@@ -212,7 +213,7 @@ export class RentInterestService {
       const delta = round2(totalInterest - alreadyBooked)
       if (delta <= 0) return null
 
-      const throughKey = ymd(throughDate)
+      const throughKey = swedishDateKey(throughDate)
       const sourceId = `interest:${noticeId}:${throughKey}`
 
       // Idempotens per kristalliseringspunkt (utöver delta-kontrollen ovan).
@@ -288,15 +289,6 @@ export class RentInterestService {
     })
     return row ? Number(row.ratePercent) : null
   }
-
-  private daysBetween(from: Date, to: Date): number {
-    return Math.floor((to.getTime() - from.getTime()) / DAY_MS)
-  }
-}
-
-// UTC-midnatt för ett datum — nollställer klockslaget så dagräkningen blir exakt.
-function utcMidnight(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
 }
 
 function addDays(d: Date, n: number): Date {

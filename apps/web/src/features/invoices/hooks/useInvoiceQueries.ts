@@ -75,15 +75,39 @@ export function useCreateInvoice() {
   })
 }
 
+/**
+ * EFTER EN MUTATION PÅ EN FAKTURA — gemensamt för redigering, statusövergång
+ * och betalning.
+ *
+ * Svaret är den FULLSTÄNDIGA fakturan (samma form som GET /invoices/:id, se
+ * `fullFaktura` i invoices.controller.ts). Den läggs direkt i detaljcachen så
+ * att vyn visar det servern sparade utan en extra runda.
+ *
+ * VID FEL invalideras samma nycklar: en åtgärd som hann sparas innan felet
+ * (eller vars svar försvann på vägen) ska synas som den faktiskt blev — inte
+ * som den såg ut före klicket. Ingenting skickas om automatiskt.
+ */
+function efterFakturamutation(qc: ReturnType<typeof useQueryClient>) {
+  const invalidera = (id: string) => {
+    void qc.invalidateQueries({ queryKey: ['invoices'] })
+    void qc.invalidateQueries({ queryKey: ['invoice', id] })
+    void qc.invalidateQueries({ queryKey: ['invoice-events', id] })
+  }
+  return {
+    onSuccess: (faktura: InvoiceWithOutstanding, { id }: { id: string }) => {
+      qc.setQueryData(['invoice', id], faktura)
+      invalidera(id)
+    },
+    onError: (_: unknown, { id }: { id: string }) => invalidera(id),
+  }
+}
+
 export function useUpdateInvoice() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<CreateInvoiceInput> & { id: string }) =>
-      patch<Invoice>(`/invoices/${id}`, data),
-    onSuccess: (_, { id }) => {
-      void qc.invalidateQueries({ queryKey: ['invoices'] })
-      void qc.invalidateQueries({ queryKey: ['invoice', id] })
-    },
+      patch<InvoiceWithOutstanding>(`/invoices/${id}`, data),
+    ...efterFakturamutation(qc),
   })
 }
 
@@ -118,12 +142,12 @@ export function useTransitionStatus() {
       id: string
       status: InvoiceStatus
       payload?: Record<string, unknown>
-    }) => patch<Invoice>(`/invoices/${id}/status`, { status, ...(payload ? { payload } : {}) }),
-    onSuccess: (_, { id }) => {
-      void qc.invalidateQueries({ queryKey: ['invoices'] })
-      void qc.invalidateQueries({ queryKey: ['invoice', id] })
-      void qc.invalidateQueries({ queryKey: ['invoice-events', id] })
-    },
+    }) =>
+      patch<InvoiceWithOutstanding>(`/invoices/${id}/status`, {
+        status,
+        ...(payload ? { payload } : {}),
+      }),
+    ...efterFakturamutation(qc),
   })
 }
 
@@ -132,11 +156,7 @@ export function useRegisterPayment() {
   return useMutation({
     mutationFn: ({ id, ...dto }: { id: string } & RegisterPaymentInput) =>
       registerInvoicePayment(id, dto),
-    onSuccess: (_, { id }) => {
-      void qc.invalidateQueries({ queryKey: ['invoices'] })
-      void qc.invalidateQueries({ queryKey: ['invoice', id] })
-      void qc.invalidateQueries({ queryKey: ['invoice-events', id] })
-    },
+    ...efterFakturamutation(qc),
   })
 }
 

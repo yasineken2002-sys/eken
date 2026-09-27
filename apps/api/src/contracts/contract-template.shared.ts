@@ -21,6 +21,9 @@
 //   – kontraktsnummer i format KONT-{år}-{löpnr} (fortlöpande per org)
 
 import type { PetPolicy, IndexClauseType, CompanyForm } from '@prisma/client'
+// Hyresvärdens adress (F-10): historiska organisationer har tomma fält, och en
+// mall som skrev `${street}, ${postalCode} ${city}` gav dem ett ensamt komma.
+import { formatPostalAddress, ORGANIZATION_ADDRESS_MISSING } from '@eken/shared'
 
 // ─── Template-variants (delas med fakturan via Organization.invoiceTemplate) ─
 
@@ -771,7 +774,7 @@ export function partiesSection(input: ContractTemplateInput): string {
           ? `<div class="field-row"><span class="field-label">VAT-nr</span><span class="field-value">${escape(org.vatNumber)}</span></div>`
           : ''
       }
-      <div class="field-row"><span class="field-label">Adress</span><span class="field-value">${escape(org.street)}, ${escape(org.postalCode)} ${escape(org.city)}</span></div>
+      <div class="field-row"><span class="field-label">Adress</span><span class="field-value">${escape(formatPostalAddress(org) ?? ORGANIZATION_ADDRESS_MISSING)}</span></div>
       <div class="field-row"><span class="field-label">E-post</span><span class="field-value">${escape(org.email)}</span></div>
       ${
         org.phone

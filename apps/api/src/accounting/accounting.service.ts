@@ -230,36 +230,11 @@ const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
   MANUAL: 'Inbetalning (manuell registrering)',
 }
 
-// Tillämplig momssats (%) för hyresintäkt per upplåtelsetyp (ML 2023:200):
-//   • Bostad (APARTMENT)         → 0 %. Undantagen moms (ML 10 kap. 35 §). Frivillig
-//     beskattning får ALDRIG avse stadigvarande bostad (ML 12 kap. 5 §) —
-//     därför alltid 0 % oavsett voluntaryTaxLiability.
-//   • Lokal (OFFICE/RETAIL)      → 0 % som huvudregel; 25 % endast vid frivillig
-//     beskattning (ML 12 kap. 5 §).
-//   • Parkering (PARKING)        → 25 %. Momspliktig enligt lag (ML 10 kap. 36 §),
-//     oberoende av frivillig skattskyldighet. Gäller fristående p-plats; ingår
-//     platsen i en bostadsupplåtelse hör den till APARTMENT-enheten.
-//   • Förråd/övrigt (STORAGE/OTHER) → 0 % som huvudregel; 25 % vid frivillig
-//     beskattning (konservativ tolkning — fristående förvaringsbox kan vara
-//     momspliktig enligt ML 10 kap. 36 § 6, men kräver då explicit beskattning).
-export function vatRateForRent(
-  type: UnitType | null | undefined,
-  voluntaryTaxLiability: boolean,
-): number {
-  switch (type) {
-    case 'APARTMENT':
-      return 0
-    case 'PARKING':
-      return 25
-    case 'OFFICE':
-    case 'RETAIL':
-    case 'STORAGE':
-    case 'OTHER':
-      return voluntaryTaxLiability ? 25 : 0
-    default:
-      return 0
-  }
-}
+// `vatRateForRent` BOR I @eken/shared (packages/shared/src/utils/vat-rate-for-rent.ts)
+// sedan FAKTURAVY-RÄTTNINGEN: fakturaformuläret i webben behöver SAMMA regel för
+// att inte förvälja en sats servern avvisar. Re-exporten här håller alla
+// API-anropare oförändrade — det finns fortfarande exakt en momskälla.
+export { vatRateForRent } from '@eken/shared'
 
 /**
  * Kastas av fail-closed-guarden (T5 A2/A2b) när en 1510-kreditering (betalning

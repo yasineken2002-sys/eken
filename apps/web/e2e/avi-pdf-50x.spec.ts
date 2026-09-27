@@ -125,6 +125,10 @@ test('hyresavi-PDF: 50 avier genererar var sin giltiga PDF', async ({ playwright
     firstName: 'E2E',
     lastName: 'AviPdf',
     organizationName: `E2E AviPdf 50x ${stamp}`,
+    // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+    street: 'Storgatan 1',
+    postalCode: '111 22',
+    city: 'Stockholm',
     acceptTerms: true,
   })
   expect(is2xx(reg.status), `org-registrering (status ${reg.status})`).toBe(true)

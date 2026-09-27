@@ -50,7 +50,7 @@ function makeInvoice(opts: { total?: number; payments?: number[]; daysOverdue?: 
       // DISKRIMINERANDE: 60 kr sammanfaller varken med totalen (10 000),
       // delbetalningen (8 000) eller restskulden (2 000).
       reminderFeeSek: D(60),
-      bankgiro: '123-4567',
+      bankgiro: '5050-1055', // F8: giltig kontrollsiffra — '123-4567' var ogiltig
       reminderFormalDay: 14,
       reminderCollectionDay: 30,
     },
@@ -67,6 +67,11 @@ function makeService(invoice: ReturnType<typeof makeInvoice>) {
   // nedan är OFÖRÄNDRADE — det som mäts (brevets siffror vs det nominella
   // beloppet) är exakt detsamma; bara skrivvägen har flyttat in i transaktionen.
   const tx = {
+    // F8 — omprövningen av betalningsmålet läser organisationen INNE i
+    // transaktionen. Attrappen svarar med ett giltigt bankgiro; grindens
+    // vägran prövas i t2-fakturakontrakt.db.spec.ts. Skriver inget till
+    // ordningsloggen — den mäter skrivningarna, inte läsningar.
+    organization: { findUnique: jest.fn(async () => ({ bankgiro: '5050-1055' })) },
     paymentReminder: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),

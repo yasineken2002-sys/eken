@@ -72,6 +72,14 @@ export class AviseringScheduler {
     skipped: number
     failed: number
     queued: number
+    /**
+     * K2 — avier som skapades men INTE köades, därför att organisationens
+     * betalningsmål fattas. EGET tal, inte en del av `failed`: `failed` betyder
+     * "kön svarade inte" och larmar via Sentry, det här betyder "hyresvärden
+     * måste fylla i ett fält" och larmar inte. Slås de samman går den ena
+     * signalen förlorad i den andra.
+     */
+    blocked: number
   }> {
     const orgs = await this.prisma.organization.findMany({
       where: { status: 'ACTIVE' },
@@ -82,6 +90,7 @@ export class AviseringScheduler {
     let skipped = 0
     let failed = 0
     let queued = 0
+    let blocked = 0
 
     for (const org of orgs) {
       try {
@@ -91,6 +100,7 @@ export class AviseringScheduler {
         failed += result.failed
 
         let sendFailed = 0
+        let sendBlocked = 0
         if (result.notices.length > 0) {
           // Köa utskicket direkt så hyresgästerna har max tid på sig.
           // #605 — CRON-ingången lämnar kontexten. Samma namn som jobbets
@@ -106,15 +116,21 @@ export class AviseringScheduler {
           // larmar per avi i stället). Rapportera antalet här så cron-loggen
           // förblir sann — avierna ÄR skapade, det är utskicket som uteblev.
           sendFailed = sendRes.failed
+          sendBlocked = sendRes.blocked
+          blocked += sendRes.blocked
         }
 
         // T5 A1 (#54): per-lease-fel (failed>0) betyder att enskilda leases
         // hoppades men resten av orgen fortsatte. Lyft som WARN så det syns —
         // full Sentry-täckning för alla cron kommer i T5 B1.
-        const level = result.failed > 0 || sendFailed > 0 ? 'warn' : 'log'
+        //
+        // K2: `sendBlocked` lyfter raden till WARN av samma skäl — en hel
+        // organisations månadsavier som inte gick ut ska inte stå på log-nivå.
+        const level = result.failed > 0 || sendFailed > 0 || sendBlocked > 0 ? 'warn' : 'log'
         this.logger[level](
           `[avisering-cron] org=${org.name} created=${result.created} skipped=${result.skipped} ` +
-            `failed=${result.failed}${sendFailed > 0 ? ` ej-köade-utskick=${sendFailed}` : ''}`,
+            `failed=${result.failed}${sendFailed > 0 ? ` ej-köade-utskick=${sendFailed}` : ''}` +
+            `${sendBlocked > 0 ? ` blockerade-utskick=${sendBlocked} (betalningsmål saknas)` : ''}`,
         )
       } catch (err) {
         this.logger.error(
@@ -124,7 +140,7 @@ export class AviseringScheduler {
     }
 
     this.logger.log(
-      `[avisering-cron] done year=${year} month=${month} orgs=${orgs.length} created=${created} skipped=${skipped} failed=${failed} queued=${queued}`,
+      `[avisering-cron] done year=${year} month=${month} orgs=${orgs.length} created=${created} skipped=${skipped} failed=${failed} queued=${queued} blocked=${blocked}`,
     )
 
     return {
@@ -135,6 +151,7 @@ export class AviseringScheduler {
       skipped,
       failed,
       queued,
+      blocked,
     }
   }
 }

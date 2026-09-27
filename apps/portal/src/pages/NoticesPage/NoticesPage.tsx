@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { formatSwedishDate, rentNoticeDisplayStatus } from '@eken/shared'
 import {
   fetchInvoices,
   fetchRentNotices,
@@ -22,6 +23,12 @@ const UNPAID_INVOICE_STATUSES = new Set(['SENT', 'OVERDUE', 'PARTIAL'])
 const PAID_INVOICE_STATUSES = new Set(['PAID'])
 
 const UNPAID_NOTICE_STATUSES = new Set(['SENT', 'OVERDUE'])
+
+/** Avins typ i klartext — ur API:ts `type`, aldrig gissad. Okänd/saknad typ → neutral etikett. */
+const AVI_TYP_TEXT: Record<string, string> = { RENT: 'Hyresavi', DEPOSIT: 'Deposition' }
+export function aviTypText(type: string | undefined): string {
+  return (type && AVI_TYP_TEXT[type]) || 'Avi'
+}
 const PAID_NOTICE_STATUSES = new Set(['PAID'])
 
 function formatCurrencySv(amount: number): string {
@@ -51,13 +58,6 @@ function isInvoiceOverdue(invoice: PortalInvoice): boolean {
   return (
     invoice.status === 'OVERDUE' ||
     (UNPAID_INVOICE_STATUSES.has(invoice.status) && new Date(invoice.dueDate) < new Date())
-  )
-}
-
-function isNoticeOverdue(notice: PortalRentNotice): boolean {
-  return (
-    notice.status === 'OVERDUE' ||
-    (notice.status === 'SENT' && new Date(notice.dueDate) < new Date())
   )
 }
 
@@ -197,8 +197,8 @@ export function NoticesPage() {
             ))}
           </div>
           <p className={styles.sectionHint}>
-            Statusen visar vad som är registrerat hos hyresvärden. En betalning
-            kan vara gjord utan att ännu synas här.
+            Statusen visar vad som är registrerat hos hyresvärden. En betalning kan vara gjord utan
+            att ännu synas här.
             {topTab === 'invoices' &&
               ' Makulerade fakturor och fakturor som lämnats till inkasso visas bara under Alla.'}
           </p>
@@ -274,14 +274,18 @@ function RentNoticesList({
   return (
     <div className={styles.list}>
       {filtered.map((notice) => {
-        const overdue = isNoticeOverdue(notice)
+        const displayStatus = rentNoticeDisplayStatus(notice)
+        const overdue = displayStatus === 'OVERDUE'
         return (
           <div key={notice.id} className={`${styles.card} ${overdue ? styles.cardOverdue : ''}`}>
             <div className={styles.cardTop}>
-              <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
-                {formatMonthYear(notice.month, notice.year)}
-              </p>
-              <StatusBadge type="rent-notice" status={notice.status} />
+              <div>
+                <p className={styles.cardType}>{aviTypText(notice.type)}</p>
+                <p className={styles.cardMonth} style={{ textTransform: 'capitalize' }}>
+                  {formatMonthYear(notice.month, notice.year)}
+                </p>
+              </div>
+              <StatusBadge type="rent-notice" status={displayStatus} />
             </div>
 
             {/* #344 — payableTotal är RESTSKULDEN (OCR-raden minus redan
@@ -292,7 +296,15 @@ function RentNoticesList({
                 fakturakortet visar raden så fort paid > 0, avin döljer den även
                 vid exakt full betalning (paid === nominalTotal) — då är payable
                 0 och raden skulle inte förklara något. */}
+            {/* Beloppet är RESTSKULDEN (payableTotal) — märkt som det, så att 0 kr på en betald
+                avi inte läses som avins belopp. Avins belopp visas bara med egen etikett. */}
+            <p className={styles.cardAmountLabel}>Kvar att betala</p>
             <p className={styles.cardAmount}>{formatCurrencySv(notice.payableTotal)}</p>
+            {notice.payableTotal === 0 && notice.nominalTotal > 0 && (
+              <p className={styles.cardAmountSub}>
+                Avins belopp {formatCurrencySv(notice.nominalTotal)}
+              </p>
+            )}
             {notice.paid > 0 && notice.paid !== notice.nominalTotal && (
               <p className={styles.cardAmountSub}>
                 Kvar av {formatCurrencySv(notice.nominalTotal)} — {formatCurrencySv(notice.paid)}{' '}
@@ -306,7 +318,9 @@ function RentNoticesList({
               >
                 {overdue ? '⚠️ Förfallen' : 'Förfaller'}
               </span>
-              <span className={styles.cardDueDate}>{formatDateSv(notice.dueDate)}</span>
+              <span className={styles.cardDueDate}>
+                {formatSwedishDate(new Date(notice.dueDate))}
+              </span>
             </div>
 
             {notice.paidAt && (

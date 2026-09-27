@@ -101,15 +101,15 @@ describe('shadowAgentEnabled är OWNER-only', () => {
     // en fungerande fältgrind.
     const { service, update } = bygg()
     await expect(
-      service.update('o1', dto({ bankgiro: '123-4567' }), 'ADMIN'),
+      service.update('o1', dto({ bankgiro: '123-4566' }), 'ADMIN'),
     ).resolves.toBeDefined()
     expect(update).toHaveBeenCalled()
-    expect(update.mock.calls[0][0].data.bankgiro).toBe('123-4567')
+    expect(update.mock.calls[0][0].data.bankgiro).toBe('123-4566')
   })
 
   it('ett DTO utan fältet rör inte grinden ens för en okänd roll', async () => {
     const { service, update } = bygg()
-    await expect(service.update('o1', dto({ bankgiro: '123-4567' }))).resolves.toBeDefined()
+    await expect(service.update('o1', dto({ bankgiro: '123-4566' }))).resolves.toBeDefined()
     expect(update).toHaveBeenCalled()
   })
 })

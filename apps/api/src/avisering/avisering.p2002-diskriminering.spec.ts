@@ -64,7 +64,12 @@ function rigg(opts: { createRejects?: unknown; befintlig?: unknown } = {}) {
   const prisma = {
     lease: { findUnique: jest.fn().mockResolvedValue(lease) },
     organization: {
-      findUnique: jest.fn().mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7 }),
+      // K2: ett giltigt betalningsmål hör numera till en NORMAL organisation —
+      // `sendNotices` vägrar köa utan det. `5050-1055` är ett verkligt,
+      // kontrollerbart bankgiro (samma som övriga avisering-riggar använder).
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7, bankgiro: '5050-1055' }),
     },
     // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
     // riggen ger löpande nummer i stället för samma varje gång.

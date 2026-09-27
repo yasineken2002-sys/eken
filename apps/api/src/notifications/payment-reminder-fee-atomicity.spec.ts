@@ -69,7 +69,7 @@ function makeService(opts: {
       reminderFeeSek: fee,
       reminderFormalDay: 14,
       reminderCollectionDay: 30,
-      bankgiro: '123-4567',
+      bankgiro: '5050-1055', // F8: giltig kontrollsiffra — '123-4567' var ogiltig
     },
   }
 
@@ -77,6 +77,11 @@ function makeService(opts: {
   // ordning och argument. Det är också precis den attrapp som i #288 dolde ett
   // atomicitetsfel, vilket är varför riggen finns vid sidan av.
   const txClient = {
+    // F8 — omprövningen av betalningsmålet läser organisationen INNE i
+    // transaktionen. Attrappen svarar med ett giltigt bankgiro; grindens
+    // vägran prövas i t2-fakturakontrakt.db.spec.ts. Skriver inget till
+    // ordningsloggen — den mäter skrivningarna, inte läsningar.
+    organization: { findUnique: jest.fn(async () => ({ bankgiro: '5050-1055' })) },
     paymentReminder: {
       createMany: jest.fn(async () => {
         rec.ordning.push('claim')

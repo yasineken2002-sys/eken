@@ -189,6 +189,10 @@ test('bankavstämning: 50 betalningar matchas mot rätt faktura + korrekt verifi
     firstName: 'E2E',
     lastName: 'Bankavstämning',
     organizationName: `E2E Recon 50x ${stamp}`,
+    // Företagsadress krävs vid registrering sedan 2026-09-25 (F-10).
+    street: 'Storgatan 1',
+    postalCode: '111 22',
+    city: 'Stockholm',
     acceptTerms: true,
   })
   expect(is2xx(reg.status), `org-registrering (status ${reg.status})`).toBe(true)
@@ -204,6 +208,12 @@ test('bankavstämning: 50 betalningar matchas mot rätt faktura + korrekt verifi
   // negativfallet. Att skapa ett konto PER varv hade prövat kontoupplägget
   // femtio gånger i stället för matchningen.
   const bankAccountId = await skapaBankkonto(request, headers)
+
+  // F8 — DRAFT→SENT vägras för en betalbar faktura utan giltigt bankgiro, och
+  // en ny organisation har inget. Kontoval för bankimporten ovan är INTE
+  // betalningsmålet; bankgirot sätts separat.
+  const mal = await patchJson(request, '/organizations/me', { bankgiro: '5050-1055' }, headers)
+  if (!is2xx(mal.status)) throw new Error(`bankgiro kunde inte sparas (status ${mal.status})`)
 
   const prop = await postJson<{ id: string }>(
     request,

@@ -321,3 +321,242 @@ export function kontobesked(läge: Kontoläge): string | null {
 export async function cancelPdfImport(importId: string): Promise<void> {
   await del(`/reconciliation/imports/${importId}`)
 }
+
+// ─── K1: lägga upp importkontot FRÅN WEBBEN ─────────────────────────────────
+//
+// `createBankAccount` ovan och `useCreateBankAccount` fanns sedan #F034c men
+// hade NOLL anropare i `apps/web/src` — mätt över hook-filens tretton exporter,
+// där de övriga tolv hade exakt en var. En ny organisation kunde alltså inte
+// importera alls utan ett API-anrop vid sidan av webben, vilket är precis vad
+// kundprovet fick göra (UI 0079–0081).
+//
+// Funktionerna nedan är RENA av samma skäl som `importbesked` och `kontoläge`:
+// frågan "vad ska formuläret säga" ska gå att ställa utan att rendera.
+
+/** Fältvisa fel i formuläret. Tomt objekt förekommer inte — `null` = inga fel. */
+export interface BankkontoFältfel {
+  name?: string
+  accountNumber?: string
+}
+
+/** Gränserna är schemats (`CreateBankAccountSchema`), inte egna. */
+export const BANKKONTO_NAMN_MAX = 120
+export const BANKKONTO_NUMMER_MAX = 64
+
+/**
+ * Formulärets EGNA regler, som körs FÖRE kontraktsgrinden och säger vilket fält
+ * man ska tillbaka till. Grinden (`kontraktsfel`) är ett sista nej mot samma
+ * schema och ska normalt aldrig tala — se `lib/contract-gate.ts`.
+ *
+ * DUBBLETTKONTROLLEN ÄR EN ARTIGHET, INTE SPÄRREN. Det unika villkoret är
+ * `@@unique([organizationId, name])` i Prisma, alltså en EXAKT jämförelse på det
+ * trimmade namnet — samma jämförelse görs här. Att göra den skiftlägesokänslig
+ * här hade blockerat ett namn servern tillåter, och att hoppa över den hade
+ * gjort 409:an till enda beskedet. Servern är fortfarande skiljedomaren: svarar
+ * den 409 visas dess text.
+ */
+export function bankkontoFältfel(
+  input: { name: string; accountNumber: string },
+  befintliga: Bankkonto[] | undefined,
+): BankkontoFältfel | null {
+  const namn = input.name.trim()
+  const nummer = input.accountNumber.trim()
+  const fel: BankkontoFältfel = {}
+  if (!namn) {
+    fel.name = 'Kontot måste ha ett namn.'
+  } else if (namn.length > BANKKONTO_NAMN_MAX) {
+    fel.name = `Namnet får vara högst ${BANKKONTO_NAMN_MAX} tecken (är ${namn.length}).`
+  } else if ((befintliga ?? []).some((k) => k.name === namn)) {
+    fel.name = `Det finns redan ett konto som heter "${namn}".`
+  }
+  if (nummer.length > BANKKONTO_NUMMER_MAX) {
+    fel.accountNumber = `Kontonumret får vara högst ${BANKKONTO_NUMMER_MAX} tecken (är ${nummer.length}).`
+  }
+  return fel.name || fel.accountNumber ? fel : null
+}
+
+/**
+ * Nyttolasten som skickas. ANNOTERAD med den delade typen med flit: utan
+ * annotering är literalen en inferrerad `const` och TypeScript kör ingen
+ * överskottskontroll, så ett fält som finns i webben men inte i kontraktet
+ * passerar tyst (CLAUDE.md, "Kontraktet webb↔API").
+ *
+ * Tomt kontonummer UTELÄMNAS i stället för att skickas som `''`. Schemat
+ * tillåter tomma strängar (`max(64)` utan `min`), så ett `''` hade lagrats som
+ * ett kontonummer — och `jamforKontonummer` hade då fortsatt behandla kontot
+ * som "saknar nummer", eftersom den läser falsy. Ett fält som lagras men aldrig
+ * kan betyda något är skräp i tabellen.
+ */
+export function bankkontoNyttolast(input: {
+  name: string
+  accountNumber: string
+}): CreateBankAccountInput {
+  const nummer = input.accountNumber.trim()
+  const kropp: CreateBankAccountInput = {
+    name: input.name.trim(),
+    ...(nummer ? { accountNumber: nummer } : {}),
+  }
+  return kropp
+}
+
+// ─── RÄTTNING-1: IMPORTENS MÅL ÄR ETT BESLUT, INTE EN HÄRLEDNING ────────────
+//
+// ── VAD SOM VAR FEL, OCH VARFÖR DET INTE SYNTES ─────────────────────────────
+//
+// Målet räknades om vid VARJE rendering:
+//
+//     effektivtKonto = bankAccountId ?? (aktiva.length === 1 ? aktiva[0].id : null)
+//
+// Så länge operatören inte rört väljaren var `bankAccountId` fortfarande `null`,
+// och uttrycket svarade "det enda aktiva kontot" — vilket konto det än råkade
+// vara just då. Blev A avvecklat och B aktivt mellan filvalet och klicket pekade
+// uttrycket om sig till B: väljaren visade B, ingen uppmaning syntes, knappen
+// var aktiv, och klicket skickade B. Mätt av granskaren: `submittedAccount:
+// "account-b"` med `userSelectionEvents: 0`.
+//
+// Det är inte ett formuleringsfel utan ett MODELLFEL. En härledning kan inte
+// skilja "systemet band A åt dig" från "A är det enda som finns just nu", och
+// bara den första får överleva att listan ändras. Därför är målet nedan ett
+// TILLSTÅND som binds en gång, och giltigheten prövas mot den AKTUELLA listan
+// vid varje rendering.
+//
+// ── OCH VARFÖR GRINDEN MÅSTE VARA EN HÄRLEDNING, INTE EN EFFEKT ─────────────
+//
+// Tvärtom för spärren. Hade ogiltigheten hanterats i en `useEffect` som
+// nollställer state finns ett renderingsvarv där knappen står aktiv med ett
+// ogiltigt id — och ett klick i det varvet skickar. `importmål` nedan är därför
+// ren och körs under renderingen: knappen kan aldrig vara aktiv med ett id som
+// inte finns bland de aktiva kontona i det svar som just visas.
+
+/**
+ * Kan vi lita på kontolistan just nu?
+ *
+ * TRE lägen och inte två, därför att "ingen data" och "data som kan vara
+ * inaktuell" kräver olika svar. Ett bakgrundsanrop som pågår medan vi har ett
+ * tidigare svar är NORMAL uppdatering — att spärra importen för den hade gjort
+ * en osynlig cache-refresh till ett stopp mitt i operatörens arbete. Ett FEL är
+ * något annat: då vet vi inte om listan speglar verkligheten, och ett konto kan
+ * ha avvecklats utan att vi sett det.
+ */
+export type Kontolistläge =
+  | { typ: 'okänt'; orsak: 'laddar' | 'fel' }
+  | { typ: 'användbar'; konton: Bankkonto[] }
+
+export function kontolistläge(fråga: {
+  data: Bankkonto[] | undefined
+  isPending: boolean
+  isError: boolean
+}): Kontolistläge {
+  // FELET FÖRST, före `data`. React Query behåller det senaste lyckade svaret
+  // när en omhämtning misslyckas, så `data` kan finnas OCH vara opålitlig. Att
+  // läsa `data` först hade gjort ett nätfel osynligt.
+  if (fråga.isError) return { typ: 'okänt', orsak: 'fel' }
+  if (fråga.isPending || !fråga.data) return { typ: 'okänt', orsak: 'laddar' }
+  return { typ: 'användbar', konton: fråga.data }
+}
+
+/**
+ * Importomgångens mål.
+ *
+ * `bundet` och `valt` bär samma id men är INTE samma sak, och skillnaden styr
+ * vad som händer vid en ny importomgång: en automatisk bindning hörde till den
+ * omgång den gjordes i, ett uttryckligt val är operatörens svar och följer med.
+ * Se `nyImportomgång`.
+ */
+export type Importmål =
+  | { typ: 'obestämt' }
+  | { typ: 'bundet'; id: string }
+  | { typ: 'valt'; id: string }
+
+export interface Målbesked {
+  /** Id som får skickas. `null` = importen är spärrad. */
+  id: string | null
+  /** Vad operatören ska få veta. `null` = inget att säga. */
+  besked: string | null
+  /** Spärren beror på att listan inte gick att hämta — visa "Försök igen". */
+  kanHämtasOm: boolean
+  /** Målet blev ogiltigt; ett NYTT uttryckligt val krävs. */
+  kräverNyttVal: boolean
+}
+
+const SPÄRRAD = { id: null, kanHämtasOm: false, kräverNyttVal: false } as const
+
+/**
+ * ETT villkor för knapp och handler, på alla tre filvägarna.
+ *
+ * Tidigare bar knappen `!file || !effektivtKonto` medan `kontoläge` räknade
+ * fram "välj" alldeles bredvid utan att någon läste det. Texten sa alltså rätt
+ * sak samtidigt som knappen var aktiv och handlern skickade ett avvecklat
+ * konto. Nu kommer båda ur det här svaret.
+ */
+export function importmål(läge: Kontolistläge, mål: Importmål): Målbesked {
+  if (läge.typ === 'okänt') {
+    return läge.orsak === 'laddar'
+      ? { ...SPÄRRAD, besked: 'Hämtar konton…' }
+      : {
+          ...SPÄRRAD,
+          kanHämtasOm: true,
+          besked:
+            'Kontona kunde inte hämtas, så vi vet inte vilka som är aktiva just nu. ' +
+            'Försök igen — importen görs inte mot ett okontrollerat konto.',
+        }
+  }
+  const aktiva = läge.konton.filter((k) => k.isActive)
+
+  if (mål.typ === 'obestämt') {
+    if (aktiva.length === 0) return { ...SPÄRRAD, besked: kontobesked('inga-konton') }
+    // ETT konto är ingen valsituation. Bindningen persisteras av `bindEnkonto`;
+    // att svara redan här gör att knappen inte blinkar förbi ett "välj" som
+    // aldrig gällde.
+    if (aktiva.length === 1) return { ...SPÄRRAD, id: aktiva[0]!.id, besked: null }
+    return { ...SPÄRRAD, besked: kontobesked('valj') }
+  }
+
+  if (aktiva.some((k) => k.id === mål.id)) return { ...SPÄRRAD, id: mål.id, besked: null }
+
+  // Ogiltigt mål. NAMNET om vi har det — ett avvecklat konto ligger kvar i
+  // listan med `isActive: false`, och "Företagskonto SEB är avvecklat" är ett
+  // annat besked än "kontot finns inte längre".
+  const känt = läge.konton.find((k) => k.id === mål.id)
+  return {
+    ...SPÄRRAD,
+    kräverNyttVal: true,
+    besked: känt
+      ? `Kontot "${känt.name}" är avvecklat och kan inte ta emot importen. ` +
+        'Välj vilket konto importen gäller.'
+      : 'Kontot importen var inställd på finns inte längre. Välj vilket konto importen gäller.',
+  }
+}
+
+/**
+ * Binder enkontovalet EN gång. Returnerar `null` när ingenting ska ändras.
+ *
+ * Bindningen är hela poängen med rättningen: efter den ligger id:t i state, och
+ * en senare liständring kan inte räkna om det till ett annat konto — den kan
+ * bara göra det ogiltigt, vilket `importmål` besvarar med ett krav på nytt val.
+ */
+export function bindEnkonto(läge: Kontolistläge, mål: Importmål): Importmål | null {
+  if (mål.typ !== 'obestämt' || läge.typ !== 'användbar') return null
+  const aktiva = läge.konton.filter((k) => k.isActive)
+  return aktiva.length === 1 ? { typ: 'bundet', id: aktiva[0]!.id } : null
+}
+
+/**
+ * Vad som gäller när importmodalen stängs och en ny omgång börjar.
+ *
+ * BESLUTET, och skälet: ett UTTRYCKLIGT val följer med — det är ett svar
+ * operatören redan gett, och att glömma det hade tvingat fram samma val igen.
+ * En AUTOMATISK bindning gör det inte: den var systemets bekvämlighet i den
+ * omgången, och nästa omgång ska binda mot den lista som gäller då.
+ *
+ * Skillnaden syns bara när det enda aktiva kontot har bytts mellan omgångarna,
+ * och då är den rätt åt båda hållen: ett uttryckligt A blir OGILTIGT och kräver
+ * nytt val (aldrig ett tyst byte), medan ett automatiskt bundet A ersätts av
+ * den nya omgångens enda möjlighet.
+ *
+ * En redan uppladdad PDF-draft berörs inte av det här: draften bär sitt eget
+ * `bankAccountId` och lever i bekräftelsemodalen, inte i importomgångens state.
+ */
+export function nyImportomgång(mål: Importmål): Importmål {
+  return mål.typ === 'valt' ? mål : { typ: 'obestämt' }
+}

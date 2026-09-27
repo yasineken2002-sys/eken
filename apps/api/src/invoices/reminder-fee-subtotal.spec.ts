@@ -84,12 +84,17 @@ function makeReminderService() {
       reminderFeeSek: AVGIFT,
       reminderFormalDay: 14,
       reminderCollectionDay: 30,
-      bankgiro: '123-4567',
+      bankgiro: '5050-1055', // F8: giltig kontrollsiffra — '123-4567' var ogiltig
     },
   }
 
   const invoiceUpdateMany = jest.fn().mockResolvedValue({ count: 1 })
   const txClient = {
+    // F8 — omprövningen av betalningsmålet läser organisationen INNE i
+    // transaktionen. Attrappen svarar med ett giltigt bankgiro; grindens
+    // vägran prövas i t2-fakturakontrakt.db.spec.ts. Skriver inget till
+    // ordningsloggen — den mäter skrivningarna, inte läsningar.
+    organization: { findUnique: jest.fn(async () => ({ bankgiro: '5050-1055' })) },
     paymentReminder: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),

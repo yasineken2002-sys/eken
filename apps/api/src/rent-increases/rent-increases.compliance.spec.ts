@@ -116,7 +116,7 @@ describe('Hyreslagen-compliance: rent-increases (JB 12 kap 54 a §)', () => {
     }
 
     const service = new RentIncreasesService(prisma as never, mail as never, notifications as never)
-    return { service, prisma, mail, ri }
+    return { service, prisma, mail, notifications, ri }
   }
 
   // ── sendNotice: validering av effectiveDate mot 2 mån + 1 dag ─────────────
@@ -243,6 +243,48 @@ describe('Hyreslagen-compliance: rent-increases (JB 12 kap 54 a §)', () => {
         org: overrides as OrgOverrides,
       })
       await expect(service.sendNotice('ri-1', 'org-1')).rejects.toThrow(/postadress/)
+    })
+
+    // A2 (#923 KVARSTAR): grinden prövade falsy, inte TOMT. En adress av
+    // blanksteg passerade och gav tomma rader i meddelandet. Rättningen trimmar
+    // bara den befintliga obligatoriskhetsregeln — den inför INGET postnummerkrav
+    // (se det sista fallet nedan).
+    it.each([
+      { field: 'street', overrides: { street: '   ' } },
+      { field: 'city', overrides: { city: '\t ' } },
+      { field: 'postalCode', overrides: { postalCode: ' ' } },
+      { field: 'alla tre', overrides: { street: ' ', city: ' ', postalCode: ' ' } },
+    ])(
+      'A2 avvisar när hyresvärdens $field bara är blanksteg — före mejl, status och notis',
+      async ({ overrides }) => {
+        const { service, mail, prisma, notifications } = makeService({
+          effectiveDate: '2026-09-01',
+          org: overrides as OrgOverrides,
+        })
+        await expect(service.sendNotice('ri-1', 'org-1')).rejects.toThrow(/postadress/)
+        expect(mail.sendRentIncreaseNotice).not.toHaveBeenCalled()
+        expect(prisma.rentIncrease.update).not.toHaveBeenCalled()
+        expect(notifications.createForAllOrgUsers).not.toHaveBeenCalled()
+      },
+    )
+
+    it('A2 positiv kontroll: komplett adress skickas, status och notis följer', async () => {
+      const { service, mail, prisma, notifications } = makeService({ effectiveDate: '2026-09-01' })
+      await service.sendNotice('ri-1', 'org-1')
+      expect(mail.sendRentIncreaseNotice).toHaveBeenCalledTimes(1)
+      expect(prisma.rentIncrease.update).toHaveBeenCalledTimes(1)
+      expect(notifications.createForAllOrgUsers).toHaveBeenCalledTimes(1)
+    })
+
+    it('A2 inför inget nytt postnummerkrav: ett icke-standard postnummer skickas som förut', async () => {
+      const { service, mail } = makeService({
+        effectiveDate: '2026-09-01',
+        org: { postalCode: '12' },
+      })
+      await service.sendNotice('ri-1', 'org-1')
+      expect(mail.sendRentIncreaseNotice).toHaveBeenCalledTimes(1)
+      const payload = mail.sendRentIncreaseNotice.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(payload['landlordAddress']).toBe('Drottninggatan 1\n12 Stockholm')
     })
   })
 

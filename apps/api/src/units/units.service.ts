@@ -3,6 +3,23 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { CreateUnitDto } from './dto/create-unit.dto'
 import { UpdateUnitDto } from './dto/update-unit.dto'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
+import { frivilligSkattskyldighetPaverkarSatsen, type UnitType } from '@eken/shared'
+
+/**
+ * I2 — `voluntaryTaxLiability: true` får bara sparas på en typ där flaggan
+ * påverkar momsregelns sats. Predikatet är härlett ur `vatRateForRent`, så
+ * den här raden inför ingen egen skatteregel: den hindrar bara ett värde som
+ * regeln ändå skulle ignorera, i stället för att spara det tyst. Bostadens och
+ * parkeringens moms är oförändrad.
+ */
+function kontrolleraFrivilligSkattskyldighet(type: UnitType, flagga: boolean): void {
+  if (flagga && !frivilligSkattskyldighetPaverkarSatsen(type)) {
+    throw new BadRequestException(
+      'Frivillig skattskyldighet kan bara anges för lokaler, förråd och övriga objekt. ' +
+        'För bostad och parkering påverkar den inte momsen — ta bort markeringen.',
+    )
+  }
+}
 
 @Injectable()
 export class UnitsService {
@@ -51,6 +68,8 @@ export class UnitsService {
       throw new BadRequestException('Enhetsnummer används redan i denna fastighet')
     }
 
+    kontrolleraFrivilligSkattskyldighet(dto.type, dto.voluntaryTaxLiability ?? false)
+
     return this.prisma.unit.create({
       data: {
         propertyId: dto.propertyId,
@@ -62,6 +81,9 @@ export class UnitsService {
         ...(dto.floor != null ? { floor: dto.floor } : {}),
         ...(dto.rooms != null ? { rooms: dto.rooms } : {}),
         monthlyRent: dto.monthlyRent,
+        ...(dto.voluntaryTaxLiability !== undefined
+          ? { voluntaryTaxLiability: dto.voluntaryTaxLiability }
+          : {}),
       },
       include: {
         property: { select: { id: true, name: true } },
@@ -132,6 +154,17 @@ export class UnitsService {
       )
     }
 
+    // I2 — prövas bara när anropet rör typ eller flagga, mot det TILLSTÅND
+    // raden får efter skrivningen. En äldre rad (t.ex. bostad med flaggan satt
+    // via ett DB-ingrepp) låser därför inte redigering av andra fält; regeln
+    // ignorerar flaggan för den typen ändå.
+    if (dto.type !== undefined || dto.voluntaryTaxLiability !== undefined) {
+      kontrolleraFrivilligSkattskyldighet(
+        dto.type ?? unit.type,
+        dto.voluntaryTaxLiability ?? unit.voluntaryTaxLiability,
+      )
+    }
+
     return this.prisma.unit.update({
       where: { id },
       data: {
@@ -143,6 +176,9 @@ export class UnitsService {
         ...(dto.floor != null ? { floor: dto.floor } : {}),
         ...(dto.rooms != null ? { rooms: dto.rooms } : {}),
         ...(dto.monthlyRent != null ? { monthlyRent: dto.monthlyRent } : {}),
+        ...(dto.voluntaryTaxLiability !== undefined
+          ? { voluntaryTaxLiability: dto.voluntaryTaxLiability }
+          : {}),
       },
       include: {
         property: { select: { id: true, name: true } },

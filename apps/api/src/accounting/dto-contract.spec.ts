@@ -1262,6 +1262,38 @@ describe('Sista webbkontrakten — gränser genom produktionspipen', () => {
     paritet(namn, UpdateOrganizationSchema, UpdateOrganizationDto, kropp, ok),
   )
 
+  // A6 (#923 KVARSTAR): `OrganizationsService.update` definierar `null` som
+  // "ingen ändring" för bankgirot (B1) och adressgruppen (F-10, prov F10.P3).
+  // DTO:n släppte `null` (`@IsOptional`), schemat avvisade det — kontraktet var
+  // två källor. Formen är nu densamma; INNEHÅLLET (blankt bankgiro = rensa,
+  // blank adress = 400, adressen som grupp, postnummer mot orgens land) avgörs
+  // fortfarande av tjänsten, som känner landet.
+  it.each([
+    ['null i hela adressgruppen', { street: null, postalCode: null, city: null }, true],
+    ['null i en adressdel', { street: null }, true],
+    ['null bankgiro', { bankgiro: null }, true],
+    ['utelämnat', {}, true],
+    ['blankt bankgiro (tjänsten rensar)', { bankgiro: '' }, true],
+    ['blank adress (tjänsten avvisar)', { street: ' ', postalCode: ' ', city: ' ' }, true],
+    ['adressdel som tal', { street: 1 }, false],
+    ['bankgiro som tal', { bankgiro: 58500402 }, false],
+  ] as const)('A6 %s', async (namn, kropp, ok) =>
+    paritet(namn, UpdateOrganizationSchema, UpdateOrganizationDto, kropp, ok),
+  )
+
+  // Avgränsningen, uppmätt: A6 rör bara de fyra fälten ovan. För övriga fält
+  // är `null` fortfarande en avvikelse (schemat nej, DTO:n ja, tjänsten no-op),
+  // och den ägs av ett eget ärende. Faller det här provet har någon ändrat ett
+  // fält utanför A6 — skriv då om provet i samma PR, inte tyst.
+  it.each([['paymentTermsDays'], ['invoiceColor'], ['vatNumber'], ['collectionAgencyName']])(
+    'A6 avgränsning: null i %s är oförändrat asymmetriskt',
+    async (falt) => {
+      const kropp = { [falt]: null }
+      expect(schematGodtar(UpdateOrganizationSchema, kropp)).toBe(false)
+      expect(await pipenGodtar(UpdateOrganizationDto, kropp)).toBe(true)
+    },
+  )
+
   // Befintlig avvikelse på main, samma som BuyCredits och PaySupplierInvoice
   // ovan. Denna PR ändrar formen; #850 äger sträng- och datumkoercionen.
   it.each([

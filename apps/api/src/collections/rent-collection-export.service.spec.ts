@@ -421,3 +421,17 @@ describe('PR2 · export-grind (INV-D): faktisk skuld, inte collectionStage', () 
     expect(findMany.mock.calls[0]![0].where.status).toEqual({ notIn: ['PAID', 'CANCELLED'] })
   })
 })
+
+it('CSV och kravunderlag visar svenska förfallo-/räntedagar vid UTC-datumgränsen', async () => {
+  const { service, uploadFile, pdf } = makeService({
+    notice: completeNotice({
+      dueDate: new Date('2026-05-31T22:00:00Z'),
+      interestAccruedThrough: new Date('2026-06-21T22:00:00Z'),
+    }),
+  })
+  await service.exportForNotice('rn-1', 'org-1')
+  const columns = csvFrom(uploadFile).split('\n')[1]!.split(',')
+  expect(columns[2]).toBe('2026-06-01')
+  expect(columns[6]).toBe('2026-06-22')
+  expect(pdf.generateFromHtml.mock.calls[0]![0]).toContain('Förfallodatum 2026-06-01')
+})

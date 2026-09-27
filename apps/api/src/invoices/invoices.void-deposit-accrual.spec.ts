@@ -31,6 +31,14 @@ function makeService(
     invoice: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(invoiceRow),
+      // F8 — DRAFT→SENT läser underlaget för betalningsmålet i transaktionen.
+      findFirstOrThrow: jest.fn().mockResolvedValue({
+        isCreditNote: false,
+        total: 1000,
+        payments: [],
+        creditNotes: [],
+        organization: { bankgiro: '5050-1055' },
+      }),
       update: jest.fn().mockResolvedValue(invoiceRow),
     },
     invoicePayment: { findMany: jest.fn().mockResolvedValue([]) },

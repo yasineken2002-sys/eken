@@ -2,6 +2,7 @@ import { get, post, patch, del, api } from '@/lib/api'
 import type {
   CreateRentNoticeCreditInput,
   GenerateNoticesInput,
+  GenerateNoticesPreview,
   MarkNoticePaidInput,
   SendNoticesInput,
 } from '@eken/shared'
@@ -22,6 +23,8 @@ export interface RentNotice {
   amount: number
   vatAmount: number
   totalAmount: number
+  /** Beräknad OCR-restskuld från API:s läsning, inklusive betalningar/krediteringar. */
+  payableTotal: number
   dueDate: string
   paidAt: string | null
   paidAmount: number | null
@@ -65,6 +68,16 @@ export interface GenerateResult {
 export interface SendResult {
   sent: number
   failed: number
+  /**
+   * K2 — avier som INTE köades därför att organisationens betalningsmål fattas.
+   *
+   * EGET fält och inte en del av `failed`: `failed` betyder "kön svarade inte"
+   * och är ett driftfel, det här betyder "ett fält är ofyllt" och är något
+   * hyresvärden själv rättar. Valfritt, eftersom äldre svar saknar det.
+   */
+  blocked?: number
+  /** Skrivet för en människa. `null` när inget blockerades. */
+  blockedReason?: string | null
 }
 
 export interface AviseringStats {
@@ -108,6 +121,11 @@ export function fetchNotice(id: string) {
 
 // NYTTOLASTERNA ÄR ANNOTERADE med de delade typerna — utan annotering körs ingen
 // överskottskontroll på literalen.
+export function previewGenerateNotices(month: number, year: number) {
+  const kropp: GenerateNoticesInput = { month, year }
+  return post<GenerateNoticesPreview>('/avisering/generate/preview', kropp)
+}
+
 export function generateNotices(month: number, year: number) {
   const kropp: GenerateNoticesInput = { month, year }
   return post<GenerateResult>('/avisering/generate', kropp)
@@ -300,12 +318,28 @@ export type RentCollectionState =
   | 'PAUSED_STALE'
   | 'WAITING'
   | 'BLOCKED'
+  /** K2/F4 — organisationens betalningsmål fattas och stoppar nästa steg. */
+  | 'BLOCKED_PAYMENT_TARGET'
   | 'READY'
 
 export interface RentCollectionStatus {
   state: RentCollectionState
   collectionStage: RentCollectionStage
   missing: string[]
+  /**
+   * K2/F4 — betalningsmålet, ur samma förkontroll som kravtrappans cron och
+   * påminnelsejobbet grindar på. Speglar API:ets fält rakt av.
+   *
+   * `ok` och `blockerarNastaSteg` är SKILDA: målet kan fattas utan att stoppa
+   * något just nu, eftersom inkasso-steget inte läser det. Klienten härleder
+   * aldrig det ena ur det andra.
+   */
+  paymentTarget: {
+    ok: boolean
+    code: 'PAYMENT_TARGET_MISSING' | 'PAYMENT_TARGET_INVALID' | null
+    reason: string | null
+    blockerarNastaSteg: boolean
+  }
   daysOverdue: number
   thresholdDays: number
   daysUntilEvaluation: number

@@ -211,6 +211,8 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
         remindersEnabled: true,
         rentReminderDay: 5,
         reminderFeeSek: 60,
+        // K2: kravtrappan tar inte ut avgiften utan giltigt betalningsmål.
+        bankgiro: '5050-1055',
         paymentDataStaleDays: 3,
         paymentDataThrough: null,
         paymentImportStartedAt: null,

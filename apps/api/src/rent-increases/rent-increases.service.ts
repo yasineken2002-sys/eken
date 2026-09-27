@@ -233,7 +233,12 @@ export class RentIncreasesService {
     // JB 12 kap 54 a § 2 st — meddelandet ska innehålla hyresvärdens adress.
     // Utan formell postadress kan hyresgästen inte skicka sin invändning
     // på rättssäker väg → tystnaden får ingen bindande verkan.
-    if (!org?.street || !org.city || !org.postalCode) {
+    //
+    // Prövas TRIMMAT (A2, #923): en del av bara blanksteg är lika tom som `''`
+    // och gav annars tomma rader i meddelandet. Medvetet INTE
+    // `organizationAddressIssues` — den hade även infört den svenska
+    // postnummerformen här, vilket är ett eget beslut och inte en trimrättning.
+    if (!org?.street?.trim() || !org.city?.trim() || !org.postalCode?.trim()) {
       throw new BadRequestException(
         'Organisationens postadress (gata, ort, postnummer) måste vara komplett innan ' +
           'hyreshöjningsmeddelande kan skickas (JB 12 kap 54 a § 2 st kräver att hyresvärdens adress anges).',

@@ -184,7 +184,14 @@ describe('escalateOverdueRentNotices (cron)', () => {
       id: over.id,
       organizationId: 'org-1',
       dueDate: new Date(Date.now() - over.daysOverdue * DAY),
-      organization: { rentReminderDay: 7, reminderFeeSek: 60, remindersEnabled: true },
+      // K2: cron-grinden kräver numera ett giltigt betalningsmål innan
+      // påminnelseavgiften tas ut — en normal organisation har ett.
+      organization: {
+        rentReminderDay: 7,
+        reminderFeeSek: 60,
+        remindersEnabled: true,
+        bankgiro: '5050-1055',
+      },
       tenant: { email: over.email },
     }
   }
@@ -311,7 +318,15 @@ describe('processReminderSendJob — PR 4b₀ lagra påminnelse-PDF + message-id
       lease: null,
       lines: [],
     }
-    const org = { id: 'org-1', name: 'Värd AB', invoiceColor: null, logoStorageKey: null }
+    // K2: `bankgiro` hör numera till en normal organisation — utskicksgrinden
+    // i `processReminderSendJob` avstår utan giltigt betalningsmål.
+    const org = {
+      id: 'org-1',
+      name: 'Värd AB',
+      invoiceColor: null,
+      logoStorageKey: null,
+      bankgiro: '5050-1055',
+    }
     const update = jest.fn().mockResolvedValue({})
     const prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue(org) },

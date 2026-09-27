@@ -71,6 +71,8 @@ export interface PortalInvoice {
 export interface PortalRentNotice {
   id: string
   noticeNumber: string
+  /** Avins typ ur API:t (RentNotice.type). Skiljer depositionsavin från hyresavin samma månad. */
+  type?: 'RENT' | 'DEPOSIT'
   ocrNumber: string
   month: number
   year: number

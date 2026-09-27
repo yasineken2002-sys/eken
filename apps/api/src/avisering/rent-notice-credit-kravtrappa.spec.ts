@@ -141,6 +141,10 @@ const org = {
   rentReminderDay: 7,
   reminderFeeSek: 60,
   rentInkassoDaysAfterReminder: 14,
+  // K2: kravtrappan tar inte ut påminnelseavgiften utan ett giltigt
+  // betalningsmål — utan raden hade ALLA lägen här hoppats över, och
+  // krediteringsgrinden mätts grön av fel skäl.
+  bankgiro: '5050-1055',
 }
 
 /** Alla kollaboratörer utanför skuldfrågan. Ingen av dem kan påverka ett belopp. */

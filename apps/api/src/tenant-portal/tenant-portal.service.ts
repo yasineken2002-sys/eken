@@ -395,6 +395,10 @@ export function mapRentNotice(notice: PortalRentNoticeRow) {
   return {
     id: notice.id,
     noticeNumber: notice.noticeNumber,
+    // Avins TYP (RENT | DEPOSIT) — hyresgästens EGEN avi. Portalen behöver den för att
+    // skilja depositionsavin från hyresavin när båda gäller samma månad och är betalda
+    // (då är beloppet 0 kr och korten annars identiska). Ett enumvärde, ingen PII.
+    type: notice.type,
     ocrNumber: notice.ocrNumber,
     month: notice.month,
     year: notice.year,

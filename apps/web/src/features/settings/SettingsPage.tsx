@@ -1,4 +1,10 @@
-import { UpdateOrganizationSchema, type UpdateOrganizationInput } from '@eken/shared'
+import {
+  UpdateOrganizationSchema,
+  validateSwedishBankgiro,
+  formatPostalAddress,
+  organizationAddressIssues,
+  type UpdateOrganizationInput,
+} from '@eken/shared'
 import { kontraktsfel } from '@/lib/contract-gate'
 import { toast } from 'sonner'
 import { useState, useEffect, useRef } from 'react'
@@ -53,7 +59,7 @@ import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
 import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
-import { get, del } from '@/lib/api'
+import { get, del, extractApiError } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 import { tint, TINT } from '@/lib/tint'
@@ -70,7 +76,19 @@ const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
 // ─── Form schema ──────────────────────────────────────────────────────────────
 
 const PaymentFormSchema = z.object({
-  bankgiro: z.string().optional(),
+  // K2 — betalningsmålet. TOMT ÄR TILLÅTET och betyder "inget mål": hyresvärden
+  // måste kunna ta bort ett felaktigt nummer utan att formuläret låser sig.
+  // Ett ifyllt värde valideras med EXAKT samma funktion som servern använder
+  // före ett aviutskick (`validateSwedishBankgiro` i @eken/shared) — en egen
+  // regex här hade kunnat godkänna något servern sedan avvisar, och
+  // hyresvärden hade då fått ett sparat värde som ändå stoppar utskicken.
+  bankgiro: z
+    .string()
+    .optional()
+    .refine((v) => !v || !v.trim() || validateSwedishBankgiro(v).valid, {
+      message:
+        'Ogiltigt bankgiro. Ange 7 eller 8 siffror (XXX-XXXX eller XXXX-XXXX) med rätt kontrollsiffra.',
+    }),
   paymentTermsDays: z.coerce.number().min(1).optional(),
 })
 
@@ -125,6 +143,12 @@ export function SettingsPage() {
   const [vatReportingPeriod, setVatReportingPeriod] = useState<'MONTHLY' | 'QUARTERLY' | 'YEARLY'>(
     'QUARTERLY',
   )
+  // ── Företagsadress (F-10) ────────────────────────────────────────────────
+  const [addrStreet, setAddrStreet] = useState('')
+  const [addrPostalCode, setAddrPostalCode] = useState('')
+  const [addrCity, setAddrCity] = useState('')
+  const [addrError, setAddrError] = useState<string | null>(null)
+  const [addrSavedFlash, setAddrSavedFlash] = useState(false)
   const [taxSavedFlash, setTaxSavedFlash] = useState(false)
   const [taxError, setTaxError] = useState<string | null>(null)
 
@@ -175,6 +199,9 @@ export function SettingsPage() {
       setHasFSkatt(org.hasFSkatt ?? false)
       setFSkattApprovedDate(org.fSkattApprovedDate ? org.fSkattApprovedDate.slice(0, 10) : '')
       setVatNumber(org.vatNumber ?? '')
+      setAddrStreet(org.street ?? '')
+      setAddrPostalCode(org.postalCode ?? '')
+      setAddrCity(org.city ?? '')
       setVatReportingPeriod(org.vatReportingPeriod ?? 'QUARTERLY')
       setDaysBeforeMoveIn(
         (org as { daysBeforeMoveInForFirstPayment?: number }).daysBeforeMoveInForFirstPayment ?? 7,
@@ -191,7 +218,36 @@ export function SettingsPage() {
       toast.error(fel)
       return
     }
-    updateMutation.mutate(kropp, options)
+    updateMutation.mutate(kropp, {
+      // Servern avvisar numera ett ogiltigt bankgiro med 400. Utan den här raden
+      // hände ingenting synligt på skärmen — knappen slutade snurra och värdet
+      // var osparat. Anroparens egen onError vinner om den finns.
+      onError: (err: unknown) => toast.error(extractApiError(err)),
+      ...options,
+    })
+  }
+
+  // Samma regel som servern kör (`organizationAddressIssues`), mot
+  // organisationens EGET land — den svenska postnummerregeln gäller bara `SE`.
+  const handleSaveAddress = () => {
+    setAddrError(null)
+    const kropp: UpdateOrganizationInput = {
+      street: addrStreet.trim(),
+      postalCode: addrPostalCode.trim(),
+      city: addrCity.trim(),
+    }
+    const fel = organizationAddressIssues(kropp, org?.country ?? 'SE')
+    if (fel.length > 0) {
+      setAddrError(fel.map((f) => f.message).join('. '))
+      return
+    }
+    sparaOrganisation(kropp, {
+      onSuccess: () => {
+        setAddrSavedFlash(true)
+        setTimeout(() => setAddrSavedFlash(false), 2500)
+      },
+      onError: (err: unknown) => setAddrError(extractApiError(err)),
+    })
   }
 
   const handleSaveTaxInfo = () => {
@@ -257,7 +313,10 @@ export function SettingsPage() {
 
   const handleSave = (v: PaymentFormValues) => {
     const kropp: UpdateOrganizationInput = {
-      ...(v.bankgiro ? { bankgiro: v.bankgiro } : {}),
+      // `v.bankgiro ? …` utelämnade fältet när rutan var tom, så ett felaktigt
+      // sparat bankgiro gick inte att RENSA genom formuläret. Tom sträng skickas
+      // nu med och betyder "ta bort målet" i organizations.service.
+      ...(v.bankgiro !== undefined ? { bankgiro: v.bankgiro } : {}),
       ...(v.paymentTermsDays != null ? { paymentTermsDays: v.paymentTermsDays } : {}),
     }
     sparaOrganisation(kropp, {
@@ -852,7 +911,7 @@ export function SettingsPage() {
               </div>
             </section>
 
-            {/* ── Section 4: Företagsinformation (read-only) ──────────────────── */}
+            {/* ── Section 4: Företagsinformation (adressen redigerbar, F-10) ───── */}
             <section className="rounded-2xl border border-gray-100 bg-white p-5">
               <h2 className="mb-4 text-[14px] font-semibold text-gray-800">Företagsinformation</h2>
 
@@ -867,9 +926,7 @@ export function SettingsPage() {
                   { label: 'E-post', value: org?.email ?? '–' },
                   {
                     label: 'Adress',
-                    value: org?.address
-                      ? `${org.address.street}, ${org.address.postalCode} ${org.address.city}`
-                      : '–',
+                    value: (org && formatPostalAddress(org)) ?? 'Saknas — fyll i nedan',
                   },
                 ].map((row) => (
                   <div key={row.label} className="rounded-xl bg-gray-50 p-3">
@@ -879,6 +936,74 @@ export function SettingsPage() {
                     <p className="mt-0.5 text-[13px] text-gray-600">{row.value}</p>
                   </div>
                 ))}
+              </div>
+
+              {/* Företagsadress (F-10). Visas som hyresvärdens adress på
+                  kontrakt och som avsändare på avier. Organisationer skapade
+                  före 2026-09-25 registrerades utan adress. */}
+              <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+                <div>
+                  <h3 className="text-[13px] font-semibold text-gray-800">Företagsadress</h3>
+                  <p className="mt-0.5 text-[12px] text-gray-500">
+                    Visas som hyresvärdens adress på kontrakt och som avsändare på avier.
+                  </p>
+                </div>
+                {org && !formatPostalAddress(org) && (
+                  <div className="flex items-start gap-1.5 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-700">
+                    <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                    {/* A7 — texten påstår bara det som gäller: kontraktet skriver
+                        att adressen saknas, avin utelämnar avsändarraden, och
+                        redan skapade dokument skrivs inte om. */}
+                    <span>
+                      Företagsadressen saknas, så den kommer inte med i dokument du skapar nu — till
+                      exempel anges den som saknad i kontrakt och utelämnas på avier. Dokument som
+                      redan skapats uppdateras inte automatiskt; skapa ett nytt kontrakt efter att
+                      du sparat adressen.
+                    </span>
+                  </div>
+                )}
+                <Input
+                  label="Gatuadress"
+                  placeholder="Storgatan 1"
+                  autoComplete="street-address"
+                  value={addrStreet}
+                  onChange={(e) => setAddrStreet(e.target.value)}
+                />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr]">
+                  <Input
+                    label="Postnummer"
+                    placeholder="111 22"
+                    autoComplete="postal-code"
+                    value={addrPostalCode}
+                    onChange={(e) => setAddrPostalCode(e.target.value)}
+                  />
+                  <Input
+                    label="Ort"
+                    placeholder="Stockholm"
+                    autoComplete="address-level2"
+                    value={addrCity}
+                    onChange={(e) => setAddrCity(e.target.value)}
+                  />
+                </div>
+                {addrError && (
+                  <div className="flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-[12.5px] text-red-600">
+                    <AlertCircle size={13} />
+                    {addrError}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={updateMutation.isPending}
+                    onClick={handleSaveAddress}
+                  >
+                    Spara adress
+                  </Button>
+                  {addrSavedFlash && (
+                    <span className="text-[13px] font-medium text-emerald-600">Sparat</span>
+                  )}
+                </div>
               </div>
 
               <p className="mt-3 flex items-start gap-1.5 text-[12px] text-gray-500">

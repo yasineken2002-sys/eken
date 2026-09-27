@@ -180,6 +180,24 @@ jobs:
       - name: Verify no tests were skipped
         run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report.json
 
+      # ── KD-4: DAGSGRÄNSEN I EN VERKLIG America/Los_Angeles-PROCESS ─────────
+      #
+      # `process.env.TZ = …` inne i jest når inte Node (jest ger testet en kopia
+      # av env; uppmätt av T2 och T3). Därför körs dagsgränsfilen HÄR en gång
+      # till, i en egen process med TZ satt FÖRE processtart. Filens zonankare
+      # (`KD4_KRAV_ZON`) fäller om processens verkliga IANA-zon eller offset inte
+      # är den begärda — en körning i fel zon blir röd, inte grön av misstag.
+      # Huvudsviten ovan kör samma fil i runnerns zon utan att påstå LA.
+      - name: KD-4 dagsgräns i America/Los_Angeles (egen process)
+        working-directory: apps/api
+        env:
+          TZ: America/Los_Angeles
+          KD4_KRAV_ZON: America/Los_Angeles
+        run: npx jest --ci --runInBand --json --outputFile=jest-report-kd4.json src/avisering/integration-ka-dagsgrans.db.spec.ts
+
+      - name: KD-4 — inga hoppade tester i zonkörningen
+        run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report-kd4.json
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest
@@ -1582,7 +1600,16 @@ jobs:
       #   npx playwright test --list <riktig> <påhittad>   → exit 0, 1 test
       # En bortdöpt spec försvann alltså ur CI utan att något blev rött. Ett
       # förväntat antal kan inte krympa tyst.
-      E2E_EXPECTED_TESTS: '14'
+      # 2026-09-23 (K1): 14 → 16. `bankkonto-import.spec.ts` lägger till TVÅ tester
+      # — huvudvägen (ny org → skapa importkonto i UI → välj → importera) och
+      # samma väg vid 390 px. Kundprovet samma dag fastnade på att skapa-vägen
+      # inte fanns; en spec som kan försvinna tyst hade inte skyddat mot återfall.
+      # 2026-09-25 (K-2): 16 → 18. `kundresa-slutprov.spec.ts` lägger till TVÅ
+      # tester — hela kundresan i EN hyresvärdssession, en org och en objektkedja,
+      # vid 1280×900 och 390×844. Granskningen fällde att de tre befintliga
+      # specarna gör var sin bit av resan mot VARSIN seedad org, så SKARVEN mellan
+      # bitarna aldrig hade körts i en vy.
+      E2E_EXPECTED_TESTS: '18'
 
     steps:
       - uses: actions/checkout@v4
