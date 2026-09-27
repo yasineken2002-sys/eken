@@ -87,6 +87,40 @@ function spärr(): {
   return { vänta, släpp, nådd, markeraNådd }
 }
 
+/**
+ * F02: en klient vars FÖRSTA `fortnoxOutboxEntry.updateMany` — i `processOne`
+ * är det claimen, efter läsningen — hålls tills provet släpper den. Så
+ * efterliknas en arbetare vars läsning blivit gammal (sent SELECT-svar,
+ * pausad process) utan sleep och utan att produktkoden får en testkrok.
+ * Alla andra anrop går rakt igenom till den riktiga klienten.
+ */
+function medFördröjdClaim(klient: PrismaClient, s: ReturnType<typeof spärr>): PrismaClient {
+  let första = true
+  const delegat = klient.fortnoxOutboxEntry
+  const hållen = new Proxy(delegat, {
+    get(mål, namn) {
+      if (namn === 'updateMany' && första) {
+        const äkta = mål.updateMany as unknown as (a: unknown) => Promise<unknown>
+        return async (args: unknown) => {
+          första = false
+          s.markeraNådd()
+          await s.vänta
+          return äkta.call(mål, args)
+        }
+      }
+      const v: unknown = Reflect.get(mål, namn)
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(mål) : v
+    },
+  })
+  return new Proxy(klient, {
+    get(mål, namn) {
+      if (namn === 'fortnoxOutboxEntry') return hållen
+      const v: unknown = Reflect.get(mål, namn)
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(mål) : v
+    },
+  })
+}
+
 medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
   let prisma: PrismaClient
   const städa: string[] = []
@@ -649,6 +683,58 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       nuMs += 24 * 3600_000
       expect(await svc.processOne(c, entry.eventKey)).toEqual({ status: 'NOT_CLAIMABLE' })
       expect(world.sendCount(entry.eventKey)).toBe(5)
+    })
+
+    // F02 (GRANSKNINGSFYND-00b7d307). Provet ovan kör sekventiellt och kan inte
+    // se en arbetare vars läsning blivit gammal över en ANNAN arbetares
+    // retry-cykel. Här hålls A mellan läsning (attempts = 3) och claim, medan
+    // B tar försök 4 och hela dess väntetid löper ut. Mätt: faktiska
+    // adapteranrop och lagrat slutläge/räknare — inte bara A:s svar.
+    it('F02: en gammal läsning kan inte ta ett försök bortom taket (A07/A11)', async () => {
+      const org = await skapaOrg('f02')
+      const c = ctx(org)
+      const world = new MockFortnoxWorld()
+      const svc = tjänst(world)
+      const { entry } = await svc.enqueue(c, {
+        operation: 'INVOICE_CREATE',
+        immutableVersion: 1,
+        payload: faktura(c, 'avi-f02'),
+      })
+      const nyckel = entry.eventKey
+      world.sendScript.push(...Array.from({ length: 10 }, () => 'SAFE_TO_RETRY' as const))
+
+      for (let försök = 1; försök <= 3; försök++) {
+        expect(await svc.processOne(c, nyckel)).toEqual({ status: 'DONE', state: 'RETRY_WAIT' })
+        nuMs = (await svc.findScoped(c, nyckel))!.nextAttemptAt.getTime()
+      }
+      expect((await svc.findScoped(c, nyckel))!.attempts).toBe(3)
+
+      const s = spärr()
+      const gammalA = tjänst(world, medFördröjdClaim(prisma, s)).processOne(c, nyckel)
+      await s.nådd // A har läst attempts = 3 och står vid sin claim
+
+      expect(await svc.processOne(c, nyckel)).toEqual({ status: 'DONE', state: 'RETRY_WAIT' })
+      nuMs = (await svc.findScoped(c, nyckel))!.nextAttemptAt.getTime()
+      expect((await svc.findScoped(c, nyckel))!.attempts).toBe(4)
+
+      s.släpp()
+      const utfallA = await gammalA
+
+      // Dränera som en vanlig arbetare tills inget mer går att ta.
+      for (let varv = 0; varv < 10; varv++) {
+        const r = await svc.processOne(c, nyckel)
+        if (r.status !== 'DONE') break
+        const rad = await svc.findScoped(c, nyckel)
+        if (rad!.state === 'RETRY_WAIT') nuMs = rad!.nextAttemptAt.getTime()
+      }
+
+      expect(world.sendCount(nyckel)).toBe(5)
+      expect(await svc.findScoped(c, nyckel)).toMatchObject({
+        state: 'MANUAL_REVIEW',
+        attempts: 5,
+        lastErrorClass: 'RETRY_EXHAUSTED',
+      })
+      expect(utfallA).toEqual({ status: 'NOT_CLAIMABLE' })
     })
 
     it.each([

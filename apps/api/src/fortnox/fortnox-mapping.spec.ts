@@ -353,6 +353,27 @@ describe('A05 · hel kredit av obetald bostadsavi; allt annat nekas helt', () =>
     if (!r.ok) expect(r.reason).toMatch(/delkredit/)
   })
 
+  // F01 (GRANSKNINGSFYND-00b7d307): beloppsfälten måste stämma med originalets
+  // faktiska rad. Utan den spärren blir båda fälten satta till 400 000 mot en
+  // rad på 1 000 000 en DELKREDIT förklädd till helkredit — och 2 000 000 en
+  // kredit större än fordran. Båda riktningarna prövas; det giltiga fallet
+  // ovan ("speglar originalreferens och belopp") är oförändrat.
+  it.each<[string, number]>([
+    ['lägre än originalraden', 400_000],
+    ['högre än originalraden', 2_000_000],
+  ])('F01: helkredit med belopp %s nekas som inkonsekvent underlag', (_namn, belopp) => {
+    const r = mapFullCredit(CTX, kredit({ originalAmountOre: belopp, creditAmountOre: belopp }))
+    expect(r).toMatchObject({ ok: false, code: 'INVALID' })
+    if (!r.ok) expect(r.reason).toMatch(/originalraden/)
+  })
+
+  it('F01: äkta delkredit mot konsistent original är fortfarande UNSUPPORTED, inte INVALID', () => {
+    expect(mapFullCredit(CTX, kredit({ creditAmountOre: 400_000 }))).toMatchObject({
+      ok: false,
+      code: 'UNSUPPORTED',
+    })
+  })
+
   // Blandade avier: HELA avin nekas — både för faktura och kredit. Varje
   // komponent prövas för sig, så att en som glömts i listan syns.
   const FRÄMMANDE: NoticeComponent[] = [
