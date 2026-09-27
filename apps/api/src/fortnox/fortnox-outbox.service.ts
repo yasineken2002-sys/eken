@@ -268,6 +268,12 @@ export class FortnoxOutboxService {
         fortnoxTenantId: ctx.fortnoxTenantId,
         state: { in: CLAIMABLE },
         nextAttemptAt: { lte: nu },
+        // F02: CAS på räknaren som LÄSTES, och taket i samma villkor. Utan
+        // `equals` kunde en arbetare med gammal läsning vinna en senare claim
+        // och räkna fel försöksnummer (3+1 när databasen skrev 5) — och därmed
+        // släppa ett sjätte försök. Med den är `rad.attempts + 1` nedan per
+        // konstruktion exakt det värde den vinnande claimen skrev.
+        attempts: { equals: rad.attempts, lt: this.maxAttempts },
       },
       data: {
         state: 'SENDING',

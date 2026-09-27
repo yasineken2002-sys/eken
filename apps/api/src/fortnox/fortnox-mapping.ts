@@ -300,6 +300,13 @@ export function mapFullCredit(
   if (!ärPositivtÖre(u.originalAmountOre) || !ärPositivtÖre(u.creditAmountOre)) {
     return nej('INVALID', 'belopp måste vara positiva hela ören')
   }
+  // F01: beloppsfälten ska stämma med originalets faktiska rad. Annars blir en
+  // "helkredit" med båda fälten satta lägre än raden en delkredit i förklädnad,
+  // och högre en kredit större än fordran. `renBostadshyra` har redan krävt
+  // exakt en hyresrad med positivt belopp.
+  if (u.originalLines[0]!.amountOre !== u.originalAmountOre) {
+    return nej('INVALID', 'originalbeloppet stämmer inte med originalraden')
+  }
   if (u.creditAmountOre !== u.originalAmountOre) {
     return nej('UNSUPPORTED', 'delkredit stöds inte i skiva 01 — skalas aldrig upp till hel kredit')
   }
