@@ -72,8 +72,16 @@ export class MockFortnoxWorld {
   /** Konsumeras ett per `send`; tom kö ⇒ 'ACK'. */
   readonly sendScript: MockSendScenario[] = []
   lookupMode: MockLookupMode = 'REAL'
-  /** Anropas före varje send; låter ett prov hålla kvar ett försök (samtidighet). */
+  /**
+   * Anropas INNAN anropet räknas som skickat — ett prov kan hålla kvar ett
+   * försök som "dog före nätverket" (A10a) eller låta två försök mötas (A07).
+   */
   beforeSend: ((cmd: FortnoxCommand) => Promise<void>) | null = null
+  /**
+   * Anropas EFTER den externa effekten men innan svaret lämnas — ett prov kan
+   * efterlikna en process som dör mellan extern framgång och lokal kvittens (A10b).
+   */
+  beforeReturn: ((cmd: FortnoxCommand) => Promise<void>) | null = null
   private seq = 0
 
   nextExternalId(): string {
@@ -121,9 +129,16 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
   }
 
   async send(ctx: FortnoxTrustedContext, cmd: FortnoxCommand): Promise<FortnoxSendResult> {
-    this.world.sends.push({ eventKey: cmd.eventKey, operation: cmd.operation })
     if (this.world.beforeSend) await this.world.beforeSend(cmd)
+    this.world.sends.push({ eventKey: cmd.eventKey, operation: cmd.operation })
     const scenario = this.world.sendScript.shift() ?? 'ACK'
+    const svar = this.utför(ctx, cmd, scenario)
+    if (this.world.beforeReturn) await this.world.beforeReturn(cmd)
+    if (svar === 'THROW') throw new Error('syntetiskt nätfel efter extern effekt')
+    return svar
+  }
+
+  private utför(ctx: FortnoxTrustedContext, cmd: FortnoxCommand, scenario: MockSendScenario): FortnoxSendResult | 'THROW' {
     switch (scenario) {
       case 'ACK': {
         const booked = isBookkeepOperation(cmd.operation)
@@ -140,7 +155,7 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
         return { kind: 'UNKNOWN', reason: 'syntetisk timeout efter extern effekt' }
       case 'EFFECT_THEN_THROW':
         this.effect(ctx, cmd, isBookkeepOperation(cmd.operation))
-        throw new Error('syntetiskt nätfel efter extern effekt')
+        return 'THROW'
       case 'UNKNOWN_NO_EFFECT':
         return { kind: 'UNKNOWN', reason: 'syntetisk oklar 5xx' }
       case 'SAFE_TO_RETRY':
