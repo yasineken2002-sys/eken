@@ -132,13 +132,29 @@ export class FortnoxOutboxService {
   // ── Köning ─────────────────────────────────────────────────────────────────
 
   /** Föregångarens nyckel härleds server-side — anroparen kan inte välja den. */
-  predecessorKey(ctx: FortnoxTrustedContext, operation: FortnoxOperation, payload: FortnoxIntent): string | null {
+  predecessorKey(
+    ctx: FortnoxTrustedContext,
+    operation: FortnoxOperation,
+    payload: FortnoxIntent,
+  ): string | null {
     const skapande = BOOKKEEP_OF[operation]
     if (skapande) {
-      return fortnoxEventKey(ctx, EVENT_TYPE_OF[skapande], sourceIdOf(payload), FORTNOX_SUPPORTED_VERSION, skapande)
+      return fortnoxEventKey(
+        ctx,
+        EVENT_TYPE_OF[skapande],
+        sourceIdOf(payload),
+        FORTNOX_SUPPORTED_VERSION,
+        skapande,
+      )
     }
     if (payload.kind === 'PAYMENT') {
-      return fortnoxEventKey(ctx, 'RENT_NOTICE', payload.noticeId, FORTNOX_SUPPORTED_VERSION, 'INVOICE_BOOKKEEP')
+      return fortnoxEventKey(
+        ctx,
+        'RENT_NOTICE',
+        payload.noticeId,
+        FORTNOX_SUPPORTED_VERSION,
+        'INVOICE_BOOKKEEP',
+      )
     }
     if (payload.kind === 'CREDIT') {
       return fortnoxEventKey(
@@ -164,7 +180,9 @@ export class FortnoxOutboxService {
       throw new FortnoxEnqueueError(`version ${immutableVersion} stöds inte i skiva 01`)
     }
     if (payload.kind !== INTENT_KIND_OF[operation]) {
-      throw new FortnoxEnqueueError(`operation ${operation} kräver avsikt ${INTENT_KIND_OF[operation]}`)
+      throw new FortnoxEnqueueError(
+        `operation ${operation} kräver avsikt ${INTENT_KIND_OF[operation]}`,
+      )
     }
 
     const sourceId = sourceIdOf(payload)
@@ -175,8 +193,12 @@ export class FortnoxOutboxService {
 
     if (dependsOnEventKey) {
       const pred = await this.findScoped(ctx, dependsOnEventKey)
-      if (!pred) throw new FortnoxEnqueueError('föregångaren saknas i samma organisation/anslutning/företag')
-      if (isBookkeepOperation(operation) && amountOreOf(pred.payload as unknown as FortnoxIntent) !== amountOreOf(payload)) {
+      if (!pred)
+        throw new FortnoxEnqueueError('föregångaren saknas i samma organisation/anslutning/företag')
+      if (
+        isBookkeepOperation(operation) &&
+        amountOreOf(pred.payload as unknown as FortnoxIntent) !== amountOreOf(payload)
+      ) {
         throw new FortnoxEnqueueError('bokföringssteget avviker i belopp från sitt skapande-steg')
       }
     }
@@ -200,7 +222,12 @@ export class FortnoxOutboxService {
       })
       return { status: 'CREATED', entry }
     } catch (err) {
-      if (!isP2002From(err, { column: 'eventKey', indexName: 'FortnoxOutboxEntry_organizationId_eventKey_key' })) {
+      if (
+        !isP2002From(err, {
+          column: 'eventKey',
+          indexName: 'FortnoxOutboxEntry_organizationId_eventKey_key',
+        })
+      ) {
         throw err
       }
       const befintlig = await this.findScoped(ctx, eventKey)
@@ -304,15 +331,28 @@ export class FortnoxOutboxService {
           if (utfall.booked !== true || utfall.externalId !== pred?.externalId) {
             return fel('MANUAL_REVIEW', 'BOOKKEEP_UNVERIFIED')
           }
-          return { state: 'ACKNOWLEDGED', externalId: utfall.externalId, bookedConfirmed: true, acknowledgedAt: nu }
+          return {
+            state: 'ACKNOWLEDGED',
+            externalId: utfall.externalId,
+            bookedConfirmed: true,
+            acknowledgedAt: nu,
+          }
         }
-        return { state: 'ACKNOWLEDGED', externalId: utfall.externalId, bookedConfirmed: false, acknowledgedAt: nu }
+        return {
+          state: 'ACKNOWLEDGED',
+          externalId: utfall.externalId,
+          bookedConfirmed: false,
+          acknowledgedAt: nu,
+        }
       }
       case 'SAFE_TO_RETRY': {
         if (attempts >= this.maxAttempts) return fel('MANUAL_REVIEW', 'RETRY_EXHAUSTED')
         const väntan = this.backoffBaseMs * 2 ** (attempts - 1)
         const jitter = Math.floor(väntan * 0.2 * this.random())
-        return { ...fel('RETRY_WAIT', 'SAFE_TO_RETRY'), nextAttemptAt: new Date(nu.getTime() + väntan + jitter) }
+        return {
+          ...fel('RETRY_WAIT', 'SAFE_TO_RETRY'),
+          nextAttemptAt: new Date(nu.getTime() + väntan + jitter),
+        }
       }
       case 'AUTH':
         return fel('AUTH_REQUIRED', 'AUTH')
@@ -381,7 +421,12 @@ export class FortnoxOutboxService {
             acknowledgedAt: nu,
             lastLookupAt: nu,
           }
-        : { state: beslut.state, lastErrorClass: beslut.errorClass, lastErrorAt: nu, lastLookupAt: nu }
+        : {
+            state: beslut.state,
+            lastErrorClass: beslut.errorClass,
+            lastErrorAt: nu,
+            lastLookupAt: nu,
+          }
 
     const r = await this.prisma.fortnoxOutboxEntry.updateMany({
       where: {
@@ -463,7 +508,8 @@ export function classifyLookup(
       return { state: 'MANUAL_REVIEW', errorClass: 'LOOKUP_UNSUPPORTED' }
     case 'FOUND': {
       if (svar.candidates.length === 0) return { state: 'UNKNOWN', errorClass: 'LOOKUP_NOT_FOUND' }
-      if (svar.candidates.length > 1) return { state: 'MANUAL_REVIEW', errorClass: 'LOOKUP_AMBIGUOUS' }
+      if (svar.candidates.length > 1)
+        return { state: 'MANUAL_REVIEW', errorClass: 'LOOKUP_AMBIGUOUS' }
       const c = svar.candidates[0]!
       return matches(ctx, rad, pred, c)
         ? { state: 'ACKNOWLEDGED', externalId: c.externalId }

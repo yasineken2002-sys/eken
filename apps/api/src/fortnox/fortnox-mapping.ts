@@ -175,7 +175,10 @@ function renBostadshyra(
   const främmande = lines.filter((l) => l.component !== 'RENT')
   if (främmande.length > 0) {
     const typer = [...new Set(främmande.map((l) => l.component))].sort().join(', ')
-    return nej('UNSUPPORTED', `avin innehåller komponenter utanför skiva 01 (${typer}) — hela avin nekas`)
+    return nej(
+      'UNSUPPORTED',
+      `avin innehåller komponenter utanför skiva 01 (${typer}) — hela avin nekas`,
+    )
   }
   if (lines.some((l) => l.vatRatePercent !== 0)) {
     return nej('UNSUPPORTED', 'momsbelagd rad stöds inte i skiva 01')
@@ -195,7 +198,8 @@ export function mapRentNoticeToInvoice(
   if (g) return g
   const r = renBostadshyra(u.propertyUse, u.lines)
   if (r) return r
-  if (!ickeTom(u.noticeId) || !ickeTom(u.noticeNumber)) return nej('INVALID', 'avi-id/nummer saknas')
+  if (!ickeTom(u.noticeId) || !ickeTom(u.noticeNumber))
+    return nej('INVALID', 'avi-id/nummer saknas')
   if (!ickeTom(u.customerRef)) return nej('INVALID', 'förkonfigurerat kundnummer saknas')
   if (!ärPositivtÖre(u.totalOre)) return nej('INVALID', 'totalbelopp måste vara positiva hela ören')
   if (![u.invoiceDate, u.dueDate, u.bookkeepingDate].every(ärKalenderdatum)) {
@@ -258,7 +262,10 @@ export function mapPaymentAllocation(
   }
   const kvar = u.originalAmountOre - u.confirmedPaidOre - u.confirmedCreditedOre
   if (u.amountOre > kvar) {
-    return nej('INVALID', `betalningen (${u.amountOre} öre) överstiger kvarvarande fordran (${kvar} öre)`)
+    return nej(
+      'INVALID',
+      `betalningen (${u.amountOre} öre) överstiger kvarvarande fordran (${kvar} öre)`,
+    )
   }
   if (!ärKalenderdatum(u.paidAt) || !ärKalenderdatum(u.bookkeepingDate)) {
     return nej('INVALID', 'datum måste vara giltiga YYYY-MM-DD')
@@ -296,14 +303,16 @@ export function mapFullCredit(
   if (u.creditAmountOre !== u.originalAmountOre) {
     return nej('UNSUPPORTED', 'delkredit stöds inte i skiva 01 — skalas aldrig upp till hel kredit')
   }
-  if (u.paidOre !== 0) return nej('UNSUPPORTED', 'kredit av betald eller delbetald avi stöds inte i skiva 01')
+  if (u.paidOre !== 0)
+    return nej('UNSUPPORTED', 'kredit av betald eller delbetald avi stöds inte i skiva 01')
   if (u.previousCreditsOre !== 0) return nej('UNSUPPORTED', 'avin är redan krediterad')
   if (u.collectionHandover) return nej('UNSUPPORTED', 'avin är överlämnad till inkasso')
   if (u.badDebt) return nej('UNSUPPORTED', 'avin är bokförd som kundförlust')
   if (!ickeTom(u.creditId) || !ickeTom(u.originalNoticeId) || !ickeTom(u.originalReference)) {
     return nej('INVALID', 'kredit-id/originalreferens saknas')
   }
-  if (!ärKalenderdatum(u.bookkeepingDate)) return nej('INVALID', 'datum måste vara giltigt YYYY-MM-DD')
+  if (!ärKalenderdatum(u.bookkeepingDate))
+    return nej('INVALID', 'datum måste vara giltigt YYYY-MM-DD')
   return {
     ok: true,
     intent: {
@@ -326,7 +335,13 @@ export function mapBookkeep(
 ): FortnoxBookkeepIntent {
   switch (intent.kind) {
     case 'INVOICE':
-      return { kind: 'BOOKKEEP', of: 'INVOICE', sourceId: intent.noticeId, amountOre: intent.totalOre, currency: 'SEK' }
+      return {
+        kind: 'BOOKKEEP',
+        of: 'INVOICE',
+        sourceId: intent.noticeId,
+        amountOre: intent.totalOre,
+        currency: 'SEK',
+      }
     case 'PAYMENT':
       return {
         kind: 'BOOKKEEP',
@@ -336,7 +351,13 @@ export function mapBookkeep(
         currency: 'SEK',
       }
     case 'CREDIT':
-      return { kind: 'BOOKKEEP', of: 'CREDIT', sourceId: intent.creditId, amountOre: intent.amountOre, currency: 'SEK' }
+      return {
+        kind: 'BOOKKEEP',
+        of: 'CREDIT',
+        sourceId: intent.creditId,
+        amountOre: intent.amountOre,
+        currency: 'SEK',
+      }
   }
 }
 

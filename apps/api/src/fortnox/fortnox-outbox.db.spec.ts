@@ -27,7 +27,12 @@ import { randomUUID } from 'crypto'
 import { Prisma, PrismaClient } from '@prisma/client'
 
 import type { PrismaService } from '../common/prisma/prisma.service'
-import { mapBookkeep, mapFullCredit, mapPaymentAllocation, mapRentNoticeToInvoice } from './fortnox-mapping'
+import {
+  mapBookkeep,
+  mapFullCredit,
+  mapPaymentAllocation,
+  mapRentNoticeToInvoice,
+} from './fortnox-mapping'
 import {
   FortnoxEnqueueError,
   FortnoxOutboxService,
@@ -69,7 +74,12 @@ function nyKlient(): PrismaClient {
 }
 
 /** Ett löfte som provet själv släpper. */
-function spärr(): { vänta: Promise<void>; släpp: () => void; nådd: Promise<void>; markeraNådd: () => void } {
+function spärr(): {
+  vänta: Promise<void>
+  släpp: () => void
+  nådd: Promise<void>
+  markeraNådd: () => void
+} {
   let släpp!: () => void
   let markeraNådd!: () => void
   const vänta = new Promise<void>((r) => (släpp = r))
@@ -90,7 +100,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
   }
 
   function tjänst(world: MockFortnoxWorld, klient: PrismaClient = prisma): FortnoxOutboxService {
-    return new FortnoxOutboxService(klient as unknown as PrismaService, new MockFortnoxProvider(world), klocka)
+    return new FortnoxOutboxService(
+      klient as unknown as PrismaService,
+      new MockFortnoxProvider(world),
+      klocka,
+    )
   }
 
   async function skapaOrg(namn: string): Promise<string> {
@@ -109,11 +123,23 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
     return org.id
   }
 
-  function ctx(organizationId: string, över: Partial<FortnoxTrustedContext> = {}): FortnoxTrustedContext {
-    return { organizationId, connectionId: 'conn-syntetisk-1', fortnoxTenantId: 'fnx-foretag-1', ...över }
+  function ctx(
+    organizationId: string,
+    över: Partial<FortnoxTrustedContext> = {},
+  ): FortnoxTrustedContext {
+    return {
+      organizationId,
+      connectionId: 'conn-syntetisk-1',
+      fortnoxTenantId: 'fnx-foretag-1',
+      ...över,
+    }
   }
 
-  function faktura(c: FortnoxTrustedContext, noticeId: string, totalOre = 1_000_000): FortnoxInvoiceIntent {
+  function faktura(
+    c: FortnoxTrustedContext,
+    noticeId: string,
+    totalOre = 1_000_000,
+  ): FortnoxInvoiceIntent {
     const r = mapRentNoticeToInvoice(c, {
       organizationId: c.organizationId,
       noticeId,
@@ -158,7 +184,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
     return r.intent
   }
 
-  function kredit(c: FortnoxTrustedContext, noticeId: string, creditId: string): FortnoxCreditIntent {
+  function kredit(
+    c: FortnoxTrustedContext,
+    noticeId: string,
+    creditId: string,
+  ): FortnoxCreditIntent {
     const r = mapFullCredit(c, {
       organizationId: c.organizationId,
       fortnoxTenantId: c.fortnoxTenantId,
@@ -174,7 +204,9 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       collectionHandover: false,
       badDebt: false,
       propertyUse: 'RESIDENTIAL',
-      originalLines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 0, amountOre: 1_000_000 }],
+      originalLines: [
+        { component: 'RENT', description: 'Hyra', vatRatePercent: 0, amountOre: 1_000_000 },
+      ],
       bookkeepingDate: '2026-10-10',
     })
     if (!r.ok) throw new Error(r.reason)
@@ -189,9 +221,19 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
   ): Promise<{ skapa: string; bokför: string; externalId: string }> {
     const f = faktura(c, noticeId)
     const s = await svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: f })
-    const b = await svc.enqueue(c, { operation: 'INVOICE_BOOKKEEP', immutableVersion: 1, payload: mapBookkeep(f) })
-    expect(await svc.processOne(c, s.entry.eventKey)).toEqual({ status: 'DONE', state: 'ACKNOWLEDGED' })
-    expect(await svc.processOne(c, b.entry.eventKey)).toEqual({ status: 'DONE', state: 'ACKNOWLEDGED' })
+    const b = await svc.enqueue(c, {
+      operation: 'INVOICE_BOOKKEEP',
+      immutableVersion: 1,
+      payload: mapBookkeep(f),
+    })
+    expect(await svc.processOne(c, s.entry.eventKey)).toEqual({
+      status: 'DONE',
+      state: 'ACKNOWLEDGED',
+    })
+    expect(await svc.processOne(c, b.entry.eventKey)).toEqual({
+      status: 'DONE',
+      state: 'ACKNOWLEDGED',
+    })
     const rad = await svc.findScoped(c, b.entry.eventKey)
     return { skapa: s.entry.eventKey, bokför: b.entry.eventKey, externalId: rad!.externalId! }
   }
@@ -238,7 +280,9 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
         immutableVersion: 1,
         payload: faktura(c, 'avi-restrict'),
       })
-      await expect(prisma.organization.delete({ where: { id: org } })).rejects.toMatchObject({ code: 'P2003' })
+      await expect(prisma.organization.delete({ where: { id: org } })).rejects.toMatchObject({
+        code: 'P2003',
+      })
     })
   })
 
@@ -249,7 +293,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       const svc = tjänst(new MockFortnoxWorld())
       const f = faktura(c, 'avi-a04')
       await svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: f })
-      await svc.enqueue(c, { operation: 'INVOICE_BOOKKEEP', immutableVersion: 1, payload: mapBookkeep(f) })
+      await svc.enqueue(c, {
+        operation: 'INVOICE_BOOKKEEP',
+        immutableVersion: 1,
+        payload: mapBookkeep(f),
+      })
 
       const a = await svc.enqueue(c, {
         operation: 'PAYMENT_CREATE',
@@ -305,9 +353,17 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       expect(svar.filter((s) => s.status === 'EXISTING')).toHaveLength(SAMTIDIGA - 1)
       expect(new Set(svar.map((s) => s.entry.id)).size).toBe(1)
 
-      await svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: faktura(c, 'avi-a06-annan') })
+      await svc.enqueue(c, {
+        operation: 'INVOICE_CREATE',
+        immutableVersion: 1,
+        payload: faktura(c, 'avi-a06-annan'),
+      })
       const c2 = ctx(annanOrg)
-      await svc.enqueue(c2, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: faktura(c2, 'avi-a06') })
+      await svc.enqueue(c2, {
+        operation: 'INVOICE_CREATE',
+        immutableVersion: 1,
+        payload: faktura(c2, 'avi-a06'),
+      })
 
       expect(await prisma.fortnoxOutboxEntry.count({ where: { organizationId: org } })).toBe(2)
       expect(await prisma.fortnoxOutboxEntry.count({ where: { organizationId: annanOrg } })).toBe(1)
@@ -362,7 +418,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       expect(await gammal).toEqual({ status: 'STALE' })
 
       const rad = await svc.findScoped(c, entry.eventKey)
-      expect(rad).toMatchObject({ state: 'UNKNOWN', lastErrorClass: 'LEASE_EXPIRED', externalId: null })
+      expect(rad).toMatchObject({
+        state: 'UNKNOWN',
+        lastErrorClass: 'LEASE_EXPIRED',
+        externalId: null,
+      })
       expect(world.effectCount(entry.eventKey)).toBe(1)
     })
 
@@ -540,7 +600,9 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       const efter = tjänst(world, ny)
       expect(await efter.recoverExpiredLeases(c)).toBe(1)
       expect(await efter.processOne(c, entry.eventKey)).toEqual({ status: 'NOT_CLAIMABLE' })
-      expect(await efter.reconcileUnknown(c, entry.eventKey)).toMatchObject({ state: 'ACKNOWLEDGED' })
+      expect(await efter.reconcileUnknown(c, entry.eventKey)).toMatchObject({
+        state: 'ACKNOWLEDGED',
+      })
 
       s.släpp()
       expect(await zombie).toEqual({ status: 'STALE' })
@@ -561,15 +623,27 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
         immutableVersion: 1,
         payload: faktura(c, 'avi-a11'),
       })
-      world.sendScript.push('SAFE_TO_RETRY', 'SAFE_TO_RETRY', 'SAFE_TO_RETRY', 'SAFE_TO_RETRY', 'SAFE_TO_RETRY')
+      world.sendScript.push(
+        'SAFE_TO_RETRY',
+        'SAFE_TO_RETRY',
+        'SAFE_TO_RETRY',
+        'SAFE_TO_RETRY',
+        'SAFE_TO_RETRY',
+      )
       for (let försök = 1; försök <= 4; försök++) {
-        expect(await svc.processOne(c, entry.eventKey)).toEqual({ status: 'DONE', state: 'RETRY_WAIT' })
+        expect(await svc.processOne(c, entry.eventKey)).toEqual({
+          status: 'DONE',
+          state: 'RETRY_WAIT',
+        })
         expect(await svc.processOne(c, entry.eventKey)).toEqual({ status: 'NOT_CLAIMABLE' })
         const rad = await svc.findScoped(c, entry.eventKey)
         expect(rad!.nextAttemptAt.getTime()).toBe(nuMs + BACKOFF_MS * 2 ** (försök - 1))
         nuMs = rad!.nextAttemptAt.getTime()
       }
-      expect(await svc.processOne(c, entry.eventKey)).toEqual({ status: 'DONE', state: 'MANUAL_REVIEW' })
+      expect(await svc.processOne(c, entry.eventKey)).toEqual({
+        status: 'DONE',
+        state: 'MANUAL_REVIEW',
+      })
       const rad = await svc.findScoped(c, entry.eventKey)
       expect(rad).toMatchObject({ attempts: 5, lastErrorClass: 'RETRY_EXHAUSTED' })
       nuMs += 24 * 3600_000
@@ -610,8 +684,16 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       const world = new MockFortnoxWorld()
       const svc = tjänst(world)
       const f = faktura(c, 'avi-a12')
-      const skapa = await svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: f })
-      const bokför = await svc.enqueue(c, { operation: 'INVOICE_BOOKKEEP', immutableVersion: 1, payload: mapBookkeep(f) })
+      const skapa = await svc.enqueue(c, {
+        operation: 'INVOICE_CREATE',
+        immutableVersion: 1,
+        payload: f,
+      })
+      const bokför = await svc.enqueue(c, {
+        operation: 'INVOICE_BOOKKEEP',
+        immutableVersion: 1,
+        payload: mapBookkeep(f),
+      })
       expect(skapa.entry.eventKey).not.toBe(bokför.entry.eventKey)
       expect(bokför.entry.dependsOnEventKey).toBe(skapa.entry.eventKey)
 
@@ -641,12 +723,21 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       expect(await svc.processOne(c, bet.entry.eventKey)).toMatchObject({ status: 'BLOCKED' })
       expect(await svc.processOne(c, kre.entry.eventKey)).toMatchObject({ status: 'BLOCKED' })
 
-      expect(await svc.processOne(c, bokför.entry.eventKey)).toEqual({ status: 'DONE', state: 'ACKNOWLEDGED' })
+      expect(await svc.processOne(c, bokför.entry.eventKey)).toEqual({
+        status: 'DONE',
+        state: 'ACKNOWLEDGED',
+      })
       const efterBokför = await svc.findScoped(c, bokför.entry.eventKey)
       // Samma externa objekt för skapande och bokföring.
-      expect(efterBokför).toMatchObject({ bookedConfirmed: true, externalId: efterSkapa!.externalId })
+      expect(efterBokför).toMatchObject({
+        bookedConfirmed: true,
+        externalId: efterSkapa!.externalId,
+      })
 
-      expect(await svc.processOne(c, bet.entry.eventKey)).toEqual({ status: 'DONE', state: 'ACKNOWLEDGED' })
+      expect(await svc.processOne(c, bet.entry.eventKey)).toEqual({
+        status: 'DONE',
+        state: 'ACKNOWLEDGED',
+      })
     })
 
     it.each(['ACK_UNBOOKED', 'ACK_WRONG_OBJECT'] as const)(
@@ -657,7 +748,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
         const world = new MockFortnoxWorld()
         const svc = tjänst(world)
         const f = faktura(c, `avi-a12-${scenario}`)
-        const skapa = await svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: f })
+        const skapa = await svc.enqueue(c, {
+          operation: 'INVOICE_CREATE',
+          immutableVersion: 1,
+          payload: f,
+        })
         const bokför = await svc.enqueue(c, {
           operation: 'INVOICE_BOOKKEEP',
           immutableVersion: 1,
@@ -665,7 +760,10 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
         })
         await svc.processOne(c, skapa.entry.eventKey)
         world.sendScript.push(scenario)
-        expect(await svc.processOne(c, bokför.entry.eventKey)).toEqual({ status: 'DONE', state: 'MANUAL_REVIEW' })
+        expect(await svc.processOne(c, bokför.entry.eventKey)).toEqual({
+          status: 'DONE',
+          state: 'MANUAL_REVIEW',
+        })
         expect(await svc.findScoped(c, bokför.entry.eventKey)).toMatchObject({
           bookedConfirmed: false,
           lastErrorClass: 'BOOKKEEP_UNVERIFIED',
@@ -680,7 +778,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       const f = faktura(c, 'avi-a12-neka')
 
       await expect(
-        svc.enqueue(c, { operation: 'INVOICE_BOOKKEEP', immutableVersion: 1, payload: mapBookkeep(f) }),
+        svc.enqueue(c, {
+          operation: 'INVOICE_BOOKKEEP',
+          immutableVersion: 1,
+          payload: mapBookkeep(f),
+        }),
       ).rejects.toBeInstanceOf(FortnoxEnqueueError)
       await expect(
         svc.enqueue(c, {
@@ -693,7 +795,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       await svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 1, payload: f })
       const annat = ctx(org, { fortnoxTenantId: 'fnx-annat' })
       await expect(
-        svc.enqueue(annat, { operation: 'INVOICE_BOOKKEEP', immutableVersion: 1, payload: mapBookkeep(f) }),
+        svc.enqueue(annat, {
+          operation: 'INVOICE_BOOKKEEP',
+          immutableVersion: 1,
+          payload: mapBookkeep(f),
+        }),
       ).rejects.toBeInstanceOf(FortnoxEnqueueError)
       await expect(
         svc.enqueue(c, {
@@ -719,7 +825,11 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
       const c = ctx(org)
       const svc = tjänst(new MockFortnoxWorld())
       await expect(
-        svc.enqueue(c, { operation: 'INVOICE_CREATE', immutableVersion: 2, payload: faktura(c, 'avi-a15-v2') }),
+        svc.enqueue(c, {
+          operation: 'INVOICE_CREATE',
+          immutableVersion: 2,
+          payload: faktura(c, 'avi-a15-v2'),
+        }),
       ).rejects.toBeInstanceOf(FortnoxEnqueueError)
       expect(await prisma.fortnoxOutboxEntry.count({ where: { organizationId: org } })).toBe(0)
     })
@@ -758,7 +868,9 @@ medDb('Fortnox-utkorg mot riktig PostgreSQL', () => {
     it('riggen lämnar noll egna rader efter sig', async () => {
       await prisma.fortnoxOutboxEntry.deleteMany({ where: { organizationId: { in: städa } } })
       await prisma.organization.deleteMany({ where: { id: { in: städa } } })
-      expect(await prisma.fortnoxOutboxEntry.count({ where: { organizationId: { in: städa } } })).toBe(0)
+      expect(
+        await prisma.fortnoxOutboxEntry.count({ where: { organizationId: { in: städa } } }),
+      ).toBe(0)
       expect(await prisma.organization.count({ where: { id: { in: städa } } })).toBe(0)
       städa.length = 0
     })

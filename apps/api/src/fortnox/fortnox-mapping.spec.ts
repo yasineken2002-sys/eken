@@ -46,7 +46,9 @@ function avi(över: Partial<RentNoticeSnapshot> = {}): RentNoticeSnapshot {
     dueDate: '2026-10-31',
     bookkeepingDate: '2026-10-01',
     propertyUse: 'RESIDENTIAL',
-    lines: [{ component: 'RENT', description: 'Hyra oktober', vatRatePercent: 0, amountOre: 1_000_000 }],
+    lines: [
+      { component: 'RENT', description: 'Hyra oktober', vatRatePercent: 0, amountOre: 1_000_000 },
+    ],
     accountMapping: { receivableAccount: 1510, revenueAccount: 3911 },
     ...över,
   }
@@ -86,7 +88,9 @@ function kredit(över: Partial<FullCreditSnapshot> = {}): FullCreditSnapshot {
     collectionHandover: false,
     badDebt: false,
     propertyUse: 'RESIDENTIAL',
-    originalLines: [{ component: 'RENT', description: 'Hyra oktober', vatRatePercent: 0, amountOre: 1_000_000 }],
+    originalLines: [
+      { component: 'RENT', description: 'Hyra oktober', vatRatePercent: 0, amountOre: 1_000_000 },
+    ],
     bookkeepingDate: '2026-10-10',
     ...över,
   }
@@ -101,7 +105,13 @@ describe('A02 · ren momsfri bostadsavi → en fakturaavsikt, bokföring separat
     expect(r.intent.totalOre).toBe(1_000_000)
     expect(r.intent.receivableAccount).toBe(1510)
     expect(r.intent.rows).toEqual([
-      { description: 'Hyra oktober', accountNumber: 3911, netOre: 1_000_000, vatOre: 0, grossOre: 1_000_000 },
+      {
+        description: 'Hyra oktober',
+        accountNumber: 3911,
+        netOre: 1_000_000,
+        vatOre: 0,
+        grossOre: 1_000_000,
+      },
     ])
   })
 
@@ -109,7 +119,13 @@ describe('A02 · ren momsfri bostadsavi → en fakturaavsikt, bokföring separat
     const r = mapRentNoticeToInvoice(CTX, avi())
     if (!r.ok) throw new Error(r.reason)
     const bok = mapBookkeep(r.intent)
-    expect(bok).toEqual({ kind: 'BOOKKEEP', of: 'INVOICE', sourceId: 'avi-1', amountOre: 1_000_000, currency: 'SEK' })
+    expect(bok).toEqual({
+      kind: 'BOOKKEEP',
+      of: 'INVOICE',
+      sourceId: 'avi-1',
+      amountOre: 1_000_000,
+      currency: 'SEK',
+    })
     const skapa = fortnoxEventKey(CTX, 'RENT_NOTICE', 'avi-1', 1, 'INVOICE_CREATE')
     const bokf = fortnoxEventKey(CTX, 'RENT_NOTICE', 'avi-1', 1, 'INVOICE_BOOKKEEP')
     expect(skapa).not.toBe(bokf)
@@ -122,21 +138,47 @@ describe('A02 · ren momsfri bostadsavi → en fakturaavsikt, bokföring separat
   it('kontona tas ur mappningen, aldrig ur fri text', () => {
     const r = mapRentNoticeToInvoice(
       CTX,
-      avi({ lines: [{ component: 'RENT', description: 'konto 3011', vatRatePercent: 0, amountOre: 1_000_000 }] }),
+      avi({
+        lines: [
+          { component: 'RENT', description: 'konto 3011', vatRatePercent: 0, amountOre: 1_000_000 },
+        ],
+      }),
     )
     if (!r.ok) throw new Error(r.reason)
     expect(r.intent.rows[0]!.accountNumber).toBe(3911)
-    expect(mapRentNoticeToInvoice(CTX, avi({ accountMapping: { receivableAccount: 1510, revenueAccount: 39110 } })).ok).toBe(
-      false,
-    )
+    expect(
+      mapRentNoticeToInvoice(
+        CTX,
+        avi({ accountMapping: { receivableAccount: 1510, revenueAccount: 39110 } }),
+      ).ok,
+    ).toBe(false)
   })
 
   it.each<[string, Partial<RentNoticeSnapshot>]>([
     ['lokal', { propertyUse: 'COMMERCIAL' }],
-    ['moms', { lines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 25, amountOre: 1_000_000 }] }],
+    [
+      'moms',
+      {
+        lines: [
+          { component: 'RENT', description: 'Hyra', vatRatePercent: 25, amountOre: 1_000_000 },
+        ],
+      },
+    ],
     ['annan valuta', { currency: 'EUR' }],
-    ['noll', { totalOre: 0, lines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 0, amountOre: 0 }] }],
-    ['flyttal', { totalOre: 1000.5, lines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 0, amountOre: 1000.5 }] }],
+    [
+      'noll',
+      {
+        totalOre: 0,
+        lines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 0, amountOre: 0 }],
+      },
+    ],
+    [
+      'flyttal',
+      {
+        totalOre: 1000.5,
+        lines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 0, amountOre: 1000.5 }],
+      },
+    ],
     ['radsumma ≠ total', { totalOre: 999_999 }],
     ['ogiltigt datum', { dueDate: '2026-02-30' }],
     ['annan organisation', { organizationId: 'org-syntetisk-b' }],
@@ -162,8 +204,20 @@ describe('A03 · delbetalning och slutbetalning per allokering', () => {
     if (!första.ok || !andra.ok) throw new Error('förväntade två godkända')
     expect(första.intent.amountOre).toBe(400_000)
     expect(andra.intent.amountOre).toBe(600_000)
-    const k1 = fortnoxEventKey(CTX, 'RENT_PAYMENT', första.intent.paymentAllocationId, 1, 'PAYMENT_CREATE')
-    const k2 = fortnoxEventKey(CTX, 'RENT_PAYMENT', andra.intent.paymentAllocationId, 1, 'PAYMENT_CREATE')
+    const k1 = fortnoxEventKey(
+      CTX,
+      'RENT_PAYMENT',
+      första.intent.paymentAllocationId,
+      1,
+      'PAYMENT_CREATE',
+    )
+    const k2 = fortnoxEventKey(
+      CTX,
+      'RENT_PAYMENT',
+      andra.intent.paymentAllocationId,
+      1,
+      'PAYMENT_CREATE',
+    )
     expect(k1).not.toBe(k2)
   })
 
@@ -176,7 +230,10 @@ describe('A03 · delbetalning och slutbetalning per allokering', () => {
   })
 
   it('kredit räknas av från kvarvarande', () => {
-    expect(mapPaymentAllocation(CTX, betalning({ amountOre: 600_001, confirmedCreditedOre: 400_000 })).ok).toBe(false)
+    expect(
+      mapPaymentAllocation(CTX, betalning({ amountOre: 600_001, confirmedCreditedOre: 400_000 }))
+        .ok,
+    ).toBe(false)
   })
 
   it.each<[string, Partial<PaymentAllocationSnapshot>]>([
@@ -207,14 +264,40 @@ describe('A04 · nyckeln är allokeringen, inte belopp + datum', () => {
     if (!r.ok) throw new Error(r.reason)
     const omkastad = Object.fromEntries(Object.entries(r.intent).reverse()) as typeof r.intent
     expect(fortnoxPayloadHash(omkastad)).toBe(fortnoxPayloadHash(r.intent))
-    expect(fortnoxPayloadHash({ ...r.intent, amountOre: 400_001 })).not.toBe(fortnoxPayloadHash(r.intent))
+    expect(fortnoxPayloadHash({ ...r.intent, amountOre: 400_001 })).not.toBe(
+      fortnoxPayloadHash(r.intent),
+    )
   })
 
   it('nyckeln bär anslutning och företag', () => {
     const bas = fortnoxEventKey(CTX, 'RENT_PAYMENT', 'alloc-a', 1, 'PAYMENT_CREATE')
-    expect(fortnoxEventKey({ ...CTX, connectionId: 'conn-2' }, 'RENT_PAYMENT', 'alloc-a', 1, 'PAYMENT_CREATE')).not.toBe(bas)
-    expect(fortnoxEventKey({ ...CTX, fortnoxTenantId: 'fnx-2' }, 'RENT_PAYMENT', 'alloc-a', 1, 'PAYMENT_CREATE')).not.toBe(bas)
-    expect(fortnoxEventKey({ ...CTX, organizationId: 'org-2' }, 'RENT_PAYMENT', 'alloc-a', 1, 'PAYMENT_CREATE')).not.toBe(bas)
+    expect(
+      fortnoxEventKey(
+        { ...CTX, connectionId: 'conn-2' },
+        'RENT_PAYMENT',
+        'alloc-a',
+        1,
+        'PAYMENT_CREATE',
+      ),
+    ).not.toBe(bas)
+    expect(
+      fortnoxEventKey(
+        { ...CTX, fortnoxTenantId: 'fnx-2' },
+        'RENT_PAYMENT',
+        'alloc-a',
+        1,
+        'PAYMENT_CREATE',
+      ),
+    ).not.toBe(bas)
+    expect(
+      fortnoxEventKey(
+        { ...CTX, organizationId: 'org-2' },
+        'RENT_PAYMENT',
+        'alloc-a',
+        1,
+        'PAYMENT_CREATE',
+      ),
+    ).not.toBe(bas)
   })
 })
 
@@ -252,7 +335,11 @@ describe('A05 · hel kredit av obetald bostadsavi; allt annat nekas helt', () =>
     ['lokal', { propertyUse: 'COMMERCIAL' }],
     [
       'moms',
-      { originalLines: [{ component: 'RENT', description: 'Hyra', vatRatePercent: 25, amountOre: 1_000_000 }] },
+      {
+        originalLines: [
+          { component: 'RENT', description: 'Hyra', vatRatePercent: 25, amountOre: 1_000_000 },
+        ],
+      },
     ],
     ['annat Fortnox-företag', { fortnoxTenantId: 'fnx-foretag-2' }],
   ])('UNSUPPORTED/INVALID: %s', (_namn, över) => {
@@ -268,7 +355,14 @@ describe('A05 · hel kredit av obetald bostadsavi; allt annat nekas helt', () =>
 
   // Blandade avier: HELA avin nekas — både för faktura och kredit. Varje
   // komponent prövas för sig, så att en som glömts i listan syns.
-  const FRÄMMANDE: NoticeComponent[] = ['CONSUMPTION', 'MISC', 'REMINDER_FEE', 'INTEREST', 'DEPOSIT', 'OTHER']
+  const FRÄMMANDE: NoticeComponent[] = [
+    'CONSUMPTION',
+    'MISC',
+    'REMINDER_FEE',
+    'INTEREST',
+    'DEPOSIT',
+    'OTHER',
+  ]
   it.each(FRÄMMANDE)('avi med %s-rad nekas helt, inga rader tappas', (komponent) => {
     const rader = [
       { component: 'RENT' as const, description: 'Hyra', vatRatePercent: 0, amountOre: 900_000 },
@@ -284,9 +378,18 @@ describe('A05 · hel kredit av obetald bostadsavi; allt annat nekas helt', () =>
 
 describe('A15 · version 2 avvisas av mappingen', () => {
   it('faktura, betalning och kredit med version 2 → UNSUPPORTED', () => {
-    expect(mapRentNoticeToInvoice(CTX, avi({ immutableVersion: 2 }))).toMatchObject({ ok: false, code: 'UNSUPPORTED' })
-    expect(mapPaymentAllocation(CTX, betalning({ immutableVersion: 2 }))).toMatchObject({ ok: false, code: 'UNSUPPORTED' })
-    expect(mapFullCredit(CTX, kredit({ immutableVersion: 2 }))).toMatchObject({ ok: false, code: 'UNSUPPORTED' })
+    expect(mapRentNoticeToInvoice(CTX, avi({ immutableVersion: 2 }))).toMatchObject({
+      ok: false,
+      code: 'UNSUPPORTED',
+    })
+    expect(mapPaymentAllocation(CTX, betalning({ immutableVersion: 2 }))).toMatchObject({
+      ok: false,
+      code: 'UNSUPPORTED',
+    })
+    expect(mapFullCredit(CTX, kredit({ immutableVersion: 2 }))).toMatchObject({
+      ok: false,
+      code: 'UNSUPPORTED',
+    })
   })
 
   it('version 0 och icke-heltal avvisas också', () => {

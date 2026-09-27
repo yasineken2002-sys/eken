@@ -94,7 +94,9 @@ export class MockFortnoxWorld {
   }
 
   effectCount(eventKey?: string): number {
-    return eventKey ? this.effects.filter((s) => s.eventKey === eventKey).length : this.effects.length
+    return eventKey
+      ? this.effects.filter((s) => s.eventKey === eventKey).length
+      : this.effects.length
   }
 }
 
@@ -110,7 +112,11 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
       const obj = id ? this.world.objects.get(id) : undefined
       if (!obj) throw new Error('mock: bokföringssteg utan känt objekt')
       if (booked) obj.booked = true
-      this.world.effects.push({ eventKey: cmd.eventKey, operation: cmd.operation, externalId: obj.externalId })
+      this.world.effects.push({
+        eventKey: cmd.eventKey,
+        operation: cmd.operation,
+        externalId: obj.externalId,
+      })
       return obj.externalId
     }
     const externalId = this.world.nextExternalId()
@@ -138,7 +144,11 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
     return svar
   }
 
-  private utför(ctx: FortnoxTrustedContext, cmd: FortnoxCommand, scenario: MockSendScenario): FortnoxSendResult | 'THROW' {
+  private utför(
+    ctx: FortnoxTrustedContext,
+    cmd: FortnoxCommand,
+    scenario: MockSendScenario,
+  ): FortnoxSendResult | 'THROW' {
     switch (scenario) {
       case 'ACK': {
         const booked = isBookkeepOperation(cmd.operation)
@@ -171,7 +181,11 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
     this.world.lookups.push({ eventKey: cmd.eventKey })
     const mode = this.world.lookupMode
     if (mode === 'UNAVAILABLE') return { kind: 'UNAVAILABLE', reason: 'syntetiskt otillgänglig' }
-    if (mode === 'UNSUPPORTED' || cmd.operation === 'PAYMENT_CREATE' || cmd.operation === 'PAYMENT_BOOKKEEP') {
+    if (
+      mode === 'UNSUPPORTED' ||
+      cmd.operation === 'PAYMENT_CREATE' ||
+      cmd.operation === 'PAYMENT_BOOKKEEP'
+    ) {
       return { kind: 'UNSUPPORTED', reason: 'betalning kan inte återläsas säkert per allokering' }
     }
     if (mode === 'NOT_FOUND') return { kind: 'NOT_FOUND' }
@@ -202,7 +216,10 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
         payloadHash: cmd.payloadHash,
         booked: false,
       }
-      return { kind: 'FOUND', candidates: [bas, { ...bas, externalId: `${bas.externalId}-dubblett` }] }
+      return {
+        kind: 'FOUND',
+        candidates: [bas, { ...bas, externalId: `${bas.externalId}-dubblett` }],
+      }
     }
     if (mode === 'MISMATCH_AMOUNT' || mode === 'MISMATCH_REFERENCE') {
       // Samma belopp och datum är aldrig identitet: en post med rätt belopp men
@@ -211,13 +228,16 @@ export class MockFortnoxProvider implements FortnoxLedgerPort {
         externalId: 'mock-avvikande',
         fortnoxTenantId: ctx.fortnoxTenantId,
         reference: mode === 'MISMATCH_REFERENCE' ? 'någon-annans-referens' : cmd.eventKey,
-        amountOre: mode === 'MISMATCH_AMOUNT' ? amountOreOf(cmd.payload) + 1 : amountOreOf(cmd.payload),
+        amountOre:
+          mode === 'MISMATCH_AMOUNT' ? amountOreOf(cmd.payload) + 1 : amountOreOf(cmd.payload),
         currency: 'SEK',
         payloadHash: cmd.payloadHash,
         booked: false,
       }
       return { kind: 'FOUND', candidates: [c] }
     }
-    return kandidater.length === 0 ? { kind: 'NOT_FOUND' } : { kind: 'FOUND', candidates: kandidater }
+    return kandidater.length === 0
+      ? { kind: 'NOT_FOUND' }
+      : { kind: 'FOUND', candidates: kandidater }
   }
 }

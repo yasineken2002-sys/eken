@@ -20,7 +20,11 @@ import type { FortnoxExternalCandidate, FortnoxTrustedContext } from './fortnox.
 import { MockFortnoxWorld } from './providers/mock-fortnox.provider'
 import { StubFortnoxProvider } from './providers/stub-fortnox.provider'
 
-const CTX: FortnoxTrustedContext = { organizationId: 'org-a', connectionId: 'conn-1', fortnoxTenantId: 'fnx-1' }
+const CTX: FortnoxTrustedContext = {
+  organizationId: 'org-a',
+  connectionId: 'conn-1',
+  fortnoxTenantId: 'fnx-1',
+}
 
 function rad(över: Partial<FortnoxOutboxEntry> = {}): FortnoxOutboxEntry {
   const nu = new Date('2026-10-01T00:00:00Z')
@@ -83,7 +87,9 @@ describe('classifyLookup — skapande-steg', () => {
     ['annan payloadhash', { payloadHash: 'h-annan' }],
     ['tomt externt id', { externalId: '' }],
   ])('en avvikande kandidat (%s) → MANUAL_REVIEW', (_n, över) => {
-    expect(classifyLookup(CTX, rad(), null, { kind: 'FOUND', candidates: [kandidat(över)] })).toEqual({
+    expect(
+      classifyLookup(CTX, rad(), null, { kind: 'FOUND', candidates: [kandidat(över)] }),
+    ).toEqual({
       state: 'MANUAL_REVIEW',
       errorClass: 'LOOKUP_MISMATCH',
     })
@@ -91,15 +97,24 @@ describe('classifyLookup — skapande-steg', () => {
 
   it('två kandidater → MANUAL_REVIEW även om en matchar', () => {
     expect(
-      classifyLookup(CTX, rad(), null, { kind: 'FOUND', candidates: [kandidat(), kandidat({ externalId: 'ext-2' })] }),
+      classifyLookup(CTX, rad(), null, {
+        kind: 'FOUND',
+        candidates: [kandidat(), kandidat({ externalId: 'ext-2' })],
+      }),
     ).toEqual({ state: 'MANUAL_REVIEW', errorClass: 'LOOKUP_AMBIGUOUS' })
   })
 
   it('noll träffar / otillgänglig → kvar i UNKNOWN; ej återläsbar → MANUAL_REVIEW', () => {
-    expect(classifyLookup(CTX, rad(), null, { kind: 'FOUND', candidates: [] }).state).toBe('UNKNOWN')
+    expect(classifyLookup(CTX, rad(), null, { kind: 'FOUND', candidates: [] }).state).toBe(
+      'UNKNOWN',
+    )
     expect(classifyLookup(CTX, rad(), null, { kind: 'NOT_FOUND' }).state).toBe('UNKNOWN')
-    expect(classifyLookup(CTX, rad(), null, { kind: 'UNAVAILABLE', reason: 'x' }).state).toBe('UNKNOWN')
-    expect(classifyLookup(CTX, rad(), null, { kind: 'UNSUPPORTED', reason: 'x' }).state).toBe('MANUAL_REVIEW')
+    expect(classifyLookup(CTX, rad(), null, { kind: 'UNAVAILABLE', reason: 'x' }).state).toBe(
+      'UNKNOWN',
+    )
+    expect(classifyLookup(CTX, rad(), null, { kind: 'UNSUPPORTED', reason: 'x' }).state).toBe(
+      'MANUAL_REVIEW',
+    )
   })
 })
 
@@ -116,24 +131,31 @@ describe('classifyLookup — bokföringssteg verifieras på skapandets objekt', 
 
   it('samma objekt + bokföringsbevis → ACKNOWLEDGED', () => {
     expect(
-      classifyLookup(CTX, bokför, skapad, { kind: 'FOUND', candidates: [kandidat({ booked: true })] }).state,
+      classifyLookup(CTX, bokför, skapad, {
+        kind: 'FOUND',
+        candidates: [kandidat({ booked: true })],
+      }).state,
     ).toBe('ACKNOWLEDGED')
   })
 
   it.each<[string, Partial<FortnoxExternalCandidate>]>([
     ['inte bokförd (skapad ≠ bokförd)', { booked: false }],
     ['annat objekt', { booked: true, externalId: 'ext-9' }],
-    ['referens till bokföringsnyckeln i stället för skapandet', { booked: true, reference: 'fnx1:bokför' }],
+    [
+      'referens till bokföringsnyckeln i stället för skapandet',
+      { booked: true, reference: 'fnx1:bokför' },
+    ],
   ])('%s → MANUAL_REVIEW', (_n, över) => {
-    expect(classifyLookup(CTX, bokför, skapad, { kind: 'FOUND', candidates: [kandidat(över)] }).state).toBe(
-      'MANUAL_REVIEW',
-    )
+    expect(
+      classifyLookup(CTX, bokför, skapad, { kind: 'FOUND', candidates: [kandidat(över)] }).state,
+    ).toBe('MANUAL_REVIEW')
   })
 
   it('utan kvitterad föregångare godtas ingenting', () => {
-    expect(classifyLookup(CTX, bokför, null, { kind: 'FOUND', candidates: [kandidat({ booked: true })] }).state).toBe(
-      'MANUAL_REVIEW',
-    )
+    expect(
+      classifyLookup(CTX, bokför, null, { kind: 'FOUND', candidates: [kandidat({ booked: true })] })
+        .state,
+    ).toBe('MANUAL_REVIEW')
   })
 })
 
@@ -143,7 +165,13 @@ describe('providers', () => {
     const cmd = {
       eventKey: 'k',
       operation: 'INVOICE_CREATE' as const,
-      payload: { kind: 'BOOKKEEP' as const, of: 'INVOICE' as const, sourceId: 's', amountOre: 1, currency: 'SEK' as const },
+      payload: {
+        kind: 'BOOKKEEP' as const,
+        of: 'INVOICE' as const,
+        sourceId: 's',
+        amountOre: 1,
+        currency: 'SEK' as const,
+      },
       payloadHash: 'h',
       predecessorExternalId: null,
     }

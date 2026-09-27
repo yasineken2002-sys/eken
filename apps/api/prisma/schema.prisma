@@ -7510,11 +7510,11 @@ model FortnoxOutboxEntry {
   fortnoxTenantId String
 
   /// fnx1:sha256(org, anslutning, företag, händelsetyp, källid, version, operation).
-  eventKey         String
-  eventType        FortnoxEventType
-  sourceId         String
-  immutableVersion Int
-  operation        FortnoxOperation
+  eventKey          String
+  eventType         FortnoxEventType
+  sourceId          String
+  immutableVersion  Int
+  operation         FortnoxOperation
   /// Föregångarens eventKey (bokföringssteg, betalning/kredit mot original).
   dependsOnEventKey String?
 
@@ -7529,14 +7529,14 @@ model FortnoxOutboxEntry {
   attemptToken  String?
   leaseUntil    DateTime?
 
-  externalId       String?
+  externalId      String?
   /// Sant endast när motparten uttryckligen bekräftat bokföring (bokföringssteg).
-  bookedConfirmed  Boolean   @default(false)
+  bookedConfirmed Boolean   @default(false)
   /// Redigerad felklass — aldrig rå payload, token eller persondata.
-  lastErrorClass   String?
-  lastErrorAt      DateTime?
-  lastLookupAt     DateTime?
-  acknowledgedAt   DateTime?
+  lastErrorClass  String?
+  lastErrorAt     DateTime?
+  lastLookupAt    DateTime?
+  acknowledgedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

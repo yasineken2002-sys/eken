@@ -84,10 +84,14 @@ export function körtidsyta(källa: string): string[] {
   const sf = ts.createSourceFile('x.ts', källa, ts.ScriptTarget.ES2022, true)
   const ut: string[] = []
   const besök = (n: ts.Node): void => {
-    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'fetch') ut.push('fetch()')
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'fetch')
+      ut.push('fetch()')
     if (ts.isDecorator(n)) {
       const e = ts.isCallExpression(n.expression) ? n.expression.expression : n.expression
-      if (ts.isIdentifier(e) && ['Controller', 'Cron', 'Interval', 'Timeout', 'Processor', 'Process'].includes(e.text)) {
+      if (
+        ts.isIdentifier(e) &&
+        ['Controller', 'Cron', 'Interval', 'Timeout', 'Processor', 'Process'].includes(e.text)
+      ) {
         ut.push(`@${e.text}`)
       }
     }
@@ -147,7 +151,9 @@ describe('A01 · kanariefåglar — analysen skiljer kod från prosa', () => {
 
   it('identifierare i kod hittas, i kommentar/sträng inte', () => {
     expect(identifierare('imports: [FortnoxModule]').has('FortnoxModule')).toBe(true)
-    expect(identifierare('// FortnoxModule\nconst a = "FortnoxModule"').has('FortnoxModule')).toBe(false)
+    expect(identifierare('// FortnoxModule\nconst a = "FortnoxModule"').has('FortnoxModule')).toBe(
+      false,
+    )
   })
 
   it('fetch/dekoratorer/process.env hittas i kod, inte i prosa', () => {
