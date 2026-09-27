@@ -170,6 +170,11 @@ export const DELETION_STEPS: readonly Step[] = [
   { model: 'AiPendingAction', restrictAgainst: '— (ingen FK mot Organization)', where: byOrg },
   { model: 'AccountingPeriodEvent', restrictAgainst: 'Organization', where: byOrg },
   { model: 'Account', restrictAgainst: 'Organization', where: byOrg },
+  // Fortnox skiva 01 (draft). Restrict med flit: en utkorgsrad kan vara enda
+  // lokala spåret av en extern ekonomisk effekt och ska inte följa med en
+  // implicit kaskad. Den här uttryckliga vägen är operatörens beslut. Inga barn,
+  // så steget behöver bara ligga före org-steget.
+  { model: 'FortnoxOutboxEntry', restrictAgainst: 'Organization', where: byOrg },
 ] as const
 
 /** Prisma-klientens egenskap för ett modellnamn: JournalEntryLine → journalEntryLine. */
