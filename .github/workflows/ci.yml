@@ -2469,6 +2469,48 @@ jobs:
       - name: Verify no injected dependency is type-erased
         run: node apps/api/scripts/check-di-type-imports.mjs
 
+  # ── API:ts runtime-base, byggt UTAN lagercache ────────────────────────────
+  #
+  # Övriga jobb bygger inte API-imagen (restart-safety drar bara node:20-slim).
+  # Det här jobbet bygger apps/api/Dockerfile:s steg `runtime-base` — OS-paketen,
+  # PGDG-nyckeln med fingeravtryckskontroll och postgresql-client-18 — med
+  # --no-cache --pull, så att ett recept som bara fungerar ur en gammal cache
+  # (som 2026-09-28: Railway lyckades via cache medan ett färskt bygge föll)
+  # syns här. Det mäter sedan i den BYGGDA imagen: pg_dump/pg_restore major
+  # >= 18 från pgdg-paketet och att nyckelkatalogen är läsbar för _apt.
+  #
+  # Det här jobbet bevisar INTE hela API-imagen (builder-steget, nest build,
+  # Chrome, COPY-stegen); den verifieras bara lokalt och i Railway-bygget.
+  api-runtime-base-build:
+    name: API runtime-base build (no cache, PGDG)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime-base without layer cache
+        run: docker build --no-cache --pull --progress=plain --target runtime-base -t eveno-api-runtime-base -f apps/api/Dockerfile .
+      - name: Verify PostgreSQL client and PGDG key in the built image
+        run: |
+          docker run --rm --network none eveno-api-runtime-base sh -ec '
+            . /etc/os-release
+            echo "OS: $PRETTY_NAME ($VERSION_CODENAME)"
+            pg_dump --version
+            pg_restore --version
+            for bin in pg_dump pg_restore; do
+              major="$($bin --version | sed -E "s/^[^0-9]* ([0-9]+)\..*/\1/")"
+              [ "$major" -ge 18 ] || { echo "$bin major $major < 18"; exit 1; }
+            done
+            dpkg -s postgresql-client-18 | grep -E "^(Status|Version):"
+            grep -q "pgdg" /var/lib/dpkg/status
+            grep -qx "deb \[signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc\] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" /etc/apt/sources.list.d/pgdg.list
+            for d in /usr/share/postgresql-common /usr/share/postgresql-common/pgdg; do
+              [ "$(stat -c %a "$d")" = 755 ] || { echo "$d har $(stat -c %a "$d"), inte 755"; exit 1; }
+            done
+            [ "$(stat -c %a /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc)" = 644 ]
+            su -s /bin/sh _apt -c "head -c 36 /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc" | grep -q "BEGIN PGP PUBLIC KEY BLOCK"
+            echo "runtime-base OK"
+          '
+
   ci-passed:
     name: CI passed
     runs-on: ubuntu-latest
@@ -2482,6 +2524,7 @@ jobs:
     needs:
       - typecheck
       - restart-safety
+      - api-runtime-base-build
       - lint
       - test
       - di-type-import-guard
