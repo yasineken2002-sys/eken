@@ -13,7 +13,12 @@ jest.mock('../../invoices/pdf.service', () => ({ PdfService: class {} }))
 import { ToolExecutorService } from './tool-executor.service'
 import { TOOLS } from './ai-tools.definition'
 import { buildToolCatalog } from './ai-tools.catalog'
-import { PAID_INVOICE_TOTAL_MEASURE, svenskMånad, tolkaSvenskPeriod } from './paid-invoice-revenue'
+import {
+  PAID_INVOICE_TOTAL_CAVEAT,
+  PAID_INVOICE_TOTAL_MEASURE,
+  svenskMånad,
+  tolkaSvenskPeriod,
+} from './paid-invoice-revenue'
 
 describe('tolkaSvenskPeriod — hela svenska kalenderdagar, båda inkluderade', () => {
   it.each([
@@ -123,6 +128,8 @@ describe('modellens och menyns yta säger vilket mått det är', () => {
     expect(text).toMatch(/betalda fakturors total/i)
     expect(text).toMatch(/INTE hyresavier/)
     expect(text).toMatch(/INTE bokförd intäkt/)
+    expect(text).toMatch(/INTE verifierad bankinbetalning/)
+    expect(text).toMatch(/fick status Betald/)
     expect(text).toMatch(/hela svenska kalenderdagar/)
   })
 
@@ -130,6 +137,7 @@ describe('modellens och menyns yta säger vilket mått det är', () => {
     const text = beskrivning('get_dashboard_stats')
     expect(text).toContain('totalPaidRevenue: betalda fakturors total')
     expect(text).toMatch(/INTE hyresavier/)
+    expect(text).toMatch(/INTE verifierad bankinbetalning/)
   })
 
   it('katalogen lovar inte "intäkter" för verktyg som räknar betalda fakturor', () => {
@@ -141,6 +149,14 @@ describe('modellens och menyns yta säger vilket mått det är', () => {
       label: 'Jämför betalda fakturors total över tid',
       menuLabel: 'Jämför betalda fakturors total över tid',
     })
+  })
+
+  it('måttet och svarstexten säger att status Betald inte är bankbevis', () => {
+    expect(PAID_INVOICE_TOTAL_MEASURE.excludes).toContain(
+      'Verifierad bankinbetalning — status Betald kan sättas manuellt utan bankunderlag',
+    )
+    expect(PAID_INVOICE_TOTAL_MEASURE.definition).toMatch(/inte verifierad bankinbetalning/)
+    expect(PAID_INVOICE_TOTAL_CAVEAT).toMatch(/bevisar inte att pengarna kommit in på banken/)
   })
 
   it('måttets metadata ligger under nycklar som inte ramas in som osäker text', () => {

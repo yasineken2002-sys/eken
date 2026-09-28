@@ -600,6 +600,8 @@ medDb('F02 — betalda fakturors total per HELA svenska kalenderdagar', () => {
     expect(svar.message).toContain('Betalda fakturors total')
     expect(svar.message).toMatch(/hyresavier/i)
     expect(svar.message).toMatch(/inte bokförd intäkt/i)
+    expect(svar.message).toMatch(/bevisar inte att pengarna kommit in på banken/)
+    expect(JSON.stringify(data.measure.excludes)).toMatch(/Verifierad bankinbetalning/)
 
     const jämför = await kör('compare_revenue', {
       period1From: '2026-07-01',

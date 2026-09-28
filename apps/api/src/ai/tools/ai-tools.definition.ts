@@ -34,7 +34,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_dashboard_stats',
     description:
-      'Hämtar övergripande statistik om organisationen — antal fakturor, hyresgäster, fastigheter och avtal, samt totalPaidRevenue: betalda fakturors total genom tiderna. totalPaidRevenue omfattar INTE hyresavier och är INTE bokförd intäkt.',
+      'Hämtar övergripande statistik om organisationen — antal fakturor, hyresgäster, fastigheter och avtal, samt totalPaidRevenue: betalda fakturors total genom tiderna. totalPaidRevenue omfattar INTE hyresavier, är INTE bokförd intäkt och är INTE verifierad bankinbetalning.',
     input_schema: {
       type: 'object',
       properties: {},
@@ -105,7 +105,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_revenue_report',
     description:
-      'Hämtar betalda fakturors total för en period, per månad. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan blev fullt betald. Det omfattar INTE hyresavier eller deras delbetalningar och är INTE bokförd intäkt eller företagets fulla intäkt — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda räknas med.',
+      'Hämtar betalda fakturors total för en period, per månad. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan fick status Betald. Det omfattar INTE hyresavier eller deras delbetalningar, är INTE bokförd intäkt eller företagets fulla intäkt, och är INTE verifierad bankinbetalning (status Betald kan sättas manuellt utan bankunderlag) — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda räknas med.',
     input_schema: {
       type: 'object',
       properties: {
@@ -728,7 +728,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'compare_revenue',
     description:
-      'Jämför betalda fakturors total mellan två perioder — månader, kvartal eller år. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan blev fullt betald. Det omfattar INTE hyresavier eller deras delbetalningar och är INTE bokförd intäkt eller företagets fulla intäkt — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda ändpunkterna räknas med.',
+      'Jämför betalda fakturors total mellan två perioder — månader, kvartal eller år. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan fick status Betald. Det omfattar INTE hyresavier eller deras delbetalningar, är INTE bokförd intäkt eller företagets fulla intäkt, och är INTE verifierad bankinbetalning (status Betald kan sättas manuellt utan bankunderlag) — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda ändpunkterna räknas med.',
     input_schema: {
       type: 'object',
       properties: {

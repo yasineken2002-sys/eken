@@ -15,31 +15,36 @@ import { SWEDISH_TIME_ZONE, startOfSwedishDay, swedishDateKey } from '@eken/shar
  * Innehållet är inventerat ur koden, inte önskat:
  *  - `Invoice.total` (inkl. moms) för `status = PAID`, alla fakturatyper —
  *    även DEPOSIT, som bokföringsmässigt är en skuld (2890), inte en intäkt.
- *  - Hela beloppet räknas på `paidAt`, dagen fakturan blev fullt reglerad
- *    (invoices.service sätter paidAt först när betalningen fullbordar
- *    fakturan), även om delbetalningar skett tidigare.
+ *  - Hela beloppet räknas på `paidAt`, dagen fakturan fick status Betald. På
+ *    betalningsvägarna är det dagen betalningen fullbordade fakturan
+ *    (invoices.service, reconciliation.service), även om delbetalningar skett
+ *    tidigare; vid manuell statusändring är det tidpunkten för ändringen
+ *    (invoices.service transitionStatus sätter paidAt = nu).
+ *  - Status Betald kan sättas manuellt utan bankunderlag, så måttet bevisar
+ *    INTE att pengarna kommit in på banken.
  *  - Kreditnotor är egna Invoice-rader; måttet gör inget avdrag för dem.
  */
 export const PAID_INVOICE_TOTAL_MEASURE = {
   id: 'PAID_INVOICE_TOTAL',
   name: 'Betalda fakturors total',
   definition:
-    'Summan av fakturabeloppet (inkl. moms) för fakturor med status Betald, räknad på den dag fakturan blev fullt betald (svensk kalenderdag).',
+    'Summan av fakturabeloppet (inkl. moms) för fakturor med status Betald, räknad på den dag fakturan fick status Betald (svensk kalenderdag). Status Betald kan sättas manuellt, så summan är inte verifierad bankinbetalning.',
   includes: [
     'Fakturor (Invoice) med status Betald, alla typer — även depositionsfakturor',
-    'Hela fakturabeloppet inkl. moms, på dagen fakturan blev fullt betald',
+    'Hela fakturabeloppet inkl. moms, på dagen fakturan fick status Betald',
   ],
   excludes: [
     'Hyresavier och delbetalningar på hyresavier',
     'Bokförd intäkt i huvudboken (Σ konto 3xxx)',
     'Obetalda, delbetalda, förfallna och inkassoöverlämnade fakturor',
     'Avdrag för kreditnotor',
+    'Verifierad bankinbetalning — status Betald kan sättas manuellt utan bankunderlag',
   ],
 } as const
 
 /** En mening för `message` — samma begränsning som i `excludes`, i klartext. */
 export const PAID_INVOICE_TOTAL_CAVEAT =
-  'Omfattar inte hyresavier eller deras delbetalningar, och är inte bokförd intäkt eller företagets fulla intäkt.'
+  'Omfattar inte hyresavier eller deras delbetalningar, är inte bokförd intäkt eller företagets fulla intäkt, och bevisar inte att pengarna kommit in på banken (status Betald kan sättas manuellt).'
 
 export interface SwedishDatePeriod {
   from: string
