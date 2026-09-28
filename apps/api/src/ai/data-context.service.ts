@@ -4,6 +4,13 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { AccountingService } from '../accounting/accounting.service'
 
+/**
+ * Detaljlistan över aktiva kontrakt är ett URVAL — de senast skapade — för att
+ * hålla kontexten liten. Summor över avtalen får därför aldrig räknas ur
+ * listan; "Förväntad månadshyra" aggregeras över hela mängden i databasen.
+ */
+const ACTIVE_LEASE_LIST_LIMIT = 30
+
 @Injectable()
 export class DataContextService {
   constructor(
@@ -45,6 +52,7 @@ export class DataContextService {
       paidInvoicesForBehavior,
       overdueSnapshot,
       bookedRevenue,
+      activeLeaseRent,
     ] = await Promise.all([
       this.prisma.organization.findUnique({
         where: { id: organizationId },
@@ -170,7 +178,7 @@ export class DataContextService {
           unit: { select: { id: true, name: true, unitNumber: true } },
         },
         orderBy: { createdAt: 'desc' },
-        take: 30,
+        take: ACTIVE_LEASE_LIST_LIMIT,
       }),
       this.prisma.lease.count({
         where: {
@@ -191,6 +199,13 @@ export class DataContextService {
       // Bokförd intäkt räkenskapsår-till-idag (Σ 3xxx accrual) — samma tal som
       // dashboardens "Totala intäkter". Org-scopat i tjänsten.
       this.accounting.getRevenueYearToDate(organizationId, now),
+      // Förväntad månadshyra över ALLA aktiva avtal — en aggregering i DB, inte
+      // en summa över den begränsade listan ovan (som tappade de äldsta).
+      this.prisma.lease.aggregate({
+        where: { organizationId, status: 'ACTIVE' },
+        _sum: { monthlyRent: true },
+        _count: { id: true },
+      }),
     ])
 
     // Build unit status map
@@ -212,8 +227,9 @@ export class DataContextService {
       }
     }
 
-    // Compute total monthly income from active leases
-    const totalMonthlyIncome = activeLeaseList.reduce((sum, l) => sum + Number(l.monthlyRent), 0)
+    // Förväntad månadshyra = Σ monthlyRent över HELA mängden aktiva avtal.
+    const totalMonthlyIncome = Number(activeLeaseRent._sum.monthlyRent ?? 0)
+    const activeLeaseTotalCount = activeLeaseRent._count.id
 
     // Build per-tenant payment behavior map
     const paymentMap = new Map<string, { onTime: number; total: number }>()
@@ -378,6 +394,11 @@ export class DataContextService {
 
     if (activeLeaseList.length > 0) {
       lines.push('', '## AKTIVA KONTRAKT (ID krävs vid åtgärder)')
+      if (activeLeaseTotalCount > activeLeaseList.length) {
+        lines.push(
+          `  (Urval: visar de ${activeLeaseList.length} senast skapade av ${activeLeaseTotalCount} aktiva kontrakt. Förväntad månadshyra ovan gäller alla ${activeLeaseTotalCount}.)`,
+        )
+      }
       for (const l of activeLeaseList) {
         const tenantName =
           l.tenant.type === 'INDIVIDUAL'

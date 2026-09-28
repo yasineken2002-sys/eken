@@ -83,6 +83,12 @@ import { ACTION_TOOLS } from './ai-tools.definition'
 import { effectTraceIntegrity } from './effect-idempotency'
 import { decideAiToolAccess } from '../../common/authz/ai-tool-authz'
 import { neutralizeUntrusted } from './untrusted-content'
+import {
+  PAID_INVOICE_TOTAL_CAVEAT,
+  PAID_INVOICE_TOTAL_MEASURE,
+  svenskMånad,
+  tolkaSvenskPeriod,
+} from './paid-invoice-revenue'
 import { SAFE_TENANT_SELECT } from '../../tenants/tenants.service'
 import { redactSensitive } from '../../common/redaction/redact-sensitive'
 
@@ -1024,8 +1030,11 @@ export class ToolExecutorService {
               propertyCount,
               leases: leaseByStatus,
               totalPaidRevenue: Number(paidRevenue._sum.total ?? 0),
+              // Samma mått som get_revenue_report, utan period: alla betalda
+              // fakturor genom tiderna. Se paid-invoice-revenue.ts.
+              totalPaidRevenueMeasure: { ...PAID_INVOICE_TOTAL_MEASURE, scope: 'Hela tiden' },
             },
-            message: 'Dashboard-statistik hämtad',
+            message: `Dashboard-statistik hämtad. totalPaidRevenue är betalda fakturors total genom tiderna — ${PAID_INVOICE_TOTAL_CAVEAT}`,
           }
         }
 
@@ -1154,25 +1163,25 @@ export class ToolExecutorService {
         }
 
         case 'get_revenue_report': {
-          const from = toolInput.from as string
-          const to = toolInput.to as string
+          // Hela svenska kalenderdagar, båda ändpunkter: [svensk midnatt from,
+          // svensk midnatt dagen efter to). En ogiltig period avvisas FÖRE frågan.
+          const tolkning = tolkaSvenskPeriod(toolInput.from, toolInput.to)
+          if (!tolkning.ok) return { success: false, message: tolkning.message }
+          const { period, where } = tolkning
 
           const invoices = await this.prisma.invoice.findMany({
-            where: {
-              organizationId,
-              status: 'PAID',
-              paidAt: { gte: new Date(from), lte: new Date(to) },
-            },
+            where: { organizationId, status: 'PAID', paidAt: where },
             select: { total: true, paidAt: true },
           })
 
           const byMonth = new Map<string, number>()
           for (const inv of invoices) {
             if (!inv.paidAt) continue
-            const key = inv.paidAt.toISOString().slice(0, 7)
+            const key = svenskMånad(inv.paidAt)
             byMonth.set(key, (byMonth.get(key) ?? 0) + Number(inv.total))
           }
 
+          // Nyckeln heter totalRevenue av kompatibilitetsskäl; måttet står i `measure`.
           const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.total), 0)
 
           return {
@@ -1182,8 +1191,10 @@ export class ToolExecutorService {
               byMonth: Array.from(byMonth.entries())
                 .sort(([a], [b]) => a.localeCompare(b))
                 .map(([month, amount]) => ({ month, amount })),
+              measure: PAID_INVOICE_TOTAL_MEASURE,
+              period,
             },
-            message: `Intäktsrapport för ${from} till ${to}: ${totalRevenue.toFixed(2)} SEK totalt`,
+            message: `Betalda fakturors total ${period.from}–${period.to} (hela svenska kalenderdagar, båda inkluderade): ${totalRevenue.toFixed(2)} SEK. ${PAID_INVOICE_TOTAL_CAVEAT}`,
           }
         }
 
@@ -2319,18 +2330,25 @@ export class ToolExecutorService {
         }
 
         case 'compare_revenue': {
-          const p1From = new Date(toolInput.period1From as string)
-          const p1To = new Date(toolInput.period1To as string)
-          const p2From = new Date(toolInput.period2From as string)
-          const p2To = new Date(toolInput.period2To as string)
+          // Samma mått och samma svenska dagar som get_revenue_report.
+          const p1 = tolkaSvenskPeriod(toolInput.period1From, toolInput.period1To, {
+            from: 'period1From',
+            to: 'period1To',
+          })
+          if (!p1.ok) return { success: false, message: p1.message }
+          const p2 = tolkaSvenskPeriod(toolInput.period2From, toolInput.period2To, {
+            from: 'period2From',
+            to: 'period2To',
+          })
+          if (!p2.ok) return { success: false, message: p2.message }
 
           const [period1Invoices, period2Invoices] = await Promise.all([
             this.prisma.invoice.findMany({
-              where: { organizationId, status: 'PAID', paidAt: { gte: p1From, lte: p1To } },
+              where: { organizationId, status: 'PAID', paidAt: p1.where },
               select: { total: true, paidAt: true },
             }),
             this.prisma.invoice.findMany({
-              where: { organizationId, status: 'PAID', paidAt: { gte: p2From, lte: p2To } },
+              where: { organizationId, status: 'PAID', paidAt: p2.where },
               select: { total: true, paidAt: true },
             }),
           ])
@@ -2343,13 +2361,13 @@ export class ToolExecutorService {
           const byMonth1 = new Map<string, number>()
           for (const inv of period1Invoices) {
             if (!inv.paidAt) continue
-            const key = inv.paidAt.toISOString().slice(0, 7)
+            const key = svenskMånad(inv.paidAt)
             byMonth1.set(key, (byMonth1.get(key) ?? 0) + Number(inv.total))
           }
           const byMonth2 = new Map<string, number>()
           for (const inv of period2Invoices) {
             if (!inv.paidAt) continue
-            const key = inv.paidAt.toISOString().slice(0, 7)
+            const key = svenskMånad(inv.paidAt)
             byMonth2.set(key, (byMonth2.get(key) ?? 0) + Number(inv.total))
           }
 
@@ -2359,8 +2377,9 @@ export class ToolExecutorService {
               : `${diff >= 0 ? '+' : ''}${formatAmount(diff)} kr`
 
           const lines: string[] = [
-            `Period 1 (${toolInput.period1From as string}–${toolInput.period1To as string}): ${formatAmount(total1)} kr`,
-            `Period 2 (${toolInput.period2From as string}–${toolInput.period2To as string}): ${formatAmount(total2)} kr`,
+            `Betalda fakturors total, hela svenska kalenderdagar (båda ändpunkter inkluderade). ${PAID_INVOICE_TOTAL_CAVEAT}`,
+            `Period 1 (${p1.period.from}–${p1.period.to}): ${formatAmount(total1)} kr`,
+            `Period 2 (${p2.period.from}–${p2.period.to}): ${formatAmount(total2)} kr`,
             `Förändring: ${changeStr}`,
           ]
 
@@ -2376,7 +2395,15 @@ export class ToolExecutorService {
 
           return {
             success: true,
-            data: { total1, total2, diff, pctChange },
+            data: {
+              total1,
+              total2,
+              diff,
+              pctChange,
+              measure: PAID_INVOICE_TOTAL_MEASURE,
+              period1: p1.period,
+              period2: p2.period,
+            },
             message: lines.join('\n'),
           }
         }

@@ -90,7 +90,11 @@ describe('#325 · alla ytor visar SAMMA tal, och talet är restskulden', () => {
       property: { count: num(), findMany: arr() },
       unit: { groupBy: jest.fn().mockResolvedValue([]) },
       tenant: { count: num(), findMany: arr() },
-      lease: { count: num(), findMany: arr() },
+      lease: {
+        count: num(),
+        findMany: arr(),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { monthlyRent: null }, _count: { id: 0 } }),
+      },
       invoice: { groupBy: arr(), findMany: arr() },
     }
     const service = new DataContextService(

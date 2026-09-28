@@ -27,7 +27,10 @@ function makePrisma() {
     tenant: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
     lease: {
       count: jest.fn().mockResolvedValue(0),
-      // activeLeaseList (take: 30) → förväntad månadshyra 12000 + 18000 = 30000.
+      // Förväntad månadshyra kommer ur aggregeringen över ALLA aktiva avtal
+      // (30000), inte ur den begränsade listan nedan.
+      aggregate: jest.fn().mockResolvedValue({ _sum: { monthlyRent: 30000 }, _count: { id: 2 } }),
+      // activeLeaseList (take: 30) — detaljurvalet, två avtal.
       findMany: jest
         .fn()
         .mockImplementation((args: { take?: number }) =>
