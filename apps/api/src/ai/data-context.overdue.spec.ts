@@ -23,7 +23,11 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
       ]),
     },
     tenant: { count: num(), findMany: arr() },
-    lease: { count: num(), findMany: arr() },
+    lease: {
+      count: num(),
+      findMany: arr(),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { monthlyRent: null }, _count: { id: 0 } }),
+    },
     invoice: {
       // Den GAMLA blinda källan: Invoice-only OVERDUE-aggregat (fel: 2 st/5000),
       // saknar hyresavier + DEPOSIT-exkl. Testet bevisar att detta INTE längre

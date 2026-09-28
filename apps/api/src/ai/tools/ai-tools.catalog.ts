@@ -70,8 +70,8 @@ const TOOL_META: Record<string, { label: string; menuLabel: string; group: ToolG
     group: 'Ekonomi & avier',
   },
   get_revenue_report: {
-    label: 'Hämtar intäktsrapport',
-    menuLabel: 'Hämta intäktsrapport',
+    label: 'Hämtar betalda fakturors total',
+    menuLabel: 'Hämta betalda fakturors total',
     group: 'Ekonomi & avier',
   },
   create_invoice: {
@@ -115,8 +115,8 @@ const TOOL_META: Record<string, { label: string; menuLabel: string; group: ToolG
     group: 'Ekonomi & avier',
   },
   compare_revenue: {
-    label: 'Jämför intäkter över tid',
-    menuLabel: 'Jämför intäkter över tid',
+    label: 'Jämför betalda fakturors total över tid',
+    menuLabel: 'Jämför betalda fakturors total över tid',
     group: 'Ekonomi & avier',
   },
   predict_cashflow: {

@@ -34,7 +34,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'get_dashboard_stats',
     description:
-      'Hämtar övergripande statistik om organisationen — antal fakturor, hyresgäster, fastigheter, intäkter etc.',
+      'Hämtar övergripande statistik om organisationen — antal fakturor, hyresgäster, fastigheter och avtal, samt totalPaidRevenue: betalda fakturors total genom tiderna. totalPaidRevenue omfattar INTE hyresavier och är INTE bokförd intäkt.',
     input_schema: {
       type: 'object',
       properties: {},
@@ -104,12 +104,19 @@ export const TOOLS: Anthropic.Tool[] = [
 
   {
     name: 'get_revenue_report',
-    description: 'Hämtar intäktsrapport för angiven period.',
+    description:
+      'Hämtar betalda fakturors total för en period, per månad. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan blev fullt betald. Det omfattar INTE hyresavier eller deras delbetalningar och är INTE bokförd intäkt eller företagets fulla intäkt — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda räknas med.',
     input_schema: {
       type: 'object',
       properties: {
-        from: { type: 'string', description: 'Startdatum YYYY-MM-DD' },
-        to: { type: 'string', description: 'Slutdatum YYYY-MM-DD' },
+        from: {
+          type: 'string',
+          description: 'Första dagen, YYYY-MM-DD (svensk kalenderdag, inkluderad)',
+        },
+        to: {
+          type: 'string',
+          description: 'Sista dagen, YYYY-MM-DD (svensk kalenderdag, inkluderad)',
+        },
       },
       required: ['from', 'to'],
     },
@@ -720,14 +727,15 @@ export const TOOLS: Anthropic.Tool[] = [
 
   {
     name: 'compare_revenue',
-    description: 'Jämför intäkter mellan perioder — månader, kvartal eller år.',
+    description:
+      'Jämför betalda fakturors total mellan två perioder — månader, kvartal eller år. Måttet är betalda fakturors total: fakturabeloppet (inkl. moms) för fakturor med status Betald, räknat på dagen fakturan blev fullt betald. Det omfattar INTE hyresavier eller deras delbetalningar och är INTE bokförd intäkt eller företagets fulla intäkt — för bokförd intäkt, använd resultaträkningen (get_profit_loss_report). Datumen är hela svenska kalenderdagar (Europe/Stockholm) och båda ändpunkterna räknas med.',
     input_schema: {
       type: 'object',
       properties: {
-        period1From: { type: 'string', description: 'Period 1 startdatum YYYY-MM-DD' },
-        period1To: { type: 'string', description: 'Period 1 slutdatum YYYY-MM-DD' },
-        period2From: { type: 'string', description: 'Period 2 startdatum YYYY-MM-DD' },
-        period2To: { type: 'string', description: 'Period 2 slutdatum YYYY-MM-DD' },
+        period1From: { type: 'string', description: 'Period 1 första dag YYYY-MM-DD (inkluderad)' },
+        period1To: { type: 'string', description: 'Period 1 sista dag YYYY-MM-DD (inkluderad)' },
+        period2From: { type: 'string', description: 'Period 2 första dag YYYY-MM-DD (inkluderad)' },
+        period2To: { type: 'string', description: 'Period 2 sista dag YYYY-MM-DD (inkluderad)' },
       },
       required: ['period1From', 'period1To', 'period2From', 'period2To'],
     },
