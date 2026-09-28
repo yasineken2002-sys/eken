@@ -29,7 +29,13 @@ RUN pnpm --filter=@eken/ui build
 RUN pnpm --filter=@eken/shared build
 WORKDIR /app/apps/api
 RUN npx prisma generate
-RUN cd /app && pnpm --filter=@eken/api build
+# Heap-tak ENBART för kompileringen (nest build/tsc), satt inline på denna RUN så
+# att det inte når runtime (ingen ENV). Uppmätt 2026-09-28: fullt bygge utan
+# cache på en 8 GB-värd föll med V8:s standardtak ("Ineffective mark-compacts
+# near heap limit", exit 134) medan värden hade ~2 GB kvar; med 3584 MB gick
+# samma bygge igenom. Taket gör kompileringen oberoende av värdens RAM-baserade
+# standardgräns. Sänk det inte utan att mäta ett fullt bygge utan cache.
+RUN cd /app && NODE_OPTIONS=--max-old-space-size=3584 pnpm --filter=@eken/api build
 # Installera EXAKT den Chrome som puppeteer@24.40 pinnar, till en stabil cache-
 # katalog. `browsers install` ignorerar SKIP-flaggan ovan. Reproducerbart: samma
 # puppeteer-version → samma Chrome-buildId, varje bygge.
