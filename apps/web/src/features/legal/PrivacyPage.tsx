@@ -176,6 +176,23 @@ export function PrivacyPage({ onBack }: Props) {
         {/*
           FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
 
+          Voyage AI saknades HELT, trots att tjänsten är aktiv i produktion
+          (VOYAGE_API_KEY är satt) och tar emot ANVÄNDARENS FRITEXTFRÅGA:
+          legal-retrieval.service.ts:174 embeddar `[query]`, alltså det
+          hyresvärden skriver — som kan innehålla en hyresgästs namn.
+
+          Ingen region anges. api.voyageai.com står i koden, men var tjänsten
+          kör går inte att läsa ur repot, och att gissa "USA" eller "EU" i en
+          integritetspolicy är att påstå något vi inte vet.
+        */}
+        <li>
+          <strong>Voyage AI</strong> — vektorisering av söktext för juridiska uppslag; tar emot
+          den fritext användaren skriver (region ej fastställd i vår dokumentation — verifieras
+          av människa)
+        </li>
+        {/*
+          FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
+
           Raden angav tidigare "Google Cloud Storage — säkerhetskopiering (EU)".
           Den tjänsten används inte: fillagring och backup går till Cloudflare R2
           (storage.service.ts, backup.service.ts). Cloudflare saknades dessutom
