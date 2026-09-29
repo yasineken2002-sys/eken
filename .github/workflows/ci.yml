@@ -1609,7 +1609,11 @@ jobs:
       # vid 1280×900 och 390×844. Granskningen fällde att de tre befintliga
       # specarna gör var sin bit av resan mot VARSIN seedad org, så SKARVEN mellan
       # bitarna aldrig hade körts i en vy.
-      E2E_EXPECTED_TESTS: '18'
+      # 2026-09-27 (COOKIE): 18 → 20. `portal-cookie-banner.spec.ts` lägger till
+      # TVÅ tester — inloggad utan samtycke, tap vid 390 px och klick vid
+      # 1280×720: menyn navigerar med dialogen ÖPPEN, och dialogens båda val
+      # fungerar. Bottenmenyn täckte knapparna; ingen annan spec rör dialogen.
+      E2E_EXPECTED_TESTS: '20'
 
     steps:
       - uses: actions/checkout@v4
