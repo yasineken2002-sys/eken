@@ -1,0 +1,37 @@
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node node_modules/eslint/bin/eslint.js apps/api/scripts/eval-betalningsgrind.ts apps/api/src/ai/shadow/eval/betalningsgrind-matning.ts apps/api/src/ai/shadow/eval/betalningsgrind-prover.ts apps/api/src/ai/shadow/eval/experiment-betalningsgrind.ts apps/api/src/ai/shadow/eval/experiment-betalningsgrind.spec.ts --max-warnings 0
+
+Exitkod: 0
+
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node apps/api/scripts/check-request-contract.mjs
+✅ Kontraktet webb↔API: 6 kända överträdelser i 5 filer, inga nya och inga stale.
+✅ Regel 2: 95 delade nyttolasttyper, alla härledda i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.
+   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av SammaNycklar-raden i DTO:n (Typecheck) och av dto.spec-provet — inte av den här.
+
+Exitkod: 0
+
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node apps/api/scripts/check-dto-placement.mjs
+✅ DTO-placering: 0 kända felplacerade klasser, inga nya och inga stale.
+   Regeln gör check-request-contracts premiss sann: när talet är 0 är "gå igenom *.dto.ts" uttömmande per konstruktion.
+
+Exitkod: 0
+
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node apps/api/scripts/check-strict-boolean.mjs
+✅ StrictBoolean: varje booleskt DTO-fält bär dekoratorn — 0 oskyddade.
+   Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av strict-boolean.spec.ts, som kör den riktiga pipen.
+
+Exitkod: 0
+
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node apps/api/scripts/check-ai-display-masking.mjs
+✅ AI-maskering: varje läsväg maskerar eller är kvitterad (3 kvitterade läsningar)
+
+Exitkod: 0
+
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node apps/api/scripts/check-ai-tool-effects.mjs
+✅ utfallskopplingen är påkopplad; 31 ACTION_TOOLS ställningstagna (30 producerar effekter, 1 kvitterade).
+
+Exitkod: 0
+
+$ /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node apps/api/scripts/check-ai-journal-source.mjs
+✅ 1 journalEntry-skrivare, alla med deterministisk sourceId; confirm-vägen skiljer "utfört" från "kan inte bekräftas".
+
+Exitkod: 0

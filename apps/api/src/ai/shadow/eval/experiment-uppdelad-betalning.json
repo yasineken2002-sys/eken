@@ -1,0 +1,827 @@
+{
+  "sha": "d5150cd71508f341cd7c648bbf705178dddcf8ab",
+  "korpusSha256": "c7266cb9b700ace672a347426421af31fa497bbfa4ca4df8a8766804dc4b0621",
+  "skapad": "2026-09-08T16:21:27.563Z",
+  "modell": "claude-haiku-4-5-20251001",
+  "input": 54256,
+  "output": 4352,
+  "uppskattadUsd": 0.076016,
+  "kostnadKomplett": true,
+  "kommentar": "Nytt identitetsmått. Inte jämförbart med originalets exekverbara en-avi-facit. Befintlig arm saknar hanteringsfält.",
+  "sammanfattning": [
+    {
+      "arm": "befintlig",
+      "antal": 16,
+      "identitetRatt": 12,
+      "hanteringRatt": null,
+      "bortfall": 0
+    },
+    {
+      "arm": "uppdelad",
+      "antal": 16,
+      "identitetRatt": 12,
+      "hanteringRatt": 14,
+      "bortfall": 0
+    }
+  ],
+  "rader": [
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": false,
+      "id": "x4",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": false,
+      "id": "x4",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 1,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 1,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x1",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x2",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "DEL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x3",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": false,
+      "id": "x4",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": false,
+      "id": "x4",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1",
+          "e2"
+        ],
+        "hantering": "FLERA"
+      },
+      "svar": {
+        "avier": [
+          "e1",
+          "e3"
+        ],
+        "hantering": "FLERA"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e2",
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x5",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "svar": {
+        "avier": [
+          "e2"
+        ],
+        "hantering": "OVERSKOTT"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": false
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": false,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x6",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "RETUR"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x7",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 2,
+      "arm": "befintlig",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "OKLART"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": null
+    },
+    {
+      "kandidater": [
+        "e1",
+        "e3"
+      ],
+      "allaFacitReferenserFinns": true,
+      "id": "x8",
+      "repetition": 2,
+      "arm": "uppdelad",
+      "facit": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "svar": {
+        "avier": [
+          "e1"
+        ],
+        "hantering": "FULL"
+      },
+      "status": "SVAR",
+      "identitetRatt": true,
+      "hanteringRatt": true
+    }
+  ]
+}

@@ -112,21 +112,34 @@ describe('placeholderRejection — regel A (exakt) och B (form)', () => {
     expect(placeholderRejection('JWT_SECRET', 'kR9-secret-vQ2mZ7pLxT4nB8')).toBeNull()
   })
 
-  it('släpper igenom riktiga hemligheter — inga falsklarm', () => {
+  it('släpper igenom 200 fasta syntetiska bytevärden i tre nyckelformat', () => {
+    // Slumpade bytevärden kan råka innehålla två indikatorord. CI hittade
+    // "xxx" + "jwt" 2026-09-09. Ett stickprov med inga falsklarm är alltså
+    // ingen garanti; den kollisionen visas separat nedan. Fasta bytevärden
+    // gör det här acceptansprovet reproducerbart, utan filtrering/omförsök.
     for (let i = 0; i < 200; i++) {
+      const bytes = crypto.createHash('sha512').update(`env-placeholder-fixture-v1:${i}`).digest()
       expect(
-        placeholderRejection('JWT_SECRET', crypto.randomBytes(48).toString('base64')),
+        placeholderRejection('JWT_SECRET', bytes.subarray(0, 48).toString('base64')),
       ).toBeNull()
       expect(
-        placeholderRejection('SIGNING_PII_KEY', crypto.randomBytes(32).toString('hex')),
+        placeholderRejection('SIGNING_PII_KEY', bytes.subarray(0, 32).toString('hex')),
       ).toBeNull()
       expect(
-        placeholderRejection(
-          'ANTHROPIC_API_KEY',
-          `sk-ant-api03-${crypto.randomBytes(64).toString('base64url')}`,
-        ),
+        placeholderRejection('ANTHROPIC_API_KEY', `sk-ant-api03-${bytes.toString('base64url')}`),
       ).toBeNull()
     }
+  })
+
+  it('synliggör att giltig base64 kan ge falsklarm om två indikatorord råkar ingå', () => {
+    const bytes = crypto
+      .createHash('sha384')
+      .update('synthetic-placeholder-collision')
+      .digest('base64')
+    const collision = `xXxJwT${bytes.slice(6)}`
+    expect(Buffer.from(collision, 'base64')).toHaveLength(48)
+    expect(placeholderWordHits(collision)).toEqual(expect.arrayContaining(['xxx', 'jwt']))
+    expect(placeholderRejection('JWT_SECRET', collision)).toMatch(/platshållare/)
   })
 
   it('formregeln rör INTE variabler utanför SECRET_FORM_VARS', () => {
