@@ -202,6 +202,50 @@ export function PrivacyPage({ onBack }: Props) {
         när vi är skyldiga enligt lag eller efter rättsligt bindande beslut.
       </p>
 
+      {/*
+        FÖRSLAG — MÅSTE LÄSAS AV MÄNNISKA INNAN MERGE.
+
+        Ny mottagarkategori: hantverkare och entreprenörer som anlitas för att
+        avhjälpa en felanmälan (etapp 10, #833/#835). Kategorin saknades helt,
+        trots att systemet sedan #835 kan lämna ut hyresgästens kontaktuppgift.
+
+        Rättslig grund enligt hyresjuristens bedömning: AVTALETS FULLGÖRANDE —
+        hyresvärden har en avhjälpandeskyldighet och hyresgästen en skyldighet
+        att bereda tillträde. INTE samtycke; ett samtyckesfält vore sämre,
+        eftersom ett återkallat samtycke tar bort grunden medan skyldigheten
+        står kvar.
+
+        Hantverkaren är i regel ett fristående företag med eget orgnr och bestämmer
+        själv över uppgiften efter mottagandet — sannolikt alltså INGET
+        personuppgiftsbiträde, och därför inte en rad i 5.1.
+
+        SLUTSATSEN OM BITRÄDESSTATUS ÄR MEDVETET INTE SKRIVEN I DEN PUBLICERADE
+        TEXTEN. Hyresjuristen kallade frågan utanför sin kärnkompetens
+        (hyresrätt, inte dataskyddsrätt), och en felaktig klassificering betyder
+        att ett biträdesavtal saknas utan att något i kodbasen märker det.
+        Texten beskriver därför FAKTA (fristående företag, eget ansvar, egen
+        lagringstid) och överlåter slutsatsen till en dataskyddsjurist.
+      */}
+      <h3>5.3 Hantverkare och entreprenörer som anlitas för avhjälpande</h3>
+      <p>
+        När en felanmälan ska åtgärdas skickar hyresvärden en arbetsorder till en hantverkare.
+        Lägenhetens adress och ärendets beskrivning lämnas alltid ut — hantverkaren måste veta vart
+        hen ska och vad som ska göras. En kontaktuppgift till hyresgästen (telefonnummer eller
+        e-postadress) lämnas ut <strong>endast när hyresvärden aktivt valt det</strong> för det
+        enskilda ärendet. Hyresgästens <strong>namn lämnas inte ut</strong>.
+      </p>
+      <p>
+        Ändamålet är att fullgöra hyresavtalets underhållsskyldighet. Kontaktuppgiften delas för att
+        hantverkaren ska kunna komma överens om en tid direkt med hyresgästen; delas ingen uppgift
+        sköts tidsbokningen via hyresvärden.
+      </p>
+      <p>
+        Delningen är inte förvald. Vad som delades, med vem och när sparas på arbetsordern, och
+        hyresgästen kan se i sin portal att uppgiften lämnats ut. Hantverkaren är ett fristående
+        företag som utför uppdraget under eget ansvar och bestämmer själv hur uppgiften hanteras
+        efter mottagandet; hur länge den behålls ligger utanför Evenos och hyresvärdens rådighet.
+      </p>
+
       <h2 id="sec-6">6. Internationell överföring</h2>
       <p>
         Vissa underleverantörer är etablerade i USA. Överföringar till tredjeland sker med någon av
