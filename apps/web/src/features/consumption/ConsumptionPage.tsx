@@ -10,6 +10,7 @@ import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { MeterForm } from './components/MeterForm'
 import { TariffForm } from './components/TariffForm'
+import { ReadingReview } from './components/ReadingReview'
 import { ReadingForm } from './components/ReadingForm'
 import { useMeters, useCreateMeter, useUpdateMeter } from './hooks/useMeterQueries'
 import { useTariffs, useCreateTariff } from './hooks/useTariffQueries'
@@ -129,12 +130,13 @@ const CHARGE_FILTERS: { id: 'ALL' | ConsumptionChargeStatus; label: string }[] =
 // 1.3/1.4/1.5 — de visas som låsta platshållare så strukturen är på plats och
 // routern/navet inte behöver röras igen.
 
-type TabId = 'meters' | 'tariffs' | 'readings' | 'charges'
+type TabId = 'meters' | 'tariffs' | 'readings' | 'charges' | 'review'
 const TABS: { id: TabId; label: string; ready: boolean }[] = [
   { id: 'meters', label: 'Mätare', ready: true },
   { id: 'tariffs', label: 'Tariffer', ready: true },
   { id: 'readings', label: 'Avläsningar', ready: true },
   { id: 'charges', label: 'Förbrukningsposter', ready: true },
+  { id: 'review', label: 'Granskning', ready: true },
 ]
 
 // ─── Inline-redigering av befintlig mätare (status + källagnostiska fält) ──────
@@ -353,51 +355,59 @@ export function ConsumptionPage() {
       />
 
       {/* KPI-kort (per aktiv flik) */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {(tab === 'tariffs'
-          ? [
-              { label: 'Tariffer totalt', value: tariffs.length, tag: 'inkl. historik' },
-              { label: 'Gällande nu', value: currentTariffs, tag: 'aktiva prisperioder' },
-              { label: 'Historiska', value: historicTariffs, tag: 'stängda prisperioder' },
-            ]
-          : tab === 'readings'
+      {tab !== 'review' && (
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {(tab === 'tariffs'
             ? [
-                { label: 'Avläsningar', value: readings.length, tag: 'i nuvarande filter' },
-                { label: 'Mätare avlästa', value: metersRead, tag: 'distinkta mätare' },
-                {
-                  label: 'Senaste avläsning',
-                  value: latestReading ? formatDate(latestReading) : '–',
-                  tag: 'senaste avläsningsdatum',
-                },
+                { label: 'Tariffer totalt', value: tariffs.length, tag: 'inkl. historik' },
+                { label: 'Gällande nu', value: currentTariffs, tag: 'aktiva prisperioder' },
+                { label: 'Historiska', value: historicTariffs, tag: 'stängda prisperioder' },
               ]
-            : tab === 'charges'
+            : tab === 'readings'
               ? [
-                  { label: 'Poster', value: charges.length, tag: 'i nuvarande filter' },
-                  { label: 'Att bekräfta', value: draftCharges, tag: 'utkast (ej bokförda)' },
-                  { label: 'Bokförda', value: bookedCharges, tag: 'verifikat skapat' },
+                  { label: 'Avläsningar', value: readings.length, tag: 'i nuvarande filter' },
+                  { label: 'Mätare avlästa', value: metersRead, tag: 'distinkta mätare' },
+                  {
+                    label: 'Senaste avläsning',
+                    value: latestReading ? formatDate(latestReading) : '–',
+                    tag: 'senaste avläsningsdatum',
+                  },
                 ]
-              : [
-                  { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
-                  { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
-                  { label: 'Ur bruk / demonterade', value: inactiveCount, tag: 'historik bevaras' },
-                ]
-        ).map((s, i) => (
-          <motion.div
-            key={s.label}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.07 }}
-            className="border-line rounded-2xl border bg-white p-5"
-          >
-            <p className="text-[12px] font-medium text-gray-400">{s.label}</p>
-            <p className="mt-1 text-[26px] font-semibold tracking-tight text-gray-900">{s.value}</p>
-            <p className="mt-1 text-[12px] text-gray-400">{s.tag}</p>
-          </motion.div>
-        ))}
-      </div>
+              : tab === 'charges'
+                ? [
+                    { label: 'Poster', value: charges.length, tag: 'i nuvarande filter' },
+                    { label: 'Att bekräfta', value: draftCharges, tag: 'utkast (ej bokförda)' },
+                    { label: 'Bokförda', value: bookedCharges, tag: 'verifikat skapat' },
+                  ]
+                : [
+                    { label: 'Mätare totalt', value: meters.length, tag: 'el · vatten · värme' },
+                    { label: 'I drift', value: activeCount, tag: 'aktiva mätare' },
+                    {
+                      label: 'Ur bruk / demonterade',
+                      value: inactiveCount,
+                      tag: 'historik bevaras',
+                    },
+                  ]
+          ).map((s, i) => (
+            <motion.div
+              key={s.label}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.07 }}
+              className="border-line rounded-2xl border bg-white p-5"
+            >
+              <p className="text-[12px] font-medium text-gray-400">{s.label}</p>
+              <p className="mt-1 text-[26px] font-semibold tracking-tight text-gray-900">
+                {s.value}
+              </p>
+              <p className="mt-1 text-[12px] text-gray-400">{s.tag}</p>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Flikar */}
-      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
+      <div className="mt-6 flex w-fit max-w-full flex-wrap items-center gap-1 rounded-xl bg-gray-100/70 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -420,7 +430,9 @@ export function ConsumptionPage() {
       </div>
 
       {/* Innehåll per flik */}
-      {tab === 'meters' ? (
+      {tab === 'review' ? (
+        <ReadingReview meterLabel={meterLabel} />
+      ) : tab === 'meters' ? (
         <div className="mt-4">
           {!isLoading && meters.length === 0 ? (
             <EmptyState
