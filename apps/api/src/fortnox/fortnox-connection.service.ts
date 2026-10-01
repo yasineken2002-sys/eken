@@ -475,7 +475,7 @@ export class FortnoxConnectionService {
     organizationId: string,
     code: unknown,
   ): Promise<{ exportVoucherSeries: string }> {
-    if (typeof code !== 'string' || !/^[A-Za-z0-9]{1,8}$/.test(code)) {
+    if (typeof code !== 'string' || !/^[A-Za-z0-9]{1,10}$/.test(code)) {
       throw new BadRequestException('Ogiltig verifikatserie')
     }
     // E5: valet binds till den anslutning och generation som var aktuell när det

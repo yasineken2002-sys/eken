@@ -940,6 +940,36 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect(JSON.stringify(b)).not.toMatch(/mock-access|TokenEnc/)
   })
 
+  it('E6/E7: serielista i primärschemats form (VoucherSeriesCollection, Code 1–10) → serier med bevarad strängidentitet', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const orig = r.reader.get.bind(r.reader)
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      if (p === '/3/voucherseries') {
+        // fortnox_Bf_VoucherSeriesListItem_Wrap (OpenAPI d39f8c31…): ingen 'VoucherSeries'-nyckel i listsvaret.
+        return {
+          MetaInformation: { '@CurrentPage': 1, '@TotalPages': 1, '@TotalResources': 2 },
+          VoucherSeriesCollection: [
+            { Code: 'A', Description: 'Redovisning', Manual: true, Year: 1 },
+            { Code: '0012345678', Description: 'Tio tecken', Manual: true, Year: 1 },
+          ],
+        }
+      }
+      return orig(t, p, q)
+    }) as typeof r.reader.get
+    const c = await r.readback.catalog(o.id, 1)
+    expect([c.ready, c.voucherSeries.map((v) => v.code)]).toEqual([true, ['A', '0012345678']])
+    r.reader.get = orig
+    r.reader.voucherSeries = ['0012345678']
+    expect(await r.connections.setExportVoucherSeries(o.id, '0012345678')).toEqual({
+      exportVoucherSeries: '0012345678',
+    })
+    await expect(r.connections.setExportVoucherSeries(o.id, 'ABCDEFGHIJK')).rejects.toThrow(
+      /Ogiltig/,
+    )
+  })
+
   it('katalog: bruten paginering ger ready=false, aldrig lyckad tom lista', async () => {
     const o = await org()
     const r = rig()

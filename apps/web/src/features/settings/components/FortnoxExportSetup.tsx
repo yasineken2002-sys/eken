@@ -33,6 +33,17 @@ function daysAgo(n: number): string {
 export function FortnoxExportSetup() {
   const user = useAuthStore((s) => s.user)
   const org = useAuthStore((s) => s.organization)
+  // U01: en verklig gräns per organisation/användare/roll. Byte av scope monterar om
+  // komponenten, så val, beslut och resultat från föregående scope kan aldrig visas
+  // eller skickas, och sena svar från gammal scope landar i en avmonterad instans.
+  return (
+    <FortnoxExportSetupScoped key={`${org?.id ?? '-'}|${user?.id ?? '-'}|${user?.role ?? '-'}`} />
+  )
+}
+
+function FortnoxExportSetupScoped() {
+  const user = useAuthStore((s) => s.user)
+  const org = useAuthStore((s) => s.organization)
   const allowed = user?.role === 'OWNER' || user?.role === 'ADMIN'
   const scope = [org?.id, user?.id, user?.role] as const
   const client = useQueryClient()
@@ -48,7 +59,9 @@ export function FortnoxExportSetup() {
     enabled: allowed,
     retry: false,
   })
-  const active = allowed && state.data?.connection?.status === 'ACTIVE'
+  // U04: verifierat aktiverad modul + aktiv anslutning + behörig scope styr allt.
+  const active =
+    allowed && state.data?.enabled === true && state.data?.connection?.status === 'ACTIVE'
   // Två frågor: årslistan står kvar medan serierna för valt år hämtas.
   const years = useQuery({
     queryKey: ['fortnox', 'export-years', ...scope],
@@ -65,7 +78,7 @@ export function FortnoxExportSetup() {
   const entries = useQuery({
     queryKey: ['fortnox', 'export-entries', ...scope],
     queryFn: () => fetchJournalEntries({ from: daysAgo(90), to: daysAgo(0) }),
-    enabled: allowed && state.data?.connection?.status === 'ACTIVE',
+    enabled: active,
     retry: false,
   })
   const exports = useQuery({
@@ -89,10 +102,13 @@ export function FortnoxExportSetup() {
     onSuccess: refresh,
   })
   const dryRun = useMutation({
-    mutationFn: () => startFortnoxDryRun({ journalEntryId: entryId }),
+    mutationFn: (journalEntryId: string) => startFortnoxDryRun({ journalEntryId }),
     retry: false,
-    onSuccess: async (row) => {
-      setResult(row)
+    // U03: varje nytt försök nollställer tidigare resultat — ingen tyst gammal framgång.
+    onMutate: () => setResult(null),
+    onSuccess: async (row, requested) => {
+      // U02: svaret visas bara för det verifikat det gäller.
+      if (row.journalEntryId === requested) setResult(row)
       await refresh()
     },
   })
@@ -102,7 +118,10 @@ export function FortnoxExportSetup() {
   if (state.isError || !state.data)
     return <p className="text-sm text-red-600">Exportinställningarna kunde inte hämtas.</p>
   const conn = state.data.connection
-  if (!conn || conn.status !== 'ACTIVE') return null
+  if (!active || !conn) return null
+  const catalogProblem = years.isError || catalog.isError
+  const catalogUsable =
+    Boolean(years.data?.ready) && (yearId === null || Boolean(catalog.data?.ready))
 
   return (
     <section
@@ -154,7 +173,23 @@ export function FortnoxExportSetup() {
             onChange={(e) => setSeries(e.target.value)}
           />
         </div>
-        {(years.data && !years.data.ready) || (catalog.data && !catalog.data.ready) ? (
+        {(years.isLoading || catalog.isFetching) && (
+          <p className="text-ink-muted text-sm">Hämtar val från Fortnox…</p>
+        )}
+        {catalogProblem && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-red-600">Fortnox-valen kunde inte hämtas.</p>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void years.refetch().then(() => catalog.refetch())}
+            >
+              Försök igen
+            </Button>
+          </div>
+        )}
+        {!catalogProblem &&
+        ((years.data && !years.data.ready) || (catalog.data && !catalog.data.ready)) ? (
           <p className="text-sm text-amber-600">
             {catalog.data?.reason ?? years.data?.reason ?? 'Fortnox-valen kunde inte verifieras.'}
           </p>
@@ -162,7 +197,13 @@ export function FortnoxExportSetup() {
         <Button
           size="sm"
           variant="secondary"
-          disabled={!series || saveSeries.isPending}
+          disabled={
+            !series ||
+            saveSeries.isPending ||
+            !catalogUsable ||
+            catalogProblem ||
+            catalog.isFetching
+          }
           onClick={() => saveSeries.mutate()}
         >
           Spara serie
@@ -217,6 +258,7 @@ export function FortnoxExportSetup() {
         <Select
           label="Verifikat (senaste 90 dagarna)"
           value={entryId}
+          disabled={dryRun.isPending}
           options={[
             { value: '', label: entries.isLoading ? 'Hämtar verifikat…' : 'Välj verifikat' },
             ...(entries.data ?? []).slice(0, 100).map((e) => ({
@@ -229,17 +271,24 @@ export function FortnoxExportSetup() {
             setResult(null)
           }}
         />
-        {entries.isError && <p className="text-sm text-red-600">Verifikaten kunde inte hämtas.</p>}
+        {entries.isError && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm text-red-600">Verifikaten kunde inte hämtas.</p>
+            <Button size="sm" variant="secondary" onClick={() => void entries.refetch()}>
+              Försök igen
+            </Button>
+          </div>
+        )}
         <Button
           size="sm"
           variant="primary"
           disabled={!entryId || dryRun.isPending}
-          onClick={() => dryRun.mutate()}
+          onClick={() => dryRun.mutate(entryId)}
         >
           {dryRun.isPending ? 'Kontrollerar…' : 'Förhandskontrollera'}
         </Button>
         {dryRun.isError && <p className="text-sm text-red-600">{extractApiError(dryRun.error)}</p>}
-        {result && (
+        {result && result.journalEntryId === entryId && (
           <div role="status" className="border-line rounded-lg border p-3 text-sm">
             <p className="text-ink font-medium">{EXPORT_STATE_TEXT[result.state]}</p>
             {result.blockReason && (

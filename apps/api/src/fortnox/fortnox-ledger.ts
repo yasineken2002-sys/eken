@@ -189,7 +189,7 @@ function stable(v: unknown): string {
 function voucherKey(v: FortnoxVoucher): string | null {
   if (!isPosInt(v.Year) || typeof v.VoucherSeries !== 'string' || !isPosInt(v.VoucherNumber))
     return null
-  if (!/^[A-Za-z0-9]{1,8}$/.test(v.VoucherSeries)) return null
+  if (!/^[A-Za-z0-9]{1,10}$/.test(v.VoucherSeries)) return null
   return `${v.Year}|${v.VoucherSeries}|${v.VoucherNumber}`
 }
 

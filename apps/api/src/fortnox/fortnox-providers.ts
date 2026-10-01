@@ -222,7 +222,7 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
           Description: `Serie ${Code}`,
           Year: query?.financialyear,
         })),
-        'VoucherSeries',
+        'VoucherSeriesCollection',
         page,
       ) as T
     }

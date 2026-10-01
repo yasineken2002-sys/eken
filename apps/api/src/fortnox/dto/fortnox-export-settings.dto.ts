@@ -9,7 +9,7 @@ export class FortnoxExportSettingsDto implements FortnoxExportSettingsInput {
   @IsOptional()
   @IsString()
   @StrictString()
-  @Matches(/^[A-Za-z0-9]{1,8}$/)
+  @Matches(/^[A-Za-z0-9]{1,10}$/)
   voucherSeries?: string
 
   @IsOptional()

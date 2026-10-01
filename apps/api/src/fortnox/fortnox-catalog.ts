@@ -183,10 +183,11 @@ export async function readCatalog(
         reader,
         token,
         '/3/voucherseries',
-        'VoucherSeries',
+        // E6: officiellt listformat (fortnox_Bf_VoucherSeriesListItem_Wrap).
+        'VoucherSeriesCollection',
         { financialyear: selected },
       )) {
-        if (typeof v.Code !== 'string' || !/^[A-Za-z0-9]{1,8}$/.test(v.Code))
+        if (typeof v.Code !== 'string' || !/^[A-Za-z0-9]{1,10}$/.test(v.Code))
           throw new Broken('Verifikatserie utan giltig kod')
         if (v.Year !== undefined && v.Year !== selected)
           throw new Broken('Verifikatserie för annat räkenskapsår')

@@ -44,7 +44,7 @@ export const fortnoxExportSettingsInputSchema = z
   .object({
     voucherSeries: z
       .string()
-      .regex(/^[A-Za-z0-9]{1,8}$/)
+      .regex(/^[A-Za-z0-9]{1,10}$/)
       .optional(),
     omitDimensions: z.boolean().optional(),
   })
