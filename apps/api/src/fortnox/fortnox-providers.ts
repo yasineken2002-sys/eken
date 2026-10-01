@@ -17,13 +17,43 @@ import {
  *   FORTNOX_ENABLED != 'true'                         → Stub (503 på varje väg)
  *   på, men FORTNOX_TOKEN_KEY saknas/ogiltig          → kastar (fail-fast vid boot)
  *   på + FORTNOX_PROVIDER=mock och NODE_ENV=test      → Mock (prov, syntetisk)
- *   på i övrigt                                       → kastar: skarp adapter är
- *                                                       inte inkopplad i denna version
+ *   på + FORTNOX_PROVIDER=real + klient-id/hemlighet/https-callback → REAL
+ *   på i övrigt (inkl. real med saknad konfiguration) → kastar vid boot
  *
- * Den skarpa vägen är en AVSIKTLIG spärr, inte en glömd gren: verklig anslutning
- * kräver bekräftat testföretag, utvecklarlicens och godkänd hemlighetshantering.
+ * Den skarpa vägen är byggd men AVSTÄNGD tills den uttryckligen konfigureras.
+ * Verklig anslutning kräver bekräftat testföretag, utvecklarlicens och godkänd
+ * hemlighetshantering — inget av det är gjort i denna leverans (NOT_RUN).
  */
-export type FortnoxMode = 'STUB' | 'MOCK'
+export type FortnoxMode = 'STUB' | 'MOCK' | 'REAL'
+
+/** Uppgifter för den skarpa vägen. Läses bara när REAL uttryckligen är vald. */
+export interface FortnoxRealConfig {
+  clientId: string
+  clientSecret: string
+  redirectUri: string
+}
+
+export function fortnoxRealConfig(config: ConfigService): FortnoxRealConfig {
+  const clientId = config.get<string>('FORTNOX_CLIENT_ID') ?? ''
+  const clientSecret = config.get<string>('FORTNOX_CLIENT_SECRET') ?? ''
+  const redirectUri = config.get<string>('FORTNOX_CALLBACK_URL') ?? ''
+  let https = false
+  try {
+    https = new URL(redirectUri).protocol === 'https:'
+  } catch {
+    https = false
+  }
+  // Felmeddelandet namnger saknade NYCKLAR, aldrig värden.
+  const missing = [
+    !clientId && 'FORTNOX_CLIENT_ID',
+    !clientSecret && 'FORTNOX_CLIENT_SECRET',
+    !https && 'FORTNOX_CALLBACK_URL (https)',
+  ].filter(Boolean)
+  if (missing.length) {
+    throw new Error(`[fortnox] FORTNOX_PROVIDER=real men saknar ${missing.join(', ')} — fail-fast.`)
+  }
+  return { clientId, clientSecret, redirectUri }
+}
 
 export function fortnoxMode(config: ConfigService, crypto: FortnoxTokenCryptoService): FortnoxMode {
   if (config.get<string>('FORTNOX_ENABLED') !== 'true') return 'STUB'
@@ -35,10 +65,16 @@ export function fortnoxMode(config: ConfigService, crypto: FortnoxTokenCryptoSer
   // Mock bara vid NODE_ENV=test + uttryckligt val. Aldrig av NODE_ENV=development
   // eller saknad konfiguration: en falsk anslutning får inte uppstå i en
   // produktionslik miljö (SAMORDNING-04).
-  const wantsMock = config.get<string>('FORTNOX_PROVIDER') === 'mock'
-  if (wantsMock && config.get<string>('NODE_ENV') === 'test') return 'MOCK'
+  const provider = config.get<string>('FORTNOX_PROVIDER')
+  if (provider === 'mock' && config.get<string>('NODE_ENV') === 'test') return 'MOCK'
+  // Skarp väg ENDAST vid uttryckligt FORTNOX_PROVIDER=real och komplett konfiguration.
+  // Aldrig default: påslaget utan uttryckligt val stoppar vid boot.
+  if (provider === 'real') {
+    fortnoxRealConfig(config)
+    return 'REAL'
+  }
   throw new Error(
-    '[fortnox] skarp Fortnox-adapter är inte inkopplad (kräver verifierat testföretag och åtkomst). ' +
+    '[fortnox] FORTNOX_ENABLED=true kräver uttryckligt FORTNOX_PROVIDER=real (eller mock i test). ' +
       'Sätt FORTNOX_ENABLED=false.',
   )
 }

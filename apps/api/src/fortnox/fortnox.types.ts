@@ -55,12 +55,17 @@ export interface FortnoxAuthProvider {
  *    operation. Fortnox faktiska 429-semantik vid förnyelse är oprövad.
  */
 export class FortnoxAuthError extends Error {
+  /** Sätts BARA när leverantören angett en väntetid; ingen påhittad standard. */
+  declare readonly retryAfterMs?: number
+
   constructor(
     readonly kind: 'rejected' | 'not_sent' | 'unknown' | 'rate_limited',
-    readonly retryAfterMs?: number,
+    retryAfterMs?: number,
   ) {
     super(`Fortnox auth: ${kind}`)
     this.name = 'FortnoxAuthError'
+    if (retryAfterMs !== undefined)
+      Object.defineProperty(this, 'retryAfterMs', { value: retryAfterMs, enumerable: true })
   }
 }
 
