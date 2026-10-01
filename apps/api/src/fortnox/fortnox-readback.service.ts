@@ -12,6 +12,12 @@ export interface StartReadInput {
   periodFrom: string
   periodTo: string
   costAccounts: number[]
+  /**
+   * Årsgränser som klienten kopierat ur katalogen. ALDRIG bevis — servern läser året
+   * från Fortnox; avviker de är klientens urval inaktuellt (409, hämta om katalogen).
+   */
+  financialYearStart?: string
+  financialYearEnd?: string
 }
 
 /** En pågående läsning äldre än så här räknas som avbruten och blockerar inte nästa. */
@@ -150,7 +156,27 @@ export class FortnoxReadbackService {
     if (result.status === 'AUTH_LOST')
       await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED', reader.binding)
 
-    return this.prisma.fortnoxReadRun.update({
+    // Inaktuellt kundurval: årsgränser som inte stämmer med Fortnox, eller valt konto
+    // som Fortnox anger som inaktivt. Körningen sparas som FAILED (utan summa) och
+    // svaret blir 409 så att kunden hämtar om katalogen.
+    let stale: string | null = null
+    const fy = result.financialYear
+    if (
+      fy &&
+      ((input.financialYearStart !== undefined && input.financialYearStart !== fy.fromDate) ||
+        (input.financialYearEnd !== undefined && input.financialYearEnd !== fy.toDate))
+    ) {
+      stale = `Urvalet är inaktuellt: räkenskapsåret i Fortnox är ${fy.fromDate}–${fy.toDate}. Hämta om valen.`
+    }
+    const inactive = result.uncertainties
+      .map((u) => /^Konto (\d+) är inaktivt i Fortnox\.$/.exec(u)?.[1])
+      .filter((x): x is string => Boolean(x))
+    if (!stale && inactive.length) {
+      stale = `Urvalet är inaktuellt: konto ${inactive.join(', ')} är inaktivt i Fortnox. Hämta om valen.`
+    }
+    if (stale) result = { ...result, status: 'FAILED', reason: stale, summary: null, rows: null }
+
+    const saved = await this.prisma.fortnoxReadRun.update({
       where: { id: run.id },
       data: {
         status: result.status,
@@ -178,6 +204,8 @@ export class FortnoxReadbackService {
       },
       select: FORTNOX_READ_VIEW_SELECT,
     })
+    if (stale) throw new ConflictException(stale)
+    return saved
   }
 
   /** GET /catalog — verifierade val (år, konton för valt år, dimensioner). Läser inget annat. */
@@ -282,7 +310,10 @@ function validate(i: StartReadInput): void {
     Array.isArray(i.costAccounts) &&
     i.costAccounts.length > 0 &&
     i.costAccounts.length <= 200 &&
-    i.costAccounts.every((a) => Number.isInteger(a) && a >= 1000 && a <= 9999)
+    i.costAccounts.every((a) => Number.isInteger(a) && a >= 1000 && a <= 9999) &&
+    [i.financialYearStart, i.financialYearEnd].every(
+      (d) => d === undefined || (typeof d === 'string' && DATE.test(d)),
+    )
   if (!ok) throw new BadRequestException('Ogiltig läsbegäran (år, datum eller konton)')
 }
 

@@ -718,6 +718,44 @@ medDb('Fortnox A mot riktig Postgres', () => {
     })
   })
 
+  it('inaktuellt kundurval: avvikande årsgränser → 409, körning FAILED utan summa; rätt gränser → COMPLETE', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.vouchers = [
+      V(1, [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 100 },
+      ]),
+    ]
+    await expect(
+      r.readback.read(o.id, 'u1', {
+        ...READ,
+        financialYearStart: '2025-07-01',
+        financialYearEnd: '2026-06-30',
+      }),
+    ).rejects.toThrow(/inaktuellt.*2026-01-01–2026-12-31/)
+    const failed = await prisma.fortnoxReadRun.findFirstOrThrow({
+      where: { organizationId: o.id },
+      orderBy: { startedAt: 'desc' },
+    })
+    expect([failed.status, failed.summary]).toEqual(['FAILED', null])
+    const ok = await r.readback.read(o.id, 'u1', {
+      ...READ,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+    })
+    expect(ok.status).toBe('COMPLETE')
+  })
+
+  it('inaktuellt kundurval: inaktivt konto → 409', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.accounts = [{ Number: 5170, Active: false }]
+    await expect(r.readback.read(o.id, 'u1', READ)).rejects.toThrow(/konto 5170 är inaktivt/)
+  })
+
   it('fastighet från annan organisation kan inte mappas', async () => {
     const o1 = await org()
     const o2 = await org()

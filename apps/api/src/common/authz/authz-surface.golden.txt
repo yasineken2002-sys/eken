@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (231 st)
+## 1. HTTP-endpoints med rollgrind (232 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -248,6 +248,7 @@ POST /units                                                     ADMIN, MANAGER, 
 POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 POST /work-orders/:id/cancel                                    ADMIN, MANAGER, OWNER
+PUT /integrations/fortnox/export-settings                       ADMIN, OWNER
 PUT /integrations/fortnox/mappings                              ADMIN, OWNER
 
 
