@@ -478,6 +478,15 @@ export class FortnoxConnectionService {
     if (typeof code !== 'string' || !/^[A-Za-z0-9]{1,8}$/.test(code)) {
       throw new BadRequestException('Ogiltig verifikatserie')
     }
+    // E5: valet binds till den anslutning och generation som var aktuell när det
+    // verifierades; en frånkoppling/återanslutning under tiden ger 409, aldrig ett
+    // falskt "sparat".
+    const before = await this.prisma.fortnoxConnection.findUnique({
+      where: { organizationId },
+      select: { id: true, generation: true, status: true },
+    })
+    if (!before || before.status !== 'ACTIVE')
+      throw new ConflictException('Fortnox är inte anslutet')
     let auth: Awaited<ReturnType<FortnoxConnectionService['accessToken']>>
     try {
       auth = await this.accessToken(organizationId)
@@ -497,10 +506,15 @@ export class FortnoxConnectionService {
       found = undefined
     }
     if (found !== code) throw new BadRequestException('Verifikatserien finns inte i Fortnox')
-    await this.prisma.fortnoxConnection.updateMany({
-      where: { organizationId, id: auth.connectionId, status: 'ACTIVE' },
+    const saved = await this.prisma.fortnoxConnection.updateMany({
+      where: { organizationId, id: before.id, generation: before.generation, status: 'ACTIVE' },
       data: { exportVoucherSeries: code },
     })
+    if (saved.count !== 1 || auth.connectionId !== before.id) {
+      throw new ConflictException(
+        'Fortnox-anslutningen ändrades under sparandet; serien sparades inte',
+      )
+    }
     return { exportVoucherSeries: code }
   }
 
@@ -510,8 +524,13 @@ export class FortnoxConnectionService {
    */
   async setExportOmitDimensions(organizationId: string, userId: string, omit: unknown) {
     if (omit !== true && omit !== false) throw new BadRequestException('Ogiltigt dimensionsbeslut')
+    const current = await this.prisma.fortnoxConnection.findUnique({
+      where: { organizationId },
+      select: { id: true, generation: true },
+    })
+    if (!current) throw new ConflictException('Fortnox är inte anslutet')
     const res = await this.prisma.fortnoxConnection.updateMany({
-      where: { organizationId, status: 'ACTIVE' },
+      where: { organizationId, id: current.id, generation: current.generation, status: 'ACTIVE' },
       data: omit
         ? { exportOmitDimensionsAt: new Date(), exportOmitDimensionsBy: userId }
         : { exportOmitDimensionsAt: null, exportOmitDimensionsBy: null },

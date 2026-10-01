@@ -1384,6 +1384,34 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect((await exportRig(r).dryRun(o.id, je.id)).state).toBe('DRY_RUN_READY')
   })
 
+  it('E5: frånkoppling medan serien verifieras → 409, inget sparas, inget falskt "sparat"', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const orig = r.reader.get.bind(r.reader)
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      if (p.startsWith('/3/voucherseries/')) await r.connections.disconnect(o.id)
+      return orig(t, p, q)
+    }) as typeof r.reader.get
+    await expect(r.connections.setExportVoucherSeries(o.id, 'A')).rejects.toThrow(
+      /ändrades|inte anslutet/,
+    )
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.exportVoucherSeries]).toEqual(['DISCONNECTED', null])
+  })
+
+  it('E5 positiv kontroll: serie sparas och syns i status', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    expect(await r.connections.setExportVoucherSeries(o.id, 'L')).toEqual({
+      exportVoucherSeries: 'L',
+    })
+    expect((await r.connections.status(o.id))?.exportVoucherSeries).toBe('L')
+  })
+
   it('serieval: okänd serie i Fortnox avvisas och sparas inte', async () => {
     const o = await org()
     const r = rig()
