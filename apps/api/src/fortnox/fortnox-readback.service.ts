@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
+import type { FortnoxAiSnapshot } from './fortnox-ai-context'
 import { FORTNOX_LEDGER_READER, type FortnoxLedgerReader } from './fortnox.types'
 
 export interface StartReadInput {
@@ -189,6 +190,32 @@ export class FortnoxReadbackService {
       }),
     ])
     return { latestRead, latestCompleteRead }
+  }
+
+  /**
+   * Underlag till AI-kontexten (se fortnox-ai-context.ts). Säkert urval: inga
+   * tokens, inga rader/fritext — endast färdiga summor, period, tid och osäkerhet.
+   */
+  async aiSnapshot(organizationId: string): Promise<FortnoxAiSnapshot> {
+    const connection = await this.prisma.fortnoxConnection.findUnique({
+      where: { organizationId },
+      select: { status: true, fortnoxDatabaseNumber: true, fortnoxCompanyName: true },
+    })
+    if (!connection) return { connection: null, latestRead: null, latestCompleteRead: null }
+    const select = { ...FORTNOX_READ_VIEW_SELECT, costAccounts: true }
+    const [latestRead, latestCompleteRead] = await Promise.all([
+      this.prisma.fortnoxReadRun.findFirst({
+        where: { organizationId },
+        orderBy: { startedAt: 'desc' },
+        select,
+      }),
+      this.prisma.fortnoxReadRun.findFirst({
+        where: { organizationId, status: { in: ['COMPLETE', 'COMPLETE_WITH_UNCERTAINTY'] } },
+        orderBy: { startedAt: 'desc' },
+        select,
+      }),
+    ])
+    return { connection, latestRead, latestCompleteRead }
   }
 }
 
