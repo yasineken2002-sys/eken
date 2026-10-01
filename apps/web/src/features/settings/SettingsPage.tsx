@@ -59,6 +59,7 @@ import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
 import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { FortnoxPanel } from './components/FortnoxPanel'
+import { FortnoxExportSetup } from './components/FortnoxExportSetup'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
 import { get, del, extractApiError } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
@@ -510,6 +511,9 @@ export function SettingsPage({ initialTab = 'general' }: { initialTab?: Settings
       {tab === 'fortnox' && (
         <div className="mt-5 min-w-0">
           <FortnoxPanel />
+          <div className="mt-5">
+            <FortnoxExportSetup />
+          </div>
         </div>
       )}
 
