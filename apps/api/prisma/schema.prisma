@@ -7537,13 +7537,13 @@ model FortnoxConnection {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
-// Single-use OAuth-state (CSRF-bindning) med PKCE-verifier, krypterad.
+// Single-use OAuth-state (CSRF-bindning). PKCE antas inte: Fortnox stöd är
+// inte belagt. organizationId läses HÄRIFRÅN vid callback, aldrig ur query.
 model FortnoxOAuthState {
   id                String    @id @default(uuid())
   state             String    @unique
   organizationId    String
   initiatedByUserId String
-  codeVerifierEnc   String
   consumedAt        DateTime?
   expiresAt         DateTime
   createdAt         DateTime  @default(now())

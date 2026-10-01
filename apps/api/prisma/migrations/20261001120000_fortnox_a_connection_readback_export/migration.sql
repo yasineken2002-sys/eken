@@ -47,7 +47,6 @@ CREATE TABLE "FortnoxOAuthState" (
     "state" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
     "initiatedByUserId" TEXT NOT NULL,
-    "codeVerifierEnc" TEXT NOT NULL,
     "consumedAt" TIMESTAMP(3),
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
