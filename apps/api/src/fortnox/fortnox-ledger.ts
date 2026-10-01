@@ -224,6 +224,10 @@ async function paged<T>(
     }
     const list = body?.[key]
     if (!Array.isArray(list)) throw new Incomplete(`${path}: listan saknas på sida ${page}`)
+    // P-null: varje element måste vara ett objekt innan något fält läses.
+    if (list.some((x) => !x || typeof x !== 'object' || Array.isArray(x))) {
+      throw new Incomplete(`${path}: ogiltigt element på sida ${page}`)
+    }
     items.push(...(list as T[]))
     if (page >= tp) break
     page += 1

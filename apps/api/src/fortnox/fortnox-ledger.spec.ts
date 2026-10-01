@@ -428,3 +428,26 @@ describe('Fortnox-återläsning — granskningsrunda 1 (R3–R5)', () => {
     expect((await readLedger(r, 't', CFG)).status).toBe('PARTIAL')
   })
 })
+
+describe('Fortnox-återläsning — P-null (granskning 2928)', () => {
+  it.each(['/3/costcenters', '/3/projects', '/3/vouchers/sublist'])(
+    'null-element i %s → PARTIAL, inget TypeError',
+    async (path) => {
+      const r = reader([K1])
+      r.projects = [{ ProjectNumber: '7', Description: 'P7' }]
+      const orig = r.get.bind(r)
+      r.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+        const body = (await orig(t, p, q)) as Record<string, unknown>
+        if (p === path) {
+          const key = Object.keys(body).find((k) => k !== 'MetaInformation')!
+          body[key] = [null]
+          body.MetaInformation = { '@CurrentPage': 1, '@TotalPages': 1, '@TotalResources': 1 }
+        }
+        return body
+      }) as typeof r.get
+      const maps = new Map([...MAP, ['PROJECT:7', { propertyId: 'p-b', propertyName: 'HUS-B' }]])
+      const res = await readLedger(r, 't', { ...CFG, mappings: maps })
+      expect([res.status, res.summary]).toEqual(['PARTIAL', null])
+    },
+  )
+})

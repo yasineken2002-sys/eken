@@ -93,12 +93,19 @@ export class FortnoxExportService {
           blockReason: outcome.reasons.join(', ').slice(0, 500),
         }
 
+    const key = { organizationId_journalEntryId: { organizationId, journalEntryId } }
+    // E1: skrivningen är VILLKORAD på ett tillåtet tidigare tillstånd. Ett slutläge
+    // (UNKNOWN/CONFIRMED) som satts under `await builder.build` skrivs aldrig över.
+    if (existing) {
+      await this.prisma.fortnoxVoucherExport.updateMany({
+        where: { organizationId, journalEntryId, state: { in: ['DRY_RUN_READY', 'BLOCKED'] } },
+        data,
+      })
+      return this.prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: key, select: EXPORT_VIEW })
+    }
     try {
-      return await this.prisma.fortnoxVoucherExport.upsert({
-        where: { organizationId_journalEntryId: { organizationId, journalEntryId } },
-        create: { organizationId, journalEntryId, ...data },
-        // Skriv aldrig över ett slutläge som en parallell väg hunnit sätta.
-        update: data,
+      return await this.prisma.fortnoxVoucherExport.create({
+        data: { organizationId, journalEntryId, ...data },
         select: EXPORT_VIEW,
       })
     } catch (err) {

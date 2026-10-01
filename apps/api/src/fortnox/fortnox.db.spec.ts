@@ -936,6 +936,42 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect((await svc.counts(o.id)).needsReconciliation).toBe(1)
   })
 
+  it('E1: slutläge som sätts under förhandskontrollen skrivs aldrig över', async () => {
+    const o = await org()
+    const je = await prisma.journalEntry.create({
+      data: {
+        organizationId: o.id,
+        date: new Date('2026-10-02'),
+        description: 'x',
+        fiscalYear: 2026,
+        verNumber: 1,
+      },
+    })
+    await prisma.fortnoxVoucherExport.create({
+      data: {
+        organizationId: o.id,
+        journalEntryId: je.id,
+        state: 'BLOCKED',
+        blockReason: 'tidigare',
+      },
+    })
+    const svc = new FortnoxExportService(prisma as unknown as PrismaService, {
+      build: async () => {
+        // En parallell väg hinner sätta UNKNOWN medan förhandskontrollen pågår.
+        await prisma.fortnoxVoucherExport.update({
+          where: { journalEntryId: je.id },
+          data: { state: 'UNKNOWN' },
+        })
+        return { ok: true, draft: { a: 1 }, draftHash: 'h' }
+      },
+    })
+    expect((await svc.dryRun(o.id, je.id)).state).toBe('UNKNOWN')
+    const raw = await prisma.fortnoxVoucherExport.findUniqueOrThrow({
+      where: { journalEntryId: je.id },
+    })
+    expect([raw.state, raw.draftHash]).toEqual(['UNKNOWN', null])
+  })
+
   it('standard: transformern är inte inkopplad → BLOCKED med uttrycklig orsak', async () => {
     const o = await org()
     const je = await prisma.journalEntry.create({

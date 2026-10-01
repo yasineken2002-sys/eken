@@ -51,6 +51,9 @@ async function all<T>(
       throw new Broken(`${path}: listan ändrades under läsningen`)
     const list = body?.[key]
     if (!Array.isArray(list)) throw new Broken(`${path}: listan saknas`)
+    if (list.some((x) => !x || typeof x !== 'object' || Array.isArray(x))) {
+      throw new Broken(`${path}: ogiltigt element i listan`)
+    }
     out.push(...(list as T[]))
     if (page >= tp) break
   }

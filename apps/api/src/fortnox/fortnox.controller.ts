@@ -9,7 +9,7 @@ import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxReadbackService, type StartReadInput } from './fortnox-readback.service'
 import { FortnoxExportService } from './fortnox-export.service'
 import { FortnoxMappingService } from './fortnox-mapping.service'
-import { toStatusResponse } from './fortnox-status'
+import { toReadView, toStatusResponse } from './fortnox-status'
 
 /**
  * Fortnox (ägarval A: Eveno sköter avier/betalningar, Fortnox är huvudbok).
@@ -110,7 +110,8 @@ export class FortnoxController {
     @CurrentUser() user: JwtPayload,
     @Body() body: StartReadInput,
   ) {
-    return this.readback.read(organizationId, user.sub, body)
+    // Samma läsvykontrakt som GET /status (selectedAccounts, civila datum, ålder).
+    return toReadView(await this.readback.read(organizationId, user.sub, body))
   }
 
   @Put('export-settings')

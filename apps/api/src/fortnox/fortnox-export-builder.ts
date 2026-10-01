@@ -313,6 +313,8 @@ async function allPages<T>(
     else if (total !== tr) throw new FortnoxReadError('invalid')
     const list = body?.[key]
     if (!Array.isArray(list)) throw new FortnoxReadError('invalid')
+    if (list.some((x) => !x || typeof x !== 'object' || Array.isArray(x)))
+      throw new FortnoxReadError('invalid')
     out.push(...(list as T[]))
     if (page >= (tp as number)) break
   }
