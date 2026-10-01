@@ -236,6 +236,7 @@ export class FortnoxReadbackService {
       selectedFinancialYearId: cat.selectedFinancialYearId,
       costAccounts: cat.costAccounts,
       dimensions: cat.dimensions,
+      voucherSeries: cat.voucherSeries,
       complete: cat.complete,
       observedAt: new Date().toISOString(),
       company: {

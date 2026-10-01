@@ -38,3 +38,22 @@ export const fortnoxMappingInputSchema = z.object({
   propertyId: z.string().min(1),
 })
 export type FortnoxMappingInput = z.infer<typeof fortnoxMappingInputSchema>
+
+/** PUT /integrations/fortnox/export-settings — uttryckliga kundval, inga standardvärden. */
+export const fortnoxExportSettingsInputSchema = z
+  .object({
+    voucherSeries: z
+      .string()
+      .regex(/^[A-Za-z0-9]{1,8}$/)
+      .optional(),
+    omitDimensions: z.boolean().optional(),
+  })
+  .refine(
+    (v) => v.voucherSeries !== undefined || v.omitDimensions !== undefined,
+    'Inget val angivet',
+  )
+export type FortnoxExportSettingsInput = z.infer<typeof fortnoxExportSettingsInputSchema>
+
+/** POST /integrations/fortnox/exports/dry-run — ett verifikat ur organisationens egen lista. */
+export const fortnoxDryRunInputSchema = z.object({ journalEntryId: z.string().min(1) })
+export type FortnoxDryRunInput = z.infer<typeof fortnoxDryRunInputSchema>

@@ -215,6 +215,17 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
       return this.paged(this.financialYears, 'FinancialYears', page) as T
     if (path === '/3/accounts') return this.paged(this.accounts, 'Accounts', page) as T
     if (path === '/3/projects') return this.paged(this.projects, 'Projects', page) as T
+    if (path === '/3/voucherseries') {
+      return this.paged(
+        this.voucherSeries.map((Code) => ({
+          Code,
+          Description: `Serie ${Code}`,
+          Year: query?.financialyear,
+        })),
+        'VoucherSeries',
+        page,
+      ) as T
+    }
     const ccd = /^\/3\/costcenters\/([A-Za-z0-9_-]+)$/.exec(path)
     if (ccd) {
       if (!this.costCenters.includes(ccd[1] ?? '')) throw new FortnoxReadError('invalid', 404)

@@ -17,6 +17,8 @@ export interface FortnoxCatalog {
   selectedFinancialYearId: number | null
   costAccounts: Array<{ number: number; name: string; selectable: boolean; reason: string | null }>
   dimensions: Array<{ dimensionType: 'COST_CENTER' | 'PROJECT'; code: string; name: string | null }>
+  /** Verifikatserier för valt år (för exportens serieval). Tom utan valt år. */
+  voucherSeries: Array<{ code: string; description: string | null }>
   complete: boolean
   authLost: boolean
 }
@@ -73,6 +75,7 @@ export async function readCatalog(
     selectedFinancialYearId: null,
     costAccounts: [],
     dimensions: [],
+    voucherSeries: [],
     complete: false,
     authLost: false,
   }
@@ -144,6 +147,7 @@ export async function readCatalog(
 
     let selected: number | null = null
     const accounts: FortnoxCatalog['costAccounts'] = []
+    const series: FortnoxCatalog['voucherSeries'] = []
     if (opts.financialYearId !== null) {
       if (!financialYears.some((y) => y.id === opts.financialYearId)) {
         return {
@@ -175,6 +179,24 @@ export async function readCatalog(
       if (new Set(accounts.map((a) => a.number)).size !== accounts.length)
         throw new Broken('Dubbla konton i listan')
       accounts.sort((a, b) => a.number - b.number)
+      for (const v of await all<{ Code?: unknown; Description?: unknown; Year?: unknown }>(
+        reader,
+        token,
+        '/3/voucherseries',
+        'VoucherSeries',
+        { financialyear: selected },
+      )) {
+        if (typeof v.Code !== 'string' || !/^[A-Za-z0-9]{1,8}$/.test(v.Code))
+          throw new Broken('Verifikatserie utan giltig kod')
+        if (v.Year !== undefined && v.Year !== selected)
+          throw new Broken('Verifikatserie för annat räkenskapsår')
+        series.push({
+          code: v.Code,
+          description: typeof v.Description === 'string' ? v.Description : null,
+        })
+      }
+      if (new Set(series.map((x) => x.code)).size !== series.length)
+        throw new Broken('Dubbla verifikatserier i listan')
     }
     return {
       ready: true,
@@ -183,6 +205,7 @@ export async function readCatalog(
       selectedFinancialYearId: selected,
       costAccounts: accounts,
       dimensions: dims,
+      voucherSeries: series,
       complete: true,
       authLost: false,
     }

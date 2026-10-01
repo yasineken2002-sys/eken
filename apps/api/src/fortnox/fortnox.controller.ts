@@ -9,6 +9,8 @@ import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxReadbackService } from './fortnox-readback.service'
 import { FortnoxReadDto } from './dto/fortnox-read.dto'
 import { FortnoxMappingDto } from './dto/fortnox-mapping.dto'
+import { FortnoxExportSettingsDto } from './dto/fortnox-export-settings.dto'
+import { FortnoxDryRunDto } from './dto/fortnox-dry-run.dto'
 import { FortnoxExportService } from './fortnox-export.service'
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { toReadView, toStatusResponse } from './fortnox-status'
@@ -118,7 +120,7 @@ export class FortnoxController {
   async exportSettings(
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
-    @Body() body: { voucherSeries?: unknown; omitDimensions?: unknown },
+    @Body() body: FortnoxExportSettingsDto,
   ) {
     const out: { exportVoucherSeries?: string; omitDimensions?: boolean } = {}
     if (body?.voucherSeries !== undefined) {
@@ -148,7 +150,7 @@ export class FortnoxController {
 
   @Post('exports/dry-run')
   @Roles('OWNER', 'ADMIN')
-  async dryRun(@OrgId() organizationId: string, @Body() body: { journalEntryId?: unknown }) {
+  async dryRun(@OrgId() organizationId: string, @Body() body: FortnoxDryRunDto) {
     return this.exports.dryRun(
       organizationId,
       typeof body?.journalEntryId === 'string' ? body.journalEntryId : '',
