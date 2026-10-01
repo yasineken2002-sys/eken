@@ -30,6 +30,7 @@ CREATE TABLE "FortnoxConnection" (
     "accessTokenExpiresAt" TIMESTAMP(3),
     "tokenVersion" INTEGER NOT NULL DEFAULT 0,
     "refreshLeaseUntil" TIMESTAMP(3),
+    "exportVoucherSeries" TEXT,
     "lastErrorClass" TEXT,
     "lastErrorAt" TIMESTAMP(3),
     "connectedByUserId" TEXT,

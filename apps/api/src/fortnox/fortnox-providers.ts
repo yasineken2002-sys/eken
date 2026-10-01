@@ -178,6 +178,7 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     { Number: 5170, Active: true, Description: 'Reparation och underhåll av fastighet' },
   ]
   projects: Array<{ ProjectNumber: string; Description: string }> = []
+  voucherSeries: string[] = ['A', 'L']
   vouchers: FortnoxVoucher[] = []
   pageSize = 2
   /** Prov: kasta på anrop nr N (1-baserat). */
@@ -216,6 +217,11 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     if (ccd) {
       if (!this.costCenters.includes(ccd[1] ?? '')) throw new FortnoxReadError('invalid', 404)
       return { CostCenter: { Code: ccd[1], Active: true } } as T
+    }
+    const vsd = /^\/3\/voucherseries\/([A-Za-z0-9_-]+)$/.exec(path)
+    if (vsd) {
+      if (!this.voucherSeries.includes(vsd[1] ?? '')) throw new FortnoxReadError('invalid', 404)
+      return { VoucherSeries: { Code: vsd[1], Description: 'Serie' } } as T
     }
     const prd = /^\/3\/projects\/(\d+)$/.exec(path)
     if (prd) {

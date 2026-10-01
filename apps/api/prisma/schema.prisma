@@ -7526,6 +7526,10 @@ model FortnoxConnection {
   tokenVersion         Int       @default(0)
   refreshLeaseUntil    DateTime?
 
+  // Verifikatserie som kunden UTTRYCKLIGEN valt för export (verifierad i Fortnox när
+  // den sparas). Null = ingen export kan förhandskontrolleras (BLOCKED).
+  exportVoucherSeries String?
+
   lastErrorClass    String?
   lastErrorAt       DateTime?
   connectedByUserId String?

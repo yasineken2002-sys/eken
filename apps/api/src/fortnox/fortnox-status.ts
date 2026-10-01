@@ -9,6 +9,7 @@ interface ConnectionRow {
   fortnoxDatabaseNumber: number
   fortnoxOrgNumber: string | null
   fortnoxCompanyName: string | null
+  exportVoucherSeries: string | null
   connectedAt: Date
   disconnectedAt: Date | null
   lastErrorClass: string | null
@@ -91,6 +92,7 @@ export function toStatusResponse(input: {
             orgNumber: c.fortnoxOrgNumber,
             databaseNumber: c.fortnoxDatabaseNumber,
           },
+          exportVoucherSeries: c.exportVoucherSeries,
           connectedAt: c.connectedAt.toISOString(),
           disconnectedAt: c.disconnectedAt ? c.disconnectedAt.toISOString() : null,
           lastErrorClass: c.lastErrorClass,

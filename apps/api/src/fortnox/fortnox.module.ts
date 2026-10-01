@@ -4,11 +4,8 @@ import { PrismaModule } from '../common/prisma/prisma.module'
 import { FortnoxController } from './fortnox.controller'
 import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxReadbackService } from './fortnox-readback.service'
-import {
-  FORTNOX_VOUCHER_DRAFT_BUILDER,
-  FortnoxExportService,
-  PendingVoucherDraftBuilder,
-} from './fortnox-export.service'
+import { FORTNOX_VOUCHER_DRAFT_BUILDER, FortnoxExportService } from './fortnox-export.service'
+import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import {
@@ -124,10 +121,9 @@ import {
       },
       inject: [ConfigService, FortnoxTokenCryptoService, FORTNOX_REAL_CLIENTS],
     },
-    // Transformer-leveransen (export/fortnox-voucher-draft.ts) kräver verifierade
-    // konto-/år-/serie-/dimensionsreferenser som ännu inte finns i produkten →
-    // förhandskontrollen blockerar uttryckligen tills de finns.
-    { provide: FORTNOX_VOUCHER_DRAFT_BUILDER, useClass: PendingVoucherDraftBuilder },
+    // Förhandskontroll (dry run) med referenser verifierade i Fortnox i samma stund;
+    // transformern är den frysta exportkomponenten. Ingen sändning finns.
+    { provide: FORTNOX_VOUCHER_DRAFT_BUILDER, useClass: VerifiedVoucherDraftBuilder },
   ],
   exports: [FortnoxReadbackService],
 })

@@ -113,6 +113,12 @@ export class FortnoxController {
     return this.readback.read(organizationId, user.sub, body)
   }
 
+  @Put('export-settings')
+  @Roles('OWNER', 'ADMIN')
+  async exportSettings(@OrgId() organizationId: string, @Body() body: { voucherSeries?: unknown }) {
+    return this.connections.setExportVoucherSeries(organizationId, body?.voucherSeries)
+  }
+
   @Get('exports')
   @Roles('OWNER', 'ADMIN')
   async listExports(@OrgId() organizationId: string) {

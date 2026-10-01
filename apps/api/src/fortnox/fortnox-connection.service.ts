@@ -40,6 +40,7 @@ export const SAFE_FORTNOX_CONNECTION_SELECT = {
   fortnoxDatabaseNumber: true,
   fortnoxOrgNumber: true,
   fortnoxCompanyName: true,
+  exportVoucherSeries: true,
   connectedAt: true,
   disconnectedAt: true,
   lastErrorClass: true,
@@ -359,6 +360,43 @@ export class FortnoxConnectionService {
     // Anslutningen kopplades från/ersattes under förnyelsen: använd inte token.
     if (saved.count !== 1) throw new FortnoxNotConnectedError('DISCONNECTED')
     return { token: tokens.accessToken, ...ids, tokenVersion: conn.tokenVersion + 1 }
+  }
+
+  /**
+   * Kundens uttryckliga val av verifikatserie för export. Verifieras i det anslutna
+   * Fortnox-företaget innan det sparas. Ändrar inget i Fortnox.
+   */
+  async setExportVoucherSeries(
+    organizationId: string,
+    code: unknown,
+  ): Promise<{ exportVoucherSeries: string }> {
+    if (typeof code !== 'string' || !/^[A-Za-z0-9]{1,8}$/.test(code)) {
+      throw new BadRequestException('Ogiltig verifikatserie')
+    }
+    let auth: Awaited<ReturnType<FortnoxConnectionService['accessToken']>>
+    try {
+      auth = await this.accessToken(organizationId)
+    } catch (err) {
+      if (err instanceof FortnoxNotConnectedError)
+        throw new ConflictException('Fortnox är inte anslutet')
+      throw err
+    }
+    let found: unknown
+    try {
+      const body = await this.reader.get<{ VoucherSeries?: { Code?: unknown } }>(
+        auth.token,
+        `/3/voucherseries/${code}`,
+      )
+      found = body?.VoucherSeries?.Code
+    } catch {
+      found = undefined
+    }
+    if (found !== code) throw new BadRequestException('Verifikatserien finns inte i Fortnox')
+    await this.prisma.fortnoxConnection.updateMany({
+      where: { organizationId, id: auth.connectionId, status: 'ACTIVE' },
+      data: { exportVoucherSeries: code },
+    })
+    return { exportVoucherSeries: code }
   }
 
   /** 401 vid läsning eller avvisad förnyelse: stoppa arbetet och nolla tokens. */

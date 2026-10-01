@@ -20,6 +20,7 @@ import {
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
+import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
 import { toStatusResponse } from './fortnox-status'
 import { FortnoxReadError } from './fortnox.types'
 
@@ -48,7 +49,9 @@ medDb('Fortnox A mot riktig Postgres', () => {
   afterAll(async () => {
     for (const id of orgs) {
       await prisma.fortnoxVoucherExport.deleteMany({ where: { organizationId: id } })
+      await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
     }
     await prisma.$disconnect()
@@ -790,6 +793,148 @@ medDb('Fortnox A mot riktig Postgres', () => {
       new PendingVoucherDraftBuilder(),
     )
     await expect(svc.dryRun(o1.id, je.id)).rejects.toThrow(/hittades inte/)
+  })
+
+  // ── Förhandskontroll med verifierade referenser (transformern inkopplad) ───
+
+  async function entryWithLines(
+    organizationId: string,
+    accounts: Array<[number, string | null, string | null]>,
+    extra: Record<string, unknown> = {},
+  ) {
+    const lines = []
+    for (const [number, debit, credit] of accounts) {
+      const acc =
+        (await prisma.account.findFirst({ where: { organizationId, number } })) ??
+        (await prisma.account.create({
+          data: { organizationId, number, name: `Konto ${number}`, type: 'EXPENSE' },
+        }))
+      lines.push({ accountId: acc.id, debit, credit })
+    }
+    return prisma.journalEntry.create({
+      data: {
+        organizationId,
+        date: new Date('2026-10-02'),
+        description: 'Reparation trapphus',
+        fiscalYear: 2026,
+        verNumber: Math.floor(Math.random() * 1e6) + 1,
+        lines: { create: lines },
+        ...extra,
+      },
+    })
+  }
+
+  function exportRig(r: ReturnType<typeof rig>) {
+    const builder = new VerifiedVoucherDraftBuilder(r.db, r.connections, r.reader)
+    return new FortnoxExportService(r.db, builder)
+  }
+
+  it('förhandskontroll: verifierade referenser → DRY_RUN_READY med exakt utkast, ingen sändning', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    const je = await entryWithLines(o.id, [
+      [5170, '1234.50', null],
+      [2440, null, '1234.50'],
+    ])
+    const row = await exportRig(r).dryRun(o.id, je.id)
+    expect([row.state, row.blockReason]).toEqual(['DRY_RUN_READY', null])
+    const saved = await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: row.id } })
+    const draft = saved.draft as {
+      payload: {
+        Voucher: {
+          Year: number
+          VoucherSeries: string
+          VoucherRows: Array<{ Account: number; Debit?: number; Credit?: number }>
+        }
+      }
+      query: { financialyear: number }
+      liveExportAllowed: boolean
+    }
+    expect(draft.liveExportAllowed).toBe(false)
+    expect([
+      draft.query.financialyear,
+      draft.payload.Voucher.Year,
+      draft.payload.Voucher.VoucherSeries,
+    ]).toEqual([1, 1, 'A'])
+    expect(draft.payload.Voucher.VoucherRows).toEqual([
+      expect.objectContaining({ Account: 5170, Debit: 1234.5 }),
+      expect.objectContaining({ Account: 2440, Credit: 1234.5 }),
+    ])
+    expect(r.reader.calls.some((c) => /^\/3\/vouchers(\/|$)/.test(c))).toBe(false) // inga skrivvägar, inga verifikatanrop
+  })
+
+  it('förhandskontroll: utan valt serie → BLOCKED med begripligt skäl', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const je = await entryWithLines(o.id, [
+      [5170, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    const row = await exportRig(r).dryRun(o.id, je.id)
+    expect(row.state).toBe('BLOCKED')
+    expect(row.blockReason).toMatch(/^VOUCHER_SERIES_NOT_CHOSEN/)
+  })
+
+  it('förhandskontroll: konto som inte finns i Fortnox → BLOCKED, ingen gissad mappning', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    const je = await entryWithLines(o.id, [
+      [5999, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    expect((await exportRig(r).dryRun(o.id, je.id)).blockReason).toMatch(/^ACCOUNT_UNVERIFIED/)
+  })
+
+  it('förhandskontroll: rättelse utan bekräftat exporterat original → BLOCKED (E-F1)', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    const orig = await entryWithLines(o.id, [
+      [5170, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    const rev = await entryWithLines(
+      o.id,
+      [
+        [2440, '10.00', null],
+        [5170, null, '10.00'],
+      ],
+      { reversalOfEntryId: orig.id },
+    )
+    expect((await exportRig(r).dryRun(o.id, rev.id)).blockReason).toMatch(/^ORIGINAL_NOT_CONFIRMED/)
+    // Bekräftad export till ANNAT företag räknas inte.
+    await prisma.fortnoxVoucherExport.create({
+      data: {
+        organizationId: o.id,
+        journalEntryId: orig.id,
+        state: 'CONFIRMED',
+        fortnoxDatabaseNumber: 1,
+        externalYear: 1,
+        externalSeries: 'A',
+        externalNumber: 1,
+      },
+    })
+    expect((await exportRig(r).dryRun(o.id, rev.id)).blockReason).toMatch(/^ORIGINAL_NOT_CONFIRMED/)
+    await prisma.fortnoxVoucherExport.update({
+      where: { journalEntryId: orig.id },
+      data: { fortnoxDatabaseNumber: 900001 },
+    })
+    expect((await exportRig(r).dryRun(o.id, rev.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('serieval: okänd serie i Fortnox avvisas och sparas inte', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await expect(r.connections.setExportVoucherSeries(o.id, 'ZZ')).rejects.toThrow(/finns inte/)
+    await expect(r.connections.setExportVoucherSeries(o.id, 'A; DROP')).rejects.toThrow(/Ogiltig/)
+    expect((await r.connections.status(o.id))?.exportVoucherSeries).toBeNull()
   })
 
   it('org-radering tar anslutning, state, mappning och läsningar (tokens försvinner)', async () => {
