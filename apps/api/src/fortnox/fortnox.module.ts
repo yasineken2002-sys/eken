@@ -6,6 +6,12 @@ import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxReadbackService } from './fortnox-readback.service'
 import { FORTNOX_VOUCHER_DRAFT_BUILDER, FortnoxExportService } from './fortnox-export.service'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import { FortnoxSendService } from './fortnox-send.service'
+import {
+  DisabledVoucherWriter,
+  FORTNOX_VOUCHER_WRITER,
+  MockVoucherWriter,
+} from './fortnox-voucher-writer'
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import {
@@ -130,6 +136,17 @@ import {
     // Förhandskontroll (dry run) med referenser verifierade i Fortnox i samma stund;
     // transformern är den frysta exportkomponenten. Ingen sändning finns.
     { provide: FORTNOX_VOUCHER_DRAFT_BUILDER, useClass: VerifiedVoucherDraftBuilder },
+    // Skrivare: ENDAST den syntetiska Mock-skrivaren är kapabel (Mock-läge, NODE_ENV=test).
+    // Stub och REAL får DisabledVoucherWriter — ingen miljöflagga slår på skrivning.
+    {
+      provide: FORTNOX_VOUCHER_WRITER,
+      useFactory: (reader: unknown) =>
+        reader instanceof MockFortnoxLedgerReader
+          ? new MockVoucherWriter(reader)
+          : new DisabledVoucherWriter(),
+      inject: [FORTNOX_LEDGER_READER],
+    },
+    FortnoxSendService,
   ],
   exports: [FortnoxReadbackService],
 })

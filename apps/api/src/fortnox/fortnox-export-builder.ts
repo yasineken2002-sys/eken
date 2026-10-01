@@ -269,7 +269,34 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       return {
         ok: true,
         draft,
-        draftHash: createHash('sha256').update(JSON.stringify(draft)).digest('hex'),
+        // Stabil hash över INNEHÅLL och BINDNING — inte över evidensens tidsstämplar.
+        // Samma verifikat, företag, anslutningsgeneration, år, serie och kundbeslut ger
+        // samma hash; en förändring av något av dem ger ny hash (sändning kräver då ny
+        // förhandskontroll).
+        draftHash: createHash('sha256')
+          .update(
+            JSON.stringify({
+              payload: res.payload,
+              query: res.query,
+              binding: {
+                journalEntryId: entry.id,
+                databaseNumber: conn.fortnoxDatabaseNumber,
+                orgNumber,
+                generation: conn.generation,
+                financialYearId: fy.Id,
+                series: conn.exportVoucherSeries,
+                omitDimensionsAt: conn.exportOmitDimensionsAt.toISOString(),
+                omitDimensionsBy: conn.exportOmitDimensionsBy,
+                lines: res.provenance.lines.map((l) => [
+                  l.journalEntryLineId,
+                  l.localAccountNumber,
+                  l.debit,
+                  l.credit,
+                ]),
+              },
+            }),
+          )
+          .digest('hex'),
       }
     } catch (err) {
       if (err instanceof UnverifiedRef) return block(err.code, err.message)

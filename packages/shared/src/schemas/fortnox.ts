@@ -57,3 +57,18 @@ export type FortnoxExportSettingsInput = z.infer<typeof fortnoxExportSettingsInp
 /** POST /integrations/fortnox/exports/dry-run — ett verifikat ur organisationens egen lista. */
 export const fortnoxDryRunInputSchema = z.object({ journalEntryId: z.string().min(1) })
 export type FortnoxDryRunInput = z.infer<typeof fortnoxDryRunInputSchema>
+
+/** POST /integrations/fortnox/exports/:id/send — uttrycklig bekräftelse, bunden till utkastets hash. */
+export const fortnoxSendInputSchema = z.object({
+  draftHash: z.string().regex(/^[0-9a-f]{64}$/),
+  confirm: z.literal(true),
+})
+export type FortnoxSendInput = z.infer<typeof fortnoxSendInputSchema>
+
+/** POST /integrations/fortnox/exports/:id/reconcile — exakt extern identitet i Fortnox. */
+export const fortnoxReconcileInputSchema = z.object({
+  year: z.number().int().positive().safe(),
+  series: z.string().regex(/^[A-Za-z0-9]{1,10}$/),
+  number: z.number().int().positive().safe(),
+})
+export type FortnoxReconcileInput = z.infer<typeof fortnoxReconcileInputSchema>
