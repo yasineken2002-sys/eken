@@ -422,7 +422,12 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const o = await org()
     const r = rig()
     await connect(r, o.id)
-    r.reader.vouchers = [V(1, [{ Account: 5170, Debit: 100, Credit: 0 }])]
+    r.reader.vouchers = [
+      V(1, [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 100 },
+      ]),
+    ]
     const ok = await r.readback.read(o.id, 'u1', READ)
     r.reader.calls = []
     r.reader.failOnCall = { n: 5, error: new FortnoxReadError('transient', 429) }
@@ -434,18 +439,78 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect(latest.latestCompleteRead?.id).toBe(ok.id)
   })
 
-  it('401 under läsning → körningen AUTH_LOST och anslutningen stoppas', async () => {
+  it('401 som består efter förnyelse → körningen AUTH_LOST och anslutningen stoppas', async () => {
     const o = await org()
     const r = rig()
     await connect(r, o.id)
     r.reader.calls = []
-    r.reader.failOnCall = { n: 2, error: new FortnoxReadError('auth', 401) }
+    r.reader.validTokens = () => false
     const run = await r.readback.read(o.id, 'u1', READ)
     expect(run.status).toBe('AUTH_LOST')
     const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
       where: { organizationId: o.id },
     })
     expect([raw.status, raw.accessTokenEnc]).toEqual(['AUTH_LOST', ''])
+  })
+
+  it('P-F1: token som går ut mitt i läsningen → en förnyelse, ett omförsök, COMPLETE, anslutningen består', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.vouchers = [
+      V(1, [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 100 },
+      ]),
+    ]
+    r.reader.calls = []
+    // Från anrop 4 (kostnadsställen) gäller inte längre den första access-token.
+    r.reader.hooks.set(4, () => {
+      r.reader.validTokens = (t) => t !== 'mock-access-1'
+    })
+    const run = await r.readback.read(o.id, 'u1', READ)
+    expect(run.status).toBe('COMPLETE')
+    expect(r.auth.calls.refresh).toBe(1)
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.tokenVersion]).toEqual(['ACTIVE', 1])
+    expect(r.crypto.decrypt(raw.accessTokenEnc)).toBe('mock-access-2')
+  })
+
+  it('P-F1: verkligt återkallad åtkomst (401 även efter förnyelse) → AUTH_LOST, exakt en förnyelse', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.calls = []
+    r.reader.hooks.set(2, () => {
+      r.reader.validTokens = () => false
+    })
+    const run = await r.readback.read(o.id, 'u1', READ)
+    expect(run.status).toBe('AUTH_LOST')
+    expect(r.auth.calls.refresh).toBe(1)
+    expect(
+      (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
+        .status,
+    ).toBe('AUTH_LOST')
+  })
+
+  it('P-F1: förnyelse begränsad (429) efter 401 → PARTIAL utan AUTH_LOST, tokens kvar', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.calls = []
+    r.reader.hooks.set(2, () => {
+      r.reader.validTokens = (t) => t !== 'mock-access-1'
+    })
+    r.auth.failRefresh = 'rate_limited'
+    const run = await r.readback.read(o.id, 'u1', READ)
+    expect([run.status, run.summary]).toEqual(['PARTIAL', null])
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.lastErrorClass]).toEqual(['ACTIVE', 'REFRESH_RATE_LIMITED'])
+    expect(r.crypto.decrypt(raw.accessTokenEnc)).toBe('mock-access-1')
   })
 
   it('fastighet från annan organisation kan inte mappas', async () => {
@@ -504,9 +569,18 @@ medDb('Fortnox A mot riktig Postgres', () => {
       ],
     })
     r.reader.vouchers = [
-      V(1, [{ Account: 5170, Debit: 100, Credit: 0 }]),
-      V(2, [{ Account: 5170, Debit: 300, Credit: 0 }]),
-      V(3, [{ Account: 5170, Debit: 50, Credit: 0 }]),
+      V(1, [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 100 },
+      ]),
+      V(2, [
+        { Account: 5170, Debit: 300, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 300 },
+      ]),
+      V(3, [
+        { Account: 5170, Debit: 50, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 50 },
+      ]),
     ]
     const run = await r.readback.read(o.id, 'u1', READ)
     expect((run.summary as { evenoExportOre: number }).evenoExportOre).toBe(10000)
@@ -574,12 +648,12 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect([c.ready, c.financialYears]).toEqual([false, []])
   })
 
-  it('katalog: 401 → AUTH_LOST på anslutningen', async () => {
+  it('katalog: 401 som består efter förnyelse → AUTH_LOST på anslutningen', async () => {
     const o = await org()
     const r = rig()
     await connect(r, o.id)
     r.reader.calls = []
-    r.reader.failOnCall = { n: 2, error: new FortnoxReadError('auth', 401) }
+    r.reader.validTokens = () => false
     expect((await r.readback.catalog(o.id, null)).ready).toBe(false)
     expect(
       (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
@@ -610,7 +684,12 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const o = await org()
     const r = rig()
     await connect(r, o.id)
-    r.reader.vouchers = [V(1, [{ Account: 5170, Debit: 100, Credit: 0 }])]
+    r.reader.vouchers = [
+      V(1, [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 100 },
+      ]),
+    ]
     await r.readback.read(o.id, 'u1', READ)
     const latest = await r.readback.latest(o.id)
     const view = toStatusResponse({

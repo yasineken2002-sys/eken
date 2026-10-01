@@ -173,7 +173,9 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
     r.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
       const body = (await orig(t, p, q)) as Record<string, unknown>
       if (p === '/3/vouchers/sublist' && q?.page === 2) {
-        ;(body.Vouchers as unknown[]).push(ver(2, '2026-10-05', [row(5170, 9999)]))
+        ;(body.Vouchers as unknown[]).push(
+          ver(2, '2026-10-05', [row(5170, 9999), row(2440, 0, 9999)]),
+        )
       }
       return body
     }) as typeof r.get
@@ -185,7 +187,7 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
 
   it('antal ändras under läsning → PARTIAL, summa null', async () => {
     const r = reader([K1, K2, K3, REV, NEW])
-    r.hooks.set(6, () => r.vouchers.push(ver(6, '2026-10-21', [row(5170, 1)]))) // anrop 6 = vouchers sida 2
+    r.hooks.set(6, () => r.vouchers.push(ver(6, '2026-10-21', [row(5170, 1), row(2440, 0, 1)]))) // anrop 6 = vouchers sida 2
     const res = await readLedger(r, 't', CFG)
     expect(res.status).toBe('PARTIAL')
     expect(res.summary).toBeNull()
@@ -254,7 +256,7 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
   })
 
   it('räkenskapsårets gränser tas från Fortnox, inte från klienten (brutet år)', async () => {
-    const r = reader([ver(1, '2026-06-15', [row(5170, 100)])])
+    const r = reader([ver(1, '2026-06-15', [row(5170, 100), row(2440, 0, 100)])])
     r.financialYears = [{ Id: 1, FromDate: '2025-07-01', ToDate: '2026-06-30' }]
     const ok = await readLedger(r, 't', {
       ...CFG,
@@ -262,7 +264,7 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
       periodTo: '2026-06-30',
     })
     expect(ok.summary!.totalOre).toBe(10000)
-    const r2 = reader([ver(1, '2026-07-02', [row(5170, 100)])])
+    const r2 = reader([ver(1, '2026-07-02', [row(5170, 100), row(2440, 0, 100)])])
     r2.financialYears = [{ Id: 1, FromDate: '2025-07-01', ToDate: '2026-06-30' }]
     const bad = await readLedger(r2, 't', {
       ...CFG,
@@ -299,6 +301,13 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
     const res = (await facit([K1, K2], { evenoExported: new Set(['1|L|2']) })).res
     expect(res.summary!.evenoExportOre).toBe(600000)
     expect(res.summary!.totalOre).toBe(1800000)
+  })
+
+  it('R2e: verifikat med en enda rad → PARTIAL (schemat kräver minst två)', async () => {
+    const { res } = await facit([ver(1, '2026-10-02', [row(5170, 100)])])
+    expect([res.status, res.summary]).toEqual(['PARTIAL', null])
+    const ok = await facit([ver(1, '2026-10-02', [row(5170, 100), row(2440, 0, 100)])])
+    expect(ok.res.status).toBe('COMPLETE') // positiv kontroll
   })
 
   it('belopp: exakt decimal → öre, ingen epsilon, säkert heltal', () => {
@@ -340,7 +349,8 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
   })
 
   it('summa utanför säkra heltal → PARTIAL', async () => {
-    const big = (n: number) => ver(n, '2026-10-02', [row(5170, 90071992547409.9)])
+    const big = (n: number) =>
+      ver(n, '2026-10-02', [row(5170, 90071992547409.9), row(2440, 0, 90071992547409.9)])
     const { res } = await facit([big(1), big(2)])
     expect(res.status).toBe('PARTIAL')
     expect(res.summary).toBeNull()

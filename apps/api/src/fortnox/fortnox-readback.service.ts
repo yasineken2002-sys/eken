@@ -5,7 +5,7 @@ import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-co
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
 import { readCatalog } from './fortnox-catalog'
 import type { FortnoxAiSnapshot } from './fortnox-ai-context'
-import { FORTNOX_LEDGER_READER, type FortnoxLedgerReader } from './fortnox.types'
+import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
 
 export interface StartReadInput {
   financialYearId: number
@@ -120,7 +120,8 @@ export class FortnoxReadbackService {
           select: { externalYear: true, externalSeries: true, externalNumber: true },
         }),
       ])
-      result = await readLedger(this.reader, auth.token, {
+      const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
+      result = await readLedger(reader, auth.token, {
         expectedDatabaseNumber: auth.databaseNumber,
         ...input,
         mappings: new Map(
@@ -193,7 +194,8 @@ export class FortnoxReadbackService {
       throw err
     }
     const conn = await this.connections.status(organizationId)
-    const cat = await readCatalog(this.reader, auth.token, {
+    const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
+    const cat = await readCatalog(reader, auth.token, {
       expectedDatabaseNumber: auth.databaseNumber,
       financialYearId,
     })
@@ -270,4 +272,48 @@ function validate(i: StartReadInput): void {
     i.costAccounts.length <= 200 &&
     i.costAccounts.every((a) => Number.isInteger(a) && a >= 1000 && a <= 9999)
   if (!ok) throw new BadRequestException('Ogiltig läsbegäran (år, datum eller konton)')
+}
+
+/**
+ * P-F1: läsport som klarar att access-token går ut mitt i en läsning.
+ * Vid 401: EN förnyelse via anslutningens CAS-lås och EXAKT ETT omförsök av samma
+ * GET. Ett andra 401 (eller avvisad/okänd förnyelse) ger auth-fel → AUTH_LOST.
+ * Token som ledgern skickar ignoreras; den aktuella hålls här, aldrig i loggar.
+ */
+export class RefreshingLedgerReader implements FortnoxLedgerReader {
+  constructor(
+    private readonly inner: FortnoxLedgerReader,
+    private readonly connections: FortnoxConnectionService,
+    private readonly organizationId: string,
+    private current: { token: string; tokenVersion: number },
+  ) {}
+
+  async get<T>(
+    _token: string,
+    path: string,
+    query?: Readonly<Record<string, string | number>>,
+  ): Promise<T> {
+    try {
+      return await this.inner.get<T>(this.current.token, path, query)
+    } catch (err) {
+      if (!(err instanceof FortnoxReadError) || err.kind !== 'auth') throw err
+      let next: Awaited<ReturnType<FortnoxConnectionService['accessToken']>>
+      try {
+        next = await this.connections.accessToken(this.organizationId, {
+          afterUnauthorizedVersion: this.current.tokenVersion,
+        })
+      } catch (e) {
+        if (
+          e instanceof FortnoxNotConnectedError &&
+          (e.reason === 'REFRESH_IN_PROGRESS' || e.reason === 'REFRESH_RATE_LIMITED')
+        ) {
+          // Förnyelsen kunde inte göras nu: ofullständig läsning, INTE förlorad anslutning.
+          throw new FortnoxReadError('transient')
+        }
+        throw err
+      }
+      this.current = { token: next.token, tokenVersion: next.tokenVersion }
+      return this.inner.get<T>(this.current.token, path, query) // andra 401 propagerar → AUTH_LOST
+    }
+  }
 }

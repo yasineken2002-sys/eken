@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
+import { RefreshingLedgerReader } from './fortnox-readback.service'
 import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
 
 const TYPES = ['COST_CENTER', 'PROJECT'] as const
@@ -47,7 +48,12 @@ export class FortnoxMappingService {
           : null
     if (!path) throw new BadRequestException('Ogiltig projektkod')
     try {
-      const body = await this.reader.get<{
+      const body = await new RefreshingLedgerReader(
+        this.reader,
+        this.connections,
+        organizationId,
+        auth,
+      ).get<{
         CostCenter?: { Code?: unknown }
         Project?: { ProjectNumber?: unknown }
       }>(auth.token, path)

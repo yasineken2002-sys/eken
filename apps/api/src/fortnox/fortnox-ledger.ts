@@ -428,7 +428,8 @@ export async function readLedger(
       ) {
         throw new Incomplete(`Verifikat ${key} har saknat eller ogiltigt datum`)
       }
-      if (!Array.isArray(v.VoucherRows) || v.VoucherRows.length === 0) {
+      // R2e: detaljschemat (fortnox_Bf_VoucherSingleItem) kräver minst två rader.
+      if (!Array.isArray(v.VoucherRows) || v.VoucherRows.length < 2) {
         throw new Incomplete(`Verifikat ${key} saknar rader`)
       }
       for (const [i, r] of (v.VoucherRows as unknown[]).entries()) {

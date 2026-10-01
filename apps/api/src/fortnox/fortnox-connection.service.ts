@@ -244,17 +244,43 @@ export class FortnoxConnectionService {
   // och får antingen den nya token eller REFRESH_IN_PROGRESS.
   async accessToken(
     organizationId: string,
-  ): Promise<{ token: string; connectionId: string; databaseNumber: number }> {
+    opts: {
+      /**
+       * P-F1: Fortnox svarade 401 på en token med denna version. Har versionen redan
+       * höjts (någon annan förnyade) används den nya token; annars förnyas EN gång
+       * under samma CAS-lås, oavsett återstående livstid.
+       */
+      afterUnauthorizedVersion?: number
+    } = {},
+  ): Promise<{
+    token: string
+    connectionId: string
+    databaseNumber: number
+    tokenVersion: number
+  }> {
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn) throw new FortnoxNotConnectedError('NO_CONNECTION')
     if (conn.status !== 'ACTIVE') throw new FortnoxNotConnectedError(conn.status)
     const ids = { connectionId: conn.id, databaseNumber: conn.fortnoxDatabaseNumber }
     const now = Date.now()
+    const forced = opts.afterUnauthorizedVersion !== undefined
+    if (forced && conn.tokenVersion !== opts.afterUnauthorizedVersion) {
+      return {
+        token: this.crypto.decrypt(conn.accessTokenEnc),
+        ...ids,
+        tokenVersion: conn.tokenVersion,
+      }
+    }
     if (
+      !forced &&
       conn.accessTokenExpiresAt &&
       conn.accessTokenExpiresAt.getTime() - now > REFRESH_MARGIN_MS
     ) {
-      return { token: this.crypto.decrypt(conn.accessTokenEnc), ...ids }
+      return {
+        token: this.crypto.decrypt(conn.accessTokenEnc),
+        ...ids,
+        tokenVersion: conn.tokenVersion,
+      }
     }
 
     const lease = await this.prisma.fortnoxConnection.updateMany({
@@ -269,7 +295,11 @@ export class FortnoxConnectionService {
     if (lease.count !== 1) {
       const fresh = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
       if (fresh && fresh.status === 'ACTIVE' && fresh.tokenVersion !== conn.tokenVersion) {
-        return { token: this.crypto.decrypt(fresh.accessTokenEnc), ...ids }
+        return {
+          token: this.crypto.decrypt(fresh.accessTokenEnc),
+          ...ids,
+          tokenVersion: fresh.tokenVersion,
+        }
       }
       if (fresh && fresh.status !== 'ACTIVE') throw new FortnoxNotConnectedError(fresh.status)
       if (fresh?.lastErrorClass === 'REFRESH_RATE_LIMITED') {
@@ -328,7 +358,7 @@ export class FortnoxConnectionService {
     })
     // Anslutningen kopplades från/ersattes under förnyelsen: använd inte token.
     if (saved.count !== 1) throw new FortnoxNotConnectedError('DISCONNECTED')
-    return { token: tokens.accessToken, ...ids }
+    return { token: tokens.accessToken, ...ids, tokenVersion: conn.tokenVersion + 1 }
   }
 
   /** 401 vid läsning eller avvisad förnyelse: stoppa arbetet och nolla tokens. */
