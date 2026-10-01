@@ -1,4 +1,5 @@
 import { ServiceUnavailableException } from '@nestjs/common'
+import { createHash } from 'crypto'
 import { ConfigService } from '@nestjs/config'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import {
@@ -15,7 +16,7 @@ import {
  *
  *   FORTNOX_ENABLED != 'true'                         → Stub (503 på varje väg)
  *   på, men FORTNOX_TOKEN_KEY saknas/ogiltig          → kastar (fail-fast vid boot)
- *   på + FORTNOX_PROVIDER=mock utanför production     → Mock (dev/E2E, syntetisk)
+ *   på + FORTNOX_PROVIDER=mock och NODE_ENV=test      → Mock (prov, syntetisk)
  *   på i övrigt                                       → kastar: skarp adapter är
  *                                                       inte inkopplad i denna version
  *
@@ -31,8 +32,11 @@ export function fortnoxMode(config: ConfigService, crypto: FortnoxTokenCryptoSer
       '[fortnox] FORTNOX_ENABLED=true men FORTNOX_TOKEN_KEY saknas/ogiltig — fail-fast.',
     )
   }
+  // Mock bara vid NODE_ENV=test + uttryckligt val. Aldrig av NODE_ENV=development
+  // eller saknad konfiguration: en falsk anslutning får inte uppstå i en
+  // produktionslik miljö (SAMORDNING-04).
   const wantsMock = config.get<string>('FORTNOX_PROVIDER') === 'mock'
-  if (wantsMock && config.get<string>('NODE_ENV') !== 'production') return 'MOCK'
+  if (wantsMock && config.get<string>('NODE_ENV') === 'test') return 'MOCK'
   throw new Error(
     '[fortnox] skarp Fortnox-adapter är inte inkopplad (kräver verifierat testföretag och åtkomst). ' +
       'Sätt FORTNOX_ENABLED=false.',
@@ -72,14 +76,22 @@ export class MockFortnoxAuthProvider implements FortnoxAuthProvider {
   private n = 0
   readonly issuedCodes = new Set<string>()
   readonly calls = { exchange: 0, refresh: 0, revoke: 0 }
-  failRefresh: null | 'rejected' | 'transient' = null
+  failRefresh: null | 'rejected' | 'not_sent' | 'unknown' = null
+  /** challenge per utfärdad kod — exchange kräver matchande verifier (S256). */
+  private readonly challenges = new Map<string, string>()
   expiresInMs = 3600_000
   now: () => number = () => Date.now()
 
-  authorizeUrl(input: { state: string; redirectUri: string }): string {
+  authorizeUrl(input: { state: string; codeChallenge: string; redirectUri: string }): string {
     const code = `mock-code-${input.state.slice(0, 8)}`
     this.issuedCodes.add(code)
-    const q = new URLSearchParams({ state: input.state, redirect_uri: input.redirectUri })
+    this.challenges.set(code, input.codeChallenge)
+    const q = new URLSearchParams({
+      state: input.state,
+      redirect_uri: input.redirectUri,
+      code_challenge: input.codeChallenge,
+      code_challenge_method: 'S256',
+    })
     return `https://mock.fortnox.invalid/oauth-v1/auth?${q.toString()}`
   }
 
@@ -93,9 +105,11 @@ export class MockFortnoxAuthProvider implements FortnoxAuthProvider {
     }
   }
 
-  async exchangeCode(input: { code: string }): Promise<FortnoxTokenSet> {
+  async exchangeCode(input: { code: string; codeVerifier: string }): Promise<FortnoxTokenSet> {
     this.calls.exchange += 1
+    const challenge = this.challenges.get(input.code)
     if (!this.issuedCodes.delete(input.code)) throw new FortnoxAuthError('rejected')
+    if (challenge !== pkceChallenge(input.codeVerifier)) throw new FortnoxAuthError('rejected')
     return this.tokens()
   }
 
@@ -122,6 +136,11 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     DatabaseNumber: 900001,
   }
   costCenters: string[] = ['HUSA', 'HUSB']
+  financialYears = [{ Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' }]
+  accounts: Array<{ Number: number; Active: boolean }> = [
+    { Number: 2440, Active: true },
+    { Number: 5170, Active: true },
+  ]
   vouchers: FortnoxVoucher[] = []
   pageSize = 2
   /** Prov: kasta på anrop nr N (1-baserat). */
@@ -151,6 +170,18 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
       ) as T
     }
     if (path === '/3/vouchers/sublist') return this.paged(this.vouchers, 'Vouchers', page) as T
+    const fy = /^\/3\/financialyears\/(\d+)$/.exec(path)
+    if (fy) {
+      const y = this.financialYears.find((x) => x.Id === Number(fy[1]))
+      if (!y) throw new FortnoxReadError('invalid', 404)
+      return { FinancialYear: { ...y } } as T
+    }
+    const acc = /^\/3\/accounts\/(\d+)$/.exec(path)
+    if (acc) {
+      const a = this.accounts.find((x) => x.Number === Number(acc[1]))
+      if (!a) throw new FortnoxReadError('invalid', 404)
+      return { Account: { ...a, Year: query?.financialyear } } as T
+    }
     const m = /^\/3\/vouchers\/([A-Za-z0-9]+)\/(\d+)$/.exec(path)
     if (m) {
       const v = this.vouchers.find(
@@ -173,4 +204,9 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
       [key]: structuredClone(items.slice((page - 1) * this.pageSize, page * this.pageSize)),
     }
   }
+}
+
+/** RFC 7636 S256: base64url(SHA-256(verifier)) utan utfyllnad. */
+export function pkceChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier, 'ascii').digest('base64url')
 }

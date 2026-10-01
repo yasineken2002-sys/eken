@@ -48,8 +48,6 @@ const MAP = new Map([
 const CFG: LedgerReadConfig = {
   expectedDatabaseNumber: 900001,
   financialYearId: 1,
-  financialYearStart: '2026-01-01',
-  financialYearEnd: '2026-12-31',
   periodFrom: '2026-01-01',
   periodTo: '2026-12-31',
   costAccounts: [5170],
@@ -187,7 +185,7 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
 
   it('antal ändras under läsning → PARTIAL, summa null', async () => {
     const r = reader([K1, K2, K3, REV, NEW])
-    r.hooks.set(4, () => r.vouchers.push(ver(6, '2026-10-21', [row(5170, 1)])))
+    r.hooks.set(6, () => r.vouchers.push(ver(6, '2026-10-21', [row(5170, 1)]))) // anrop 6 = vouchers sida 2
     const res = await readLedger(r, 't', CFG)
     expect(res.status).toBe('PARTIAL')
     expect(res.summary).toBeNull()
@@ -249,8 +247,39 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
     expect(res.status).toBe('PARTIAL')
   })
 
-  it('period utanför räkenskapsåret avvisas', async () => {
-    expect((await facit([K1], { periodTo: '2027-01-31' })).res.status).toBe('FAILED')
+  it('period utanför räkenskapsåret (enligt Fortnox) avvisas', async () => {
+    const { res } = await facit([K1], { periodTo: '2027-01-31' })
+    expect(res.status).toBe('FAILED')
+    expect(res.financialYear).toEqual({ id: 1, fromDate: '2026-01-01', toDate: '2026-12-31' })
+  })
+
+  it('räkenskapsårets gränser tas från Fortnox, inte från klienten (brutet år)', async () => {
+    const r = reader([ver(1, '2026-06-15', [row(5170, 100)])])
+    r.financialYears = [{ Id: 1, FromDate: '2025-07-01', ToDate: '2026-06-30' }]
+    const ok = await readLedger(r, 't', {
+      ...CFG,
+      periodFrom: '2026-06-01',
+      periodTo: '2026-06-30',
+    })
+    expect(ok.summary!.totalOre).toBe(10000)
+    const r2 = reader([ver(1, '2026-07-02', [row(5170, 100)])])
+    r2.financialYears = [{ Id: 1, FromDate: '2025-07-01', ToDate: '2026-06-30' }]
+    const bad = await readLedger(r2, 't', {
+      ...CFG,
+      periodFrom: '2026-06-01',
+      periodTo: '2026-06-30',
+    })
+    expect(bad.status).toBe('PARTIAL')
+  })
+
+  it('räkenskapsår som saknas i Fortnox → PARTIAL', async () => {
+    expect((await facit([K1], { financialYearId: 7 })).res.status).toBe('PARTIAL')
+  })
+
+  it('konto som saknas i Fortnox kontoplan → PARTIAL, summa null', async () => {
+    const { res } = await facit([K1], { costAccounts: [5170, 5999] })
+    expect(res.status).toBe('PARTIAL')
+    expect(res.summary).toBeNull()
   })
 
   it('kostnadsställen läses paginerat (fler än en sida)', async () => {

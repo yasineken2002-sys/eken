@@ -15,7 +15,9 @@
  *  - Removed=true: semantiken är obelagd → egen osäker hink, aldrig tyst.
  *  - Dimension: radens CostCenter (annars Project) via UTTRYCKLIG mappning.
  *    Huvudets dimension ärvs inte. Okänd kod → okopplad, synlig.
- *  - Period väljs på verifikatets TransactionDate inom ett uttryckligt räkenskapsår.
+ *  - Räkenskapsårets gränser och de valda kontona hämtas och kontrolleras mot
+ *    Fortnox (GET /3/financialyears/{Id}, /3/accounts/{n}); klientens uppgifter är
+ *    inget bevis. Period väljs på verifikatets TransactionDate inom det året.
  *    Hela året traverseras och valideras före periodurvalet.
  *  - Ofullständig läsning ger summary=null, aldrig noll.
  *  - Belopp i heltal öre; mer än två decimaler är ogiltigt indata.
@@ -33,9 +35,7 @@ export type LedgerStatus =
 export interface LedgerReadConfig {
   expectedDatabaseNumber: number
   financialYearId: number
-  /** YYYY-MM-DD, inkluderande. */
-  financialYearStart: string
-  financialYearEnd: string
+  /** YYYY-MM-DD, inkluderande. Måste ligga inom räkenskapsåret som Fortnox anger. */
   periodFrom: string
   periodTo: string
   costAccounts: number[]
@@ -81,6 +81,8 @@ export interface LedgerSummary {
 
 export interface LedgerReadResult {
   status: LedgerStatus
+  /** Räkenskapsåret enligt Fortnox; null om det inte hann läsas/verifieras. */
+  financialYear: { id: number; fromDate: string; toDate: string } | null
   reason: string | null
   summary: LedgerSummary | null
   rows: LedgerRowProvenance[] | null
@@ -188,7 +190,12 @@ export async function readLedger(
 ): Promise<LedgerReadResult> {
   const coverage: Record<string, Coverage> = {}
   const uncertainties: string[] = []
-  const base = { coverage, uncertainties, references: [] as LedgerReadResult['references'] }
+  const base = {
+    coverage,
+    uncertainties,
+    references: [] as LedgerReadResult['references'],
+    financialYear: null as LedgerReadResult['financialYear'],
+  }
   const fail = (status: LedgerStatus, reason: string): LedgerReadResult => ({
     status,
     reason,
@@ -197,18 +204,10 @@ export async function readLedger(
     ...base,
   })
 
-  for (const d of [cfg.financialYearStart, cfg.financialYearEnd, cfg.periodFrom, cfg.periodTo]) {
+  for (const d of [cfg.periodFrom, cfg.periodTo]) {
     if (!isDate(d)) return fail('FAILED', `Ogiltigt datum: ${String(d)}`)
   }
-  if (
-    !(
-      cfg.financialYearStart <= cfg.periodFrom &&
-      cfg.periodFrom <= cfg.periodTo &&
-      cfg.periodTo <= cfg.financialYearEnd
-    )
-  ) {
-    return fail('FAILED', 'Perioden måste ligga inom det valda räkenskapsåret')
-  }
+  if (cfg.periodFrom > cfg.periodTo) return fail('FAILED', 'Periodens start ligger efter dess slut')
   if (cfg.costAccounts.length === 0) return fail('FAILED', 'Inga konton valda')
 
   try {
@@ -218,6 +217,39 @@ export async function readLedger(
     )
     if (ci?.CompanyInformation?.DatabaseNumber !== cfg.expectedDatabaseNumber) {
       return fail('WRONG_COMPANY', 'Fortnox svarade för ett annat företag än det anslutna')
+    }
+
+    const fy = await reader.get<{
+      FinancialYear?: { Id?: unknown; FromDate?: unknown; ToDate?: unknown }
+    }>(token, `/3/financialyears/${cfg.financialYearId}`)
+    const y = fy?.FinancialYear
+    if (
+      !y ||
+      y.Id !== cfg.financialYearId ||
+      !isDate(y.FromDate) ||
+      !isDate(y.ToDate) ||
+      y.FromDate > y.ToDate
+    ) {
+      throw new Incomplete('Räkenskapsåret kunde inte verifieras i Fortnox')
+    }
+    base.financialYear = { id: cfg.financialYearId, fromDate: y.FromDate, toDate: y.ToDate }
+    if (cfg.periodFrom < y.FromDate || cfg.periodTo > y.ToDate) {
+      return fail('FAILED', `Perioden måste ligga inom räkenskapsåret ${y.FromDate}–${y.ToDate}`)
+    }
+    const yearStart = y.FromDate
+    const yearEnd = y.ToDate
+
+    for (const n of [...new Set(cfg.costAccounts)].sort((a, b) => a - b)) {
+      const acc = await reader.get<{ Account?: { Number?: unknown; Active?: unknown } }>(
+        token,
+        `/3/accounts/${n}`,
+        {
+          financialyear: cfg.financialYearId,
+        },
+      )
+      if (acc?.Account?.Number !== n)
+        throw new Incomplete(`Konto ${n} finns inte i Fortnox kontoplan för året`)
+      if (acc.Account.Active === false) uncertainties.push(`Konto ${n} är inaktivt i Fortnox.`)
     }
 
     const cc = await paged<{ Code?: unknown }>(
@@ -284,8 +316,8 @@ export async function readLedger(
         throw new Incomplete(`Verifikat ${key} hör till fel räkenskapsår`)
       if (
         !isDate(v.TransactionDate) ||
-        v.TransactionDate < cfg.financialYearStart ||
-        v.TransactionDate > cfg.financialYearEnd
+        v.TransactionDate < yearStart ||
+        v.TransactionDate > yearEnd
       ) {
         throw new Incomplete(`Verifikat ${key} har saknat eller ogiltigt datum`)
       }
@@ -311,7 +343,7 @@ export async function readLedger(
 function aggregate(
   vouchers: Array<{ key: string; v: FortnoxVoucher }>,
   cfg: LedgerReadConfig,
-  base: Pick<LedgerReadResult, 'coverage' | 'uncertainties' | 'references'>,
+  base: Pick<LedgerReadResult, 'coverage' | 'uncertainties' | 'references' | 'financialYear'>,
 ): LedgerReadResult {
   const accounts = new Set(cfg.costAccounts)
   const rows: LedgerRowProvenance[] = []

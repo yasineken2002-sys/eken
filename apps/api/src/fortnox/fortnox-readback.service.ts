@@ -1,0 +1,207 @@
+import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
+import { readLedger, type LedgerReadResult } from './fortnox-ledger'
+import { FORTNOX_LEDGER_READER, type FortnoxLedgerReader } from './fortnox.types'
+
+export interface StartReadInput {
+  financialYearId: number
+  periodFrom: string
+  periodTo: string
+  costAccounts: number[]
+}
+
+/** En pågående läsning äldre än så här räknas som avbruten och blockerar inte nästa. */
+const RUNNING_STALE_MS = 10 * 60 * 1000
+
+const NOT_CONNECTED_TEXT: Record<FortnoxNotConnectedError['reason'], string> = {
+  NO_CONNECTION: 'Ingen Fortnox-anslutning',
+  AUTH_LOST: 'Fortnox-inloggningen har upphört; anslut igen',
+  DISCONNECTED: 'Fortnox-anslutningen är frånkopplad',
+  REFRESH_IN_PROGRESS: 'Inloggningen förnyas; försök igen om en stund',
+}
+
+/** Fält som visas för kunden och AI. `rows` (proveniens) hämtas separat. */
+export const FORTNOX_READ_VIEW_SELECT = {
+  id: true,
+  status: true,
+  financialYearId: true,
+  financialYearStart: true,
+  financialYearEnd: true,
+  periodFrom: true,
+  periodTo: true,
+  startedAt: true,
+  completedAt: true,
+  reason: true,
+  uncertainties: true,
+  coverage: true,
+  summary: true,
+  fortnoxDatabaseNumber: true,
+} satisfies Prisma.FortnoxReadRunSelect
+
+/**
+ * Återläsning till ett SEPARAT, källmärkt underlag (shadow). Påverkar inte Evenos
+ * huvudbok eller rapporter. Varje försök sparas — även ofullständiga — så att
+ * senaste lyckade läsning och senaste fel kan visas var för sig.
+ */
+@Injectable()
+export class FortnoxReadbackService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly connections: FortnoxConnectionService,
+    @Inject(FORTNOX_LEDGER_READER) private readonly reader: FortnoxLedgerReader,
+  ) {}
+
+  async read(organizationId: string, userId: string | null, input: StartReadInput) {
+    validate(input)
+    let auth: Awaited<ReturnType<FortnoxConnectionService['accessToken']>>
+    try {
+      auth = await this.connections.accessToken(organizationId)
+    } catch (err) {
+      if (err instanceof FortnoxNotConnectedError)
+        throw new ConflictException(NOT_CONNECTED_TEXT[err.reason])
+      throw err
+    }
+
+    // En läsning åt gången per organisation. Kontrollen är inte ett lås; två
+    // samtidiga starter kan båda passera, men de skriver var sin körning och
+    // påverkar inget annat än vilken som blir "senaste".
+    const running = await this.prisma.fortnoxReadRun.findFirst({
+      where: {
+        organizationId,
+        status: 'RUNNING',
+        startedAt: { gt: new Date(Date.now() - RUNNING_STALE_MS) },
+      },
+      select: { id: true },
+    })
+    if (running) throw new ConflictException('En Fortnox-läsning pågår redan')
+
+    const run = await this.prisma.fortnoxReadRun.create({
+      data: {
+        organizationId,
+        connectionId: auth.connectionId,
+        fortnoxDatabaseNumber: auth.databaseNumber,
+        financialYearId: input.financialYearId,
+        periodFrom: new Date(`${input.periodFrom}T00:00:00Z`),
+        periodTo: new Date(`${input.periodTo}T00:00:00Z`),
+        costAccounts: input.costAccounts,
+        triggeredByUserId: userId,
+      },
+      select: { id: true },
+    })
+
+    let result: LedgerReadResult
+    try {
+      const [mappings, exported] = await Promise.all([
+        this.prisma.fortnoxDimensionMapping.findMany({
+          where: { organizationId },
+          select: {
+            dimensionType: true,
+            code: true,
+            propertyId: true,
+            property: { select: { name: true } },
+          },
+        }),
+        this.prisma.fortnoxVoucherExport.findMany({
+          // EXAKT tuple (företag, år, serie, nummer) — aldrig serie- eller textlikhet.
+          where: {
+            organizationId,
+            state: 'CONFIRMED',
+            fortnoxDatabaseNumber: auth.databaseNumber,
+            externalYear: { not: null },
+            externalSeries: { not: null },
+            externalNumber: { not: null },
+          },
+          select: { externalYear: true, externalSeries: true, externalNumber: true },
+        }),
+      ])
+      result = await readLedger(this.reader, auth.token, {
+        expectedDatabaseNumber: auth.databaseNumber,
+        ...input,
+        mappings: new Map(
+          mappings.map((m) => [
+            `${m.dimensionType}:${m.code}`,
+            { propertyId: m.propertyId, propertyName: m.property.name },
+          ]),
+        ),
+        evenoExported: new Set(
+          exported.map((e) => `${e.externalYear}|${e.externalSeries}|${e.externalNumber}`),
+        ),
+      })
+    } catch {
+      // Oväntat fel: körningen får ett slutläge, aldrig en kvarlämnad RUNNING och aldrig en summa.
+      result = {
+        status: 'FAILED',
+        financialYear: null,
+        reason: 'Oväntat fel vid läsning',
+        summary: null,
+        rows: null,
+        coverage: {},
+        uncertainties: [],
+        references: [],
+      }
+    }
+    if (result.status === 'AUTH_LOST')
+      await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED')
+
+    return this.prisma.fortnoxReadRun.update({
+      where: { id: run.id },
+      data: {
+        status: result.status,
+        completedAt: new Date(),
+        financialYearStart: result.financialYear
+          ? new Date(`${result.financialYear.fromDate}T00:00:00Z`)
+          : null,
+        financialYearEnd: result.financialYear
+          ? new Date(`${result.financialYear.toDate}T00:00:00Z`)
+          : null,
+        reason: result.reason,
+        summary:
+          result.summary === null
+            ? Prisma.DbNull
+            : (result.summary as unknown as Prisma.InputJsonValue),
+        rows:
+          result.rows === null
+            ? Prisma.DbNull
+            : ({
+                rows: result.rows,
+                references: result.references,
+              } as unknown as Prisma.InputJsonValue),
+        coverage: result.coverage as unknown as Prisma.InputJsonValue,
+        uncertainties: result.uncertainties,
+      },
+      select: FORTNOX_READ_VIEW_SELECT,
+    })
+  }
+
+  async latest(organizationId: string) {
+    const [latestRead, latestCompleteRead] = await Promise.all([
+      this.prisma.fortnoxReadRun.findFirst({
+        where: { organizationId },
+        orderBy: { startedAt: 'desc' },
+        select: FORTNOX_READ_VIEW_SELECT,
+      }),
+      this.prisma.fortnoxReadRun.findFirst({
+        where: { organizationId, status: { in: ['COMPLETE', 'COMPLETE_WITH_UNCERTAINTY'] } },
+        orderBy: { startedAt: 'desc' },
+        select: FORTNOX_READ_VIEW_SELECT,
+      }),
+    ])
+    return { latestRead, latestCompleteRead }
+  }
+}
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function validate(i: StartReadInput): void {
+  const ok =
+    Number.isInteger(i.financialYearId) &&
+    i.financialYearId > 0 &&
+    [i.periodFrom, i.periodTo].every((d) => typeof d === 'string' && DATE.test(d)) &&
+    Array.isArray(i.costAccounts) &&
+    i.costAccounts.length > 0 &&
+    i.costAccounts.length <= 200 &&
+    i.costAccounts.every((a) => Number.isInteger(a) && a >= 1000 && a <= 9999)
+  if (!ok) throw new BadRequestException('Ogiltig läsbegäran (år, datum eller konton)')
+}

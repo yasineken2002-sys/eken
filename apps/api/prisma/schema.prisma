@@ -7537,13 +7537,14 @@ model FortnoxConnection {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
-// Single-use OAuth-state (CSRF-bindning). PKCE antas inte: Fortnox stöd är
-// inte belagt. organizationId läses HÄRIFRÅN vid callback, aldrig ur query.
+// Single-use OAuth-state (CSRF-bindning) med PKCE S256-verifier, krypterad och
+// bunden till samma state. organizationId läses HÄRIFRÅN vid callback, aldrig ur query.
 model FortnoxOAuthState {
   id                String    @id @default(uuid())
   state             String    @unique
   organizationId    String
   initiatedByUserId String
+  codeVerifierEnc   String
   consumedAt        DateTime?
   expiresAt         DateTime
   createdAt         DateTime  @default(now())
@@ -7596,8 +7597,10 @@ model FortnoxReadRun {
   fortnoxDatabaseNumber Int
   status                FortnoxReadStatus @default(RUNNING)
   financialYearId       Int
-  financialYearStart    DateTime          @db.Date
-  financialYearEnd      DateTime          @db.Date
+  // Årets gränser ENLIGT FORTNOX (GET /3/financialyears/{Id}); null om de inte
+  // hann verifieras. Klientens uppgifter används aldrig som bevis.
+  financialYearStart    DateTime?         @db.Date
+  financialYearEnd      DateTime?         @db.Date
   periodFrom            DateTime          @db.Date
   periodTo              DateTime          @db.Date
   costAccounts          Int[]
@@ -7629,18 +7632,21 @@ enum FortnoxExportState {
 // Beständig exportidentitet: EN rad per Eveno-verifikat och organisation.
 // Parallella begäranden kolliderar på det unika villkoret och ger en rad.
 model FortnoxVoucherExport {
-  id             String             @id @default(uuid())
-  organizationId String
-  journalEntryId String             @unique
-  state          FortnoxExportState
-  draft          Json?
-  draftHash      String?
-  blockReason    String?
-  externalSeries String?
-  externalNumber Int?
-  externalYear   Int?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id                    String             @id @default(uuid())
+  organizationId        String
+  journalEntryId        String             @unique
+  state                 FortnoxExportState
+  draft                 Json?
+  draftHash             String?
+  blockReason           String?
+  // EXAKT extern identitet (företag, år, serie, nummer) som Fortnox bekräftat.
+  // Endast denna tuple får märka ett återläst verifikat som Evenos egen export.
+  fortnoxDatabaseNumber Int?
+  externalSeries        String?
+  externalNumber        Int?
+  externalYear          Int?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)

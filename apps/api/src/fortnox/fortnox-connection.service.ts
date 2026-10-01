@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
+import { pkceChallenge } from './fortnox-providers'
 import {
   FORTNOX_AUTH_PROVIDER,
   FORTNOX_LEDGER_READER,
@@ -100,15 +101,24 @@ export class FortnoxConnectionService {
   async begin(organizationId: string, userId: string): Promise<{ authUrl: string }> {
     if (!this.enabled) throw new ServiceUnavailableException('Fortnox-kopplingen är inte aktiverad')
     const state = crypto.randomBytes(32).toString('hex')
+    // PKCE: 64 tecken base64url (inom 43–128, endast unreserved), bunden till state.
+    const codeVerifier = crypto.randomBytes(48).toString('base64url')
     await this.prisma.fortnoxOAuthState.create({
       data: {
         state,
         organizationId,
         initiatedByUserId: userId,
+        codeVerifierEnc: this.crypto.encrypt(codeVerifier),
         expiresAt: new Date(Date.now() + STATE_TTL_MS),
       },
     })
-    return { authUrl: this.auth.authorizeUrl({ state, redirectUri: this.redirectUri() }) }
+    return {
+      authUrl: this.auth.authorizeUrl({
+        state,
+        codeChallenge: pkceChallenge(codeVerifier),
+        redirectUri: this.redirectUri(),
+      }),
+    }
   }
 
   // ── Callback ───────────────────────────────────────────────────────────────
@@ -129,7 +139,11 @@ export class FortnoxConnectionService {
     const row = await this.prisma.fortnoxOAuthState.findUniqueOrThrow({ where: { state } })
     const organizationId = row.organizationId
 
-    const tokens = await this.auth.exchangeCode({ code, redirectUri: this.redirectUri() })
+    const tokens = await this.auth.exchangeCode({
+      code,
+      codeVerifier: this.crypto.decrypt(row.codeVerifierEnc),
+      redirectUri: this.redirectUri(),
+    })
     const info = await this.reader.get<CompanyInformation>(
       tokens.accessToken,
       '/3/companyinformation',
@@ -257,18 +271,21 @@ export class FortnoxConnectionService {
     try {
       tokens = await this.auth.refresh(this.crypto.decrypt(conn.refreshTokenEnc ?? ''))
     } catch (err) {
-      if (err instanceof FortnoxAuthError && err.kind === 'transient') {
+      if (err instanceof FortnoxAuthError && err.kind === 'not_sent') {
         await this.prisma.fortnoxConnection.updateMany({
           where: { id: conn.id, tokenVersion: conn.tokenVersion },
           data: {
             refreshLeaseUntil: null,
-            lastErrorClass: 'REFRESH_TRANSIENT',
+            lastErrorClass: 'REFRESH_NOT_SENT',
             lastErrorAt: new Date(),
           },
         })
         throw new FortnoxNotConnectedError('REFRESH_IN_PROGRESS')
       }
-      await this.markAuthLost(organizationId, 'AUTH_REJECTED')
+      // Avvisad ELLER okänt utfall: refresh-token kan vara förbrukad (rotation).
+      // Ingen automatisk tokenanvändning förrän kunden ansluter igen.
+      const unknown = err instanceof FortnoxAuthError && err.kind === 'unknown'
+      await this.markAuthLost(organizationId, unknown ? 'REFRESH_OUTCOME_UNKNOWN' : 'AUTH_REJECTED')
       throw new FortnoxNotConnectedError('AUTH_LOST')
     }
     const saved = await this.prisma.fortnoxConnection.updateMany({
@@ -303,7 +320,10 @@ export class FortnoxConnectionService {
   }
 
   // ── Frånkoppling ───────────────────────────────────────────────────────────
-  // Lokalt avslut sker alltid (idempotent). Återkallelse hos Fortnox är best effort.
+  // Lokalt avslut sker alltid (idempotent). Återkallelse av refresh-token hos
+  // Fortnox är best effort. En redan utgiven access-token återkallas INTE av
+  // Fortnox (code-flow); den slutar gälla vid sin livslängd (≤1 h). Eveno
+  // använder den inte efter frånkoppling eftersom den nollas här.
   // Historiska läsningar/exporter behålls; företagsidentiteten står kvar så att en
   // återanslutning till ANNAT företag kan stoppas.
   async disconnect(organizationId: string): Promise<{ disconnected: true }> {

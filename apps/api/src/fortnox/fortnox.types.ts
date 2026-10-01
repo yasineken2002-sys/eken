@@ -30,22 +30,29 @@ export interface FortnoxTokenSet {
 export interface FortnoxAuthProvider {
   readonly name: 'STUB' | 'MOCK'
   /**
-   * Webbläsarens redirect till Fortnox samtyckessida. Bär state, aldrig token.
-   * PKCE antas inte (Fortnox stöd är inte belagt); single-use state är bindningen.
+   * Webbläsarens redirect till Fortnox samtyckessida. Bär state och PKCE S256-challenge,
+   * aldrig token. (PKCE S256 är dokumenterat av Fortnox; `plain` används aldrig.)
    */
-  authorizeUrl(input: { state: string; redirectUri: string }): string
-  exchangeCode(input: { code: string; redirectUri: string }): Promise<FortnoxTokenSet>
+  authorizeUrl(input: { state: string; codeChallenge: string; redirectUri: string }): string
+  exchangeCode(input: {
+    code: string
+    codeVerifier: string
+    redirectUri: string
+  }): Promise<FortnoxTokenSet>
   refresh(refreshToken: string): Promise<FortnoxTokenSet>
   revoke(refreshToken: string): Promise<void>
 }
 
 /**
- * Fel från auth-providern. `rejected` = Fortnox avvisade (t.ex. ogiltig/återkallad
- * refresh-token) → anslutningen blir AUTH_LOST. `transient` = nätverk/timeout →
- * inget tillstånd ändras utom låset.
+ * Fel från auth-providern:
+ *  - `rejected`: Fortnox avvisade (ogiltig/återkallad refresh-token) → AUTH_LOST.
+ *  - `not_sent`: begäran nådde aldrig Fortnox → bara låset släpps.
+ *  - `unknown`: begäran kan ha behandlats (timeout efter sändning). Förnyelse
+ *    ROTERAR refresh-token, så den gamla kan vara förbrukad → automatisk
+ *    tokenanvändning låses tills återanslutning (AUTH_LOST, REFRESH_OUTCOME_UNKNOWN).
  */
 export class FortnoxAuthError extends Error {
-  constructor(readonly kind: 'rejected' | 'transient') {
+  constructor(readonly kind: 'rejected' | 'not_sent' | 'unknown') {
     super(`Fortnox auth: ${kind}`)
     this.name = 'FortnoxAuthError'
   }
