@@ -17,6 +17,7 @@ import {
   fortnoxRealConfig,
 } from './fortnox-providers'
 import { RealFortnoxAuthProvider, RealFortnoxLedgerReader } from './fortnox-real-provider'
+import type { FortnoxVoucher } from './fortnox.types'
 import { FortnoxOAuthClient, type FortnoxOAuthScope } from './provider/fortnox-oauth-client'
 import { FortnoxTransport } from './provider/fortnox-transport'
 import { InMemoryFortnoxRateLimiter } from './provider/fortnox-rate-limiter'
@@ -117,7 +118,12 @@ import {
             enabled: true,
           })
         }
-        return mode === 'MOCK' ? new MockFortnoxLedgerReader() : new StubFortnoxLedgerReader()
+        if (mode !== 'MOCK') return new StubFortnoxLedgerReader()
+        const mock = new MockFortnoxLedgerReader()
+        // Syntetiskt demoscenario för produktprov (endast Mock, alltså NODE_ENV=test).
+        if (config.get<string>('FORTNOX_MOCK_SCENARIO') === 'demo')
+          mock.vouchers = mockDemoVouchers()
+        return mock
       },
       inject: [ConfigService, FortnoxTokenCryptoService, FORTNOX_REAL_CLIENTS],
     },
@@ -139,4 +145,44 @@ export class FortnoxModule {
           : '[fortnox] SKARP provider uttryckligen konfigurerad.',
     )
   }
+}
+
+/** Facit S4a (syntetiskt): 12 000 HUSA, 4 000 HUSA + 2 000 HUSB, 2 000 utan dimension, återföring + ny. */
+function mockDemoVouchers(): FortnoxVoucher[] {
+  const v = (n: number, date: string, rows: Array<[number, number, number, string?]>) => ({
+    Year: 1,
+    VoucherSeries: 'L',
+    VoucherNumber: n,
+    TransactionDate: date,
+    VoucherRows: rows.map(([Account, Debit, Credit, CostCenter]) => ({
+      Account,
+      Debit,
+      Credit,
+      Removed: false,
+      ...(CostCenter ? { CostCenter } : {}),
+    })),
+  })
+  return [
+    v(1, '2026-10-02', [
+      [5170, 12000, 0, 'HUSA'],
+      [2440, 0, 12000],
+    ]),
+    v(2, '2026-10-05', [
+      [5170, 4000, 0, 'HUSA'],
+      [5170, 2000, 0, 'HUSB'],
+      [2440, 0, 6000],
+    ]),
+    v(3, '2026-10-07', [
+      [5170, 2000, 0],
+      [2440, 0, 2000],
+    ]),
+    v(4, '2026-10-20', [
+      [5170, 0, 12000, 'HUSA'],
+      [2440, 12000, 0],
+    ]),
+    v(5, '2026-10-20', [
+      [5170, 15000, 0, 'HUSA'],
+      [2440, 0, 15000],
+    ]),
+  ]
 }
