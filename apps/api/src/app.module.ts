@@ -66,6 +66,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
 import { BackupModule } from './backup/backup.module'
 import { SigningModule } from './signing/signing.module'
 import { Psd2Module } from './psd2/psd2.module'
+import { FortnoxModule } from './fortnox/fortnox.module'
 
 @Module({
   imports: [
@@ -256,6 +257,7 @@ import { Psd2Module } from './psd2/psd2.module'
     BackupModule,
     SigningModule,
     Psd2Module,
+    FortnoxModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })

@@ -387,6 +387,17 @@ const backfillRoute = appPage('/backfill', BackfillPage)
 const inspectionsRoute = appPage('/inspections', InspectionsPage)
 const maintenancePlanRoute = appPage('/maintenance-plan', MaintenancePlanPage)
 const settingsRoute = appPage('/settings', SettingsPage)
+// Fortnox A. ADRESSEN ÄR INTE FRI: `FORTNOX_APP_RETURN_URL` defaultar till
+// `…/settings/fortnox` i fortnox-connection.service.ts och dit skickas kunden
+// efter OAuth. Kvittensen `?fortnox=ok|error` används inte som sanning — panelen
+// hämtar alltid status från servern.
+const fortnoxSettingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings/fortnox',
+  component: function FortnoxSettingsRoute() {
+    return <SettingsPage initialTab="fortnox" />
+  },
+})
 const overviewRoute = appPage('/overview', OverviewPage)
 const notificationsRoute = appPage('/notifications', NotificationsPage)
 const newsRoute = appPage('/news', NewsPage)
@@ -453,6 +464,7 @@ const routeTree = rootRoute.addChildren([
     inspectionsRoute,
     maintenancePlanRoute,
     settingsRoute,
+    fortnoxSettingsRoute,
     overviewRoute,
     notificationsRoute,
     newsRoute,

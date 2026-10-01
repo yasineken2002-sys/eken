@@ -134,6 +134,8 @@ export const DELETION_STEPS: readonly Step[] = [
   // PERMANENT oraderbar (P2003) — en dataskyddsblockerare som hade upptäckts
   // först vid en raderingsbegäran.
   { model: 'LateFiscalYearPosting', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
+  // FÖRE JournalEntry: exportkön pekar på sitt verifikat med Restrict (Fortnox A).
+  { model: 'FortnoxVoucherExport', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
   { model: 'JournalEntrySequence', restrictAgainst: 'Organization', where: byOrg },
   { model: 'JournalEntry', restrictAgainst: 'Organization', where: byOrg },
   { model: 'InvoiceNumberSequence', restrictAgainst: 'Organization', where: byOrg },

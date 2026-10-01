@@ -262,6 +262,17 @@ export interface KontraktsPost {
 
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
+import {
+  fortnoxDryRunInputSchema,
+  fortnoxExportSettingsInputSchema,
+  fortnoxMappingInputSchema,
+  fortnoxReadInputSchema,
+} from '@eken/shared'
+import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-settings.dto'
+import { FortnoxDryRunDto } from '../../fortnox/dto/fortnox-dry-run.dto'
+import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
+import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
+
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
   {
     endpoint: 'POST /accounting/journal/:id/reverse',
@@ -1575,5 +1586,60 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltig: { maxBankTxAmount: 50_000_001 },
     ogiltigVarfor: 'banktransaktionsgränsen får inte överstiga 50 MSEK',
+  },
+  {
+    // Fortnox A. Pariteten prövar MINST ETT KONTO — ett tomt urval får inte bli en
+    // "lyckad" läsning av ingenting. Årets gränser verifieras av tjänsten mot Fortnox.
+    endpoint: 'POST /integrations/fortnox/reads',
+    inputTyp: 'FortnoxReadInput',
+    schema: fortnoxReadInputSchema,
+    dto: FortnoxReadDto,
+    giltig: {
+      financialYearId: 1,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      costAccounts: [5170],
+    },
+    ogiltig: {
+      financialYearId: 1,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      costAccounts: [],
+    },
+    ogiltigVarfor: 'en läsning utan valda konton har inget mått att redovisa',
+  },
+  {
+    // Fortnox A. Pariteten prövar DIMENSIONSTYPEN — bara kostnadsställe/projekt finns.
+    endpoint: 'PUT /integrations/fortnox/mappings',
+    inputTyp: 'FortnoxMappingInput',
+    schema: fortnoxMappingInputSchema,
+    dto: FortnoxMappingDto,
+    giltig: { dimensionType: 'COST_CENTER', code: 'HUSA', propertyId: 'p-1' },
+    ogiltig: { dimensionType: 'ACCOUNT', code: 'HUSA', propertyId: 'p-1' },
+    ogiltigVarfor: 'endast kostnadsställe och projekt kan kopplas till fastighet',
+  },
+  {
+    // Fortnox A. Pariteten prövar SERIEKODEN — bara verifierade, korta koder.
+    endpoint: 'PUT /integrations/fortnox/export-settings',
+    inputTyp: 'FortnoxExportSettingsInput',
+    schema: fortnoxExportSettingsInputSchema,
+    dto: FortnoxExportSettingsDto,
+    giltig: { voucherSeries: 'A', omitDimensions: true },
+    ogiltig: { voucherSeries: 'A; DROP', omitDimensions: true },
+    ogiltigVarfor: 'en seriekod med andra tecken än bokstäver och siffror finns inte i Fortnox',
+  },
+  {
+    // Fortnox A. Pariteten prövar att ett verifikat faktiskt anges.
+    endpoint: 'POST /integrations/fortnox/exports/dry-run',
+    inputTyp: 'FortnoxDryRunInput',
+    schema: fortnoxDryRunInputSchema,
+    dto: FortnoxDryRunDto,
+    giltig: { journalEntryId: 'je-1' },
+    ogiltig: { journalEntryId: '' },
+    ogiltigVarfor: 'en förhandskontroll utan verifikat har inget att kontrollera',
   },
 ]

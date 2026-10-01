@@ -22,6 +22,7 @@
   },
   "Property": {
     "organization": "Föräldrarelation, samma skäl som på Tenant.",
-    "units": "Strukturellt barn, inte en händelse. Lägenhetens händelser läses i lägenhetens EGEN historik. Att aggregera dem uppåt till fastigheten (planens 'Fastighet — aggregerat', t.ex. in-/utflyttar över hela huset) är ett EGET beslut med en egen behörighetsfråga — det ska fattas öppet, inte smygas in via en relation vars källa bara skulle täcka en delmängd av lägenhetens händelser. Tills det beslutet är fattat visar fastighetshistoriken det som är direkt fastighetsknutet: ärenden, besiktningar, dokument, underhållsplaner, nyheter."
+    "units": "Strukturellt barn, inte en händelse. Lägenhetens händelser läses i lägenhetens EGEN historik. Att aggregera dem uppåt till fastigheten (planens 'Fastighet — aggregerat', t.ex. in-/utflyttar över hela huset) är ett EGET beslut med en egen behörighetsfråga — det ska fattas öppet, inte smygas in via en relation vars källa bara skulle täcka en delmängd av lägenhetens händelser. Tills det beslutet är fattat visar fastighetshistoriken det som är direkt fastighetsknutet: ärenden, besiktningar, dokument, underhållsplaner, nyheter.",
+    "fortnoxDimensionMappings": "Konfiguration, inte en händelse: uttrycklig koppling Fortnox-kostnadsställe/projekt → fastighet för skuggläsningen (Fortnox A). Bär ingen fastighetshistorik; ändringar syns i Fortnox-avsnittet, inte i fastighetens historik."
   }
 }

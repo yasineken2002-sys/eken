@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common'
+import { formatFortnoxShadowForAi } from '../fortnox/fortnox-ai-context'
+import { FortnoxReadbackService } from '../fortnox/fortnox-readback.service'
+import { Injectable, Optional } from '@nestjs/common'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
@@ -24,6 +26,9 @@ export class DataContextService {
     // månadshyra" (Σ avtalad monthlyRent) som är en teoretisk run-rate, inte
     // bokförd intäkt.
     private readonly accounting: AccountingService,
+    // Fortnox-återläsning i SKUGGLÄGE (ägarval A). Valfri: utan anslutning blir
+    // blocket tomt och kontexten identisk med tidigare. Ändrar aldrig siffrorna ovan.
+    @Optional() private readonly fortnox?: FortnoxReadbackService,
   ) {}
 
   async buildContext(organizationId: string): Promise<string> {
@@ -419,6 +424,18 @@ export class DataContextService {
       }
     }
 
+    if (this.fortnox) {
+      try {
+        lines.push(...formatFortnoxShadowForAi(await this.fortnox.aiSnapshot(organizationId), now))
+      } catch {
+        // Saknat underlag får inte bli tyst: säg det, utan belopp.
+        lines.push(
+          '',
+          '## FORTNOX-ÅTERLÄSNING',
+          'Fortnox-underlaget kunde inte läsas just nu. Ange inga Fortnox-belopp.',
+        )
+      }
+    }
     return lines.join('\n')
   }
 
