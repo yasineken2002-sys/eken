@@ -301,10 +301,48 @@ describe('Fortnox-återläsning — negativa kontroller', () => {
     expect(res.summary!.totalOre).toBe(1800000)
   })
 
-  it('belopp med mer än två decimaler är ogiltigt', async () => {
-    expect(toOre(10.005)).toBeNull()
+  it('belopp: exakt decimal → öre, ingen epsilon, säkert heltal', () => {
     expect(toOre(10.05)).toBe(1005)
-    const bad = ver(1, '2026-10-02', [row(5170, 0.001)])
-    expect((await facit([bad])).res.status).toBe('PARTIAL')
+    expect(toOre(0)).toBe(0)
+    expect(toOre(90071992547409.9)).toBe(9007199254740990)
+    expect(toOre(100000000000000)).toBeNull()
+    expect(toOre(1.000000001)).toBeNull()
+    expect(toOre(10.005)).toBeNull()
+    expect(toOre(1e21)).toBeNull()
+    expect(toOre(undefined)).toBeNull()
+    expect(toOre('100')).toBeNull()
+  })
+
+  it.each([
+    ['konto som sträng', [{ Account: '5170', Debit: 100, Credit: 0 }]],
+    ['tomma rader', []],
+    ['debet saknas', [{ Account: 5170, Credit: 0 }]],
+    ['Removed som sträng', [{ Account: 5170, Debit: 100, Credit: 0, Removed: 'true' }]],
+    ['negativt belopp', [{ Account: 5170, Debit: -100, Credit: 0 }]],
+    ['dimension som tal', [{ Account: 5170, Debit: 100, Credit: 0, CostCenter: 7 }]],
+    [
+      'ogiltig rad på ANNAT konto',
+      [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 'x', Debit: 0, Credit: 100 },
+      ],
+    ],
+  ])('ogiltig extern rad (%s) → PARTIAL, aldrig COMPLETE/0', async (_n, rows) => {
+    const { res } = await facit([ver(1, '2026-10-02', rows as unknown[])])
+    expect(res.status).toBe('PARTIAL')
+    expect(res.summary).toBeNull()
+  })
+
+  it('ogiltig rad utanför perioden fäller ändå läsningen', async () => {
+    const bad = ver(2, '2026-03-01', [{ Account: '5170', Debit: 1, Credit: 0 }])
+    const { res } = await facit([K1, bad], { periodFrom: '2026-10-01', periodTo: '2026-10-31' })
+    expect(res.status).toBe('PARTIAL')
+  })
+
+  it('summa utanför säkra heltal → PARTIAL', async () => {
+    const big = (n: number) => ver(n, '2026-10-02', [row(5170, 90071992547409.9)])
+    const { res } = await facit([big(1), big(2)])
+    expect(res.status).toBe('PARTIAL')
+    expect(res.summary).toBeNull()
   })
 })

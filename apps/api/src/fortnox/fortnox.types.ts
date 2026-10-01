@@ -28,7 +28,7 @@ export interface FortnoxTokenSet {
 }
 
 export interface FortnoxAuthProvider {
-  readonly name: 'STUB' | 'MOCK'
+  readonly name: 'STUB' | 'MOCK' | 'REAL'
   /**
    * Webbläsarens redirect till Fortnox samtyckessida. Bär state och PKCE S256-challenge,
    * aldrig token. (PKCE S256 är dokumenterat av Fortnox; `plain` används aldrig.)

@@ -114,11 +114,58 @@ function isPosInt(v: unknown): v is number {
 }
 
 /** Belopp → öre. Null om inte ett ändligt tal med högst två decimaler. */
+/**
+ * Belopp → heltal öre, EXAKT ur talets decimala form (ingen flyttalsaritmetik,
+ * ingen epsilon). Saknat värde är ogiltigt — inte noll. Mer än två decimaler,
+ * exponentform eller ett resultat utanför säkra heltal ger null.
+ */
 export function toOre(v: unknown): number | null {
-  if (v === undefined || v === null || v === '') return 0
   if (typeof v !== 'number' || !Number.isFinite(v)) return null
-  const ore = Math.round(v * 100)
-  return Math.abs(v * 100 - ore) < 1e-6 ? ore : null
+  // String() ger den kortaste decimalform som återger exakt samma double — dvs.
+  // den form JSON-svaret hade. Exponentform (1e21, 1e-7) avvisas.
+  const m = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(String(v))
+  if (!m) return null
+  const ore = BigInt(m[2] ?? '0') * 100n + BigInt((m[3] ?? '').padEnd(2, '0') || '0')
+  const signed = m[1] === '-' ? -ore : ore
+  if (signed > BigInt(Number.MAX_SAFE_INTEGER) || signed < -BigInt(Number.MAX_SAFE_INTEGER))
+    return null
+  return Number(signed)
+}
+
+/** Summering med grind: utanför säkra heltal → ogiltigt (aldrig tyst avrundning). */
+function add(a: number, b: number): number {
+  const s = a + b
+  if (!Number.isSafeInteger(s))
+    throw new Incomplete('Beloppssumman ligger utanför säkert talområde')
+  return s
+}
+
+const optionalCode = (x: unknown) => x === undefined || x === null || typeof x === 'string'
+
+/**
+ * Strikt kontroll av en verifikatrad ur Fortnox, för ALLA rader i året (inte bara
+ * valda konton och inte bara perioden). Ett fel gör läsningen ofullständig — en
+ * rad med t.ex. konto som sträng får aldrig tyst falla bort ur summan.
+ */
+function rowProblem(r: unknown): string | null {
+  if (!r || typeof r !== 'object') return 'rad saknas'
+  const x = r as Record<string, unknown>
+  if (
+    typeof x.Account !== 'number' ||
+    !Number.isInteger(x.Account) ||
+    x.Account < 1000 ||
+    x.Account > 9999
+  ) {
+    return 'ogiltigt konto'
+  }
+  const d = toOre(x.Debit)
+  const c = toOre(x.Credit)
+  if (d === null || c === null) return 'ogiltigt eller saknat belopp'
+  if (d < 0 || c < 0) return 'negativt belopp (semantik obelagd)'
+  if (x.Removed !== undefined && typeof x.Removed !== 'boolean')
+    return 'ogiltig borttagningsmarkering'
+  if (!optionalCode(x.CostCenter) || !optionalCode(x.Project)) return 'ogiltig dimension'
+  return null
 }
 
 function stable(v: unknown): string {
@@ -321,7 +368,13 @@ export async function readLedger(
       ) {
         throw new Incomplete(`Verifikat ${key} har saknat eller ogiltigt datum`)
       }
-      if (!Array.isArray(v.VoucherRows)) throw new Incomplete(`Verifikat ${key} saknar rader`)
+      if (!Array.isArray(v.VoucherRows) || v.VoucherRows.length === 0) {
+        throw new Incomplete(`Verifikat ${key} saknar rader`)
+      }
+      for (const [i, r] of (v.VoucherRows as unknown[]).entries()) {
+        const p = rowProblem(r)
+        if (p) throw new Incomplete(`Verifikat ${key} rad ${i + 1}: ${p}`)
+      }
       vouchers.push({ key, v })
     }
 
@@ -405,7 +458,7 @@ function aggregate(
       }
       if (r.Removed === true) {
         prov.bucket = 'UNCERTAIN_REMOVED'
-        removed += amountOre
+        removed = add(removed, amountOre)
         uncertain = true
         base.uncertainties.push(
           `Verifikat ${key} rad ${i + 1} är markerad som borttagen i Fortnox; innebörden är inte belagd och raden ingår inte i summan.`,
@@ -413,8 +466,8 @@ function aggregate(
         rows.push(prov)
         continue
       }
-      total += amountOre
-      if (evenoExport) eveno += amountOre
+      total = add(total, amountOre)
+      if (evenoExport) eveno = add(eveno, amountOre)
       if (!dimensionType && (v.CostCenter || v.Project)) {
         uncertain = true
         base.uncertainties.push(
@@ -427,17 +480,17 @@ function aggregate(
           prov.bucket = 'PROPERTY'
           prov.propertyId = m.propertyId
           const cur = byProperty.get(m.propertyId) ?? { ...m, amountOre: 0 }
-          cur.amountOre += amountOre
+          cur.amountOre = add(cur.amountOre, amountOre)
           byProperty.set(m.propertyId, cur)
         } else {
           prov.bucket = 'UNMAPPED'
           const k = `${dimensionType}:${code}`
           const cur = unmapped.get(k) ?? { dimensionType, code, amountOre: 0 }
-          cur.amountOre += amountOre
+          cur.amountOre = add(cur.amountOre, amountOre)
           unmapped.set(k, cur)
         }
       } else {
-        unallocated += amountOre
+        unallocated = add(unallocated, amountOre)
       }
       rows.push(prov)
     }
