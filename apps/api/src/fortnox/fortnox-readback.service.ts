@@ -96,6 +96,7 @@ export class FortnoxReadbackService {
     })
 
     let result: LedgerReadResult
+    const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
     try {
       const [mappings, exported] = await Promise.all([
         this.prisma.fortnoxDimensionMapping.findMany({
@@ -120,7 +121,6 @@ export class FortnoxReadbackService {
           select: { externalYear: true, externalSeries: true, externalNumber: true },
         }),
       ])
-      const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
       result = await readLedger(reader, auth.token, {
         expectedDatabaseNumber: auth.databaseNumber,
         ...input,
@@ -148,7 +148,7 @@ export class FortnoxReadbackService {
       }
     }
     if (result.status === 'AUTH_LOST')
-      await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED')
+      await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED', reader.binding)
 
     return this.prisma.fortnoxReadRun.update({
       where: { id: run.id },
@@ -199,7 +199,8 @@ export class FortnoxReadbackService {
       expectedDatabaseNumber: auth.databaseNumber,
       financialYearId,
     })
-    if (cat.authLost) await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED')
+    if (cat.authLost)
+      await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED', reader.binding)
     return {
       ready: cat.ready,
       reason: cat.reason,
@@ -285,8 +286,13 @@ export class RefreshingLedgerReader implements FortnoxLedgerReader {
     private readonly inner: FortnoxLedgerReader,
     private readonly connections: FortnoxConnectionService,
     private readonly organizationId: string,
-    private current: { token: string; tokenVersion: number },
+    private current: { token: string; tokenVersion: number; connectionId: string },
   ) {}
+
+  /** Anslutning + version för den token som senast användes (C-F02-bindning). */
+  get binding(): { connectionId: string; tokenVersion: number } {
+    return { connectionId: this.current.connectionId, tokenVersion: this.current.tokenVersion }
+  }
 
   async get<T>(
     _token: string,
@@ -312,7 +318,11 @@ export class RefreshingLedgerReader implements FortnoxLedgerReader {
         }
         throw err
       }
-      this.current = { token: next.token, tokenVersion: next.tokenVersion }
+      this.current = {
+        token: next.token,
+        tokenVersion: next.tokenVersion,
+        connectionId: next.connectionId,
+      }
       return this.inner.get<T>(this.current.token, path, query) // andra 401 propagerar → AUTH_LOST
     }
   }

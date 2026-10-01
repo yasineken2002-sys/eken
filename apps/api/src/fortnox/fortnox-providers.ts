@@ -116,6 +116,8 @@ export class MockFortnoxAuthProvider implements FortnoxAuthProvider {
   /** challenge per utfärdad kod — exchange kräver matchande verifier (S256). */
   private readonly challenges = new Map<string, string>()
   expiresInMs = 3600_000
+  /** Beviljade scopes i tokensvaret (prov kan snäva in). */
+  scope = 'companyinformation bookkeeping costcenter project'
   now: () => number = () => Date.now()
 
   authorizeUrl(input: { state: string; codeChallenge: string; redirectUri: string }): string {
@@ -137,7 +139,7 @@ export class MockFortnoxAuthProvider implements FortnoxAuthProvider {
       accessToken: `mock-access-${this.n}`,
       refreshToken: `mock-refresh-${this.n}`,
       expiresAt: new Date(this.now() + this.expiresInMs),
-      scope: 'companyinformation bookkeeping costcenter',
+      scope: this.scope,
     }
   }
 

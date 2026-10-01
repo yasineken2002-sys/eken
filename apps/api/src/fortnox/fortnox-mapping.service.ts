@@ -47,13 +47,9 @@ export class FortnoxMappingService {
           ? `/3/projects/${code}`
           : null
     if (!path) throw new BadRequestException('Ogiltig projektkod')
+    const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
     try {
-      const body = await new RefreshingLedgerReader(
-        this.reader,
-        this.connections,
-        organizationId,
-        auth,
-      ).get<{
+      const body = await reader.get<{
         CostCenter?: { Code?: unknown }
         Project?: { ProjectNumber?: unknown }
       }>(auth.token, path)
@@ -62,7 +58,7 @@ export class FortnoxMappingService {
     } catch (err) {
       if (err instanceof FortnoxReadError) {
         if (err.kind === 'auth') {
-          await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED')
+          await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED', reader.binding)
           throw new ConflictException('Fortnox-inloggningen har upphört; anslut igen')
         }
         if (err.kind === 'invalid')

@@ -7525,6 +7525,12 @@ model FortnoxConnection {
   // CAS-lås för förnyelse: den som höjer versionen förnyar; övriga läser om.
   tokenVersion         Int       @default(0)
   refreshLeaseUntil    DateTime?
+  // C-F01: ett påbörjat förnyelseförsök sparas FÖRE anropet. Ett försök vars lås
+  // gått ut utan registrerat utfall kan ha roterat token hos Fortnox → AUTH_LOST,
+  // aldrig återanvändning av den gamla refresh-token.
+  refreshAttemptId     String?
+  // C-F03: höjs vid frånkoppling; state bär generationen den skapades under.
+  generation           Int       @default(0)
 
   // Verifikatserie som kunden UTTRYCKLIGEN valt för export (verifierad i Fortnox när
   // den sparas). Null = ingen export kan förhandskontrolleras (BLOCKED).
@@ -7544,14 +7550,16 @@ model FortnoxConnection {
 // Single-use OAuth-state (CSRF-bindning) med PKCE S256-verifier, krypterad och
 // bunden till samma state. organizationId läses HÄRIFRÅN vid callback, aldrig ur query.
 model FortnoxOAuthState {
-  id                String    @id @default(uuid())
-  state             String    @unique
-  organizationId    String
-  initiatedByUserId String
-  codeVerifierEnc   String
-  consumedAt        DateTime?
-  expiresAt         DateTime
-  createdAt         DateTime  @default(now())
+  id                 String    @id @default(uuid())
+  state              String    @unique
+  organizationId     String
+  initiatedByUserId  String
+  codeVerifierEnc    String
+  // Anslutningens generation när state skapades; null = ingen anslutning fanns.
+  expectedGeneration Int?
+  consumedAt         DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

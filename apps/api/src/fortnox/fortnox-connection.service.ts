@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { pkceChallenge } from './fortnox-providers'
@@ -22,6 +23,13 @@ import {
 } from './fortnox.types'
 
 const STATE_TTL_MS = 10 * 60 * 1000
+/** Scopes som MÅSTE vara beviljade för att anslutningen ska bli ACTIVE (C-F05). */
+export const FORTNOX_REQUIRED_SCOPES = [
+  'companyinformation',
+  'bookkeeping',
+  'costcenter',
+  'project',
+] as const
 /** Förnya när mindre än så här återstår av access-token. */
 const REFRESH_MARGIN_MS = 60 * 1000
 /** Hur länge en förnyare äger låset innan en annan får ta över. */
@@ -112,11 +120,17 @@ export class FortnoxConnectionService {
     const state = crypto.randomBytes(32).toString('hex')
     // PKCE: 64 tecken base64url (inom 43–128, endast unreserved), bunden till state.
     const codeVerifier = crypto.randomBytes(48).toString('base64url')
+    const current = await this.prisma.fortnoxConnection.findUnique({
+      where: { organizationId },
+      select: { generation: true },
+    })
     await this.prisma.fortnoxOAuthState.create({
       data: {
         state,
         organizationId,
         initiatedByUserId: userId,
+        // C-F03: callbacken får bara skriva om anslutningen fortfarande har denna generation.
+        expectedGeneration: current?.generation ?? null,
         codeVerifierEnc: this.crypto.encrypt(codeVerifier),
         expiresAt: new Date(Date.now() + STATE_TTL_MS),
       },
@@ -168,28 +182,36 @@ export class FortnoxConnectionService {
       throw new BadRequestException('Fortnox-företagets identitet kunde inte fastställas')
     }
 
-    const [org, existing] = await Promise.all([
-      this.prisma.organization.findUniqueOrThrow({
-        where: { id: organizationId },
-        select: { orgNumber: true },
-      }),
-      this.prisma.fortnoxConnection.findUnique({ where: { organizationId } }),
-    ])
+    const refuse = async (message: string, errorClass: string): Promise<never> => {
+      await this.bestEffortRevoke(tokens)
+      await this.prisma.fortnoxConnection.updateMany({
+        where: { organizationId },
+        data: { lastErrorClass: errorClass, lastErrorAt: new Date() },
+      })
+      throw new ConflictException(message)
+    }
+
+    // C-F05: alla nödvändiga scopes måste vara FAKTISKT beviljade (tokensvaret).
+    const granted = new Set((tokens.scope ?? '').split(/\s+/).filter(Boolean))
+    const missingScopes = FORTNOX_REQUIRED_SCOPES.filter((s) => !granted.has(s))
+    if (missingScopes.length) {
+      await refuse(
+        `Fortnox beviljade inte nödvändig behörighet (${missingScopes.join(', ')})`,
+        'SCOPE_MISSING',
+      )
+    }
+
+    // C-F04: är Evenos orgnr känt måste Fortnox ange ett giltigt, lika orgnr.
+    const org = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { orgNumber: true },
+    })
     const fortnoxOrg = normalizeOrgNumber(ci.OrganizationNumber)
     const evenoOrg = normalizeOrgNumber(org.orgNumber)
-    const mismatch =
-      (existing && existing.fortnoxDatabaseNumber !== databaseNumber) ||
-      (evenoOrg !== null && fortnoxOrg !== null && evenoOrg !== fortnoxOrg)
-    if (mismatch) {
-      await this.bestEffortRevoke(tokens)
-      if (existing) {
-        await this.prisma.fortnoxConnection.update({
-          where: { organizationId },
-          data: { lastErrorClass: 'COMPANY_MISMATCH', lastErrorAt: new Date() },
-        })
-      }
-      throw new ConflictException(
-        'Fortnox-företaget matchar inte organisationen eller den tidigare anslutningen',
+    if (evenoOrg !== null && fortnoxOrg !== evenoOrg) {
+      await refuse(
+        'Fortnox-företagets organisationsnummer matchar inte organisationen',
+        'COMPANY_MISMATCH',
       )
     }
 
@@ -200,32 +222,61 @@ export class FortnoxConnectionService {
       scope: tokens.scope ?? null,
     }
     const company = {
-      fortnoxDatabaseNumber: databaseNumber,
       fortnoxOrgNumber: typeof ci.OrganizationNumber === 'string' ? ci.OrganizationNumber : null,
       fortnoxCompanyName: typeof ci.CompanyName === 'string' ? ci.CompanyName : null,
     }
-    await this.prisma.fortnoxConnection.upsert({
-      where: { organizationId },
-      create: {
-        organizationId,
-        status: 'ACTIVE',
-        ...company,
-        ...enc,
-        connectedByUserId: row.initiatedByUserId,
-      },
-      update: {
-        status: 'ACTIVE',
-        ...company,
-        ...enc,
-        tokenVersion: { increment: 1 },
-        refreshLeaseUntil: null,
-        lastErrorClass: null,
-        lastErrorAt: null,
-        connectedByUserId: row.initiatedByUserId,
-        connectedAt: new Date(),
-        disconnectedAt: null,
-      },
-    })
+    const activate = {
+      status: 'ACTIVE' as const,
+      ...company,
+      ...enc,
+      tokenVersion: { increment: 1 },
+      refreshLeaseUntil: null,
+      refreshAttemptId: null,
+      lastErrorClass: null,
+      lastErrorAt: null,
+      connectedByUserId: row.initiatedByUserId,
+      connectedAt: new Date(),
+      disconnectedAt: null,
+    }
+
+    // C-F03: lagring är ATOMISK och bunden till generation + företag.
+    //  - fanns en anslutning när state skapades: CAS på (generation, DatabaseNumber);
+    //    frånkoppling däremellan (generation höjd) eller annat företag → avvisas.
+    //  - fanns ingen: skapa; samtidig förstagångscallback ger unikhetskrock → läs den
+    //    vinnande raden och acceptera BARA samma företag via samma CAS.
+    let stored = false
+    if (row.expectedGeneration === null) {
+      try {
+        await this.prisma.fortnoxConnection.create({
+          data: {
+            organizationId,
+            status: 'ACTIVE',
+            fortnoxDatabaseNumber: databaseNumber,
+            ...company,
+            ...enc,
+            connectedByUserId: row.initiatedByUserId,
+          },
+        })
+        stored = true
+      } catch (err) {
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'))
+          throw err
+      }
+    }
+    if (!stored) {
+      const existing = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
+      if (!existing) await refuse('Anslutningsbegäran är inaktuell; försök igen', 'STALE_CONNECT')
+      if (existing!.fortnoxDatabaseNumber !== databaseNumber) {
+        await refuse('Fortnox-företaget matchar inte den tidigare anslutningen', 'COMPANY_MISMATCH')
+      }
+      const generation = row.expectedGeneration ?? existing!.generation
+      const res = await this.prisma.fortnoxConnection.updateMany({
+        where: { organizationId, generation, fortnoxDatabaseNumber: databaseNumber },
+        data: activate,
+      })
+      if (res.count !== 1)
+        await refuse('Anslutningen ändrades under inloggningen; försök igen', 'STALE_CONNECT')
+    }
     this.logger.log(
       `[fortnox] anslutning lagrad för org ${organizationId} (företag ${databaseNumber})`,
     )
@@ -284,14 +335,19 @@ export class FortnoxConnectionService {
       }
     }
 
+    // C-F01: ett försök registreras BESTÄNDIGT innan anropet. Låset kan bara tas om
+    // inget oavslutat försök finns och ett eventuellt uppskjutningsfönster passerat.
+    const attemptId = crypto.randomUUID()
+    const bind = { id: conn.id, tokenVersion: conn.tokenVersion, refreshAttemptId: attemptId }
     const lease = await this.prisma.fortnoxConnection.updateMany({
       where: {
         id: conn.id,
         status: 'ACTIVE',
         tokenVersion: conn.tokenVersion,
+        refreshAttemptId: null,
         OR: [{ refreshLeaseUntil: null }, { refreshLeaseUntil: { lt: new Date(now) } }],
       },
-      data: { refreshLeaseUntil: new Date(now + REFRESH_LEASE_MS) },
+      data: { refreshLeaseUntil: new Date(now + REFRESH_LEASE_MS), refreshAttemptId: attemptId },
     })
     if (lease.count !== 1) {
       const fresh = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
@@ -303,6 +359,21 @@ export class FortnoxConnectionService {
         }
       }
       if (fresh && fresh.status !== 'ACTIVE') throw new FortnoxNotConnectedError(fresh.status)
+      // Ett tidigare försök har gått ut utan registrerat utfall (krasch eller sparfel
+      // efter att Fortnox kan ha roterat token). Den gamla refresh-token får INTE
+      // återanvändas → beständigt stopp tills återanslutning.
+      if (
+        fresh?.refreshAttemptId &&
+        fresh.refreshLeaseUntil &&
+        fresh.refreshLeaseUntil.getTime() < now
+      ) {
+        await this.markAuthLost(organizationId, 'REFRESH_OUTCOME_UNKNOWN', {
+          connectionId: fresh.id,
+          tokenVersion: fresh.tokenVersion,
+          refreshAttemptId: fresh.refreshAttemptId,
+        })
+        throw new FortnoxNotConnectedError('AUTH_LOST')
+      }
       if (fresh?.lastErrorClass === 'REFRESH_RATE_LIMITED') {
         throw new FortnoxNotConnectedError('REFRESH_RATE_LIMITED')
       }
@@ -314,15 +385,16 @@ export class FortnoxConnectionService {
       tokens = await this.auth.refresh(this.crypto.decrypt(conn.refreshTokenEnc ?? ''))
     } catch (err) {
       if (err instanceof FortnoxAuthError && err.kind === 'rate_limited') {
-        // 429: tokens BEVARAS. Låset hålls kvar till uppskjutningens slut, så att
-        // ingen annan förnyar under tiden (kontrollerad senareläggning, ingen retry).
+        // 429: tokens BEVARAS; försöket avslutas som SÄKERT (inget skickat som roterat).
+        // Låset hålls till uppskjutningens slut (kontrollerad senareläggning, ingen retry).
         const delay = Math.min(
           Math.max(err.retryAfterMs ?? RATE_LIMIT_DEFAULT_MS, 1000),
           RATE_LIMIT_MAX_MS,
         )
         await this.prisma.fortnoxConnection.updateMany({
-          where: { id: conn.id, tokenVersion: conn.tokenVersion },
+          where: bind,
           data: {
+            refreshAttemptId: null,
             refreshLeaseUntil: new Date(Date.now() + delay),
             lastErrorClass: 'REFRESH_RATE_LIMITED',
             lastErrorAt: new Date(),
@@ -332,8 +404,9 @@ export class FortnoxConnectionService {
       }
       if (err instanceof FortnoxAuthError && err.kind === 'not_sent') {
         await this.prisma.fortnoxConnection.updateMany({
-          where: { id: conn.id, tokenVersion: conn.tokenVersion },
+          where: bind,
           data: {
+            refreshAttemptId: null,
             refreshLeaseUntil: null,
             lastErrorClass: 'REFRESH_NOT_SENT',
             lastErrorAt: new Date(),
@@ -342,19 +415,28 @@ export class FortnoxConnectionService {
         throw new FortnoxNotConnectedError('REFRESH_IN_PROGRESS')
       }
       // Avvisad ELLER okänt utfall: refresh-token kan vara förbrukad (rotation).
-      // Ingen automatisk tokenanvändning förrän kunden ansluter igen.
+      // C-F02: stoppet gäller BARA den anslutning/version/det försök som ägde anropet.
       const unknown = err instanceof FortnoxAuthError && err.kind === 'unknown'
-      await this.markAuthLost(organizationId, unknown ? 'REFRESH_OUTCOME_UNKNOWN' : 'AUTH_REJECTED')
+      await this.markAuthLost(
+        organizationId,
+        unknown ? 'REFRESH_OUTCOME_UNKNOWN' : 'AUTH_REJECTED',
+        {
+          connectionId: conn.id,
+          tokenVersion: conn.tokenVersion,
+          refreshAttemptId: attemptId,
+        },
+      )
       throw new FortnoxNotConnectedError('AUTH_LOST')
     }
     const saved = await this.prisma.fortnoxConnection.updateMany({
-      where: { id: conn.id, status: 'ACTIVE', tokenVersion: conn.tokenVersion },
+      where: { ...bind, status: 'ACTIVE' },
       data: {
         accessTokenEnc: this.crypto.encrypt(tokens.accessToken),
         refreshTokenEnc: this.crypto.encrypt(tokens.refreshToken),
         accessTokenExpiresAt: tokens.expiresAt,
         tokenVersion: { increment: 1 },
         refreshLeaseUntil: null,
+        refreshAttemptId: null,
       },
     })
     // Anslutningen kopplades från/ersattes under förnyelsen: använd inte token.
@@ -399,16 +481,32 @@ export class FortnoxConnectionService {
     return { exportVoucherSeries: code }
   }
 
-  /** 401 vid läsning eller avvisad förnyelse: stoppa arbetet och nolla tokens. */
-  async markAuthLost(organizationId: string, errorClass: string): Promise<void> {
+  /**
+   * 401 som består efter förnyelse, avvisad eller okänd förnyelse: stoppa arbetet och
+   * nolla tokens. C-F02: bunden till den anslutning och tokenversion (och i
+   * förekommande fall det försök) som observerade felet — ett gammalt svar kan
+   * aldrig stoppa en NYARE anslutning.
+   */
+  async markAuthLost(
+    organizationId: string,
+    errorClass: string,
+    expect: { connectionId: string; tokenVersion: number; refreshAttemptId?: string },
+  ): Promise<void> {
     await this.prisma.fortnoxConnection.updateMany({
-      where: { organizationId, status: 'ACTIVE' },
+      where: {
+        organizationId,
+        status: 'ACTIVE',
+        id: expect.connectionId,
+        tokenVersion: expect.tokenVersion,
+        ...(expect.refreshAttemptId ? { refreshAttemptId: expect.refreshAttemptId } : {}),
+      },
       data: {
         status: 'AUTH_LOST',
         accessTokenEnc: '',
         refreshTokenEnc: null,
         accessTokenExpiresAt: null,
         refreshLeaseUntil: null,
+        refreshAttemptId: null,
         lastErrorClass: errorClass,
         lastErrorAt: new Date(),
       },
@@ -434,18 +532,28 @@ export class FortnoxConnectionService {
         )
       }
     }
-    await this.prisma.fortnoxConnection.update({
-      where: { organizationId },
-      data: {
-        status: 'DISCONNECTED',
-        accessTokenEnc: '',
-        refreshTokenEnc: null,
-        accessTokenExpiresAt: null,
-        refreshLeaseUntil: null,
-        tokenVersion: { increment: 1 },
-        disconnectedAt: new Date(),
-      },
-    })
+    // C-F03: frånkoppling och invalidering av väntande inloggningar i EN transaktion;
+    // generationen höjs så att en pågående callback inte kan återaktivera.
+    await this.prisma.$transaction([
+      this.prisma.fortnoxConnection.update({
+        where: { organizationId },
+        data: {
+          status: 'DISCONNECTED',
+          accessTokenEnc: '',
+          refreshTokenEnc: null,
+          accessTokenExpiresAt: null,
+          refreshLeaseUntil: null,
+          refreshAttemptId: null,
+          tokenVersion: { increment: 1 },
+          generation: { increment: 1 },
+          disconnectedAt: new Date(),
+        },
+      }),
+      this.prisma.fortnoxOAuthState.updateMany({
+        where: { organizationId, consumedAt: null },
+        data: { consumedAt: new Date() },
+      }),
+    ])
     return { disconnected: true }
   }
 

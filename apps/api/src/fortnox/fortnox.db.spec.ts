@@ -22,7 +22,7 @@ import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
 import { toStatusResponse } from './fortnox-status'
-import { FortnoxReadError } from './fortnox.types'
+import { FortnoxAuthError, FortnoxReadError } from './fortnox.types'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -210,6 +210,185 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect(
       await prisma.fortnoxConnection.findUnique({ where: { organizationId: o.id } }),
     ).toBeNull()
+  })
+
+  // ── Anslutningsgranskning 2928 (C-F01..C-F05) mot riktig Postgres ─────────
+
+  it('C-F01: avbrutet förnyelseförsök (krasch/sparfel efter grant) → AUTH_LOST, gammal refresh-token återanvänds aldrig', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    // Kvarlämnat försök: registrerat före anropet, lås utgånget, inget utfall sparat.
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: o.id },
+      data: {
+        accessTokenExpiresAt: new Date(0),
+        refreshAttemptId: 'krasch',
+        refreshLeaseUntil: new Date(Date.now() - 1),
+      },
+    })
+    await expect(r.connections.accessToken(o.id)).rejects.toMatchObject({ reason: 'AUTH_LOST' })
+    expect(r.auth.calls.refresh).toBe(0)
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.lastErrorClass, raw.refreshTokenEnc]).toEqual([
+      'AUTH_LOST',
+      'REFRESH_OUTCOME_UNKNOWN',
+      null,
+    ])
+  })
+
+  it('C-F01: sparfel efter lyckad extern förnyelse lämnar försöket registrerat → nästa anrop stoppar', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: o.id },
+      data: { accessTokenExpiresAt: new Date(0) },
+    })
+    const origEnc = r.crypto.encrypt.bind(r.crypto)
+    let n = 0
+    r.crypto.encrypt = (t: string) => {
+      if (t.startsWith('mock-access-2') && n++ === 0) throw new Error('simulerat sparfel')
+      return origEnc(t)
+    }
+    await expect(r.connections.accessToken(o.id)).rejects.toThrow('simulerat sparfel')
+    r.crypto.encrypt = origEnc
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: o.id },
+      data: { refreshLeaseUntil: new Date(Date.now() - 1) },
+    })
+    await expect(r.connections.accessToken(o.id)).rejects.toMatchObject({ reason: 'AUTH_LOST' })
+    expect(r.auth.calls.refresh).toBe(1) // aldrig ett andra anrop med samma refresh-token
+  })
+
+  it('C-F02: gammalt okänt förnyelseutfall stoppar inte en nyare anslutning', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: o.id },
+      data: { accessTokenExpiresAt: new Date(0) },
+    })
+    let release!: () => void
+    const gate = new Promise<void>((res) => (release = res))
+    const origRefresh = r.auth.refresh.bind(r.auth)
+    r.auth.refresh = async () => {
+      r.auth.calls.refresh += 1
+      await gate
+      throw new FortnoxAuthError('unknown')
+    }
+    const pending = r.connections.accessToken(o.id).catch((e) => e)
+    await new Promise((res) => setTimeout(res, 50))
+    r.auth.refresh = origRefresh
+    await connect(r, o.id) // återanslutning (ny version) medan A väntar
+    release()
+    expect(await pending).toMatchObject({ reason: 'AUTH_LOST' })
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect(raw.status).toBe('ACTIVE')
+    expect(r.crypto.decrypt(raw.accessTokenEnc)).toMatch(/^mock-access-/)
+  })
+
+  it('C-F03: callback som pågår medan kunden kopplar från återaktiverar inte', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const { authUrl } = await r.connections.begin(o.id, 'u1')
+    const state = new URL(authUrl).searchParams.get('state')!
+    const origGet = r.reader.get.bind(r.reader)
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      if (p === '/3/companyinformation') await r.connections.disconnect(o.id) // frånkoppling mitt i callbacken
+      return origGet(t, p, q)
+    }) as typeof r.reader.get
+    await expect(
+      r.connections.handleCallback(state, `mock-code-${state.slice(0, 8)}`),
+    ).rejects.toThrow()
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.accessTokenEnc]).toEqual(['DISCONNECTED', ''])
+  })
+
+  it('C-F03: väntande inloggning startad före frånkoppling kan inte användas efteråt', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const { authUrl } = await r.connections.begin(o.id, 'u1')
+    const state = new URL(authUrl).searchParams.get('state')!
+    await r.connections.disconnect(o.id)
+    await expect(
+      r.connections.handleCallback(state, `mock-code-${state.slice(0, 8)}`),
+    ).rejects.toThrow(/förbrukad/)
+    expect(
+      (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
+        .status,
+    ).toBe('DISCONNECTED')
+  })
+
+  it('C-F03: två förstagångsinloggningar med olika företag — bara den första binds', async () => {
+    const o = await org()
+    const r = rig()
+    const s1 = new URL((await r.connections.begin(o.id, 'u1')).authUrl).searchParams.get('state')!
+    const s2 = new URL((await r.connections.begin(o.id, 'u2')).authUrl).searchParams.get('state')!
+    await r.connections.handleCallback(s1, `mock-code-${s1.slice(0, 8)}`)
+    r.reader.company = { ...r.reader.company, DatabaseNumber: 900777 }
+    await expect(r.connections.handleCallback(s2, `mock-code-${s2.slice(0, 8)}`)).rejects.toThrow(
+      /matchar inte/,
+    )
+    expect(
+      (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
+        .fortnoxDatabaseNumber,
+    ).toBe(900001)
+  })
+
+  it('C-F03: två samtidiga förstagångsinloggningar till samma företag → en rad, ACTIVE', async () => {
+    const o = await org()
+    const r = rig()
+    const s1 = new URL((await r.connections.begin(o.id, 'u1')).authUrl).searchParams.get('state')!
+    const s2 = new URL((await r.connections.begin(o.id, 'u2')).authUrl).searchParams.get('state')!
+    await Promise.allSettled([
+      r.connections.handleCallback(s1, `mock-code-${s1.slice(0, 8)}`),
+      r.connections.handleCallback(s2, `mock-code-${s2.slice(0, 8)}`),
+    ])
+    expect(await prisma.fortnoxConnection.count({ where: { organizationId: o.id } })).toBe(1)
+    expect(
+      (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
+        .status,
+    ).toBe('ACTIVE')
+  })
+
+  it('C-F04: känt Eveno-orgnr men saknat orgnr i Fortnox → avvisas', async () => {
+    const o = await prisma.organization.create({
+      data: {
+        name: 'fnx-f04',
+        email: `fnx-${randomUUID().slice(0, 6)}@example.se`,
+        street: 'a',
+        city: 'b',
+        postalCode: '1',
+        orgNumber: `556${randomUUID().replace(/\D/g, '').slice(0, 7).padEnd(7, '2')}`,
+      },
+    })
+    orgs.push(o.id)
+    const r = rig()
+    r.reader.company = { CompanyName: 'X', DatabaseNumber: 900001 } as typeof r.reader.company
+    await expect(connect(r, o.id)).rejects.toThrow(/organisationsnummer/)
+    expect(
+      await prisma.fortnoxConnection.findUnique({ where: { organizationId: o.id } }),
+    ).toBeNull()
+  })
+
+  it('C-F05: saknade nödvändiga scopes → avvisas, ingen ACTIVE anslutning', async () => {
+    const o = await org()
+    const r = rig()
+    r.auth.scope = 'companyinformation'
+    await expect(connect(r, o.id)).rejects.toThrow(/bookkeeping, costcenter, project/)
+    expect(
+      await prisma.fortnoxConnection.findUnique({ where: { organizationId: o.id } }),
+    ).toBeNull()
+    expect(r.auth.calls.revoke).toBe(1)
   })
 
   // ── Förnyelse ─────────────────────────────────────────────────────────────

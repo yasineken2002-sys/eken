@@ -256,7 +256,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       if (err instanceof UnverifiedRef) return block(err.code, err.message)
       if (err instanceof FortnoxReadError) {
         if (err.kind === 'auth')
-          await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED')
+          await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED', reader.binding)
         return block(
           'FORTNOX_READ_FAILED',
           'Fortnox kunde inte läsas för förhandskontrollen; försök igen',
