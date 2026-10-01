@@ -7643,6 +7643,15 @@ enum FortnoxExportState {
   UNKNOWN
   // Verifierad i Fortnox genom återläsning (kräver extern bekräftelse).
   CONFIRMED
+  // ── Sändning (FORTNOX-SANDNING) ──
+  // Beständigt anspråk taget FÖRE nätanropet; utgången lease → UNKNOWN (aldrig återköning).
+  SENDING
+  // Fortnox avvisade uttryckligen (4xx). Inget negativt bevis antas → låst, endast avstämning.
+  REJECTED
+  // Lyckat svar med giltig extern identitet, ännu inte verifierat genom återläsning.
+  RECEIPT_IDENTIFIED
+  // Den identifierade posten avviker från det frysta underlaget → låst, endast avstämning.
+  RECEIPT_MISMATCH
 }
 
 // Beständig exportidentitet: EN rad per Eveno-verifikat och organisation.
@@ -7661,12 +7670,33 @@ model FortnoxVoucherExport {
   externalSeries        String?
   externalNumber        Int?
   externalYear          Int?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  // ── Sändningsförsök (FORTNOX-SANDNING). Allt binds vid anspråket och är fryst. ──
+  sendAttemptId         String?
+  sendClaimedAt         DateTime?
+  sendLeaseUntil        DateTime?
+  sendConnectionId      String?
+  sendGeneration        Int?
+  sendFinancialYear     Int?
+  sendSeries            String?
+  sentPayloadHash       String?
+  sendConfirmedBy       String?
+  sendConfirmedAt       DateTime?
+  lastOutcome           String?
+  lastOutcomeAt         DateTime?
+  receiptAt             DateTime?
+  confirmedAt           DateTime?
+  // Behörig manuell avstämning: {vem, när, identitet, grund}. Null = ingen.
+  reconcileDecision     Json?
+  reconciledAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, journalEntryId])
+  // En extern identitet kan bekräfta högst EN export (NULL är distinkt i Postgres).
+  @@unique([organizationId, fortnoxDatabaseNumber, externalYear, externalSeries, externalNumber], map: "FortnoxVoucherExport_external_identity_key")
   @@index([organizationId, state])
 }
