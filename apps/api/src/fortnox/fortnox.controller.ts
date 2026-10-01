@@ -48,6 +48,17 @@ export class FortnoxController {
     })
   }
 
+  @Get('catalog')
+  @Roles('OWNER', 'ADMIN')
+  async catalog(
+    @OrgId() organizationId: string,
+    @Query('financialYearId') financialYearId?: string,
+  ) {
+    const id =
+      financialYearId === undefined || financialYearId === '' ? null : Number(financialYearId)
+    return this.readback.catalog(organizationId, id === null ? null : Number.isFinite(id) ? id : -1)
+  }
+
   @Post('connect')
   @Roles('OWNER', 'ADMIN')
   async connect(@OrgId() organizationId: string, @CurrentUser() user: JwtPayload) {

@@ -96,7 +96,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const db = prisma as unknown as PrismaService
     const connections = new FortnoxConnectionService(db, crypto, config, auth, reader)
     const readback = new FortnoxReadbackService(db, connections, reader)
-    const mappings = new FortnoxMappingService(db)
+    const mappings = new FortnoxMappingService(db, connections, reader)
     return { crypto, auth, reader, connections, readback, mappings, db }
   }
 
@@ -260,6 +260,54 @@ medDb('Fortnox A mot riktig Postgres', () => {
       null,
       cls,
     ])
+  })
+
+  it('förnyelse 429 (rate_limited): tokens bevaras, uppskjutning utan nya anrop, därefter kontrollerat nytt försök', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: o.id },
+      data: { accessTokenExpiresAt: new Date(0) },
+    })
+    const before = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    r.auth.failRefresh = 'rate_limited'
+    await expect(r.connections.accessToken(o.id)).rejects.toMatchObject({
+      reason: 'REFRESH_RATE_LIMITED',
+    })
+    const after = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    // Skiljer sig från rejected/unknown: ACTIVE, samma krypterade tokens, samma version.
+    expect([
+      after.status,
+      after.accessTokenEnc,
+      after.refreshTokenEnc,
+      after.tokenVersion,
+      after.lastErrorClass,
+    ]).toEqual([
+      'ACTIVE',
+      before.accessTokenEnc,
+      before.refreshTokenEnc,
+      before.tokenVersion,
+      'REFRESH_RATE_LIMITED',
+    ])
+    expect(after.refreshLeaseUntil!.getTime()).toBeGreaterThan(Date.now() + 30_000)
+    // Inom uppskjutningen: inget nytt refresh-anrop (ingen blind retry).
+    r.auth.failRefresh = null
+    await expect(r.connections.accessToken(o.id)).rejects.toMatchObject({
+      reason: 'REFRESH_RATE_LIMITED',
+    })
+    expect(r.auth.calls.refresh).toBe(1)
+    // Efter uppskjutningen: ett kontrollerat nytt försök med den bevarade refresh-token.
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: o.id },
+      data: { refreshLeaseUntil: new Date(Date.now() - 1) },
+    })
+    expect((await r.connections.accessToken(o.id)).token).toBe('mock-access-2')
+    expect(r.auth.calls.refresh).toBe(2)
   })
 
   it('förnyelse not_sent → låset släpps, anslutningen består', async () => {
@@ -462,6 +510,123 @@ medDb('Fortnox A mot riktig Postgres', () => {
     ]
     const run = await r.readback.read(o.id, 'u1', READ)
     expect((run.summary as { evenoExportOre: number }).evenoExportOre).toBe(10000)
+  })
+
+  // ── Katalog och kundval ───────────────────────────────────────────────────
+
+  it('katalog utan år: år och dimensioner, inga konton; med år: verifierade konton', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.financialYears = [
+      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' },
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31' },
+      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31' },
+    ]
+    r.reader.accounts = [
+      { Number: 5170, Active: true, Description: 'Reparation' },
+      { Number: 5180, Active: false, Description: 'Gammalt' },
+      { Number: 2440, Active: true, Description: 'Leverantörsskulder' },
+    ]
+    const a = await r.readback.catalog(o.id, null)
+    expect([a.ready, a.complete, a.selectedFinancialYearId, a.costAccounts.length]).toEqual([
+      true,
+      true,
+      null,
+      0,
+    ])
+    expect(a.financialYears.map((y) => y.id)).toEqual([1, 2, 3])
+    expect(a.dimensions.map((d) => d.code)).toEqual(['HUSA', 'HUSB'])
+    expect(a.company.databaseNumber).toBe(900001)
+    const b = await r.readback.catalog(o.id, 1)
+    expect(b.costAccounts).toEqual([
+      { number: 2440, name: 'Leverantörsskulder', selectable: true, reason: null },
+      { number: 5170, name: 'Reparation', selectable: true, reason: null },
+      { number: 5180, name: 'Gammalt', selectable: false, reason: 'Kontot är inaktivt i Fortnox' },
+    ])
+    expect(JSON.stringify(b)).not.toMatch(/mock-access|TokenEnc/)
+  })
+
+  it('katalog: bruten paginering ger ready=false, aldrig lyckad tom lista', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.costCenters = ['A', 'B', 'C']
+    const orig = r.reader.get.bind(r.reader)
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      const body = (await orig(t, p, q)) as Record<string, unknown>
+      if (p === '/3/costcenters' && q?.page === 2)
+        (body.MetaInformation as Record<string, number>)['@TotalResources'] = 9
+      return body
+    }) as typeof r.reader.get
+    const c = await r.readback.catalog(o.id, null)
+    expect([c.ready, c.complete, c.dimensions]).toEqual([false, false, []])
+    expect(c.reason).toMatch(/ändrades/)
+  })
+
+  it('katalog: fel företag och okänt år ger ready=false', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    expect((await r.readback.catalog(o.id, 99)).reason).toMatch(/finns inte/)
+    r.reader.company = { ...r.reader.company, DatabaseNumber: 1 }
+    const c = await r.readback.catalog(o.id, null)
+    expect([c.ready, c.financialYears]).toEqual([false, []])
+  })
+
+  it('katalog: 401 → AUTH_LOST på anslutningen', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.calls = []
+    r.reader.failOnCall = { n: 2, error: new FortnoxReadError('auth', 401) }
+    expect((await r.readback.catalog(o.id, null)).ready).toBe(false)
+    expect(
+      (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
+        .status,
+    ).toBe('AUTH_LOST')
+  })
+
+  it('katalog utan anslutning nekas', async () => {
+    const o = await org()
+    await expect(rig().readback.catalog(o.id, null)).rejects.toThrow(/Ingen Fortnox-anslutning/)
+  })
+
+  it('mappning: dimension som inte finns i Fortnox avvisas; giltig sparas', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const p = await property(o.id, 'HUS-A')
+    await expect(
+      r.mappings.upsert(o.id, { dimensionType: 'COST_CENTER', code: 'FINNSEJ', propertyId: p.id }),
+    ).rejects.toThrow(/finns inte i Fortnox/)
+    await r.mappings.upsert(o.id, { dimensionType: 'COST_CENTER', code: 'HUSA', propertyId: p.id })
+    expect(await r.mappings.list(o.id)).toEqual([
+      expect.objectContaining({ code: 'HUSA', propertyName: 'HUS-A' }),
+    ])
+  })
+
+  it('läsvyn bär sparat kontourval och måttnamn', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    r.reader.vouchers = [V(1, [{ Account: 5170, Debit: 100, Credit: 0 }])]
+    await r.readback.read(o.id, 'u1', READ)
+    const latest = await r.readback.latest(o.id)
+    const view = toStatusResponse({
+      enabled: true,
+      connection: null,
+      mappings: [],
+      ...latest,
+      exports: {
+        counts: { DRY_RUN_READY: 0, BLOCKED: 0, UNKNOWN: 0, CONFIRMED: 0 },
+        needsReconciliation: 0,
+        sendingEnabled: false,
+        sendingDisabledReason: 'IDEMPOTENCY_UNRESOLVED',
+      },
+    })
+    expect(view.latestCompleteRead?.selectedAccounts).toEqual([5170])
+    expect(view.latestCompleteRead?.measure).toBe('NET_AMOUNT_SELECTED_ACCOUNTS')
   })
 
   // ── Export-utkorg ─────────────────────────────────────────────────────────

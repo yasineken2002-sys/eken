@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
+import { readCatalog } from './fortnox-catalog'
 import type { FortnoxAiSnapshot } from './fortnox-ai-context'
 import { FORTNOX_LEDGER_READER, type FortnoxLedgerReader } from './fortnox.types'
 
@@ -21,6 +22,7 @@ const NOT_CONNECTED_TEXT: Record<FortnoxNotConnectedError['reason'], string> = {
   AUTH_LOST: 'Fortnox-inloggningen har upphört; anslut igen',
   DISCONNECTED: 'Fortnox-anslutningen är frånkopplad',
   REFRESH_IN_PROGRESS: 'Inloggningen förnyas; försök igen om en stund',
+  REFRESH_RATE_LIMITED: 'Fortnox begränsar anropen just nu; försök igen om en stund',
 }
 
 /** Fält som visas för kunden och AI. `rows` (proveniens) hämtas separat. */
@@ -30,6 +32,7 @@ export const FORTNOX_READ_VIEW_SELECT = {
   financialYearId: true,
   financialYearStart: true,
   financialYearEnd: true,
+  costAccounts: true,
   periodFrom: true,
   periodTo: true,
   startedAt: true,
@@ -174,6 +177,42 @@ export class FortnoxReadbackService {
       },
       select: FORTNOX_READ_VIEW_SELECT,
     })
+  }
+
+  /** GET /catalog — verifierade val (år, konton för valt år, dimensioner). Läser inget annat. */
+  async catalog(organizationId: string, financialYearId: number | null) {
+    if (financialYearId !== null && (!Number.isInteger(financialYearId) || financialYearId < 1)) {
+      throw new BadRequestException('Ogiltigt räkenskapsår')
+    }
+    let auth: Awaited<ReturnType<FortnoxConnectionService['accessToken']>>
+    try {
+      auth = await this.connections.accessToken(organizationId)
+    } catch (err) {
+      if (err instanceof FortnoxNotConnectedError)
+        throw new ConflictException(NOT_CONNECTED_TEXT[err.reason])
+      throw err
+    }
+    const conn = await this.connections.status(organizationId)
+    const cat = await readCatalog(this.reader, auth.token, {
+      expectedDatabaseNumber: auth.databaseNumber,
+      financialYearId,
+    })
+    if (cat.authLost) await this.connections.markAuthLost(organizationId, 'READ_UNAUTHORIZED')
+    return {
+      ready: cat.ready,
+      reason: cat.reason,
+      financialYears: cat.financialYears,
+      selectedFinancialYearId: cat.selectedFinancialYearId,
+      costAccounts: cat.costAccounts,
+      dimensions: cat.dimensions,
+      complete: cat.complete,
+      observedAt: new Date().toISOString(),
+      company: {
+        name: conn?.fortnoxCompanyName ?? null,
+        orgNumber: conn?.fortnoxOrgNumber ?? null,
+        databaseNumber: auth.databaseNumber,
+      },
+    }
   }
 
   async latest(organizationId: string) {

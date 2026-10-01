@@ -140,6 +140,10 @@ function add(a: number, b: number): number {
   return s
 }
 
+const absent = (v: unknown) => v === undefined || v === null
+/** En sida av en rad: saknad = 0 (inaktiv sida); annars exakt toOre. */
+const sideOre = (v: unknown): number | null => (absent(v) ? 0 : toOre(v))
+
 const optionalCode = (x: unknown) => x === undefined || x === null || typeof x === 'string'
 
 /**
@@ -158,9 +162,12 @@ function rowProblem(r: unknown): string | null {
   ) {
     return 'ogiltigt konto'
   }
-  const d = toOre(x.Debit)
-  const c = toOre(x.Credit)
-  if (d === null || c === null) return 'ogiltigt eller saknat belopp'
+  // En saknad sida är den inaktiva sidan (= 0, dokumenterat). BÅDA saknade är
+  // saknat underlag, inte noll. En närvarande sida måste vara ett giltigt belopp.
+  if (absent(x.Debit) && absent(x.Credit)) return 'belopp saknas på båda sidor'
+  const d = sideOre(x.Debit)
+  const c = sideOre(x.Credit)
+  if (d === null || c === null) return 'ogiltigt belopp'
   if (d < 0 || c < 0) return 'negativt belopp (semantik obelagd)'
   if (x.Removed !== undefined && typeof x.Removed !== 'boolean')
     return 'ogiltig borttagningsmarkering'
@@ -296,6 +303,12 @@ export async function readLedger(
       )
       if (acc?.Account?.Number !== n)
         throw new Incomplete(`Konto ${n} finns inte i Fortnox kontoplan för året`)
+      // R5: ett svar som uttryckligen anger ett ANNAT år är inget bevis för valt år.
+      // Saknat Year accepteras (fältet är inte obligatoriskt i schemat) men noteras.
+      const accYear = (acc.Account as { Year?: unknown }).Year
+      if (accYear !== undefined && accYear !== null && accYear !== cfg.financialYearId) {
+        throw new Incomplete(`Konto ${n}: Fortnox svarade för ett annat räkenskapsår`)
+      }
       if (acc.Account.Active === false) uncertainties.push(`Konto ${n} är inaktivt i Fortnox.`)
     }
 
@@ -307,16 +320,63 @@ export async function readLedger(
       {},
       coverage,
     )
-    const codes = new Set<string>()
-    for (const c of cc.items) if (typeof c.Code === 'string') codes.add(c.Code)
-    if (codes.size !== cc.total)
+    // R3: samma kod med ANNAT innehåll i samma läsning = konflikt (identiska dubletter
+    // redovisas och räknas en gång).
+    const verified = new Set<string>()
+    const ccSeen = new Map<string, string>()
+    for (const c of cc.items) {
+      if (typeof c.Code !== 'string' || !c.Code) throw new Incomplete('/3/costcenters: kod saknas')
+      const h = stable(c)
+      const prev = ccSeen.get(c.Code)
+      if (prev !== undefined && prev !== h)
+        throw new Incomplete(`KONFLIKT: kostnadsställe ${c.Code} med olika innehåll`)
+      ccSeen.set(c.Code, h)
+      verified.add(`COST_CENTER:${c.Code}`)
+    }
+    if (ccSeen.size !== cc.total)
       throw new Incomplete('/3/costcenters: antalet unika koder stämmer inte')
-    for (const key of cfg.mappings.keys()) {
-      const sep = key.indexOf(':')
-      const type = key.slice(0, sep)
-      const code = key.slice(sep + 1)
-      if (type === 'COST_CENTER' && !codes.has(code)) {
-        uncertainties.push(`Kostnadsstället ${code} är kopplat i Eveno men finns inte i Fortnox.`)
+
+    // R4: projekt läses (paginerat, med samma kontroller) när någon projektkoppling
+    // finns. Utan projektkopplingar används projekt aldrig för fördelning, och
+    // projektmärkta rader redovisas som okopplade — ingen projekt-scope behövs då.
+    const wantsProjects = [...cfg.mappings.keys()].some((k) => k.startsWith('PROJECT:'))
+    if (wantsProjects) {
+      const pr = await paged<{ ProjectNumber?: unknown }>(
+        reader,
+        token,
+        '/3/projects',
+        'Projects',
+        {},
+        coverage,
+      )
+      const prSeen = new Map<string, string>()
+      for (const p of pr.items) {
+        const code =
+          typeof p.ProjectNumber === 'string' || typeof p.ProjectNumber === 'number'
+            ? String(p.ProjectNumber)
+            : ''
+        if (!code) throw new Incomplete('/3/projects: projektnummer saknas')
+        const h = stable(p)
+        const prev = prSeen.get(code)
+        if (prev !== undefined && prev !== h)
+          throw new Incomplete(`KONFLIKT: projekt ${code} med olika innehåll`)
+        prSeen.set(code, h)
+        verified.add(`PROJECT:${code}`)
+      }
+      if (prSeen.size !== pr.total)
+        throw new Incomplete('/3/projects: antalet unika projekt stämmer inte')
+    }
+
+    // Endast kopplingar vars dimension FINNS i Fortnox används för fördelning.
+    const usable = new Map<string, { propertyId: string; propertyName: string }>()
+    for (const [key, m] of cfg.mappings) {
+      if (verified.has(key)) usable.set(key, m)
+      else {
+        const sep = key.indexOf(':')
+        const kind = key.slice(0, sep) === 'PROJECT' ? 'Projektet' : 'Kostnadsstället'
+        uncertainties.push(
+          `${kind} ${key.slice(sep + 1)} är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.`,
+        )
       }
     }
 
@@ -378,7 +438,7 @@ export async function readLedger(
       vouchers.push({ key, v })
     }
 
-    return aggregate(vouchers, cfg, base)
+    return aggregate(vouchers, { ...cfg, mappings: usable }, base)
   } catch (err) {
     if (err instanceof Incomplete) return fail('PARTIAL', err.message)
     if (err instanceof FortnoxReadError) {
@@ -428,8 +488,8 @@ function aggregate(
     const vRows = v.VoucherRows as Array<Record<string, unknown>>
     for (const [i, r] of vRows.entries()) {
       if (typeof r.Account !== 'number' || !accounts.has(r.Account)) continue
-      const debit = toOre(r.Debit)
-      const credit = toOre(r.Credit)
+      const debit = sideOre(r.Debit)
+      const credit = sideOre(r.Credit)
       if (debit === null || credit === null) {
         return {
           status: 'PARTIAL',

@@ -26,6 +26,9 @@ const STATE_TTL_MS = 10 * 60 * 1000
 const REFRESH_MARGIN_MS = 60 * 1000
 /** Hur länge en förnyare äger låset innan en annan får ta över. */
 const REFRESH_LEASE_MS = 30 * 1000
+/** Uppskjutning efter 429 utan Retry-After, och tak för en angiven. */
+const RATE_LIMIT_DEFAULT_MS = 60 * 1000
+const RATE_LIMIT_MAX_MS = 15 * 60 * 1000
 
 /**
  * De ENDA FortnoxConnection-fält som får lämna backend. Tokens, tokenVersion och
@@ -45,7 +48,12 @@ export const SAFE_FORTNOX_CONNECTION_SELECT = {
 
 export class FortnoxNotConnectedError extends Error {
   constructor(
-    readonly reason: 'NO_CONNECTION' | 'AUTH_LOST' | 'DISCONNECTED' | 'REFRESH_IN_PROGRESS',
+    readonly reason:
+      | 'NO_CONNECTION'
+      | 'AUTH_LOST'
+      | 'DISCONNECTED'
+      | 'REFRESH_IN_PROGRESS'
+      | 'REFRESH_RATE_LIMITED',
   ) {
     super(`Fortnox: ${reason}`)
     this.name = 'FortnoxNotConnectedError'
@@ -264,6 +272,9 @@ export class FortnoxConnectionService {
         return { token: this.crypto.decrypt(fresh.accessTokenEnc), ...ids }
       }
       if (fresh && fresh.status !== 'ACTIVE') throw new FortnoxNotConnectedError(fresh.status)
+      if (fresh?.lastErrorClass === 'REFRESH_RATE_LIMITED') {
+        throw new FortnoxNotConnectedError('REFRESH_RATE_LIMITED')
+      }
       throw new FortnoxNotConnectedError('REFRESH_IN_PROGRESS')
     }
 
@@ -271,6 +282,23 @@ export class FortnoxConnectionService {
     try {
       tokens = await this.auth.refresh(this.crypto.decrypt(conn.refreshTokenEnc ?? ''))
     } catch (err) {
+      if (err instanceof FortnoxAuthError && err.kind === 'rate_limited') {
+        // 429: tokens BEVARAS. Låset hålls kvar till uppskjutningens slut, så att
+        // ingen annan förnyar under tiden (kontrollerad senareläggning, ingen retry).
+        const delay = Math.min(
+          Math.max(err.retryAfterMs ?? RATE_LIMIT_DEFAULT_MS, 1000),
+          RATE_LIMIT_MAX_MS,
+        )
+        await this.prisma.fortnoxConnection.updateMany({
+          where: { id: conn.id, tokenVersion: conn.tokenVersion },
+          data: {
+            refreshLeaseUntil: new Date(Date.now() + delay),
+            lastErrorClass: 'REFRESH_RATE_LIMITED',
+            lastErrorAt: new Date(),
+          },
+        })
+        throw new FortnoxNotConnectedError('REFRESH_RATE_LIMITED')
+      }
       if (err instanceof FortnoxAuthError && err.kind === 'not_sent') {
         await this.prisma.fortnoxConnection.updateMany({
           where: { id: conn.id, tokenVersion: conn.tokenVersion },

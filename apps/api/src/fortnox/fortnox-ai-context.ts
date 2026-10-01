@@ -98,7 +98,7 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
         : 'gränser ej verifierade'
     lines.push(
       `Senast kompletta återläsning: period ${day(done.periodFrom)}–${day(done.periodTo)} (räkenskapsår ${year}), återläst per ${stockholm(done.completedAt)} (${ageMin} min sedan). Säg "återläst per …", inte "aktuellt".`,
-      `Mått: bokförda verifikatrader (debet − kredit) på konto ${done.costAccounts.join(', ')}. Inte fakturatotaler, inte moms, inte betalningar.`,
+      `Mått: Nettobelopp för valda konton (debet − kredit på bokförda verifikatrader) – konto ${done.costAccounts.join(', ')}. Det är INTE hela bolagets resultat, inte fakturatotaler, moms eller betalningar.`,
       `Summa: ${formatOre(sum.totalOre)}`,
     )
     for (const p of sum.byProperty)

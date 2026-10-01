@@ -21,6 +21,7 @@ interface ReadRow {
   financialYearId: number
   financialYearStart: Date | null
   financialYearEnd: Date | null
+  costAccounts: number[]
   periodFrom: Date
   periodTo: Date
   startedAt: Date
@@ -41,6 +42,10 @@ export function toReadView(r: ReadRow | null, now: Date = new Date()) {
     financialYearId: r.financialYearId,
     financialYearStart: r.financialYearStart ? day(r.financialYearStart) : null,
     financialYearEnd: r.financialYearEnd ? day(r.financialYearEnd) : null,
+    // Det SPARADE kontourvalet för just denna läsning (inte formulärets state).
+    // Måttet är "Nettobelopp för valda konton" — aldrig hela bolagets resultat.
+    selectedAccounts: [...r.costAccounts].sort((a, b) => a - b),
+    measure: 'NET_AMOUNT_SELECTED_ACCOUNTS' as const,
     periodFrom: day(r.periodFrom),
     periodTo: day(r.periodTo),
     startedAt: r.startedAt.toISOString(),

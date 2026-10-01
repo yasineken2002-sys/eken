@@ -50,9 +50,15 @@ export interface FortnoxAuthProvider {
  *  - `unknown`: begäran kan ha behandlats (timeout efter sändning). Förnyelse
  *    ROTERAR refresh-token, så den gamla kan vara förbrukad → automatisk
  *    tokenanvändning låses tills återanslutning (AUTH_LOST, REFRESH_OUTCOME_UNKNOWN).
+ *  - `rate_limited`: HTTP 429. Bevisar INTE ogiltig token → tokens bevaras och nästa
+ *    försök skjuts upp (REFRESH_RATE_LIMITED). Ingen automatisk omförsök i samma
+ *    operation. Fortnox faktiska 429-semantik vid förnyelse är oprövad.
  */
 export class FortnoxAuthError extends Error {
-  constructor(readonly kind: 'rejected' | 'not_sent' | 'unknown') {
+  constructor(
+    readonly kind: 'rejected' | 'not_sent' | 'unknown' | 'rate_limited',
+    readonly retryAfterMs?: number,
+  ) {
     super(`Fortnox auth: ${kind}`)
     this.name = 'FortnoxAuthError'
   }

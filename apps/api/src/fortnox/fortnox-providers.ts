@@ -76,7 +76,7 @@ export class MockFortnoxAuthProvider implements FortnoxAuthProvider {
   private n = 0
   readonly issuedCodes = new Set<string>()
   readonly calls = { exchange: 0, refresh: 0, revoke: 0 }
-  failRefresh: null | 'rejected' | 'not_sent' | 'unknown' = null
+  failRefresh: null | 'rejected' | 'not_sent' | 'unknown' | 'rate_limited' = null
   /** challenge per utfärdad kod — exchange kräver matchande verifier (S256). */
   private readonly challenges = new Map<string, string>()
   expiresInMs = 3600_000
@@ -137,10 +137,11 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
   }
   costCenters: string[] = ['HUSA', 'HUSB']
   financialYears = [{ Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' }]
-  accounts: Array<{ Number: number; Active: boolean }> = [
-    { Number: 2440, Active: true },
-    { Number: 5170, Active: true },
+  accounts: Array<{ Number: number; Active: boolean; Description?: string }> = [
+    { Number: 2440, Active: true, Description: 'Leverantörsskulder' },
+    { Number: 5170, Active: true, Description: 'Reparation och underhåll av fastighet' },
   ]
+  projects: Array<{ ProjectNumber: string; Description: string }> = []
   vouchers: FortnoxVoucher[] = []
   pageSize = 2
   /** Prov: kasta på anrop nr N (1-baserat). */
@@ -170,6 +171,22 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
       ) as T
     }
     if (path === '/3/vouchers/sublist') return this.paged(this.vouchers, 'Vouchers', page) as T
+    // Katalogvägar (lista/detalj) — syntetiska, samma sidantagande (H1).
+    if (path === '/3/financialyears')
+      return this.paged(this.financialYears, 'FinancialYears', page) as T
+    if (path === '/3/accounts') return this.paged(this.accounts, 'Accounts', page) as T
+    if (path === '/3/projects') return this.paged(this.projects, 'Projects', page) as T
+    const ccd = /^\/3\/costcenters\/([A-Za-z0-9_-]+)$/.exec(path)
+    if (ccd) {
+      if (!this.costCenters.includes(ccd[1] ?? '')) throw new FortnoxReadError('invalid', 404)
+      return { CostCenter: { Code: ccd[1], Active: true } } as T
+    }
+    const prd = /^\/3\/projects\/(\d+)$/.exec(path)
+    if (prd) {
+      const p = this.projects.find((x) => x.ProjectNumber === prd[1])
+      if (!p) throw new FortnoxReadError('invalid', 404)
+      return { Project: { ...p } } as T
+    }
     const fy = /^\/3\/financialyears\/(\d+)$/.exec(path)
     if (fy) {
       const y = this.financialYears.find((x) => x.Id === Number(fy[1]))
