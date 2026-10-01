@@ -223,7 +223,9 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     const vsd = /^\/3\/voucherseries\/([A-Za-z0-9_-]+)$/.exec(path)
     if (vsd) {
       if (!this.voucherSeries.includes(vsd[1] ?? '')) throw new FortnoxReadError('invalid', 404)
-      return { VoucherSeries: { Code: vsd[1], Description: 'Serie' } } as T
+      return {
+        VoucherSeries: { Code: vsd[1], Description: 'Serie', Year: query?.financialyear },
+      } as T
     }
     const prd = /^\/3\/projects\/(\d+)$/.exec(path)
     if (prd) {

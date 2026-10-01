@@ -22,6 +22,10 @@ import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
 import { toStatusResponse } from './fortnox-status'
+import { DataContextService } from '../ai/data-context.service'
+import { OverdueDebtService } from '../overdue/overdue-debt.service'
+import { AccountingService } from '../accounting/accounting.service'
+import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { FortnoxAuthError, FortnoxReadError } from './fortnox.types'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -358,6 +362,47 @@ medDb('Fortnox A mot riktig Postgres', () => {
       (await prisma.fortnoxConnection.findUniqueOrThrow({ where: { organizationId: o.id } }))
         .status,
     ).toBe('ACTIVE')
+  })
+
+  it('D01: förstagångsinloggning får inte återaktivera efter frånkoppling som skett under tiden', async () => {
+    const o = await org()
+    const r = rig()
+    const sA = new URL((await r.connections.begin(o.id, 'uA')).authUrl).searchParams.get('state')!
+    const sB = new URL((await r.connections.begin(o.id, 'uB')).authUrl).searchParams.get('state')!
+    const origGet = r.reader.get.bind(r.reader)
+    let release!: () => void
+    const gate = new Promise<void>((res) => (release = res))
+    let first = true
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      if (p === '/3/companyinformation' && first) {
+        first = false
+        await gate // B har tagit sin state och väntar på företagsuppslaget
+      }
+      return origGet(t, p, q)
+    }) as typeof r.reader.get
+    const pendingB = r.connections.handleCallback(sB, `mock-code-${sB.slice(0, 8)}`).catch((e) => e)
+    await new Promise((res) => setTimeout(res, 50))
+    await r.connections.handleCallback(sA, `mock-code-${sA.slice(0, 8)}`) // A ansluter
+    await r.connections.disconnect(o.id) // och kopplas från (generation 1)
+    release()
+    expect(await pendingB).toBeInstanceOf(Error)
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.generation, raw.accessTokenEnc]).toEqual(['DISCONNECTED', 1, ''])
+  })
+
+  it('D01 positiv kontroll: förstagångsinloggning efter annan förstagångsinloggning (ingen frånkoppling, samma företag) → ACTIVE', async () => {
+    const o = await org()
+    const r = rig()
+    const sA = new URL((await r.connections.begin(o.id, 'uA')).authUrl).searchParams.get('state')!
+    const sB = new URL((await r.connections.begin(o.id, 'uB')).authUrl).searchParams.get('state')!
+    await r.connections.handleCallback(sA, `mock-code-${sA.slice(0, 8)}`)
+    await r.connections.handleCallback(sB, `mock-code-${sB.slice(0, 8)}`)
+    const raw = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: o.id },
+    })
+    expect([raw.status, raw.generation]).toEqual(['ACTIVE', 0])
   })
 
   it('C-F04: känt Eveno-orgnr men saknat orgnr i Fortnox → avvisas', async () => {
@@ -756,6 +801,37 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await expect(r.readback.read(o.id, 'u1', READ)).rejects.toThrow(/konto 5170 är inaktivt/)
   })
 
+  it('AI-kedjan: DataContext.buildContext (CommonJS) bär Fortnox-blocket med färdiga summor — inte felreserven', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    const a = await property(o.id, 'HUS-A')
+    await r.mappings.upsert(o.id, { dimensionType: 'COST_CENTER', code: 'HUSA', propertyId: a.id })
+    r.reader.vouchers = [
+      V(1, [
+        { Account: 5170, Debit: 12000, Credit: 0, CostCenter: 'HUSA' },
+        { Account: 2440, Debit: 0, Credit: 12000 },
+      ]),
+      V(2, [
+        { Account: 5170, Debit: 2000, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 2000 },
+      ]),
+    ]
+    await r.readback.read(o.id, 'u1', READ)
+    const db = prisma as unknown as PrismaService
+    const accounting = new AccountingService(db, new VerifikationsnummerService(db))
+    const ctx = new DataContextService(db, new OverdueDebtService(db), accounting, r.readback)
+    const text = await ctx.buildContext(o.id)
+    expect(text).toContain('## FORTNOX-ÅTERLÄSNING (skuggläge – separat källa)')
+    expect(text).toContain('Summa: 14 000,00 kr')
+    expect(text).toContain('Fastighet HUS-A: 12 000,00 kr')
+    expect(text).toContain('Ofördelat (rader utan dimension): 2 000,00 kr')
+    expect(text).not.toContain('kunde inte läsas')
+    // Annan organisation: inget Fortnox-block alls.
+    const other = await org()
+    expect(await ctx.buildContext(other.id)).not.toContain('FORTNOX')
+  })
+
   it('fastighet från annan organisation kan inte mappas', async () => {
     const o1 = await org()
     const o2 = await org()
@@ -1110,6 +1186,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const r = rig()
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
     const je = await entryWithLines(o.id, [
       [5170, '1234.50', null],
       [2440, null, '1234.50'],
@@ -1145,6 +1222,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const o = await org()
     const r = rig()
     await connect(r, o.id)
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
     const je = await entryWithLines(o.id, [
       [5170, '10.00', null],
       [2440, null, '10.00'],
@@ -1159,6 +1237,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const r = rig()
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
     const je = await entryWithLines(o.id, [
       [5999, '10.00', null],
       [2440, null, '10.00'],
@@ -1171,6 +1250,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const r = rig()
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
     const orig = await entryWithLines(o.id, [
       [5170, '10.00', null],
       [2440, null, '10.00'],
@@ -1202,6 +1282,106 @@ medDb('Fortnox A mot riktig Postgres', () => {
       data: { fortnoxDatabaseNumber: 900001 },
     })
     expect((await exportRig(r).dryRun(o.id, rev.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('E2: utan uttryckligt dimensionsbeslut → BLOCKED (ingen implicit OMIT)', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    const je = await entryWithLines(o.id, [
+      [5170, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    expect((await exportRig(r).dryRun(o.id, je.id)).blockReason).toMatch(
+      /^DIMENSION_DECISION_MISSING/,
+    )
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
+    const ok = await exportRig(r).dryRun(o.id, je.id)
+    expect(ok.state).toBe('DRY_RUN_READY')
+    const saved = await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: ok.id } })
+    const prov = (saved.draft as { provenance: { lines: Array<{ dimensionEvidenceRef: string }> } })
+      .provenance
+    expect(prov.lines[0]?.dimensionEvidenceRef).toMatch(/^kundbeslut:utan-dimension:u1@/)
+  })
+
+  it('E3: serie som uttryckligen gäller annat år → BLOCKED', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
+    const orig = r.reader.get.bind(r.reader)
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      const body = (await orig(t, p, q)) as Record<string, Record<string, unknown>>
+      if (p.startsWith('/3/voucherseries/') && body.VoucherSeries) body.VoucherSeries.Year = 2
+      return body
+    }) as typeof r.reader.get
+    const je = await entryWithLines(o.id, [
+      [5170, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    expect((await exportRig(r).dryRun(o.id, je.id)).blockReason).toMatch(
+      /^VOUCHER_SERIES_YEAR_UNVERIFIED/,
+    )
+  })
+
+  it.each([
+    [
+      'TotalPages 0 med rader',
+      (mi: Record<string, number>) => {
+        mi['@TotalPages'] = 0
+      },
+    ],
+    [
+      'TotalPages ändras',
+      (mi: Record<string, number>, page: number) => {
+        if (page === 2) mi['@TotalPages'] = 1
+      },
+    ],
+  ])('E4: årspaginering %s → ingen READY', async (_n, mutate) => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
+    r.reader.financialYears = [
+      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' },
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31' },
+      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31' },
+    ]
+    const orig = r.reader.get.bind(r.reader)
+    r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
+      const body = (await orig(t, p, q)) as Record<string, Record<string, number>>
+      if (p === '/3/financialyears')
+        mutate(body.MetaInformation as Record<string, number>, Number(q?.page))
+      return body
+    }) as typeof r.reader.get
+    const je = await entryWithLines(o.id, [
+      [5170, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    const row = await exportRig(r).dryRun(o.id, je.id)
+    expect(row.state).toBe('BLOCKED')
+    expect(row.blockReason).toMatch(/^FORTNOX_READ_FAILED/)
+  })
+
+  it('E4 positiv kontroll: flera år över flera sidor → READY', async () => {
+    const o = await org()
+    const r = rig()
+    await connect(r, o.id)
+    await r.connections.setExportVoucherSeries(o.id, 'A')
+    await r.connections.setExportOmitDimensions(o.id, 'u1', true)
+    r.reader.financialYears = [
+      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' },
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31' },
+      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31' },
+    ]
+    const je = await entryWithLines(o.id, [
+      [5170, '10.00', null],
+      [2440, null, '10.00'],
+    ])
+    expect((await exportRig(r).dryRun(o.id, je.id)).state).toBe('DRY_RUN_READY')
   })
 
   it('serieval: okänd serie i Fortnox avvisas och sparas inte', async () => {

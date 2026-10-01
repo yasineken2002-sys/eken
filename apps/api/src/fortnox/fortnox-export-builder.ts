@@ -64,6 +64,12 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
     if (!conn || conn.status !== 'ACTIVE') return block('NOT_CONNECTED', 'Fortnox är inte anslutet')
     if (!conn.fortnoxOrgNumber)
       return block('COMPANY_UNVERIFIED', 'Fortnox-företagets organisationsnummer saknas')
+    if (!conn.exportOmitDimensionsAt || !conn.exportOmitDimensionsBy) {
+      return block(
+        'DIMENSION_DECISION_MISSING',
+        'Ta ställning till dimensioner: Evenos verifikat saknar kostnadsställe/projekt; export utan dimension måste väljas uttryckligen',
+      )
+    }
     if (!conn.exportVoucherSeries)
       return block(
         'VOUCHER_SERIES_NOT_CHOSEN',
@@ -138,13 +144,24 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       }
       const fy = matching[0] as { Id: number; FromDate: string; ToDate: string }
 
-      const series = await getRef<{ VoucherSeries?: { Code?: unknown } }>(
+      const series = await getRef<{ VoucherSeries?: { Code?: unknown; Year?: unknown } }>(
         reader,
         auth.token,
         `/3/voucherseries/${conn.exportVoucherSeries}`,
         'VOUCHER_SERIES_UNVERIFIED',
         `Verifikatserien ${conn.exportVoucherSeries} finns inte i Fortnox`,
+        { financialyear: fy.Id },
       )
+      // E3: serien måste uttryckligen gälla det valda året (Year ingår i svarsschemat).
+      if (
+        series?.VoucherSeries?.Code === conn.exportVoucherSeries &&
+        series.VoucherSeries.Year !== fy.Id
+      ) {
+        return block(
+          'VOUCHER_SERIES_YEAR_UNVERIFIED',
+          `Verifikatserien ${conn.exportVoucherSeries} är inte verifierad för räkenskapsår ${fy.Id}`,
+        )
+      }
       if (series?.VoucherSeries?.Code !== conn.exportVoucherSeries) {
         return block(
           'VOUCHER_SERIES_UNVERIFIED',
@@ -234,7 +251,9 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         },
         accounts,
         dimensions: {
-          ...binding('schema:JournalEntryLine-saknar-dimension'),
+          ...binding(
+            `kundbeslut:utan-dimension:${conn.exportOmitDimensionsBy}@${conn.exportOmitDimensionsAt.toISOString()}`,
+          ),
           mode: 'OMIT',
           reason: 'Evenos verifikatrader bär ingen dimension; ingen härleds.',
         },
@@ -301,23 +320,27 @@ async function allPages<T>(
   path: string,
   key: string,
 ): Promise<T[]> {
+  // E4: strikt sidkontroll — giltiga heltal, TotalPages ≥ 1, oförändrade totaler på
+  // varje sida, exakt antal och objektelement. Inkonsistens → ingen READY.
   const out: T[] = []
-  let total: number | null = null
+  let first: { tp: number; tr: number } | null = null
+  const int = (x: unknown): x is number =>
+    typeof x === 'number' && Number.isSafeInteger(x) && x >= 0
   for (let page = 1; ; page++) {
     const body = await reader.get<Record<string, unknown>>(token, path, { page, limit: 100 })
     const mi = (body?.MetaInformation ?? {}) as Record<string, unknown>
     const [cp, tp, tr] = [mi['@CurrentPage'], mi['@TotalPages'], mi['@TotalResources']]
-    if (cp !== page || !Number.isSafeInteger(tp) || !Number.isSafeInteger(tr))
+    if (!int(cp) || !int(tp) || !int(tr) || tp < 1 || cp !== page)
       throw new FortnoxReadError('invalid')
-    if (total === null) total = tr as number
-    else if (total !== tr) throw new FortnoxReadError('invalid')
+    if (!first) first = { tp, tr }
+    else if (first.tp !== tp || first.tr !== tr) throw new FortnoxReadError('invalid')
     const list = body?.[key]
     if (!Array.isArray(list)) throw new FortnoxReadError('invalid')
     if (list.some((x) => !x || typeof x !== 'object' || Array.isArray(x)))
       throw new FortnoxReadError('invalid')
     out.push(...(list as T[]))
-    if (page >= (tp as number)) break
+    if (page >= first.tp) break
   }
-  if (out.length !== total) throw new FortnoxReadError('invalid')
+  if (out.length !== first.tr) throw new FortnoxReadError('invalid')
   return out
 }

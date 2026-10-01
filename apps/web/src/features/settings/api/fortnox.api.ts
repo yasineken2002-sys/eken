@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import { api, get, post } from '@/lib/api'
+import {
+  fortnoxMappingInputSchema,
+  fortnoxReadInputSchema,
+  type FortnoxMappingInput,
+  type FortnoxReadInput,
+} from '@eken/shared'
 
 const count = z.number().int().safe().nonnegative()
 const ore = z.number().int().safe()
@@ -143,29 +149,9 @@ export const fortnoxCatalogSchema = z.object({
   complete: z.boolean(),
 })
 export type FortnoxCatalogResponse = z.infer<typeof fortnoxCatalogSchema>
-export const fortnoxReadInputSchema = z
-  .object({
-    financialYearId: z.number().int().positive().safe(),
-    financialYearStart: civilDate,
-    financialYearEnd: civilDate,
-    periodFrom: civilDate,
-    periodTo: civilDate,
-    costAccounts: z.array(z.number().int().positive().safe()).min(1),
-  })
-  .refine(
-    (input) =>
-      input.financialYearStart <= input.periodFrom &&
-      input.periodFrom <= input.periodTo &&
-      input.periodTo <= input.financialYearEnd,
-    'Perioden måste ligga inom det valda räkenskapsåret',
-  )
-export type FortnoxReadInput = z.infer<typeof fortnoxReadInputSchema>
-export const fortnoxMappingInputSchema = z.object({
-  dimensionType: dimension,
-  code: z.string().min(1),
-  propertyId: z.string().min(1),
-})
-export type FortnoxMappingInput = z.infer<typeof fortnoxMappingInputSchema>
+// Nyttolasterna är DELADE med API:t (packages/shared/src/schemas/fortnox.ts).
+export { fortnoxReadInputSchema, fortnoxMappingInputSchema }
+export type { FortnoxReadInput, FortnoxMappingInput }
 
 const PREFIX = '/integrations/fortnox'
 
@@ -209,12 +195,12 @@ export async function getFortnoxCatalog(
 }
 
 export async function startFortnoxRead(input: FortnoxReadInput): Promise<FortnoxReadView> {
-  return readSchema.parse(
-    await post<unknown>(`${PREFIX}/reads`, fortnoxReadInputSchema.parse(input)),
-  )
+  const body: FortnoxReadInput = fortnoxReadInputSchema.parse(input)
+  return readSchema.parse(await post<unknown>(`${PREFIX}/reads`, body))
 }
 
 export async function saveFortnoxMapping(input: FortnoxMappingInput): Promise<void> {
   // Same configured Axios instance and JWT refresh as the existing helpers; there is no put helper.
-  await api.put(`${PREFIX}/mappings`, fortnoxMappingInputSchema.parse(input))
+  const body: FortnoxMappingInput = fortnoxMappingInputSchema.parse(input)
+  await api.put(`${PREFIX}/mappings`, body)
 }

@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { pkceChallenge } from './fortnox-providers'
 import {
@@ -49,6 +50,7 @@ export const SAFE_FORTNOX_CONNECTION_SELECT = {
   fortnoxOrgNumber: true,
   fortnoxCompanyName: true,
   exportVoucherSeries: true,
+  exportOmitDimensionsAt: true,
   connectedAt: true,
   disconnectedAt: true,
   lastErrorClass: true,
@@ -269,7 +271,13 @@ export class FortnoxConnectionService {
       if (existing!.fortnoxDatabaseNumber !== databaseNumber) {
         await refuse('Fortnox-företaget matchar inte den tidigare anslutningen', 'COMPANY_MISMATCH')
       }
-      const generation = row.expectedGeneration ?? existing!.generation
+      // D01: en förstagångsinloggning (ingen anslutning när state skapades) får bara
+      // ansluta sig till generation 0 — aldrig adoptera en senare generation som
+      // uppstått genom frånkoppling under tiden.
+      if (row.expectedGeneration === null && existing!.generation !== 0) {
+        await refuse('Anslutningen ändrades under inloggningen; försök igen', 'STALE_CONNECT')
+      }
+      const generation = row.expectedGeneration ?? 0
       const res = await this.prisma.fortnoxConnection.updateMany({
         where: { organizationId, generation, fortnoxDatabaseNumber: databaseNumber },
         data: activate,
@@ -338,7 +346,6 @@ export class FortnoxConnectionService {
     // C-F01: ett försök registreras BESTÄNDIGT innan anropet. Låset kan bara tas om
     // inget oavslutat försök finns och ett eventuellt uppskjutningsfönster passerat.
     const attemptId = crypto.randomUUID()
-    const bind = { id: conn.id, tokenVersion: conn.tokenVersion, refreshAttemptId: attemptId }
     const lease = await this.prisma.fortnoxConnection.updateMany({
       where: {
         id: conn.id,
@@ -392,7 +399,12 @@ export class FortnoxConnectionService {
           RATE_LIMIT_MAX_MS,
         )
         await this.prisma.fortnoxConnection.updateMany({
-          where: bind,
+          where: {
+            organizationId,
+            id: conn.id,
+            tokenVersion: conn.tokenVersion,
+            refreshAttemptId: attemptId,
+          },
           data: {
             refreshAttemptId: null,
             refreshLeaseUntil: new Date(Date.now() + delay),
@@ -404,7 +416,12 @@ export class FortnoxConnectionService {
       }
       if (err instanceof FortnoxAuthError && err.kind === 'not_sent') {
         await this.prisma.fortnoxConnection.updateMany({
-          where: bind,
+          where: {
+            organizationId,
+            id: conn.id,
+            tokenVersion: conn.tokenVersion,
+            refreshAttemptId: attemptId,
+          },
           data: {
             refreshAttemptId: null,
             refreshLeaseUntil: null,
@@ -429,7 +446,13 @@ export class FortnoxConnectionService {
       throw new FortnoxNotConnectedError('AUTH_LOST')
     }
     const saved = await this.prisma.fortnoxConnection.updateMany({
-      where: { ...bind, status: 'ACTIVE' },
+      where: {
+        organizationId,
+        id: conn.id,
+        tokenVersion: conn.tokenVersion,
+        refreshAttemptId: attemptId,
+        status: 'ACTIVE',
+      },
       data: {
         accessTokenEnc: this.crypto.encrypt(tokens.accessToken),
         refreshTokenEnc: this.crypto.encrypt(tokens.refreshToken),
@@ -479,6 +502,22 @@ export class FortnoxConnectionService {
       data: { exportVoucherSeries: code },
     })
     return { exportVoucherSeries: code }
+  }
+
+  /**
+   * E2: kundens uttryckliga beslut (OWNER/ADMIN) att exportera UTAN kostnadsställe
+   * och projekt. Sparas med vem och när; utan beslut blockerar förhandskontrollen.
+   */
+  async setExportOmitDimensions(organizationId: string, userId: string, omit: unknown) {
+    if (omit !== true && omit !== false) throw new BadRequestException('Ogiltigt dimensionsbeslut')
+    const res = await this.prisma.fortnoxConnection.updateMany({
+      where: { organizationId, status: 'ACTIVE' },
+      data: omit
+        ? { exportOmitDimensionsAt: new Date(), exportOmitDimensionsBy: userId }
+        : { exportOmitDimensionsAt: null, exportOmitDimensionsBy: null },
+    })
+    if (res.count !== 1) throw new ConflictException('Fortnox är inte anslutet')
+    return { omitDimensions: omit }
   }
 
   /**
@@ -534,8 +573,8 @@ export class FortnoxConnectionService {
     }
     // C-F03: frånkoppling och invalidering av väntande inloggningar i EN transaktion;
     // generationen höjs så att en pågående callback inte kan återaktivera.
-    await this.prisma.$transaction([
-      this.prisma.fortnoxConnection.update({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.fortnoxConnection.update({
         where: { organizationId },
         data: {
           status: 'DISCONNECTED',
@@ -548,12 +587,12 @@ export class FortnoxConnectionService {
           generation: { increment: 1 },
           disconnectedAt: new Date(),
         },
-      }),
-      this.prisma.fortnoxOAuthState.updateMany({
+      })
+      await tx.fortnoxOAuthState.updateMany({
         where: { organizationId, consumedAt: null },
         data: { consumedAt: new Date() },
-      }),
-    ])
+      })
+    }, PRISMA_DEFAULT_TX_LIMITS)
     return { disconnected: true }
   }
 

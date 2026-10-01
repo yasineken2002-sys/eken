@@ -262,6 +262,10 @@ export interface KontraktsPost {
 
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
+import { fortnoxMappingInputSchema, fortnoxReadInputSchema } from '@eken/shared'
+import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
+import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
+
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
   {
     endpoint: 'POST /accounting/journal/:id/reverse',
@@ -1575,5 +1579,40 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltig: { maxBankTxAmount: 50_000_001 },
     ogiltigVarfor: 'banktransaktionsgränsen får inte överstiga 50 MSEK',
+  },
+  {
+    // Fortnox A. Pariteten prövar MINST ETT KONTO — ett tomt urval får inte bli en
+    // "lyckad" läsning av ingenting. Årets gränser verifieras av tjänsten mot Fortnox.
+    endpoint: 'POST /integrations/fortnox/reads',
+    inputTyp: 'FortnoxReadInput',
+    schema: fortnoxReadInputSchema,
+    dto: FortnoxReadDto,
+    giltig: {
+      financialYearId: 1,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      costAccounts: [5170],
+    },
+    ogiltig: {
+      financialYearId: 1,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      costAccounts: [],
+    },
+    ogiltigVarfor: 'en läsning utan valda konton har inget mått att redovisa',
+  },
+  {
+    // Fortnox A. Pariteten prövar DIMENSIONSTYPEN — bara kostnadsställe/projekt finns.
+    endpoint: 'PUT /integrations/fortnox/mappings',
+    inputTyp: 'FortnoxMappingInput',
+    schema: fortnoxMappingInputSchema,
+    dto: FortnoxMappingDto,
+    giltig: { dimensionType: 'COST_CENTER', code: 'HUSA', propertyId: 'p-1' },
+    ogiltig: { dimensionType: 'ACCOUNT', code: 'HUSA', propertyId: 'p-1' },
+    ogiltigVarfor: 'endast kostnadsställe och projekt kan kopplas till fastighet',
   },
 ]

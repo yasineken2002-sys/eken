@@ -6,7 +6,9 @@ import { Roles } from '../common/decorators/roles.decorator'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { FortnoxConnectionService } from './fortnox-connection.service'
-import { FortnoxReadbackService, type StartReadInput } from './fortnox-readback.service'
+import { FortnoxReadbackService } from './fortnox-readback.service'
+import { FortnoxReadDto } from './dto/fortnox-read.dto'
+import { FortnoxMappingDto } from './dto/fortnox-mapping.dto'
 import { FortnoxExportService } from './fortnox-export.service'
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { toReadView, toStatusResponse } from './fortnox-status'
@@ -90,10 +92,7 @@ export class FortnoxController {
 
   @Put('mappings')
   @Roles('OWNER', 'ADMIN')
-  async upsertMapping(
-    @OrgId() organizationId: string,
-    @Body() body: { dimensionType?: unknown; code?: unknown; propertyId?: unknown },
-  ) {
+  async upsertMapping(@OrgId() organizationId: string, @Body() body: FortnoxMappingDto) {
     return this.mappings.upsert(organizationId, body)
   }
 
@@ -108,7 +107,7 @@ export class FortnoxController {
   async read(
     @OrgId() organizationId: string,
     @CurrentUser() user: JwtPayload,
-    @Body() body: StartReadInput,
+    @Body() body: FortnoxReadDto,
   ) {
     // Samma läsvykontrakt som GET /status (selectedAccounts, civila datum, ålder).
     return toReadView(await this.readback.read(organizationId, user.sub, body))
@@ -116,8 +115,29 @@ export class FortnoxController {
 
   @Put('export-settings')
   @Roles('OWNER', 'ADMIN')
-  async exportSettings(@OrgId() organizationId: string, @Body() body: { voucherSeries?: unknown }) {
-    return this.connections.setExportVoucherSeries(organizationId, body?.voucherSeries)
+  async exportSettings(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { voucherSeries?: unknown; omitDimensions?: unknown },
+  ) {
+    const out: { exportVoucherSeries?: string; omitDimensions?: boolean } = {}
+    if (body?.voucherSeries !== undefined) {
+      Object.assign(
+        out,
+        await this.connections.setExportVoucherSeries(organizationId, body.voucherSeries),
+      )
+    }
+    if (body?.omitDimensions !== undefined) {
+      Object.assign(
+        out,
+        await this.connections.setExportOmitDimensions(
+          organizationId,
+          user.sub,
+          body.omitDimensions,
+        ),
+      )
+    }
+    return out
   }
 
   @Get('exports')

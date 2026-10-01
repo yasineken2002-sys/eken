@@ -7534,7 +7534,11 @@ model FortnoxConnection {
 
   // Verifikatserie som kunden UTTRYCKLIGEN valt för export (verifierad i Fortnox när
   // den sparas). Null = ingen export kan förhandskontrolleras (BLOCKED).
-  exportVoucherSeries String?
+  exportVoucherSeries    String?
+  // E2: kundens UTTRYCKLIGA beslut att exportera utan kostnadsställe/projekt
+  // (Evenos verifikatrader saknar dimension). Null = inget beslut → BLOCKED.
+  exportOmitDimensionsAt DateTime?
+  exportOmitDimensionsBy String?
 
   lastErrorClass    String?
   lastErrorAt       DateTime?

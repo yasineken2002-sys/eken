@@ -33,6 +33,8 @@ CREATE TABLE "FortnoxConnection" (
     "refreshAttemptId" TEXT,
     "generation" INTEGER NOT NULL DEFAULT 0,
     "exportVoucherSeries" TEXT,
+    "exportOmitDimensionsAt" TIMESTAMP(3),
+    "exportOmitDimensionsBy" TEXT,
     "lastErrorClass" TEXT,
     "lastErrorAt" TIMESTAMP(3),
     "connectedByUserId" TEXT,

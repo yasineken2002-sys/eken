@@ -93,7 +93,6 @@ export class FortnoxExportService {
           blockReason: outcome.reasons.join(', ').slice(0, 500),
         }
 
-    const key = { organizationId_journalEntryId: { organizationId, journalEntryId } }
     // E1: skrivningen är VILLKORAD på ett tillåtet tidigare tillstånd. Ett slutläge
     // (UNKNOWN/CONFIRMED) som satts under `await builder.build` skrivs aldrig över.
     if (existing) {
@@ -101,7 +100,10 @@ export class FortnoxExportService {
         where: { organizationId, journalEntryId, state: { in: ['DRY_RUN_READY', 'BLOCKED'] } },
         data,
       })
-      return this.prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: key, select: EXPORT_VIEW })
+      return this.prisma.fortnoxVoucherExport.findUniqueOrThrow({
+        where: { organizationId_journalEntryId: { organizationId, journalEntryId } },
+        select: EXPORT_VIEW,
+      })
     }
     try {
       return await this.prisma.fortnoxVoucherExport.create({
