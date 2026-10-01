@@ -106,7 +106,7 @@ export function FortnoxExportSetup() {
 
   return (
     <section
-      aria-label="Export till Fortnox"
+      aria-label="Förhandskontroll av export till Fortnox"
       className="border-line min-w-0 space-y-4 rounded-2xl border bg-white p-5"
     >
       <div>

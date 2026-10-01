@@ -67,7 +67,7 @@ describe('FortnoxExportSetup', () => {
   it('visas inte för roller utan integrationsadministration', () => {
     mocks.role = 'MANAGER'
     renderIt()
-    expect(screen.queryByText(/Export till Fortnox/)).toBeNull()
+    expect(screen.queryByText(/förhandskontroll/i)).toBeNull()
     expect(mocks.state).not.toHaveBeenCalled()
   })
 
