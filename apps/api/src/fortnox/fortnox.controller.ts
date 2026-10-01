@@ -33,7 +33,7 @@ export class FortnoxController {
   @Get('status')
   @Roles('OWNER', 'ADMIN')
   async status(@OrgId() organizationId: string) {
-    const [connection, mappings, reads, exports] = await Promise.all([
+    const [connection, mappings, reads, exportQueue] = await Promise.all([
       this.connections.status(organizationId),
       this.mappings.list(organizationId),
       this.readback.latest(organizationId),
@@ -44,7 +44,7 @@ export class FortnoxController {
       connection,
       mappings,
       ...reads,
-      exports,
+      exports: exportQueue,
     })
   }
 

@@ -265,9 +265,10 @@ export class FortnoxReadbackService {
       where: { organizationId },
       _count: { _all: true },
     })
-    const exports = { DRY_RUN_READY: 0, BLOCKED: 0, UNKNOWN: 0, CONFIRMED: 0 }
-    for (const g of grouped) exports[g.state] = g._count._all
-    return { connection, latestRead, latestCompleteRead, exports }
+    // Inte `exports` som variabelnamn: krockar med CommonJS-modulens exports.
+    const exportCounts = { DRY_RUN_READY: 0, BLOCKED: 0, UNKNOWN: 0, CONFIRMED: 0 }
+    for (const g of grouped) exportCounts[g.state] = g._count._all
+    return { connection, latestRead, latestCompleteRead, exports: exportCounts }
   }
 }
 
