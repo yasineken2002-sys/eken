@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (222 st)
+## 1. HTTP-endpoints med rollgrind (231 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -27,6 +27,7 @@ DELETE /customers/:id                                           ADMIN, OWNER
 DELETE /documents/:id                                           ADMIN, OWNER
 DELETE /import/contract-batches/:id                             ADMIN, MANAGER, OWNER
 DELETE /inspections/:id                                         ADMIN, OWNER
+DELETE /integrations/fortnox/mappings/:id                       ADMIN, OWNER
 DELETE /invoices/:id                                            ADMIN, OWNER
 DELETE /leases/:id                                              ADMIN, OWNER
 DELETE /maintenance-plans/:id                                   ADMIN, OWNER
@@ -78,6 +79,9 @@ GET /contracts/download/:leaseId                                ADMIN, MANAGER, 
 GET /contracts/status/:leaseId                                  ADMIN, MANAGER, OWNER
 GET /import/contract-batches/:id                                ADMIN, MANAGER, OWNER
 GET /import/jobs                                                ADMIN, OWNER
+GET /integrations/fortnox/catalog                               ADMIN, OWNER
+GET /integrations/fortnox/exports                               ADMIN, OWNER
+GET /integrations/fortnox/status                                ADMIN, OWNER
 GET /invoices/:id/credit-note/preview                           ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /invoices/:id/events                                        ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /misc-charges/:id                                           ADMIN, MANAGER, OWNER
@@ -195,6 +199,10 @@ POST /import/scan-contract                                      ADMIN, OWNER
 POST /inspections/:id/analyze                                   ADMIN, MANAGER, OWNER
 POST /inspections/:id/rattelse                                  ADMIN, MANAGER, OWNER
 POST /inspections                                               ADMIN, MANAGER, OWNER
+POST /integrations/fortnox/connect                              ADMIN, OWNER
+POST /integrations/fortnox/disconnect                           ADMIN, OWNER
+POST /integrations/fortnox/exports/dry-run                      ADMIN, OWNER
+POST /integrations/fortnox/reads                                ADMIN, OWNER
 POST /invoices/:id/credit-note                                  ACCOUNTANT, ADMIN, MANAGER, OWNER
 POST /invoices/:id/pay                                          ADMIN, MANAGER, OWNER
 POST /invoices/:id/reminder-fee/reverse                         ACCOUNTANT, ADMIN, MANAGER, OWNER
@@ -240,9 +248,10 @@ POST /units                                                     ADMIN, MANAGER, 
 POST /users/:id/reactivate                                      OWNER
 POST /users/invite                                              ADMIN, OWNER
 POST /work-orders/:id/cancel                                    ADMIN, MANAGER, OWNER
+PUT /integrations/fortnox/mappings                              ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (183 st)
+## 1b. HTTP-endpoints UTAN rollgrind (184 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -813,12 +822,13 @@ POST /portal/maintenance                                        TenantAuthGuard 
 POST /tenant-portal/ai/chat                                     TenantAuthGuard               tenant-ai.controller.ts
 POST /tenant-portal/ai/confirm                                  TenantAuthGuard               tenant-ai.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (33 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (34 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
 
 GET /health                                                     health.controller.ts
+GET /integrations/fortnox/callback                              fortnox.controller.ts
 GET /public/config                                              public-config.controller.ts
 GET /public/plans                                               public-plans.controller.ts
 GET /reconciliation/psd2/callback                               psd2.controller.ts
