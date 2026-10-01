@@ -243,7 +243,9 @@ export class FortnoxReadbackService {
       where: { organizationId },
       select: { status: true, fortnoxDatabaseNumber: true, fortnoxCompanyName: true },
     })
-    if (!connection) return { connection: null, latestRead: null, latestCompleteRead: null }
+    if (!connection) {
+      return { connection: null, latestRead: null, latestCompleteRead: null, exports: null }
+    }
     const select = { ...FORTNOX_READ_VIEW_SELECT, costAccounts: true }
     const [latestRead, latestCompleteRead] = await Promise.all([
       this.prisma.fortnoxReadRun.findFirst({
@@ -257,7 +259,15 @@ export class FortnoxReadbackService {
         select,
       }),
     ])
-    return { connection, latestRead, latestCompleteRead }
+    // Exportköns läge (antal per status) — ingen hemlighet, ingen automatisk åtgärd.
+    const grouped = await this.prisma.fortnoxVoucherExport.groupBy({
+      by: ['state'],
+      where: { organizationId },
+      _count: { _all: true },
+    })
+    const exports = { DRY_RUN_READY: 0, BLOCKED: 0, UNKNOWN: 0, CONFIRMED: 0 }
+    for (const g of grouped) exports[g.state] = g._count._all
+    return { connection, latestRead, latestCompleteRead, exports }
   }
 }
 

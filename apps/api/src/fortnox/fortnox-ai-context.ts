@@ -20,6 +20,7 @@ export interface FortnoxAiSnapshot {
   } | null
   latestRead: AiReadRow | null
   latestCompleteRead: AiReadRow | null
+  exports: Record<'DRY_RUN_READY' | 'BLOCKED' | 'UNKNOWN' | 'CONFIRMED', number> | null
 }
 
 export interface AiReadRow {
@@ -34,6 +35,9 @@ export interface AiReadRow {
   completedAt: Date | null
   reason: string | null
   costAccounts: number[]
+  /** Företaget läsningen faktiskt gällde (sparat vid läsningen). */
+  fortnoxDatabaseNumber: number
+  coverage: unknown
   uncertainties: unknown
   summary: unknown
 }
@@ -96,7 +100,13 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
       done.financialYearStart && done.financialYearEnd
         ? `${day(done.financialYearStart)}–${day(done.financialYearEnd)} enligt Fortnox`
         : 'gränser ej verifierade'
+    if (done.fortnoxDatabaseNumber !== c.fortnoxDatabaseNumber) {
+      lines.push(
+        `OBS: den kompletta läsningen gäller Fortnox-företag med databasnummer ${done.fortnoxDatabaseNumber}, inte den nuvarande anslutningen. Använd den inte som underlag för nuvarande företag.`,
+      )
+    }
     lines.push(
+      `Läs-id ${done.id}. ${coverageText(done.coverage)}`,
       `Senast kompletta återläsning: period ${day(done.periodFrom)}–${day(done.periodTo)} (räkenskapsår ${year}), återläst per ${stockholm(done.completedAt)} (${ageMin} min sedan). Säg "återläst per …", inte "aktuellt".`,
       `Mått: Nettobelopp för valda konton (debet − kredit på bokförda verifikatrader) – konto ${done.costAccounts.join(', ')}. Det är INTE hela bolagets resultat, inte fakturatotaler, moms eller betalningar.`,
       `Summa: ${formatOre(sum.totalOre)}`,
@@ -133,12 +143,35 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
   }
 
   const last = s.latestRead
-  if (last && (!done || last.id !== done.id) && last.status !== 'RUNNING') {
+  if (last && (!done || last.id !== done.id)) {
     lines.push(
-      `Senaste läsförsök (${stockholm(last.completedAt ?? last.startedAt)}) blev ofullständigt: ${last.reason ?? last.status}. ${done ? 'Beloppen ovan kommer från den tidigare kompletta läsningen.' : ''}`.trim(),
+      last.status === 'RUNNING'
+        ? `En läsning (id ${last.id}) pågår sedan ${stockholm(last.startedAt)}; dess resultat är inte känt än.`
+        : `Senaste läsförsök (id ${last.id}, ${stockholm(last.completedAt ?? last.startedAt)}) blev ofullständigt: ${last.reason ?? last.status}. ${done ? 'Beloppen ovan kommer från den tidigare kompletta läsningen.' : ''}`.trim(),
+    )
+  }
+  const ex = s.exports
+  if (ex && (ex.UNKNOWN || ex.BLOCKED || ex.DRY_RUN_READY || ex.CONFIRMED)) {
+    lines.push(
+      `Exportkö till Fortnox (endast förhandskontroll; sändning är avstängd i väntan på leverantörsbesked om dubblettskydd): ${ex.DRY_RUN_READY} klara utkast, ${ex.BLOCKED} spärrade, ${ex.CONFIRMED} bekräftade` +
+        (ex.UNKNOWN ? `, ${ex.UNKNOWN} med okänt utfall som kräver manuell avstämning.` : '.'),
     )
   }
   return lines
+}
+
+/** Täckning per resurs ur läsningens sparade coverage; okända tal uppfinns inte. */
+function coverageText(coverage: unknown): string {
+  if (!coverage || typeof coverage !== 'object') return 'Täckning: okänd.'
+  const parts: string[] = []
+  for (const [path, v] of Object.entries(coverage as Record<string, unknown>)) {
+    const c = (v ?? {}) as Record<string, unknown>
+    const num = (x: unknown) => (Number.isSafeInteger(x) ? String(x) : '?')
+    parts.push(
+      `${path}: sidor ${num(c.pages)}/${num(c.totalPages)}, poster ${num(c.itemsSeen)}/${num(c.totalResources)}`,
+    )
+  }
+  return parts.length ? `Täckning: ${parts.join('; ')}.` : 'Täckning: okänd.'
 }
 
 function isSummary(x: unknown): x is Summary {

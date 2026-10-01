@@ -695,6 +695,29 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect(r.crypto.decrypt(raw.accessTokenEnc)).toBe('mock-access-1')
   })
 
+  it('AI-underlaget är org-bundet: annan organisation får inget block och inga belopp', async () => {
+    const o1 = await org()
+    const o2 = await org()
+    const r = rig()
+    await connect(r, o1.id)
+    r.reader.vouchers = [
+      V(1, [
+        { Account: 5170, Debit: 100, Credit: 0 },
+        { Account: 2440, Debit: 0, Credit: 100 },
+      ]),
+    ]
+    await r.readback.read(o1.id, 'u1', READ)
+    const own = await r.readback.aiSnapshot(o1.id)
+    expect(own.latestCompleteRead?.summary).not.toBeNull()
+    const other = await r.readback.aiSnapshot(o2.id)
+    expect(other).toEqual({
+      connection: null,
+      latestRead: null,
+      latestCompleteRead: null,
+      exports: null,
+    })
+  })
+
   it('fastighet från annan organisation kan inte mappas', async () => {
     const o1 = await org()
     const o2 = await org()
