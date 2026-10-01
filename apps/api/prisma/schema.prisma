@@ -898,6 +898,11 @@ model Organization {
   bankImportAttempts        BankImportAttempt[]
   bankAccounts              BankAccount[]
   bankConsents              BankConsent[]
+  fortnoxConnection         FortnoxConnection?
+  fortnoxOAuthStates        FortnoxOAuthState[]
+  fortnoxDimensionMappings  FortnoxDimensionMapping[]
+  fortnoxReadRuns           FortnoxReadRun[]
+  fortnoxVoucherExports     FortnoxVoucherExport[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
   importJobs                ImportJob[]
@@ -954,6 +959,7 @@ model Organization {
 
   // G2-AVSLUT — granskningspausens perioder.
   bankIdentityReviewPauses BankIdentityReviewPause[]
+
   @@index([orgNumber])
   @@index([customerNumber])
   @@index([subscriptionPlan])
@@ -1171,7 +1177,8 @@ model Property {
   // Sätts av `actorStampExtension`, inte av anropsstället. Se
   // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
   // efter migrationens brytpunkt görs synligt.
-  actorKind ActorKind?
+  actorKind                ActorKind?
+  fortnoxDimensionMappings FortnoxDimensionMapping[]
 
   @@unique([organizationId, propertyDesignation])
   @@index([organizationId])
@@ -2195,7 +2202,8 @@ model JournalEntry {
   lines             JournalEntryLine[]
   fiscalYearClose   FiscalYearClose?
 
-  createdAt DateTime @default(now())
+  createdAt            DateTime              @default(now())
+  fortnoxVoucherExport FortnoxVoucherExport?
 
   // Obruten, unik nummerserie per (org, serie, räkenskapsår).
   @@unique([organizationId, series, fiscalYear, verNumber])
@@ -5783,10 +5791,10 @@ model Inspection {
   // `version` är kedjans ordningstal, 1 för originalet. Det är denormaliserat
   // med flit: utan det kan ingen lista sorteras eller märkas utan att först
   // vandra hela kedjan.
-  version          Int         @default(1)
-  correctionOfId   String?     @unique
-  correctionOf     Inspection? @relation("InspectionRattelse", fields: [correctionOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  correction       Inspection? @relation("InspectionRattelse")
+  version        Int         @default(1)
+  correctionOfId String?     @unique
+  correctionOf   Inspection? @relation("InspectionRattelse", fields: [correctionOfId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  correction     Inspection? @relation("InspectionRattelse")
 
   // VARFÖR rättelsen gjordes, av VEM och NÄR. Alla tre är NULL på ett original
   // och satta på varje rättelse — tjänsten kräver dem, och `correctedAt` är
@@ -5797,7 +5805,7 @@ model Inspection {
   // `inspectedById` på raden ovan. Skälet är detsamma: spåret ska överleva att
   // användaren tas bort. Ett raderat konto gör uppgiften omöjlig att slå upp —
   // det ska inte göra den omöjlig att LAGRA.
-  correctionReason String?     @db.Text
+  correctionReason String?   @db.Text
   correctedById    String?
   correctedAt      DateTime?
 
@@ -7479,4 +7487,164 @@ model AiDelegationEvent {
   delegation AiDelegation @relation(fields: [delegationId], references: [id], onDelete: Cascade)
 
   @@index([delegationId, createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FORTNOX A (2026-10-01) — Eveno äger avier/betalningar, Fortnox är huvudbok.
+//
+// INERT som standard: inga rader skapas utan FORTNOX_ENABLED=true + nyckel, och
+// inget här ändrar Evenos egna rapporter eller huvudbok. Fortnox-underlaget är
+// en SEPARAT källa (shadow) — se apps/api/src/fortnox/README-kontrakt i koden.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum FortnoxConnectionStatus {
+  ACTIVE
+  // 401 eller avvisad förnyelse. Arbetet stoppas; ingen tyst återanslutning.
+  AUTH_LOST
+  DISCONNECTED
+}
+
+// En anslutning per organisation. Byte till ANNAT Fortnox-företag (annat
+// DatabaseNumber) stoppas i tjänsten: historiska läsningar/exporter får inte
+// flytta mellan företag.
+model FortnoxConnection {
+  id             String                  @id @default(uuid())
+  organizationId String                  @unique
+  status         FortnoxConnectionStatus @default(ACTIVE)
+
+  // Fortnox-företagets identitet ur GET /3/companyinformation vid anslutning.
+  fortnoxDatabaseNumber Int
+  fortnoxOrgNumber      String?
+  fortnoxCompanyName    String?
+  scope                 String?
+
+  // AES-256-GCM (base64 iv+tag+ct). Lämnar aldrig backend — se SAFE-select.
+  accessTokenEnc       String    @default("")
+  refreshTokenEnc      String?
+  accessTokenExpiresAt DateTime?
+  // CAS-lås för förnyelse: den som höjer versionen förnyar; övriga läser om.
+  tokenVersion         Int       @default(0)
+  refreshLeaseUntil    DateTime?
+
+  lastErrorClass    String?
+  lastErrorAt       DateTime?
+  connectedByUserId String?
+  connectedAt       DateTime  @default(now())
+  disconnectedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// Single-use OAuth-state (CSRF-bindning) med PKCE-verifier, krypterad.
+model FortnoxOAuthState {
+  id                String    @id @default(uuid())
+  state             String    @unique
+  organizationId    String
+  initiatedByUserId String
+  codeVerifierEnc   String
+  consumedAt        DateTime?
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([expiresAt])
+}
+
+enum FortnoxDimensionType {
+  COST_CENTER
+  PROJECT
+}
+
+// Uttrycklig koppling Fortnox-dimension → Eveno-fastighet. Ingen gissning:
+// en kod utan rad här blir "okopplad" i underlaget.
+model FortnoxDimensionMapping {
+  id             String               @id @default(uuid())
+  organizationId String
+  dimensionType  FortnoxDimensionType
+  code           String
+  propertyId     String
+  createdAt      DateTime             @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, dimensionType, code])
+  @@index([propertyId])
+}
+
+enum FortnoxReadStatus {
+  RUNNING
+  COMPLETE
+  COMPLETE_WITH_UNCERTAINTY
+  PARTIAL
+  FAILED
+  AUTH_LOST
+  WRONG_COMPANY
+}
+
+// En återläsning av Fortnox huvudbok för en period. summary/rows är null när
+// läsningen inte är komplett — aldrig noll. coverage/uncertainties bär vad som
+// faktiskt lästes och vad som inte kan bevisas (ingen atomisk ögonblicksbild).
+model FortnoxReadRun {
+  id                    String            @id @default(uuid())
+  organizationId        String
+  connectionId          String
+  fortnoxDatabaseNumber Int
+  status                FortnoxReadStatus @default(RUNNING)
+  financialYearId       Int
+  financialYearStart    DateTime          @db.Date
+  financialYearEnd      DateTime          @db.Date
+  periodFrom            DateTime          @db.Date
+  periodTo              DateTime          @db.Date
+  costAccounts          Int[]
+  startedAt             DateTime          @default(now())
+  completedAt           DateTime?
+  summary               Json?
+  rows                  Json?
+  coverage              Json              @default("{}")
+  uncertainties         Json              @default("[]")
+  reason                String?
+  triggeredByUserId     String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, startedAt])
+}
+
+enum FortnoxExportState {
+  // Förhandskontroll godkänd; draft sparad. Sändning är AVSTÄNGD i denna version.
+  DRY_RUN_READY
+  // Förhandskontroll underkänd; blockReason anger varför.
+  BLOCKED
+  // Oklart sändutfall. Kräver manuell avstämning — ALDRIG automatisk omsändning.
+  UNKNOWN
+  // Verifierad i Fortnox genom återläsning (kräver extern bekräftelse).
+  CONFIRMED
+}
+
+// Beständig exportidentitet: EN rad per Eveno-verifikat och organisation.
+// Parallella begäranden kolliderar på det unika villkoret och ger en rad.
+model FortnoxVoucherExport {
+  id             String             @id @default(uuid())
+  organizationId String
+  journalEntryId String             @unique
+  state          FortnoxExportState
+  draft          Json?
+  draftHash      String?
+  blockReason    String?
+  externalSeries String?
+  externalNumber Int?
+  externalYear   Int?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, journalEntryId])
+  @@index([organizationId, state])
 }
