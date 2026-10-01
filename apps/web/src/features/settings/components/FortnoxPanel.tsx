@@ -5,6 +5,7 @@ import { LoadErrorState } from '@/components/ui/LoadErrorState'
 import { isForbidden, isUnavailable } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { useFortnox } from '../hooks/useFortnox'
+import { FortnoxReadSetup } from './FortnoxReadSetup'
 import type { FortnoxReadView, FortnoxStatusResponse } from '../api/fortnox.api'
 
 const READ_LABELS: Record<FortnoxReadView['status'], string> = {
@@ -57,6 +58,7 @@ function AuthorizedFortnoxPanel() {
   const { status, connect, disconnect } = useFortnox()
   const [confirmDisconnect, setConfirmDisconnect] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [catalogDenied, setCatalogDenied] = useState(false)
   const active = useRef(true)
   useEffect(() => {
     active.current = true
@@ -65,7 +67,10 @@ function AuthorizedFortnoxPanel() {
     }
   }, [])
   const denied =
-    isForbidden(status.error) || isForbidden(connect.error) || isForbidden(disconnect.error)
+    catalogDenied ||
+    isForbidden(status.error) ||
+    isForbidden(connect.error) ||
+    isForbidden(disconnect.error)
   const busy = connect.isPending || disconnect.isPending
 
   if (denied) return <PermissionDeniedState vad="Fortnox-inställningarna" />
@@ -238,6 +243,14 @@ function AuthorizedFortnoxPanel() {
         <ReadAttempt read={data.latestRead} />
         <ReadSummary data={data} />
       </div>
+      {data.enabled && connection?.status === 'ACTIVE' && (
+        <FortnoxReadSetup
+          key={`${connection.company.databaseNumber}:${connection.connectedAt}`}
+          companyNumber={connection.company.databaseNumber}
+          blocked={busy || status.isFetching || data.latestRead?.status === 'RUNNING'}
+          onAccessDenied={() => setCatalogDenied(true)}
+        />
+      )}
       <section aria-labelledby="fortnox-mappings" className="rounded-xl border border-line p-4">
         <h3 id="fortnox-mappings" className="font-semibold text-ink">
           Fastighetsfördelning
@@ -284,10 +297,6 @@ function AuthorizedFortnoxPanel() {
           </p>
         )}
       </section>
-      <p className="text-xs leading-relaxed text-ink-muted">
-        Ny läsning behöver verifierat räkenskapsår, period och kostnadskonton. Dessa väljs ännu inte
-        i den här panelen.
-      </p>
     </section>
   )
 }
@@ -319,6 +328,10 @@ function ReadAttempt({ read }: { read: FortnoxReadView | null }) {
           </p>
           <dl className="space-y-2 text-sm">
             <Detail label="Period" value={`${day(read.periodFrom)} – ${day(read.periodTo)}`} />
+            <Detail
+              label="Sparat kontourval"
+              value={read.selectedAccounts.length ? read.selectedAccounts.join(', ') : 'Saknas'}
+            />
             <Detail label="Startat" value={time(read.startedAt)} />
             <Detail
               label="Avslutat"
@@ -369,7 +382,7 @@ function Coverage({ read }: { read: FortnoxReadView }) {
 
 function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
   const read = data.latestCompleteRead
-  const summary = read && completed(read) ? read.summary : null
+  const summary = read && completed(read) && read.selectedAccounts.length > 0 ? read.summary : null
   const earlier =
     !data.enabled ||
     data.connection?.status !== 'ACTIVE' ||
@@ -384,7 +397,11 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
         Senaste kompletta underlag
       </h3>
       {!read || !summary ? (
-        <p className="text-sm text-ink-muted">Ingen komplett läsning med summa finns.</p>
+        <p className="text-sm text-ink-muted">
+          {read && read.selectedAccounts.length === 0
+            ? 'Sparat kontourval saknas. Ingen verifierbar summa visas.'
+            : 'Ingen komplett läsning med summa finns.'}
+        </p>
       ) : (
         <>
           {earlier && (
@@ -399,10 +416,11 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
             <p className="text-sm font-medium text-amber-600">Underlaget innehåller osäkerheter</p>
           )}
           <dl>
-            <Detail label="Kostnader i läsurvalet" value={money(summary.totalOre)} />
+            <Detail label="Nettobelopp för valda konton" value={money(summary.totalOre)} />
+            <Detail label="Sparat kontourval" value={read.selectedAccounts.join(', ')} />
           </dl>
           <p className="text-xs text-ink-muted">
-            Avser valda kostnadskonton vid lästillfället. Detta är inte en fullständig
+            Avser det sparade kontourvalet vid lästillfället. Detta är inte en fullständig
             resultaträkning.
           </p>
           <dl className="space-y-3 text-sm">

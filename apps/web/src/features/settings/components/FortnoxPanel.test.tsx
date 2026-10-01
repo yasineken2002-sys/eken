@@ -11,9 +11,17 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: (selector: (state: unknown) => unknown) =>
-    selector({ user: { id: 'user-A', role: mocks.role }, organization: { id: 'org-A' } }),
+    selector({
+      user: { id: 'user-A', role: mocks.role },
+      organization: { id: 'org-A' },
+    }),
 }))
 vi.mock('../hooks/useFortnox', () => ({ useFortnox: mocks.useFortnox }))
+vi.mock('./FortnoxReadSetup', () => ({
+  FortnoxReadSetup: ({ onAccessDenied }: { onAccessDenied: () => void }) => (
+    <button onClick={onAccessDenied}>Simulera nekad katalog</button>
+  ),
+}))
 vi.mock('@/lib/api', () => ({
   isForbidden: (error: { status?: number } | null) => error?.status === 403,
   isUnavailable: (error: { status?: number } | null) => error?.status === 503,
@@ -25,13 +33,16 @@ const read = (): FortnoxReadView => ({
   id: 'read-A',
   status: 'COMPLETE_WITH_UNCERTAINTY',
   financialYearId: 9,
+  selectedAccounts: [4010, 5070],
   periodFrom: '2026-09-01',
   periodTo: '2026-09-30',
   startedAt: '2026-10-01T10:00:00Z',
   completedAt: '2026-10-01T10:02:00Z',
   reason: null,
   uncertainties: ['En dimension saknar koppling.'],
-  coverage: { vouchers: { pages: 2, totalPages: 2, totalResources: 31, itemsSeen: 31 } },
+  coverage: {
+    vouchers: { pages: 2, totalPages: 2, totalResources: 31, itemsSeen: 31 },
+  },
   summary: {
     currency: 'SEK',
     totalOre: 2300000,
@@ -46,7 +57,11 @@ const data = (): FortnoxStatusResponse => ({
   enabled: true,
   connection: {
     status: 'ACTIVE',
-    company: { name: 'Testbolaget', orgNumber: '556000-0000', databaseNumber: 42 },
+    company: {
+      name: 'Testbolaget',
+      orgNumber: '556000-0000',
+      databaseNumber: 42,
+    },
     connectedAt: '2026-09-30T10:00:00Z',
     disconnectedAt: null,
     lastErrorClass: null,
@@ -74,7 +89,11 @@ function setup(over: Record<string, unknown> = {}) {
       ...over,
     },
     connect: { isPending: false, error: null, mutateAsync: mocks.connect },
-    disconnect: { isPending: false, error: null, mutateAsync: mocks.disconnect },
+    disconnect: {
+      isPending: false,
+      error: null,
+      mutateAsync: mocks.disconnect,
+    },
   })
   return render(<FortnoxPanel />)
 }
@@ -85,6 +104,22 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('FortnoxPanel', () => {
+  it('never presents a net amount without its saved account provenance', () => {
+    const value = data()
+    value.latestCompleteRead = { ...read(), selectedAccounts: [] }
+    setup({ data: value })
+    expect(screen.getByText(/Sparat kontourval saknas/)).toBeTruthy()
+    expect(screen.queryByText('Nettobelopp för valda konton')).toBeNull()
+    expect(screen.queryByText(/23\s*000/)).toBeNull()
+  })
+  it('shows the saved account set with the net amount and hides all data on catalog denial', () => {
+    setup()
+    expect(screen.getByText('Nettobelopp för valda konton')).toBeTruthy()
+    expect(screen.getAllByText('4010, 5070').length).toBe(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Simulera nekad katalog' }))
+    expect(screen.getByText('Du har inte behörighet')).toBeTruthy()
+    expect(screen.queryByText('Testbolaget')).toBeNull()
+  })
   it('hides cached financial data when a mutation returns 403', () => {
     const view = setup()
     const state = mocks.useFortnox.mock.results[0]?.value

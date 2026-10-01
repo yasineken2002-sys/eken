@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { get, post } from '@/lib/api'
+import { api, get, post } from '@/lib/api'
 
 const count = z.number().int().safe().nonnegative()
 const ore = z.number().int().safe()
 const dimension = z.enum(['COST_CENTER', 'PROJECT'])
-const readSchema = z.object({
+export const readSchema = z.object({
   id: z.string().min(1),
   status: z.enum([
     'RUNNING',
@@ -16,6 +16,7 @@ const readSchema = z.object({
     'WRONG_COMPANY',
   ]),
   financialYearId: z.number().int().positive(),
+  selectedAccounts: z.array(z.number().int().positive().safe()),
   periodFrom: z.string(),
   periodTo: z.string(),
   startedAt: z.string(),
@@ -23,17 +24,30 @@ const readSchema = z.object({
   reason: z.string().nullable(),
   uncertainties: z.array(z.string()),
   coverage: z.record(
-    z.object({ pages: count, totalPages: count, totalResources: count, itemsSeen: count }),
+    z.object({
+      pages: count,
+      totalPages: count,
+      totalResources: count,
+      itemsSeen: count,
+    }),
   ),
   summary: z
     .object({
       currency: z.literal('SEK'),
       totalOre: ore,
       byProperty: z.array(
-        z.object({ propertyId: z.string(), propertyName: z.string(), amountOre: ore }),
+        z.object({
+          propertyId: z.string(),
+          propertyName: z.string(),
+          amountOre: ore,
+        }),
       ),
       unmappedDimensions: z.array(
-        z.object({ dimensionType: dimension, code: z.string(), amountOre: ore }),
+        z.object({
+          dimensionType: dimension,
+          code: z.string(),
+          amountOre: ore,
+        }),
       ),
       unallocatedOre: ore,
       uncertainRemovedOre: ore,
@@ -70,7 +84,12 @@ export const fortnoxStatusSchema = z.object({
   latestRead: readSchema.nullable(),
   latestCompleteRead: readSchema.nullable(),
   exports: z.object({
-    counts: z.object({ DRY_RUN_READY: count, BLOCKED: count, UNKNOWN: count, CONFIRMED: count }),
+    counts: z.object({
+      DRY_RUN_READY: count,
+      BLOCKED: count,
+      UNKNOWN: count,
+      CONFIRMED: count,
+    }),
     needsReconciliation: count,
     sendingEnabled: z.literal(false),
     sendingDisabledReason: z.literal('IDEMPOTENCY_UNRESOLVED'),
@@ -78,6 +97,75 @@ export const fortnoxStatusSchema = z.object({
 })
 export type FortnoxStatusResponse = z.infer<typeof fortnoxStatusSchema>
 export type FortnoxReadView = z.infer<typeof readSchema>
+
+export function isCivilDate(value: string): boolean {
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(value)) &&
+    new Date(value).toISOString().slice(0, 10) === value
+  )
+}
+const civilDate = z.string().refine(isCivilDate, 'Ogiltigt datum')
+export const fortnoxCatalogSchema = z.object({
+  ready: z.boolean(),
+  reason: z.string().nullable(),
+  observedAt: z.string(),
+  company: z.object({
+    name: z.string().nullable(),
+    orgNumber: z.string().nullable(),
+    databaseNumber: z.number().int(),
+  }),
+  financialYears: z.array(
+    z
+      .object({
+        id: z.number().int().positive().safe(),
+        from: civilDate,
+        to: civilDate,
+      })
+      .refine((year) => year.from <= year.to),
+  ),
+  selectedFinancialYearId: z.number().int().positive().safe().nullable(),
+  costAccounts: z.array(
+    z.object({
+      number: z.number().int().positive().safe(),
+      name: z.string(),
+      selectable: z.boolean(),
+      reason: z.string().nullable(),
+    }),
+  ),
+  dimensions: z.array(
+    z.object({
+      dimensionType: dimension,
+      code: z.string().min(1),
+      name: z.string().nullable(),
+    }),
+  ),
+  complete: z.boolean(),
+})
+export type FortnoxCatalogResponse = z.infer<typeof fortnoxCatalogSchema>
+export const fortnoxReadInputSchema = z
+  .object({
+    financialYearId: z.number().int().positive().safe(),
+    financialYearStart: civilDate,
+    financialYearEnd: civilDate,
+    periodFrom: civilDate,
+    periodTo: civilDate,
+    costAccounts: z.array(z.number().int().positive().safe()).min(1),
+  })
+  .refine(
+    (input) =>
+      input.financialYearStart <= input.periodFrom &&
+      input.periodFrom <= input.periodTo &&
+      input.periodTo <= input.financialYearEnd,
+    'Perioden måste ligga inom det valda räkenskapsåret',
+  )
+export type FortnoxReadInput = z.infer<typeof fortnoxReadInputSchema>
+export const fortnoxMappingInputSchema = z.object({
+  dimensionType: dimension,
+  code: z.string().min(1),
+  propertyId: z.string().min(1),
+})
+export type FortnoxMappingInput = z.infer<typeof fortnoxMappingInputSchema>
 
 const PREFIX = '/integrations/fortnox'
 
@@ -107,4 +195,26 @@ export async function connectFortnox(): Promise<string> {
 
 export async function disconnectFortnox(): Promise<void> {
   z.object({ disconnected: z.literal(true) }).parse(await post<unknown>(`${PREFIX}/disconnect`))
+}
+
+export async function getFortnoxCatalog(
+  financialYearId: number | null,
+): Promise<FortnoxCatalogResponse> {
+  if (financialYearId !== null) z.number().int().positive().safe().parse(financialYearId)
+  const result =
+    financialYearId === null
+      ? await get<unknown>(`${PREFIX}/catalog`)
+      : await get<unknown>(`${PREFIX}/catalog`, { financialYearId })
+  return fortnoxCatalogSchema.parse(result)
+}
+
+export async function startFortnoxRead(input: FortnoxReadInput): Promise<FortnoxReadView> {
+  return readSchema.parse(
+    await post<unknown>(`${PREFIX}/reads`, fortnoxReadInputSchema.parse(input)),
+  )
+}
+
+export async function saveFortnoxMapping(input: FortnoxMappingInput): Promise<void> {
+  // Same configured Axios instance and JWT refresh as the existing helpers; there is no put helper.
+  await api.put(`${PREFIX}/mappings`, fortnoxMappingInputSchema.parse(input))
 }
