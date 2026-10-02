@@ -135,4 +135,74 @@ describe('observerad tom Fortnox-katalog', () => {
       itemsSeen: 0,
     })
   })
+
+  // ROOT-P1: KÄLLHÄRLETT/SYNTETISKT — voucher-endpointens tomform är INTE läst externt
+  // (testföretaget saknar räkenskapsår). Samma exakta tomform antas och prövas här.
+  function ledgerReader(sublist: (page: number) => unknown): FortnoxLedgerReader {
+    return {
+      async get<T>(
+        _t: string,
+        path: string,
+        q?: Readonly<Record<string, string | number>>,
+      ): Promise<T> {
+        if (path === '/3/companyinformation') return COMPANY as T
+        if (path === '/3/financialyears/1')
+          return { FinancialYear: { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' } } as T
+        if (path === '/3/accounts/5170') return { Account: { Number: 5170, Active: true } } as T
+        if (path === '/3/costcenters') return structuredClone(costCenters) as T
+        if (path === '/3/vouchers/sublist') return sublist(Number(q?.page)) as T
+        throw new Error(path)
+      },
+    }
+  }
+  const LCFG = {
+    expectedDatabaseNumber: 1868238,
+    financialYearId: 1,
+    periodFrom: '2026-01-01',
+    periodTo: '2026-12-31',
+    costAccounts: [5170],
+    mappings: new Map(),
+    evenoExported: new Set<string>(),
+  }
+
+  it('ROOT-P1 positiv: exakt tom verifikatlista → COMPLETE, summa 0, sann täckning 1/0/0/0', async () => {
+    const res = await readLedger(
+      ledgerReader(() => ({ MetaInformation: meta(1, 0, 0), Vouchers: [] })),
+      't',
+      LCFG,
+    )
+    expect([res.status, res.summary?.totalOre]).toEqual(['COMPLETE', 0])
+    expect(res.coverage['/3/vouchers/sublist']).toEqual({
+      pages: 1,
+      totalPages: 0,
+      totalResources: 0,
+      itemsSeen: 0,
+    })
+  })
+
+  it.each([
+    ['TotalPages 0 men TotalResources 2', () => ({ MetaInformation: meta(1, 0, 2), Vouchers: [] })],
+    [
+      'TotalPages 0 med verifikat i listan',
+      () => ({
+        MetaInformation: meta(1, 0, 0),
+        Vouchers: [{ Year: 1, VoucherSeries: 'A', VoucherNumber: 1 }],
+      }),
+    ],
+    ['tom form med fel sidnummer', () => ({ MetaInformation: meta(2, 0, 0), Vouchers: [] })],
+    ['saknad verifikatlista', () => ({ MetaInformation: meta(1, 0, 0) })],
+    [
+      'sen tom sida: sida 2 påstår tom samling efter att sida 1 angav 2 sidor',
+      (page: number) =>
+        page === 1
+          ? {
+              MetaInformation: meta(1, 2, 3),
+              Vouchers: [{ Year: 1, VoucherSeries: 'A', VoucherNumber: 1 }],
+            }
+          : { MetaInformation: meta(1, 0, 0), Vouchers: [] },
+    ],
+  ])('ROOT-P1 negativ: %s → PARTIAL, ingen summa', async (_n, sublist) => {
+    const res = await readLedger(ledgerReader(sublist as (p: number) => unknown), 't', LCFG)
+    expect([res.status, res.summary]).toEqual(['PARTIAL', null])
+  })
 })
