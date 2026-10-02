@@ -102,6 +102,12 @@ export function FortnoxExportRowView({
       )}
 
       {RECONCILABLE.has(row.state) && (
+        <p className="text-ink-muted break-words text-sm">
+          Gäller Evenos verifikat {row.journalEntryId.slice(0, 8)}. Ange identiteten för den post i
+          Fortnox som motsvarar just detta verifikat.
+        </p>
+      )}
+      {RECONCILABLE.has(row.state) && (
         <form
           aria-label="Avstämning mot Fortnox"
           className="grid min-w-0 gap-2 sm:grid-cols-4"

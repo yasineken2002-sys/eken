@@ -84,6 +84,7 @@ describe('FortnoxExportRowView', () => {
         expect(mocks.reconcile).toHaveBeenCalledWith('x1', { year: 1, series: 'A', number: 12 }),
       )
       expect(await screen.findByText(/stämmer inte med det skickade underlaget/)).toBeTruthy()
+      expect(screen.getByText(/Gäller Evenos verifikat je1/)).toBeTruthy() // K-S5
     },
   )
 
