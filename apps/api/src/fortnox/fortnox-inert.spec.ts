@@ -182,4 +182,30 @@ describe('Fortnox inert som standard', () => {
     expect(() => a.exchangeCode()).toThrow(ServiceUnavailableException)
     expect(() => new StubFortnoxLedgerReader().get()).toThrow(ServiceUnavailableException)
   })
+
+  it('K-S6: Stub- och REAL-läsare får aldrig en kapabel skrivare, oavsett miljö', async () => {
+    const { Test } = await import('@nestjs/testing')
+    const { FORTNOX_VOUCHER_WRITER, DisabledVoucherWriter } =
+      await import('./fortnox-voucher-writer')
+    const { FORTNOX_LEDGER_READER } = await import('./fortnox.types')
+    const mod = await import('./fortnox.module')
+    const providers = Reflect.getMetadata('providers', mod.FortnoxModule) as Array<{
+      provide?: unknown
+      useFactory?: (...a: unknown[]) => unknown
+    }>
+    const writerProvider = providers.find((p) => p?.provide === FORTNOX_VOUCHER_WRITER)!
+    const envs = [
+      { FORTNOX_MOCK_WRITE_FAULT: 'unknown_after_write_once', NODE_ENV: 'production' },
+      {},
+    ]
+    for (const env of envs) {
+      for (const reader of [new StubFortnoxLedgerReader(), { get: async () => ({}) }]) {
+        const w = writerProvider.useFactory!(reader, cfg(env)) as { capable: boolean }
+        expect(w).toBeInstanceOf(DisabledVoucherWriter)
+        expect(w.capable).toBe(false)
+      }
+    }
+    void Test
+    void FORTNOX_LEDGER_READER
+  })
 })

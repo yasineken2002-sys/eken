@@ -350,6 +350,14 @@ export class FortnoxSendService {
         { financialyear: identity.year },
       )
       if (!body?.Voucher) return 'NOT_FOUND'
+      // K-S2: anslutningen får inte ha bytt företag under läsningen.
+      const after = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
+      if (
+        !after ||
+        after.id !== auth.connectionId ||
+        after.fortnoxDatabaseNumber !== row.fortnoxDatabaseNumber
+      )
+        return 'WRONG_COMPANY'
       return compareVoucher(row.draft as unknown as FrozenDraft, body.Voucher, identity)
         ? 'MATCH'
         : 'MISMATCH'

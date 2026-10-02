@@ -132,4 +132,19 @@ describe('FortnoxExportSetup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Spara beslut' }))
     expect(await screen.findByText('Serverfel')).toBeTruthy()
   })
+
+  it('T-F1: tom men komplett årskatalog förklaras och serie kan inte väljas', async () => {
+    mocks.catalog.mockResolvedValue({
+      ready: true,
+      reason: null,
+      financialYears: [],
+      voucherSeries: [],
+    })
+    renderIt()
+    expect(await screen.findByText(/har inga räkenskapsår ännu/)).toBeTruthy()
+    expect((screen.getByLabelText('Serie i Fortnox') as HTMLSelectElement).disabled).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Spara serie' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
 })

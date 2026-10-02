@@ -139,6 +139,12 @@ function FortnoxExportSetupScoped() {
         <p className="text-ink text-sm">
           Vald serie: {conn.exportVoucherSeries ?? 'ingen – välj nedan'}
         </p>
+        {years.data?.ready && years.data.financialYears.length === 0 && (
+          <p className="text-sm text-amber-600">
+            Fortnox-företaget har inga räkenskapsår ännu. Lägg upp räkenskapsåret i Fortnox och
+            hämta sedan om valen – serie kan inte väljas förrän ett år finns.
+          </p>
+        )}
         <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           <Select
             label="Räkenskapsår i Fortnox"

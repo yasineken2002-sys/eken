@@ -448,6 +448,37 @@ medDb('FORTNOX-SANDNING mot riktig Postgres', () => {
     expect((t.writer as MockVoucherWriter).writes).toBe(0)
   })
 
+  it('K-S2: återanslutning till ANNAT företag mellan sändning och avstämning → aldrig CONFIRMED', async () => {
+    const t = await setup()
+    const { row } = await t.ready()
+    ;(t.writer as MockVoucherWriter).faults.push('unknown_after_write')
+    await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    // Annat företag i Fortnox, men med en post på samma år/serie/nummer och samma innehåll.
+    await prisma.fortnoxConnection.update({
+      where: { organizationId: t.org.id },
+      data: { fortnoxDatabaseNumber: 900777 },
+    })
+    t.reader.company = { ...t.reader.company, DatabaseNumber: 900777 }
+    await expect(
+      t.sender.reconcile(t.org.id, 'u1', row.id, { year: 1, series: 'A', number: 1 }),
+    ).rejects.toThrow(/företaget/)
+    expect((await t.dbRow(row.id)).state).toBe('UNKNOWN')
+  })
+
+  it('K-S1: draftHash binder år-id, företag och dimensionsbeslut — återkallat beslut stoppar sändning', async () => {
+    const t = await setup()
+    const { row } = await t.ready()
+    await t.connections.setExportOmitDimensions(t.org.id, 'u1', false)
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow(
+      /inte längre aktuellt/,
+    )
+    await t.connections.setExportOmitDimensions(t.org.id, 'u2', true) // nytt beslut, annan person/tid → ny hash
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow(
+      /inte längre aktuellt/,
+    )
+    expect((t.writer as MockVoucherWriter).writes).toBe(0)
+  })
+
   it('F13: återläsning i fel företag ger aldrig CONFIRMED', async () => {
     const t = await setup()
     const { row } = await t.ready()
