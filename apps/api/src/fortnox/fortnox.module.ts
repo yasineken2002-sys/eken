@@ -140,11 +140,17 @@ import {
     // Stub och REAL får DisabledVoucherWriter — ingen miljöflagga slår på skrivning.
     {
       provide: FORTNOX_VOUCHER_WRITER,
-      useFactory: (reader: unknown) =>
-        reader instanceof MockFortnoxLedgerReader
-          ? new MockVoucherWriter(reader)
-          : new DisabledVoucherWriter(),
-      inject: [FORTNOX_LEDGER_READER],
+      useFactory: (reader: unknown, config: ConfigService) => {
+        if (!(reader instanceof MockFortnoxLedgerReader)) return new DisabledVoucherWriter()
+        const writer = new MockVoucherWriter(reader)
+        // Syntetiskt felscenario för produktprov (endast Mock ⇒ NODE_ENV=test):
+        // första sändningen skrivs men svaret tappas (okänt utfall).
+        if (config.get<string>('FORTNOX_MOCK_WRITE_FAULT') === 'unknown_after_write_once') {
+          writer.faults.push('unknown_after_write')
+        }
+        return writer
+      },
+      inject: [FORTNOX_LEDGER_READER, ConfigService],
     },
     FortnoxSendService,
   ],
