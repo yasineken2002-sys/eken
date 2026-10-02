@@ -5,6 +5,7 @@ import { Select } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { fetchJournalEntries } from '../../accounting/api/accounting.api'
+import { FortnoxExportRowView } from './FortnoxExportRow'
 import {
   getFortnoxExportState,
   getFortnoxSeriesCatalog,
@@ -14,13 +15,8 @@ import {
   type FortnoxExportRow,
 } from '../api/fortnox-export.api'
 
-/** Kundens text för varje exportläge. READY är ALDRIG "skickat" eller "bokfört". */
-export const EXPORT_STATE_TEXT: Record<FortnoxExportRow['state'], string> = {
-  DRY_RUN_READY: 'Förhandskontrollen godkänd – utkastet är INTE skickat eller bokfört i Fortnox.',
-  BLOCKED: 'Spärrad – verifikatet kan inte exporteras som det ser ut nu.',
-  UNKNOWN: 'Okänt utfall – kräver manuell avstämning. Ingen ny kontroll eller sändning görs.',
-  CONFIRMED: 'Bekräftad i Fortnox. Posten rörs inte.',
-}
+import { EXPORT_STATE_TEXT } from './fortnox-export-text'
+export { EXPORT_NEXT_STEP, EXPORT_STATE_TEXT } from './fortnox-export-text'
 
 function daysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
@@ -300,13 +296,20 @@ function FortnoxExportSetupScoped() {
 
       {exports.data && exports.data.length > 0 && (
         <div className="space-y-1">
-          <h4 className="text-ink text-sm font-semibold">Senaste förhandskontroller</h4>
+          <h4 className="text-ink text-sm font-semibold">
+            Senaste förhandskontroller och sändningar
+          </h4>
+          {!state.data.exports.sendingEnabled && (
+            <p className="text-ink-muted text-sm">Sändning till Fortnox är inte aktiverad.</p>
+          )}
           <ul className="space-y-1 text-sm">
             {exports.data.slice(0, 10).map((row) => (
-              <li key={row.id} className="text-ink-muted break-words">
-                {EXPORT_STATE_TEXT[row.state]}
-                {row.blockReason ? ` (${row.blockReason})` : ''}
-              </li>
+              <FortnoxExportRowView
+                key={row.id}
+                row={row}
+                sendingEnabled={state.data.exports.sendingEnabled}
+                onChanged={refresh}
+              />
             ))}
           </ul>
         </div>

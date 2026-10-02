@@ -156,14 +156,14 @@ export function FortnoxReadSetup({
   return (
     <section
       aria-labelledby="fortnox-selection"
-      className="min-w-0 space-y-4 rounded-xl border border-line p-4"
+      className="border-line min-w-0 space-y-4 rounded-xl border p-4"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 id="fortnox-selection" className="font-semibold text-ink">
+          <h3 id="fortnox-selection" className="text-ink font-semibold">
             Välj underlag att läsa
           </h3>
-          <p className="mt-1 text-sm text-ink-muted">
+          <p className="text-ink-muted mt-1 text-sm">
             Välj räkenskapsår, period och konton från Fortnox.
           </p>
         </div>
@@ -172,7 +172,7 @@ export function FortnoxReadSetup({
         </Button>
       </header>
       {catalog.isLoading ? (
-        <p role="status" className="text-sm text-ink-muted">
+        <p role="status" className="text-ink-muted text-sm">
           Hämtar verifierade år, konton och dimensioner…
         </p>
       ) : catalog.isError ? (
@@ -180,7 +180,7 @@ export function FortnoxReadSetup({
           Katalogen kunde inte hämtas. Hämta om valen för att försöka igen.
         </p>
       ) : !data ? (
-        <p role="alert" className="text-sm text-ink-muted">
+        <p role="alert" className="text-ink-muted text-sm">
           Verifierad katalog saknas. Hämta om valen.
         </p>
       ) : !catalogSafe ? (
@@ -191,7 +191,7 @@ export function FortnoxReadSetup({
         </p>
       ) : (
         <>
-          <p className="break-words text-xs text-ink-muted">
+          <p className="text-ink-muted break-words text-xs">
             Katalog hämtad:{' '}
             {new Date(data.observedAt).toLocaleString('sv-SE', {
               timeZone: 'Europe/Stockholm',
@@ -227,8 +227,10 @@ export function FortnoxReadSetup({
                 }}
               />
               {data.financialYears.length === 0 && (
-                <p className="text-sm text-ink-muted">
-                  Inga verifierade räkenskapsår finns att välja.
+                <p className="text-ink-muted text-sm">
+                  Fortnox-företaget har inga räkenskapsår ännu. Lägg upp räkenskapsåret i Fortnox
+                  och hämta sedan om valen här. Katalogen är komplett — det finns helt enkelt inget
+                  att välja.
                 </p>
               )}
               <div className="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -255,23 +257,23 @@ export function FortnoxReadSetup({
                 className="min-w-0 space-y-2"
                 disabled={!year || data.selectedFinancialYearId !== yearId}
               >
-                <legend className="mb-2 text-sm font-medium text-ink">Konton att läsa</legend>
+                <legend className="text-ink mb-2 text-sm font-medium">Konton att läsa</legend>
                 {!year ? (
-                  <p className="text-sm text-ink-muted">Välj år för att hämta konton.</p>
+                  <p className="text-ink-muted text-sm">Välj år för att hämta konton.</p>
                 ) : data.selectedFinancialYearId !== yearId ? (
-                  <p className="text-sm text-ink-muted">
+                  <p className="text-ink-muted text-sm">
                     Konton för det valda året saknas. Hämta om valen.
                   </p>
                 ) : data.costAccounts.length === 0 ? (
-                  <p className="text-sm text-ink-muted">
+                  <p className="text-ink-muted text-sm">
                     Inga verifierade konton finns för det valda året.
                   </p>
                 ) : (
-                  <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-line p-3">
+                  <div className="border-line max-h-64 space-y-2 overflow-y-auto rounded-lg border p-3">
                     {data.costAccounts.map((account) => (
                       <label
                         key={account.number}
-                        className="flex min-w-0 items-start gap-2 text-sm text-ink"
+                        className="text-ink flex min-w-0 items-start gap-2 text-sm"
                       >
                         <input
                           type="checkbox"
@@ -290,7 +292,7 @@ export function FortnoxReadSetup({
                         <span className="min-w-0 break-words">
                           {account.number} {account.name}
                           {!account.selectable && (
-                            <span className="block text-xs text-ink-muted">
+                            <span className="text-ink-muted block text-xs">
                               {account.reason ?? 'Kan inte väljas'}
                             </span>
                           )}
@@ -300,12 +302,12 @@ export function FortnoxReadSetup({
                   </div>
                 )}
               </fieldset>
-              <p className="text-xs text-ink-muted">
+              <p className="text-ink-muted text-xs">
                 Måttet är nettobelopp för valda konton. Kontourvalet är en delmängd av huvudboken
                 och ger inte i sig företagets resultat.
               </p>
               {readProblem && yearId !== null && (
-                <p className="text-sm text-ink-muted">{readProblem}</p>
+                <p className="text-ink-muted text-sm">{readProblem}</p>
               )}
               <Button type="submit" variant="primary" disabled={locked || Boolean(readProblem)}>
                 {read.isPending ? 'Läser underlag…' : 'Läs valt underlag'}
@@ -315,11 +317,11 @@ export function FortnoxReadSetup({
           <form
             onSubmit={(event) => void submitMapping(event)}
             aria-label="Koppla dimension till fastighet"
-            className="min-w-0 space-y-3 border-t border-line pt-4"
+            className="border-line min-w-0 space-y-3 border-t pt-4"
           >
-            <h4 className="text-sm font-semibold text-ink">Koppla dimension till egen fastighet</h4>
+            <h4 className="text-ink text-sm font-semibold">Koppla dimension till egen fastighet</h4>
             {properties.isLoading ? (
-              <p role="status" className="text-sm text-ink-muted">
+              <p role="status" className="text-ink-muted text-sm">
                 Hämtar organisationens fastigheter…
               </p>
             ) : properties.isError ? (
@@ -360,13 +362,14 @@ export function FortnoxReadSetup({
                   />
                 </div>
                 {ownProperties.length === 0 && (
-                  <p className="text-sm text-ink-muted">
+                  <p className="text-ink-muted text-sm">
                     Inga fastigheter i din organisation finns att välja.
                   </p>
                 )}
                 {data.dimensions.length === 0 && (
-                  <p className="text-sm text-ink-muted">
-                    Inga verifierade dimensioner finns att koppla.
+                  <p className="text-ink-muted text-sm">
+                    Fortnox-företaget har inga kostnadsställen eller projekt. Kostnader redovisas då
+                    som ofördelade; lägg upp dimensioner i Fortnox om de ska kopplas till fastighet.
                   </p>
                 )}
                 <Button
@@ -379,7 +382,7 @@ export function FortnoxReadSetup({
                 </Button>
               </fieldset>
             )}
-            <p className="text-xs text-ink-muted">
+            <p className="text-ink-muted text-xs">
               En sparad koppling används vid nästa läsning. Tidigare underlag räknas inte om.
             </p>
           </form>
@@ -394,7 +397,7 @@ export function FortnoxReadSetup({
         </p>
       )}
       {notice && (
-        <p role="status" className="text-sm text-ink">
+        <p role="status" className="text-ink text-sm">
           {notice}
         </p>
       )}

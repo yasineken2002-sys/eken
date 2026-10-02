@@ -190,7 +190,7 @@ export class FortnoxSendService {
     const bind = { id: row.id, organizationId, sendAttemptId: attemptId }
     const backToReady = async (outcome: string) => {
       await this.prisma.fortnoxVoucherExport.updateMany({
-        where: { ...bind, state: 'SENDING' },
+        where: { id: row.id, organizationId, sendAttemptId: attemptId, state: 'SENDING' },
         data: {
           state: 'DRY_RUN_READY',
           sendAttemptId: null,
@@ -202,7 +202,7 @@ export class FortnoxSendService {
     }
     const lock = async (state: 'UNKNOWN' | 'REJECTED', outcome: string) => {
       await this.prisma.fortnoxVoucherExport.updateMany({
-        where: { ...bind, state: 'SENDING' },
+        where: { id: row.id, organizationId, sendAttemptId: attemptId, state: 'SENDING' },
         data: { state, lastOutcome: outcome, lastOutcomeAt: new Date() },
       })
     }
@@ -262,7 +262,13 @@ export class FortnoxSendService {
     if (!identity) {
       // Ogiltigt "lyckat" svar: kan ha skrivits → låst.
       await this.prisma.fortnoxVoucherExport.updateMany({
-        where: { ...bind, state: { in: ['SENDING', 'UNKNOWN'] }, reconciledAt: null },
+        where: {
+          id: row.id,
+          organizationId,
+          sendAttemptId: attemptId,
+          state: { in: ['SENDING', 'UNKNOWN'] },
+          reconciledAt: null,
+        },
         data: { state: 'UNKNOWN', lastOutcome: 'INVALID_SUCCESS', lastOutcomeAt: new Date() },
       })
       return this.view(organizationId, row.id)
