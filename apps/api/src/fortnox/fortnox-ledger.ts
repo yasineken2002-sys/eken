@@ -22,6 +22,7 @@
  *  - Ofullständig läsning ger summary=null, aldrig noll.
  *  - Belopp i heltal öre; mer än två decimaler är ogiltigt indata.
  */
+import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { FortnoxReadError, type FortnoxLedgerReader, type FortnoxVoucher } from './fortnox.types'
 
 export type LedgerStatus =
@@ -210,6 +211,10 @@ async function paged<T>(
       page,
       limit: 100,
     })
+    if (isExactEmptyFirstPage(page, body, key)) {
+      coverage[path] = { pages: 1, totalPages: 0, totalResources: 0, itemsSeen: 0 }
+      return { items, total: 0 }
+    }
     const mi = (body?.MetaInformation ?? {}) as Record<string, unknown>
     const cp = mi['@CurrentPage']
     const tp = mi['@TotalPages']

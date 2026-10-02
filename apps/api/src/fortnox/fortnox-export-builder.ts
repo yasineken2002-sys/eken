@@ -1,3 +1,4 @@
+import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { createHash } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
@@ -355,6 +356,7 @@ async function allPages<T>(
     typeof x === 'number' && Number.isSafeInteger(x) && x >= 0
   for (let page = 1; ; page++) {
     const body = await reader.get<Record<string, unknown>>(token, path, { page, limit: 100 })
+    if (isExactEmptyFirstPage(page, body, key)) return []
     const mi = (body?.MetaInformation ?? {}) as Record<string, unknown>
     const [cp, tp, tr] = [mi['@CurrentPage'], mi['@TotalPages'], mi['@TotalResources']]
     if (!int(cp) || !int(tp) || !int(tr) || tp < 1 || cp !== page)
