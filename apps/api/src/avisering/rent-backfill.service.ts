@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service'
 import { AviseringService } from './avisering.service'
 import { vatPeriodLabelsForMonths } from './vat-period.util'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { periodForeBrytdatum } from '../kundstart/cutover'
 
 /**
  * T1.4 / #44 — motor för bakdaterad debitering (efterdebitering av bebodda men
@@ -38,6 +39,7 @@ export type BackfillMonthStatus =
   | 'BEYOND_WARNING' // 12–36 mån bakåt → skapas ENDAST med uttryckligt godkännande (datafel-grind)
   | 'BEYOND_HARD_CAP' // > 36 mån → skapas ALDRIG (preskription, Preskriptionslagen 3 år)
   | 'CLOSED_PERIOD' // räkenskapsperioden stängd → skapas aldrig (hård spärr, SYSTEM-notis)
+  | 'BEFORE_CUTOVER' // KUNDSTART-001: före org:ens brytdatum → fakturerad i tidigare system, skapas aldrig
 
 export interface BackfillMonthPreview {
   year: number
@@ -61,6 +63,7 @@ export interface BackfillSummary {
   beyondWarningTotal: number
   hardCappedCount: number
   closedCount: number
+  beforeCutoverCount: number
 }
 
 export interface BackfillPreview {
@@ -98,6 +101,7 @@ export interface BackfillResult {
   skippedBeyondWarning: number // 12–36 mån utan allowBeyondWarning
   blockedHardCap: number // > 36 mån, aldrig
   skippedMissingAccount: number // kontoplanen saknar konto → SYSTEM-notis (bokförings-expert CRITICAL)
+  skippedBeforeCutover: number // KUNDSTART-001: före brytdatum, hör till öppningspaketet — aldrig
 }
 
 type BackfillLease = {
@@ -198,10 +202,15 @@ export class RentBackfillService {
 
     // En uppslagning för hela kön i stället för en per kontrakt.
     const closedSet = await getClosedPeriods(this.prisma, organizationId)
+    const cutover = await this.loadCutover(organizationId)
 
     const items: BackfillQueueItem[] = []
     for (const lease of leases) {
-      const months = await this.computeGapMonths(lease as unknown as BackfillLease, closedSet)
+      const months = await this.computeGapMonths(
+        lease as unknown as BackfillLease,
+        closedSet,
+        cutover,
+      )
       // Bara kontrakt med FAKTISKT debiterbara luckor visas i kön — månader som
       // är preskriberade (>36) eller i stängd period är inte en operatörshandling.
       const actionable = months.filter(
@@ -276,6 +285,7 @@ export class RentBackfillService {
         skippedBeyondWarning: 0,
         blockedHardCap: 0,
         skippedMissingAccount: 0,
+        skippedBeforeCutover: 0,
       }
     }
 
@@ -298,6 +308,7 @@ export class RentBackfillService {
       skippedBeyondWarning: 0,
       blockedHardCap: 0,
       skippedMissingAccount: 0,
+      skippedBeforeCutover: 0,
     }
 
     // Förfallodag = SAMMA framåtklampade 30-dagarsdag för hela batchen (från nu).
@@ -308,6 +319,12 @@ export class RentBackfillService {
     const missingAccountMonths: string[] = []
 
     for (const m of months) {
+      // KUNDSTART-001: serverregeln, inte UI:t — en månad före brytdatum skapas aldrig
+      // härifrån, oavsett allowBeyondWarning (historiken kommer via öppningspaketet).
+      if (m.status === 'BEFORE_CUTOVER') {
+        result.skippedBeforeCutover++
+        continue
+      }
       if (m.status === 'BEYOND_HARD_CAP') {
         result.blockedHardCap++
         continue
@@ -410,6 +427,8 @@ export class RentBackfillService {
     // kontrakt i samma org — utan detta gjordes samma uppslag en gång per
     // kontrakt (N+1). Utelämnad → hämtas här (enskilt kontrakt).
     preloadedClosed?: Set<string>,
+    // KUNDSTART-001: förhämtat brytdatum (detectQueue). undefined → hämtas här.
+    preloadedCutover?: Date | null,
   ): Promise<BackfillMonthPreview[]> {
     const now = new Date()
     const curYear = now.getFullYear()
@@ -433,6 +452,10 @@ export class RentBackfillService {
     // den lokala `billed`-mängden nedan använder rå månad (`2026-3`). De två
     // mängderna får ALDRIG jämföras med samma nyckel — därav periodKeyOf här.
     const closedSet = preloadedClosed ?? (await getClosedPeriods(this.prisma, lease.organizationId))
+    const cutover =
+      preloadedCutover !== undefined
+        ? preloadedCutover
+        : await this.loadCutover(lease.organizationId)
 
     const months: BackfillMonthPreview[] = []
     let y = startYear
@@ -463,7 +486,9 @@ export class RentBackfillService {
             vatAmount,
             totalAmount,
             ageMonths,
-            status: this.classify(ageMonths, closedSet.has(periodKeyOf({ year: y, month: m }))),
+            status: periodForeBrytdatum(cutover, y, m)
+              ? 'BEFORE_CUTOVER'
+              : this.classify(ageMonths, closedSet.has(periodKeyOf({ year: y, month: m }))),
           })
         }
       }
@@ -491,6 +516,14 @@ export class RentBackfillService {
     return 'BILLABLE'
   }
 
+  private async loadCutover(organizationId: string): Promise<Date | null> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { billingCutoverDate: true },
+    })
+    return org?.billingCutoverDate ?? null
+  }
+
   private summarize(months: BackfillMonthPreview[]): BackfillPreview['summary'] {
     const s = this.emptySummary()
     for (const m of months) {
@@ -504,6 +537,8 @@ export class RentBackfillService {
         s.hardCappedCount++
       } else if (m.status === 'CLOSED_PERIOD') {
         s.closedCount++
+      } else if (m.status === 'BEFORE_CUTOVER') {
+        s.beforeCutoverCount++
       }
     }
     return s
@@ -517,6 +552,7 @@ export class RentBackfillService {
       beyondWarningTotal: 0,
       hardCappedCount: 0,
       closedCount: 0,
+      beforeCutoverCount: 0,
     }
   }
 }

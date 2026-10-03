@@ -2,6 +2,7 @@ import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { createHash } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { RefreshingLedgerReader } from './fortnox-readback.service'
 import {
@@ -60,6 +61,29 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       },
     })
     if (!entry) return block('NOT_FOUND', 'Verifikatet finns inte i organisationen')
+    // KUNDSTART-001 A7: öppningen skapar inga verifikat. Skulle ett verifikat ändå bära
+    // en öppningskälla stoppas det här — öppningens belopp finns redan i Fortnox (IB).
+    if (typeof entry.sourceId === 'string' && entry.sourceId.startsWith('opening:'))
+      return block(
+        'OPENING_COMPONENT',
+        'Öppningskomponenter (före brytdatum) är redan bokförda i Fortnox och exporteras aldrig',
+      )
+    // KUNDSTART K-B7: EXPORTGRÄNS. Ett verifikat daterat före organisationens brytdatum
+    // exporteras aldrig — perioden är historik som redan kan finnas i Fortnox (gamla
+    // systemet eller bankkoppling). Samma regel prövas igen i send() och i skrivaren.
+    {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { billingCutoverDate: true },
+      })
+      if (org?.billingCutoverDate && entry.date < org.billingCutoverDate)
+        return block(
+          'BEFORE_CUTOVER',
+          `Verifikatet är daterat ${entry.date.toISOString().slice(0, 10)}, före brytdatum ` +
+            `${org.billingCutoverDate.toISOString().slice(0, 10)}: historik som redan kan finnas i ` +
+            'Fortnox. Det exporteras aldrig — stäm av manuellt.',
+        )
+    }
 
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn || conn.status !== 'ACTIVE') return block('NOT_CONNECTED', 'Fortnox är inte anslutet')
@@ -124,12 +148,12 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           'Organisationsnumret i Fortnox har ändrats sedan anslutningen',
         )
 
-      const years = await allPages<{ Id?: unknown; FromDate?: unknown; ToDate?: unknown }>(
-        reader,
-        auth.token,
-        '/3/financialyears',
-        'FinancialYears',
-      )
+      const years = await allPages<{
+        Id?: unknown
+        FromDate?: unknown
+        ToDate?: unknown
+        AccountingMethod?: unknown
+      }>(reader, auth.token, '/3/financialyears', 'FinancialYears')
       const matching = years.filter(
         (y) =>
           typeof y.FromDate === 'string' &&
@@ -144,6 +168,25 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         )
       }
       const fy = matching[0] as { Id: number; FromDate: string; ToDate: string }
+      // KUNDSTART K-B8: Evenos verifikat förutsätter faktureringsmetoden (1510/39xx vid avi,
+      // 1930/1510 vid betalning). Räkenskapsårets AccountingMethod ur SAMMA svar måste vara
+      // exakt ACCRUAL — CASH, saknat eller okänt är BLOCKED. Ett observerat avsteg upphäver
+      // dessutom beständigt en kundaktivering (även om sändningen redan stoppas här).
+      // Kundens metod ändras aldrig.
+      const metod = (matching[0] as { AccountingMethod?: unknown }).AccountingMethod
+      if (metod !== 'ACCRUAL') {
+        const vilken = typeof metod === 'string' && metod ? metod : 'okänd'
+        await ogiltigforklaraAktiveringar(
+          this.prisma,
+          organizationId,
+          `Räkenskapsåret ${fy.FromDate}–${fy.ToDate} har bokföringsmetod ${vilken}, inte ACCRUAL.`,
+        )
+        return block(
+          'ACCOUNTING_METHOD_UNSUPPORTED',
+          `Eveno stödjer bara faktureringsmetoden (ACCRUAL) i denna version; räkenskapsåret ` +
+            `${fy.FromDate}–${fy.ToDate} i Fortnox har metod ${vilken}. Kundens metod ändras inte.`,
+        )
+      }
 
       const series = await getRef<{ VoucherSeries?: { Code?: unknown; Year?: unknown } }>(
         reader,
@@ -270,7 +313,11 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       return {
         ok: true,
         draft,
-        binding: { generation: conn.generation, databaseNumber: conn.fortnoxDatabaseNumber },
+        binding: {
+          generation: conn.generation,
+          databaseNumber: conn.fortnoxDatabaseNumber,
+          accountingMethod: 'ACCRUAL',
+        },
         // Stabil hash över INNEHÅLL och BINDNING — inte över evidensens tidsstämplar.
         // Samma verifikat, företag, anslutningsgeneration, år, serie och kundbeslut ger
         // samma hash; en förändring av något av dem ger ny hash (sändning kräver då ny

@@ -2,6 +2,7 @@ import type { FortnoxLedgerReader, FortnoxVoucher } from './fortnox.types'
 import type { MockFortnoxLedgerReader } from './fortnox-providers'
 import type { FortnoxTransport } from './provider/fortnox-transport'
 import { FortnoxTransportError } from './provider/fortnox-transport.types'
+import type { FortnoxCustomerBinding } from './fortnox-customer-activation'
 
 /**
  * Skrivport för POST /3/vouchers (FORTNOX-SANDNING, FORTNOX-NATT).
@@ -28,13 +29,36 @@ export const FORTNOX_TEST_VOUCHER_WRITES_VALUE = 'testforetag-1868238'
 /** Företaget som anspråket frös (FortnoxVoucherExport.fortnoxDatabaseNumber). */
 export interface FortnoxWriteBinding {
   databaseNumber: number | null
+  /** KUNDSTART §6: en verifierad kundaktivering (bara för företag utanför testlistan). */
+  kund?: FortnoxCustomerBinding | null
+}
+
+/** Skrivarens egen DB-kontroll av en kundbindning (försvar på djupet, S-2). */
+export type CustomerBindingVerifier = (
+  b: FortnoxCustomerBinding,
+  transactionDate: string,
+) => Promise<boolean>
+
+/** Verifikatsdatum ur skrivarens egen payload (Voucher.TransactionDate); '' om det saknas. */
+export function payloadDatum(payload: unknown): string {
+  const d = (payload as { Voucher?: { TransactionDate?: unknown } } | null)?.Voucher
+    ?.TransactionDate
+  return typeof d === 'string' ? d : ''
 }
 
 export interface FortnoxVoucherWriter {
   /** False = sändning är tekniskt avstängd; inget anspråk får tas. */
   readonly capable: boolean
-  /** Får skrivaren skriva till detta företag? Kontrolleras före anspråk. */
-  allowsCompany(databaseNumber: number | null): boolean
+  /** KUNDSTART: är kundvägen (FORTNOX_CUSTOMER_WRITES=aktiverad) påslagen? */
+  readonly customerWritesEnabled: boolean
+  /** KUNDSTART: kräver detta företag en kundaktivering (ligger utanför testvägen)? */
+  requiresCustomerActivation(databaseNumber: number | null): boolean
+  /**
+   * Får skrivaren skriva till detta företag? Kontrolleras före anspråk. Ett kundföretag
+   * släpps bara med en kundbindning för just det numret, och skrivaren verifierar den
+   * själv mot databasen före POST.
+   */
+  allowsCompany(databaseNumber: number | null, kund?: FortnoxCustomerBinding | null): boolean
   /** Returnerar rått, ännu ovaliderat svar. Kastar FortnoxWriteError. */
   createVoucher(
     token: string,
@@ -62,6 +86,10 @@ export class FortnoxWriteError extends Error {
 
 export class DisabledVoucherWriter implements FortnoxVoucherWriter {
   readonly capable = false
+  readonly customerWritesEnabled = false
+  requiresCustomerActivation(): boolean {
+    return true
+  }
   allowsCompany(): boolean {
     return false
   }
@@ -76,6 +104,11 @@ export interface RealFortnoxVoucherWriterOptions {
   /** Läsaren (skrivoförmögen transport) för live-kontrollen av företaget. */
   reader: FortnoxLedgerReader
   clientId: string
+  /** FORTNOX_TEST_VOUCHER_WRITES (aldrig i produktion): testlistan är skrivbar. */
+  testWrites?: boolean
+  /** FORTNOX_CUSTOMER_WRITES=aktiverad: kundvägen med verifierad aktivering. */
+  customerWrites?: boolean
+  verifyCustomer?: CustomerBindingVerifier
 }
 
 /**
@@ -92,6 +125,9 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
   readonly #transport: FortnoxTransport
   readonly #reader: FortnoxLedgerReader
   readonly #rateLimitKey: string
+  readonly #testWrites: boolean
+  readonly #verifyCustomer: CustomerBindingVerifier | null
+  readonly customerWritesEnabled: boolean
 
   constructor(options: RealFortnoxVoucherWriterOptions) {
     if (typeof options.clientId !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(options.clientId))
@@ -100,10 +136,33 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
     this.#reader = options.reader
     // Samma hink som läsaren: en konservativ gräns för hela klienten.
     this.#rateLimitKey = `fortnox:${options.clientId}:all-tenants`
+    // Bakåtkompatibelt: utan uttryckliga val är det testvägen (som före KUNDSTART).
+    this.#testWrites = options.testWrites ?? !options.customerWrites
+    this.customerWritesEnabled = options.customerWrites === true && !!options.verifyCustomer
+    this.#verifyCustomer = options.verifyCustomer ?? null
   }
 
-  allowsCompany(databaseNumber: number | null): boolean {
-    return databaseNumber !== null && FORTNOX_TEST_WRITE_COMPANIES.includes(databaseNumber)
+  #testCompany(databaseNumber: number | null): boolean {
+    return (
+      this.#testWrites &&
+      databaseNumber !== null &&
+      FORTNOX_TEST_WRITE_COMPANIES.includes(databaseNumber)
+    )
+  }
+
+  requiresCustomerActivation(databaseNumber: number | null): boolean {
+    return !this.#testCompany(databaseNumber)
+  }
+
+  allowsCompany(databaseNumber: number | null, kund?: FortnoxCustomerBinding | null): boolean {
+    if (this.#testCompany(databaseNumber)) return true
+    return (
+      this.customerWritesEnabled &&
+      databaseNumber !== null &&
+      !FORTNOX_TEST_WRITE_COMPANIES.includes(databaseNumber) &&
+      !!kund &&
+      kund.databaseNumber === databaseNumber
+    )
   }
 
   async createVoucher(
@@ -112,7 +171,21 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
     payload: unknown,
     binding: FortnoxWriteBinding,
   ): Promise<unknown> {
-    if (!this.allowsCompany(binding.databaseNumber)) throw new FortnoxWriteError('not_sent')
+    if (!this.allowsCompany(binding.databaseNumber, binding.kund))
+      throw new FortnoxWriteError('not_sent')
+    if (!this.#testCompany(binding.databaseNumber)) {
+      // Kundvägen: lita inte på anroparen — pröva aktiveringen i databasen nu.
+      let ok = false
+      try {
+        ok =
+          !!binding.kund &&
+          !!this.#verifyCustomer &&
+          (await this.#verifyCustomer(binding.kund, payloadDatum(payload)))
+      } catch {
+        ok = false
+      }
+      if (!ok) throw new FortnoxWriteError('not_sent')
+    }
     let live: unknown
     try {
       const ci = await this.#reader.get<{ CompanyInformation?: { DatabaseNumber?: unknown } }>(
@@ -176,11 +249,22 @@ export class MockVoucherWriter implements FortnoxVoucherWriter {
   deniedCompanies = new Set<number>()
   /** Prov: senaste bindningen som skrivaren fick. */
   lastBinding: FortnoxWriteBinding | null = null
+  /** KUNDSTART-prov: syntetiska KUNDföretag som kräver kundaktivering (som i REAL). */
+  customerCompanies = new Set<number>()
+  readonly customerWritesEnabled = true
+  verifyCustomer: CustomerBindingVerifier | null = null
 
   constructor(private readonly ledger: MockFortnoxLedgerReader) {}
 
-  allowsCompany(databaseNumber: number | null): boolean {
-    return databaseNumber !== null && !this.deniedCompanies.has(databaseNumber)
+  requiresCustomerActivation(databaseNumber: number | null): boolean {
+    return databaseNumber !== null && this.customerCompanies.has(databaseNumber)
+  }
+
+  allowsCompany(databaseNumber: number | null, kund?: FortnoxCustomerBinding | null): boolean {
+    if (databaseNumber === null || this.deniedCompanies.has(databaseNumber)) return false
+    if (this.customerCompanies.has(databaseNumber))
+      return !!kund && kund.databaseNumber === databaseNumber
+    return true
   }
 
   async createVoucher(
@@ -190,7 +274,15 @@ export class MockVoucherWriter implements FortnoxVoucherWriter {
     binding: FortnoxWriteBinding,
   ): Promise<unknown> {
     this.lastBinding = binding
-    if (!this.allowsCompany(binding.databaseNumber)) throw new FortnoxWriteError('not_sent')
+    if (!this.allowsCompany(binding.databaseNumber, binding.kund))
+      throw new FortnoxWriteError('not_sent')
+    if (binding.databaseNumber !== null && this.customerCompanies.has(binding.databaseNumber)) {
+      const ok =
+        !!binding.kund &&
+        !!this.verifyCustomer &&
+        (await this.verifyCustomer(binding.kund, payloadDatum(payload)))
+      if (!ok) throw new FortnoxWriteError('not_sent')
+    }
     // Mätt mot Fortnox (EX-1): Voucher.Year i POST-kroppen är skrivskyddat → 400.
     if (Object.hasOwn((payload as { Voucher?: object })?.Voucher ?? {}, 'Year'))
       throw new FortnoxWriteError('rejected', 400)

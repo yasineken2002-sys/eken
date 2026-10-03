@@ -196,8 +196,19 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     DatabaseNumber: 900001,
   }
   costCenters: string[] = ['HUSA', 'HUSB']
-  financialYears = [{ Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' }]
-  accounts: Array<{ Number: number; Active: boolean; Description?: string }> = [
+  // KUNDSTART K-B8: syntetiskt år UTTRYCKLIGEN med faktureringsmetoden — fältet antas aldrig.
+  financialYears: Array<{
+    Id: number
+    FromDate: string
+    ToDate: string
+    AccountingMethod?: string
+  }> = [{ Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31', AccountingMethod: 'ACCRUAL' }]
+  accounts: Array<{
+    Number: number
+    Active: boolean
+    Description?: string
+    BalanceBroughtForward?: number
+  }> = [
     { Number: 2440, Active: true, Description: 'Leverantörsskulder' },
     { Number: 5170, Active: true, Description: 'Reparation och underhåll av fastighet' },
   ]

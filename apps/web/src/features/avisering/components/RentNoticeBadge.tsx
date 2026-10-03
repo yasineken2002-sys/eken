@@ -11,6 +11,8 @@ const CONFIG: Record<RentNoticeStatus, { label: string; className: string }> = {
   OVERDUE: { label: 'Försenad', className: 'bg-red-50 text-red-600' },
   CANCELLED: { label: 'Avbruten', className: 'bg-gray-100 text-gray-500' },
   FAILED: { label: 'Misslyckad', className: 'bg-red-100 text-red-700' },
+  // KUNDSTART: historisk öppen fordran före brytdatum (öppningspaket) — aldrig skickad av Eveno.
+  OPENING: { label: 'Historisk skuld', className: 'bg-blue-50 text-blue-700' },
 }
 
 export function RentNoticeBadge({ status }: Props) {

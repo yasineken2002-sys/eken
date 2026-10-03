@@ -45,6 +45,7 @@ import type {
   VatReport,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { oppningskomponent } from '../kundstart/opening-component'
 import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
@@ -1705,11 +1706,32 @@ export class AccountingService {
     }
     assets.sort((a, b) => a.number - b.number)
     liabilities.sort((a, b) => a.number - b.number)
+    // KUNDSTART §12.9: öppningskomponenten som egen del, aldrig inbakad i summorna ovan.
+    const ok = await oppningskomponent(this.prisma, organizationId, asOf)
     return {
       asOf,
       assets: { total: totalAssets, accounts: assets },
       liabilitiesAndEquity: { total: totalLiabilities, accounts: liabilities },
       difference: totalAssets - totalLiabilities,
+      oppningskomponent: ok
+        ? {
+            brytdatum: ok.brytdatum,
+            galler: ok.galler,
+            text: ok.text,
+            begransning: ok.begransning,
+            avstamningstexter: ok.avstamningstexter,
+            rader: ([1510, 2890] as const).map((konto) => {
+              const verifikat = Math.round((perAccount.get(konto)?.balance ?? 0) * 100) / 100
+              const oppning = ok.konton[String(konto) as '1510' | '2890']
+              return {
+                konto,
+                verifikat,
+                oppning,
+                nettoInklOppning: Math.round((verifikat + oppning) * 100) / 100,
+              }
+            }),
+          }
+        : null,
     }
   }
 
@@ -3715,6 +3737,57 @@ export class AccountingService {
     this.failClosedNoAccrual(label, organizationId, accrualSourceId)
   }
 
+  // KUNDSTART-001 §12.1 (K-B1): betalningsvägens grind för en hyresavi. Accrual-
+  // verifikatet 'rent-notice:<id>' krävs som förut — fail-closed står kvar för ALLA
+  // avier. Det ENDA undantaget är en historisk öppen fordran ur ett verkställt
+  // öppningspaket: dess debet finns i Fortnox före brytdatum (externt bokförd, KONTRAKT
+  // §3), så D 1930 / K 1510 är rätt och ingen spökkredit. Undantaget kräver att allt
+  // verifieras genom SAMMA klient som skriver verifikatet:
+  //   origin = OPENING_PACKAGE, openingRowId → rad av typ RECEIVABLE i ett EXECUTED
+  //   paket i samma organisation, samma avtal och period, och registrerad som
+  //   verkställd källrad (OpeningExecutedSource).
+  // En avi som bara BÄR origin men saknar giltig paketrad nekas som vanligt.
+  private async assertRentNoticeReceivableBooked(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    noticeId: string,
+    label: string,
+  ): Promise<void> {
+    const accrualSourceId = `rent-notice:${noticeId}`
+    if (await this.hasReceivableAccrual(db, organizationId, accrualSourceId)) return
+    if (await this.isExecutedOpeningReceivable(db, organizationId, noticeId)) return
+    this.failClosedNoAccrual(label, organizationId, accrualSourceId)
+  }
+
+  async isExecutedOpeningReceivable(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    noticeId: string,
+  ): Promise<boolean> {
+    const notice = await db.rentNotice.findFirst({
+      where: { id: noticeId, organizationId, origin: 'OPENING_PACKAGE' },
+      select: { openingRowId: true, leaseId: true, year: true, month: true, type: true },
+    })
+    if (!notice?.openingRowId || notice.type !== RentNoticeType.RENT) return false
+    const row = await db.openingPackageRow.findFirst({
+      where: {
+        id: notice.openingRowId,
+        kind: 'RECEIVABLE',
+        leaseId: notice.leaseId,
+        periodYear: notice.year,
+        periodMonth: notice.month,
+        package: { organizationId, status: 'EXECUTED' },
+      },
+      select: { id: true },
+    })
+    if (!row) return false
+    const executed = await db.openingExecutedSource.findFirst({
+      where: { organizationId, rowId: row.id },
+      select: { id: true },
+    })
+    return executed != null
+  }
+
   // Faktura-vägen är TYP-medveten och känner TRE underlagsvägar:
   //
   //   1. VANLIG FAKTURA  — fordran under sourceId = invoice.id.
@@ -3913,10 +3986,10 @@ export class AccountingService {
     // #41/#109) och deras accrual är deposit-invoice-nycklad, inte rent-notice: →
     // hoppa guarden här för DEPOSIT (annars falsk-nekas en frisk depositionsbetalning).
     if (notice.type !== RentNoticeType.DEPOSIT) {
-      await this.assertReceivableAccrualBooked(
+      await this.assertRentNoticeReceivableBooked(
         db,
         organizationId,
-        `rent-notice:${notice.id}`,
+        notice.id,
         `hyresavi ${notice.noticeNumber}`,
       )
     }
@@ -4018,10 +4091,10 @@ export class AccountingService {
     // A2 fail-closed: RENT-only (DEPOSIT hoppas ovan). Neka om avins accrual saknas.
     // A2 läses genom SAMMA klient som skriver — annars kan grinden se ett annat
     // snapshot än verifikatet skrivs mot.
-    await this.assertReceivableAccrualBooked(
+    await this.assertRentNoticeReceivableBooked(
       db,
       organizationId,
-      `rent-notice:${notice.id}`,
+      notice.id,
       `hyresavi ${notice.noticeNumber}`,
     )
 

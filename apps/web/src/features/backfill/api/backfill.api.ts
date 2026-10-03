@@ -10,6 +10,7 @@ export type BackfillMonthStatus =
   | 'BEYOND_WARNING'
   | 'BEYOND_HARD_CAP'
   | 'CLOSED_PERIOD'
+  | 'BEFORE_CUTOVER'
 
 export interface BackfillSummary {
   billableCount: number
@@ -18,6 +19,7 @@ export interface BackfillSummary {
   beyondWarningTotal: number
   hardCappedCount: number
   closedCount: number
+  beforeCutoverCount: number
 }
 
 export interface BackfillMonthPreview {
@@ -63,6 +65,7 @@ export interface BackfillResult {
   skippedBeyondWarning: number
   blockedHardCap: number
   skippedMissingAccount: number
+  skippedBeforeCutover: number
 }
 
 export function fetchBackfillQueue() {

@@ -8,6 +8,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { arHistoriskSkuld, HISTORISK_SKULD_SPARR } from '../kundstart/historisk-skuld-sparr'
 import { OcrService } from '../common/ocr/ocr.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -57,6 +58,7 @@ import {
   type GenerateNoticesPreview,
 } from '@eken/shared'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
+import { foreBrytdatumSkal, periodForeBrytdatum } from '../kundstart/cutover'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 // getLogoDataUrl bor numera i common/branding (Steg 3, PR 2 — en sanning).
 // Vi re-exporterar den här så att rent-reminder.service.ts (som importerar
@@ -224,10 +226,22 @@ export class AviseringService {
   // kommentaren i rent-notice-number.ts innan du flyttar det.
 
   private async monthlyNoticePlan(orgId: string, month: number, year: number) {
+    // KUNDSTART-001 (C1/G-C1–C3): brytdatum är EN serverregel för cron, HTTP, AI och
+    // förhandsvisning — de går alla genom den här planen. En period före brytdatum är
+    // fakturerad i tidigare system: inga kandidater, befintliga dokument orörda.
+    const orgCutover = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { billingCutoverDate: true },
+    })
+    const cutover = orgCutover?.billingCutoverDate ?? null
+    // En period före brytdatum ger inga kandidater (befintliga dokument rörs inte).
+    const foreBryt = periodForeBrytdatum(cutover, year, month)
     const genMonthStart = new Date(year, month - 1, 1)
     const leases = await this.prisma.lease.findMany({
       where: {
         organizationId: orgId,
+        // KUNDSTART: före brytdatum väljs inga avtal alls.
+        ...(foreBryt ? { id: { in: [] } } : {}),
         OR: [
           { status: 'ACTIVE' },
           // T1.3: ett EXPIRED avtal som fortfarande täcker dagar i månaden
@@ -262,7 +276,7 @@ export class AviseringService {
       dueDate: Date
     }[] = []
 
-    for (const lease of leases) {
+    for (const lease of foreBryt ? [] : leases) {
       if (existingLeaseIds.has(lease.id)) {
         skipped++
         continue
@@ -297,7 +311,12 @@ export class AviseringService {
       // Samma befintliga genereringsregel: sista vardagen före hyresmånaden.
       candidates.push({ lease, proration, dueDate: rentDueDateForMonth(year, month) })
     }
-    return { candidates, skipped, existing }
+    return {
+      candidates,
+      skipped,
+      existing,
+      beforeCutover: foreBryt ? foreBrytdatumSkal(cutover!) : null,
+    }
   }
 
   /** Läsande förhandsbesked: samma urval, proration och datum som skrivvägen. */
@@ -324,11 +343,12 @@ export class AviseringService {
       skipped: plan.skipped,
       dueDates: groupDates(plan.candidates),
       existingDueDates: groupDates(plan.existing),
+      beforeCutover: plan.beforeCutover,
     }
   }
 
   async generateMonthlyNotices(orgId: string, month: number, year: number) {
-    const { candidates, skipped } = await this.monthlyNoticePlan(orgId, month, year)
+    const { candidates, skipped, beforeCutover } = await this.monthlyNoticePlan(orgId, month, year)
     let created = 0
     // Varje avtal behåller sin egen atomiska avi + intäktsverifikation.
     let failed = 0
@@ -446,7 +466,7 @@ export class AviseringService {
       created++
     }
 
-    return { created, skipped, failed, notices }
+    return { created, skipped, failed, notices, beforeCutover }
   }
 
   /**
@@ -737,13 +757,35 @@ export class AviseringService {
     // förfallodagens offset från tillträdesdatum.
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { daysBeforeMoveInForFirstPayment: true },
+      select: { daysBeforeMoveInForFirstPayment: true, billingCutoverDate: true },
     })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
     const startDate = lease.startDate
     const year = startDate.getFullYear()
     const month = startDate.getMonth() + 1
+
+    // KUNDSTART-001 (C1/C6/G-C4): ett avtal som startade före brytdatum har sin startmånad
+    // och sin deposition i TIDIGARE system. Ingen startmånadsavi och ingen depositionsavi —
+    // historisk skuld och mottagen deposition förs in via öppningspaketet. Gäller worker,
+    // initial-notices och återtrigg (alla går hit). Månaderna från brytdatum tar månadsplanen.
+    if (periodForeBrytdatum(org.billingCutoverDate, year, month)) {
+      return {
+        deposit: null,
+        firstRent: null,
+        mailed: false,
+        blockedReason:
+          foreBrytdatumSkal(org.billingCutoverDate!) +
+          ' Avtalets startmånad och deposition hanteras via öppningspaketet; månaderna från ' +
+          'brytdatum aviseras av den ordinarie månadsaviseringen.',
+      }
+    }
+    // En historisk deposition (öppningspaket) får aldrig en ny depositionsavi.
+    const historiskDeposition = await this.prisma.deposit.findFirst({
+      where: { leaseId: lease.id, organizationId: orgId, origin: 'OPENING_PACKAGE' },
+      select: { id: true },
+    })
+    if (historiskDeposition) opts = { ...opts, skipDeposit: true }
 
     // T1.3: gap-avin vid succession är INTE en "första" period — hyresgästen
     // bor redan i lägenheten och inflyttningslogiken (daysBeforeMoveIn-offset)
@@ -2253,6 +2295,8 @@ export class AviseringService {
       where: { id: noticeId, organizationId: orgId },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
+    // KUNDSTART S3-1: en historisk skuld annulleras aldrig (inget motverifikat finns att göra).
+    if (arHistoriskSkuld(notice)) throw new BadRequestException(HISTORISK_SKULD_SPARR)
     if (notice.status === RentNoticeStatus.PAID) {
       throw new BadRequestException('Kan inte avbryta en betald avi')
     }

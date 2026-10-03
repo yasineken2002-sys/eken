@@ -984,6 +984,8 @@ export const RENT_NOTICE_STATUSES = [
   'OVERDUE',
   'CANCELLED',
   'FAILED',
+  // KUNDSTART-001: historisk öppen fordran ur verkställt öppningspaket (före brytdatum)
+  'OPENING',
 ] as const
 
 export type MaintenanceStatusValue = (typeof MAINTENANCE_STATUSES)[number]
@@ -1758,6 +1760,12 @@ export type CreateRentNoticeCreditInput = z.infer<typeof CreateRentNoticeCreditS
 export const ManualMatchSchema = z.object({
   invoiceId: z.string().uuid('invoiceId måste vara ett UUID').optional(),
   rentNoticeId: z.string().uuid('rentNoticeId måste vara ett UUID').optional(),
+  /** KUNDSTART T4-1: manuell fördelning på flera avier, i den ordning de ska fyllas. */
+  rentNoticeIds: z
+    .array(z.string().uuid('rentNoticeIds måste vara UUID'))
+    .min(2)
+    .max(24)
+    .optional(),
 })
 
 export const EditedTransactionSchema = z.object({
@@ -2617,3 +2625,4 @@ export const UpdateOrganizationSchema = z
   .strict()
 export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>
 export * from './fortnox'
+export * from './kundstart'

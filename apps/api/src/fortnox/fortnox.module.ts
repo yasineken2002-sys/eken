@@ -1,6 +1,14 @@
 import { Inject, Logger, Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaModule } from '../common/prisma/prisma.module'
+import { PrismaService } from '../common/prisma/prisma.service'
+import {
+  fortnoxCustomerWritesOptIn,
+  skrivarensKontroll,
+  type FortnoxCustomerBinding,
+} from './fortnox-customer-activation'
+import { FortnoxCustomerActivationService } from './fortnox-customer-activation.service'
+import { FortnoxCustomerActivationController } from './fortnox-customer-activation.controller'
 import { FortnoxController } from './fortnox.controller'
 import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxReadbackService } from './fortnox-readback.service'
@@ -70,9 +78,13 @@ export function realClients(config: ConfigService, crypto: FortnoxTokenCryptoSer
       enabled: true,
     }),
     transport: new FortnoxTransport({ fetch, rateLimiter }),
-    writeTransport: fortnoxTestVoucherWritesOptIn(config)
-      ? new FortnoxTransport({ fetch, rateLimiter, allowVoucherWrites: true })
-      : null,
+    // Skrivtransport bara vid uttrycklig opt-in: testföretaget (aldrig produktion) eller
+    // KUNDSTART-flaggan FORTNOX_CUSTOMER_WRITES=aktiverad (kundvägen, varje sändning
+    // kräver ändå en verifierad aktivering i databasen).
+    writeTransport:
+      fortnoxTestVoucherWritesOptIn(config) || fortnoxCustomerWritesOptIn(config)
+        ? new FortnoxTransport({ fetch, rateLimiter, allowVoucherWrites: true })
+        : null,
     clientId: c.clientId,
     redirectUri: c.redirectUri,
   }
@@ -93,7 +105,7 @@ import {
  */
 @Module({
   imports: [PrismaModule],
-  controllers: [FortnoxController],
+  controllers: [FortnoxController, FortnoxCustomerActivationController],
   providers: [
     FortnoxTokenCryptoService,
     FortnoxConnectionService,
@@ -149,18 +161,34 @@ import {
     // Stub och REAL utan opt-in får DisabledVoucherWriter.
     {
       provide: FORTNOX_VOUCHER_WRITER,
-      useFactory: (reader: unknown, config: ConfigService, real: RealClients) => {
-        // Validerar opt-in-värdet i alla lägen (felstavning stoppar boot).
-        fortnoxTestVoucherWritesOptIn(config)
+      useFactory: (
+        reader: unknown,
+        config: ConfigService,
+        real: RealClients,
+        prisma: PrismaService,
+      ) => {
+        // Validerar opt-in-värdena i alla lägen (felstavning stoppar boot).
+        const testWrites = fortnoxTestVoucherWritesOptIn(config)
+        const customerWrites = fortnoxCustomerWritesOptIn(config)
+        const verifyCustomer = (b: FortnoxCustomerBinding, datum: string) =>
+          skrivarensKontroll(prisma, b, datum)
         if (reader instanceof RealFortnoxLedgerReader && real?.writeTransport) {
           return new RealFortnoxVoucherWriter({
             transport: real.writeTransport,
             reader,
             clientId: real.clientId,
+            testWrites,
+            customerWrites,
+            verifyCustomer,
           })
         }
         if (!(reader instanceof MockFortnoxLedgerReader)) return new DisabledVoucherWriter()
         const writer = new MockVoucherWriter(reader)
+        writer.verifyCustomer = verifyCustomer
+        // KUNDSTART-prov (endast Mock ⇒ NODE_ENV=test): syntetiska kundföretag som
+        // kräver kundaktivering, kommaseparerade databasnummer.
+        for (const n of (config.get<string>('FORTNOX_MOCK_CUSTOMER_COMPANIES') ?? '').split(','))
+          if (/^\d+$/.test(n.trim())) writer.customerCompanies.add(Number(n.trim()))
         // Syntetiskt felscenario för produktprov (endast Mock ⇒ NODE_ENV=test):
         // första sändningen skrivs men svaret tappas (okänt utfall).
         if (config.get<string>('FORTNOX_MOCK_WRITE_FAULT') === 'unknown_after_write_once') {
@@ -168,9 +196,10 @@ import {
         }
         return writer
       },
-      inject: [FORTNOX_LEDGER_READER, ConfigService, FORTNOX_REAL_CLIENTS],
+      inject: [FORTNOX_LEDGER_READER, ConfigService, FORTNOX_REAL_CLIENTS, PrismaService],
     },
     FortnoxSendService,
+    FortnoxCustomerActivationService,
   ],
   exports: [FortnoxReadbackService],
 })

@@ -64,6 +64,7 @@ function makeService(opts: {
     // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       // H3 PR B: vattenfallet läser kandidater med findMany. Tom lista = inga
       // fler öppna avier, alltså inget vattenfall — riggens fall ägs av
       // enskildvägen och beteendet är oförändrat.
@@ -116,6 +117,7 @@ function makeService(opts: {
     // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0) /* KUNDSTART T4-1: ingen OPENING */,
       findFirst: jest.fn().mockResolvedValue(opts.ocrCandidate ?? null),
       findMany: jest.fn().mockResolvedValue(opts.fuzzyNotices ?? []),
     },

@@ -25,3 +25,21 @@ export const BETALBARA_AVISTATUSAR = [
 export function ärBetalbarAvistatus(status: RentNoticeStatus): boolean {
   return (BETALBARA_AVISTATUSAR as readonly RentNoticeStatus[]).includes(status)
 }
+
+/**
+ * KUNDSTART-001 §12.2 (K-B2): OPENING är en historisk öppen fordran ur ett verkställt
+ * öppningspaket. Den får reglera en verklig ny betalning — men BARA när en människa
+ * uttryckligen valt just den avin (manuell matchning). Automatiken (OCR, referens,
+ * vattenfall, beloppsgissning) använder BETALBARA_AVISTATUSAR ovan och allokerar därför
+ * aldrig till OPENING: vi gissar inte vilket krav hyresgästen betalat, och dagens
+ * hyresbetalning kan inte tyst hamna på gammal skuld så att den nya avin blir förfallen
+ * och kravtrappan startar på den.
+ *
+ * Används av statusguarden som sätter PAID (som är gemensam för manuell och automatisk
+ * väg — de automatiska urvalen släpper aldrig in en OPENING-avi dit) och av den
+ * manuella matchningens tillåtelse.
+ */
+export const MANUELLT_BETALBARA_AVISTATUSAR = [
+  ...BETALBARA_AVISTATUSAR,
+  'OPENING',
+] as const satisfies readonly RentNoticeStatus[]

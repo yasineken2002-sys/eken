@@ -278,8 +278,117 @@ import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
 import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
 import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
+import {
+  approveCustomerActivationInputSchema,
+  approveOpeningPackageInputSchema,
+  bindOpeningReadInputSchema,
+  firstPeriodRegisterInputSchema,
+  separateLedgerInputSchema,
+  setCutoverInputSchema,
+  uploadOpeningPackageInputSchema,
+} from '@eken/shared'
+import {
+  ApproveOpeningPackageDto,
+  BindReadDto,
+  FirstPeriodRegisterDto,
+  SeparateLedgerDto,
+  SetCutoverDto,
+  UploadOpeningPackageDto,
+} from '../../kundstart/dto/kundstart.dto'
+import { ApproveCustomerActivationDto } from '../../fortnox/dto/customer-activation.dto'
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  // ── KUNDSTART-001 ─────────────────────────────────────────────────────────
+  {
+    endpoint: 'PUT /kundstart/cutover',
+    inputTyp: 'SetCutoverInput',
+    schema: setCutoverInputSchema,
+    dto: SetCutoverDto,
+    giltig: { cutoverDate: '2026-11-01' },
+    ogiltig: { cutoverDate: '1 november' },
+    ogiltigVarfor: 'brytdatum anges som ÅÅÅÅ-MM-DD (dagen prövas sedan av tjänsten)',
+  },
+  {
+    endpoint: 'POST /kundstart/opening-packages',
+    inputTyp: 'UploadOpeningPackageInput',
+    schema: uploadOpeningPackageInputSchema,
+    dto: UploadOpeningPackageDto,
+    giltig: { sourceName: 'paket.csv', innehall: 'radId;typ', nollOppning: false },
+    ogiltig: { sourceName: '', innehall: 'radId;typ' },
+    ogiltigVarfor: 'underlaget måste ha ett namn',
+  },
+  {
+    endpoint: 'POST /kundstart/opening-packages/:id/fortnox-read',
+    inputTyp: 'BindOpeningReadInput',
+    schema: bindOpeningReadInputSchema,
+    dto: BindReadDto,
+    giltig: { readRunId: '3f1c9a2e-5d0b-4c7e-9a1f-2b3c4d5e6f70' },
+    ogiltig: { readRunId: 'senaste' },
+    ogiltigVarfor: 'läsningen anges med sitt id, aldrig med ett ord',
+  },
+  {
+    endpoint: 'PUT /kundstart/opening-packages/:id/separate-ledger',
+    inputTyp: 'SeparateLedgerInput',
+    schema: separateLedgerInputSchema,
+    dto: SeparateLedgerDto,
+    giltig: { konto: '1510', beskrivning: 'Separat reskontra', filnamn: 's.csv', innehall: null },
+    ogiltig: { konto: '3011', beskrivning: 'Separat reskontra', filnamn: 's.csv', innehall: null },
+    ogiltigVarfor: 'bara 1510 och 2890 ingår i öppningens avstämning',
+  },
+  {
+    endpoint: 'PUT /kundstart/opening-packages/:id/first-period-register',
+    inputTyp: 'FirstPeriodRegisterInput',
+    schema: firstPeriodRegisterInputSchema,
+    dto: FirstPeriodRegisterDto,
+    giltig: {
+      filnamn: 'r.csv',
+      innehall: 'radId;hyresgast',
+      system: 'Gamla systemet',
+      ansvarig: 'Ekonomichef',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-11-30',
+      intaktskonton: [3911],
+      forskottskonton: [2420],
+    },
+    ogiltig: {
+      filnamn: 'r.csv',
+      innehall: 'radId;hyresgast',
+      system: 'Gamla systemet',
+      ansvarig: 'Ekonomichef',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-11-30',
+      intaktskonton: [39110],
+      forskottskonton: [],
+    },
+    ogiltigVarfor: 'ett kontonummer i BAS är fyrsiffrigt',
+  },
+  {
+    endpoint: 'POST /kundstart/opening-packages/:id/approve',
+    inputTyp: 'ApproveOpeningPackageInput',
+    schema: approveOpeningPackageInputSchema,
+    dto: ApproveOpeningPackageDto,
+    giltig: {
+      version: 2,
+      sourceSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    ogiltig: { version: 2, sourceSha256: 'abc' },
+    ogiltigVarfor: 'godkännandet binds till filens fullständiga sha256',
+  },
+  {
+    endpoint: 'POST /integrations/fortnox/customer-activation/approve',
+    inputTyp: 'ApproveCustomerActivationInput',
+    schema: approveCustomerActivationInputSchema,
+    dto: ApproveCustomerActivationDto,
+    giltig: {
+      financialYearId: 1,
+      consequencesSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    ogiltig: {
+      financialYearId: 0,
+      consequencesSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    ogiltigVarfor: 'räkenskapsåret är Fortnox positiva id',
+  },
   {
     endpoint: 'PATCH /reconciliation/import-stops/:id/resolve',
     inputTyp: 'ResolveImportStopInput',

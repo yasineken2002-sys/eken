@@ -123,8 +123,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `test:ci` = `jest --ci --runInBand`. SERIELLT är ett medvetet val, inte
-      # en genväg: ubuntu-latest har 2 kärnor / ~7 GB, och med parallella workers
+      # `test:ci` = `jest --ci --maxWorkers=1 --workerIdleMemoryLimit=1536MB
+      # --logHeapUsage`: EN arbetsprocess, seriellt, som Jest startar om efter en
+      # testfil när dess heap passerat 1536 MB. Tidigare `--runInBand` (allt i EN
+      # process) tog slut på V8-heap i det här jobbet: Node 20.20.2 föll med
+      # "Reached heap limit" vid ~3,9 GB använd heap (~4,1 GB reserverad), efter
+      # 369–497 sviter i tre körningar. Modulregistren ackumuleras per svit.
+      # LOKAL DELSVIT (de 60 första sviterna i CI-ordning, 2 kärnor/7 GB, Node 24):
+      # runInBand 1 178 → 1 811 MB (+633 MB, ~10,5 MB/svit), 181 s; återvunnen
+      # arbetsprocess 182 s, tre återstarter, heap ≤ ~1,5 GB. Lokalt är V8:s
+      # standardtak 2 240 MB (Node 24) — ett annat värde än CI:s ~4 GB.
+      # Gränsen + största uppmätta enskilda svitökning (~334 MB) ryms under båda.
+      # Återstarterna syns i loggen som fallande heap.
+      #
+      # SERIELLT är fortfarande ett medvetet val, inte en genväg: ubuntu-latest har 2 kärnor / ~7 GB, och med parallella workers
       # dödar OS:ets OOM-hanterare jest-workers mitt i körningen
       # ("A jest worker process was terminated ... signal=SIGTERM"). Det ger
       # slumpvis röda sviter UTAN ett enda testfel — precis den sortens flakiga

@@ -82,6 +82,7 @@ function makeService(
   const txMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       // Vattenfallet läser kandidaterna med findMany (ordnad).
       findMany: jest.fn().mockResolvedValue(avier),
       findFirst: jest.fn().mockResolvedValue(null),

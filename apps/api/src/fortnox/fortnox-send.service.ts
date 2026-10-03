@@ -14,11 +14,17 @@ import {
   type FortnoxVoucherDraftBuilder,
 } from './fortnox-export.service'
 import { toOre } from './fortnox-ledger'
+import {
+  provaOchOgiltigforklara,
+  sendingEnabledFor,
+  type FortnoxCustomerBinding,
+} from './fortnox-customer-activation'
 import { RefreshingLedgerReader } from './fortnox-readback.service'
 import {
   FORTNOX_VOUCHER_WRITER,
   FortnoxWriteError,
   type FortnoxVoucherWriter,
+  payloadDatum,
 } from './fortnox-voucher-writer'
 import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
 
@@ -136,16 +142,12 @@ export class FortnoxSendService {
     return this.writer.capable
   }
 
-  /** Kan organisationens anslutna företag skrivas till? (skrivare + företagslista) */
+  /**
+   * Kan organisationens anslutna företag skrivas till? Testföretaget via testvägen,
+   * eller ett kundföretag med flaggan på OCH en giltig kundaktivering (KUNDSTART G-F5).
+   */
   async sendingEnabledFor(organizationId: string): Promise<boolean> {
-    if (!this.writer.capable) return false
-    const conn = await this.prisma.fortnoxConnection.findUnique({
-      where: { organizationId },
-      select: { status: true, fortnoxDatabaseNumber: true },
-    })
-    return (
-      !!conn && conn.status === 'ACTIVE' && this.writer.allowsCompany(conn.fortnoxDatabaseNumber)
-    )
+    return sendingEnabledFor(this.prisma, this.writer, organizationId)
   }
 
   /** Utgångna anspråk blir UNKNOWN (lazy). Aldrig återköning. */
@@ -187,8 +189,25 @@ export class FortnoxSendService {
     const draft = fresh.draft as unknown as FrozenDraft
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn || conn.status !== 'ACTIVE') throw new ConflictException('Fortnox är inte anslutet')
+    // KUNDSTART §6: ett kundföretag (utanför testvägen) kräver flaggan och en kundaktivering
+    // vars bindning prövas mot aktuellt läge NU. Avvikelse ogiltigförklarar den beständigt.
+    let kund: FortnoxCustomerBinding | null = null
+    if (this.writer.requiresCustomerActivation(conn.fortnoxDatabaseNumber)) {
+      if (!this.writer.customerWritesEnabled)
+        throw new ConflictException('SENDING_DISABLED: Sändning till Fortnox är inte aktiverad')
+      const v = await provaOchOgiltigforklara(this.prisma, organizationId, {
+        financialYearId: draft.query.financialyear,
+        voucherSeries: String(draft.payload.Voucher.VoucherSeries),
+        // K-B7: exportgränsen prövas på utkastets eget datum vid varje sändning.
+        transactionDate: payloadDatum(draft.payload),
+        // K-B8: metoden ur den färska förkontrollens bindning (saknas → '' = inte ACCRUAL).
+        accountingMethod: fresh.binding?.accountingMethod ?? '',
+      })
+      if (!v.ok) throw new ConflictException(`CUSTOMER_NOT_ACTIVATED: ${v.skal}`)
+      kund = v.binding
+    }
     // Företagslistan kontrolleras före anspråket: ett företag utanför listan tar aldrig anspråk.
-    if (!this.writer.allowsCompany(conn.fortnoxDatabaseNumber)) {
+    if (!this.writer.allowsCompany(conn.fortnoxDatabaseNumber, kund)) {
       throw new ConflictException('SENDING_DISABLED: Sändning till Fortnox är inte aktiverad')
     }
     // T-N1: hashen ska vara räknad mot exakt denna anslutningsgeneration och detta företag.
@@ -274,6 +293,7 @@ export class FortnoxSendService {
     try {
       body = await this.writer.createVoucher(token, draft.query, draft.payload, {
         databaseNumber: conn.fortnoxDatabaseNumber,
+        kund,
       })
     } catch (err) {
       if (err instanceof FortnoxWriteError && err.outcome === 'not_sent') {

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { RefreshingLedgerReader } from './fortnox-readback.service'
 import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
@@ -116,6 +117,12 @@ export class FortnoxMappingService {
       update: { propertyId },
       select: { id: true },
     })
+    // KUNDSTART §12.8: en mappningsändring upphäver kundaktiveringen beständigt.
+    await ogiltigforklaraAktiveringar(
+      this.prisma,
+      organizationId,
+      `Mappning ${type}:${code} ändrades.`,
+    )
     return { id: row.id }
   }
 
@@ -124,6 +131,7 @@ export class FortnoxMappingService {
       where: { id, organizationId },
     })
     if (res.count !== 1) throw new NotFoundException('Kopplingen hittades inte')
+    await ogiltigforklaraAktiveringar(this.prisma, organizationId, 'En mappning togs bort.')
     return { removed: true }
   }
 }

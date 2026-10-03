@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config'
 import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { pkceChallenge } from './fortnox-providers'
@@ -285,6 +286,8 @@ export class FortnoxConnectionService {
       if (res.count !== 1)
         await refuse('Anslutningen ändrades under inloggningen; försök igen', 'STALE_CONNECT')
     }
+    // KUNDSTART §12.8: samma bolag via ny anslutning är en ny prövning.
+    await ogiltigforklaraAktiveringar(this.prisma, organizationId, 'Fortnox anslöts på nytt.')
     this.logger.log(
       `[fortnox] anslutning lagrad för org ${organizationId} (företag ${databaseNumber})`,
     )
@@ -515,6 +518,12 @@ export class FortnoxConnectionService {
         'Fortnox-anslutningen ändrades under sparandet; serien sparades inte',
       )
     }
+    // KUNDSTART §12.8: varje sparad serie upphäver kundaktiveringen beständigt (A→B→A).
+    await ogiltigforklaraAktiveringar(
+      this.prisma,
+      organizationId,
+      `Verifikatserien sattes till ${code}.`,
+    )
     return { exportVoucherSeries: code }
   }
 
@@ -536,6 +545,11 @@ export class FortnoxConnectionService {
         : { exportOmitDimensionsAt: null, exportOmitDimensionsBy: null },
     })
     if (res.count !== 1) throw new ConflictException('Fortnox är inte anslutet')
+    await ogiltigforklaraAktiveringar(
+      this.prisma,
+      organizationId,
+      'Dimensionsbeslutet för export ändrades.',
+    )
     return { omitDimensions: omit }
   }
 
@@ -611,6 +625,7 @@ export class FortnoxConnectionService {
         where: { organizationId, consumedAt: null },
         data: { consumedAt: new Date() },
       })
+      await ogiltigforklaraAktiveringar(tx, organizationId, 'Fortnox kopplades från.')
     }, PRISMA_DEFAULT_TX_LIMITS)
     return { disconnected: true }
   }

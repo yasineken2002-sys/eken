@@ -7,7 +7,15 @@ import type {
   SendNoticesInput,
 } from '@eken/shared'
 
-export type RentNoticeStatus = 'PENDING' | 'SENT' | 'PAID' | 'OVERDUE' | 'CANCELLED' | 'FAILED'
+export type RentNoticeStatus =
+  | 'PENDING'
+  | 'SENT'
+  | 'PAID'
+  | 'OVERDUE'
+  | 'CANCELLED'
+  | 'FAILED'
+  // KUNDSTART: historisk öppen fordran ur öppningspaket (före brytdatum)
+  | 'OPENING'
 
 export type PaymentMethod = 'BANK' | 'CASH' | 'SWISH' | 'MANUAL'
 

@@ -1,5 +1,12 @@
 import type { ManualMatchInput, SammaNycklar } from '@eken/shared'
-import { IsUUID, IsOptional, ValidateIf } from 'class-validator'
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsUUID,
+  IsOptional,
+  ValidateIf,
+} from 'class-validator'
 
 // XOR — exakt en av invoiceId/rentNoticeId måste anges. Klassvalidering
 // (gemensam) körs i service-lagret eftersom class-validator inte har en
@@ -24,6 +31,14 @@ export class ManualMatchDto implements ManualMatchInput {
   @ValidateIf((o) => o.rentNoticeId !== undefined)
   @IsUUID()
   rentNoticeId?: string
+
+  /** KUNDSTART T4-1: operatörens fördelning på flera avier (ordningen = fyllnadsordningen). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(24)
+  @IsUUID('all', { each: true })
+  rentNoticeIds?: string[]
 }
 
 /**

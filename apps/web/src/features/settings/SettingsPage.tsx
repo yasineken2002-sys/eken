@@ -60,13 +60,15 @@ import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { FortnoxPanel } from './components/FortnoxPanel'
 import { FortnoxExportSetup } from './components/FortnoxExportSetup'
+import { KundstartPanel } from '../kundstart/components/KundstartPanel'
+import { FortnoxCustomerActivationPanel } from '../kundstart/components/FortnoxCustomerActivationPanel'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
 import { get, del, extractApiError } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 import { tint, TINT } from '@/lib/tint'
 
-export type SettingsTab = 'general' | 'plan' | 'security' | 'users' | 'fortnox'
+export type SettingsTab = 'general' | 'plan' | 'security' | 'users' | 'fortnox' | 'kundstart'
 
 const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
   { id: 'general', label: 'Allmänt' },
@@ -76,6 +78,8 @@ const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
   // Fortnox A: anslutning och återläsning i skuggläge. Panelen själv kontrollerar
   // roll och visar "Inte aktiverat" när modulen är inert (serverns status).
   { id: 'fortnox', label: 'Fortnox' },
+  // KUNDSTART-001: brytdatum och öppningspaket (historisk skuld och depositioner).
+  { id: 'kundstart', label: 'Kundstart' },
 ]
 
 // ─── Form schema ──────────────────────────────────────────────────────────────
@@ -512,8 +516,17 @@ export function SettingsPage({ initialTab = 'general' }: { initialTab?: Settings
         <div className="mt-5 min-w-0">
           <FortnoxPanel />
           <div className="mt-5">
+            <FortnoxCustomerActivationPanel />
+          </div>
+          <div className="mt-5">
             <FortnoxExportSetup />
           </div>
+        </div>
+      )}
+
+      {tab === 'kundstart' && (
+        <div className="mt-5 min-w-0">
+          <KundstartPanel />
         </div>
       )}
 

@@ -95,9 +95,7 @@ describe('FortnoxExportSetup', () => {
       exports: { sendingEnabled: true, sendingDisabledReason: null },
     })
     renderIt()
-    expect(
-      await screen.findByText(/Sändning är aktiverad endast för det anslutna testföretaget/),
-    ).toBeTruthy()
+    expect(await screen.findByText(/Sändning är aktiverad för det anslutna företaget/)).toBeTruthy()
     expect(screen.queryByText(/Sändning är inte aktiverad/)).toBeNull()
     expect(screen.queryByText(/Inget skickas till Fortnox\./)).toBeNull()
   })

@@ -3,6 +3,7 @@ import { FortnoxReadbackService } from '../fortnox/fortnox-readback.service'
 import { Injectable, Optional } from '@nestjs/common'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { historiskSkuld, oppningskomponent } from '../kundstart/opening-component'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { AccountingService } from '../accounting/accounting.service'
 
@@ -212,6 +213,11 @@ export class DataContextService {
         _count: { id: true },
       }),
     ])
+    // KUNDSTART §12.9: samma formel som balansrapporten och get_account_balance.
+    const [oppning, historisk] = await Promise.all([
+      oppningskomponent(this.prisma, organizationId, now),
+      historiskSkuld(this.prisma, organizationId),
+    ])
 
     // Build unit status map
     const unitMap: Record<string, number> = {}
@@ -280,6 +286,18 @@ export class DataContextService {
       // identisk med dashboardens "Försenat belopp". Den enda auktoritativa
       // skuldsiffran i kontexten — FAKTUROR-listan nedan hoppar därför OVERDUE.
       `Förfallen skuld: ${overdueSnapshot.count} poster (${formatSEK(overdueSnapshot.total)}), varav ${overdueSnapshot.over30Count} äldre än 30 dagar`,
+      // KUNDSTART §3/§12.9: historisk skuld före brytdatum är en EGEN post — aldrig inräknad
+      // i Evenos förfallna skuld ovan och aldrig föremål för kravautomatik.
+      ...(oppning
+        ? [
+            // Reskontrafakta, oberoende av datum: de historiska posterna finns i Eveno.
+            `Historisk skuld före brytdatum ${oppning.brytdatum} (öppningspaket, källa: ${oppning.paket.map((p) => p.id.slice(0, 8)).join(', ')}): ${historisk.antal} poster, öppen rest ${formatSEK(historisk.belopp)}. Ingår inte i "Förfallen skuld" och driver inga påminnelser.`,
+            // Saldo per datum (§12.9): före brytdatum ingår komponenten inte.
+            ...(oppning.galler ? [] : [oppning.text]),
+            `Öppningskomponent per idag: 1510 ${formatSEK(oppning.konton['1510'])}, 2890 ${formatSEK(oppning.konton['2890'])} (externt bokförd i Fortnox före brytdatum; Fortnox IB och Evenos öppning är samma belopp ur två källor). ${oppning.begransning}`,
+            ...oppning.avstamningstexter.map((t) => `  Avstämning: ${t}`),
+          ]
+        : []),
       `Kontrakt som löper ut inom 90 dagar: ${expiring90Count} st`,
       '',
       '## FASTIGHETER & OBJEKT',

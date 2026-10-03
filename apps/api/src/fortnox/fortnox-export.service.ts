@@ -27,7 +27,7 @@ export type FortnoxVoucherDraftOutcome =
       draft: Record<string, unknown>
       draftHash: string
       /** Anslutningen som hashen räknades mot (T-N1). Sändning kräver likhet. */
-      binding?: { generation: number; databaseNumber: number | null }
+      binding?: { generation: number; databaseNumber: number | null; accountingMethod?: string }
     }
   | { ok: false; reasons: string[] }
 

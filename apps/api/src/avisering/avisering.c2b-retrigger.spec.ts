@@ -136,8 +136,17 @@ function makeRig(seed: LeaseSeed, opts: { withDeposit?: boolean; enqueueFails?: 
         .mockResolvedValue({ daysBeforeMoveInForFirstPayment: 7, bankgiro: '5050-1055' }),
     },
     deposit: {
-      findFirst: jest.fn(({ where }: { where: { leaseId: string } }) =>
-        Promise.resolve(deposits.find((d) => d.leaseId === where.leaseId) ?? null),
+      // Filtrerar på origin som databasen gör (KUNDSTART: en historisk deposition ur
+      // öppningspaketet slår av depositionsavin; riggens depositioner är EVENO).
+      findFirst: jest.fn(({ where }: { where: { leaseId: string; origin?: string } }) =>
+        Promise.resolve(
+          deposits.find(
+            (d) =>
+              d.leaseId === where.leaseId &&
+              (where.origin === undefined ||
+                ((d as { origin?: string }).origin ?? 'EVENO') === where.origin),
+          ) ?? null,
+        ),
       ),
     },
     // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att

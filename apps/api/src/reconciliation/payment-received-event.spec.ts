@@ -38,6 +38,7 @@ function makeService(opts: { payable?: number; prior?: number[] } = {}) {
   const txMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(notice),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
