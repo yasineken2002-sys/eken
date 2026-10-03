@@ -99,6 +99,7 @@ function rigg(opt: RiggOpt = {}) {
     },
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },

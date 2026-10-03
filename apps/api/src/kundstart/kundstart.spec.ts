@@ -1,6 +1,7 @@
 import { kronorTillOre, tolkaOpeningCsv, tolkaSpecifikation, delaCsv } from './opening-csv'
 import { stamAv } from './opening-reconciliation'
 import { periodForeBrytdatum, tolkaBrytdatum } from './cutover'
+import { dagenForeBrytdatum, saldoUrLasning } from './opening-fortnox-balance'
 
 const HUVUD =
   'radId;typ;hyresgast;avtal;fastighet;enhet;periodAr;periodManad;forfallodag;ursprungligtBelopp;oppetBelopp;mottagetDatum'
@@ -111,5 +112,59 @@ describe('KUNDSTART: startavstämning (A4 enligt BYGGLEDARE-002)', () => {
         spec: { '1510': spec(-200) },
       }).status,
     ).toBe('DIFFERENS')
+  })
+})
+
+describe('KUNDSTART: Fortnox-saldo per brytdatum (BYGGLEDARE-004 bevakning)', () => {
+  const conn = {
+    id: 'c',
+    fortnoxDatabaseNumber: 1,
+    connectedAt: new Date('2026-01-01'),
+    status: 'ACTIVE' as const,
+  }
+  const run = (from: string, to: string, ib: Record<string, number | null>, rows: unknown[]) => ({
+    id: 'r',
+    organizationId: 'o',
+    connectionId: 'c',
+    fortnoxDatabaseNumber: 1,
+    status: 'COMPLETE' as const,
+    financialYearStart: new Date(`${from}T00:00:00Z`),
+    periodFrom: new Date(`${from}T00:00:00Z`),
+    periodTo: new Date(`${to}T00:00:00Z`),
+    costAccounts: [1510, 2890],
+    startedAt: new Date('2026-12-01'),
+    completedAt: new Date('2026-12-01'),
+    summary: { balanceBroughtForwardOre: ib },
+    rows: { rows, references: [] },
+  })
+  it('brytdatum 1 januari: läsningen gäller FÖREGÅENDE år t.o.m. 31 december', () => {
+    const b = new Date(Date.UTC(2027, 0, 1))
+    expect(dagenForeBrytdatum(b)).toBe('2026-12-31')
+    const r = saldoUrLasning(
+      run('2026-01-01', '2026-12-31', { '1510': 100000, '2890': -50000 }, [
+        { account: 1510, amountOre: 23400, bucket: 'UNALLOCATED' },
+        { account: 2890, amountOre: -1000, bucket: 'UNALLOCATED' },
+      ]) as never,
+      conn as never,
+      b,
+    )
+    expect(r).toMatchObject({ ok: true, saldo: { saldo1510Ore: 123400, saldo2890Ore: 51000 } })
+  })
+  it('läsning av fel år, saknad IB eller fel slutdag avvisas med skäl', () => {
+    const b = new Date(Date.UTC(2027, 0, 1))
+    expect(
+      saldoUrLasning(
+        run('2027-01-01', '2027-01-31', { '1510': 0, '2890': 0 }, []) as never,
+        conn as never,
+        b,
+      ),
+    ).toMatchObject({ ok: false })
+    expect(
+      saldoUrLasning(
+        run('2026-01-01', '2026-12-31', { '1510': null, '2890': 0 }, []) as never,
+        conn as never,
+        b,
+      ),
+    ).toMatchObject({ ok: false, skal: expect.stringMatching(/aldrig som 0/) })
   })
 })

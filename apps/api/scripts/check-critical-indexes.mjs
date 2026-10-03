@@ -167,6 +167,18 @@ const CRITICAL_INDEXES = [
     // skrivsätt som `identityKey<>''` ovan.
     where: 'endedAtISNULL',
   },
+  {
+    label: 'Fortnox-kundaktivering — högst EN aktiv per organisation (KUNDSTART S-6)',
+    expectedName: 'fortnox_customer_activation_one_active',
+    migrationRef: '20261003190000_kundstart_en_aktiv_aktivering',
+    unique: true,
+    table: 'FortnoxCustomerActivation',
+    columns: ['organizationId'],
+    // Utan predikatet kunde en organisation aldrig få ett NYTT godkännande efter en
+    // återkallad eller ersatt aktivering (historiken står kvar). Med predikatet: en
+    // ACTIVE åt gången, avgjort av databasen även vid två samtidiga godkännanden.
+    where: "status='ACTIVE'",
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

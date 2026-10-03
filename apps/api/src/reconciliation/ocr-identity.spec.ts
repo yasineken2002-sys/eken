@@ -27,7 +27,10 @@ const träff = { id: 'x' }
 function makeDb(opts: { invoice?: unknown; rentNotice?: unknown; tenant?: unknown }) {
   return {
     invoice: { findFirst: jest.fn().mockResolvedValue(opts.invoice ?? null) },
-    rentNotice: { findFirst: jest.fn().mockResolvedValue(opts.rentNotice ?? null) },
+    rentNotice: {
+      count: jest.fn().mockResolvedValue(0),
+      findFirst: jest.fn().mockResolvedValue(opts.rentNotice ?? null),
+    },
     tenant: { findFirst: jest.fn().mockResolvedValue(opts.tenant ?? null) },
   }
 }
@@ -122,6 +125,7 @@ function makeService(opts: { identitetFinns: boolean }) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       // Grindens uppslag OCH kandidatuppslaget går båda till samma attrapp. De
       // skiljs åt på `orderBy`: kandidatsökningen väljer äldsta avi och bär det,
       // grinden frågar bara om numret är tilldelat och gör det inte. Låt bara

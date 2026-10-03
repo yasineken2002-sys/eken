@@ -567,4 +567,19 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     expect(s.forslag.ok).toBe(false)
     expect(s.forslag.hinder.join(' ')).toMatch(/egna poster före brytdatum/)
   })
+
+  it('S-6: databasen tillåter högst en ACTIVE aktivering per organisation', async () => {
+    const t = await setup()
+    const a = await t.godkann()
+    const rad = await prisma.fortnoxCustomerActivation.findUniqueOrThrow({ where: { id: a.id } })
+    const kopia: Partial<typeof rad> = { ...rad }
+    delete kopia.id
+    await expect(
+      prisma.fortnoxCustomerActivation.create({ data: { ...(kopia as typeof rad) } }),
+    ).rejects.toMatchObject({ code: 'P2002' })
+    // En SUPERSEDED/REVOKED rad bredvid en ACTIVE är tillåten (historik).
+    await prisma.fortnoxCustomerActivation.create({
+      data: { ...(kopia as typeof rad), status: 'REVOKED' },
+    })
+  })
 })

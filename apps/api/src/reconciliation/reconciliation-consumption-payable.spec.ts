@@ -45,6 +45,7 @@ function makeService(noticeRow: Record<string, unknown> | null) {
     // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       findFirst: jest.fn().mockResolvedValue(noticeRow),
       findMany: jest.fn().mockResolvedValue([]),
     },
