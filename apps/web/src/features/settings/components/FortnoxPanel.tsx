@@ -79,10 +79,10 @@ function AuthorizedFortnoxPanel() {
       <section
         aria-label="Fortnox"
         aria-busy="true"
-        className="rounded-2xl border border-line bg-surface p-5"
+        className="border-line bg-surface rounded-2xl border p-5"
       >
-        <h2 className="font-semibold text-ink">Fortnox</h2>
-        <p role="status" className="mt-3 text-sm text-ink-muted">
+        <h2 className="text-ink font-semibold">Fortnox</h2>
+        <p role="status" className="text-ink-muted mt-3 text-sm">
           Hämtar Fortnox-status…
         </p>
       </section>
@@ -124,14 +124,14 @@ function AuthorizedFortnoxPanel() {
   return (
     <section
       aria-labelledby="fortnox-title"
-      className="min-w-0 space-y-5 rounded-2xl border border-line bg-surface p-4 sm:p-6"
+      className="border-line bg-surface min-w-0 space-y-5 rounded-2xl border p-4 sm:p-6"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 id="fortnox-title" className="text-lg font-semibold text-ink">
+          <h2 id="fortnox-title" className="text-ink text-lg font-semibold">
             Fortnox
           </h2>
-          <p className="mt-1 text-sm text-ink-muted">Bokföringsunderlag och anslutning</p>
+          <p className="text-ink-muted mt-1 text-sm">Bokföringsunderlag och anslutning</p>
         </div>
         <Button
           size="sm"
@@ -141,20 +141,20 @@ function AuthorizedFortnoxPanel() {
           {status.isFetching ? 'Hämtar status…' : 'Uppdatera status'}
         </Button>
       </header>
-      <p className="rounded-xl bg-gray-50 p-3 text-sm leading-relaxed text-ink-muted">
+      <p className="text-ink-muted rounded-xl bg-gray-50 p-3 text-sm leading-relaxed">
         Eveno hanterar avier och betalningar. Fortnox-underlaget visas separat. Anslutningen byter
         inte källa för dina befintliga ekonomirapporter.
       </p>
       {!data.enabled ? (
-        <div role="status" className="rounded-xl border border-line p-4">
-          <h3 className="font-semibold text-ink">Inte aktiverat</h3>
-          <p className="mt-1 text-sm text-ink-muted">
+        <div role="status" className="border-line rounded-xl border p-4">
+          <h3 className="text-ink font-semibold">Inte aktiverat</h3>
+          <p className="text-ink-muted mt-1 text-sm">
             Fortnox-kopplingen är inte tillgänglig ännu.
           </p>
         </div>
       ) : (
-        <div className="space-y-3 rounded-xl border border-line p-4">
-          <h3 className="font-semibold text-ink">
+        <div className="border-line space-y-3 rounded-xl border p-4">
+          <h3 className="text-ink font-semibold">
             {connection?.status === 'ACTIVE'
               ? 'Ansluten'
               : connection?.status === 'AUTH_LOST'
@@ -218,7 +218,7 @@ function AuthorizedFortnoxPanel() {
               role="group"
               aria-label="Bekräfta frånkoppling"
             >
-              <p className="text-sm text-ink">
+              <p className="text-ink text-sm">
                 Koppla från Fortnox? Nya läsningar stoppas. Tidigare underlag finns kvar som
                 historik.
               </p>
@@ -251,12 +251,12 @@ function AuthorizedFortnoxPanel() {
           onAccessDenied={() => setCatalogDenied(true)}
         />
       )}
-      <section aria-labelledby="fortnox-mappings" className="rounded-xl border border-line p-4">
-        <h3 id="fortnox-mappings" className="font-semibold text-ink">
+      <section aria-labelledby="fortnox-mappings" className="border-line rounded-xl border p-4">
+        <h3 id="fortnox-mappings" className="text-ink font-semibold">
           Fastighetsfördelning
         </h3>
         {data.mappings.length === 0 ? (
-          <p className="mt-2 text-sm text-ink-muted">Inga fastighetskopplingar registrerade.</p>
+          <p className="text-ink-muted mt-2 text-sm">Inga fastighetskopplingar registrerade.</p>
         ) : (
           <ul className="mt-2 divide-y divide-gray-100 text-sm">
             {data.mappings.map((mapping) => (
@@ -267,23 +267,37 @@ function AuthorizedFortnoxPanel() {
             ))}
           </ul>
         )}
-        <p className="mt-3 text-sm text-ink-muted">
+        <p className="text-ink-muted mt-3 text-sm">
           Fördelningen behöver stämma med företagets dimensioner och fastigheter innan underlaget
           kan beskriva ett enskilt hus.
         </p>
       </section>
       <section
         aria-labelledby="fortnox-exports"
-        className="space-y-3 rounded-xl border border-line p-4"
+        className="border-line space-y-3 rounded-xl border p-4"
       >
-        <h3 id="fortnox-exports" className="font-semibold text-ink">
+        <h3 id="fortnox-exports" className="text-ink font-semibold">
           Export till Fortnox
         </h3>
-        <p className="text-sm font-medium text-amber-600">Sändning är inte aktiverad</p>
-        <p className="text-sm text-ink-muted">
-          Provexport kontrollerar underlaget utan att skicka bokföring. Säker återhämtning efter ett
-          oklart sändningsutfall behöver vara verifierad innan sändning öppnas.
-        </p>
+        {data.exports.sendingEnabled ? (
+          <>
+            <p className="text-sm font-medium text-amber-600">
+              Sändning är aktiverad endast för testföretaget
+            </p>
+            <p className="text-ink-muted text-sm">
+              Varje verifikat skickas först efter uttrycklig bekräftelse. Ett oklart sändningsutfall
+              låses och kräver avstämning mot Fortnox; inget skickas om automatiskt.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-amber-600">Sändning är inte aktiverad</p>
+            <p className="text-ink-muted text-sm">
+              Provexport kontrollerar underlaget utan att skicka bokföring. Säker återhämtning efter
+              ett oklart sändningsutfall behöver vara verifierad innan sändning öppnas.
+            </p>
+          </>
+        )}
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Detail label="Klara provexporter" value={String(data.exports.counts.DRY_RUN_READY)} />
           <Detail label="Blockerade" value={String(data.exports.counts.BLOCKED)} />
@@ -291,7 +305,7 @@ function AuthorizedFortnoxPanel() {
           <Detail label="Bekräftade" value={String(data.exports.counts.CONFIRMED)} />
         </dl>
         {data.exports.needsReconciliation > 0 && (
-          <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-ink">
+          <p role="alert" className="text-ink rounded-lg bg-amber-50 p-3 text-sm">
             {data.exports.needsReconciliation} exportförsök har okänt utfall och kräver avstämning i
             Fortnox före en ny sändning.
           </p>
@@ -305,7 +319,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <dt className="text-ink-muted">{label}</dt>
-      <dd className="mt-1 break-words font-medium text-ink">{value}</dd>
+      <dd className="text-ink mt-1 break-words font-medium">{value}</dd>
     </div>
   )
 }
@@ -314,16 +328,16 @@ function ReadAttempt({ read }: { read: FortnoxReadView | null }) {
   return (
     <section
       aria-labelledby="fortnox-attempt"
-      className="min-w-0 space-y-3 rounded-xl border border-line p-4"
+      className="border-line min-w-0 space-y-3 rounded-xl border p-4"
     >
-      <h3 id="fortnox-attempt" className="font-semibold text-ink">
+      <h3 id="fortnox-attempt" className="text-ink font-semibold">
         Senaste läsförsök
       </h3>
       {!read ? (
-        <p className="text-sm text-ink-muted">Ingen läsning har gjorts.</p>
+        <p className="text-ink-muted text-sm">Ingen läsning har gjorts.</p>
       ) : (
         <>
-          <p className="text-sm font-medium text-ink" role="status">
+          <p className="text-ink text-sm font-medium" role="status">
             {READ_LABELS[read.status]}
           </p>
           <dl className="space-y-2 text-sm">
@@ -339,12 +353,12 @@ function ReadAttempt({ read }: { read: FortnoxReadView | null }) {
             />
           </dl>
           {read.reason && <p className="break-words text-sm text-amber-600">{read.reason}</p>}
-          {!completed(read) && <p className="text-sm font-medium text-ink">Ingen aktuell summa</p>}
+          {!completed(read) && <p className="text-ink text-sm font-medium">Ingen aktuell summa</p>}
           <Coverage read={read} />
           {read.uncertainties.length > 0 && (
             <ul
               aria-label="Osäkerheter i senaste försöket"
-              className="list-disc space-y-1 pl-5 text-sm text-ink-muted"
+              className="text-ink-muted list-disc space-y-1 pl-5 text-sm"
             >
               {read.uncertainties.map((text, index) => (
                 <li className="break-words" key={index}>
@@ -363,11 +377,11 @@ function Coverage({ read }: { read: FortnoxReadView }) {
   const entries = Object.entries(read.coverage)
   return (
     <div className="space-y-2">
-      <h4 className="text-sm font-medium text-ink">Lästäckning</h4>
+      <h4 className="text-ink text-sm font-medium">Lästäckning</h4>
       {entries.length === 0 ? (
-        <p className="text-sm text-ink-muted">Täckning saknas.</p>
+        <p className="text-ink-muted text-sm">Täckning saknas.</p>
       ) : (
-        <ul className="space-y-2 text-xs text-ink-muted">
+        <ul className="text-ink-muted space-y-2 text-xs">
           {entries.map(([name, value]) => (
             <li className="break-words" key={name}>
               {resourceNames[name] ?? name}: {value.pages} av {value.totalPages} sidor ·{' '}
@@ -391,13 +405,13 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
   return (
     <section
       aria-labelledby="fortnox-complete"
-      className="min-w-0 space-y-3 rounded-xl border border-line p-4"
+      className="border-line min-w-0 space-y-3 rounded-xl border p-4"
     >
-      <h3 id="fortnox-complete" className="font-semibold text-ink">
+      <h3 id="fortnox-complete" className="text-ink font-semibold">
         Senaste kompletta underlag
       </h3>
       {!read || !summary ? (
-        <p className="text-sm text-ink-muted">
+        <p className="text-ink-muted text-sm">
           {read && read.selectedAccounts.length === 0
             ? 'Sparat kontourval saknas. Ingen verifierbar summa visas.'
             : 'Ingen komplett läsning med summa finns.'}
@@ -405,11 +419,11 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
       ) : (
         <>
           {earlier && (
-            <p className="rounded-lg bg-amber-50 p-2 text-sm text-ink">
+            <p className="text-ink rounded-lg bg-amber-50 p-2 text-sm">
               Tidigare underlag – beskriver inte ett nytt eller pågående läsförsök.
             </p>
           )}
-          <p className="text-sm text-ink-muted">
+          <p className="text-ink-muted text-sm">
             {day(read.periodFrom)} – {day(read.periodTo)} · Lästillfälle {time(read.completedAt)}
           </p>
           {read.status === 'COMPLETE_WITH_UNCERTAINTY' && (
@@ -419,7 +433,7 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
             <Detail label="Nettobelopp för valda konton" value={money(summary.totalOre)} />
             <Detail label="Sparat kontourval" value={read.selectedAccounts.join(', ')} />
           </dl>
-          <p className="text-xs text-ink-muted">
+          <p className="text-ink-muted text-xs">
             Avser det sparade kontourvalet vid lästillfället. Detta är inte en fullständig
             resultaträkning.
           </p>
@@ -433,7 +447,7 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
           </dl>
           {summary.byProperty.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium text-ink">Fördelat per fastighet</h4>
+              <h4 className="text-ink text-sm font-medium">Fördelat per fastighet</h4>
               <ul className="mt-2 space-y-2 text-sm">
                 {summary.byProperty.map((item) => (
                   <li
@@ -463,7 +477,7 @@ function ReadSummary({ data }: { data: FortnoxStatusResponse }) {
           {read.uncertainties.length > 0 && (
             <ul
               aria-label="Osäkerheter i underlaget"
-              className="list-disc space-y-1 pl-5 text-sm text-ink-muted"
+              className="text-ink-muted list-disc space-y-1 pl-5 text-sm"
             >
               {read.uncertainties.map((text, index) => (
                 <li className="break-words" key={index}>

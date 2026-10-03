@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { api, get, post } from '@/lib/api'
 import {
+  fortnoxReconcileInputSchema,
+  fortnoxSendInputSchema,
+  type FortnoxReconcileInput,
+  type FortnoxSendInput,
   fortnoxDryRunInputSchema,
   fortnoxExportSettingsInputSchema,
   type FortnoxDryRunInput,
@@ -22,7 +26,7 @@ const exportStateSchema = z.object({
       exportOmitDimensions: z.boolean(),
     })
     .nullable(),
-  exports: z.object({ sendingEnabled: z.literal(false), sendingDisabledReason: z.string() }),
+  exports: z.object({ sendingEnabled: z.boolean(), sendingDisabledReason: z.string().nullable() }),
 })
 export type FortnoxExportState = z.infer<typeof exportStateSchema>
 
@@ -39,8 +43,22 @@ export type FortnoxSeriesCatalog = z.infer<typeof seriesCatalogSchema>
 export const exportRowSchema = z.object({
   id: z.string(),
   journalEntryId: z.string(),
-  state: z.enum(['DRY_RUN_READY', 'BLOCKED', 'UNKNOWN', 'CONFIRMED']),
+  state: z.enum([
+    'DRY_RUN_READY',
+    'BLOCKED',
+    'SENDING',
+    'UNKNOWN',
+    'REJECTED',
+    'RECEIPT_IDENTIFIED',
+    'RECEIPT_MISMATCH',
+    'CONFIRMED',
+  ]),
   blockReason: z.string().nullable(),
+  draftHash: z.string().nullable().optional(),
+  lastOutcome: z.string().nullable().optional(),
+  externalYear: z.number().nullable().optional(),
+  externalSeries: z.string().nullable().optional(),
+  externalNumber: z.number().nullable().optional(),
   updatedAt: z.string(),
 })
 export type FortnoxExportRow = z.infer<typeof exportRowSchema>
@@ -73,4 +91,33 @@ export async function listFortnoxExports(): Promise<FortnoxExportRow[]> {
   return z
     .object({ items: z.array(exportRowSchema) })
     .parse(await get<unknown>(`${PREFIX}/exports`)).items
+}
+
+/** Sändning (endast syntetisk leverantör i test). Bunden till förhandskontrollens hash. */
+export async function sendFortnoxExport(
+  id: string,
+  input: FortnoxSendInput,
+): Promise<FortnoxExportRow> {
+  const body: FortnoxSendInput = fortnoxSendInputSchema.parse(input)
+  return exportRowSchema.parse(
+    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/send`, body),
+  )
+}
+
+/** Verifiera ett kvitto genom återläsning i Fortnox. */
+export async function verifyFortnoxExport(id: string): Promise<FortnoxExportRow> {
+  return exportRowSchema.parse(
+    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/verify`),
+  )
+}
+
+/** Avstämning med exakt extern identitet; servern läser och jämför innehållet. */
+export async function reconcileFortnoxExport(
+  id: string,
+  input: FortnoxReconcileInput,
+): Promise<FortnoxExportRow> {
+  const body: FortnoxReconcileInput = fortnoxReconcileInputSchema.parse(input)
+  return exportRowSchema.parse(
+    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/reconcile`, body),
+  )
 }

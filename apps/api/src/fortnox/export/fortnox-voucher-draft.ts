@@ -72,13 +72,13 @@ export interface FortnoxVoucherPayload {
     Description: string
     TransactionDate: string
     VoucherSeries: string
-    Year: number
     Comments: string
     VoucherRows: {
       Account: number
       Debit?: number
       Credit?: number
-      Description?: string
+      /** Radtext. Guidens POST-exempel (vouchers.html) bär radtext här, ≤100 tecken (OpenAPI). */
+      TransactionInformation?: string
       CostCenter?: string
       Project?: string
     }[]
@@ -255,7 +255,14 @@ export function buildFortnoxVoucherDraft(
       else creditTotal += amount
       const row: FortnoxVoucherPayload['Voucher']['VoucherRows'][number] = { Account: account.externalAccountNumber, [side]: wireAmount(amount, path) }
       requireDraft(line.description === null || typeof line.description === 'string', 'INVALID_LINE_DESCRIPTION', path, 'The persisted line description must be text or null.')
-      if (line.description !== null) row.Description = line.description
+      // FINAL-003 EX-2b: radens Description i Fortnox är KONTOTS benämning (guidens svarsexempel);
+      // lokal radtext skickas i TransactionInformation. Över 100 tecken spärras — aldrig tyst
+      // avkortning. Tom text = ingen radtext.
+      if (line.description !== null && line.description !== '') {
+        requireDraft(line.description.length <= 100, 'LINE_TEXT_TOO_LONG', path,
+          'Radtexten är längre än 100 tecken (Fortnox TransactionInformation); korta texten i Eveno före export.')
+        row.TransactionInformation = line.description
+      }
       const dimension = dimensionLines.get(line.id)
       let dimensionEvidenceRef: string, omissionReason: string | null
       if (config.dimensions.mode === 'OMIT') {
@@ -282,8 +289,12 @@ export function buildFortnoxVoucherDraft(
     return {
       status: 'READY_DRY_RUN', liveExportAllowed: false,
       query: { financialyear: config.financialYear.id },
+      // EX-1 (mätt 2026-10-03T01:20:44Z, testföretag 1868238, execute-001 svar-0069 sha 3f7e5ec1):
+      // POST med Voucher.Year avvisas 400/2000321 "Fältet Year är endast läsbart." trots att
+      // OpenAPI-payloadschemat anger Year som obligatoriskt; guidens POST-exempel saknar Year.
+      // Året bärs ENDAST av ?financialyear=<id> (query), och kvittot måste bära Year === id.
       payload: { Voucher: { Description: entry.description, TransactionDate: bookingDate, VoucherSeries: config.voucherSeries.code,
-        Year: config.financialYear.voucherYear, Comments: comments, VoucherRows: rows } },
+        Comments: comments, VoucherRows: rows } },
       provenance: { organizationId: entry.organizationId, journalEntryId: entry.id, localFiscalYear: entry.fiscalYear,
         localSeries: entry.series, localVerNumber: entry.verNumber, source: entry.source, sourceId: entry.sourceId, reference: entry.reference,
         reversalOfEntryId: entry.reversalOfEntryId, bookingDate, eventDate, externalCompany: { ...config.externalCompany },

@@ -76,10 +76,10 @@ export function toStatusResponse(input: {
   latestRead: ReadRow | null
   latestCompleteRead: ReadRow | null
   exports: {
-    counts: Record<'DRY_RUN_READY' | 'BLOCKED' | 'UNKNOWN' | 'CONFIRMED', number>
+    counts: Record<string, number>
     needsReconciliation: number
     sendingEnabled: boolean
-    sendingDisabledReason: string
+    sendingDisabledReason: string | null
   }
 }) {
   const c = input.connection

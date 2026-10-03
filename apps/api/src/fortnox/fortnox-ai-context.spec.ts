@@ -67,6 +67,8 @@ describe('Fortnox AI-underlag (skuggläge)', () => {
     expect(t).toContain('Ofördelat (rader utan dimension): 2 000,00 kr')
     expect(t).toContain('konto 5170')
     expect(t).toContain('återläst per')
+    // FINAL-003: tidsstämpeln bär uttrycklig svensk tidszon.
+    expect(t).toMatch(/återläst per \d{4}-\d{2}-\d{2} \d{2}:\d{2} svensk tid/)
     expect(t).toContain('30 min sedan')
     expect(t).toMatch(/ändrar INTE Evenos egna siffror/)
   })
@@ -116,8 +118,34 @@ describe('Fortnox AI-underlag (skuggläge)', () => {
     expect(t).toContain('Läs-id r1')
     expect(t).toContain('/3/vouchers/sublist: sidor 3/3, poster 5/5')
     expect(t).toContain('En läsning (id r9) pågår sedan')
-    expect(t).toContain('1 med okänt utfall som kräver manuell avstämning')
+    expect(t).toContain('1 med okänt eller avvisat utfall som kräver manuell avstämning')
     expect(t).toContain('sändning är avstängd')
+  })
+
+  it('FORTNOX-NATT: sändningsläget följer det faktiska läget; avvisade/avvikande räknas som avstämningsbehov', () => {
+    const exports = {
+      DRY_RUN_READY: 0,
+      BLOCKED: 0,
+      UNKNOWN: 1,
+      CONFIRMED: 3,
+      REJECTED: 1,
+      RECEIPT_MISMATCH: 1,
+      RECEIPT_IDENTIFIED: 2,
+    }
+    const on = text({
+      connection: conn,
+      latestRead: null,
+      latestCompleteRead: run(),
+      exports,
+      sendingEnabled: true,
+    })
+    expect(on).toContain('sändning är aktiverad endast för detta testföretag')
+    expect(on).not.toContain('sändning är avstängd')
+    expect(on).toContain(
+      '3 bekräftade, 2 skickade men ännu inte verifierade, 3 med okänt eller avvisat utfall',
+    )
+    const off = text({ connection: conn, latestRead: null, latestCompleteRead: run(), exports })
+    expect(off).toContain('sändning är avstängd')
   })
 
   it('läsning för ANNAT företag än nuvarande anslutning etiketteras inte som nuvarande', () => {

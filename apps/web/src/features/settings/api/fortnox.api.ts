@@ -95,10 +95,16 @@ export const fortnoxStatusSchema = z.object({
       BLOCKED: count,
       UNKNOWN: count,
       CONFIRMED: count,
+      SENDING: count.optional(),
+      REJECTED: count.optional(),
+      RECEIPT_IDENTIFIED: count.optional(),
+      RECEIPT_MISMATCH: count.optional(),
     }),
     needsReconciliation: count,
-    sendingEnabled: z.literal(false),
-    sendingDisabledReason: z.literal('IDEMPOTENCY_UNRESOLVED'),
+    // Sändning är avstängd i produktkonfigurationen; endast den syntetiska
+    // testleverantören (NODE_ENV=test) rapporterar true.
+    sendingEnabled: z.boolean(),
+    sendingDisabledReason: z.literal('IDEMPOTENCY_UNRESOLVED').nullable(),
   }),
 })
 export type FortnoxStatusResponse = z.infer<typeof fortnoxStatusSchema>

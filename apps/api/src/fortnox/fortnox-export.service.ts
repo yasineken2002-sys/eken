@@ -22,7 +22,13 @@ import { PrismaService } from '../common/prisma/prisma.service'
 export const FORTNOX_VOUCHER_DRAFT_BUILDER = Symbol('FORTNOX_VOUCHER_DRAFT_BUILDER')
 
 export type FortnoxVoucherDraftOutcome =
-  | { ok: true; draft: Record<string, unknown>; draftHash: string }
+  | {
+      ok: true
+      draft: Record<string, unknown>
+      draftHash: string
+      /** Anslutningen som hashen räknades mot (T-N1). Sändning kräver likhet. */
+      binding?: { generation: number; databaseNumber: number | null }
+    }
   | { ok: false; reasons: string[] }
 
 /** Kontrakt mot transformer-leveransen. Läser verifikatet själv, org-bundet. */
@@ -49,6 +55,14 @@ const EXPORT_VIEW = {
   state: true,
   blockReason: true,
   draftHash: true,
+  lastOutcome: true,
+  externalYear: true,
+  externalSeries: true,
+  externalNumber: true,
+  sendConfirmedAt: true,
+  receiptAt: true,
+  confirmedAt: true,
+  reconciledAt: true,
   updatedAt: true,
 } satisfies Prisma.FortnoxVoucherExportSelect
 
@@ -75,7 +89,9 @@ export class FortnoxExportService {
       where: { organizationId_journalEntryId: { organizationId, journalEntryId } },
       select: EXPORT_VIEW,
     })
-    if (existing && (existing.state === 'UNKNOWN' || existing.state === 'CONFIRMED'))
+    // Endast BLOCKED/DRY_RUN_READY får omprövas. Pågående, okända, avvisade,
+    // kvitterade och bekräftade försök byggs aldrig om genom dry-run (F17).
+    if (existing && existing.state !== 'DRY_RUN_READY' && existing.state !== 'BLOCKED')
       return existing
 
     const outcome = await this.builder.build(organizationId, journalEntryId)
@@ -137,19 +153,28 @@ export class FortnoxExportService {
     })
   }
 
-  async counts(organizationId: string) {
+  async counts(organizationId: string, sendingEnabled = FORTNOX_SENDING_ENABLED) {
     const grouped = await this.prisma.fortnoxVoucherExport.groupBy({
       by: ['state'],
       where: { organizationId },
       _count: { _all: true },
     })
-    const counts = { DRY_RUN_READY: 0, BLOCKED: 0, UNKNOWN: 0, CONFIRMED: 0 }
+    const counts = {
+      DRY_RUN_READY: 0,
+      BLOCKED: 0,
+      SENDING: 0,
+      UNKNOWN: 0,
+      REJECTED: 0,
+      RECEIPT_IDENTIFIED: 0,
+      RECEIPT_MISMATCH: 0,
+      CONFIRMED: 0,
+    }
     for (const g of grouped) counts[g.state] = g._count._all
     return {
       counts,
-      needsReconciliation: counts.UNKNOWN,
-      sendingEnabled: FORTNOX_SENDING_ENABLED,
-      sendingDisabledReason: FORTNOX_SENDING_DISABLED_REASON,
+      needsReconciliation: counts.UNKNOWN + counts.REJECTED + counts.RECEIPT_MISMATCH,
+      sendingEnabled,
+      sendingDisabledReason: sendingEnabled ? null : FORTNOX_SENDING_DISABLED_REASON,
     }
   }
 }

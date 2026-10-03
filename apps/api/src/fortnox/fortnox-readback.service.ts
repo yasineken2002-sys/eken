@@ -1,10 +1,17 @@
-import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common'
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Optional,
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
 import { readCatalog } from './fortnox-catalog'
 import type { FortnoxAiSnapshot } from './fortnox-ai-context'
+import { FORTNOX_VOUCHER_WRITER, type FortnoxVoucherWriter } from './fortnox-voucher-writer'
 import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
 
 export interface StartReadInput {
@@ -61,6 +68,10 @@ export class FortnoxReadbackService {
     private readonly prisma: PrismaService,
     private readonly connections: FortnoxConnectionService,
     @Inject(FORTNOX_LEDGER_READER) private readonly reader: FortnoxLedgerReader,
+    /** Endast för AI-textens ärliga sändningsläge; läsning skriver aldrig. */
+    @Optional()
+    @Inject(FORTNOX_VOUCHER_WRITER)
+    private readonly writer?: FortnoxVoucherWriter,
   ) {}
 
   async read(organizationId: string, userId: string | null, input: StartReadInput) {
@@ -295,9 +306,18 @@ export class FortnoxReadbackService {
       _count: { _all: true },
     })
     // Inte `exports` som variabelnamn: krockar med CommonJS-modulens exports.
-    const exportCounts = { DRY_RUN_READY: 0, BLOCKED: 0, UNKNOWN: 0, CONFIRMED: 0 }
+    const exportCounts: Record<string, number> & FortnoxAiSnapshot['exports'] = {
+      DRY_RUN_READY: 0,
+      BLOCKED: 0,
+      UNKNOWN: 0,
+      CONFIRMED: 0,
+    }
     for (const g of grouped) exportCounts[g.state] = g._count._all
-    return { connection, latestRead, latestCompleteRead, exports: exportCounts }
+    const sendingEnabled =
+      this.writer?.capable === true &&
+      connection.status === 'ACTIVE' &&
+      this.writer.allowsCompany(connection.fortnoxDatabaseNumber)
+    return { connection, latestRead, latestCompleteRead, exports: exportCounts, sendingEnabled }
   }
 }
 

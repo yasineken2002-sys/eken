@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from '@nestjs/common'
 import { createHash } from 'crypto'
 import { ConfigService } from '@nestjs/config'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
+import { FORTNOX_TEST_VOUCHER_WRITES_VALUE } from './fortnox-voucher-writer'
 import {
   FortnoxAuthError,
   FortnoxReadError,
@@ -53,6 +54,27 @@ export function fortnoxRealConfig(config: ConfigService): FortnoxRealConfig {
     throw new Error(`[fortnox] FORTNOX_PROVIDER=real men saknar ${missing.join(', ')} — fail-fast.`)
   }
   return { clientId, clientSecret, redirectUri }
+}
+
+/**
+ * Opt-in för skarp verifikatskrivning till TESTFÖRETAGET (FORTNOX-NATT-20261003).
+ * Tomt/saknat → av. Exakt FORTNOX_TEST_VOUCHER_WRITES_VALUE → på (endast REAL
+ * använder den). Varje annat värde, eller värdet i NODE_ENV=production, stoppar
+ * boot — en felstavning får aldrig tyst slå på eller av något oväntat.
+ * Vilka företag som får skrivas styrs INTE härifrån utan av den hårdkodade listan.
+ */
+export function fortnoxTestVoucherWritesOptIn(config: ConfigService): boolean {
+  const raw = config.get<string>('FORTNOX_TEST_VOUCHER_WRITES')
+  if (raw === undefined || raw === '') return false
+  if (raw !== FORTNOX_TEST_VOUCHER_WRITES_VALUE) {
+    throw new Error('[fortnox] FORTNOX_TEST_VOUCHER_WRITES har ogiltigt värde — fail-fast.')
+  }
+  if (config.get<string>('NODE_ENV') === 'production') {
+    throw new Error(
+      '[fortnox] FORTNOX_TEST_VOUCHER_WRITES är inte tillåten i produktion — fail-fast.',
+    )
+  }
+  return true
 }
 
 export function fortnoxMode(config: ConfigService, crypto: FortnoxTokenCryptoService): FortnoxMode {

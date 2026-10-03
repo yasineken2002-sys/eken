@@ -265,11 +265,15 @@ const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', 
 import {
   fortnoxDryRunInputSchema,
   fortnoxExportSettingsInputSchema,
+  fortnoxReconcileInputSchema,
+  fortnoxSendInputSchema,
   fortnoxMappingInputSchema,
   fortnoxReadInputSchema,
 } from '@eken/shared'
 import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from '../../fortnox/dto/fortnox-dry-run.dto'
+import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
+import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
 import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
 import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
 
@@ -1641,5 +1645,32 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { journalEntryId: 'je-1' },
     ogiltig: { journalEntryId: '' },
     ogiltigVarfor: 'en förhandskontroll utan verifikat har inget att kontrollera',
+  },
+  {
+    // FORTNOX-SANDNING. Pariteten prövar den UTTRYCKLIGA bekräftelsen — sändning utan
+    // confirm=true får aldrig gå igenom på någon sida.
+    endpoint: 'POST /integrations/fortnox/exports/:id/send',
+    inputTyp: 'FortnoxSendInput',
+    schema: fortnoxSendInputSchema,
+    dto: FortnoxSendDto,
+    giltig: {
+      draftHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      confirm: true,
+    },
+    ogiltig: {
+      draftHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      confirm: false,
+    },
+    ogiltigVarfor: 'sändning kräver kundens uttryckliga bekräftelse',
+  },
+  {
+    // FORTNOX-SANDNING. Pariteten prövar ett POSITIVT verifikatnummer — identiteten måste vara exakt.
+    endpoint: 'POST /integrations/fortnox/exports/:id/reconcile',
+    inputTyp: 'FortnoxReconcileInput',
+    schema: fortnoxReconcileInputSchema,
+    dto: FortnoxReconcileDto,
+    giltig: { year: 1, series: 'A', number: 12 },
+    ogiltig: { year: 1, series: 'A', number: 0 },
+    ogiltigVarfor: 'ett verifikatnummer måste vara ett positivt heltal',
   },
 ]

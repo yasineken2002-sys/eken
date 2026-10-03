@@ -64,6 +64,22 @@ describe('FortnoxExportSetup', () => {
     vi.clearAllMocks()
   })
 
+  it('C2 U-1: rubriktexten följer sändningsläget', async () => {
+    renderIt()
+    expect(await screen.findByText(/Inget skickas till Fortnox\./)).toBeTruthy()
+    cleanup()
+    mocks.state.mockResolvedValue({
+      ...ACTIVE(),
+      exports: { sendingEnabled: true, sendingDisabledReason: null },
+    })
+    renderIt()
+    expect(
+      await screen.findByText(/Sändning är aktiverad endast för det anslutna testföretaget/),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Sändning är inte aktiverad/)).toBeNull()
+    expect(screen.queryByText(/Inget skickas till Fortnox\./)).toBeNull()
+  })
+
   it('visas inte för roller utan integrationsadministration', () => {
     mocks.role = 'MANAGER'
     renderIt()
@@ -131,5 +147,20 @@ describe('FortnoxExportSetup', () => {
     fireEvent.click(await screen.findByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Spara beslut' }))
     expect(await screen.findByText('Serverfel')).toBeTruthy()
+  })
+
+  it('T-F1: tom men komplett årskatalog förklaras och serie kan inte väljas', async () => {
+    mocks.catalog.mockResolvedValue({
+      ready: true,
+      reason: null,
+      financialYears: [],
+      voucherSeries: [],
+    })
+    renderIt()
+    expect(await screen.findByText(/har inga räkenskapsår ännu/)).toBeTruthy()
+    expect((screen.getByLabelText('Serie i Fortnox') as HTMLSelectElement).disabled).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Spara serie' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
   })
 })

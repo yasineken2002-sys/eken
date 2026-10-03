@@ -8,6 +8,7 @@
  *
  * En bruten eller avvikande paginering ger ready=false — aldrig en lyckad tom lista.
  */
+import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
 
 export interface FortnoxCatalog {
@@ -43,6 +44,8 @@ async function all<T>(
       page,
       limit: 100,
     })
+    // Fortnox tomma samling: exakt första sidans tomma form = fullständig tom lista.
+    if (isExactEmptyFirstPage(page, body, key)) return []
     const mi = (body?.MetaInformation ?? {}) as Record<string, unknown>
     const [cp, tp, tr] = [mi['@CurrentPage'], mi['@TotalPages'], mi['@TotalResources']]
     if (!posInt(cp) || !posInt(tp) || !posInt(tr) || tp < 1 || cp !== page) {

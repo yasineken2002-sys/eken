@@ -11,6 +11,9 @@ import { FortnoxReadDto } from './dto/fortnox-read.dto'
 import { FortnoxMappingDto } from './dto/fortnox-mapping.dto'
 import { FortnoxExportSettingsDto } from './dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from './dto/fortnox-dry-run.dto'
+import { FortnoxSendDto } from './dto/fortnox-send.dto'
+import { FortnoxReconcileDto } from './dto/fortnox-reconcile.dto'
+import { FortnoxSendService } from './fortnox-send.service'
 import { FortnoxExportService } from './fortnox-export.service'
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { toReadView, toStatusResponse } from './fortnox-status'
@@ -32,6 +35,7 @@ export class FortnoxController {
     private readonly readback: FortnoxReadbackService,
     private readonly exports: FortnoxExportService,
     private readonly mappings: FortnoxMappingService,
+    private readonly sender: FortnoxSendService,
   ) {}
 
   @Get('status')
@@ -41,7 +45,10 @@ export class FortnoxController {
       this.connections.status(organizationId),
       this.mappings.list(organizationId),
       this.readback.latest(organizationId),
-      this.exports.counts(organizationId),
+      this.sender
+        .expireLeases(organizationId)
+        .then(() => this.sender.sendingEnabledFor(organizationId))
+        .then((enabled) => this.exports.counts(organizationId, enabled)),
     ])
     return toStatusResponse({
       enabled: this.connections.enabled,
@@ -142,9 +149,38 @@ export class FortnoxController {
     return out
   }
 
+  @Post('exports/:id/send')
+  @Roles('OWNER', 'ADMIN')
+  async send(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxSendDto,
+  ) {
+    return this.sender.send(organizationId, user.sub, id, body.draftHash)
+  }
+
+  @Post('exports/:id/verify')
+  @Roles('OWNER', 'ADMIN')
+  async verify(@OrgId() organizationId: string, @Param('id') id: string) {
+    return this.sender.verify(organizationId, id)
+  }
+
+  @Post('exports/:id/reconcile')
+  @Roles('OWNER', 'ADMIN')
+  async reconcile(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxReconcileDto,
+  ) {
+    return this.sender.reconcile(organizationId, user.sub, id, body)
+  }
+
   @Get('exports')
   @Roles('OWNER', 'ADMIN')
   async listExports(@OrgId() organizationId: string) {
+    await this.sender.expireLeases(organizationId)
     return { items: await this.exports.list(organizationId) }
   }
 
