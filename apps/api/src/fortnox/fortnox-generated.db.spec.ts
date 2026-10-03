@@ -437,6 +437,10 @@ const LOCKED = [
   'SENDING',
 ]
 
+describe('förutsättningar', () => {
+  it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => expect(HAR_DB).toBe(true))
+})
+
 medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (syntetisk HTTP)', () => {
   let prisma: PrismaClient
   const orgs: string[] = []

@@ -27,6 +27,10 @@ const medDb = HAR_DB ? describe : describe.skip
 const KEY = 'cd'.repeat(32)
 const TEST_COMPANY = 1868238
 
+describe('förutsättningar', () => {
+  it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => expect(HAR_DB).toBe(true))
+})
+
 medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', () => {
   let prisma: PrismaClient
   const orgs: string[] = []
