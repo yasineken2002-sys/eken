@@ -8,6 +8,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common'
 import { tolkaBgMax } from './bgmax-parse'
+import { BETALBARA_AVISTATUSAR, ärBetalbarAvistatus } from './betalbara-avistatusar'
 import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
 import { Prisma, RentNoticeType } from '@prisma/client'
@@ -1683,7 +1684,7 @@ export class ReconciliationService {
         where: {
           organizationId,
           ocrNumber: transaction.rawOcr,
-          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          status: { in: [...BETALBARA_AVISTATUSAR] },
         },
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       })
@@ -1772,7 +1773,7 @@ export class ReconciliationService {
         where: {
           organizationId,
           noticeNumber: noticeNumberMatch[1],
-          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          status: { in: [...BETALBARA_AVISTATUSAR] },
         },
       })
       // PR 3b — referensgrenen (avinummer i description) är lika deterministisk som
@@ -2374,7 +2375,7 @@ export class ReconciliationService {
 
       // Bara öppna (obetalda) avier kan ta emot en betalning. En PAID/CANCELLED avi
       // (eller en race-förlorare) → ingen allokering; låt tx:n falla vidare.
-      if (!['SENT', 'PENDING', 'OVERDUE'].includes(notice.status)) return false
+      if (!ärBetalbarAvistatus(notice.status)) return false
 
       // #41: en DEPOSITIONS-avi hanteras separat. Den ingår ALDRIG i debt/kravtrappan
       // (computeRentDebt=0 för DEPOSIT, kravtrappan filtrerar type=RENT) — den lämnas
@@ -2412,7 +2413,7 @@ export class ReconciliationService {
           select: { id: true },
         })
         await tx.rentNotice.updateMany({
-          where: { id: noticeId, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+          where: { id: noticeId, organizationId, status: { in: [...BETALBARA_AVISTATUSAR] } },
           data: { status: 'PAID', paidAt: transactionDate, paidAmount: notice.totalAmount },
         })
         // Deposition → PAID: sanningskällan för återbetalning (markRefundPendingForLease
@@ -2534,7 +2535,7 @@ export class ReconciliationService {
           where: {
             id: noticeId,
             organizationId,
-            status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+            status: { in: [...BETALBARA_AVISTATUSAR] },
           },
           data: {
             status: 'PAID',
@@ -2963,7 +2964,7 @@ export class ReconciliationService {
         where: {
           organizationId,
           ocrNumber,
-          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          status: { in: [...BETALBARA_AVISTATUSAR] },
           // DEPOSIT har sitt eget 1510/2890-flöde (#41) och ingår aldrig i
           // kravtrappan — den lämnas orörd av vattenfallet, precis som av
           // enskildvägens carve-out.
@@ -3074,7 +3075,7 @@ export class ReconciliationService {
 
         await tx.rentNotice.updateMany({
           where: reglerar
-            ? { id: r.notice.id, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } }
+            ? { id: r.notice.id, organizationId, status: { in: [...BETALBARA_AVISTATUSAR] } }
             : { id: r.notice.id, organizationId },
           data: reglerar
             ? {
@@ -3861,6 +3862,8 @@ export class ReconciliationService {
           select: {
             type: true,
             status: true,
+            sentAt: true,
+            sendError: true,
             totalAmount: true,
             consumptionAmount: true,
             miscChargeAmount: true,
@@ -3915,12 +3918,18 @@ export class ReconciliationService {
           // per faktisk löptid, RL 9 §). En redan obetald (delbetald) avi rör vi inte
           // statusen på — bara paidAmount-spegeln.
           const reopen = noticeRow.status === 'PAID' && ocrLeft > 0
+          // G15 (FORTNOX-100): en avi vars utskick misslyckades (FAILED) kan numera regleras
+          // av en bankbetalning. Återöppnas den får den inte bli SENT — "ingen status ljuger
+          // om ett utskick som inte skedde" (sendNotices). Aldrig skickad + utskicksfel →
+          // tillbaka till FAILED, så den syns i Misslyckade igen och kan skickas om.
+          const återöppnadStatus =
+            noticeRow.sentAt === null && noticeRow.sendError ? 'FAILED' : 'SENT'
           // organizationId i WHERE som defense-in-depth (FIX 2-mönstret).
           await tx.rentNotice.updateMany({
             where: { id: avaktuellId, organizationId },
             data: {
               paidAmount: paidSum.gt(0) ? paidSum : null,
-              ...(reopen ? { status: 'SENT', paidAt: null } : {}),
+              ...(reopen ? { status: återöppnadStatus, paidAt: null } : {}),
             },
           })
         }

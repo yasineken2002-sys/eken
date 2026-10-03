@@ -346,6 +346,33 @@ describe('T5 C2b · retrigger av aktiveringens avier (#58)', () => {
 
       expect(prisma.rentNotice.update).not.toHaveBeenCalled()
     })
+
+    // G15 (FORTNOX-100): en FAILED avi kan regleras innan den skickats om. Ett omskick
+    // får varken mejla hyresgästen eller skriva över PAID/CANCELLED med SENT/FAILED.
+    it.each(['PAID', 'CANCELLED'])(
+      'en aldrig skickad %s-avi skickas inte och statusen rörs inte',
+      async (status) => {
+        const { service, prisma, notices } = makeRig({ id: 'lease-1' })
+        notices.push({
+          id: 'rn-reglerad',
+          organizationId: 'org-1',
+          leaseId: 'lease-1',
+          tenantId: 'tenant-1',
+          noticeNumber: 'AVI-2026-06-0010',
+          year: 2026,
+          month: 6,
+          type: 'RENT',
+          totalAmount: 12000,
+          sentAt: null,
+          status,
+        })
+        prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Org' })
+
+        await service.processNoticeSendJob('org-1', 'rn-reglerad')
+
+        expect(prisma.rentNotice.update).not.toHaveBeenCalled()
+      },
+    )
   })
 
   describe('D · grindar — fail-closed', () => {
