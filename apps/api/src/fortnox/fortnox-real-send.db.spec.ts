@@ -92,7 +92,7 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     const db = prisma as unknown as PrismaService
     const auth = new MockFortnoxAuthProvider()
     const connections = new FortnoxConnectionService(db, crypto, config, auth, reader)
-    const readback = new FortnoxReadbackService(db, connections, reader)
+    const readback = new FortnoxReadbackService(db, connections, reader, writer)
     const verified = new VerifiedVoucherDraftBuilder(db, connections, reader)
     let afterBuild: (() => Promise<void>) | null = null
     const builder: FortnoxVoucherDraftBuilder = {
@@ -199,6 +199,8 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     expect(text).toContain('1 234,50')
     expect(text).toMatch(/Varav verifikat som Eveno själv exporterat: 1\s234,50/)
     expect(text).toContain('lägg aldrig ihop')
+    expect(text).toContain('sändning är aktiverad endast för detta testföretag')
+    expect(text).toContain('1 bekräftade.')
     expect(text).toContain('Eveno integrationstest 2026-10-02')
     expect(text).toMatch(/2026-01-01/)
     expect(text).toMatch(/Täckning/)
@@ -215,6 +217,8 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     const raw = await t.dbRow(row.id)
     expect([raw.state, raw.sendAttemptId]).toEqual(['DRY_RUN_READY', null])
     expect(posts(t)).toBe(0)
+    const ai = formatFortnoxShadowForAi(await t.readback.aiSnapshot(t.org.id)).join('\n')
+    expect(ai).toContain('sändning är avstängd')
   })
 
   it('A04: live-kontrollen före POST svarar annat företag → not_sent, tillbaka till READY, 0 POST', async () => {

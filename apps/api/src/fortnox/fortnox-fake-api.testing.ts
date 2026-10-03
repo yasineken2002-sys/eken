@@ -36,6 +36,8 @@ export class FakeFortnoxApi {
   companyCalls = 0
   /** Körs precis innan en POST skapar posten (barriär för prov). */
   beforeWrite: (() => Promise<void>) | null = null
+  /** Körs när en POST når ytan, före utfall (prov: kontrollera anspråket i DB). */
+  onPost: ((body: unknown) => Promise<void>) | null = null
 
   constructor(readonly ledger: MockFortnoxLedgerReader) {}
 
@@ -73,6 +75,7 @@ export class FakeFortnoxApi {
 
   private async post(url: URL, query: Record<string, string>, init?: RequestInit) {
     this.posts += 1
+    if (this.onPost) await this.onPost(JSON.parse(String(init?.body)))
     if (url.pathname !== '/3/vouchers') return json({ ErrorInformation: {} }, 404)
     const fault = this.faults.shift()
     if (fault === 'network_error_before_write') throw new TypeError('fetch failed')

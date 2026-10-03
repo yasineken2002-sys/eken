@@ -9,7 +9,7 @@
  *  G3 (ren): transportens skrivgrind — en POST passerar endast som exakt
  *     POST /3/vouchers?financialyear=<positivt heltal> på en skrivkapabel transport.
  */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { ConflictException } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
@@ -35,13 +35,28 @@ import { prepareFortnoxRequest } from './provider/fortnox-transport.routes'
 
 /** Fasta frön (även i FORTNOX-NATT-20261003/CLAUDE1/genererat/FRON.json). */
 export const FRON = { G1: 0x20261003, G2: 0x01868238, G3: 0x0e7e4003 } as const
-const ANTAL = { G1: 1500, G2: 1000, G3: 1500 } as const
-const rapport: Record<string, { fron: number; fall: number; kontroller: number }> = {}
+const ANTAL = { G1: 1500, G2: 1000, G3: 2500 } as const
+const rapport: Record<
+  string,
+  { fron: number; fall: number; kontroller: number; unika?: number; nyckelSha256?: string }
+> = {}
+// C2 I-9: varje fall har en nyckel (indata); dubbletter räknas bort och redovisas.
+const nycklar = { G1: new Set<string>(), G2: new Set<string>(), G3: new Set<string>() }
+const nyckel = (x: unknown) => createHash('sha256').update(JSON.stringify(x)).digest('hex')
 const notera = (familj: keyof typeof FRON, fall: number, kontroller: number) => {
-  rapport[familj] = { fron: FRON[familj], fall, kontroller }
+  const unika = [...nycklar[familj]].sort()
+  rapport[familj] = {
+    fron: FRON[familj],
+    fall,
+    kontroller,
+    unika: unika.length,
+    nyckelSha256: createHash('sha256').update(unika.join('\n')).digest('hex'),
+  } as (typeof rapport)[string]
 }
 
 afterAll(() => {
+  const totaltUnika = Object.values(rapport).reduce((a, x) => a + (x.unika ?? 0), 0)
+  ;(rapport as Record<string, unknown>).totaltUnika = totaltUnika
   const fil = process.env.FORTNOX_GENERERAT_RAPPORT
   if (fil) writeFileSync(fil, JSON.stringify({ antal: ANTAL, rapport }, null, 2) + '\n')
 })
@@ -115,6 +130,7 @@ describe('A18 G1: transformer och jämförelse (ren)', () => {
         ...debits.map((o) => ({ acc: r.pick(ACCOUNTS), debit: o, credit: null as number | null })),
         ...credits.map((o) => ({ acc: r.pick(ACCOUNTS), debit: null as number | null, credit: o })),
       ]
+      nycklar.G1.add(nyckel([date, description, lines]))
       const proof = { organizationId: 'o', externalDatabaseNumber: 1868238, evidenceRef: 'gen' }
       const entry: LocalJournalEntrySnapshot = {
         inputOrigin: 'PERSISTED_JOURNAL_ENTRY',
@@ -347,6 +363,7 @@ describe('A18 G3: transportens skrivgrind (ren)', () => {
         near && r.next() < 0.8
           ? { Voucher: {} }
           : r.pick<unknown>([{ Voucher: {} }, {}, [], null, undefined, 'x'])
+      nycklar.G3.add(nyckel([method, path, allow, query, body === undefined ? '__undef' : body]))
       let passed: { url: string; method: string } | null = null
       try {
         const p = prepareFortnoxRequest(
@@ -401,7 +418,7 @@ describe('A18 G3: transportens skrivgrind (ren)', () => {
       }
     }
     notera('G3', ANTAL.G3, kontroller)
-    ;(rapport.G3 as Record<string, number>).postPasserade = postPasserade
+    ;(rapport.G3 as Record<string, unknown>).postPasserade = postPasserade
     expect(fel).toEqual([])
     // Icke-tomt: grinden ska faktiskt släppa igenom giltiga skrivningar i urvalet.
     expect(postPasserade).toBeGreaterThan(ANTAL.G3 / 10)
@@ -439,7 +456,7 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
     }
     await prisma.$disconnect()
-  })
+  }, 120_000)
 
   async function org() {
     const sfx = randomUUID().slice(0, 8)
@@ -541,14 +558,40 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       kontroller += 1
       if (!ok && fel.length < 30) fel.push(what)
     }
-    let t = await org()
+    // C2 I-1: varje POST som når Fortnox-ytan ska ske under SENDING med eget försöks-id,
+    // högst en POST per försök, och höra till exakt den export som skickas.
+    let aktuell: { id: string; desc: string } | null = null
+    const forsok = new Map<string, number>()
+    const koppla = (tt: Awaited<ReturnType<typeof org>>) => {
+      tt.api.onPost = async (body) => {
+        const a = aktuell
+        check(a !== null, 'POST utan aktuell export')
+        if (!a) return
+        const db = await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: a.id } })
+        check(
+          db.state === 'SENDING' && db.sendAttemptId !== null,
+          `POST utan anspråk (${db.state})`,
+        )
+        check(
+          (body as { Voucher?: { Description?: unknown } }).Voucher?.Description === a.desc,
+          'POST för fel export',
+        )
+        if (db.sendAttemptId) {
+          const n = (forsok.get(db.sendAttemptId) ?? 0) + 1
+          forsok.set(db.sendAttemptId, n)
+          check(n === 1, 'två POST för samma försök')
+        }
+      }
+      return tt
+    }
+    let t = koppla(await org())
     let foreign = 0
     const utfall: Record<string, number> = {}
     const tally = (k: string) => (utfall[k] = (utfall[k] ?? 0) + 1)
     for (let i = 0; i < ANTAL.G2; i++) {
       if (i > 0 && i % PER_ORG === 0) {
         await checkReadback(t, check, i)
-        t = await org()
+        t = koppla(await org())
       }
       const ore = amount(r)
       const desc = `EVENO TEST GEN ${FRON.G2}-${i}`
@@ -569,6 +612,8 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       })
       const row = await t.exportsSvc.dryRun(t.o.id, je.id)
       check(row.state === 'DRY_RUN_READY', `fall ${i}: dry-run ${row.state}`)
+      aktuell = { id: row.id, desc }
+      const spar: string[] = [String(ore)]
       let posts = 0
       let prev = row.state
       const ops = r.int(2, 6)
@@ -589,6 +634,7 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
         try {
           if (op === 'send') {
             const f = r.pick(SEND_FAULTS)
+            spar.push(`send:${f}`)
             if (f === 'ci_mismatch') t.api.companyOverride.set(t.api.companyCalls + 2, 900001)
             else if (f === 'ci_401') t.api.companyStatus.set(t.api.companyCalls + 2, 401)
             else if (f !== 'ok') t.api.faults.push(f as FakeFortnoxFault)
@@ -600,9 +646,11 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
             )
           } else if (op === 'verify') {
             expected = cur.state === 'RECEIPT_IDENTIFIED' ? 'ANY' : 'CONFLICT'
+            spar.push('verify')
             await t.sender.verify(t.o.id, row.id)
           } else if (op === 'reconcile') {
             const kind = r.pick(['right', 'foreign', 'missing'] as const)
+            spar.push(`rec:${kind}`)
             const ours = t.ledger.vouchers.find((v) => v.Description === desc)
             const other = t.ledger.vouchers.find((v) => v.Description !== desc)
             const id =
@@ -621,6 +669,7 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
             )
           } else if (op === 'dryrun') {
             expected = 'ANY'
+            spar.push('dryrun')
             const res = await t.exportsSvc.dryRun(t.o.id, je.id)
             if (LOCKED.includes(cur.state))
               check(res.state === cur.state, `fall ${i}: dry-run ändrade ${cur.state}→${res.state}`)
@@ -628,6 +677,7 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
             foreign += 1
             const n = Math.max(0, ...t.ledger.vouchers.map((v) => Number(v.VoucherNumber))) + 1
             const fo = amount(r)
+            spar.push(`foreign:${fo}`)
             t.ledger.vouchers.push({
               Year: 1,
               VoucherSeries: 'A',
@@ -680,9 +730,23 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
             `fall ${i}: CONFIRMED utan exakt innehåll`,
           )
         }
+        // C2 I-1 (c,d): externa Eveno-poster = utförda skrivningar; högst en per export.
+        const egna = t.ledger.vouchers.filter(
+          (v) => typeof v.Description === 'string' && v.Description.startsWith('EVENO TEST GEN'),
+        )
+        check(
+          egna.length === t.api.writes,
+          `fall ${i}: ${egna.length} externa poster ≠ ${t.api.writes} skrivningar`,
+        )
+        check(
+          egna.filter((v) => v.Description === desc).length <= 1,
+          `fall ${i}: två externa poster för samma export`,
+        )
         prev = now.state
       }
+      nycklar.G2.add(nyckel(spar))
     }
+    aktuell = null
     await checkReadback(t, check, ANTAL.G2)
     const dupes = await prisma.$queryRaw<Array<{ n: bigint }>>`
       SELECT count(*)::bigint AS n FROM (

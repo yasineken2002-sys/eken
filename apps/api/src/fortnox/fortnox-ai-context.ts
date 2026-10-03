@@ -20,7 +20,12 @@ export interface FortnoxAiSnapshot {
   } | null
   latestRead: AiReadRow | null
   latestCompleteRead: AiReadRow | null
-  exports: Record<'DRY_RUN_READY' | 'BLOCKED' | 'UNKNOWN' | 'CONFIRMED', number> | null
+  exports:
+    | (Record<'DRY_RUN_READY' | 'BLOCKED' | 'UNKNOWN' | 'CONFIRMED', number> &
+        Partial<Record<'SENDING' | 'REJECTED' | 'RECEIPT_IDENTIFIED' | 'RECEIPT_MISMATCH', number>>)
+    | null
+  /** Faktiskt läge för sändning till DETTA företag (skrivare + företagslista). Saknas = av. */
+  sendingEnabled?: boolean
 }
 
 export interface AiReadRow {
@@ -151,10 +156,19 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
     )
   }
   const ex = s.exports
-  if (ex && (ex.UNKNOWN || ex.BLOCKED || ex.DRY_RUN_READY || ex.CONFIRMED)) {
+  // Låsta lägen som kräver människa (okänt, avvisat, avvikande kvitto) och skickade
+  // men ännu inte verifierade — inget av dem får läsas som "inte skickat".
+  const needs = ex ? ex.UNKNOWN + (ex.REJECTED ?? 0) + (ex.RECEIPT_MISMATCH ?? 0) : 0
+  const pending = ex ? (ex.SENDING ?? 0) + (ex.RECEIPT_IDENTIFIED ?? 0) : 0
+  if (ex && (needs || pending || ex.BLOCKED || ex.DRY_RUN_READY || ex.CONFIRMED)) {
+    const head =
+      s.sendingEnabled === true
+        ? 'Exportkö till Fortnox (sändning är aktiverad endast för detta testföretag; varje verifikat skickas först efter uttrycklig bekräftelse)'
+        : 'Exportkö till Fortnox (endast förhandskontroll; sändning är avstängd i väntan på leverantörsbesked om dubblettskydd)'
     lines.push(
-      `Exportkö till Fortnox (endast förhandskontroll; sändning är avstängd i väntan på leverantörsbesked om dubblettskydd): ${ex.DRY_RUN_READY} klara utkast, ${ex.BLOCKED} spärrade, ${ex.CONFIRMED} bekräftade` +
-        (ex.UNKNOWN ? `, ${ex.UNKNOWN} med okänt utfall som kräver manuell avstämning.` : '.'),
+      `${head}: ${ex.DRY_RUN_READY} klara utkast, ${ex.BLOCKED} spärrade, ${ex.CONFIRMED} bekräftade` +
+        (pending ? `, ${pending} skickade men ännu inte verifierade` : '') +
+        (needs ? `, ${needs} med okänt eller avvisat utfall som kräver manuell avstämning.` : '.'),
     )
   }
   return lines
