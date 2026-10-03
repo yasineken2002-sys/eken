@@ -52,7 +52,7 @@ describe('buildFortnoxVoucherDraft — pure disabled preparation', () => {
     expect(result.query).toEqual({ financialyear: 17 })
     expect(result.payload.Voucher).toMatchObject({ TransactionDate: '2026-10-01', VoucherSeries: 'L' })
     expect(result.payload.Voucher.VoucherRows).toEqual([
-      { Account: 5180, Debit: 100.1, Description: 'Repair' }, { Account: 2440, Credit: 100.1 },
+      { Account: 5180, Debit: 100.1, TransactionInformation: 'Repair' }, { Account: 2440, Credit: 100.1 },
     ])
     expect(result.payload.Voucher).not.toHaveProperty('VoucherNumber')
     expect(result.payload.Voucher).not.toHaveProperty('ReferenceType')
@@ -71,6 +71,20 @@ describe('buildFortnoxVoucherDraft — pure disabled preparation', () => {
     ] }, config)
     expect(result.status).toBe('READY_DRY_RUN')
     if (result.status === 'READY_DRY_RUN') expect(result.provenance.totalDebitOre).toBe('30')
+  })
+
+  it('FINAL-003 EX-2b: radtext skickas som TransactionInformation (≤100), aldrig som radens Description; tom text skickas inte; 101 tecken spärras', () => {
+    const { entry, config } = fixture()
+    const med = (d: string | null) => buildFortnoxVoucherDraft({ ...entry, lines: [{ ...entry.lines[0]!, description: d }, entry.lines[1]!] }, config)
+    const hundra = 'x'.repeat(100)
+    const r100 = med(hundra)
+    if (r100.status !== 'READY_DRY_RUN') throw new Error('Expected draft')
+    expect(r100.payload.Voucher.VoucherRows[0]).toEqual({ Account: 5180, Debit: 100.1, TransactionInformation: hundra })
+    for (const row of r100.payload.Voucher.VoucherRows) expect(row).not.toHaveProperty('Description')
+    const tom = med('')
+    if (tom.status !== 'READY_DRY_RUN') throw new Error('Expected draft')
+    expect(tom.payload.Voucher.VoucherRows[0]).not.toHaveProperty('TransactionInformation')
+    blocked({ ...entry, lines: [{ ...entry.lines[0]!, description: 'x'.repeat(101) }, entry.lines[1]!] }, config, 'LINE_TEXT_TOO_LONG')
   })
 
   it('R-5: POST-kroppen har exakt nycklarna {Comments, Description, TransactionDate, VoucherRows, VoucherSeries}', () => {

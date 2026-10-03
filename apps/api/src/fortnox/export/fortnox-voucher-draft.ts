@@ -77,7 +77,8 @@ export interface FortnoxVoucherPayload {
       Account: number
       Debit?: number
       Credit?: number
-      Description?: string
+      /** Radtext. Guidens POST-exempel (vouchers.html) bär radtext här, ≤100 tecken (OpenAPI). */
+      TransactionInformation?: string
       CostCenter?: string
       Project?: string
     }[]
@@ -254,7 +255,14 @@ export function buildFortnoxVoucherDraft(
       else creditTotal += amount
       const row: FortnoxVoucherPayload['Voucher']['VoucherRows'][number] = { Account: account.externalAccountNumber, [side]: wireAmount(amount, path) }
       requireDraft(line.description === null || typeof line.description === 'string', 'INVALID_LINE_DESCRIPTION', path, 'The persisted line description must be text or null.')
-      if (line.description !== null) row.Description = line.description
+      // FINAL-003 EX-2b: radens Description i Fortnox är KONTOTS benämning (guidens svarsexempel);
+      // lokal radtext skickas i TransactionInformation. Över 100 tecken spärras — aldrig tyst
+      // avkortning. Tom text = ingen radtext.
+      if (line.description !== null && line.description !== '') {
+        requireDraft(line.description.length <= 100, 'LINE_TEXT_TOO_LONG', path,
+          'Radtexten är längre än 100 tecken (Fortnox TransactionInformation); korta texten i Eveno före export.')
+        row.TransactionInformation = line.description
+      }
       const dimension = dimensionLines.get(line.id)
       let dimensionEvidenceRef: string, omissionReason: string | null
       if (config.dimensions.mode === 'OMIT') {

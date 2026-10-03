@@ -81,7 +81,11 @@ function rowKeys(rows: unknown): string[] | null {
     const d = x.Debit === undefined || x.Debit === null ? 0 : toOre(x.Debit)
     const c = x.Credit === undefined || x.Credit === null ? 0 : toOre(x.Credit)
     if (typeof x.Account !== 'number' || d === null || c === null) return null
-    out.push(`${x.Account}|${d}|${c}`)
+    // FINAL-003 EX-2b: radtexten (TransactionInformation) ska vara exakt lika; saknad = tom.
+    // Radens Description är kontots benämning i Fortnox och jämförs inte.
+    const ti = x.TransactionInformation
+    if (ti !== undefined && ti !== null && typeof ti !== 'string') return null
+    out.push(`${x.Account}|${d}|${c}|${JSON.stringify(ti ?? '')}`)
   }
   return out.sort()
 }

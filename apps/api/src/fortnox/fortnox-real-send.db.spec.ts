@@ -118,7 +118,11 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       prisma.account.create({
         data: { organizationId: org.id, number, name: `Konto ${number}`, type: 'EXPENSE' },
       })
-    const entry = async (amount = '1234.50', description = `EVENO TEST 20261003 ${sfx}`) => {
+    const entry = async (
+      amount = '1234.50',
+      description = `EVENO TEST 20261003 ${sfx}`,
+      radtext: [string | null, string | null] = [null, null],
+    ) => {
       const a = await acc(5170)
       const b = await acc(2440)
       return prisma.journalEntry.create({
@@ -130,15 +134,19 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
           verNumber: Math.floor(Math.random() * 1e6) + 1,
           lines: {
             create: [
-              { accountId: a.id, debit: amount },
-              { accountId: b.id, credit: amount },
+              { accountId: a.id, debit: amount, description: radtext[0] },
+              { accountId: b.id, credit: amount, description: radtext[1] },
             ],
           },
         },
       })
     }
-    const ready = async (amount?: string, description?: string) => {
-      const je = await entry(amount, description)
+    const ready = async (
+      amount?: string,
+      description?: string,
+      radtext?: [string | null, string | null],
+    ) => {
+      const je = await entry(amount, description, radtext)
       const row = await exports.dryRun(org.id, je.id)
       expect(row.state).toBe('DRY_RUN_READY')
       return { je, row: row as typeof row & { draftHash: string } }
@@ -345,5 +353,39 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     ])
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected'])
     expect([posts(t), t.api.writes]).toEqual([1, 1])
+  })
+
+  it('A21 (FINAL-003 EX-2b): radtext når Fortnox som TransactionInformation, återläses exakt och ingår i bekräftelsen', async () => {
+    const t = await setup()
+    const text = 'Takläcka trapphus B – faktura 4711'
+    const { row } = await t.ready('250.00', 'EVENO TEST 20261003 radtext', [text, null])
+    const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    expect(res.state).toBe('CONFIRMED')
+    const v = t.ledger.vouchers.find((x) => x.Description === 'EVENO TEST 20261003 radtext')!
+    const rows = v.VoucherRows as Array<Record<string, unknown>>
+    // Texten tappas inte: den finns i Fortnox i det dokumenterade fältet.
+    expect(rows.find((r) => r.Account === 5170)?.TransactionInformation).toBe(text)
+    // Radens Description är kontots benämning i Fortnox, aldrig vår text.
+    expect(rows.find((r) => r.Account === 5170)?.Description).toBe(
+      'Reparation och underhåll av fastighet',
+    )
+    expect(rows.find((r) => r.Account === 2440)?.TransactionInformation).toBeUndefined()
+  })
+
+  it('A22 (FINAL-003 EX-2b): avviker återläst radtext → aldrig CONFIRMED', async () => {
+    const t = await setup()
+    const { row } = await t.ready('260.00', 'EVENO TEST 20261003 radtext-avvik', ['Rad A', null])
+    t.api.beforeWrite = async () => {
+      t.api.beforeWrite = null
+    }
+    const orig = t.ledger.vouchers.push.bind(t.ledger.vouchers)
+    t.ledger.vouchers.push = (...v) => {
+      for (const x of v)
+        for (const r of x.VoucherRows as Array<Record<string, unknown>>)
+          if (r.TransactionInformation === 'Rad A') r.TransactionInformation = 'Rad A '
+      return orig(...v)
+    }
+    const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    expect(res.state).toBe('RECEIPT_MISMATCH')
   })
 })

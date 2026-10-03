@@ -103,13 +103,21 @@ export class FakeFortnoxApi {
           .filter((x) => x.VoucherSeries === series && x.Year === year)
           .map((x) => Number(x.VoucherNumber)),
       ) + 1
+    // Radform enligt guidens svarsexempel (vouchers.html, hämtad 2026-10-01, sha 2b81d74f):
+    // radens Description är KONTOTS benämning (härledd av Fortnox), TransactionInformation ekar
+    // radtexten från begäran. Ej mätt live — ytan får inte låta en radtext i Description överleva.
     const created: FortnoxVoucher = {
       Year: year,
       VoucherSeries: series,
       VoucherNumber: number,
       TransactionDate: v.TransactionDate,
       Description: v.Description,
-      VoucherRows: structuredClone(v.VoucherRows),
+      VoucherRows: (v.VoucherRows as Array<Record<string, unknown>>).map((r) => {
+        const { Description: _ignorerad, ...rest } = structuredClone(r)
+        void _ignorerad
+        const konto = this.ledger.accounts.find((a) => a.Number === r.Account)
+        return { ...rest, Description: konto?.Description ?? '' }
+      }),
     }
     this.ledger.vouchers.push(created)
     this.writes += 1

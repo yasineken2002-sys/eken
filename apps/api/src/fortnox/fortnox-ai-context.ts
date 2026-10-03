@@ -69,12 +69,14 @@ export function formatOre(ore: number): string {
 
 const day = (d: Date) => d.toISOString().slice(0, 10)
 
+/** Klocktid i svensk tid med uttrycklig zonmärkning (FINAL-003). */
 function stockholm(d: Date): string {
-  return new Intl.DateTimeFormat('sv-SE', {
+  const tid = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Europe/Stockholm',
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(d)
+  return `${tid} svensk tid`
 }
 
 const CONNECTION_TEXT = {

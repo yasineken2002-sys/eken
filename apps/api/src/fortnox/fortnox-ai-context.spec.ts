@@ -67,6 +67,8 @@ describe('Fortnox AI-underlag (skuggläge)', () => {
     expect(t).toContain('Ofördelat (rader utan dimension): 2 000,00 kr')
     expect(t).toContain('konto 5170')
     expect(t).toContain('återläst per')
+    // FINAL-003: tidsstämpeln bär uttrycklig svensk tidszon.
+    expect(t).toMatch(/återläst per \d{4}-\d{2}-\d{2} \d{2}:\d{2} svensk tid/)
     expect(t).toContain('30 min sedan')
     expect(t).toMatch(/ändrar INTE Evenos egna siffror/)
   })

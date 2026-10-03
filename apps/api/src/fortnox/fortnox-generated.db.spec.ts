@@ -129,7 +129,16 @@ describe('A18 G1: transformer och jämförelse (ren)', () => {
       const lines = [
         ...debits.map((o) => ({ acc: r.pick(ACCOUNTS), debit: o, credit: null as number | null })),
         ...credits.map((o) => ({ acc: r.pick(ACCOUNTS), debit: null as number | null, credit: o })),
-      ]
+      ].map((l) => ({
+        ...l,
+        // FINAL-003: radtext 0–100 tecken (inkl. gränsen 100) eller ingen.
+        text:
+          r.next() < 0.5
+            ? null
+            : Array.from({ length: r.pick([1, 2, 37, 99, 100]) }, () => r.pick([...CHARS])).join(
+                '',
+              ),
+      }))
       nycklar.G1.add(nyckel([date, description, lines]))
       const proof = { organizationId: 'o', externalDatabaseNumber: 1868238, evidenceRef: 'gen' }
       const entry: LocalJournalEntrySnapshot = {
@@ -153,7 +162,7 @@ describe('A18 G1: transformer och jämförelse (ren)', () => {
           accountId: `a${l.acc}`,
           debit: l.debit === null ? null : oreStr(l.debit),
           credit: l.credit === null ? null : oreStr(l.credit),
-          description: null,
+          description: l.text,
           account: { id: `a${l.acc}`, organizationId: 'o', number: l.acc },
         })),
       }
@@ -193,6 +202,15 @@ describe('A18 G1: transformer och jämförelse (ren)', () => {
         check(oreOf(row.Debit) === (lines[k]!.debit ?? 0), 'debet', i)
         check(oreOf(row.Credit) === (lines[k]!.credit ?? 0), 'kredit', i)
         check(!('CostCenter' in row) && !('Project' in row), 'dimension', i)
+        const text = lines[k]!.text
+        check(
+          text === null || text === ''
+            ? !('TransactionInformation' in row)
+            : row.TransactionInformation === text,
+          'radtext',
+          i,
+        )
+        check(!('Description' in row), 'ingen radtext i radens Description', i)
       })
       const sum = (k: 'Debit' | 'Credit') => rows.reduce((a, x) => a + (oreOf(x[k]) ?? NaN), 0)
       check(sum('Debit') === sum('Credit'), 'balans', i)
@@ -276,6 +294,13 @@ describe('A18 G1: transformer och jämförelse (ren)', () => {
           'extra nollrad',
           (x) => {
             ;(x.VoucherRows as unknown[]).push({ Account: 1930, Debit: 0, Credit: 0 })
+          },
+        ],
+        [
+          'radtext',
+          (x) => {
+            const row = (x.VoucherRows as Array<Record<string, unknown>>)[k]!
+            row.TransactionInformation = `${String(row.TransactionInformation ?? '')}Z`
           },
         ],
         [
