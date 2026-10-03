@@ -68,6 +68,11 @@ function utanKommentarer(src: string): string {
 const BANKKONTOTS_FÄLT: string[] = ['balance', 'matchedBy', 'externalId', 'dedupKey']
 
 const MEDVETET_UTELÄMNADE: Record<string, string> = {
+  bgmaxDateSource:
+    'FS1 (FORTNOX-100, OVERGANG-016): importens interna PROVENIENSMARKÖR för BgMax-radens ' +
+    'datum (NULL = okänd/äldre, TK15 = ur insättningsposten). Den styr övergångsregeln i ' +
+    'ingestFromFile och säger inget om betalningen i sig; följden av den (granskningsraden) ' +
+    'syns redan genom identityReviewAt/identityReviewReason i avstämningsvyn.',
   actorKind:
     'Intern proveniens (G1 steg 3): vem som SKAPADE raden — människa, agent ' +
     'eller system. Den frågan besvaras i historiken, inte i en fakturarad och ' +

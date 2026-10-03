@@ -2702,6 +2702,11 @@ model BankTransaction {
   /// Egen kolumn och inte en bool: nästa skäl ska inte behöva byta betydelse
   /// på ett befintligt fält.
   identityReviewReason String?
+  // FS1 (FORTNOX-100, BYGGLEDARE-OVERGANG-016): datumets PROVENIENS för BgMax-rader.
+  // NULL = okänd/äldre: alla rader före kolumnen OCH rader från äldre applikations-
+  // generationer efter migrationen (de känner inte till fältet). Bara BgMax-tolken som
+  // läser betalningsdagen ur TK15 skriver 'TK15'. Ingen default, ingen backfill.
+  bgmaxDateSource String?
 
   @@unique([organizationId, externalId])
   @@index([organizationId])

@@ -491,4 +491,81 @@ medDb('G15: en avi med misslyckat utskick kan regleras av en betalning', () => {
     const händelser = await prisma.rentNoticeEvent.count({ where: { rentNoticeId: id } })
     expect(händelser).toBeGreaterThanOrEqual(2)
   })
+
+  // G15-012 (C2 MOTPROV-G15-012): återöppnad status härleds ur leveransfakta.
+  it.each([
+    ['PENDING utan utskick', 'PENDING' as const, null, 'PENDING'],
+    ['verkligt skickad', 'SENT' as const, new Date('2026-10-28T08:00:00Z'), 'SENT'],
+  ])('avmatchning: %s → %s', async (_namn, start, sentAt, väntad) => {
+    const h = await hyresforhallande(orgId, prop('a'), start === 'PENDING' ? 9 : 10)
+    const id = await avi(orgId, h, 11, start)
+    if (sentAt) await prisma.rentNotice.update({ where: { id }, data: { sentAt } })
+    await service.importBgMaxFile(
+      bgmax('2026-11-02', [{ ocr: h.ocr, belopp: HYRA }]),
+      `g15-012-${start}.txt`,
+      orgId,
+      kontoId,
+    )
+    expect((await läsAvi(id)).status).toBe('PAID')
+    const tx = await prisma.bankTransaction.findFirstOrThrow({
+      where: { organizationId: orgId, matchedRentNoticeId: id },
+      select: { id: true },
+    })
+    await service.unmatchTransaction(tx.id, orgId, användareId, 'G15-012: fel avi vald')
+    const a = await prisma.rentNotice.findUniqueOrThrow({
+      where: { id },
+      select: { status: true, sentAt: true },
+    })
+    expect(a.status).toBe(väntad)
+    expect(a.sentAt?.toISOString() ?? null).toBe(sentAt?.toISOString() ?? null)
+  })
+
+  // ── G20 (FORTNOX-100, BYGGLEDARE-EFFEKT-015): VERKLIG tidsgräns i matchningen ──────
+  // Verifikatskrivningen inne i matchningens transaktion fördröjs EN gång förbi
+  // PAYMENT_TX_LIMITS (8 s) — Prisma avbryter och rullar tillbaka på riktigt.
+  it('G20: tidsgräns ger läsbart besked, ingen allokering/verifikat; uttrycklig matchning sedan exakt en gång', async () => {
+    const h = await hyresforhallande(orgId, prop('a'), 11)
+    const id = await avi(orgId, h, 11, 'SENT')
+    const original = accounting.createJournalEntryForRentNoticePayment.bind(accounting)
+    const spion = jest
+      .spyOn(accounting, 'createJournalEntryForRentNoticePayment')
+      .mockImplementationOnce(async (...args: Parameters<typeof original>) => {
+        await new Promise((r) => setTimeout(r, 9_000))
+        return original(...args)
+      })
+    const r = await service.importBgMaxFile(
+      bgmax('2026-11-02', [{ ocr: h.ocr, belopp: HYRA }]),
+      'g20.txt',
+      orgId,
+      kontoId,
+    )
+    spion.mockRestore()
+    expect(r.autoMatched).toBe(0)
+    expect(r.unmatched).toBe(1)
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0]).toMatch(
+      /importerades men kunde inte matchas automatiskt.*innan något bokfördes.*Matcha alla/,
+    )
+    expect(r.errors[0]).not.toMatch(/Transaction|Prisma|8000 ms/)
+    const tx = await prisma.bankTransaction.findFirstOrThrow({
+      where: { organizationId: orgId, rawOcr: h.ocr },
+      select: { id: true, status: true },
+    })
+    expect(tx.status).toBe('UNMATCHED')
+    expect(await prisma.rentNoticePayment.count({ where: { rentNoticeId: id } })).toBe(0)
+    expect((await läsAvi(id)).status).toBe('SENT')
+    // Uttrycklig matchning efteråt: samma låsta väg, exakt en allokering och ett verifikat.
+    await service.manualMatch(tx.id, { rentNoticeId: id }, orgId, användareId)
+    expect(await prisma.rentNoticePayment.count({ where: { rentNoticeId: id } })).toBe(1)
+    expect((await läsAvi(id)).status).toBe('PAID')
+    const allok = await prisma.rentNoticePayment.findFirstOrThrow({
+      where: { rentNoticeId: id },
+      select: { id: true },
+    })
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: orgId, sourceId: { contains: allok.id } },
+      }),
+    ).toBe(1)
+  }, 60_000)
 })

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common'
 import { tolkaBgMax, type BgMaxStopp } from './bgmax-parse'
 import { BETALBARA_AVISTATUSAR, ärBetalbarAvistatus } from './betalbara-avistatusar'
+import { ärMatchningsTidsgräns, tidsgränsText } from './match-tidsgrans'
 import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
 import { Prisma, RentNoticeType } from '@prisma/client'
@@ -254,8 +255,8 @@ export type FileIngestResult =
  *                         saknar konto (`dedupKey` bär dag + belopp + OCR, inget
  *                         konto — se cross-source-grenen i `ingestFromFile`).
  *   BGMAX_DATUMOVERGANG — (FS1, FORTNOX-100) samma belopp och OCR finns i en BgMax-rad
- *                         som en äldre version lagrade med IMPORTDAGEN som datum (före
- *                         G7). Kan vara samma betalning med annan identitet.
+ *                         med OKÄND datumproveniens (bgmaxDateSource NULL — äldre version
+ *                         eller äldre skrivare). Kan vara samma betalning med annan identitet.
  */
 export type Granskningsskäl = 'HISTORIK_UTAN_KONTO' | 'API_UTAN_KONTO' | 'BGMAX_DATUMOVERGANG'
 
@@ -796,23 +797,24 @@ export class ReconciliationService {
       }
     }
 
-    // ── FS1 (FORTNOX-100): ÖVERGÅNGEN FRÅN IMPORTDAGSDATUM ───────────────────
+    // ── FS1 (FORTNOX-100, BYGGLEDARE-OVERGANG-016): ÖVERGÅNG MED PROVENIENS ──────
     //
-    // Före G7 lagrade BgMax-importen importÖGONBLICKET som radens datum (new Date(), med
-    // klockslag; mätt i kor-9: date ≈ createdAt, aldrig UTC-midnatt). Efter G7 bär raden
-    // betalningsdagen ur TK15. Identiteten innehåller datumet, så samma betalning läst
-    // före och efter uppgradering möts inte — en ny fil (eller ett övertaget PARTIELLT
-    // försök) hade tyst lagrat och matchat den en gång till.
+    // Före G7 lagrade BgMax-importen importÖGONBLICKET som radens datum; efter G7 bär
+    // raden betalningsdagen ur TK15. Identiteten innehåller datumet, så samma betalning
+    // före och efter uppgradering möts inte. I stället för att gissa vilka äldre rader som
+    // kan vara samma betalning (dagsgränser och klockslag visade sig otillräckliga, C2
+    // MOTPROV-FS1-015) läses PROVENIENSEN: `bgmaxDateSource` är NULL för varje rad vars
+    // datum inte bevisligen kommer ur TK15 — alla äldre rader och allt som en äldre
+    // applikationsgeneration skriver efter migrationen. Bara den här tolken skriver 'TK15'.
     //
-    // Regeln gissar inte åt något håll: finns en sådan äldre rad (samma konto eller
-    // kontolös, samma belopp och OCR, importögonblick på eller upp till 45 dagar efter
-    // betalningsdagen) lagras den nya raden som GRANSKNINGSRAD — den matchas aldrig
-    // automatiskt och pausar automatiska krav tills en människa avgjort den. Förekomster
-    // räknas som ovan (fler äldre rader än raden förekommer i filen → granska). Ingen
-    // backfill, ingen omskrivning av äldre identiteter.
+    // Finns lika många eller fler rader med OKÄND proveniens (samma konto eller kontolös,
+    // samma belopp och OCR, skrivna av BgMax-importen) daterade PÅ ELLER EFTER
+    // betalningsdagen — ett importögonblick kan inte ligga före betalningen — som raden
+    // förekommer i filen, lagras den som GRANSKNINGSRAD: den matchas aldrig automatiskt
+    // och pausar krav (G2) tills en människa avgjort den. Falska positiva blir synligt
+    // arbete, aldrig tyst matchning eller tyst borttagning. Ingen historik skrivs om.
     if (!osäkerhet && input.bgmaxÖvergång) {
       const ö = input.bgmaxÖvergång
-      const tills = new Date(ö.date.getTime() + 45 * 24 * 60 * 60 * 1000)
       const äldre = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
         SELECT count(*)::bigint AS n FROM "BankTransaction"
         WHERE "organizationId" = ${organizationId}
@@ -820,16 +822,15 @@ export class ReconciliationService {
           AND amount = ${ö.amount}
           AND "rawOcr" IS NOT DISTINCT FROM ${ö.rawOcr}
           AND description LIKE 'BgMax inbetalning%'
-          AND date <> date_trunc('day', date)
-          AND abs(extract(epoch FROM ("createdAt" - date))) < 120
-          AND date >= ${ö.date} AND date < ${tills}`
+          AND "bgmaxDateSource" IS NULL
+          AND date >= ${ö.date}`
       const n = Number(äldre[0]?.n ?? 0)
       if (n > input.identity.seq) {
         osäkerhet = {
           skäl: 'BGMAX_DATUMOVERGANG',
           detalj:
-            `samma belopp och OCR finns i ${n} BgMax-rad(er) lagrade med importdagen som datum ` +
-            '(före betalningsdag ur TK15) — kan vara samma betalning',
+            `samma belopp och OCR finns i ${n} BgMax-rad(er) med okänd datumproveniens ` +
+            '(importerade före betalningsdag ur TK15) — kan vara samma betalning',
         }
       }
     }
@@ -1377,7 +1378,24 @@ export class ReconciliationService {
           continue
         }
         // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
-        if (outcome.matchError) throw outcome.matchError
+        if (outcome.matchError) {
+          // G20: tidsgräns i matchningen → läsbart besked; den tekniska orsaken bara i loggen.
+          if (ärMatchningsTidsgräns(outcome.matchError)) {
+            this.logger.warn(
+              `[import] matchningens tidsgräns för org ${organizationId}: ${outcome.matchError instanceof Error ? outcome.matchError.message : String(outcome.matchError)}`,
+            )
+            result.errors.push(
+              tidsgränsText({
+                radnr: i + 2,
+                belopp: amountDecimal.toFixed(2).replace('.', ','),
+                ocr: rawOcr ?? null,
+              }),
+            )
+            result.unmatched++
+            continue
+          }
+          throw outcome.matchError
+        }
         if (outcome.matched) {
           result.autoMatched++
         } else {
@@ -1605,6 +1623,8 @@ export class ReconciliationService {
               description,
               amount: amountDecimal,
               ...(ocr ? { rawOcr: ocr } : {}),
+              // FS1: datumet kommer bevisligen ur TK15 (OVERGANG-016).
+              bgmaxDateSource: 'TK15',
             },
             crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
             bgmaxÖvergång: { date: txDate, amount: amountDecimal, rawOcr: ocr || null },
@@ -1618,7 +1638,23 @@ export class ReconciliationService {
             result.behoverGranskas++
             continue
           }
-          if (outcome.matchError) throw outcome.matchError
+          if (outcome.matchError) {
+            // G20: tidsgräns i matchningen → läsbart besked; den tekniska orsaken bara i loggen.
+            if (ärMatchningsTidsgräns(outcome.matchError)) {
+              this.logger.warn(
+                `[bgmax] matchningens tidsgräns för org ${organizationId}: ${outcome.matchError instanceof Error ? outcome.matchError.message : String(outcome.matchError)}`,
+              )
+              result.errors.push(
+                tidsgränsText({
+                  belopp: post.belopp.toFixed(2).replace('.', ','),
+                  ocr: ocr || null,
+                }),
+              )
+              result.unmatched++
+              continue
+            }
+            throw outcome.matchError
+          }
           if (outcome.matched) result.autoMatched++
           else result.unmatched++
         } catch (err) {
@@ -4071,8 +4107,11 @@ export class ReconciliationService {
           // av en bankbetalning. Återöppnas den får den inte bli SENT — "ingen status ljuger
           // om ett utskick som inte skedde" (sendNotices). Aldrig skickad + utskicksfel →
           // tillbaka till FAILED, så den syns i Misslyckade igen och kan skickas om.
+          // G15-012 (C2 MOTPROV-G15-012): härled ur leveransfakta, inte ur antagande.
+          // Aldrig skickad och utan utskicksfel (PENDING → betald → avmatchad) är PENDING,
+          // inte SENT — annars påstår avin ett utskick som aldrig skett (sentAt null).
           const återöppnadStatus =
-            noticeRow.sentAt === null && noticeRow.sendError ? 'FAILED' : 'SENT'
+            noticeRow.sentAt !== null ? 'SENT' : noticeRow.sendError ? 'FAILED' : 'PENDING'
           // organizationId i WHERE som defense-in-depth (FIX 2-mönstret).
           await tx.rentNotice.updateMany({
             where: { id: avaktuellId, organizationId },
