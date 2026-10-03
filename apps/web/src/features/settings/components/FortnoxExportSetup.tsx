@@ -128,10 +128,18 @@ function FortnoxExportSetupScoped() {
         <h3 className="text-ink text-[15px] font-semibold">
           Export till Fortnox – förhandskontroll
         </h3>
-        <p className="text-ink-muted text-sm">
-          Inget skickas till Fortnox. Förhandskontrollen visar om ett verifikat skulle kunna
-          exporteras med dina val. Sändning är inte aktiverad.
-        </p>
+        {state.data.exports.sendingEnabled ? (
+          <p className="text-ink-muted text-sm">
+            Sändning är aktiverad endast för det anslutna testföretaget. Inget skickas förrän du
+            uttryckligen bekräftar ett enskilt verifikat; förhandskontrollen visar först vad som
+            skulle skickas.
+          </p>
+        ) : (
+          <p className="text-ink-muted text-sm">
+            Inget skickas till Fortnox. Förhandskontrollen visar om ett verifikat skulle kunna
+            exporteras med dina val. Sändning är inte aktiverad.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

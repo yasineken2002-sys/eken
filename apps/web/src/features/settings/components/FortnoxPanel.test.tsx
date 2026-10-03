@@ -104,6 +104,20 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('FortnoxPanel', () => {
+  it('C2 U-1: sändningsläget visas som det är — aldrig "inte aktiverad" när sändning är på', () => {
+    setup()
+    expect(screen.getByText('Sändning är inte aktiverad')).toBeTruthy()
+    cleanup()
+    const on = data()
+    on.exports = {
+      ...on.exports,
+      sendingEnabled: true,
+      sendingDisabledReason: null,
+    }
+    setup({ data: on })
+    expect(screen.getByText('Sändning är aktiverad endast för testföretaget')).toBeTruthy()
+    expect(screen.queryByText('Sändning är inte aktiverad')).toBeNull()
+  })
   it('never presents a net amount without its saved account provenance', () => {
     const value = data()
     value.latestCompleteRead = { ...read(), selectedAccounts: [] }

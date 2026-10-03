@@ -279,11 +279,25 @@ function AuthorizedFortnoxPanel() {
         <h3 id="fortnox-exports" className="text-ink font-semibold">
           Export till Fortnox
         </h3>
-        <p className="text-sm font-medium text-amber-600">Sändning är inte aktiverad</p>
-        <p className="text-ink-muted text-sm">
-          Provexport kontrollerar underlaget utan att skicka bokföring. Säker återhämtning efter ett
-          oklart sändningsutfall behöver vara verifierad innan sändning öppnas.
-        </p>
+        {data.exports.sendingEnabled ? (
+          <>
+            <p className="text-sm font-medium text-amber-600">
+              Sändning är aktiverad endast för testföretaget
+            </p>
+            <p className="text-ink-muted text-sm">
+              Varje verifikat skickas först efter uttrycklig bekräftelse. Ett oklart sändningsutfall
+              låses och kräver avstämning mot Fortnox; inget skickas om automatiskt.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-amber-600">Sändning är inte aktiverad</p>
+            <p className="text-ink-muted text-sm">
+              Provexport kontrollerar underlaget utan att skicka bokföring. Säker återhämtning efter
+              ett oklart sändningsutfall behöver vara verifierad innan sändning öppnas.
+            </p>
+          </>
+        )}
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Detail label="Klara provexporter" value={String(data.exports.counts.DRY_RUN_READY)} />
           <Detail label="Blockerade" value={String(data.exports.counts.BLOCKED)} />

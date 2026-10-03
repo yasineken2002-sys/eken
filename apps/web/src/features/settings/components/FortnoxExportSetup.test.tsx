@@ -64,6 +64,22 @@ describe('FortnoxExportSetup', () => {
     vi.clearAllMocks()
   })
 
+  it('C2 U-1: rubriktexten följer sändningsläget', async () => {
+    renderIt()
+    expect(await screen.findByText(/Inget skickas till Fortnox\./)).toBeTruthy()
+    cleanup()
+    mocks.state.mockResolvedValue({
+      ...ACTIVE(),
+      exports: { sendingEnabled: true, sendingDisabledReason: null },
+    })
+    renderIt()
+    expect(
+      await screen.findByText(/Sändning är aktiverad endast för det anslutna testföretaget/),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Sändning är inte aktiverad/)).toBeNull()
+    expect(screen.queryByText(/Inget skickas till Fortnox\./)).toBeNull()
+  })
+
   it('visas inte för roller utan integrationsadministration', () => {
     mocks.role = 'MANAGER'
     renderIt()
