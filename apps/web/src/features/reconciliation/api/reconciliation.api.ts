@@ -1,5 +1,6 @@
 import { api, del, get, patch, post } from '@/lib/api'
 import type {
+  ResolveImportStopInput,
   BankTransaction,
   ConfirmImportInput,
   CreateBankAccountInput,
@@ -589,5 +590,6 @@ export function getImportStops(status: 'open' | 'all' = 'open'): Promise<Imports
 }
 
 export async function resolveImportStop(id: string, note: string): Promise<void> {
-  await patch(`/reconciliation/import-stops/${id}/resolve`, { note })
+  const body: ResolveImportStopInput = { note }
+  await patch(`/reconciliation/import-stops/${id}/resolve`, body)
 }
