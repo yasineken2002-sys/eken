@@ -43,6 +43,19 @@ const BROWSER_LAUNCH_ARGS = [
   //   --disable-crashpad : starta inte crash-reportern (choke:ar på saknad sysfs)
   '--no-zygote',
   '--disable-crashpad',
+  // G21 (FORTNOX-100, BYGGLEDARE-EFFEKT-015): pdf-renderaren behöver inget nät — alla
+  // mallar är självbärande (data:-URL, grinden check-pdf-templates-selfcontained) och
+  // sidan fylls med setContent, aldrig goto (inventerat: en launch-plats, tre setContent).
+  // Ändå mättes Chrome-processen öppna QUIC (udp/443) och tcp/5228 mot Google under en
+  // körning. Flaggorna nedan är FÖRSVAR PÅ DJUPET, inte bevisad full nätisolering:
+  //   --host-resolver-rules : inga namn utom localhost kan slås upp (literala IP-adresser
+  //                           och redan cachade vägar täcks INTE av den här flaggan)
+  //   --disable-quic        : ingen QUIC
+  //   --disable-component-update : inga komponentuppdateringar i bakgrunden
+  // Sidnivån stoppas dessutom av request-interception i `withPage`.
+  '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE localhost',
+  '--disable-quic',
+  '--disable-component-update',
 ] as const
 
 // Hur många PDF-renderingar vi tillåter samtidigt mot samma browser. Headless
@@ -271,6 +284,20 @@ export class PdfService implements OnModuleDestroy {
     try {
       const browser = await this.getBrowser()
       page = await browser.newPage()
+      // G21: sidan får bara läsa det den redan bär (data:, about:). Allt annat avbryts
+      // och loggas — en mall som någon gång börjar hämta utifrån syns då i stället för
+      // att tyst ringa ut. Puppeteers egen mekanism; täcker även literala IP-adresser
+      // från SIDAN (inte Chromes egen bakgrundstrafik, se flaggorna ovan).
+      await page.setRequestInterception(true)
+      page.on('request', (req) => {
+        const url = req.url()
+        if (url.startsWith('data:') || url === 'about:blank') {
+          void req.continue()
+          return
+        }
+        this.logger.warn(`[pdf] extern resurs blockerad i pdf-renderingen: ${url.slice(0, 200)}`)
+        void req.abort('blockedbyclient')
+      })
       return await fn(page)
     } finally {
       if (page) {
