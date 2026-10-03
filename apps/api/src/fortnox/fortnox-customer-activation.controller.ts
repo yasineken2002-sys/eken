@@ -8,22 +8,12 @@ import {
   Post,
   Query,
 } from '@nestjs/common'
-import { IsInt, IsString, Matches, Min } from 'class-validator'
 import type { JwtPayload } from '@eken/shared'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { FortnoxCustomerActivationService } from './fortnox-customer-activation.service'
-
-export class ApproveCustomerActivationDto {
-  @IsInt()
-  @Min(1)
-  financialYearId!: number
-
-  @IsString()
-  @Matches(/^[0-9a-f]{64}$/)
-  consequencesSha256!: string
-}
+import { ApproveCustomerActivationDto } from './dto/customer-activation.dto'
 
 /** KUNDSTART-001 §6: kundaktivering. Läsa: OWNER, ADMIN, ACCOUNTANT. Besluta: bara OWNER. */
 @Controller('integrations/fortnox/customer-activation')

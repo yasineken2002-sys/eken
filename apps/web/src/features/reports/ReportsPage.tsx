@@ -216,7 +216,7 @@ function OppningskomponentView({ ok }: { ok: NonNullable<BalanceSheet['oppningsk
   return (
     <section
       aria-label="Öppningskomponent"
-      className="min-w-0 rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3"
+      className="min-w-0 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-3"
     >
       <h3 className="text-[13px] font-semibold text-gray-900">
         Öppningskomponent (före brytdatum)
@@ -235,7 +235,7 @@ function OppningskomponentView({ ok }: { ok: NonNullable<BalanceSheet['oppningsk
             </thead>
             <tbody>
               {ok.rader.map((r) => (
-                <tr key={r.konto} className="border-t border-indigo-100">
+                <tr key={r.konto} className="border-t border-blue-100">
                   <td className="py-1">{r.konto}</td>
                   <td className="py-1 text-right">{formatCurrency(r.verifikat)}</td>
                   <td className="py-1 text-right">{formatCurrency(r.oppning)}</td>

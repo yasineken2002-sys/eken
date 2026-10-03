@@ -234,22 +234,14 @@ export class AviseringService {
       select: { billingCutoverDate: true },
     })
     const cutover = orgCutover?.billingCutoverDate ?? null
-    if (periodForeBrytdatum(cutover, year, month)) {
-      const existing = await this.prisma.rentNotice.findMany({
-        where: { organizationId: orgId, month, year, type: RentNoticeType.RENT },
-        select: { leaseId: true, dueDate: true },
-      })
-      return {
-        candidates: [] as never[],
-        skipped: 0,
-        existing,
-        beforeCutover: foreBrytdatumSkal(cutover!),
-      }
-    }
+    // En period före brytdatum ger inga kandidater (befintliga dokument rörs inte).
+    const foreBryt = periodForeBrytdatum(cutover, year, month)
     const genMonthStart = new Date(year, month - 1, 1)
     const leases = await this.prisma.lease.findMany({
       where: {
         organizationId: orgId,
+        // KUNDSTART: före brytdatum väljs inga avtal alls.
+        ...(foreBryt ? { id: { in: [] } } : {}),
         OR: [
           { status: 'ACTIVE' },
           // T1.3: ett EXPIRED avtal som fortfarande täcker dagar i månaden
@@ -284,7 +276,7 @@ export class AviseringService {
       dueDate: Date
     }[] = []
 
-    for (const lease of leases) {
+    for (const lease of foreBryt ? [] : leases) {
       if (existingLeaseIds.has(lease.id)) {
         skipped++
         continue
@@ -319,7 +311,12 @@ export class AviseringService {
       // Samma befintliga genereringsregel: sista vardagen före hyresmånaden.
       candidates.push({ lease, proration, dueDate: rentDueDateForMonth(year, month) })
     }
-    return { candidates, skipped, existing, beforeCutover: null as string | null }
+    return {
+      candidates,
+      skipped,
+      existing,
+      beforeCutover: foreBryt ? foreBrytdatumSkal(cutover!) : null,
+    }
   }
 
   /** Läsande förhandsbesked: samma urval, proration och datum som skrivvägen. */

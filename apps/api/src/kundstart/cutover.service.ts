@@ -16,6 +16,7 @@ import {
   Injectable,
 } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { brytAr, brytdatumIso, tolkaBrytdatum } from './cutover'
 import { ogiltigforklaraAktiveringar } from './activation-invalidation'
 import type { Prisma } from '@prisma/client'
@@ -112,6 +113,6 @@ export class CutoverService {
         locked: false,
         lockReason: null,
       }
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 }

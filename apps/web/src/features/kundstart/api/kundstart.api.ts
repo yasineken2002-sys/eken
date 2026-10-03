@@ -1,3 +1,12 @@
+import type {
+  ApproveCustomerActivationInput,
+  ApproveOpeningPackageInput,
+  BindOpeningReadInput,
+  FirstPeriodRegisterInput,
+  SeparateLedgerInput,
+  SetCutoverInput,
+  UploadOpeningPackageInput,
+} from '@eken/shared'
 import { api, get, post } from '@/lib/api'
 
 // KUNDSTART-001: brytdatum, öppningspaket och Fortnox-kundaktivering. Speglar
@@ -78,19 +87,7 @@ export interface ForstaPeriodRegister {
 export const REGISTER_MALL = 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt'
 export const SPEC_MALL = 'postId;motpart;dokument;dokumentdatum;forfallodag;belopp'
 
-export const setFirstPeriodRegister = (
-  id: string,
-  b: {
-    filnamn: string
-    innehall: string
-    system: string
-    ansvarig: string
-    tackningFran: string
-    tackningTill: string
-    intaktskonton: number[]
-    forskottskonton: number[]
-  },
-) =>
+export const setFirstPeriodRegister = (id: string, b: FirstPeriodRegisterInput) =>
   api
     .put<OpeningPackage>(`/kundstart/opening-packages/${id}/first-period-register`, b)
     .then((r) => r.data)
@@ -112,36 +109,28 @@ export interface OpeningPackage extends OpeningPackageSummary {
 }
 
 export const fetchCutover = () => get<Cutover>('/kundstart/cutover')
-export const saveCutover = (cutoverDate: string | null) =>
-  api.put<Cutover>('/kundstart/cutover', { cutoverDate }).then((r) => r.data)
+export const saveCutover = (cutoverDate: string | null) => {
+  const body: SetCutoverInput = { cutoverDate }
+  return api.put<Cutover>('/kundstart/cutover', body).then((r) => r.data)
+}
 
 export const fetchPackages = () => get<OpeningPackageSummary[]>('/kundstart/opening-packages')
 export const fetchPackage = (id: string) => get<OpeningPackage>(`/kundstart/opening-packages/${id}`)
-export const uploadPackage = (b: { sourceName: string; innehall: string; nollOppning?: boolean }) =>
+export const uploadPackage = (b: UploadOpeningPackageInput) =>
   post<OpeningPackageSummary>('/kundstart/opening-packages', b)
-export const replacePackageSource = (
-  id: string,
-  b: { sourceName: string; innehall: string; nollOppning?: boolean },
-) => api.put<OpeningPackage>(`/kundstart/opening-packages/${id}/source`, b).then((r) => r.data)
+export const replacePackageSource = (id: string, b: UploadOpeningPackageInput) =>
+  api.put<OpeningPackage>(`/kundstart/opening-packages/${id}/source`, b).then((r) => r.data)
 export const validatePackage = (id: string) =>
   post<OpeningPackage>(`/kundstart/opening-packages/${id}/validate`)
-export const bindRead = (id: string, readRunId: string) =>
-  post<OpeningPackage>(`/kundstart/opening-packages/${id}/fortnox-read`, { readRunId })
-export const setSeparateLedger = (
-  id: string,
-  b: {
-    konto: '1510' | '2890'
-    beskrivning: string
-    filnamn: string
-    innehall: string | null
-    system?: string
-    ansvarig?: string
-  },
-) =>
+export const bindRead = (id: string, readRunId: string) => {
+  const body: BindOpeningReadInput = { readRunId }
+  return post<OpeningPackage>(`/kundstart/opening-packages/${id}/fortnox-read`, body)
+}
+export const setSeparateLedger = (id: string, b: SeparateLedgerInput) =>
   api
     .put<OpeningPackage>(`/kundstart/opening-packages/${id}/separate-ledger`, b)
     .then((r) => r.data)
-export const approvePackage = (id: string, b: { version: number; sourceSha256: string }) =>
+export const approvePackage = (id: string, b: ApproveOpeningPackageInput) =>
   post<OpeningPackage>(`/kundstart/opening-packages/${id}/approve`, b)
 export const executePackage = (id: string) =>
   post<{ status: 'EXECUTED'; fordringar?: number; depositioner?: number }>(
@@ -173,7 +162,7 @@ export const fetchActivation = (financialYearId: number | null) =>
     '/integrations/fortnox/customer-activation',
     financialYearId === null ? undefined : { financialYearId },
   )
-export const approveActivation = (b: { financialYearId: number; consequencesSha256: string }) =>
+export const approveActivation = (b: ApproveCustomerActivationInput) =>
   post<{ id: string; status: string }>('/integrations/fortnox/customer-activation/approve', b)
 export const revokeActivation = () =>
   post<{ revoked: number }>('/integrations/fortnox/customer-activation/revoke')

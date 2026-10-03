@@ -25,6 +25,7 @@ import {
 import { Prisma } from '@prisma/client'
 import type { OpeningPackage, OpeningPackageRow } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { OcrService } from '../common/ocr/ocr.service'
 import { brytdatumIso } from './cutover'
 import {
@@ -56,12 +57,6 @@ export class OpeningAbort extends ConflictException {}
 
 const oreAv = (d: Prisma.Decimal | number | string) =>
   kronorTillOre(new Prisma.Decimal(d).toFixed(2))!
-
-const TX = {
-  timeout: 60_000,
-  maxWait: 5_000,
-  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-}
 
 @Injectable()
 export class OpeningPackageService {
@@ -206,7 +201,7 @@ export class OpeningPackageService {
         },
         include: { rows: true },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   private tolka(input: { innehall: string; nollOppning?: boolean }) {
@@ -300,7 +295,7 @@ export class OpeningPackageService {
           totals: this.totaler(p.rows, losning) as unknown as Prisma.InputJsonValue,
         },
       })
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
     await this.raknaOmAvstamning(organizationId, id)
     return this.get(organizationId, id)
   }
@@ -560,67 +555,81 @@ export class OpeningPackageService {
     input: { version: number; sourceSha256: string },
   ) {
     this.kravRoll(user.role, ['OWNER'], 'godkänna ett öppningspaket')
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
-      await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
-      const p = await tx.openingPackage.findFirst({
-        where: { id, organizationId },
-        include: { rows: true },
-      })
-      if (!p) throw new NotFoundException('Öppningspaketet hittades inte')
-      if (p.status !== 'VALIDATED')
-        throw new ConflictException(`Bara ett VALIDATED paket kan godkännas (status ${p.status}).`)
-      if (p.version !== input.version || p.sourceSha256 !== input.sourceSha256)
-        throw new ConflictException(
-          'Paketet har ändrats sedan du granskade det (version eller fil). Granska igen.',
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
+        await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+        const p = await tx.openingPackage.findFirst({
+          where: { id, organizationId },
+          include: { rows: true },
+        })
+        if (!p) throw new NotFoundException('Öppningspaketet hittades inte')
+        if (p.status !== 'VALIDATED')
+          throw new ConflictException(
+            `Bara ett VALIDATED paket kan godkännas (status ${p.status}).`,
+          )
+        if (p.version !== input.version || p.sourceSha256 !== input.sourceSha256)
+          throw new ConflictException(
+            'Paketet har ändrats sedan du granskade det (version eller fil). Granska igen.',
+          )
+        const org = await tx.organization.findUniqueOrThrow({
+          where: { id: organizationId },
+          select: { billingCutoverDate: true, orgNumber: true },
+        })
+        if (!org.billingCutoverDate || org.billingCutoverDate.getTime() !== p.cutoverDate.getTime())
+          throw new ConflictException('Brytdatumet har ändrats sedan valideringen — validera igen.')
+        if (org.orgNumber !== p.orgNumber)
+          throw new ConflictException(
+            'Organisationsnumret har ändrats sedan valideringen — validera igen.',
+          )
+        if (!p.fortnoxReadRunId)
+          throw new ConflictException(
+            'Bind en Fortnox-läsning (saldo per brytdatum) innan godkännandet.',
+          )
+        // KUNDSTART-009: utan kontrollerat register för första perioden (eller med poster i
+        // det) kan övertagandet inte godkännas.
+        const forsta = registerHinder(p.firstPeriodRegister, p.cutoverDate)
+        if (forsta) throw new ConflictException(forsta)
+        if (
+          p.zeroOpening &&
+          (await tx.openingPackage.count({ where: { organizationId, status: 'EXECUTED' } })) > 0
         )
-      const org = await tx.organization.findUniqueOrThrow({
-        where: { id: organizationId },
-        select: { billingCutoverDate: true, orgNumber: true },
-      })
-      if (!org.billingCutoverDate || org.billingCutoverDate.getTime() !== p.cutoverDate.getTime())
-        throw new ConflictException('Brytdatumet har ändrats sedan valideringen — validera igen.')
-      if (org.orgNumber !== p.orgNumber)
-        throw new ConflictException(
-          'Organisationsnumret har ändrats sedan valideringen — validera igen.',
+          throw new ConflictException(
+            'Organisationen har redan ett verkställt öppningspaket — ingen nollöppning.',
+          )
+        await this.kravAktuellLasning(tx, organizationId, p.fortnoxReadRunId, p.cutoverDate)
+        const av = await this.raknaOmAvstamning(organizationId, id, tx)
+        if (
+          p.zeroOpening &&
+          !(av.status === 'AVSTAMD' && av.konton.every((k) => k.fortnoxOre === 0))
         )
-      if (!p.fortnoxReadRunId)
-        throw new ConflictException(
-          'Bind en Fortnox-läsning (saldo per brytdatum) innan godkännandet.',
-        )
-      // KUNDSTART-009: utan kontrollerat register för första perioden (eller med poster i
-      // det) kan övertagandet inte godkännas.
-      const forsta = registerHinder(p.firstPeriodRegister, p.cutoverDate)
-      if (forsta) throw new ConflictException(forsta)
-      if (
-        p.zeroOpening &&
-        (await tx.openingPackage.count({ where: { organizationId, status: 'EXECUTED' } })) > 0
-      )
-        throw new ConflictException(
-          'Organisationen har redan ett verkställt öppningspaket — ingen nollöppning.',
-        )
-      await this.kravAktuellLasning(tx, organizationId, p.fortnoxReadRunId, p.cutoverDate)
-      const av = await this.raknaOmAvstamning(organizationId, id, tx)
-      if (p.zeroOpening && !(av.status === 'AVSTAMD' && av.konton.every((k) => k.fortnoxOre === 0)))
-        throw new ConflictException(
-          'Nollöppning kräver att Fortnox-saldot för både 1510 och 2890 är 0 per brytdatum (AVSTÄMD 0 = 0).',
-        )
-      const wm = await ekonomisktLage(tx, organizationId, this.ref(p.rows))
-      return tx.openingPackage.update({
-        where: { id },
-        data: {
-          status: 'APPROVED',
-          approvedById: user.sub,
-          approvedAt: new Date(),
-          approvedSha256: p.sourceSha256,
-          approvedVersion: p.version,
-          approvedCutoverDate: p.cutoverDate,
-          approvedReadRunId: p.fortnoxReadRunId,
-          approvedWatermark: wm.sha256,
-          invalidatedReason: null,
-        },
-      })
-    }, TX)
+          throw new ConflictException(
+            'Nollöppning kräver att Fortnox-saldot för både 1510 och 2890 är 0 per brytdatum (AVSTÄMD 0 = 0).',
+          )
+        const wm = await ekonomisktLage(tx, organizationId, this.ref(p.rows))
+        return tx.openingPackage.update({
+          where: { id },
+          data: {
+            status: 'APPROVED',
+            approvedById: user.sub,
+            approvedAt: new Date(),
+            approvedSha256: p.sourceSha256,
+            approvedVersion: p.version,
+            approvedCutoverDate: p.cutoverDate,
+            approvedReadRunId: p.fortnoxReadRunId,
+            approvedWatermark: wm.sha256,
+            invalidatedReason: null,
+          },
+        })
+      },
+      {
+        // Verkställning/godkännande prövar alla rader på nytt under lås: PAYMENT-gränsen
+        // med längre timeout för stora paket och SERIALIZABLE (K-B5).
+        ...PAYMENT_TX_LIMITS,
+        timeout: 60_000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    )
   }
 
   private ref(rows: Pick<OpeningPackageRow, 'leaseId' | 'tenantId'>[]) {
@@ -651,137 +660,146 @@ export class OpeningPackageService {
   async execute(organizationId: string, id: string, user: { sub: string; role: Roll }) {
     this.kravRoll(user.role, ['OWNER'], 'verkställa ett öppningspaket')
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
-        await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
-        const p = await tx.openingPackage.findFirst({
-          where: { id, organizationId },
-          include: { rows: { orderBy: { rowNo: 'asc' } } },
-        })
-        if (!p) throw new NotFoundException('Öppningspaketet hittades inte')
-        if (p.status === 'EXECUTED')
-          return { status: 'EXECUTED' as const, redanVerkstallt: true, id }
-        if (p.status !== 'APPROVED')
-          throw new ConflictException(
-            `Bara ett APPROVED paket kan verkställas (status ${p.status}).`,
-          )
-        if (p.approvedVersion !== p.version || p.approvedSha256 !== p.sourceSha256)
-          throw new OpeningAbort('Godkännandet gäller en annan version eller fil.')
-        const org = await tx.organization.findUniqueOrThrow({
-          where: { id: organizationId },
-          select: { billingCutoverDate: true, orgNumber: true },
-        })
-        if (
-          !org.billingCutoverDate ||
-          !p.approvedCutoverDate ||
-          org.billingCutoverDate.getTime() !== p.approvedCutoverDate.getTime() ||
-          p.cutoverDate.getTime() !== p.approvedCutoverDate.getTime()
-        )
-          throw new OpeningAbort('Brytdatumet har ändrats sedan godkännandet.')
-        if (org.orgNumber !== p.orgNumber)
-          throw new OpeningAbort('Organisationsnumret har ändrats.')
-        if (!p.approvedReadRunId || p.approvedReadRunId !== p.fortnoxReadRunId)
-          throw new OpeningAbort('Den bundna Fortnox-läsningen har ändrats sedan godkännandet.')
-        await this.kravAktuellLasning(tx, organizationId, p.approvedReadRunId, p.cutoverDate)
-        const wm = await ekonomisktLage(tx, organizationId, this.ref(p.rows))
-        if (wm.sha256 !== p.approvedWatermark) throw new OpeningAbort(VATTENMARKE_SKAL)
-
-        const fore = await evenoPosterForeBrytdatum(tx, organizationId, p.cutoverDate)
-        if (fore) throw new OpeningAbort(fore)
-        const losning = await losRader(tx, organizationId, p.cutoverDate, p.rows)
-        const fel = losning.flatMap((l) => {
-          const r = p.rows.find((x) => x.id === l.rowId)!
-          return l.errors.map((e) => `rad ${r.rowNo} (${r.sourceId}): ${e}`)
-        })
-        for (const l of losning) {
-          const r = p.rows.find((x) => x.id === l.rowId)!
-          if (l.leaseId !== r.leaseId || l.tenantId !== r.tenantId)
-            fel.push(`rad ${r.rowNo} (${r.sourceId}): kopplingen har ändrats sedan valideringen.`)
-        }
-        if (fel.length > 0)
-          throw new OpeningAbort(`Omprövningen hittade fel: ${fel.slice(0, 20).join(' | ')}`)
-
-        const tenants = new Map(
-          (
-            await tx.tenant.findMany({
-              where: { id: { in: losning.map((l) => l.tenantId!).filter(Boolean) } },
-              select: { id: true, ocrNumber: true },
-            })
-          ).map((t) => [t.id, t.ocrNumber]),
-        )
-        const kort = p.id.slice(0, 8)
-        let fordringar = 0
-        let depositioner = 0
-        for (const r of p.rows) {
-          const ocr = tenants.get(r.tenantId!)
-          if (!ocr)
-            throw new OpeningAbort(`rad ${r.rowNo}: hyresgästen saknar OCR — validera igen.`)
-          if (r.kind === 'RECEIVABLE') {
-            const y = r.periodYear!
-            const m = r.periodMonth!
-            await tx.rentNotice.create({
-              data: {
-                organizationId,
-                tenantId: r.tenantId!,
-                leaseId: r.leaseId!,
-                noticeNumber: `IB-${kort}-${r.rowNo}`,
-                ocrNumber: ocr,
-                year: y,
-                month: m,
-                amount: r.openAmount,
-                vatAmount: 0,
-                totalAmount: r.openAmount,
-                dueDate: r.dueDate!,
-                status: 'OPENING',
-                type: 'RENT',
-                periodStart: new Date(Date.UTC(y, m - 1, 1)),
-                periodEnd: new Date(Date.UTC(y, m, 0)),
-                origin: 'OPENING_PACKAGE',
-                openingRowId: r.id,
-              },
-            })
-            fordringar++
-          } else {
-            await tx.deposit.create({
-              data: {
-                organizationId,
-                leaseId: r.leaseId!,
-                tenantId: r.tenantId!,
-                amount: r.openAmount,
-                status: 'PAID',
-                paidAt: r.receivedDate!,
-                origin: 'OPENING_PACKAGE',
-                openingRowId: r.id,
-                notes:
-                  `Historisk deposition ur öppningspaket ${kort} (källrad ${r.sourceId}), mottagen ` +
-                  `${brytdatumIso(r.receivedDate!)} enligt underlag; ursprungligt belopp ` +
-                  `${r.originalAmount.toFixed(2)} kr. Skulden (2890) finns i Fortnox före brytdatum.`,
-              },
-            })
-            depositioner++
-          }
-          await tx.openingExecutedSource.create({
-            data: { organizationId, sourceId: r.sourceId, packageId: p.id, rowId: r.id },
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
+          await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+          const p = await tx.openingPackage.findFirst({
+            where: { id, organizationId },
+            include: { rows: { orderBy: { rowNo: 'asc' } } },
           })
-        }
-        await tx.openingPackage.update({
-          where: { id },
-          data: { status: 'EXECUTED', executedById: user.sub, executedAt: new Date() },
-        })
-        await this.raknaOmAvstamning(organizationId, id, tx)
-        const ogiltiga = await ogiltigforklaraAktiveringar(
-          tx,
-          organizationId,
-          `Nytt verkställt öppningspaket ${kort} — kundaktiveringen måste prövas om.`,
-        )
-        return {
-          status: 'EXECUTED' as const,
-          id,
-          fordringar,
-          depositioner,
-          ogiltigaAktiveringar: ogiltiga,
-        }
-      }, TX)
+          if (!p) throw new NotFoundException('Öppningspaketet hittades inte')
+          if (p.status === 'EXECUTED')
+            return { status: 'EXECUTED' as const, redanVerkstallt: true, id }
+          if (p.status !== 'APPROVED')
+            throw new ConflictException(
+              `Bara ett APPROVED paket kan verkställas (status ${p.status}).`,
+            )
+          if (p.approvedVersion !== p.version || p.approvedSha256 !== p.sourceSha256)
+            throw new OpeningAbort('Godkännandet gäller en annan version eller fil.')
+          const org = await tx.organization.findUniqueOrThrow({
+            where: { id: organizationId },
+            select: { billingCutoverDate: true, orgNumber: true },
+          })
+          if (
+            !org.billingCutoverDate ||
+            !p.approvedCutoverDate ||
+            org.billingCutoverDate.getTime() !== p.approvedCutoverDate.getTime() ||
+            p.cutoverDate.getTime() !== p.approvedCutoverDate.getTime()
+          )
+            throw new OpeningAbort('Brytdatumet har ändrats sedan godkännandet.')
+          if (org.orgNumber !== p.orgNumber)
+            throw new OpeningAbort('Organisationsnumret har ändrats.')
+          if (!p.approvedReadRunId || p.approvedReadRunId !== p.fortnoxReadRunId)
+            throw new OpeningAbort('Den bundna Fortnox-läsningen har ändrats sedan godkännandet.')
+          await this.kravAktuellLasning(tx, organizationId, p.approvedReadRunId, p.cutoverDate)
+          const wm = await ekonomisktLage(tx, organizationId, this.ref(p.rows))
+          if (wm.sha256 !== p.approvedWatermark) throw new OpeningAbort(VATTENMARKE_SKAL)
+
+          const fore = await evenoPosterForeBrytdatum(tx, organizationId, p.cutoverDate)
+          if (fore) throw new OpeningAbort(fore)
+          const losning = await losRader(tx, organizationId, p.cutoverDate, p.rows)
+          const fel = losning.flatMap((l) => {
+            const r = p.rows.find((x) => x.id === l.rowId)!
+            return l.errors.map((e) => `rad ${r.rowNo} (${r.sourceId}): ${e}`)
+          })
+          for (const l of losning) {
+            const r = p.rows.find((x) => x.id === l.rowId)!
+            if (l.leaseId !== r.leaseId || l.tenantId !== r.tenantId)
+              fel.push(`rad ${r.rowNo} (${r.sourceId}): kopplingen har ändrats sedan valideringen.`)
+          }
+          if (fel.length > 0)
+            throw new OpeningAbort(`Omprövningen hittade fel: ${fel.slice(0, 20).join(' | ')}`)
+
+          const tenants = new Map(
+            (
+              await tx.tenant.findMany({
+                where: { id: { in: losning.map((l) => l.tenantId!).filter(Boolean) } },
+                select: { id: true, ocrNumber: true },
+              })
+            ).map((t) => [t.id, t.ocrNumber]),
+          )
+          const kort = p.id.slice(0, 8)
+          let fordringar = 0
+          let depositioner = 0
+          for (const r of p.rows) {
+            const ocr = tenants.get(r.tenantId!)
+            if (!ocr)
+              throw new OpeningAbort(`rad ${r.rowNo}: hyresgästen saknar OCR — validera igen.`)
+            if (r.kind === 'RECEIVABLE') {
+              const y = r.periodYear!
+              const m = r.periodMonth!
+              await tx.rentNotice.create({
+                data: {
+                  organizationId,
+                  tenantId: r.tenantId!,
+                  leaseId: r.leaseId!,
+                  noticeNumber: `IB-${kort}-${r.rowNo}`,
+                  ocrNumber: ocr,
+                  year: y,
+                  month: m,
+                  amount: r.openAmount,
+                  vatAmount: 0,
+                  totalAmount: r.openAmount,
+                  dueDate: r.dueDate!,
+                  status: 'OPENING',
+                  type: 'RENT',
+                  periodStart: new Date(Date.UTC(y, m - 1, 1)),
+                  periodEnd: new Date(Date.UTC(y, m, 0)),
+                  origin: 'OPENING_PACKAGE',
+                  openingRowId: r.id,
+                },
+              })
+              fordringar++
+            } else {
+              await tx.deposit.create({
+                data: {
+                  organizationId,
+                  leaseId: r.leaseId!,
+                  tenantId: r.tenantId!,
+                  amount: r.openAmount,
+                  status: 'PAID',
+                  paidAt: r.receivedDate!,
+                  origin: 'OPENING_PACKAGE',
+                  openingRowId: r.id,
+                  notes:
+                    `Historisk deposition ur öppningspaket ${kort} (källrad ${r.sourceId}), mottagen ` +
+                    `${brytdatumIso(r.receivedDate!)} enligt underlag; ursprungligt belopp ` +
+                    `${r.originalAmount.toFixed(2)} kr. Skulden (2890) finns i Fortnox före brytdatum.`,
+                },
+              })
+              depositioner++
+            }
+            await tx.openingExecutedSource.create({
+              data: { organizationId, sourceId: r.sourceId, packageId: p.id, rowId: r.id },
+            })
+          }
+          await tx.openingPackage.update({
+            where: { id },
+            data: { status: 'EXECUTED', executedById: user.sub, executedAt: new Date() },
+          })
+          await this.raknaOmAvstamning(organizationId, id, tx)
+          const ogiltiga = await ogiltigforklaraAktiveringar(
+            tx,
+            organizationId,
+            `Nytt verkställt öppningspaket ${kort} — kundaktiveringen måste prövas om.`,
+          )
+          return {
+            status: 'EXECUTED' as const,
+            id,
+            fordringar,
+            depositioner,
+            ogiltigaAktiveringar: ogiltiga,
+          }
+        },
+        {
+          // Verkställning/godkännande prövar alla rader på nytt under lås: PAYMENT-gränsen
+          // med längre timeout för stora paket och SERIALIZABLE (K-B5).
+          ...PAYMENT_TX_LIMITS,
+          timeout: 60_000,
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      )
     } catch (e) {
       const serialisering =
         e instanceof Prisma.PrismaClientKnownRequestError &&

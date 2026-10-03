@@ -218,7 +218,7 @@ export function ManualMatchModal({
       {flik === 'avi' && harHistoriskSkuld && (
         <p
           role="note"
-          className="mb-2 rounded-lg bg-indigo-50 px-3 py-2 text-[12px] leading-relaxed text-indigo-800"
+          className="mb-2 rounded-lg bg-blue-50 px-3 py-2 text-[12px] leading-relaxed text-blue-800"
         >
           Hyresgästen har historisk skuld före brytdatum (från öppningspaketet). Automatisk
           matchning lägger aldrig en betalning på den. Välj den bara om betalningen uttryckligen

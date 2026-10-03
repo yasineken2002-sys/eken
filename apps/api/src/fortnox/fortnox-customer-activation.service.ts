@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config'
 import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { brytdatumIso } from '../kundstart/cutover'
 import { kronorTillOre } from '../kundstart/opening-csv'
 import { saldoUrLasning, senasteSaldolasning } from '../kundstart/opening-fortnox-balance'
@@ -299,31 +300,28 @@ export class FortnoxCustomerActivationService {
       throw new ConflictException(
         'Driftflaggan FORTNOX_CUSTOMER_WRITES är av — kundskrivning kan inte aktiveras.',
       )
-    return this.prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
-        const f = await this.forslag(tx, organizationId, input.financialYearId)
-        if (!f.ok || !f.bindning || !f.text || !f.textSha256)
-          throw new ConflictException(`Kundaktivering är blockerad: ${f.hinder.join(' ')}`)
-        if (f.textSha256 !== input.consequencesSha256)
-          throw new ConflictException(
-            'Konsekvenstexten har ändrats sedan du läste den — läs den igen och godkänn på nytt.',
-          )
-        await ogiltigforklaraAktiveringar(tx, organizationId, 'Ersatt av ett nytt kundgodkännande.')
-        return tx.fortnoxCustomerActivation.create({
-          data: {
-            organizationId,
-            status: 'ACTIVE',
-            ...f.bindning,
-            consequencesText: f.text,
-            consequencesSha256: f.textSha256,
-            approvedById: user.sub,
-          },
-          select: { id: true, status: true, approvedAt: true, consequencesSha256: true },
-        })
-      },
-      { timeout: 30_000, maxWait: 5_000 },
-    )
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
+      const f = await this.forslag(tx, organizationId, input.financialYearId)
+      if (!f.ok || !f.bindning || !f.text || !f.textSha256)
+        throw new ConflictException(`Kundaktivering är blockerad: ${f.hinder.join(' ')}`)
+      if (f.textSha256 !== input.consequencesSha256)
+        throw new ConflictException(
+          'Konsekvenstexten har ändrats sedan du läste den — läs den igen och godkänn på nytt.',
+        )
+      await ogiltigforklaraAktiveringar(tx, organizationId, 'Ersatt av ett nytt kundgodkännande.')
+      return tx.fortnoxCustomerActivation.create({
+        data: {
+          organizationId,
+          status: 'ACTIVE',
+          ...f.bindning,
+          consequencesText: f.text,
+          consequencesSha256: f.textSha256,
+          approvedById: user.sub,
+        },
+        select: { id: true, status: true, approvedAt: true, consequencesSha256: true },
+      })
+    }, PAYMENT_TX_LIMITS)
   }
 
   async revoke(organizationId: string, user: { sub: string; role: string }) {
