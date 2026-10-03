@@ -23,6 +23,8 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { DepositsService } from '../deposits/deposits.service'
+import { RentNoticeCreditService } from '../avisering/rent-notice-credit.service'
+import { RentBadDebtService } from '../avisering/rent-bad-debt.service'
 import { AviseringService } from '../avisering/avisering.service'
 import { RentBackfillService } from '../avisering/rent-backfill.service'
 import { OcrService } from '../common/ocr/ocr.service'
@@ -497,14 +499,53 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       konto: '1510',
       beskrivning: 'Separat reskontra för lgh 91–93 som förs utanför Eveno i Fortnox kundreskontra',
       filnamn: 'spec-fel.csv',
-      innehall: 'postId;belopp\nG91;10000\nG92;10000',
+      innehall:
+        'postId;motpart;dokument;dokumentdatum;forfallodag;belopp\nG91;H91 Syntet;F-91;2025-11-30;2025-12-31;10000\nG92;H92 Syntet;F-92;2025-11-30;2025-12-31;10000',
+      system: 'Gamla systemet (syntetiskt)',
+      ansvarig: 'Syntetisk ekonomiansvarig',
     })
     expect(v.reconciliationStatus).toBe('DIFFERENS')
+    // S5-1: en "specifikation" med bara postId;belopp (C2:s motexempel '1;28212') avvisas,
+    // liksom kvittade poster och en namnlös reskontra — differensen står kvar.
+    await expect(
+      paket.setSeparateLedger(ORG, pkgId, ADMIN, {
+        konto: '1510',
+        beskrivning: 'Separat reskontra i gamla systemet för de tre lägenheterna',
+        filnamn: 'dold.csv',
+        innehall: 'postId;belopp\n1;28212',
+        system: 'Gamla systemet',
+        ansvarig: 'Någon',
+      }),
+    ).rejects.toThrow(/identitet/)
+    await expect(
+      paket.setSeparateLedger(ORG, pkgId, ADMIN, {
+        konto: '1510',
+        beskrivning: 'Separat reskontra i gamla systemet för de tre lägenheterna',
+        filnamn: 'kvitt.csv',
+        innehall:
+          'postId;motpart;dokument;dokumentdatum;forfallodag;belopp\nA;H91 Syntet;F-91;2025-11-30;2025-12-31;30000\nB;H92 Syntet;F-92;2025-11-30;2025-12-31;-1788',
+        system: 'Gamla systemet',
+        ansvarig: 'Någon',
+      }),
+    ).rejects.toThrow(/kvittade eller negativa/)
+    await expect(
+      paket.setSeparateLedger(ORG, pkgId, ADMIN, {
+        konto: '1510',
+        beskrivning: 'Separat reskontra i gamla systemet för de tre lägenheterna',
+        filnamn: 'namnlos.csv',
+        innehall:
+          'postId;motpart;dokument;dokumentdatum;forfallodag;belopp\nG91;H91 Syntet;F-91;2025-11-30;2025-12-31;28212',
+      }),
+    ).rejects.toThrow(/system och ansvarig/)
+    expect((await paket.get(ORG, pkgId)).reconciliationStatus).toBe('DIFFERENS')
     v = await paket.setSeparateLedger(ORG, pkgId, ADMIN, {
       konto: '1510',
       beskrivning: 'Separat reskontra för lgh 91–93 som förs utanför Eveno i Fortnox kundreskontra',
       filnamn: 'spec.csv',
-      innehall: 'postId;belopp\nG91;10000\nG92;10000\nG93;8212',
+      innehall:
+        'postId;motpart;dokument;dokumentdatum;forfallodag;belopp\nG91;H91 Syntet;F-91;2025-11-30;2025-12-31;10000\nG92;H92 Syntet;F-92;2025-11-30;2025-12-31;10000\nG93;H93 Syntet;F-93;2025-11-30;2025-12-31;8212',
+      system: 'Gamla systemet (syntetiskt)',
+      ansvarig: 'Syntetisk ekonomiansvarig',
     })
     expect(v.reconciliationStatus).toBe('AVGRANSAD')
     const text = (v.reconciliation as { konton: { text: string }[] }).konton[0]!.text
@@ -537,7 +578,26 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
     expect(v.reconciliationStatus).toBe('AVSTAMD')
   })
 
+  const REG_HUVUD = 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt'
+  const registrera = (
+    org: string,
+    id: string,
+    ägare: { sub: string; role: 'OWNER' },
+    innehall = REG_HUVUD,
+  ) =>
+    paket.setFirstPeriodRegister(org, id, ägare, {
+      filnamn: 'SYNTETISKT-register-forsta-perioden.csv',
+      innehall,
+      system: 'Gamla systemet (syntetiskt)',
+      ansvarig: 'Syntetisk ekonomiansvarig',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-12-31',
+      intaktskonton: [3011],
+      forskottskonton: [2420],
+    })
   const godkann = async () => {
+    const g0 = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
+    if (!g0.firstPeriodRegister) await registrera(ORG, pkgId, OWNER)
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
     return paket.approve(ORG, pkgId, OWNER, { version: g.version, sourceSha256: g.sourceSha256 })
   }
@@ -549,6 +609,37 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
     })
     await paket.bindFortnoxRead(ORG, pkgId, ADMIN, senaste.id)
   }
+
+  it('KUNDSTART-009: utan register för första perioden, eller med poster i det, kan paketet inte godkännas', async () => {
+    const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
+    await expect(
+      paket.approve(ORG, pkgId, OWNER, { version: g.version, sourceSha256: g.sourceSha256 }),
+    ).rejects.toThrow(/Underlag för första perioden saknas/)
+    // Täckningen måste börja på brytdatum och omfatta hela första månaden.
+    await expect(
+      paket.setFirstPeriodRegister(ORG, pkgId, OWNER, {
+        filnamn: 'r.csv',
+        innehall: REG_HUVUD,
+        system: 'Gamla systemet',
+        ansvarig: 'Ansvarig',
+        tackningFran: '2026-11-01',
+        tackningTill: '2026-11-15',
+        intaktskonton: [3011],
+        forskottskonton: [],
+      }),
+    ).rejects.toThrow(/minst till 2026-11-30/)
+    // Novemberhyran är redan fakturerad OCH slutbetald i gamla systemet (1510 netto 0).
+    await registrera(
+      ORG,
+      pkgId,
+      OWNER,
+      `${REG_HUVUD}\nR1;7771000011;K-1;2026;11;GS-2026-11-1;6000;6000`,
+    )
+    await expect(
+      paket.approve(ORG, pkgId, OWNER, { version: g.version, sourceSha256: g.sourceSha256 }),
+    ).rejects.toThrow(/Version 1 kan inte representera/)
+    await registrera(ORG, pkgId, OWNER)
+  })
 
   it('godkännande: bara OWNER, bundet till den granskade versionen och filen', async () => {
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
@@ -650,6 +741,102 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
     expect(
       await prisma.rentNotice.count({ where: { organizationId: ORG, origin: 'OPENING_PACKAGE' } }),
     ).toBe(2)
+  })
+
+  it('S3-1/S3-2/S3-3: historisk skuld kan inte annulleras, krediteras eller skrivas av; vanlig avi kan annulleras', async () => {
+    const f2 = await prisma.rentNotice.findFirstOrThrow({
+      where: { organizationId: ORG, origin: 'OPENING_PACKAGE', totalAmount: 4000 },
+    })
+    const fore = {
+      avi: await prisma.rentNotice.findUniqueOrThrow({ where: { id: f2.id } }),
+      ver: await prisma.journalEntry.count({ where: { organizationId: ORG } }),
+      komp: await oppningskomponent(p, ORG, '2026-12-31'),
+      skuld: await historiskSkuld(p, ORG),
+    }
+    await expect(avisering.cancelNotice(f2.id, ORG, OWNER.sub)).rejects.toThrow(
+      /historisk skuld före brytdatum/,
+    )
+    const kredit = new RentNoticeCreditService(p, new RentNoticeEventsService(p), accounting)
+    await expect(
+      kredit.createCredit(f2.id, ORG, OWNER.sub, {
+        amount: 100,
+        lines: [{ amount: 100 }],
+        reason: 'Syntetisk kredit',
+      } as never),
+    ).rejects.toThrow(/historisk skuld före brytdatum/)
+    const förlust = new RentBadDebtService(
+      p,
+      accounting,
+      new RentNoticeEventsService(p),
+      stub('RentDebtService') as never,
+      freshness,
+      stub('NotificationsService') as never,
+      stub('CronErrorSink') as never,
+    )
+    await expect(förlust.reclassifyToProbableLoss(f2.id, ORG, OWNER.sub)).rejects.toThrow(
+      /historisk skuld före brytdatum/,
+    )
+    await expect(förlust.confirmLoss(f2.id, ORG, OWNER.sub)).rejects.toThrow(
+      /historisk skuld före brytdatum/,
+    )
+    const efter = await prisma.rentNotice.findUniqueOrThrow({ where: { id: f2.id } })
+    expect([efter.status, efter.updatedAt.getTime()]).toEqual([
+      fore.avi.status,
+      fore.avi.updatedAt.getTime(),
+    ])
+    expect(await prisma.journalEntry.count({ where: { organizationId: ORG } })).toBe(fore.ver)
+    expect(await oppningskomponent(p, ORG, '2026-12-31')).toEqual(fore.komp)
+    expect(await historiskSkuld(p, ORG)).toEqual(fore.skuld)
+    // Positiv kontroll: en vanlig obetald EVENO-avi kan fortfarande annulleras.
+    const vanlig = await prisma.rentNotice.create({
+      data: {
+        organizationId: ORG,
+        tenantId: `${ORG}-t3`,
+        leaseId: `${ORG}-l3`,
+        noticeNumber: `${K}-ANNULL`,
+        ocrNumber: '7771000033',
+        type: 'RENT',
+        status: 'PENDING',
+        month: 3,
+        year: 2027,
+        dueDate: new Date('2027-02-28'),
+        amount: new Prisma.Decimal('100'),
+        totalAmount: new Prisma.Decimal('100'),
+      },
+    })
+    await avisering.cancelNotice(vanlig.id, ORG, OWNER.sub)
+    expect((await prisma.rentNotice.findUniqueOrThrow({ where: { id: vanlig.id } })).status).toBe(
+      'CANCELLED',
+    )
+  })
+
+  it('ACK-009: belopp över gränsen ger radfel/400, aldrig 500; saldo över INTEGER-gränsen fungerar', async () => {
+    const stor = [
+      HUVUD,
+      'BIG1;FORDRAN;7771000011;K-1;;;2026;9;2026-09-30;10000000000;10000000000;',
+    ].join('\n')
+    const pk = await paket.create(ORG, ADMIN, { sourceName: 'stor.csv', innehall: stor })
+    expect((pk.rows[0]!.errors as string[]).join(' ')).toMatch(
+      /överstiger gränsen 9 999 999 999,99 kr/,
+    )
+    await paket.discard(ORG, pk.id, ADMIN)
+    // Saldo i läsningen: 21 474 836,48 kr (över 2^31−1 öre) → lagras exakt i Decimal(12,2).
+    const conn0 = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: ORG },
+    })
+    const run = await lasning(ORG, conn0.id, 2147483648, 1200000)
+    const pk2 = await paket.create(ORG, ADMIN, {
+      sourceName: 'saldo.csv',
+      innehall: [HUVUD, 'S1;FORDRAN;7771000011;K-1;;;2026;9;2026-09-30;1;1;'].join('\n'),
+    })
+    const v = await paket.bindFortnoxRead(ORG, pk2.id, ADMIN, run.id)
+    expect(v.fortnoxBalance1510Ore).toBe(2147483648)
+    // Över Decimal(12,2)-gränsen → 400 med skäl.
+    const run2 = await lasning(ORG, conn0.id, 1000000000000, 1200000)
+    await expect(paket.bindFortnoxRead(ORG, pk2.id, ADMIN, run2.id)).rejects.toThrow(
+      /överstiger gränsen/,
+    )
+    await paket.discard(ORG, pk2.id, ADMIN)
   })
 
   it('K-B4: ett nytt paket med redan verkställda källrader ger radfel och 0 effekter', async () => {
@@ -995,6 +1182,7 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       0,
     )
     await paket.bindFortnoxRead(ORG0, pk.id, ägare, fel.id)
+    await registrera(ORG0, pk.id, ägare)
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pk.id } })
     await expect(
       paket.approve(ORG0, pk.id, ägare, { version: g.version, sourceSha256: g.sourceSha256 }),

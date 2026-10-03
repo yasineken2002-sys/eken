@@ -8,6 +8,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { arHistoriskSkuld, HISTORISK_SKULD_SPARR } from '../kundstart/historisk-skuld-sparr'
 import { OcrService } from '../common/ocr/ocr.service'
 import { MailService } from '../mail/mail.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -2297,6 +2298,8 @@ export class AviseringService {
       where: { id: noticeId, organizationId: orgId },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
+    // KUNDSTART S3-1: en historisk skuld annulleras aldrig (inget motverifikat finns att göra).
+    if (arHistoriskSkuld(notice)) throw new BadRequestException(HISTORISK_SKULD_SPARR)
     if (notice.status === RentNoticeStatus.PAID) {
       throw new BadRequestException('Kan inte avbryta en betald avi')
     }

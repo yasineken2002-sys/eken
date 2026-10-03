@@ -18,6 +18,7 @@ import { OpeningPackageService } from './opening-package.service'
 import {
   ApproveOpeningPackageDto,
   BindReadDto,
+  FirstPeriodRegisterDto,
   SeparateLedgerDto,
   SetCutoverDto,
   UploadOpeningPackageDto,
@@ -120,6 +121,17 @@ export class KundstartController {
     @Body() dto: SeparateLedgerDto,
   ) {
     return this.paket.setSeparateLedger(orgId, id, this.u(user), dto)
+  }
+
+  @Put('opening-packages/:id/first-period-register')
+  @Roles('OWNER', 'ADMIN')
+  firstPeriod(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: FirstPeriodRegisterDto,
+  ) {
+    return this.paket.setFirstPeriodRegister(orgId, id, this.u(user), dto)
   }
 
   @Post('opening-packages/:id/approve')

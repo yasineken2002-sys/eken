@@ -26,7 +26,10 @@ export interface SeparatSpec {
   summaOre: number
   beskrivning: string
   filnamn: string
-  poster: { postId: string; ore: number }[]
+  /** S5-1: den separata reskontrans system och ansvarig (obligatoriska). */
+  system: string
+  ansvarig: string
+  poster: { postId: string; motpart: string; dokument: string; ore: number }[]
 }
 
 export interface KontoAvstamning {
@@ -67,6 +70,8 @@ export function stamAv(input: {
           summaOre: s.summaOre,
           beskrivning: s.beskrivning,
           filnamn: s.filnamn,
+          system: s.system,
+          ansvarig: s.ansvarig,
         }
       : null
     if (fortnoxOre === null)
@@ -101,7 +106,8 @@ export function stamAv(input: {
         text:
           `Avgränsat övertagande — kontot ${konto} är INTE avstämt i sin helhet; ` +
           `${kr(differensOre)} ligger i separat reskontra enligt specifikation ` +
-          `${s.filnamn} (sha256 ${s.sha256.slice(0, 12)}…, ${s.antal} poster): ${s.beskrivning}`,
+          `${s.filnamn} (sha256 ${s.sha256.slice(0, 12)}…, ${s.antal} poster med identitet; ` +
+          `system ${s.system}, ansvarig ${s.ansvarig}): ${s.beskrivning}`,
       }
     const specFel = s
       ? ` Specifikationen ${s.filnamn} summerar ${kr(s.summaOre)} och förklarar inte differensen exakt.`

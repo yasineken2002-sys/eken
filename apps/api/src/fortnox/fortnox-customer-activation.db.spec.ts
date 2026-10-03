@@ -157,6 +157,8 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     reader.accounts.push(
       { Number: 1510, Active: true, Description: 'Kundfordringar', BalanceBroughtForward: 0 },
       { Number: 2890, Active: true, Description: 'Övriga skulder', BalanceBroughtForward: 0 },
+      { Number: 3911, Active: true, Description: 'Hyresintäkter', BalanceBroughtForward: 0 },
+      { Number: 2420, Active: true, Description: 'Förskott från kunder', BalanceBroughtForward: 0 },
     )
     const db = prisma as unknown as PrismaService
     const connections = new FortnoxConnectionService(db, crypto, config, auth, reader)
@@ -195,9 +197,29 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     const run = await las()
     expect(run.status).toBe('COMPLETE')
     await paket.bindFortnoxRead(org.id, pk.id, ägare, run.id)
+    // KUNDSTART-009: tidigare systemets register för första perioden (syntetiskt, inga poster).
+    await paket.setFirstPeriodRegister(org.id, pk.id, ägare, {
+      filnamn: 'SYNTETISKT-register.csv',
+      innehall: 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt',
+      system: 'Gamla systemet (syntetiskt)',
+      ansvarig: 'Syntetisk ägare',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-12-31',
+      intaktskonton: [3911],
+      forskottskonton: [2420],
+    })
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pk.id } })
     await paket.approve(org.id, pk.id, ägare, { version: g.version, sourceSha256: g.sourceSha256 })
     await paket.execute(org.id, pk.id, ägare)
+    // Kompletterande riskkontroll: läsning över brytdatum på 1510, intäkts- och förskottskonto.
+    const riskLas = () =>
+      readback.read(org.id, owner.id, {
+        financialYearId: 1,
+        periodFrom: '2026-01-01',
+        periodTo: '2026-12-31',
+        costAccounts: [1510, 3911, 2420],
+      })
+    expect((await riskLas()).status).toBe('COMPLETE')
 
     const acc = async (number: number) =>
       (await prisma.account.findFirst({ where: { organizationId: org.id, number } })) ??
@@ -270,6 +292,7 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       pkId: pk.id,
       verifikat,
       exports,
+      riskLas,
     }
   }
 
@@ -581,5 +604,34 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     await prisma.fortnoxCustomerActivation.create({
       data: { ...(kopia as typeof rad), status: 'REVOKED' },
     })
+  })
+
+  it('KUNDSTART-009 riskkontroll: verifikat från tidigare system efter brytdatum blockerar aktivering', async () => {
+    const t = await setup()
+    t.reader.vouchers.push({
+      Year: 1,
+      VoucherSeries: 'L',
+      VoucherNumber: 77,
+      TransactionDate: '2026-11-01',
+      Description: 'Hyra november (tidigare system, syntetisk)',
+      VoucherRows: [
+        { Account: 1510, Debit: 6000, Credit: 0 },
+        { Account: 3911, Debit: 0, Credit: 6000 },
+      ],
+    } as never)
+    await t.riskLas()
+    const s = await t.aktivering.status(t.org.id, 1)
+    expect(s.forslag.ok).toBe(false)
+    expect(s.forslag.hinder.join(' ')).toMatch(
+      /verifikatrader från tidigare system på eller efter brytdatum/,
+    )
+  })
+
+  it('KUNDSTART-009 riskkontroll: förskottskonto med saldo blockerar aktivering', async () => {
+    const t = await setup()
+    t.reader.accounts.find((a) => a.Number === 2420)!.BalanceBroughtForward = -6000
+    await t.riskLas()
+    const s = await t.aktivering.status(t.org.id, 1)
+    expect(s.forslag.hinder.join(' ')).toMatch(/Förskottskonto 2420 har saldo/)
   })
 })

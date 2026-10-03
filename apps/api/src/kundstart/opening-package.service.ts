@@ -46,6 +46,8 @@ import { saldoUrLasning, senasteSaldolasning } from './opening-fortnox-balance'
 import { ekonomisktLage, VATTENMARKE_SKAL } from './watermark'
 import { ogiltigforklaraAktiveringar } from './activation-invalidation'
 import { evenoPosterForeBrytdatum } from './pre-cutover-records'
+import { registerHinder, tackningOk, type ForstaPeriodRegister } from './first-period'
+import { tolkaForstaPeriodRegister } from './opening-csv'
 
 type Roll = 'OWNER' | 'ADMIN' | 'MANAGER' | 'ACCOUNTANT' | 'VIEWER'
 const SKRIV_ROLLER: Roll[] = ['OWNER', 'ADMIN']
@@ -98,8 +100,12 @@ export class OpeningPackageService {
 
   private vy(p: OpeningPackage & { rows: OpeningPackageRow[] }) {
     const fel = p.rows.filter((r) => Array.isArray(r.errors) && (r.errors as unknown[]).length > 0)
+    const { fortnoxBalance1510, fortnoxBalance2890, ...resten } = p
     return {
-      ...p,
+      ...resten,
+      // ACK-009: lagras som kronor Decimal(12,2); API:t visar öre som heltal.
+      fortnoxBalance1510Ore: fortnoxBalance1510 === null ? null : oreAv(fortnoxBalance1510),
+      fortnoxBalance2890Ore: fortnoxBalance2890 === null ? null : oreAv(fortnoxBalance2890),
       cutoverDate: brytdatumIso(p.cutoverDate),
       separateLedgerSpec: this.specUtan(p.separateLedgerSpec),
       rows: p.rows.map((r) => ({
@@ -124,6 +130,8 @@ export class OpeningPackageService {
         summaOre: v.summaOre,
         beskrivning: v.beskrivning,
         filnamn: v.filnamn,
+        system: v.system,
+        ansvarig: v.ansvarig,
       }
     }
     return ut
@@ -355,7 +363,10 @@ export class OpeningPackageService {
     const av = stamAv({
       cutover: p.cutoverDate,
       paketOre,
-      fortnoxOre: { '1510': p.fortnoxBalance1510Ore, '2890': p.fortnoxBalance2890Ore },
+      fortnoxOre: {
+        '1510': p.fortnoxBalance1510 === null ? null : oreAv(p.fortnoxBalance1510),
+        '2890': p.fortnoxBalance2890 === null ? null : oreAv(p.fortnoxBalance2890),
+      },
       spec,
     })
     await db.openingPackage.update({
@@ -392,8 +403,8 @@ export class OpeningPackageService {
       where: { id },
       data: {
         fortnoxReadRunId: run.id,
-        fortnoxBalance1510Ore: s.saldo.saldo1510Ore,
-        fortnoxBalance2890Ore: s.saldo.saldo2890Ore,
+        fortnoxBalance1510: oreTillKronorStr(s.saldo.saldo1510Ore),
+        fortnoxBalance2890: oreTillKronorStr(s.saldo.saldo2890Ore),
         ...(p.status === 'APPROVED'
           ? {
               status: 'VALIDATED',
@@ -418,7 +429,14 @@ export class OpeningPackageService {
     organizationId: string,
     id: string,
     user: { sub: string; role: Roll },
-    input: { konto: Konto; beskrivning: string; filnamn: string; innehall: string | null },
+    input: {
+      konto: Konto
+      beskrivning: string
+      filnamn: string
+      innehall: string | null
+      system?: string
+      ansvarig?: string
+    },
   ) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'ange separat reskontra')
     if (!KONTON.includes(input.konto))
@@ -436,12 +454,21 @@ export class OpeningPackageService {
         throw new BadRequestException(
           'Beskriv den separata reskontran (minst 20 tecken): vad den är och var den förs.',
         )
+      // S5-1: den separata reskontran ska vara namngiven — system och ansvarig.
+      const system = (input.system ?? '').trim()
+      const ansvarig = (input.ansvarig ?? '').trim()
+      if (system.length < 2 || ansvarig.length < 2)
+        throw new BadRequestException(
+          'Ange den separata reskontrans system och ansvarig — en namnlös reskontra kan inte avgränsa.',
+        )
       const t = tolkaSpecifikation(input.innehall)
       if (!t.ok) throw new BadRequestException(t.error)
       spec[input.konto] = {
         ...t.spec,
         beskrivning: input.beskrivning.trim(),
         filnamn: input.filnamn,
+        system,
+        ansvarig,
       }
     }
     await this.prisma.openingPackage.update({
@@ -449,6 +476,79 @@ export class OpeningPackageService {
       data: { separateLedgerSpec: spec as unknown as Prisma.InputJsonValue },
     })
     await this.raknaOmAvstamning(organizationId, id)
+    return this.get(organizationId, id)
+  }
+
+  // ── Första perioden: register ur tidigare system (KUNDSTART-009) ──────────
+  async setFirstPeriodRegister(
+    organizationId: string,
+    id: string,
+    user: { sub: string; role: Roll },
+    input: {
+      filnamn: string
+      innehall: string
+      system: string
+      ansvarig: string
+      tackningFran: string
+      tackningTill: string
+      intaktskonton: number[]
+      forskottskonton: number[]
+    },
+  ) {
+    this.kravRoll(user.role, SKRIV_ROLLER, 'ladda upp registret för första perioden')
+    const p = await this.hamta(organizationId, id)
+    if (p.status === 'EXECUTED' || p.status === 'DISCARDED')
+      throw new ConflictException(`Ett ${p.status}-paket får inget nytt register.`)
+    if (input.system.trim().length < 2 || input.ansvarig.trim().length < 2)
+      throw new BadRequestException('Ange registrets system och ansvarig.')
+    if (input.intaktskonton.length === 0)
+      throw new BadRequestException('Ange minst ett intäktskonto för hyra i tidigare system.')
+    const tack = tackningOk(input.tackningFran, input.tackningTill, p.cutoverDate)
+    if (tack) throw new BadRequestException(tack)
+    const t = tolkaForstaPeriodRegister(input.innehall)
+    if (!t.ok) throw new BadRequestException(t.error)
+    const b = brytdatumIso(p.cutoverDate)
+    for (const post of t.poster) {
+      const period = `${post.periodAr}-${String(post.periodManad).padStart(2, '0')}-01`
+      if (period < b || period > input.tackningTill)
+        throw new BadRequestException(
+          `Rad ${post.radId}: perioden ${period.slice(0, 7)} ligger utanför täckningen ${b}–${input.tackningTill}.`,
+        )
+    }
+    const register: ForstaPeriodRegister = {
+      sha256: t.sha256,
+      filnamn: input.filnamn,
+      system: input.system.trim(),
+      ansvarig: input.ansvarig.trim(),
+      tackningFran: input.tackningFran,
+      tackningTill: input.tackningTill,
+      intaktskonton: [...new Set(input.intaktskonton)].sort((x, y) => x - y),
+      forskottskonton: [...new Set(input.forskottskonton)].sort((x, y) => x - y),
+      antal: t.poster.length,
+      poster: t.poster.slice(0, 500),
+      registreradAv: user.sub,
+      registreradTid: new Date().toISOString(),
+    }
+    await this.prisma.openingPackage.update({
+      where: { id },
+      data: {
+        firstPeriodRegister: register as unknown as Prisma.InputJsonValue,
+        // Ett nytt register upphäver ett tidigare godkännande.
+        ...(p.status === 'APPROVED'
+          ? {
+              status: 'VALIDATED' as const,
+              approvedAt: null,
+              approvedById: null,
+              approvedSha256: null,
+              approvedVersion: null,
+              approvedWatermark: null,
+              approvedCutoverDate: null,
+              approvedReadRunId: null,
+              invalidatedReason: 'Nytt register för första perioden — kräver nytt godkännande.',
+            }
+          : {}),
+      },
+    })
     return this.get(organizationId, id)
   }
 
@@ -488,6 +588,10 @@ export class OpeningPackageService {
         throw new ConflictException(
           'Bind en Fortnox-läsning (saldo per brytdatum) innan godkännandet.',
         )
+      // KUNDSTART-009: utan kontrollerat register för första perioden (eller med poster i
+      // det) kan övertagandet inte godkännas.
+      const forsta = registerHinder(p.firstPeriodRegister, p.cutoverDate)
+      if (forsta) throw new ConflictException(forsta)
       if (
         p.zeroOpening &&
         (await tx.openingPackage.count({ where: { organizationId, status: 'EXECUTED' } })) > 0

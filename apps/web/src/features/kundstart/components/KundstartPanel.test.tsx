@@ -74,6 +74,7 @@ const paket = (over: Record<string, unknown> = {}) => ({
   approvedVersion: null,
   invalidatedReason: null,
   felrader: 0,
+  firstPeriodRegister: null,
   rows: [
     {
       id: 'r',

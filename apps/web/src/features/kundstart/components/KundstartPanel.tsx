@@ -18,7 +18,10 @@ import {
   kr,
   replacePackageSource,
   saveCutover,
+  setFirstPeriodRegister,
   setSeparateLedger,
+  REGISTER_MALL,
+  SPEC_MALL,
   uploadPackage,
   validatePackage,
   type OpeningPackage,
@@ -261,6 +264,13 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
   const [bekraftVerk, setBekraftVerk] = useState(false)
   const [specKonto, setSpecKonto] = useState<'1510' | '2890'>('1510')
   const [specText, setSpecText] = useState('')
+  const [specSystem, setSpecSystem] = useState('')
+  const [specAnsvarig, setSpecAnsvarig] = useState('')
+  const [regSystem, setRegSystem] = useState('')
+  const [regAnsvarig, setRegAnsvarig] = useState('')
+  const [regTill, setRegTill] = useState('')
+  const [regIntakt, setRegIntakt] = useState('')
+  const [regForskott, setRegForskott] = useState('')
   const refresh = () => qc.invalidateQueries({ queryKey: ['kundstart'] })
   const validera = useMutation({ mutationFn: () => validatePackage(id), onSuccess: refresh })
   const ersatt = useMutation({
@@ -301,6 +311,27 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
         beskrivning: specText,
         filnamn: f?.name ?? '',
         innehall: f ? await f.text() : null,
+        system: specSystem,
+        ansvarig: specAnsvarig,
+      }),
+    onSuccess: refresh,
+  })
+  const konton = (t: string) =>
+    t
+      .split(/[\s,;]+/)
+      .filter(Boolean)
+      .map(Number)
+  const register = useMutation({
+    mutationFn: async (f: File) =>
+      setFirstPeriodRegister(id, {
+        filnamn: f.name,
+        innehall: await f.text(),
+        system: regSystem,
+        ansvarig: regAnsvarig,
+        tackningFran: cutoverDate ?? '',
+        tackningTill: regTill,
+        intaktskonton: konton(regIntakt),
+        forskottskonton: konton(regForskott),
       }),
     onSuccess: refresh,
   })
@@ -320,7 +351,7 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
       </p>
     )
   const p = q.data
-  const fel = [validera, ersatt, lasOchBind, spec, godkann, verkstall, kassera]
+  const fel = [validera, ersatt, lasOchBind, spec, register, godkann, verkstall, kassera]
     .map((x) => x.error)
     .find(Boolean)
   const levande = p.status !== 'EXECUTED' && p.status !== 'DISCARDED'
@@ -407,8 +438,10 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
               </summary>
               <div className="mt-2 space-y-2">
                 <p className="text-ink-muted text-[12px]">
-                  Fil med rubriken postId;belopp. Summan måste vara exakt lika med differensen;
-                  kontot redovisas då som avgränsat, aldrig som avstämt.
+                  Fil med rubriken {SPEC_MALL}: identitet per post (motpart, dokument, datum,
+                  förfallodag) och belopp &gt; 0 — inga kvittade poster. Summan måste vara exakt
+                  lika med differensen; kontot redovisas då som avgränsat, aldrig som avstämt. Utan
+                  sådant underlag förblir differensen blockerande.
                 </p>
                 <select
                   aria-label="Konto för separat reskontra"
@@ -419,6 +452,22 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
                   <option value="1510">1510</option>
                   <option value="2890">2890</option>
                 </select>
+                <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                  <input
+                    aria-label="Den separata reskontrans system"
+                    placeholder="System (t.ex. gamla systemets kundreskontra)"
+                    value={specSystem}
+                    onChange={(e) => setSpecSystem(e.target.value)}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+                  />
+                  <input
+                    aria-label="Ansvarig för den separata reskontran"
+                    placeholder="Ansvarig (namn/roll)"
+                    value={specAnsvarig}
+                    onChange={(e) => setSpecAnsvarig(e.target.value)}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+                  />
+                </div>
                 <textarea
                   aria-label="Beskrivning av den separata reskontran"
                   value={specText}
@@ -450,6 +499,86 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
             </details>
           )}
       </div>
+
+      <section
+        aria-label="Första perioden"
+        className="space-y-2 rounded-xl border border-gray-100 p-3"
+      >
+        <h4 className="text-ink text-sm font-semibold">Första perioden i tidigare system</h4>
+        <p className="text-ink-muted text-[12px]">
+          Tidigare systemets periodbundna register över fakturerat och betalt för perioder från
+          brytdatum ({REGISTER_MALL}), även fullt betalda poster. Version 1 kan inte ta över en
+          period som redan är fakturerad eller betald: finns en sådan post, eller saknas registret,
+          är kundstarten blockerad. Fortnox-läsningen efter brytdatum är bara en kompletterande
+          riskkontroll.
+        </p>
+        {p.firstPeriodRegister ? (
+          <p
+            className={`break-words text-sm ${p.firstPeriodRegister.antal > 0 ? 'text-red-700' : 'text-emerald-700'}`}
+          >
+            Register {p.firstPeriodRegister.filnamn} (sha{' '}
+            {p.firstPeriodRegister.sha256.slice(0, 12)}…, {p.firstPeriodRegister.system},{' '}
+            {p.firstPeriodRegister.ansvarig}) täcker {p.firstPeriodRegister.tackningFran}–
+            {p.firstPeriodRegister.tackningTill}: {p.firstPeriodRegister.antal} poster.
+            {p.firstPeriodRegister.antal > 0 && ' Kundstarten är blockerad.'}
+          </p>
+        ) : (
+          <p className="text-sm text-red-700">Register saknas — kundstarten är blockerad.</p>
+        )}
+        {levande && kanSkriva && (
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+            <input
+              aria-label="Registrets system"
+              placeholder="System"
+              value={regSystem}
+              onChange={(e) => setRegSystem(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+            />
+            <input
+              aria-label="Registrets ansvarig"
+              placeholder="Ansvarig"
+              value={regAnsvarig}
+              onChange={(e) => setRegAnsvarig(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+            />
+            <input
+              aria-label="Täckning till och med"
+              type="date"
+              value={regTill}
+              onChange={(e) => setRegTill(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+            />
+            <input
+              aria-label="Intäktskonton för hyra"
+              placeholder="Intäktskonton, t.ex. 3911"
+              value={regIntakt}
+              onChange={(e) => setRegIntakt(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+            />
+            <input
+              aria-label="Förskottskonton"
+              placeholder="Förskottskonton, t.ex. 2420"
+              value={regForskott}
+              onChange={(e) => setRegForskott(e.target.value)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+            />
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-sm">
+              Ladda upp register
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="sr-only"
+                aria-label="Register för första perioden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) register.mutate(f)
+                  e.target.value = ''
+                }}
+              />
+            </label>
+          </div>
+        )}
+      </section>
 
       <RadLista p={p} />
 

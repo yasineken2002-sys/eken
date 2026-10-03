@@ -20,6 +20,11 @@ import type { Avstamning } from '../kundstart/opening-reconciliation'
 import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { evenoPosterForeBrytdatum } from '../kundstart/pre-cutover-records'
 import {
+  fortnoxRiskkontroll,
+  registerHinder,
+  type ForstaPeriodRegister,
+} from '../kundstart/first-period'
+import {
   fortnoxCustomerWritesOptIn,
   konsekvenstext,
   mappningsSha,
@@ -130,10 +135,25 @@ export class FortnoxCustomerActivationService {
         const s = saldoUrLasning(senaste, conn, paket.cutoverDate)
         if (!s.ok) hinder.push(s.skal)
         else if (
-          s.saldo.saldo1510Ore !== paket.fortnoxBalance1510Ore ||
-          s.saldo.saldo2890Ore !== paket.fortnoxBalance2890Ore
+          paket.fortnoxBalance1510 === null ||
+          paket.fortnoxBalance2890 === null ||
+          s.saldo.saldo1510Ore !== oreAv(paket.fortnoxBalance1510) ||
+          s.saldo.saldo2890Ore !== oreAv(paket.fortnoxBalance2890)
         )
           hinder.push('Fortnox-saldot per brytdatum har ändrats sedan avstämningen.')
+      }
+      // KUNDSTART-009: första perioden — registret är underlaget, läsningen en riskkontroll.
+      const forsta = registerHinder(paket.firstPeriodRegister, paket.cutoverDate)
+      if (forsta) hinder.push(forsta)
+      else if (conn) {
+        const risk = await fortnoxRiskkontroll(
+          db,
+          organizationId,
+          conn.id,
+          paket.cutoverDate,
+          paket.firstPeriodRegister as unknown as ForstaPeriodRegister,
+        )
+        if (risk) hinder.push(risk)
       }
       // Öppningsavierna och de historiska depositionerna ska summera till paketen.
       const rader = await db.openingPackageRow.findMany({

@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -6,6 +8,7 @@ import {
   IsString,
   IsUUID,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -59,6 +62,60 @@ export class SeparateLedgerDto {
   @IsString()
   @MaxLength(900_000)
   innehall!: string | null
+
+  /** S5-1: den separata reskontrans system (t.ex. "Gamla systemet X, kundreskontra B"). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  system?: string
+
+  /** S5-1: ansvarig för den separata reskontran (namn/roll). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  ansvarig?: string
+}
+
+/** KUNDSTART-009: tidigare systemets periodbundna register för perioder från brytdatum. */
+export class FirstPeriodRegisterDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  filnamn!: string
+
+  @IsString()
+  @MaxLength(900_000)
+  innehall!: string
+
+  @IsString()
+  @MaxLength(200)
+  system!: string
+
+  @IsString()
+  @MaxLength(200)
+  ansvarig!: string
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  tackningFran!: string
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  tackningTill!: string
+
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsInt({ each: true })
+  @Min(1000, { each: true })
+  @Max(9999, { each: true })
+  intaktskonton!: number[]
+
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsInt({ each: true })
+  @Min(1000, { each: true })
+  @Max(9999, { each: true })
+  forskottskonton!: number[]
 }
 
 export class ApproveOpeningPackageDto {

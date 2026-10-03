@@ -15,6 +15,7 @@
  */
 import type { FortnoxConnection, FortnoxReadRun, Prisma } from '@prisma/client'
 import { brytdatumIso } from './cutover'
+import { inomBeloppsgrans, MAX_BELOPP_TEXT } from './opening-csv'
 
 export interface FortnoxSaldoPerBrytdatum {
   readRunId: string
@@ -98,13 +99,19 @@ export function saldoUrLasning(
   })
   const d1510 = detalj[0]!
   const d2890 = detalj[1]!
+  const s1510 = d1510.ingaendeOre + d1510.rorelseOre
+  const s2890 = -(d2890.ingaendeOre + d2890.rorelseOre)
+  if (!inomBeloppsgrans(s1510) || !inomBeloppsgrans(s2890))
+    return fel(
+      `Fortnox-saldot per brytdatum överstiger gränsen ${MAX_BELOPP_TEXT} och kan inte stämmas av.`,
+    )
   return {
     ok: true,
     saldo: {
       readRunId: run.id,
       completedAt: run.completedAt.toISOString(),
-      saldo1510Ore: d1510.ingaendeOre + d1510.rorelseOre,
-      saldo2890Ore: -(d2890.ingaendeOre + d2890.rorelseOre),
+      saldo1510Ore: s1510,
+      saldo2890Ore: s2890,
       detalj,
     },
   }

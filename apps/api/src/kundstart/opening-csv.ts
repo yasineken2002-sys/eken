@@ -47,6 +47,15 @@ export function sha256Hex(text: string): string {
 }
 
 /** Kronor ('1 234,50', '1234.5', '-12') → öre. null om värdet inte är ett exakt belopp. */
+/**
+ * ACK-009: EN beloppsgräns för allt i kundstarten — paketrader, specifikationer och
+ * Fortnox-saldon lagras som Decimal(12,2) i kronor, alltså högst 9 999 999 999,99 kr
+ * (999 999 999 999 öre). Över gränsen är det ett fel med skäl, aldrig avrundning eller 500.
+ */
+export const MAX_BELOPP_ORE = 999_999_999_999
+export const MAX_BELOPP_TEXT = '9 999 999 999,99 kr'
+export const inomBeloppsgrans = (ore: number) => Math.abs(ore) <= MAX_BELOPP_ORE
+
 export function kronorTillOre(raw: string): number | null {
   const s = raw.replace(/[\s ]/g, '').replace(',', '.')
   if (!/^-?\d+(\.\d{1,2})?$/.test(s)) return null
@@ -170,6 +179,10 @@ export function tolkaOpeningCsv(text: string): OpeningCsvResult {
       }
       const o = kronorTillOre(v)
       if (o === null) errors.push(`${k} "${v}" är inget exakt belopp (högst två decimaler).`)
+      else if (!inomBeloppsgrans(o)) {
+        errors.push(`${k} "${v}" överstiger gränsen ${MAX_BELOPP_TEXT}.`)
+        return null
+      }
       return o
     }
     const originalOre = belopp('ursprungligtBelopp')
@@ -219,34 +232,90 @@ export function tolkaOpeningCsv(text: string): OpeningCsvResult {
   return { ok: true, rows, sha256: sha256Hex(text) }
 }
 
+export interface SpecPost {
+  postId: string
+  motpart: string
+  dokument: string
+  dokumentdatum: string
+  forfallodag: string
+  ore: number
+}
+
 export interface SeparateLedgerParsed {
   sha256: string
   antal: number
   summaOre: number
-  poster: { postId: string; ore: number }[]
+  poster: SpecPost[]
 }
 
-/** Specifikation av separat reskontra: rubrik `postId;belopp`, en post per rad. */
+export const SPEC_HUVUD = [
+  'postId',
+  'motpart',
+  'dokument',
+  'dokumentdatum',
+  'forfallodag',
+  'belopp',
+] as const
+
+/**
+ * KUNDSTART-011 (S5-1): specifikation av separat reskontra. Varje post ska bära spårbar
+ * identitet — motpart (kund-id och namn), dokument (fakturanummer eller verifikat),
+ * dokumentdatum, förfallodag och belopp > 0. Unikt postId och unik (motpart, dokument).
+ * Negativa poster och nollposter avvisas: ingen dold kvittning. En fil med bara
+ * postId;belopp duger inte — då förblir differensen DIFFERENS.
+ */
 export function tolkaSpecifikation(
   text: string,
 ): { ok: true; spec: SeparateLedgerParsed } | { ok: false; error: string } {
   const rader = delaCsv(text)
   if (rader.length < 2) return { ok: false, error: 'Specifikationen har inga poster.' }
   const huvud = (rader[0] ?? []).map((h) => h.trim())
-  const iId = huvud.indexOf('postId')
-  const iBel = huvud.indexOf('belopp')
-  if (iId < 0 || iBel < 0) return { ok: false, error: 'Rubrikraden ska vara postId;belopp.' }
-  const poster: { postId: string; ore: number }[] = []
-  const sett = new Set<string>()
+  const saknas = SPEC_HUVUD.filter((h) => !huvud.includes(h))
+  if (saknas.length > 0)
+    return {
+      ok: false,
+      error: `Specifikationen saknar kolumn(er): ${saknas.join(', ')}. Rubriken ska vara ${SPEC_HUVUD.join(';')} — identitet per post är obligatorisk.`,
+    }
+  const ix = Object.fromEntries(SPEC_HUVUD.map((h) => [h, huvud.indexOf(h)])) as Record<
+    (typeof SPEC_HUVUD)[number],
+    number
+  >
+  const poster: SpecPost[] = []
+  const settId = new Set<string>()
+  const settDok = new Set<string>()
   for (let r = 1; r < rader.length; r++) {
-    const id = (rader[r]?.[iId] ?? '').trim()
-    const ore = kronorTillOre((rader[r]?.[iBel] ?? '').trim())
-    if (!id) return { ok: false, error: `Rad ${r}: postId saknas.` }
-    if (sett.has(id)) return { ok: false, error: `Rad ${r}: postId ${id} förekommer två gånger.` }
-    if (ore === null || ore === 0)
-      return { ok: false, error: `Rad ${r}: belopp saknas eller är inte exakt.` }
-    sett.add(id)
-    poster.push({ postId: id, ore })
+    const c = (k: (typeof SPEC_HUVUD)[number]) => (rader[r]?.[ix[k]] ?? '').trim()
+    const post = {
+      postId: c('postId'),
+      motpart: c('motpart'),
+      dokument: c('dokument'),
+      dokumentdatum: c('dokumentdatum'),
+      forfallodag: c('forfallodag'),
+    }
+    for (const [k, v] of Object.entries(post))
+      if (!v) return { ok: false, error: `Rad ${r}: ${k} saknas — varje post kräver identitet.` }
+    if (!tolkaDatum(post.dokumentdatum) || !tolkaDatum(post.forfallodag))
+      return { ok: false, error: `Rad ${r}: dokumentdatum och forfallodag ska vara ÅÅÅÅ-MM-DD.` }
+    const ore = kronorTillOre(c('belopp'))
+    if (ore === null) return { ok: false, error: `Rad ${r}: belopp saknas eller är inte exakt.` }
+    if (ore <= 0)
+      return {
+        ok: false,
+        error: `Rad ${r}: belopp måste vara större än 0 — kvittade eller negativa poster godtas inte.`,
+      }
+    if (!inomBeloppsgrans(ore))
+      return { ok: false, error: `Rad ${r}: beloppet överstiger gränsen ${MAX_BELOPP_TEXT}.` }
+    if (settId.has(post.postId))
+      return { ok: false, error: `Rad ${r}: postId ${post.postId} förekommer två gånger.` }
+    const dok = `${post.motpart}\u0000${post.dokument}`
+    if (settDok.has(dok))
+      return {
+        ok: false,
+        error: `Rad ${r}: samma motpart och dokument (${post.dokument}) förekommer två gånger.`,
+      }
+    settId.add(post.postId)
+    settDok.add(dok)
+    poster.push({ ...post, ore })
   }
   return {
     ok: true,
@@ -257,4 +326,77 @@ export function tolkaSpecifikation(
       poster,
     },
   }
+}
+
+// ── KUNDSTART-009: register för FÖRSTA perioden ur tidigare system ─────────────────
+export const REGISTER_HUVUD = [
+  'radId',
+  'hyresgast',
+  'avtal',
+  'periodAr',
+  'periodManad',
+  'dokument',
+  'fakturerat',
+  'betalt',
+] as const
+
+export interface RegisterPost {
+  radId: string
+  hyresgast: string
+  avtal: string
+  periodAr: number
+  periodManad: number
+  dokument: string
+  faktureratOre: number
+  betaltOre: number
+}
+
+/**
+ * Tidigare systemets periodbundna fakturerings- och betalningsregister för perioder FRÅN
+ * brytdatum — även fullt betalda poster. En fil med bara rubrikraden betyder "inga poster i
+ * registret för täckningsperioden". Strikt tolkning: saknade fält, ogiltig period eller
+ * belopp utanför gränsen avvisar hela filen.
+ */
+export function tolkaForstaPeriodRegister(
+  text: string,
+): { ok: true; sha256: string; poster: RegisterPost[] } | { ok: false; error: string } {
+  const rader = delaCsv(text)
+  if (rader.length === 0) return { ok: false, error: 'Registret är tomt — rubrikraden krävs.' }
+  const huvud = (rader[0] ?? []).map((h) => h.trim())
+  const saknas = REGISTER_HUVUD.filter((h) => !huvud.includes(h))
+  if (saknas.length > 0)
+    return { ok: false, error: `Registret saknar kolumn(er): ${saknas.join(', ')}.` }
+  const ix = Object.fromEntries(REGISTER_HUVUD.map((h) => [h, huvud.indexOf(h)])) as Record<
+    (typeof REGISTER_HUVUD)[number],
+    number
+  >
+  const poster: RegisterPost[] = []
+  for (let r = 1; r < rader.length; r++) {
+    const c = (k: (typeof REGISTER_HUVUD)[number]) => (rader[r]?.[ix[k]] ?? '').trim()
+    for (const k of ['radId', 'hyresgast', 'avtal', 'dokument'] as const)
+      if (!c(k)) return { ok: false, error: `Rad ${r}: ${k} saknas.` }
+    const ar = Number(c('periodAr'))
+    const man = Number(c('periodManad'))
+    if (!Number.isInteger(ar) || ar < 2000 || !Number.isInteger(man) || man < 1 || man > 12)
+      return { ok: false, error: `Rad ${r}: ogiltig period.` }
+    const f = kronorTillOre(c('fakturerat') || '0')
+    const b = kronorTillOre(c('betalt') || '0')
+    if (f === null || b === null || f < 0 || b < 0)
+      return { ok: false, error: `Rad ${r}: fakturerat och betalt ska vara exakta belopp ≥ 0.` }
+    if (!inomBeloppsgrans(f) || !inomBeloppsgrans(b))
+      return { ok: false, error: `Rad ${r}: beloppet överstiger gränsen ${MAX_BELOPP_TEXT}.` }
+    if (f === 0 && b === 0)
+      return { ok: false, error: `Rad ${r}: en post måste ha fakturerat eller betalt belopp.` }
+    poster.push({
+      radId: c('radId'),
+      hyresgast: c('hyresgast'),
+      avtal: c('avtal'),
+      periodAr: ar,
+      periodManad: man,
+      dokument: c('dokument'),
+      faktureratOre: f,
+      betaltOre: b,
+    })
+  }
+  return { ok: true, sha256: sha256Hex(text), poster }
 }

@@ -7822,8 +7822,13 @@ model OpeningPackage {
   // Angivna Fortnox-saldon per brytdatum (öre). En differens kan INTE kvitteras bort
   // (BYGGLEDARE-002): status AVSTAMD (0), AVGRANSAD (hela differensen förklarad av en
   // verifierbar specifikation av separat reskontra) eller DIFFERENS (blockerar aktivering).
-  fortnoxBalance1510Ore Int?
-  fortnoxBalance2890Ore Int?
+  // ACK-009: samma format och gräns som raderna — kronor Decimal(12,2), max 9 999 999 999,99.
+  fortnoxBalance1510    Decimal?                     @db.Decimal(12, 2)
+  fortnoxBalance2890    Decimal?                     @db.Decimal(12, 2)
+  // ACK-009 (första perioden): kontrollerat periodbundet underlag ur tidigare system för
+  // perioder FRÅN brytdatum (fakturerat och/eller betalt). Saknas → kundstart blockerad;
+  // minst en post → blockerad (v1 kan inte representera förskott/framtida perioder).
+  firstPeriodRegister   Json?
   reconciliationStatus  OpeningReconciliationStatus?
   // Per konto: { sha256, antal, summaOre, beskrivning } för separat reskontra.
   separateLedgerSpec    Json?
@@ -7903,32 +7908,32 @@ model OpeningPackageRow {
 // OCH bindningen är lika med aktuell anslutning, år, serie och mappning vid VARJE
 // sändning. Testföretagslistan påverkas inte.
 model FortnoxCustomerActivation {
-  id                     String                          @id @default(uuid())
-  organizationId         String
-  status                 FortnoxCustomerActivationStatus @default(ACTIVE)
-  connectionId           String
-  connectionGeneration   Int
-  fortnoxDatabaseNumber  Int
-  fortnoxOrgNumber       String
-  financialYearId        Int
-  financialYearFrom      DateTime                        @db.Date
-  financialYearTo        DateTime                        @db.Date
-  voucherSeries          String
-  mappingSha256          String
+  id                    String                          @id @default(uuid())
+  organizationId        String
+  status                FortnoxCustomerActivationStatus @default(ACTIVE)
+  connectionId          String
+  connectionGeneration  Int
+  fortnoxDatabaseNumber Int
+  fortnoxOrgNumber      String
+  financialYearId       Int
+  financialYearFrom     DateTime                        @db.Date
+  financialYearTo       DateTime                        @db.Date
+  voucherSeries         String
+  mappingSha256         String
   // §12.7: alltid ett EXECUTED paket (ev. nollpaket) — ingen motivering ersätter saldokontrollen.
-  openingPackageId       String
-  fortnoxReadRunId       String
-  consequencesText       String
-  consequencesSha256     String
-  approvedById           String
-  approvedAt             DateTime                        @default(now())
-  revokedById            String?
-  revokedAt              DateTime?
+  openingPackageId      String
+  fortnoxReadRunId      String
+  consequencesText      String
+  consequencesSha256    String
+  approvedById          String
+  approvedAt            DateTime                        @default(now())
+  revokedById           String?
+  revokedAt             DateTime?
   // §12.8: beständig ogiltigförklaring — en SUPERSEDED/REVOKED blir aldrig ACTIVE igen.
-  supersededAt           DateTime?
-  invalidatedReason      String?
-  createdAt              DateTime                        @default(now())
-  updatedAt              DateTime                        @updatedAt
+  supersededAt          DateTime?
+  invalidatedReason     String?
+  createdAt             DateTime                        @default(now())
+  updatedAt             DateTime                        @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

@@ -63,7 +63,40 @@ export interface OpeningPackageSummary {
   _count?: { rows: number }
 }
 
+export interface ForstaPeriodRegister {
+  sha256: string
+  filnamn: string
+  system: string
+  ansvarig: string
+  tackningFran: string
+  tackningTill: string
+  intaktskonton: number[]
+  forskottskonton: number[]
+  antal: number
+}
+
+export const REGISTER_MALL = 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt'
+export const SPEC_MALL = 'postId;motpart;dokument;dokumentdatum;forfallodag;belopp'
+
+export const setFirstPeriodRegister = (
+  id: string,
+  b: {
+    filnamn: string
+    innehall: string
+    system: string
+    ansvarig: string
+    tackningFran: string
+    tackningTill: string
+    intaktskonton: number[]
+    forskottskonton: number[]
+  },
+) =>
+  api
+    .put<OpeningPackage>(`/kundstart/opening-packages/${id}/first-period-register`, b)
+    .then((r) => r.data)
+
 export interface OpeningPackage extends OpeningPackageSummary {
+  firstPeriodRegister: ForstaPeriodRegister | null
   cutoverDate: string
   orgNumber: string | null
   fortnoxReadRunId: string | null
@@ -96,7 +129,14 @@ export const bindRead = (id: string, readRunId: string) =>
   post<OpeningPackage>(`/kundstart/opening-packages/${id}/fortnox-read`, { readRunId })
 export const setSeparateLedger = (
   id: string,
-  b: { konto: '1510' | '2890'; beskrivning: string; filnamn: string; innehall: string | null },
+  b: {
+    konto: '1510' | '2890'
+    beskrivning: string
+    filnamn: string
+    innehall: string | null
+    system?: string
+    ansvarig?: string
+  },
 ) =>
   api
     .put<OpeningPackage>(`/kundstart/opening-packages/${id}/separate-ledger`, b)
