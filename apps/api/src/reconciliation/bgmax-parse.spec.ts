@@ -202,7 +202,9 @@ describe('tolkaBgMax — filens ram, valuta och extra referenser (PARSER-006)', 
     expect(t.fel).toHaveLength(1)
     expect(t.fel[0]).toMatch(fel)
     expect(t.fel[0]).toMatch(/Hela filen importeras inte/)
-    expect(t.stopp).toEqual([{ dag: null }])
+    expect(t.stopp.map((s) => [s.omfattning, s.skäl, s.dag, s.beloppOre])).toEqual([
+      ['FIL', 'FILRAM', null, null],
+    ])
   })
 
   it.each([
@@ -276,5 +278,28 @@ describe('tolkaBgMax — filens ram, valuta och extra referenser (PARSER-006)', 
       ),
     )
     expect(t.stopp.map((s) => s.dag?.toISOString().slice(0, 10))).toEqual(['2026-11-02'])
+    // IMPORTSTOPP-009: betalarens NETTO (TK20 − TK21) och bankgiro följer med; inget uppfunnet.
+    expect(t.stopp.map((s) => [s.omfattning, s.skäl, s.beloppOre, s.avsandarBankgiro])).toEqual([
+      ['BETALARE', 'AVDRAG_BETALARE', 920800 - 10000, '0051234567'],
+    ])
+  })
+
+  it('stoppens nycklar är deterministiska: samma fil ger samma nycklar (replay)', () => {
+    const f = fil(
+      tk01(),
+      tk05(),
+      post('20', { bg: '0051234567', ref: '00000000846', ore: 920800, lopnr: 2 }),
+      post('21', { bg: '0051234567', ref: 'KREDIT-77', ore: 10000, lopnr: 3 }),
+      tk15('20261102', 920800 - 10000, 2),
+      tk05().replace('SEK', 'EUR'),
+      p1(),
+      tk15('20261103', 603700, 1).slice(0, 68) + 'EUR' + tk15('20261103', 603700, 1).slice(71),
+      tk70(2, 1, 2),
+    )
+    const a = tolkaBgMax(f).stopp.map((s) => s.nyckel)
+    expect(a).toEqual(tolkaBgMax(f).stopp.map((s) => s.nyckel))
+    expect(new Set(a).size).toBe(2)
+    // Valutastoppet: beloppet är i fel valuta → okänt, inte ett SEK-belopp.
+    expect(tolkaBgMax(f).stopp.find((s) => s.skäl === 'VALUTA')?.beloppOre).toBeNull()
   })
 })

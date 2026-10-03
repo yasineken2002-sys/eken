@@ -48,6 +48,7 @@ import {
 } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
 import { ManualMatchModal } from './components/ManualMatchModal'
+import { ImportStopsCard } from './components/ImportStopsCard'
 import { BankAccountForm, ImportkontoForklaring } from './components/BankAccountForm'
 import { BankAccountsCard } from './components/BankAccountsCard'
 import { useBankConsents } from './hooks/usePsd2'
@@ -946,6 +947,8 @@ export function ReconciliationPage() {
           ORSAKEN KOMMER FRÅN SERVERN och renderas som den är. Att formulera om
           den här hade gett två versioner av samma besked — en i 409-svaret från
           "skicka krav nu", en här — och den som är fel är den ingen jämför. */}
+      {/* IMPORTSTOPP-009: kända importstopp pausar automatiska krav tills de hanterats. */}
+      <ImportStopsCard />
       {granskning.data?.pausad && (
         <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-start gap-3">

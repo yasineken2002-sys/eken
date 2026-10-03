@@ -155,6 +155,9 @@ export const DELETION_STEPS: readonly Step[] = [
   // ändrar FK:n till Restrict är vägen redan rätt i stället för att bli röd i
   // drift.
   { model: 'BankImportAttempt', restrictAgainst: '— (Cascade mot Organization)', where: byOrg },
+  // IMPORTSTOPP-009 — kända importstopp. CASCADE mot Organization, SET NULL mot kontot;
+  // står uttryckligen före kontot av samma skäl som importförsöken ovan.
+  { model: 'BankImportStop', restrictAgainst: '— (Cascade mot Organization)', where: byOrg },
   // #F034c — MÅLKONTOT, och det måste ligga EFTER bankraderna och
   // importförsöken. `BankTransaction.bankAccountId` är Restrict mot kontot, så
   // ett konto med bankrader under sig går inte att radera — raderna ovan tar

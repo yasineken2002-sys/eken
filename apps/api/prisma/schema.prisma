@@ -959,6 +959,7 @@ model Organization {
 
   // G2-AVSLUT — granskningspausens perioder.
   bankIdentityReviewPauses BankIdentityReviewPause[]
+  bankImportStops          BankImportStop[]
 
   @@index([orgNumber])
   @@index([customerNumber])
@@ -2805,6 +2806,47 @@ model BankIdentityReviewPause {
   @@index([organizationId, endedAt])
 }
 
+// IMPORTSTOPP-009 (FORTNOX-100): känt, OLÖST importstopp — pengar (eller en hel fil/ett
+// avsnitt) som en bankimport INTE tog in. Organisationsbundet och varaktigt: det består
+// över omstart, nya filer, andra konton och färskhetstoleransen, och pausar automatiska
+// krav (`PaymentFreshnessService.assertIngenOlostIdentitetsgranskning`) tills en behörig
+// människa markerat det hanterat med motivering. Raden raderas aldrig — historiken består.
+//
+// Fälten är bara det filen säger: okänt belopp/datum/betalare förblir NULL. Ingen
+// BankTransaction skapas — ett stopp är inte en betalning.
+//
+// `stopKey` = sha256(fil, konto, omfattning, avsnitt, skäl, betalare/löpnummer). Samma fil
+// igen (replay, övertaget försök, samtidig import) ger samma nyckel → ingen dubblett, och
+// ett redan löst stopp öppnas inte igen av samma bytes.
+model BankImportStop {
+  id             String  @id @default(uuid())
+  organizationId String
+  bankAccountId  String?
+  kind           String
+  fileName       String
+  contentHash    String
+  scope          String
+  reasonCode     String
+  message        String
+  paymentDate    DateTime?
+  amount         Decimal?  @db.Decimal(12, 2)
+  reference      String?
+  payerBankgiro  String?
+  stopKey        String
+
+  createdAt      DateTime  @default(now())
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, stopKey])
+  @@index([organizationId, resolvedAt])
+  @@index([bankAccountId])
+}
+
 model BankAccount {
   id             String  @id @default(uuid())
   organizationId String
@@ -2818,6 +2860,7 @@ model BankAccount {
   organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   transactions   BankTransaction[]
   importAttempts BankImportAttempt[]
+  importStops    BankImportStop[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

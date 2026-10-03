@@ -560,3 +560,34 @@ export function bindEnkonto(läge: Kontolistläge, mål: Importmål): Importmål
 export function nyImportomgång(mål: Importmål): Importmål {
   return mål.typ === 'valt' ? mål : { typ: 'obestämt' }
 }
+
+// ── IMPORTSTOPP-009 (FORTNOX-100) ────────────────────────────────────────────
+/**
+ * Ett känt importstopp: pengar (eller en hel fil/ett avsnitt) som en bankimport inte
+ * tog in. Fält som filen inte anger är `null` och visas som okända — aldrig gissade.
+ */
+export interface Importstopp {
+  id: string
+  kind: string
+  fileName: string
+  scope: 'FIL' | 'AVSNITT' | 'BETALARE'
+  reasonCode: string
+  message: string
+  paymentDate: string | null
+  amount: number | null
+  reference: string | null
+  payerBankgiro: string | null
+  createdAt: string
+  resolvedAt: string | null
+  resolvedById: string | null
+  resolutionNote: string | null
+  bankAccount: { id: string; name: string; accountNumber: string | null } | null
+}
+
+export function getImportStops(status: 'open' | 'all' = 'open'): Promise<Importstopp[]> {
+  return get<Importstopp[]>('/reconciliation/import-stops', { status })
+}
+
+export async function resolveImportStop(id: string, note: string): Promise<void> {
+  await patch(`/reconciliation/import-stops/${id}/resolve`, { note })
+}

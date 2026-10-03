@@ -7,7 +7,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common'
-import { tolkaBgMax } from './bgmax-parse'
+import { tolkaBgMax, type BgMaxStopp } from './bgmax-parse'
 import { BETALBARA_AVISTATUSAR, ärBetalbarAvistatus } from './betalbara-avistatusar'
 import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -1410,6 +1410,87 @@ export class ReconciliationService {
     return medFörsöksinfo(kvittens)
   }
 
+  /**
+   * IMPORTSTOPP-009 (FORTNOX-100): lagra kända, olösta importstopp varaktigt.
+   *
+   * Samma EXKLUSIVA org-lås som G2-granskningsraderna (`lasOrdningForOlostGranskning`);
+   * effekternas grind tar det DELADE låset och läser stoppen i samma ögonblick. Nyckeln
+   * är fil + konto + stoppets nyckel inom filen, och `skipDuplicates` är `ON CONFLICT DO
+   * NOTHING`: replay, övertaget försök och samtidig import ger ett stopp — och ett redan
+   * LÖST stopp öppnas inte igen av samma bytes (det har hanterats).
+   */
+  private async registreraImportstopp(
+    organizationId: string,
+    fil: {
+      bankAccountId: string
+      kind: string
+      fileName: string
+      contentHash: string
+      stopp: BgMaxStopp[]
+    },
+  ): Promise<void> {
+    if (fil.stopp.length === 0) return
+    await this.prisma.$transaction(async (tx) => {
+      await this.freshness.lasOrdningForOlostGranskning(tx, organizationId)
+      await tx.bankImportStop.createMany({
+        data: fil.stopp.map((st) => ({
+          organizationId,
+          bankAccountId: fil.bankAccountId,
+          kind: fil.kind,
+          fileName: fil.fileName,
+          contentHash: fil.contentHash,
+          scope: st.omfattning,
+          reasonCode: st.skäl,
+          message: st.text,
+          paymentDate: st.dag,
+          amount: st.beloppOre === null ? null : new Decimal(st.beloppOre).div(100),
+          reference: st.referens,
+          payerBankgiro: st.avsandarBankgiro,
+          stopKey: crypto
+            .createHash('sha256')
+            .update(`${fil.kind}|${fil.contentHash}|${fil.bankAccountId}|${st.nyckel}`)
+            .digest('hex'),
+        })),
+        skipDuplicates: true,
+      })
+    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+    this.logger.warn(
+      `[importstopp] ${fil.stopp.length} stopp i ${fil.kind}-filen ${fil.fileName} (org ${organizationId}) — ` +
+        'automatiska krav pausas tills de markerats hanterade.',
+    )
+  }
+
+  /** IMPORTSTOPP-009: organisationens importstopp, olösta först. Historiken bevaras. */
+  async listImportStops(organizationId: string, status: 'open' | 'all' = 'open') {
+    const rader = await this.prisma.bankImportStop.findMany({
+      where: { organizationId, ...(status === 'open' ? { resolvedAt: null } : {}) },
+      include: { bankAccount: { select: { id: true, name: true, accountNumber: true } } },
+      orderBy: [{ resolvedAt: { sort: 'desc', nulls: 'first' } }, { createdAt: 'desc' }],
+      take: 500,
+    })
+    return rader.map((r) => ({ ...r, amount: r.amount === null ? null : Number(r.amount) }))
+  }
+
+  /**
+   * IMPORTSTOPP-009: uttrycklig, behörig upplösning med motivering, aktör och tid.
+   * Raden raderas aldrig. Ett redan löst stopp kan inte lösas igen (409) — historiken
+   * skrivs inte över. Organisationen ingår i WHERE: ett annat bolags stopp är 404.
+   */
+  async resolveImportStop(id: string, organizationId: string, userId: string, note: string) {
+    const motivering = note.trim()
+    if (motivering.length < 10) {
+      throw new BadRequestException('Beskriv hur stoppet hanterats (minst 10 tecken).')
+    }
+    const rad = await this.prisma.bankImportStop.findFirst({ where: { id, organizationId } })
+    if (!rad) throw new NotFoundException('Importstoppet hittades inte')
+    const { count } = await this.prisma.bankImportStop.updateMany({
+      where: { id, organizationId, resolvedAt: null },
+      data: { resolvedAt: new Date(), resolvedById: userId, resolutionNote: motivering },
+    })
+    if (count === 0) throw new ConflictException('Importstoppet är redan markerat som hanterat.')
+    this.logger.log(`[importstopp] ${id} (org ${organizationId}) markerat hanterat av ${userId}.`)
+  }
+
   /** Radloopen. Körs av `attempts.körEnGång` — högst en gång per avtryck. */
   private async körBgMaxImport(
     fileBuffer: Buffer,
@@ -1436,6 +1517,16 @@ export class ReconciliationService {
     // inbetalningar. Stoppade avsnitt/poster redovisas som läsbara fel — ingen påhittad allokering.
     const tolkning = tolkaBgMax(text)
     result.errors.push(...tolkning.fel)
+    // IMPORTSTOPP-009: stoppen lagras FÖRE första raden tas in — och före ett eventuellt
+    // 400-svar för en oläsbar fil — så att inget automatiskt krav kan passera innan
+    // organisationen vet att pengar saknas.
+    await this.registreraImportstopp(organizationId, {
+      bankAccountId,
+      kind: 'BGMAX',
+      fileName,
+      contentHash: hashaBytes(fileBuffer),
+      stopp: tolkning.stopp,
+    })
     let latestCoverage: Date | null = null
     // #F034b — förekomstnummer per radidentitet INOM DEN HÄR FILEN.
     const förekomster = new Förekomsträknare()

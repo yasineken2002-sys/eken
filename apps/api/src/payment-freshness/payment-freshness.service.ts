@@ -59,6 +59,26 @@ export class IdentityReviewPausedError extends Error {
   }
 }
 
+/**
+ * IMPORTSTOPP-009 (FORTNOX-100): automatiska krav pausade av ett känt, OLÖST importstopp —
+ * pengar som en bankimport inte tog in (`BankImportStop`). Underklass till
+ * `IdentityReviewPausedError` med avsikt: varje befintlig anropare (hyres- och
+ * fakturapåminnelse, ränta, kundförlust) hanterar redan den som "pausad, hoppa över" —
+ * ingen väg kan glömma den nya pausen. Skild från färskheten: frågan är inte om nyare
+ * data finns, utan att vi VET att data saknas.
+ */
+export class ImportStopPausedError extends IdentityReviewPausedError {
+  readonly orsak = 'IMPORTSTOPP_OLOST'
+  constructor(readonly antalStopp: number) {
+    super(antalStopp)
+    this.message =
+      `Automatiska krav är pausade: ${antalStopp} importstopp är olöst(a) — pengar som en ` +
+      'bankimport inte kunde ta in. Hantera dem i bankavstämningen (Importstopp) och markera ' +
+      'dem hanterade innan krav går vidare.'
+    this.name = 'ImportStopPausedError'
+  }
+}
+
 // Samma mottagarroller som morgonrapporten/övriga org-aviseringar.
 const ALERT_RECIPIENT_ROLES: UserRole[] = [
   UserRole.OWNER,
@@ -237,6 +257,11 @@ export class PaymentFreshnessService {
       where: olostGranskningForOrg(organizationId),
     })
     if (antal > 0) throw new IdentityReviewPausedError(antal)
+    // IMPORTSTOPP-009: samma lås, samma ögonblick. Stoppet skapas under det exklusiva
+    // låset (`lasOrdningForOlostGranskning`) innan importen tar in något, så en effekt
+    // som läser här kan inte passera mellan upptäckt och lagring.
+    const stopp = await tx.bankImportStop.count({ where: { organizationId, resolvedAt: null } })
+    if (stopp > 0) throw new ImportStopPausedError(stopp)
   }
 
   /**
@@ -550,12 +575,20 @@ export class PaymentFreshnessService {
    */
   async pausadeAvGranskning(organizationIds: string[]): Promise<Set<string>> {
     if (organizationIds.length === 0) return new Set()
-    const rader = await this.prisma.bankTransaction.groupBy({
-      by: ['organizationId'],
-      where: { organizationId: { in: organizationIds }, ...OLOST_IDENTITETSGRANSKNING },
-      _count: { _all: true },
-    })
-    return new Set(rader.map((r) => r.organizationId))
+    const [rader, stopp] = await Promise.all([
+      this.prisma.bankTransaction.groupBy({
+        by: ['organizationId'],
+        where: { organizationId: { in: organizationIds }, ...OLOST_IDENTITETSGRANSKNING },
+        _count: { _all: true },
+      }),
+      // IMPORTSTOPP-009: ett olöst importstopp pausar på samma sätt.
+      this.prisma.bankImportStop.groupBy({
+        by: ['organizationId'],
+        where: { organizationId: { in: organizationIds }, resolvedAt: null },
+        _count: { _all: true },
+      }),
+    ])
+    return new Set([...rader, ...stopp].map((r) => r.organizationId))
   }
 
   private async lockOrganization(

@@ -49,12 +49,34 @@ export interface BgMaxAvsnitt {
   betalningar: BgMaxPost[]
 }
 
+/**
+ * IMPORTSTOPP-009: ett stopp är pengar (eller en hel fil/ett avsnitt) som INTE importerats.
+ * Fälten är bara det filen faktiskt säger — okänt förblir null, aldrig ett uppfunnet värde.
+ */
+export interface BgMaxStopp {
+  omfattning: 'FIL' | 'AVSNITT' | 'BETALARE'
+  /** Stabil skälkod, t.ex. AVDRAG_BETALARE, VALUTA, FILRAM. */
+  skäl: string
+  /** Samma läsbara text som i `fel`. */
+  text: string
+  /** Betalningsdag ur TK15, null om okänd. */
+  dag: Date | null
+  /** Avsnittets ordningsnummer i filen (1-baserat), null på filnivå. */
+  avsnitt: number | null
+  /** Belopp i öre när filen anger ett tillförlitligt belopp, annars null. */
+  beloppOre: number | null
+  referens: string | null
+  avsandarBankgiro: string | null
+  /** Deterministisk nyckel inom filen: samma fil → samma nyckel (replay/samtidighet). */
+  nyckel: string
+}
+
 export interface BgMaxTolkning {
   avsnitt: BgMaxAvsnitt[]
   /** Läsbara stopp och radfel. Varje stoppad post eller avsnitt redovisas här. */
   fel: string[]
-  /** Ett element per stopp: betalningsdagen där pengar inte importerades (null = okänd dag). */
-  stopp: Array<{ dag: Date | null }>
+  /** Ett element per stopp, med det som är känt om de pengar som inte importerades. */
+  stopp: BgMaxStopp[]
 }
 
 const kr = (ore: number) => (ore / 100).toFixed(2).replace('.', ',')
@@ -62,14 +84,35 @@ const kr = (ore: number) => (ore / 100).toFixed(2).replace('.', ',')
 export function tolkaBgMax(text: string): BgMaxTolkning {
   const rader = text.split(/\r?\n/).filter((l) => l.length > 0)
   const ut: BgMaxTolkning = { avsnitt: [], fel: [], stopp: [] }
+  const stoppa = (
+    s: Pick<BgMaxStopp, 'omfattning' | 'skäl' | 'text'> & Partial<BgMaxStopp> & { id: string },
+  ) => {
+    ut.fel.push(s.text)
+    ut.stopp.push({
+      omfattning: s.omfattning,
+      skäl: s.skäl,
+      text: s.text,
+      dag: s.dag ?? null,
+      avsnitt: s.avsnitt ?? null,
+      beloppOre: s.beloppOre ?? null,
+      referens: s.referens ?? null,
+      avsandarBankgiro: s.avsandarBankgiro ?? null,
+      nyckel: `${s.omfattning}:${s.avsnitt ?? '-'}:${s.skäl}:${s.id}`,
+    })
+  }
 
   // ── Filnivå (PARSER-006): start- och slutpost krävs och ska stämma ──────────
   const filfel = kontrolleraFil(rader)
   if (filfel) {
-    ut.fel.push(`${filfel} Hela filen importeras inte; hämta om filen från banken.`)
-    ut.stopp.push({ dag: null })
+    stoppa({
+      omfattning: 'FIL',
+      skäl: 'FILRAM',
+      text: `${filfel} Hela filen importeras inte; hämta om filen från banken.`,
+      id: 'fil',
+    })
     return ut
   }
+  let avsnittNr = 0
 
   let öppet: {
     betalningar: BgMaxPost[]
@@ -78,6 +121,7 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
     valuta: string
     radfel: number
     startrad: number
+    nr: number
   } | null = null
 
   const läsPost = (rad: string, radnr: number): BgMaxPost | null => {
@@ -101,8 +145,13 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
     öppet = null
     const beskriv = `Avsnittet som börjar på rad ${a.startrad}`
     if (tk15 === null) {
-      ut.fel.push(`${beskriv} saknar insättningspost (TK15) — avsnittet importeras inte.`)
-      ut.stopp.push({ dag: null })
+      stoppa({
+        omfattning: 'AVSNITT',
+        skäl: 'SAKNAR_TK15',
+        avsnitt: a.nr,
+        id: String(a.startrad),
+        text: `${beskriv} saknar insättningspost (TK15) — avsnittet importeras inte.`,
+      })
       return
     }
     const ds = tk15.slice(37, 45)
@@ -114,19 +163,29 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
       Number.isNaN(datum.getTime()) ||
       datum.toISOString().slice(0, 10).replace(/-/g, '') !== ds
     ) {
-      ut.fel.push(
-        `${beskriv}: insättningsposten (rad ${radnr}) har ingen giltig betalningsdag — avsnittet importeras inte.`,
-      )
-      ut.stopp.push({ dag: null })
+      stoppa({
+        omfattning: 'AVSNITT',
+        skäl: 'OGILTIG_BETALNINGSDAG',
+        avsnitt: a.nr,
+        id: String(a.startrad),
+        text: `${beskriv}: insättningsposten (rad ${radnr}) har ingen giltig betalningsdag — avsnittet importeras inte.`,
+      })
       return
     }
-    const stoppaAvsnitt = (text: string) => {
-      ut.fel.push(text)
-      ut.stopp.push({ dag: datum })
-    }
+    const stoppaAvsnitt = (skäl: string, text: string, beloppOre: number | null = null) =>
+      stoppa({
+        omfattning: 'AVSNITT',
+        skäl,
+        text,
+        dag: datum,
+        avsnitt: a.nr,
+        beloppOre,
+        id: String(a.startrad),
+      })
     const valuta15 = tk15.slice(68, 71)
     if (a.valuta !== 'SEK' || valuta15 !== 'SEK') {
       stoppaAvsnitt(
+        'VALUTA',
         `${beskriv} (betalningsdag ${ds}): valuta "${a.valuta.trim()}" i öppningsposten och "${valuta15.trim()}" i ` +
           'insättningsposten — bara SEK stöds och ingen växling görs. Avsnittet importeras inte.',
       )
@@ -134,6 +193,7 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
     }
     if (a.radfel > 0) {
       stoppaAvsnitt(
+        'OLASBAR_POST',
         `${beskriv} innehåller ${a.radfel} oläsbara poster — avsnittet importeras inte, eftersom insättningen då inte kan stämmas av.`,
       )
       return
@@ -150,15 +210,19 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
       antal !== a.betalningar.length + a.avdrag.length
     ) {
       stoppaAvsnitt(
+        'AVSNITT_STAMMER_INTE',
         `${beskriv}: insättningsposten anger ${Number.isFinite(insattOre) ? kr(insattOre) : '?'} kr i ${Number.isFinite(antal) ? antal : '?'} poster, ` +
           `men avsnittet innehåller ${kr(summa)} kr i ${a.betalningar.length + a.avdrag.length} poster — avsnittet importeras inte.`,
       )
       return
     }
     if (a.avdrag.some((p) => /^0+$/.test(p.avsandarBankgiro))) {
+      // Insättningen stämmer med avsnittet (kontrollerat ovan) → beloppet är känt.
       stoppaAvsnitt(
+        'AVDRAG_OKAND_BETALARE',
         `${beskriv} (betalningsdag ${ds}) innehåller avdrag (TK21) utan känd betalare — avdraget kan inte knytas till rätt betalning. ` +
           `Hela avsnittet (insättning ${kr(insattOre)} kr) importeras inte; hantera det manuellt.`,
+        insattOre,
       )
       return
     }
@@ -169,6 +233,7 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
     const föräldralös = a.extraRef.find((x) => !poster.has(nyckel(x)))
     if (föräldralös) {
       stoppaAvsnitt(
+        'EXTRA_REFERENS_UTAN_BETALNING',
         `${beskriv} (betalningsdag ${ds}): extra referensnummerpost på rad ${föräldralös.radnr} hör inte till någon betalning ` +
           'i avsnittet — avsnittet kan inte stämmas av och importeras inte.',
       )
@@ -179,23 +244,47 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
       const typer = [
         ...new Set(a.extraRef.filter((x) => nyckel(x) === nyckel(p)).map((x) => `TK${x.tk}`)),
       ]
-      ut.fel.push(
-        `Betalningsdag ${ds}: betalningen på ${kr(p.beloppOre)} kr (referens ${p.referens || '–'}, löpnummer ${p.bgcLopnummer}) ` +
+      // Beloppet är betalningspostens (TK20). Vad TK23-avdraget motsvarar är inte känt här.
+      stoppa({
+        omfattning: 'BETALARE',
+        skäl: 'EXTRA_REFERENS',
+        dag: datum,
+        avsnitt: a.nr,
+        beloppOre: p.beloppOre,
+        referens: p.referens || null,
+        avsandarBankgiro: /^0+$/.test(p.avsandarBankgiro) ? null : p.avsandarBankgiro,
+        id: `${p.avsandarBankgiro}:${p.bgcLopnummer}`,
+        text:
+          `Betalningsdag ${ds}: betalningen på ${kr(p.beloppOre)} kr (referens ${p.referens || '–'}, löpnummer ${p.bgcLopnummer}) ` +
           `har extra referensnummer (${typer.join('/')}) och avser alltså flera referenser eller bär ett avdrag. ` +
           'Den fördelas inte automatiskt och importeras inte; hantera den manuellt.',
-      )
-      ut.stopp.push({ dag: datum })
+      })
     }
     const medAvdrag = new Set(a.avdrag.map((p) => p.avsandarBankgiro))
-    if (medAvdrag.size > 0) ut.stopp.push({ dag: datum })
     for (const bg of medAvdrag) {
       const b = a.betalningar.filter((p) => p.avsandarBankgiro === bg)
       const d = a.avdrag.filter((p) => p.avsandarBankgiro === bg)
-      ut.fel.push(
-        `Betalningsdag ${ds}: betalare med bankgiro ${bg} har ${b.length} betalning(ar) på ${kr(b.reduce((s, p) => s + p.beloppOre, 0))} kr ` +
-          `och ${d.length} avdrag (TK21) på ${kr(d.reduce((s, p) => s + p.beloppOre, 0))} kr (referens ${d.map((p) => p.referens || '–').join(', ')}). ` +
+      const bOre = b.reduce((s, p) => s + p.beloppOre, 0)
+      const dOre = d.reduce((s, p) => s + p.beloppOre, 0)
+      // Nettot (betalningar − avdrag) är det betalaren faktiskt satte in enligt filen.
+      stoppa({
+        omfattning: 'BETALARE',
+        skäl: 'AVDRAG_BETALARE',
+        dag: datum,
+        avsnitt: a.nr,
+        beloppOre: bOre - dOre,
+        referens:
+          [...b, ...d]
+            .map((p) => p.referens)
+            .filter(Boolean)
+            .join(', ') || null,
+        avsandarBankgiro: bg,
+        id: bg,
+        text:
+          `Betalningsdag ${ds}: betalare med bankgiro ${bg} har ${b.length} betalning(ar) på ${kr(bOre)} kr ` +
+          `och ${d.length} avdrag (TK21) på ${kr(dOre)} kr (referens ${d.map((p) => p.referens || '–').join(', ')}). ` +
           `Avdrag kopplas inte automatiskt — betalarens poster importeras inte; hantera dem manuellt mot kreditfakturan.`,
-      )
+      })
     }
     ut.avsnitt.push({
       betalningsdag: datum,
@@ -210,7 +299,9 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
     const tk = rad.slice(0, 2)
     if (tk === '05') {
       if (öppet) stäng(null, radnr)
+      avsnittNr++
       öppet = {
+        nr: avsnittNr,
         betalningar: [],
         avdrag: [],
         extraRef: [],
@@ -220,10 +311,12 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
       }
     } else if (tk === '20' || tk === '21') {
       if (!öppet) {
-        ut.fel.push(
-          `Rad ${radnr}: ${tk === '20' ? 'betalningspost' : 'avdragspost'} utanför ett avsnitt — importeras inte.`,
-        )
-        ut.stopp.push({ dag: null })
+        stoppa({
+          omfattning: 'AVSNITT',
+          skäl: 'POST_UTANFOR_AVSNITT',
+          id: `rad${radnr}`,
+          text: `Rad ${radnr}: ${tk === '20' ? 'betalningspost' : 'avdragspost'} utanför ett avsnitt — importeras inte.`,
+        })
         return
       }
       const p = läsPost(rad, radnr)
@@ -231,8 +324,12 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
       else (tk === '20' ? öppet.betalningar : öppet.avdrag).push(p)
     } else if (tk === '22' || tk === '23') {
       if (!öppet) {
-        ut.fel.push(`Rad ${radnr}: extra referensnummerpost utanför ett avsnitt — importeras inte.`)
-        ut.stopp.push({ dag: null })
+        stoppa({
+          omfattning: 'AVSNITT',
+          skäl: 'POST_UTANFOR_AVSNITT',
+          id: `rad${radnr}`,
+          text: `Rad ${radnr}: extra referensnummerpost utanför ett avsnitt — importeras inte.`,
+        })
         return
       }
       öppet.extraRef.push({
@@ -243,8 +340,12 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
       })
     } else if (tk === '15') {
       if (!öppet) {
-        ut.fel.push(`Rad ${radnr}: insättningspost utan öppningspost — importeras inte.`)
-        ut.stopp.push({ dag: null })
+        stoppa({
+          omfattning: 'AVSNITT',
+          skäl: 'POST_UTANFOR_AVSNITT',
+          id: `rad${radnr}`,
+          text: `Rad ${radnr}: insättningspost utan öppningspost — importeras inte.`,
+        })
       } else stäng(rad, radnr)
     }
   })
