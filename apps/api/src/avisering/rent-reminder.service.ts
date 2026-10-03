@@ -85,6 +85,13 @@ export type RentCollectionState =
   | 'REMINDERS_OFF'
   /** Betalningsdatan är inaktuell — kravtrappan är PAUSAD (INV-B). */
   | 'PAUSED_STALE'
+  /**
+   * STATUS-011 (FORTNOX-100): en importerad betalning väntar på identitetsgranskning —
+   * samma paus som grinden (`IdentityReviewPausedError`) tillämpar på nästa steg.
+   */
+  | 'PAUSED_IDENTITY_REVIEW'
+  /** STATUS-011: ett känt, olöst importstopp (`ImportStopPausedError`) pausar nästa steg. */
+  | 'PAUSED_IMPORT_STOP'
   /** Under tröskeln. Väntar legitimt, och det finns ett datum. */
   | 'WAITING'
   /** Tröskeln passerad, men INV-B saknar något. Står stilla. */
@@ -109,6 +116,8 @@ export interface RentCollectionStatus {
   collectionStage: RentNotice['collectionStage']
   /** INV-B:s saknade krav. FYLLS ALLTID, oavsett `state`. */
   missing: string[]
+  /** STATUS-011: grindens pausorsaker (olösta granskningsrader, olösta importstopp). */
+  pausedBy: { identityReview: number; importStops: number }
   /**
    * K2/F4 — BETALNINGSMÅLET, ur samma `checkPaymentTarget` som cron-loopen och
    * påminnelsejobbet grindar på. EN regel, inte två.
@@ -1702,6 +1711,9 @@ export class RentReminderService {
 
     const org = notice.organization
     const freshness = this.freshness.evaluate(org, now)
+    // STATUS-011: samma källor och samma ordning som grinden (färskhet → granskning →
+    // importstopp). Utan dem visade vyn READY medan nästa körning pausades.
+    const paus = await this.freshness.pausorsaker(notice.organizationId)
     const thresholdDays = org.rentReminderDay + org.rentInkassoDaysAfterReminder
     const daysOverdue = swedishDaysBetween(notice.dueDate, now)
 
@@ -1820,18 +1832,24 @@ export class RentReminderService {
           ? 'REMINDERS_OFF'
           : freshness.stale
             ? 'PAUSED_STALE'
-            : malBlockerarNastaSteg
-              ? 'BLOCKED_PAYMENT_TARGET'
-              : daysOverdue <= 0 || daysOverdue < thresholdDays
-                ? 'WAITING'
-                : missing.length > 0
-                  ? 'BLOCKED'
-                  : 'READY'
+            : paus.identitetsgranskning > 0
+              ? 'PAUSED_IDENTITY_REVIEW'
+              : paus.importstopp > 0
+                ? 'PAUSED_IMPORT_STOP'
+                : malBlockerarNastaSteg
+                  ? 'BLOCKED_PAYMENT_TARGET'
+                  : daysOverdue <= 0 || daysOverdue < thresholdDays
+                    ? 'WAITING'
+                    : missing.length > 0
+                      ? 'BLOCKED'
+                      : 'READY'
 
     return {
       state,
       collectionStage: notice.collectionStage,
       missing,
+      /** STATUS-011: grindens pausorsaker, ifyllda oavsett `state`. */
+      pausedBy: { identityReview: paus.identitetsgranskning, importStops: paus.importstopp },
       paymentTarget: {
         ok: betalningsmal.ok,
         code: betalningsmal.ok ? null : betalningsmal.block.code,

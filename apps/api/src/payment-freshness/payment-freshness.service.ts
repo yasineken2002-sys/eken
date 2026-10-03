@@ -573,6 +573,21 @@ export class PaymentFreshnessService {
    * `assertIngenOlostIdentitetsgranskning` inne i varje effekts egen
    * transaktion.
    */
+  /**
+   * STATUS-011 (FORTNOX-100): VARFÖR grinden skulle pausa — samma två källor som
+   * `assertIngenOlostIdentitetsgranskning` läser, för vyer som ska säga sanningen om
+   * nästa automatiska steg. En läsning; tar inget lås och ändrar ingenting.
+   */
+  async pausorsaker(
+    organizationId: string,
+  ): Promise<{ identitetsgranskning: number; importstopp: number }> {
+    const [identitetsgranskning, importstopp] = await Promise.all([
+      this.prisma.bankTransaction.count({ where: olostGranskningForOrg(organizationId) }),
+      this.prisma.bankImportStop.count({ where: { organizationId, resolvedAt: null } }),
+    ])
+    return { identitetsgranskning, importstopp }
+  }
+
   async pausadeAvGranskning(organizationIds: string[]): Promise<Set<string>> {
     if (organizationIds.length === 0) return new Set()
     const [rader, stopp] = await Promise.all([
