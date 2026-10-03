@@ -47,7 +47,8 @@ export class FortnoxController {
       this.readback.latest(organizationId),
       this.sender
         .expireLeases(organizationId)
-        .then(() => this.exports.counts(organizationId, this.sender.sendingEnabled)),
+        .then(() => this.sender.sendingEnabledFor(organizationId))
+        .then((enabled) => this.exports.counts(organizationId, enabled)),
     ])
     return toStatusResponse({
       enabled: this.connections.enabled,

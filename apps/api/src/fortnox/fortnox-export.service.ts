@@ -22,7 +22,13 @@ import { PrismaService } from '../common/prisma/prisma.service'
 export const FORTNOX_VOUCHER_DRAFT_BUILDER = Symbol('FORTNOX_VOUCHER_DRAFT_BUILDER')
 
 export type FortnoxVoucherDraftOutcome =
-  | { ok: true; draft: Record<string, unknown>; draftHash: string }
+  | {
+      ok: true
+      draft: Record<string, unknown>
+      draftHash: string
+      /** Anslutningen som hashen räknades mot (T-N1). Sändning kräver likhet. */
+      binding?: { generation: number; databaseNumber: number | null }
+    }
   | { ok: false; reasons: string[] }
 
 /** Kontrakt mot transformer-leveransen. Läser verifikatet själv, org-bundet. */

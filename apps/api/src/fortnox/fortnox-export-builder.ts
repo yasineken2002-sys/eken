@@ -270,6 +270,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       return {
         ok: true,
         draft,
+        binding: { generation: conn.generation, databaseNumber: conn.fortnoxDatabaseNumber },
         // Stabil hash över INNEHÅLL och BINDNING — inte över evidensens tidsstämplar.
         // Samma verifikat, företag, anslutningsgeneration, år, serie och kundbeslut ger
         // samma hash; en förändring av något av dem ger ny hash (sändning kräver då ny

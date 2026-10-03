@@ -1,21 +1,47 @@
-import type { FortnoxVoucher } from './fortnox.types'
+import type { FortnoxLedgerReader, FortnoxVoucher } from './fortnox.types'
 import type { MockFortnoxLedgerReader } from './fortnox-providers'
+import type { FortnoxTransport } from './provider/fortnox-transport'
+import { FortnoxTransportError } from './provider/fortnox-transport.types'
 
 /**
- * Skrivport för POST /3/vouchers (FORTNOX-SANDNING).
+ * Skrivport för POST /3/vouchers (FORTNOX-SANDNING, FORTNOX-NATT).
  *
- * I den LEVERERADE produktkonfigurationen finns ingen kapabel skrivare: Stub och
- * REAL får `DisabledVoucherWriter` (och transporten har allowVoucherWrites=false).
- * Ingen miljöflagga slår på skrivning — aktivering kräver ändrad och granskad kod.
- * Den enda kapabla skrivaren är den syntetiska Mock-skrivaren (NODE_ENV=test).
+ * Stub och REAL utan uttrycklig opt-in får `DisabledVoucherWriter`. Den skarpa
+ * skrivaren (`RealFortnoxVoucherWriter`) skapas bara i REAL-läge med
+ * FORTNOX_TEST_VOUCHER_WRITES=<exakt värde> och skriver ENDAST till företag i den
+ * hårdkodade listan `FORTNOX_TEST_WRITE_COMPANIES` — riktiga kundföretag kan inte
+ * aktiveras med konfiguration, bara med ändrad och granskad kod.
+ * Mock-skrivaren är syntetisk (NODE_ENV=test).
  */
 export const FORTNOX_VOUCHER_WRITER = Symbol('FORTNOX_VOUCHER_WRITER')
+
+/**
+ * Enda externa företag som någonsin får skrivas till: det separata testföretaget
+ * "Eveno integrationstest 2026-10-02" (syntetiskt orgnr 555555-5555). Kod, inte
+ * konfiguration.
+ */
+export const FORTNOX_TEST_WRITE_COMPANIES: readonly number[] = Object.freeze([1868238])
+
+/** Exakt opt-in-värde för FORTNOX_TEST_VOUCHER_WRITES; allt annat icke-tomt stoppar boot. */
+export const FORTNOX_TEST_VOUCHER_WRITES_VALUE = 'testforetag-1868238'
+
+/** Företaget som anspråket frös (FortnoxVoucherExport.fortnoxDatabaseNumber). */
+export interface FortnoxWriteBinding {
+  databaseNumber: number | null
+}
 
 export interface FortnoxVoucherWriter {
   /** False = sändning är tekniskt avstängd; inget anspråk får tas. */
   readonly capable: boolean
+  /** Får skrivaren skriva till detta företag? Kontrolleras före anspråk. */
+  allowsCompany(databaseNumber: number | null): boolean
   /** Returnerar rått, ännu ovaliderat svar. Kastar FortnoxWriteError. */
-  createVoucher(token: string, query: { financialyear: number }, payload: unknown): Promise<unknown>
+  createVoucher(
+    token: string,
+    query: { financialyear: number },
+    payload: unknown,
+    binding: FortnoxWriteBinding,
+  ): Promise<unknown>
 }
 
 /**
@@ -36,8 +62,91 @@ export class FortnoxWriteError extends Error {
 
 export class DisabledVoucherWriter implements FortnoxVoucherWriter {
   readonly capable = false
+  allowsCompany(): boolean {
+    return false
+  }
   async createVoucher(): Promise<unknown> {
     throw new FortnoxWriteError('not_sent')
+  }
+}
+
+export interface RealFortnoxVoucherWriterOptions {
+  /** Separat transport med allowVoucherWrites=true; delar limiter med läsaren. */
+  transport: FortnoxTransport
+  /** Läsaren (skrivoförmögen transport) för live-kontrollen av företaget. */
+  reader: FortnoxLedgerReader
+  clientId: string
+}
+
+/**
+ * Skarp skrivare, endast testföretaget. Tre spärrar utöver opt-in vid boot:
+ *  1. det frysta företaget måste finnas i FORTNOX_TEST_WRITE_COMPANIES,
+ *  2. GET /3/companyinformation med SAMMA token omedelbart före POST måste ge
+ *     samma DatabaseNumber (annars not_sent — inget har skickats),
+ *  3. transporten tillåter bara POST /3/vouchers?financialyear=<heltal>, utan
+ *     omförsök och utan omdirigering.
+ * Inga token, URL:er eller svarstexter lämnar klassen i fel.
+ */
+export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
+  readonly capable = true
+  readonly #transport: FortnoxTransport
+  readonly #reader: FortnoxLedgerReader
+  readonly #rateLimitKey: string
+
+  constructor(options: RealFortnoxVoucherWriterOptions) {
+    if (typeof options.clientId !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(options.clientId))
+      throw new FortnoxWriteError('not_sent')
+    this.#transport = options.transport
+    this.#reader = options.reader
+    // Samma hink som läsaren: en konservativ gräns för hela klienten.
+    this.#rateLimitKey = `fortnox:${options.clientId}:all-tenants`
+  }
+
+  allowsCompany(databaseNumber: number | null): boolean {
+    return databaseNumber !== null && FORTNOX_TEST_WRITE_COMPANIES.includes(databaseNumber)
+  }
+
+  async createVoucher(
+    token: string,
+    query: { financialyear: number },
+    payload: unknown,
+    binding: FortnoxWriteBinding,
+  ): Promise<unknown> {
+    if (!this.allowsCompany(binding.databaseNumber)) throw new FortnoxWriteError('not_sent')
+    let live: unknown
+    try {
+      const ci = await this.#reader.get<{ CompanyInformation?: { DatabaseNumber?: unknown } }>(
+        token,
+        '/3/companyinformation',
+      )
+      live = ci?.CompanyInformation?.DatabaseNumber
+    } catch {
+      throw new FortnoxWriteError('not_sent')
+    }
+    if (live !== binding.databaseNumber) throw new FortnoxWriteError('not_sent')
+    try {
+      const res = await this.#transport.request({
+        accessToken: token,
+        rateLimitKey: this.#rateLimitKey,
+        method: 'POST',
+        path: '/3/vouchers',
+        query: { financialyear: query.financialyear },
+        body: payload,
+      })
+      return res.data
+    } catch (err) {
+      if (err instanceof FortnoxTransportError) {
+        throw new FortnoxWriteError(
+          err.outcome === 'not_sent'
+            ? 'not_sent'
+            : err.outcome === 'rejected'
+              ? 'rejected'
+              : 'unknown',
+          err.status,
+        )
+      }
+      throw new FortnoxWriteError('unknown')
+    }
   }
 }
 
@@ -63,14 +172,25 @@ export class MockVoucherWriter implements FortnoxVoucherWriter {
   /** Prov: körs före respektive efter den externa effekten (barriärer). */
   beforeWrite: (() => Promise<void>) | null = null
   afterWrite: (() => Promise<void>) | null = null
+  /** Prov: företagen skrivaren vägrar (som om de låg utanför listan). */
+  deniedCompanies = new Set<number>()
+  /** Prov: senaste bindningen som skrivaren fick. */
+  lastBinding: FortnoxWriteBinding | null = null
 
   constructor(private readonly ledger: MockFortnoxLedgerReader) {}
+
+  allowsCompany(databaseNumber: number | null): boolean {
+    return databaseNumber !== null && !this.deniedCompanies.has(databaseNumber)
+  }
 
   async createVoucher(
     _token: string,
     query: { financialyear: number },
     payload: unknown,
+    binding: FortnoxWriteBinding,
   ): Promise<unknown> {
+    this.lastBinding = binding
+    if (!this.allowsCompany(binding.databaseNumber)) throw new FortnoxWriteError('not_sent')
     const fault = this.faults.shift()
     if (fault === 'not_sent') throw new FortnoxWriteError('not_sent')
     if (fault === 'rejected') throw new FortnoxWriteError('rejected', 400)

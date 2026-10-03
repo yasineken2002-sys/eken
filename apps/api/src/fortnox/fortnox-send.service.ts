@@ -58,7 +58,12 @@ export const EXPORT_VIEW = {
 
 interface FrozenDraft {
   payload: {
-    Voucher: { TransactionDate?: unknown; VoucherSeries?: unknown; VoucherRows?: unknown }
+    Voucher: {
+      Description?: unknown
+      TransactionDate?: unknown
+      VoucherSeries?: unknown
+      VoucherRows?: unknown
+    }
   }
   query: { financialyear: number }
 }
@@ -81,7 +86,11 @@ function rowKeys(rows: unknown): string[] | null {
   return out.sort()
 }
 
-/** Exakt jämförelse mellan återläst post och fryst underlag (datum, serie, år, rader). */
+/**
+ * Exakt jämförelse mellan återläst post och fryst underlag (beskrivning, datum,
+ * serie, år, rader). Beskrivningen ingår (K-S5): två poster med identiska rader men
+ * olika beskrivning kan inte förväxlas vid avstämning.
+ */
 export function compareVoucher(
   frozen: FrozenDraft,
   read: Record<string, unknown>,
@@ -97,6 +106,7 @@ export function compareVoucher(
   if (identity.year !== frozen.query.financialyear || identity.series !== f.VoucherSeries)
     return false
   if (read.TransactionDate !== f.TransactionDate) return false
+  if (typeof f.Description !== 'string' || read.Description !== f.Description) return false
   const a = rowKeys(f.VoucherRows)
   const b = rowKeys(read.VoucherRows)
   return (
@@ -120,6 +130,18 @@ export class FortnoxSendService {
 
   get sendingEnabled(): boolean {
     return this.writer.capable
+  }
+
+  /** Kan organisationens anslutna företag skrivas till? (skrivare + företagslista) */
+  async sendingEnabledFor(organizationId: string): Promise<boolean> {
+    if (!this.writer.capable) return false
+    const conn = await this.prisma.fortnoxConnection.findUnique({
+      where: { organizationId },
+      select: { status: true, fortnoxDatabaseNumber: true },
+    })
+    return (
+      !!conn && conn.status === 'ACTIVE' && this.writer.allowsCompany(conn.fortnoxDatabaseNumber)
+    )
   }
 
   /** Utgångna anspråk blir UNKNOWN (lazy). Aldrig återköning. */
@@ -161,6 +183,18 @@ export class FortnoxSendService {
     const draft = fresh.draft as unknown as FrozenDraft
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn || conn.status !== 'ACTIVE') throw new ConflictException('Fortnox är inte anslutet')
+    // Företagslistan kontrolleras före anspråket: ett företag utanför listan tar aldrig anspråk.
+    if (!this.writer.allowsCompany(conn.fortnoxDatabaseNumber)) {
+      throw new ConflictException('SENDING_DISABLED: Sändning till Fortnox är inte aktiverad')
+    }
+    // T-N1: hashen ska vara räknad mot exakt denna anslutningsgeneration och detta företag.
+    if (
+      !fresh.binding ||
+      fresh.binding.generation !== conn.generation ||
+      fresh.binding.databaseNumber !== conn.fortnoxDatabaseNumber
+    ) {
+      throw new ConflictException(stale)
+    }
 
     const attemptId = randomUUID()
     const now = new Date()
@@ -234,7 +268,9 @@ export class FortnoxSendService {
 
     let body: unknown
     try {
-      body = await this.writer.createVoucher(token, draft.query, draft.payload)
+      body = await this.writer.createVoucher(token, draft.query, draft.payload, {
+        databaseNumber: conn.fortnoxDatabaseNumber,
+      })
     } catch (err) {
       if (err instanceof FortnoxWriteError && err.outcome === 'not_sent') {
         await backToReady('NOT_SENT')

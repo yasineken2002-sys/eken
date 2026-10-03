@@ -11,6 +11,7 @@ import {
   DisabledVoucherWriter,
   FORTNOX_VOUCHER_WRITER,
   MockVoucherWriter,
+  RealFortnoxVoucherWriter,
 } from './fortnox-voucher-writer'
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
@@ -21,6 +22,7 @@ import {
   StubFortnoxLedgerReader,
   fortnoxMode,
   fortnoxRealConfig,
+  fortnoxTestVoucherWritesOptIn,
 } from './fortnox-providers'
 import { RealFortnoxAuthProvider, RealFortnoxLedgerReader } from './fortnox-real-provider'
 import type { FortnoxVoucher } from './fortnox.types'
@@ -43,6 +45,8 @@ const FORTNOX_REAL_CLIENTS = Symbol('FORTNOX_REAL_CLIENTS')
 type RealClients = {
   oauth: FortnoxOAuthClient
   transport: FortnoxTransport
+  /** Endast vid uttrycklig opt-in för testföretaget; annars null (ingen skrivförmåga). */
+  writeTransport: FortnoxTransport | null
   clientId: string
   redirectUri: string
 } | null
@@ -56,6 +60,7 @@ export function realClients(config: ConfigService, crypto: FortnoxTokenCryptoSer
   if (fortnoxMode(config, crypto) !== 'REAL') return null
   const c = fortnoxRealConfig(config)
   const fetch = globalThis.fetch.bind(globalThis)
+  const rateLimiter = new InMemoryFortnoxRateLimiter()
   return {
     oauth: new FortnoxOAuthClient({
       fetch,
@@ -64,7 +69,10 @@ export function realClients(config: ConfigService, crypto: FortnoxTokenCryptoSer
       redirectUri: c.redirectUri,
       enabled: true,
     }),
-    transport: new FortnoxTransport({ fetch, rateLimiter: new InMemoryFortnoxRateLimiter() }),
+    transport: new FortnoxTransport({ fetch, rateLimiter }),
+    writeTransport: fortnoxTestVoucherWritesOptIn(config)
+      ? new FortnoxTransport({ fetch, rateLimiter, allowVoucherWrites: true })
+      : null,
     clientId: c.clientId,
     redirectUri: c.redirectUri,
   }
@@ -136,11 +144,21 @@ import {
     // Förhandskontroll (dry run) med referenser verifierade i Fortnox i samma stund;
     // transformern är den frysta exportkomponenten. Ingen sändning finns.
     { provide: FORTNOX_VOUCHER_DRAFT_BUILDER, useClass: VerifiedVoucherDraftBuilder },
-    // Skrivare: ENDAST den syntetiska Mock-skrivaren är kapabel (Mock-läge, NODE_ENV=test).
-    // Stub och REAL får DisabledVoucherWriter — ingen miljöflagga slår på skrivning.
+    // Skrivare: Mock (syntetisk, NODE_ENV=test), eller skarp ENDAST i REAL med
+    // uttrycklig opt-in och då bara mot den hårdkodade testföretagslistan.
+    // Stub och REAL utan opt-in får DisabledVoucherWriter.
     {
       provide: FORTNOX_VOUCHER_WRITER,
-      useFactory: (reader: unknown, config: ConfigService) => {
+      useFactory: (reader: unknown, config: ConfigService, real: RealClients) => {
+        // Validerar opt-in-värdet i alla lägen (felstavning stoppar boot).
+        fortnoxTestVoucherWritesOptIn(config)
+        if (reader instanceof RealFortnoxLedgerReader && real?.writeTransport) {
+          return new RealFortnoxVoucherWriter({
+            transport: real.writeTransport,
+            reader,
+            clientId: real.clientId,
+          })
+        }
         if (!(reader instanceof MockFortnoxLedgerReader)) return new DisabledVoucherWriter()
         const writer = new MockVoucherWriter(reader)
         // Syntetiskt felscenario för produktprov (endast Mock ⇒ NODE_ENV=test):
@@ -150,7 +168,7 @@ import {
         }
         return writer
       },
-      inject: [FORTNOX_LEDGER_READER, ConfigService],
+      inject: [FORTNOX_LEDGER_READER, ConfigService, FORTNOX_REAL_CLIENTS],
     },
     FortnoxSendService,
   ],
