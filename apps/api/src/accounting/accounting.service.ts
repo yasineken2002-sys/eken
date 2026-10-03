@@ -1129,34 +1129,74 @@ export class AccountingService {
     })
   }
 
+  // F-LIST-1 (FORTNOX-100): samma urval för listan och sidvisningen.
+  private journalWhere(
+    organizationId: string,
+    filters?: JournalFilters,
+  ): Prisma.JournalEntryWhereInput {
+    return {
+      organizationId,
+      ...(filters?.from || filters?.to
+        ? {
+            date: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {}),
+      ...(filters?.source
+        ? { source: filters.source as 'MANUAL' | 'INVOICE' | 'PAYMENT' | 'LEASE' }
+        : {}),
+    }
+  }
+
+  private readonly journalInclude = {
+    lines: {
+      include: { account: true },
+    },
+    // Rättelsekedjan (PR1c2): `reversedBy` = rättelsen av DEN HÄR posten
+    // (finns → knappen ska vara låst), `reversalOf` = posten den här RÄTTAR.
+    reversedBy: { select: { id: true, series: true, verNumber: true, date: true } },
+    reversalOf: { select: { id: true, series: true, verNumber: true, date: true } },
+  } satisfies Prisma.JournalEntryInclude
+
+  /**
+   * De 100 senaste verifikaten. Kontraktet är oförändrat (en lista) för befintliga
+   * anropare — men det är INTE hela huvudboken. Den som behöver helheten, eller
+   * antalet, använder `getJournalEntriesPage`.
+   */
   async getJournalEntries(organizationId: string, filters?: JournalFilters) {
     return this.prisma.journalEntry.findMany({
-      where: {
-        organizationId,
-        ...(filters?.from || filters?.to
-          ? {
-              date: {
-                ...(filters.from ? { gte: new Date(filters.from) } : {}),
-                ...(filters.to ? { lte: new Date(filters.to) } : {}),
-              },
-            }
-          : {}),
-        ...(filters?.source
-          ? { source: filters.source as 'MANUAL' | 'INVOICE' | 'PAYMENT' | 'LEASE' }
-          : {}),
-      },
-      include: {
-        lines: {
-          include: { account: true },
-        },
-        // Rättelsekedjan (PR1c2): `reversedBy` = rättelsen av DEN HÄR posten
-        // (finns → knappen ska vara låst), `reversalOf` = posten den här RÄTTAR.
-        reversedBy: { select: { id: true, series: true, verNumber: true, date: true } },
-        reversalOf: { select: { id: true, series: true, verNumber: true, date: true } },
-      },
+      where: this.journalWhere(organizationId, filters),
+      include: this.journalInclude,
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     })
+  }
+
+  /**
+   * F-LIST-1 (FORTNOX-100): sidvis lista MED totalantal. Ett bolag med 100 lägenheter
+   * har ~200 verifikat i månaden; listan med tak 100 dolde resten utan att säga det,
+   * och "Antal verifikationer" visade 100. Stabil ordning (datum, skapad, id) så att
+   * sidor inte överlappar eller hoppar över poster.
+   */
+  async getJournalEntriesPage(
+    organizationId: string,
+    filters: JournalFilters | undefined,
+    sida: { offset: number; limit: number },
+  ) {
+    const where = this.journalWhere(organizationId, filters)
+    const [entries, total] = await this.prisma.$transaction([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: this.journalInclude,
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        skip: sida.offset,
+        take: sida.limit,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ])
+    return { entries, total, offset: sida.offset, limit: sida.limit }
   }
 
   async getJournalEntry(id: string, organizationId: string) {

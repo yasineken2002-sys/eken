@@ -23,7 +23,13 @@ vi.mock('../api/fortnox-export.api', () => ({
   startFortnoxDryRun: mocks.dryRun,
   listFortnoxExports: mocks.list,
 }))
-vi.mock('../../accounting/api/accounting.api', () => ({ fetchJournalEntries: mocks.entries }))
+// F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
+vi.mock('../../accounting/api/accounting.api', () => ({
+  fetchAllJournalEntries: async (...args: unknown[]) => {
+    const entries = (await mocks.entries(...args)) as unknown[]
+    return { entries, total: (mocks as { total?: number }).total ?? entries.length }
+  },
+}))
 vi.mock('@/lib/api', () => ({ extractApiError: () => 'Serverfel' }))
 import { FortnoxExportSetup } from './FortnoxExportSetup'
 const active = (enabled = true) => ({

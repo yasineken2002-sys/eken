@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ReverseEntryInput } from '@eken/shared'
 import {
   fetchAccounts,
   seedAccounts,
   fetchJournalEntries,
+  fetchJournalPage,
   fetchPeriods,
   fetchPeriodPrecheck,
   fetchPeriodHistory,
@@ -20,6 +21,7 @@ import {
   paySupplierInvoice,
   cancelSupplierInvoice,
 } from '../api/accounting.api'
+import type { JournalFilter } from '../api/accounting.api'
 
 export function useAccounts() {
   return useQuery({
@@ -35,6 +37,19 @@ export function useSeedAccounts() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['accounting', 'accounts'] })
     },
+  })
+}
+
+/** F-LIST-1: huvudboken sidvis (100 åt gången) med totalantal. */
+export function useJournalPages(filters?: JournalFilter) {
+  return useInfiniteQuery({
+    queryKey: ['accounting', 'journal-page', filters],
+    queryFn: ({ pageParam }) => fetchJournalPage({ ...filters, offset: pageParam, limit: 100 }),
+    initialPageParam: 0,
+    getNextPageParam: (sida) =>
+      sida.offset + sida.entries.length < sida.total
+        ? sida.offset + sida.entries.length
+        : undefined,
   })
 }
 

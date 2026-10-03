@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
-import { fetchJournalEntries } from '../../accounting/api/accounting.api'
+import { fetchAllJournalEntries } from '../../accounting/api/accounting.api'
 import { FortnoxExportRowView } from './FortnoxExportRow'
 import {
   getFortnoxExportState,
@@ -73,7 +73,9 @@ function FortnoxExportSetupScoped() {
   })
   const entries = useQuery({
     queryKey: ['fortnox', 'export-entries', ...scope],
-    queryFn: () => fetchJournalEntries({ from: daysAgo(90), to: daysAgo(0) }),
+    // F-LIST-1 (FORTNOX-100): HELA urvalet, inte de 100 senaste. Ett bolag med 100
+    // lägenheter har ~600 verifikat på 90 dagar; resten gick inte att välja för export.
+    queryFn: () => fetchAllJournalEntries({ from: daysAgo(90), to: daysAgo(0) }),
     enabled: active,
     retry: false,
   })
@@ -271,7 +273,7 @@ function FortnoxExportSetupScoped() {
           disabled={dryRun.isPending}
           options={[
             { value: '', label: entries.isLoading ? 'Hämtar verifikat…' : 'Välj verifikat' },
-            ...(entries.data ?? []).slice(0, 100).map((e) => ({
+            ...(entries.data?.entries ?? []).map((e) => ({
               value: e.id,
               label: `${e.series ?? ''}${e.verNumber ?? ''} · ${e.date.slice(0, 10)} · ${e.description}`,
             })),
@@ -281,6 +283,15 @@ function FortnoxExportSetupScoped() {
             setResult(null)
           }}
         />
+        {entries.data ? (
+          // F-LIST-1: hela urvalet, och antalet syns — inget tyst tak.
+          <p className="text-ink-muted text-xs">
+            Visar {entries.data.entries.length} av {entries.data.total} verifikat
+            {entries.data.entries.length < entries.data.total
+              ? ' — snäva in perioden för att se resten.'
+              : '.'}
+          </p>
+        ) : null}
         {entries.isError && (
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-red-600">Verifikaten kunde inte hämtas.</p>
