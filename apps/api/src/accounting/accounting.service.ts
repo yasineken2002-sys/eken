@@ -1186,7 +1186,9 @@ export class AccountingService {
     sida: { offset: number; limit: number },
   ) {
     const where = this.journalWhere(organizationId, filters)
-    const [entries, total] = await this.prisma.$transaction([
+    // En läsvy: sidan och totalen läses parallellt utan transaktion (ingen atomicitet
+    // krävs; en samtidig skrivning syns senast vid nästa läsning).
+    const [entries, total] = await Promise.all([
       this.prisma.journalEntry.findMany({
         where,
         include: this.journalInclude,

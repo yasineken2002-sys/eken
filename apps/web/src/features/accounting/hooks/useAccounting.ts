@@ -43,7 +43,10 @@ export function useSeedAccounts() {
 /** F-LIST-1: huvudboken sidvis (100 åt gången) med totalantal. */
 export function useJournalPages(filters?: JournalFilter) {
   return useInfiniteQuery({
-    queryKey: ['accounting', 'journal-page', filters],
+    // UNDER prefixet ['accounting','journal']: årsstängning, rättelse och manuell post
+    // invaliderar det prefixet. Utan det syntes nya verifikat först efter omladdning
+    // (CI E2E close-fiscal-year, BYGGLEDARE-CI-021).
+    queryKey: ['accounting', 'journal', 'page', filters],
     queryFn: ({ pageParam }) => fetchJournalPage({ ...filters, offset: pageParam, limit: 100 }),
     initialPageParam: 0,
     getNextPageParam: (sida) =>
