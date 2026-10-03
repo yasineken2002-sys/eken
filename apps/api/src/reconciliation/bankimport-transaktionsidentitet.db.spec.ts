@@ -105,18 +105,37 @@ function csv(rader: Array<[string, string, string, string]>): Buffer {
   )
 }
 
-// BgMax: 80 teckens fastformat. TC 05 bär sektionsdatum (pos 22-29), TC 20 bär
-// OCR (pos 12-36) och belopp i öre (pos 37-54) — samma offsets som parsern.
+// BgMax enligt Bankgirot, "Bankgiro Inbetalningar – Teknisk manual", okt 2023 (G7, FORTNOX-100):
+// TK05 öppnar avsnittet (valuta i pos 23–25, INGET datum), TK20 bär referens (pos 13–37, högerställd)
+// och belopp i öre (pos 38–55), TK15 avslutar avsnittet med BETALNINGSDAG (pos 38–45), insatt
+// belopp (51–68) och antal poster (72–79). Den tidigare fixturen lade datumet i TK05 — en layout
+// som bara parsern kände till och som därför inte kunde avslöja att riktiga filer saknar det.
 function bgmax(datum: string, poster: Array<{ ocr: string; belopp: number }>): Buffer {
-  const tc05 = ('05' + '0'.repeat(20) + datum.replace(/-/g, '')).padEnd(80, ' ')
-  const rader = poster.map(
-    ({ ocr, belopp }) =>
-      ('20' +
-        '0'.repeat(10) +
-        ocr.padEnd(25, ' ') +
-        String(Math.round(belopp * 100)).padStart(18, '0')) as string,
+  const h0 = (v: string | number, n: number) => String(v).padStart(n, '0').slice(-n)
+  const tk05 = ('05' + h0('56781230', 10) + ' '.repeat(10) + 'SEK').padEnd(80, ' ')
+  const rader = poster.map(({ ocr, belopp }, i) =>
+    (
+      '20' +
+      h0('0', 10) +
+      ocr.padStart(25, ' ') +
+      h0(Math.round(belopp * 100), 18) +
+      (ocr ? '2' : '0') +
+      '1' +
+      h0(i + 1, 12) +
+      '0'
+    ).padEnd(80, ' '),
   )
-  return Buffer.from([tc05, ...rader].join('\n'), 'utf8')
+  const summa = poster.reduce((s, p) => s + Math.round(p.belopp * 100), 0)
+  const tk15 = (
+    '15' +
+    h0('1234000123456', 35) +
+    datum.replace(/-/g, '') +
+    h0(1, 5) +
+    h0(summa, 18) +
+    'SEK' +
+    h0(poster.length, 8)
+  ).padEnd(80, ' ')
+  return Buffer.from([tk05, ...rader, tk15].join('\n'), 'utf8')
 }
 
 describe('förutsättningar', () => {

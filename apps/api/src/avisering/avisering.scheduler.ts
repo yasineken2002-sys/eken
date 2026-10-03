@@ -16,6 +16,17 @@ import { CronErrorSink } from '../common/cron/cron-error-sink'
  * @@unique(leaseId, year, month, type=RENT) — körs cron två gånger
  * eller manuellt triggas igen så hoppas redan skapade avier över.
  */
+/**
+ * G17 (FORTNOX-100): vilka organisationer som får automatisk månadsavisering.
+ *
+ * Tidigare bara `ACTIVE`. Men `TRIAL` är schemats default vid registrering ("Trial-period
+ * aktiv") och `PAST_DUE` är uttryckligen "varning men ej blockerad" (schema.prisma, OrgStatus).
+ * Ett nytt bolag med 100 avtal fick därför sina första avier vid aktivering men ALDRIG
+ * nästa månads — medan påminnelsecronen (som inte filtrerar på bolagsstatus) fortsatte
+ * driva krav. Bara `SUSPENDED` och `CANCELLED` stängs ute, i linje med schemats betydelser.
+ */
+export const AVISERING_ORG_STATUSES = ['TRIAL', 'ACTIVE', 'PAST_DUE'] as const
+
 @Injectable()
 export class AviseringScheduler {
   private readonly logger = new Logger(AviseringScheduler.name)
@@ -82,7 +93,7 @@ export class AviseringScheduler {
     blocked: number
   }> {
     const orgs = await this.prisma.organization.findMany({
-      where: { status: 'ACTIVE' },
+      where: { status: { in: [...AVISERING_ORG_STATUSES] } },
       select: { id: true, name: true },
     })
 

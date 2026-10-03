@@ -7,6 +7,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common'
+import { tolkaBgMax } from './bgmax-parse'
 import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
 import { Prisma, RentNoticeType } from '@prisma/client'
@@ -1417,7 +1418,6 @@ export class ReconciliationService {
     pulsa: () => Promise<void>,
   ): Promise<{ resultat: ImportResult & { fileName: string }; partiellt: boolean }> {
     const text = fileBuffer.toString('utf8')
-    const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
 
     const result: ImportResult & { fileName: string } = {
       fileName,
@@ -1430,104 +1430,65 @@ export class ReconciliationService {
       errors: [],
     }
 
-    let sectionDate: Date | null = null
+    // G7/G8 (FORTNOX-100): tolkning per avsnitt enligt Bankgirots manual (okt 2023). Betalnings-
+    // dagen kommer ur TK15 (pos 38–45), aldrig ur TK05 eller importtiden; TK21-avdrag blir aldrig
+    // inbetalningar. Stoppade avsnitt/poster redovisas som läsbara fel — ingen påhittad allokering.
+    const tolkning = tolkaBgMax(text)
+    result.errors.push(...tolkning.fel)
     let latestCoverage: Date | null = null
     // #F034b — förekomstnummer per radidentitet INOM DEN HÄR FILEN.
     const förekomster = new Förekomsträknare()
     let radnr = 0
-    for (const line of lines) {
-      // Arrendets puls — se motsvarande not i CSV-loopen.
-      if (radnr > 0 && radnr % IMPORT_PULSE_EVERY_ROWS === 0) await pulsa()
-      radnr++
-      const tc = line.slice(0, 2)
+    for (const avsnitt of tolkning.avsnitt) {
+      const txDate = avsnitt.betalningsdag
+      if (!txDate) continue
+      for (const post of avsnitt.betalningar) {
+        // Arrendets puls — se motsvarande not i CSV-loopen.
+        if (radnr > 0 && radnr % IMPORT_PULSE_EVERY_ROWS === 0) await pulsa()
+        radnr++
+        try {
+          const ocr = post.referens
+          if (!latestCoverage || txDate > latestCoverage) latestCoverage = txDate
+          const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
+          const amountDecimal = new Decimal(post.belopp.toFixed(2))
 
-      // TC 05: 0-1=tc, 2-11=BG(10), 12-21=PG(10), 22-29=date(8 YYYYMMDD)
-      if (tc === '05') {
-        const dateStr = line.slice(22, 30)
-        if (/^\d{8}$/.test(dateStr)) {
-          sectionDate = new Date(
-            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,
-          )
-        }
-        continue
-      }
-
-      // TC 20 / 21: OCR-betalning. Layout (Bankgirot v3):
-      //   pos 1-2:   TC
-      //   pos 3-12:  mottagar-bankgiro (10)
-      //   pos 13-37: betalarens referens / OCR (25)
-      //   pos 38-55: belopp i öre (18)
-      if (tc !== '20' && tc !== '21') continue
-
-      try {
-        const ocr = line.slice(12, 37).trim()
-        const amountOre = parseInt(line.slice(37, 55).trim(), 10)
-        if (!Number.isFinite(amountOre) || amountOre <= 0) {
-          result.errors.push('Rad: ogiltigt belopp')
-          continue
-        }
-        const amount = amountOre / 100
-        const txDate = sectionDate ?? new Date()
-        // PR 4 (B) — täckningsdatum för paymentDataThrough (även dubbletter räknas:
-        // datan finns redan, importen bekräftar att den är aktuell t.o.m. detta datum).
-        if (!latestCoverage || txDate > latestCoverage) latestCoverage = txDate
-        const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
-        const amountDecimal = new Decimal(amount.toFixed(2))
-
-        // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) → create → match.
-        //
-        // `rawOcr: ocr || null` — inte längre villkorad spridning. Utelämnat fält
-        // = inget villkor = JOKER: en BgMax-post UTAN OCR matchade tidigare vilken
-        // rad som helst med samma dag och belopp, även en rad som bär en ANNAN
-        // hyresgästs OCR, och försvann då tyst. Frånvaron av referens måste vara
-        // sitt eget värde.
-        //
-        // Här är det RÄTT att nyckeln är `rawOcr` och inte `reference`: BgMax har
-        // ingen referenskolumn, OCR:et är en rå teckenposition i fastformatet
-        // (`line.slice(12, 37)`) och är alltså inte härlett av någon regel som kan
-        // ändras. `description` utelämnas fortfarande med flit — den är syntetisk
-        // här, och att hålla den utanför är det som gör att samma betalning
-        // importerad via BÅDE BgMax och CSV känns igen som en.
-        // #F034b — BgMax har sin EGEN namnrymd i radidentiteten: fältuppsättningen
-        // är en annan (ingen textkolumn) och dess `description` är syntetisk.
-        // EN källa för båda lagren, se CSV-vägen ovan.
-        const identitet = bgMaxIdentitet({
-          bankAccountId,
-          date: txDate,
-          amount: amountDecimal,
-          rawOcr: ocr || null,
-        })
-        const förekomst = förekomster.nästa(identitet.key)
-        if (förekomst > 0) result.identiskaRader++
-
-        const outcome = await this.ingestFromFile(organizationId, {
-          dedup: identitet.dedup,
-          bankAccountId,
-          identity: { key: identitet.key, seq: förekomst },
-          data: {
+          const identitet = bgMaxIdentitet({
+            bankAccountId,
             date: txDate,
-            description,
             amount: amountDecimal,
-            ...(ocr ? { rawOcr: ocr } : {}),
-          },
-          crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
-        })
-        if (outcome.duplicate) {
-          result.duplicates++
-          continue
+            rawOcr: ocr || null,
+          })
+          const förekomst = förekomster.nästa(identitet.key)
+          if (förekomst > 0) result.identiskaRader++
+
+          const outcome = await this.ingestFromFile(organizationId, {
+            dedup: identitet.dedup,
+            bankAccountId,
+            identity: { key: identitet.key, seq: förekomst },
+            data: {
+              date: txDate,
+              description,
+              amount: amountDecimal,
+              ...(ocr ? { rawOcr: ocr } : {}),
+            },
+            crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
+          })
+          if (outcome.duplicate) {
+            result.duplicates++
+            continue
+          }
+          result.imported++
+          if ('granskning' in outcome) {
+            result.behoverGranskas++
+            continue
+          }
+          if (outcome.matchError) throw outcome.matchError
+          if (outcome.matched) result.autoMatched++
+          else result.unmatched++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          result.errors.push(msg)
         }
-        result.imported++
-        if ('granskning' in outcome) {
-          result.behoverGranskas++
-          continue
-        }
-        // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
-        if (outcome.matchError) throw outcome.matchError
-        if (outcome.matched) result.autoMatched++
-        else result.unmatched++
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        result.errors.push(msg)
       }
     }
 
