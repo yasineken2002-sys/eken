@@ -1,35 +1,52 @@
 /**
- * G21 (FORTNOX-100, BYGGLEDARE-EFFEKT-015): pdf-renderarens härdning prövad med RIKTIG Chrome
- * och en LOKAL, kontrollerad sond — inga externa anrop. Mäter:
- *   1. en självbärande mall (data:-bild) renderas som förut (positiv kontroll),
- *   2. en sida som försöker hämta från en literal IP-adress (127.0.0.1, sondens port) får
- *      INGEN förfrågan fram — sidnivåns spärr — och blockeringen loggas,
- *   3. Chrome startas med försvar-på-djupet-flaggorna.
- * Provet påstår INTE full nätisolering av Chromes egen bakgrundstrafik; den mäts separat
- * med socketsond i 100-lägenhetsriggen (bevis/provmiljo-003).
+ * G21 (FORTNOX-100, BYGGLEDARE-EFFEKT-015): pdf-renderarens härdning utan riktig Chrome
+ * (CI:s testjobb har ingen). Puppeteer är attrapp; provet läser vad PdfService FAKTISKT
+ * ber om: startflaggorna och sidans förfrågningshanterare. Samma beteende mot riktig Chrome
+ * och lokal sond prövas i pdf-natisolering.chrome-prov.ts (körs uttryckligen, bevis i
+ * 100-lägenhetsriggen).
  */
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+jest.mock('puppeteer', () => ({ __esModule: true, default: { launch: jest.fn() } }))
 
-import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import puppeteer from 'puppeteer'
 import { PdfService } from './pdf.service'
 
-jest.setTimeout(60_000)
+type Hanterare = (req: {
+  url(): string
+  continue(): Promise<void>
+  abort(r?: string): Promise<void>
+}) => void
 
-describe('G21: pdf-renderaren ringer inte ut', () => {
-  let pdf: PdfService
-  let sond: Server
-  let port = 0
-  let träffar = 0
+describe('G21: pdf-renderarens nätspärr (utan Chrome)', () => {
+  let hanterare: Hanterare | null = null
+  let interception = false
   const varningar: string[] = []
+  let launchArgs: string[] = []
+  let pdf: PdfService
 
-  beforeAll(async () => {
-    sond = createServer((_req, res) => {
-      träffar++
-      res.end('x')
-    })
-    await new Promise<void>((r) => sond.listen(0, '127.0.0.1', () => r()))
-    port = (sond.address() as AddressInfo).port
+  beforeEach(() => {
+    hanterare = null
+    interception = false
+    varningar.length = 0
+    jest.mocked(puppeteer.launch).mockImplementation((async (opts: { args?: string[] }) => {
+      launchArgs = opts.args ?? []
+      return {
+        connected: true,
+        on: jest.fn(),
+        close: jest.fn(),
+        newPage: async () => ({
+          setRequestInterception: async (v: boolean) => {
+            interception = v
+          },
+          on: (ev: string, fn: Hanterare) => {
+            if (ev === 'request') hanterare = fn
+          },
+          setContent: async () => undefined,
+          pdf: async () => Buffer.from('%PDF-attrapp'),
+          close: async () => undefined,
+        }),
+      }
+    }) as never)
     pdf = new PdfService({} as never, {} as never)
     Object.assign(pdf, {
       logger: {
@@ -40,40 +57,40 @@ describe('G21: pdf-renderaren ringer inte ut', () => {
     })
   })
 
-  afterAll(async () => {
-    await pdf.onModuleDestroy()
-    await new Promise<void>((r) => sond.close(() => r()))
-  })
-
-  it('självbärande mall med data:-bild renderas (positiv kontroll)', async () => {
-    const png =
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
-    const buf = await pdf.generateFromHtml(
-      `<html><body><h1>Avi</h1><img src="${png}"></body></html>`,
-    )
-    expect(buf.subarray(0, 4).toString()).toBe('%PDF')
-    expect(varningar).toEqual([])
-  })
-
-  it('hämtning från literal IP (lokal sond) når aldrig fram och loggas', async () => {
-    const buf = await pdf.generateFromHtml(
-      `<html><body><img src="http://127.0.0.1:${port}/logo.png"><link rel="stylesheet" href="http://127.0.0.1:${port}/s.css"></body></html>`,
-    )
-    expect(buf.subarray(0, 4).toString()).toBe('%PDF')
-    expect(träffar).toBe(0)
-    expect(varningar.join('\n')).toMatch(/extern resurs blockerad.*127\.0\.0\.1/)
-  })
-
   it('Chrome startas med försvar-på-djupet-flaggorna', async () => {
-    const browser = (pdf as unknown as { browser: { process(): { spawnargs: string[] } | null } })
-      .browser
-    const args = browser.process()?.spawnargs ?? []
-    expect(args).toEqual(
+    await pdf.generateFromHtml('<html></html>')
+    expect(launchArgs).toEqual(
       expect.arrayContaining([
         '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE localhost',
         '--disable-quic',
         '--disable-component-update',
       ]),
     )
+  })
+
+  it('sidan får request-interception; data: och about:blank släpps, allt annat avbryts och loggas', async () => {
+    await pdf.generateFromHtml('<html></html>')
+    expect(interception).toBe(true)
+    expect(hanterare).not.toBeNull()
+    const utfall: string[] = []
+    const req = (url: string) => ({
+      url: () => url,
+      continue: async () => void utfall.push(`continue ${url}`),
+      abort: async (r?: string) => void utfall.push(`abort ${url} ${r}`),
+    })
+    for (const u of [
+      'data:image/png;base64,AAAA',
+      'about:blank',
+      'http://127.0.0.1:9/x.png',
+      'https://fonts.example/a.css',
+    ])
+      hanterare!(req(u))
+    expect(utfall).toEqual([
+      'continue data:image/png;base64,AAAA',
+      'continue about:blank',
+      'abort http://127.0.0.1:9/x.png blockedbyclient',
+      'abort https://fonts.example/a.css blockedbyclient',
+    ])
+    expect(varningar.join('\n')).toMatch(/extern resurs blockerad.*127\.0\.0\.1/)
   })
 })

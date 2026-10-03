@@ -808,8 +808,10 @@ export class ReconciliationService {
     // applikationsgeneration skriver efter migrationen. Bara den här tolken skriver 'TK15'.
     //
     // Finns lika många eller fler rader med OKÄND proveniens (samma konto eller kontolös,
-    // samma belopp och OCR, skrivna av BgMax-importen) daterade PÅ ELLER EFTER
-    // betalningsdagen — ett importögonblick kan inte ligga före betalningen — som raden
+    // samma belopp och OCR, skrivna av BgMax-importen) daterade på eller efter
+    // betalningsdagen MINUS ETT DYGN — ett importögonblick kan inte ligga före betalningen,
+    // men det lagrades i UTC: en import 00:30 svensk tid på betalningsdagen är 22:30Z dagen
+    // före (C2 R2/P4). Marginalen ger fler granskningar, aldrig färre — som raden
     // förekommer i filen, lagras den som GRANSKNINGSRAD: den matchas aldrig automatiskt
     // och pausar krav (G2) tills en människa avgjort den. Falska positiva blir synligt
     // arbete, aldrig tyst matchning eller tyst borttagning. Ingen historik skrivs om.
@@ -823,7 +825,7 @@ export class ReconciliationService {
           AND "rawOcr" IS NOT DISTINCT FROM ${ö.rawOcr}
           AND description LIKE 'BgMax inbetalning%'
           AND "bgmaxDateSource" IS NULL
-          AND date >= ${ö.date}`
+          AND date >= ${new Date(ö.date.getTime() - 24 * 60 * 60 * 1000)}`
       const n = Number(äldre[0]?.n ?? 0)
       if (n > input.identity.seq) {
         osäkerhet = {

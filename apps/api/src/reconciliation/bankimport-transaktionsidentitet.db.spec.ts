@@ -1073,6 +1073,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
   // ── FS1 v2 (BYGGLEDARE-OVERGANG-016): proveniens i stället för heuristik ──────────
   // C2 MOTPROV-FS1-015 visade att 45 dagar, midnatt och createdAt≈date släppte igenom
   // verkliga äldre rader. Regeln läser nu bara proveniensen (NULL = okänd).
+  let fs1v2Löpnr = 0 // fast sekvens (C2: ingen Math.random i fixturen)
   it.each([
     [
       'sen äldre import (52 dagar efter betalning)',
@@ -1081,8 +1082,14 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
     ],
     ['äldre rad exakt UTC-midnatt', new Date('2026-09-05T00:00:00.000Z'), undefined],
     ['createdAt långt från date', IMPORTTID, new Date('2026-09-20T12:00:00.000Z')],
+    // C2 R2/P4: import 00:30 svensk tid PÅ betalningsdagen = 22:30Z dagen före i UTC.
+    [
+      'import 00:30 svensk tid på betalningsdagen (22:30Z dagen före)',
+      new Date('2026-09-01T22:30:00.000Z'),
+      undefined,
+    ],
   ])('FS1 v2 — %s: granskning, inte tyst dubblett', async (_namn, datum, skapad) => {
-    const ocr = generateOcrNumber(340200 + Math.floor(Math.random() * 500))
+    const ocr = generateOcrNumber(340200 + ++fs1v2Löpnr)
     await gammalBgMaxRad({
       ocr,
       belopp: 7600,
