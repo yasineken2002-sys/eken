@@ -77,7 +77,7 @@ function StoppRad({ stopp, kanLösa }: { stopp: Importstopp; kanLösa: boolean }
               value={motivering}
               onChange={(e) => setMotivering(e.target.value)}
               rows={2}
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
+              className="focus:border-brand focus:ring-brand/20 mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-[13px] focus:outline-none focus:ring-2"
               placeholder="T.ex. betalningen registrerad manuellt mot kreditfakturan"
             />
             {fel ? (

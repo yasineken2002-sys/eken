@@ -76,8 +76,19 @@ export function ManualMatchModal({
 
   const stämmer = (belopp: number) => Math.abs(belopp - transaction.amount) <= 1
 
+  // G19-010: bara ett mål som SYNS i listan just nu kan matchas. Ett val som sökningen
+  // dolt får aldrig skickas i bakgrunden (C2 MOTPROV-G19-010 REPRO-1–3).
+  const valdFaktura =
+    valt?.slag === 'faktura' ? fakturaKandidater.find((f) => f.id === valt.id) : undefined
+  const valtSynligt =
+    valt?.slag === 'avi'
+      ? aviKandidater.some((n) => n.id === valt.id)
+      : valt?.slag === 'faktura'
+        ? valdFaktura !== undefined
+        : false
+
   const handleMatch = () => {
-    if (!valt) return
+    if (!valt || !valtSynligt) return
     matchMutation.mutate(
       valt.slag === 'avi'
         ? { transactionId: transaction.id, rentNoticeId: valt.id }
@@ -144,6 +155,8 @@ export function ManualMatchModal({
             onClick={() => {
               setFlik(id)
               setValt(null)
+              // Betalarens OCR hör till avierna; fakturorna söks på fakturanummer/belopp.
+              setSök(id === 'avi' ? (transaction.rawOcr ?? '') : '')
             }}
             className={cn(
               'h-8 flex-1 rounded-md text-[13px] font-medium',
@@ -159,10 +172,14 @@ export function ManualMatchModal({
         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           value={sök}
-          onChange={(e) => setSök(e.target.value)}
+          onChange={(e) => {
+            // G19-010: ny sökning = nytt urval; ett tidigare val gäller inte längre.
+            setSök(e.target.value)
+            setValt(null)
+          }}
           placeholder={flik === 'avi' ? 'Sök hyresgäst, OCR eller avinummer...' : 'Sök faktura...'}
           aria-label={flik === 'avi' ? 'Sök hyresavi' : 'Sök faktura'}
-          className="h-9 w-full rounded-lg border border-gray-200 pl-8 pr-3 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
+          className="focus:border-brand focus:ring-brand/20 h-9 w-full rounded-lg border border-gray-200 pl-8 pr-3 text-[13px] focus:outline-none focus:ring-2"
         />
       </div>
 
@@ -192,7 +209,7 @@ export function ManualMatchModal({
                   'flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors',
                   i !== aviKandidater.length - 1 && 'border-b border-gray-100',
                   valt?.id === n.id
-                    ? 'bg-blue-600/8 ring-1 ring-inset ring-[#218F52]/30'
+                    ? 'bg-blue-600/8 ring-brand/30 ring-1 ring-inset'
                     : 'hover:bg-gray-50',
                 )}
               >
@@ -240,7 +257,7 @@ export function ManualMatchModal({
                 'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
                 i !== fakturaKandidater.length - 1 && 'border-b border-gray-100',
                 valt?.id === inv.id
-                  ? 'bg-blue-600/8 ring-1 ring-inset ring-[#218F52]/30'
+                  ? 'bg-blue-600/8 ring-brand/30 ring-1 ring-inset'
                   : stämmer(inv.total)
                     ? 'bg-emerald-50/60 hover:bg-emerald-50'
                     : 'hover:bg-gray-50',
@@ -282,6 +299,17 @@ export function ManualMatchModal({
         </p>
       )}
 
+      {valtSynligt ? (
+        <p className="mt-3 text-[12px] text-gray-700" aria-live="polite">
+          Matchas mot:{' '}
+          <strong>
+            {valdAvi
+              ? `${hyresgästnamn(valdAvi)} · ${valdAvi.noticeNumber} · ${MÅNADER[valdAvi.month - 1]} ${valdAvi.year}`
+              : valdFaktura?.invoiceNumber}
+          </strong>
+        </p>
+      ) : null}
+
       <ModalFooter>
         <Button variant="ghost" onClick={onClose}>
           Avbryt
@@ -289,7 +317,7 @@ export function ManualMatchModal({
         <Button
           variant="primary"
           onClick={handleMatch}
-          disabled={!valt}
+          disabled={!valtSynligt}
           loading={matchMutation.isPending}
         >
           <Link2 size={14} /> Matcha

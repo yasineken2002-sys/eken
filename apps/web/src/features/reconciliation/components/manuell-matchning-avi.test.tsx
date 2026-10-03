@@ -18,8 +18,9 @@ const fetchNotices = vi.fn(async (_f?: unknown) => avier)
 vi.mock('../hooks/useReconciliation', () => ({
   useManualMatch: () => ({ mutate: matchMutate, isPending: false, error: matchFel }),
 }))
+let fakturor: unknown[] = []
 vi.mock('@/features/invoices/hooks/useInvoiceQueries', () => ({
-  useInvoices: () => ({ data: [], isLoading: false }),
+  useInvoices: () => ({ data: fakturor, isLoading: false }),
 }))
 vi.mock('@/lib/api', () => ({
   extractApiError: (e: { response?: { data?: { error?: { message?: string } } } }, f: string) =>
@@ -85,6 +86,7 @@ beforeEach(() => {
   matchFel = null
   fetchNotices.mockClear()
   avier = []
+  fakturor = []
 })
 afterEach(cleanup)
 
@@ -161,5 +163,76 @@ describe('ManualMatchModal — hyresavier (G19)', () => {
     avier = [avi({ id: 'dep', type: 'DEPOSIT', payableTotal: 12074 })]
     rendera()
     await screen.findByText('Deposition')
+  })
+})
+
+describe('ManualMatchModal — inget dolt val (G19-010, C2 MOTPROV-G19-010)', () => {
+  const nr92 = () => avi({ id: 'b92', tenant: { ...avi({ id: 'x' }).tenant, lastName: 'Nr92' } })
+
+  it('REPRO-1: välj A, sök annan hyresgäst → valet nollas, Matcha är inaktiv och skickar inget', async () => {
+    avier = [avi({ id: 'A' })]
+    rendera()
+    fireEvent.click(await screen.findByText(/AVI-2026-11-A/))
+    avier = [nr92()]
+    fireEvent.change(screen.getByLabelText('Sök hyresavi'), { target: { value: 'Nr92' } })
+    await screen.findByText('Hyresgäst Nr92')
+    const matcha = screen.getByRole('button', { name: /^Matcha$/ }) as HTMLButtonElement
+    expect(matcha.disabled).toBe(true)
+    fireEvent.click(matcha)
+    expect(matchMutate).not.toHaveBeenCalled()
+  })
+
+  it('REPRO-2: välj A, sök utan träffar → ingen matchning skickas', async () => {
+    avier = [avi({ id: 'A' })]
+    rendera()
+    fireEvent.click(await screen.findByText(/AVI-2026-11-A/))
+    avier = []
+    fireEvent.change(screen.getByLabelText('Sök hyresavi'), { target: { value: 'zzzz' } })
+    await screen.findByText(/Inga obetalda hyresavier/)
+    fireEvent.click(screen.getByRole('button', { name: /^Matcha$/ }))
+    expect(matchMutate).not.toHaveBeenCalled()
+  })
+
+  it('REPRO-3: fakturafliken — vald faktura som sökningen döljer skickas inte', async () => {
+    fakturor = [
+      { id: 'f1', invoiceNumber: 'F-2026-001', total: 6037, status: 'SENT', dueDate: '2026-11-30' },
+    ]
+    rendera()
+    fireEvent.click(screen.getByRole('tab', { name: 'Fakturor' }))
+    fireEvent.click(await screen.findByText('F-2026-001'))
+    fireEvent.change(screen.getByLabelText('Sök faktura'), { target: { value: 'finns-inte' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Matcha$/ }))
+    expect(matchMutate).not.toHaveBeenCalled()
+  })
+
+  it('POSITIV: uttryckligt vald synlig avi visas som mål och skickas', async () => {
+    avier = [nr92()]
+    const utanOcr: BankTransaction = { ...tx }
+    delete (utanOcr as Partial<BankTransaction>).rawOcr
+    rendera(utanOcr)
+    fireEvent.change(screen.getByLabelText('Sök hyresavi'), { target: { value: 'Nr92' } })
+    fireEvent.click(await screen.findByText(/AVI-2026-11-b92/))
+    expect(screen.getByText(/Matchas mot:/).textContent).toMatch(
+      /Hyresgäst Nr92 · AVI-2026-11-b92 · nov 2026/,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Matcha$/ }))
+    expect(matchMutate).toHaveBeenCalledWith(
+      { transactionId: 'tx-1', rentNoticeId: 'b92' },
+      expect.anything(),
+    )
+  })
+
+  it('POSITIV: uttryckligt vald synlig faktura skickas', async () => {
+    fakturor = [
+      { id: 'f1', invoiceNumber: 'F-2026-001', total: 6037, status: 'SENT', dueDate: '2026-11-30' },
+    ]
+    rendera()
+    fireEvent.click(screen.getByRole('tab', { name: 'Fakturor' }))
+    fireEvent.click(await screen.findByText('F-2026-001'))
+    fireEvent.click(screen.getByRole('button', { name: /^Matcha$/ }))
+    expect(matchMutate).toHaveBeenCalledWith(
+      { transactionId: 'tx-1', invoiceId: 'f1' },
+      expect.anything(),
+    )
   })
 })
