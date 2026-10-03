@@ -369,7 +369,8 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     expect(rows.find((r) => r.Account === 5170)?.Description).toBe(
       'Reparation och underhåll av fastighet',
     )
-    expect(rows.find((r) => r.Account === 2440)?.TransactionInformation).toBeUndefined()
+    // Rad utan text: Fortnox ger '' (mätt live, execute-002).
+    expect(rows.find((r) => r.Account === 2440)?.TransactionInformation).toBe('')
   })
 
   it('A22 (FINAL-003 EX-2b): avviker återläst radtext → aldrig CONFIRMED', async () => {
