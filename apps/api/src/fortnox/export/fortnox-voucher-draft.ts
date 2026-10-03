@@ -72,7 +72,6 @@ export interface FortnoxVoucherPayload {
     Description: string
     TransactionDate: string
     VoucherSeries: string
-    Year: number
     Comments: string
     VoucherRows: {
       Account: number
@@ -282,8 +281,12 @@ export function buildFortnoxVoucherDraft(
     return {
       status: 'READY_DRY_RUN', liveExportAllowed: false,
       query: { financialyear: config.financialYear.id },
+      // EX-1 (mätt 2026-10-03T01:20:44Z, testföretag 1868238, execute-001 svar-0069 sha 3f7e5ec1):
+      // POST med Voucher.Year avvisas 400/2000321 "Fältet Year är endast läsbart." trots att
+      // OpenAPI-payloadschemat anger Year som obligatoriskt; guidens POST-exempel saknar Year.
+      // Året bärs ENDAST av ?financialyear=<id> (query), och kvittot måste bära Year === id.
       payload: { Voucher: { Description: entry.description, TransactionDate: bookingDate, VoucherSeries: config.voucherSeries.code,
-        Year: config.financialYear.voucherYear, Comments: comments, VoucherRows: rows } },
+        Comments: comments, VoucherRows: rows } },
       provenance: { organizationId: entry.organizationId, journalEntryId: entry.id, localFiscalYear: entry.fiscalYear,
         localSeries: entry.series, localVerNumber: entry.verNumber, source: entry.source, sourceId: entry.sourceId, reference: entry.reference,
         reversalOfEntryId: entry.reversalOfEntryId, bookingDate, eventDate, externalCompany: { ...config.externalCompany },

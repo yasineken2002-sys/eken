@@ -84,6 +84,17 @@ export class FakeFortnoxApi {
     if (this.beforeWrite) await this.beforeWrite()
     const year = Number(query.financialyear)
     const v = (JSON.parse(String(init?.body)) as { Voucher: Record<string, unknown> }).Voucher
+    // MÄTT mot Fortnox 2026-10-03T01:20:44Z (testföretag 1868238, execute-001, svar-0069
+    // sha256 3f7e5ec11437dd55…): Voucher.Year i
+    // POST-kroppen avvisas 400 / 2000321 "Fältet Year är endast läsbart." — trots att
+    // OpenAPI anger fältet som obligatoriskt. Ytan får inte maskera ett skrivskyddat fält.
+    if (Object.hasOwn(v ?? {}, 'Year'))
+      return json(
+        {
+          ErrorInformation: { error: 1, message: 'Fältet Year är endast läsbart.', code: 2000321 },
+        },
+        400,
+      )
     const series = String(v.VoucherSeries)
     const number =
       Math.max(

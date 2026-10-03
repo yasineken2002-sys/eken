@@ -50,7 +50,7 @@ describe('buildFortnoxVoucherDraft — pure disabled preparation', () => {
     if (result.status !== 'READY_DRY_RUN') throw new Error('Expected draft')
     expect(result.liveExportAllowed).toBe(false)
     expect(result.query).toEqual({ financialyear: 17 })
-    expect(result.payload.Voucher).toMatchObject({ TransactionDate: '2026-10-01', Year: 17, VoucherSeries: 'L' })
+    expect(result.payload.Voucher).toMatchObject({ TransactionDate: '2026-10-01', VoucherSeries: 'L' })
     expect(result.payload.Voucher.VoucherRows).toEqual([
       { Account: 5180, Debit: 100.1, Description: 'Repair' }, { Account: 2440, Credit: 100.1 },
     ])
@@ -73,12 +73,25 @@ describe('buildFortnoxVoucherDraft — pure disabled preparation', () => {
     if (result.status === 'READY_DRY_RUN') expect(result.provenance.totalDebitOre).toBe('30')
   })
 
-  it('never infers the required payload Year field from the query financialyear id', () => {
+  it('R-5: POST-kroppen har exakt nycklarna {Comments, Description, TransactionDate, VoucherRows, VoucherSeries}', () => {
+    const { entry, config } = fixture()
+    const result = buildFortnoxVoucherDraft(entry, config)
+    if (result.status !== 'READY_DRY_RUN') throw new Error('Expected draft')
+    expect(Object.keys(result.payload)).toEqual(['Voucher'])
+    // Comments finns i guidens POST-exempel (vouchers.html); övriga fält är guidens kärnfält.
+    expect(Object.keys(result.payload.Voucher).sort()).toEqual([
+      'Comments', 'Description', 'TransactionDate', 'VoucherRows', 'VoucherSeries',
+    ])
+  })
+
+  // R-6: ersätter 'never infers the required payload Year field…' (byggde på OpenAPI; motbevisat
+  // live 2026-10-03T01:20:44Z: 400/2000321 "Fältet Year är endast läsbart.", svar-0069 sha 3f7e5ec1).
+  it('EX-1: Year skickas ALDRIG i POST-kroppen; året bärs bara av query financialyear', () => {
     const { entry, config } = fixture()
     const result = buildFortnoxVoucherDraft(entry, { ...config, financialYear: { ...config.financialYear, voucherYear: 2026 } })
     if (result.status !== 'READY_DRY_RUN') throw new Error('Expected draft')
     expect(result.query.financialyear).toBe(17)
-    expect(result.payload.Voucher.Year).toBe(2026)
+    expect(result.payload.Voucher).not.toHaveProperty('Year')
     blocked(entry, { ...config, financialYear: { ...config.financialYear, voucherYear: undefined as never } }, 'FINANCIAL_YEAR_MISMATCH')
   })
 

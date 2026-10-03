@@ -191,6 +191,9 @@ export class MockVoucherWriter implements FortnoxVoucherWriter {
   ): Promise<unknown> {
     this.lastBinding = binding
     if (!this.allowsCompany(binding.databaseNumber)) throw new FortnoxWriteError('not_sent')
+    // Mätt mot Fortnox (EX-1): Voucher.Year i POST-kroppen är skrivskyddat → 400.
+    if (Object.hasOwn((payload as { Voucher?: object })?.Voucher ?? {}, 'Year'))
+      throw new FortnoxWriteError('rejected', 400)
     const fault = this.faults.shift()
     if (fault === 'not_sent') throw new FortnoxWriteError('not_sent')
     if (fault === 'rejected') throw new FortnoxWriteError('rejected', 400)

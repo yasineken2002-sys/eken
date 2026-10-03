@@ -1227,7 +1227,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const draft = saved.draft as {
       payload: {
         Voucher: {
-          Year: number
+          Year?: number
           VoucherSeries: string
           VoucherRows: Array<{ Account: number; Debit?: number; Credit?: number }>
         }
@@ -1236,11 +1236,9 @@ medDb('Fortnox A mot riktig Postgres', () => {
       liveExportAllowed: boolean
     }
     expect(draft.liveExportAllowed).toBe(false)
-    expect([
-      draft.query.financialyear,
-      draft.payload.Voucher.Year,
-      draft.payload.Voucher.VoucherSeries,
-    ]).toEqual([1, 1, 'A'])
+    expect([draft.query.financialyear, draft.payload.Voucher.VoucherSeries]).toEqual([1, 'A'])
+    // EX-1: året bärs bara av query financialyear (Year i kroppen avvisas av Fortnox).
+    expect(draft.payload.Voucher).not.toHaveProperty('Year')
     expect(draft.payload.Voucher.VoucherRows).toEqual([
       expect.objectContaining({ Account: 5170, Debit: 1234.5 }),
       expect.objectContaining({ Account: 2440, Credit: 1234.5 }),
