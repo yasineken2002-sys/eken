@@ -200,6 +200,8 @@ export class FortnoxSendService {
         voucherSeries: String(draft.payload.Voucher.VoucherSeries),
         // K-B7: exportgränsen prövas på utkastets eget datum vid varje sändning.
         transactionDate: payloadDatum(draft.payload),
+        // K-B8: metoden ur den färska förkontrollens bindning (saknas → '' = inte ACCRUAL).
+        accountingMethod: fresh.binding?.accountingMethod ?? '',
       })
       if (!v.ok) throw new ConflictException(`CUSTOMER_NOT_ACTIVATED: ${v.skal}`)
       kund = v.binding

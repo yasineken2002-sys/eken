@@ -51,6 +51,7 @@ interface Forslag {
     mappingSha256: string
     openingPackageId: string
     fortnoxReadRunId: string
+    financialYearAccountingMethod: string
   } | null
 }
 
@@ -202,7 +203,18 @@ export class FortnoxCustomerActivationService {
         hinder.push(
           `Räkenskapsår ${financialYearId} är inte verifierat i Fortnox (gör en läsning för året).`,
         )
-      else ar = { id: financialYearId, fran: run.financialYearStart!, till: run.financialYearEnd! }
+      else {
+        // K-B8: årets bokföringsmetod ur samma läsning — bara ACCRUAL stöds; saknat är inte ACCRUAL.
+        const metod = (run.summary as { financialYearAccountingMethod?: string | null } | null)
+          ?.financialYearAccountingMethod
+        if (metod !== 'ACCRUAL')
+          hinder.push(
+            `Eveno stödjer bara faktureringsmetoden (ACCRUAL) i denna version; räkenskapsår ` +
+              `${financialYearId} i Fortnox har metod ${metod ?? 'okänd'}. Kundens metod ändras inte.`,
+          )
+        else
+          ar = { id: financialYearId, fran: run.financialYearStart!, till: run.financialYearEnd! }
+      }
     }
 
     if (hinder.length > 0 || !conn || !paket || !ar || !org.billingCutoverDate || !avstamning)
@@ -240,6 +252,7 @@ export class FortnoxCustomerActivationService {
         mappingSha256,
         openingPackageId: paket.id,
         fortnoxReadRunId: paket.fortnoxReadRunId!,
+        financialYearAccountingMethod: 'ACCRUAL',
       },
     }
   }

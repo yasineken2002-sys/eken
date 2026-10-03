@@ -442,6 +442,7 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       financialYearId: 1,
       voucherSeries: 'A',
       transactionDate: '2026-11-02',
+      accountingMethod: 'ACCRUAL',
     })
     expect(v.ok).toBe(false)
     // Tillbaka till A: aktiveringen förblir SUPERSEDED.
@@ -633,5 +634,65 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     await t.riskLas()
     const s = await t.aktivering.status(t.org.id, 1)
     expect(s.forslag.hinder.join(' ')).toMatch(/Förskottskonto 2420 har saldo/)
+  })
+
+  // ── K-B8: bokföringsmetod (FYND-KB8, HANDOFF-C2-K009). Syntetiska år med UTTRYCKLIG metod. ──
+  it('M-text + M-pos: konsekvenstexten kräver ACCRUAL; ACCRUAL-år aktiveras och skickar 1 POST', async () => {
+    const t = await setup()
+    const s = await t.aktivering.status(t.org.id, 1)
+    expect(s.forslag.text).toMatch(/förs med faktureringsmetoden \(ACCRUAL\)/)
+    expect(s.forslag.text).toMatch(/stödjer inte kontantmetoden/)
+    const a = await t.godkann()
+    expect(
+      (await prisma.fortnoxCustomerActivation.findUniqueOrThrow({ where: { id: a.id } }))
+        .financialYearAccountingMethod,
+    ).toBe('ACCRUAL')
+    const row = await t.ready()
+    expect((await t.sender.send(t.org.id, t.owner.id, row.id, row.draftHash)).state).toBe(
+      'CONFIRMED',
+    )
+    expect(t.writer.writes).toBe(1)
+  })
+
+  it.each([
+    ['M-cash', 'CASH'],
+    ['M-saknas', undefined],
+    ['M-okänt', 'HYBRID'],
+  ])('%s: aktivering blockeras med skäl, utkast BLOCKED, 0 POST', async (_n, metod) => {
+    const t = await setup()
+    const ar = t.reader.financialYears[0] as Record<string, unknown>
+    if (metod === undefined) delete ar.AccountingMethod
+    else ar.AccountingMethod = metod
+    await t.riskLas() // ny läsning av året bär metoden (eller dess frånvaro)
+    const s = await t.aktivering.status(t.org.id, 1)
+    expect(s.forslag.ok).toBe(false)
+    expect(s.forslag.hinder.join(' ')).toMatch(/stödjer bara faktureringsmetoden \(ACCRUAL\)/)
+    const je = await t.verifikat('2026-11-02')
+    const row = (await t.exports.dryRun(t.org.id, je.id)) as {
+      state: string
+      blockReason?: string | null
+    }
+    expect(row.state).toBe('BLOCKED')
+    expect(JSON.stringify(row)).toMatch(/faktureringsmetoden/)
+    expect(t.writer.writes).toBe(0)
+  })
+
+  it('M-byte: godkänt med ACCRUAL → året blir CASH → send avvisas, SUPERSEDED, 0 POST; tillbaka till ACCRUAL väcker inte', async () => {
+    const t = await setup()
+    const a = await t.godkann()
+    const row = await t.ready()
+    t.reader.financialYears[0]!.AccountingMethod = 'CASH'
+    await expect(t.sender.send(t.org.id, t.owner.id, row.id, row.draftHash)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(t.writer.writes).toBe(0)
+    const efter = await prisma.fortnoxCustomerActivation.findUniqueOrThrow({ where: { id: a.id } })
+    expect(efter.status).toBe('SUPERSEDED')
+    expect(efter.invalidatedReason).toMatch(/bokföringsmetod CASH/)
+    t.reader.financialYears[0]!.AccountingMethod = 'ACCRUAL'
+    expect(
+      (await prisma.fortnoxCustomerActivation.findUniqueOrThrow({ where: { id: a.id } })).status,
+    ).toBe('SUPERSEDED')
+    expect(await t.sender.sendingEnabledFor(t.org.id)).toBe(false)
   })
 })

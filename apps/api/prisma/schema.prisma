@@ -7908,32 +7908,34 @@ model OpeningPackageRow {
 // OCH bindningen är lika med aktuell anslutning, år, serie och mappning vid VARJE
 // sändning. Testföretagslistan påverkas inte.
 model FortnoxCustomerActivation {
-  id                    String                          @id @default(uuid())
-  organizationId        String
-  status                FortnoxCustomerActivationStatus @default(ACTIVE)
-  connectionId          String
-  connectionGeneration  Int
-  fortnoxDatabaseNumber Int
-  fortnoxOrgNumber      String
-  financialYearId       Int
-  financialYearFrom     DateTime                        @db.Date
-  financialYearTo       DateTime                        @db.Date
-  voucherSeries         String
-  mappingSha256         String
+  id                            String                          @id @default(uuid())
+  organizationId                String
+  status                        FortnoxCustomerActivationStatus @default(ACTIVE)
+  connectionId                  String
+  connectionGeneration          Int
+  fortnoxDatabaseNumber         Int
+  fortnoxOrgNumber              String
+  financialYearId               Int
+  financialYearFrom             DateTime                        @db.Date
+  financialYearTo               DateTime                        @db.Date
+  voucherSeries                 String
+  // KUNDSTART K-B8: räkenskapsårets bokföringsmetod vid godkännandet (alltid ACCRUAL i v1).
+  financialYearAccountingMethod String
+  mappingSha256                 String
   // §12.7: alltid ett EXECUTED paket (ev. nollpaket) — ingen motivering ersätter saldokontrollen.
-  openingPackageId      String
-  fortnoxReadRunId      String
-  consequencesText      String
-  consequencesSha256    String
-  approvedById          String
-  approvedAt            DateTime                        @default(now())
-  revokedById           String?
-  revokedAt             DateTime?
+  openingPackageId              String
+  fortnoxReadRunId              String
+  consequencesText              String
+  consequencesSha256            String
+  approvedById                  String
+  approvedAt                    DateTime                        @default(now())
+  revokedById                   String?
+  revokedAt                     DateTime?
   // §12.8: beständig ogiltigförklaring — en SUPERSEDED/REVOKED blir aldrig ACTIVE igen.
-  supersededAt          DateTime?
-  invalidatedReason     String?
-  createdAt             DateTime                        @default(now())
-  updatedAt             DateTime                        @updatedAt
+  supersededAt                  DateTime?
+  invalidatedReason             String?
+  createdAt                     DateTime                        @default(now())
+  updatedAt                     DateTime                        @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

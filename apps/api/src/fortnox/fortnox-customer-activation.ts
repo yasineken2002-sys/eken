@@ -92,7 +92,12 @@ export type Verifiering =
 export async function provaAktivering(
   db: Prisma.TransactionClient,
   organizationId: string,
-  utkast: { financialYearId: number; voucherSeries: string; transactionDate?: string } | null,
+  utkast: {
+    financialYearId: number
+    voucherSeries: string
+    transactionDate?: string
+    accountingMethod?: string
+  } | null,
 ): Promise<Verifiering> {
   const aktiva = await db.fortnoxCustomerActivation.findMany({
     where: { organizationId, status: 'ACTIVE' },
@@ -141,6 +146,17 @@ export async function provaAktivering(
       return nej(
         `Utkastet har serie ${utkast.voucherSeries}, aktiveringen serie ${a.voucherSeries}.`,
       )
+    // K-B8: bokföringsmetoden. Ett observerat avsteg (eller saknad metod) är en materiell
+    // ändring — nej utan "Utkastet"-prefix, så send() ogiltigförklarar beständigt.
+    if (
+      utkast.accountingMethod !== undefined &&
+      utkast.accountingMethod !== a.financialYearAccountingMethod
+    )
+      return nej(
+        `Räkenskapsårets bokföringsmetod är ${utkast.accountingMethod || 'okänd'}, aktiveringen gäller ${a.financialYearAccountingMethod}.`,
+      )
+    if (a.financialYearAccountingMethod !== 'ACCRUAL')
+      return nej('Aktiveringen gäller inte faktureringsmetoden (ACCRUAL).')
     // K-B7: exportgränsen. Saknat eller ogiltigt datum är inget "efter".
     const b = org.billingCutoverDate ? brytdatumIso(org.billingCutoverDate) : null
     if (
@@ -192,7 +208,12 @@ export async function provaAktivering(
 export async function provaOchOgiltigforklara(
   db: Prisma.TransactionClient,
   organizationId: string,
-  utkast: { financialYearId: number; voucherSeries: string; transactionDate: string },
+  utkast: {
+    financialYearId: number
+    voucherSeries: string
+    transactionDate: string
+    accountingMethod: string
+  },
 ): Promise<Verifiering> {
   const v = await provaAktivering(db, organizationId, utkast)
   if (!v.ok && v.activationId) {
@@ -237,6 +258,7 @@ export function konsekvenstext(x: {
   return [
     `Kundaktivering av Fortnox-skrivning för ${x.foretag} (orgnr ${x.orgnr}, Fortnox-databas ${x.databasnummer}).`,
     `Eveno får skicka sina egna verifikat till räkenskapsår ${x.ar.id} (${x.ar.fran}–${x.ar.till}), serie ${x.serie}, och BARA verifikat daterade på eller efter brytdatum ${brytdatumIso(x.brytdatum)}.`,
+    `Bokföringsmetod: räkenskapsåret i Fortnox förs med faktureringsmetoden (ACCRUAL). Eveno stödjer inte kontantmetoden i denna version och ändrar aldrig kundens metod eller inställningar; ett metodbyte upphäver aktiveringen.`,
     `Exportgräns: ett verifikat daterat före ${brytdatumIso(x.brytdatum)} — till exempel en förskottsbetalning eller en deposition som registrerats före brytdatum — blockeras och exporteras aldrig; det stäms av manuellt i Fortnox.`,
     `Kontomappning, dimensionsbeslut och serie är låsta med sha ${x.mappingSha.slice(0, 16)}…; varje ändring, återanslutning, nytt brytdatum eller nytt öppningspaket upphäver aktiveringen och kräver ett nytt godkännande.`,
     x.nollOppning

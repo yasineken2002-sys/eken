@@ -84,6 +84,8 @@ export interface LedgerSummary {
    * svaret — aldrig tolkat som 0. Ingår INTE i totalOre (som är periodens rörelse).
    */
   balanceBroughtForwardOre?: Record<string, number | null>
+  /** KUNDSTART K-B8: räkenskapsårets AccountingMethod enligt Fortnox (null = saknades). */
+  financialYearAccountingMethod?: string | null
 }
 
 export interface LedgerReadResult {
@@ -289,7 +291,12 @@ export async function readLedger(
     }
 
     const fy = await reader.get<{
-      FinancialYear?: { Id?: unknown; FromDate?: unknown; ToDate?: unknown }
+      FinancialYear?: {
+        Id?: unknown
+        FromDate?: unknown
+        ToDate?: unknown
+        AccountingMethod?: unknown
+      }
     }>(token, `/3/financialyears/${cfg.financialYearId}`)
     const y = fy?.FinancialYear
     if (
@@ -463,7 +470,12 @@ export async function readLedger(
     }
 
     const res = aggregate(vouchers, { ...cfg, mappings: usable }, base)
-    if (res.summary) res.summary.balanceBroughtForwardOre = ingaende
+    if (res.summary) {
+      res.summary.balanceBroughtForwardOre = ingaende
+      // KUNDSTART K-B8: årets bokföringsmetod ur samma svar; null = saknades (aldrig antaget).
+      const am = (y as { AccountingMethod?: unknown }).AccountingMethod
+      res.summary.financialYearAccountingMethod = typeof am === 'string' && am ? am : null
+    }
     return res
   } catch (err) {
     if (err instanceof Incomplete) return fail('PARTIAL', err.message)

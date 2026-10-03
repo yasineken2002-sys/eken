@@ -2,6 +2,7 @@ import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { createHash } from 'node:crypto'
 import { Inject, Injectable } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { RefreshingLedgerReader } from './fortnox-readback.service'
 import {
@@ -147,12 +148,12 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           'Organisationsnumret i Fortnox har ändrats sedan anslutningen',
         )
 
-      const years = await allPages<{ Id?: unknown; FromDate?: unknown; ToDate?: unknown }>(
-        reader,
-        auth.token,
-        '/3/financialyears',
-        'FinancialYears',
-      )
+      const years = await allPages<{
+        Id?: unknown
+        FromDate?: unknown
+        ToDate?: unknown
+        AccountingMethod?: unknown
+      }>(reader, auth.token, '/3/financialyears', 'FinancialYears')
       const matching = years.filter(
         (y) =>
           typeof y.FromDate === 'string' &&
@@ -167,6 +168,25 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         )
       }
       const fy = matching[0] as { Id: number; FromDate: string; ToDate: string }
+      // KUNDSTART K-B8: Evenos verifikat förutsätter faktureringsmetoden (1510/39xx vid avi,
+      // 1930/1510 vid betalning). Räkenskapsårets AccountingMethod ur SAMMA svar måste vara
+      // exakt ACCRUAL — CASH, saknat eller okänt är BLOCKED. Ett observerat avsteg upphäver
+      // dessutom beständigt en kundaktivering (även om sändningen redan stoppas här).
+      // Kundens metod ändras aldrig.
+      const metod = (matching[0] as { AccountingMethod?: unknown }).AccountingMethod
+      if (metod !== 'ACCRUAL') {
+        const vilken = typeof metod === 'string' && metod ? metod : 'okänd'
+        await ogiltigforklaraAktiveringar(
+          this.prisma,
+          organizationId,
+          `Räkenskapsåret ${fy.FromDate}–${fy.ToDate} har bokföringsmetod ${vilken}, inte ACCRUAL.`,
+        )
+        return block(
+          'ACCOUNTING_METHOD_UNSUPPORTED',
+          `Eveno stödjer bara faktureringsmetoden (ACCRUAL) i denna version; räkenskapsåret ` +
+            `${fy.FromDate}–${fy.ToDate} i Fortnox har metod ${vilken}. Kundens metod ändras inte.`,
+        )
+      }
 
       const series = await getRef<{ VoucherSeries?: { Code?: unknown; Year?: unknown } }>(
         reader,
@@ -293,7 +313,11 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       return {
         ok: true,
         draft,
-        binding: { generation: conn.generation, databaseNumber: conn.fortnoxDatabaseNumber },
+        binding: {
+          generation: conn.generation,
+          databaseNumber: conn.fortnoxDatabaseNumber,
+          accountingMethod: 'ACCRUAL',
+        },
         // Stabil hash över INNEHÅLL och BINDNING — inte över evidensens tidsstämplar.
         // Samma verifikat, företag, anslutningsgeneration, år, serie och kundbeslut ger
         // samma hash; en förändring av något av dem ger ny hash (sändning kräver då ny

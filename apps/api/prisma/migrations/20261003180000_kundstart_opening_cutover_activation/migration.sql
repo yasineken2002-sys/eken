@@ -125,6 +125,7 @@ CREATE TABLE "FortnoxCustomerActivation" (
     "financialYearFrom" DATE NOT NULL,
     "financialYearTo" DATE NOT NULL,
     "voucherSeries" TEXT NOT NULL,
+    "financialYearAccountingMethod" TEXT NOT NULL,
     "mappingSha256" TEXT NOT NULL,
     "openingPackageId" TEXT NOT NULL,
     "fortnoxReadRunId" TEXT NOT NULL,

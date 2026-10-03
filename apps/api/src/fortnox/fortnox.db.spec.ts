@@ -912,9 +912,9 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const r = rig()
     await connect(r, o.id)
     r.reader.financialYears = [
-      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' },
-      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31' },
-      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31' },
+      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31', AccountingMethod: 'ACCRUAL' },
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31', AccountingMethod: 'ACCRUAL' },
+      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31', AccountingMethod: 'ACCRUAL' },
     ]
     r.reader.accounts = [
       { Number: 5170, Active: true, Description: 'Reparation' },
@@ -1374,9 +1374,9 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await r.connections.setExportVoucherSeries(o.id, 'A')
     await r.connections.setExportOmitDimensions(o.id, 'u1', true)
     r.reader.financialYears = [
-      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' },
-      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31' },
-      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31' },
+      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31', AccountingMethod: 'ACCRUAL' },
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31', AccountingMethod: 'ACCRUAL' },
+      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31', AccountingMethod: 'ACCRUAL' },
     ]
     const orig = r.reader.get.bind(r.reader)
     r.reader.get = (async (t: string, p: string, q?: Record<string, string | number>) => {
@@ -1401,9 +1401,9 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await r.connections.setExportVoucherSeries(o.id, 'A')
     await r.connections.setExportOmitDimensions(o.id, 'u1', true)
     r.reader.financialYears = [
-      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31' },
-      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31' },
-      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31' },
+      { Id: 1, FromDate: '2026-01-01', ToDate: '2026-12-31', AccountingMethod: 'ACCRUAL' },
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31', AccountingMethod: 'ACCRUAL' },
+      { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31', AccountingMethod: 'ACCRUAL' },
     ]
     const je = await entryWithLines(o.id, [
       [5170, '10.00', null],
