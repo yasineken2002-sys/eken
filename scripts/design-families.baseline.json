@@ -60,9 +60,9 @@
       "count": 13,
       "reason": "Gradient-par (from-violet-500/to-violet-700) i AppLayouts AI-panel. En gradient kan inte uttryckas med en enda färg-token; @eken/ui saknar ännu gradient-tokens. Samma familj som green-legacy i flipp-skulden. Hör ihop med #531:s beslut om AI-ytornas kulör.",
       "examples": [
-        "apps/web/src/components/layout/AppLayout.tsx:358 from-violet-500",
-        "apps/web/src/components/layout/AppLayout.tsx:358 to-violet-700",
-        "apps/web/src/components/layout/AppLayout.tsx:416 from-violet-500"
+        "apps/web/src/components/layout/AppLayout.tsx:374 from-violet-500",
+        "apps/web/src/components/layout/AppLayout.tsx:374 to-violet-700",
+        "apps/web/src/components/layout/AppLayout.tsx:432 from-violet-500"
       ]
     }
   }

@@ -14,6 +14,7 @@ import { ReconciliationService, type BankFormat } from './reconciliation.service
 import { BankStatementImportService } from './bank-statement-import.service'
 import { BankAccountService } from './bank-account.service'
 import { ManualMatchDto } from './dto/manual-match.dto'
+import { ResolveImportStopDto } from './dto/resolve-import-stop.dto'
 import { ConfirmImportDto, CreateBankAccountDto } from './dto/confirm-import.dto'
 import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
@@ -67,6 +68,38 @@ export class ReconciliationController {
   @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
   async identityReview(@OrgId() organizationId: string) {
     return this.reconciliationService.identitetsgranskning(organizationId)
+  }
+
+  /**
+   * IMPORTSTOPP-009 — GET /reconciliation/import-stops?status=open|all
+   *
+   * Kända, olösta importstopp (och med `all` historiken). Samma läsroller som
+   * identitetsgranskningen: den som ser varför kraven pausas ska se varför.
+   */
+  @Get('import-stops')
+  @Roles('ACCOUNTANT', 'MANAGER', 'ADMIN', 'OWNER')
+  async importStops(@OrgId() organizationId: string, @Query('status') status?: string) {
+    return this.reconciliationService.listImportStops(
+      organizationId,
+      status === 'all' ? 'all' : 'open',
+    )
+  }
+
+  /**
+   * IMPORTSTOPP-009 — PATCH /reconciliation/import-stops/:id/resolve { note }
+   *
+   * Uttrycklig upplösning med motivering. Samma skrivroller som manuell matchning.
+   */
+  @Patch('import-stops/:id/resolve')
+  @Roles('MANAGER', 'ADMIN', 'OWNER')
+  async resolveImportStop(
+    @Param('id') id: string,
+    @Body() dto: ResolveImportStopDto,
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    await this.reconciliationService.resolveImportStop(id, organizationId, user.sub, dto.note)
+    return { ok: true }
   }
 
   /**

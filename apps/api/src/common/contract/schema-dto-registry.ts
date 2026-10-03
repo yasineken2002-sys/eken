@@ -74,6 +74,7 @@ import {
   MarkNoticePaidSchema,
   CreateRentNoticeCreditSchema,
   ManualMatchSchema,
+  ResolveImportStopSchema,
   ConfirmImportSchema,
   CreateBankAccountSchema,
   UpdateMeterSchema,
@@ -217,6 +218,7 @@ import { SendNoticesDto } from '../../avisering/dto/send-notices.dto'
 import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
+import { ResolveImportStopDto } from '../../reconciliation/dto/resolve-import-stop.dto'
 import { ConfirmImportDto, CreateBankAccountDto } from '../../reconciliation/dto/confirm-import.dto'
 import { AnswerQuestionDto } from '../../ai/assignments/dto/answer-question.dto'
 import { RequestUndoDto } from '../../ai/assignments/dto/request-undo.dto'
@@ -278,6 +280,15 @@ import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
 import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  {
+    endpoint: 'PATCH /reconciliation/import-stops/:id/resolve',
+    inputTyp: 'ResolveImportStopInput',
+    schema: ResolveImportStopSchema,
+    dto: ResolveImportStopDto,
+    giltig: { note: 'Registrerad manuellt mot kreditfakturan' },
+    ogiltig: { note: 'kort' },
+    ogiltigVarfor: 'motiveringen för ett hanterat importstopp ska vara minst 10 tecken',
+  },
   {
     endpoint: 'POST /accounting/journal/:id/reverse',
     inputTyp: 'ReverseEntryInput',

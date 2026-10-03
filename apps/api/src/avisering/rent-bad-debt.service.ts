@@ -21,6 +21,7 @@ import {
 import { NotificationsService } from '../notifications/notifications.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
 
 interface BadDebtSummary {
   reclassified: number
@@ -153,7 +154,11 @@ export class RentBadDebtService {
             collectionStage: 'INKASSO_READY',
             probableLossAt: null,
             status: { notIn: ['PAID', 'CANCELLED'] },
-            organization: { remindersEnabled: true },
+            // FS-4: blockerade bolag (SUSPENDED/CANCELLED) får inga automatiska krav.
+            organization: {
+              remindersEnabled: true,
+              status: { in: [...AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES] },
+            },
           },
           select: { id: true, organizationId: true, vatAmount: true },
         })

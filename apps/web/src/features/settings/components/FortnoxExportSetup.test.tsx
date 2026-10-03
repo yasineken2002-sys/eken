@@ -23,7 +23,13 @@ vi.mock('../api/fortnox-export.api', () => ({
   startFortnoxDryRun: mocks.dryRun,
   listFortnoxExports: mocks.list,
 }))
-vi.mock('../../accounting/api/accounting.api', () => ({ fetchJournalEntries: mocks.entries }))
+// F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
+vi.mock('../../accounting/api/accounting.api', () => ({
+  fetchAllJournalEntries: async (...args: unknown[]) => {
+    const entries = (await mocks.entries(...args)) as unknown[]
+    return { entries, total: (mocks as { total?: number }).total ?? entries.length }
+  },
+}))
 vi.mock('@/lib/api', () => ({ extractApiError: () => 'Serverfel' }))
 
 import { FortnoxExportSetup } from './FortnoxExportSetup'
@@ -62,6 +68,22 @@ describe('FortnoxExportSetup', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+  })
+
+  it('F-LIST-1: alla 250 verifikat i urvalet går att välja, och etiketten säger hur många', async () => {
+    mocks.entries.mockResolvedValue(
+      Array.from({ length: 250 }, (_, i) => ({
+        id: `je${i}`,
+        date: '2026-10-02',
+        description: `Verifikat ${i}`,
+        series: 'A',
+        verNumber: i + 1,
+      })),
+    )
+    renderIt()
+    expect(await screen.findByText(/250 av 250/)).toBeTruthy()
+    // Tidigare: .slice(0, 100) — verifikat 101–250 gick inte att välja för export.
+    expect(screen.getByRole('option', { name: /A250 · 2026-10-02 · Verifikat 249/ })).toBeTruthy()
   })
 
   it('C2 U-1: rubriktexten följer sändningsläget', async () => {

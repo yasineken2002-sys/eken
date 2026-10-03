@@ -22,6 +22,38 @@ export const fetchJournalEntries = (filters?: {
 }): Promise<JournalEntry[]> =>
   get<JournalEntry[]>('/accounting/journal', filters as Record<string, unknown> | undefined)
 
+// ── F-LIST-1 (FORTNOX-100): huvudboken sidvis med totalantal ────────────────
+export interface JournalPage {
+  entries: JournalEntry[]
+  total: number
+  offset: number
+  limit: number
+}
+export type JournalFilter = { from?: string; to?: string; source?: string }
+
+export const fetchJournalPage = (
+  sida: { offset: number; limit: number } & JournalFilter,
+): Promise<JournalPage> =>
+  get<JournalPage>('/accounting/journal-page', sida as Record<string, unknown>)
+
+/**
+ * Alla verifikat i urvalet (upp till `tak`), sida för sida. `total` är alltid hela urvalets
+ * antal — är den större än `entries.length` har taket nåtts, och det ska synas.
+ */
+export async function fetchAllJournalEntries(
+  filter: JournalFilter,
+  tak = 2000,
+): Promise<{ entries: JournalEntry[]; total: number }> {
+  const första = await fetchJournalPage({ ...filter, offset: 0, limit: 200 })
+  const entries = [...första.entries]
+  while (entries.length < Math.min(första.total, tak)) {
+    const nästa = await fetchJournalPage({ ...filter, offset: entries.length, limit: 200 })
+    if (nästa.entries.length === 0) break
+    entries.push(...nästa.entries)
+  }
+  return { entries, total: första.total }
+}
+
 export const fetchJournalEntry = (id: string): Promise<JournalEntry> =>
   get<JournalEntry>(`/accounting/journal/${id}`)
 

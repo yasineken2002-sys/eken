@@ -16,6 +16,7 @@ import {
   createBankAccount,
 } from '../api/reconciliation.api'
 import type { BankFormat, Bankkonto, ParsedTransaction } from '../api/reconciliation.api'
+import { getImportStops, resolveImportStop } from '../api/reconciliation.api'
 import type { CreateBankAccountInput } from '@eken/shared'
 
 export function useTransactions(filters?: { status?: string; from?: string; to?: string }) {
@@ -212,5 +213,23 @@ export function useUnmatchTransaction() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })
     },
+  })
+}
+
+/** IMPORTSTOPP-009 — kända importstopp (olösta, eller med historik). */
+export function useImportStops(status: 'open' | 'all' = 'open') {
+  return useQuery({
+    queryKey: ['reconciliation', 'import-stops', status],
+    queryFn: () => getImportStops(status),
+    staleTime: 15_000,
+  })
+}
+
+/** IMPORTSTOPP-009 — uttrycklig upplösning med motivering. */
+export function useResolveImportStop() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) => resolveImportStop(id, note),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['reconciliation'] }),
   })
 }

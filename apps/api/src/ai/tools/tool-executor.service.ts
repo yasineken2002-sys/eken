@@ -4274,7 +4274,25 @@ export class ToolExecutorService {
           const filters: { from?: string; to?: string } = {}
           if (typeof toolInput.fromDate === 'string') filters.from = toolInput.fromDate
           if (typeof toolInput.toDate === 'string') filters.to = toolInput.toDate
-          const all = await this.accountingService.getJournalEntries(organizationId, filters)
+          // F-LIST-1 (FORTNOX-100): listan med tak 100 svarade som om den vore hela
+          // huvudboken. Nu hämtas upp till 500 och totalen följer med, så att svaret
+          // aldrig påstår fullständighet det inte har.
+          const sida = await this.accountingService.getJournalEntriesPage(organizationId, filters, {
+            offset: 0,
+            limit: 200,
+          })
+          const all = [...sida.entries]
+          for (let offset = 200; offset < Math.min(sida.total, 500); offset += 200) {
+            const nästa = await this.accountingService.getJournalEntriesPage(
+              organizationId,
+              filters,
+              {
+                offset,
+                limit: 200,
+              },
+            )
+            all.push(...nästa.entries)
+          }
           const accountFilter =
             typeof toolInput.accountNumber === 'number' ? toolInput.accountNumber : null
           const filtered = accountFilter
@@ -4292,10 +4310,16 @@ export class ToolExecutorService {
               description: l.description,
             })),
           }))
+          const trunkerad = sida.total > all.length
           return {
             success: true,
             data,
-            message: `${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}`,
+            message:
+              `${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}` +
+              (trunkerad
+                ? ` bland de ${all.length} senaste av totalt ${sida.total} — urvalet är INTE hela ` +
+                  'huvudboken; snäva in med fromDate/toDate för en fullständig bild.'
+                : ''),
           }
         }
 

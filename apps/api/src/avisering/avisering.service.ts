@@ -1061,6 +1061,17 @@ export class AviseringService {
 
     // Idempotens: hoppa över avier som redan skickats.
     if (notice.sentAt || notice.status === RentNoticeStatus.SENT) return
+    // G15 (FORTNOX-100): en avi vars utskick misslyckades (FAILED) kan regleras av en
+    // betalning innan någon skickar om den — via bankavstämningen eller markAsPaid. Ett
+    // omskick (POST /avisering/send tar godtyckliga id:n) skulle då be hyresgästen betala
+    // en betald hyra OCH skriva över PAID med SENT/FAILED nedan, så att reskontran ljuger.
+    // En reglerad eller makulerad avi skickas aldrig.
+    if (notice.status === RentNoticeStatus.PAID || notice.status === RentNoticeStatus.CANCELLED) {
+      this.logger.warn(
+        `[Avisering] Avi ${noticeId} skickas inte: status ${notice.status} (utskick av reglerad/makulerad avi).`,
+      )
+      return
+    }
 
     // ── K2: SAMMA FÖRKONTROLL, ANDRA SIDAN AV KÖN ──────────────────────────
     //

@@ -266,6 +266,37 @@ export class AccountingController {
     })
   }
 
+  /**
+   * F-LIST-1 (FORTNOX-100) — GET /accounting/journal-page?offset&limit[&from&to&source]
+   *
+   * Sidvis huvudbok med totalantal: { entries, total, offset, limit }. `journal` ovan
+   * behåller sitt kontrakt (lista, högst 100) för befintliga anropare. limit 1–200.
+   */
+  @Get('journal-page')
+  async getJournalPage(
+    @OrgId() organizationId: string,
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('source') source?: string,
+  ) {
+    const o = Number.parseInt(offset ?? '0', 10)
+    const l = Number.parseInt(limit ?? '100', 10)
+    if (!Number.isSafeInteger(o) || o < 0 || !Number.isSafeInteger(l) || l < 1 || l > 200) {
+      throw new BadRequestException('offset måste vara ≥ 0 och limit 1–200')
+    }
+    return this.accountingService.getJournalEntriesPage(
+      organizationId,
+      {
+        ...(from != null ? { from } : {}),
+        ...(to != null ? { to } : {}),
+        ...(source != null ? { source } : {}),
+      },
+      { offset: o, limit: l },
+    )
+  }
+
   @Get('journal/:id')
   async getJournalEntry(@Param('id') id: string, @OrgId() organizationId: string) {
     return this.accountingService.getJournalEntry(id, organizationId)

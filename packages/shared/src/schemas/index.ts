@@ -1806,6 +1806,13 @@ export const CreateBankAccountSchema = z.object({
 })
 
 export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
+
+// IMPORTSTOPP-009 (FORTNOX-100): uttrycklig upplösning av ett känt importstopp. Motiveringen
+// blir historik på stoppet (vem, när, varför); API:t prövar längden även efter trim.
+export const ResolveImportStopSchema = z.object({
+  note: z.string().min(10).max(1000),
+})
+export type ResolveImportStopInput = z.infer<typeof ResolveImportStopSchema>
 export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
 export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>
 export type CreateBankAccountInput = z.infer<typeof CreateBankAccountSchema>

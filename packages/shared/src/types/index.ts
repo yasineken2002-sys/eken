@@ -449,6 +449,8 @@ export interface BankTransaction {
   identityReviewReason?: string
   createdAt: string
   invoice?: { id: string; invoiceNumber: string; status: string }
+  /** G19 (FORTNOX-100): hyresavin raden är matchad mot (API:t har alltid returnerat den). */
+  matchedRentNotice?: { id: string; noticeNumber: string; status: string; totalAmount: number }
 }
 
 /**

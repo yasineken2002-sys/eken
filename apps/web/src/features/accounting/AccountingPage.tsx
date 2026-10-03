@@ -12,7 +12,7 @@ import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
-import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAccounting'
+import { useAccounts, useSeedAccounts, useJournalPages } from './hooks/useAccounting'
 import { PeriodsPanel } from './components/PeriodsPanel'
 import { FiscalYearsPanel } from './components/FiscalYearsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
@@ -189,7 +189,14 @@ export function AccountingPage() {
 
   const accounts = useAccounts()
   const seedAccounts = useSeedAccounts()
-  const journalEntries = useJournalEntries()
+  // F-LIST-1 (FORTNOX-100): sidvis med totalantal. Listan med tak 100 dolde resten och
+  // räknaren visade 100 även när huvudboken hade fler.
+  const journalPages = useJournalPages()
+  const journalEntries = {
+    ...journalPages,
+    data: journalPages.data?.pages.flatMap((p) => p.entries),
+  }
+  const journalTotal = journalPages.data?.pages[0]?.total ?? 0
 
   const grouped = (accounts.data ?? []).reduce(
     (acc, a) => {
@@ -261,11 +268,7 @@ export function AccountingPage() {
       {/* Stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard title="Antal konton" value={accounts.data?.length ?? 0} icon={BookOpen} />
-        <StatCard
-          title="Antal verifikationer"
-          value={journalEntries.data?.length ?? 0}
-          icon={Database}
-        />
+        <StatCard title="Antal verifikationer" value={journalTotal} icon={Database} />
       </div>
 
       {/* View toggle */}
@@ -383,14 +386,31 @@ export function AccountingPage() {
               description="Verifikationer skapas automatiskt när fakturor registreras."
             />
           ) : (
-            (journalEntries.data ?? []).map((je, i) => (
-              <JournalEntryCard
-                key={je.id}
-                entry={je}
-                delay={i * 0.06}
-                onClick={() => setSelectedEntry(je)}
-              />
-            ))
+            <>
+              {(journalEntries.data ?? []).map((je, i) => (
+                <JournalEntryCard
+                  key={je.id}
+                  entry={je}
+                  delay={Math.min(i, 20) * 0.06}
+                  onClick={() => setSelectedEntry(je)}
+                />
+              ))}
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-[13px] text-gray-500">
+                <span>
+                  Visar {(journalEntries.data ?? []).length} av {journalTotal} verifikationer
+                </span>
+                {journalPages.hasNextPage ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={journalPages.isFetchingNextPage}
+                    onClick={() => void journalPages.fetchNextPage()}
+                  >
+                    Visa fler
+                  </Button>
+                ) : null}
+              </div>
+            </>
           )}
         </div>
       )}

@@ -18,6 +18,8 @@ export interface RentNotice {
   leaseId: string
   noticeNumber: string
   ocrNumber: string
+  /** RENT eller DEPOSIT — API:t returnerar hela modellen. */
+  type?: 'RENT' | 'DEPOSIT'
   month: number
   year: number
   amount: number
@@ -316,6 +318,10 @@ export type RentCollectionState =
   | 'NOT_APPLICABLE'
   | 'REMINDERS_OFF'
   | 'PAUSED_STALE'
+  /** STATUS-011: en importerad betalning väntar på identitetsgranskning. */
+  | 'PAUSED_IDENTITY_REVIEW'
+  /** STATUS-011: ett olöst importstopp pausar kravtrappan. */
+  | 'PAUSED_IMPORT_STOP'
   | 'WAITING'
   | 'BLOCKED'
   /** K2/F4 — organisationens betalningsmål fattas och stoppar nästa steg. */
@@ -326,6 +332,8 @@ export interface RentCollectionStatus {
   state: RentCollectionState
   collectionStage: RentCollectionStage
   missing: string[]
+  /** STATUS-011: grindens pausorsaker, ifyllda oavsett `state`. */
+  pausedBy: { identityReview: number; importStops: number }
   /**
    * K2/F4 — betalningsmålet, ur samma förkontroll som kravtrappans cron och
    * påminnelsejobbet grindar på. Speglar API:ets fält rakt av.

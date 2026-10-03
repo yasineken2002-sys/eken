@@ -11,7 +11,6 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
-  Search,
   Sparkles,
   Landmark,
   ChevronRight,
@@ -26,7 +25,6 @@ import { Modal, ModalFooter } from '@/components/ui/Modal'
 import { StatCard } from '@/components/ui/StatCard'
 import { Badge } from '@/components/ui/Badge'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { InvoiceStatusBadge } from '@/components/ui/Badge'
 import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import {
   useTransactions,
@@ -35,7 +33,6 @@ import {
   useImportPdfStatement,
   useBankAccounts,
   useIdentityReview,
-  useManualMatch,
   useIgnoreTransaction,
   useUnmatchTransaction,
   useAutoMatch,
@@ -50,13 +47,14 @@ import {
   tolkaImportPagar,
 } from './api/reconciliation.api'
 import { PdfImportPreviewModal } from './components/PdfImportPreviewModal'
+import { ManualMatchModal } from './components/ManualMatchModal'
+import { ImportStopsCard } from './components/ImportStopsCard'
 import { BankAccountForm, ImportkontoForklaring } from './components/BankAccountForm'
 import { BankAccountsCard } from './components/BankAccountsCard'
 import { useBankConsents } from './hooks/usePsd2'
 import { aktivaSamtycken } from './api/psd2.api'
-import { useInvoices } from '@/features/invoices/hooks/useInvoiceQueries'
 import { formatCurrency, formatDate } from '@eken/shared'
-import type { BankTransaction, ImportResult, Invoice } from '@eken/shared'
+import type { BankTransaction, ImportResult } from '@eken/shared'
 import { cn } from '@/lib/cn'
 import { useCanWrite } from '@/hooks/useCanWrite'
 import { LoadErrorState } from '@/components/ui/LoadErrorState'
@@ -778,144 +776,6 @@ function FormatGuide() {
   )
 }
 
-// ─── Manual match modal ───────────────────────────────────────────────────────
-
-function ManualMatchModal({
-  transaction,
-  onClose,
-}: {
-  transaction: BankTransaction
-  onClose: () => void
-}) {
-  const [search, setSearch] = useState('')
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
-  const { data: invoices = [], isLoading } = useInvoices()
-  const matchMutation = useManualMatch()
-
-  const candidates = invoices.filter(
-    (inv) =>
-      ['SENT', 'OVERDUE', 'PARTIAL'].includes(inv.status) &&
-      (search === '' ||
-        inv.invoiceNumber.toLowerCase().includes(search.toLowerCase()) ||
-        String(inv.total).includes(search)),
-  )
-
-  const handleMatch = () => {
-    if (!selectedInvoiceId) return
-    matchMutation.mutate(
-      { transactionId: transaction.id, invoiceId: selectedInvoiceId },
-      { onSuccess: onClose },
-    )
-  }
-
-  const amountMatches = (inv: Invoice) => Math.abs(inv.total - transaction.amount) <= 1
-
-  return (
-    <Modal open onClose={onClose} title="Matcha transaktion" size="md">
-      {/* Transaction details */}
-      <div className="mb-4 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Datum</p>
-            <p className="mt-0.5 text-[13px] font-medium text-gray-800">
-              {formatDate(transaction.date)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Belopp
-            </p>
-            <p className="mt-0.5 text-[13px] font-semibold text-emerald-600">
-              {formatCurrency(transaction.amount)}
-            </p>
-          </div>
-          <div className="col-span-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Beskrivning
-            </p>
-            <p className="mt-0.5 text-[13px] text-gray-700">{transaction.description}</p>
-          </div>
-          {transaction.rawOcr && (
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">OCR</p>
-              <p className="mt-0.5 font-mono text-[13px] text-gray-700">{transaction.rawOcr}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Invoice search */}
-      <div className="relative mb-3">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Sök faktura..."
-          className="h-9 w-full rounded-lg border border-gray-200 pl-8 pr-3 text-[13px] focus:border-[#218F52] focus:outline-none focus:ring-2 focus:ring-[#218F52]/20"
-        />
-      </div>
-
-      <div className="max-h-52 overflow-y-auto rounded-xl border border-gray-100">
-        {isLoading ? (
-          <div className="py-8 text-center text-[13px] text-gray-400">Laddar fakturor...</div>
-        ) : candidates.length === 0 ? (
-          <div className="py-8 text-center text-[13px] text-gray-400">Inga fakturor hittades</div>
-        ) : (
-          candidates.map((inv, i) => (
-            <button
-              key={inv.id}
-              onClick={() => setSelectedInvoiceId(inv.id)}
-              className={cn(
-                'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
-                i !== candidates.length - 1 && 'border-b border-gray-100',
-                selectedInvoiceId === inv.id
-                  ? 'bg-blue-600/8 ring-1 ring-inset ring-[#218F52]/30'
-                  : amountMatches(inv)
-                    ? 'bg-emerald-50/60 hover:bg-emerald-50'
-                    : 'hover:bg-gray-50',
-              )}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-semibold text-gray-800">
-                    {inv.invoiceNumber}
-                  </span>
-                  {amountMatches(inv) && (
-                    <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-emerald-700">
-                      Belopp stämmer
-                    </span>
-                  )}
-                </div>
-                <p className="text-[12px] text-gray-500">Förfaller {formatDate(inv.dueDate)}</p>
-              </div>
-              <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                <span className="text-[13px] font-semibold text-gray-700">
-                  {formatCurrency(inv.total)}
-                </span>
-                <InvoiceStatusBadge status={inv.status} />
-              </div>
-            </button>
-          ))
-        )}
-      </div>
-
-      <ModalFooter>
-        <Button variant="ghost" onClick={onClose}>
-          Avbryt
-        </Button>
-        <Button
-          variant="primary"
-          onClick={handleMatch}
-          disabled={!selectedInvoiceId}
-          loading={matchMutation.isPending}
-        >
-          <Link2 size={14} /> Matcha
-        </Button>
-      </ModalFooter>
-    </Modal>
-  )
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const stagger = {
@@ -1087,6 +947,8 @@ export function ReconciliationPage() {
           ORSAKEN KOMMER FRÅN SERVERN och renderas som den är. Att formulera om
           den här hade gett två versioner av samma besked — en i 409-svaret från
           "skicka krav nu", en här — och den som är fel är den ingen jämför. */}
+      {/* IMPORTSTOPP-009: kända importstopp pausar automatiska krav tills de hanterats. */}
+      <ImportStopsCard />
       {granskning.data?.pausad && (
         <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-start gap-3">
@@ -1244,7 +1106,9 @@ export function ReconciliationPage() {
                           <Badge variant="warning" dot>
                             {tx.identityReviewReason === 'API_UTAN_KONTO'
                               ? 'Identitet oavgjord — krockar med bankhämtad rad utan konto'
-                              : 'Identitet oavgjord — krockar med äldre rad utan konto'}
+                              : tx.identityReviewReason === 'BGMAX_DATUMOVERGANG'
+                                ? 'Identitet oavgjord — samma belopp och OCR finns i en BgMax-rad importerad före uppgraderingen'
+                                : 'Identitet oavgjord — krockar med äldre rad utan konto'}
                           </Badge>
                         ) : null}
                       </div>
@@ -1252,6 +1116,9 @@ export function ReconciliationPage() {
                     <td className="px-4 py-3">
                       {tx.invoice ? (
                         <Badge variant="info">{tx.invoice.invoiceNumber}</Badge>
+                      ) : tx.matchedRentNotice ? (
+                        // G19: bankraden → avin syns, inte bara fakturor.
+                        <Badge variant="info">{tx.matchedRentNotice.noticeNumber}</Badge>
                       ) : (
                         <span className="text-[13px] text-gray-400">–</span>
                       )}
