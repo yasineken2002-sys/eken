@@ -52,6 +52,7 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
     // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0) /* KUNDSTART T4-1: ingen OPENING */,
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: 'rn-ocr',
@@ -98,6 +99,7 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
     // Tenant — utan tenant i attrappen kraschar den på findFirst av undefined.
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0) /* KUNDSTART T4-1: ingen OPENING */,
       // OCR-uppslaget: träff bara om ocrTräff är satt.
       findFirst: jest.fn().mockResolvedValue(opts.ocrTräff ? { id: 'rn-ocr' } : null),
       // Fuzzy-kandidater.

@@ -60,6 +60,29 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       },
     })
     if (!entry) return block('NOT_FOUND', 'Verifikatet finns inte i organisationen')
+    // KUNDSTART-001 A7: öppningen skapar inga verifikat. Skulle ett verifikat ändå bära
+    // en öppningskälla stoppas det här — öppningens belopp finns redan i Fortnox (IB).
+    if (typeof entry.sourceId === 'string' && entry.sourceId.startsWith('opening:'))
+      return block(
+        'OPENING_COMPONENT',
+        'Öppningskomponenter (före brytdatum) är redan bokförda i Fortnox och exporteras aldrig',
+      )
+    // KUNDSTART K-B7: EXPORTGRÄNS. Ett verifikat daterat före organisationens brytdatum
+    // exporteras aldrig — perioden är historik som redan kan finnas i Fortnox (gamla
+    // systemet eller bankkoppling). Samma regel prövas igen i send() och i skrivaren.
+    {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { billingCutoverDate: true },
+      })
+      if (org?.billingCutoverDate && entry.date < org.billingCutoverDate)
+        return block(
+          'BEFORE_CUTOVER',
+          `Verifikatet är daterat ${entry.date.toISOString().slice(0, 10)}, före brytdatum ` +
+            `${org.billingCutoverDate.toISOString().slice(0, 10)}: historik som redan kan finnas i ` +
+            'Fortnox. Det exporteras aldrig — stäm av manuellt.',
+        )
+    }
 
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn || conn.status !== 'ACTIVE') return block('NOT_CONNECTED', 'Fortnox är inte anslutet')

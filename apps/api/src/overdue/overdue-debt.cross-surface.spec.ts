@@ -96,6 +96,9 @@ describe('#325 · alla ytor visar SAMMA tal, och talet är restskulden', () => {
         aggregate: jest.fn().mockResolvedValue({ _sum: { monthlyRent: null }, _count: { id: 0 } }),
       },
       invoice: { groupBy: arr(), findMany: arr() },
+      // KUNDSTART: ingen verkställd öppning → ingen öppningskomponent eller historisk skuld.
+      openingPackage: { findMany: arr() },
+      rentNotice: { findMany: arr() },
     }
     const service = new DataContextService(
       prisma as never,

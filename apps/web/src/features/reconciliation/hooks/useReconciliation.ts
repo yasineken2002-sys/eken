@@ -179,14 +179,18 @@ export function useManualMatch() {
       transactionId,
       invoiceId,
       rentNoticeId,
+      rentNoticeIds,
     }: {
       transactionId: string
       invoiceId?: string
       rentNoticeId?: string
+      // KUNDSTART T4-1: fördelning på flera avier i vald ordning.
+      rentNoticeIds?: string[]
     }) =>
       manualMatch(transactionId, {
         ...(invoiceId ? { invoiceId } : {}),
         ...(rentNoticeId ? { rentNoticeId } : {}),
+        ...(rentNoticeIds ? { rentNoticeIds } : {}),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['reconciliation'] })

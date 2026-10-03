@@ -398,6 +398,14 @@ const fortnoxSettingsRoute = createRoute({
     return <SettingsPage initialTab="fortnox" />
   },
 })
+// KUNDSTART-001: direktlänk till brytdatum och öppningspaket.
+const kundstartSettingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings/kundstart',
+  component: function KundstartSettingsRoute() {
+    return <SettingsPage initialTab="kundstart" />
+  },
+})
 const overviewRoute = appPage('/overview', OverviewPage)
 const notificationsRoute = appPage('/notifications', NotificationsPage)
 const newsRoute = appPage('/news', NewsPage)
@@ -465,6 +473,7 @@ const routeTree = rootRoute.addChildren([
     maintenancePlanRoute,
     settingsRoute,
     fortnoxSettingsRoute,
+    kundstartSettingsRoute,
     overviewRoute,
     notificationsRoute,
     newsRoute,

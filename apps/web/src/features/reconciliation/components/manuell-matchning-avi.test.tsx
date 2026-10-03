@@ -159,6 +159,46 @@ describe('ManualMatchModal — hyresavier (G19)', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/överstiger avins restskuld/)
   })
 
+  it('KUNDSTART K-B2: historisk skuld (OPENING) går att välja manuellt, märkt och med synlig orsak', async () => {
+    avier = [
+      avi({ id: 'nov' }),
+      avi({ id: 'ib', noticeNumber: 'IB-abc-1', status: 'OPENING', month: 10, payableTotal: 6000 }),
+    ]
+    rendera()
+    await screen.findByText('Historisk skuld före brytdatum')
+    expect(screen.getByRole('note').textContent).toMatch(/Automatisk matchning lägger aldrig/)
+    fireEvent.click(screen.getByText(/IB-abc-1/))
+    fireEvent.click(screen.getByRole('button', { name: /Matcha/ }))
+    expect(matchMutate).toHaveBeenCalledWith(
+      { transactionId: 'tx-1', rentNoticeId: 'ib' },
+      expect.anything(),
+    )
+  })
+
+  it('KUNDSTART T4-1: fördelning på flera avier skickar rentNoticeIds i vald ordning', async () => {
+    avier = [
+      avi({ id: 'nov' }),
+      avi({ id: 'ib', noticeNumber: 'IB-abc-1', status: 'OPENING', month: 10, payableTotal: 6000 }),
+    ]
+    rendera({ ...tx, amount: 12074 })
+    await screen.findByText('Historisk skuld före brytdatum')
+    fireEvent.click(screen.getByRole('checkbox', { name: /Fördela på flera avier/ }))
+    fireEvent.click(screen.getByText(/IB-abc-1/))
+    fireEvent.click(screen.getByText(/AVI-2026-11-nov/))
+    fireEvent.click(screen.getByRole('button', { name: /Matcha/ }))
+    expect(matchMutate).toHaveBeenCalledWith(
+      { transactionId: 'tx-1', rentNoticeIds: ['ib', 'nov'] },
+      expect.anything(),
+    )
+  })
+
+  it('utan historisk skuld visas ingen sådan upplysning', async () => {
+    avier = [avi({ id: 'nov' })]
+    rendera()
+    await screen.findAllByText('Hyresgäst Nr1')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
   it('deposition märks så att operatören ser vad pengarna avser', async () => {
     avier = [avi({ id: 'dep', type: 'DEPOSIT', payableTotal: 12074 })]
     rendera()

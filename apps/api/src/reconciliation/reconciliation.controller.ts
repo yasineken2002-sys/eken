@@ -405,6 +405,7 @@ export class ReconciliationController {
       {
         ...(dto.invoiceId ? { invoiceId: dto.invoiceId } : {}),
         ...(dto.rentNoticeId ? { rentNoticeId: dto.rentNoticeId } : {}),
+        ...(dto.rentNoticeIds ? { rentNoticeIds: dto.rentNoticeIds } : {}),
       },
       organizationId,
       user.sub,

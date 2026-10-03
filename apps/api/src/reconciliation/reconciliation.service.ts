@@ -8,7 +8,11 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common'
 import { tolkaBgMax, type BgMaxStopp } from './bgmax-parse'
-import { BETALBARA_AVISTATUSAR, ärBetalbarAvistatus } from './betalbara-avistatusar'
+import {
+  BETALBARA_AVISTATUSAR,
+  MANUELLT_BETALBARA_AVISTATUSAR,
+  ärBetalbarAvistatus,
+} from './betalbara-avistatusar'
 import { ärMatchningsTidsgräns, tidsgränsText } from './match-tidsgrans'
 import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
@@ -258,7 +262,12 @@ export type FileIngestResult =
  *                         med OKÄND datumproveniens (bgmaxDateSource NULL — äldre version
  *                         eller äldre skrivare). Kan vara samma betalning med annan identitet.
  */
-export type Granskningsskäl = 'HISTORIK_UTAN_KONTO' | 'API_UTAN_KONTO' | 'BGMAX_DATUMOVERGANG'
+export type Granskningsskäl =
+  | 'HISTORIK_UTAN_KONTO'
+  | 'API_UTAN_KONTO'
+  | 'BGMAX_DATUMOVERGANG'
+  // KUNDSTART T4-1: hyresgästen har öppen historisk skuld före brytdatum (OPENING).
+  | 'HISTORISK_SKULD_FORE_BRYTDATUM'
 
 /**
  * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
@@ -1771,6 +1780,24 @@ export class ReconciliationService {
       return false
     }
 
+    // ── KUNDSTART T4-1 (K-B2): HISTORISK SKULD GÖR BELOPPET TVETYDIGT ─────
+    //
+    // OCR identifierar bara hyresgästen, och BgMax bär ingen avireferens. Har
+    // hyresgästen en öppen OPENING-post (historisk skuld före brytdatum) kan
+    // beloppet inte avgöra om betalningen avser den gamla skulden eller en löpande
+    // avi (C2:s fall X/Y/Z). Automatiken allokerar då INGENTING — varken OCR,
+    // vattenfall, överskott eller beloppsgissning — utan raden blir en G2-
+    // granskningsrad med synlig orsak. Det pausar kravtrappan (påminnelse, avgift,
+    // ränta, inkasso) via samma grind som övriga oavgjorda rader, tills en människa
+    // fördelat betalningen manuellt. Hyresgäster utan OPENING påverkas inte.
+    if (
+      transaction.rawOcr &&
+      (await this.harOppenHistoriskSkuld(db, organizationId, { ocrNumber: transaction.rawOcr }))
+    ) {
+      await this.markeraHistoriskSkuld(transaction.id, organizationId)
+      return false
+    }
+
     // ── 1. OCR-match (deterministisk) ────────────────────────────────────
     // Sök i båda tabeller: kommersiell faktura och hyresavi. Hyresavin
     // (RentNotice) har egen OCR-serie genererad av OcrService — utan den
@@ -2562,7 +2589,18 @@ export class ReconciliationService {
 
       // Bara öppna (obetalda) avier kan ta emot en betalning. En PAID/CANCELLED avi
       // (eller en race-förlorare) → ingen allokering; låt tx:n falla vidare.
-      if (!ärBetalbarAvistatus(notice.status)) return false
+      // KUNDSTART T4-1, skyddsnät: en AUTOMATISK väg (userId null) allokerar aldrig till
+      // en hyresgäst med öppen historisk skuld — inte heller via referens eller beloppsgissning.
+      if (
+        userId === null &&
+        (await this.harOppenHistoriskSkuld(tx, organizationId, { noticeId: notice.id }))
+      )
+        return false
+      if (!ärBetalbarAvistatus(notice.status)) {
+        // KUNDSTART §12.2: en OPENING-avi (historisk skuld) regleras bara när en människa
+        // valt den (userId satt = manuell matchning). Automatiska vägar anropar med null.
+        if (!(notice.status === 'OPENING' && userId !== null && matchType !== 'fuzzy')) return false
+      }
 
       // #41: en DEPOSITIONS-avi hanteras separat. Den ingår ALDRIG i debt/kravtrappan
       // (computeRentDebt=0 för DEPOSIT, kravtrappan filtrerar type=RENT) — den lämnas
@@ -2600,7 +2638,11 @@ export class ReconciliationService {
           select: { id: true },
         })
         await tx.rentNotice.updateMany({
-          where: { id: noticeId, organizationId, status: { in: [...BETALBARA_AVISTATUSAR] } },
+          where: {
+            id: noticeId,
+            organizationId,
+            status: { in: [...MANUELLT_BETALBARA_AVISTATUSAR] },
+          },
           data: { status: 'PAID', paidAt: transactionDate, paidAmount: notice.totalAmount },
         })
         // Deposition → PAID: sanningskällan för återbetalning (markRefundPendingForLease
@@ -2722,7 +2764,7 @@ export class ReconciliationService {
           where: {
             id: noticeId,
             organizationId,
-            status: { in: [...BETALBARA_AVISTATUSAR] },
+            status: { in: [...MANUELLT_BETALBARA_AVISTATUSAR] },
           },
           data: {
             status: 'PAID',
@@ -3119,6 +3161,62 @@ export class ReconciliationService {
    * Därför en hård invariant: skiljer sig `tenantId` åt STANNAR vi och allokerar
    * ingenting. Det kostar inget i normalfallet och gör skaderisken omöjlig.
    */
+  /**
+   * KUNDSTART T4-1: har hyresgästen (via OCR eller via en avi) en öppen OPENING-post?
+   * En fråga: OPENING-avin bär hyresgästens ordinarie OCR (öppningspaketets verkställning).
+   */
+  private async harOppenHistoriskSkuld(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    vem: { ocrNumber: string } | { noticeId: string },
+  ): Promise<boolean> {
+    const antal = await db.rentNotice.count({
+      where: {
+        organizationId,
+        status: 'OPENING',
+        origin: 'OPENING_PACKAGE',
+        ...('ocrNumber' in vem
+          ? { ocrNumber: vem.ocrNumber }
+          : { tenant: { rentNotices: { some: { id: vem.noticeId, organizationId } } } }),
+      },
+    })
+    return antal > 0
+  }
+
+  /**
+   * KUNDSTART T4-1 p1/p3: gör raden till en G2-granskningsrad med orsak
+   * HISTORISK_SKULD_FORE_BRYTDATUM, under samma exklusiva lås och periodöppning som
+   * importens granskningsrader. Kravtrappan pausas därmed tills raden fördelats manuellt.
+   */
+  private async markeraHistoriskSkuld(transactionId: string, organizationId: string) {
+    let nyPeriod: string | null = null
+    await this.prisma.$transaction(async (tx) => {
+      await this.freshness.lasOrdningForOlostGranskning(tx, organizationId)
+      const r = await tx.bankTransaction.updateMany({
+        where: { id: transactionId, organizationId, status: 'UNMATCHED', identityReviewAt: null },
+        data: {
+          identityReviewAt: new Date(),
+          identityReviewReason: 'HISTORISK_SKULD_FORE_BRYTDATUM',
+        },
+      })
+      if (r.count === 1) nyPeriod = await this.freshness.oppnaGranskningsperiod(tx, organizationId)
+    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+    this.logger.warn(
+      `[reconciliation] tx=${transactionId} (org ${organizationId}): hyresgästen har historisk ` +
+        'skuld före brytdatum — ingen automatisk allokering; raden väntar på manuell fördelning ' +
+        'och kravtrappan är pausad.',
+    )
+    if (nyPeriod)
+      await this.freshness
+        .aviseraGranskningspaus(organizationId)
+        .catch((err: unknown) =>
+          this.logger.error(
+            `[granskningspaus] avisering misslyckades för org ${organizationId}: ` +
+              `${err instanceof Error ? err.message : String(err)} — svepet tar igen den.`,
+          ),
+        )
+  }
+
   private async applyWaterfallToRentNotices(
     transactionId: string,
     ocrNumber: string,
@@ -3126,8 +3224,12 @@ export class ReconciliationService {
     transactionAmount: Decimal,
     transactionDate: Date,
     userId: string | null,
+    // KUNDSTART T4-1 p4: MANUELL fördelning på flera avier i operatörens ordning (även
+    // OPENING). Utan listan: den automatiska vägen som förut.
+    valdaAvier?: string[],
   ): Promise<boolean> {
     const tolerance = new Decimal('1.00')
+    const manuell = valdaAvier !== undefined && userId !== null
 
     return this.prisma.$transaction(async (tx) => {
       // Samma bankradslåsning används av både waterfall och enskild matchning.
@@ -3147,11 +3249,13 @@ export class ReconciliationService {
       // enskildvägens `orderBy` — dueDate först, createdAt som tie-break — så att
       // två avier med samma förfallodag hanteras deterministiskt i stället för
       // efter databasens infall.
-      const kandidater = await tx.rentNotice.findMany({
+      if (!manuell && (await this.harOppenHistoriskSkuld(tx, organizationId, { ocrNumber })))
+        return false
+      const kandidaterOsorterade = await tx.rentNotice.findMany({
         where: {
           organizationId,
-          ocrNumber,
-          status: { in: [...BETALBARA_AVISTATUSAR] },
+          ...(manuell ? { id: { in: valdaAvier } } : { ocrNumber }),
+          status: { in: [...(manuell ? MANUELLT_BETALBARA_AVISTATUSAR : BETALBARA_AVISTATUSAR)] },
           // DEPOSIT har sitt eget 1510/2890-flöde (#41) och ingår aldrig i
           // kravtrappan — den lämnas orörd av vattenfallet, precis som av
           // enskildvägens carve-out.
@@ -3172,6 +3276,12 @@ export class ReconciliationService {
           interestAccruedAmount: true,
         },
       })
+      const kandidater = manuell
+        ? [...kandidaterOsorterade].sort(
+            (x, y) => valdaAvier!.indexOf(x.id) - valdaAvier!.indexOf(y.id),
+          )
+        : kandidaterOsorterade
+      if (manuell && kandidater.length !== valdaAvier!.length) return false
       if (kandidater.length < 2) return false
 
       // SAME-TENANT-INVARIANTEN. Fail-closed: stanna hellre än att sprida en
@@ -3262,7 +3372,13 @@ export class ReconciliationService {
 
         await tx.rentNotice.updateMany({
           where: reglerar
-            ? { id: r.notice.id, organizationId, status: { in: [...BETALBARA_AVISTATUSAR] } }
+            ? {
+                id: r.notice.id,
+                organizationId,
+                status: {
+                  in: [...(manuell ? MANUELLT_BETALBARA_AVISTATUSAR : BETALBARA_AVISTATUSAR)],
+                },
+              }
             : { id: r.notice.id, organizationId },
           data: reglerar
             ? {
@@ -3409,14 +3525,20 @@ export class ReconciliationService {
 
   async manualMatch(
     transactionId: string,
-    target: { invoiceId?: string; rentNoticeId?: string },
+    target: { invoiceId?: string; rentNoticeId?: string; rentNoticeIds?: string[] },
     organizationId: string,
     userId: string,
   ): Promise<void> {
-    if (!target.invoiceId && !target.rentNoticeId) {
-      throw new BadRequestException('Ange invoiceId eller rentNoticeId')
+    const antalMal =
+      Number(Boolean(target.invoiceId)) +
+      Number(Boolean(target.rentNoticeId)) +
+      Number(Boolean(target.rentNoticeIds?.length))
+    if (antalMal === 0) {
+      throw new BadRequestException('Ange invoiceId, rentNoticeId eller rentNoticeIds')
     }
-    if (target.invoiceId && target.rentNoticeId) {
+    if (target.rentNoticeIds && new Set(target.rentNoticeIds).size !== target.rentNoticeIds.length)
+      throw new BadRequestException('Samma avi får bara anges en gång i en fördelning')
+    if (antalMal > 1) {
       throw new BadRequestException(
         'Ange endast en av invoiceId / rentNoticeId — en transaktion kan inte matchas mot båda',
       )
@@ -3464,6 +3586,28 @@ export class ReconciliationService {
             'makulerad. Avmatcha den befintliga transaktionen först.',
         )
       }
+    } else if (target.rentNoticeIds) {
+      // KUNDSTART T4-1 p4: operatörens fördelning på flera avier, i vald ordning.
+      // Beloppet måste rymmas i de valda aviernas restskuld (överbetalning avvisas).
+      if (target.rentNoticeIds.length < 2)
+        throw new BadRequestException(
+          'En fördelning kräver minst två avier — använd rentNoticeId för en',
+        )
+      const ok = await this.applyWaterfallToRentNotices(
+        transactionId,
+        transaction.rawOcr ?? '',
+        organizationId,
+        transaction.amount,
+        transaction.date,
+        userId,
+        target.rentNoticeIds,
+      )
+      if (!ok)
+        throw new BadRequestException(
+          'Fördelningen kunde inte göras: beloppet ska överstiga den första avins restskuld och ' +
+            'rymmas i de valdas sammanlagda restskuld, avierna ska vara obetalda och tillhöra ' +
+            'samma hyresgäst.',
+        )
     } else if (target.rentNoticeId) {
       const notice = await this.prisma.rentNotice.findFirst({
         where: { id: target.rentNoticeId, organizationId },
@@ -4051,6 +4195,7 @@ export class ReconciliationService {
             status: true,
             sentAt: true,
             sendError: true,
+            origin: true,
             totalAmount: true,
             consumptionAmount: true,
             miscChargeAmount: true,
@@ -4112,8 +4257,16 @@ export class ReconciliationService {
           // G15-012 (C2 MOTPROV-G15-012): härled ur leveransfakta, inte ur antagande.
           // Aldrig skickad och utan utskicksfel (PENDING → betald → avmatchad) är PENDING,
           // inte SENT — annars påstår avin ett utskick som aldrig skett (sentAt null).
+          // KUNDSTART-001: en historisk fordran (öppningspaket) återgår till OPENING — den har
+          // aldrig skickats av Eveno och får inte bli PENDING (som utskicket väljer).
           const återöppnadStatus =
-            noticeRow.sentAt !== null ? 'SENT' : noticeRow.sendError ? 'FAILED' : 'PENDING'
+            noticeRow.origin === 'OPENING_PACKAGE'
+              ? 'OPENING'
+              : noticeRow.sentAt !== null
+                ? 'SENT'
+                : noticeRow.sendError
+                  ? 'FAILED'
+                  : 'PENDING'
           // organizationId i WHERE som defense-in-depth (FIX 2-mönstret).
           await tx.rentNotice.updateMany({
             where: { id: avaktuellId, organizationId },

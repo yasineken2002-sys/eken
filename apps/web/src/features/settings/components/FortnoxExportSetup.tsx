@@ -132,7 +132,8 @@ function FortnoxExportSetupScoped() {
         </h3>
         {state.data.exports.sendingEnabled ? (
           <p className="text-ink-muted text-sm">
-            Sändning är aktiverad endast för det anslutna testföretaget. Inget skickas förrän du
+            Sändning är aktiverad för det anslutna företaget: testföretaget, eller ett kundföretag
+            med ett giltigt ägarbeslut (se Kundaktivering ovan). Inget skickas förrän du
             uttryckligen bekräftar ett enskilt verifikat; förhandskontrollen visar först vad som
             skulle skickas.
           </p>

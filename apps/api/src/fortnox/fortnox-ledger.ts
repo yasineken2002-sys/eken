@@ -78,6 +78,12 @@ export interface LedgerSummary {
   unallocatedOre: number
   uncertainRemovedOre: number
   evenoExportOre: number
+  /**
+   * KUNDSTART-001 §12.6: Fortnox `BalanceBroughtForward` (ingående balans för året) per
+   * valt konto, i öre med Fortnox tecken (debet +, kredit −). null = fältet saknades i
+   * svaret — aldrig tolkat som 0. Ingår INTE i totalOre (som är periodens rörelse).
+   */
+  balanceBroughtForwardOre?: Record<string, number | null>
 }
 
 export interface LedgerReadResult {
@@ -302,6 +308,7 @@ export async function readLedger(
     const yearStart = y.FromDate
     const yearEnd = y.ToDate
 
+    const ingaende: Record<string, number | null> = {}
     for (const n of [...new Set(cfg.costAccounts)].sort((a, b) => a - b)) {
       const acc = await reader.get<{ Account?: { Number?: unknown; Active?: unknown } }>(
         token,
@@ -319,6 +326,13 @@ export async function readLedger(
         throw new Incomplete(`Konto ${n}: Fortnox svarade för ett annat räkenskapsår`)
       }
       if (acc.Account.Active === false) uncertainties.push(`Konto ${n} är inaktivt i Fortnox.`)
+      const bbf = (acc.Account as { BalanceBroughtForward?: unknown }).BalanceBroughtForward
+      if (bbf === undefined || bbf === null) ingaende[String(n)] = null
+      else {
+        const o = toOre(bbf)
+        if (o === null) throw new Incomplete(`Konto ${n}: ogiltig ingående balans i Fortnox`)
+        ingaende[String(n)] = o
+      }
     }
 
     const cc = await paged<{ Code?: unknown }>(
@@ -448,7 +462,9 @@ export async function readLedger(
       vouchers.push({ key, v })
     }
 
-    return aggregate(vouchers, { ...cfg, mappings: usable }, base)
+    const res = aggregate(vouchers, { ...cfg, mappings: usable }, base)
+    if (res.summary) res.summary.balanceBroughtForwardOre = ingaende
+    return res
   } catch (err) {
     if (err instanceof Incomplete) return fail('PARTIAL', err.message)
     if (err instanceof FortnoxReadError) {

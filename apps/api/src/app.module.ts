@@ -42,6 +42,7 @@ import { AiModule } from './ai/ai.module'
 import { MaintenanceModule } from './maintenance/maintenance.module'
 import { ContractorsModule } from './contractors/contractors.module'
 import { AviseringModule } from './avisering/avisering.module'
+import { KundstartModule } from './kundstart/kundstart.module'
 import { InspectionsModule } from './inspections/inspections.module'
 import { MaintenancePlanModule } from './maintenance-plan/maintenance-plan.module'
 import { ContractsModule } from './contracts/contracts.module'
@@ -243,6 +244,8 @@ import { FortnoxModule } from './fortnox/fortnox.module'
     MaintenanceModule,
     ContractorsModule,
     AviseringModule,
+    // KUNDSTART-001: brytdatum och öppningspaket
+    KundstartModule,
     InspectionsModule,
     MaintenancePlanModule,
     ContractsModule,

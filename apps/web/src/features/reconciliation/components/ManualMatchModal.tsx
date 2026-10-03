@@ -21,8 +21,13 @@ import { useManualMatch } from '../hooks/useReconciliation'
 // Dialogen väljer INGET åt operatören: ingen förvald avi och ingen ny prioritetsregel.
 // "Belopp stämmer" är en upplysning, inte ett beslut.
 
-/** Samma statusar som API:t låter ta emot en betalning (`BETALBARA_AVISTATUSAR`). */
-const BETALBARA = new Set(['SENT', 'PENDING', 'OVERDUE', 'FAILED'])
+/**
+ * Samma statusar som API:ts MANUELLA matchning tar emot (`MANUELLT_BETALBARA_AVISTATUSAR`).
+ * OPENING = historisk skuld före brytdatum (öppningspaket): den får bara regleras när en
+ * människa uttryckligen väljer den här — automatiken lägger aldrig betalningar på den
+ * (KUNDSTART §12.2).
+ */
+const BETALBARA = new Set(['SENT', 'PENDING', 'OVERDUE', 'FAILED', 'OPENING'])
 const MÅNADER = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
 
 const hyresgästnamn = (n: RentNotice) =>
@@ -45,6 +50,9 @@ export function ManualMatchModal({
   const [sök, setSök] = useState(transaction.rawOcr ?? '')
   const [fördröjd, setFördröjd] = useState(sök)
   const [valt, setValt] = useState<Mål | null>(null)
+  // KUNDSTART T4-1 p4: fördelning på flera avier, i den ordning operatören väljer dem.
+  const [fördela, setFördela] = useState(false)
+  const [flera, setFlera] = useState<string[]>([])
   const matchMutation = useManualMatch()
 
   useEffect(() => {
@@ -75,6 +83,7 @@ export function ManualMatchModal({
   )
 
   const stämmer = (belopp: number) => Math.abs(belopp - transaction.amount) <= 1
+  const harHistoriskSkuld = aviKandidater.some((n) => n.status === 'OPENING')
 
   // G19-010: bara ett mål som SYNS i listan just nu kan matchas. Ett val som sökningen
   // dolt får aldrig skickas i bakgrunden (C2 MOTPROV-G19-010 REPRO-1–3).
@@ -87,7 +96,17 @@ export function ManualMatchModal({
         ? valdFaktura !== undefined
         : false
 
+  const fleraSynliga =
+    flera.length >= 2 && flera.every((id) => aviKandidater.some((n) => n.id === id))
   const handleMatch = () => {
+    if (fördela) {
+      if (!fleraSynliga) return
+      matchMutation.mutate(
+        { transactionId: transaction.id, rentNoticeIds: flera },
+        { onSuccess: onClose },
+      )
+      return
+    }
     if (!valt || !valtSynligt) return
     matchMutation.mutate(
       valt.slag === 'avi'
@@ -183,6 +202,29 @@ export function ManualMatchModal({
         />
       </div>
 
+      {flik === 'avi' && aviKandidater.length >= 2 && (
+        <label className="mb-2 flex items-center gap-2 text-[12.5px] text-gray-700">
+          <input
+            type="checkbox"
+            checked={fördela}
+            onChange={(e) => {
+              setFördela(e.target.checked)
+              setFlera([])
+            }}
+          />
+          Fördela på flera avier (i den ordning du väljer dem)
+        </label>
+      )}
+      {flik === 'avi' && harHistoriskSkuld && (
+        <p
+          role="note"
+          className="mb-2 rounded-lg bg-indigo-50 px-3 py-2 text-[12px] leading-relaxed text-indigo-800"
+        >
+          Hyresgästen har historisk skuld före brytdatum (från öppningspaketet). Automatisk
+          matchning lägger aldrig en betalning på den. Välj den bara om betalningen uttryckligen
+          avser den gamla skulden — annars den löpande avin.
+        </p>
+      )}
       <div className="max-h-64 overflow-y-auto rounded-xl border border-gray-100">
         {flik === 'avi' ? (
           aviSök === '' ? (
@@ -203,23 +245,37 @@ export function ManualMatchModal({
             aviKandidater.map((n, i) => (
               <button
                 key={n.id}
-                onClick={() => setValt({ slag: 'avi', id: n.id })}
-                aria-pressed={valt?.id === n.id}
+                onClick={() =>
+                  fördela
+                    ? setFlera((f) =>
+                        f.includes(n.id) ? f.filter((x) => x !== n.id) : [...f, n.id],
+                      )
+                    : setValt({ slag: 'avi', id: n.id })
+                }
+                aria-pressed={fördela ? flera.includes(n.id) : valt?.id === n.id}
                 className={cn(
                   'flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors',
                   i !== aviKandidater.length - 1 && 'border-b border-gray-100',
-                  valt?.id === n.id
+                  (fördela ? flera.includes(n.id) : valt?.id === n.id)
                     ? 'bg-blue-600/8 ring-brand/30 ring-1 ring-inset'
                     : 'hover:bg-gray-50',
                 )}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
+                    {fördela && flera.includes(n.id) && (
+                      <span className="rounded-full bg-blue-600 px-1.5 text-[10.5px] font-semibold text-white">
+                        {flera.indexOf(n.id) + 1}
+                      </span>
+                    )}
                     <span className="text-[13px] font-semibold text-gray-800">
                       {hyresgästnamn(n)}
                     </span>
                     {n.type === 'DEPOSIT' && <Badge variant="info">Deposition</Badge>}
                     {n.status === 'FAILED' && <Badge variant="warning">Utskick misslyckades</Badge>}
+                    {n.status === 'OPENING' && (
+                      <Badge variant="info">Historisk skuld före brytdatum</Badge>
+                    )}
                     {stämmer(n.payableTotal) && (
                       <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10.5px] font-semibold text-emerald-700">
                         Belopp stämmer
@@ -317,7 +373,7 @@ export function ManualMatchModal({
         <Button
           variant="primary"
           onClick={handleMatch}
-          disabled={!valtSynligt}
+          disabled={fördela ? !fleraSynliga : !valtSynligt}
           loading={matchMutation.isPending}
         >
           <Link2 size={14} /> Matcha

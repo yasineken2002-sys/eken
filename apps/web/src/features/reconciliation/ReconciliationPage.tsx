@@ -1104,11 +1104,13 @@ export function ReconciliationPage() {
                             beslutet är precis vad märket ber om. */}
                         {tx.identityReviewAt ? (
                           <Badge variant="warning" dot>
-                            {tx.identityReviewReason === 'API_UTAN_KONTO'
-                              ? 'Identitet oavgjord — krockar med bankhämtad rad utan konto'
-                              : tx.identityReviewReason === 'BGMAX_DATUMOVERGANG'
-                                ? 'Identitet oavgjord — samma belopp och OCR finns i en BgMax-rad importerad före uppgraderingen'
-                                : 'Identitet oavgjord — krockar med äldre rad utan konto'}
+                            {tx.identityReviewReason === 'HISTORISK_SKULD_FORE_BRYTDATUM'
+                              ? 'Hyresgästen har historisk skuld före brytdatum — ange vilken skuld betalningen avser (krav pausade)'
+                              : tx.identityReviewReason === 'API_UTAN_KONTO'
+                                ? 'Identitet oavgjord — krockar med bankhämtad rad utan konto'
+                                : tx.identityReviewReason === 'BGMAX_DATUMOVERGANG'
+                                  ? 'Identitet oavgjord — samma belopp och OCR finns i en BgMax-rad importerad före uppgraderingen'
+                                  : 'Identitet oavgjord — krockar med äldre rad utan konto'}
                           </Badge>
                         ) : null}
                       </div>

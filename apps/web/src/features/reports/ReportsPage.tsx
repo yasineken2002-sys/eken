@@ -206,7 +206,55 @@ function BalanceSheetView({ data }: { data: BalanceSheet }) {
           accounts={data.liabilitiesAndEquity.accounts}
         />
       </div>
+      {data.oppningskomponent && <OppningskomponentView ok={data.oppningskomponent} />}
     </div>
+  )
+}
+
+// KUNDSTART §12.9: öppningskomponenten som EGEN del — summorna ovan är Evenos verifikat.
+function OppningskomponentView({ ok }: { ok: NonNullable<BalanceSheet['oppningskomponent']> }) {
+  return (
+    <section
+      aria-label="Öppningskomponent"
+      className="min-w-0 rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3"
+    >
+      <h3 className="text-[13px] font-semibold text-gray-900">
+        Öppningskomponent (före brytdatum)
+      </h3>
+      <p className="mt-1 break-words text-[12.5px] text-gray-700">{ok.text}</p>
+      {ok.galler && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[320px] text-[12.5px]">
+            <thead className="text-[11px] uppercase tracking-wide text-gray-400">
+              <tr>
+                <th className="py-1 text-left">Konto</th>
+                <th className="py-1 text-right">Evenos verifikat</th>
+                <th className="py-1 text-right">Öppning</th>
+                <th className="py-1 text-right">Inkl. öppning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ok.rader.map((r) => (
+                <tr key={r.konto} className="border-t border-indigo-100">
+                  <td className="py-1">{r.konto}</td>
+                  <td className="py-1 text-right">{formatCurrency(r.verifikat)}</td>
+                  <td className="py-1 text-right">{formatCurrency(r.oppning)}</td>
+                  <td className="py-1 text-right font-semibold">
+                    {formatCurrency(r.nettoInklOppning)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {ok.avstamningstexter.map((t) => (
+        <p key={t} className="mt-1 break-words text-[12px] text-gray-600">
+          {t}
+        </p>
+      ))}
+      <p className="mt-1 text-[11.5px] text-gray-500">{ok.begransning}</p>
+    </section>
   )
 }
 

@@ -88,6 +88,7 @@ function makeService(
       findMany: jest.fn().mockResolvedValue([]),
     },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0) /* KUNDSTART T4-1: ingen OPENING */,
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },

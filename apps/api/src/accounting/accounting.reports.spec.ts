@@ -30,6 +30,9 @@ function makeService(opts?: {
   const idByNumber = new Map(vatAccounts.map((a) => [a.id, a.number]))
   const prisma = {
     account: { findMany: jest.fn().mockResolvedValue(vatAccounts) },
+    // KUNDSTART: ingen öppning → öppningskomponent null.
+    organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },
+    openingPackage: { findMany: jest.fn().mockResolvedValue([]) },
     journalEntryLine: {
       findMany: jest.fn().mockResolvedValue(opts?.lines ?? []),
       aggregate: jest.fn().mockImplementation((arg: { where: { accountId: string } }) => {

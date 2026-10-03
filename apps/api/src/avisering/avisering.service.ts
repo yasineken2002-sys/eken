@@ -57,6 +57,7 @@ import {
   type GenerateNoticesPreview,
 } from '@eken/shared'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
+import { foreBrytdatumSkal, periodForeBrytdatum } from '../kundstart/cutover'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 // getLogoDataUrl bor numera i common/branding (Steg 3, PR 2 — en sanning).
 // Vi re-exporterar den här så att rent-reminder.service.ts (som importerar
@@ -224,6 +225,26 @@ export class AviseringService {
   // kommentaren i rent-notice-number.ts innan du flyttar det.
 
   private async monthlyNoticePlan(orgId: string, month: number, year: number) {
+    // KUNDSTART-001 (C1/G-C1–C3): brytdatum är EN serverregel för cron, HTTP, AI och
+    // förhandsvisning — de går alla genom den här planen. En period före brytdatum är
+    // fakturerad i tidigare system: inga kandidater, befintliga dokument orörda.
+    const orgCutover = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { billingCutoverDate: true },
+    })
+    const cutover = orgCutover?.billingCutoverDate ?? null
+    if (periodForeBrytdatum(cutover, year, month)) {
+      const existing = await this.prisma.rentNotice.findMany({
+        where: { organizationId: orgId, month, year, type: RentNoticeType.RENT },
+        select: { leaseId: true, dueDate: true },
+      })
+      return {
+        candidates: [] as never[],
+        skipped: 0,
+        existing,
+        beforeCutover: foreBrytdatumSkal(cutover!),
+      }
+    }
     const genMonthStart = new Date(year, month - 1, 1)
     const leases = await this.prisma.lease.findMany({
       where: {
@@ -297,7 +318,7 @@ export class AviseringService {
       // Samma befintliga genereringsregel: sista vardagen före hyresmånaden.
       candidates.push({ lease, proration, dueDate: rentDueDateForMonth(year, month) })
     }
-    return { candidates, skipped, existing }
+    return { candidates, skipped, existing, beforeCutover: null as string | null }
   }
 
   /** Läsande förhandsbesked: samma urval, proration och datum som skrivvägen. */
@@ -324,11 +345,12 @@ export class AviseringService {
       skipped: plan.skipped,
       dueDates: groupDates(plan.candidates),
       existingDueDates: groupDates(plan.existing),
+      beforeCutover: plan.beforeCutover,
     }
   }
 
   async generateMonthlyNotices(orgId: string, month: number, year: number) {
-    const { candidates, skipped } = await this.monthlyNoticePlan(orgId, month, year)
+    const { candidates, skipped, beforeCutover } = await this.monthlyNoticePlan(orgId, month, year)
     let created = 0
     // Varje avtal behåller sin egen atomiska avi + intäktsverifikation.
     let failed = 0
@@ -446,7 +468,7 @@ export class AviseringService {
       created++
     }
 
-    return { created, skipped, failed, notices }
+    return { created, skipped, failed, notices, beforeCutover }
   }
 
   /**
@@ -737,13 +759,35 @@ export class AviseringService {
     // förfallodagens offset från tillträdesdatum.
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { daysBeforeMoveInForFirstPayment: true },
+      select: { daysBeforeMoveInForFirstPayment: true, billingCutoverDate: true },
     })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
     const startDate = lease.startDate
     const year = startDate.getFullYear()
     const month = startDate.getMonth() + 1
+
+    // KUNDSTART-001 (C1/C6/G-C4): ett avtal som startade före brytdatum har sin startmånad
+    // och sin deposition i TIDIGARE system. Ingen startmånadsavi och ingen depositionsavi —
+    // historisk skuld och mottagen deposition förs in via öppningspaketet. Gäller worker,
+    // initial-notices och återtrigg (alla går hit). Månaderna från brytdatum tar månadsplanen.
+    if (periodForeBrytdatum(org.billingCutoverDate, year, month)) {
+      return {
+        deposit: null,
+        firstRent: null,
+        mailed: false,
+        blockedReason:
+          foreBrytdatumSkal(org.billingCutoverDate!) +
+          ' Avtalets startmånad och deposition hanteras via öppningspaketet; månaderna från ' +
+          'brytdatum aviseras av den ordinarie månadsaviseringen.',
+      }
+    }
+    // En historisk deposition (öppningspaket) får aldrig en ny depositionsavi.
+    const historiskDeposition = await this.prisma.deposit.findFirst({
+      where: { leaseId: lease.id, organizationId: orgId, origin: 'OPENING_PACKAGE' },
+      select: { id: true },
+    })
+    if (historiskDeposition) opts = { ...opts, skipDeposit: true }
 
     // T1.3: gap-avin vid succession är INTE en "första" period — hyresgästen
     // bor redan i lägenheten och inflyttningslogiken (daysBeforeMoveIn-offset)

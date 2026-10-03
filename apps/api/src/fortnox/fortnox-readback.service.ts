@@ -6,6 +6,7 @@ import {
   Optional,
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { sendingEnabledFor } from './fortnox-customer-activation'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
@@ -313,11 +314,18 @@ export class FortnoxReadbackService {
       CONFIRMED: 0,
     }
     for (const g of grouped) exportCounts[g.state] = g._count._all
-    const sendingEnabled =
-      this.writer?.capable === true &&
-      connection.status === 'ACTIVE' &&
-      this.writer.allowsCompany(connection.fortnoxDatabaseNumber)
-    return { connection, latestRead, latestCompleteRead, exports: exportCounts, sendingEnabled }
+    // KUNDSTART G-F5: samma regel som sändningen (testvägen ELLER giltig kundaktivering).
+    const sendingEnabled = await sendingEnabledFor(this.prisma, this.writer, organizationId)
+    const customerActivation =
+      sendingEnabled && !!this.writer?.requiresCustomerActivation(connection.fortnoxDatabaseNumber)
+    return {
+      connection,
+      latestRead,
+      latestCompleteRead,
+      exports: exportCounts,
+      sendingEnabled,
+      customerActivation,
+    }
   }
 }
 

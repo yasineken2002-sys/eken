@@ -705,6 +705,18 @@ export interface BalanceSheet {
   assets: { total: number; accounts: ReportAccountBalance[] }
   liabilitiesAndEquity: { total: number; accounts: ReportAccountBalance[] }
   difference: number
+  /**
+   * KUNDSTART-001 §12.9: öppningskomponent (externt bokförd i Fortnox före brytdatum) som
+   * EGEN del — verifikatsummorna ovan är oförändrade. null = ingen verkställd öppning.
+   */
+  oppningskomponent?: {
+    brytdatum: string
+    galler: boolean
+    text: string
+    begransning: string
+    avstamningstexter: string[]
+    rader: { konto: 1510 | 2890; verifikat: number; oppning: number; nettoInklOppning: number }[]
+  } | null
 }
 
 // ─── Förbrukning / IMD (Mätare, avläsningar, tariffer, charges) ───────────────
@@ -887,4 +899,9 @@ export interface GenerateNoticesPreview {
   dueDates: { dueDate: string; count: number }[]
   /** Avier som redan finns ändras inte och kan ha andra förfallodagar. */
   existingDueDates: { dueDate: string; count: number }[]
+  /**
+   * KUNDSTART: satt när perioden ligger före organisationens brytdatum — skälet, skrivet för
+   * hyresvärden. Då skapas inga avier (perioden är fakturerad i tidigare system).
+   */
+  beforeCutover?: string | null
 }

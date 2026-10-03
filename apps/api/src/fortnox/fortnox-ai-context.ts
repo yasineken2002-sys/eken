@@ -26,6 +26,8 @@ export interface FortnoxAiSnapshot {
     | null
   /** Faktiskt läge för sändning till DETTA företag (skrivare + företagslista). Saknas = av. */
   sendingEnabled?: boolean
+  /** KUNDSTART: sändningen vilar på en godkänd kundaktivering (inte testföretaget). */
+  customerActivation?: boolean
 }
 
 export interface AiReadRow {
@@ -126,6 +128,13 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
         `  Okopplad ${u.dimensionType === 'PROJECT' ? 'projektkod' : 'kostnadsställe'} ${u.code}: ${formatOre(u.amountOre)} (tillhör ingen känd fastighet)`,
       )
     }
+    if (done.costAccounts.includes(1510) || done.costAccounts.includes(2890)) {
+      // KUNDSTART §3: öppningen före brytdatum är bokförd i Fortnox (IB/verifikat) och
+      // finns som EGEN öppningskomponent i Eveno — samma belopp ur två källor.
+      lines.push(
+        'Konto 1510/2890 i Fortnox omfattar öppningen före brytdatum. Evenos öppningskomponent är samma belopp ur en annan källa – lägg aldrig ihop dem.',
+      )
+    }
     lines.push(
       'Ofördelade och okopplade belopp får INTE läggas på någon fastighet. En fastighet som saknas i listan har inga fördelade rader – säg inte att dess kostnad är 0 om det finns ofördelat belopp.',
     )
@@ -164,9 +173,11 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
   const pending = ex ? (ex.SENDING ?? 0) + (ex.RECEIPT_IDENTIFIED ?? 0) : 0
   if (ex && (needs || pending || ex.BLOCKED || ex.DRY_RUN_READY || ex.CONFIRMED)) {
     const head =
-      s.sendingEnabled === true
-        ? 'Exportkö till Fortnox (sändning är aktiverad endast för detta testföretag; varje verifikat skickas först efter uttrycklig bekräftelse)'
-        : 'Exportkö till Fortnox (endast förhandskontroll; sändning är avstängd i väntan på leverantörsbesked om dubblettskydd)'
+      s.sendingEnabled === true && s.customerActivation === true
+        ? 'Exportkö till Fortnox (sändning är aktiverad för detta kundföretag genom ett godkänt kundbeslut av ägaren; varje verifikat skickas först efter uttrycklig bekräftelse, och beslutet upphör vid ändrad anslutning, serie eller mappning)'
+        : s.sendingEnabled === true
+          ? 'Exportkö till Fortnox (sändning är aktiverad endast för detta testföretag; varje verifikat skickas först efter uttrycklig bekräftelse)'
+          : 'Exportkö till Fortnox (endast förhandskontroll; sändning är avstängd i väntan på leverantörsbesked om dubblettskydd)'
     lines.push(
       `${head}: ${ex.DRY_RUN_READY} klara utkast, ${ex.BLOCKED} spärrade, ${ex.CONFIRMED} bekräftade` +
         (pending ? `, ${pending} skickade men ännu inte verifierade` : '') +

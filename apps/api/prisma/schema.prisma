@@ -318,6 +318,41 @@ enum RentNoticeStatus {
   OVERDUE
   CANCELLED
   FAILED
+  // KUNDSTART: historisk öppen fordran ur ett verkställt öppningspaket. Bokförd i
+  // Fortnox FÖRE brytdatum; ingen intäkt eller verifikat i Eveno. Ingår i
+  // BETALBARA_AVISTATUSAR men i INGEN utskicks-, förfallo- eller kravautomatik.
+  OPENING
+}
+
+// KUNDSTART: varifrån en avi eller deposition kommer.
+enum RecordOrigin {
+  EVENO
+  OPENING_PACKAGE
+}
+
+enum OpeningPackageStatus {
+  DRAFT
+  VALIDATED
+  APPROVED
+  EXECUTED
+  DISCARDED
+}
+
+enum OpeningReconciliationStatus {
+  AVSTAMD
+  AVGRANSAD
+  DIFFERENS
+}
+
+enum OpeningRowKind {
+  RECEIVABLE
+  DEPOSIT
+}
+
+enum FortnoxCustomerActivationStatus {
+  ACTIVE
+  REVOKED
+  SUPERSEDED
 }
 
 // Avi-typ. RENT är vanlig månadshyresavi (kan vara delmånad), DEPOSIT är
@@ -958,8 +993,16 @@ model Organization {
   supplierInvoices SupplierInvoice[]
 
   // G2-AVSLUT — granskningspausens perioder.
-  bankIdentityReviewPauses BankIdentityReviewPause[]
-  bankImportStops          BankImportStop[]
+  bankIdentityReviewPauses   BankIdentityReviewPause[]
+  bankImportStops            BankImportStop[]
+  openingPackages            OpeningPackage[]
+  fortnoxCustomerActivations FortnoxCustomerActivation[]
+  openingExecutedSources     OpeningExecutedSource[]
+  // KUNDSTART: första dag Eveno fakturerar (alltid den 1:a i en månad, svensk
+  // kalender). NULL = ingen gräns (oförändrat beteende). Låses efter ekonomisk effekt.
+  billingCutoverDate         DateTime?                   @db.Date
+  billingCutoverSetAt        DateTime?
+  billingCutoverSetById      String?
 
   @@index([orgNumber])
   @@index([customerNumber])
@@ -2706,7 +2749,7 @@ model BankTransaction {
   // NULL = okänd/äldre: alla rader före kolumnen OCH rader från äldre applikations-
   // generationer efter migrationen (de känner inte till fältet). Bara BgMax-tolken som
   // läser betalningsdagen ur TK15 skriver 'TK15'. Ingen default, ingen backfill.
-  bgmaxDateSource String?
+  bgmaxDateSource      String?
 
   @@unique([organizationId, externalId])
   @@index([organizationId])
@@ -2824,7 +2867,7 @@ model BankIdentityReviewPause {
 // igen (replay, övertaget försök, samtidig import) ger samma nyckel → ingen dubblett, och
 // ett redan löst stopp öppnas inte igen av samma bytes.
 model BankImportStop {
-  id             String  @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   bankAccountId  String?
   kind           String
@@ -5418,7 +5461,11 @@ model RentNotice {
   // Sätts av `actorStampExtension`, inte av anropsstället. Se
   // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
   // efter migrationens brytpunkt görs synligt.
-  actorKind ActorKind?
+  actorKind    ActorKind?
+  // KUNDSTART: OPENING_PACKAGE = historisk öppen fordran (status OPENING); raden i
+  // paketet som skapade den (unik → en källrad kan aldrig verkställas två gånger).
+  origin       RecordOrigin @default(EVENO)
+  openingRowId String?      @unique
 
   @@unique([leaseId, year, month, type])
   // H1: avinummer är unikt PER ORGANISATION, inte globalt. Det gamla globala
@@ -6398,7 +6445,11 @@ model Deposit {
   // Sätts av `actorStampExtension`, inte av anropsstället. Se
   // `common/actor/actor.context.ts` för de tre gränserna och för hur ett NULL
   // efter migrationens brytpunkt görs synligt.
-  actorKind ActorKind?
+  actorKind    ActorKind?
+  // KUNDSTART: OPENING_PACKAGE = mottagen före brytdatum, skulden (2890) finns i
+  // Fortnox. Ingen avi, ingen 1510/1930 i Eveno. Återbetalning går som vanligt.
+  origin       RecordOrigin @default(EVENO)
+  openingRowId String?      @unique
 
   @@index([organizationId])
   @@index([status])
@@ -7747,4 +7798,139 @@ model FortnoxVoucherExport {
   // En extern identitet kan bekräfta högst EN export (NULL är distinkt i Postgres).
   @@unique([organizationId, fortnoxDatabaseNumber, externalYear, externalSeries, externalNumber], map: "FortnoxVoucherExport_external_identity_key")
   @@index([organizationId, state])
+}
+
+// ── KUNDSTART: öppningspaket för historiska fordringar och depositioner ─────────
+// Utkast → validering/avstämning → godkännande (OWNER) → atomisk verkställning.
+// Bundet till organisation, brytdatum, underlagets sha256 och version. Raderas
+// aldrig efter verkställning (historik).
+model OpeningPackage {
+  id                    String                       @id @default(uuid())
+  organizationId        String
+  status                OpeningPackageStatus         @default(DRAFT)
+  version               Int                          @default(1)
+  cutoverDate           DateTime                     @db.Date
+  sourceName            String
+  sourceSha256          String
+  // Bolagsbindning: Evenos orgnr och, om anslutet, Fortnox-företaget vid valideringen.
+  orgNumber             String?
+  fortnoxDatabaseNumber Int?
+  fortnoxConnectionId   String?
+  // Totaler per hyresgäst och saldoart, samt avstämning mot angivna Fortnox-saldon.
+  totals                Json?
+  reconciliation        Json?
+  // Angivna Fortnox-saldon per brytdatum (öre). En differens kan INTE kvitteras bort
+  // (BYGGLEDARE-002): status AVSTAMD (0), AVGRANSAD (hela differensen förklarad av en
+  // verifierbar specifikation av separat reskontra) eller DIFFERENS (blockerar aktivering).
+  fortnoxBalance1510Ore Int?
+  fortnoxBalance2890Ore Int?
+  reconciliationStatus  OpeningReconciliationStatus?
+  // Per konto: { sha256, antal, summaOre, beskrivning } för separat reskontra.
+  separateLedgerSpec    Json?
+  // §12.6: saldot per brytdatum kommer ur en COMPLETE FortnoxReadRun (aldrig manuellt).
+  fortnoxReadRunId      String?
+  // §12.7: nollöppning — uttryckligt paket utan rader för ett bolag utan övertagna saldon.
+  zeroOpening           Boolean                      @default(false)
+  // §12.4: vattenmärke över organisationens ekonomiska läge vid godkännandet.
+  approvedWatermark     String?
+  approvedCutoverDate   DateTime?                    @db.Date
+  approvedReadRunId     String?
+  invalidatedReason     String?
+  createdById           String
+  createdAt             DateTime                     @default(now())
+  validatedAt           DateTime?
+  approvedById          String?
+  approvedAt            DateTime?
+  approvedSha256        String?
+  approvedVersion       Int?
+  executedById          String?
+  executedAt            DateTime?
+  discardedAt           DateTime?
+  updatedAt             DateTime                     @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rows         OpeningPackageRow[]
+
+  @@index([organizationId, status])
+}
+
+// §12.3 (K-B4): en källrad kan bara verkställas EN gång per organisation, oberoende av
+// paket och version. Skrivs i verkställningens transaktion.
+model OpeningExecutedSource {
+  id             String   @id @default(uuid())
+  organizationId String
+  sourceId       String
+  packageId      String
+  rowId          String   @unique
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceId])
+}
+
+model OpeningPackageRow {
+  id             String         @id @default(uuid())
+  packageId      String
+  rowNo          Int
+  sourceId       String
+  kind           OpeningRowKind
+  // Källans referenser (oförändrade) och de entydigt lösta id:na.
+  tenantRef      String
+  leaseRef       String?
+  propertyRef    String?
+  unitRef        String?
+  periodYear     Int?
+  periodMonth    Int?
+  dueDate        DateTime?      @db.Date
+  receivedDate   DateTime?      @db.Date
+  originalAmount Decimal        @db.Decimal(12, 2)
+  openAmount     Decimal        @db.Decimal(12, 2)
+  tenantId       String?
+  leaseId        String?
+  propertyId     String?
+  errors         Json?
+  createdAt      DateTime       @default(now())
+
+  package OpeningPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, sourceId])
+  @@unique([packageId, rowNo])
+}
+
+// ── KUNDSTART: kontrollerad aktivering av Fortnox-skrivning för ett kundföretag ──
+// Av som standard. Gäller bara när driftflaggan FORTNOX_CUSTOMER_WRITES=aktiverad
+// OCH bindningen är lika med aktuell anslutning, år, serie och mappning vid VARJE
+// sändning. Testföretagslistan påverkas inte.
+model FortnoxCustomerActivation {
+  id                     String                          @id @default(uuid())
+  organizationId         String
+  status                 FortnoxCustomerActivationStatus @default(ACTIVE)
+  connectionId           String
+  connectionGeneration   Int
+  fortnoxDatabaseNumber  Int
+  fortnoxOrgNumber       String
+  financialYearId        Int
+  financialYearFrom      DateTime                        @db.Date
+  financialYearTo        DateTime                        @db.Date
+  voucherSeries          String
+  mappingSha256          String
+  // §12.7: alltid ett EXECUTED paket (ev. nollpaket) — ingen motivering ersätter saldokontrollen.
+  openingPackageId       String
+  fortnoxReadRunId       String
+  consequencesText       String
+  consequencesSha256     String
+  approvedById           String
+  approvedAt             DateTime                        @default(now())
+  revokedById            String?
+  revokedAt              DateTime?
+  // §12.8: beständig ogiltigförklaring — en SUPERSEDED/REVOKED blir aldrig ACTIVE igen.
+  supersededAt           DateTime?
+  invalidatedReason      String?
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
 }

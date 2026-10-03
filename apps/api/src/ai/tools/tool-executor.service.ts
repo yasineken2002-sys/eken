@@ -11,6 +11,7 @@ import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.cont
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { oppningskomponent } from '../../kundstart/opening-component'
 import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
 import {
@@ -3969,6 +3970,8 @@ export class ToolExecutorService {
               PAID: 'Betald',
               OVERDUE: 'Försenad',
               CANCELLED: 'Avbruten',
+              FAILED: 'Utskick misslyckades',
+              OPENING: 'Historisk skuld före brytdatum (öppningspaket, ej skickad av Eveno)',
             }
             return m[s] ?? s
           }
@@ -4019,6 +4022,8 @@ export class ToolExecutorService {
               IN_PROGRESS: 'Pågår',
               COMPLETED: 'Slutförd',
               CANCELLED: 'Avbruten',
+              FAILED: 'Utskick misslyckades',
+              OPENING: 'Historisk skuld före brytdatum (öppningspaket, ej skickad av Eveno)',
             }
             return m[s] ?? s
           }
@@ -4347,6 +4352,30 @@ export class ToolExecutorService {
           const debit = Number(aggregate._sum.debit ?? 0)
           const credit = Number(aggregate._sum.credit ?? 0)
           const balance = debit - credit
+          const asOf = asOfDate.toISOString().slice(0, 10)
+          // KUNDSTART §12.9: för 1510/2890 redovisas öppningskomponenten SEPARAT (samma
+          // formel som balansrapporten). Saldot ovan är bara Evenos verifikat.
+          const ok =
+            account.number === 1510 || account.number === 2890
+              ? await oppningskomponent(this.prisma, organizationId, asOf)
+              : null
+          // Verktygets tecken är debet − kredit; 2890-komponenten är ett kreditsaldo.
+          const oppning = ok
+            ? account.number === 1510
+              ? ok.konton['1510']
+              : -ok.konton['2890']
+            : 0
+          const oppningData = ok
+            ? {
+                brytdatum: ok.brytdatum,
+                galler: ok.galler,
+                belopp: oppning,
+                saldoInklOppning: Math.round((balance + oppning) * 100) / 100,
+                text: ok.text,
+                begransning: ok.begransning,
+                avstamning: ok.avstamningstexter,
+              }
+            : null
           return {
             success: true,
             data: {
@@ -4356,9 +4385,16 @@ export class ToolExecutorService {
               debit,
               credit,
               balance,
-              asOf: asOfDate.toISOString().slice(0, 10),
+              asOf,
+              oppningskomponent: oppningData,
             },
-            message: `Konto ${account.number} ${account.name}: saldo ${formatAmount(balance)} kr per ${asOfDate.toISOString().slice(0, 10)}`,
+            message:
+              `Konto ${account.number} ${account.name}: saldo enligt Evenos verifikat ${formatAmount(balance)} kr per ${asOf}` +
+              (oppningData
+                ? oppningData.galler
+                  ? `; öppningskomponent (externt bokförd i Fortnox före ${oppningData.brytdatum}) ${formatAmount(oppningData.belopp)} kr redovisas separat → inklusive öppning ${formatAmount(oppningData.saldoInklOppning)} kr. ${oppningData.begransning}`
+                  : `; ${oppningData.text}`
+                : ''),
           }
         }
 
@@ -4402,10 +4438,17 @@ export class ToolExecutorService {
           const asOfStr = String(toolInput.asOfDate ?? '')
           if (!asOfStr) return { success: false, message: 'asOfDate krävs' }
           const bs = await this.accountingService.getBalanceSheet(organizationId, asOfStr)
+          const ok = bs.oppningskomponent
           return {
             success: true,
             data: bs,
-            message: `Balansräkning per ${asOfStr}: tillgångar ${formatAmount(bs.assets.total)} kr, skulder + EK ${formatAmount(bs.liabilitiesAndEquity.total)} kr`,
+            message:
+              `Balansräkning per ${asOfStr} (Evenos verifikat): tillgångar ${formatAmount(bs.assets.total)} kr, skulder + EK ${formatAmount(bs.liabilitiesAndEquity.total)} kr` +
+              (ok
+                ? ok.galler
+                  ? `. Öppningskomponent separat (ingår inte i summorna): ${ok.rader.map((r) => `${r.konto} ${formatAmount(r.oppning)} kr → inkl. öppning ${formatAmount(r.nettoInklOppning)} kr`).join(', ')}. ${ok.begransning}`
+                  : `. ${ok.text}`
+                : ''),
           }
         }
 

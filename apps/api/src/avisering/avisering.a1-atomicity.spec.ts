@@ -34,6 +34,8 @@ function makeRig(leases: unknown[]) {
   let seq = 0
   const prisma = {
     lease: { findMany: jest.fn().mockResolvedValue(leases) },
+    // KUNDSTART: inget brytdatum = oförändrat beteende.
+    organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },
     // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
     // riggen ger löpande nummer i stället för samma varje gång.
     rentNoticeNumberSequence: {
