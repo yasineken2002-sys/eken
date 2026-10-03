@@ -152,6 +152,8 @@ export const MODEL_SCOPES: Readonly<Record<string, ModelScope>> = {
   Unit: { scope: 'parent-scoped', parent: 'Property' },
   InvoiceEvent: { scope: 'parent-scoped', parent: 'Invoice' },
   InvoiceLine: { scope: 'parent-scoped', parent: 'Invoice' },
+  // KUNDSTART-001: paketrader nås bara via sitt öppningspaket (org-scopat).
+  OpeningPackageRow: { scope: 'parent-scoped', parent: 'OpeningPackage' },
   InvoicePayment: { scope: 'parent-scoped', parent: 'Invoice' },
   PaymentReminder: { scope: 'parent-scoped', parent: 'Invoice' },
   JournalEntryLine: { scope: 'parent-scoped', parent: 'JournalEntry' },

@@ -63,8 +63,15 @@ describe('KUNDSTART: belopp och CSV', () => {
     const r2 = tolkaOpeningCsv(fil)
     expect(r2.ok && r2.sha256).toBe(r.sha256)
   })
-  it('S5-1: specifikation kräver identitet per post — postId;belopp ensamt avvisas', () => {
-    expect(tolkaSpecifikation('postId;belopp\n1;28212')).toMatchObject({ ok: false })
+  it('S5-1/K011: gammalt format postId;belopp avvisas även med EXAKT rätt totalsumma (B-fallets 28 212 kr)', () => {
+    // C2:s motexempel: summan förklarar differensen exakt, men posterna saknar identitet.
+    const gammalt = tolkaSpecifikation('postId;belopp\n1;28212')
+    expect(gammalt).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/identitet per post är obligatorisk/),
+    })
+    const tvaPoster = tolkaSpecifikation('postId;belopp\nG91;10000\nG92;18212')
+    expect(tvaPoster).toMatchObject({ ok: false })
   })
   it('S5-1: kvittade eller negativa poster avvisas; dubbla (motpart, dokument) avvisas', () => {
     const H = 'postId;motpart;dokument;dokumentdatum;forfallodag;belopp'

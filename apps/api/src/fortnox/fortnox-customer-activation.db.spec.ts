@@ -5,6 +5,14 @@
  * orgnr 556000-0001) markeras som kundföretag, så att sändningen kräver kundaktivering
  * precis som ett företag utanför testlistan i REAL.
  */
+jest.mock('@aws-sdk/client-s3', () => ({
+  S3Client: class {},
+  PutObjectCommand: class {},
+  DeleteObjectCommand: class {},
+  GetObjectCommand: class {},
+}))
+jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: async () => '' }))
+
 import { randomUUID } from 'node:crypto'
 import { ConfigService } from '@nestjs/config'
 import { ConflictException, ForbiddenException } from '@nestjs/common'
@@ -33,6 +41,10 @@ import { FortnoxMappingService } from './fortnox-mapping.service'
 import { CutoverService } from '../kundstart/cutover.service'
 import { OpeningPackageService } from '../kundstart/opening-package.service'
 import { OcrService } from '../common/ocr/ocr.service'
+import { AccountingService } from '../accounting/accounting.service'
+import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
+import { DepositsService } from '../deposits/deposits.service'
+import { InvoiceEventsService } from '../invoices/invoice-events.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -114,7 +126,13 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       await prisma.fortnoxReadRun.deleteMany({ where: { organizationId: id } })
       await prisma.fortnoxOAuthState.deleteMany({ where: { organizationId: id } })
       await prisma.fortnoxConnection.deleteMany({ where: { organizationId: id } })
+      await prisma.rentNoticePayment.deleteMany({ where: { rentNotice: { organizationId: id } } })
+      await prisma.deposit.deleteMany({ where: { organizationId: id } })
+      await prisma.rentNotice.deleteMany({ where: { organizationId: id } })
       await prisma.account.deleteMany({ where: { organizationId: id } })
+      await prisma.lease.deleteMany({ where: { organizationId: id } })
+      await prisma.unit.deleteMany({ where: { property: { organizationId: id } } })
+      await prisma.tenant.deleteMany({ where: { organizationId: id } })
       await prisma.property.deleteMany({ where: { organizationId: id } })
       await prisma.user.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
@@ -122,7 +140,10 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     await prisma.$disconnect()
   })
 
-  async function setup(flagga = true) {
+  // KC-2: `dep` ger ett eget syntetiskt fall med brytdatum 2026-10-01 (före riggens klocka)
+  // och en historisk deposition i stället för nollöppning.
+  async function setup(flagga = true, dep: number | null = null) {
+    const CUT = dep === null ? '2026-11-01' : '2026-10-01'
     const sfx = randomUUID().slice(0, 8)
     // Syntetiskt, unikt orgnr per prov; Mock-företaget får samma.
     const orgnr = `559${String(Math.floor(Math.random() * 1e3)).padStart(3, '0')}-${String(Math.floor(Math.random() * 1e4)).padStart(4, '0')}`
@@ -156,7 +177,13 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     reader.company = { ...reader.company, OrganizationNumber: orgnr }
     reader.accounts.push(
       { Number: 1510, Active: true, Description: 'Kundfordringar', BalanceBroughtForward: 0 },
-      { Number: 2890, Active: true, Description: 'Övriga skulder', BalanceBroughtForward: 0 },
+      {
+        Number: 2890,
+        Active: true,
+        Description: 'Övriga skulder',
+        BalanceBroughtForward: dep === null ? 0 : -dep,
+      },
+      { Number: 1930, Active: true, Description: 'Företagskonto', BalanceBroughtForward: 0 },
       { Number: 3911, Active: true, Description: 'Hyresintäkter', BalanceBroughtForward: 0 },
       { Number: 2420, Active: true, Description: 'Förskott från kunder', BalanceBroughtForward: 0 },
     )
@@ -178,20 +205,76 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     await connections.handleCallback(state, `mock-code-${state.slice(0, 8)}`)
     await connections.setExportVoucherSeries(org.id, 'A')
     await connections.setExportOmitDimensions(org.id, owner.id, true)
-    await new CutoverService(db).set(org.id, ägare, '2026-11-01')
+    await new CutoverService(db).set(org.id, ägare, CUT)
+    let depCsv = HUVUD
+    if (dep !== null) {
+      // Syntetisk hyresgäst och avtal med en DOKUMENTERAT mottagen deposition före brytdatum.
+      const prop = await prisma.property.create({
+        data: {
+          organizationId: org.id,
+          name: 'Syntetisk fastighet',
+          propertyDesignation: `kc2-${sfx}`,
+          type: 'RESIDENTIAL',
+          street: 's',
+          city: 'c',
+          postalCode: '1',
+          totalArea: '100',
+        },
+      })
+      const unit = await prisma.unit.create({
+        data: {
+          propertyId: prop.id,
+          name: 'Lgh 1',
+          unitNumber: '1001',
+          type: 'APARTMENT',
+          area: '50',
+          monthlyRent: '6000',
+        },
+      })
+      const ten = await prisma.tenant.create({
+        data: {
+          organizationId: org.id,
+          type: 'INDIVIDUAL',
+          firstName: 'Syntetisk',
+          lastName: 'KC2',
+          email: `kc2-${sfx}@example.invalid`,
+          ocrNumber: `9${String(Date.now()).slice(-9)}`,
+        },
+      })
+      await prisma.lease.create({
+        data: {
+          organizationId: org.id,
+          unitId: unit.id,
+          tenantId: ten.id,
+          contractNumber: `KC2-${sfx}`,
+          status: 'ACTIVE',
+          startDate: new Date('2025-01-01'),
+          tenancyStartDate: new Date('2025-01-01'),
+          monthlyRent: '6000',
+          depositAmount: String(dep),
+        },
+      })
+      for (const [number, name, type] of [
+        [1930, 'Företagskonto', 'ASSET'],
+        [2890, 'Övriga skulder', 'LIABILITY'],
+        [1510, 'Kundfordringar', 'ASSET'],
+      ] as const)
+        await prisma.account.create({ data: { organizationId: org.id, number, name, type } })
+      depCsv = `${HUVUD}\nKC2-D1;DEPOSITION;${ten.ocrNumber};KC2-${sfx};;;;;;${dep};${dep};2025-01-01`
+    }
 
     // Nollöppning med verklig (Mock-)läsning: IB 0 + inga rörelser t.o.m. 2026-10-31.
     const las = () =>
       readback.read(org.id, owner.id, {
         financialYearId: 1,
         periodFrom: '2026-01-01',
-        periodTo: '2026-10-31',
+        periodTo: dep === null ? '2026-10-31' : '2026-09-30',
         costAccounts: [1510, 2890],
       })
     const pk = await paket.create(org.id, ägare, {
       sourceName: 'noll.csv',
-      innehall: HUVUD,
-      nollOppning: true,
+      innehall: depCsv,
+      nollOppning: dep === null,
     })
     await paket.validate(org.id, pk.id, ägare)
     const run = await las()
@@ -203,7 +286,7 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       innehall: 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt',
       system: 'Gamla systemet (syntetiskt)',
       ansvarig: 'Syntetisk ägare',
-      tackningFran: '2026-11-01',
+      tackningFran: CUT,
       tackningTill: '2026-12-31',
       intaktskonton: [3911],
       forskottskonton: [2420],
@@ -694,5 +777,79 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       (await prisma.fortnoxCustomerActivation.findUniqueOrThrow({ where: { id: a.id } })).status,
     ).toBe('SUPERSEDED')
     expect(await t.sender.sendingEnabledFor(t.org.id)).toBe(false)
+  })
+
+  // ── KC-2 (C2 K011): positiv export av återbetalning av historisk deposition EFTER brytdatum ──
+  it('KC-2: återbetalning av historisk deposition efter brytdatum → 2890 D / 1930 K, CONFIRMED, återläst, ingen dubbel', async () => {
+    const t = await setup(true, 12000)
+    const dep = await prisma.deposit.findFirstOrThrow({
+      where: { organizationId: t.org.id, origin: 'OPENING_PACKAGE' },
+    })
+    expect([dep.status, dep.paidAt?.toISOString().slice(0, 10)]).toEqual(['PAID', '2025-01-01'])
+    await t.godkann()
+    const accounting = new AccountingService(
+      prisma as unknown as PrismaService,
+      new VerifikationsnummerService(prisma as unknown as PrismaService),
+    )
+    const deposits = new DepositsService(
+      prisma as unknown as PrismaService,
+      accounting,
+      { createForAllOrgUsers: async () => undefined } as never,
+      new InvoiceEventsService(prisma as unknown as PrismaService),
+    )
+    await deposits.refund(
+      dep.id,
+      { refundAmount: 12000, deductions: [] } as never,
+      t.org.id,
+      t.owner.id,
+    )
+    const ver = await prisma.journalEntry.findFirstOrThrow({
+      where: { organizationId: t.org.id, sourceId: `deposit-refund:${dep.id}` },
+      include: { lines: { include: { account: true } } },
+    })
+    // Riggens klocka (2026-10-03) ligger EFTER det syntetiska brytdatumet 2026-10-01.
+    expect(ver.date >= new Date('2026-10-01')).toBe(true)
+    expect(
+      ver.lines.map((l) => [l.account.number, Number(l.debit ?? 0), Number(l.credit ?? 0)]).sort(),
+    ).toEqual([
+      [1930, 0, 12000],
+      [2890, 12000, 0],
+    ])
+    const row = (await t.exports.dryRun(t.org.id, ver.id)) as {
+      id: string
+      state: string
+      draftHash: string
+    }
+    expect(row.state).toBe('DRY_RUN_READY')
+    const res = await t.sender.send(t.org.id, t.owner.id, row.id, row.draftHash)
+    expect(res.state).toBe('CONFIRMED')
+    expect(t.writer.writes).toBe(1)
+    // Ingen dubbel: samma verifikat kan inte skickas igen.
+    await expect(t.sender.send(t.org.id, t.owner.id, row.id, row.draftHash)).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+    expect(t.writer.writes).toBe(1)
+    expect(
+      await prisma.fortnoxVoucherExport.count({
+        where: { organizationId: t.org.id, journalEntryId: ver.id },
+      }),
+    ).toBe(1)
+    // Extern återläsning: Fortnox 2890 bär exakt EN Eveno-rad (12 000 D) efter brytdatum.
+    const run = await t.readback.read(t.org.id, t.owner.id, {
+      financialYearId: 1,
+      periodFrom: '2026-10-01',
+      periodTo: '2026-12-31',
+      costAccounts: [2890],
+    })
+    const lagrad = await prisma.fortnoxReadRun.findUniqueOrThrow({ where: { id: run.id } })
+    expect(lagrad.status).toBe('COMPLETE')
+    const rader =
+      (
+        lagrad.rows as {
+          rows?: { account: number; amountOre: number; evenoExport: boolean }[]
+        } | null
+      )?.rows ?? []
+    const eveno = rader.filter((r) => r.account === 2890 && r.evenoExport)
+    expect(eveno.map((r) => r.amountOre)).toEqual([1200000])
   })
 })
