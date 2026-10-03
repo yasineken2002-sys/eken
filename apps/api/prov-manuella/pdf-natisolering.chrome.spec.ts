@@ -6,18 +6,19 @@
  *      INGEN förfrågan fram — sidnivåns spärr — och blockeringen loggas,
  *   3. Chrome startas med försvar-på-djupet-flaggorna.
 
- * KÖRS MED RIKTIG CHROME och ingår därför INTE i jest-mönstret (*.spec.ts) — CI:s testjobb
- * har ingen Chrome. Kör uttryckligen:
- *   PUPPETEER_CACHE_DIR=… npx jest --testRegex 'pdf-natisolering\.chrome-prov\.ts$'
+ * KÖRS MED RIKTIG CHROME och ligger därför UTANFÖR src/ (jest:s rootDir): CI:s testjobb har
+ * ingen Chrome, och vakterna (as never, pdf-mallar) granskar src/. Typkollas via
+ * tsconfig.typecheck.json. Kör uttryckligen från apps/api:
+ *   PUPPETEER_CACHE_DIR=… npx jest --rootDir . prov-manuella/pdf-natisolering.chrome.spec.ts
  * Samma logik prövas utan Chrome i pdf-natisolering.spec.ts (körs i CI).
  * Provet påstår INTE full nätisolering av Chromes egen bakgrundstrafik; den mäts separat
  * med socketsond i 100-lägenhetsriggen (bevis/provmiljo-003).
  */
-jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+jest.mock('../src/storage/storage.service', () => ({ StorageService: class {} }))
 
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { PdfService } from './pdf.service'
+import { PdfService } from '../src/invoices/pdf.service'
 
 jest.setTimeout(60_000)
 

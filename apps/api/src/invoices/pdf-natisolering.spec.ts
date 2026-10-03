@@ -2,7 +2,7 @@
  * G21 (FORTNOX-100, BYGGLEDARE-EFFEKT-015): pdf-renderarens härdning utan riktig Chrome
  * (CI:s testjobb har ingen). Puppeteer är attrapp; provet läser vad PdfService FAKTISKT
  * ber om: startflaggorna och sidans förfrågningshanterare. Samma beteende mot riktig Chrome
- * och lokal sond prövas i pdf-natisolering.chrome-prov.ts (körs uttryckligen, bevis i
+ * och lokal sond prövas i prov-manuella/pdf-natisolering.chrome.spec.ts (körs uttryckligen, bevis i
  * 100-lägenhetsriggen).
  */
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
