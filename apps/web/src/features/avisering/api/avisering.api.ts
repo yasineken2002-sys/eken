@@ -18,6 +18,8 @@ export interface RentNotice {
   leaseId: string
   noticeNumber: string
   ocrNumber: string
+  /** RENT eller DEPOSIT — API:t returnerar hela modellen. */
+  type?: 'RENT' | 'DEPOSIT'
   month: number
   year: number
   amount: number
