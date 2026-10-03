@@ -4,6 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { AviseringService } from './avisering.service'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
 
 /**
  * Schemalagd generering av månatliga hyresavier. Körs 1:a varje månad
@@ -25,7 +26,7 @@ import { CronErrorSink } from '../common/cron/cron-error-sink'
  * nästa månads — medan påminnelsecronen (som inte filtrerar på bolagsstatus) fortsatte
  * driva krav. Bara `SUSPENDED` och `CANCELLED` stängs ute, i linje med schemats betydelser.
  */
-export const AVISERING_ORG_STATUSES = ['TRIAL', 'ACTIVE', 'PAST_DUE'] as const
+export const AVISERING_ORG_STATUSES = AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES
 
 @Injectable()
 export class AviseringScheduler {

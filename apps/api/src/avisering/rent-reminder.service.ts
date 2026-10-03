@@ -48,6 +48,7 @@ import {
 import { bedömOmsändning, hashaAdress } from './resend-verdict'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { NotificationsService } from '../notifications/notifications.service'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
 
 interface ReminderSummary {
   reminded: number
@@ -298,7 +299,11 @@ export class RentReminderService {
             // urval → en filter här isolerar hela trappan (ränta kristalliseras bara
             // härifrån).
             isBackfill: false,
-            organization: { remindersEnabled: true },
+            // FS-4: blockerade bolag (SUSPENDED/CANCELLED) får inga automatiska krav.
+            organization: {
+              remindersEnabled: true,
+              status: { in: [...AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES] },
+            },
           },
           include: {
             organization: true,
@@ -682,7 +687,11 @@ export class RentReminderService {
             status: 'OVERDUE',
             type: RentNoticeType.RENT,
             collectionStage: 'REMINDED',
-            organization: { remindersEnabled: true },
+            // FS-4: blockerade bolag (SUSPENDED/CANCELLED) får inga automatiska krav.
+            organization: {
+              remindersEnabled: true,
+              status: { in: [...AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES] },
+            },
           },
           include: {
             organization: {

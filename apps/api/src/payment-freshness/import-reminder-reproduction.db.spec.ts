@@ -2482,4 +2482,28 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     expect(fel).toBeInstanceOf(IdentityReviewPausedError)
     expect((fel as Error).message).toMatch(/1 importstopp är olöst/)
   })
+
+  // ── FS-4 (FORTNOX-100): blockerade bolag får inga automatiska krav ─────────────
+  // SUSPENDED/CANCELLED blockerar alla autentiserade endpoints: hyresvärden kan inte
+  // importera eller registrera betalningar. Påminnelse och avgift får då inte gå ut.
+  it.each(['SUSPENDED', 'CANCELLED'] as const)(
+    'FS-4 %s: färskt underlag men ingen påminnelse, avgift, verifikat eller kö',
+    async (status) => {
+      await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+      await db.organization.update({ where: { id: orgId! }, data: { status } })
+      const r = await runCron('FS-4-' + status)
+      expect(r.evaluateStaleDiagnostic).toBe(false)
+      expect(r).toMatchObject({ stage: 'NONE', fee: 0, events: 0, vouchers: 0, queued: 0 })
+      expect(r.summary.reminded).toBe(0)
+    },
+  )
+
+  it.each(['PAST_DUE', 'TRIAL'] as const)(
+    'FS-4 positiv kontroll %s: påminnelsen går som för ACTIVE',
+    async (status) => {
+      await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+      await db.organization.update({ where: { id: orgId! }, data: { status } })
+      expectEffect(await runCron('FS-4-' + status))
+    },
+  )
 })

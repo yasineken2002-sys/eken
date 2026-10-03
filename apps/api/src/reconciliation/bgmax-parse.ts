@@ -273,11 +273,9 @@ export function tolkaBgMax(text: string): BgMaxTolkning {
         dag: datum,
         avsnitt: a.nr,
         beloppOre: bOre - dOre,
+        // Samma referens på TK20 och TK21 visas en gång.
         referens:
-          [...b, ...d]
-            .map((p) => p.referens)
-            .filter(Boolean)
-            .join(', ') || null,
+          [...new Set([...b, ...d].map((p) => p.referens).filter(Boolean))].join(', ') || null,
         avsandarBankgiro: bg,
         id: bg,
         text:
