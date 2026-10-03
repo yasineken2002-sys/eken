@@ -184,6 +184,8 @@ export interface FileIngestInput {
   // nattgranskningen 2026-09-17).
   // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
   dedup: Prisma.BankTransactionWhereInput
+  /** FS1: bara BgMax-vägen — se övergångsregeln i `ingestFromFile`. */
+  bgmaxÖvergång?: { date: Date; amount: Prisma.Decimal; rawOcr: string | null }
   /**
    * #F034b — radidentiteten som ett DB-BÄRBART villkor, plus radens
    * förekomstnummer inom den fil som skapade den.
@@ -251,8 +253,11 @@ export type FileIngestResult =
  *   API_UTAN_KONTO      — raden krockar cross-source med en PSD2-API-rad som
  *                         saknar konto (`dedupKey` bär dag + belopp + OCR, inget
  *                         konto — se cross-source-grenen i `ingestFromFile`).
+ *   BGMAX_DATUMOVERGANG — (FS1, FORTNOX-100) samma belopp och OCR finns i en BgMax-rad
+ *                         som en äldre version lagrade med IMPORTDAGEN som datum (före
+ *                         G7). Kan vara samma betalning med annan identitet.
  */
-export type Granskningsskäl = 'HISTORIK_UTAN_KONTO' | 'API_UTAN_KONTO'
+export type Granskningsskäl = 'HISTORIK_UTAN_KONTO' | 'API_UTAN_KONTO' | 'BGMAX_DATUMOVERGANG'
 
 /**
  * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
@@ -788,6 +793,44 @@ export class ReconciliationService {
       osäkerhet = {
         skäl: 'HISTORIK_UTAN_KONTO',
         detalj: `raden matchar ${kontolösHistorik} kontolös(a) historisk(a) rad(er)`,
+      }
+    }
+
+    // ── FS1 (FORTNOX-100): ÖVERGÅNGEN FRÅN IMPORTDAGSDATUM ───────────────────
+    //
+    // Före G7 lagrade BgMax-importen importÖGONBLICKET som radens datum (new Date(), med
+    // klockslag; mätt i kor-9: date ≈ createdAt, aldrig UTC-midnatt). Efter G7 bär raden
+    // betalningsdagen ur TK15. Identiteten innehåller datumet, så samma betalning läst
+    // före och efter uppgradering möts inte — en ny fil (eller ett övertaget PARTIELLT
+    // försök) hade tyst lagrat och matchat den en gång till.
+    //
+    // Regeln gissar inte åt något håll: finns en sådan äldre rad (samma konto eller
+    // kontolös, samma belopp och OCR, importögonblick på eller upp till 45 dagar efter
+    // betalningsdagen) lagras den nya raden som GRANSKNINGSRAD — den matchas aldrig
+    // automatiskt och pausar automatiska krav tills en människa avgjort den. Förekomster
+    // räknas som ovan (fler äldre rader än raden förekommer i filen → granska). Ingen
+    // backfill, ingen omskrivning av äldre identiteter.
+    if (!osäkerhet && input.bgmaxÖvergång) {
+      const ö = input.bgmaxÖvergång
+      const tills = new Date(ö.date.getTime() + 45 * 24 * 60 * 60 * 1000)
+      const äldre = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
+        SELECT count(*)::bigint AS n FROM "BankTransaction"
+        WHERE "organizationId" = ${organizationId}
+          AND ("bankAccountId" = ${input.bankAccountId} OR "bankAccountId" IS NULL)
+          AND amount = ${ö.amount}
+          AND "rawOcr" IS NOT DISTINCT FROM ${ö.rawOcr}
+          AND description LIKE 'BgMax inbetalning%'
+          AND date <> date_trunc('day', date)
+          AND abs(extract(epoch FROM ("createdAt" - date))) < 120
+          AND date >= ${ö.date} AND date < ${tills}`
+      const n = Number(äldre[0]?.n ?? 0)
+      if (n > input.identity.seq) {
+        osäkerhet = {
+          skäl: 'BGMAX_DATUMOVERGANG',
+          detalj:
+            `samma belopp och OCR finns i ${n} BgMax-rad(er) lagrade med importdagen som datum ` +
+            '(före betalningsdag ur TK15) — kan vara samma betalning',
+        }
       }
     }
 
@@ -1564,6 +1607,7 @@ export class ReconciliationService {
               ...(ocr ? { rawOcr: ocr } : {}),
             },
             crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
+            bgmaxÖvergång: { date: txDate, amount: amountDecimal, rawOcr: ocr || null },
           })
           if (outcome.duplicate) {
             result.duplicates++
