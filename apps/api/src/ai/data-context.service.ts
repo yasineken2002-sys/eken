@@ -290,9 +290,10 @@ export class DataContextService {
       // i Evenos förfallna skuld ovan och aldrig föremål för kravautomatik.
       ...(oppning
         ? [
-            oppning.galler
-              ? `Historisk skuld före brytdatum ${oppning.brytdatum} (öppningspaket, källa: ${oppning.paket.map((p) => p.id.slice(0, 8)).join(', ')}): ${historisk.antal} poster, öppen rest ${formatSEK(historisk.belopp)}. Ingår inte i "Förfallen skuld" och driver inga påminnelser.`
-              : oppning.text,
+            // Reskontrafakta, oberoende av datum: de historiska posterna finns i Eveno.
+            `Historisk skuld före brytdatum ${oppning.brytdatum} (öppningspaket, källa: ${oppning.paket.map((p) => p.id.slice(0, 8)).join(', ')}): ${historisk.antal} poster, öppen rest ${formatSEK(historisk.belopp)}. Ingår inte i "Förfallen skuld" och driver inga påminnelser.`,
+            // Saldo per datum (§12.9): före brytdatum ingår komponenten inte.
+            ...(oppning.galler ? [] : [oppning.text]),
             `Öppningskomponent per idag: 1510 ${formatSEK(oppning.konton['1510'])}, 2890 ${formatSEK(oppning.konton['2890'])} (externt bokförd i Fortnox före brytdatum; Fortnox IB och Evenos öppning är samma belopp ur två källor). ${oppning.begransning}`,
             ...oppning.avstamningstexter.map((t) => `  Avstämning: ${t}`),
           ]
