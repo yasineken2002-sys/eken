@@ -135,7 +135,13 @@ function bgmax(datum: string, poster: Array<{ ocr: string; belopp: number }>): B
     'SEK' +
     h0(poster.length, 8)
   ).padEnd(80, ' ')
-  return Buffer.from([tk05, ...rader, tk15].join('\n'), 'utf8')
+  // Filens ram (tabell 2 och 17): startpost och slutpost med antal betalningar/avdrag/extra/insättningar.
+  const tk01 = ('01' + 'BGMAX'.padEnd(20, ' ') + '01' + '20261201080000000000' + 'P').padEnd(
+    80,
+    ' ',
+  )
+  const tk70 = ('70' + h0(poster.length, 8) + h0(0, 8) + h0(0, 8) + h0(1, 8)).padEnd(80, ' ')
+  return Buffer.from([tk01, tk05, ...rader, tk15, tk70].join('\n'), 'utf8')
 }
 
 describe('förutsättningar', () => {
@@ -865,5 +871,64 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
     // OLIKA identitet, inte bara olika rader: kontot ingår i nyckeln, så det
     // unika villkoret kan inte slå ihop dem.
     expect(new Set(rader.map((r) => r.identityKey)).size).toBe(2)
+  })
+
+  // ── PARSER-006: filens ram och stoppade pengar genom HELA importvägen ─────────
+  it('PARSER-006 — avklippt BgMax (utan TK70) avvisas med skälet; inga rader, underlaget flyttas inte', async () => {
+    const hel = bgmax('2026-11-02', [{ ocr: ocrA, belopp: HYRA }]).toString('utf8')
+    const avklippt = hel.split('\n').slice(0, -1).join('\n')
+    await expect(
+      service.importBgMaxFile(Buffer.from(avklippt, 'utf8'), 'avklippt.txt', orgId, kontoId),
+    ).rejects.toThrow(/Inga giltiga BgMax-poster.*saknar slutpost \(TK70\)/)
+    expect(await prisma.bankTransaction.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await färskhet()).toBeNull()
+  })
+
+  it('PARSER-006 — stoppad betalare (TK21) importeras inte, och underlaget stannar dagen före stoppet', async () => {
+    const h0 = (v: string | number, n: number) => String(v).padStart(n, '0').slice(-n)
+    const p = (tk: string, bg: string, ref: string, öre: number, lopnr: number) =>
+      (tk + h0(bg, 10) + ref.padStart(25, ' ') + h0(öre, 18) + '21' + h0(lopnr, 12) + '0').padEnd(
+        80,
+        ' ',
+      )
+    const tk05 = ('05' + h0('56781230', 10) + ' '.repeat(10) + 'SEK').padEnd(80, ' ')
+    const tk15 = (dag: string, öre: number, antal: number, nr: number) =>
+      (
+        '15' +
+        h0('1234000123456', 35) +
+        dag +
+        h0(nr, 5) +
+        h0(öre, 18) +
+        'SEK' +
+        h0(antal, 8)
+      ).padEnd(80, ' ')
+    const fil = [
+      ('01' + 'BGMAX'.padEnd(20, ' ') + '01' + '20261201080000000000' + 'P').padEnd(80, ' '),
+      tk05,
+      p('20', '0', ocrA, HYRA * 100, 1),
+      p('20', '51234567', ocrB, HYRA * 100 + 10000, 2),
+      p('21', '51234567', 'KREDIT-1', 10000, 3),
+      tk15('20260902', HYRA * 100 * 2, 3, 1),
+      tk05,
+      p('20', '0', ocrC, HYRA * 100, 4),
+      tk15('20260930', HYRA * 100, 1, 2),
+      ('70' + h0(2 + 1, 8) + h0(1, 8) + h0(0, 8) + h0(2, 8)).padEnd(80, ' '),
+    ].join('\n')
+    const r = await service.importBgMaxFile(Buffer.from(fil, 'utf8'), 'stopp.txt', orgId, kontoId)
+    expect(r.imported).toBe(2)
+    expect(r.errors.join(' ')).toMatch(/bankgiro 0051234567 .* avdrag \(TK21\)/)
+    const rader = await prisma.bankTransaction.findMany({
+      where: { organizationId: orgId },
+      select: { rawOcr: true, date: true },
+      orderBy: { date: 'asc' },
+    })
+    expect(rader.map((x) => [x.rawOcr, x.date.toISOString().slice(0, 10)])).toEqual([
+      [ocrA, '2026-09-02'],
+      [ocrC, '2026-09-30'],
+    ])
+    // Datumen ligger före provdagen: underlaget kan aldrig gå förbi idag.
+    // Pengarna från betalaren med avdrag finns på banken men inte i Eveno → underlaget
+    // får inte påstå att 2 sep är komplett (annars kan en påminnelse gå till den som betalat).
+    expect((await färskhet())?.toISOString().slice(0, 10)).toBe('2026-09-01')
   })
 })

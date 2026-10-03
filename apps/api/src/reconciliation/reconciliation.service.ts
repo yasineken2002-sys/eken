@@ -1495,8 +1495,22 @@ export class ReconciliationService {
 
     if (result.imported === 0 && result.duplicates === 0) {
       throw new BadRequestException(
-        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
+        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.' +
+          (tolkning.fel.length > 0 ? ` ${tolkning.fel.join(' ')}` : ''),
       )
+    }
+
+    // PARSER-006: pengar som stoppats (avdrag, extra referenser, valuta, avsnitt som inte
+    // stämmer) finns på banken men inte i Eveno. Betalningsunderlaget får då inte påstå att
+    // det är komplett för den dagen — annars kan en påminnelse gå till någon som betalat.
+    // Stopp på okänd dag → underlaget flyttas inte alls av den här filen.
+    if (tolkning.stopp.length > 0 && latestCoverage) {
+      if (tolkning.stopp.some((s) => s.dag === null)) latestCoverage = null
+      else {
+        const första = Math.min(...tolkning.stopp.map((s) => s.dag!.getTime()))
+        const dagenFöre = new Date(första - 24 * 60 * 60 * 1000)
+        if (latestCoverage > dagenFöre) latestCoverage = dagenFöre
+      }
     }
 
     // PR 4 (B) — flytta fram paymentDataThrough till BgMax-filens senaste sektionsdatum.

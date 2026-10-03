@@ -65,7 +65,13 @@ function bgmax(datum: string, poster: Array<{ ocr: string; belopp: number }>): B
     'SEK' +
     h0(poster.length, 8)
   ).padEnd(80, ' ')
-  return Buffer.from([tk05, ...rader, tk15].join('\n'), 'utf8')
+  // Filens ram (tabell 2 och 17): startpost och slutpost med antal betalningar/avdrag/extra/insättningar.
+  const tk01 = ('01' + 'BGMAX'.padEnd(20, ' ') + '01' + '20261201080000000000' + 'P').padEnd(
+    80,
+    ' ',
+  )
+  const tk70 = ('70' + h0(poster.length, 8) + h0(0, 8) + h0(0, 8) + h0(1, 8)).padEnd(80, ' ')
+  return Buffer.from([tk01, tk05, ...rader, tk15, tk70].join('\n'), 'utf8')
 }
 
 describe('förutsättningar', () => {

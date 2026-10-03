@@ -153,3 +153,128 @@ describe('tolkaBgMax — Bankgirots manual okt 2023', () => {
     expect(t.fel.join('\n')).toMatch(/ogiltigt belopp[\s\S]*oläsbara poster/)
   })
 })
+
+describe('tolkaBgMax — filens ram, valuta och extra referenser (PARSER-006)', () => {
+  const tk70x = (bet: number, avd: number, extra: number, ins: number) =>
+    '70' + h0(bet, 8) + h0(avd, 8) + h0(extra, 8) + h0(ins, 8) + ' '.repeat(46)
+  const p1 = () => post('20', { ref: '00000000019', ore: 603700, lopnr: 1 })
+  const t15 = () => tk15('20261102', 603700, 1)
+  const hel = tolkaBgMax(fil(tk01(), tk05(), p1(), t15(), tk70(1, 0, 1)))
+  // Extra referensnummerpost (tabell 10): som TK20, transaktionskod 22 (positiv) eller 23 (avdrag).
+  const extra = (tk: '22' | '23', o: { bg?: string; ref: string; ore: number; lopnr: number }) =>
+    tk +
+    h0(o.bg ?? '0', 10) +
+    hb(o.ref, 25) +
+    h0(o.ore, 18) +
+    '2' +
+    '1' +
+    h0(o.lopnr, 12) +
+    '0' +
+    ' '.repeat(10)
+
+  it('positiv kontroll: en korrekt fil importerar betalningen utan fel och utan stopp', () => {
+    expect(hel.fel).toEqual([])
+    expect(hel.stopp).toEqual([])
+    expect(hel.avsnitt[0]!.betalningar).toHaveLength(1)
+  })
+
+  it.each([
+    ['utan slutpost (avklippt)', () => [tk01(), tk05(), p1(), t15()], /saknar slutpost \(TK70\)/],
+    [
+      'slutpostens antal stämmer inte',
+      () => [tk01(), tk05(), p1(), t15(), tk70(2, 0, 1)],
+      /Slutposten anger 2\/0\/0\/1 men filen innehåller 1\/0\/0\/1/,
+    ],
+    ['utan startpost', () => [tk05(), p1(), t15(), tk70(1, 0, 1)], /saknar startpost \(TK01\)/],
+    [
+      'fel layout',
+      () => [tk01().replace('BGMAX', 'XXXXX'), tk05(), p1(), t15(), tk70(1, 0, 1)],
+      /layout "XXXXX".*bara BGMAX/,
+    ],
+    [
+      'två slutposter',
+      () => [tk01(), tk05(), p1(), t15(), tk70(1, 0, 1), tk70(1, 0, 1)],
+      /fler än en startpost eller slutpost/,
+    ],
+  ])('%s → hela filen stoppas synligt, inget importeras', (_namn, rader, fel) => {
+    const t = tolkaBgMax(fil(...rader()))
+    expect(t.avsnitt).toEqual([])
+    expect(t.fel).toHaveLength(1)
+    expect(t.fel[0]).toMatch(fel)
+    expect(t.fel[0]).toMatch(/Hela filen importeras inte/)
+    expect(t.stopp).toEqual([{ dag: null }])
+  })
+
+  it.each([
+    ['EUR i båda', 'EUR', 'EUR'],
+    ['motsägande valuta', 'SEK', 'EUR'],
+  ])('valuta: %s → avsnittet stoppas, ingen växling', (_namn, v05, v15) => {
+    const t = tolkaBgMax(
+      fil(
+        tk01(),
+        tk05().replace('SEK', v05),
+        p1(),
+        t15().slice(0, 68) + v15 + t15().slice(71),
+        tk70(1, 0, 1),
+      ),
+    )
+    expect(t.avsnitt).toEqual([])
+    expect(t.fel[0]).toMatch(/bara SEK stöds och ingen växling görs/)
+    expect(t.stopp.map((s) => s.dag?.toISOString().slice(0, 10))).toEqual(['2026-11-02'])
+  })
+
+  it.each(['22', '23'] as const)(
+    'TK%s: betalningen med extra referensnummer stoppas synligt; övriga i avsnittet importeras',
+    (tk) => {
+      const t = tolkaBgMax(
+        fil(
+          tk01(),
+          tk05(),
+          p1(),
+          post('20', { bg: '0051234567', ref: '00000000028', ore: 1500000, lopnr: 2 }),
+          extra(tk, { bg: '0051234567', ref: '00000000037', ore: 700000, lopnr: 2 }),
+          tk15('20261102', 603700 + 1500000, 2),
+          tk70x(2, 0, 1, 1),
+        ),
+      )
+      expect(t.avsnitt[0]!.betalningar.map((p) => p.referens)).toEqual(['00000000019'])
+      expect(t.fel).toHaveLength(1)
+      expect(t.fel[0]).toMatch(
+        new RegExp(
+          `15000,00 kr \\(referens 00000000028, löpnummer 000000000002\\) har extra referensnummer \\(TK${tk}\\)`,
+        ),
+      )
+      expect(t.stopp.map((s) => s.dag?.toISOString().slice(0, 10))).toEqual(['2026-11-02'])
+    },
+  )
+
+  it('extra referensnummerpost utan matchande betalning stoppar avsnittet', () => {
+    const t = tolkaBgMax(
+      fil(
+        tk01(),
+        tk05(),
+        p1(),
+        extra('22', { bg: '0051234567', ref: '00000000037', ore: 700000, lopnr: 99 }),
+        t15(),
+        tk70x(1, 0, 1, 1),
+      ),
+    )
+    expect(t.avsnitt).toEqual([])
+    expect(t.fel[0]).toMatch(/hör inte till någon betalning/)
+  })
+
+  it('avdrag (TK21) med känd betalare ger stopp på betalningsdagen', () => {
+    const t = tolkaBgMax(
+      fil(
+        tk01(),
+        tk05(),
+        p1(),
+        post('20', { bg: '0051234567', ref: '00000000846', ore: 920800, lopnr: 2 }),
+        post('21', { bg: '0051234567', ref: 'KREDIT-77', ore: 10000, lopnr: 3 }),
+        tk15('20261102', 603700 + 920800 - 10000, 3),
+        tk70(2, 1, 1),
+      ),
+    )
+    expect(t.stopp.map((s) => s.dag?.toISOString().slice(0, 10))).toEqual(['2026-11-02'])
+  })
+})
