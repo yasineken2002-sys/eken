@@ -850,6 +850,8 @@ export function ReconciliationPage() {
   return (
     <PageWrapper id="reconciliation">
       <PageHeader
+        // F-TK-2: åtgärderna radbryts under rubriken på smal skärm i stället för att göra sidan bredare.
+        className="flex-wrap"
         title="Bankavstämning"
         description={
           unmatchedCount > 0
@@ -857,7 +859,7 @@ export function ReconciliationPage() {
             : 'Alla transaktioner är matchade'
         }
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {autoMatchFlash && (
               <span
                 className={cn(
@@ -1038,7 +1040,10 @@ export function ReconciliationPage() {
             }
           />
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+          // F-TK-2: avsiktlig horisontell rullning i tabellen (samma mönster som kundstartens
+          // tabell) — overflow-hidden klippte kolumnerna så att belopp, status och åtgärd inte
+          // gick att nå på smal skärm eller vid långa statusmärken.
+          <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white">
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--ev-border)' }}>

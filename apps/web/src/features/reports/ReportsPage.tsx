@@ -143,11 +143,15 @@ function BalanceColumn({
   title,
   total,
   accounts,
+  beraknat,
 }: {
   title: string
   total: number
   accounts: BalanceSheet['assets']['accounts']
+  /** F-TK-1: ej bokslutat resultat — en BERÄKNAD rad, inget konto och inget verifikat. */
+  beraknat?: BalanceSheet['calculatedResult']
 }) {
+  const visaBeraknat = beraknat !== undefined && Math.abs(beraknat.amount) >= 0.005
   return (
     <div className="border-line overflow-hidden rounded-2xl border bg-white">
       <div className="border-line flex items-center justify-between border-b px-4 py-3">
@@ -167,7 +171,21 @@ function BalanceColumn({
               </td>
             </tr>
           ))}
-          {accounts.length === 0 && (
+          {visaBeraknat && (
+            <tr className="border-line border-t bg-gray-50/60">
+              <td className="px-4 py-2.5 text-[13px] text-gray-400">–</td>
+              <td className="px-4 py-2.5 text-[13px] text-gray-700">
+                {beraknat.label}{' '}
+                <span className="ml-1 whitespace-nowrap rounded-full bg-amber-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-700">
+                  BERÄKNAD, inget verifikat
+                </span>
+              </td>
+              <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-gray-900">
+                {formatCurrency(beraknat.amount)}
+              </td>
+            </tr>
+          )}
+          {accounts.length === 0 && !visaBeraknat && (
             <tr>
               <td colSpan={3} className="px-4 py-6 text-center text-[13px] text-gray-400">
                 Inga poster
@@ -180,7 +198,7 @@ function BalanceColumn({
   )
 }
 
-function BalanceSheetView({ data }: { data: BalanceSheet }) {
+export function BalanceSheetView({ data }: { data: BalanceSheet }) {
   const balanced = Math.abs(data.difference) < 0.5
   return (
     <div className="mt-5 space-y-4">
@@ -204,6 +222,7 @@ function BalanceSheetView({ data }: { data: BalanceSheet }) {
           title="Skulder & eget kapital"
           total={data.liabilitiesAndEquity.total}
           accounts={data.liabilitiesAndEquity.accounts}
+          beraknat={data.calculatedResult}
         />
       </div>
       {data.oppningskomponent && <OppningskomponentView ok={data.oppningskomponent} />}

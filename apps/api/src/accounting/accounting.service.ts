@@ -49,7 +49,7 @@ import { oppningskomponent } from '../kundstart/opening-component'
 import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
-import { basChartFor } from './bas-chart'
+import { basChartFor, isResultAccountNumber } from './bas-chart'
 import {
   cancelBlockedReason,
   paymentSourceId,
@@ -1706,13 +1706,27 @@ export class AccountingService {
     }
     assets.sort((a, b) => a.number - b.number)
     liabilities.sort((a, b) => a.number - b.number)
+    // F-TK-1: ännu inte bokslutat resultat = Σ(kredit − debet) på resultatkontona (samma intervall
+    // som årsstängningen nollställer, isResultAccountNumber) för verifikat ≤ asOf. Årsstängningen
+    // bokför resultatet mot årets resultat-konto (20xx, redan i skulder/EK) och nollställer
+    // resultatkontona samma dag, så efter bokslutet är beloppet 0 — ingen dubbelräkning. En
+    // BERÄKNAD rapportrad: inget verifikat, inget konto, ingen bolagsformsregel. Utan raden
+    // visades korrekt bokföring som "boken balanserar inte" med exakt årets resultat.
+    let resultat = 0
+    for (const [num, info] of perAccount) if (isResultAccountNumber(num)) resultat += info.balance
+    const calculatedResult = {
+      amount: Math.round(resultat * 100) / 100,
+      label: 'Beräknat resultat (ej bokslutat)',
+    }
+    const totalLiabilitiesAndEquity = totalLiabilities + calculatedResult.amount
     // KUNDSTART §12.9: öppningskomponenten som egen del, aldrig inbakad i summorna ovan.
     const ok = await oppningskomponent(this.prisma, organizationId, asOf)
     return {
       asOf,
       assets: { total: totalAssets, accounts: assets },
-      liabilitiesAndEquity: { total: totalLiabilities, accounts: liabilities },
-      difference: totalAssets - totalLiabilities,
+      liabilitiesAndEquity: { total: totalLiabilitiesAndEquity, accounts: liabilities },
+      calculatedResult,
+      difference: Math.round((totalAssets - totalLiabilitiesAndEquity) * 100) / 100,
       oppningskomponent: ok
         ? {
             brytdatum: ok.brytdatum,
