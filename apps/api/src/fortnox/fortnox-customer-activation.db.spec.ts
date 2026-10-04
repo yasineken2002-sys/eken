@@ -376,6 +376,9 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       verifikat,
       exports,
       riskLas,
+      config,
+      verified,
+      db,
     }
   }
 
@@ -851,5 +854,128 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       )?.rows ?? []
     const eveno = rader.filter((r) => r.account === 2890 && r.evenoExport)
     expect(eveno.map((r) => r.amountOre)).toEqual([1200000])
+  })
+  // ── TESTKUND-006 F-1/F-2: kundaktiveringens färska kontoförkontroll ──────────────────────
+  async function medEnhet(
+    t: Awaited<ReturnType<typeof setup>>,
+    typ: 'APARTMENT' | 'PARKING' = 'APARTMENT',
+  ) {
+    const prop = await prisma.property.create({
+      data: {
+        organizationId: t.org.id,
+        name: 'Syntetisk F1',
+        propertyDesignation: `f1-${randomUUID().slice(0, 6)}`,
+        type: 'RESIDENTIAL',
+        street: 's',
+        city: 'c',
+        postalCode: '1',
+        totalArea: '100',
+      },
+    })
+    await prisma.unit.create({
+      data: {
+        propertyId: prop.id,
+        name: 'Lgh F1',
+        unitNumber: 'F1',
+        type: typ,
+        area: '50',
+        monthlyRent: '6000',
+      },
+    })
+    if (!(await prisma.account.findFirst({ where: { organizationId: t.org.id, number: 3911 } })))
+      await prisma.account.create({
+        data: {
+          organizationId: t.org.id,
+          number: 3911,
+          name: 'Hyresintäkter, bostäder',
+          type: 'REVENUE',
+        },
+      })
+  }
+  const medKontroll = (t: Awaited<ReturnType<typeof setup>>) =>
+    new FortnoxCustomerActivationService(t.db, t.config, (o, fy) =>
+      t.verified.kontoForkontroll(o, fy),
+    )
+
+  it('TESTKUND-006 F-1/F-2: använt intäktskonto ger hinder med Evenos och Fortnox namn, aktivitet och momskod; godkännande nekas', async () => {
+    for (const [variant, monster] of [
+      [
+        {},
+        /3911 Eveno «Hyresintäkter, bostäder» ↔ Fortnox «Hyresintäkter» \(aktivt, momskod saknas i svaret\).*inte avstämda/,
+      ],
+      [{ Active: false }, /3911 .*\(inaktivt.*kontot är inte aktivt i Fortnox/],
+      [{ VATCode: 'HFS' }, /3911 .*momskod HFS.*momskoden motsäger radens momsbehandling/],
+    ] as const) {
+      const t = await setup()
+      await medEnhet(t)
+      Object.assign(t.reader.accounts.find((a) => a.Number === 3911)!, variant)
+      const svc = medKontroll(t)
+      const s = await svc.status(t.org.id, 1)
+      expect(s.forslag.ok).toBe(false)
+      const h = s.forslag.hinder.join(' ')
+      expect(h).toMatch(monster)
+      expect(h).toMatch(
+        /Kundaktiveringen kan inte godkännas så länge detta hinder finns: ingenting skickas till Fortnox via kundvägen — varken hyror eller betalningar\./,
+      )
+      expect(h).toMatch(
+        /Stäm av kontoplanen med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats/,
+      )
+      await expect(
+        svc.approve(t.org.id, t.ägare, { financialYearId: 1, consequencesSha256: 'a'.repeat(64) }),
+      ).rejects.toThrow()
+      expect(
+        await prisma.fortnoxCustomerActivation.count({ where: { organizationId: t.org.id } }),
+      ).toBe(0)
+    }
+  })
+
+  it('TESTKUND-006 F-1 positiv kontroll: utan enheter och intäktsrader ger kontrollen inget hinder', async () => {
+    const t = await setup()
+    const utan = (await t.aktivering.status(t.org.id, 1)).forslag.hinder
+    const med = (await medKontroll(t).status(t.org.id, 1)).forslag.hinder
+    expect(med).toEqual(utan)
+  })
+
+  it('TESTKUND-006 K4: en ACTIVE kundaktivering gör inte en intäktsrad exporterbar', async () => {
+    const t = await setup()
+    await t.godkann()
+    expect(
+      await prisma.fortnoxCustomerActivation.count({
+        where: { organizationId: t.org.id, status: 'ACTIVE' },
+      }),
+    ).toBe(1)
+    const a =
+      (await prisma.account.findFirst({ where: { organizationId: t.org.id, number: 1510 } })) ??
+      (await prisma.account.create({
+        data: { organizationId: t.org.id, number: 1510, name: 'Kundfordringar', type: 'ASSET' },
+      }))
+    const b = await prisma.account.create({
+      data: {
+        organizationId: t.org.id,
+        number: 3911,
+        name: 'Hyresintäkter, bostäder',
+        type: 'REVENUE',
+      },
+    })
+    const je = await prisma.journalEntry.create({
+      data: {
+        organizationId: t.org.id,
+        date: new Date('2026-11-02'),
+        description: 'Syntetisk hyra',
+        fiscalYear: 2026,
+        verNumber: Math.floor(Math.random() * 1e6) + 1,
+        lines: {
+          create: [
+            { accountId: a.id, debit: '6000.00' },
+            { accountId: b.id, credit: '6000.00' },
+          ],
+        },
+      },
+    })
+    const row = await t.exports.dryRun(t.org.id, je.id)
+    expect(row.state).toBe('BLOCKED')
+    expect(String((row as { blockReason?: string | null }).blockReason)).toMatch(
+      /ACCOUNT_MEANING_UNRECONCILED/,
+    )
   })
 })

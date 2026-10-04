@@ -14,6 +14,7 @@ import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxReadbackService } from './fortnox-readback.service'
 import { FORTNOX_VOUCHER_DRAFT_BUILDER, FortnoxExportService } from './fortnox-export.service'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import { FORTNOX_KONTOKONTROLL, type Kontokontroll } from './fortnox-intaktsgrind'
 import { FortnoxSendService } from './fortnox-send.service'
 import {
   DisabledVoucherWriter,
@@ -156,6 +157,15 @@ import {
     // Förhandskontroll (dry run) med referenser verifierade i Fortnox i samma stund;
     // transformern är den frysta exportkomponenten. Ingen sändning finns.
     { provide: FORTNOX_VOUCHER_DRAFT_BUILDER, useClass: VerifiedVoucherDraftBuilder },
+    // TESTKUND-006 F-1: kundaktiveringens färska kontoförkontroll = exportgrindens klassning.
+    {
+      provide: FORTNOX_KONTOKONTROLL,
+      useFactory:
+        (b: VerifiedVoucherDraftBuilder): Kontokontroll =>
+        (o, fy) =>
+          b.kontoForkontroll(o, fy),
+      inject: [FORTNOX_VOUCHER_DRAFT_BUILDER],
+    },
     // Skrivare: Mock (syntetisk, NODE_ENV=test), eller skarp ENDAST i REAL med
     // uttrycklig opt-in och då bara mot den hårdkodade testföretagslistan.
     // Stub och REAL utan opt-in får DisabledVoucherWriter.

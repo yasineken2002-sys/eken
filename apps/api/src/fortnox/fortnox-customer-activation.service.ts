@@ -7,7 +7,9 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
+  Optional,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createHash } from 'crypto'
@@ -20,6 +22,7 @@ import { saldoUrLasning, senasteSaldolasning } from '../kundstart/opening-fortno
 import type { Avstamning } from '../kundstart/opening-reconciliation'
 import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { evenoPosterForeBrytdatum } from '../kundstart/pre-cutover-records'
+import { FORTNOX_KONTOKONTROLL, type Kontokontroll } from './fortnox-intaktsgrind'
 import {
   fortnoxRiskkontroll,
   registerHinder,
@@ -61,6 +64,11 @@ export class FortnoxCustomerActivationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    // TESTKUND-006 F-1: färsk kontoförkontroll (exportgrindens klassning). Injiceras i
+    // FortnoxModule; saknas den (enhetsprov som bygger tjänsten direkt) görs ingen kontroll.
+    @Optional()
+    @Inject(FORTNOX_KONTOKONTROLL)
+    private readonly kontoKontroll: Kontokontroll | null = null,
   ) {}
 
   get flaggaPa(): boolean {
@@ -215,6 +223,25 @@ export class FortnoxCustomerActivationService {
           )
         else
           ar = { id: financialYearId, fran: run.financialYearStart!, till: run.financialYearEnd! }
+      }
+    }
+
+    // TESTKUND-006 F-1/F-2: varje intäktskonto organisationen använder prövas färskt mot Fortnox
+    // med exportgrindens klassning. Ett inaktivt, momsoförenligt eller ej avstämt konto är ett
+    // hinder — kundens bekräftelse kan inte godkänna en känd konflikt. Ingen kod rekommenderas.
+    if (this.kontoKontroll && financialYearId !== null && conn?.status === 'ACTIVE') {
+      try {
+        for (const b of await this.kontoKontroll(organizationId, financialYearId))
+          hinder.push(
+            // F-006-3: säg hela effekten — hindret stänger kundaktiveringen, alltså ALL skrivning
+            // via kundvägen, även betalningar (betalningar utan motsvarande hyresfordringar
+            // skulle göra kundens 1510 i Fortnox missvisande).
+            `Intäktskonto ${b.text}. Kundaktiveringen kan inte godkännas så länge detta hinder finns: ` +
+              'ingenting skickas till Fortnox via kundvägen — varken hyror eller betalningar. ' +
+              'Stäm av kontoplanen med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats.',
+          )
+      } catch {
+        hinder.push('Kontoförkontrollen mot Fortnox kunde inte göras just nu — försök igen.')
       }
     }
 

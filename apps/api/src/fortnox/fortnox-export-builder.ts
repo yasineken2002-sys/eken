@@ -6,6 +6,16 @@ import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidatio
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { RefreshingLedgerReader } from './fortnox-readback.service'
 import {
+  arIntaktskonto,
+  bedomKonto,
+  harledBehandlingar,
+  stoppForIntakter,
+  type Behandling,
+  type FortnoxKontoFakta,
+  type Kontobedomning,
+} from './fortnox-intaktsgrind'
+import { revenueAccountForUnitType, vatRateForRent } from '@eken/shared'
+import {
   buildFortnoxVoucherDraft,
   type FortnoxVoucherDraftConfig,
   type LocalJournalEntrySnapshot,
@@ -56,7 +66,11 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       where: { id: journalEntryId, organizationId },
       include: {
         lines: {
-          include: { account: { select: { id: true, organizationId: true, number: true } } },
+          include: {
+            account: {
+              select: { id: true, organizationId: true, number: true, type: true, name: true },
+            },
+          },
         },
       },
     })
@@ -219,9 +233,19 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         evidenceRef: `${ref}@${at}`,
       })
       const accounts: Array<FortnoxVoucherDraftConfig['accounts'][number]> = []
+      // TESTKUND-006: intäktskontonas Fortnox-fakta samlas (samma svar, inga nya anrop) och
+      // prövas efter loopen mot varje intäktsrads egen momsbehandling. Övriga konton prövas
+      // exakt som tidigare.
+      const intaktsfakta = new Map<number, FortnoxKontoFakta>()
       for (const acc of new Map(entry.lines.map((l) => [l.account.id, l.account])).values()) {
         const a = await getRef<{
-          Account?: { Number?: unknown; Active?: unknown; Year?: unknown }
+          Account?: {
+            Number?: unknown
+            Active?: unknown
+            Year?: unknown
+            Description?: unknown
+            VATCode?: unknown
+          }
         }>(
           reader,
           auth.token,
@@ -230,6 +254,20 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           `Konto ${acc.number} finns inte i Fortnox för året`,
           { financialyear: fy.Id },
         )
+        if (arIntaktskonto(acc)) {
+          const finns =
+            a?.Account?.Number === acc.number &&
+            (a.Account.Year === undefined || a.Account.Year === fy.Id)
+          const vat = a?.Account?.VATCode
+          intaktsfakta.set(acc.number, {
+            number: acc.number,
+            finns,
+            active: finns ? a!.Account!.Active === true : null,
+            name: typeof a?.Account?.Description === 'string' ? a.Account.Description : null,
+            vatCode: vat === undefined ? undefined : typeof vat === 'string' ? vat : null,
+          })
+          continue
+        }
         if (
           a?.Account?.Number !== acc.number ||
           a.Account.Active !== true ||
@@ -246,6 +284,21 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           localAccountNumber: acc.number,
           externalAccountNumber: acc.number,
         })
+      }
+
+      if (intaktsfakta.size > 0) {
+        const behandlingar = await harledBehandlingar(this.prisma, organizationId, entry)
+        const perKonto = new Map<number, { namn: string; b: Behandling[] }>()
+        for (const l of entry.lines) {
+          if (!arIntaktskonto(l.account)) continue
+          const k = perKonto.get(l.account.number) ?? { namn: l.account.name, b: [] }
+          k.b.push(behandlingar.get(l.id) ?? { typ: 'OBEVISAD', skal: 'ingen behandling härledd' })
+          perKonto.set(l.account.number, k)
+        }
+        const stopp = stoppForIntakter(
+          [...perKonto].map(([n, k]) => bedomKonto(n, k.namn, intaktsfakta.get(n)!, k.b)),
+        )
+        if (stopp) return block(stopp.kod, stopp.text)
       }
 
       const snapshot: LocalJournalEntrySnapshot = {
@@ -359,6 +412,83 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       }
       throw err
     }
+  }
+
+  /**
+   * TESTKUND-006 F-1: färsk kontoförkontroll för kundaktiveringen. Intäktskonton som
+   * organisationen använder — hyreskonton för befintliga enheter (behandling ur
+   * vatRateForRent per enhet) och intäktskonton med verifikatrader — läses med
+   * GET /3/accounts/{n}?financialyear= och klassas exakt som exportgrinden. Godkänner inget.
+   */
+  async kontoForkontroll(
+    organizationId: string,
+    financialYearId: number,
+  ): Promise<Kontobedomning[]> {
+    const per = new Map<number, Behandling[]>()
+    const lagg = (n: number, b: Behandling) => {
+      const lista = per.get(n) ?? []
+      if (!lista.some((x) => JSON.stringify(x) === JSON.stringify(b))) lista.push(b)
+      per.set(n, lista)
+    }
+    const enheter = await this.prisma.unit.findMany({
+      where: { property: { organizationId } },
+      select: { type: true, voluntaryTaxLiability: true },
+    })
+    for (const u of enheter) {
+      const sats = vatRateForRent(u.type, u.voluntaryTaxLiability)
+      lagg(
+        revenueAccountForUnitType(u.type),
+        sats === 0
+          ? { typ: 'MOMSFRI', kalla: `enheter ${u.type}` }
+          : { typ: 'MOMSPLIKTIG', sats, kalla: `enheter ${u.type}` },
+      )
+    }
+    const konton = await this.prisma.account.findMany({
+      where: { organizationId },
+      select: { number: true, name: true, type: true, _count: { select: { journalLines: true } } },
+    })
+    for (const k of konton)
+      if (arIntaktskonto(k) && k._count.journalLines > 0 && !per.has(k.number))
+        lagg(k.number, {
+          typ: 'OBEVISAD',
+          skal: 'används i verifikat utan härledbar momsbehandling',
+        })
+    if (per.size === 0) return []
+    const auth = await this.connections.accessToken(organizationId)
+    const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
+    const namn = new Map(konton.map((k) => [k.number, k.name]))
+    const ut: Kontobedomning[] = []
+    for (const [n, b] of [...per].sort((x, y) => x[0] - y[0])) {
+      let fakta: FortnoxKontoFakta
+      try {
+        const a = await reader.get<{
+          Account?: {
+            Number?: unknown
+            Active?: unknown
+            Year?: unknown
+            Description?: unknown
+            VATCode?: unknown
+          }
+        }>(auth.token, `/3/accounts/${n}`, { financialyear: financialYearId })
+        const finns =
+          a?.Account?.Number === n &&
+          (a.Account.Year === undefined || a.Account.Year === financialYearId)
+        const vat = a?.Account?.VATCode
+        fakta = {
+          number: n,
+          finns,
+          active: finns ? a!.Account!.Active === true : null,
+          name: typeof a?.Account?.Description === 'string' ? a.Account.Description : null,
+          vatCode: vat === undefined ? undefined : typeof vat === 'string' ? vat : null,
+        }
+      } catch (err) {
+        if (err instanceof FortnoxReadError && err.kind === 'invalid')
+          fakta = { number: n, finns: false, active: null, name: null, vatCode: undefined }
+        else throw err
+      }
+      ut.push(bedomKonto(n, namn.get(n) ?? `Konto ${n}`, fakta, b))
+    }
+    return ut
   }
 }
 
