@@ -703,7 +703,15 @@ export interface ProfitLossReport {
 export interface BalanceSheet {
   asOf: string
   assets: { total: number; accounts: ReportAccountBalance[] }
+  /** `total` inkluderar `calculatedResult.amount` (beräknat, ej bokslutat resultat). */
   liabilitiesAndEquity: { total: number; accounts: ReportAccountBalance[] }
+  /**
+   * F-TK-1: ännu inte bokslutat resultat per asOf = Σ(kredit − debet) på resultatkonton
+   * (3000–8999) för verifikat med datum ≤ asOf. En BERÄKNAD rapportrad — inget verifikat och
+   * inget konto. Efter årsstängning är resultatkontona nollställda och resultatet ligger på
+   * årets resultat-konto (i `accounts`), så raden räknas aldrig dubbelt.
+   */
+  calculatedResult: { amount: number; label: string }
   difference: number
   /**
    * KUNDSTART-001 §12.9: öppningskomponent (externt bokförd i Fortnox före brytdatum) som

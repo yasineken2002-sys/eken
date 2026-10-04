@@ -4444,6 +4444,11 @@ export class ToolExecutorService {
             data: bs,
             message:
               `Balansräkning per ${asOfStr} (Evenos verifikat): tillgångar ${formatAmount(bs.assets.total)} kr, skulder + EK ${formatAmount(bs.liabilitiesAndEquity.total)} kr` +
+              // F-TK-1: samma innebörd som rapporten — det ej bokslutade resultatet är BERÄKNAT.
+              ` (varav ${bs.calculatedResult.label.toLowerCase()} ${formatAmount(bs.calculatedResult.amount)} kr — beräknat, inget verifikat)` +
+              (Math.abs(bs.difference) >= 0.005
+                ? `. Differens ${formatAmount(bs.difference)} kr — boken balanserar inte`
+                : '') +
               (ok
                 ? ok.galler
                   ? `. Öppningskomponent separat (ingår inte i summorna): ${ok.rader.map((r) => `${r.konto} ${formatAmount(r.oppning)} kr → inkl. öppning ${formatAmount(r.nettoInklOppning)} kr`).join(', ')}. ${ok.begransning}`
