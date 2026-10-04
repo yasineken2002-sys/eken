@@ -151,9 +151,9 @@ export function stoppForIntakter(
   return {
     kod,
     text:
-      `Intäktsrader exporteras inte till Fortnox i denna version (ingen godkänd kontomappning). ` +
+      'Intäktsrad stoppas före export: ' +
       bedomningar.map((b) => b.text).join(' | ') +
-      '. Stäm av kontoplanen med redovisningsansvarig.',
+      '. Stäm av med redovisningsansvarig.',
   }
 }
 

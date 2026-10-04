@@ -355,6 +355,16 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
     expect(s).toMatch(/3911[^|]*obevisad/i)
     expect(s).toMatch(/3912[^|]*obevisad/i)
     expect(s).not.toMatch(/3911[^;]*momspliktig/)
+    // Exportvyn: blockReason bär BÅDA kontona (ingen avklippning av konto nummer två).
+    const row = (await t.exports.dryRun(t.org.id, je.id)) as {
+      state: string
+      blockReason?: string | null
+    }
+    expect(row.state).toBe('BLOCKED')
+    expect(String(row.blockReason)).toMatch(
+      /3911 Eveno «Hyresintäkter, bostäder».*3912 Eveno «Hyresintäkter, parkeringsplatser»/,
+    )
+    expect(String(row.blockReason)).toMatch(/Stäm av med redovisningsansvarig\.$/)
   })
 
   it('A9 G-3: vattenersättning på Fortnox 3970 (vinst vid avyttring, aktivt, null) passerar inte', async () => {

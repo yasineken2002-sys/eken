@@ -106,7 +106,9 @@ export class FortnoxExportService {
           state: 'BLOCKED' as const,
           draft: Prisma.DbNull,
           draftHash: null,
-          blockReason: outcome.reasons.join(', ').slice(0, 500),
+          // TESTKUND-006: intäktsgrindens skäl namnger varje berört konto; 500 tecken klippte
+          // bort konto nummer två i exportvyn.
+          blockReason: outcome.reasons.join(', ').slice(0, 2000),
         }
 
     // E1: skrivningen är VILLKORAD på ett tillåtet tidigare tillstånd. Ett slutläge
