@@ -35,7 +35,7 @@ import type {
 import type { Decimal } from '@prisma/client/runtime/library'
 
 import { isReminderFeeContractuallyAllowed } from './debt-origin'
-import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import { REMINDER_FEE_MAX_SEK, revenueAccountForUnitType } from '@eken/shared'
 import type { DebtOriginDate } from './debt-origin'
 import type {
   BalanceSheet,
@@ -156,24 +156,9 @@ const VAT_TO_ACCOUNT: Record<number, number> = {
   6: 2631,
 }
 
-// BAS 2024-konto för hyresintäkt per upplåtelsetyp. Avgör vilket 39xx-konto
-// en hyresfaktura/-avi krediteras mot. Bostäder (3911) är undantagna moms
-// (ML 10 kap. 35 §); lokaler (3913) kan vara momspliktiga vid frivillig
-// beskattning (ML 12 kap.). Saknas koppling till en Unit används 3914
-// (övriga rörelseintäkter) som säker fallback.
-const REVENUE_ACCOUNT_BY_UNIT_TYPE: Record<UnitType, number> = {
-  APARTMENT: 3911,
-  PARKING: 3912,
-  OFFICE: 3913,
-  RETAIL: 3913,
-  STORAGE: 3914,
-  OTHER: 3914,
-}
-const DEFAULT_REVENUE_ACCOUNT = 3914
-
-export function revenueAccountForUnitType(type: UnitType | null | undefined): number {
-  return type ? REVENUE_ACCOUNT_BY_UNIT_TYPE[type] : DEFAULT_REVENUE_ACCOUNT
-}
+// Hyresintäktskonto per upplåtelsetyp: flyttad OFÖRÄNDRAD till @eken/shared (TESTKUND-006),
+// re-exporteras här så att befintliga importer fortsätter fungera.
+export { revenueAccountForUnitType } from '@eken/shared'
 
 // BAS-intäktskonto för förbrukningsersättning (IMD) per mätartyp. Bruttoredovisat
 // och skilt från hyresintäkten (39xx ovan): el/värme → 3920, vatten → 3970.
