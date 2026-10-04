@@ -89,6 +89,24 @@ describe('serverns förfallodatum i genereringsdialogen', () => {
     expect(api.generate).toHaveBeenCalledWith(10, 2026)
     expect(page.onClose).toHaveBeenCalledOnce()
   })
+  it('en period före brytdatum visar serverns skäl, inte bara 0', async () => {
+    const skal =
+      'Perioden ligger före organisationens brytdatum 2026-10-01 — den är fakturerad i tidigare system och skapas inte i Eveno.'
+    api.preview.mockResolvedValueOnce({
+      ...result,
+      month: 9,
+      toCreate: 0,
+      dueDates: [],
+      existingDueDates: [],
+      beforeCutover: skal,
+    })
+    setup(9)
+    await screen.findByText('0 nya avier att skapa')
+    expect(screen.getByText(skal)).toBeDefined()
+    expect(
+      (screen.getByRole('button', { name: 'Generera avier' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
   it('en period utan nya avier går inte att bekräfta', async () => {
     api.preview.mockResolvedValueOnce({ ...result, toCreate: 0, dueDates: [] })
     setup()

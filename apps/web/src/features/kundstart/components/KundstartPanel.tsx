@@ -438,10 +438,11 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
               </summary>
               <div className="mt-2 space-y-2">
                 <p className="text-ink-muted text-[12px]">
-                  Fil med rubriken {SPEC_MALL}: identitet per post (motpart, dokument, datum,
-                  förfallodag) och belopp &gt; 0 — inga kvittade poster. Summan måste vara exakt
-                  lika med differensen; kontot redovisas då som avgränsat, aldrig som avstämt. Utan
-                  sådant underlag förblir differensen blockerande.
+                  Fil med rubriken <span className="break-all">{SPEC_MALL}</span>: identitet per
+                  post (motpart, dokument, datum, förfallodag) och belopp &gt; 0 — inga kvittade
+                  poster. Summan måste vara exakt lika med differensen; kontot redovisas då som
+                  avgränsat, aldrig som avstämt. Utan sådant underlag förblir differensen
+                  blockerande.
                 </p>
                 <select
                   aria-label="Konto för separat reskontra"
@@ -507,10 +508,10 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
         <h4 className="text-ink text-sm font-semibold">Första perioden i tidigare system</h4>
         <p className="text-ink-muted text-[12px]">
           Tidigare systemets periodbundna register över fakturerat och betalt för perioder från
-          brytdatum ({REGISTER_MALL}), även fullt betalda poster. Version 1 kan inte ta över en
-          period som redan är fakturerad eller betald: finns en sådan post, eller saknas registret,
-          är kundstarten blockerad. Fortnox-läsningen efter brytdatum är bara en kompletterande
-          riskkontroll.
+          brytdatum (<span className="break-all">{REGISTER_MALL}</span>), även fullt betalda poster.
+          Version 1 kan inte ta över en period som redan är fakturerad eller betald: finns en sådan
+          post, eller saknas registret, är kundstarten blockerad. Fortnox-läsningen efter brytdatum
+          är bara en kompletterande riskkontroll.
         </p>
         {p.firstPeriodRegister ? (
           <p

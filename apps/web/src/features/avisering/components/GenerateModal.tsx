@@ -104,6 +104,11 @@ export function GenerateModal({ open, month, year, onClose, onSuccess }: Props) 
           {ready && (
             <>
               <p className="mt-2 font-medium">{preview.data.toCreate} nya avier att skapa</p>
+              {/* KUNDSTART: serverns skäl när perioden ligger före brytdatum — en nolla utan
+                  skäl ser ut som ett fel eller som att avtalen saknas. */}
+              {preview.data.beforeCutover && (
+                <p className="mt-1 text-amber-700">{preview.data.beforeCutover}</p>
+              )}
               {preview.data.dueDates.map(({ dueDate, count }) => (
                 <p className="mt-1" key={dueDate}>
                   Förfallodatum: <strong>{dueDate}</strong> ({count} avier)
