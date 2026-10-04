@@ -233,8 +233,12 @@ export class FortnoxCustomerActivationService {
       try {
         for (const b of await this.kontoKontroll(organizationId, financialYearId))
           hinder.push(
-            `Intäktskonto ${b.text}. Hyres- och intäktsverifikat exporteras inte förrän kontoplanen ` +
-              'har stämts av med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats.',
+            // F-006-3: säg hela effekten — hindret stänger kundaktiveringen, alltså ALL skrivning
+            // via kundvägen, även betalningar (betalningar utan motsvarande hyresfordringar
+            // skulle göra kundens 1510 i Fortnox missvisande).
+            `Intäktskonto ${b.text}. Kundaktiveringen kan inte godkännas så länge detta hinder finns: ` +
+              'ingenting skickas till Fortnox via kundvägen — varken hyror eller betalningar. ' +
+              'Stäm av kontoplanen med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats.',
           )
       } catch {
         hinder.push('Kontoförkontrollen mot Fortnox kunde inte göras just nu — försök igen.')

@@ -914,7 +914,12 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       expect(s.forslag.ok).toBe(false)
       const h = s.forslag.hinder.join(' ')
       expect(h).toMatch(monster)
-      expect(h).toMatch(/stämts av med redovisningsansvarig; Eveno rekommenderar ingen momskod/)
+      expect(h).toMatch(
+        /Kundaktiveringen kan inte godkännas så länge detta hinder finns: ingenting skickas till Fortnox via kundvägen — varken hyror eller betalningar\./,
+      )
+      expect(h).toMatch(
+        /Stäm av kontoplanen med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats/,
+      )
       await expect(
         svc.approve(t.org.id, t.ägare, { financialYearId: 1, consequencesSha256: 'a'.repeat(64) }),
       ).rejects.toThrow()

@@ -18,6 +18,8 @@ import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-prov
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
 import { FortnoxSendService } from './fortnox-send.service'
 import { MockVoucherWriter } from './fortnox-voucher-writer'
+import * as grind from './fortnox-intaktsgrind'
+import { basChartFor } from '../accounting/bas-chart'
 
 const KEY = 'ab'.repeat(32)
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -466,24 +468,107 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
     expect(t.reader.vouchers.length).toBe(fore)
   })
 
-  it('S2 äldre READY-utkast för en intäktsrad (från före grinden) kan inte skickas', async () => {
-    const t = await setup({ 3911: { Active: true } })
+  // S2 (F-006-1): ett VERKLIGT giltigt READY-utkast från före grinden. Tidigare version använde en
+  // påhittad hash och passerade även med grinden borttagen (C2 N1) — den var tom.
+  // Utkastet byggs med grinden urkopplad (spion: arIntaktskonto → false, alltså bygget så som det
+  // var före grinden, jfr C2:s N1) så att raden får exakt den draftHash som bygget utan grind ger;
+  // därefter skickas det med grinden PÅ.
+  const readyUtanGrind = async (t: Awaited<ReturnType<typeof setup>>) => {
     const { je } = await t.avi('APARTMENT', 6000, 0)
-    const conn = await prisma.fortnoxConnection.findUniqueOrThrow({
-      where: { organizationId: t.org.id },
-    })
-    const gammal = await prisma.fortnoxVoucherExport.create({
-      data: {
-        organizationId: t.org.id,
-        journalEntryId: je.id,
-        state: 'DRY_RUN_READY',
-        draftHash: 'f'.repeat(64),
-        fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
-      },
-    })
+    const spion = jest.spyOn(grind, 'arIntaktskonto').mockReturnValue(false)
+    try {
+      const row = (await t.exports.dryRun(t.org.id, je.id)) as {
+        id: string
+        state: string
+        draftHash: string | null
+      }
+      expect(row.state).toBe('DRY_RUN_READY')
+      expect(row.draftHash).toMatch(/^[0-9a-f]{64}$/)
+      return row as { id: string; state: string; draftHash: string }
+    } finally {
+      spion.mockRestore()
+    }
+  }
+
+  it('S2 kontroll: samma underlag och hash skickas CONFIRMED när grinden är av även vid send (utesluter hashkonflikt)', async () => {
+    const t = await setup({ 3911: { Active: true } })
+    const row = await readyUtanGrind(t)
+    const spion = jest.spyOn(grind, 'arIntaktskonto').mockReturnValue(false)
+    try {
+      const fore = t.reader.vouchers.length
+      expect((await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).state).toBe('CONFIRMED')
+      expect(t.reader.vouchers.length).toBe(fore + 1)
+    } finally {
+      spion.mockRestore()
+    }
+  })
+
+  it('S2 skydd: ett giltigt READY-utkast från före grinden kan inte skickas när grinden är på (409, 0 POST)', async () => {
+    const t = await setup({ 3911: { Active: true } })
+    const row = await readyUtanGrind(t)
     const fore = t.reader.vouchers.length
-    await expect(t.sender.send(t.org.id, 'u1', gammal.id, 'f'.repeat(64))).rejects.toThrow()
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow(
+      /^Underlaget är inte längre aktuellt; gör en ny förhandskontroll$/,
+    )
     expect(t.reader.vouchers.length).toBe(fore)
+    const efter = await prisma.fortnoxVoucherExport.findUniqueOrThrow({
+      where: { id: row.id },
+      select: { state: true },
+    })
+    expect(efter.state).not.toBe('CONFIRMED')
+  })
+
+  // F-006-4 (K-F3): VARJE REVENUE-konto i Evenos kontoplan (bas-chart), med ett AKTIVT syntetiskt
+  // Fortnox-svar och momskod MF respektive null, når aldrig DRY_RUN_READY — oavsett nummerklass
+  // (även 8xxx). Positiv kontroll i samma prov: betalning och kostnad blir READY.
+  it('F-006-4: alla REVENUE-konton i bas-chart stoppas (aktivt, MF/null); betalning och kostnad READY', async () => {
+    const intakter = basChartFor('AB').filter((k) => k.type === 'REVENUE')
+    expect(intakter.length).toBeGreaterThanOrEqual(11)
+    for (const kod of ['MF', null] as const) {
+      const t = await setup()
+      t.reader.accounts = t.reader.accounts.filter(
+        (a) => !intakter.some((k) => k.number === a.Number),
+      )
+      for (const k of intakter) {
+        t.reader.accounts.push({
+          Number: k.number,
+          Description: `Syntetiskt aktivt ${k.number}`,
+          Active: true,
+          VATCode: kod,
+          Year: 1,
+        } as unknown as (typeof t.reader.accounts)[number])
+        await prisma.account.create({
+          data: { organizationId: t.org.id, number: k.number, name: k.name, type: 'REVENUE' },
+        })
+      }
+      const utfall: Record<number, string> = {}
+      for (const k of intakter) {
+        const je = await t.verifikat([
+          [1930, 100, null],
+          [k.number, null, 100],
+        ])
+        const row = (await t.exports.dryRun(t.org.id, je.id)) as {
+          state: string
+          blockReason?: string | null
+        }
+        utfall[k.number] = `${row.state} ${String(row.blockReason ?? '').split(':')[0]}`
+      }
+      expect(Object.entries(utfall).filter(([, u]) => !u.startsWith('BLOCKED ACCOUNT_'))).toEqual(
+        [],
+      )
+      const bet = await t.verifikat([
+        [1930, 6000, null],
+        [1510, null, 6000],
+      ])
+      const kost = await t.verifikat([
+        [5170, 500, null],
+        [2440, null, 500],
+      ])
+      for (const je of [bet, kost])
+        expect(((await t.exports.dryRun(t.org.id, je.id)) as { state: string }).state).toBe(
+          'DRY_RUN_READY',
+        )
+    }
   })
 
   it('O1 annan organisations verifikat: NOT_FOUND', async () => {
