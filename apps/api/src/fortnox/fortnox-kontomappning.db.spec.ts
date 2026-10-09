@@ -1305,4 +1305,407 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     const bet = await t.betalning(h1.notice.id, 6000)
     expect((await t.dry(bet.id)).blockReason).toMatch(/^ORIGIN_NOT_CONFIRMED/)
   })
+
+  // ── C2-019 FÖRARBETE (KRITERIER-KUNDGAP-018). Inte produktkod. ───────────────────────────────
+  // «KARAKT» = fäster dagens beteende och mäter kundeffekten (ska PASSERA på #947).
+  // «RÖD»    = önskat beteende efter en framtida rättning (ska FALLA på #947 = röd före).
+  // C2-019 RIGGRÄTTELSE: egen städning för fakturor/allokeringar som bara dessa prov skapar, i
+  // FK-ordning, FÖRE C1:s afterAll (som annars bryter Invoice_tenant_xor_customer_chk vid tenant-radering).
+  const c2Orgs: string[] = []
+  const c2setup = async () => {
+    const t = await setup()
+    c2Orgs.push(t.org.id)
+    return t
+  }
+  afterEach(async () => {
+    for (const id of c2Orgs.splice(0)) {
+      await prisma.invoicePayment.deleteMany({ where: { invoice: { organizationId: id } } })
+      await prisma.deposit.deleteMany({ where: { organizationId: id, invoiceId: { not: null } } })
+      await prisma.invoice.deleteMany({ where: { organizationId: id } })
+    }
+  })
+  const saldo = (t: T) => {
+    const s: Record<number, number> = {}
+    for (const v of rader(t))
+      for (const r of v) {
+        const [k, d, c] = r as unknown as [number, number, number]
+        s[k] = Math.round((s[k] ?? 0) + d * 100 - c * 100)
+      }
+    return s
+  }
+  const depFaktura = async (t: T, belopp: number, via: 'avi' | 'faktura') => {
+    const { lease, ten } = await (async () => {
+      const unit = await prisma.unit.create({
+        data: {
+          propertyId: (
+            await prisma.property.findFirstOrThrow({ where: { organizationId: t.org.id } })
+          ).id,
+          name: `Dep ${randomUUID().slice(0, 4)}`,
+          unitNumber: randomUUID().slice(0, 6),
+          type: 'APARTMENT',
+          area: '30',
+          monthlyRent: '100',
+        },
+      })
+      const ten = await prisma.tenant.create({
+        data: {
+          organizationId: t.org.id,
+          type: 'INDIVIDUAL',
+          firstName: 'D',
+          lastName: 'G',
+          email: `dg-${randomUUID().slice(0, 8)}@example.invalid`,
+        },
+      })
+      const lease = await prisma.lease.create({
+        data: {
+          organizationId: t.org.id,
+          unitId: unit.id,
+          tenantId: ten.id,
+          contractNumber: `DG-${randomUUID().slice(0, 8)}`,
+          status: 'ACTIVE',
+          startDate: new Date('2026-01-01'),
+          tenancyStartDate: new Date('2026-01-01'),
+          monthlyRent: '100',
+          depositAmount: String(belopp),
+        },
+      })
+      return { lease, ten }
+    })()
+    let invoiceId: string | null = null,
+      rentNoticeId: string | null = null
+    if (via === 'faktura') {
+      invoiceId = (
+        await prisma.invoice.create({
+          data: {
+            organizationId: t.org.id,
+            invoiceNumber: `DEP-${randomUUID().slice(0, 8)}`,
+            type: 'DEPOSIT',
+            status: 'SENT',
+            tenantId: ten.id,
+            leaseId: lease.id,
+            subtotal: String(belopp),
+            vatTotal: '0',
+            total: String(belopp),
+            dueDate: new Date('2026-10-30'),
+            issueDate: new Date('2026-10-02'),
+          },
+        })
+      ).id
+    } else {
+      rentNoticeId = (
+        await prisma.rentNotice.create({
+          data: {
+            organizationId: t.org.id,
+            tenantId: ten.id,
+            leaseId: lease.id,
+            noticeNumber: `DAVI-${randomUUID().slice(0, 8)}`,
+            ocrNumber: '1',
+            month: 10,
+            year: 2026,
+            amount: String(belopp),
+            vatAmount: '0',
+            totalAmount: String(belopp),
+            dueDate: new Date('2026-10-30'),
+            type: 'DEPOSIT',
+          },
+        })
+      ).id
+    }
+    const dep = await prisma.deposit.create({
+      data: {
+        organizationId: t.org.id,
+        leaseId: lease.id,
+        tenantId: ten.id,
+        amount: String(belopp),
+        invoiceId,
+        rentNoticeId,
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1510, belopp, null],
+        [2890, null, belopp],
+      ],
+      { source: 'INVOICE', sourceId: `deposit-invoice:${dep.id}` },
+    )
+    return { dep, je, invoiceId, rentNoticeId }
+  }
+
+  it('C2-019 KARAKT F-015-1: återbetalning exporteras utan exporterad mottagen betalning → Fortnox 1510 öppen +X, bank −X', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const d = await t.deposition(5000)
+    await t.skicka((await d.faktura()).id)
+    await d.betalning() // registrerad i Eveno, INTE exporterad
+    await t.skicka((await d.aterbetalning()).id)
+    const s = saldo(t)
+    expect(s[1510]).toBe(500000) // fordran står kvar i Fortnox fast hyresgästen betalat
+    expect(s[1940]).toBe(-500000) // bankmålet (1930→1940) krediterat utan motsvarande inbetalning
+    expect(s[2890] ?? 0).toBe(0)
+  })
+
+  it('C2-019 RÖD F-015-1: återbetalning före exporterad mottagen betalning → ORIGIN_NOT_CONFIRMED, 0 POST', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const d = await t.deposition(5000)
+    await t.skicka((await d.faktura()).id)
+    await d.betalning()
+    const fore = t.reader.vouchers.length
+    const row = await t.dry((await d.aterbetalning()).id)
+    expect([row.state, (row.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      'ORIGIN_NOT_CONFIRMED',
+    ])
+    expect(t.reader.vouchers.length).toBe(fore)
+  })
+
+  it('C2-019 KARAKT REJECTED-låsning: avvisad POST (400, och 429 via fortnox-real-send.db.spec.ts:269) → reconcile NOT_FOUND 409, nytt dryRun bygger inte om, send 409', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const lev = await t.leverantor(100)
+    const je = await lev.mottagande()
+    const row = await t.dry(je.id)
+    ;(t.writer as unknown as { faults: string[] }).faults.push('rejected')
+    expect((await t.sender.send(t.org.id, 'u1', row.id, row.draftHash!)).state).toBe('REJECTED')
+    expect(
+      (await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: row.id } })).state,
+    ).toBe('REJECTED')
+    await expect(
+      t.sender.reconcile(t.org.id, 'u1', row.id, { year: 1, series: 'A', number: 999 }),
+    ).rejects.toThrow(/finns inte/)
+    const igen = await t.exports.dryRun(t.org.id, je.id)
+    expect((igen as { state: string }).state).toBe('REJECTED')
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash!)).rejects.toThrow()
+    expect(t.reader.vouchers.length).toBe(0)
+  })
+
+  it('C2-019 KARAKT c1-c4: dagens stopp och kundeffekt (originalet ligger kvar öppet i Fortnox)', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    // c1: direktskapad deposition (fakturabaserad) → invoice-manual-payment
+    const f = await depFaktura(t, 3000, 'faktura')
+    await t.skicka(f.je.id)
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: f.invoiceId!,
+        amount: '3000',
+        paidAt: new Date('2026-10-03'),
+        source: 'MANUAL',
+      },
+    })
+    const c1 = await t.verifikat(
+      [
+        [1930, 3000, null],
+        [1510, null, 3000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-manual-payment:${ip.id}` },
+    )
+    expect((await t.dry(c1.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED/)
+    // c2: depositionsavi bankmatchad → rent-notice-bank-payment
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const c2 = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    expect((await t.dry(c2.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED/)
+    // c3: depositionsfaktura bankmatchad → invoice-bank-payment
+    const g = await depFaktura(t, 1000, 'faktura')
+    await t.skicka(g.je.id)
+    const ip3 = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: g.invoiceId!,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const c3 = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip3.id}` },
+    )
+    expect((await t.dry(c3.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED/)
+    // c4: makulering efter CONFIRMED mottagande → supplier-invoice-cancel
+    const lev = await t.leverantor(100)
+    await t.skicka((await lev.mottagande()).id)
+    const fakt = await prisma.supplierInvoice.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const c4 = await t.verifikat(
+      [
+        [2440, 125, null],
+        [5170, null, 100],
+        [2641, null, 25],
+      ],
+      { source: 'SUPPLIER_INVOICE', sourceId: `supplier-invoice-cancel:${fakt.id}` },
+    )
+    expect((await t.dry(c4.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED/)
+    // Kundeffekt: originalen är bokförda i Fortnox, betalningarna/makuleringen kan inte följa.
+    const s = saldo(t)
+    expect(s[1510]).toBe(600000) // 3000+2000+1000 kr öppna fordringar trots registrerade betalningar
+    expect(s[2440]).toBe(-12500) // makulerad faktura står kvar som skuld
+  })
+
+  it('C2-019 RÖD c1: betalning av direktskapad depositionsfaktura (invoice-manual-payment) → READY 1940/1510', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const f = await depFaktura(t, 3000, 'faktura')
+    await t.skicka(f.je.id)
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: f.invoiceId!,
+        amount: '3000',
+        paidAt: new Date('2026-10-03'),
+        source: 'MANUAL',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 3000, null],
+        [1510, null, 3000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-manual-payment:${ip.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 RÖD c2: bankmatchad depositionsavi (rent-notice-bank-payment, DEPOSIT) → READY', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 RÖD c3: bankmatchad depositionsfaktura (invoice-bank-payment) → READY', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const g = await depFaktura(t, 1000, 'faktura')
+    await t.skicka(g.je.id)
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: g.invoiceId!,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 RÖD c4: makulering efter CONFIRMED mottagande → READY med omvända rader på originalets mål', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const lev = await t.leverantor(100)
+    await t.skicka((await lev.mottagande()).id)
+    const fakt = await prisma.supplierInvoice.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const je = await t.verifikat(
+      [
+        [2440, 125, null],
+        [5170, null, 100],
+        [2641, null, 25],
+      ],
+      { source: 'SUPPLIER_INVOICE', sourceId: `supplier-invoice-cancel:${fakt.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 MOTPROV (ska passera före och efter): bankbetalning av VANLIG faktura och makulering före exporterat mottagande förblir stoppade', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const tenV = await prisma.tenant.create({
+      data: {
+        organizationId: t.org.id,
+        type: 'INDIVIDUAL',
+        firstName: 'V',
+        lastName: 'F',
+        email: `vf-${randomUUID().slice(0, 8)}@example.invalid`,
+      },
+    })
+    const inv = await prisma.invoice.create({
+      data: {
+        organizationId: t.org.id,
+        invoiceNumber: `RENT-${randomUUID().slice(0, 8)}`,
+        type: 'RENT',
+        status: 'SENT',
+        tenantId: tenV.id,
+        subtotal: '500',
+        vatTotal: '0',
+        total: '500',
+        dueDate: new Date('2026-10-30'),
+        issueDate: new Date('2026-10-02'),
+      },
+    })
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: inv.id,
+        amount: '500',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 500, null],
+        [1510, null, 500],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('BLOCKED')
+    const lev = await t.leverantor(100)
+    await lev.mottagande() // inte exporterad
+    const fakt = await prisma.supplierInvoice.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const c = await t.verifikat(
+      [
+        [2440, 125, null],
+        [5170, null, 100],
+        [2641, null, 25],
+      ],
+      { source: 'SUPPLIER_INVOICE', sourceId: `supplier-invoice-cancel:${fakt.id}` },
+    )
+    expect((await t.dry(c.id)).state).toBe('BLOCKED')
+  })
 })
