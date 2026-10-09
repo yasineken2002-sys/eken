@@ -37,6 +37,13 @@ export const FORTNOX_RATE_IDENTITY = Symbol('FORTNOX_RATE_IDENTITY')
 
 export const FORTNOX_STARTS_PER_WINDOW = 20
 export const FORTNOX_WINDOW_MS = 5000
+/**
+ * Vaktmarginal mellan reservation och ankomst. Starten reserveras före fetch; tiden till ankomst
+ * varierar (mätt i tvåprocessriggen: en första skur kom ~115 ms efter reservationen och den nästa
+ * direkt, så 40 starter kom inom 5 s hos mottagaren). Varje start hålls därför i fönstret
+ * 5 s + 1 s, så att högst 20 starter når Fortnox per rullande 5 s när spridningen är under 1 s.
+ */
+export const FORTNOX_ARRIVAL_GUARD_MS = 1000
 export const FORTNOX_MIN_429_BACKOFF_MS = 5000
 /** Spärrnyckelns livslängd i Redis är begränsad; ett längre Retry-After gäller bara så länge. */
 const DEFER_TTL_CAP_MS = 24 * 60 * 60 * 1000
@@ -145,7 +152,7 @@ export class RedisFortnoxRateLimiter implements FortnoxRateLimiter {
     const reply = await this.#run(
       FORTNOX_RESERVE_LUA,
       [k.starts, k.deferred],
-      [randomUUID(), FORTNOX_WINDOW_MS, FORTNOX_STARTS_PER_WINDOW],
+      [randomUUID(), FORTNOX_WINDOW_MS + FORTNOX_ARRIVAL_GUARD_MS, FORTNOX_STARTS_PER_WINDOW],
     )
     if (
       !Array.isArray(reply) ||

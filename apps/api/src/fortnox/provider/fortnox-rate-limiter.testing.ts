@@ -1,9 +1,12 @@
 import {
+  FORTNOX_ARRIVAL_GUARD_MS,
   FORTNOX_STARTS_PER_WINDOW,
   FORTNOX_WINDOW_MS,
   systemFortnoxClock,
 } from './fortnox-rate-limiter'
 import type { FortnoxClock, FortnoxRateLimiter } from './fortnox-transport.types'
+
+const WINDOW = FORTNOX_WINDOW_MS + FORTNOX_ARRIVAL_GUARD_MS
 
 /**
  * ENDAST PROV. Processlokal begränsare för enhetsprov av transporten. Produkten använder
@@ -21,11 +24,11 @@ export class InMemoryFortnoxRateLimiter implements FortnoxRateLimiter {
       const now = this.clock.now()
       const bucket = this.buckets.get(key) ?? { starts: [], deferredUntil: 0 }
       this.buckets.set(key, bucket)
-      bucket.starts = bucket.starts.filter((started) => started > now - FORTNOX_WINDOW_MS)
+      bucket.starts = bucket.starts.filter((started) => started > now - WINDOW)
       const oldest = bucket.starts[0]
       const slotAt =
         bucket.starts.length >= FORTNOX_STARTS_PER_WINDOW && oldest !== undefined
-          ? oldest + FORTNOX_WINDOW_MS
+          ? oldest + WINDOW
           : now
       const delay = Math.max(slotAt, bucket.deferredUntil) - now
       if (delay <= 0) {

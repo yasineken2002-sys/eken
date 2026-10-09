@@ -352,14 +352,15 @@ describe('FortnoxTransport', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  // TESTKUND-035: produktvalet är 20 per rullande 5 s (tidigare 25 i den processlokala klassen).
+  // TESTKUND-035: produktvalet är 20 per rullande 5 s, och varje start hålls 5 s + 1 s vaktmarginal
+  // (tidigare 25 per 5 s i den processlokala klassen).
   it('shares the 20/5s allowance across transports and refreshed tokens', async () => {
     const rateLimiter = new InMemoryFortnoxRateLimiter(systemFortnoxClock)
     const a = fixture({ rateLimiter })
     const b = fixture({ rateLimiter })
     await Promise.all(Array.from({ length: 20 }, () => a.transport.request(read)))
     const next = b.transport.request({ ...read, accessToken: 'refreshed-synthetic-token' })
-    await jest.advanceTimersByTimeAsync(4999)
+    await jest.advanceTimersByTimeAsync(5999)
     expect(b.fetch).not.toHaveBeenCalled()
     // Another tenant retains its independent allowance.
     await b.transport.request({ ...read, rateLimitKey: 'client:other-tenant' })

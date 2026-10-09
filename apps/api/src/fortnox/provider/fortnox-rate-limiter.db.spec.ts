@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto'
 import Redis from 'ioredis'
 import { FortnoxTransport } from './fortnox-transport'
 import {
+  FORTNOX_ARRIVAL_GUARD_MS,
   FORTNOX_STARTS_PER_WINDOW,
   FORTNOX_WINDOW_MS,
   FortnoxRateIdentity,
@@ -70,7 +71,7 @@ medRedis('TESTKUND-035: RedisFortnoxRateLimiter mot riktig Redis', () => {
     expect(typeof policy[1]).toBe('string')
   })
 
-  it('A2: exakt 20 starter beviljas per rullande 5 s; den 21:a nekas med väntan ≤ 5 s', async () => {
+  it('A2: exakt 20 starter beviljas per rullande fönster; den 21:a nekas med väntan ≤ 5 s + vaktmarginal', async () => {
     const k = nyNyckel()
     const l = limiter()
     const svar = await Promise.all(
@@ -79,7 +80,7 @@ medRedis('TESTKUND-035: RedisFortnoxRateLimiter mot riktig Redis', () => {
     expect(svar.filter((s) => s.granted)).toHaveLength(FORTNOX_STARTS_PER_WINDOW)
     for (const s of svar.filter((x) => !x.granted)) {
       expect(s.waitMs).toBeGreaterThan(0)
-      expect(s.waitMs).toBeLessThanOrEqual(FORTNOX_WINDOW_MS)
+      expect(s.waitMs).toBeLessThanOrEqual(FORTNOX_WINDOW_MS + FORTNOX_ARRIVAL_GUARD_MS)
     }
     expect(await admin.zcard(fortnoxRedisKeys(k).starts)).toBe(FORTNOX_STARTS_PER_WINDOW)
   })
@@ -142,7 +143,7 @@ medRedis('TESTKUND-035: RedisFortnoxRateLimiter mot riktig Redis', () => {
     const acquired = a.acquire(k, controller.signal)
     await forstaSomn
     expect(sovningar).toHaveLength(1)
-    expect(sovningar[0]!.ms).toBeLessThanOrEqual(FORTNOX_WINDOW_MS)
+    expect(sovningar[0]!.ms).toBeLessThanOrEqual(FORTNOX_WINDOW_MS + FORTNOX_ARRIVAL_GUARD_MS)
     // B skriver en spärr på 30 s medan A väntar.
     await limiter().defer(k, 30_000)
     const andraSomn = new Promise<void>((r) => (vantar = r))

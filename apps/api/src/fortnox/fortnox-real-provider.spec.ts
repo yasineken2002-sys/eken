@@ -412,7 +412,8 @@ describe('Fortnox REAL provider adapter', () => {
       ),
     )
     const next = b.reader.get('synthetic-refreshed-token', '/3/vouchers')
-    await jest.advanceTimersByTimeAsync(4999)
+    // TESTKUND-035: 5 s + 1 s vaktmarginal.
+    await jest.advanceTimersByTimeAsync(5999)
     expect(b.fetch).not.toHaveBeenCalled()
     await other.reader.get('different-client-token', '/3/vouchers')
     expect(other.fetch).toHaveBeenCalledTimes(1)
