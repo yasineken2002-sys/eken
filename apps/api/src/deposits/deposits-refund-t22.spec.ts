@@ -140,6 +140,9 @@ describe('T2.2 · refund() är atomisk (#25) + race-säker claim', () => {
       deposit: {
         updateMany: jest.fn().mockResolvedValue({ count: opts.claimCount ?? 1 }),
         findFirstOrThrow: jest.fn().mockResolvedValue({ id: 'dep-1', status: 'REFUNDED' }),
+        // TESTKUND-027 V-2: vid förlorat anspråk läses det faktiska läget för ett sant skäl
+        // (här vann en samtidig andra återbetalning → REFUNDED, alltså "redan reglerad").
+        findFirst: jest.fn().mockResolvedValue({ status: 'REFUNDED' }),
       },
     }
     const prisma = {
