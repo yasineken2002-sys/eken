@@ -5,7 +5,7 @@
  * riktiga Response-objekt) — inget nätverk. Acceptansmatris: INVENTERING-001 A02–A16.
  */
 import { randomUUID } from 'node:crypto'
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import type { ConfigService } from '@nestjs/config'
 import { PrismaClient } from '@prisma/client'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -425,27 +425,379 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       blockReason: string | null
     }
     expect([row.state, row.blockReason]).toEqual(['DRY_RUN_READY', null])
+    expect((row as unknown as { exportText: unknown }).exportText).toEqual([
+      {
+        falt: 'Description',
+        rad: null,
+        originaltext: 'Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad',
+        exporttext: 'Leverantörsfaktura: EVENO TEST leverantör – EVENO TEST kostnad',
+      },
+    ])
+    const db = await t.dbRow(row.id)
+    expect((db.draft as { provenance: { text: unknown } }).provenance.text).toEqual({
+      regelVersion: 'fortnox-valid-characters/2026-10-09+U2014-U2013',
+      falt: [
+        {
+          falt: 'Description',
+          rad: null,
+          ra: 'Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad',
+          export: 'Leverantörsfaktura: EVENO TEST leverantör – EVENO TEST kostnad',
+          mappningar: [{ fran: 'U+2014', till: 'U+2013', antal: 1 }],
+        },
+      ],
+    })
     const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
     expect(res.state).toBe('CONFIRMED')
     expect(t.ledger.vouchers.at(-1)?.Description).toBe(
       'Leverantörsfaktura: EVENO TEST leverantör – EVENO TEST kostnad',
     )
+    // K2.2(b): ingen Description med U+2014 nådde POST.
+    expect(t.ledger.vouchers.every((v) => !String(v.Description).includes('—'))).toBe(true)
     const efter = await prisma.journalEntry.findUniqueOrThrow({ where: { id: je.id } })
     expect(efter.description).toBe('Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad')
   })
 
-  it('H4-016 R2: en avvisad (REJECTED 400/2000359) export kan släppas via behörig väg och skickas om med ny förhandskontroll', async () => {
+  const OWNER = { sub: 'u1', role: 'OWNER' }
+  const ADMIN = { sub: 'u2', role: 'ADMIN' }
+  const historik = async (id: string) =>
+    (await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id } }))
+      .attemptHistory as Array<Record<string, unknown>>
+  /** Avvisa via exakt det observerade svaret [O] och returnera raden. */
+  const avvisad = async (
+    t: Awaited<ReturnType<typeof setup>>,
+    text = 'EVENO TEST avvisad 2000359',
+  ) => {
+    const { je, row } = await t.ready('125.00', text)
+    t.api.faults.push('observerad_2000359_h3h4_real_002')
+    const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    expect([res.state, res.lastOutcome]).toEqual(['REJECTED', 'REJECTED_400_2000359'])
+    return { je, row }
+  }
+
+  it('H4-016 R2/T10: REJECTED_400_2000359 → release (OWNER) → ny förhandskontroll → send → CONFIRMED; exakt 1 ny POST; historiken bevarar beviset', async () => {
     const t = await setup()
-    const ready = await t.ready(
-      '125.00',
-      'Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad',
+    const { row } = await avvisad(t)
+    const h1 = await historik(row.id)
+    expect(h1).toEqual([
+      expect.objectContaining({
+        typ: 'AVVISAD',
+        http: 400,
+        code: 2000359,
+        kalla: 'LAGRAD_AV_PRODUKTEN',
+        sentPayloadHash: row.draftHash,
+        utfall: 'REJECTED_400_2000359',
+        meddelande: 'Värdet innehåller ej tillåtna tecken. (EVENO TEST avvisad 2000359)',
+      }),
+    ])
+    const rel = await t.sender.releaseRejected(t.org.id, OWNER, row.id, {
+      reason: 'Fortnox avvisade texten',
+    })
+    expect([rel.state, rel.lastOutcome]).toEqual(['BLOCKED', 'RELEASED_AFTER_REJECTION'])
+    const h2 = await historik(row.id)
+    expect(h2).toHaveLength(2)
+    expect(h2[0]).toEqual(h1[0])
+    expect(h2[1]).toEqual(
+      expect.objectContaining({
+        typ: 'FRISLAPPT',
+        av: 'u1',
+        roll: 'OWNER',
+        skal: 'Fortnox avvisade texten',
+        avvisning: { kalla: 'LAGRAD_AV_PRODUKTEN', http: 400, code: 2000359 },
+        tidigareForsok: expect.objectContaining({
+          sentPayloadHash: row.draftHash,
+          lastOutcome: 'REJECTED_400_2000359',
+        }),
+        skanning: expect.objectContaining({ databaseNumber: TEST_COMPANY, financialYear: 1 }),
+      }),
     )
-    const s1 = await t.sender
-      .send(t.org.id, 'u1', ready.row.id, ready.row.draftHash)
-      .catch((e) => e)
-    void s1
-    expect((await t.dbRow(ready.row.id)).state).toBe('REJECTED')
-    const release = (t.sender as unknown as { releaseRejected?: unknown }).releaseRejected
-    expect(typeof release).toBe('function')
+    const postsFore = posts(t)
+    // T17: gammal hash efter frisläppning → 409, 0 POST.
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow(
+      ConflictException,
+    )
+    const ny = (await t.exports.dryRun(t.org.id, row.journalEntryId)) as {
+      state: string
+      draftHash: string
+    }
+    expect(ny.state).toBe('DRY_RUN_READY')
+    const res = await t.sender.send(t.org.id, 'u1', row.id, ny.draftHash)
+    expect(res.state).toBe('CONFIRMED')
+    expect(posts(t) - postsFore).toBe(1)
+    expect(t.api.writes).toBe(1)
+    expect(await historik(row.id)).toHaveLength(2)
+  })
+
+  it('H4-016 K3.5: två avvisningar i rad → historiken har båda bevisen och frisläppningen, inget skrivs över', async () => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    await t.sender.releaseRejected(t.org.id, ADMIN, row.id, { reason: 'första frisläppningen' })
+    const ny = (await t.exports.dryRun(t.org.id, row.journalEntryId)) as { draftHash: string }
+    t.api.faults.push('observerad_2000359_h3h4_real_002')
+    const res = await t.sender.send(t.org.id, 'u1', row.id, ny.draftHash)
+    expect(res.lastOutcome).toBe('REJECTED_400_2000359')
+    const h = await historik(row.id)
+    expect(h.map((x) => x.typ)).toEqual(['AVVISAD', 'FRISLAPPT', 'AVVISAD'])
+    expect(h[0]!.sendAttemptId).not.toBe(h[2]!.sendAttemptId)
+  })
+
+  it('H4-016 T11/K3.4: äldre REJECTED utan lagrad kod kräver OWNER och externt kvitto med samma sentPayloadHash', async () => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    // Äldre produktversion: bara 'REJECTED', ingen kod och ingen historik.
+    await prisma.fortnoxVoucherExport.update({
+      where: { id: row.id },
+      data: { lastOutcome: 'REJECTED', attemptHistory: [] },
+    })
+    const bevis = {
+      http: 400,
+      code: 2000359,
+      rakvittoSha256: 'b'.repeat(64),
+      manifestSha256: 'c'.repeat(64),
+      sentPayloadHash: row.draftHash,
+    }
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'äldre avvisning' }),
+    ).rejects.toThrow(ConflictException)
+    await expect(
+      t.sender.releaseRejected(t.org.id, ADMIN, row.id, {
+        reason: 'äldre avvisning',
+        avvisningsbevis: bevis,
+      }),
+    ).rejects.toThrow(ForbiddenException)
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, {
+        reason: 'äldre avvisning',
+        avvisningsbevis: { ...bevis, sentPayloadHash: 'd'.repeat(64) },
+      }),
+    ).rejects.toThrow(ConflictException)
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, {
+        reason: 'äldre avvisning',
+        avvisningsbevis: { ...bevis, http: 429 },
+      }),
+    ).rejects.toThrow(ConflictException)
+    expect((await t.dbRow(row.id)).state).toBe('REJECTED')
+    expect(await historik(row.id)).toEqual([])
+    const rel = await t.sender.releaseRejected(t.org.id, OWNER, row.id, {
+      reason: 'äldre avvisning',
+      avvisningsbevis: bevis,
+    })
+    expect(rel.state).toBe('BLOCKED')
+    const h = await historik(row.id)
+    expect(h).toHaveLength(1)
+    expect(h[0]!.avvisning).toEqual(
+      expect.objectContaining({
+        kalla: 'ANGIVET_I_EFTERHAND',
+        beskrivning: 'Externt belagt, ej lagrat av produkten',
+        http: 400,
+        code: 2000359,
+        rakvittoSha256: 'b'.repeat(64),
+        angivetAv: 'u1',
+        roll: 'OWNER',
+      }),
+    )
+  })
+
+  it('H4-016 T12: en post med verifikatets proveniens finns i Fortnox → 409, oförändrat (vägen är reconcile)', async () => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    t.ledger.vouchers.push({
+      Year: 1,
+      VoucherSeries: 'A',
+      VoucherNumber: 7,
+      TransactionDate: '2026-10-02',
+      Description: 'x',
+      Comments: `Eveno JournalEntry ${row.journalEntryId}; local A/2026/1; eventDate 2026-10-02`,
+      VoucherRows: [],
+    })
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'prov proveniens' }),
+    ).rejects.toThrow(/reconcile/)
+    expect([(await t.dbRow(row.id)).state, (await historik(row.id)).length]).toEqual([
+      'REJECTED',
+      1,
+    ])
+  })
+
+  it.each([
+    [
+      'ofullständig sida (TotalResources större än listan)',
+      (b: Record<string, unknown>) => ({
+        ...b,
+        MetaInformation: { ...(b.MetaInformation as object), '@TotalResources': 99 },
+      }),
+    ],
+    ['sidinformation saknas', (b: Record<string, unknown>) => ({ Vouchers: b.Vouchers })],
+    [
+      'listan saknar Comments',
+      (b: Record<string, unknown>) => ({
+        ...b,
+        Vouchers: (b.Vouchers as Array<Record<string, unknown>>).map(({ Comments: _c, ...v }) => v),
+      }),
+    ],
+    [
+      'verifikat i fel år',
+      (b: Record<string, unknown>) => ({
+        ...b,
+        Vouchers: (b.Vouchers as Array<Record<string, unknown>>).map((v) => ({ ...v, Year: 2 })),
+      }),
+    ],
+  ] as const)('H4-016 T13: %s → 409, inget tillståndsbyte', async (_namn, tamper) => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    // Fler poster än en sida (pageSize 2) så att sidläsningen provas.
+    for (let n = 2; n <= 4; n++)
+      t.ledger.vouchers.push({
+        Year: 1,
+        VoucherSeries: 'A',
+        VoucherNumber: n,
+        TransactionDate: '2026-10-02',
+        Description: 'främmande',
+        Comments: null,
+        VoucherRows: [],
+      })
+    t.api.listTamper = tamper as (b: Record<string, unknown>) => unknown
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'prov läsning' }),
+    ).rejects.toThrow(ConflictException)
+    expect([(await t.dbRow(row.id)).state, (await historik(row.id)).length]).toEqual([
+      'REJECTED',
+      1,
+    ])
+    t.api.listTamper = null
+    const ok = await t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'prov läsning' })
+    expect(ok.state).toBe('BLOCKED')
+    expect((await historik(row.id))[1]!.skanning).toEqual(
+      expect.objectContaining({ verifikatLasta: 3, sidor: 2 }),
+    )
+  })
+
+  it('H4-016 T13: fel företag i den färska läsningen → 409, inget tillståndsbyte', async () => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    t.api.companyOverride.set(t.api.companyCalls + 1, 999)
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'prov företag' }),
+    ).rejects.toThrow(/företaget/)
+    expect((await t.dbRow(row.id)).state).toBe('REJECTED')
+  })
+
+  it('H4-016 T14: 429 vid POST → REJECTED_429_NA som tidigare, men kan aldrig frisläppas; UNKNOWN kan inte frisläppas', async () => {
+    const t = await setup()
+    const a = await t.ready('10.00')
+    t.api.faults.push('status_429')
+    expect((await t.sender.send(t.org.id, 'u1', a.row.id, a.row.draftHash)).lastOutcome).toBe(
+      'REJECTED_429_NA',
+    )
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, a.row.id, { reason: 'rate limit' }),
+    ).rejects.toThrow(/429/)
+    const b = await t.ready('11.00')
+    t.api.faults.push('drop_response_after_write')
+    expect((await t.sender.send(t.org.id, 'u1', b.row.id, b.row.draftHash)).state).toBe('UNKNOWN')
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, b.row.id, { reason: 'okänt utfall' }),
+    ).rejects.toThrow(/reconcile/)
+    expect((await historik(b.row.id)).map((x) => x.typ)).toEqual(['OKANT_UTFALL'])
+    // En 400 utan Fortnox-kod är ingen belagd innehållsavvisning.
+    const c = await t.ready('12.00')
+    t.api.faults.push('status_400')
+    expect((await t.sender.send(t.org.id, 'u1', c.row.id, c.row.draftHash)).lastOutcome).toBe(
+      'REJECTED_400_NA',
+    )
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, c.row.id, { reason: 'utan kod' }),
+    ).rejects.toThrow(/belagd/)
+  })
+
+  it('H4-016 T15: VIEWER/ACCOUNTANT → 403 i tjänsten; annan organisation → 404; CONFIRMED → 409', async () => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    for (const role of ['VIEWER', 'ACCOUNTANT', 'TENANT'])
+      await expect(
+        t.sender.releaseRejected(t.org.id, { sub: 'x', role }, row.id, { reason: 'fel roll' }),
+      ).rejects.toThrow(ForbiddenException)
+    const t2 = await setup()
+    await expect(
+      t2.sender.releaseRejected(t2.org.id, OWNER, row.id, { reason: 'annan org' }),
+    ).rejects.toThrow(NotFoundException)
+    const k = await t.ready('13.00')
+    await t.sender.send(t.org.id, 'u1', k.row.id, k.row.draftHash)
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, k.row.id, { reason: 'bekräftad' }),
+    ).rejects.toThrow(ConflictException)
+    expect((await t.dbRow(row.id)).state).toBe('REJECTED')
+  })
+
+  it('H4-016 T16: två samtidiga frisläppningar → exakt en lyckas; historiken får exakt en FRISLAPPT', async () => {
+    const t = await setup()
+    const { row } = await avvisad(t)
+    const r = await Promise.allSettled([
+      t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'samtidig ett' }),
+      t.sender.releaseRejected(t.org.id, ADMIN, row.id, { reason: 'samtidig två' }),
+    ])
+    expect(r.map((x) => x.status).sort()).toEqual(['fulfilled', 'rejected'])
+    expect((r.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason).toBeInstanceOf(
+      ConflictException,
+    )
+    expect((await historik(row.id)).filter((x) => x.typ === 'FRISLAPPT')).toHaveLength(1)
+  })
+
+  it.each([
+    ['é ü & , . : ’', 'Inbetalning hyresavi X (José Müller) & Co, fakt. 12: rad 3 – O’Brien'],
+    ['kolon utan mappning', 'Betald leverantörsfaktura: EVENO TEST leverantör'],
+  ])('H4-016 T2–T4 (K2.2c): %s → oförändrad text, CONFIRMED, ingen mappning', async (_n, text) => {
+    const t = await setup()
+    const { row } = await t.ready('14.00', text)
+    expect(row.exportText).toEqual([])
+    const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    expect(res.state).toBe('CONFIRMED')
+    expect(t.ledger.vouchers.at(-1)?.Description).toBe(text)
+  })
+
+  it.each([
+    ['"', 'Faktura "april"', 'U+0022'],
+    ["'", "O'Brien", 'U+0027'],
+    ['TAB', 'a\tb', 'U+0009'],
+    ['NFD-é (U+0301)', 'José', 'U+0301'],
+    ['emoji', 'Hyra 🏠', 'U+1F3E0'],
+  ])(
+    'H4-016 T5/T6: %s i Description → BLOCKED TEXT_NOT_EXPORTABLE med kodpunkt, 0 POST',
+    async (_n, text, kp) => {
+      const t = await setup()
+      const e2 = await leverantorsfaktura(prisma, t.org.id, {
+        belopp: '16.00',
+        beskrivning: text,
+        radtext: [null, null],
+      })
+      const row = (await t.exports.dryRun(t.org.id, e2.id)) as {
+        state: string
+        blockReason: string | null
+      }
+      expect(row.state).toBe('BLOCKED')
+      expect(row.blockReason).toContain('TEXT_NOT_EXPORTABLE')
+      expect(row.blockReason).toContain(kp)
+      expect(row.blockReason).toContain('Description')
+      expect(posts(t)).toBe(0)
+    },
+  )
+
+  it('H4-016 T7: radtext med U+2014 → U+2013 i TransactionInformation; proveniensen visar rad och original', async () => {
+    const t = await setup()
+    const { row } = await t.ready('17.00', 'EVENO TEST radtext', ['Kostnad — april', null])
+    expect(row.exportText).toEqual([
+      {
+        falt: 'TransactionInformation',
+        rad: 1,
+        originaltext: 'Kostnad — april',
+        exporttext: 'Kostnad – april',
+      },
+    ])
+    const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    expect(res.state).toBe('CONFIRMED')
+    expect(
+      (t.ledger.vouchers.at(-1)?.VoucherRows as Array<{ TransactionInformation: string }>)[0]!
+        .TransactionInformation,
+    ).toBe('Kostnad – april')
   })
 })

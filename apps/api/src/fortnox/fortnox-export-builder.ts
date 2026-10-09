@@ -557,6 +557,11 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
             JSON.stringify({
               payload: res.payload,
               query: res.query,
+              // TESTKUND-016 K1.6: textregeln och Eveno-råtexterna bakom exporttexten.
+              text: {
+                regelVersion: res.provenance.text.regelVersion,
+                ra: [snapshot.description, ...snapshot.lines.map((l) => l.description)],
+              },
               binding: {
                 journalEntryId: entry.id,
                 databaseNumber: conn.fortnoxDatabaseNumber,

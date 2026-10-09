@@ -1,7 +1,7 @@
 import { InMemoryFortnoxRateLimiter, systemFortnoxClock } from './fortnox-rate-limiter'
 import { parseFortnoxRetryAfter } from './fortnox-retry-after'
 import { prepareFortnoxRequest } from './fortnox-transport.routes'
-import { FortnoxTransportError } from './fortnox-transport.types'
+import { FortnoxTransportError, type FortnoxRejectionDetail } from './fortnox-transport.types'
 import type {
   FortnoxClock,
   FortnoxFailureCode,
@@ -157,14 +157,24 @@ export class FortnoxTransport {
           }
         }
         if (status < 200 || status >= 300) {
-          void response.body?.cancel().catch(() => {})
           const outcome =
             method === 'GET'
               ? 'read_failed'
               : status >= 400 && status < 500 && status !== 408
                 ? 'rejected'
                 : 'unknown'
-          throw new FortnoxTransportError('HTTP_ERROR', outcome, attempts, status, retryAfterMs)
+          // TESTKUND-016 K3.1: en avvisad skrivning bär Fortnox egen felkod; den läses begränsat
+          // (högst 4 KB) så att avvisningsbeviset kan sparas. Allt annat avbryts som tidigare.
+          const rejection = outcome === 'rejected' ? await readRejection(response) : null
+          if (outcome !== 'rejected') void response.body?.cancel().catch(() => {})
+          throw new FortnoxTransportError(
+            'HTTP_ERROR',
+            outcome,
+            attempts,
+            status,
+            retryAfterMs,
+            rejection,
+          )
         }
         let data: unknown
         try {
@@ -198,5 +208,47 @@ export class FortnoxTransport {
       if (signal) EventTarget.prototype.removeEventListener.call(signal, 'abort', abort)
       controller.abort()
     }
+  }
+}
+
+const REJECTION_MAX_BYTES = 4096
+
+/** Läser högst 4 KB av ett avvisningssvar; ErrorInformation.code/message eller null. Kastar aldrig. */
+async function readRejection(response: Response): Promise<FortnoxRejectionDetail> {
+  const none: FortnoxRejectionDetail = { code: null, message: null }
+  try {
+    const reader = response.body?.getReader()
+    if (!reader) return none
+    const chunks: Uint8Array[] = []
+    let size = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      size += value.byteLength
+      if (size > REJECTION_MAX_BYTES) {
+        void reader.cancel().catch(() => {})
+        return none
+      }
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
+    const info =
+      body && typeof body === 'object'
+        ? ((body as Record<string, unknown>).ErrorInformation as
+            | Record<string, unknown>
+            | undefined)
+        : undefined
+    if (!info || typeof info !== 'object') return none
+    const raw = info.code ?? info.Code
+    const code =
+      typeof raw === 'number' && Number.isSafeInteger(raw)
+        ? raw
+        : typeof raw === 'string' && /^\d{1,10}$/.test(raw)
+          ? Number(raw)
+          : null
+    const msg = info.message ?? info.Message
+    return { code, message: typeof msg === 'string' ? msg.slice(0, 500) : null }
+  } catch {
+    return none
   }
 }

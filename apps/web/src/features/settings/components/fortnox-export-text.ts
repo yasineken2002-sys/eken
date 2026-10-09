@@ -23,3 +23,26 @@ export const EXPORT_NEXT_STEP: Partial<Record<FortnoxExportRow['state'], string>
     'Granska posten i Fortnox och ange identiteten för den post som motsvarar underlaget.',
   RECEIPT_IDENTIFIED: 'Kontrollera posten i Fortnox för att bekräfta den.',
 }
+
+/**
+ * TESTKUND-016: avvisningens art ur lastOutcome. Bara en innehållsavvisning med Fortnox-kod
+ * (4xx utom 429) kan frisläppas här; övriga stäms av eller kräver ett eget beslut.
+ */
+export function rejectionKind(
+  lastOutcome: string | null | undefined,
+): { kind: 'CONTENT'; http: number; code: number } | { kind: 'RATE_LIMIT' | 'NO_CODE' | 'LEGACY' } {
+  const m = /^REJECTED_(\d{3}|NA)_(\d+|NA)$/.exec(lastOutcome ?? '')
+  if (!m) return { kind: 'LEGACY' }
+  if (m[1] === '429') return { kind: 'RATE_LIMIT' }
+  const http = m[1] === 'NA' ? NaN : Number(m[1])
+  if (!(http >= 400 && http <= 499) || http === 408 || m[2] === 'NA') return { kind: 'NO_CODE' }
+  return { kind: 'CONTENT', http, code: Number(m[2]) }
+}
+
+export const REJECTION_TEXT = {
+  RATE_LIMIT:
+    'Fortnox svarade 429 (för många anrop). Det är ingen innehållsavvisning och kan inte frisläppas här.',
+  NO_CODE: 'Fortnox avvisade utan felkod. Ingen innehållsavvisning är belagd – stäm av i Fortnox.',
+  LEGACY:
+    'Äldre avvisning utan sparad Fortnox-kod. Ägaren kan frisläppa den med ett granskat externt avvisningskvitto.',
+} as const

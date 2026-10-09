@@ -74,6 +74,26 @@ export const fortnoxReconcileInputSchema = z.object({
 export type FortnoxReconcileInput = z.infer<typeof fortnoxReconcileInputSchema>
 
 /**
+ * TESTKUND-016 K3.4: externt avvisningskvitto för en ÄLDRE avvisad export som saknar lagrad
+ * Fortnox-kod. Anges uttryckligen av OWNER; produkten sparar det som «angivet i efterhand».
+ */
+export const fortnoxRejectionEvidenceSchema = z.object({
+  http: z.number().int().min(400).max(499),
+  code: z.number().int().positive().safe(),
+  rakvittoSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  manifestSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  sentPayloadHash: z.string().regex(/^[0-9a-f]{64}$/),
+})
+export type FortnoxRejectionEvidence = z.infer<typeof fortnoxRejectionEvidenceSchema>
+
+/** POST /integrations/fortnox/exports/:id/release-rejected — frisläpp en bevisat avvisad export. */
+export const fortnoxReleaseRejectedInputSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+  avvisningsbevis: fortnoxRejectionEvidenceSchema.optional(),
+})
+export type FortnoxReleaseRejectedInput = z.infer<typeof fortnoxReleaseRejectedInputSchema>
+
+/**
  * TESTKUND-008: kontomappningens ROLLER och BEHANDLINGAR. Stängda listor — servern härleder
  * radens roll och behandling ur källan, och en mappningsrad gäller exakt (roll, källkonto,
  * behandling). Inga standardvärden; målkontot väljs uttryckligen av kunden.

@@ -115,7 +115,7 @@ export interface LedgerReadResult {
 }
 
 /** Läsningen kan inte fullföljas; ger PARTIAL/FAILED med orsak. */
-class Incomplete extends Error {}
+export class Incomplete extends Error {}
 
 const LIMITATION =
   'Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.'
@@ -212,7 +212,7 @@ function voucherKey(v: FortnoxVoucher): string | null {
   return `${v.Year}|${v.VoucherSeries}|${v.VoucherNumber}`
 }
 
-async function paged<T>(
+export async function paged<T>(
   reader: FortnoxLedgerReader,
   token: string,
   path: string,

@@ -5,18 +5,25 @@ import { Input } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import {
   reconcileFortnoxExport,
+  releaseRejectedFortnoxExport,
   sendFortnoxExport,
   verifyFortnoxExport,
   type FortnoxExportRow,
 } from '../api/fortnox-export.api'
-import { EXPORT_NEXT_STEP, EXPORT_STATE_TEXT } from './fortnox-export-text'
+import {
+  EXPORT_NEXT_STEP,
+  EXPORT_STATE_TEXT,
+  REJECTION_TEXT,
+  rejectionKind,
+} from './fortnox-export-text'
 
 const RECONCILABLE = new Set<FortnoxExportRow['state']>(['UNKNOWN', 'REJECTED', 'RECEIPT_MISMATCH'])
 
 /**
  * En exportrad: ärlig status, nästa tillåtna handling och — endast där kontraktet
  * tillåter — skicka (READY + aktiverad sändning), kontrollera (kvitto) eller
- * avstämning med exakt identitet. Ingen handling gör UNKNOWN/REJECTED omsändbart.
+ * avstämning med exakt identitet. Ingen handling gör UNKNOWN omsändbart; en BEVISAT avvisad
+ * export (Fortnox 4xx med kod, inte 429) kan frisläppas till en ny förhandskontroll (TESTKUND-016).
  */
 export function FortnoxExportRowView({
   row,
@@ -31,6 +38,7 @@ export function FortnoxExportRowView({
   const [year, setYear] = useState('')
   const [series, setSeries] = useState('')
   const [number, setNumber] = useState('')
+  const [reason, setReason] = useState('')
   const send = useMutation({
     mutationFn: () => sendFortnoxExport(row.id, { draftHash: row.draftHash ?? '', confirm: true }),
     retry: false,
@@ -47,12 +55,18 @@ export function FortnoxExportRowView({
     retry: false,
     onSettled: onChanged,
   })
+  const release = useMutation({
+    mutationFn: () => releaseRejectedFortnoxExport(row.id, { reason: reason.trim() }),
+    retry: false,
+    onSettled: onChanged,
+  })
+  const rejection = row.state === 'REJECTED' ? rejectionKind(row.lastOutcome) : null
   const identityOk =
     /^[1-9]\d{0,8}$/.test(year) &&
     /^[A-Za-z0-9]{1,10}$/.test(series) &&
     /^[1-9]\d{0,8}$/.test(number)
-  const busy = send.isPending || verify.isPending || reconcile.isPending
-  const error = send.error ?? verify.error ?? reconcile.error
+  const busy = send.isPending || verify.isPending || reconcile.isPending || release.isPending
+  const error = send.error ?? verify.error ?? reconcile.error ?? release.error
 
   return (
     <li
@@ -61,6 +75,24 @@ export function FortnoxExportRowView({
     >
       <p className="text-ink break-words font-medium">{EXPORT_STATE_TEXT[row.state]}</p>
       {row.blockReason && <p className="text-ink-muted break-words">Skäl: {row.blockReason}</p>}
+      {(row.exportText ?? []).map((t) => (
+        <div
+          key={`${t.falt}-${t.rad ?? 0}`}
+          className="border-line bg-surface min-w-0 space-y-1 rounded-md border p-2 text-sm"
+          data-export-text={t.falt}
+        >
+          <p className="text-ink break-words">
+            Exporteras som: <span className="font-medium">{t.exporttext}</span>
+          </p>
+          <p className="text-ink-muted break-words">
+            Originaltext{t.rad ? ` (rad ${t.rad})` : ''}: {t.originaltext}
+          </p>
+          <p className="text-ink-muted break-words text-xs">
+            Fortnox tar inte emot tankstreck (—); det skickas som kort tankstreck (–). Evenos
+            verifikat ändras inte.
+          </p>
+        </div>
+      ))}
       {row.externalNumber != null && (
         <p className="text-ink-muted">
           Fortnox-verifikat {row.externalSeries}
@@ -99,6 +131,37 @@ export function FortnoxExportRowView({
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => verify.mutate()}>
           Kontrollera i Fortnox
         </Button>
+      )}
+
+      {rejection?.kind === 'CONTENT' && (
+        <form
+          aria-label="Frisläpp avvisad export"
+          className="min-w-0 space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (reason.trim().length >= 5 && !busy) release.mutate()
+          }}
+        >
+          <p className="text-ink-muted break-words text-sm">
+            Fortnox avvisade innehållet (HTTP {rejection.http}, kod {rejection.code}). Om du har
+            rättat orsaken kan exporten frisläppas för en ny förhandskontroll. Eveno läser först
+            hela räkenskapsåret i Fortnox och vägrar om en post från detta verifikat redan finns.
+          </p>
+          <Input label="Skäl" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <Button
+            type="submit"
+            size="sm"
+            variant="secondary"
+            disabled={reason.trim().length < 5 || busy}
+          >
+            {release.isPending ? 'Kontrollerar i Fortnox…' : 'Frisläpp för ny förhandskontroll'}
+          </Button>
+        </form>
+      )}
+      {rejection && rejection.kind !== 'CONTENT' && (
+        <p className="text-ink-muted break-words text-sm" data-rejection-kind={rejection.kind}>
+          {REJECTION_TEXT[rejection.kind]}
+        </p>
       )}
 
       {RECONCILABLE.has(row.state) && (

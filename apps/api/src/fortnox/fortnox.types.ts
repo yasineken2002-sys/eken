@@ -121,6 +121,7 @@ export interface FortnoxVoucher {
   Project?: unknown
   ReferenceType?: unknown
   ReferenceNumber?: unknown
+  Comments?: unknown
   VoucherRows?: unknown
 }
 

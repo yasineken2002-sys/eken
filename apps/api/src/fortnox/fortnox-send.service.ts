@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -13,7 +14,8 @@ import {
   FORTNOX_VOUCHER_DRAFT_BUILDER,
   type FortnoxVoucherDraftBuilder,
 } from './fortnox-export.service'
-import { toOre } from './fortnox-ledger'
+import { exportView } from './fortnox-export-view'
+import { Incomplete, paged, toOre } from './fortnox-ledger'
 import {
   provaOchOgiltigforklara,
   sendingEnabledFor,
@@ -46,6 +48,7 @@ const LEASE_MS = 120_000
 const LOCKED_FOR_RECONCILE = ['UNKNOWN', 'REJECTED', 'RECEIPT_MISMATCH'] as const
 
 export const EXPORT_VIEW = {
+  draft: true,
   id: true,
   journalEntryId: true,
   state: true,
@@ -159,11 +162,13 @@ export class FortnoxSendService {
     return res.count
   }
 
-  private view(organizationId: string, id: string) {
-    return this.prisma.fortnoxVoucherExport.findFirstOrThrow({
-      where: { id, organizationId },
-      select: EXPORT_VIEW,
-    })
+  private async view(organizationId: string, id: string) {
+    return exportView(
+      await this.prisma.fortnoxVoucherExport.findFirstOrThrow({
+        where: { id, organizationId },
+        select: EXPORT_VIEW,
+      }),
+    )
   }
 
   async send(organizationId: string, userId: string, exportId: string, draftHash: string) {
@@ -257,11 +262,31 @@ export class FortnoxSendService {
         },
       })
     }
-    const lock = async (state: 'UNKNOWN' | 'REJECTED', outcome: string) => {
-      await this.prisma.fortnoxVoucherExport.updateMany({
-        where: { id: row.id, organizationId, sendAttemptId: attemptId, state: 'SENDING' },
-        data: { state, lastOutcome: outcome, lastOutcomeAt: new Date() },
-      })
+    // TESTKUND-016 K3.1: låsningen och historikposten skrivs i SAMMA villkorade sats; historiken
+    // läggs bara till (jsonb ||), skrivs aldrig över.
+    const lock = async (
+      state: 'UNKNOWN' | 'REJECTED',
+      outcome: string,
+      bevis: Record<string, unknown> = {},
+    ) => {
+      const at = new Date()
+      const post = {
+        typ: state === 'REJECTED' ? 'AVVISAD' : 'OKANT_UTFALL',
+        at: at.toISOString(),
+        sendAttemptId: attemptId,
+        sentPayloadHash: draftHash,
+        utfall: outcome,
+        ...bevis,
+      }
+      await this.prisma.$executeRaw`
+        UPDATE "FortnoxVoucherExport"
+           SET "state" = ${state}::"FortnoxExportState",
+               "lastOutcome" = ${outcome},
+               "lastOutcomeAt" = ${at},
+               "attemptHistory" = "attemptHistory" || jsonb_build_array(${JSON.stringify(post)}::jsonb),
+               "updatedAt" = ${at}
+         WHERE "id" = ${row.id} AND "organizationId" = ${organizationId}
+           AND "sendAttemptId" = ${attemptId} AND "state" = 'SENDING'`
     }
 
     // Token + omläsning av anslutningen: byte/frånkoppling efter anspråket är lokalt
@@ -299,7 +324,16 @@ export class FortnoxSendService {
       if (err instanceof FortnoxWriteError && err.outcome === 'not_sent') {
         await backToReady('NOT_SENT')
       } else if (err instanceof FortnoxWriteError && err.outcome === 'rejected') {
-        await lock('REJECTED', 'REJECTED')
+        // TESTKUND-016 K3.1: HTTP-status och Fortnox kod sparas (NA = okänd). 429 registreras som
+        // avvisad som tidigare (eget fynd, BEDOMNING-KUNDGAP-016 rad 8) men kan aldrig frisläppas.
+        const http = err.status ?? null
+        const code = err.rejection?.code ?? null
+        await lock('REJECTED', `REJECTED_${http ?? 'NA'}_${code ?? 'NA'}`, {
+          http,
+          code,
+          meddelande: err.rejection?.message ?? null,
+          kalla: 'LAGRAD_AV_PRODUKTEN',
+        })
       } else {
         await lock(
           'UNKNOWN',
@@ -562,5 +596,228 @@ export class FortnoxSendService {
       throw err
     }
     return this.view(organizationId, row.id)
+  }
+
+  /**
+   * TESTKUND-016 (KRITERIER-H4-016 K3): frisläpp en BEVISAT avvisad export till BLOCKED så att
+   * den vanliga förhandskontrollen och sändningen kan göras om. Gäller aldrig UNKNOWN, RECEIPT_*,
+   * timeout eller 429. Före bytet: färsk, strikt sidläst kontroll i rätt företag och år att ingen
+   * post bär verifikatets proveniens. Bytet är villkorat på exakt det lästa försöket.
+   */
+  async releaseRejected(
+    organizationId: string,
+    user: { sub: string; role: string },
+    exportId: string,
+    input: {
+      reason?: unknown
+      avvisningsbevis?: {
+        http?: unknown
+        code?: unknown
+        rakvittoSha256?: unknown
+        manifestSha256?: unknown
+        sentPayloadHash?: unknown
+      }
+    },
+  ) {
+    if (user.role !== 'OWNER' && user.role !== 'ADMIN')
+      throw new ForbiddenException('Bara OWNER eller ADMIN får frisläppa en avvisad export.')
+    const reason = typeof input?.reason === 'string' ? input.reason.trim() : ''
+    if (reason.length < 5 || reason.length > 500)
+      throw new BadRequestException('Ange ett skäl (5–500 tecken)')
+    await this.expireLeases(organizationId)
+    const row = await this.prisma.fortnoxVoucherExport.findFirst({
+      where: { id: exportId, organizationId },
+    })
+    if (!row) throw new NotFoundException('Exportraden hittades inte')
+    if (row.state !== 'REJECTED' || row.reconciledAt !== null)
+      throw new ConflictException(
+        'Bara en avvisad export kan frisläppas; ett okänt utfall stäms av med reconcile',
+      )
+    if (
+      !row.sendAttemptId ||
+      !row.sentPayloadHash ||
+      row.fortnoxDatabaseNumber === null ||
+      row.sendFinancialYear === null ||
+      !row.lastOutcome
+    )
+      throw new ConflictException('Det avvisade försöket saknar sitt underlag')
+
+    const at = new Date()
+    let avvisning: Record<string, unknown>
+    const lagrad = /^REJECTED_(\d{3}|NA)_(\d+|NA)$/.exec(row.lastOutcome)
+    if (lagrad) {
+      const http = lagrad[1] === 'NA' ? null : Number(lagrad[1])
+      if (http === 429)
+        throw new ConflictException(
+          'En avvisning på grund av rate limit (429) är ingen innehållsavvisning och kan inte frisläppas här',
+        )
+      if (http === null || http < 400 || http > 499 || http === 408 || lagrad[2] === 'NA')
+        throw new ConflictException(
+          'Avvisningen saknar belagd HTTP-status eller Fortnox-kod; ingen innehållsavvisning är belagd',
+        )
+      avvisning = { kalla: 'LAGRAD_AV_PRODUKTEN', http, code: Number(lagrad[2]) }
+    } else if (row.lastOutcome === 'REJECTED') {
+      // K3.4: äldre avvisning utan lagrad kod. Kräver OWNER och ett uttryckligt externt kvitto.
+      if (user.role !== 'OWNER')
+        throw new ForbiddenException(
+          'Bara OWNER får ange ett avvisningskvitto i efterhand för en äldre avvisning.',
+        )
+      const b = input?.avvisningsbevis
+      const sha = (x: unknown) => typeof x === 'string' && /^[0-9a-f]{64}$/.test(x)
+      if (
+        !b ||
+        typeof b.http !== 'number' ||
+        !Number.isInteger(b.http) ||
+        b.http < 400 ||
+        b.http > 499 ||
+        b.http === 408 ||
+        b.http === 429 ||
+        typeof b.code !== 'number' ||
+        !Number.isSafeInteger(b.code) ||
+        b.code < 1 ||
+        !sha(b.rakvittoSha256) ||
+        !sha(b.manifestSha256) ||
+        !sha(b.sentPayloadHash)
+      )
+        throw new ConflictException(
+          'En äldre avvisning utan lagrad kod kräver ett externt 4xx-kvitto (http, code, rakvittoSha256, manifestSha256, sentPayloadHash)',
+        )
+      if (b.sentPayloadHash !== row.sentPayloadHash)
+        throw new ConflictException('Kvittots sentPayloadHash avser inte detta avvisade försök')
+      avvisning = {
+        kalla: 'ANGIVET_I_EFTERHAND',
+        beskrivning: 'Externt belagt, ej lagrat av produkten',
+        http: b.http,
+        code: b.code,
+        rakvittoSha256: b.rakvittoSha256,
+        manifestSha256: b.manifestSha256,
+        sentPayloadHash: b.sentPayloadHash,
+        angivetAv: user.sub,
+        roll: user.role,
+        at: at.toISOString(),
+      }
+    } else {
+      throw new ConflictException('Avvisningens utfall är okänt; exporten kan inte frisläppas')
+    }
+
+    const skanning = await this.scanForProvenance(organizationId, row)
+    if (skanning.status === 'FOUND')
+      throw new ConflictException(
+        `En post med verifikatets proveniens finns i Fortnox (${skanning.identitet}); stäm av med reconcile`,
+      )
+    if (skanning.status !== 'ABSENT')
+      throw new ConflictException(
+        skanning.status === 'WRONG_COMPANY'
+          ? 'Fortnox-företaget är inte det som underlaget skickades till'
+          : `Fortnox kunde inte läsas fullständigt (${skanning.skal}); inget ändrades`,
+      )
+
+    const post = {
+      typ: 'FRISLAPPT',
+      at: at.toISOString(),
+      av: user.sub,
+      roll: user.role,
+      skal: reason,
+      avvisning,
+      tidigareForsok: {
+        sendAttemptId: row.sendAttemptId,
+        sentPayloadHash: row.sentPayloadHash,
+        draftHash: row.draftHash,
+        lastOutcome: row.lastOutcome,
+        utkast: row.draft,
+      },
+      skanning: {
+        databaseNumber: row.fortnoxDatabaseNumber,
+        financialYear: row.sendFinancialYear,
+        verifikatLasta: skanning.antal,
+        sidor: skanning.sidor,
+        markor: `Eveno JournalEntry ${row.journalEntryId}`,
+      },
+    }
+    const count = await this.prisma.$executeRaw`
+      UPDATE "FortnoxVoucherExport"
+         SET "state" = 'BLOCKED'::"FortnoxExportState",
+             "blockReason" = 'Fortnox avvisade försöket; exporten är frisläppt. Gör en ny förhandskontroll.',
+             "lastOutcome" = 'RELEASED_AFTER_REJECTION',
+             "lastOutcomeAt" = ${at},
+             "attemptHistory" = "attemptHistory" || jsonb_build_array(${JSON.stringify(post)}::jsonb),
+             "updatedAt" = ${at}
+       WHERE "id" = ${row.id} AND "organizationId" = ${organizationId}
+         AND "state" = 'REJECTED' AND "reconciledAt" IS NULL
+         AND "sendAttemptId" = ${row.sendAttemptId} AND "lastOutcome" = ${row.lastOutcome}`
+    if (count !== 1) throw new ConflictException('Exporten har redan frisläppts eller ändrats')
+    return this.view(organizationId, row.id)
+  }
+
+  /**
+   * Strikt sidläsning av räkenskapsårets verifikat i rätt företag: finns någon post vars
+   * Comments bär «Eveno JournalEntry <id>»? Varje läsfel eller ofullständighet → inte ABSENT.
+   */
+  private async scanForProvenance(
+    organizationId: string,
+    row: FortnoxVoucherExport,
+  ): Promise<
+    | { status: 'ABSENT'; antal: number; sidor: number }
+    | { status: 'FOUND'; identitet: string }
+    | { status: 'WRONG_COMPANY' }
+    | { status: 'INCOMPLETE'; skal: string }
+  > {
+    let auth: Awaited<ReturnType<FortnoxConnectionService['accessToken']>>
+    try {
+      auth = await this.connections.accessToken(organizationId)
+    } catch {
+      return { status: 'INCOMPLETE', skal: 'ingen åtkomst' }
+    }
+    if (auth.databaseNumber !== row.fortnoxDatabaseNumber) return { status: 'WRONG_COMPANY' }
+    const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
+    const year = row.sendFinancialYear!
+    const markor = `Eveno JournalEntry ${row.journalEntryId}`
+    try {
+      const ci = await reader.get<{ CompanyInformation?: { DatabaseNumber?: unknown } }>(
+        auth.token,
+        '/3/companyinformation',
+      )
+      if (ci?.CompanyInformation?.DatabaseNumber !== row.fortnoxDatabaseNumber)
+        return { status: 'WRONG_COMPANY' }
+      const coverage: Parameters<typeof paged>[5] = {}
+      const list = await paged<Record<string, unknown>>(
+        reader,
+        auth.token,
+        '/3/vouchers/sublist',
+        'Vouchers',
+        { financialyear: year },
+        coverage,
+      )
+      const seen = new Set<string>()
+      for (const v of list.items) {
+        const series = v.VoucherSeries
+        const number = v.VoucherNumber
+        if (typeof series !== 'string' || !Number.isSafeInteger(number))
+          return { status: 'INCOMPLETE', skal: 'verifikat utan identitet' }
+        if (v.Year !== year) return { status: 'INCOMPLETE', skal: 'verifikat i fel räkenskapsår' }
+        if (!('Comments' in v) || (v.Comments !== null && typeof v.Comments !== 'string'))
+          return { status: 'INCOMPLETE', skal: 'listan saknar Comments' }
+        seen.add(`${series}|${String(number)}`)
+        if (typeof v.Comments === 'string' && v.Comments.includes(markor))
+          return { status: 'FOUND', identitet: `${year}|${series}|${String(number)}` }
+      }
+      if (seen.size !== list.total) return { status: 'INCOMPLETE', skal: 'antalet stämmer inte' }
+      // K-S2: anslutningen får inte ha bytt företag under läsningen.
+      const after = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
+      if (
+        !after ||
+        after.id !== auth.connectionId ||
+        after.fortnoxDatabaseNumber !== row.fortnoxDatabaseNumber
+      )
+        return { status: 'WRONG_COMPANY' }
+      return {
+        status: 'ABSENT',
+        antal: seen.size,
+        sidor: coverage['/3/vouchers/sublist']?.pages ?? 0,
+      }
+    } catch (err) {
+      if (err instanceof Incomplete) return { status: 'INCOMPLETE', skal: err.message }
+      return { status: 'INCOMPLETE', skal: 'läsfel' }
+    }
   }
 }

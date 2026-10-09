@@ -268,6 +268,7 @@ import {
   fortnoxDryRunInputSchema,
   fortnoxExportSettingsInputSchema,
   fortnoxReconcileInputSchema,
+  fortnoxReleaseRejectedInputSchema,
   fortnoxSendInputSchema,
   fortnoxMappingInputSchema,
   fortnoxAccountMappingDraftInputSchema,
@@ -278,6 +279,7 @@ import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-setti
 import { FortnoxDryRunDto } from '../../fortnox/dto/fortnox-dry-run.dto'
 import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
+import { FortnoxReleaseRejectedDto } from '../../fortnox/dto/fortnox-release-rejected.dto'
 import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
 import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
 import {
@@ -1837,5 +1839,33 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { year: 1, series: 'A', number: 12 },
     ogiltig: { year: 1, series: 'A', number: 0 },
     ogiltigVarfor: 'ett verifikatnummer måste vara ett positivt heltal',
+  },
+  {
+    // TESTKUND-016 K3.4: kvittot i efterhand gäller bara 4xx (429 avvisas i tjänsten).
+    endpoint: 'POST /integrations/fortnox/exports/:id/release-rejected',
+    inputTyp: 'FortnoxReleaseRejectedInput',
+    schema: fortnoxReleaseRejectedInputSchema,
+    dto: FortnoxReleaseRejectedDto,
+    giltig: {
+      reason: 'Fortnox avvisade texten',
+      avvisningsbevis: {
+        http: 400,
+        code: 2000359,
+        rakvittoSha256: 'b'.repeat(64),
+        manifestSha256: 'c'.repeat(64),
+        sentPayloadHash: 'a'.repeat(64),
+      },
+    },
+    ogiltig: {
+      reason: 'Fortnox avvisade texten',
+      avvisningsbevis: {
+        http: 500,
+        code: 2000359,
+        rakvittoSha256: 'b'.repeat(64),
+        manifestSha256: 'c'.repeat(64),
+        sentPayloadHash: 'a'.repeat(64),
+      },
+    },
+    ogiltigVarfor: 'ett avvisningskvitto måste avse en 4xx-avvisning',
   },
 ]
