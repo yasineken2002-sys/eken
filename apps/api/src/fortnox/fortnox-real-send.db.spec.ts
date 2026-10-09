@@ -598,6 +598,76 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     )
   })
 
+  // ── TESTKUND-020 (KODPAR-BESKED-H4-020 K-KP-5): bara det belagda paret (400, 2000359) frisläpps,
+  // både på den lagrade vägen och med OWNER:s kvitto i efterhand. Övriga avvisningar ger 409 utan
+  // tillståndsbyte och utan någon historikpost. Den lagrade koden sätts här direkt i raden efter en
+  // verklig avvisning (samma format som send() skriver), eftersom dubbeln bara bär det observerade svaret.
+  const EJ_BELAGDA = [
+    [400, 1000003],
+    [400, 9999999],
+    [403, 2000359],
+    [401, 2000359],
+    [404, 2000359],
+    [409, 2000359],
+    [422, 2000359],
+  ] as const
+  it.each(EJ_BELAGDA)(
+    'K-KP-5 lagrad väg: REJECTED_%i_%i → 409 «inte en belagd innehållsavvisning», inget byte, ingen ny historik',
+    async (http, code) => {
+      const t = await setup()
+      const { row } = await avvisad(t)
+      await prisma.fortnoxVoucherExport.update({
+        where: { id: row.id },
+        data: { lastOutcome: `REJECTED_${http}_${code}` },
+      })
+      await expect(
+        t.sender.releaseRejected(t.org.id, OWNER, row.id, { reason: 'prov kodpar' }),
+      ).rejects.toThrow(
+        `Avvisningen är inte en belagd innehållsavvisning (http ${http}, kod ${code})`,
+      )
+      const r = await t.dbRow(row.id)
+      expect([r.state, r.lastOutcome]).toEqual(['REJECTED', `REJECTED_${http}_${code}`])
+      expect((await historik(row.id)).map((x) => x.typ)).toEqual(['AVVISAD'])
+    },
+  )
+  it.each(EJ_BELAGDA)(
+    'K-KP-5 äldre väg: OWNER-kvitto {http:%i, code:%i} → 409, inget byte, ingen historik',
+    async (http, code) => {
+      const t = await setup()
+      const { row } = await avvisad(t)
+      await prisma.fortnoxVoucherExport.update({
+        where: { id: row.id },
+        data: { lastOutcome: 'REJECTED', attemptHistory: [] },
+      })
+      const bevis = {
+        http,
+        code,
+        rakvittoSha256: 'b'.repeat(64),
+        manifestSha256: 'c'.repeat(64),
+        sentPayloadHash: row.draftHash,
+      }
+      await expect(
+        t.sender.releaseRejected(t.org.id, OWNER, row.id, {
+          reason: 'prov kodpar',
+          avvisningsbevis: bevis,
+        }),
+      ).rejects.toThrow(
+        `Avvisningen är inte en belagd innehållsavvisning (http ${http}, kod ${code})`,
+      )
+      expect((await t.dbRow(row.id)).state).toBe('REJECTED')
+      expect(await historik(row.id)).toEqual([])
+    },
+  )
+  it('K-KP-5 lagrad väg utan kod (REJECTED_400_NA) → 409 med sann formulering', async () => {
+    const t = await setup()
+    const c = await t.ready('12.00')
+    t.api.faults.push('status_400')
+    await t.sender.send(t.org.id, 'u1', c.row.id, c.row.draftHash)
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, c.row.id, { reason: 'utan kod' }),
+    ).rejects.toThrow('Avvisningen är inte en belagd innehållsavvisning (http 400, kod okänd)')
+  })
+
   it('H4-016 T12: en post med verifikatets proveniens finns i Fortnox → 409, oförändrat (vägen är reconcile)', async () => {
     const t = await setup()
     const { row } = await avvisad(t)

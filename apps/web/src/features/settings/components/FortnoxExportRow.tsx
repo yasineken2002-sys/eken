@@ -13,8 +13,8 @@ import {
 import {
   EXPORT_NEXT_STEP,
   EXPORT_STATE_TEXT,
-  REJECTION_TEXT,
   rejectionKind,
+  rejectionText,
 } from './fortnox-export-text'
 
 const RECONCILABLE = new Set<FortnoxExportRow['state']>(['UNKNOWN', 'REJECTED', 'RECEIPT_MISMATCH'])
@@ -155,9 +155,10 @@ export function FortnoxExportRowView({
           }}
         >
           <p className="text-ink-muted break-words text-sm">
-            Fortnox avvisade innehållet (HTTP {rejection.http}, kod {rejection.code}). Om du har
-            rättat orsaken kan exporten frisläppas för en ny förhandskontroll. Eveno läser först
-            hela räkenskapsåret i Fortnox och vägrar om en post från detta verifikat redan finns.
+            Fortnox avvisade innehållet (HTTP {rejection.http}, kod {rejection.code}: värdet
+            innehåller tecken som Fortnox inte tar emot). Om du har rättat orsaken kan exporten
+            frisläppas för en ny förhandskontroll. Eveno läser först hela räkenskapsåret i Fortnox
+            och vägrar om en post från detta verifikat redan finns.
           </p>
           <Input label="Skäl" value={reason} onChange={(e) => setReason(e.target.value)} />
           <Button
@@ -172,7 +173,7 @@ export function FortnoxExportRowView({
       )}
       {rejection && rejection.kind !== 'CONTENT' && (
         <p className="text-ink-muted break-words text-sm" data-rejection-kind={rejection.kind}>
-          {REJECTION_TEXT[rejection.kind]}
+          {rejectionText(rejection)}
         </p>
       )}
 

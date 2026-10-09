@@ -160,7 +160,12 @@ describe('FortnoxExportRowView', () => {
 
   it.each([
     ['REJECTED_429_NA', 'RATE_LIMIT'],
-    ['REJECTED_400_NA', 'NO_CODE'],
+    ['REJECTED_400_NA', 'NOT_PROVEN'],
+    ['REJECTED_400_1000003', 'NOT_PROVEN'],
+    ['REJECTED_400_9999999', 'NOT_PROVEN'],
+    ['REJECTED_403_2000359', 'NOT_PROVEN'],
+    ['REJECTED_401_2000359', 'NOT_PROVEN'],
+    ['REJECTED_404_2000359', 'NOT_PROVEN'],
     ['REJECTED', 'LEGACY'],
   ])('%s: ingen frisläppningsknapp, bara förklaring (%s)', (lastOutcome, kind) => {
     show(row('REJECTED', { lastOutcome }), false)
@@ -171,5 +176,15 @@ describe('FortnoxExportRowView', () => {
   it('UNKNOWN: aldrig frisläppning', () => {
     show(row('UNKNOWN', { lastOutcome: 'OUTCOME_UNKNOWN' }), false)
     expect(screen.queryByRole('button', { name: /Frisläpp/ })).toBeNull()
+  })
+
+  it('TESTKUND-020 K-KP-2: en icke belagd avvisning beskrivs sant, inte som innehållsfel', () => {
+    show(row('REJECTED', { lastOutcome: 'REJECTED_403_2000359' }), false)
+    expect(
+      screen.getByText(
+        /Avvisningen är inte en belagd innehållsavvisning \(http 403, kod 2000359\)/,
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Fortnox avvisade innehållet/)).toBeNull()
   })
 })

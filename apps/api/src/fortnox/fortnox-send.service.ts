@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { Prisma, type FortnoxVoucherExport } from '@prisma/client'
+import { arBelagdInnehallsavvisning } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import {
@@ -643,6 +644,10 @@ export class FortnoxSendService {
       throw new ConflictException('Det avvisade försöket saknar sitt underlag')
 
     const at = new Date()
+    const ejBelagd = (http: unknown, code: unknown) =>
+      new ConflictException(
+        `Avvisningen är inte en belagd innehållsavvisning (http ${String(http ?? 'okänd')}, kod ${String(code ?? 'okänd')}); stäm av med reconcile eller Fortnox support`,
+      )
     let avvisning: Record<string, unknown>
     const lagrad = /^REJECTED_(\d{3}|NA)_(\d+|NA)$/.exec(row.lastOutcome)
     if (lagrad) {
@@ -651,11 +656,10 @@ export class FortnoxSendService {
         throw new ConflictException(
           'En avvisning på grund av rate limit (429) är ingen innehållsavvisning och kan inte frisläppas här',
         )
-      if (http === null || http < 400 || http > 499 || http === 408 || lagrad[2] === 'NA')
-        throw new ConflictException(
-          'Avvisningen saknar belagd HTTP-status eller Fortnox-kod; ingen innehållsavvisning är belagd',
-        )
-      avvisning = { kalla: 'LAGRAD_AV_PRODUKTEN', http, code: Number(lagrad[2]) }
+      const code = lagrad[2] === 'NA' ? null : Number(lagrad[2])
+      // K-KP-1/2: bara ett belagt (status, kod)-par är en innehållsavvisning.
+      if (!arBelagdInnehallsavvisning(http, code)) throw ejBelagd(http, code)
+      avvisning = { kalla: 'LAGRAD_AV_PRODUKTEN', http, code }
     } else if (row.lastOutcome === 'REJECTED') {
       // K3.4: äldre avvisning utan lagrad kod. Kräver OWNER och ett uttryckligt externt kvitto.
       if (user.role !== 'OWNER')
@@ -682,6 +686,7 @@ export class FortnoxSendService {
         throw new ConflictException(
           'En äldre avvisning utan lagrad kod kräver ett externt 4xx-kvitto (http, code, rakvittoSha256, manifestSha256, sentPayloadHash)',
         )
+      if (!arBelagdInnehallsavvisning(b.http, b.code)) throw ejBelagd(b.http, b.code)
       if (b.sentPayloadHash !== row.sentPayloadHash)
         throw new ConflictException('Kvittots sentPayloadHash avser inte detta avvisade försök')
       avvisning = {
