@@ -63,6 +63,31 @@ export const LASTA_MAL: Partial<Record<Roll, number>> = {
   DEPOSITIONSSKULD: 2890,
 }
 
+/**
+ * TESTKUND-010 F-009-1: KONTOKLASS per roll — EN gemensam regel för källsidan (radklassen) och
+ * målsidan (utkast, godkännande, exportens färska kontroll). Källa: BAS-kontoplanens klasser
+ * (BAS 2026; R0-REAL-001 för 1868238): 19 kassa och bank, 1510 kundfordringar, 2440/24
+ * leverantörsskulder, 264 ingående moms, 2890 övriga kortfristiga skulder (V4), 3 rörelsens
+ * intäkter, 4–8 kostnader. Radklassen krävde redan 19xx för LIKVID på källsidan (`arLikvid`).
+ * En inbetalning som debiterar ett resultatkonto är en strukturell motsägelse, inte en
+ * tolkningsfråga: utanför klassen = KONFLIKT, och ett innehållsgodkännande kan aldrig överrida det.
+ */
+export const KONTOKLASS: Readonly<Record<Roll, readonly [number, number]>> = {
+  LIKVID: [1900, 1999],
+  KUNDFORDRAN: [1510, 1510],
+  DEPOSITIONSSKULD: [2890, 2890],
+  LEVERANTORSSKULD: [2400, 2499],
+  INGAENDE_MOMS: [2640, 2649],
+  HYRESINTAKT: [3000, 3999],
+  KOSTNAD: [4000, 8999],
+}
+export const iKontoklass = (roll: Roll, konto: number) =>
+  konto >= KONTOKLASS[roll][0] && konto <= KONTOKLASS[roll][1]
+export const klassText = (roll: Roll) => {
+  const [a, b] = KONTOKLASS[roll]
+  return a === b ? `${a}` : `${a}–${b}`
+}
+
 export const ROLL_TEXT: Record<Roll, string> = {
   KUNDFORDRAN: 'kundfordran',
   HYRESINTAKT: 'hyresintäkt',
@@ -90,9 +115,15 @@ export function teknik(
   behandling: Momsbehandling,
   f: Malfakta,
   financialYearId: number,
+  malNummer: number,
 ): { teknik: Teknik; skal: string } {
   if (!tillatetPar(roll, behandling))
     return { teknik: 'KONFLIKT', skal: 'behandlingen gäller inte för rollen' }
+  if (!iKontoklass(roll, malNummer))
+    return {
+      teknik: 'KONFLIKT',
+      skal: `kontoklass: ${ROLL_TEXT[roll]} kräver ett konto i ${klassText(roll)}`,
+    }
   if (!f.exists || (f.year !== null && f.year !== financialYearId))
     return { teknik: 'KONFLIKT', skal: 'kontot finns inte i Fortnox för räkenskapsåret' }
   if (f.active !== true) return { teknik: 'KONFLIKT', skal: 'kontot är inaktivt i Fortnox' }
@@ -132,6 +163,9 @@ export function godkannandeHinder(r: {
   technical: Teknik
   technicalReason: string
 }): string | null {
+  // F-009-1: kontoklassen prövas oberoende av den sparade tekniken (äldre revisioner).
+  if (!iKontoklass(r.role, r.targetAccountNumber))
+    return `kontoklass: ${ROLL_TEXT[r.role]} kräver ett konto i ${klassText(r.role)}`
   if (r.technical !== 'FORENLIG') return r.technicalReason
   const last = LASTA_MAL[r.role]
   if (last !== undefined && r.targetAccountNumber !== last)

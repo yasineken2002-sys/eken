@@ -21,7 +21,7 @@
  */
 import type { Prisma } from '@prisma/client'
 import { arIntaktskonto, harledBehandlingar } from './fortnox-intaktsgrind'
-import type { Momsbehandling, Roll } from './fortnox-kontomappning'
+import { iKontoklass, type Momsbehandling, type Roll } from './fortnox-kontomappning'
 
 export interface Radklass {
   roll: Roll
@@ -48,7 +48,8 @@ type Verifikat = {
 
 const ore = (d: Prisma.Decimal | null | undefined) =>
   d === null || d === undefined ? 0 : Math.round(Number(d) * 100)
-const arLikvid = (n: number) => n >= 1900 && n <= 1999
+// F-009-1: samma kontoklassregel som målsidan (fortnox-kontomappning.ts KONTOKLASS).
+const arLikvid = (n: number) => iKontoklass('LIKVID', n)
 const ej = (skal: string): Klassning => ({
   ok: false,
   kod: 'EVENT_UNSUPPORTED',
@@ -60,11 +61,13 @@ const ursprung = (skal: string): Klassning => ({ ok: false, kod: 'ORIGIN_NOT_CON
 async function bekraftad(
   db: Prisma.TransactionClient,
   organizationId: string,
+  // S-009-4: källan ingår — samma sourceId under en annan källa (t.ex. MANUAL) är inte originalet.
+  source: 'INVOICE' | 'SUPPLIER_INVOICE',
   sourceId: string,
   databaseNumber: number,
 ): Promise<boolean> {
   const je = await db.journalEntry.findFirst({
-    where: { organizationId, sourceId },
+    where: { organizationId, source, sourceId },
     select: { id: true },
   })
   if (!je) return false
@@ -219,7 +222,9 @@ export async function klassaVerifikat(
     if (avi.origin === 'OPENING_PACKAGE') {
       if (!(await iVerkstalltPaket(db, organizationId, avi.openingRowId)))
         return ursprung('Fordran ingår inte i ett verkställt öppningspaket')
-    } else if (!(await bekraftad(db, organizationId, `rent-notice:${avi.id}`, databaseNumber)))
+    } else if (
+      !(await bekraftad(db, organizationId, 'INVOICE', `rent-notice:${avi.id}`, databaseNumber))
+    )
       return ursprung(
         'Hyresavins fordran är inte bekräftat exporterad till samma Fortnox-företag — ' +
           'betalningen skulle kreditera kundfordringar utan motsvarande debet',
@@ -253,7 +258,13 @@ export async function klassaVerifikat(
     const fakturaOk =
       dep.origin === 'OPENING_PACKAGE'
         ? await iVerkstalltPaket(db, organizationId, dep.openingRowId)
-        : await bekraftad(db, organizationId, `deposit-invoice:${dep.id}`, databaseNumber)
+        : await bekraftad(
+            db,
+            organizationId,
+            'INVOICE',
+            `deposit-invoice:${dep.id}`,
+            databaseNumber,
+          )
     if (slag === 'manual-payment') {
       if (entry.source !== 'PAYMENT') return ej('okänd källa för depositionsbetalning')
       const t = tvaRader(entry, arLikvid, (n) => n === 1510)
@@ -299,7 +310,15 @@ export async function klassaVerifikat(
       const t = tvaRader(entry, (n) => n === 2440, arLikvid)
       if (!t || t.belopp !== ore(f.totalAmount))
         return ej('leverantörsbetalningen är inte 2440/19xx med fakturans belopp')
-      if (!(await bekraftad(db, organizationId, `supplier-invoice:${f.id}`, databaseNumber)))
+      if (
+        !(await bekraftad(
+          db,
+          organizationId,
+          'SUPPLIER_INVOICE',
+          `supplier-invoice:${f.id}`,
+          databaseNumber,
+        ))
+      )
         return ursprung(
           'Leverantörsfakturan är inte bekräftat exporterad till samma Fortnox-företag — ' +
             'betalningen skulle debitera leverantörsskulder utan motsvarande kredit',
@@ -310,7 +329,12 @@ export async function klassaVerifikat(
     }
     for (const l of entry.lines) {
       const n = l.account.number
-      if (n === f.expenseAccount && l.credit === null && ore(l.debit) === ore(f.netAmount))
+      if (
+        n === f.expenseAccount &&
+        iKontoklass('KOSTNAD', n) &&
+        l.credit === null &&
+        ore(l.debit) === ore(f.netAmount)
+      )
         satt(l, 'KOSTNAD')
       else if (
         n === 2641 &&

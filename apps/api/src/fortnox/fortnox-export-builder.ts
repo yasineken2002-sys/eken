@@ -20,6 +20,8 @@ import {
   SAKNAS,
   drift,
   godkannandeHinder,
+  iKontoklass,
+  klassText,
   malfaktaUrSvar,
   teknik,
   type Malfakta,
@@ -393,6 +395,14 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
             `Konto ${l.account.number} «${l.account.name}» som ${ROLL_TEXT[rk.roll]} ` +
               `(${BEHANDLING_TEXT[rk.behandling]}) saknar mappning i godkänd revision ${revision.revision}`,
           )
+        // F-009-1: målets kontoklass prövas först och oberoende av revisionens sparade teknik.
+        if (!iKontoklass(rad.role, rad.targetAccountNumber))
+          return block(
+            'ACCOUNT_CLASS_MISMATCH',
+            `Konto ${l.account.number} som ${ROLL_TEXT[rk.roll]} mappas till Fortnox ` +
+              `${rad.targetAccountNumber}, utanför kontoklassen ${klassText(rad.role)} — ` +
+              'skapa och godkänn en ny revision',
+          )
         const hinder = godkannandeHinder({
           role: rad.role,
           targetAccountNumber: rad.targetAccountNumber,
@@ -412,7 +422,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
             `Fortnox-konto ${rad.targetAccountNumber} har ändrats sedan revision ${revision.revision} ` +
               `godkändes (${d}) — skapa och godkänn en ny revision`,
           )
-        const tk = teknik(rk.roll, rk.behandling, nu, fy.Id)
+        const tk = teknik(rk.roll, rk.behandling, nu, fy.Id, rad.targetAccountNumber)
         if (tk.teknik !== 'FORENLIG')
           return block(
             tk.teknik === 'KONFLIKT' ? 'ACCOUNT_VAT_MISMATCH' : 'ACCOUNT_MAPPING_DRIFT',

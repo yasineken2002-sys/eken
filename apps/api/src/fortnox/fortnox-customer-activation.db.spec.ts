@@ -1025,6 +1025,56 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     )
   })
 
+  it('TESTKUND-010 F-009-2: riskkontrollen läser mappningens hyresmål 3915 — saknad läsning hindrar, säker läsning släpper, tidigare systemets förskottsintäkt på 3915 blockerar godkännandet', async () => {
+    const t = await setup()
+    await medEnhet(t)
+    syntetiskaMal(t)
+    t.reader.accounts.push({
+      Number: 3915,
+      Active: true,
+      VATCode: 'MF',
+      Description: 'Bostadshyror momsfria',
+      BalanceBroughtForward: 0,
+    })
+    await godkannMappning(prisma, t.connections, t.reader, t.org.id, [
+      ...HYRA.map((r) => (r.role === 'HYRESINTAKT' ? { ...r, targetAccountNumber: 3915 } : r)),
+    ])
+    const svc = medKontroll(t)
+    const hinder = async () => (await svc.status(t.org.id, 1)).forslag.hinder.join(' ')
+    // Registret anger 3911; setupens riskläsning omfattar 1510, 3911, 2420 men inte 3915.
+    expect(await hinder()).toMatch(/Riskkontroll saknas: .*kontona 1510, 3911, 2420, 3915/)
+    const las = () =>
+      t.readback.read(t.org.id, t.owner.id, {
+        financialYearId: 1,
+        periodFrom: '2026-01-01',
+        periodTo: '2026-12-31',
+        costAccounts: [1510, 3911, 2420, 3915],
+      })
+    expect((await las()).status).toBe('COMPLETE')
+    expect(await hinder()).toBe('')
+    // Tidigare systemet har redan intäktsfört brytmånaden (setupens brytdatum 2026-11-01) på 3915 som
+    // kontantfaktura (1930/3915, ingen 1510-rad).
+    t.reader.vouchers.push({
+      Year: 1,
+      VoucherSeries: 'B',
+      VoucherNumber: 1,
+      TransactionDate: '2026-11-01',
+      Description: 'Tidigare system: november (brytmånaden)',
+      VoucherRows: [
+        { Account: 1930, Debit: 6000, Credit: 0 },
+        { Account: 3915, Debit: 0, Credit: 6000 },
+      ],
+    } as unknown as (typeof t.reader.vouchers)[number])
+    expect((await las()).status).toBe('COMPLETE')
+    expect(await hinder()).toMatch(/tidigare system .* på konto 3915/)
+    await expect(
+      svc.approve(t.org.id, t.ägare, { financialYearId: 1, consequencesSha256: 'a'.repeat(64) }),
+    ).rejects.toThrow(/3915/)
+    expect(
+      await prisma.fortnoxCustomerActivation.count({ where: { organizationId: t.org.id } }),
+    ).toBe(0)
+  })
+
   it('TESTKUND-008: momspliktig parkering är ej stödd → hinder (ingen tyst delaktivering)', async () => {
     const t = await setup()
     await medEnhet(t, 'PARKING')

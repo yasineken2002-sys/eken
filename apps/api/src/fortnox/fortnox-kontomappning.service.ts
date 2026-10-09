@@ -38,6 +38,8 @@ import {
   SAKNAS,
   drift,
   godkannandeHinder,
+  iKontoklass,
+  klassText,
   innehallsSha,
   malfaktaUrSvar,
   nyckel,
@@ -298,6 +300,11 @@ export class FortnoxKontomappningService {
     for (const r of input.rows) {
       if (!tillatetPar(r.role, r.vatTreatment))
         throw new BadRequestException('Behandlingen gäller inte för rollen')
+      // F-009-1: samma kontoklassregel på källsidan som radklassen och målsidan använder.
+      if (!iKontoklass(r.role, r.sourceAccountNumber))
+        throw new BadRequestException(
+          `Eveno-konto ${r.sourceAccountNumber} ligger utanför kontoklassen ${klassText(r.role)} för rollen`,
+        )
       const k = nyckel(r.role, r.sourceAccountNumber, r.vatTreatment)
       if (nycklar.has(k)) throw new BadRequestException('Samma rad förekommer två gånger')
       nycklar.add(k)
@@ -341,7 +348,7 @@ export class FortnoxKontomappningService {
       const rader = []
       for (const r of input.rows) {
         const f = await this.lasKonto(l, r.targetAccountNumber, input.financialYearId)
-        const t = teknik(r.role, r.vatTreatment, f, input.financialYearId)
+        const t = teknik(r.role, r.vatTreatment, f, input.financialYearId, r.targetAccountNumber)
         rader.push({
           role: r.role,
           vatTreatment: r.vatTreatment,

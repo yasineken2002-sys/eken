@@ -19,7 +19,7 @@ import { Reflector } from '@nestjs/core'
 import { JwtService } from '@nestjs/jwt'
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify'
 import { Test } from '@nestjs/testing'
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, type Prisma } from '@prisma/client'
 import type { FortnoxAccountMappingRowInput } from '@eken/shared'
 import { JwtStrategy } from '../auth/strategies/jwt.strategy'
 import { VALIDATION_PIPE_OPTIONS } from '../common/contract/validation-pipe-options'
@@ -560,11 +560,20 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     const fall: Array<[FortnoxAccountMappingRowInput, string, RegExp | null]> = [
       [R('HYRESINTAKT', 3911, 3911), 'KONFLIKT', /inaktivt/],
       [R('HYRESINTAKT', 3911, 3970), 'EJ_BELAGD', /saknar momskod/],
-      [R('KUNDFORDRAN', 1510, 2611), 'KONFLIKT', /momskod U1/],
-      [R('INGAENDE_MOMS', 2641, 2440), 'EJ_BELAGD', /saknar momskod/],
-      [R('KOSTNAD', 5170, 2641), 'KONFLIKT', /momskod I/],
-      [R('KUNDFORDRAN', 1510, 1930), 'FORENLIG', /måste mappas till Fortnox 1510/],
-      [R('DEPOSITIONSSKULD', 2890, 2350), 'FORENLIG', /måste mappas till Fortnox 2890/],
+      // F-009-1: kontoklassen prövas före momskoden och kan aldrig godkännas.
+      [R('KUNDFORDRAN', 1510, 2611), 'KONFLIKT', /kontoklass: kundfordran kräver ett konto i 1510/],
+      [
+        R('INGAENDE_MOMS', 2641, 2440),
+        'KONFLIKT',
+        /kontoklass: ingående moms kräver ett konto i 2640–2649/,
+      ],
+      [R('KOSTNAD', 5170, 2641), 'KONFLIKT', /kontoklass: kostnad kräver ett konto i 4000–8999/],
+      [R('KUNDFORDRAN', 1510, 1930), 'KONFLIKT', /kontoklass: kundfordran kräver ett konto i 1510/],
+      [
+        R('DEPOSITIONSSKULD', 2890, 2350),
+        'KONFLIKT',
+        /kontoklass: depositionsskuld kräver ett konto i 2890/,
+      ],
       [R('HYRESINTAKT', 3911, 3990), 'FORENLIG', null],
       [R('LIKVID', 1930, 1940), 'FORENLIG', null],
     ]
@@ -676,12 +685,14 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     expect((await t.dry(kopia.id)).state).toBe('BLOCKED')
   })
 
+  // TESTKUND-010: efter F-009-1 är rollernas kontoklasser disjunkta och varje roll har en enda
+  // behandling i v1, så en kostnadsrad på 2641 stoppas redan av källsidans klassregel.
   it('K2.1/(i): nyckeln är (roll, källkonto, behandling) — en kostnadsrad på 2641 får inte ingående moms-radens mappning', async () => {
     const t = await setup()
     await t.mappa()
     const lev = await t.leverantor(400, 2641)
     expect((await t.dry((await lev.mottagande()).id)).blockReason).toMatch(
-      /^ACCOUNT_MAPPING_MISSING: Konto 2641 .* som kostnad/,
+      /^EVENT_UNSUPPORTED: raden på konto 2641 motsvarar inte leverantörsfakturan/,
     )
     // Positiv kontroll: samma faktura på 5170 går igenom.
     const ok = await t.leverantor(400)
@@ -1083,5 +1094,215 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
         ).statusCode,
       ).toBe(400)
     })
+  })
+
+  // ── TESTKUND-010: C2:s slutgranskningsfynd F-009-1/F-009-2 och S-009-4 ─────────────────────
+
+  const FEL_KLASS = FULL.map((r) =>
+    r.role === 'LIKVID'
+      ? R('LIKVID', 1930, 5170)
+      : r.role === 'KOSTNAD'
+        ? R('KOSTNAD', 5170, 1930)
+        : r,
+  )
+
+  it('F-009-1 (C2-D1): LIKVID 1930→5170 och KOSTNAD 5170→1930 är KONFLIKT i utkastet, 409 vid godkännande, och ingen inbetalning når ett kostnadskonto', async () => {
+    const t = await setup()
+    const u = await t.km.skapaUtkast(t.org.id, AGARE, { financialYearId: 1, rows: FEL_KLASS })
+    const rader = await prisma.fortnoxAccountMappingRow.findMany({ where: { revisionId: u.id } })
+    const tek = Object.fromEntries(
+      rader.map((r) => [`${r.role}:${r.targetAccountNumber}`, r.technical]),
+    )
+    let godkand = true
+    try {
+      await t.km.godkann(t.org.id, AGARE, u.id, u.contentSha256)
+    } catch (e) {
+      godkand = false
+      expect(String((e as Error).message)).toMatch(/1930 → 5170: .*kontoklass/)
+    }
+    // Effekten: en hel hyreskedja försöks — ingen rad får debitera kostnadskontot 5170 mot 1510.
+    const h1 = await t.avi(6000)
+    for (const je of [h1.je, await t.betalning(h1.notice.id, 6000)]) {
+      const row = await t.dry(je.id)
+      if (row.state === 'DRY_RUN_READY')
+        await t.sender.send(t.org.id, 'u1', row.id, row.draftHash!).catch(() => null)
+    }
+    const kostnadsinbetalning = (
+      t.reader.vouchers as Array<{ VoucherRows: Array<{ Account: number; Debit?: number }> }>
+    ).some((v) => v.VoucherRows.some((r) => r.Account === 5170 && (r.Debit ?? 0) > 0))
+    expect({ godkand, kostnadsinbetalning, posts: t.writer.writes }).toEqual({
+      godkand: false,
+      kostnadsinbetalning: false,
+      posts: 0,
+    })
+    expect(tek['LIKVID:5170']).toBe('KONFLIKT')
+    expect(tek['KOSTNAD:1930']).toBe('KONFLIKT')
+  })
+
+  it('F-009-1: en redan godkänd revision med fel kontoklass (före rättningen) stoppas i exportens färska kontroll, 0 POST', async () => {
+    const t = await setup()
+    const rev = await t.mappa()
+    // Simulerar en revision godkänd före F-009-1: målet ändras i DB, tekniken står kvar FORENLIG.
+    await prisma.fortnoxAccountMappingRow.updateMany({
+      where: { revisionId: rev.id, role: 'LIKVID' },
+      data: {
+        targetAccountNumber: 5170,
+        targetName: 'Reparation och underhåll av fastighet',
+        targetVatCode: null,
+        targetVatCodePresent: true,
+      },
+    })
+    const h1 = await t.avi(6000)
+    await prisma.fortnoxVoucherExport.create({
+      data: {
+        organizationId: t.org.id,
+        journalEntryId: h1.je.id,
+        state: 'CONFIRMED',
+        fortnoxDatabaseNumber: 900001,
+      },
+    })
+    const bet = await t.betalning(h1.notice.id, 6000)
+    const row = await t.dry(bet.id)
+    expect([row.state, (row.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      'ACCOUNT_CLASS_MISMATCH',
+    ])
+    expect(t.writer.writes).toBe(0)
+  })
+
+  it('F-009-1 positiv kontroll: rätt klass i varje roll (bl.a. 1930→1940, 5170→5460, 3911→3915) godkänns och betalningen skickas', async () => {
+    const t = await setup()
+    const rev = await t.mappa(
+      FULL.map((r) => (r.role === 'KOSTNAD' ? R('KOSTNAD', 5170, 5460) : r)),
+    )
+    expect(rev.status).toBe('APPROVED')
+    const h1 = await t.avi(6000)
+    await t.skicka(h1.je.id)
+    await t.skicka((await t.betalning(h1.notice.id, 6000)).id)
+    expect(rader(t).at(-1)).toEqual([
+      [1940, 6000, 0],
+      [1510, 0, 6000],
+    ])
+  })
+
+  const register = (intaktskonton: number[]) => ({
+    sha256: 'x'.repeat(64),
+    filnamn: 'r.csv',
+    system: 'Tidigare',
+    ansvarig: 'S',
+    tackningFran: '2026-10-01',
+    tackningTill: '2026-10-31',
+    intaktskonton,
+    forskottskonton: [],
+    antal: 0,
+    poster: [],
+    registreradAv: 'u',
+    registreradTid: 't',
+  })
+  const riskLasning = async (t: T, konton: number[], rader: Prisma.InputJsonValue[]) => {
+    const conn = await prisma.fortnoxConnection.findUniqueOrThrow({
+      where: { organizationId: t.org.id },
+    })
+    await prisma.fortnoxReadRun.create({
+      data: {
+        organizationId: t.org.id,
+        connectionId: conn.id,
+        fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
+        status: 'COMPLETE',
+        financialYearId: 1,
+        periodFrom: new Date('2026-01-01'),
+        periodTo: new Date('2026-10-31'),
+        costAccounts: konton,
+        summary: { balanceBroughtForwardOre: {} },
+        rows: { rows: rader, references: [] },
+      },
+    })
+    return conn
+  }
+  const forskott3915 = {
+    account: 3915,
+    amountOre: -600000,
+    transactionDate: '2026-10-01',
+    evenoExport: false,
+    bucket: 'UNALLOCATED',
+  }
+
+  it('F-009-2 (C2-D2): tidigare systemets förskottsintäkt på mappat mål 3915 utan 1510 blockerar — en dubbel oktober släpps inte igenom', async () => {
+    const t = await setup()
+    await t.mappa()
+    const conn = await riskLasning(t, [1510, 3911, 3915], [forskott3915])
+    const { fortnoxRiskkontroll } = await import('../kundstart/first-period')
+    expect(
+      await fortnoxRiskkontroll(
+        prisma,
+        t.org.id,
+        conn.id,
+        new Date('2026-10-01'),
+        register([3911]),
+      ),
+    ).toMatch(/tidigare system .* på konto 3915/)
+  })
+
+  it('F-009-2: saknar läsningen mappningens mål blir det befintliga hindret "Riskkontroll saknas … 3915"; säkert fall (bara egna exporter) ger inget hinder', async () => {
+    const t = await setup()
+    await t.mappa()
+    const { fortnoxRiskkontroll } = await import('../kundstart/first-period')
+    const conn = await riskLasning(t, [1510, 3911], [])
+    expect(
+      await fortnoxRiskkontroll(
+        prisma,
+        t.org.id,
+        conn.id,
+        new Date('2026-10-01'),
+        register([3911]),
+      ),
+    ).toMatch(/Riskkontroll saknas: .*kontona 1510, 3911, 3915/)
+    await riskLasning(
+      t,
+      [1510, 3911, 3915],
+      [
+        {
+          account: 3915,
+          amountOre: -600000,
+          transactionDate: '2026-10-02',
+          evenoExport: true,
+          bucket: 'UNALLOCATED',
+        },
+      ],
+    )
+    expect(
+      await fortnoxRiskkontroll(
+        prisma,
+        t.org.id,
+        conn.id,
+        new Date('2026-10-01'),
+        register([3911]),
+      ),
+    ).toBeNull()
+  })
+
+  it('S-009-4: ursprunget söks med rätt källa — en manuell post med samma sourceId som hyresavin räknas inte som exporterad fordran', async () => {
+    const t = await setup()
+    await t.mappa()
+    const h1 = await t.avi(6000)
+    await prisma.journalEntryLine.deleteMany({ where: { journalEntryId: h1.je.id } })
+    await prisma.journalEntry.delete({ where: { id: h1.je.id } })
+    const falsk = await t.verifikat(
+      [
+        [1510, 6000, null],
+        [3911, null, 6000],
+      ],
+      { source: 'MANUAL', sourceId: `rent-notice:${h1.notice.id}` },
+    )
+    await prisma.fortnoxVoucherExport.create({
+      data: {
+        organizationId: t.org.id,
+        journalEntryId: falsk.id,
+        state: 'CONFIRMED',
+        fortnoxDatabaseNumber: 900001,
+      },
+    })
+    const bet = await t.betalning(h1.notice.id, 6000)
+    expect((await t.dry(bet.id)).blockReason).toMatch(/^ORIGIN_NOT_CONFIRMED/)
   })
 })
