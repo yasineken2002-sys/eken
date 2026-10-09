@@ -17,16 +17,21 @@ import type {
   SammaNycklar,
 } from '@eken/shared'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { IngenKoercion } from '../../common/contract/no-coercion.decorator'
 
 const SHA256 = /^[0-9a-f]{64}$/
 
 /** TESTKUND-016 K3.4: externt 400-kvitto för en äldre avvisning utan lagrad kod (bara OWNER). */
 export class FortnoxRejectionEvidenceDto implements FortnoxRejectionEvidence {
+  // TESTKUND-027 K4.1 (F-022-1): bara riktiga JSON-heltal. Utan spärren tvingade den globala pipens
+  // enableImplicitConversion om "400", "0x190" och " 400 " till tal innan @IsInt prövade dem.
+  @IngenKoercion()
   @IsInt()
   @Min(400)
   @Max(499)
   http!: number
 
+  @IngenKoercion()
   @IsInt()
   @Min(1)
   code!: number
@@ -47,7 +52,12 @@ export class FortnoxRejectionEvidenceDto implements FortnoxRejectionEvidence {
   sentPayloadHash!: string
 }
 
-/** POST /integrations/fortnox/exports/:id/release-rejected. Servern läser Fortnox före bytet. */
+/**
+ * POST /integrations/fortnox/exports/:id/release-rejected. Servern läser Fortnox före bytet.
+ * TESTKUND-027 K4.2 (F-022-2): `avvisningsbevis` får BARA anges för en äldre avvisning utan lagrad
+ * kod (lastOutcome 'REJECTED'). Har exporten en lagrad kod används den, och ett medskickat bevis
+ * avvisas med 400 i stället för att tyst ignoreras.
+ */
 export class FortnoxReleaseRejectedDto implements FortnoxReleaseRejectedInput {
   @IsString()
   @StrictString()

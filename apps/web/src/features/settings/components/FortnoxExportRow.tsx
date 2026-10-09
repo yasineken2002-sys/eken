@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { innehallsavvisningText } from '@eken/shared'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
@@ -52,7 +53,8 @@ export function FortnoxExportTextView({ items }: { items: FortnoxExportRow['expo
  * En exportrad: ärlig status, nästa tillåtna handling och — endast där kontraktet
  * tillåter — skicka (READY + aktiverad sändning), kontrollera (kvitto) eller
  * avstämning med exakt identitet. Ingen handling gör UNKNOWN omsändbart; en BEVISAT avvisad
- * export (Fortnox 4xx med kod, inte 429) kan frisläppas till en ny förhandskontroll (TESTKUND-016).
+ * export — bara ett belagt kodpar i FORTNOX_BELAGDA_INNEHALLSAVVISNINGAR (i dag 400/2000359), inte en
+ * godtycklig 4xx och aldrig 429 — kan frisläppas till en ny förhandskontroll (TESTKUND-016/020/027).
  */
 export function FortnoxExportRowView({
   row,
@@ -155,10 +157,13 @@ export function FortnoxExportRowView({
           }}
         >
           <p className="text-ink-muted break-words text-sm">
-            Fortnox avvisade innehållet (HTTP {rejection.http}, kod {rejection.code}: värdet
-            innehåller tecken som Fortnox inte tar emot). Om du har rättat orsaken kan exporten
-            frisläppas för en ny förhandskontroll. Eveno läser först hela räkenskapsåret i Fortnox
-            och vägrar om en post från detta verifikat redan finns.
+            Fortnox avvisade innehållet (HTTP {rejection.http}, kod {rejection.code}
+            {innehallsavvisningText(rejection.http, rejection.code)
+              ? `: ${innehallsavvisningText(rejection.http, rejection.code)}`
+              : ''}
+            ). Om du har rättat orsaken kan exporten frisläppas för en ny förhandskontroll. Eveno
+            läser först hela räkenskapsåret i Fortnox och vägrar om en post från detta verifikat
+            redan finns.
           </p>
           <Input label="Skäl" value={reason} onChange={(e) => setReason(e.target.value)} />
           <Button

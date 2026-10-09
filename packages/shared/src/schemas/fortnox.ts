@@ -85,6 +85,19 @@ export type FortnoxReconcileInput = z.infer<typeof fortnoxReconcileInputSchema>
 export const FORTNOX_BELAGDA_INNEHALLSAVVISNINGAR: ReadonlyArray<readonly [number, number]> =
   Object.freeze([Object.freeze([400, 2000359] as const)])
 
+/**
+ * TESTKUND-027 S-021-1: kundtext per belagt kodpar — samma lista, så att webben aldrig beskriver
+ * ett par som inte är belagt (och ett nytt par inte kan läggas till utan sin text).
+ */
+export const FORTNOX_INNEHALLSAVVISNING_TEXT: Readonly<Record<string, string>> = Object.freeze({
+  '400:2000359': 'värdet innehåller tecken som Fortnox inte tar emot',
+})
+export function innehallsavvisningText(http: number, code: number): string | null {
+  return arBelagdInnehallsavvisning(http, code)
+    ? (FORTNOX_INNEHALLSAVVISNING_TEXT[`${http}:${code}`] ?? null)
+    : null
+}
+
 export function arBelagdInnehallsavvisning(http: unknown, code: unknown): boolean {
   return FORTNOX_BELAGDA_INNEHALLSAVVISNINGAR.some(([h, c]) => h === http && c === code)
 }

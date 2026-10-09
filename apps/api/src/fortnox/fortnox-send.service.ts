@@ -656,6 +656,11 @@ export class FortnoxSendService {
         throw new ConflictException(
           'En avvisning på grund av rate limit (429) är ingen innehållsavvisning och kan inte frisläppas här',
         )
+      // K4.2 (F-022-2): ett medskickat kvitto när ett lagrat bevis finns är motsägande indata.
+      if (input?.avvisningsbevis !== undefined && input?.avvisningsbevis !== null)
+        throw new BadRequestException(
+          'Avvisningsbevis kan bara anges för en äldre avvisning utan lagrad kod; den här exportens avvisning är redan lagrad',
+        )
       const code = lagrad[2] === 'NA' ? null : Number(lagrad[2])
       // K-KP-1/2: bara ett belagt (status, kod)-par är en innehållsavvisning.
       if (!arBelagdInnehallsavvisning(http, code)) throw ejBelagd(http, code)
