@@ -270,6 +270,8 @@ import {
   fortnoxReconcileInputSchema,
   fortnoxSendInputSchema,
   fortnoxMappingInputSchema,
+  fortnoxAccountMappingDraftInputSchema,
+  fortnoxAccountMappingApproveInputSchema,
   fortnoxReadInputSchema,
 } from '@eken/shared'
 import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-settings.dto'
@@ -278,6 +280,10 @@ import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
 import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
 import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
+import {
+  FortnoxAccountMappingApproveDto,
+  FortnoxAccountMappingDraftDto,
+} from '../../fortnox/dto/fortnox-account-mapping.dto'
 import {
   approveCustomerActivationInputSchema,
   approveOpeningPackageInputSchema,
@@ -1735,6 +1741,45 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       costAccounts: [],
     },
     ogiltigVarfor: 'en läsning utan valda konton har inget mått att redovisa',
+  },
+  {
+    // TESTKUND-008. Pariteten prövar KORSFÄLTSREGELN: rollens behandling är fast.
+    endpoint: 'POST /integrations/fortnox/account-mapping/revisions',
+    inputTyp: 'FortnoxAccountMappingDraftInput',
+    schema: fortnoxAccountMappingDraftInputSchema,
+    dto: FortnoxAccountMappingDraftDto,
+    giltig: {
+      financialYearId: 1,
+      rows: [
+        {
+          role: 'HYRESINTAKT',
+          vatTreatment: 'MOMSFRI',
+          sourceAccountNumber: 3911,
+          targetAccountNumber: 3915,
+        },
+      ],
+    },
+    ogiltig: {
+      financialYearId: 1,
+      rows: [
+        {
+          role: 'HYRESINTAKT',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 3911,
+          targetAccountNumber: 3915,
+        },
+      ],
+    },
+    ogiltigVarfor: 'hyresintäkt kan bara mappas med belagd momsfri behandling i denna version',
+  },
+  {
+    endpoint: 'POST /integrations/fortnox/account-mapping/revisions/:id/approve',
+    inputTyp: 'FortnoxAccountMappingApproveInput',
+    schema: fortnoxAccountMappingApproveInputSchema,
+    dto: FortnoxAccountMappingApproveDto,
+    giltig: { contentSha256: 'a'.repeat(64) },
+    ogiltig: { contentSha256: 'A'.repeat(64) },
+    ogiltigVarfor: 'godkännandet binds till exakt den gemena sha256 servern visade',
   },
   {
     // Fortnox A. Pariteten prövar DIMENSIONSTYPEN — bara kostnadsställe/projekt finns.

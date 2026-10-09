@@ -13,6 +13,11 @@ import { FortnoxExportSettingsDto } from './dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from './dto/fortnox-dry-run.dto'
 import { FortnoxSendDto } from './dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from './dto/fortnox-reconcile.dto'
+import {
+  FortnoxAccountMappingApproveDto,
+  FortnoxAccountMappingDraftDto,
+} from './dto/fortnox-account-mapping.dto'
+import { FortnoxKontomappningService } from './fortnox-kontomappning.service'
 import { FortnoxSendService } from './fortnox-send.service'
 import { FortnoxExportService } from './fortnox-export.service'
 import { FortnoxMappingService } from './fortnox-mapping.service'
@@ -36,6 +41,7 @@ export class FortnoxController {
     private readonly exports: FortnoxExportService,
     private readonly mappings: FortnoxMappingService,
     private readonly sender: FortnoxSendService,
+    private readonly kontomappning: FortnoxKontomappningService,
   ) {}
 
   @Get('status')
@@ -175,6 +181,40 @@ export class FortnoxController {
     @Body() body: FortnoxReconcileDto,
   ) {
     return this.sender.reconcile(organizationId, user.sub, id, body)
+  }
+
+  // ── TESTKUND-008: kontomappning (läsa OWNER/ADMIN/ACCOUNTANT; utkast och godkännande
+  // OWNER/ADMIN som export-settings — KONTRAKTSBESKED-008 svar 5). Rollen prövas även i tjänsten.
+  @Get('account-mapping')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  async accountMapping(@OrgId() organizationId: string) {
+    return this.kontomappning.oversikt(organizationId)
+  }
+
+  @Post('account-mapping/revisions')
+  @Roles('OWNER', 'ADMIN')
+  async accountMappingDraft(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: FortnoxAccountMappingDraftDto,
+  ) {
+    return this.kontomappning.skapaUtkast(organizationId, { sub: user.sub, role: user.role }, body)
+  }
+
+  @Post('account-mapping/revisions/:id/approve')
+  @Roles('OWNER', 'ADMIN')
+  async accountMappingApprove(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxAccountMappingApproveDto,
+  ) {
+    return this.kontomappning.godkann(
+      organizationId,
+      { sub: user.sub, role: user.role },
+      id,
+      body.contentSha256,
+    )
   }
 
   @Get('exports')

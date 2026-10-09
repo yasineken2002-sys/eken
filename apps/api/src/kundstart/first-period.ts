@@ -9,7 +9,8 @@
  * Registret är underlaget, inte en kryssruta: det har filhash, system, ansvarig och täckning
  * (från brytdatum t.o.m. minst brytdatumets månads sista dag) och binds till paketet.
  *
- * Fortnox-läsningen från brytdatum (1510, intäkts- och förskottskonton) är en KOMPLETTERANDE
+ * Fortnox-läsningen från brytdatum (1510, registrets intäkts- och förskottskonton och den godkända
+ * kontomappningens hyresmål, TESTKUND-010) är en KOMPLETTERANDE
  * riskkontroll. Frånvaro av träffar bevisar ingenting (en framtida period kan vara fakturerad
  * och slutbetald före brytdatum, och underlag kan vara obokade) — den kan bara blockera.
  */
@@ -75,7 +76,23 @@ export async function fortnoxRiskkontroll(
   reg: ForstaPeriodRegister,
 ): Promise<string | null> {
   const b = brytdatumIso(cutover)
-  const konton = [...new Set([1510, ...reg.intaktskonton, ...reg.forskottskonton])]
+  // TESTKUND-010 F-009-2: kontomappningen säger uttryckligen var Evenos hyra hamnar i Fortnox.
+  // Den godkända revisionen för året som omfattar brytdatum, bunden till samma anslutning, lägger
+  // sina HYRESINTAKT-mål till kontona — annars kan tidigare systemets intäkt utan 1510-rad
+  // (förskottsupplösning, kontantfaktura) på just det kontot passera, och månaden intäktsföras två
+  // gånger. Evenos egna exporter undantas som tidigare (evenoExport).
+  const revision = await db.fortnoxAccountMappingRevision.findFirst({
+    where: {
+      organizationId,
+      connectionId,
+      status: 'APPROVED',
+      financialYearFrom: { lte: cutover },
+      financialYearTo: { gte: cutover },
+    },
+    select: { rows: { where: { role: 'HYRESINTAKT' }, select: { targetAccountNumber: true } } },
+  })
+  const mal = (revision?.rows ?? []).map((r) => r.targetAccountNumber)
+  const konton = [...new Set([1510, ...reg.intaktskonton, ...reg.forskottskonton, ...mal])]
   const run = await db.fortnoxReadRun.findFirst({
     where: {
       organizationId,

@@ -18,7 +18,11 @@ import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-prov
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
 import { FortnoxSendService } from './fortnox-send.service'
 import { MockVoucherWriter } from './fortnox-voucher-writer'
-import * as grind from './fortnox-intaktsgrind'
+import {
+  godkannMappning,
+  leverantorsfaktura,
+  stadaKontomappning,
+} from './fortnox-kontomappning.testing'
 import { basChartFor } from '../accounting/bas-chart'
 
 const KEY = 'ab'.repeat(32)
@@ -102,6 +106,9 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
       await prisma.fortnoxVoucherExport.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await stadaKontomappning(prisma, id)
+      await prisma.deposit.deleteMany({ where: { organizationId: id } })
+      await prisma.rentNoticePayment.deleteMany({ where: { rentNotice: { organizationId: id } } })
       await prisma.rentNotice.deleteMany({ where: { organizationId: id } })
       await prisma.lease.deleteMany({ where: { organizationId: id } })
       await prisma.unit.deleteMany({ where: { property: { organizationId: id } } })
@@ -248,10 +255,109 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
         [intakt, null, netto],
       ]
       if (moms > 0) rader.push([2611, null, moms])
-      const je = await verifikat(rader, { source: 'RENT_NOTICE', sourceId: `rent-notice:${n.id}` })
+      const je = await verifikat(rader, { source: 'INVOICE', sourceId: `rent-notice:${n.id}` })
       return { je, unit, notice: n }
     }
-    return { org, reader, builder, exports, sender, writer, verifikat, avi }
+    // TESTKUND-008: godkänd kontomappning för de belagda icke-intäktsflödena (verkliga 1868238-mål).
+    const mappa = (extra: Parameters<typeof godkannMappning>[4] = []) =>
+      godkannMappning(prisma, connections, reader, org.id, [
+        {
+          role: 'KUNDFORDRAN',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 1510,
+          targetAccountNumber: 1510,
+        },
+        {
+          role: 'LIKVID',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 1930,
+          targetAccountNumber: 1930,
+        },
+        {
+          role: 'DEPOSITIONSSKULD',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 2890,
+          targetAccountNumber: 2890,
+        },
+        {
+          role: 'KOSTNAD',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 5170,
+          targetAccountNumber: 5170,
+        },
+        {
+          role: 'LEVERANTORSSKULD',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 2440,
+          targetAccountNumber: 2440,
+        },
+        ...extra,
+      ])
+    // H2: hyresbetalning med riktig allokering; avins fordran markeras bekräftat exporterad.
+    const betalning = async (belopp: number) => {
+      const { je: aviJe, notice } = await avi('APARTMENT', belopp, 0)
+      const conn = await prisma.fortnoxConnection.findUniqueOrThrow({
+        where: { organizationId: org.id },
+      })
+      await prisma.fortnoxVoucherExport.create({
+        data: {
+          organizationId: org.id,
+          journalEntryId: aviJe.id,
+          state: 'CONFIRMED',
+          fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
+        },
+      })
+      const alloc = await prisma.rentNoticePayment.create({
+        data: {
+          rentNoticeId: notice.id,
+          amount: String(belopp),
+          paidAt: new Date('2026-10-02'),
+          source: 'MANUAL',
+        },
+      })
+      return verifikat(
+        [
+          [1930, belopp, null],
+          [1510, null, belopp],
+        ],
+        { source: 'PAYMENT', sourceId: `rent-notice-payment:${alloc.id}` },
+      )
+    }
+    // H3: depositionsfaktura 1510/2890 för en riktig deposition.
+    const depositionsfaktura = async (belopp: number) => {
+      const { notice } = await avi('APARTMENT', 1, 0)
+      const dep = await prisma.deposit.create({
+        data: {
+          organizationId: org.id,
+          leaseId: notice.leaseId,
+          tenantId: notice.tenantId,
+          amount: String(belopp),
+        },
+      })
+      return verifikat(
+        [
+          [1510, belopp, null],
+          [2890, null, belopp],
+        ],
+        { source: 'INVOICE', sourceId: `deposit-invoice:${dep.id}` },
+      )
+    }
+    const kostnad = (belopp: number) =>
+      leverantorsfaktura(prisma, org.id, { belopp: belopp.toFixed(2) })
+    return {
+      org,
+      reader,
+      builder,
+      exports,
+      sender,
+      writer,
+      verifikat,
+      avi,
+      mappa,
+      betalning,
+      depositionsfaktura,
+      kostnad,
+    }
   }
   const skal = (o: { ok: boolean; reasons?: string[] }) =>
     o.ok ? 'OK' : (o.reasons ?? []).join(' | ')
@@ -402,26 +508,13 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
     expect((await t.builder.build(t.org.id, rattelse.id)).ok).toBe(false)
   })
 
-  it('P1–P3 positiv kontroll i samma körning: betalning, depositionsöverföring och kostnad går igenom; betalningen skickas CONFIRMED en gång (R1 replay)', async () => {
+  it('P1–P3 positiv kontroll i samma körning: belagd betalning, depositionsfaktura och kostnad går igenom med godkänd mappning; betalningen skickas CONFIRMED en gång (R1 replay)', async () => {
     const t = await setup()
-    const bet = await t.verifikat([
-      [1930, 6000, null],
-      [1510, null, 6000],
-    ])
-    const dep = await t.verifikat([
-      [1930, 12000, null],
-      [2890, null, 12000],
-    ])
-    const kost = await t.verifikat([
-      [5170, 500, null],
-      [2440, null, 500],
-    ])
-    const kost2 = await t.verifikat([
-      [6110, 200, null],
-      [5460, 100, null],
-      [2440, null, 300],
-    ])
-    for (const je of [bet, dep, kost, kost2])
+    await t.mappa()
+    const bet = await t.betalning(6000)
+    const dep = await t.depositionsfaktura(12000)
+    const kost = await t.kostnad(500)
+    for (const je of [bet, dep, kost])
       expect(skal(await t.builder.build(t.org.id, je.id))).toBe('OK')
     const row = (await t.exports.dryRun(t.org.id, bet.id)) as {
       id: string
@@ -457,55 +550,58 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
 
   it('S1 inaktuellt utkast: betalning READY, 1930 blir inaktivt i Fortnox → send 409, 0 POST', async () => {
     const t = await setup()
-    const bet = await t.verifikat([
-      [1930, 6000, null],
-      [1510, null, 6000],
-    ])
-    const row = (await t.exports.dryRun(t.org.id, bet.id)) as { id: string; draftHash: string }
+    await t.mappa()
+    const bet = await t.betalning(6000)
+    const row = (await t.exports.dryRun(t.org.id, bet.id)) as {
+      id: string
+      state: string
+      draftHash: string
+    }
+    expect(row.state).toBe('DRY_RUN_READY')
     t.reader.accounts.find((a) => a.Number === 1930)!.Active = false
     const fore = t.reader.vouchers.length
-    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow()
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow(
+      /^Underlaget är inte längre aktuellt; gör en ny förhandskontroll$/,
+    )
     expect(t.reader.vouchers.length).toBe(fore)
   })
 
-  // S2 (F-006-1): ett VERKLIGT giltigt READY-utkast från före grinden. Tidigare version använde en
-  // påhittad hash och passerade även med grinden borttagen (C2 N1) — den var tom.
-  // Utkastet byggs med grinden urkopplad (spion: arIntaktskonto → false, alltså bygget så som det
-  // var före grinden, jfr C2:s N1) så att raden får exakt den draftHash som bygget utan grind ger;
-  // därefter skickas det med grinden PÅ.
-  const readyUtanGrind = async (t: Awaited<ReturnType<typeof setup>>) => {
-    const { je } = await t.avi('APARTMENT', 6000, 0)
-    const spion = jest.spyOn(grind, 'arIntaktskonto').mockReturnValue(false)
-    try {
-      const row = (await t.exports.dryRun(t.org.id, je.id)) as {
-        id: string
-        state: string
-        draftHash: string | null
-      }
-      expect(row.state).toBe('DRY_RUN_READY')
-      expect(row.draftHash).toMatch(/^[0-9a-f]{64}$/)
-      return row as { id: string; state: string; draftHash: string }
-    } finally {
-      spion.mockRestore()
+  // S2 (F-006-1, i 008-form): ett VERKLIGT giltigt READY-utkast för en hyresrad — belagd momsfri
+  // bostadshyra med godkänd mappning till ett tekniskt förenligt mål (syntetiskt 3911 aktivt MF,
+  // KRITERIER-006-A A-5). Efter förhandskontrollen byter enheten typ: raden är då inte längre
+  // belagd, #946-skyddet gäller igen för den och sändningen måste stoppas (409, 0 POST). Kontrollen
+  // skickar samma underlag oförändrat: CONFIRMED + 1 POST (utesluter en orelaterad hashkonflikt).
+  const readyHyra = async () => {
+    const t = await setup({ 3911: { Active: true, VATCode: 'MF' } })
+    await t.mappa([
+      {
+        role: 'HYRESINTAKT',
+        vatTreatment: 'MOMSFRI',
+        sourceAccountNumber: 3911,
+        targetAccountNumber: 3911,
+      },
+    ])
+    const { je, unit } = await t.avi('APARTMENT', 6000, 0)
+    const row = (await t.exports.dryRun(t.org.id, je.id)) as {
+      id: string
+      state: string
+      draftHash: string | null
     }
+    expect(row.state).toBe('DRY_RUN_READY')
+    expect(row.draftHash).toMatch(/^[0-9a-f]{64}$/)
+    return { t, unit, row: row as { id: string; state: string; draftHash: string } }
   }
 
-  it('S2 kontroll: samma underlag och hash skickas CONFIRMED när grinden är av även vid send (utesluter hashkonflikt)', async () => {
-    const t = await setup({ 3911: { Active: true } })
-    const row = await readyUtanGrind(t)
-    const spion = jest.spyOn(grind, 'arIntaktskonto').mockReturnValue(false)
-    try {
-      const fore = t.reader.vouchers.length
-      expect((await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).state).toBe('CONFIRMED')
-      expect(t.reader.vouchers.length).toBe(fore + 1)
-    } finally {
-      spion.mockRestore()
-    }
+  it('S2 kontroll: samma READY-underlag för hyra skickas CONFIRMED när inget ändrats (utesluter hashkonflikt)', async () => {
+    const { t, row } = await readyHyra()
+    const fore = t.reader.vouchers.length
+    expect((await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).state).toBe('CONFIRMED')
+    expect(t.reader.vouchers.length).toBe(fore + 1)
   })
 
-  it('S2 skydd: ett giltigt READY-utkast från före grinden kan inte skickas när grinden är på (409, 0 POST)', async () => {
-    const t = await setup({ 3911: { Active: true } })
-    const row = await readyUtanGrind(t)
+  it('S2 skydd: READY-utkast för hyra kan inte skickas när raden inte längre är belagd (409, 0 POST)', async () => {
+    const { t, unit, row } = await readyHyra()
+    await prisma.unit.update({ where: { id: unit.id }, data: { type: 'OFFICE' } })
     const fore = t.reader.vouchers.length
     await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash)).rejects.toThrow(
       /^Underlaget är inte längre aktuellt; gör en ny förhandskontroll$/,
@@ -516,11 +612,18 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
       select: { state: true },
     })
     expect(efter.state).not.toBe('CONFIRMED')
+    // Ny förhandskontroll: #946-grinden stoppar den obelagda intäktsraden igen.
+    const ny = (await t.exports.dryRun(
+      t.org.id,
+      (await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: row.id } }))
+        .journalEntryId,
+    )) as { blockReason: string | null }
+    expect(ny.blockReason ?? '').toMatch(/^ACCOUNT_MEANING_UNRECONCILED.*obevisad/)
   })
 
   // F-006-4 (K-F3): VARJE REVENUE-konto i Evenos kontoplan (bas-chart), med ett AKTIVT syntetiskt
   // Fortnox-svar och momskod MF respektive null, når aldrig DRY_RUN_READY — oavsett nummerklass
-  // (även 8xxx). Positiv kontroll i samma prov: betalning och kostnad blir READY.
+  // (även 8xxx). Positiv kontroll i samma prov: belagd betalning och kostnad med godkänd mappning blir READY.
   it('F-006-4: alla REVENUE-konton i bas-chart stoppas (aktivt, MF/null); betalning och kostnad READY', async () => {
     const intakter = basChartFor('AB').filter((k) => k.type === 'REVENUE')
     expect(intakter.length).toBeGreaterThanOrEqual(11)
@@ -556,14 +659,9 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
       expect(Object.entries(utfall).filter(([, u]) => !u.startsWith('BLOCKED ACCOUNT_'))).toEqual(
         [],
       )
-      const bet = await t.verifikat([
-        [1930, 6000, null],
-        [1510, null, 6000],
-      ])
-      const kost = await t.verifikat([
-        [5170, 500, null],
-        [2440, null, 500],
-      ])
+      await t.mappa()
+      const bet = await t.betalning(6000)
+      const kost = await t.kostnad(500)
       for (const je of [bet, kost])
         expect(((await t.exports.dryRun(t.org.id, je.id)) as { state: string }).state).toBe(
           'DRY_RUN_READY',

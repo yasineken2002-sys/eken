@@ -60,6 +60,7 @@ import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
 import { FortnoxPanel } from './components/FortnoxPanel'
 import { FortnoxExportSetup } from './components/FortnoxExportSetup'
+import { FortnoxAccountMapping } from './components/FortnoxAccountMapping'
 import { KundstartPanel } from '../kundstart/components/KundstartPanel'
 import { FortnoxCustomerActivationPanel } from '../kundstart/components/FortnoxCustomerActivationPanel'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
@@ -515,6 +516,9 @@ export function SettingsPage({ initialTab = 'general' }: { initialTab?: Settings
       {tab === 'fortnox' && (
         <div className="mt-5 min-w-0">
           <FortnoxPanel />
+          <div className="mt-5">
+            <FortnoxAccountMapping />
+          </div>
           <div className="mt-5">
             <FortnoxCustomerActivationPanel />
           </div>

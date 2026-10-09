@@ -17,6 +17,11 @@ import { FortnoxExportService, type FortnoxVoucherDraftBuilder } from './fortnox
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import {
+  godkannMappning,
+  leverantorsfaktura,
+  stadaKontomappning,
+} from './fortnox-kontomappning.testing'
 import { FortnoxSendService } from './fortnox-send.service'
 import { DisabledVoucherWriter, MockVoucherWriter } from './fortnox-voucher-writer'
 
@@ -73,6 +78,7 @@ medDb('FORTNOX-SANDNING mot riktig Postgres', () => {
       await prisma.fortnoxVoucherExport.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await stadaKontomappning(prisma, id)
       await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
     }
@@ -118,30 +124,10 @@ medDb('FORTNOX-SANDNING mot riktig Postgres', () => {
     await connections.handleCallback(state, `mock-code-${state.slice(0, 8)}`)
     await connections.setExportVoucherSeries(org.id, 'A')
     await connections.setExportOmitDimensions(org.id, 'u1', true)
-    const acc = async (number: number) =>
-      (await prisma.account.findFirst({ where: { organizationId: org.id, number } })) ??
-      prisma.account.create({
-        data: { organizationId: org.id, number, name: `Konto ${number}`, type: 'EXPENSE' },
-      })
-    const entry = async (amount = '1234.50') => {
-      const a = await acc(5170)
-      const b = await acc(2440)
-      return prisma.journalEntry.create({
-        data: {
-          organizationId: org.id,
-          date: new Date('2026-10-02'),
-          description: 'Reparation trapphus',
-          fiscalYear: 2026,
-          verNumber: Math.floor(Math.random() * 1e6) + 1,
-          lines: {
-            create: [
-              { accountId: a.id, debit: amount },
-              { accountId: b.id, credit: amount },
-            ],
-          },
-        },
-      })
-    }
+    // TESTKUND-008: export kräver belagd källa och godkänd kontomappning.
+    await godkannMappning(prisma, connections, reader, org.id)
+    const entry = async (amount = '1234.50') =>
+      leverantorsfaktura(prisma, org.id, { belopp: amount })
     const ready = async (amount?: string) => {
       const je = await entry(amount)
       const row = await exports.dryRun(org.id, je.id)

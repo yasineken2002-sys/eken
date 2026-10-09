@@ -72,3 +72,75 @@ export const fortnoxReconcileInputSchema = z.object({
   number: z.number().int().positive().safe(),
 })
 export type FortnoxReconcileInput = z.infer<typeof fortnoxReconcileInputSchema>
+
+/**
+ * TESTKUND-008: kontomappningens ROLLER och BEHANDLINGAR. Stängda listor — servern härleder
+ * radens roll och behandling ur källan, och en mappningsrad gäller exakt (roll, källkonto,
+ * behandling). Inga standardvärden; målkontot väljs uttryckligen av kunden.
+ */
+export const FORTNOX_ACCOUNT_ROLES = [
+  'KUNDFORDRAN',
+  'HYRESINTAKT',
+  'LIKVID',
+  'DEPOSITIONSSKULD',
+  'KOSTNAD',
+  'INGAENDE_MOMS',
+  'LEVERANTORSSKULD',
+] as const
+export type FortnoxAccountRole = (typeof FORTNOX_ACCOUNT_ROLES)[number]
+
+export const FORTNOX_VAT_TREATMENTS = ['EJ_TILLAMPLIG', 'MOMSFRI', 'AVDRAGSGILL'] as const
+export type FortnoxVatTreatment = (typeof FORTNOX_VAT_TREATMENTS)[number]
+
+/** Tillåtna (roll, behandling)-par i v1. Allt annat är ogiltigt indata. */
+export const FORTNOX_ROLE_TREATMENT: Readonly<Record<FortnoxAccountRole, FortnoxVatTreatment>> = {
+  KUNDFORDRAN: 'EJ_TILLAMPLIG',
+  HYRESINTAKT: 'MOMSFRI',
+  LIKVID: 'EJ_TILLAMPLIG',
+  DEPOSITIONSSKULD: 'EJ_TILLAMPLIG',
+  KOSTNAD: 'EJ_TILLAMPLIG',
+  INGAENDE_MOMS: 'AVDRAGSGILL',
+  LEVERANTORSSKULD: 'EJ_TILLAMPLIG',
+}
+
+const kontonummer = z.number().int().min(1000).max(9999)
+
+/** POST /integrations/fortnox/account-mapping/revisions — ett nytt utkast (ny revision). */
+export const fortnoxAccountMappingDraftInputSchema = z
+  .object({
+    financialYearId: z.number().int().positive().safe(),
+    rows: z
+      .array(
+        z
+          .object({
+            role: z.enum(FORTNOX_ACCOUNT_ROLES),
+            vatTreatment: z.enum(FORTNOX_VAT_TREATMENTS),
+            sourceAccountNumber: kontonummer,
+            targetAccountNumber: kontonummer,
+          })
+          .strict()
+          .refine(
+            (r) => FORTNOX_ROLE_TREATMENT[r.role] === r.vatTreatment,
+            'Behandlingen gäller inte för rollen',
+          ),
+      )
+      .min(1)
+      .max(100)
+      .refine(
+        (rows) =>
+          new Set(rows.map((r) => `${r.role}|${r.sourceAccountNumber}|${r.vatTreatment}`)).size ===
+          rows.length,
+        'Samma roll, källkonto och behandling förekommer två gånger',
+      ),
+  })
+  .strict()
+export type FortnoxAccountMappingDraftInput = z.infer<typeof fortnoxAccountMappingDraftInputSchema>
+export type FortnoxAccountMappingRowInput = FortnoxAccountMappingDraftInput['rows'][number]
+
+/** POST /integrations/fortnox/account-mapping/revisions/:id/approve — bunden till innehållet. */
+export const fortnoxAccountMappingApproveInputSchema = z
+  .object({ contentSha256: z.string().regex(/^[0-9a-f]{64}$/) })
+  .strict()
+export type FortnoxAccountMappingApproveInput = z.infer<
+  typeof fortnoxAccountMappingApproveInputSchema
+>

@@ -29,16 +29,6 @@
 import type { Prisma, UnitType } from '@prisma/client'
 import { revenueAccountForUnitType, vatRateForRent } from '@eken/shared'
 
-/**
- * Kundaktiveringens färska kontoförkontroll (F-TK-5/F-1): samma klassning som exportgrinden för
- * de intäktskonton organisationen använder. Injiceras i aktiveringstjänsten.
- */
-export const FORTNOX_KONTOKONTROLL = Symbol('FORTNOX_KONTOKONTROLL')
-export type Kontokontroll = (
-  organizationId: string,
-  financialYearId: number,
-) => Promise<Kontobedomning[]>
-
 /** Fortnox momskoder för momspliktig försäljning (Fortnox: avvikelsekontrollens MP1–MP3/HFS). */
 export const MOMSPLIKTIGA_KODER: readonly string[] = ['MP1', 'MP2', 'MP3', 'HFS']
 /**

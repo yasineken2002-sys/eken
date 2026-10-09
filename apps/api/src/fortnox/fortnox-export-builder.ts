@@ -12,9 +12,21 @@ import {
   stoppForIntakter,
   type Behandling,
   type FortnoxKontoFakta,
-  type Kontobedomning,
 } from './fortnox-intaktsgrind'
-import { revenueAccountForUnitType, vatRateForRent } from '@eken/shared'
+import { brytdatumIso } from '../kundstart/cutover'
+import {
+  BEHANDLING_TEXT,
+  ROLL_TEXT,
+  SAKNAS,
+  drift,
+  godkannandeHinder,
+  iKontoklass,
+  klassText,
+  malfaktaUrSvar,
+  teknik,
+  type Malfakta,
+} from './fortnox-kontomappning'
+import { klassaVerifikat } from './fortnox-radklass'
 import {
   buildFortnoxVoucherDraft,
   type FortnoxVoucherDraftConfig,
@@ -40,8 +52,10 @@ import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } fro
  *                  års-id:t (SEMANTIK-TILLÄGG-01: Year är års-id i Fortnox exempel).
  *  - serie:        kundens uttryckliga val (FortnoxConnection.exportVoucherSeries),
  *                  verifierad med GET /3/voucherseries/{kod}. Inget val → BLOCKED.
- *  - konton:       GET /3/accounts/{n}?financialyear=id för varje rad; samma nummer
- *                  och aktivt. Ingen kontomappning gissas — bara identiskt nummer.
+ *  - konton:       TESTKUND-008: varje rad kräver en GODKÄND kontomappningsrad för sin
+ *                  (roll, källkonto, behandling), härledd ur källan (fortnox-radklass.ts).
+ *                  Målkontot läses färskt (GET /3/accounts/{mål}?financialyear=id) och jämförs
+ *                  med revisionens ögonblicksbild. Ingen 1:1-väg och inget gissat konto.
  *  - dimensioner:  OMIT, eftersom JournalEntryLine saknar dimension (inget härleds).
  *  - rättelse:     E-F1 — ett rättelseverifikat förhandskontrolleras bara om originalet
  *                  har en BEKRÄFTAD export till samma Fortnox-företag.
@@ -232,73 +246,228 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         externalDatabaseNumber: conn.fortnoxDatabaseNumber,
         evidenceRef: `${ref}@${at}`,
       })
-      const accounts: Array<FortnoxVoucherDraftConfig['accounts'][number]> = []
-      // TESTKUND-006: intäktskontonas Fortnox-fakta samlas (samma svar, inga nya anrop) och
-      // prövas efter loopen mot varje intäktsrads egen momsbehandling. Övriga konton prövas
-      // exakt som tidigare.
-      const intaktsfakta = new Map<number, FortnoxKontoFakta>()
-      for (const acc of new Map(entry.lines.map((l) => [l.account.id, l.account])).values()) {
-        const a = await getRef<{
-          Account?: {
-            Number?: unknown
-            Active?: unknown
-            Year?: unknown
-            Description?: unknown
-            VATCode?: unknown
-          }
-        }>(
-          reader,
-          auth.token,
-          `/3/accounts/${acc.number}`,
-          'ACCOUNT_UNVERIFIED',
-          `Konto ${acc.number} finns inte i Fortnox för året`,
-          { financialyear: fy.Id },
-        )
-        if (arIntaktskonto(acc)) {
-          const finns =
-            a?.Account?.Number === acc.number &&
-            (a.Account.Year === undefined || a.Account.Year === fy.Id)
-          const vat = a?.Account?.VATCode
-          intaktsfakta.set(acc.number, {
-            number: acc.number,
-            finns,
-            active: finns ? a!.Account!.Active === true : null,
-            name: typeof a?.Account?.Description === 'string' ? a.Account.Description : null,
-            vatCode: vat === undefined ? undefined : typeof vat === 'string' ? vat : null,
-          })
-          continue
-        }
-        if (
-          a?.Account?.Number !== acc.number ||
-          a.Account.Active !== true ||
-          (a.Account.Year !== undefined && a.Account.Year !== fy.Id)
-        ) {
-          return block(
-            'ACCOUNT_UNVERIFIED',
-            `Konto ${acc.number} finns inte som aktivt konto i Fortnox för året`,
+      // ── TESTKUND-008: kontomappning (KONTRAKT-008 §4). Ingen 1:1-väg: varje rad kräver en
+      // godkänd mappningsrad för sin (roll, källkonto, behandling), härledd ur källan. ──
+      const faktaCache = new Map<number, Malfakta>()
+      const lasKonto = async (n: number): Promise<Malfakta> => {
+        const c = faktaCache.get(n)
+        if (c) return c
+        let f: Malfakta
+        try {
+          f = malfaktaUrSvar(
+            n,
+            await reader.get<{ Account?: Record<string, unknown> }>(
+              auth.token,
+              `/3/accounts/${n}`,
+              { financialyear: fy.Id },
+            ),
           )
+        } catch (err) {
+          if (err instanceof FortnoxReadError && err.kind === 'invalid') f = SAKNAS
+          else throw err
         }
-        accounts.push({
-          ...binding(`GET /3/accounts/${acc.number}?financialyear=${fy.Id}`),
-          localAccountId: acc.id,
-          localAccountNumber: acc.number,
-          externalAccountNumber: acc.number,
-        })
+        faktaCache.set(n, f)
+        return f
       }
+      const klass = await klassaVerifikat(
+        this.prisma,
+        organizationId,
+        entry,
+        conn.fortnoxDatabaseNumber,
+      )
+      // V5a: en godkänd revision per (organisation, räkenskapsår); verifikatets år avgör.
+      const revision = await this.prisma.fortnoxAccountMappingRevision.findFirst({
+        where: { organizationId, status: 'APPROVED', financialYearId: fy.Id },
+        include: { rows: true },
+      })
+      const radFor = (roll: string, konto: number, behandling: string) =>
+        revision?.rows.find(
+          (r) =>
+            r.role === roll && r.sourceAccountNumber === konto && r.vatTreatment === behandling,
+        )
 
-      if (intaktsfakta.size > 0) {
+      // #946-GRINDEN står kvar för varje intäktsrad som inte täcks av en godkänd mappningsrad med
+      // belagd momsfri bostadshyra (K8.3): utan en sådan stoppas den exakt som tidigare.
+      const otackta = entry.lines.filter(
+        (l) =>
+          arIntaktskonto(l.account) &&
+          !(
+            klass.ok &&
+            klass.rader.get(l.id)?.roll === 'HYRESINTAKT' &&
+            radFor('HYRESINTAKT', l.account.number, 'MOMSFRI')
+          ),
+      )
+      if (otackta.length > 0) {
         const behandlingar = await harledBehandlingar(this.prisma, organizationId, entry)
         const perKonto = new Map<number, { namn: string; b: Behandling[] }>()
-        for (const l of entry.lines) {
-          if (!arIntaktskonto(l.account)) continue
+        for (const l of otackta) {
           const k = perKonto.get(l.account.number) ?? { namn: l.account.name, b: [] }
           k.b.push(behandlingar.get(l.id) ?? { typ: 'OBEVISAD', skal: 'ingen behandling härledd' })
           perKonto.set(l.account.number, k)
         }
-        const stopp = stoppForIntakter(
-          [...perKonto].map(([n, k]) => bedomKonto(n, k.namn, intaktsfakta.get(n)!, k.b)),
-        )
+        const bedomningar = []
+        for (const [n, k] of perKonto) {
+          const f = await lasKonto(n)
+          const finns = f.exists && (f.year === null || f.year === fy.Id)
+          const fakta: FortnoxKontoFakta = {
+            number: n,
+            finns,
+            active: finns ? f.active === true : null,
+            name: f.name,
+            vatCode: f.vatCodePresent ? f.vatCode : undefined,
+          }
+          bedomningar.push(bedomKonto(n, k.namn, fakta, k.b))
+        }
+        const stopp = stoppForIntakter(bedomningar)
         if (stopp) return block(stopp.kod, stopp.text)
+      }
+      if (!klass.ok) return block(klass.kod, klass.skal)
+      if (!revision)
+        return block(
+          'ACCOUNT_MAPPING_MISSING',
+          `Ingen godkänd kontomappning för räkenskapsår ${fy.Id} (${fy.FromDate}–${fy.ToDate}) — ` +
+            'godkänn en kontomappning i Fortnox-inställningarna',
+        )
+      if (
+        revision.connectionId !== conn.id ||
+        revision.connectionGeneration !== conn.generation ||
+        revision.fortnoxDatabaseNumber !== conn.fortnoxDatabaseNumber ||
+        revision.fortnoxOrgNumber !== orgNumber ||
+        brytdatumIso(revision.financialYearFrom) !== fy.FromDate ||
+        brytdatumIso(revision.financialYearTo) !== fy.ToDate
+      )
+        return block(
+          'ACCOUNT_MAPPING_STALE',
+          `Kontomappningen (revision ${revision.revision}) godkändes för en annan Fortnox-anslutning, ` +
+            'ett annat företag eller andra årsgränser — skapa och godkänn en ny revision',
+        )
+      // V1: en rättelse bokas på originalets EXPORTERADE målkonto, aldrig tyst omkonterad.
+      let originalMal: Map<number, number> | null = null
+      if (klass.rattelseAv) {
+        const orig = await this.prisma.fortnoxVoucherExport.findFirst({
+          where: {
+            organizationId,
+            journalEntryId: klass.rattelseAv,
+            state: 'CONFIRMED',
+            fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
+          },
+          select: { draft: true },
+        })
+        const lines =
+          (
+            orig?.draft as {
+              provenance?: {
+                lines?: Array<{ localAccountNumber?: unknown; externalAccountNumber?: unknown }>
+              }
+            } | null
+          )?.provenance?.lines ?? []
+        originalMal = new Map()
+        for (const p of lines)
+          if (
+            Number.isSafeInteger(p.localAccountNumber) &&
+            Number.isSafeInteger(p.externalAccountNumber)
+          )
+            originalMal.set(p.localAccountNumber as number, p.externalAccountNumber as number)
+      }
+
+      const accounts: Array<FortnoxVoucherDraftConfig['accounts'][number]> = []
+      const malPerKonto = new Map<string, number>()
+      const mappningsrader: Array<{
+        journalEntryLineId: string
+        roll: string
+        behandling: string
+        kallkonto: number
+        malkonto: number
+        mappningsradId: string
+        ogonblick: {
+          namn: string | null
+          aktiv: boolean | null
+          momskod: string | null
+          ar: number | null
+        }
+      }> = []
+      for (const l of entry.lines) {
+        const rk = klass.rader.get(l.id)!
+        const rad = radFor(rk.roll, l.account.number, rk.behandling)
+        if (!rad)
+          return block(
+            'ACCOUNT_MAPPING_MISSING',
+            `Konto ${l.account.number} «${l.account.name}» som ${ROLL_TEXT[rk.roll]} ` +
+              `(${BEHANDLING_TEXT[rk.behandling]}) saknar mappning i godkänd revision ${revision.revision}`,
+          )
+        // F-009-1: målets kontoklass prövas först och oberoende av revisionens sparade teknik.
+        if (!iKontoklass(rad.role, rad.targetAccountNumber))
+          return block(
+            'ACCOUNT_CLASS_MISMATCH',
+            `Konto ${l.account.number} som ${ROLL_TEXT[rk.roll]} mappas till Fortnox ` +
+              `${rad.targetAccountNumber}, utanför kontoklassen ${klassText(rad.role)} — ` +
+              'skapa och godkänn en ny revision',
+          )
+        const hinder = godkannandeHinder({
+          role: rad.role,
+          targetAccountNumber: rad.targetAccountNumber,
+          technical: rad.technical,
+          technicalReason: rad.technicalReason,
+        })
+        if (hinder)
+          return block(
+            'ACCOUNT_MAPPING_STALE',
+            `Mappningen för konto ${l.account.number}: ${hinder}`,
+          )
+        const nu = await lasKonto(rad.targetAccountNumber)
+        const d = drift(rad, nu)
+        if (d)
+          return block(
+            'ACCOUNT_MAPPING_DRIFT',
+            `Fortnox-konto ${rad.targetAccountNumber} har ändrats sedan revision ${revision.revision} ` +
+              `godkändes (${d}) — skapa och godkänn en ny revision`,
+          )
+        const tk = teknik(rk.roll, rk.behandling, nu, fy.Id, rad.targetAccountNumber)
+        if (tk.teknik !== 'FORENLIG')
+          return block(
+            tk.teknik === 'KONFLIKT' ? 'ACCOUNT_VAT_MISMATCH' : 'ACCOUNT_MAPPING_DRIFT',
+            `Fortnox-konto ${rad.targetAccountNumber}: ${tk.skal}`,
+          )
+        if (originalMal) {
+          const om = originalMal.get(l.account.number)
+          if (om !== rad.targetAccountNumber)
+            return block(
+              'REVERSAL_TARGET_CHANGED',
+              `Rättelsen gäller ett verifikat som exporterades med konto ${l.account.number} → ` +
+                `${om ?? 'okänt'}; revision ${revision.revision} mappar till ${rad.targetAccountNumber}. ` +
+                'Ingen tyst omkontering — stäm av manuellt i Fortnox',
+            )
+        }
+        const tidigare = malPerKonto.get(l.account.id)
+        if (tidigare !== undefined && tidigare !== rad.targetAccountNumber)
+          return block(
+            'ACCOUNT_MAPPING_AMBIGUOUS',
+            `Konto ${l.account.number} har två olika målkonton i samma verifikat`,
+          )
+        mappningsrader.push({
+          journalEntryLineId: l.id,
+          roll: rk.roll,
+          behandling: rk.behandling,
+          kallkonto: l.account.number,
+          malkonto: rad.targetAccountNumber,
+          mappningsradId: rad.id,
+          ogonblick: {
+            namn: rad.targetName,
+            aktiv: rad.targetActive,
+            momskod: rad.targetVatCode,
+            ar: rad.targetYear,
+          },
+        })
+        if (tidigare !== undefined) continue
+        malPerKonto.set(l.account.id, rad.targetAccountNumber)
+        accounts.push({
+          ...binding(
+            `kontomappning:rev${revision.revision}:${rad.id}+GET /3/accounts/${rad.targetAccountNumber}?financialyear=${fy.Id}`,
+          ),
+          localAccountId: l.account.id,
+          localAccountNumber: l.account.number,
+          externalAccountNumber: rad.targetAccountNumber,
+        })
       }
 
       const snapshot: LocalJournalEntrySnapshot = {
@@ -361,6 +530,14 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         payload: res.payload,
         query: res.query,
         provenance: res.provenance,
+        // K5.3: exportproveniens per rad (lokalt konto, roll/behandling, revision, mål, ögonblick).
+        kontomappning: {
+          revisionId: revision.id,
+          revision: revision.revision,
+          contentSha256: revision.contentSha256,
+          handelse: klass.handelse,
+          rader: mappningsrader,
+        },
         liveExportAllowed: false as const,
       }
       return {
@@ -395,6 +572,18 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
                   l.debit,
                   l.credit,
                 ]),
+                // K6.1: revision och, per rad, mål, roll och behandling.
+                kontomappning: [
+                  revision.id,
+                  revision.contentSha256,
+                  mappningsrader.map((r) => [
+                    r.journalEntryLineId,
+                    r.kallkonto,
+                    r.malkonto,
+                    r.roll,
+                    r.behandling,
+                  ]),
+                ],
               },
             }),
           )
@@ -412,83 +601,6 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       }
       throw err
     }
-  }
-
-  /**
-   * TESTKUND-006 F-1: färsk kontoförkontroll för kundaktiveringen. Intäktskonton som
-   * organisationen använder — hyreskonton för befintliga enheter (behandling ur
-   * vatRateForRent per enhet) och intäktskonton med verifikatrader — läses med
-   * GET /3/accounts/{n}?financialyear= och klassas exakt som exportgrinden. Godkänner inget.
-   */
-  async kontoForkontroll(
-    organizationId: string,
-    financialYearId: number,
-  ): Promise<Kontobedomning[]> {
-    const per = new Map<number, Behandling[]>()
-    const lagg = (n: number, b: Behandling) => {
-      const lista = per.get(n) ?? []
-      if (!lista.some((x) => JSON.stringify(x) === JSON.stringify(b))) lista.push(b)
-      per.set(n, lista)
-    }
-    const enheter = await this.prisma.unit.findMany({
-      where: { property: { organizationId } },
-      select: { type: true, voluntaryTaxLiability: true },
-    })
-    for (const u of enheter) {
-      const sats = vatRateForRent(u.type, u.voluntaryTaxLiability)
-      lagg(
-        revenueAccountForUnitType(u.type),
-        sats === 0
-          ? { typ: 'MOMSFRI', kalla: `enheter ${u.type}` }
-          : { typ: 'MOMSPLIKTIG', sats, kalla: `enheter ${u.type}` },
-      )
-    }
-    const konton = await this.prisma.account.findMany({
-      where: { organizationId },
-      select: { number: true, name: true, type: true, _count: { select: { journalLines: true } } },
-    })
-    for (const k of konton)
-      if (arIntaktskonto(k) && k._count.journalLines > 0 && !per.has(k.number))
-        lagg(k.number, {
-          typ: 'OBEVISAD',
-          skal: 'används i verifikat utan härledbar momsbehandling',
-        })
-    if (per.size === 0) return []
-    const auth = await this.connections.accessToken(organizationId)
-    const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
-    const namn = new Map(konton.map((k) => [k.number, k.name]))
-    const ut: Kontobedomning[] = []
-    for (const [n, b] of [...per].sort((x, y) => x[0] - y[0])) {
-      let fakta: FortnoxKontoFakta
-      try {
-        const a = await reader.get<{
-          Account?: {
-            Number?: unknown
-            Active?: unknown
-            Year?: unknown
-            Description?: unknown
-            VATCode?: unknown
-          }
-        }>(auth.token, `/3/accounts/${n}`, { financialyear: financialYearId })
-        const finns =
-          a?.Account?.Number === n &&
-          (a.Account.Year === undefined || a.Account.Year === financialYearId)
-        const vat = a?.Account?.VATCode
-        fakta = {
-          number: n,
-          finns,
-          active: finns ? a!.Account!.Active === true : null,
-          name: typeof a?.Account?.Description === 'string' ? a.Account.Description : null,
-          vatCode: vat === undefined ? undefined : typeof vat === 'string' ? vat : null,
-        }
-      } catch (err) {
-        if (err instanceof FortnoxReadError && err.kind === 'invalid')
-          fakta = { number: n, finns: false, active: null, name: null, vatCode: undefined }
-        else throw err
-      }
-      ut.push(bedomKonto(n, namn.get(n) ?? `Konto ${n}`, fakta, b))
-    }
-    return ut
   }
 }
 

@@ -22,7 +22,7 @@ import { saldoUrLasning, senasteSaldolasning } from '../kundstart/opening-fortno
 import type { Avstamning } from '../kundstart/opening-reconciliation'
 import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { evenoPosterForeBrytdatum } from '../kundstart/pre-cutover-records'
-import { FORTNOX_KONTOKONTROLL, type Kontokontroll } from './fortnox-intaktsgrind'
+import { FORTNOX_MAPPNINGSKONTROLL, type Mappningskontroll } from './fortnox-kontomappning.service'
 import {
   fortnoxRiskkontroll,
   registerHinder,
@@ -64,11 +64,12 @@ export class FortnoxCustomerActivationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-    // TESTKUND-006 F-1: färsk kontoförkontroll (exportgrindens klassning). Injiceras i
-    // FortnoxModule; saknas den (enhetsprov som bygger tjänsten direkt) görs ingen kontroll.
+    // TESTKUND-008 K8.1: färsk kontroll av den godkända kontomappningen (ersätter #946:s
+    // kontoförkontroll). Injiceras i FortnoxModule; saknas den (enhetsprov som bygger tjänsten
+    // direkt) görs ingen kontroll.
     @Optional()
-    @Inject(FORTNOX_KONTOKONTROLL)
-    private readonly kontoKontroll: Kontokontroll | null = null,
+    @Inject(FORTNOX_MAPPNINGSKONTROLL)
+    private readonly mappningsKontroll: Mappningskontroll | null = null,
   ) {}
 
   get flaggaPa(): boolean {
@@ -226,22 +227,15 @@ export class FortnoxCustomerActivationService {
       }
     }
 
-    // TESTKUND-006 F-1/F-2: varje intäktskonto organisationen använder prövas färskt mot Fortnox
-    // med exportgrindens klassning. Ett inaktivt, momsoförenligt eller ej avstämt konto är ett
-    // hinder — kundens bekräftelse kan inte godkänna en känd konflikt. Ingen kod rekommenderas.
-    if (this.kontoKontroll && financialYearId !== null && conn?.status === 'ACTIVE') {
+    // TESTKUND-008 (ersätter TESTKUND-006 F-1/F-2): kundaktiveringen kräver en godkänd, färsk
+    // kontomappning för året som täcker allt organisationen behöver. Saknas den skickas ingenting
+    // via kundvägen. Ej stödda händelser är hinder — ingen tyst delaktivering. En betalning skickas
+    // ändå bara när fordran finns i Fortnox (ORIGIN_NOT_CONFIRMED i exportbygget).
+    if (this.mappningsKontroll && financialYearId !== null && conn?.status === 'ACTIVE') {
       try {
-        for (const b of await this.kontoKontroll(organizationId, financialYearId))
-          hinder.push(
-            // F-006-3: säg hela effekten — hindret stänger kundaktiveringen, alltså ALL skrivning
-            // via kundvägen, även betalningar (betalningar utan motsvarande hyresfordringar
-            // skulle göra kundens 1510 i Fortnox missvisande).
-            `Intäktskonto ${b.text}. Kundaktiveringen kan inte godkännas så länge detta hinder finns: ` +
-              'ingenting skickas till Fortnox via kundvägen — varken hyror eller betalningar. ' +
-              'Stäm av kontoplanen med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats.',
-          )
+        hinder.push(...(await this.mappningsKontroll(organizationId, financialYearId)))
       } catch {
-        hinder.push('Kontoförkontrollen mot Fortnox kunde inte göras just nu — försök igen.')
+        hinder.push('Kontomappningen kunde inte kontrolleras mot Fortnox just nu — försök igen.')
       }
     }
 

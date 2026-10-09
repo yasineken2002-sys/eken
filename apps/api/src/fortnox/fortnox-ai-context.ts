@@ -28,6 +28,13 @@ export interface FortnoxAiSnapshot {
   sendingEnabled?: boolean
   /** KUNDSTART: sändningen vilar på en godkänd kundaktivering (inte testföretaget). */
   customerActivation?: boolean
+  /** TESTKUND-008: godkända kontomappningar (bara nummer och roll; ingen Fortnox-fritext). */
+  accountMappings?: Array<{
+    revision: number
+    financialYearId: number
+    fortnoxDatabaseNumber: number
+    rows: Array<{ role: string; sourceAccountNumber: number; targetAccountNumber: number }>
+  }>
 }
 
 export interface AiReadRow {
@@ -79,6 +86,16 @@ function stockholm(d: Date): string {
     timeStyle: 'short',
   }).format(d)
   return `${tid} svensk tid`
+}
+
+const ROLL_AI: Record<string, string> = {
+  KUNDFORDRAN: 'kundfordran',
+  HYRESINTAKT: 'hyresintäkt',
+  LIKVID: 'bank',
+  DEPOSITIONSSKULD: 'depositionsskuld',
+  KOSTNAD: 'kostnad',
+  INGAENDE_MOMS: 'ingående moms',
+  LEVERANTORSSKULD: 'leverantörsskuld',
 }
 
 const CONNECTION_TEXT = {
@@ -156,6 +173,20 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
       for (const u of unc.slice(0, 5)) lines.push(`  - ${u}`)
       if (unc.length > 5) lines.push(`  - … och ${unc.length - 5} till`)
     }
+  }
+
+  // TESTKUND-008 K7.3: Fortnox-kontot och dess Eveno-källa. Gäller bara Evenos EGNA exporter;
+  // övriga rader i Fortnox har ingen Eveno-källa.
+  for (const m of s.accountMappings ?? []) {
+    if (m.fortnoxDatabaseNumber !== c.fortnoxDatabaseNumber) continue
+    const par = m.rows.map(
+      (r) =>
+        `Fortnox ${r.targetAccountNumber} ← Eveno ${r.sourceAccountNumber} (${ROLL_AI[r.role] ?? r.role})`,
+    )
+    lines.push(
+      `Kontomappning för Evenos egna exporter (godkänd revision ${m.revision}, räkenskapsår-id ${m.financialYearId}): ${par.join('; ')}. ` +
+        'Ett Fortnox-belopp på dessa konton är inte samma sak som Evenos konto med samma nummer; ange alltid vilket system ett konto avser.',
+    )
   }
 
   const last = s.latestRead
