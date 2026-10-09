@@ -2015,6 +2015,53 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     expect((await t.dry(rp.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED/)
   })
 
+  it('P2-027 B2.2 vanlig faktura i en org som HAR en deposition → bankbetalningen förblir EVENT_UNSUPPORTED, ingen 2890-effekt', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const f = await depFaktura(t, 1000, 'faktura') // organisationen har en verklig deposition
+    await t.skicka(f.je.id)
+    const ten = await prisma.tenant.create({
+      data: {
+        organizationId: t.org.id,
+        type: 'INDIVIDUAL',
+        firstName: 'V',
+        lastName: 'F',
+        email: `vf2-${randomUUID().slice(0, 8)}@example.invalid`,
+      },
+    })
+    const inv = await prisma.invoice.create({
+      data: {
+        organizationId: t.org.id,
+        invoiceNumber: `RENT-${randomUUID().slice(0, 8)}`,
+        type: 'RENT',
+        status: 'SENT',
+        tenantId: ten.id,
+        subtotal: '1000',
+        vatTotal: '0',
+        total: '1000',
+        dueDate: new Date('2026-10-30'),
+        issueDate: new Date('2026-10-02'),
+      },
+    })
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: inv.id,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    const r = await t.dry(je.id)
+    expect([r.state, (r.blockReason ?? '').split(':')[0]]).toEqual(['BLOCKED', 'EVENT_UNSUPPORTED'])
+  })
+
   it('P2-027 B2.5: avmatchning efter CONFIRMED (produktens reverseJournalEntryForPayment) → omvänd post på ORIGINALETS konton även efter mappningsbyte; netto per konto 0 över paret', async () => {
     const t = await c2setup()
     await t.mappa()
