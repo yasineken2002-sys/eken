@@ -736,8 +736,17 @@ export class DepositsService implements OnApplicationBootstrap {
         },
       })
       if (claim.count === 0) {
+        // TESTKUND-027 V-2: säg vad som faktiskt hände. En samtidig avmatchning av bankbetalningen
+        // kan ha återställt depositionen till obetald; den är då inte "reglerad".
+        const nu = await tx.deposit.findFirst({
+          where: { id, organizationId },
+          select: { status: true },
+        })
         throw new ConflictException(
-          'Depositionen är redan reglerad — uppdatera sidan och försök igen',
+          nu?.status === 'PENDING'
+            ? 'Depositionen är inte längre registrerad som betald (betalningen har avmatchats) — ' +
+                'ingen återbetalning bokades. Uppdatera sidan.'
+            : 'Depositionen är redan reglerad — uppdatera sidan och försök igen',
         )
       }
 

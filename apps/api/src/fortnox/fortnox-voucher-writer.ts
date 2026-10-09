@@ -312,6 +312,8 @@ export class MockVoucherWriter implements FortnoxVoucherWriter {
       VoucherNumber: number,
       TransactionDate: v.TransactionDate,
       Description: v.Description,
+      // TESTKUND-027: verkliga svar bär Comments (proveniensen); provdubbeln behåller den.
+      Comments: typeof v.Comments === 'string' ? v.Comments : null,
       VoucherRows: structuredClone(v.VoucherRows),
     }
     this.ledger.vouchers.push(created)

@@ -41,6 +41,8 @@ import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockVoucherWriter } from './fortnox-voucher-writer'
 import { FortnoxController } from './fortnox.controller'
 import type { LedgerRowProvenance } from './fortnox-ledger'
+import { AccountingService } from '../accounting/accounting.service'
+import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 
 const KEY = 'cd'.repeat(32)
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -159,6 +161,8 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
       await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.fortnoxOAuthState.deleteMany({ where: { organizationId: id } })
       await prisma.fortnoxConnection.deleteMany({ where: { organizationId: id } })
+      // TESTKUND-027: produktens verifikatnumrering (rättelser via AccountingService) skriver sekvensrader.
+      await prisma.journalEntrySequence.deleteMany({ where: { organizationId: id } })
       await prisma.organization.deleteMany({ where: { id } })
     }
     await prisma.$disconnect()
@@ -212,7 +216,9 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
       const u = await km.skapaUtkast(org.id, AGARE, { financialYearId, rows })
       return km.godkann(org.id, AGARE, u.id, u.contentSha256)
     }
-    let ver = 0
+    // TESTKUND-027: syntetiska verifikatnummer från 100000, så att produktens egna verifikat (rättelser
+    // via AccountingService) kan numreras från 1 i samma organisation utan krock.
+    let ver = 100000
     const verifikat = async (
       rader: Array<[number, number | null, number | null]>,
       extra: Record<string, unknown> = {},
@@ -863,7 +869,9 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     expect(t.reader.vouchers.length).toBe(fore)
   })
 
-  it('V1/K2.3: rättelse bokas på originalets exporterade mål; annan revision för raden → REVERSAL_TARGET_CHANGED, ingen tyst omkontering', async () => {
+  // TESTKUND-027 KARAKT ÄNDRAD (KONTRAKTSBESKED-P2-028 fråga 2, V-5): före = REVERSAL_TARGET_CHANGED
+  // vid ändrad revision; efter = rättelsen exporteras på ORIGINALETS exporterade konto och revision.
+  it('V1/K2.3 (ändrad 027): rättelse bokas på originalets exporterade mål även när revisionen ändrats — ingen tyst omkontering till dagens mål', async () => {
     const t = await setup()
     await t.mappa()
     const lev = await t.leverantor(100)
@@ -879,9 +887,15 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     )
     expect((await t.dry(rattelse.id)).state).toBe('DRY_RUN_READY')
     await t.mappa(FULL.map((r) => (r.role === 'KOSTNAD' ? R('KOSTNAD', 5170, 5460) : r)))
-    expect((await t.dry(rattelse.id)).blockReason).toMatch(
-      /^REVERSAL_TARGET_CHANGED: .*5170 → 5170; revision 2 mappar till 5460/,
-    )
+    const rad = await t.dry(rattelse.id)
+    expect([rad.state, rad.blockReason]).toEqual(['DRY_RUN_READY', null])
+    const d = (await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: rad.id } }))
+      .draft as {
+      payload: { Voucher: { VoucherRows: Array<{ Account: number }> } }
+      kontomappning: { revision: number; kalla: string }
+    }
+    expect(d.payload.Voucher.VoucherRows.map((r) => r.Account).sort()).toEqual([2440, 2641, 5170])
+    expect([d.kontomappning.revision, d.kontomappning.kalla]).toEqual([1, 'ORIGINALETS_EXPORT'])
   })
 
   // ── Historiken ändras aldrig (K5.1) ──────────────────────────────────────────────────
@@ -1305,4 +1319,887 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     const bet = await t.betalning(h1.notice.id, 6000)
     expect((await t.dry(bet.id)).blockReason).toMatch(/^ORIGIN_NOT_CONFIRMED/)
   })
+
+  // ── C2-019 FÖRARBETE (KRITERIER-KUNDGAP-018). Inte produktkod. ───────────────────────────────
+  // «KARAKT» = fäster dagens beteende och mäter kundeffekten (ska PASSERA på #947).
+  // «RÖD»    = önskat beteende efter en framtida rättning (ska FALLA på #947 = röd före).
+  // C2-019 RIGGRÄTTELSE: egen städning för fakturor/allokeringar som bara dessa prov skapar, i
+  // FK-ordning, FÖRE C1:s afterAll (som annars bryter Invoice_tenant_xor_customer_chk vid tenant-radering).
+  const c2Orgs: string[] = []
+  const c2setup = async () => {
+    const t = await setup()
+    c2Orgs.push(t.org.id)
+    return t
+  }
+  afterEach(async () => {
+    for (const id of c2Orgs.splice(0)) {
+      await prisma.invoicePayment.deleteMany({ where: { invoice: { organizationId: id } } })
+      await prisma.deposit.deleteMany({ where: { organizationId: id, invoiceId: { not: null } } })
+      await prisma.invoice.deleteMany({ where: { organizationId: id } })
+    }
+  })
+  const saldo = (t: T) => {
+    const s: Record<number, number> = {}
+    for (const v of rader(t))
+      for (const r of v) {
+        const [k, d, c] = r as unknown as [number, number, number]
+        s[k] = Math.round((s[k] ?? 0) + d * 100 - c * 100)
+      }
+    return s
+  }
+  const depFaktura = async (t: T, belopp: number, via: 'avi' | 'faktura') => {
+    const { lease, ten } = await (async () => {
+      const unit = await prisma.unit.create({
+        data: {
+          propertyId: (
+            await prisma.property.findFirstOrThrow({ where: { organizationId: t.org.id } })
+          ).id,
+          name: `Dep ${randomUUID().slice(0, 4)}`,
+          unitNumber: randomUUID().slice(0, 6),
+          type: 'APARTMENT',
+          area: '30',
+          monthlyRent: '100',
+        },
+      })
+      const ten = await prisma.tenant.create({
+        data: {
+          organizationId: t.org.id,
+          type: 'INDIVIDUAL',
+          firstName: 'D',
+          lastName: 'G',
+          email: `dg-${randomUUID().slice(0, 8)}@example.invalid`,
+        },
+      })
+      const lease = await prisma.lease.create({
+        data: {
+          organizationId: t.org.id,
+          unitId: unit.id,
+          tenantId: ten.id,
+          contractNumber: `DG-${randomUUID().slice(0, 8)}`,
+          status: 'ACTIVE',
+          startDate: new Date('2026-01-01'),
+          tenancyStartDate: new Date('2026-01-01'),
+          monthlyRent: '100',
+          depositAmount: String(belopp),
+        },
+      })
+      return { lease, ten }
+    })()
+    let invoiceId: string | null = null,
+      rentNoticeId: string | null = null
+    if (via === 'faktura') {
+      invoiceId = (
+        await prisma.invoice.create({
+          data: {
+            organizationId: t.org.id,
+            invoiceNumber: `DEP-${randomUUID().slice(0, 8)}`,
+            type: 'DEPOSIT',
+            status: 'SENT',
+            tenantId: ten.id,
+            leaseId: lease.id,
+            subtotal: String(belopp),
+            vatTotal: '0',
+            total: String(belopp),
+            dueDate: new Date('2026-10-30'),
+            issueDate: new Date('2026-10-02'),
+          },
+        })
+      ).id
+    } else {
+      rentNoticeId = (
+        await prisma.rentNotice.create({
+          data: {
+            organizationId: t.org.id,
+            tenantId: ten.id,
+            leaseId: lease.id,
+            noticeNumber: `DAVI-${randomUUID().slice(0, 8)}`,
+            ocrNumber: '1',
+            month: 10,
+            year: 2026,
+            amount: String(belopp),
+            vatAmount: '0',
+            totalAmount: String(belopp),
+            dueDate: new Date('2026-10-30'),
+            type: 'DEPOSIT',
+          },
+        })
+      ).id
+    }
+    const dep = await prisma.deposit.create({
+      data: {
+        organizationId: t.org.id,
+        leaseId: lease.id,
+        tenantId: ten.id,
+        amount: String(belopp),
+        invoiceId,
+        rentNoticeId,
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1510, belopp, null],
+        [2890, null, belopp],
+      ],
+      { source: 'INVOICE', sourceId: `deposit-invoice:${dep.id}` },
+    )
+    return { dep, je, invoiceId, rentNoticeId }
+  }
+
+  // TESTKUND-027 KARAKT ÄNDRAD (D1): före = återbetalningen exporterades och Fortnox fick 1510 +X
+  // öppen och bank −X; efter = återbetalningen stoppas, banken orörd, inget exporteras.
+  it('C2-019 KARAKT F-015-1 (ändrad 027): återbetalning utan exporterad mottagen betalning stoppas — bank orörd i Fortnox', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const d = await t.deposition(5000)
+    await t.skicka((await d.faktura()).id)
+    await d.betalning() // registrerad i Eveno, INTE exporterad
+    const r = await t.dry((await d.aterbetalning()).id)
+    expect([r.state, (r.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      'ORIGIN_NOT_CONFIRMED',
+    ])
+    const s = saldo(t)
+    expect(s[1510]).toBe(500000) // fakturan exporterad; mottagningen ännu inte
+    expect(s[1940] ?? 0).toBe(0) // bankmålet orört
+    expect(s[2890]).toBe(-500000)
+  })
+
+  it('C2-019 RÖD F-015-1: återbetalning före exporterad mottagen betalning → ORIGIN_NOT_CONFIRMED, 0 POST', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const d = await t.deposition(5000)
+    await t.skicka((await d.faktura()).id)
+    await d.betalning()
+    const fore = t.reader.vouchers.length
+    const row = await t.dry((await d.aterbetalning()).id)
+    expect([row.state, (row.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      'ORIGIN_NOT_CONFIRMED',
+    ])
+    expect(t.reader.vouchers.length).toBe(fore)
+  })
+
+  it('C2-019 KARAKT REJECTED-låsning: avvisad POST (400, och 429 via fortnox-real-send.db.spec.ts:269) → reconcile NOT_FOUND 409, nytt dryRun bygger inte om, send 409', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const lev = await t.leverantor(100)
+    const je = await lev.mottagande()
+    const row = await t.dry(je.id)
+    ;(t.writer as unknown as { faults: string[] }).faults.push('rejected')
+    expect((await t.sender.send(t.org.id, 'u1', row.id, row.draftHash!)).state).toBe('REJECTED')
+    expect(
+      (await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: row.id } })).state,
+    ).toBe('REJECTED')
+    await expect(
+      t.sender.reconcile(t.org.id, 'u1', row.id, { year: 1, series: 'A', number: 999 }),
+    ).rejects.toThrow(/finns inte/)
+    const igen = await t.exports.dryRun(t.org.id, je.id)
+    expect((igen as { state: string }).state).toBe('REJECTED')
+    await expect(t.sender.send(t.org.id, 'u1', row.id, row.draftHash!)).rejects.toThrow()
+    expect(t.reader.vouchers.length).toBe(0)
+  })
+
+  // TESTKUND-027 KARAKT ÄNDRAD (B2, L3): före = c1–c4 EVENT_UNSUPPORTED; efter = DRY_RUN_READY.
+  // Huvudbokens originalläge (ingen betalning skickad i provet) är oförändrat.
+  it('C2-019 KARAKT c1-c4 (ändrad 027): vägarna är nu exporterbara; originalen ligger kvar öppna tills betalningarna skickas', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    // c1: direktskapad deposition (fakturabaserad) → invoice-manual-payment
+    const f = await depFaktura(t, 3000, 'faktura')
+    await t.skicka(f.je.id)
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: f.invoiceId!,
+        amount: '3000',
+        paidAt: new Date('2026-10-03'),
+        source: 'MANUAL',
+      },
+    })
+    const c1 = await t.verifikat(
+      [
+        [1930, 3000, null],
+        [1510, null, 3000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-manual-payment:${ip.id}` },
+    )
+    expect((await t.dry(c1.id)).state).toBe('DRY_RUN_READY')
+    // c2: depositionsavi bankmatchad → rent-notice-bank-payment
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const c2 = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    expect((await t.dry(c2.id)).state).toBe('DRY_RUN_READY')
+    // c3: depositionsfaktura bankmatchad → invoice-bank-payment
+    const g = await depFaktura(t, 1000, 'faktura')
+    await t.skicka(g.je.id)
+    const ip3 = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: g.invoiceId!,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const c3 = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip3.id}` },
+    )
+    expect((await t.dry(c3.id)).state).toBe('DRY_RUN_READY')
+    // c4: makulering efter CONFIRMED mottagande → supplier-invoice-cancel
+    const lev = await t.leverantor(100)
+    await t.skicka((await lev.mottagande()).id)
+    const fakt = await prisma.supplierInvoice.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const c4 = await t.verifikat(
+      [
+        [2440, 125, null],
+        [5170, null, 100],
+        [2641, null, 25],
+      ],
+      { source: 'SUPPLIER_INVOICE', sourceId: `supplier-invoice-cancel:${fakt.id}` },
+    )
+    expect((await t.dry(c4.id)).state).toBe('DRY_RUN_READY')
+    // Kundeffekt: originalen är bokförda i Fortnox, betalningarna/makuleringen kan inte följa.
+    const s = saldo(t)
+    expect(s[1510]).toBe(600000) // 3000+2000+1000 kr öppna fordringar trots registrerade betalningar
+    expect(s[2440]).toBe(-12500) // makulerad faktura står kvar som skuld
+  })
+
+  it('C2-019 RÖD c1: betalning av direktskapad depositionsfaktura (invoice-manual-payment) → READY 1940/1510', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const f = await depFaktura(t, 3000, 'faktura')
+    await t.skicka(f.je.id)
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: f.invoiceId!,
+        amount: '3000',
+        paidAt: new Date('2026-10-03'),
+        source: 'MANUAL',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 3000, null],
+        [1510, null, 3000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-manual-payment:${ip.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 RÖD c2: bankmatchad depositionsavi (rent-notice-bank-payment, DEPOSIT) → READY', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 RÖD c3: bankmatchad depositionsfaktura (invoice-bank-payment) → READY', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const g = await depFaktura(t, 1000, 'faktura')
+    await t.skicka(g.je.id)
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: g.invoiceId!,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 RÖD c4: makulering efter CONFIRMED mottagande → READY med omvända rader på originalets mål', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const lev = await t.leverantor(100)
+    await t.skicka((await lev.mottagande()).id)
+    const fakt = await prisma.supplierInvoice.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const je = await t.verifikat(
+      [
+        [2440, 125, null],
+        [5170, null, 100],
+        [2641, null, 25],
+      ],
+      { source: 'SUPPLIER_INVOICE', sourceId: `supplier-invoice-cancel:${fakt.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+  })
+
+  it('C2-019 MOTPROV (ska passera före och efter): bankbetalning av VANLIG faktura och makulering före exporterat mottagande förblir stoppade', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const tenV = await prisma.tenant.create({
+      data: {
+        organizationId: t.org.id,
+        type: 'INDIVIDUAL',
+        firstName: 'V',
+        lastName: 'F',
+        email: `vf-${randomUUID().slice(0, 8)}@example.invalid`,
+      },
+    })
+    const inv = await prisma.invoice.create({
+      data: {
+        organizationId: t.org.id,
+        invoiceNumber: `RENT-${randomUUID().slice(0, 8)}`,
+        type: 'RENT',
+        status: 'SENT',
+        tenantId: tenV.id,
+        subtotal: '500',
+        vatTotal: '0',
+        total: '500',
+        dueDate: new Date('2026-10-30'),
+        issueDate: new Date('2026-10-02'),
+      },
+    })
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: inv.id,
+        amount: '500',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 500, null],
+        [1510, null, 500],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    expect((await t.dry(je.id)).state).toBe('BLOCKED')
+    const lev = await t.leverantor(100)
+    await lev.mottagande() // inte exporterad
+    const fakt = await prisma.supplierInvoice.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    const c = await t.verifikat(
+      [
+        [2440, 125, null],
+        [5170, null, 100],
+        [2641, null, 25],
+      ],
+      { source: 'SUPPLIER_INVOICE', sourceId: `supplier-invoice-cancel:${fakt.id}` },
+    )
+    expect((await t.dry(c.id)).state).toBe('BLOCKED')
+  })
+
+  // ══ TESTKUND-027 P2 (KONTRAKT-P2-027, KRITERIER-P2-024/025, KONTRAKTSBESKED-P2-028) ══════════════
+  // Klassnings- och exportnivå med syntetiska verifikat. De RIKTIGA kundkedjorna (API, BgMax,
+  // matchning, avmatchning, makulering) provas över HTTP i rigg-tk/kedja-p2 och i
+  // fortnox-real-send.db.spec.ts; här mäts regeln, skälet och huvudbokens rader.
+  const acc = () =>
+    new AccountingService(
+      prisma as unknown as PrismaService,
+      new VerifikationsnummerService(prisma as unknown as PrismaService),
+    )
+  const sistaPost = (t: T) =>
+    (
+      t.reader.vouchers.at(-1)!.VoucherRows as Array<{
+        Account: number
+        Debit?: number
+        Credit?: number
+      }>
+    )
+      .map((r) => [r.Account, Math.round((r.Debit ?? 0) * 100), Math.round((r.Credit ?? 0) * 100)])
+      .sort((a, b) => a[0]! - b[0]!)
+  const exportFor = (jeId: string) =>
+    prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { journalEntryId: jeId } })
+
+  it('P2-027 D1 positiv: faktura → mottagning → återbetalning, alla CONFIRMED; varje post exakt och saldo per konto 0', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const d = await t.deposition(5000)
+    await t.skicka((await d.faktura()).id)
+    expect(sistaPost(t)).toEqual([
+      [1510, 500000, 0],
+      [2890, 0, 500000],
+    ])
+    await t.skicka((await d.betalning()).id)
+    expect(sistaPost(t)).toEqual([
+      [1510, 0, 500000],
+      [1940, 500000, 0],
+    ])
+    await t.skicka((await d.aterbetalning()).id)
+    expect(sistaPost(t)).toEqual([
+      [1940, 0, 500000],
+      [2890, 500000, 0],
+    ])
+    const s = saldo(t)
+    expect([s[1510], s[1940], s[2890]]).toEqual([0, 0, 0])
+    expect(
+      t.reader.vouchers.map((v) => String(v.Comments).match(/JournalEntry (\S+);/)?.[1]),
+    ).toHaveLength(3)
+  })
+
+  it.each([
+    [
+      'ingen mottagning registrerad',
+      'ingen',
+      /Ingen mottagning av depositionen är registrerad.*öppningspaket/,
+    ],
+    [
+      'mottagning bara förhandskontrollerad (DRY_RUN_READY)',
+      'READY',
+      /manuell betalning: inte exporterad/,
+    ],
+    ['mottagning BLOCKED', 'BLOCKED', /manuell betalning: inte exporterad/],
+    [
+      'mottagning UNKNOWN',
+      'UNKNOWN',
+      /manuell betalning: OKÄNT — utfallet är okänt\/pågår \(UNKNOWN/,
+    ],
+    [
+      'mottagning SENDING',
+      'SENDING',
+      /manuell betalning: OKÄNT — utfallet är okänt\/pågår \(SENDING/,
+    ],
+    [
+      'mottagning äldre REJECTED utan kod',
+      'REJECTED',
+      /manuell betalning: OKÄNT — utfallet är okänt\/pågår \(REJECTED REJECTED\)/,
+    ],
+    [
+      'mottagning REJECTED_429_NA',
+      'REJECTED_429_NA',
+      /manuell betalning: OKÄNT — .*REJECTED_429_NA/,
+    ],
+    [
+      'mottagning REJECTED_400_2000359 (belagd innehållsavvisning)',
+      'REJECTED_400_2000359',
+      /manuell betalning: avvisad av Fortnox \(400\/2000359\), inte exporterad/,
+    ],
+    [
+      'mottagning CONFIRMED i annat Fortnox-företag',
+      'ANNAT',
+      /manuell betalning: exporterad till ett annat Fortnox-företag/,
+    ],
+  ] as const)(
+    'P2-027 D1.4/D1.5: %s → återbetalningen ORIGIN_NOT_CONFIRMED med sant skäl, 0 POST',
+    async (_n, lage, skal) => {
+      const t = await c2setup()
+      await t.mappa()
+      const d = await t.deposition(5000)
+      await t.skicka((await d.faktura()).id)
+      if (lage !== 'ingen') {
+        const b = await d.betalning()
+        const r = await t.dry(b.id)
+        const data: Prisma.FortnoxVoucherExportUpdateInput =
+          lage === 'READY'
+            ? {}
+            : lage === 'BLOCKED'
+              ? { state: 'BLOCKED' }
+              : lage === 'ANNAT'
+                ? {
+                    state: 'CONFIRMED',
+                    fortnoxDatabaseNumber: 999,
+                    externalYear: 1,
+                    externalSeries: 'A',
+                    externalNumber: 99,
+                  }
+                : lage.startsWith('REJECTED')
+                  ? { state: 'REJECTED', lastOutcome: lage }
+                  : { state: lage as 'UNKNOWN' | 'SENDING' }
+        await prisma.fortnoxVoucherExport.update({ where: { id: r.id }, data })
+      }
+      const fore = t.reader.vouchers.length
+      const ater = await t.dry((await d.aterbetalning()).id)
+      expect(ater.state).toBe('BLOCKED')
+      expect(ater.blockReason).toMatch(/^ORIGIN_NOT_CONFIRMED: /)
+      expect(ater.blockReason).toMatch(skal)
+      if (
+        lage !== 'REJECTED_400_2000359' &&
+        lage !== 'READY' &&
+        lage !== 'BLOCKED' &&
+        lage !== 'ingen' &&
+        lage !== 'ANNAT'
+      )
+        expect(ater.blockReason).not.toMatch(/inte exporterad/)
+      expect(t.reader.vouchers.length).toBe(fore)
+    },
+  )
+
+  it.each([
+    ['delbetalning', [3000], /delbetalning/],
+    ['överbetalning', [3000, 3000], /överbetalning/],
+  ] as const)(
+    'P2-027 D1.2 %s via depositionsfaktura (c3) → återbetalningen stoppas med belopp i skälet',
+    async (_n, delar, skal) => {
+      const t = await c2setup()
+      await t.mappa()
+      const f = await depFaktura(t, 5000, 'faktura')
+      await t.skicka(f.je.id)
+      for (const del of delar) {
+        const ip = await prisma.invoicePayment.create({
+          data: {
+            invoiceId: f.invoiceId!,
+            amount: String(del),
+            paidAt: new Date('2026-10-03'),
+            source: 'BANK_RECONCILIATION',
+          },
+        })
+        const je = await t.verifikat(
+          [
+            [1930, del, null],
+            [1510, null, del],
+          ],
+          { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+        )
+        await t.skicka(je.id)
+      }
+      const ater = await t.verifikat(
+        [
+          [2890, 5000, null],
+          [1930, null, 5000],
+        ],
+        { source: 'PAYMENT', sourceId: `deposit-refund:${f.dep.id}` },
+      )
+      const r = await t.dry(ater.id)
+      expect([r.state, (r.blockReason ?? '').split(':')[0]]).toEqual([
+        'BLOCKED',
+        'ORIGIN_NOT_CONFIRMED',
+      ])
+      expect(r.blockReason).toMatch(skal)
+      expect(r.blockReason).toMatch(/5000\.00 kr/)
+    },
+  )
+
+  it('P2-027 D1.1a årsskifte: mottagning exporterad i 2025 (år-id 2), återbetalning 2026 (år-id 1) i samma företag → READY och CONFIRMED; båda år i huvudboken', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    await t.mappa(FULL, 2) // egen godkänd revision för år 2 (ingen automatisk kopiering)
+    const d = await t.deposition(5000)
+    const f = await t.verifikat(
+      [
+        [1510, 5000, null],
+        [2890, null, 5000],
+      ],
+      { source: 'INVOICE', sourceId: `deposit-invoice:${d.dep.id}` },
+      '2025-12-15',
+    )
+    await t.skicka(f.id)
+    const b = await t.verifikat(
+      [
+        [1930, 5000, null],
+        [1510, null, 5000],
+      ],
+      { source: 'PAYMENT', sourceId: `deposit-manual-payment:${d.dep.id}` },
+      '2025-12-20',
+    )
+    await t.skicka(b.id)
+    await t.skicka((await d.aterbetalning()).id) // 2026-10-02
+    expect(t.reader.vouchers.map((v) => v.Year)).toEqual([2, 2, 1])
+    expect([(await exportFor(b.id)).externalYear, (await exportFor(f.id)).externalYear]).toEqual([
+      2, 2,
+    ])
+    const s = saldo(t)
+    expect([s[1510], s[1940], s[2890]]).toEqual([0, 0, 0])
+  })
+
+  it('P2-027 D1 mottagningen avmatchad (rättad) efter export → återbetalningen stoppas', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const c2 = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    await t.skicka(c2.id)
+    await acc().reverseJournalEntryForPayment(
+      'ingen-transaktion',
+      t.org.id,
+      null,
+      undefined,
+      `rent-notice-bank-payment:${rp.id}`,
+    )
+    const ater = await t.verifikat(
+      [
+        [2890, 2000, null],
+        [1930, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `deposit-refund:${a.dep.id}` },
+    )
+    expect((await t.dry(ater.id)).blockReason).toMatch(
+      /^ORIGIN_NOT_CONFIRMED: .*mottagningen är rättad \(avmatchad\)/,
+    )
+  })
+
+  it('P2-027 B2.2 org-bindning: allokering på en DEPOSIT-faktura i en ANNAN organisation → EVENT_UNSUPPORTED, ingen 2890-effekt', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const u = await c2setup()
+    const f = await depFaktura(u, 1000, 'faktura')
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: f.invoiceId!,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    const r = await t.dry(je.id)
+    expect([r.state, (r.blockReason ?? '').split(':')[0]]).toEqual(['BLOCKED', 'EVENT_UNSUPPORTED'])
+    const rp = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-manual-payment:${ip.id}` },
+    )
+    expect((await t.dry(rp.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED/)
+  })
+
+  it('P2-027 B2.2 vanlig faktura i en org som HAR en deposition → bankbetalningen förblir EVENT_UNSUPPORTED, ingen 2890-effekt', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const f = await depFaktura(t, 1000, 'faktura') // organisationen har en verklig deposition
+    await t.skicka(f.je.id)
+    const ten = await prisma.tenant.create({
+      data: {
+        organizationId: t.org.id,
+        type: 'INDIVIDUAL',
+        firstName: 'V',
+        lastName: 'F',
+        email: `vf2-${randomUUID().slice(0, 8)}@example.invalid`,
+      },
+    })
+    const inv = await prisma.invoice.create({
+      data: {
+        organizationId: t.org.id,
+        invoiceNumber: `RENT-${randomUUID().slice(0, 8)}`,
+        type: 'RENT',
+        status: 'SENT',
+        tenantId: ten.id,
+        subtotal: '1000',
+        vatTotal: '0',
+        total: '1000',
+        dueDate: new Date('2026-10-30'),
+        issueDate: new Date('2026-10-02'),
+      },
+    })
+    const ip = await prisma.invoicePayment.create({
+      data: {
+        invoiceId: inv.id,
+        amount: '1000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      },
+    })
+    const je = await t.verifikat(
+      [
+        [1930, 1000, null],
+        [1510, null, 1000],
+      ],
+      { source: 'PAYMENT', sourceId: `invoice-bank-payment:${ip.id}` },
+    )
+    const r = await t.dry(je.id)
+    expect([r.state, (r.blockReason ?? '').split(':')[0]]).toEqual(['BLOCKED', 'EVENT_UNSUPPORTED'])
+  })
+
+  it('P2-027 B2.5: avmatchning efter CONFIRMED (produktens reverseJournalEntryForPayment) → omvänd post på ORIGINALETS konton även efter mappningsbyte; netto per konto 0 över paret', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const c2 = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    await t.skicka(c2.id)
+    const orig = sistaPost(t)
+    expect(orig).toEqual([
+      [1510, 0, 200000],
+      [1940, 200000, 0],
+    ])
+    await t.mappa(FULL.map((r) => (r.role === 'LIKVID' ? R('LIKVID', 1930, 1930) : r))) // dagens mappning ändras
+    // Som produktens avmatchning: allokeringen raderas i samma steg som rättelsen skapas, så att
+    // rättelsen inte kan klassas ur levande data (originalets frysta klassning måste användas).
+    await prisma.rentNoticePayment.delete({ where: { id: rp.id } })
+    await acc().reverseJournalEntryForPayment(
+      'ingen-transaktion',
+      t.org.id,
+      null,
+      undefined,
+      `rent-notice-bank-payment:${rp.id}`,
+    )
+    const rev = await prisma.journalEntry.findFirstOrThrow({
+      where: { organizationId: t.org.id, reversalOfEntryId: c2.id },
+    })
+    expect(rev.sourceId).toBe(`reversal:rent-notice-bank-payment:${rp.id}`)
+    const row = await t.skicka(rev.id)
+    expect(sistaPost(t)).toEqual([
+      [1510, 200000, 0],
+      [1940, 0, 200000],
+    ]) // 1940, inte dagens 1930
+    const d = (await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: row.id } }))
+      .draft as {
+      kontomappning: {
+        revision: number
+        kalla: string
+        originalJournalEntryId: string
+        originalFortnoxNyckel: string
+      }
+    }
+    expect(d.kontomappning).toEqual(
+      expect.objectContaining({
+        revision: 1,
+        kalla: 'ORIGINALETS_EXPORT',
+        originalJournalEntryId: c2.id,
+      }),
+    )
+    expect(String(t.reader.vouchers.at(-1)!.Comments)).toContain(`Eveno JournalEntry ${rev.id}`)
+  })
+
+  it('P2-027 B2.6: avmatchning FÖRE export → originalets READY blir BLOCKED (REVERSED_BEFORE_EXPORT) i samma transaktion; gammalt hash 409 och 0 POST; rättelsen stoppas sanningsenligt', async () => {
+    const t = await c2setup()
+    await t.mappa()
+    const a = await depFaktura(t, 2000, 'avi')
+    await t.skicka(a.je.id)
+    const rp = await prisma.rentNoticePayment.create({
+      data: {
+        rentNoticeId: a.rentNoticeId!,
+        amount: '2000',
+        paidAt: new Date('2026-10-03'),
+        source: 'BANK_RECONCILIATION',
+      } as never,
+    })
+    const c2 = await t.verifikat(
+      [
+        [1930, 2000, null],
+        [1510, null, 2000],
+      ],
+      { source: 'PAYMENT', sourceId: `rent-notice-bank-payment:${rp.id}` },
+    )
+    const ready = await t.dry(c2.id)
+    expect(ready.state).toBe('DRY_RUN_READY')
+    const fore = t.reader.vouchers.length
+    await acc().reverseJournalEntryForPayment(
+      'ingen-transaktion',
+      t.org.id,
+      null,
+      undefined,
+      `rent-notice-bank-payment:${rp.id}`,
+    )
+    const nu = await exportFor(c2.id)
+    expect([nu.state, nu.draftHash, (nu.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      null,
+      'REVERSED_BEFORE_EXPORT',
+    ])
+    await expect(t.sender.send(t.org.id, 'u1', ready.id, ready.draftHash!)).rejects.toThrow()
+    expect((await t.dry(c2.id)).blockReason).toMatch(/^REVERSED_BEFORE_EXPORT/)
+    const rev = await prisma.journalEntry.findFirstOrThrow({
+      where: { organizationId: t.org.id, reversalOfEntryId: c2.id },
+    })
+    const rr = await t.dry(rev.id)
+    expect(rr.blockReason).toMatch(/^ORIGINAL_NOT_CONFIRMED: Originalet är inte exporterad/)
+    expect(t.reader.vouchers.length).toBe(fore)
+  })
+
+  it.each([
+    ['UNKNOWN', { state: 'UNKNOWN' }],
+    ['SENDING', { state: 'SENDING' }],
+    ['äldre REJECTED', { state: 'REJECTED', lastOutcome: 'REJECTED' }],
+    ['REJECTED_429_NA', { state: 'REJECTED', lastOutcome: 'REJECTED_429_NA' }],
+  ] as const)(
+    'P2-027 V-6: rättelse av ett original i läget %s → stopp med «okänt/pågår», aldrig «inte exporterat»',
+    async (_n, data) => {
+      const t = await c2setup()
+      await t.mappa()
+      const lev = await t.leverantor(100)
+      const m = await lev.mottagande()
+      const r = await t.dry(m.id)
+      await prisma.fortnoxVoucherExport.update({ where: { id: r.id }, data })
+      const rev = await t.verifikat(
+        [
+          [2440, 125, null],
+          [2641, null, 25],
+          [5170, null, 100],
+        ],
+        { reversalOfEntryId: m.id },
+      )
+      const rr = await t.dry(rev.id)
+      expect(rr.blockReason).toMatch(
+        /^ORIGINAL_NOT_CONFIRMED: Originalets utfallet är okänt\/pågår/,
+      )
+      expect(rr.blockReason).not.toMatch(/inte exporterat/)
+    },
+  )
 })

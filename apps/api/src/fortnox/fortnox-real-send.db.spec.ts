@@ -28,6 +28,7 @@ import { FakeFortnoxApi, noopRateLimiter } from './fortnox-fake-api.testing'
 import { formatFortnoxShadowForAi } from './fortnox-ai-context'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
+import { SupplierInvoiceService } from '../accounting/supplier-invoice.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -55,6 +56,9 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       await prisma.fortnoxReadRun.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await prisma.supplierInvoice.deleteMany({ where: { organizationId: id } })
+      await prisma.user.deleteMany({ where: { organizationId: id } })
+      await prisma.journalEntrySequence.deleteMany({ where: { organizationId: id } })
       await stadaKontomappning(prisma, id)
       await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
@@ -144,6 +148,7 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       org,
       api,
       ledger,
+      reader,
       sender,
       exports,
       readback,
@@ -870,4 +875,322 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
         .TransactionInformation,
     ).toBe('Kostnad – april')
   })
+
+  // ══ TESTKUND-027 L3 / V-7 / V-8 / V-9 (KONTRAKTSBESKED-P2-028) — produktens tjänster, skarp skrivväg ══
+  const tjanster = () => {
+    const acc = new AccountingService(
+      prisma as unknown as PrismaService,
+      new VerifikationsnummerService(prisma as unknown as PrismaService),
+    )
+    return { acc, lev: new SupplierInvoiceService(prisma as unknown as PrismaService, acc) }
+  }
+  const anvandare = new Map<string, string>()
+  const uid = async (orgId: string) => {
+    if (!anvandare.has(orgId)) {
+      const u = await prisma.user.create({
+        data: {
+          organizationId: orgId,
+          email: `p2-${randomUUID().slice(0, 8)}@example.invalid`,
+          firstName: 'P2',
+          lastName: 'Prov',
+          role: 'OWNER',
+          passwordHash: 'ej-inloggningsbar',
+        },
+      })
+      anvandare.set(orgId, u.id)
+    }
+    return anvandare.get(orgId)!
+  }
+  const levFaktura = async (t: Awaited<ReturnType<typeof setup>>, belopp = 125) => {
+    const { lev } = tjanster()
+    if (!(await prisma.account.findFirst({ where: { organizationId: t.org.id, number: 1930 } })))
+      await prisma.account.create({
+        data: { organizationId: t.org.id, number: 1930, name: 'Företagskonto', type: 'ASSET' },
+      })
+    const f = await lev.create({
+      organizationId: t.org.id,
+      createdById: await uid(t.org.id),
+      supplierName: 'Bygg & Co AB',
+      description: 'Reparation',
+      invoiceDate: new Date('2026-10-02'),
+      dueDate: new Date('2026-10-30'),
+      expenseAccount: 5170,
+      totalAmount: belopp,
+      vatRate: 0,
+    })
+    const je = await prisma.journalEntry.findFirstOrThrow({
+      where: { organizationId: t.org.id, sourceId: `supplier-invoice:${f.id}` },
+    })
+    return { f, je }
+  }
+  const makulera = async (t: Awaited<ReturnType<typeof setup>>, id: string) =>
+    tjanster().lev.cancel({
+      organizationId: t.org.id,
+      invoiceId: id,
+      createdById: await uid(t.org.id),
+    })
+  const makJe = (t: Awaited<ReturnType<typeof setup>>, id: string) =>
+    prisma.journalEntry.findFirst({
+      where: { organizationId: t.org.id, sourceId: `supplier-invoice-cancel:${id}` },
+    })
+  const radlista = (v: { VoucherRows?: unknown }) =>
+    (v.VoucherRows as Array<{ Account: number; Debit: number; Credit: number }>)
+      .map((r) => [r.Account, Math.round(r.Debit * 100), Math.round(r.Credit * 100)])
+      .sort((a, b) => a[0]! - b[0]!)
+  const saldoPerKonto = (t: { ledger: MockFortnoxLedgerReader }) => {
+    const ut: Record<number, number> = {}
+    for (const v of t.ledger.vouchers)
+      for (const [k, d, c] of radlista(v)) ut[k!] = (ut[k!] ?? 0) + d! - c!
+    return ut
+  }
+
+  it('P2-027 L3.1/L3.5: makulering efter CONFIRMED (produktens cancel) → exakt en omvänd post med originalets konton; text «–»; 5170 och 2440 netto 0 över två egna poster', async () => {
+    const t = await setup()
+    const { f, je } = await levFaktura(t)
+    const o = await t.exports.dryRun(t.org.id, je.id)
+    await t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)
+    await makulera(t, f.id)
+    const mak = (await makJe(t, f.id))!
+    expect(mak.description).toBe('Makulerad leverantörsfaktura: Bygg & Co AB — Reparation')
+    const r = await t.exports.dryRun(t.org.id, mak.id)
+    expect([r.state, r.blockReason]).toEqual(['DRY_RUN_READY', null])
+    expect((await t.sender.send(t.org.id, 'u1', r.id, r.draftHash!)).state).toBe('CONFIRMED')
+    expect(t.ledger.vouchers).toHaveLength(2)
+    const v = t.ledger.vouchers[1]!
+    expect(radlista(v)).toEqual([
+      [2440, 12500, 0],
+      [5170, 0, 12500],
+    ])
+    expect(v.Description).toBe('Makulerad leverantörsfaktura: Bygg & Co AB – Reparation')
+    expect(String(v.Comments)).toContain(`Eveno JournalEntry ${mak.id}`)
+    expect(saldoPerKonto(t)).toEqual({ 2440: 0, 5170: 0 })
+    // L3.4: upprepad makulering → ingen ny post, inget nytt verifikat.
+    await expect(makulera(t, f.id)).rejects.toThrow()
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: t.org.id, sourceId: `supplier-invoice-cancel:${f.id}` },
+      }),
+    ).toBe(1)
+  })
+
+  it('P2-027 L3.2 / V-8(4): original CONFIRMED, mappningen ändras (ny revision 5170→5460), sedan makulering → omvänd post på 5170 med originalets revision i proveniensen', async () => {
+    const t = await setup()
+    const { f, je } = await levFaktura(t)
+    const o = await t.exports.dryRun(t.org.id, je.id)
+    await t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)
+    t.ledger.accounts.push({
+      Number: 5460,
+      Active: true,
+      Description: 'Förbrukningsmaterial',
+      VATCode: null,
+    })
+    await godkannMappning(prisma, t.connections, t.reader, t.org.id, [
+      {
+        role: 'KOSTNAD',
+        vatTreatment: 'EJ_TILLAMPLIG',
+        sourceAccountNumber: 5170,
+        targetAccountNumber: 5460,
+      },
+      {
+        role: 'LEVERANTORSSKULD',
+        vatTreatment: 'EJ_TILLAMPLIG',
+        sourceAccountNumber: 2440,
+        targetAccountNumber: 2440,
+      },
+    ])
+    await makulera(t, f.id)
+    const mak = (await makJe(t, f.id))!
+    const r = await t.exports.dryRun(t.org.id, mak.id)
+    expect([r.state, r.blockReason]).toEqual(['DRY_RUN_READY', null])
+    await t.sender.send(t.org.id, 'u1', r.id, r.draftHash!)
+    expect(radlista(t.ledger.vouchers.at(-1)!)).toEqual([
+      [2440, 12500, 0],
+      [5170, 0, 12500],
+    ])
+    const d = (await t.dbRow(r.id)).draft as { kontomappning: Record<string, unknown> }
+    const origRad = await t.dbRow(o.id)
+    expect(d.kontomappning).toEqual(
+      expect.objectContaining({
+        revision: (origRad.draft as { kontomappning: { revision: number } }).kontomappning.revision,
+        kalla: 'ORIGINALETS_EXPORT',
+        originalExportId: o.id,
+        originalJournalEntryId: je.id,
+        originalFortnoxNyckel: `${origRad.externalYear}|${origRad.externalSeries}|${origRad.externalNumber}`,
+      }),
+    )
+    // En NY leverantörsfaktura går på dagens mappning (5460) — rättelsen är inte omkonterad.
+    const ny = await levFaktura(t, 50)
+    const n = await t.exports.dryRun(t.org.id, ny.je.id)
+    await t.sender.send(t.org.id, 'u1', n.id, n.draftHash!)
+    expect(radlista(t.ledger.vouchers.at(-1)!)).toEqual([
+      [2440, 0, 5000],
+      [5460, 5000, 0],
+    ])
+  })
+
+  it('P2-027 L3.3 / V-7(b,c) / V-8(1): makulering FÖRE send → originalets READY blir BLOCKED i makuleringens transaktion; gammalt hash 409, 0 POST; makuleringen och originalet stoppas', async () => {
+    const t = await setup()
+    const { f, je } = await levFaktura(t)
+    const o = await t.exports.dryRun(t.org.id, je.id)
+    expect(o.state).toBe('DRY_RUN_READY')
+    await makulera(t, f.id)
+    const rad = await t.dbRow(o.id)
+    expect([rad.state, rad.draftHash, (rad.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      null,
+      'REVERSED_BEFORE_EXPORT',
+    ])
+    await expect(t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)).rejects.toThrow()
+    expect((await t.exports.dryRun(t.org.id, je.id)).blockReason).toMatch(/^REVERSED_BEFORE_EXPORT/)
+    const mak = (await makJe(t, f.id))!
+    expect((await t.exports.dryRun(t.org.id, mak.id)).blockReason).toMatch(
+      /^ORIGIN_NOT_CONFIRMED: Leverantörsfakturan är inte exporterad/,
+    )
+    expect(posts(t)).toBe(0)
+  })
+
+  it.each(['makulering', 'rättelse'] as const)(
+    'P2-027 V-8(2) %s injicerad MELLAN send():s färska build och anspråket → anspråket misslyckas, raden BLOCKED, 0 POST',
+    async (vag) => {
+      const t = await setup()
+      const { f, je } = await levFaktura(t)
+      const o = await t.exports.dryRun(t.org.id, je.id)
+      t.setAfterBuild(async () => {
+        t.setAfterBuild(null)
+        if (vag === 'makulering') await makulera(t, f.id)
+        else
+          await tjanster().acc.reverseJournalEntry({
+            entryId: je.id,
+            organizationId: t.org.id,
+            actorRole: 'OWNER',
+            actorUserId: await uid(t.org.id),
+            reason: 'Fel leverantör angavs',
+          })
+      })
+      await expect(t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)).rejects.toThrow()
+      expect((await t.dbRow(o.id)).state).toBe('BLOCKED')
+      expect(posts(t)).toBe(0)
+    },
+  )
+
+  it.each([
+    ['makulering', 'ok'],
+    ['rättelse', 'ok'],
+    ['makulering', 'okänt'],
+    ['rättelse', 'okänt'],
+  ] as const)(
+    'P2-027 V-8(3) %s medan originalet är SENDING (%s utfall) → originalet går ut EN gång; rättelsen väntar och blir READY med exakt 1 POST bara efter CONFIRMED',
+    async (vag, utfall) => {
+      const t = await setup()
+      const { f, je } = await levFaktura(t)
+      const o = await t.exports.dryRun(t.org.id, je.id)
+      if (utfall === 'okänt') t.api.faults.push('drop_response_after_write')
+      t.api.beforeWrite = async () => {
+        t.api.beforeWrite = null
+        expect((await t.dbRow(o.id)).state).toBe('SENDING')
+        if (vag === 'makulering') await makulera(t, f.id)
+        else
+          await tjanster().acc.reverseJournalEntry({
+            entryId: je.id,
+            organizationId: t.org.id,
+            actorRole: 'OWNER',
+            actorUserId: await uid(t.org.id),
+            reason: 'Fel leverantör angavs',
+          })
+      }
+      const res = await t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)
+      expect(posts(t)).toBe(1)
+      const rattelse =
+        vag === 'makulering'
+          ? (await makJe(t, f.id))!
+          : await prisma.journalEntry.findFirstOrThrow({
+              where: { organizationId: t.org.id, reversalOfEntryId: je.id },
+            })
+      const r = await t.exports.dryRun(t.org.id, rattelse.id)
+      if (utfall === 'okänt') {
+        expect(res.state).toBe('UNKNOWN')
+        expect(r.state).toBe('BLOCKED')
+        expect(r.blockReason).toMatch(/okänt\/pågår/)
+        expect(r.blockReason).not.toMatch(/inte exporterad/)
+        expect(posts(t)).toBe(1)
+      } else {
+        expect(res.state).toBe('CONFIRMED')
+        expect([r.state, r.blockReason]).toEqual(['DRY_RUN_READY', null])
+        await t.sender.send(t.org.id, 'u1', r.id, r.draftHash!)
+        expect(posts(t)).toBe(2)
+        expect(saldoPerKonto(t)).toEqual({ 2440: 0, 5170: 0 })
+      }
+    },
+  )
+
+  // V-9: äkta överlappande transaktioner. Ett yttre radlås på fakturan hålls medan BÅDA anropen passerat
+  // sin olåsta förkontroll och köat på radlåset (mätt i pg_stat_activity, ingen sleep). Släpps låset vinner
+  // den som köade först; den andra får count 0 → 409 och ingen bokning.
+  const vantaPaLasKo = async (antal: number) => {
+    for (let i = 0; i < 2000; i++) {
+      const r = await prisma.$queryRaw<
+        Array<{ n: bigint }>
+      >`SELECT count(*)::bigint AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`
+      if (Number(r[0]!.n) >= antal) return
+      await new Promise((res) => setImmediate(res))
+    }
+    throw new Error(`väntade på ${antal} låsväntare`)
+  }
+  it.each(['makulering först', 'betalning först'] as const)(
+    'P2-027 V-9 överlappande makulering och betalning (%s köar först) → exakt ett utfall; den andra 409 utan bokning; fakturan och huvudboken konsekventa',
+    async (ordning) => {
+      const t = await setup()
+      const { f } = await levFaktura(t)
+      const { lev } = tjanster()
+      let slapp!: () => void
+      const spärr = new Promise<void>((r) => (slapp = r))
+      const yttre = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "SupplierInvoice" WHERE id = ${f.id} FOR UPDATE`
+          await spärr
+        },
+        { timeout: 60000 },
+      )
+      const forstaVag = ordning === 'makulering först' ? 'makulering' : 'betalning'
+      const u = await uid(t.org.id)
+      const anrop = (vag: string) =>
+        vag === 'makulering'
+          ? lev.cancel({ organizationId: t.org.id, invoiceId: f.id, createdById: u })
+          : lev.markPaid({
+              organizationId: t.org.id,
+              invoiceId: f.id,
+              paidDate: new Date('2026-10-05'),
+              createdById: u,
+            })
+      const forsta = anrop(forstaVag).then(
+        (v) => ({ ok: true as const, v }),
+        (e) => ({ ok: false as const, e }),
+      )
+      await vantaPaLasKo(1)
+      const andra = anrop(forstaVag === 'makulering' ? 'betalning' : 'makulering').then(
+        (v) => ({ ok: true as const, v }),
+        (e) => ({ ok: false as const, e }),
+      )
+      await vantaPaLasKo(2)
+      slapp()
+      await yttre
+      const [a, b] = await Promise.all([forsta, andra])
+      expect([a.ok, b.ok, a.ok ? null : String((a as { e: Error }).e.message)]).toEqual([
+        true,
+        false,
+        null,
+      ])
+      expect(b.ok === false && b.e.constructor.name).toBe('ConflictException')
+      const fakt = await prisma.supplierInvoice.findUniqueOrThrow({ where: { id: f.id } })
+      const betJe = await prisma.journalEntry.count({
+        where: { organizationId: t.org.id, sourceId: `supplier-invoice-payment:${f.id}` },
+      })
+      const makCount = await prisma.journalEntry.count({
+        where: { organizationId: t.org.id, sourceId: `supplier-invoice-cancel:${f.id}` },
+      })
+      if (forstaVag === 'makulering')
+        expect([!!fakt.cancelledAt, fakt.paidAt, makCount, betJe]).toEqual([true, null, 1, 0])
+      else expect([fakt.cancelledAt, !!fakt.paidAt, makCount, betJe]).toEqual([null, true, 0, 1])
+    },
+  )
 })

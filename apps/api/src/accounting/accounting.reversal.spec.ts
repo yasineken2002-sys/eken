@@ -53,6 +53,8 @@ function makeService(opts: { existing?: unknown } = {}) {
       }),
     },
     account: { findMany: jest.fn().mockResolvedValue([]) },
+    // TESTKUND-027: createReversalEntry spärrar originalets READY-export i samma transaktion.
+    fortnoxVoucherExport: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
   }
   ;(prisma as unknown as { $transaction: unknown }).$transaction = (cb: (tx: unknown) => unknown) =>
     cb(prisma)

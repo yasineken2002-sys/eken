@@ -106,7 +106,12 @@ function makeService(opts: { rantepunkter?: Array<[string, number]> } = {}) {
     },
   )
 
-  const prisma = { journalEntry: { findFirst, findMany } }
+  const prisma: Record<string, unknown> = {
+    journalEntry: { findFirst, findMany },
+    // TESTKUND-027: createReversalEntry spärrar originalets READY-export i samma transaktion.
+    fortnoxVoucherExport: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+  }
+  prisma.$transaction = (cb: (tx: unknown) => unknown) => cb(prisma)
   const service = new AccountingService(prisma as never, {} as never)
 
   // Fångar varje skriven reversering utan att gå till DB.
