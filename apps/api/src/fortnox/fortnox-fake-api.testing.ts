@@ -95,6 +95,28 @@ export class FakeFortnoxApi {
         },
         400,
       )
+    // TESTKUND-016: Fortnox «Formats & Encoding», avsnitt Valid characters (hämtad 2026-10-09, kvitto
+    // CLAUDE1/bevis/016-prov/kalla, regex sha b18d69cb…). Text utanför listan avvisas med det verkliga
+    // formatet (H3H4-REAL-002 svar-0112: 400 / 2000359). Listan återges ordagrant; i u-läge skalas bara
+    // de ogiltiga escapes \! \@ \’ av (samma tecken). U+2014 ingår inte; kolon, &, é, U+2013 ingår.
+    const giltig =
+      /^[\p{L}’\\\u{0308}\u{030a}a-zåäöéáœæøüA-ZÅÄÖÉÁÜŒÆØ0-9 –:.`´’,;^¤#%§£$€¢¥©™°&/()=+\-*_!?²³®½@\u{00a0}\n\r]*$/u
+    const ogiltig = (text: unknown) => typeof text === 'string' && !giltig.test(text)
+    const avvisa = (varde: string) =>
+      json(
+        {
+          ErrorInformation: {
+            error: 1,
+            message: `Värdet innehåller ej tillåtna tecken. (${varde})`,
+            code: 2000359,
+          },
+        },
+        400,
+      )
+    if (ogiltig(v.Description)) return avvisa(String(v.Description))
+    for (const r of (v.VoucherRows as Array<Record<string, unknown>> | undefined) ?? [])
+      if (ogiltig(r.TransactionInformation)) return avvisa(String(r.TransactionInformation))
+    if (ogiltig(v.Comments)) return avvisa(String(v.Comments))
     const series = String(v.VoucherSeries)
     const number =
       Math.max(

@@ -26,6 +26,8 @@ import { RealFortnoxLedgerReader } from './fortnox-real-provider'
 import { FortnoxTransport } from './provider/fortnox-transport'
 import { FakeFortnoxApi, noopRateLimiter } from './fortnox-fake-api.testing'
 import { formatFortnoxShadowForAi } from './fortnox-ai-context'
+import { AccountingService } from '../accounting/accounting.service'
+import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -373,5 +375,77 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     }
     const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
     expect(res.state).toBe('RECEIPT_MISMATCH')
+  })
+
+  // ── TESTKUND-016: verkligt H4-stopp (H3H4-REAL-002 svar-0112, 400/2000359) ─────────────────────
+  // Röda reproduktioner före rättning: produktens egen leverantörsfakturamall skickas oförändrad som
+  // Voucher.Description och avvisas; en avvisad export har ingen behörig väg ut.
+  const leverantorsfakturaViaProdukten = async (t: Awaited<ReturnType<typeof setup>>) => {
+    const accounting = new AccountingService(
+      prisma as unknown as PrismaService,
+      new VerifikationsnummerService(prisma as unknown as PrismaService),
+    )
+    const f = await prisma.supplierInvoice.create({
+      data: {
+        organizationId: t.org.id,
+        supplierName: 'EVENO TEST leverantör',
+        description: 'EVENO TEST kostnad',
+        invoiceDate: new Date('2026-10-02'),
+        dueDate: new Date('2026-10-02'),
+        expenseAccount: 5170,
+        netAmount: '125',
+        vatRate: 0,
+        vatAmount: '0',
+        totalAmount: '125',
+      },
+    })
+    await accounting.bookSupplierInvoiceReceipt({
+      organizationId: t.org.id,
+      invoiceId: f.id,
+      date: new Date('2026-10-02'),
+      supplierName: f.supplierName,
+      description: f.description,
+      expenseAccount: 5170,
+      totalAmount: 125,
+      vatAmount: 0,
+    })
+    return prisma.journalEntry.findFirstOrThrow({
+      where: { organizationId: t.org.id, sourceId: `supplier-invoice:${f.id}` },
+    })
+  }
+
+  it('H4-016 R1: produktens leverantörsfakturamall exporteras med deterministisk exporttext; den råa texten bevaras', async () => {
+    const t = await setup()
+    const je = await leverantorsfakturaViaProdukten(t)
+    expect(je.description).toBe('Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad')
+    const row = (await t.exports.dryRun(t.org.id, je.id)) as {
+      id: string
+      state: string
+      draftHash: string
+      blockReason: string | null
+    }
+    expect([row.state, row.blockReason]).toEqual(['DRY_RUN_READY', null])
+    const res = await t.sender.send(t.org.id, 'u1', row.id, row.draftHash)
+    expect(res.state).toBe('CONFIRMED')
+    expect(t.ledger.vouchers.at(-1)?.Description).toBe(
+      'Leverantörsfaktura: EVENO TEST leverantör – EVENO TEST kostnad',
+    )
+    const efter = await prisma.journalEntry.findUniqueOrThrow({ where: { id: je.id } })
+    expect(efter.description).toBe('Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad')
+  })
+
+  it('H4-016 R2: en avvisad (REJECTED 400/2000359) export kan släppas via behörig väg och skickas om med ny förhandskontroll', async () => {
+    const t = await setup()
+    const ready = await t.ready(
+      '125.00',
+      'Leverantörsfaktura: EVENO TEST leverantör — EVENO TEST kostnad',
+    )
+    const s1 = await t.sender
+      .send(t.org.id, 'u1', ready.row.id, ready.row.draftHash)
+      .catch((e) => e)
+    void s1
+    expect((await t.dbRow(ready.row.id)).state).toBe('REJECTED')
+    const release = (t.sender as unknown as { releaseRejected?: unknown }).releaseRejected
+    expect(typeof release).toBe('function')
   })
 })
