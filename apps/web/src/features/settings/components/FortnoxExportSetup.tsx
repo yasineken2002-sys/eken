@@ -5,7 +5,7 @@ import { Select } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { fetchAllJournalEntries } from '../../accounting/api/accounting.api'
-import { FortnoxExportRowView } from './FortnoxExportRow'
+import { FortnoxExportRowView, FortnoxExportTextView } from './FortnoxExportRow'
 import {
   getFortnoxExportState,
   getFortnoxSeriesCatalog,
@@ -316,6 +316,7 @@ function FortnoxExportSetupScoped() {
             {result.blockReason && (
               <p className="text-ink-muted break-words">Skäl: {result.blockReason}</p>
             )}
+            <FortnoxExportTextView items={result.exportText} />
           </div>
         )}
       </div>

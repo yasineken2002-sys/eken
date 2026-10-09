@@ -20,6 +20,35 @@ import {
 const RECONCILABLE = new Set<FortnoxExportRow['state']>(['UNKNOWN', 'REJECTED', 'RECEIPT_MISMATCH'])
 
 /**
+ * TESTKUND-016 K1.6: när exporttexten skiljer sig från Evenos text visas båda. Evenos verifikat
+ * skrivs aldrig om; bara texten som skickas till Fortnox mappas.
+ */
+export function FortnoxExportTextView({ items }: { items: FortnoxExportRow['exportText'] }) {
+  return (
+    <>
+      {(items ?? []).map((t) => (
+        <div
+          key={`${t.falt}-${t.rad ?? 0}`}
+          className="border-line bg-surface min-w-0 space-y-1 rounded-md border p-2 text-sm"
+          data-export-text={t.falt}
+        >
+          <p className="text-ink break-words">
+            Exporteras som: <span className="font-medium">{t.exporttext}</span>
+          </p>
+          <p className="text-ink-muted break-words">
+            Originaltext{t.rad ? ` (rad ${t.rad})` : ''}: {t.originaltext}
+          </p>
+          <p className="text-ink-muted break-words text-xs">
+            Fortnox tar inte emot tankstreck (—); det skickas som kort tankstreck (–). Evenos
+            verifikat ändras inte.
+          </p>
+        </div>
+      ))}
+    </>
+  )
+}
+
+/**
  * En exportrad: ärlig status, nästa tillåtna handling och — endast där kontraktet
  * tillåter — skicka (READY + aktiverad sändning), kontrollera (kvitto) eller
  * avstämning med exakt identitet. Ingen handling gör UNKNOWN omsändbart; en BEVISAT avvisad
@@ -75,24 +104,7 @@ export function FortnoxExportRowView({
     >
       <p className="text-ink break-words font-medium">{EXPORT_STATE_TEXT[row.state]}</p>
       {row.blockReason && <p className="text-ink-muted break-words">Skäl: {row.blockReason}</p>}
-      {(row.exportText ?? []).map((t) => (
-        <div
-          key={`${t.falt}-${t.rad ?? 0}`}
-          className="border-line bg-surface min-w-0 space-y-1 rounded-md border p-2 text-sm"
-          data-export-text={t.falt}
-        >
-          <p className="text-ink break-words">
-            Exporteras som: <span className="font-medium">{t.exporttext}</span>
-          </p>
-          <p className="text-ink-muted break-words">
-            Originaltext{t.rad ? ` (rad ${t.rad})` : ''}: {t.originaltext}
-          </p>
-          <p className="text-ink-muted break-words text-xs">
-            Fortnox tar inte emot tankstreck (—); det skickas som kort tankstreck (–). Evenos
-            verifikat ändras inte.
-          </p>
-        </div>
-      ))}
+      <FortnoxExportTextView items={row.exportText} />
       {row.externalNumber != null && (
         <p className="text-ink-muted">
           Fortnox-verifikat {row.externalSeries}
