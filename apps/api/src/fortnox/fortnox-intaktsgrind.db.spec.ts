@@ -255,7 +255,7 @@ medDb('TESTKUND-006: intäktsgrind före Fortnox-export', () => {
         [intakt, null, netto],
       ]
       if (moms > 0) rader.push([2611, null, moms])
-      const je = await verifikat(rader, { source: 'RENT_NOTICE', sourceId: `rent-notice:${n.id}` })
+      const je = await verifikat(rader, { source: 'INVOICE', sourceId: `rent-notice:${n.id}` })
       return { je, unit, notice: n }
     }
     // TESTKUND-008: godkänd kontomappning för de belagda icke-intäktsflödena (verkliga 1868238-mål).

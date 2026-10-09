@@ -317,7 +317,7 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
           [1510, netto, null],
           [3911, null, netto],
         ],
-        { source: 'RENT_NOTICE', sourceId: `rent-notice:${notice.id}` },
+        { source: 'INVOICE', sourceId: `rent-notice:${notice.id}` },
       )
       return { je, notice, unit, lease, ten }
     }
@@ -659,6 +659,21 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     expect((await t.dry(je.id)).blockReason).toMatch(
       /^ACCOUNT_UNVERIFIED.*3911.*obevisad: raden motsvarar inte avins nettobelopp/,
     )
+  })
+
+  it('H1 följer produktens källa (INVOICE + rent-notice:<id>, mätt i riggkörning 46); samma sourceId under annan källa är inte belagd', async () => {
+    const t = await setup()
+    await t.mappa()
+    const { je, notice } = await t.avi(6000)
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+    const kopia = await t.verifikat(
+      [
+        [1510, 6000, null],
+        [3911, null, 6000],
+      ],
+      { source: 'MANUAL', sourceId: `rent-notice:${notice.id}` },
+    )
+    expect((await t.dry(kopia.id)).state).toBe('BLOCKED')
   })
 
   it('K2.1/(i): nyckeln är (roll, källkonto, behandling) — en kostnadsrad på 2641 får inte ingående moms-radens mappning', async () => {

@@ -3,7 +3,7 @@
  * verifikatets källa i organisationsgränsen (KONTRAKT-008 §2, KONTRAKTSBESKED-008 V1/V3).
  *
  * Stödda händelser i v1 (allt annat är EVENT_UNSUPPORTED med namn):
- *   H1 hyra bostad        rent-notice:<avi>                1510 D KUNDFORDRAN / 39xx K HYRESINTAKT MOMSFRI
+ *   H1 hyra bostad        INVOICE rent-notice:<avi>             1510 D KUNDFORDRAN / 39xx K HYRESINTAKT MOMSFRI
  *   H2 hyresbetalning     rent-notice-(bank-)payment:<al>  19xx D LIKVID / 1510 K KUNDFORDRAN
  *   H3 deposition         deposit-invoice:<dep>            1510 D KUNDFORDRAN / 2890 K DEPOSITIONSSKULD
  *                         deposit-manual-payment:<dep>     19xx D LIKVID / 1510 K KUNDFORDRAN
@@ -161,7 +161,9 @@ export async function klassaVerifikat(
   let m: RegExpExecArray | null
 
   // ── H1 hyra bostad ──
-  if ((m = /^rent-notice:(.+)$/.exec(sid)) && entry.source === 'RENT_NOTICE') {
+  // Produkten bokför hyresavin med source INVOICE och sourceId rent-notice:<id>
+  // (AccountingService.createJournalEntryForRentNotice) — mätt i riggkörning 46.
+  if ((m = /^rent-notice:(.+)$/.exec(sid)) && entry.source === 'INVOICE') {
     const avi = await db.rentNotice.findFirst({
       where: { id: m[1]!, organizationId },
       select: {

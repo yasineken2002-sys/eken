@@ -248,7 +248,7 @@ medDb('TESTKUND-008 felreproduktion (ska vara RÖD på 74ef2568)', () => {
         [intakt, null, netto],
       ]
       if (moms > 0) rader.push([2611, null, moms])
-      const je = await verifikat(rader, { source: 'RENT_NOTICE', sourceId: `rent-notice:${n.id}` })
+      const je = await verifikat(rader, { source: 'INVOICE', sourceId: `rent-notice:${n.id}` })
       return { je, unit, notice: n }
     }
     return { org, reader, builder, exports, sender, writer, verifikat, avi }
