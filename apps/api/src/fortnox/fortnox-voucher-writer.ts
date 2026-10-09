@@ -1,7 +1,10 @@
 import type { FortnoxLedgerReader, FortnoxVoucher } from './fortnox.types'
 import type { MockFortnoxLedgerReader } from './fortnox-providers'
 import type { FortnoxTransport } from './provider/fortnox-transport'
-import { FortnoxTransportError } from './provider/fortnox-transport.types'
+import {
+  FortnoxTransportError,
+  type FortnoxRejectionDetail,
+} from './provider/fortnox-transport.types'
 import type { FortnoxCustomerBinding } from './fortnox-customer-activation'
 
 /**
@@ -78,6 +81,8 @@ export class FortnoxWriteError extends Error {
   constructor(
     readonly outcome: 'not_sent' | 'rejected' | 'unknown',
     readonly status?: number,
+    /** TESTKUND-016 K3.1: Fortnox kod/meddelande vid rejected (null om okänt). */
+    readonly rejection: FortnoxRejectionDetail | null = null,
   ) {
     super(`Fortnox write: ${outcome}`)
     this.name = 'FortnoxWriteError'
@@ -216,6 +221,7 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
               ? 'rejected'
               : 'unknown',
           err.status,
+          err.outcome === 'rejected' ? err.rejection : null,
         )
       }
       throw new FortnoxWriteError('unknown')

@@ -16,6 +16,12 @@ export type FakeFortnoxFault =
   | 'network_error_before_write'
   | 'wrong_year_after_write'
   | 'no_number_after_write'
+  /**
+   * OBSERVERAT [O], ingen specifikation: exakt H3H4-REAL-002 svar-0112 (sha bdf57baa…), 400 med
+   * ErrorInformation { error: 1, message: «Värdet innehåller ej tillåtna tecken. (<Description>)»,
+   * code: 2000359 }, oavsett innehåll. Inget skapas.
+   */
+  | 'observerad_2000359_h3h4_real_002'
 
 export const noopRateLimiter: FortnoxRateLimiter = {
   acquire: async () => undefined,
@@ -36,6 +42,9 @@ export class FakeFortnoxApi {
   companyCalls = 0
   /** Körs precis innan en POST skapar posten (barriär för prov). */
   beforeWrite: (() => Promise<void>) | null = null
+  /** Prov: ändra svaret på GET /3/vouchers/sublist (t.ex. ofullständig sidinformation). */
+  listTamper: ((body: Record<string, unknown>, query: Record<string, string>) => unknown) | null =
+    null
   /** Körs när en POST når ytan, före utfall (prov: kontrollera anspråket i DB). */
   onPost: ((body: unknown) => Promise<void>) | null = null
 
@@ -65,7 +74,10 @@ export class FakeFortnoxApi {
     try {
       const q: Record<string, string | number> = {}
       for (const [k, v] of Object.entries(query)) q[k] = /^\d+$/.test(v) ? Number(v) : v
-      return json(await this.ledger.get(token, url.pathname, q))
+      const body = await this.ledger.get<Record<string, unknown>>(token, url.pathname, q)
+      if (this.listTamper && url.pathname === '/3/vouchers/sublist')
+        return json(this.listTamper(body, query))
+      return json(body)
     } catch (err) {
       if (err instanceof FortnoxReadError)
         return json({ ErrorInformation: { message: 'x' } }, err.status ?? 404)
@@ -81,6 +93,19 @@ export class FakeFortnoxApi {
     if (fault === 'network_error_before_write') throw new TypeError('fetch failed')
     if (fault === 'status_400') return json({ ErrorInformation: { message: 'x' } }, 400)
     if (fault === 'status_429') return json({ ErrorInformation: { message: 'x' } }, 429)
+    if (fault === 'observerad_2000359_h3h4_real_002') {
+      const d = (JSON.parse(String(init?.body)) as { Voucher?: { Description?: unknown } }).Voucher
+      return json(
+        {
+          ErrorInformation: {
+            error: 1,
+            message: `Värdet innehåller ej tillåtna tecken. (${String(d?.Description)})`,
+            code: 2000359,
+          },
+        },
+        400,
+      )
+    }
     if (this.beforeWrite) await this.beforeWrite()
     const year = Number(query.financialyear)
     const v = (JSON.parse(String(init?.body)) as { Voucher: Record<string, unknown> }).Voucher
@@ -95,6 +120,28 @@ export class FakeFortnoxApi {
         },
         400,
       )
+    // [K] KÄLLA, inte observation — TESTKUND-016: Fortnox «Formats & Encoding», avsnitt Valid characters (hämtad 2026-10-09, kvitto
+    // CLAUDE1/bevis/016-prov/kalla, regex sha b18d69cb…). Text utanför listan avvisas med det verkliga
+    // formatet (H3H4-REAL-002 svar-0112: 400 / 2000359). Listan återges ordagrant; i u-läge skalas bara
+    // de ogiltiga escapes \! \@ \’ av (samma tecken). U+2014 ingår inte; kolon, &, é, U+2013 ingår.
+    const giltig =
+      /^[\p{L}’\\\u{0308}\u{030a}a-zåäöéáœæøüA-ZÅÄÖÉÁÜŒÆØ0-9 –:.`´’,;^¤#%§£$€¢¥©™°&/()=+\-*_!?²³®½@\u{00a0}\n\r]*$/u
+    const ogiltig = (text: unknown) => typeof text === 'string' && !giltig.test(text)
+    const avvisa = (varde: string) =>
+      json(
+        {
+          ErrorInformation: {
+            error: 1,
+            message: `Värdet innehåller ej tillåtna tecken. (${varde})`,
+            code: 2000359,
+          },
+        },
+        400,
+      )
+    if (ogiltig(v.Description)) return avvisa(String(v.Description))
+    for (const r of (v.VoucherRows as Array<Record<string, unknown>> | undefined) ?? [])
+      if (ogiltig(r.TransactionInformation)) return avvisa(String(r.TransactionInformation))
+    if (ogiltig(v.Comments)) return avvisa(String(v.Comments))
     const series = String(v.VoucherSeries)
     const number =
       Math.max(
@@ -112,6 +159,8 @@ export class FakeFortnoxApi {
       VoucherNumber: number,
       TransactionDate: v.TransactionDate,
       Description: v.Description,
+      // Verkliga svar (H3H4-REAL-002 A9–A11, sublist i E2-B-REAL-001) bär Comments.
+      Comments: typeof v.Comments === 'string' ? v.Comments : null,
       VoucherRows: (v.VoucherRows as Array<Record<string, unknown>>).map((r) => {
         const { Description: _ignorerad, ...rest } = structuredClone(r)
         void _ignorerad

@@ -2,11 +2,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), verify: vi.fn(), reconcile: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  send: vi.fn(),
+  verify: vi.fn(),
+  reconcile: vi.fn(),
+  release: vi.fn(),
+}))
 vi.mock('../api/fortnox-export.api', () => ({
   sendFortnoxExport: mocks.send,
   verifyFortnoxExport: mocks.verify,
   reconcileFortnoxExport: mocks.reconcile,
+  releaseRejectedFortnoxExport: mocks.release,
 }))
 vi.mock('@/lib/api', () => ({
   extractApiError: () => 'Posten i Fortnox stämmer inte med det skickade underlaget',
@@ -103,5 +109,82 @@ describe('FortnoxExportRowView', () => {
   it('CONFIRMED: inga åtgärder', () => {
     show(row('CONFIRMED', { externalYear: 1, externalSeries: 'A', externalNumber: 1 }), true)
     expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  // ── TESTKUND-016 ──────────────────────────────────────────────────────────────────────────
+  it('visar «Exporteras som» och originaltexten när exporttexten skiljer sig', () => {
+    show(
+      row('DRY_RUN_READY', {
+        exportText: [
+          {
+            falt: 'Description',
+            rad: null,
+            originaltext: 'Leverantörsfaktura: ACME — reparation',
+            exporttext: 'Leverantörsfaktura: ACME – reparation',
+          },
+        ],
+      }),
+      false,
+    )
+    expect(screen.getByText('Leverantörsfaktura: ACME – reparation')).toBeTruthy()
+    expect(screen.getByText(/Originaltext: Leverantörsfaktura: ACME — reparation/)).toBeTruthy()
+  })
+
+  it('stoppskälet TEXT_NOT_EXPORTABLE visas i klartext', () => {
+    show(
+      row('BLOCKED', {
+        draftHash: null,
+        blockReason:
+          'TEXT_NOT_EXPORTABLE: Texten i Description innehåller tecken som Fortnox inte tar emot: «"» (U+0022). Ändra texten i Eveno före export.',
+      }),
+      false,
+    )
+    expect(screen.getByText(/U\+0022/)).toBeTruthy()
+  })
+
+  it('REJECTED_400_2000359: frisläppning kräver skäl och skickar exakt skälet', async () => {
+    mocks.release.mockResolvedValue(row('BLOCKED'))
+    const changed = show(row('REJECTED', { lastOutcome: 'REJECTED_400_2000359' }), false)
+    expect(screen.getByText(/HTTP 400, kod 2000359/)).toBeTruthy()
+    const btn = screen.getByRole('button', {
+      name: 'Frisläpp för ny förhandskontroll',
+    }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText('Skäl'), { target: { value: 'Texten är rättad' } })
+    fireEvent.click(btn)
+    await waitFor(() =>
+      expect(mocks.release).toHaveBeenCalledWith('x1', { reason: 'Texten är rättad' }),
+    )
+    await waitFor(() => expect(changed).toHaveBeenCalled())
+  })
+
+  it.each([
+    ['REJECTED_429_NA', 'RATE_LIMIT'],
+    ['REJECTED_400_NA', 'NOT_PROVEN'],
+    ['REJECTED_400_1000003', 'NOT_PROVEN'],
+    ['REJECTED_400_9999999', 'NOT_PROVEN'],
+    ['REJECTED_403_2000359', 'NOT_PROVEN'],
+    ['REJECTED_401_2000359', 'NOT_PROVEN'],
+    ['REJECTED_404_2000359', 'NOT_PROVEN'],
+    ['REJECTED', 'LEGACY'],
+  ])('%s: ingen frisläppningsknapp, bara förklaring (%s)', (lastOutcome, kind) => {
+    show(row('REJECTED', { lastOutcome }), false)
+    expect(screen.queryByRole('button', { name: /Frisläpp/ })).toBeNull()
+    expect(document.querySelector(`[data-rejection-kind="${kind}"]`)).not.toBeNull()
+  })
+
+  it('UNKNOWN: aldrig frisläppning', () => {
+    show(row('UNKNOWN', { lastOutcome: 'OUTCOME_UNKNOWN' }), false)
+    expect(screen.queryByRole('button', { name: /Frisläpp/ })).toBeNull()
+  })
+
+  it('TESTKUND-020 K-KP-2: en icke belagd avvisning beskrivs sant, inte som innehållsfel', () => {
+    show(row('REJECTED', { lastOutcome: 'REJECTED_403_2000359' }), false)
+    expect(
+      screen.getByText(
+        /Avvisningen är inte en belagd innehållsavvisning \(http 403, kod 2000359\)/,
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Fortnox avvisade innehållet/)).toBeNull()
   })
 })

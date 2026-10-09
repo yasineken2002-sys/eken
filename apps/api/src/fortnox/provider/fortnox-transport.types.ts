@@ -58,6 +58,12 @@ export type FortnoxFailureCode =
 export type FortnoxOutcome = 'not_sent' | 'read_failed' | 'rejected' | 'unknown'
 
 /** Contains no token, URL, response body, upstream message or original error cause. */
+/** Avvisningens kod och meddelande ur Fortnox svarskropp (högst 4 KB läst). */
+export interface FortnoxRejectionDetail {
+  code: number | null
+  message: string | null
+}
+
 export class FortnoxTransportError extends Error {
   readonly reconciliationRequired: boolean
 
@@ -67,6 +73,8 @@ export class FortnoxTransportError extends Error {
     readonly attempts: number,
     readonly status?: number,
     readonly retryAfterMs?: number,
+    /** TESTKUND-016 K3.1: Fortnox ErrorInformation vid avvisad skrivning (rejected), annars null. */
+    readonly rejection: FortnoxRejectionDetail | null = null,
   ) {
     super(`Fortnox transport: ${code}`)
     this.name = 'FortnoxTransportError'

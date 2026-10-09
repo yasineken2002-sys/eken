@@ -74,6 +74,42 @@ export const fortnoxReconcileInputSchema = z.object({
 export type FortnoxReconcileInput = z.infer<typeof fortnoxReconcileInputSchema>
 
 /**
+ * TESTKUND-016/020 (KODPAR-BESKED-H4-020 K-KP-1): FRYST lista över (HTTP-status, Fortnox-kod) som är
+ * BELAGD innehållsavvisning. Bara sådana avvisningar kan frisläppas till en ny förhandskontroll.
+ *   (400, 2000359) «Värdet innehåller ej tillåtna tecken» — källa: Fortnox Errors
+ *   (https://www.fortnox.se/developer/guides-and-good-to-know/errors); observerat: H3H4-REAL-002
+ *   RAW/svar-0112-POST-vouchers.json (sha256 bdf57baa…), HTTP 400 + 2000359.
+ * Källan anger ingen status per kod och ingen kategori; en numerisk kod eller en godtycklig 4xx
+ * bevisar alltså inte ett innehållsfel. Fler par kräver primärkälla OCH observation (K-KP-3).
+ */
+export const FORTNOX_BELAGDA_INNEHALLSAVVISNINGAR: ReadonlyArray<readonly [number, number]> =
+  Object.freeze([Object.freeze([400, 2000359] as const)])
+
+export function arBelagdInnehallsavvisning(http: unknown, code: unknown): boolean {
+  return FORTNOX_BELAGDA_INNEHALLSAVVISNINGAR.some(([h, c]) => h === http && c === code)
+}
+
+/**
+ * TESTKUND-016 K3.4: externt avvisningskvitto för en ÄLDRE avvisad export som saknar lagrad
+ * Fortnox-kod. Anges uttryckligen av OWNER; produkten sparar det som «angivet i efterhand».
+ */
+export const fortnoxRejectionEvidenceSchema = z.object({
+  http: z.number().int().min(400).max(499),
+  code: z.number().int().positive().safe(),
+  rakvittoSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  manifestSha256: z.string().regex(/^[0-9a-f]{64}$/),
+  sentPayloadHash: z.string().regex(/^[0-9a-f]{64}$/),
+})
+export type FortnoxRejectionEvidence = z.infer<typeof fortnoxRejectionEvidenceSchema>
+
+/** POST /integrations/fortnox/exports/:id/release-rejected — frisläpp en bevisat avvisad export. */
+export const fortnoxReleaseRejectedInputSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
+  avvisningsbevis: fortnoxRejectionEvidenceSchema.optional(),
+})
+export type FortnoxReleaseRejectedInput = z.infer<typeof fortnoxReleaseRejectedInputSchema>
+
+/**
  * TESTKUND-008: kontomappningens ROLLER och BEHANDLINGAR. Stängda listor — servern härleder
  * radens roll och behandling ur källan, och en mappningsrad gäller exakt (roll, källkonto,
  * behandling). Inga standardvärden; målkontot väljs uttryckligen av kunden.

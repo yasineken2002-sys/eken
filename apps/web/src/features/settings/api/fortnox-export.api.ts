@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { api, get, post } from '@/lib/api'
 import {
+  fortnoxReleaseRejectedInputSchema,
+  type FortnoxReleaseRejectedInput,
   fortnoxReconcileInputSchema,
   fortnoxSendInputSchema,
   type FortnoxReconcileInput,
@@ -59,6 +61,17 @@ export const exportRowSchema = z.object({
   externalYear: z.number().nullable().optional(),
   externalSeries: z.string().nullable().optional(),
   externalNumber: z.number().nullable().optional(),
+  // TESTKUND-016: fält där exporttexten skiljer sig från Eveno-texten (originalet skrivs aldrig om).
+  exportText: z
+    .array(
+      z.object({
+        falt: z.string(),
+        rad: z.number().nullable(),
+        originaltext: z.string(),
+        exporttext: z.string(),
+      }),
+    )
+    .optional(),
   updatedAt: z.string(),
 })
 export type FortnoxExportRow = z.infer<typeof exportRowSchema>
@@ -119,5 +132,19 @@ export async function reconcileFortnoxExport(
   const body: FortnoxReconcileInput = fortnoxReconcileInputSchema.parse(input)
   return exportRowSchema.parse(
     await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/reconcile`, body),
+  )
+}
+
+/**
+ * TESTKUND-016: frisläpp en BEVISAT avvisad export (Fortnox 4xx med kod, inte 429). Servern läser
+ * först Fortnox fullständigt och vägrar om en post med verifikatets proveniens finns.
+ */
+export async function releaseRejectedFortnoxExport(
+  id: string,
+  input: FortnoxReleaseRejectedInput,
+): Promise<FortnoxExportRow> {
+  const body: FortnoxReleaseRejectedInput = fortnoxReleaseRejectedInputSchema.parse(input)
+  return exportRowSchema.parse(
+    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/release-rejected`, body),
   )
 }

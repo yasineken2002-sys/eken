@@ -1,4 +1,12 @@
 /** Pure, disabled export preparation. No I/O, delivery, claim or exactly-once guarantee. */
+import {
+  TEXT_REGEL_VERSION,
+  fortnoxText,
+  textStoppMeddelande,
+  type FortnoxTextFalt,
+  type FortnoxTextMappning,
+} from './fortnox-text'
+
 export interface LocalJournalEntrySnapshot {
   readonly inputOrigin: 'PERSISTED_JOURNAL_ENTRY'
   readonly id: string
@@ -109,6 +117,20 @@ export interface FortnoxVoucherProvenance {
   voucherSeriesEvidenceRef: string
   totalDebitOre: string
   totalCreditOre: string
+  /**
+   * TESTKUND-016 K1.6: textregeln som exporttexten byggdes med, och för varje fält där
+   * exporttexten skiljer sig från Eveno-texten: rå text, exporttext och tillämpade mappningar.
+   */
+  text: {
+    regelVersion: string
+    falt: {
+      falt: FortnoxTextFalt
+      rad: number | null
+      ra: string
+      export: string
+      mappningar: FortnoxTextMappning[]
+    }[]
+  }
   lines: {
     journalEntryLineId: string
     localAccountId: string
@@ -159,6 +181,22 @@ function requireDraft(
   message: string,
 ): asserts condition {
   if (!condition) throw new DraftBlocked(code, path, message)
+}
+
+/** TESTKUND-016: exporttext enligt Fortnox teckenklass; stopp före POST utanför klassen. */
+function exportText(
+  ra: string,
+  falt: FortnoxTextFalt,
+  rad: number | null,
+  path: string,
+  logg: FortnoxVoucherProvenance['text']['falt'],
+): string {
+  const res = fortnoxText(ra, falt)
+  if (!res.ok)
+    throw new DraftBlocked('TEXT_NOT_EXPORTABLE', path, textStoppMeddelande(falt, rad, res.tecken))
+  if (res.export !== ra)
+    logg.push({ falt, rad, ra, export: res.export, mappningar: res.mappningar })
+  return res.export
 }
 
 function text(value: unknown): value is string {
@@ -324,8 +362,22 @@ export function buildFortnoxVoucherDraft(
       'config.voucherSeries',
       'A verified series in this external year is required.',
     )
+    const textLogg: FortnoxVoucherProvenance['text']['falt'] = []
     requireDraft(
-      text(entry.description) && entry.description.length <= 200,
+      text(entry.description),
+      'DESCRIPTION_UNREPRESENTABLE',
+      'entry.description',
+      'Fortnox requires 1–200 characters; no silent truncation is allowed.',
+    )
+    const description = exportText(
+      entry.description,
+      'Description',
+      null,
+      'entry.description',
+      textLogg,
+    )
+    requireDraft(
+      description.length <= 200,
       'DESCRIPTION_UNREPRESENTABLE',
       'entry.description',
       'Fortnox requires 1–200 characters; no silent truncation is allowed.',
@@ -451,13 +503,20 @@ export function buildFortnoxVoucherDraft(
       // lokal radtext skickas i TransactionInformation. Över 100 tecken spärras — aldrig tyst
       // avkortning. Tom text = ingen radtext.
       if (line.description !== null && line.description !== '') {
+        const radtext = exportText(
+          line.description,
+          'TransactionInformation',
+          rows.length + 1,
+          path,
+          textLogg,
+        )
         requireDraft(
-          line.description.length <= 100,
+          radtext.length <= 100,
           'LINE_TEXT_TOO_LONG',
           path,
           'Radtexten är längre än 100 tecken (Fortnox TransactionInformation); korta texten i Eveno före export.',
         )
-        row.TransactionInformation = line.description
+        row.TransactionInformation = radtext
       }
       const dimension = dimensionLines.get(line.id)
       let dimensionEvidenceRef: string, omissionReason: string | null
@@ -514,6 +573,7 @@ export function buildFortnoxVoucherDraft(
       'entry.id',
       'The provenance exceeds the Fortnox Comments limit.',
     )
+    exportText(comments, 'Comments', null, 'entry.id', textLogg)
     return {
       status: 'READY_DRY_RUN',
       liveExportAllowed: false,
@@ -524,7 +584,7 @@ export function buildFortnoxVoucherDraft(
       // Året bärs ENDAST av ?financialyear=<id> (query), och kvittot måste bära Year === id.
       payload: {
         Voucher: {
-          Description: entry.description,
+          Description: description,
           TransactionDate: bookingDate,
           VoucherSeries: config.voucherSeries.code,
           Comments: comments,
@@ -548,6 +608,7 @@ export function buildFortnoxVoucherDraft(
         voucherSeriesEvidenceRef: config.voucherSeries.evidenceRef,
         totalDebitOre: debitTotal.toString(),
         totalCreditOre: creditTotal.toString(),
+        text: { regelVersion: TEXT_REGEL_VERSION, falt: textLogg },
         lines: provenanceLines,
       },
     }

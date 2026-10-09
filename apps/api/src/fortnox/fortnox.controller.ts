@@ -13,6 +13,7 @@ import { FortnoxExportSettingsDto } from './dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from './dto/fortnox-dry-run.dto'
 import { FortnoxSendDto } from './dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from './dto/fortnox-reconcile.dto'
+import { FortnoxReleaseRejectedDto } from './dto/fortnox-release-rejected.dto'
 import {
   FortnoxAccountMappingApproveDto,
   FortnoxAccountMappingDraftDto,
@@ -181,6 +182,19 @@ export class FortnoxController {
     @Body() body: FortnoxReconcileDto,
   ) {
     return this.sender.reconcile(organizationId, user.sub, id, body)
+  }
+
+  // TESTKUND-016 K3: frisläpp en bevisat avvisad export (rollen prövas även i tjänsten; ett
+  // kvitto i efterhand för en äldre avvisning kräver OWNER).
+  @Post('exports/:id/release-rejected')
+  @Roles('OWNER', 'ADMIN')
+  async releaseRejected(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxReleaseRejectedDto,
+  ) {
+    return this.sender.releaseRejected(organizationId, { sub: user.sub, role: user.role }, id, body)
   }
 
   // ── TESTKUND-008: kontomappning (läsa OWNER/ADMIN/ACCOUNTANT; utkast och godkännande

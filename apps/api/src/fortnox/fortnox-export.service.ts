@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { exportView } from './fortnox-export-view'
 
 /**
  * Export av Evenos verifikat mot Fortnox huvudbok — UTKORG och livscykel.
@@ -50,6 +51,7 @@ export const FORTNOX_SENDING_ENABLED = false
 export const FORTNOX_SENDING_DISABLED_REASON = 'IDEMPOTENCY_UNRESOLVED' as const
 
 const EXPORT_VIEW = {
+  draft: true,
   id: true,
   journalEntryId: true,
   state: true,
@@ -79,6 +81,10 @@ export class FortnoxExportService {
    * omprövas mot dagens underlag.
    */
   async dryRun(organizationId: string, journalEntryId: string) {
+    return exportView(await this.dryRunRow(organizationId, journalEntryId))
+  }
+
+  private async dryRunRow(organizationId: string, journalEntryId: string) {
     const entry = await this.prisma.journalEntry.findFirst({
       where: { id: journalEntryId, organizationId },
       select: { id: true },
@@ -147,12 +153,13 @@ export class FortnoxExportService {
   }
 
   async list(organizationId: string) {
-    return this.prisma.fortnoxVoucherExport.findMany({
+    const rows = await this.prisma.fortnoxVoucherExport.findMany({
       where: { organizationId },
       orderBy: { updatedAt: 'desc' },
       take: 200,
       select: EXPORT_VIEW,
     })
+    return rows.map(exportView)
   }
 
   async counts(organizationId: string, sendingEnabled = FORTNOX_SENDING_ENABLED) {

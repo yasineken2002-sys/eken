@@ -7788,6 +7788,9 @@ model FortnoxVoucherExport {
   // Behörig manuell avstämning: {vem, när, identitet, grund}. Null = ingen.
   reconcileDecision     Json?
   reconciledAt          DateTime?
+  // TESTKUND-016 K3.1: append-only historik över sändförsök, avvisningsbevis och frisläppningar.
+  // Skrivs aldrig över; ett nytt utkast efter frisläppning raderar inget tidigare bevis.
+  attemptHistory        Json               @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
