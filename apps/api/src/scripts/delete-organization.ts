@@ -134,6 +134,14 @@ export const DELETION_STEPS: readonly Step[] = [
   // PERMANENT oraderbar (P2003) — en dataskyddsblockerare som hade upptäckts
   // först vid en raderingsbegäran.
   { model: 'LateFiscalYearPosting', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
+  // TESTKUND-008: kontomappningens rader pekar på sin revision med Restrict, och revisionen
+  // på organisationen med Restrict. Rader först, sedan revisioner.
+  {
+    model: 'FortnoxAccountMappingRow',
+    restrictAgainst: 'FortnoxAccountMappingRevision',
+    where: (ids) => ({ revision: byOrg(ids) }),
+  },
+  { model: 'FortnoxAccountMappingRevision', restrictAgainst: 'Organization', where: byOrg },
   // FÖRE JournalEntry: exportkön pekar på sitt verifikat med Restrict (Fortnox A).
   { model: 'FortnoxVoucherExport', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
   { model: 'JournalEntrySequence', restrictAgainst: 'Organization', where: byOrg },
