@@ -4302,8 +4302,15 @@ export class ReconciliationService {
                   where: { id: dep.id, organizationId },
                   select: { status: true },
                 })
+                const statusText: Record<string, string> = {
+                  REFUNDED: 'återbetald',
+                  PARTIALLY_REFUNDED: 'delvis återbetald',
+                  FORFEITED: 'förverkad',
+                  REFUND_PENDING: 'under återbetalning',
+                  PENDING: 'inte registrerad som betald',
+                }
                 throw new ConflictException(
-                  `Depositionen är ${nu?.status ?? 'okänd'} — en bankbetalning av depositionsavin kan inte ` +
+                  `Depositionen är ${statusText[nu?.status ?? ''] ?? 'i ett okänt läge'} — en bankbetalning av depositionsavin kan inte ` +
                     'avmatchas när depositionen inte längre är betald och oreglerad (t.ex. redan återbetald). ' +
                     'Stäm av återbetalningen först. Ingenting ändrades.',
                 )
