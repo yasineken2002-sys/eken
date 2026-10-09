@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common'
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { vatFromGross } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -165,6 +171,22 @@ export class SupplierInvoiceService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // TESTKUND-027 V-9: villkorat anspråk FÖRE bokningen. Förkontrollen ovan läses utanför
+      // transaktionen; en samtidig makulering kan ha committat sedan dess. Bara en av betalning
+      // och makulering kan vinna radlåset — den andra får count 0 och 409, utan någon bokning.
+      const claim = await tx.supplierInvoice.updateMany({
+        where: {
+          id: faktura.id,
+          organizationId: params.organizationId,
+          paidAt: null,
+          cancelledAt: null,
+        },
+        data: { paidAt: params.paidDate },
+      })
+      if (claim.count !== 1)
+        throw new ConflictException(
+          'Fakturan har just betalats eller makulerats av någon annan — uppdatera sidan. Ingen betalning bokades.',
+        )
       await this.accounting.bookSupplierInvoicePayment({
         organizationId: params.organizationId,
         invoiceId: faktura.id,
@@ -175,10 +197,7 @@ export class SupplierInvoiceService {
         tx,
       })
 
-      return tx.supplierInvoice.update({
-        where: { id: faktura.id },
-        data: { paidAt: params.paidDate },
-      })
+      return tx.supplierInvoice.findUniqueOrThrow({ where: { id: faktura.id } })
     }, PAYMENT_TX_LIMITS)
   }
 
@@ -207,7 +226,21 @@ export class SupplierInvoiceService {
     const idag = new Date()
 
     return this.prisma.$transaction(async (tx) => {
-      await this.accounting.bookSupplierInvoiceCancellation({
+      // TESTKUND-027 V-9: villkorat anspråk FÖRE bokningen (se markPaid).
+      const claim = await tx.supplierInvoice.updateMany({
+        where: {
+          id: faktura.id,
+          organizationId: params.organizationId,
+          paidAt: null,
+          cancelledAt: null,
+        },
+        data: { cancelledAt: idag },
+      })
+      if (claim.count !== 1)
+        throw new ConflictException(
+          'Fakturan har just betalats eller makulerats av någon annan — uppdatera sidan. Ingen makulering bokades.',
+        )
+      const makulering = await this.accounting.bookSupplierInvoiceCancellation({
         organizationId: params.organizationId,
         invoiceId: faktura.id,
         date: idag,
@@ -220,10 +253,53 @@ export class SupplierInvoiceService {
         tx,
       })
 
-      return tx.supplierInvoice.update({
-        where: { id: faktura.id },
-        data: { cancelledAt: idag },
+      // TESTKUND-027 V-9 / L3: makuleringen ska vara EXAKT originalverifikatets rader omvända.
+      // Har fakturans data ändrats efter mottagandet stoppar vi hellre än bokar nya rader.
+      const original = await tx.journalEntry.findFirst({
+        where: {
+          organizationId: params.organizationId,
+          source: 'SUPPLIER_INVOICE',
+          sourceId: `supplier-invoice:${faktura.id}`,
+        },
+        select: { id: true, lines: { select: { accountId: true, debit: true, credit: true } } },
       })
+      const ore = (d: Prisma.Decimal | null) => (d === null ? 0 : Math.round(Number(d) * 100))
+      const nyckel = (
+        l: { accountId: string; debit: Prisma.Decimal | null; credit: Prisma.Decimal | null },
+        vand: boolean,
+      ) =>
+        `${l.accountId}|${vand ? ore(l.credit) : ore(l.debit)}|${vand ? ore(l.debit) : ore(l.credit)}`
+      const mak = await tx.journalEntry.findUniqueOrThrow({
+        where: { id: makulering.id },
+        select: { lines: { select: { accountId: true, debit: true, credit: true } } },
+      })
+      if (
+        !original ||
+        JSON.stringify(original.lines.map((l) => nyckel(l, true)).sort()) !==
+          JSON.stringify(mak.lines.map((l) => nyckel(l, false)).sort())
+      )
+        throw new ConflictException(
+          'Makuleringen motsvarar inte det bokförda mottagandet (fakturans uppgifter har ändrats) — ' +
+            'ingen makulering bokades. Kontakta supporten.',
+        )
+      // TESTKUND-027 V-7(b): makuleringen går inte via createReversalEntry; samma villkorade spärr
+      // av originalets färdiga Fortnox-export ligger därför här, i samma transaktion.
+      await tx.fortnoxVoucherExport.updateMany({
+        where: {
+          organizationId: params.organizationId,
+          journalEntryId: original.id,
+          state: 'DRY_RUN_READY',
+        },
+        data: {
+          state: 'BLOCKED',
+          draft: Prisma.DbNull,
+          draftHash: null,
+          blockReason:
+            'REVERSED_BEFORE_EXPORT: Leverantörsfakturan makulerades innan den exporterades — varken ' +
+            'fakturan eller makuleringen skickas till Fortnox; de tar ut varandra i Eveno',
+        },
+      })
+      return tx.supplierInvoice.findUniqueOrThrow({ where: { id: faktura.id } })
     }, PAYMENT_TX_LIMITS)
   }
 

@@ -1331,7 +1331,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
       where: { journalEntryId: orig.id },
       data: {
         fortnoxDatabaseNumber: 900001,
-        // V1: originalets exporterade målkonton (frysta i dess utkast).
+        // V1: ett påhittat utkast utan frysta rader och kontomappning.
         draft: {
           provenance: {
             lines: [
@@ -1342,7 +1342,12 @@ medDb('Fortnox A mot riktig Postgres', () => {
         },
       },
     })
-    expect((await exportRig(r).dryRun(o.id, rev.id)).state).toBe('DRY_RUN_READY')
+    // TESTKUND-027 KARAKT ÄNDRAD (V-5): före = READY på det påhittade utkastet; efter = stopp, eftersom
+    // rättelsen bara bokas ur originalexportens FRYSTA rader, belopp och kontomappning. Positiv kontroll
+    // med en verklig originalexport: fortnox-kontomappning.db.spec.ts (P2-027 L3/B2.5).
+    expect((await exportRig(r).dryRun(o.id, rev.id)).blockReason).toMatch(
+      /^ORIGINAL_MAPPING_UNKNOWN/,
+    )
   })
 
   it('E2: utan uttryckligt dimensionsbeslut → BLOCKED (ingen implicit OMIT)', async () => {

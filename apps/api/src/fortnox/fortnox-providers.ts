@@ -298,8 +298,15 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     }
     const m = /^\/3\/vouchers\/([A-Za-z0-9]+)\/(\d+)$/.exec(path)
     if (m) {
+      // TESTKUND-027: Fortnox nycklar ett verifikat på (räkenskapsår, serie, nummer); utan årets
+      // filter träffade detaljläsningen A1 i fel år så fort fejken hade två räkenskapsår.
       const v = this.vouchers.find(
-        (x) => x.VoucherSeries === m[1] && x.VoucherNumber === Number(m[2]),
+        (x) =>
+          x.VoucherSeries === m[1] &&
+          x.VoucherNumber === Number(m[2]) &&
+          (query?.financialyear === undefined ||
+            x.Year === undefined ||
+            x.Year === query.financialyear),
       )
       if (!v) throw new FortnoxReadError('invalid', 404)
       return { Voucher: structuredClone(v) } as T

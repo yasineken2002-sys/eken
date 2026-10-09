@@ -2838,25 +2838,48 @@ export class AccountingService {
       )
     }
 
-    return this.createNumberedEntry({
-      organizationId: params.organizationId,
-      // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
-      date: new Date(),
-      description: params.description,
-      source: params.source,
-      sourceId: params.reversalSourceId,
-      createdById: params.createdById,
-      lines: this.buildReversalLines(params.original.lines, params.linePrefix),
-      idempotencyWhere: {
+    // TESTKUND-027 B2.6 (KONTRAKT-P2-027 §2.3): rättelsen och spärren av originalets eventuella
+    // färdiga Fortnox-export skrivs i SAMMA transaktion. Ett original som rättas innan det skickats
+    // får ingen kvarstående READY-rad: villkoret `state = DRY_RUN_READY` gör att antingen sändningens
+    // anspråk (DRY_RUN_READY → SENDING) eller den här spärren vinner — aldrig båda.
+    const skriv = async (db: Prisma.TransactionClient) => {
+      const entry = await this.createNumberedEntry({
         organizationId: params.organizationId,
+        // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
+        date: new Date(),
+        description: params.description,
         source: params.source,
         sourceId: params.reversalSourceId,
-      },
-      // Centralt, för ALLA vägar. Se docblocket ovan.
-      reversalOfEntryId: params.original.id,
-      ...(params.include ? { include: params.include } : {}),
-      ...(params.tx ? { tx: params.tx } : {}),
-    })
+        createdById: params.createdById,
+        lines: this.buildReversalLines(params.original.lines, params.linePrefix),
+        idempotencyWhere: {
+          organizationId: params.organizationId,
+          source: params.source,
+          sourceId: params.reversalSourceId,
+        },
+        // Centralt, för ALLA vägar. Se docblocket ovan.
+        reversalOfEntryId: params.original.id,
+        ...(params.include ? { include: params.include } : {}),
+        tx: db,
+      })
+      await db.fortnoxVoucherExport.updateMany({
+        where: {
+          organizationId: params.organizationId,
+          journalEntryId: params.original.id,
+          state: 'DRY_RUN_READY',
+        },
+        data: {
+          state: 'BLOCKED',
+          draft: Prisma.DbNull,
+          draftHash: null,
+          blockReason:
+            `REVERSED_BEFORE_EXPORT: Verifikatet rättades (${params.reversalSourceId}) innan det ` +
+            'exporterades — varken det eller rättelsen skickas till Fortnox; de tar ut varandra i Eveno',
+        },
+      })
+      return entry
+    }
+    return params.tx ? skriv(params.tx) : this.prisma.$transaction((t) => skriv(t))
   }
 
   async reverseJournalEntryForMiscCharge(

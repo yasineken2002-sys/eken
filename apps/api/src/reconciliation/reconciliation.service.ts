@@ -4275,6 +4275,41 @@ export class ReconciliationService {
               ...(reopen ? { status: återöppnadStatus, paidAt: null } : {}),
             },
           })
+
+          // ── TESTKUND-027 B2.5 / KONTRAKTSBESKED-P2-028 V-1, V-3 ─────────────────────────────
+          // En bankbetald DEPOSITIONSavi satte Deposit → PAID (applyMatch, DEPOSIT-grenen). Utan
+          // återställning stod depositionen kvar som betald efter avmatchningen och kunde
+          // återbetalas utan mottagning. Bytet är statusvillkorat, i SAMMA transaktion som
+          // raderingen av allokeringen och rättelsen, och sist i låsordningen
+          // (BankTransaction → RentNotice → Deposit). count 0 kastar 409: HELA avmatchningen rullas
+          // tillbaka. En deposition som redan återbetalats, förverkats eller väntar på återbetalning —
+          // eller som inte är PAID trots betald avi — avmatchas aldrig här (ingen "reparation").
+          if (
+            noticeRow.type === RentNoticeType.DEPOSIT &&
+            removedNoticeAllocations.some((a) => a.rentNoticeId === avaktuellId)
+          ) {
+            const dep = await tx.deposit.findFirst({
+              where: { rentNoticeId: avaktuellId, organizationId },
+              select: { id: true, status: true },
+            })
+            if (dep) {
+              const claim = await tx.deposit.updateMany({
+                where: { id: dep.id, organizationId, status: 'PAID' },
+                data: { status: 'PENDING', paidAt: null },
+              })
+              if (claim.count !== 1) {
+                const nu = await tx.deposit.findFirst({
+                  where: { id: dep.id, organizationId },
+                  select: { status: true },
+                })
+                throw new ConflictException(
+                  `Depositionen är ${nu?.status ?? 'okänd'} — en bankbetalning av depositionsavin kan inte ` +
+                    'avmatchas när depositionen inte längre är betald och oreglerad (t.ex. redan återbetald). ' +
+                    'Stäm av återbetalningen först. Ingenting ändrades.',
+                )
+              }
+            }
+          }
         }
       }
 

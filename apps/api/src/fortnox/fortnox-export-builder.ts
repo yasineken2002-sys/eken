@@ -25,8 +25,9 @@ import {
   malfaktaUrSvar,
   teknik,
   type Malfakta,
+  type Roll,
 } from './fortnox-kontomappning'
-import { klassaVerifikat } from './fortnox-radklass'
+import { klassaVerifikat, originalUtfall } from './fortnox-radklass'
 import {
   buildFortnoxVoucherDraft,
   type FortnoxVoucherDraftConfig,
@@ -140,9 +141,17 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         select: { id: true },
       })
       if (!original) {
+        const u = await originalUtfall(
+          this.prisma,
+          organizationId,
+          entry.reversalOfEntryId,
+          conn.fortnoxDatabaseNumber,
+        )
         return block(
           'ORIGINAL_NOT_CONFIRMED',
-          'Rättelsen kan inte exporteras förrän originalverifikatet är bekräftat exporterat till samma Fortnox-företag',
+          u.typ === 'OKANT'
+            ? `Originalets ${u.text}; rättelsen exporteras inte förrän originalet är bekräftat`
+            : `Originalet är ${u.typ === 'CONFIRMED' ? 'bekräftat' : u.text} — rättelsen kan inte exporteras förrän originalverifikatet är bekräftat exporterat till samma Fortnox-företag`,
         )
       }
     }
@@ -341,9 +350,44 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           `Kontomappningen (revision ${revision.revision}) godkändes för en annan Fortnox-anslutning, ` +
             'ett annat företag eller andra årsgränser — skapa och godkänn en ny revision',
         )
-      // V1: en rättelse bokas på originalets EXPORTERADE målkonto, aldrig tyst omkonterad.
-      let originalMal: Map<number, number> | null = null
-      if (klass.rattelseAv) {
+      // V1 / TESTKUND-027 (L3.2, B2.5): en rättelse — avmatchning, annullering eller makulering —
+      // bokas på originalets EXPORTERADE målkonto och mappningsrevision, lästa ur originalexportens
+      // frysta utkast. Dagens mappning används aldrig för rättelsen (ingen tyst omkontering, och
+      // ingen blockering bara för att mappningen ändrats efteråt).
+      // V-5 (KONTRAKTSBESKED-P2-028): rättelsens Fortnox-rader tas ur ORIGINALEXPORTENS frysta
+      // utkast — proveniensrad (lokalt konto, mål, belopp, sida) + payloadrad (konto, dimension) +
+      // kontomappningsrad (revision, ögonblick) — aldrig ur originalets JE eller dagens mappning.
+      type ProvRad = {
+        journalEntryLineId?: unknown
+        localAccountNumber?: unknown
+        externalAccountNumber?: unknown
+        amountOre?: unknown
+        side?: unknown
+      }
+      type KmRad = {
+        journalEntryLineId: string
+        mappningsradId: string
+        ogonblick: {
+          namn: string | null
+          aktiv: boolean | null
+          momskod: string | null
+          ar: number | null
+        }
+      }
+      let original: {
+        exportId: string
+        nyckel: string
+        revisionId: string
+        revision: number
+        contentSha256: string
+        rader: Array<{
+          prov: ProvRad
+          payload: Record<string, unknown>
+          km: KmRad | undefined
+          anvand: boolean
+        }>
+      } | null = null
+      if (klass.ok && klass.rattelseAv) {
         const orig = await this.prisma.fortnoxVoucherExport.findFirst({
           where: {
             organizationId,
@@ -351,23 +395,66 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
             state: 'CONFIRMED',
             fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
           },
-          select: { draft: true },
+          select: {
+            id: true,
+            draft: true,
+            externalYear: true,
+            externalSeries: true,
+            externalNumber: true,
+          },
         })
-        const lines =
-          (
-            orig?.draft as {
-              provenance?: {
-                lines?: Array<{ localAccountNumber?: unknown; externalAccountNumber?: unknown }>
-              }
-            } | null
-          )?.provenance?.lines ?? []
-        originalMal = new Map()
-        for (const p of lines)
-          if (
-            Number.isSafeInteger(p.localAccountNumber) &&
-            Number.isSafeInteger(p.externalAccountNumber)
+        if (!orig) {
+          const u = await originalUtfall(
+            this.prisma,
+            organizationId,
+            klass.rattelseAv,
+            conn.fortnoxDatabaseNumber,
           )
-            originalMal.set(p.localAccountNumber as number, p.externalAccountNumber as number)
+          return block(
+            'ORIGINAL_NOT_CONFIRMED',
+            u.typ === 'OKANT'
+              ? `Originalets ${u.text}; rättelsen exporteras inte förrän originalet är bekräftat`
+              : `Originalet är ${u.typ === 'CONFIRMED' ? 'bekräftat' : u.text} — rättelsen kan inte exporteras förrän originalverifikatet är bekräftat exporterat till samma Fortnox-företag`,
+          )
+        }
+        const d = orig.draft as {
+          payload?: { Voucher?: { VoucherRows?: Array<Record<string, unknown>> } }
+          provenance?: { lines?: ProvRad[] }
+          kontomappning?: {
+            revisionId?: unknown
+            revision?: unknown
+            contentSha256?: unknown
+            rader?: KmRad[]
+          }
+        } | null
+        const prov = d?.provenance?.lines ?? []
+        const pay = d?.payload?.Voucher?.VoucherRows ?? []
+        const km = d?.kontomappning
+        if (
+          !km ||
+          typeof km.revisionId !== 'string' ||
+          typeof km.revision !== 'number' ||
+          typeof km.contentSha256 !== 'string' ||
+          prov.length === 0 ||
+          prov.length !== pay.length
+        )
+          return block(
+            'ORIGINAL_MAPPING_UNKNOWN',
+            'Originalexporten saknar frysta rader eller kontomappningsproveniens — rättelsen kan inte bokas på originalets konton; stäm av manuellt i Fortnox',
+          )
+        original = {
+          exportId: orig.id,
+          nyckel: `${orig.externalYear}|${orig.externalSeries}|${orig.externalNumber}`,
+          revisionId: km.revisionId,
+          revision: km.revision,
+          contentSha256: km.contentSha256,
+          rader: prov.map((p, i) => ({
+            prov: p,
+            payload: pay[i]!,
+            km: (km.rader ?? []).find((r) => r.journalEntryLineId === p.journalEntryLineId),
+            anvand: false,
+          })),
+        }
       }
 
       const accounts: Array<FortnoxVoucherDraftConfig['accounts'][number]> = []
@@ -388,6 +475,87 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
       }> = []
       for (const l of entry.lines) {
         const rk = klass.rader.get(l.id)!
+        if (original) {
+          // V-5: exakt en oanvänd frusen originalrad med samma lokala konto, samma belopp i öre och
+          // MOTSATT sida. Annars stopp (ingen gissning, ingen omkontering).
+          const ore = (x: string | null) => (x === null ? 0 : Math.round(Number(x) * 100))
+          const minSida = l.debit !== null ? 'Debit' : 'Credit'
+          const belopp =
+            minSida === 'Debit'
+              ? ore(l.debit === null ? null : l.debit.toString())
+              : ore(l.credit === null ? null : l.credit.toString())
+          const r = original.rader.find(
+            (x) =>
+              !x.anvand &&
+              x.prov.localAccountNumber === l.account.number &&
+              String(x.prov.amountOre) === String(belopp) &&
+              x.prov.side === (minSida === 'Debit' ? 'Credit' : 'Debit'),
+          )
+          if (!r)
+            return block(
+              'REVERSAL_ROWS_MISMATCH',
+              `Rättelsens rad på konto ${l.account.number} (${(belopp / 100).toFixed(2)} kr ${minSida === 'Debit' ? 'debet' : 'kredit'}) motsvarar ingen rad i originalexporten ${original.nyckel} — stäm av manuellt i Fortnox`,
+            )
+          r.anvand = true
+          const malkonto = r.prov.externalAccountNumber
+          if (!Number.isSafeInteger(malkonto) || r.payload.Account !== malkonto)
+            return block(
+              'ORIGINAL_MAPPING_UNKNOWN',
+              `Originalexportens rad saknar entydigt Fortnox-konto (${String(malkonto)})`,
+            )
+          // Dimensioner: denna version exporterar utan dimension; ett original med dimension kan inte
+          // återföras exakt här och stoppas sanningsenligt.
+          if (r.payload.CostCenter || r.payload.Project)
+            return block(
+              'REVERSAL_DIMENSION_UNSUPPORTED',
+              `Originalexporten ${original.nyckel} bär kostnadsställe/projekt — rättelsen återförs inte automatiskt; stäm av manuellt i Fortnox`,
+            )
+          const mk = malkonto as number
+          if (!iKontoklass(rk.roll as Roll, mk))
+            return block(
+              'ACCOUNT_CLASS_MISMATCH',
+              `Originalets mål ${mk} ligger utanför kontoklassen ${klassText(rk.roll as Roll)}`,
+            )
+          const nu = await lasKonto(mk)
+          if (!nu.exists || nu.active !== true)
+            return block(
+              'ACCOUNT_MAPPING_DRIFT',
+              `Originalets Fortnox-konto ${mk} finns inte eller är inaktivt i räkenskapsår ${fy.Id} — ` +
+                'rättelsen kan inte bokas på originalets konto; stäm av manuellt i Fortnox',
+            )
+          const tk = teknik(rk.roll, rk.behandling, nu, fy.Id, mk)
+          if (tk.teknik !== 'FORENLIG')
+            return block(
+              tk.teknik === 'KONFLIKT' ? 'ACCOUNT_VAT_MISMATCH' : 'ACCOUNT_MAPPING_DRIFT',
+              `Fortnox-konto ${mk}: ${tk.skal}`,
+            )
+          const tidigareO = malPerKonto.get(l.account.id)
+          if (tidigareO !== undefined && tidigareO !== mk)
+            return block(
+              'ACCOUNT_MAPPING_AMBIGUOUS',
+              `Konto ${l.account.number} har två olika målkonton i samma verifikat`,
+            )
+          mappningsrader.push({
+            journalEntryLineId: l.id,
+            roll: rk.roll,
+            behandling: rk.behandling,
+            kallkonto: l.account.number,
+            malkonto: mk,
+            mappningsradId: r.km?.mappningsradId ?? 'originalexport',
+            ogonblick: r.km?.ogonblick ?? { namn: null, aktiv: null, momskod: null, ar: null },
+          })
+          if (tidigareO !== undefined) continue
+          malPerKonto.set(l.account.id, mk)
+          accounts.push({
+            ...binding(
+              `originalexport:${original.exportId}:${original.nyckel}:rev${original.revision}+GET /3/accounts/${mk}?financialyear=${fy.Id}`,
+            ),
+            localAccountId: l.account.id,
+            localAccountNumber: l.account.number,
+            externalAccountNumber: mk,
+          })
+          continue
+        }
         const rad = radFor(rk.roll, l.account.number, rk.behandling)
         if (!rad)
           return block(
@@ -428,16 +596,6 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
             tk.teknik === 'KONFLIKT' ? 'ACCOUNT_VAT_MISMATCH' : 'ACCOUNT_MAPPING_DRIFT',
             `Fortnox-konto ${rad.targetAccountNumber}: ${tk.skal}`,
           )
-        if (originalMal) {
-          const om = originalMal.get(l.account.number)
-          if (om !== rad.targetAccountNumber)
-            return block(
-              'REVERSAL_TARGET_CHANGED',
-              `Rättelsen gäller ett verifikat som exporterades med konto ${l.account.number} → ` +
-                `${om ?? 'okänt'}; revision ${revision.revision} mappar till ${rad.targetAccountNumber}. ` +
-                'Ingen tyst omkontering — stäm av manuellt i Fortnox',
-            )
-        }
         const tidigare = malPerKonto.get(l.account.id)
         if (tidigare !== undefined && tidigare !== rad.targetAccountNumber)
           return block(
@@ -470,6 +628,11 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         })
       }
 
+      if (original && original.rader.some((r) => !r.anvand))
+        return block(
+          'REVERSAL_ROWS_MISMATCH',
+          `Rättelsen återför inte hela originalexporten ${original.nyckel} — stäm av manuellt i Fortnox`,
+        )
       const snapshot: LocalJournalEntrySnapshot = {
         inputOrigin: 'PERSISTED_JOURNAL_ENTRY',
         id: entry.id,
@@ -532,11 +695,20 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         provenance: res.provenance,
         // K5.3: exportproveniens per rad (lokalt konto, roll/behandling, revision, mål, ögonblick).
         kontomappning: {
-          revisionId: revision.id,
-          revision: revision.revision,
-          contentSha256: revision.contentSha256,
+          revisionId: original ? original.revisionId : revision.id,
+          revision: original ? original.revision : revision.revision,
+          contentSha256: original ? original.contentSha256 : revision.contentSha256,
           handelse: klass.handelse,
           rader: mappningsrader,
+          // TESTKUND-027: en rättelse bär originalets exporterade mappning (inte dagens revision).
+          ...(original
+            ? {
+                kalla: 'ORIGINALETS_EXPORT',
+                originalExportId: original.exportId,
+                originalJournalEntryId: klass.rattelseAv,
+                originalFortnoxNyckel: original.nyckel,
+              }
+            : {}),
         },
         liveExportAllowed: false as const,
       }
@@ -579,8 +751,8 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
                 ]),
                 // K6.1: revision och, per rad, mål, roll och behandling.
                 kontomappning: [
-                  revision.id,
-                  revision.contentSha256,
+                  original ? `original:${original.exportId}:${original.revisionId}` : revision.id,
+                  original ? original.contentSha256 : revision.contentSha256,
                   mappningsrader.map((r) => [
                     r.journalEntryLineId,
                     r.kallkonto,
