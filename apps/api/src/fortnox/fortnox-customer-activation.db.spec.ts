@@ -24,6 +24,12 @@ import { FortnoxExportService } from './fortnox-export.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import { FortnoxKontomappningService } from './fortnox-kontomappning.service'
+import {
+  godkannMappning,
+  leverantorsfaktura,
+  stadaKontomappning,
+} from './fortnox-kontomappning.testing'
 import { FortnoxSendService } from './fortnox-send.service'
 import {
   FORTNOX_TEST_WRITE_COMPANIES,
@@ -118,6 +124,7 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       await prisma.fortnoxVoucherExport.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await stadaKontomappning(prisma, id)
       await prisma.journalEntrySequence.deleteMany({ where: { organizationId: id } })
       await prisma.fortnoxCustomerActivation.deleteMany({ where: { organizationId: id } })
       await prisma.openingExecutedSource.deleteMany({ where: { organizationId: id } })
@@ -304,48 +311,16 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       })
     expect((await riskLas()).status).toBe('COMPLETE')
 
-    const acc = async (number: number) =>
-      (await prisma.account.findFirst({ where: { organizationId: org.id, number } })) ??
-      prisma.account.create({
-        data: { organizationId: org.id, number, name: `Konto ${number}`, type: 'EXPENSE' },
+    // TESTKUND-008: belagd källa (leverantörsfaktura) och godkänd kontomappning för exporten.
+    await godkannMappning(prisma, connections, reader, org.id)
+    const verifikat = (datum = '2026-11-02') =>
+      leverantorsfaktura(prisma, org.id, {
+        belopp: '100.00',
+        datum,
+        beskrivning: 'Syntetisk reparation',
       })
-    const verifikat = async (datum = '2026-11-02') => {
-      const a = await acc(5170)
-      const b = await acc(2440)
-      return prisma.journalEntry.create({
-        data: {
-          organizationId: org.id,
-          date: new Date(datum),
-          description: 'Syntetisk reparation',
-          fiscalYear: 2026,
-          verNumber: Math.floor(Math.random() * 1e6) + 1,
-          lines: {
-            create: [
-              { accountId: a.id, debit: '100.00' },
-              { accountId: b.id, credit: '100.00' },
-            ],
-          },
-        },
-      })
-    }
     const ready = async () => {
-      const a = await acc(5170)
-      const b = await acc(2440)
-      const je = await prisma.journalEntry.create({
-        data: {
-          organizationId: org.id,
-          date: new Date('2026-11-02'),
-          description: 'Syntetisk reparation',
-          fiscalYear: 2026,
-          verNumber: Math.floor(Math.random() * 1e6) + 1,
-          lines: {
-            create: [
-              { accountId: a.id, debit: '100.00' },
-              { accountId: b.id, credit: '100.00' },
-            ],
-          },
-        },
-      })
+      const je = await verifikat()
       const row = await exports.dryRun(org.id, je.id)
       expect(row.state).toBe('DRY_RUN_READY')
       return row as typeof row & { draftHash: string }
@@ -789,6 +764,36 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       where: { organizationId: t.org.id, origin: 'OPENING_PACKAGE' },
     })
     expect([dep.status, dep.paidAt?.toISOString().slice(0, 10)]).toEqual(['PAID', '2025-01-01'])
+    // TESTKUND-008: återbetalningen kräver godkänd mappning för 2890 och 1930 (verkliga
+    // 1868238-mål utan momskod). Depositionen ingår i det verkställda öppningspaketet, så
+    // ursprunget är belagt (IB i Fortnox) utan någon exporterad depositionsfaktura.
+    for (const n of [1930, 2890]) t.reader.accounts.find((a) => a.Number === n)!.VATCode = null
+    await godkannMappning(prisma, t.connections, t.reader, t.org.id, [
+      {
+        role: 'KOSTNAD',
+        vatTreatment: 'EJ_TILLAMPLIG',
+        sourceAccountNumber: 5170,
+        targetAccountNumber: 5170,
+      },
+      {
+        role: 'LEVERANTORSSKULD',
+        vatTreatment: 'EJ_TILLAMPLIG',
+        sourceAccountNumber: 2440,
+        targetAccountNumber: 2440,
+      },
+      {
+        role: 'DEPOSITIONSSKULD',
+        vatTreatment: 'EJ_TILLAMPLIG',
+        sourceAccountNumber: 2890,
+        targetAccountNumber: 2890,
+      },
+      {
+        role: 'LIKVID',
+        vatTreatment: 'EJ_TILLAMPLIG',
+        sourceAccountNumber: 1930,
+        targetAccountNumber: 1930,
+      },
+    ])
     await t.godkann()
     const accounting = new AccountingService(
       prisma as unknown as PrismaService,
@@ -892,48 +897,153 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
         },
       })
   }
+  // TESTKUND-008 K8.1: kundaktiveringen med den riktiga mappningskontrollen (ersätter #946:s
+  // kontoförkontroll).
+  const mappning = (t: Awaited<ReturnType<typeof setup>>) =>
+    new FortnoxKontomappningService(t.db, t.connections, t.reader)
   const medKontroll = (t: Awaited<ReturnType<typeof setup>>) =>
-    new FortnoxCustomerActivationService(t.db, t.config, (o, fy) =>
-      t.verified.kontoForkontroll(o, fy),
-    )
+    new FortnoxCustomerActivationService(t.db, t.config, (o, fy) => mappning(t).kontroll(o, fy))
+  const HYRA = [
+    {
+      role: 'KUNDFORDRAN',
+      vatTreatment: 'EJ_TILLAMPLIG',
+      sourceAccountNumber: 1510,
+      targetAccountNumber: 1510,
+    },
+    {
+      role: 'LIKVID',
+      vatTreatment: 'EJ_TILLAMPLIG',
+      sourceAccountNumber: 1930,
+      targetAccountNumber: 1930,
+    },
+    {
+      role: 'HYRESINTAKT',
+      vatTreatment: 'MOMSFRI',
+      sourceAccountNumber: 3911,
+      targetAccountNumber: 3911,
+    },
+    {
+      role: 'KOSTNAD',
+      vatTreatment: 'EJ_TILLAMPLIG',
+      sourceAccountNumber: 5170,
+      targetAccountNumber: 5170,
+    },
+    {
+      role: 'LEVERANTORSSKULD',
+      vatTreatment: 'EJ_TILLAMPLIG',
+      sourceAccountNumber: 2440,
+      targetAccountNumber: 2440,
+    },
+  ] as const
+  /** Syntetiskt aktivt MF-mål för 3911 (KRITERIER-006-A A-5) och 1930 utan momskod. */
+  const syntetiskaMal = (t: Awaited<ReturnType<typeof setup>>) => {
+    const k = t.reader.accounts.find((a) => a.Number === 3911)
+    if (k) Object.assign(k, { Active: true, VATCode: 'MF', Description: 'Hyresintäkter' })
+    else
+      t.reader.accounts.push({
+        Number: 3911,
+        Active: true,
+        VATCode: 'MF',
+        Description: 'Hyresintäkter',
+      })
+    for (const n of [1510, 1930]) {
+      const a = t.reader.accounts.find((x) => x.Number === n)
+      if (a) a.VATCode = null
+      else
+        t.reader.accounts.push({
+          Number: n,
+          Active: true,
+          VATCode: null,
+          Description: `Konto ${n}`,
+        })
+    }
+  }
 
-  it('TESTKUND-006 F-1/F-2: använt intäktskonto ger hinder med Evenos och Fortnox namn, aktivitet och momskod; godkännande nekas', async () => {
-    for (const [variant, monster] of [
-      [
-        {},
-        /3911 Eveno «Hyresintäkter, bostäder» ↔ Fortnox «Hyresintäkter» \(aktivt, momskod saknas i svaret\).*inte avstämda/,
-      ],
-      [{ Active: false }, /3911 .*\(inaktivt.*kontot är inte aktivt i Fortnox/],
-      [{ VATCode: 'HFS' }, /3911 .*momskod HFS.*momskoden motsäger radens momsbehandling/],
-    ] as const) {
+  it('TESTKUND-008 K8.1: utan godkänd kontomappning för året ger kontrollen hinder; godkännande nekas', async () => {
+    const t = await setup()
+    await medEnhet(t)
+    // Setup godkände bara kostnadsraderna; hyrans rader saknas.
+    const svc = medKontroll(t)
+    const s = await svc.status(t.org.id, 1)
+    expect(s.forslag.ok).toBe(false)
+    const h = s.forslag.hinder.join(' ')
+    expect(h).toMatch(/Kontomappningen saknar Eveno 3911 «Hyresintäkter, bostäder» som hyresintäkt/)
+    expect(h).toMatch(/Kontomappningen saknar Eveno 1510 .* som kundfordran/)
+    await expect(
+      svc.approve(t.org.id, t.ägare, { financialYearId: 1, consequencesSha256: 'a'.repeat(64) }),
+    ).rejects.toThrow()
+    expect(
+      await prisma.fortnoxCustomerActivation.count({ where: { organizationId: t.org.id } }),
+    ).toBe(0)
+    // Annat år: ingen revision alls.
+    expect((await mappning(t).kontroll(t.org.id, 2)).join(' ')).toMatch(
+      /Ingen godkänd kontomappning för räkenskapsår 2 — ingenting skickas till Fortnox via kundvägen/,
+    )
+  })
+
+  it('TESTKUND-008: ett mål med känd motsägelse (3911 inaktivt/HFS, verkligt 1868238) kan inte godkännas', async () => {
+    for (const variant of [
+      { Active: false, VATCode: 'HFS' },
+      { Active: true, VATCode: 'HFS' },
+      { Active: true, VATCode: null },
+    ]) {
       const t = await setup()
       await medEnhet(t)
+      syntetiskaMal(t)
       Object.assign(t.reader.accounts.find((a) => a.Number === 3911)!, variant)
-      const svc = medKontroll(t)
-      const s = await svc.status(t.org.id, 1)
-      expect(s.forslag.ok).toBe(false)
-      const h = s.forslag.hinder.join(' ')
-      expect(h).toMatch(monster)
-      expect(h).toMatch(
-        /Kundaktiveringen kan inte godkännas så länge detta hinder finns: ingenting skickas till Fortnox via kundvägen — varken hyror eller betalningar\./,
-      )
-      expect(h).toMatch(
-        /Stäm av kontoplanen med redovisningsansvarig; Eveno rekommenderar ingen momskod eller sats/,
-      )
       await expect(
-        svc.approve(t.org.id, t.ägare, { financialYearId: 1, consequencesSha256: 'a'.repeat(64) }),
-      ).rejects.toThrow()
+        godkannMappning(prisma, t.connections, t.reader, t.org.id, [...HYRA]),
+      ).rejects.toThrow(
+        variant.VATCode === null
+          ? /saknar momskod/
+          : /3911 → 3911: (kontot är inaktivt|momskod HFS motsäger)/,
+      )
       expect(
-        await prisma.fortnoxCustomerActivation.count({ where: { organizationId: t.org.id } }),
+        await prisma.fortnoxAccountMappingRevision.count({
+          where: {
+            organizationId: t.org.id,
+            status: 'APPROVED',
+            rows: { some: { role: 'HYRESINTAKT' } },
+          },
+        }),
       ).toBe(0)
     }
   })
 
-  it('TESTKUND-006 F-1 positiv kontroll: utan enheter och intäktsrader ger kontrollen inget hinder', async () => {
+  it('TESTKUND-008 K8.1 positiv kontroll: fullständig, färsk mappning ger inga mappningshinder; drift efteråt ger hinder', async () => {
     const t = await setup()
+    await medEnhet(t)
+    syntetiskaMal(t)
+    await godkannMappning(prisma, t.connections, t.reader, t.org.id, [...HYRA])
     const utan = (await t.aktivering.status(t.org.id, 1)).forslag.hinder
     const med = (await medKontroll(t).status(t.org.id, 1)).forslag.hinder
     expect(med).toEqual(utan)
+    // Drift: målkontots momskod ändras i Fortnox efter godkännandet.
+    t.reader.accounts.find((a) => a.Number === 3911)!.VATCode = 'HFS'
+    expect((await medKontroll(t).status(t.org.id, 1)).forslag.hinder.join(' ')).toMatch(
+      /Fortnox-konton har ändrats sedan kontomappningen godkändes: 3911 \(momskod\)/,
+    )
+  })
+
+  it('TESTKUND-008: momspliktig parkering är ej stödd → hinder (ingen tyst delaktivering)', async () => {
+    const t = await setup()
+    await medEnhet(t, 'PARKING')
+    expect((await mappning(t).kontroll(t.org.id, 1)).join(' ')).toMatch(
+      /Ej stödd i kontomappningen: Hyra för enhetstyp PARKING/,
+    )
+  })
+
+  it('TESTKUND-008 F9: godkänd ny revision ogiltigförklarar en ACTIVE kundaktivering beständigt', async () => {
+    const t = await setup()
+    await t.godkann()
+    await godkannMappning(prisma, t.connections, t.reader, t.org.id)
+    const a = await prisma.fortnoxCustomerActivation.findFirstOrThrow({
+      where: { organizationId: t.org.id },
+    })
+    expect([a.status, a.invalidatedReason]).toEqual([
+      'SUPERSEDED',
+      'Kontomappningen ändrades (revision 2 godkänd).',
+    ])
   })
 
   it('TESTKUND-006 K4: en ACTIVE kundaktivering gör inte en intäktsrad exporterbar', async () => {

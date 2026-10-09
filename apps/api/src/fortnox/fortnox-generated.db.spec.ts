@@ -23,6 +23,11 @@ import {
 import { FortnoxConnectionService } from './fortnox-connection.service'
 import { FortnoxExportService } from './fortnox-export.service'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import {
+  godkannMappning,
+  leverantorsfaktura,
+  stadaKontomappning,
+} from './fortnox-kontomappning.testing'
 import { FakeFortnoxApi, noopRateLimiter, type FakeFortnoxFault } from './fortnox-fake-api.testing'
 import { FortnoxReadbackService } from './fortnox-readback.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
@@ -481,6 +486,7 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       await prisma.fortnoxReadRun.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await stadaKontomappning(prisma, id)
       await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
     }
@@ -548,6 +554,8 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
     const b = await prisma.account.create({
       data: { organizationId: o.id, number: 2440, name: 'L', type: 'LIABILITY' },
     })
+    // TESTKUND-008: export kräver belagd källa och godkänd kontomappning.
+    await godkannMappning(prisma, connections, reader, o.id)
     return { o, api, ledger, exportsSvc, sender, readback, a, b }
   }
 
@@ -624,20 +632,9 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       }
       const ore = amount(r)
       const desc = `EVENO TEST GEN ${FRON.G2}-${i}`
-      const je = await prisma.journalEntry.create({
-        data: {
-          organizationId: t.o.id,
-          date: new Date('2026-10-02'),
-          description: desc,
-          fiscalYear: 2026,
-          verNumber: i + 1,
-          lines: {
-            create: [
-              { accountId: t.a.id, debit: oreStr(ore) },
-              { accountId: t.b.id, credit: oreStr(ore) },
-            ],
-          },
-        },
+      const je = await leverantorsfaktura(prisma, t.o.id, {
+        belopp: oreStr(ore),
+        beskrivning: desc,
       })
       const row = await t.exportsSvc.dryRun(t.o.id, je.id)
       check(row.state === 'DRY_RUN_READY', `fall ${i}: dry-run ${row.state}`)

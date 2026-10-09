@@ -64,6 +64,16 @@ export interface LedgerRowProvenance {
   code: string | null
   propertyId: string | null
   evenoExport: boolean
+  /**
+   * TESTKUND-008 K7.1: för Evenos EGNA exporter (exakt identitet) — vilket Eveno-verifikat och
+   * vilket Eveno-källkonto raden kommer från, och vilken kontomappningsrevision som användes.
+   * Ingår aldrig i summeringen; summan räknar raden en gång som i dag.
+   */
+  evenoSource?: {
+    journalEntryId: string
+    sourceAccount: number | null
+    mappingRevision: number | null
+  }
 }
 
 export interface LedgerSummary {

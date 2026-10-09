@@ -997,6 +997,7 @@ model Organization {
   bankImportStops            BankImportStop[]
   openingPackages            OpeningPackage[]
   fortnoxCustomerActivations FortnoxCustomerActivation[]
+  fortnoxAccountMappingRevisions FortnoxAccountMappingRevision[]
   openingExecutedSources     OpeningExecutedSource[]
   // KUNDSTART: första dag Eveno fakturerar (alltid den 1:a i en månad, svensk
   // kalender). NULL = ingen gräns (oförändrat beteende). Låses efter ekonomisk effekt.
@@ -7940,4 +7941,95 @@ model FortnoxCustomerActivation {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status])
+}
+
+// ── TESTKUND-008: organisationsspecifik, versionsbunden KONTOMAPPNING för Fortnox-export ──
+// En revision är oföränderlig: varje sparning skapar en ny DRAFT. Högst EN APPROVED per
+// (organisation, räkenskapsår) — partiellt unikt index i migrationen. Mappningen ändrar bara
+// exportutkastets konto; Evenos verifikat, belopp och tidigare Fortnox-verifikat rörs aldrig.
+enum FortnoxAccountMappingStatus {
+  DRAFT
+  APPROVED
+  // Ersatt av en senare godkänd revision för samma år. Bevaras (exportproveniens pekar hit).
+  SUPERSEDED
+}
+
+// Radens bokföringsroll, härledd ur verifikatets källa (aldrig ur kundens val).
+enum FortnoxAccountRole {
+  KUNDFORDRAN
+  HYRESINTAKT
+  LIKVID
+  DEPOSITIONSSKULD
+  KOSTNAD
+  INGAENDE_MOMS
+  LEVERANTORSSKULD
+}
+
+// Belagd momsbehandling för raden. Samma källkonto kan bära olika behandling.
+enum FortnoxVatTreatment {
+  EJ_TILLAMPLIG
+  MOMSFRI
+  AVDRAGSGILL
+}
+
+// Servern bedömer målkontots momskod mot roll + behandling. Bara FORENLIG kan godkännas.
+enum FortnoxTechnicalVat {
+  FORENLIG
+  KONFLIKT
+  EJ_BELAGD
+}
+
+model FortnoxAccountMappingRevision {
+  id                    String                      @id @default(uuid())
+  organizationId        String
+  revision              Int
+  status                FortnoxAccountMappingStatus @default(DRAFT)
+  // Bindning: exakt den anslutning, det företag och det räkenskapsår utkastet lästes mot.
+  connectionId          String
+  connectionGeneration  Int
+  fortnoxDatabaseNumber Int
+  fortnoxOrgNumber      String
+  financialYearId       Int
+  financialYearFrom     DateTime                    @db.Date
+  financialYearTo       DateTime                    @db.Date
+  // sha256 över kanonisk JSON av bindning + alla rader inkl. Fortnox-ögonblicksbild.
+  contentSha256         String
+  createdById           String
+  createdByRole         String
+  createdAt             DateTime                    @default(now())
+  approvedById          String?
+  approvedByRole        String?
+  approvedAt            DateTime?
+  supersededAt          DateTime?
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rows         FortnoxAccountMappingRow[]
+
+  @@unique([organizationId, revision])
+  @@index([organizationId, status])
+}
+
+model FortnoxAccountMappingRow {
+  id                   String              @id @default(uuid())
+  revisionId           String
+  role                 FortnoxAccountRole
+  vatTreatment         FortnoxVatTreatment
+  sourceAccountNumber  Int
+  sourceAccountName    String
+  targetAccountNumber  Int
+  // Ögonblicksbild ur GET /3/accounts/{n}?financialyear= när utkastet skapades.
+  targetName           String?
+  targetActive         Boolean?
+  // targetVatCodePresent=false: fältet saknades i svaret (inte detsamma som null/tomt).
+  targetVatCode        String?
+  targetVatCodePresent Boolean
+  targetYear           Int?
+  targetExists         Boolean
+  readAt               DateTime
+  technical            FortnoxTechnicalVat
+  technicalReason      String
+
+  revision FortnoxAccountMappingRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@unique([revisionId, role, sourceAccountNumber, vatTreatment])
 }

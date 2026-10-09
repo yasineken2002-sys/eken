@@ -21,6 +21,11 @@ import { FortnoxMappingService } from './fortnox-mapping.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import {
+  godkannMappning,
+  leverantorsfaktura,
+  stadaKontomappning,
+} from './fortnox-kontomappning.testing'
 import { toStatusResponse } from './fortnox-status'
 import { DataContextService } from '../ai/data-context.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
@@ -55,6 +60,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
       await prisma.fortnoxVoucherExport.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await stadaKontomappning(prisma, id)
       await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
     }
@@ -1206,6 +1212,16 @@ medDb('Fortnox A mot riktig Postgres', () => {
     })
   }
 
+  /** TESTKUND-008: belagd leverantörsfaktura + godkänd kontomappning genom tjänsten. */
+  async function mappadFaktura(
+    r: ReturnType<typeof rig>,
+    organizationId: string,
+    belopp = '10.00',
+  ) {
+    await godkannMappning(prisma, r.connections, r.reader, organizationId)
+    return leverantorsfaktura(prisma, organizationId, { belopp })
+  }
+
   function exportRig(r: ReturnType<typeof rig>) {
     const builder = new VerifiedVoucherDraftBuilder(r.db, r.connections, r.reader)
     return new FortnoxExportService(r.db, builder)
@@ -1217,10 +1233,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
     await r.connections.setExportOmitDimensions(o.id, 'u1', true)
-    const je = await entryWithLines(o.id, [
-      [5170, '1234.50', null],
-      [2440, null, '1234.50'],
-    ])
+    const je = await mappadFaktura(r, o.id, '1234.50')
     const row = await exportRig(r).dryRun(o.id, je.id)
     expect([row.state, row.blockReason]).toEqual(['DRY_RUN_READY', null])
     const saved = await prisma.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: row.id } })
@@ -1266,11 +1279,23 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
     await r.connections.setExportOmitDimensions(o.id, 'u1', true)
-    const je = await entryWithLines(o.id, [
-      [5999, '10.00', null],
-      [2440, null, '10.00'],
-    ])
-    expect((await exportRig(r).dryRun(o.id, je.id)).blockReason).toMatch(/^ACCOUNT_UNVERIFIED/)
+    // TESTKUND-008: ett mål som inte finns i Fortnox kan inte ens godkännas …
+    await expect(
+      godkannMappning(prisma, r.connections, r.reader, o.id, [
+        {
+          role: 'KOSTNAD',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 5999,
+          targetAccountNumber: 5999,
+        },
+      ]),
+    ).rejects.toThrow(/finns inte i Fortnox/)
+    // … och utan godkänd rad blir det inget 1:1-nummer, utan stopp.
+    await godkannMappning(prisma, r.connections, r.reader, o.id)
+    const je = await leverantorsfaktura(prisma, o.id, { belopp: '10.00', kostnadskonto: 5999 })
+    expect((await exportRig(r).dryRun(o.id, je.id)).blockReason).toMatch(
+      /^ACCOUNT_MAPPING_MISSING: Konto 5999/,
+    )
   })
 
   it('förhandskontroll: rättelse utan bekräftat exporterat original → BLOCKED (E-F1)', async () => {
@@ -1279,10 +1304,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
     await r.connections.setExportOmitDimensions(o.id, 'u1', true)
-    const orig = await entryWithLines(o.id, [
-      [5170, '10.00', null],
-      [2440, null, '10.00'],
-    ])
+    const orig = await mappadFaktura(r, o.id)
     const rev = await entryWithLines(
       o.id,
       [
@@ -1307,7 +1329,18 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect((await exportRig(r).dryRun(o.id, rev.id)).blockReason).toMatch(/^ORIGINAL_NOT_CONFIRMED/)
     await prisma.fortnoxVoucherExport.update({
       where: { journalEntryId: orig.id },
-      data: { fortnoxDatabaseNumber: 900001 },
+      data: {
+        fortnoxDatabaseNumber: 900001,
+        // V1: originalets exporterade målkonton (frysta i dess utkast).
+        draft: {
+          provenance: {
+            lines: [
+              { localAccountNumber: 5170, externalAccountNumber: 5170 },
+              { localAccountNumber: 2440, externalAccountNumber: 2440 },
+            ],
+          },
+        },
+      },
     })
     expect((await exportRig(r).dryRun(o.id, rev.id)).state).toBe('DRY_RUN_READY')
   })
@@ -1317,10 +1350,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const r = rig()
     await connect(r, o.id)
     await r.connections.setExportVoucherSeries(o.id, 'A')
-    const je = await entryWithLines(o.id, [
-      [5170, '10.00', null],
-      [2440, null, '10.00'],
-    ])
+    const je = await mappadFaktura(r, o.id)
     expect((await exportRig(r).dryRun(o.id, je.id)).blockReason).toMatch(
       /^DIMENSION_DECISION_MISSING/,
     )
@@ -1405,10 +1435,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
       { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31', AccountingMethod: 'ACCRUAL' },
       { Id: 3, FromDate: '2024-01-01', ToDate: '2024-12-31', AccountingMethod: 'ACCRUAL' },
     ]
-    const je = await entryWithLines(o.id, [
-      [5170, '10.00', null],
-      [2440, null, '10.00'],
-    ])
+    const je = await mappadFaktura(r, o.id)
     expect((await exportRig(r).dryRun(o.id, je.id)).state).toBe('DRY_RUN_READY')
   })
 

@@ -12,7 +12,8 @@
  *  - bindningen lika med aktuell anslutning: id, generation, databasnummer, orgnr (=
  *    Evenos), status ACTIVE och ingen återanslutning efter godkännandet;
  *  - utkastets räkenskapsår och serie lika med aktiveringens;
- *  - mappingSha (serie + dimensionsbeslut med tid + mappningar med id + år) oförändrad;
+ *  - mappingSha (serie + dimensionsbeslut med tid + mappningar med id + år + godkänd
+ *    kontomappningsrevision för året) oförändrad;
  *  - öppningspaketet fortfarande EXECUTED, det senaste, med brytdatum = organisationens
  *    och avstämning AVSTAMD eller AVGRANSAD;
  * Avvikelse → aktiveringen blir beständigt SUPERSEDED (send-vägen) och inget skickas.
@@ -66,8 +67,14 @@ export async function mappningsSha(
     select: { id: true, dimensionType: true, code: true, propertyId: true, createdAt: true },
     orderBy: [{ dimensionType: 'asc' }, { code: 'asc' }],
   })
+  // TESTKUND-008 K8.1: den godkända kontomappningsrevisionen för året ingår i bindningen.
+  const kontomappning = await db.fortnoxAccountMappingRevision.findFirst({
+    where: { organizationId, status: 'APPROVED', financialYearId },
+    select: { id: true, contentSha256: true },
+  })
   const underlag = {
     serie: conn.exportVoucherSeries,
+    kontomappning: kontomappning ? [kontomappning.id, kontomappning.contentSha256] : null,
     utanDimensioner: conn.exportOmitDimensionsAt?.toISOString() ?? null,
     ar: financialYearId,
     mappningar: mappningar.map((m) => [

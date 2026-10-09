@@ -208,9 +208,16 @@ export class MockFortnoxLedgerReader implements FortnoxLedgerReader {
     Active: boolean
     Description?: string
     BalanceBroughtForward?: number
+    // Som i verkliga svar (R0-REAL-001): fältet finns, null = ingen momskod.
+    VATCode?: string | null
   }> = [
-    { Number: 2440, Active: true, Description: 'Leverantörsskulder' },
-    { Number: 5170, Active: true, Description: 'Reparation och underhåll av fastighet' },
+    { Number: 2440, Active: true, Description: 'Leverantörsskulder', VATCode: null },
+    {
+      Number: 5170,
+      Active: true,
+      Description: 'Reparation och underhåll av fastighet',
+      VATCode: null,
+    },
   ]
   projects: Array<{ ProjectNumber: string; Description: string }> = []
   voucherSeries: string[] = ['A', 'L']

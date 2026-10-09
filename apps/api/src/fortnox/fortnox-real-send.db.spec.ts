@@ -15,6 +15,11 @@ import { FortnoxReadbackService } from './fortnox-readback.service'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { MockFortnoxAuthProvider, MockFortnoxLedgerReader } from './fortnox-providers'
 import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import {
+  godkannMappning,
+  leverantorsfaktura,
+  stadaKontomappning,
+} from './fortnox-kontomappning.testing'
 import { FortnoxSendService } from './fortnox-send.service'
 import { RealFortnoxVoucherWriter } from './fortnox-voucher-writer'
 import { RealFortnoxLedgerReader } from './fortnox-real-provider'
@@ -48,6 +53,7 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       await prisma.fortnoxReadRun.deleteMany({ where: { organizationId: id } })
       await prisma.journalEntryLine.deleteMany({ where: { journalEntry: { organizationId: id } } })
       await prisma.journalEntry.deleteMany({ where: { organizationId: id } })
+      await stadaKontomappning(prisma, id)
       await prisma.account.deleteMany({ where: { organizationId: id } })
       await prisma.organization.delete({ where: { id } }).catch(() => undefined)
     }
@@ -113,34 +119,13 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     await connections.handleCallback(state, `mock-code-${state.slice(0, 8)}`)
     await connections.setExportVoucherSeries(org.id, 'A')
     await connections.setExportOmitDimensions(org.id, 'u1', true)
-    const acc = async (number: number) =>
-      (await prisma.account.findFirst({ where: { organizationId: org.id, number } })) ??
-      prisma.account.create({
-        data: { organizationId: org.id, number, name: `Konto ${number}`, type: 'EXPENSE' },
-      })
+    // TESTKUND-008: export kräver belagd källa och godkänd kontomappning.
+    await godkannMappning(prisma, connections, reader, org.id)
     const entry = async (
       amount = '1234.50',
       description = `EVENO TEST 20261003 ${sfx}`,
       radtext: [string | null, string | null] = [null, null],
-    ) => {
-      const a = await acc(5170)
-      const b = await acc(2440)
-      return prisma.journalEntry.create({
-        data: {
-          organizationId: org.id,
-          date: new Date('2026-10-02'),
-          description,
-          fiscalYear: 2026,
-          verNumber: Math.floor(Math.random() * 1e6) + 1,
-          lines: {
-            create: [
-              { accountId: a.id, debit: amount, description: radtext[0] },
-              { accountId: b.id, credit: amount, description: radtext[1] },
-            ],
-          },
-        },
-      })
-    }
+    ) => leverantorsfaktura(prisma, org.id, { belopp: amount, beskrivning: description, radtext })
     const ready = async (
       amount?: string,
       description?: string,

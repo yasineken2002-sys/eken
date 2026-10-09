@@ -115,6 +115,7 @@ export class FortnoxReadbackService {
 
     let result: LedgerReadResult
     const reader = new RefreshingLedgerReader(this.reader, this.connections, organizationId, auth)
+    let egna = new Map<string, Egen>()
     try {
       const [mappings, exported] = await Promise.all([
         this.prisma.fortnoxDimensionMapping.findMany({
@@ -136,9 +137,21 @@ export class FortnoxReadbackService {
             externalSeries: { not: null },
             externalNumber: { not: null },
           },
-          select: { externalYear: true, externalSeries: true, externalNumber: true },
+          select: {
+            externalYear: true,
+            externalSeries: true,
+            externalNumber: true,
+            journalEntryId: true,
+            draft: true,
+          },
         }),
       ])
+      egna = new Map(
+        exported.map((e) => [
+          `${e.externalYear}|${e.externalSeries}|${e.externalNumber}`,
+          { journalEntryId: e.journalEntryId, ...kallkonton(e.draft) },
+        ]),
+      )
       result = await readLedger(reader, auth.token, {
         expectedDatabaseNumber: auth.databaseNumber,
         ...input,
@@ -187,6 +200,25 @@ export class FortnoxReadbackService {
       stale = `Urvalet är inaktuellt: konto ${inactive.join(', ')} är inaktivt i Fortnox. Hämta om valen.`
     }
     if (stale) result = { ...result, status: 'FAILED', reason: stale, summary: null, rows: null }
+    // TESTKUND-008 K7.1: egna exporter får sin Eveno-proveniens (källkonto ↔ målkonto ↔ revision).
+    if (result.rows)
+      result = {
+        ...result,
+        rows: result.rows.map((r) => {
+          const e = r.evenoExport ? egna.get(r.voucher) : undefined
+          if (!e) return r
+          const kallor = e.perMal.get(r.account) ?? []
+          return {
+            ...r,
+            evenoSource: {
+              journalEntryId: e.journalEntryId,
+              // Entydigt bara om exakt ett Eveno-konto mappades till detta Fortnox-konto.
+              sourceAccount: kallor.length === 1 ? kallor[0]! : null,
+              mappingRevision: e.revision,
+            },
+          }
+        }),
+      }
 
     const saved = await this.prisma.fortnoxReadRun.update({
       where: { id: run.id },
@@ -318,6 +350,20 @@ export class FortnoxReadbackService {
     const sendingEnabled = await sendingEnabledFor(this.prisma, this.writer, organizationId)
     const customerActivation =
       sendingEnabled && !!this.writer?.requiresCustomerActivation(connection.fortnoxDatabaseNumber)
+    // TESTKUND-008 K7.3: godkända kontomappningar — vilket Fortnox-konto som bär vilken Eveno-källa.
+    const mappningar = await this.prisma.fortnoxAccountMappingRevision.findMany({
+      where: { organizationId, status: 'APPROVED' },
+      orderBy: { financialYearId: 'asc' },
+      select: {
+        revision: true,
+        financialYearId: true,
+        fortnoxDatabaseNumber: true,
+        rows: {
+          select: { role: true, sourceAccountNumber: true, targetAccountNumber: true },
+          orderBy: [{ targetAccountNumber: 'asc' }, { sourceAccountNumber: 'asc' }],
+        },
+      },
+    })
     return {
       connection,
       latestRead,
@@ -325,6 +371,7 @@ export class FortnoxReadbackService {
       exports: exportCounts,
       sendingEnabled,
       customerActivation,
+      accountMappings: mappningar,
     }
   }
 }
@@ -397,4 +444,29 @@ export class RefreshingLedgerReader implements FortnoxLedgerReader {
       return this.inner.get<T>(this.current.token, path, query) // andra 401 propagerar → AUTH_LOST
     }
   }
+}
+
+type Egen = { journalEntryId: string; revision: number | null; perMal: Map<number, number[]> }
+
+/** Källkonto per målkonto ur exportens frysta utkast (TESTKUND-008 K5.3; äldre utkast 1:1). */
+function kallkonton(draft: unknown): Omit<Egen, 'journalEntryId'> {
+  const d = (draft ?? {}) as {
+    provenance?: {
+      lines?: Array<{ localAccountNumber?: unknown; externalAccountNumber?: unknown }>
+    }
+    kontomappning?: { revision?: unknown }
+  }
+  const perMal = new Map<number, number[]>()
+  for (const l of d.provenance?.lines ?? []) {
+    if (
+      !Number.isSafeInteger(l.localAccountNumber) ||
+      !Number.isSafeInteger(l.externalAccountNumber)
+    )
+      continue
+    const lista = perMal.get(l.externalAccountNumber as number) ?? []
+    if (!lista.includes(l.localAccountNumber as number)) lista.push(l.localAccountNumber as number)
+    perMal.set(l.externalAccountNumber as number, lista)
+  }
+  const rev = d.kontomappning?.revision
+  return { perMal, revision: Number.isSafeInteger(rev) ? (rev as number) : null }
 }
