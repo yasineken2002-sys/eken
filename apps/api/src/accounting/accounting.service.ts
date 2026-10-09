@@ -2879,7 +2879,11 @@ export class AccountingService {
       })
       return entry
     }
-    return params.tx ? skriv(params.tx) : this.prisma.$transaction((t) => skriv(t))
+    // Samma gräns som createNumberedEntry själv använde när den öppnade transaktionen (före
+    // TESTKUND-027 låg verifikatet ensamt i en sådan); nu omfattar den även exportspärren.
+    return params.tx
+      ? skriv(params.tx)
+      : this.prisma.$transaction((t) => skriv(t), PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async reverseJournalEntryForMiscCharge(
