@@ -2,6 +2,7 @@ import { Inject, Logger, Module } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaModule } from '../common/prisma/prisma.module'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { RedisService } from '../common/redis/redis.service'
 import {
   fortnoxCustomerWritesOptIn,
   skrivarensKontroll,
@@ -41,7 +42,12 @@ import { RealFortnoxAuthProvider, RealFortnoxLedgerReader } from './fortnox-real
 import type { FortnoxVoucher } from './fortnox.types'
 import { FortnoxOAuthClient, type FortnoxOAuthScope } from './provider/fortnox-oauth-client'
 import { FortnoxTransport } from './provider/fortnox-transport'
-import { InMemoryFortnoxRateLimiter } from './provider/fortnox-rate-limiter'
+import {
+  FORTNOX_RATE_IDENTITY,
+  FortnoxRateIdentity,
+  RedisFortnoxRateLimiter,
+  fortnoxRedisClient,
+} from './provider/fortnox-rate-limiter'
 
 /**
  * Minsta använda scope-mängd: företagsbindning, huvudbok/år/konton, kostnadsställen
@@ -62,18 +68,28 @@ type RealClients = {
   writeTransport: FortnoxTransport | null
   clientId: string
   redirectUri: string
+  /** Tokenns lagrade företag → hink (samma instans som anslutningstjänsten fyller). */
+  identity: FortnoxRateIdentity
 } | null
 
 /**
- * Singletons för den skarpa vägen (en OAuth-klient, en transport, EN processlokal
- * limiter). Skapas bara i REAL-läge; fetch injiceras uttryckligen här och ingen
- * annanstans. Limitern är inte distribuerad — flera processer kräver global limiter.
+ * Singletons för den skarpa vägen (en OAuth-klient, en transport och den DELADE begränsaren).
+ * Skapas bara i REAL-läge; fetch injiceras uttryckligen här och ingen annanstans.
+ * TESTKUND-035 (P3-A1): begränsaren ligger i den befintliga Redis och gäller alla processer;
+ * utan Redis startar den skarpa vägen inte (ingen processlokal reserv).
  */
-export function realClients(config: ConfigService, crypto: FortnoxTokenCryptoService): RealClients {
+export function realClients(
+  config: ConfigService,
+  crypto: FortnoxTokenCryptoService,
+  redis?: Pick<RedisService, 'client'> | null,
+  identity?: FortnoxRateIdentity | null,
+): RealClients {
   if (fortnoxMode(config, crypto) !== 'REAL') return null
   const c = fortnoxRealConfig(config)
+  if (!redis?.client)
+    throw new Error('[fortnox] Skarp provider kräver Redis för den delade begränsaren')
   const fetch = globalThis.fetch.bind(globalThis)
-  const rateLimiter = new InMemoryFortnoxRateLimiter()
+  const rateLimiter = new RedisFortnoxRateLimiter({ redis: fortnoxRedisClient(redis.client) })
   return {
     oauth: new FortnoxOAuthClient({
       fetch,
@@ -92,6 +108,7 @@ export function realClients(config: ConfigService, crypto: FortnoxTokenCryptoSer
         : null,
     clientId: c.clientId,
     redirectUri: c.redirectUri,
+    identity: identity ?? new FortnoxRateIdentity(),
   }
 }
 import {
@@ -117,10 +134,16 @@ import {
     FortnoxReadbackService,
     FortnoxExportService,
     FortnoxMappingService,
+    { provide: FORTNOX_RATE_IDENTITY, useValue: new FortnoxRateIdentity() },
     {
       provide: FORTNOX_REAL_CLIENTS,
       useFactory: realClients,
-      inject: [ConfigService, FortnoxTokenCryptoService],
+      inject: [
+        ConfigService,
+        FortnoxTokenCryptoService,
+        { token: RedisService, optional: true },
+        FORTNOX_RATE_IDENTITY,
+      ],
     },
     {
       provide: FORTNOX_AUTH_PROVIDER,
@@ -147,6 +170,7 @@ import {
             transport: real.transport,
             clientId: real.clientId,
             enabled: true,
+            identity: real.identity,
           })
         }
         if (mode !== 'MOCK') return new StubFortnoxLedgerReader()

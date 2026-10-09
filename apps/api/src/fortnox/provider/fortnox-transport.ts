@@ -1,4 +1,4 @@
-import { InMemoryFortnoxRateLimiter, systemFortnoxClock } from './fortnox-rate-limiter'
+import { FORTNOX_MIN_429_BACKOFF_MS, systemFortnoxClock } from './fortnox-rate-limiter'
 import { parseFortnoxRetryAfter } from './fortnox-retry-after'
 import { prepareFortnoxRequest } from './fortnox-transport.routes'
 import { FortnoxTransportError, type FortnoxRejectionDetail } from './fortnox-transport.types'
@@ -24,11 +24,13 @@ export class FortnoxTransport {
     this.fetch = options.fetch
     this.allowVoucherWrites = options.allowVoucherWrites === true
     this.clock = options.clock ?? systemFortnoxClock
-    this.limiter = options.rateLimiter ?? new InMemoryFortnoxRateLimiter(this.clock)
+    // TESTKUND-035 P3-A1: ingen processlokal standard; produkten skickar den delade begränsaren.
+    this.limiter = options.rateLimiter as FortnoxRateLimiter
     this.timeoutMs = options.timeoutMs ?? 30_000
     this.maxReadAttempts = options.maxReadAttempts ?? 3
     if (
       typeof options.fetch !== 'function' ||
+      !options.rateLimiter ||
       !Number.isInteger(this.timeoutMs) ||
       this.timeoutMs < 1 ||
       this.timeoutMs > 120_000 ||
@@ -133,10 +135,35 @@ export class FortnoxTransport {
         const retryAfterMs = parseFortnoxRetryAfter(retryAfter, this.clock.now())
         const retryableStatus = status === 429 || (status >= 500 && status <= 599)
         if (retryableStatus) {
-          const delay = retryAfterMs ?? (status === 429 ? 5000 : 500 * 2 ** (attempts - 1))
+          // TESTKUND-035 P3-A6: 429 utan giltigt (positivt) Retry-After spärrar minst 5 s.
+          const delay =
+            status === 429
+              ? retryAfterMs !== undefined && retryAfterMs > 0
+                ? retryAfterMs
+                : FORTNOX_MIN_429_BACKOFF_MS
+              : (retryAfterMs ?? 500 * 2 ** (attempts - 1))
+          let deferred = true
           try {
-            this.limiter.defer(rateLimitKey, this.clock.now() + delay)
+            await this.limiter.defer(rateLimitKey, delay)
           } catch {
+            deferred = false
+          }
+          if (method === 'POST' && status === 429) {
+            // TESTKUND-035 P3-B3: en skrivning som fick 429 kan ändå ha skapat posten; utfallet är
+            // okänt (aldrig avvisat) och skickas aldrig om, även när spärren inte kunde sparas.
+            void response.body?.cancel().catch(() => {})
+            throw new FortnoxTransportError(
+              'HTTP_ERROR',
+              'unknown',
+              attempts,
+              429,
+              delay,
+              null,
+              !deferred,
+            )
+          }
+          if (!deferred) {
+            // T-4: inget omförsök utan delad spärr; en läsning avbryts (read_failed).
             void response.body?.cancel().catch(() => {})
             throw failure('RATE_LIMIT_ERROR')
           }

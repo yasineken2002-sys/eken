@@ -324,9 +324,22 @@ export class FortnoxSendService {
     } catch (err) {
       if (err instanceof FortnoxWriteError && err.outcome === 'not_sent') {
         await backToReady('NOT_SENT')
+      } else if (
+        err instanceof FortnoxWriteError &&
+        err.outcome === 'unknown' &&
+        err.status === 429
+      ) {
+        // TESTKUND-035 P3-B3: 429 på POST kan ha skapat posten. Okänt utfall med bevarat försök
+        // (sendAttemptId, sentPayloadHash, fryst utkast); ingen omsändning, ingen frisläppning.
+        await lock('UNKNOWN', 'UNKNOWN_429', {
+          http: 429,
+          retryAfterMs: err.retryAfterMs,
+          sparrSparad: !err.deferFailed,
+          kalla: 'LAGRAD_AV_PRODUKTEN',
+        })
       } else if (err instanceof FortnoxWriteError && err.outcome === 'rejected') {
-        // TESTKUND-016 K3.1: HTTP-status och Fortnox kod sparas (NA = okänd). 429 registreras som
-        // avvisad som tidigare (eget fynd, BEDOMNING-KUNDGAP-016 rad 8) men kan aldrig frisläppas.
+        // TESTKUND-016 K3.1: HTTP-status och Fortnox kod sparas (NA = okänd). Sedan TESTKUND-035
+        // ger 429 aldrig rejected; äldre REJECTED_429_* behandlas som okänt utfall.
         const http = err.status ?? null
         const code = err.rejection?.code ?? null
         await lock('REJECTED', `REJECTED_${http ?? 'NA'}_${code ?? 'NA'}`, {
@@ -562,6 +575,120 @@ export class FortnoxSendService {
       }
       throw new ConflictException(why[result])
     }
+    return this.confirmReconciled(
+      organizationId,
+      row,
+      userId,
+      identity,
+      'Exakt återläsning i rätt företag; innehållet lika det frysta underlaget',
+    )
+  }
+
+  /**
+   * TESTKUND-035 P3-C1/C2: avstämning genom FULLSTÄNDIG skanning av räkenskapsåret i rätt företag
+   * (alla serier, strikt sidläsning). FOUND bekräftar bara exakt EN post vars Comments är lika med
+   * den frysta proveniensen och vars rader och belopp är lika med det skickade underlaget. ABSENT
+   * lämnar utfallet okänt: en historikpost (tid, räckvidd, antal lästa verifikat) läggs till och
+   * inget annat ändras. ABSENT bevisar inte att posten aldrig skapades.
+   */
+  async reconcileScan(organizationId: string, userId: string, exportId: string) {
+    await this.expireLeases(organizationId)
+    const row = await this.prisma.fortnoxVoucherExport.findFirst({
+      where: { id: exportId, organizationId },
+    })
+    if (!row) throw new NotFoundException('Exportraden hittades inte')
+    if (
+      !(LOCKED_FOR_RECONCILE as readonly string[]).includes(row.state) ||
+      !row.draft ||
+      row.fortnoxDatabaseNumber === null ||
+      row.sendFinancialYear === null ||
+      !row.sendAttemptId
+    ) {
+      throw new ConflictException('Verifikatet behöver ingen avstämning i sitt nuvarande läge')
+    }
+    const skanning = await this.scanForProvenance(organizationId, row)
+    if (skanning.status === 'WRONG_COMPANY')
+      throw new ConflictException('Fortnox-företaget är inte det som underlaget skickades till')
+    if (skanning.status === 'INCOMPLETE')
+      throw new ConflictException(
+        `Fortnox kunde inte läsas fullständigt (${skanning.skal}); inget ändrades. Försök igen senare.`,
+      )
+    if (skanning.status === 'FOUND') {
+      if (skanning.traffar.length !== 1)
+        throw new ConflictException(
+          `Flera poster i Fortnox bär verifikatets proveniens (${skanning.traffar.map((t) => `${t.series}${t.number}`).join(', ')}); inget ändrades. Stäm av manuellt med exakt identitet.`,
+        )
+      const t = skanning.traffar[0]!
+      const frozenComments = (row.draft as { payload?: { Voucher?: { Comments?: unknown } } })
+        .payload?.Voucher?.Comments
+      if (typeof frozenComments !== 'string' || t.comments !== frozenComments)
+        throw new ConflictException(
+          `Posten ${t.series}${t.number} i Fortnox har inte exakt verifikatets proveniens; inget ändrades`,
+        )
+      const identity = { year: t.year, series: t.series, number: t.number }
+      const result = await this.readAndCompare(organizationId, row, identity)
+      if (result !== 'MATCH')
+        throw new ConflictException(
+          result === 'MISMATCH'
+            ? `Posten ${t.series}${t.number} i Fortnox stämmer inte med det skickade underlaget; inget ändrades`
+            : 'Fortnox kunde inte läsas fullständigt; inget ändrades. Försök igen senare.',
+        )
+      return {
+        ...(await this.confirmReconciled(
+          organizationId,
+          row,
+          userId,
+          identity,
+          'Fullständig skanning av räkenskapsåret i rätt företag: exakt en post med fryst proveniens; återläst innehåll lika det frysta underlaget',
+        )),
+        avstamning: { utfall: 'HITTAD' as const, identitet: identity },
+      }
+    }
+    const at = new Date()
+    const post = {
+      typ: 'AVSTAMNING_EJ_HITTAD',
+      at: at.toISOString(),
+      av: userId,
+      sendAttemptId: row.sendAttemptId,
+      sentPayloadHash: row.sentPayloadHash,
+      rackvidd: {
+        databaseNumber: row.fortnoxDatabaseNumber,
+        financialYear: row.sendFinancialYear,
+        serier: 'alla',
+        verifikatLasta: skanning.antal,
+        sidor: skanning.sidor,
+        markor: `Eveno JournalEntry ${row.journalEntryId}`,
+      },
+      tolkning: 'Ingen post hittades vid läsningen. Det bevisar inte att ingen post skapades.',
+    }
+    const count = await this.prisma.$executeRaw`
+      UPDATE "FortnoxVoucherExport"
+         SET "attemptHistory" = "attemptHistory" || jsonb_build_array(${JSON.stringify(post)}::jsonb),
+             "updatedAt" = ${at}
+       WHERE "id" = ${row.id} AND "organizationId" = ${organizationId}
+         AND "state" = ${row.state}::"FortnoxExportState" AND "reconciledAt" IS NULL
+         AND "sendAttemptId" = ${row.sendAttemptId}`
+    if (count !== 1) throw new ConflictException('Exporten har ändrats under avstämningen')
+    return {
+      ...(await this.view(organizationId, row.id)),
+      avstamning: {
+        utfall: 'EJ_HITTAD' as const,
+        at: at.toISOString(),
+        financialYear: row.sendFinancialYear,
+        verifikatLasta: skanning.antal,
+        sidor: skanning.sidor,
+      },
+    }
+  }
+
+  private async confirmReconciled(
+    organizationId: string,
+    row: FortnoxVoucherExport,
+    userId: string,
+    identity: { year: number; series: string; number: number },
+    basis: string,
+  ) {
+    const { year, series, number } = identity
     const now = new Date()
     try {
       const res = await this.prisma.fortnoxVoucherExport.updateMany({
@@ -582,7 +709,7 @@ export class FortnoxSendService {
             by: userId,
             at: now.toISOString(),
             identity: { databaseNumber: row.fortnoxDatabaseNumber, year, series, number },
-            basis: 'Exakt återläsning i rätt företag; innehållet lika det frysta underlaget',
+            basis,
           },
           lastOutcome: 'RECONCILED',
           lastOutcomeAt: now,
@@ -713,7 +840,7 @@ export class FortnoxSendService {
     const skanning = await this.scanForProvenance(organizationId, row)
     if (skanning.status === 'FOUND')
       throw new ConflictException(
-        `En post med verifikatets proveniens finns i Fortnox (${skanning.identitet}); stäm av med reconcile`,
+        `En post med verifikatets proveniens finns i Fortnox (${skanning.traffar.map((t) => `${t.year}|${t.series}|${t.number}`).join(', ')}); stäm av med reconcile`,
       )
     if (skanning.status !== 'ABSENT')
       throw new ConflictException(
@@ -762,13 +889,17 @@ export class FortnoxSendService {
   /**
    * Strikt sidläsning av räkenskapsårets verifikat i rätt företag: finns någon post vars
    * Comments bär «Eveno JournalEntry <id>»? Varje läsfel eller ofullständighet → inte ABSENT.
+   * TESTKUND-035: hela året läses och ALLA träffar redovisas (dubbletter syns).
    */
   private async scanForProvenance(
     organizationId: string,
     row: FortnoxVoucherExport,
   ): Promise<
     | { status: 'ABSENT'; antal: number; sidor: number }
-    | { status: 'FOUND'; identitet: string }
+    | {
+        status: 'FOUND'
+        traffar: { year: number; series: string; number: number; comments: string }[]
+      }
     | { status: 'WRONG_COMPANY' }
     | { status: 'INCOMPLETE'; skal: string }
   > {
@@ -799,6 +930,7 @@ export class FortnoxSendService {
         coverage,
       )
       const seen = new Set<string>()
+      const traffar: { year: number; series: string; number: number; comments: string }[] = []
       for (const v of list.items) {
         const series = v.VoucherSeries
         const number = v.VoucherNumber
@@ -809,7 +941,7 @@ export class FortnoxSendService {
           return { status: 'INCOMPLETE', skal: 'listan saknar Comments' }
         seen.add(`${series}|${String(number)}`)
         if (typeof v.Comments === 'string' && v.Comments.includes(markor))
-          return { status: 'FOUND', identitet: `${year}|${series}|${String(number)}` }
+          traffar.push({ year, series, number: number as number, comments: v.Comments })
       }
       if (seen.size !== list.total) return { status: 'INCOMPLETE', skal: 'antalet stämmer inte' }
       // K-S2: anslutningen får inte ha bytt företag under läsningen.
@@ -820,6 +952,7 @@ export class FortnoxSendService {
         after.fortnoxDatabaseNumber !== row.fortnoxDatabaseNumber
       )
         return { status: 'WRONG_COMPANY' }
+      if (traffar.length > 0) return { status: 'FOUND', traffar }
       return {
         status: 'ABSENT',
         antal: seen.size,

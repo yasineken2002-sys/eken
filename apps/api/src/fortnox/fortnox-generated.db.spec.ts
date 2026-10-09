@@ -580,7 +580,8 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       drop_response_after_write: 'UNKNOWN',
       status_500_after_write: 'UNKNOWN',
       status_400: 'REJECTED',
-      status_429: 'REJECTED',
+      // TESTKUND-035 P3-B3: 429 på POST är okänt utfall (tidigare REJECTED).
+      status_429: 'UNKNOWN',
       network_error_before_write: 'UNKNOWN',
       wrong_year_after_write: 'UNKNOWN',
       no_number_after_write: 'UNKNOWN',

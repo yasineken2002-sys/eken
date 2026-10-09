@@ -14,6 +14,8 @@ import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { StubFortnoxAuthProvider, StubFortnoxLedgerReader, fortnoxMode } from './fortnox-providers'
 import { RealFortnoxAuthProvider } from './fortnox-real-provider'
 import { FORTNOX_SCOPES, realClients } from './fortnox.module'
+import { RedisFortnoxRateLimiter } from './provider/fortnox-rate-limiter'
+import type { RedisService } from '../common/redis/redis.service'
 
 const KEY = 'cd'.repeat(32)
 const cfg = (env: Record<string, string | undefined>) =>
@@ -145,8 +147,18 @@ describe('Fortnox inert som standard', () => {
     })
     try {
       const c = cfg(REAL)
-      const real = realClients(c, new FortnoxTokenCryptoService(c))
+      // TESTKUND-035 P3-A1: den skarpa vägen kräver Redis; ingen processlokal reserv.
+      expect(() => realClients(c, new FortnoxTokenCryptoService(c))).toThrow(/Redis/)
+      const redis = { client: { evalsha: jest.fn(), eval: jest.fn() } }
+      const real = realClients(
+        c,
+        new FortnoxTokenCryptoService(c),
+        redis as unknown as Pick<RedisService, 'client'>,
+      )
       expect(real).not.toBeNull()
+      for (const t of [real!.transport, real!.writeTransport].filter(Boolean))
+        expect(Reflect.get(t!, 'limiter')).toBeInstanceOf(RedisFortnoxRateLimiter)
+      expect(redis.client.evalsha).not.toHaveBeenCalled()
       const auth = new RealFortnoxAuthProvider({
         client: real!.oauth,
         redirectUri: real!.redirectUri,

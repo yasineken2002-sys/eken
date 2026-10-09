@@ -273,7 +273,8 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
 
   it.each([
     ['status_400', 'REJECTED', 0],
-    ['status_429', 'REJECTED', 0],
+    // TESTKUND-035 P3-B3: 429 på POST är okänt utfall (tidigare REJECTED).
+    ['status_429', 'UNKNOWN', 0],
     ['status_500_after_write', 'UNKNOWN', 1],
     ['network_error_before_write', 'UNKNOWN', 0],
     ['wrong_year_after_write', 'UNKNOWN', 1],
@@ -757,13 +758,20 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
     expect((await t.dbRow(row.id)).state).toBe('REJECTED')
   })
 
-  it('H4-016 T14: 429 vid POST → REJECTED_429_NA som tidigare, men kan aldrig frisläppas; UNKNOWN kan inte frisläppas', async () => {
+  it('H4-016 T14 (ändrad i TESTKUND-035): 429 vid POST → UNKNOWN_429 och kan aldrig frisläppas; en äldre REJECTED_429_NA kan inte heller frisläppas; UNKNOWN kan inte frisläppas', async () => {
     const t = await setup()
     const a = await t.ready('10.00')
     t.api.faults.push('status_429')
-    expect((await t.sender.send(t.org.id, 'u1', a.row.id, a.row.draftHash)).lastOutcome).toBe(
-      'REJECTED_429_NA',
-    )
+    const a1 = await t.sender.send(t.org.id, 'u1', a.row.id, a.row.draftHash)
+    expect([a1.state, a1.lastOutcome]).toEqual(['UNKNOWN', 'UNKNOWN_429'])
+    await expect(
+      t.sender.releaseRejected(t.org.id, OWNER, a.row.id, { reason: 'rate limit' }),
+    ).rejects.toThrow(/reconcile/)
+    // Äldre rad skriven före TESTKUND-035: REJECTED med lagrad 429.
+    await prisma.fortnoxVoucherExport.update({
+      where: { id: a.row.id },
+      data: { state: 'REJECTED', lastOutcome: 'REJECTED_429_NA' },
+    })
     await expect(
       t.sender.releaseRejected(t.org.id, OWNER, a.row.id, { reason: 'rate limit' }),
     ).rejects.toThrow(/429/)

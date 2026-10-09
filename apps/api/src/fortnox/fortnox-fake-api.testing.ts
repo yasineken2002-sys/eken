@@ -25,7 +25,7 @@ export type FakeFortnoxFault =
 
 export const noopRateLimiter: FortnoxRateLimiter = {
   acquire: async () => undefined,
-  defer: () => undefined,
+  defer: async () => undefined,
 }
 
 export class FakeFortnoxApi {
@@ -45,6 +45,8 @@ export class FakeFortnoxApi {
   /** Prov: ändra svaret på GET /3/vouchers/sublist (t.ex. ofullständig sidinformation). */
   listTamper: ((body: Record<string, unknown>, query: Record<string, string>) => unknown) | null =
     null
+  /** TESTKUND-035: Retry-After på 429-svaret (null = saknas). */
+  retryAfter429: string | null = null
   /** Körs när en POST når ytan, före utfall (prov: kontrollera anspråket i DB). */
   onPost: ((body: unknown) => Promise<void>) | null = null
 
@@ -92,7 +94,12 @@ export class FakeFortnoxApi {
     const fault = this.faults.shift()
     if (fault === 'network_error_before_write') throw new TypeError('fetch failed')
     if (fault === 'status_400') return json({ ErrorInformation: { message: 'x' } }, 400)
-    if (fault === 'status_429') return json({ ErrorInformation: { message: 'x' } }, 429)
+    if (fault === 'status_429')
+      return json(
+        { ErrorInformation: { message: 'x' } },
+        429,
+        this.retryAfter429 === null ? {} : { 'retry-after': this.retryAfter429 },
+      )
     if (fault === 'observerad_2000359_h3h4_real_002') {
       const d = (JSON.parse(String(init?.body)) as { Voucher?: { Description?: unknown } }).Voucher
       return json(
@@ -186,9 +193,9 @@ export class FakeFortnoxApi {
   }
 }
 
-function json(body: unknown, status = 200): Response {
+function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
   })
 }

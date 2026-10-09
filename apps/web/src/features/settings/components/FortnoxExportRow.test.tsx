@@ -7,12 +7,14 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
   reconcile: vi.fn(),
   release: vi.fn(),
+  scan: vi.fn(),
 }))
 vi.mock('../api/fortnox-export.api', () => ({
   sendFortnoxExport: mocks.send,
   verifyFortnoxExport: mocks.verify,
   reconcileFortnoxExport: mocks.reconcile,
   releaseRejectedFortnoxExport: mocks.release,
+  reconcileScanFortnoxExport: mocks.scan,
 }))
 vi.mock('@/lib/api', () => ({
   extractApiError: () => 'Posten i Fortnox stämmer inte med det skickade underlaget',
@@ -175,6 +177,35 @@ describe('FortnoxExportRowView', () => {
 
   it('UNKNOWN: aldrig frisläppning', () => {
     show(row('UNKNOWN', { lastOutcome: 'OUTCOME_UNKNOWN' }), false)
+    expect(screen.queryByRole('button', { name: /Frisläpp/ })).toBeNull()
+  })
+
+  it('TESTKUND-035: UNKNOWN_429 förklaras; sökning utan träff visar tid, räckvidd och nästa säkra steg; ingen sändning eller frisläppning', async () => {
+    mocks.scan.mockResolvedValue({
+      ...row('UNKNOWN', { lastOutcome: 'UNKNOWN_429' }),
+      avstamning: {
+        utfall: 'EJ_HITTAD',
+        at: '2026-10-09T22:30:00Z',
+        financialYear: 3,
+        verifikatLasta: 41,
+        sidor: 1,
+      },
+    })
+    show(row('UNKNOWN', { lastOutcome: 'UNKNOWN_429' }), true)
+    expect(screen.getByText(/Fortnox svarade 429 \(för många anrop\)/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Skicka/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Frisläpp/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Sök efter verifikatet i Fortnox' }))
+    await waitFor(() => expect(mocks.scan).toHaveBeenCalledWith('x1'))
+    const text = await screen.findByText(/Ingen post från det här verifikatet hittades/)
+    expect(text.textContent).toMatch(/räkenskapsår-id 3, alla serier, 41 verifikat lästa/)
+    expect(text.textContent).toMatch(/fortfarande okänt/)
+    expect(text.textContent).toMatch(/Bokför inte verifikatet för hand/)
+  })
+
+  it('TESTKUND-035: äldre REJECTED_429 kan sökas men aldrig frisläppas', () => {
+    show(row('REJECTED', { lastOutcome: 'REJECTED_429_NA' }), true)
+    expect(screen.getByRole('button', { name: 'Sök efter verifikatet i Fortnox' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Frisläpp/ })).toBeNull()
   })
 

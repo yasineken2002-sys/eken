@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -15,6 +16,7 @@ import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidatio
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
 import { pkceChallenge } from './fortnox-providers'
+import { FORTNOX_RATE_IDENTITY, FortnoxRateIdentity } from './provider/fortnox-rate-limiter'
 import {
   FORTNOX_AUTH_PROVIDER,
   FORTNOX_LEDGER_READER,
@@ -97,6 +99,9 @@ export class FortnoxConnectionService {
     private readonly config: ConfigService,
     @Inject(FORTNOX_AUTH_PROVIDER) private readonly auth: FortnoxAuthProvider,
     @Inject(FORTNOX_LEDGER_READER) private readonly reader: FortnoxLedgerReader,
+    @Optional()
+    @Inject(FORTNOX_RATE_IDENTITY)
+    private readonly rateIdentity: FortnoxRateIdentity | null = null,
   ) {}
 
   get enabled(): boolean {
@@ -301,11 +306,29 @@ export class FortnoxConnectionService {
     })
   }
 
+  /**
+   * TESTKUND-035 P3-A4: varje utlämnad token kopplas till anslutningens LAGRADE företag, så att
+   * begränsarens hink är klient + företag (samma hink efter tokenbyte).
+   */
+  async accessToken(
+    organizationId: string,
+    opts: { afterUnauthorizedVersion?: number } = {},
+  ): Promise<{
+    token: string
+    connectionId: string
+    databaseNumber: number
+    tokenVersion: number
+  }> {
+    const out = await this.accessTokenFromStore(organizationId, opts)
+    this.rateIdentity?.bind(out.token, out.databaseNumber)
+    return out
+  }
+
   // ── Access-token för ett anrop ──────────────────────────────────────────────
   // Förnyelse sker under CAS-lås: den som tar låset (lease + oförändrad version)
   // förnyar och höjer tokenVersion. Förlorare förnyar ALDRIG själva — de läser om
   // och får antingen den nya token eller REFRESH_IN_PROGRESS.
-  async accessToken(
+  private async accessTokenFromStore(
     organizationId: string,
     opts: {
       /**

@@ -6,6 +6,7 @@ import {
   type FortnoxRejectionDetail,
 } from './provider/fortnox-transport.types'
 import type { FortnoxCustomerBinding } from './fortnox-customer-activation'
+import { fortnoxRateLimitKey } from './provider/fortnox-rate-limiter'
 
 /**
  * Skrivport för POST /3/vouchers (FORTNOX-SANDNING, FORTNOX-NATT).
@@ -83,6 +84,9 @@ export class FortnoxWriteError extends Error {
     readonly status?: number,
     /** TESTKUND-016 K3.1: Fortnox kod/meddelande vid rejected (null om okänt). */
     readonly rejection: FortnoxRejectionDetail | null = null,
+    /** TESTKUND-035: spärren (ms) som 429-svaret gav, och om den kunde sparas. */
+    readonly retryAfterMs: number | null = null,
+    readonly deferFailed = false,
   ) {
     super(`Fortnox write: ${outcome}`)
     this.name = 'FortnoxWriteError'
@@ -129,7 +133,7 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
   readonly capable = true
   readonly #transport: FortnoxTransport
   readonly #reader: FortnoxLedgerReader
-  readonly #rateLimitKey: string
+  readonly #clientId: string
   readonly #testWrites: boolean
   readonly #verifyCustomer: CustomerBindingVerifier | null
   readonly customerWritesEnabled: boolean
@@ -139,8 +143,8 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
       throw new FortnoxWriteError('not_sent')
     this.#transport = options.transport
     this.#reader = options.reader
-    // Samma hink som läsaren: en konservativ gräns för hela klienten.
-    this.#rateLimitKey = `fortnox:${options.clientId}:all-tenants`
+    // TESTKUND-035 P3-A4: hinken är klient + det frysta företaget (samma som läsarens).
+    this.#clientId = options.clientId
     // Bakåtkompatibelt: utan uttryckliga val är det testvägen (som före KUNDSTART).
     this.#testWrites = options.testWrites ?? !options.customerWrites
     this.customerWritesEnabled = options.customerWrites === true && !!options.verifyCustomer
@@ -205,7 +209,7 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
     try {
       const res = await this.#transport.request({
         accessToken: token,
-        rateLimitKey: this.#rateLimitKey,
+        rateLimitKey: fortnoxRateLimitKey(this.#clientId, binding.databaseNumber),
         method: 'POST',
         path: '/3/vouchers',
         query: { financialyear: query.financialyear },
@@ -222,6 +226,8 @@ export class RealFortnoxVoucherWriter implements FortnoxVoucherWriter {
               : 'unknown',
           err.status,
           err.outcome === 'rejected' ? err.rejection : null,
+          err.retryAfterMs ?? null,
+          err.deferFailed,
         )
       }
       throw new FortnoxWriteError('unknown')
