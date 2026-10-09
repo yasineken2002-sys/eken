@@ -262,6 +262,50 @@ export async function originalUtfall(
   }
 }
 
+/**
+ * TESTKUND-027 B2.5: ett CONFIRMED originals klassning ur dess FRYSTA exportutkast (roll och
+ * behandling per verifikatrad). Efter en avmatchning är allokeringen raderad, så en ny klassning av
+ * originalet ur levande data säger «stöds inte» — men originalet ÄR exporterat, och rättelsen ska då
+ * kunna återföra exakt det som skickades. Null om originalet inte är CONFIRMED i samma företag.
+ */
+async function frystKlass(
+  db: Prisma.TransactionClient,
+  organizationId: string,
+  originalId: string,
+  databaseNumber: number,
+): Promise<{ handelse: string; rader: Map<string, Radklass> } | null> {
+  const ex = await db.fortnoxVoucherExport.findFirst({
+    where: {
+      organizationId,
+      journalEntryId: originalId,
+      state: 'CONFIRMED',
+      fortnoxDatabaseNumber: databaseNumber,
+    },
+    select: { draft: true },
+  })
+  const km = (ex?.draft as { kontomappning?: { handelse?: unknown; rader?: unknown } } | null)
+    ?.kontomappning
+  if (!km || !Array.isArray(km.rader)) return null
+  const rader = new Map<string, Radklass>()
+  for (const r of km.rader as Array<{
+    journalEntryLineId?: unknown
+    roll?: unknown
+    behandling?: unknown
+  }>) {
+    if (
+      typeof r.journalEntryLineId !== 'string' ||
+      typeof r.roll !== 'string' ||
+      typeof r.behandling !== 'string'
+    )
+      return null
+    rader.set(r.journalEntryLineId, {
+      roll: r.roll as Roll,
+      behandling: r.behandling as Momsbehandling,
+    })
+  }
+  return { handelse: typeof km.handelse === 'string' ? km.handelse : 'exporterat original', rader }
+}
+
 /** Rättelsens rader mot originalets: exakt omvända (konto, debet↔kredit), ärvd roll per rad. */
 function omvandaRader(
   rader: Map<string, Radklass>,
@@ -344,7 +388,10 @@ export async function klassaVerifikat(
       },
     })
     if (!orig) return ej('rättelsens original finns inte i organisationen')
-    const k = await klassaVerifikat(db, organizationId, orig, databaseNumber, djup + 1)
+    const fryst = await frystKlass(db, organizationId, orig.id, databaseNumber)
+    const k = fryst
+      ? ({ ok: true, ...fryst, rattelseAv: null } as const)
+      : await klassaVerifikat(db, organizationId, orig, databaseNumber, djup + 1)
     if (!k.ok) return k.kod === 'EVENT_UNSUPPORTED' ? ej(`rättelse av: ${k.skal}`) : k
     const fel = omvandaRader(rader, entry.lines, orig.lines, k.rader)
     if (fel) return ej(fel)
@@ -621,7 +668,10 @@ export async function klassaVerifikat(
       },
     })
     if (!orig) return ej('leverantörsfakturans originalverifikat saknas')
-    const k = await klassaVerifikat(db, organizationId, orig, databaseNumber, djup + 1)
+    const fryst = await frystKlass(db, organizationId, orig.id, databaseNumber)
+    const k = fryst
+      ? ({ ok: true, ...fryst, rattelseAv: null } as const)
+      : await klassaVerifikat(db, organizationId, orig, databaseNumber, djup + 1)
     if (!k.ok) return k.kod === 'EVENT_UNSUPPORTED' ? ej(`makulering av: ${k.skal}`) : k
     const u = await originalUtfall(db, organizationId, orig.id, databaseNumber)
     if (u.typ !== 'CONFIRMED')

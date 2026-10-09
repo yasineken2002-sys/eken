@@ -2042,6 +2042,9 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
       [1940, 200000, 0],
     ])
     await t.mappa(FULL.map((r) => (r.role === 'LIKVID' ? R('LIKVID', 1930, 1930) : r))) // dagens mappning ändras
+    // Som produktens avmatchning: allokeringen raderas i samma steg som rättelsen skapas, så att
+    // rättelsen inte kan klassas ur levande data (originalets frysta klassning måste användas).
+    await prisma.rentNoticePayment.delete({ where: { id: rp.id } })
     await acc().reverseJournalEntryForPayment(
       'ingen-transaktion',
       t.org.id,
