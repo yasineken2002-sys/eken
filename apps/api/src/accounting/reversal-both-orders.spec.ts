@@ -111,6 +111,8 @@ function huvudbok() {
   const prisma = {
     journalEntry: { findFirst, create, update: jest.fn(), delete: jest.fn() },
     account: { findMany: jest.fn().mockResolvedValue([]) },
+    // TESTKUND-027: createReversalEntry spärrar originalets READY-export i samma transaktion.
+    fortnoxVoucherExport: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     $transaction: (cb: (tx: unknown) => unknown) => cb(prisma),
   }
   const verifikationsnummer = {

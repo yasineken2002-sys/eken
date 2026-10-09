@@ -80,6 +80,8 @@ function makeRig(opts: RigOpts = {}) {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    // TESTKUND-027: createReversalEntry spärrar originalets READY-export i samma transaktion.
+    fortnoxVoucherExport: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     $transaction,
   }
 
