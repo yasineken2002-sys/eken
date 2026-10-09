@@ -650,6 +650,17 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
     expect((await t.dry(kost.id)).blockReason).toMatch(/^EVENT_UNSUPPORTED: manuellt verifikat/)
   })
 
+  it('(j): en bostadsavi vars intäktsrad inte motsvarar avins netto är obevisad — godkänd rad gör den inte READY', async () => {
+    const t = await setup()
+    await t.mappa()
+    const { je, notice } = await t.avi(6000)
+    expect((await t.dry(je.id)).state).toBe('DRY_RUN_READY')
+    await prisma.rentNotice.update({ where: { id: notice.id }, data: { amount: '5000' } })
+    expect((await t.dry(je.id)).blockReason).toMatch(
+      /^ACCOUNT_UNVERIFIED.*3911.*obevisad: raden motsvarar inte avins nettobelopp/,
+    )
+  })
+
   it('K2.1/(i): nyckeln är (roll, källkonto, behandling) — en kostnadsrad på 2641 får inte ingående moms-radens mappning', async () => {
     const t = await setup()
     await t.mappa()
