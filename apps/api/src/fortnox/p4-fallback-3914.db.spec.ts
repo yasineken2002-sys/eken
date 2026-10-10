@@ -333,8 +333,10 @@ medDb('TESTKUND-041 P-4: fallback 3914 vid saknat avtal', () => {
     ).toBe('CONFIRMED')
     const stopp = await t.exports.dryRun(t.org.id, fallback.id)
     expect(stopp.state).toBe('BLOCKED')
-    // Första grinden: avin saknar eget avtal → ingen belagd bostadshyra (H1).
-    expect(stopp.blockReason).toMatch(/^EVENT_UNSUPPORTED: hyra för enhetstyp okänd/)
+    // Första grinden är intäktsgrinden: avin saknar eget avtal → behandlingen är obevisad.
+    expect(stopp.blockReason).toMatch(
+      /^ACCOUNT_UNVERIFIED: .*obevisad: avins avtal eller enhetstyp saknas/,
+    )
     expect(t.api.requests.filter((r) => r.method === 'POST')).toHaveLength(1)
     const pl = await t.acc.getProfitLossReport(t.org.id, '2026-09-01', '2026-09-30')
     expect(pl.okantIntaktskonto).toMatchObject({ konto: 3914, belopp: 4000, antalVerifikat: 1 })
