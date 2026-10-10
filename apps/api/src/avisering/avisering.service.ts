@@ -2996,7 +2996,7 @@ export class AviseringService {
   async getStats(orgId: string, month: number, year: number) {
     await this.checkAndMarkOverdue(orgId)
 
-    const [notices, aggregate] = await Promise.all([
+    const [notices, antal] = await Promise.all([
       this.prisma.rentNotice.findMany({
         where: { organizationId: orgId, month, year },
         select: {
@@ -3012,11 +3012,7 @@ export class AviseringService {
           credits: { select: { amount: true } },
         },
       }),
-      this.prisma.rentNotice.aggregate({
-        where: { organizationId: orgId, month, year },
-        _sum: { totalAmount: true, paidAmount: true },
-        _count: true,
-      }),
+      this.prisma.rentNotice.count({ where: { organizationId: orgId, month, year } }),
     ])
 
     const byStatus: Record<string, number> = {}
@@ -3026,11 +3022,34 @@ export class AviseringService {
       byStatus[status] = (byStatus[status] ?? 0) + 1
     }
 
-    const totalAmount = Number(aggregate._sum.totalAmount ?? 0)
-    const paidAmount = Number(aggregate._sum.paidAmount ?? 0)
+    // F-046-2 (TESTKUND-047, ACCEPTANS-048 S1): beloppen per avi ur den KANONISKA restskulden
+    // (rentNoticeOutstanding) i stället för Σ totalAmount − Σ paidAmount över alla rader. Tidigare räknades
+    // (a) en manuellt betald depositionsavi (PAID, paidAmount null, ingen allokering) som utestående och
+    // (b) annullerade avier in i «Totalt att fakturera» och «Utestående». Ingen kolumn skrivs; historiska
+    // rader läses som de är. Identiteten totalAmount = paidAmount + outstandingAmount − överbetalt håller.
+    // Summeras i öre (heltal) och redovisas i kronor.
+    const ore = (kr: number) => Math.round(kr * 100)
+    let totalOre = 0
+    let paidOre = 0
+    let outstandingOre = 0
+    for (const notice of notices) {
+      if (notice.status === RentNoticeStatus.CANCELLED) continue
+      const o = rentNoticeOutstanding(notice)
+      totalOre += ore(o.nominalTotal)
+      if (notice.status === RentNoticeStatus.PAID) {
+        // PAID utan allokering = den bokförda manuella betalningen (t.ex. deposit-manual-payment).
+        paidOre += ore(notice.payments.length === 0 ? o.nominalTotal : o.paid)
+      } else {
+        paidOre += ore(o.paid)
+        outstandingOre += ore(o.payable)
+      }
+    }
+    const totalAmount = totalOre / 100
+    const paidAmount = paidOre / 100
+    const outstandingAmount = outstandingOre / 100
 
     return {
-      total: aggregate._count,
+      total: antal,
       pending: byStatus['PENDING'] ?? 0,
       sent: byStatus['SENT'] ?? 0,
       paid: byStatus['PAID'] ?? 0,
@@ -3038,7 +3057,7 @@ export class AviseringService {
       cancelled: byStatus['CANCELLED'] ?? 0,
       totalAmount,
       paidAmount,
-      outstandingAmount: totalAmount - paidAmount,
+      outstandingAmount,
     }
   }
 }
