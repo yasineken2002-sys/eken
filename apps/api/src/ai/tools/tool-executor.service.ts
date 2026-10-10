@@ -4432,7 +4432,12 @@ export class ToolExecutorService {
           return {
             success: true,
             data: pl,
-            message: `Resultaträkning ${fromDate}–${toDate}: intäkter ${formatAmount(pl.revenue.total)} kr, kostnader ${formatAmount(pl.costs.total)} kr → resultat ${formatAmount(pl.result)} kr`,
+            // TESTKUND-041 (P-4): fallbackintäkten redovisas med sin proveniens, aldrig som momsfri.
+            message:
+              `Resultaträkning ${fromDate}–${toDate}: intäkter ${formatAmount(pl.revenue.total)} kr, kostnader ${formatAmount(pl.costs.total)} kr → resultat ${formatAmount(pl.result)} kr` +
+              (pl.okantIntaktskonto
+                ? `. Obs: ${formatAmount(pl.okantIntaktskonto.belopp)} kr (${pl.okantIntaktskonto.antalVerifikat} verifikat) på 3914 — ${pl.okantIntaktskonto.text}`
+                : ''),
           }
         }
 

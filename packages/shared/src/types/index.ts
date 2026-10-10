@@ -707,10 +707,18 @@ export interface VatReport {
   direction: 'BETALA' | 'ÅTERBÄRING'
 }
 
+/**
+ * TESTKUND-041 (P-4): text som märker en hyresintäkt som bokats på 3914 därför att avins avtal eller
+ * enhet saknades. Intäktens momsbehandling är då OKÄND — den får aldrig redovisas som belagd momsfri.
+ */
+export const INTAKTSKONTO_OKANT_TEXT = 'intäktskonto okänt: avtal saknas'
+
 export interface ProfitLossReport {
   period: { from: string; to: string }
   propertyFilter?: string
   note?: string
+  /** TESTKUND-041 (P-4): intäkt på fallbackkonto 3914 där avtal/enhet saknades. */
+  okantIntaktskonto?: { konto: number; belopp: number; antalVerifikat: number; text: string }
   revenue: { total: number; accounts: ReportAccountAmount[] }
   costs: {
     operating: { total: number; accounts: ReportAccountAmount[] }

@@ -107,6 +107,16 @@ function ProfitLossView({ data }: { data: ProfitLossReport }) {
           {data.note}
         </p>
       )}
+      {/* TESTKUND-041 (P-4): intäkt på fallbackkonto 3914 redovisas med sin proveniens. */}
+      {data.okantIntaktskonto && (
+        <p
+          className="mt-2 break-words rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-800"
+          data-testid="okant-intaktskonto"
+        >
+          {formatCurrency(data.okantIntaktskonto.belopp)} ({data.okantIntaktskonto.antalVerifikat}{' '}
+          verifikat) på 3914: {data.okantIntaktskonto.text}
+        </p>
+      )}
 
       <div className="border-line overflow-hidden rounded-2xl border bg-white">
         <table className="w-full">

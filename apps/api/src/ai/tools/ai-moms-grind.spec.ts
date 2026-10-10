@@ -53,7 +53,7 @@ function makePrisma(created: Created[]) {
   }
 }
 
-function makeExecutor(prisma: unknown) {
+function makeExecutor(prisma: unknown, accOverride?: unknown) {
   const noop = {} as never
   const verifikationsnummer = {
     allocate: jest.fn().mockResolvedValue({ series: 'A', verNumber: 1, fiscalYear: 2026 }),
@@ -77,7 +77,7 @@ function makeExecutor(prisma: unknown) {
     // verifikat sedan AI:ns egen transaktion togs bort. En RIKTIG tjänst byggd
     // ur samma attrapp-prisma, inte en `noop`: provet mäter att AI-verifikat
     // märks `source: 'AI'`, och det måste mätas genom vägen som faktiskt körs.
-    new AccountingService(prisma as never, verifikationsnummer as never) as never,
+    (accOverride ?? new AccountingService(prisma as never, verifikationsnummer as never)) as never,
     noop,
     noop,
     noop,
@@ -197,5 +197,43 @@ describe('TESTKUND-041: AI och momsvalet', () => {
     )
     void result
     expect(created).toHaveLength(1)
+  })
+})
+
+describe('TESTKUND-041 P-4: AI redovisar fallbackintäkten med proveniens', () => {
+  it('get_profit_loss_report nämner «intäktskonto okänt: avtal saknas» och påstår inte momsfri', async () => {
+    const pl = {
+      period: { from: '2026-09-01', to: '2026-09-30' },
+      revenue: { total: 10000, accounts: [] },
+      costs: {
+        operating: { total: 0, accounts: [] },
+        admin: { total: 0, accounts: [] },
+        personnel: { total: 0, accounts: [] },
+        depreciation: { total: 0, accounts: [] },
+        financial: { total: 0, accounts: [] },
+        total: 0,
+      },
+      result: 10000,
+      okantIntaktskonto: {
+        konto: 3914,
+        belopp: 4000,
+        antalVerifikat: 1,
+        text: 'intäktskonto okänt: avtal saknas — intäkten bokades på 3914 eftersom avins avtal eller enhet saknades. Dess momsbehandling är okänd; den är inte belagd som momsfri bostadshyra.',
+      },
+    }
+    const svc = makeExecutor(makePrisma([]), {
+      getProfitLossReport: jest.fn().mockResolvedValue(pl),
+    })
+    const unsafe = (svc as unknown as { executeToolUnsafe: Unsafe }).executeToolUnsafe.bind(svc)
+    const r = await unsafe(
+      'get_profit_loss_report',
+      { fromDate: '2026-09-01', toDate: '2026-09-30' },
+      'org-1',
+      'user-1',
+      'OWNER',
+    )
+    expect(r.message).toMatch(/intäktskonto okänt: avtal saknas/)
+    expect(r.message).toMatch(/inte belagd som momsfri/)
+    expect(r.message).not.toMatch(/(?<!inte belagd som )momsfri bostadshyra\./)
   })
 })

@@ -35,7 +35,11 @@ import type {
 import type { Decimal } from '@prisma/client/runtime/library'
 
 import { isReminderFeeContractuallyAllowed } from './debt-origin'
-import { REMINDER_FEE_MAX_SEK, revenueAccountForUnitType } from '@eken/shared'
+import {
+  INTAKTSKONTO_OKANT_TEXT,
+  REMINDER_FEE_MAX_SEK,
+  revenueAccountForUnitType,
+} from '@eken/shared'
 import type { DebtOriginDate } from './debt-origin'
 import type {
   BalanceSheet,
@@ -1659,10 +1663,17 @@ export class AccountingService {
       financial: 0,
     }
     const perAccount = new Map<number, { name: string; amount: number }>()
+    // TESTKUND-041 (P-4): märkta fallbackrader (3914 utan avtal/enhet) redovisas separat.
+    let okantBelopp = 0
+    const okantaVerifikat = new Set<string>()
     for (const l of lines) {
       const num = l.account.number
       const debit = Number(l.debit ?? 0)
       const credit = Number(l.credit ?? 0)
+      if (num === 3914 && (l.description ?? '').includes(INTAKTSKONTO_OKANT_TEXT)) {
+        okantBelopp += credit - debit
+        okantaVerifikat.add(l.journalEntryId)
+      }
       const value = num >= 3000 && num < 4000 ? credit - debit : debit - credit
       const cur = perAccount.get(num) ?? { name: l.account.name, amount: 0 }
       cur.amount += value
@@ -1710,6 +1721,18 @@ export class AccountingService {
         total: totalCosts,
       },
       result,
+      ...(okantaVerifikat.size > 0
+        ? {
+            okantIntaktskonto: {
+              konto: 3914,
+              belopp: Math.round(okantBelopp * 100) / 100,
+              antalVerifikat: okantaVerifikat.size,
+              text:
+                `${INTAKTSKONTO_OKANT_TEXT} — intäkten bokades på 3914 eftersom avins avtal eller enhet ` +
+                'saknades. Dess momsbehandling är okänd; den är inte belagd som momsfri bostadshyra.',
+            },
+          }
+        : {}),
     }
   }
 
@@ -2526,6 +2549,9 @@ export class AccountingService {
       )
     }
     const revenueAccountNumber = revenueAccountForUnitType(lease?.unit?.type ?? null)
+    // TESTKUND-041 (P-4): saknat avtal eller enhet ger fallback 3914. Raden märks, så att rapport och
+    // AI kan redovisa intäkten som «intäktskonto okänt» — aldrig som belagd momsfri hyra.
+    const okantIntaktskonto = !lease?.unit
 
     const receivableId = accountByNumber.get(1510)
     const revenueId = accountByNumber.get(revenueAccountNumber)
@@ -2600,7 +2626,9 @@ export class AccountingService {
     lines.push({
       accountId: revenueId,
       credit: net,
-      description: `Hyresintäkt ${notice.month}/${notice.year}`,
+      description: okantIntaktskonto
+        ? `Hyresintäkt ${notice.month}/${notice.year} – ${INTAKTSKONTO_OKANT_TEXT}`
+        : `Hyresintäkt ${notice.month}/${notice.year}`,
     })
 
     // Periodisering: intäkten hör till den månad avin avser.
