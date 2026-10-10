@@ -159,7 +159,7 @@ export type FortnoxReconcileScanResult = z.infer<typeof reconcileScanSchema>
  */
 export async function reconcileScanFortnoxExport(id: string): Promise<FortnoxReconcileScanResult> {
   return reconcileScanSchema.parse(
-    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/reconcile-scan`, {}),
+    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/reconcile-scan`),
   )
 }
 
