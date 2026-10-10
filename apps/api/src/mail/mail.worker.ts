@@ -79,7 +79,8 @@ abstract class MailWorkerBase {
     // inte få en betalningsuppmaning för en reglerad eller makulerad fordran. Saknas avin (annan
     // organisation eller borttagen) skickas inget heller — samma fail-closed-riktning som ventilen ovan.
     // Gränsen: ett mejl som Resend redan tagit emot kan inte återkallas.
-    if (correlation?.kind === 'rent-notice') {
+    // O-050-5 (TESTKUND-051): gäller även påminnelsen (`rent-notice-reminder`) — samma avi, samma org-bundna läsning.
+    if (correlation?.kind === 'rent-notice' || correlation?.kind === 'rent-notice-reminder') {
       const avi = await this.prisma.rentNotice.findFirst({
         where: { id: correlation.rentNoticeId, organizationId: job.data.organizationId },
         select: { status: true },

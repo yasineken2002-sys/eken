@@ -1401,6 +1401,20 @@ export class RentReminderService {
         idempotencyKey: `rent-reminder-${utskick.id}`,
       })
 
+      // O-050-4 (TESTKUND-051): '' = inget köades (transaktionella mejl avstängda). Ingen SENT-händelse, och den nyss
+      // skapade utskicksraden tas bort — den bär ingen leverans, och kvar skulle den spärra påminnelsen när ventilen
+      // öppnas igen (idempotensgrinden ovan läser senaste utskick).
+      if (!jobId) {
+        await this.prisma.rentNoticeSend
+          .delete({ where: { id: utskick.id } })
+          .catch(() => undefined)
+        this.logger.warn(
+          `[Kravtrappa] Påminnelse för avi ${noticeId} EJ skickad: mejlet köades inte (transaktionella mejl ` +
+            'avstängda). Ingen SENT-händelse skriven.',
+        )
+        return
+      }
+
       // FÄLTET HETER `jobId` DÄRFÖR ATT DET ÄR ETT JOBID (#651).
       //
       // Det hette `messageId` och lagrades dessutom i `reminderMessageId` som

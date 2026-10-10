@@ -1114,9 +1114,11 @@ export class AviseringService {
     // omskick (POST /avisering/send tar godtyckliga id:n) skulle då be hyresgästen betala
     // en betald hyra OCH skriva över PAID med SENT/FAILED nedan, så att reskontran ljuger.
     // En reglerad eller makulerad avi skickas aldrig.
-    if (notice.status === RentNoticeStatus.PAID || notice.status === RentNoticeStatus.CANCELLED) {
+    // O-050-1 (TESTKUND-051): samma tillåtna statusregel som återprövningen och statusskrivningen — en
+    // reglerad, makulerad eller historisk (OPENING) avi renderas inte ens.
+    if (!UTSKICKBARA_STATUSAR.includes(notice.status)) {
       this.logger.warn(
-        `[Avisering] Avi ${noticeId} skickas inte: status ${notice.status} (utskick av reglerad/makulerad avi).`,
+        `[Avisering] Avi ${noticeId} skickas inte: status ${notice.status} (utskick av reglerad/makulerad/historisk avi).`,
       )
       return
     }
@@ -1182,7 +1184,7 @@ export class AviseringService {
 
       // Mejlet köas med idempotencyKey så att en Bull-retry (om DB-uppdateringen
       // nedan misslyckas efter att mejlet redan köats) inte ger dubbelmejl.
-      await this.mailService.sendRentNotice({
+      const mejljobb = await this.mailService.sendRentNotice({
         // #651: gör avins egen leverans korrelerbar. Utan den här visste vi bara
         // att Resend TOG EMOT avin, ingenting om att den kom fram.
         rentNoticeId: notice.id,
@@ -1200,6 +1202,15 @@ export class AviseringService {
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         idempotencyKey: `rent-notice-${notice.id}`,
       })
+      // O-050-4 (TESTKUND-051): MailQueue returnerar '' när inget köades (företagets transaktionella mejl är
+      // avstängda, eller organisationen saknas). Då har ingenting skickats: inga leveransmarkörer, ingen status.
+      if (!mejljobb) {
+        this.logger.warn(
+          `[Avisering] Avi ${noticeId} EJ skickad: mejlet köades inte (transaktionella mejl avstängda för ` +
+            'organisationen). Ingen status eller leveransmarkör skriven.',
+        )
+        return
+      }
 
       await this.skrivUtskicksstatus(orgId, noticeId, 'SENT', {
         status: RentNoticeStatus.SENT,
