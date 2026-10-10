@@ -237,3 +237,65 @@ describe('TESTKUND-041 P-4: AI redovisar fallbackintäkten med proveniens', () =
     expect(r.message).not.toMatch(/(?<!inte belagd som )momsfri bostadshyra\./)
   })
 })
+
+describe('TESTKUND-041 M7: AI läser momsvalet och källan, sätter det aldrig', () => {
+  it('get_vat_report skickar vidare källor med val, aktör och tid; äldre utan val märks som ej angiven', async () => {
+    const vr = {
+      period: { from: '2026-08-01', to: '2026-08-31' },
+      outgoing: { vat25: 0, vat12: 0, vat6: 0, total: 0 },
+      incoming: {
+        total: 250,
+        sources: [
+          {
+            kalla: 'LEVERANTORSFAKTURA',
+            verifikat: 'A1',
+            datum: '2026-08-10',
+            belopp: 250,
+            momsval: 'HELT_AVDRAG',
+            beslutadAv: 'u1',
+            beslutadVid: '2026-08-10T10:00:00Z',
+            leverantorsfakturaId: 'f1',
+            text: 'Kundens val: Moms dras av',
+          },
+          {
+            kalla: 'LEVERANTORSFAKTURA',
+            verifikat: 'A2',
+            datum: '2026-08-11',
+            belopp: 0,
+            momsval: null,
+            beslutadAv: null,
+            beslutadVid: null,
+            leverantorsfakturaId: 'f2',
+            text: 'Momsbehandling ej angiven (äldre, bokförd som avdragsgill)',
+          },
+        ],
+      },
+      netToPay: -250,
+      direction: 'ÅTERBÄRING',
+    }
+    const acc = { getVatReport: jest.fn().mockResolvedValue(vr) }
+    const svc = makeExecutor(makePrisma([]), acc)
+    const unsafe = (svc as unknown as { executeToolUnsafe: Unsafe }).executeToolUnsafe.bind(svc)
+    const r = (await unsafe(
+      'get_vat_report',
+      { fromDate: '2026-08-01', toDate: '2026-08-31' },
+      'org-1',
+      'user-1',
+      'OWNER',
+    )) as {
+      success: boolean
+      data?: {
+        incoming: {
+          sources: Array<{ momsval: string | null; beslutadAv: string | null; text: string }>
+        }
+      }
+    }
+    expect(r.success).toBe(true)
+    expect(r.data!.incoming.sources.map((s) => [s.momsval, s.beslutadAv])).toEqual([
+      ['HELT_AVDRAG', 'u1'],
+      [null, null],
+    ])
+    expect(r.data!.incoming.sources[1]!.text).toMatch(/ej angiven/)
+    expect(acc.getVatReport).toHaveBeenCalledTimes(1)
+  })
+})

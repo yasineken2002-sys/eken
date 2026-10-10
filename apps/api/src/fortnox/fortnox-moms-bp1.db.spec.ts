@@ -888,6 +888,183 @@ medDb('TESTKUND-041: moms v1 + BP1 genom skarp export mot syntetisk Fortnox', ()
     expect(t.ledger.vouchers).toHaveLength(4)
   })
 
+  // ── Tillägg mot C2:s KRITERIER-041 (J2, J3, J4, K3, B2, B4) ─────────────────────────────
+
+  it.each([
+    ['UNKNOWN', 'OUTCOME_UNKNOWN', /okänt/],
+    ['SENDING', 'CLAIMED', /okänt|pågår/],
+    ['REJECTED', 'REJECTED_429_NA', /okänt/],
+    ['REJECTED', 'REJECTED_NA_NA', /okänt/],
+    ['REJECTED', 'REJECTED', /okänt/],
+  ] as const)(
+    'J2: originalets export %s (%s) → justering 409 «okänt», ingen effekt',
+    async (state, lastOutcome, text) => {
+      const t = await setup()
+      const { f, je } = await faktura(t, { val: 'HELT_AVDRAG' })
+      const d = await t.exports.dryRun(t.org.id, je.id)
+      await prisma.fortnoxVoucherExport.update({
+        where: { id: d.id },
+        data: {
+          state,
+          lastOutcome,
+          fortnoxDatabaseNumber: TEST_COMPANY,
+          sendAttemptId: randomUUID(),
+        },
+      })
+      const fore = await prisma.journalEntry.count({ where: { organizationId: t.org.id } })
+      const e = await just(t, f, 'INGET_AVDRAG', '2026-08-20').catch((x: unknown) => x)
+      expect(e).toBeInstanceOf(ConflictException)
+      expect(String((e as Error).message)).toMatch(text)
+      expect(await prisma.journalEntry.count({ where: { organizationId: t.org.id } })).toBe(fore)
+      expect(
+        (await prisma.supplierInvoice.findUniqueOrThrow({ where: { id: f.id } }))
+          .vatTreatmentCurrent,
+      ).toBe('HELT_AVDRAG')
+    },
+  )
+
+  it('J2: makulerad faktura → justering 409', async () => {
+    const t = await setup()
+    const { f, je } = await faktura(t, { val: 'HELT_AVDRAG' })
+    await skicka(t, je.id)
+    await t.lev.cancel({ organizationId: t.org.id, invoiceId: f.id, createdById: t.user.id })
+    await expect(just(t, f, 'INGET_AVDRAG', '2026-08-20')).rejects.toThrow(/makulerad/)
+  })
+
+  it('J3: det frysta kostnadskontot är inaktivt i Fortnox → justeringens export stoppas (ingen reserv till dagens mappning), 0 POST', async () => {
+    const t = await setup()
+    const { f, je } = await faktura(t, { val: 'HELT_AVDRAG' })
+    await skicka(t, je.id)
+    const j1 = await just(t, f, 'INGET_AVDRAG', '2026-08-20')
+    t.ledger.accounts = t.ledger.accounts.map((a) =>
+      a.Number === 5170 ? { ...a, Active: false } : a,
+    )
+    const fore = posts(t)
+    const r = await t.exports.dryRun(t.org.id, j1.journalEntryId)
+    expect([r.state, (r.blockReason ?? '').split(':')[0]]).toEqual([
+      'BLOCKED',
+      'ACCOUNT_MAPPING_DRIFT',
+    ])
+    expect(r.blockReason).toMatch(/frysta Fortnox-kontot 5170/)
+    expect(posts(t)).toBe(fore)
+  })
+
+  it('J4/G2: gammalt READY på J2 när J1 blir UNKNOWN → send 409 (färsk build), 0 POST', async () => {
+    const t = await setup()
+    const { f, je } = await faktura(t, { val: 'HELT_AVDRAG' })
+    await skicka(t, je.id)
+    const j1 = await just(t, f, 'INGET_AVDRAG', '2026-08-20')
+    await skicka(t, j1.journalEntryId)
+    const j2 = await just(t, f, 'HELT_AVDRAG', '2026-08-21')
+    const r2 = await t.exports.dryRun(t.org.id, j2.journalEntryId)
+    expect(r2.state).toBe('DRY_RUN_READY')
+    await prisma.fortnoxVoucherExport.updateMany({
+      where: { organizationId: t.org.id, journalEntryId: j1.journalEntryId },
+      data: { state: 'UNKNOWN', lastOutcome: 'OUTCOME_UNKNOWN' },
+    })
+    const fore = posts(t)
+    await expect(
+      t.sender.send(t.org.id, 'u1', r2.id, (r2 as { draftHash: string }).draftHash),
+    ).rejects.toBeInstanceOf(ConflictException)
+    expect(posts(t)).toBe(fore)
+  })
+
+  it('K3: en vanlig rättelse av ett manuellt verifikat är fortfarande tillåten (spärren gäller bara SUPPLIER_INVOICE)', async () => {
+    const t = await setup()
+    await prisma.account.createMany({
+      data: [{ organizationId: t.org.id, number: 6110, name: 'Kontorsmaterial', type: 'EXPENSE' }],
+      skipDuplicates: true,
+    })
+    const man = await t.acc.createManualJournalEntry({
+      organizationId: t.org.id,
+      date: new Date('2026-08-20'),
+      description: 'Manuell post',
+      lines: [
+        { accountNumber: 6110, debit: 100 },
+        { accountNumber: 2440, credit: 100 },
+      ],
+      idempotencyKey: `man-${randomUUID()}`,
+      createdById: t.user.id,
+    })
+    const r = await t.acc.reverseJournalEntry({
+      entryId: man.id,
+      organizationId: t.org.id,
+      actorRole: 'OWNER',
+      actorUserId: t.user.id,
+      reason: 'Fel konto i manuell post',
+    })
+    expect(r.reversalOfEntryId).toBe(man.id)
+  })
+
+  it('B2: fel i rättelsen efter paidAt = null → hel rollback (paidAt kvar, ingen rättelse); invarianten håller', async () => {
+    const t = await setup()
+    const { f, je } = await faktura(t, { val: 'INGEN_MOMS', brutto: 1250 })
+    await skicka(t, je.id)
+    await betala(t, f, '2026-10-05')
+    const led1 = await jeFor(t, `supplier-invoice-payment:${f.id}`)
+    const spion = jest
+      .spyOn(t.acc, 'bookSupplierInvoicePaymentUndo')
+      .mockRejectedValueOnce(new Error('injicerat fel efter paidAt'))
+    await expect(angra(t, f, led1.id)).rejects.toThrow(/injicerat fel/)
+    spion.mockRestore()
+    const rad = await prisma.supplierInvoice.findUniqueOrThrow({ where: { id: f.id } })
+    expect(rad.paidAt).not.toBeNull()
+    expect(
+      await prisma.journalEntry.count({
+        where: { organizationId: t.org.id, reversalOfEntryId: led1.id },
+      }),
+    ).toBe(0)
+    expect((await angra(t, f, led1.id)).invoice.paidAt).toBeNull()
+  })
+
+  it('B4: tre led → historiskt id för led 1, «:2» och «:3» för nya led; inga id skrivs om', async () => {
+    const t = await setup()
+    const { f, je } = await faktura(t, { val: 'INGEN_MOMS', brutto: 1250 })
+    await skicka(t, je.id)
+    await betala(t, f, '2026-10-01')
+    const l1 = await jeFor(t, `supplier-invoice-payment:${f.id}`)
+    await angra(t, f, l1.id, 'Fel datum ett')
+    await betala(t, f, '2026-10-02')
+    const l2 = await jeFor(t, `supplier-invoice-payment:${f.id}:2`)
+    await angra(t, f, l2.id, 'Fel datum två')
+    await betala(t, f, '2026-10-03')
+    const l3 = await jeFor(t, `supplier-invoice-payment:${f.id}:3`)
+    const alla = await prisma.journalEntry.findMany({
+      where: {
+        organizationId: t.org.id,
+        sourceId: { startsWith: `supplier-invoice-payment:${f.id}` },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, sourceId: true },
+    })
+    expect(alla.map((a) => a.sourceId)).toEqual([
+      `supplier-invoice-payment:${f.id}`,
+      `supplier-invoice-payment:${f.id}:2`,
+      `supplier-invoice-payment:${f.id}:3`,
+    ])
+    expect([alla[0]!.id, alla[1]!.id, alla[2]!.id]).toEqual([l1.id, l2.id, l3.id])
+    expect(
+      (await t.lev.details(f.id, t.org.id)).betalningsled.map((l) => [l.k, l.gallande]),
+    ).toEqual([
+      [1, false],
+      [2, false],
+      [3, true],
+    ])
+  })
+
+  it('D1 (MK1-036, «ingen exporterad» återkallad): bara J1 lokalt (aldrig exporterad) → makulering 409 före effekt', async () => {
+    const t = await setup()
+    const { f, je } = await faktura(t, { val: 'INGET_AVDRAG' })
+    await skicka(t, je.id)
+    const j1 = await just(t, f, 'HELT_AVDRAG', '2026-08-20')
+    expect((await t.exports.dryRun(t.org.id, j1.journalEntryId)).state).toBe('DRY_RUN_READY')
+    const fore = await prisma.journalEntry.count({ where: { organizationId: t.org.id } })
+    await expect(
+      t.lev.cancel({ organizationId: t.org.id, invoiceId: f.id, createdById: t.user.id }),
+    ).rejects.toThrow(/inte är återställda eller avstämda/)
+    expect(await prisma.journalEntry.count({ where: { organizationId: t.org.id } })).toBe(fore)
+  })
+
   // ── Samtidighet (C7, D3, E8): deterministiska barriärer, inga sleeps ─────────────────────
   //
   // Ett yttre radlås hålls på fakturan (eller exportraden) medan båda anropen köar på det; kön
