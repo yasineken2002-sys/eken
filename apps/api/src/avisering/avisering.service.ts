@@ -30,6 +30,12 @@ const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 
 /** Öresavrundning, samma form som rent-debt.service.ts använder. */
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
+
+/**
+ * F-047-2: de statusar utskicksjobbet får skriva över (befintlig grind: en reglerad, makulerad eller redan
+ * skickad avi skickas aldrig; OPENING är en historisk skuld utan utskick).
+ */
+const UTSKICKBARA_STATUSAR: readonly RentNoticeStatus[] = ['PENDING', 'FAILED', 'OVERDUE']
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 import { isP2002From } from '../common/prisma/p2002-constraint'
@@ -1127,12 +1133,10 @@ export class AviseringService {
     // e-postadress nedan, och av samma skäl.
     const paymentTarget = checkPaymentTarget(org)
     if (!paymentTarget.ok) {
-      await this.prisma.rentNotice
-        .update({
-          where: { id: noticeId },
-          data: { status: RentNoticeStatus.FAILED, sendError: paymentTarget.block.message },
-        })
-        .catch(() => undefined)
+      await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: paymentTarget.block.message,
+      }).catch(() => false)
       this.logger.warn(
         `[Avisering] Avi ${noticeId} EJ skickad: ${paymentTarget.block.code} — ` +
           paymentTarget.block.message,
@@ -1143,18 +1147,33 @@ export class AviseringService {
     // Saknad e-post är ett permanent fel — markera FAILED utan att kasta,
     // annars gör Bull fem meningslösa retries.
     if (!notice.tenant.email) {
-      await this.prisma.rentNotice
-        .update({
-          where: { id: noticeId },
-          data: { status: RentNoticeStatus.FAILED, sendError: 'Hyresgästen saknar e-postadress' },
-        })
-        .catch(() => undefined)
+      await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: 'Hyresgästen saknar e-postadress',
+      }).catch(() => false)
       return
     }
 
     try {
       const pdfHtml = await this.buildNoticePdfHtml(notice, org)
       const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
+
+      // F-047-2: ÅTERPRÖVNING EFTER RENDERINGEN, FÖRE KÖNINGEN. Läsningen ovan kan vara inaktuell —
+      // renderingen tar tid, och under tiden kan avin ha annullerats eller betalats (cancelNotice,
+      // bankmatchning, markAsPaid). En kundhändelse som hunnit slutföras stoppar utskicket här, innan
+      // något mejl köas. Inget DB-lås hålls över renderingen; den slutliga statusskrivningen nedan är
+      // dessutom villkorad, så en händelse mellan den här läsningen och skrivningen återöppnar inget.
+      const aktuell = await this.prisma.rentNotice.findFirst({
+        where: { id: noticeId, organizationId: orgId },
+        select: { status: true, sentAt: true },
+      })
+      if (!aktuell || aktuell.sentAt || !UTSKICKBARA_STATUSAR.includes(aktuell.status)) {
+        this.logger.warn(
+          `[Avisering] Avi ${noticeId} skickas inte: status ${aktuell?.status ?? 'saknas'} efter renderingen ` +
+            '(avin reglerades, annullerades eller skickades under tiden). Inget mejl köat, ingen status skriven.',
+        )
+        return
+      }
 
       const tenantName =
         notice.tenant.type === 'INDIVIDUAL'
@@ -1182,25 +1201,60 @@ export class AviseringService {
         idempotencyKey: `rent-notice-${notice.id}`,
       })
 
-      await this.prisma.rentNotice.update({
-        where: { id: noticeId },
-        data: {
-          status: RentNoticeStatus.SENT,
-          sentAt: new Date(),
-          sentTo: notice.tenant.email,
-          sendError: null,
-        },
+      await this.skrivUtskicksstatus(orgId, noticeId, 'SENT', {
+        status: RentNoticeStatus.SENT,
+        sentAt: new Date(),
+        sentTo: notice.tenant.email,
+        sendError: null,
       })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
-      await this.prisma.rentNotice
-        .update({
-          where: { id: noticeId },
-          data: { status: RentNoticeStatus.FAILED, sendError: errorMessage },
-        })
-        .catch(() => undefined)
-      throw err
+      const skriven = await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: errorMessage,
+      }).catch(() => true)
+      // Har avin hunnit regleras/annulleras finns inget att försöka igen med: ingen retry, ingen FAILED.
+      if (skriven) throw err
     }
+  }
+
+  /**
+   * F-047-2: utskicksjobbets ENDA statusskrivning. Villkorad och org-bunden: bara en avi som fortfarande
+   * får skickas (UTSKICKBARA_STATUSAR och ännu inte skickad) ändras, och villkoret prövas atomiskt i
+   * samma UPDATE. En avi som hunnit bli PAID, CANCELLED (eller SENT av ett annat jobb) lämnas orörd —
+   * tidigare skrev en ovillkorlig `update` över dem och återöppnade en reglerad eller motbokad fordran.
+   * Returnerar om skrivningen skedde; count 0 loggas sanningsenligt och ger varken SENT eller FAILED.
+   * Betalningsfält, allokeringar, verifikat och export rörs aldrig här.
+   */
+  private async skrivUtskicksstatus(
+    orgId: string,
+    noticeId: string,
+    utfall: 'SENT' | 'FAILED',
+    data: Prisma.RentNoticeUpdateManyMutationInput,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.rentNotice.updateMany({
+      where: {
+        id: noticeId,
+        organizationId: orgId,
+        status: { in: [...UTSKICKBARA_STATUSAR] },
+        sentAt: null,
+      },
+      data,
+    })
+    if (count === 0) {
+      const nu = await this.prisma.rentNotice.findFirst({
+        where: { id: noticeId, organizationId: orgId },
+        select: { status: true },
+      })
+      this.logger.warn(
+        `[Avisering] Avi ${noticeId}: utskicksutfallet ${utfall} skrevs INTE — avin har status ` +
+          `${nu?.status ?? 'saknas'} (reglerad, annullerad eller redan skickad under jobbets gång).` +
+          (utfall === 'SENT'
+            ? ' Mejlet var redan köat; mejlarbetaren prövar avins status innan det skickas.'
+            : ''),
+      )
+    }
+    return count > 0
   }
 
   async getNoticePdfBuffer(noticeId: string, orgId: string): Promise<Buffer> {

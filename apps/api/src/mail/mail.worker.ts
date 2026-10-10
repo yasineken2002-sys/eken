@@ -74,6 +74,25 @@ abstract class MailWorkerBase {
       return
     }
 
+    // F-047-2: AVINS GILTIGHET VID KONSUMTION. Ett avimejl som köades medan avin fortfarande var
+    // skickbar kan plockas efter att avin betalats eller annullerats. Då skickas det inte: hyresgästen ska
+    // inte få en betalningsuppmaning för en reglerad eller makulerad fordran. Saknas avin (annan
+    // organisation eller borttagen) skickas inget heller — samma fail-closed-riktning som ventilen ovan.
+    // Gränsen: ett mejl som Resend redan tagit emot kan inte återkallas.
+    if (correlation?.kind === 'rent-notice') {
+      const avi = await this.prisma.rentNotice.findFirst({
+        where: { id: correlation.rentNoticeId, organizationId: job.data.organizationId },
+        select: { status: true },
+      })
+      if (!avi || avi.status === 'PAID' || avi.status === 'CANCELLED') {
+        this.logger.warn(
+          `[${job.queue.name}] AVIMEJL SKICKAS INTE jobId=${job.id} avi=${correlation.rentNoticeId} ` +
+            `org=${job.data.organizationId}: avin har status ${avi?.status ?? 'saknas'} när jobbet plockades.`,
+        )
+        return
+      }
+    }
+
     this.logger.log(
       `[${job.queue.name}] attempt=${attempt} jobId=${job.id} template=${template} to=${to}`,
     )
