@@ -177,6 +177,10 @@ medDb('F-043-1: manuell depositionsbetalning via FAILED depositionsavi', () => {
         await prisma.notification
           .deleteMany({ where: { organizationId: org } })
           .catch(() => undefined)
+        await prisma.rentNoticeNumberSequence.deleteMany({ where: { organizationId: org } })
+        await prisma.tenantOcrSequence
+          .deleteMany({ where: { organizationId: org } })
+          .catch(() => undefined)
         await prisma.user.deleteMany({ where: { organizationId: org } })
         await prisma.organization.deleteMany({ where: { id: org } })
       }
