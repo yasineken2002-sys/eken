@@ -676,10 +676,33 @@ export interface ReportAccountBalance {
   balance: number
 }
 
+/**
+ * TESTKUND-041 (moms v1, B-4/B-5/MJ-9): varifrån den ingående momsen (2641) i perioden kommer, med
+ * kundens beslut och proveniens. Läses av människa och AI; AI sätter aldrig ett val.
+ */
+export interface VatIncomingSource {
+  kalla:
+    | 'LEVERANTORSFAKTURA'
+    | 'MAKULERING'
+    | 'MOMSJUSTERING'
+    | 'UTGIFT'
+    | 'MANUELLT_MOMSVAL'
+    | 'AI'
+    | 'OVRIGT'
+  verifikat: string
+  datum: string
+  belopp: number
+  momsval: string | null
+  beslutadAv: string | null
+  beslutadVid: string | null
+  leverantorsfakturaId: string | null
+  text: string
+}
+
 export interface VatReport {
   period: { from: string; to: string }
   outgoing: { vat25: number; vat12: number; vat6: number; total: number }
-  incoming: { total: number }
+  incoming: { total: number; sources?: VatIncomingSource[] }
   netToPay: number
   direction: 'BETALA' | 'ÅTERBÄRING'
 }

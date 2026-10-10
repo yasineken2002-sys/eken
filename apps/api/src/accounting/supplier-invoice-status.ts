@@ -100,6 +100,26 @@ export function cancelBlockedReason(faktura: SupplierInvoiceState): string | nul
 
 export const receiptSourceId = (id: string) => `supplier-invoice:${id}`
 export const paymentSourceId = (id: string) => `supplier-invoice-payment:${id}`
+/**
+ * TESTKUND-041 (BP1 §2): betalningsled k. Led 1 är det historiska `supplier-invoice-payment:<id>`
+ * (skrivs aldrig om); led k ≥ 2 får `supplier-invoice-payment:<id>:<k>`.
+ */
+export const paymentLegSourceId = (id: string, k: number) =>
+  k <= 1 ? paymentSourceId(id) : `supplier-invoice-payment:${id}:${k}`
+/** Betalningsledets nummer ur sourceId, eller null om det inte är ett betalningsled för fakturan. */
+export function paymentLegNumber(sourceId: string | null, invoiceId: string): number | null {
+  if (sourceId === paymentSourceId(invoiceId)) return 1
+  const m = /^supplier-invoice-payment:(.+):(\d+)$/.exec(sourceId ?? '')
+  if (!m || m[1] !== invoiceId) return null
+  const k = Number(m[2])
+  return Number.isSafeInteger(k) && k >= 2 ? k : null
+}
+/** BP1: ångringen av ett betalningsled, nycklad på ledets verifikat (ett led ångras en gång). */
+export const paymentUndoSourceId = (paymentJournalEntryId: string) =>
+  `supplier-invoice-payment-undo:${paymentJournalEntryId}`
+/** MJ-2: momsjusteringens verifikat. */
+export const vatAdjustmentSourceId = (adjustmentId: string) =>
+  `supplier-invoice-vat-adjustment:${adjustmentId}`
 
 /**
  * Makuleringens namnrymd — SKILD från mottagningens och betalningens.

@@ -556,6 +556,64 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           })
           continue
         }
+        // TESTKUND-041 (MJ-4 v2): momsjusteringens rader bokas på de FRYSTA målen i justeringsposten
+        // (kostnad ur originalexporten, momsmål ur originalet eller infört en gång). Dagens mappning
+        // används inte. Det frysta kontot måste finnas och vara aktivt i justeringens eget år.
+        const fryst = klass.ok ? klass.frystaMal?.mal.get(l.id) : undefined
+        if (klass.ok && klass.frystaMal) {
+          if (fryst === undefined || !Number.isSafeInteger(fryst))
+            return block(
+              'ORIGINAL_MAPPING_UNKNOWN',
+              'Momsjusteringens frysta mål saknas för en rad',
+            )
+          if (!iKontoklass(rk.roll as Roll, fryst))
+            return block(
+              'ACCOUNT_CLASS_MISMATCH',
+              `Det frysta målet ${fryst} ligger utanför kontoklassen ${klassText(rk.roll as Roll)}`,
+            )
+          const nu = await lasKonto(fryst)
+          if (!nu.exists || nu.active !== true)
+            return block(
+              'ACCOUNT_MAPPING_DRIFT',
+              `Det frysta Fortnox-kontot ${fryst} finns inte eller är inaktivt i räkenskapsår ${fy.Id} — ` +
+                'momsjusteringen kan inte bokas på originalets konto; stäm av manuellt i Fortnox',
+            )
+          const tk = teknik(rk.roll, rk.behandling, nu, fy.Id, fryst)
+          if (tk.teknik !== 'FORENLIG')
+            return block(
+              tk.teknik === 'KONFLIKT' ? 'ACCOUNT_VAT_MISMATCH' : 'ACCOUNT_MAPPING_DRIFT',
+              `Fortnox-konto ${fryst}: ${tk.skal}`,
+            )
+          const tidigareF = malPerKonto.get(l.account.id)
+          if (tidigareF !== undefined && tidigareF !== fryst)
+            return block(
+              'ACCOUNT_MAPPING_AMBIGUOUS',
+              `Konto ${l.account.number} har två olika målkonton i samma verifikat`,
+            )
+          mappningsrader.push({
+            journalEntryLineId: l.id,
+            roll: rk.roll,
+            behandling: rk.behandling,
+            kallkonto: l.account.number,
+            malkonto: fryst,
+            mappningsradId: 'fryst-momsjustering',
+            ogonblick: {
+              namn: nu.name ?? null,
+              aktiv: nu.active ?? null,
+              momskod: nu.vatCodePresent ? (nu.vatCode ?? null) : null,
+              ar: fy.Id,
+            },
+          })
+          if (tidigareF !== undefined) continue
+          malPerKonto.set(l.account.id, fryst)
+          accounts.push({
+            ...binding(`${klass.frystaMal.kalla}+GET /3/accounts/${fryst}?financialyear=${fy.Id}`),
+            localAccountId: l.account.id,
+            localAccountNumber: l.account.number,
+            externalAccountNumber: fryst,
+          })
+          continue
+        }
         const rad = radFor(rk.roll, l.account.number, rk.behandling)
         if (!rad)
           return block(
@@ -700,6 +758,9 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           contentSha256: original ? original.contentSha256 : revision.contentSha256,
           handelse: klass.handelse,
           rader: mappningsrader,
+          ...(klass.frystaMal
+            ? { kalla: 'FRYSTA_MAL_MOMSJUSTERING', frystaMal: klass.frystaMal.kalla }
+            : {}),
           // TESTKUND-027: en rättelse bär originalets exporterade mappning (inte dagens revision).
           ...(original
             ? {

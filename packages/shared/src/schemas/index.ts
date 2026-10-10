@@ -1306,6 +1306,14 @@ export const CreateJournalEntrySchema = z.object({
   attachmentUrl: z.string().max(500).optional(),
 })
 
+/**
+ * TESTKUND-041 (moms v1, B-1): kundens uttryckliga momsval för en löpande svensk leverantörskostnad.
+ * Ingen standard. Kundtext (033 §0): «Moms X kr dras av (bokas som ingående moms)», «Moms X kr dras
+ * inte av (ingår i kostnaden Y kr)», «Ingen moms på fakturan».
+ */
+export const SupplierVatTreatmentSchema = z.enum(['INGEN_MOMS', 'HELT_AVDRAG', 'INGET_AVDRAG'])
+export type SupplierVatTreatment = z.infer<typeof SupplierVatTreatmentSchema>
+
 export const CreateExpenseSchema = z.object({
   date: z.string().date('Datum måste anges som ÅÅÅÅ-MM-DD'),
   description: z
@@ -1317,6 +1325,8 @@ export const CreateExpenseSchema = z.object({
   amount: BeloppSchema.min(0.01, 'Beloppet måste vara större än noll'),
   vatRate: z.number().optional(),
   vatAmount: BeloppSchema.min(0, 'Momsbeloppet kan inte vara negativt').optional(),
+  /** TESTKUND-041: krävs när vatAmount > 0 (prövas i tjänsten). */
+  vatTreatment: SupplierVatTreatmentSchema.optional(),
   accountNumber: BasKontoSchema,
   idempotencyKey: z.string().max(100).optional(),
   attachmentUrl: z.string().max(500).optional(),
@@ -1341,8 +1351,27 @@ export const CreateSupplierInvoiceSchema = z.object({
   vatRate: z.number(),
   /** Valfritt: servern räknar själv och godtar ett inskickat tal inom ett öre. */
   vatAmount: BeloppSchema.min(0, 'Momsbeloppet kan inte vara negativt').optional(),
+  /** TESTKUND-041 (B-1): obligatoriskt, uttryckligt val. Ingen standard. */
+  vatTreatment: SupplierVatTreatmentSchema,
   attachmentUrl: z.string().max(500).optional(),
 })
+
+/** TESTKUND-041 (MJ-1/MJ-2): källbunden momsjustering HELT ↔ INGET. */
+export const SupplierInvoiceVatAdjustmentSchema = z
+  .object({
+    till: z.enum(['HELT_AVDRAG', 'INGET_AVDRAG']),
+    date: IsoDatumSchema,
+    reason: z.string().trim().min(5, 'Ange ett skäl (minst 5 tecken)').max(500),
+    clientKey: z.string().min(8).max(100),
+  })
+  .strict()
+export type SupplierInvoiceVatAdjustmentInput = z.infer<typeof SupplierInvoiceVatAdjustmentSchema>
+
+/** TESTKUND-041 (BP1 U-1): ångra EN betalningsregistrering. */
+export const UndoSupplierPaymentSchema = z
+  .object({ reason: z.string().trim().min(5, 'Ange ett skäl (minst 5 tecken)').max(500) })
+  .strict()
+export type UndoSupplierPaymentInput = z.infer<typeof UndoSupplierPaymentSchema>
 
 // Period- och balansspärrar ligger kvar i tjänsterna. Ingen default:
 // betalningsdatumet väljs av människan och daterar verifikatet.

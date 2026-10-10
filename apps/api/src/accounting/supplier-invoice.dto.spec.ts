@@ -57,6 +57,8 @@ const kroppenFranModalen = (över: Record<string, unknown> = {}) => ({
   amount: 1250,
   vatRate: 25,
   vatAmount: 250,
+  // TESTKUND-041 (B-1): modalen skickar alltid kundens uttryckliga momsval.
+  vatTreatment: 'HELT_AVDRAG',
   ...över,
 })
 
@@ -101,6 +103,24 @@ describe('CreateSupplierInvoiceDto — kroppen webben skickar', () => {
     void supplierName
     await expect(validera(utan)).rejects.toThrow()
   })
+
+  // TESTKUND-041 (B-1/B-9): momsvalet är obligatoriskt och uttryckligt; inget «delvis», ingen standard.
+  it('UTAN vatTreatment fälls — inget val, ingen standard', async () => {
+    const { vatTreatment: _v, ...utan } = kroppenFranModalen()
+    void _v
+    await expect(validera(utan)).rejects.toBeDefined()
+  })
+  it.each(['DELVIS', 'helt_avdrag', '', 25])('vatTreatment %p fälls', async (val) => {
+    await expect(validera(kroppenFranModalen({ vatTreatment: val }))).rejects.toBeDefined()
+  })
+  it.each(['INGEN_MOMS', 'HELT_AVDRAG', 'INGET_AVDRAG'])(
+    'vatTreatment %s godtas av pipen',
+    async (val) => {
+      await expect(validera(kroppenFranModalen({ vatTreatment: val }))).resolves.toMatchObject({
+        vatTreatment: val,
+      })
+    },
+  )
 
   it('momssats utanför VAT_RATES fälls', async () => {
     await expect(validera(kroppenFranModalen({ vatRate: 17 }))).rejects.toThrow()

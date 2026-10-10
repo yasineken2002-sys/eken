@@ -18,6 +18,7 @@ import {
 } from '../hooks/useAccounting'
 import { idagIso, makuleringKorsarRakenskapsar } from './supplier-invoice-form'
 import type { SupplierInvoice } from '../api/accounting.api'
+import { LeverantorsfakturaDetalj, momsvalKort } from './LeverantorsfakturaDetalj'
 
 /**
  * LEVERANTÖRSSKULDER — de obetalda fakturorna och summan på 2440.
@@ -40,6 +41,7 @@ export function SupplierInvoicesPanel() {
   const [vy, setVy] = useState<Vy>('OPEN')
   const [betalar, setBetalar] = useState<SupplierInvoice | null>(null)
   const [makulerar, setMakulerar] = useState<SupplierInvoice | null>(null)
+  const [visar, setVisar] = useState<string | null>(null)
 
   const fakturor = useSupplierInvoices(vy)
 
@@ -75,14 +77,46 @@ export function SupplierInvoicesPanel() {
       cellClassName: 'font-medium text-gray-900 tabular-nums',
       cell: (f) => formatCurrency(Number(f.totalAmount)),
     },
+    {
+      key: 'moms',
+      header: 'Moms',
+      // TESTKUND-041: gällande momsval; äldre fakturor utan val märks uttryckligen.
+      cell: (f) =>
+        f.vatTreatmentCurrent ? (
+          <span data-momsval={f.vatTreatmentCurrent}>{momsvalKort[f.vatTreatmentCurrent]}</span>
+        ) : Number(f.vatAmount) > 0 ? (
+          <span className="text-amber-700">Ej angiven (äldre)</span>
+        ) : (
+          <span className="text-gray-400">–</span>
+        ),
+    },
     { key: 'status', header: 'Status', cell: (f) => <Statusmarke faktura={f} /> },
     {
       key: 'actions',
       header: '',
       align: 'right',
       cell: (f) =>
-        f.status === 'OPEN' ? (
+        f.status !== 'OPEN' ? (
+          <div className="flex justify-end">
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setVisar(f.id)}
+              data-testid="visa-supplier-invoice"
+            >
+              Visa
+            </Button>
+          </div>
+        ) : (
           <div className="flex justify-end gap-2">
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setVisar(f.id)}
+              data-testid="visa-supplier-invoice"
+            >
+              Visa
+            </Button>
             <Button
               size="xs"
               variant="ghost"
@@ -100,7 +134,7 @@ export function SupplierInvoicesPanel() {
               Markera betald
             </Button>
           </div>
-        ) : null,
+        ),
     },
   ]
 
@@ -197,6 +231,7 @@ export function SupplierInvoicesPanel() {
 
       {betalar && <BetalningsModal faktura={betalar} onClose={() => setBetalar(null)} />}
       {makulerar && <MakuleringsModal faktura={makulerar} onClose={() => setMakulerar(null)} />}
+      {visar && <LeverantorsfakturaDetalj id={visar} onClose={() => setVisar(null)} />}
     </div>
   )
 }

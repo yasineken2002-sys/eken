@@ -83,6 +83,16 @@ export class CreateExpenseDto implements CreateExpenseInput {
   @Min(0, { message: 'Momsbeloppet kan inte vara negativt' })
   vatAmount?: number
 
+  /**
+   * TESTKUND-041 (B-6): kundens uttryckliga momsval. Krävs när `vatAmount` > 0 (prövas i
+   * tjänsten); ingen standard.
+   */
+  @IsOptional()
+  @IsIn(['INGEN_MOMS', 'HELT_AVDRAG', 'INGET_AVDRAG'], {
+    message: 'Välj momsbehandling: «Ingen moms», «Moms dras av» eller «Moms dras inte av»',
+  })
+  vatTreatment?: 'INGEN_MOMS' | 'HELT_AVDRAG' | 'INGET_AVDRAG'
+
   @IsInt({ message: 'Kontonummer måste vara ett heltal' })
   @Min(1000, { message: 'BAS-kontonummer är fyrsiffriga (1000–8999)' })
   @Max(8999, { message: 'BAS-kontonummer är fyrsiffriga (1000–8999)' })

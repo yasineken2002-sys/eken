@@ -485,6 +485,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       expenseAccount: 5070,
       amount: 1250,
       vatRate: 25,
+      vatTreatment: 'HELT_AVDRAG',
     },
     ogiltig: {
       description: 'Stambyte trapphus B',
@@ -493,6 +494,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       expenseAccount: 5070,
       amount: 1250,
       vatRate: 25,
+      vatTreatment: 'HELT_AVDRAG',
     },
     ogiltigVarfor: 'supplierName saknas — exakt formen som gav 400 i #795',
   },

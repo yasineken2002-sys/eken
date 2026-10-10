@@ -6915,9 +6915,19 @@ model SupplierInvoice {
 
   attachmentUrl String?
 
+  // TESTKUND-041 (moms v1, B-1/MJ-8): kundens UTTRYCKLIGA momsval, sparat med vem/när/var.
+  // Null på äldre rader (ingen backfill, MJ-B1). `vatTreatmentCurrent` är det GÄLLANDE valet
+  // efter källbundna momsjusteringar (SupplierInvoiceVatAdjustment); ursprunget ändras aldrig.
+  vatTreatment               SupplierVatTreatment?
+  vatTreatmentCurrent        SupplierVatTreatment?
+  vatTreatmentDecidedById    String?
+  vatTreatmentDecidedAt      DateTime?
+  vatTreatmentDecisionSource String?
+
   // NÄR fakturan betalades. En HÄNDELSE — statusen härleds, se docblocket ovan.
   // Är den satt finns ett betalningsverifikat med sourceId
-  // `supplier-invoice-payment:<id>`.
+  // `supplier-invoice-payment:<id>` (led 1) eller `supplier-invoice-payment:<id>:<k>` (led k ≥ 2,
+  // TESTKUND-041 BP1).
   paidAt      DateTime?
   // NÄR fakturan makulerades. Makulering är bara tillåten INNAN betalning; en
   // betald faktura rättas med ett motverifikat, aldrig genom att fältet sätts.
@@ -6932,11 +6942,71 @@ model SupplierInvoice {
   // inte kunna radera en bokförd faktura, och att policyn står här gör det till
   // ett val i stället för en tyst förvalsverkan.
   createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  vatAdjustments SupplierInvoiceVatAdjustment[]
 
   @@index([organizationId])
   // Öppna poster sorteras på förfallodatum — det är listans enda ordning.
   @@index([organizationId, dueDate])
 }
+
+// TESTKUND-041 (B-1): kundens momsval för en löpande svensk leverantörskostnad. Inget delvis.
+enum SupplierVatTreatment {
+  INGEN_MOMS
+  HELT_AVDRAG
+  INGET_AVDRAG
+}
+
+// TESTKUND-041 (MJ-2/MJ-4 v2): källbunden momsjustering HELT↔INGET av en leverantörsfaktura.
+// Ett eget verifikat (`supplier-invoice-vat-adjustment:<id>`, två rader kostnad/2641) och en egen
+// export per led. Frysta Fortnox-mål: kostnad ur originalexporten för hela kedjan; momsmål ur
+// originalexporten (HELT-original) eller infört EN gång (INGET-original) och ärvt.
+model SupplierInvoiceVatAdjustment {
+  id                      String               @id @default(uuid())
+  organizationId          String
+  supplierInvoiceId       String
+  seq                     Int
+  fran                    SupplierVatTreatment
+  till                    SupplierVatTreatment
+  amount                  Decimal              @db.Decimal(10, 2)
+  date                    DateTime             @db.Date
+  reason                  String
+  clientKey               String
+  decidedById             String
+  decidedRole             String
+  decidedAt               DateTime             @default(now())
+  journalEntryId          String               @unique
+  originalExportId        String
+  originalSentPayloadHash String
+  fortnoxDatabaseNumber   Int
+  kostnadMal              Int
+  momsMal                 Int
+  momsMalInfortAv         Int
+  mappingRevisionId       String?
+
+  supplierInvoice SupplierInvoice @relation(fields: [supplierInvoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierInvoiceId, seq])
+  @@unique([supplierInvoiceId, clientKey])
+  @@index([organizationId])
+}
+
+// TESTKUND-041 (B-6): beslutsproveniens för en utgift (kontantmetoden saknar egen modell). Skrivs i
+// samma transaktion som verifikatet; bara när utgiften bär ett uttryckligt momsval.
+model ExpenseVatDecision {
+  id             String               @id @default(uuid())
+  organizationId String
+  journalEntryId String               @unique
+  vatTreatment   SupplierVatTreatment
+  netAmount      Decimal              @db.Decimal(10, 2)
+  vatAmount      Decimal              @db.Decimal(10, 2)
+  grossAmount    Decimal              @db.Decimal(10, 2)
+  decidedById    String?
+  decidedAt      DateTime             @default(now())
+  source         String
+
+  @@index([organizationId])
+}
+
 
 model MiscCharge {
   id String @id @default(uuid())

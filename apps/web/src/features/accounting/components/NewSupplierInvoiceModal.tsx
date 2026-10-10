@@ -6,7 +6,8 @@ import { useCreateSupplierInvoice } from '../hooks/useAccounting'
 import { beraknaBelopp, fakturaFel, type LeverantorsfakturaUtkast } from './supplier-invoice-form'
 import { extractApiError } from '@/lib/api'
 import { kontraktsfel } from '@/lib/contract-gate'
-import type { CreateSupplierInvoiceInput } from '@eken/shared'
+import type { CreateSupplierInvoiceInput, SupplierVatTreatment } from '@eken/shared'
+import { Momsval } from './Momsval'
 import { CreateSupplierInvoiceSchema, formatCurrency, VAT_RATES } from '@eken/shared'
 import type { Account } from '@eken/shared'
 
@@ -48,6 +49,8 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
   // betyder mest — det är en riktig leverantörsfaktura som ska bevaras i sju år
   // (BFL 7 kap 2 §), inte ett kvitto man redan har i banken.
   const [bilaga, setBilaga] = useState('')
+  // TESTKUND-041: inget förval — kunden väljer uttryckligen.
+  const [momsval, setMomsval] = useState<SupplierVatTreatment | ''>('')
   const [serverfel, setServerfel] = useState<string | null>(null)
 
   const mutation = useCreateSupplierInvoice()
@@ -64,18 +67,27 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
   ) => setUtkast((f) => ({ ...f, [nyckel]: varde }))
 
   const { brutto, moms, netto } = beraknaBelopp(utkast)
-  const fel = fakturaFel(utkast, (n) => kontonamn.has(n))
+  // Ett val som inte passar beloppet (t.ex. «dras av» när momsen blivit 0) räknas som inget val.
+  const giltigtVal =
+    momsval !== '' && (moms > 0 ? momsval !== 'INGEN_MOMS' : momsval === 'INGEN_MOMS')
+      ? momsval
+      : ''
+  const fel =
+    fakturaFel(utkast, (n) => kontonamn.has(n)) ??
+    (giltigtVal === '' ? 'Välj hur momsen ska hanteras.' : null)
+  const ejAvdrag = giltigtVal === 'INGET_AVDRAG'
   const kontonummer = Number(utkast.expenseAccount)
 
   const stang = () => {
     setUtkast(tomtUtkast)
     setBilaga('')
+    setMomsval('')
     setServerfel(null)
     onClose()
   }
 
   const registrera = () => {
-    if (fel) return
+    if (fel || giltigtVal === '') return
     setServerfel(null)
     // ANNOTERAD med flit. Utan typen är `kropp` en inferrerad const, och då
     // körs INGEN överskottskontroll: ett fält som finns här men inte i
@@ -94,6 +106,7 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
       // sak och avvisar om talen skiljer sig mer än ett öre. Det som visas i
       // konteringen ovan är därför bevisligen det som bokförs.
       vatAmount: moms,
+      vatTreatment: giltigtVal,
       ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
     }
 
@@ -210,6 +223,14 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
           </div>
         </div>
 
+        <Momsval
+          moms={moms}
+          brutto={brutto}
+          value={giltigtVal}
+          onChange={setMomsval}
+          testid="supplier-vat-treatment"
+        />
+
         <Input
           label="Bilaga (valfri länk)"
           value={bilaga}
@@ -231,9 +252,9 @@ export function NewSupplierInvoiceModal({ open, onClose, accounts }: Props) {
               konto={utkast.expenseAccount || '—'}
               namn={kontonamn.get(kontonummer) ?? 'Kostnad'}
               sida="Debet"
-              belopp={netto}
+              belopp={ejAvdrag ? brutto : netto}
             />
-            {moms > 0 && (
+            {moms > 0 && !ejAvdrag && (
               <Konteringsrad konto="2641" namn="Ingående moms" sida="Debet" belopp={moms} />
             )}
             <Konteringsrad

@@ -127,6 +127,9 @@ export async function leverantorsfaktura(
 export async function stadaKontomappning(prisma: PrismaClient, organizationId: string) {
   await prisma.fortnoxAccountMappingRow.deleteMany({ where: { revision: { organizationId } } })
   await prisma.fortnoxAccountMappingRevision.deleteMany({ where: { organizationId } })
+  // TESTKUND-041: momsjusteringar refererar fakturan (Restrict) och tas bort först.
+  await prisma.supplierInvoiceVatAdjustment.deleteMany({ where: { organizationId } })
+  await prisma.expenseVatDecision.deleteMany({ where: { organizationId } })
   await prisma.supplierInvoice.deleteMany({ where: { organizationId } })
 }
 

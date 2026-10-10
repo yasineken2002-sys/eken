@@ -6,7 +6,8 @@ import { useCreateExpense } from '../hooks/useAccounting'
 import { momsAvBrutto, tolkaBelopp } from './entry-balance'
 import { extractApiError } from '@/lib/api'
 import { kontraktsfel } from '@/lib/contract-gate'
-import type { CreateExpenseInput } from '@eken/shared'
+import type { CreateExpenseInput, SupplierVatTreatment } from '@eken/shared'
+import { Momsval } from './Momsval'
 import { CreateExpenseSchema, formatCurrency, VAT_RATES } from '@eken/shared'
 import type { Account } from '@eken/shared'
 
@@ -43,6 +44,8 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
   const [bilaga, setBilaga] = useState('')
   const [nyckel, setNyckel] = useState(() => crypto.randomUUID())
   const [serverfel, setServerfel] = useState<string | null>(null)
+  // TESTKUND-041 (B-6): kundens uttryckliga momsval; inget förval.
+  const [momsval, setMomsval] = useState<SupplierVatTreatment | ''>('')
 
   const mutation = useCreateExpense()
 
@@ -58,6 +61,11 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
   const kontonummer = Number(konto)
   const kontoFinns = Number.isFinite(kontonummer) && kontonamn.has(kontonummer)
 
+  const giltigtVal =
+    momsval !== '' && (moms > 0 ? momsval !== 'INGEN_MOMS' : momsval === 'INGEN_MOMS')
+      ? momsval
+      : ''
+  const ejAvdrag = giltigtVal === 'INGET_AVDRAG'
   const fel = !datum
     ? 'Välj ett datum.'
     : beskrivning.trim().length < 3
@@ -68,7 +76,9 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
           ? 'Välj ett kostnadskonto.'
           : !kontoFinns
             ? `Konto ${konto} finns inte i kontoplanen.`
-            : null
+            : giltigtVal === ''
+              ? 'Välj hur momsen ska hanteras.'
+              : null
 
   const stang = () => {
     setDatum(idag)
@@ -78,6 +88,7 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
     setMomssats(25)
     setKonto('')
     setBilaga('')
+    setMomsval('')
     setServerfel(null)
     setNyckel(crypto.randomUUID())
     onClose()
@@ -97,6 +108,7 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
       amount: brutto,
       vatRate: momssats,
       vatAmount: moms,
+      ...(giltigtVal ? { vatTreatment: giltigtVal } : {}),
       accountNumber: kontonummer,
       idempotencyKey: nyckel,
       ...(bilaga.trim() ? { attachmentUrl: bilaga.trim() } : {}),
@@ -192,6 +204,16 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
           </div>
         </div>
 
+        {brutto > 0 && (
+          <Momsval
+            moms={moms}
+            brutto={brutto}
+            value={giltigtVal}
+            onChange={setMomsval}
+            testid="expense-vat-treatment"
+          />
+        )}
+
         {/* KONTERINGEN INNAN MAN BOKFÖR. Riktningen brutto → netto + moms är
             hela poängen med att visa den: ett verifikat med omvänd tolkning
             balanserar, och felet syns bara här. */}
@@ -208,9 +230,9 @@ export function RecordExpenseModal({ open, onClose, accounts }: Props) {
                 <dt className="text-gray-500">
                   {konto || '—'} {kontonamn.get(kontonummer) ?? ''} (debet)
                 </dt>
-                <dd className="text-gray-900">{formatCurrency(netto)}</dd>
+                <dd className="text-gray-900">{formatCurrency(ejAvdrag ? brutto : netto)}</dd>
               </div>
-              {moms > 0 && (
+              {moms > 0 && !ejAvdrag && (
                 <div className="flex justify-between">
                   <dt className="text-gray-500">2641 Ingående moms (debet)</dt>
                   <dd className="text-gray-900">{formatCurrency(moms)}</dd>

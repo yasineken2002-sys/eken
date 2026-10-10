@@ -4406,6 +4406,8 @@ export class ToolExecutorService {
           }
           // EN sanningskälla: samma beräkning som REST-endpointen.
           const vat = await this.accountingService.getVatReport(organizationId, fromDate, toDate)
+          // TESTKUND-041 (B-5): källorna och kundens beslut följer med, så att AI:n kan förklara
+          // valet (aldrig sätta det). Äldre utan val märks uttryckligen.
           return {
             success: true,
             data: vat,
@@ -4510,6 +4512,18 @@ export class ToolExecutorService {
           if (!byggt.ok) {
             return { success: false, message: byggt.fel }
           }
+          // TESTKUND-041 (B-5/B-6): ett verifikat med ingående moms (2641) är ett uttryckligt
+          // redovisningsval av en behörig människa. AI:n får inte göra det åt kunden — modellens egna
+          // fält är inget mänskligt beslut. Kundvägen är formuläret «Ny verifikation».
+          if (linesInput.some((l) => Number(l.accountNumber) === 2641)) {
+            return {
+              success: false,
+              message:
+                'Ett verifikat med ingående moms (konto 2641) är ett momsval som en behörig person ' +
+                'måste göra själv. Jag bokför det inte. Använd «Ny verifikation» under Bokföring, eller ' +
+                'registrera en leverantörsfaktura/utgift där momsvalet görs i formuläret.',
+            }
+          }
           const totalDebit = byggt.summa
           // IDEMPOTENSNYCKELN (se ai-journal-source.ts). Härledd ur ÅTGÄRDENS
           // INNEHÅLL, inte ur bekräftelsens id — den måste överleva ett omtag
@@ -4607,6 +4621,18 @@ export class ToolExecutorService {
             return {
               success: false,
               message: `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd.`,
+            }
+          }
+          // TESTKUND-041 (B-5/B-6): positiv moms kräver kundens UTTRYCKLIGA val (dras av / dras
+          // inte av), gjort i formuläret. AI:n får aldrig hitta på eller sätta valet — ett fält som
+          // modellen själv skriver är inget mänskligt beslut. Kundvägen: «Registrera utgift».
+          if ((vatAmount ?? 0) > 0) {
+            return {
+              success: false,
+              message:
+                'Utgiften har moms. Om momsen ska dras av eller inte är ett val som du måste göra ' +
+                'själv i formuläret «Registrera utgift» under Bokföring — jag bokför inte moms åt dig. ' +
+                'Utan moms kan jag registrera utgiften.',
             }
           }
           // Samma delade kontering som människans väg (POST /accounting/expenses).

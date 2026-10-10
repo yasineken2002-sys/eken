@@ -42,10 +42,24 @@ export interface Radklass {
 }
 
 export type Klassning =
-  | { ok: true; handelse: string; rader: Map<string, Radklass>; rattelseAv: string | null }
+  | {
+      ok: true
+      handelse: string
+      rader: Map<string, Radklass>
+      rattelseAv: string | null
+      /**
+       * TESTKUND-041 (MJ-4 v2): frysta Fortnox-mål per rad för en momsjustering. Byggaren använder
+       * dem i stället för dagens mappning (ingen omkontering vid mappningsbyte).
+       */
+      frystaMal?: { mal: Map<string, number>; kalla: string }
+    }
   | {
       ok: false
-      kod: 'EVENT_UNSUPPORTED' | 'ORIGIN_NOT_CONFIRMED' | 'REVERSED_BEFORE_EXPORT'
+      kod:
+        | 'EVENT_UNSUPPORTED'
+        | 'ORIGIN_NOT_CONFIRMED'
+        | 'REVERSED_BEFORE_EXPORT'
+        | 'VAT_TREATMENT_MISSING'
       skal: string
     }
 
@@ -685,8 +699,148 @@ export async function klassaVerifikat(
     return { ok: true, handelse: 'makulering av leverantörsfaktura', rader, rattelseAv: orig.id }
   }
 
+  // ── TESTKUND-041 (MJ-7): källbunden momsjustering HELT ↔ INGET ──
+  if (
+    (m = /^supplier-invoice-vat-adjustment:(.+)$/.exec(sid)) &&
+    entry.source === 'SUPPLIER_INVOICE'
+  ) {
+    const j = await db.supplierInvoiceVatAdjustment.findFirst({
+      where: { id: m[1]!, organizationId },
+      include: { supplierInvoice: { select: { id: true, expenseAccount: true } } },
+    })
+    if (!j || j.journalEntryId !== entry.id) return ej('momsjusteringens källpost saknas')
+    // Bara de två rollerna på samma belopp; en rad på 2440 eller 19xx (eller något annat) stoppas.
+    if (entry.lines.length !== 2) return ej('momsjusteringen har inte exakt två rader')
+    const V = ore(j.amount)
+    const kostnad = entry.lines.find((l) => l.account.number === j.supplierInvoice.expenseAccount)
+    const moms = entry.lines.find((l) => l.account.number === 2641)
+    if (!kostnad || !moms || kostnad === moms || !iKontoklass('KOSTNAD', kostnad.account.number))
+      return ej('momsjusteringens rader är inte kostnadskontot och 2641')
+    const tillKostnad = j.till === 'INGET_AVDRAG'
+    const radOk = (l: Rad, debet: boolean) =>
+      debet ? l.credit === null && ore(l.debit) === V : l.debit === null && ore(l.credit) === V
+    if (!radOk(kostnad, tillKostnad) || !radOk(moms, !tillKostnad))
+      return ej('momsjusteringens rader har fel sida eller belopp')
+    if (j.fortnoxDatabaseNumber !== databaseNumber)
+      return ursprung('Momsjusteringen beslutades mot ett annat Fortnox-företag än det anslutna')
+    const f = j.supplierInvoice
+    if (
+      !(await bekraftad(
+        db,
+        organizationId,
+        'SUPPLIER_INVOICE',
+        `supplier-invoice:${f.id}`,
+        databaseNumber,
+      ))
+    )
+      return ursprung(
+        'Leverantörsfakturan är inte bekräftat exporterad till samma Fortnox-företag — justeringen väntar på originalet',
+      )
+    if (j.seq > 1) {
+      const forra = await db.supplierInvoiceVatAdjustment.findFirst({
+        where: { supplierInvoiceId: f.id, seq: j.seq - 1, organizationId },
+        select: { journalEntryId: true, seq: true },
+      })
+      if (!forra) return ej('föregående momsjustering saknas')
+      const u = await originalUtfall(db, organizationId, forra.journalEntryId, databaseNumber)
+      if (u.typ !== 'CONFIRMED')
+        return ursprung(
+          u.typ === 'OKANT'
+            ? `Föregående momsjusterings (led ${forra.seq}) utfall är okänt — stäm av först`
+            : `Föregående momsjustering (led ${forra.seq}) är inte exporterad — justeringarna exporteras i ordning`,
+        )
+    }
+    satt(kostnad, 'KOSTNAD')
+    satt(moms, 'INGAENDE_MOMS', 'AVDRAGSGILL')
+    return {
+      ok: true,
+      handelse: 'momsjustering leverantörsfaktura',
+      rader,
+      rattelseAv: null,
+      frystaMal: {
+        mal: new Map([
+          [kostnad.id, j.kostnadMal],
+          [moms.id, j.momsMal],
+        ]),
+        kalla: `momsjustering:${j.id}:led${j.seq}:kostnad${j.kostnadMal}:moms${j.momsMal}(infört led ${j.momsMalInfortAv})`,
+      },
+    }
+  }
+
+  // ── TESTKUND-041 (BP1 §4): betalningsled k ≥ 2 — `supplier-invoice-payment:<id>:<k>` ──
+  if (
+    (m = /^supplier-invoice-payment:([^:]+):(\d+)$/.exec(sid)) &&
+    entry.source === 'SUPPLIER_INVOICE'
+  ) {
+    const fid = m[1]!
+    const k = Number(m[2])
+    const f = await db.supplierInvoice.findFirst({
+      where: { id: fid, organizationId },
+      select: { id: true, totalAmount: true },
+    })
+    if (!f || !(k >= 2))
+      return ej('betalningsledets leverantörsfaktura finns inte i organisationen')
+    const t = tvaRader(entry, (n) => n === 2440, arLikvid)
+    if (!t || t.belopp !== ore(f.totalAmount))
+      return ej('leverantörsbetalningen är inte 2440/19xx med fakturans belopp')
+    if (
+      !(await bekraftad(
+        db,
+        organizationId,
+        'SUPPLIER_INVOICE',
+        `supplier-invoice:${f.id}`,
+        databaseNumber,
+      ))
+    )
+      return ursprung(
+        'Leverantörsfakturan är inte bekräftat exporterad till samma Fortnox-företag — ' +
+          'betalningen skulle debitera leverantörsskulder utan motsvarande kredit',
+      )
+    // Varje tidigare led ska vara avslutat: (CONFIRMED + ångring CONFIRMED) eller aldrig skickat.
+    for (let i = 1; i < k; i++) {
+      const tidigareSid =
+        i === 1 ? `supplier-invoice-payment:${f.id}` : `supplier-invoice-payment:${f.id}:${i}`
+      const led = await db.journalEntry.findFirst({
+        where: { organizationId, source: 'SUPPLIER_INVOICE', sourceId: tidigareSid },
+        select: { id: true },
+      })
+      if (!led) return ej(`betalningsled ${i} saknas`)
+      const ex = await db.fortnoxVoucherExport.findFirst({
+        where: { organizationId, journalEntryId: led.id },
+        select: { state: true, sendAttemptId: true },
+      })
+      const angring = await db.journalEntry.findFirst({
+        where: { organizationId, reversalOfEntryId: led.id },
+        select: { id: true },
+      })
+      if (!angring)
+        return ursprung(`Betalningsled ${i} är inte ångrat — nytt led kan inte exporteras`)
+      const aldrigSkickat =
+        !ex ||
+        (ex.sendAttemptId === null && (ex.state === 'DRY_RUN_READY' || ex.state === 'BLOCKED'))
+      if (aldrigSkickat) continue
+      if (ex.state !== 'CONFIRMED')
+        return ursprung(
+          `Betalningsled ${i}:s utfall i Fortnox är inte avslutat (${ex.state}) — stäm av först`,
+        )
+      const u = await originalUtfall(db, organizationId, angring.id, databaseNumber)
+      if (u.typ !== 'CONFIRMED')
+        return ursprung(
+          u.typ === 'OKANT'
+            ? `Ångringen av betalningsled ${i} har okänt utfall — stäm av först`
+            : `Ångringen av betalningsled ${i} är inte exporterad ännu — det nya ledet väntar`,
+        )
+    }
+    satt(t.deb, 'LEVERANTORSSKULD')
+    satt(t.kre, 'LIKVID')
+    return { ok: true, handelse: `leverantörsbetalning (led ${k})`, rader, rattelseAv: null }
+  }
+
   // ── H4 leverantörsfaktura ──
-  if ((m = /^supplier-invoice(-payment)?:(.+)$/.exec(sid)) && entry.source === 'SUPPLIER_INVOICE') {
+  if (
+    (m = /^supplier-invoice(-payment)?:([^:]+)$/.exec(sid)) &&
+    entry.source === 'SUPPLIER_INVOICE'
+  ) {
     const [, betalning, fid] = m
     const f = await db.supplierInvoice.findFirst({
       where: { id: fid!, organizationId },
@@ -697,6 +851,7 @@ export async function klassaVerifikat(
         vatAmount: true,
         totalAmount: true,
         cancelledAt: true,
+        vatTreatment: true,
       },
     })
     if (!f) return ej('leverantörsfakturan finns inte i organisationen')
@@ -739,20 +894,32 @@ export async function klassaVerifikat(
       satt(t.kre, 'LIKVID')
       return { ok: true, handelse: 'leverantörsbetalning', rader, rattelseAv: null }
     }
+    // TESTKUND-041 (B-3/B-8): moms > 0 utan sparat val (äldre faktura) exporteras inte; ingen
+    // avdragsrätt gissas. INGET_AVDRAG: kostnaden är bruttot och ingen 2641-rad finns.
+    if (ore(f.vatAmount) > 0 && !f.vatTreatment)
+      return {
+        ok: false,
+        kod: 'VAT_TREATMENT_MISSING',
+        skal:
+          'Leverantörsfakturan saknar sparat momsval (äldre, bokförd som avdragsgill) — den exporteras ' +
+          'inte; ingen avdragsrätt antas i efterhand',
+      }
+    const kostnadOre = f.vatTreatment === 'INGET_AVDRAG' ? ore(f.totalAmount) : ore(f.netAmount)
     for (const l of entry.lines) {
       const n = l.account.number
       if (
         n === f.expenseAccount &&
         iKontoklass('KOSTNAD', n) &&
         l.credit === null &&
-        ore(l.debit) === ore(f.netAmount)
+        ore(l.debit) === kostnadOre
       )
         satt(l, 'KOSTNAD')
       else if (
         n === 2641 &&
         l.credit === null &&
         ore(l.debit) === ore(f.vatAmount) &&
-        ore(f.vatAmount) > 0
+        ore(f.vatAmount) > 0 &&
+        f.vatTreatment !== 'INGET_AVDRAG'
       )
         satt(l, 'INGAENDE_MOMS', 'AVDRAGSGILL')
       else if (n === 2440 && l.debit === null && ore(l.credit) === ore(f.totalAmount))
