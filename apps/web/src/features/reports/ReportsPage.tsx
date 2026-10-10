@@ -351,6 +351,30 @@ function VatView({ data }: { data: VatReport }) {
           </tbody>
         </table>
       </div>
+      {/* TESTKUND-041 (B-4/MJ-9): varifrån den ingående momsen kommer, med kundens beslut. */}
+      {(data.incoming.sources?.length ?? 0) > 0 && (
+        <div
+          className="border-line min-w-0 rounded-2xl border bg-white p-4"
+          data-testid="momskallor"
+        >
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+            Ingående moms per verifikat
+          </p>
+          <ul className="space-y-1.5 text-[13px]">
+            {data.incoming.sources!.map((k, i) => (
+              <li
+                key={`${k.verifikat}-${i}`}
+                className="flex min-w-0 flex-wrap justify-between gap-x-3"
+              >
+                <span className="min-w-0 break-words text-gray-700">
+                  {k.verifikat} {k.datum}: {k.text}
+                </span>
+                <span className="tabular-nums text-gray-900">{formatCurrency(k.belopp)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
