@@ -222,6 +222,7 @@ export function AccountingPage() {
   return (
     <PageWrapper id="accounting">
       <PageHeader
+        className="flex-wrap"
         title="Bokföring"
         description="BAS-kontoplan och verifikationsjournal"
         action={
