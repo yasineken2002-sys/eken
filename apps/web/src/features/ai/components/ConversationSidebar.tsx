@@ -28,7 +28,9 @@ export function ConversationSidebar({
   onOpenAnalysis,
 }: ConversationSidebarProps) {
   return (
-    <div className="flex w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white">
+    // F-045-1: under md (mobil) döljs konversationslistan så att chattytan och kompositören får hela bredden;
+    // tidigare klämdes chatten till ~60 px vid 390 px och gick inte att använda.
+    <div className="hidden w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white md:flex">
       {/* Header */}
       <div className="border-b border-gray-100 px-4 py-3">
         <div className="mb-3 flex items-center gap-2">
