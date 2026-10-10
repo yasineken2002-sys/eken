@@ -430,6 +430,8 @@ export function AiPage() {
             <button
               type="button"
               aria-haspopup="dialog"
+              aria-expanded={panelMobil}
+              aria-controls="ai-konversationspanel"
               onClick={() => setPanelMobil(true)}
               className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-100"
             >
@@ -502,27 +504,29 @@ export function AiPage() {
         title="Konversationer"
         size="full"
       >
-        <ConversationSidebar
-          mobil
-          conversations={conversations}
-          isLoading={convLoading}
-          activeConversationId={activeConversationId}
-          confirmDeleteId={confirmDeleteId}
-          onSelect={(id) => {
-            handleSelectConversation(id)
-            setPanelMobil(false)
-          }}
-          onNewConversation={() => {
-            handleNewConversation()
-            setPanelMobil(false)
-          }}
-          onRequestDelete={setConfirmDeleteId}
-          onConfirmDelete={(id) => void handleDelete(id)}
-          onOpenAnalysis={() => {
-            setPanelMobil(false)
-            setAnalysisOpen(true)
-          }}
-        />
+        <div id="ai-konversationspanel">
+          <ConversationSidebar
+            mobil
+            conversations={conversations}
+            isLoading={convLoading}
+            activeConversationId={activeConversationId}
+            confirmDeleteId={confirmDeleteId}
+            onSelect={(id) => {
+              handleSelectConversation(id)
+              setPanelMobil(false)
+            }}
+            onNewConversation={() => {
+              handleNewConversation()
+              setPanelMobil(false)
+            }}
+            onRequestDelete={setConfirmDeleteId}
+            onConfirmDelete={(id) => void handleDelete(id)}
+            onOpenAnalysis={() => {
+              setPanelMobil(false)
+              setAnalysisOpen(true)
+            }}
+          />
+        </div>
       </Modal>
 
       <AnalysisModal open={analysisOpen} onClose={() => setAnalysisOpen(false)} />

@@ -99,7 +99,14 @@ describe('F-046-1: konversationspanelen via knappen «Konversationer»', () => {
 
   it('knappen finns och öppnar panelen med båda samtalen, ny konversation och portföljanalys', () => {
     rendera()
+    const knapp = screen.getByRole('button', { name: 'Konversationer' })
+    expect([knapp.getAttribute('aria-expanded'), knapp.getAttribute('aria-controls')]).toEqual([
+      'false',
+      'ai-konversationspanel',
+    ])
     const panel = oppnaPanel()
+    expect(knapp.getAttribute('aria-expanded')).toBe('true')
+    expect(panel.querySelector('#ai-konversationspanel')).not.toBeNull()
     expect(within(panel).getByText('Saldo kundfordringar')).toBeTruthy()
     expect(within(panel).getByText('Momsen i oktober')).toBeTruthy()
     expect(within(panel).getByRole('button', { name: /Ny konversation/ })).toBeTruthy()
