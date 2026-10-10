@@ -190,7 +190,11 @@ medDb('TESTKUND-041: moms v1 + BP1 genom skarp export mot syntetisk Fortnox', ()
     const mappa = (kostnad: number, moms: number) =>
       godkannMappning(prisma, connections, reader, org.id, R(kostnad, moms))
     await mappa(5170, 2641) // R1
+    // G-2 (045): godkänd mappning för ett annat räkenskapsår (årsskiftesprovet).
+    const mappaAr = (kostnad: number, moms: number, ar: number) =>
+      godkannMappning(prisma, connections, reader, org.id, R(kostnad, moms), ar)
     return {
+      mappaAr,
       org,
       user,
       api,
@@ -947,6 +951,65 @@ medDb('TESTKUND-041: moms v1 + BP1 genom skarp export mot syntetisk Fortnox', ()
     ])
     expect(r.blockReason).toMatch(/frysta Fortnox-kontot 5170/)
     expect(posts(t)).toBe(fore)
+  })
+
+  it('G-2 (045): justering i stängd period (2025-12) nekas (422) utan effekt; samma justering i nästa, öppna räkenskapsår (2026-01) bokas i egen period och exporteras på originalets frysta mål i eget år', async () => {
+    const t = await setup()
+    // Föregående räkenskapsår 2025 (Id 2) med egen godkänd mappning (5170/2641) — originalet bokas och exporteras där.
+    t.ledger.financialYears = [
+      { Id: 2, FromDate: '2025-01-01', ToDate: '2025-12-31', AccountingMethod: 'ACCRUAL' },
+      ...t.ledger.financialYears,
+    ]
+    await t.mappaAr(5170, 2641, 2)
+    const { f, je } = await faktura(t, { val: 'HELT_AVDRAG', datum: '2025-12-10' })
+    expect((await skicka(t, je.id)).state).toBe('CONFIRMED')
+    // Årets (2026) AKTUELLA mappning ändras efteråt: justeringen ska ändå använda originalets frysta mål.
+    await t.mappa(5460, 2640)
+    // Stängd period: december 2025 (append-only periodhändelse, som produktens stängning skriver).
+    await prisma.accountingPeriodEvent.create({
+      data: {
+        organizationId: t.org.id,
+        year: 2025,
+        month: 12,
+        seq: 1,
+        type: 'CLOSED',
+        actorType: 'USER',
+        actorUserId: t.user.id,
+      },
+    })
+    const avtryck = async () =>
+      JSON.stringify([
+        await prisma.supplierInvoiceVatAdjustment.count({ where: { organizationId: t.org.id } }),
+        await prisma.journalEntry.count({ where: { organizationId: t.org.id } }),
+        (await prisma.supplierInvoice.findUniqueOrThrow({ where: { id: f.id } }))
+          .vatTreatmentCurrent,
+      ])
+    const fore = await avtryck()
+    await expect(just(t, f, 'INGET_AVDRAG', '2025-12-20')).rejects.toThrow(/2025-12 är stängd/)
+    expect(await avtryck()).toBe(fore)
+    const j1 = await just(t, f, 'INGET_AVDRAG', '2026-01-12')
+    const jeJ1 = await prisma.journalEntry.findUniqueOrThrow({ where: { id: j1.journalEntryId } })
+    expect(jeJ1.date.toISOString().slice(0, 10)).toBe('2026-01-12')
+    expect(await evenoRader(j1.journalEntryId)).toEqual([
+      [2641, 0, 25000],
+      [5070, 25000, 0],
+    ])
+    // Momsrapporten: justeringen i justeringens period; ursprungsperioden skrivs inte om.
+    const dec = await t.acc.getVatReport(t.org.id, '2025-12-01', '2025-12-31')
+    const jan = await t.acc.getVatReport(t.org.id, '2026-01-01', '2026-01-31')
+    expect([dec.incoming.total, jan.incoming.total]).toEqual([250, -250])
+    expect((await skicka(t, j1.journalEntryId)).state).toBe('CONFIRMED')
+    expect(fortnoxRader(t, j1.journalEntryId)).toEqual([
+      [2641, 0, 25000],
+      [5170, 25000, 0],
+    ])
+    const post = t.ledger.vouchers.find((v) =>
+      String(v.Comments ?? '').includes(`Eveno JournalEntry ${j1.journalEntryId};`),
+    )
+    const orig = t.ledger.vouchers.find((v) =>
+      String(v.Comments ?? '').includes(`Eveno JournalEntry ${je.id};`),
+    )
+    expect([orig?.Year, post?.Year]).toEqual([2, 1])
   })
 
   it('J4/G2: gammalt READY på J2 när J1 blir UNKNOWN → send 409 (färsk build), 0 POST', async () => {
