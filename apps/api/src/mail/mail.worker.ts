@@ -85,7 +85,7 @@ abstract class MailWorkerBase {
         where: { id: correlation.rentNoticeId, organizationId: job.data.organizationId },
         select: { status: true },
       })
-      if (!avi || avi.status === 'PAID' || avi.status === 'CANCELLED') {
+      if (!avi || avi.status === 'PAID' || avi.status === 'CANCELLED' || avi.status === 'OPENING') {
         this.logger.warn(
           `[${job.queue.name}] AVIMEJL SKICKAS INTE jobId=${job.id} avi=${correlation.rentNoticeId} ` +
             `org=${job.data.organizationId}: avin har status ${avi?.status ?? 'saknas'} när jobbet plockades.`,
