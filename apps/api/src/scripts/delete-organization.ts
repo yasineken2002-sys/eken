@@ -103,6 +103,10 @@ export const DELETION_STEPS: readonly Step[] = [
   // Inga barn: verifikaten den gav upphov till hänger i JournalEntry, inte i
   // en FK härifrån. Enda kanten är Restrict mot Organization, så den behöver
   // bara ligga före org-steget — inte före något särskilt annat.
+  // TESTKUND-041: momsjusteringen pekar på fakturan (Restrict) och måste bort före den. Utgiftens
+  // momsbeslut har ingen FK (bara organizationId som fält) och kan tas när som helst före org-steget.
+  { model: 'SupplierInvoiceVatAdjustment', restrictAgainst: 'SupplierInvoice', where: byOrg },
+  { model: 'ExpenseVatDecision', restrictAgainst: '', where: byOrg },
   { model: 'SupplierInvoice', restrictAgainst: 'Organization', where: byOrg },
   { model: 'MeterReading', restrictAgainst: 'Meter, Organization', where: byOrg },
   {
