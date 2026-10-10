@@ -211,6 +211,7 @@ medDb('051: utskickets sanning (ventil, påminnelsegrind, OPENING) mot riktig Po
   let resendKastar = false
   const krok: { pdf?: (() => Promise<void>) | undefined; pdfAnrop: number } = { pdfAnrop: 0 }
   let nr = 0
+  let lagradePdf = 0
 
   beforeAll(async () => {
     mail = new MailService(
@@ -249,7 +250,11 @@ medDb('051: utskickets sanning (ventil, påminnelsegrind, OPENING) mot riktig Po
       stub('PdfQueue') as never,
       mail as never,
       pdf as never,
-      { uploadFile: async () => undefined } as never,
+      {
+        uploadFile: async () => {
+          lagradePdf++
+        },
+      } as never,
       new RentDebtService(p as never),
       stub('PaymentFreshnessService') as never,
       stub('CronErrorSink') as never,
@@ -465,6 +470,123 @@ medDb('051: utskickets sanning (ventil, påminnelsegrind, OPENING) mot riktig Po
     const fore = resend.length
     await kor(k, a.id)
     expect(resend.length - fore).toBe(0)
+  })
+
+  // ── B-052-1 (TESTKUND-053): statusgrind i påminnelsejobbet. Fallen K3a–d är C2:s (REVIEW-052/RAPPORT-052,
+  // rev-052/c2-tillagg.ts.txt), här återskapade som permanenta regressionsprov.
+  const utskicksrader = (id: string) =>
+    prisma.rentNoticeSend.count({ where: { rentNoticeId: id, kind: 'REMINDER' } })
+  const betalaNu = async (id: string) => {
+    const tx = await prisma.bankTransaction.create({
+      data: {
+        organizationId: ORG,
+        date: new Date('2026-10-05'),
+        amount: new Prisma.Decimal('7000'),
+        description: 'Syntetisk inbetalning',
+        status: 'UNMATCHED',
+      },
+    })
+    await recon.manualMatch(tx.id, { rentNoticeId: id }, ORG, userId)
+  }
+  const effekter = async (id: string, fore: { pdf: number; lagrad: number }) => ({
+    pdf: krok.pdfAnrop - fore.pdf,
+    lagradPdf: lagradePdf - fore.lagrad,
+    utskicksrader: await utskicksrader(id),
+    sent: await handelser(id, 'SENT'),
+    sendFailed: await handelser(id, 'SEND_FAILED'),
+    koat: koatPaminnelse(id).length,
+  })
+
+  it.each([
+    ['K3a (C2): betalning slutförd före jobbet', 'betala'],
+    ['K3b (C2): annullering slutförd före jobbet', 'annullera'],
+  ] as const)(
+    '%s → ingen rendering, ingen utskicksrad, ingen SENT/SEND_FAILED, inget köat; avgift/journal/kravsteg orörda',
+    async (_namn, handling) => {
+      const a = await forfallen()
+      if (handling === 'betala') await betalaNu(a.id)
+      else await avisering.cancelNotice(a.id, ORG, userId)
+      const fore = { pdf: krok.pdfAnrop, lagrad: lagradePdf }
+      const e0 = await ekonomi(a.id)
+      await paminnelse.processReminderSendJob(ORG, a.id)
+      expect(await effekter(a.id, fore)).toEqual({
+        pdf: 0,
+        lagradPdf: 0,
+        utskicksrader: 0,
+        sent: 0,
+        sendFailed: 0,
+        koat: 0,
+      })
+      expect(await ekonomi(a.id)).toBe(e0)
+    },
+  )
+
+  it('K3c (C2): betalning under renderingen → renderingen har redan skett (1), därefter ingen lagrad pdf, ingen utskicksrad, ingen SENT, inget köat', async () => {
+    const a = await forfallen()
+    krok.pdf = async () => {
+      await betalaNu(a.id)
+    }
+    const fore = { pdf: krok.pdfAnrop, lagrad: lagradePdf }
+    await paminnelse.processReminderSendJob(ORG, a.id)
+    expect(await effekter(a.id, fore)).toEqual({
+      pdf: 1,
+      lagradPdf: 0,
+      utskicksrader: 0,
+      sent: 0,
+      sendFailed: 0,
+      koat: 0,
+    })
+    expect((await lage(a.id)).status).toBe('PAID')
+  })
+
+  it('K3d (C2): OPENING-avi i påminnelsejobbet → ingen rendering, inget köat, ingen SENT; ett redan köat OPENING-mejl stoppas i arbetaren', async () => {
+    const a = await nyAvi()
+    await prisma.rentNotice.update({
+      where: { id: a.id },
+      data: { status: 'OPENING', dueDate: new Date('2026-09-01') },
+    })
+    const fore = { pdf: krok.pdfAnrop, lagrad: lagradePdf }
+    await paminnelse.processReminderSendJob(ORG, a.id)
+    expect(await effekter(a.id, fore)).toEqual({
+      pdf: 0,
+      lagradPdf: 0,
+      utskicksrader: 0,
+      sent: 0,
+      sendFailed: 0,
+      koat: 0,
+    })
+    // Arbetarens sista skydd: ett påminnelsemejl som köades medan avin var förfallen, och avin är nu OPENING.
+    const b = await forfallen()
+    await paminnelse.processReminderSendJob(ORG, b.id)
+    const k = koatPaminnelse(b.id)[0]!
+    await prisma.rentNotice.update({ where: { id: b.id }, data: { status: 'OPENING' } })
+    const r = resend.length
+    await kor(k, b.id)
+    expect(resend.length - r).toBe(0)
+  })
+
+  it('positiv: ventil av → på ger nästa påminnelse köad med utskicksrad och SENT; replay ger inget nytt utskick; annan organisation 404 utan effekt', async () => {
+    const a = await forfallen()
+    await ventil(true)
+    await paminnelse.processReminderSendJob(ORG, a.id)
+    await ventil(false)
+    expect(await utskicksrader(a.id)).toBe(0)
+    await paminnelse.processReminderSendJob(ORG, a.id)
+    expect([
+      koatPaminnelse(a.id).length,
+      await utskicksrader(a.id),
+      await handelser(a.id, 'SENT'),
+    ]).toEqual([1, 1, 1])
+    await paminnelse.processReminderSendJob(ORG, a.id)
+    expect([
+      koatPaminnelse(a.id).length,
+      await utskicksrader(a.id),
+      await handelser(a.id, 'SENT'),
+    ]).toEqual([1, 1, 1])
+    const fore = await ekonomi(a.id)
+    await expect(paminnelse.processReminderSendJob(ORG2, a.id)).rejects.toThrow()
+    expect(await ekonomi(a.id)).toBe(fore)
+    expect(koatPaminnelse(a.id)).toHaveLength(1)
   })
 
   it('G0 (O-050-1): en OPENING-avi renderas inte och köas inte; status oförändrad', async () => {
