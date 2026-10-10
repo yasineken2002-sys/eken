@@ -184,6 +184,17 @@ export class FortnoxController {
     return this.sender.reconcile(organizationId, user.sub, id, body)
   }
 
+  // TESTKUND-035 P3-C1/C2: avstämning genom fullständig skanning av räkenskapsåret (FOUND/ABSENT).
+  @Post('exports/:id/reconcile-scan')
+  @Roles('OWNER', 'ADMIN')
+  async reconcileScan(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.sender.reconcileScan(organizationId, user.sub, id)
+  }
+
   // TESTKUND-016 K3: frisläpp en bevisat avvisad export (rollen prövas även i tjänsten; ett
   // kvitto i efterhand för en äldre avvisning kräver OWNER).
   @Post('exports/:id/release-rejected')

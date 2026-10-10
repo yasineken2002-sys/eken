@@ -1,5 +1,6 @@
 import { FortnoxTransport } from './fortnox-transport'
-import { InMemoryFortnoxRateLimiter, systemFortnoxClock } from './fortnox-rate-limiter'
+import { systemFortnoxClock } from './fortnox-rate-limiter'
+import { InMemoryFortnoxRateLimiter } from './fortnox-rate-limiter.testing'
 import { parseFortnoxRetryAfter } from './fortnox-retry-after'
 import { FortnoxTransportError } from './fortnox-transport.types'
 import type { FortnoxTransportOptions, FortnoxTransportRequest } from './fortnox-transport.types'
@@ -19,12 +20,17 @@ const write: FortnoxTransportRequest = {
 const response = (status = 200, headers: Record<string, string> = {}, body = '{"Vouchers":[]}') =>
   new Response(body, { status, headers })
 
-function fixture(options: Omit<FortnoxTransportOptions, 'fetch'> = {}) {
+function fixture(options: Partial<Omit<FortnoxTransportOptions, 'fetch'>> = {}) {
   const fetch = jest.fn<ReturnType<typeof globalThis.fetch>, Parameters<typeof globalThis.fetch>>()
   fetch.mockImplementation(async () => response())
   return {
     fetch,
-    transport: new FortnoxTransport({ fetch, clock: systemFortnoxClock, ...options }),
+    transport: new FortnoxTransport({
+      fetch,
+      clock: systemFortnoxClock,
+      rateLimiter: new InMemoryFortnoxRateLimiter(systemFortnoxClock),
+      ...options,
+    }),
   }
 }
 
@@ -205,12 +211,13 @@ describe('FortnoxTransport', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
+  // TESTKUND-035 P3-B3: 429 på POST är okänt utfall (posten kan finnas), aldrig rejected.
   it.each([429, 500, 502, 503, 504, 408, 302, 401, 403])(
     'never retries POST HTTP %d and classifies its outcome',
     async (status) => {
       const { transport, fetch } = fixture({ allowVoucherWrites: true })
       fetch.mockResolvedValueOnce(response(status, { 'Retry-After': '1' }))
-      const unknown = status >= 500 || status === 408 || status === 302
+      const unknown = status >= 500 || status === 408 || status === 302 || status === 429
       await expect(transport.request(write)).rejects.toMatchObject({
         code: 'HTTP_ERROR',
         status,
@@ -288,7 +295,7 @@ describe('FortnoxTransport', () => {
         new Promise<void>((resolve) => {
           release = resolve
         }),
-      defer: () => {},
+      defer: async () => {},
     }
     const { transport, fetch } = fixture({
       timeoutMs: 100,
@@ -310,7 +317,7 @@ describe('FortnoxTransport', () => {
         new Promise<void>((resolve) => {
           release = resolve
         }),
-      defer: () => {},
+      defer: async () => {},
     }
     const { transport, fetch } = fixture({ rateLimiter: limiter })
     const mutable = { ...read }
@@ -345,13 +352,15 @@ describe('FortnoxTransport', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('shares the process-local 25/5s allowance across transports and refreshed tokens', async () => {
+  // TESTKUND-035: produktvalet är 20 per rullande 5 s, och varje start hålls 5 s + 1 s vaktmarginal
+  // (tidigare 25 per 5 s i den processlokala klassen).
+  it('shares the 20/5s allowance across transports and refreshed tokens', async () => {
     const rateLimiter = new InMemoryFortnoxRateLimiter(systemFortnoxClock)
     const a = fixture({ rateLimiter })
     const b = fixture({ rateLimiter })
-    await Promise.all(Array.from({ length: 25 }, () => a.transport.request(read)))
+    await Promise.all(Array.from({ length: 20 }, () => a.transport.request(read)))
     const next = b.transport.request({ ...read, accessToken: 'refreshed-synthetic-token' })
-    await jest.advanceTimersByTimeAsync(4999)
+    await jest.advanceTimersByTimeAsync(5999)
     expect(b.fetch).not.toHaveBeenCalled()
     // Another tenant retains its independent allowance.
     await b.transport.request({ ...read, rateLimitKey: 'client:other-tenant' })
@@ -499,5 +508,130 @@ describe('FortnoxTransport review regressions', () => {
     fetch.mockResolvedValueOnce(responseValue)
     await expect(transport.request(write)).resolves.toMatchObject({ status: 201, attempts: 1 })
     expect(getter).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * TESTKUND-035 (P3, KRITERIER-P3-038 A6/B1–B4, T-1/T-4): gränsen mellan ej skickat och okänt,
+ * och spärren efter 429. Begränsaren är en spårande attrapp; fetch räknas oberoende.
+ */
+describe('FortnoxTransport P3: delad spärr och ekonomisk gräns', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2026-10-01T12:00:00Z'))
+  })
+  afterEach(() => jest.useRealTimers())
+
+  function spar(opts: { acquireFails?: boolean; deferFails?: boolean } = {}) {
+    const deferrals: Array<{ key: string; delayMs: number }> = []
+    const limiter = {
+      acquire: jest.fn(async () => {
+        if (opts.acquireFails) throw new Error('ECONNREFUSED redis')
+      }),
+      defer: jest.fn(async (key: string, delayMs: number) => {
+        deferrals.push({ key, delayMs })
+        if (opts.deferFails) throw new Error('READONLY redis')
+      }),
+    }
+    return { limiter, deferrals }
+  }
+
+  it.each([
+    ['saknas', null, 5000],
+    ['ogiltigt (text)', 'snart', 5000],
+    ['ogiltigt (negativt)', '-3', 5000],
+    ['ogiltigt (decimal)', '1.5', 5000],
+    ['noll', '0', 5000],
+    ['datum i det förflutna', 'Thu, 01 Oct 2026 11:59:00 GMT', 5000],
+    ['giltigt (7 s)', '7', 7000],
+    ['giltigt datum (+12 s)', 'Thu, 01 Oct 2026 12:00:12 GMT', 12000],
+  ] as const)(
+    'A6/B3: POST 429 med Retry-After %s → UNKNOWN (429), spärr %d ms, exakt 1 fetch',
+    async (_namn, header, expected) => {
+      const { limiter, deferrals } = spar()
+      const { transport, fetch } = fixture({ allowVoucherWrites: true, rateLimiter: limiter })
+      fetch.mockResolvedValueOnce(response(429, header === null ? {} : { 'Retry-After': header }))
+      const error = await transport.request(write).catch((e: unknown) => e)
+      expect(error).toMatchObject({
+        code: 'HTTP_ERROR',
+        outcome: 'unknown',
+        status: 429,
+        attempts: 1,
+        retryAfterMs: expected,
+        deferFailed: false,
+        reconciliationRequired: true,
+      })
+      expect(deferrals).toEqual([{ key: read.rateLimitKey, delayMs: expected }])
+      await jest.advanceTimersByTimeAsync(60_000)
+      expect(fetch).toHaveBeenCalledTimes(1)
+    },
+  )
+
+  it('B3/T-4: POST 429 där spärren inte kan sparas → fortfarande UNKNOWN (429), deferFailed, 1 fetch', async () => {
+    const { limiter } = spar({ deferFails: true })
+    const { transport, fetch } = fixture({ allowVoucherWrites: true, rateLimiter: limiter })
+    fetch.mockResolvedValueOnce(response(429))
+    await expect(transport.request(write)).rejects.toMatchObject({
+      outcome: 'unknown',
+      status: 429,
+      deferFailed: true,
+    })
+    await jest.advanceTimersByTimeAsync(60_000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('B4/T-4: GET 429 där spärren inte kan sparas → read_failed och läsningen avbryts (inget omförsök)', async () => {
+    const { limiter } = spar({ deferFails: true })
+    const { transport, fetch } = fixture({ rateLimiter: limiter })
+    fetch.mockResolvedValueOnce(response(429, { 'Retry-After': '1' }))
+    await expect(transport.request(read)).rejects.toMatchObject({
+      code: 'RATE_LIMIT_ERROR',
+      outcome: 'read_failed',
+      attempts: 1,
+    })
+    await jest.advanceTimersByTimeAsync(60_000)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('A6: GET 429 utan Retry-After spärrar minst 5 s innan nästa försök', async () => {
+    const { limiter, deferrals } = spar()
+    const { transport, fetch } = fixture({ rateLimiter: limiter })
+    fetch.mockResolvedValueOnce(response(429))
+    const result = transport.request(read)
+    await jest.advanceTimersByTimeAsync(4999)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await jest.advanceTimersByTimeAsync(1)
+    await expect(result).resolves.toMatchObject({ attempts: 2 })
+    expect(deferrals[0]?.delayMs).toBe(5000)
+  })
+
+  it('B1: begränsarfel (Redis) före fetch → not_sent, 0 fetch, ingen lokal reserv', async () => {
+    const { limiter } = spar({ acquireFails: true })
+    const { transport, fetch } = fixture({ allowVoucherWrites: true, rateLimiter: limiter })
+    await expect(transport.request(write)).rejects.toMatchObject({
+      code: 'RATE_LIMIT_ERROR',
+      outcome: 'not_sent',
+      attempts: 0,
+      reconciliationRequired: false,
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('T-1: fetch som kastar synkront räknas som påbörjad → unknown, aldrig not_sent', async () => {
+    const { transport, fetch } = fixture({ allowVoucherWrites: true })
+    fetch.mockImplementationOnce(() => {
+      throw new TypeError('synkront kast efter anrop')
+    })
+    await expect(transport.request(write)).rejects.toMatchObject({
+      outcome: 'unknown',
+      attempts: 1,
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('A1: en transport utan begränsare kan inte skapas (ingen processlokal standard)', () => {
+    expect(
+      () => new FortnoxTransport({ fetch: jest.fn() } as unknown as FortnoxTransportOptions),
+    ).toThrow(FortnoxTransportError)
   })
 })

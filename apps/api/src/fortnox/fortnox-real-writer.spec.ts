@@ -45,7 +45,11 @@ function writerFactory() {
 
 function build(env: Record<string, string | undefined>) {
   const config = cfg(env)
-  const real = realClients(config, new FortnoxTokenCryptoService(config))
+  // TESTKUND-035: den skarpa vägen kräver Redis (attrapp; inget kommando körs i de här proven).
+  const redis = { client: { evalsha: jest.fn(), eval: jest.fn() } } as unknown as Parameters<
+    typeof realClients
+  >[2]
+  const real = realClients(config, new FortnoxTokenCryptoService(config), redis)
   const reader = real
     ? new RealFortnoxLedgerReader({
         transport: real.transport,

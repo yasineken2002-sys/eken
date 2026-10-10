@@ -25,17 +25,22 @@ export interface FortnoxClock {
   schedule(callback: () => void, milliseconds: number): () => void
 }
 
-/** Share across all transports for a client/tenant. Multi-process hosts need a shared backend. */
+/**
+ * Delas av alla transporter och processer för en klient och ett företag (TESTKUND-035: Redis).
+ * `acquire` reserverar en start; `defer` spärrar nyckeln till begränsarens klocka + delayMs.
+ * Båda kastar vid fel; ingen lokal reserv.
+ */
 export interface FortnoxRateLimiter {
   acquire(key: string, signal: AbortSignal): Promise<void>
-  defer(key: string, untilMs: number): void
+  defer(key: string, delayMs: number): Promise<void>
 }
 
 export interface FortnoxTransportOptions {
   /** Deliberately required: constructing this class never opts into real networking. */
   fetch: typeof globalThis.fetch
   clock?: FortnoxClock
-  rateLimiter?: FortnoxRateLimiter
+  /** Obligatorisk (TESTKUND-035 P3-A1): produkten använder RedisFortnoxRateLimiter. */
+  rateLimiter: FortnoxRateLimiter
   /** Total deadline including limiter, retries, fetch and response body. Default 30s. */
   timeoutMs?: number
   /** Inclusive of the first attempt. Default 3, maximum 3. GET only. */
@@ -75,6 +80,8 @@ export class FortnoxTransportError extends Error {
     readonly retryAfterMs?: number,
     /** TESTKUND-016 K3.1: Fortnox ErrorInformation vid avvisad skrivning (rejected), annars null. */
     readonly rejection: FortnoxRejectionDetail | null = null,
+    /** TESTKUND-035 T-4: spärren efter 429 kunde inte sparas i den delade begränsaren. */
+    readonly deferFailed = false,
   ) {
     super(`Fortnox transport: ${code}`)
     this.name = 'FortnoxTransportError'

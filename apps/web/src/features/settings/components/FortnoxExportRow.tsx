@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import {
   reconcileFortnoxExport,
+  reconcileScanFortnoxExport,
   releaseRejectedFortnoxExport,
   sendFortnoxExport,
   verifyFortnoxExport,
@@ -16,6 +17,8 @@ import {
   EXPORT_STATE_TEXT,
   rejectionKind,
   rejectionText,
+  scanAbsentText,
+  unknownReasonText,
 } from './fortnox-export-text'
 
 const RECONCILABLE = new Set<FortnoxExportRow['state']>(['UNKNOWN', 'REJECTED', 'RECEIPT_MISMATCH'])
@@ -86,6 +89,11 @@ export function FortnoxExportRowView({
     retry: false,
     onSettled: onChanged,
   })
+  const scan = useMutation({
+    mutationFn: () => reconcileScanFortnoxExport(row.id),
+    retry: false,
+    onSettled: onChanged,
+  })
   const release = useMutation({
     mutationFn: () => releaseRejectedFortnoxExport(row.id, { reason: reason.trim() }),
     retry: false,
@@ -96,8 +104,11 @@ export function FortnoxExportRowView({
     /^[1-9]\d{0,8}$/.test(year) &&
     /^[A-Za-z0-9]{1,10}$/.test(series) &&
     /^[1-9]\d{0,8}$/.test(number)
-  const busy = send.isPending || verify.isPending || reconcile.isPending || release.isPending
-  const error = send.error ?? verify.error ?? reconcile.error ?? release.error
+  const busy =
+    send.isPending || verify.isPending || reconcile.isPending || release.isPending || scan.isPending
+  const error = send.error ?? verify.error ?? reconcile.error ?? release.error ?? scan.error
+  const unknownReason = row.state === 'UNKNOWN' ? unknownReasonText(row.lastOutcome) : null
+  const absent = scan.data?.avstamning.utfall === 'EJ_HITTAD' ? scan.data.avstamning : null
 
   return (
     <li
@@ -111,6 +122,11 @@ export function FortnoxExportRowView({
         <p className="text-ink-muted">
           Fortnox-verifikat {row.externalSeries}
           {row.externalNumber} (räkenskapsår-id {row.externalYear})
+        </p>
+      )}
+      {unknownReason && (
+        <p className="text-ink-muted break-words text-sm" data-unknown-reason={row.lastOutcome}>
+          {unknownReason}
         </p>
       )}
       {EXPORT_NEXT_STEP[row.state] && (
@@ -182,6 +198,18 @@ export function FortnoxExportRowView({
         </p>
       )}
 
+      {RECONCILABLE.has(row.state) && (
+        <div className="min-w-0 space-y-2">
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => scan.mutate()}>
+            {scan.isPending ? 'Söker i Fortnox…' : 'Sök efter verifikatet i Fortnox'}
+          </Button>
+          {absent && (
+            <p className="text-ink-muted break-words text-sm" data-scan-result="EJ_HITTAD">
+              {scanAbsentText(absent)}
+            </p>
+          )}
+        </div>
+      )}
       {RECONCILABLE.has(row.state) && (
         <p className="text-ink-muted break-words text-sm">
           Gäller Evenos verifikat {row.journalEntryId.slice(0, 8)}. Ange identiteten för den post i

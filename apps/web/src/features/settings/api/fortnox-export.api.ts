@@ -135,6 +135,34 @@ export async function reconcileFortnoxExport(
   )
 }
 
+/** TESTKUND-035: svaret från avstämning genom skanning (HITTAD bekräftar; EJ_HITTAD lämnar okänt). */
+const reconcileScanSchema = exportRowSchema.extend({
+  avstamning: z.discriminatedUnion('utfall', [
+    z.object({
+      utfall: z.literal('HITTAD'),
+      identitet: z.object({ year: z.number(), series: z.string(), number: z.number() }),
+    }),
+    z.object({
+      utfall: z.literal('EJ_HITTAD'),
+      at: z.string(),
+      financialYear: z.number(),
+      verifikatLasta: z.number(),
+      sidor: z.number(),
+    }),
+  ]),
+})
+export type FortnoxReconcileScanResult = z.infer<typeof reconcileScanSchema>
+
+/**
+ * TESTKUND-035: Eveno läser hela räkenskapsåret i Fortnox (alla serier) och bekräftar bara exakt en
+ * post med verifikatets märkning och samma innehåll. Ingen träff lämnar utfallet okänt.
+ */
+export async function reconcileScanFortnoxExport(id: string): Promise<FortnoxReconcileScanResult> {
+  return reconcileScanSchema.parse(
+    await post<unknown>(`${PREFIX}/exports/${encodeURIComponent(id)}/reconcile-scan`),
+  )
+}
+
 /**
  * TESTKUND-016: frisläpp en BEVISAT avvisad export (Fortnox 4xx med kod, inte 429). Servern läser
  * först Fortnox fullständigt och vägrar om en post med verifikatets proveniens finns.

@@ -1,7 +1,7 @@
 import { RealFortnoxAuthProvider, RealFortnoxLedgerReader } from './fortnox-real-provider'
 import { FortnoxOAuthClient, fortnoxPkceChallenge } from './provider/fortnox-oauth-client'
 import { FortnoxTransport } from './provider/fortnox-transport'
-import { InMemoryFortnoxRateLimiter } from './provider/fortnox-rate-limiter'
+import { InMemoryFortnoxRateLimiter } from './provider/fortnox-rate-limiter.testing'
 import { FortnoxAuthError, FortnoxReadError } from './fortnox.types'
 
 const REDIRECT = 'https://eveno.example/v1/integrations/fortnox/callback'
@@ -60,7 +60,7 @@ function fixture(
   })
   const transport = new FortnoxTransport({
     fetch,
-    ...(options.limiter ? { rateLimiter: options.limiter } : {}),
+    rateLimiter: options.limiter ?? new InMemoryFortnoxRateLimiter(),
   })
   const auth = new RealFortnoxAuthProvider({
     client,
@@ -399,18 +399,21 @@ describe('Fortnox REAL provider adapter', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
+  // TESTKUND-035: tokens utan lagrad företagskoppling delar klientens konservativa
+  // `unverified`-hink (20 per 5 s); en annan klient har en egen.
   it('shares one stable client bucket despite token/tenant changes and separates other clients', async () => {
     const limiter = new InMemoryFortnoxRateLimiter()
     const a = fixture({ enabled: true, limiter })
     const b = fixture({ enabled: true, limiter })
     const other = fixture({ enabled: true, limiter, clientId: 'other-client' })
     await Promise.all(
-      Array.from({ length: 25 }, (_, i) =>
+      Array.from({ length: 20 }, (_, i) =>
         a.reader.get(`synthetic-tenant-token-${i}`, '/3/vouchers'),
       ),
     )
     const next = b.reader.get('synthetic-refreshed-token', '/3/vouchers')
-    await jest.advanceTimersByTimeAsync(4999)
+    // TESTKUND-035: 5 s + 1 s vaktmarginal.
+    await jest.advanceTimersByTimeAsync(5999)
     expect(b.fetch).not.toHaveBeenCalled()
     await other.reader.get('different-client-token', '/3/vouchers')
     expect(other.fetch).toHaveBeenCalledTimes(1)
@@ -456,7 +459,7 @@ describe('REAL adapter configuration consistency', () => {
       clientSecret: SECRET,
       redirectUri: REDIRECT,
     })
-    const transport = new FortnoxTransport({ fetch })
+    const transport = new FortnoxTransport({ fetch, rateLimiter: new InMemoryFortnoxRateLimiter() })
     const fail = () => {
       throw new Error(SECRET)
     }

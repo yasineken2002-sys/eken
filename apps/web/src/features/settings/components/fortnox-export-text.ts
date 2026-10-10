@@ -17,12 +17,30 @@ export const EXPORT_STATE_TEXT: Record<FortnoxExportRow['state'], string> = {
 
 /** Nästa tillåtna handling, i klartext. */
 export const EXPORT_NEXT_STEP: Partial<Record<FortnoxExportRow['state'], string>> = {
-  UNKNOWN: 'Leta upp verifikatet i Fortnox och ange dess år-id, serie och nummer nedan.',
+  UNKNOWN:
+    'Låt Eveno söka efter verifikatet i Fortnox, eller leta upp det själv och ange dess år-id, serie och nummer nedan.',
   REJECTED:
     'Kontrollera i Fortnox att verifikatet inte finns, eller ange dess identitet om det finns.',
   RECEIPT_MISMATCH:
     'Granska posten i Fortnox och ange identiteten för den post som motsvarar underlaget.',
   RECEIPT_IDENTIFIED: 'Kontrollera posten i Fortnox för att bekräfta den.',
+}
+
+/** TESTKUND-035: varför utfallet är okänt, när orsaken är känd. */
+export function unknownReasonText(lastOutcome: string | null | undefined): string | null {
+  if (lastOutcome === 'UNKNOWN_429')
+    return 'Fortnox svarade 429 (för många anrop) när verifikatet skickades. Det går inte att veta om Fortnox ändå skapade posten, så Eveno skickar inte om det.'
+  return null
+}
+
+/** TESTKUND-035: sökningen hittade ingen post. Det är inte ett bevis för att posten saknas. */
+export function scanAbsentText(r: {
+  at: string
+  financialYear: number
+  verifikatLasta: number
+}): string {
+  const tid = new Date(r.at).toLocaleString('sv-SE')
+  return `Ingen post från det här verifikatet hittades i Fortnox (räkenskapsår-id ${r.financialYear}, alla serier, ${r.verifikatLasta} verifikat lästa ${tid}). Utfallet är fortfarande okänt – det bevisar inte att posten saknas. Sök igen senare eller ange postens identitet nedan om du hittar den. Bokför inte verifikatet för hand i Fortnox; det kan ge dubbel bokföring.`
 }
 
 /**

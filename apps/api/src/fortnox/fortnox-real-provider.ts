@@ -1,5 +1,6 @@
 import { FortnoxOAuthClient, FortnoxOAuthError } from './provider/fortnox-oauth-client'
 import { FortnoxTransport } from './provider/fortnox-transport'
+import { FortnoxRateIdentity, fortnoxRateLimitKey } from './provider/fortnox-rate-limiter'
 import { FortnoxTransportError } from './provider/fortnox-transport.types'
 import { FortnoxAuthError, FortnoxReadError } from './fortnox.types'
 import type { FortnoxOAuthScope, FortnoxOAuthTokenSet } from './provider/fortnox-oauth-client'
@@ -153,12 +154,18 @@ export interface RealFortnoxLedgerReaderOptions {
   transport: FortnoxTransport
   clientId: string
   enabled?: boolean
+  /**
+   * TESTKUND-035 P3-A4: tokenns lagrade företag (fylls av anslutningstjänsten). Utan koppling
+   * används klientens konservativa `unverified`-hink, aldrig ett annat företags.
+   */
+  identity?: FortnoxRateIdentity
 }
 
-/** Read-only adapter; deliberately reserves one conservative bucket for all client tenants. */
+/** Read-only adapter; one bucket per client and verified company (TESTKUND-035). */
 export class RealFortnoxLedgerReader implements FortnoxLedgerReader {
   readonly #transport: FortnoxTransport
-  readonly #rateLimitKey: string
+  readonly #clientId: string
+  readonly #identity: FortnoxRateIdentity | null
   readonly #enabled: boolean
 
   constructor(options: RealFortnoxLedgerReaderOptions) {
@@ -166,7 +173,8 @@ export class RealFortnoxLedgerReader implements FortnoxLedgerReader {
       const clientId = options.clientId
       if (typeof clientId !== 'string' || !/^[\x21-\x7e]{1,128}$/.test(clientId))
         throw new FortnoxReadError('invalid')
-      this.#rateLimitKey = `fortnox:${clientId}:all-tenants`
+      this.#clientId = clientId
+      this.#identity = options.identity ?? null
       this.#transport = options.transport
       this.#enabled = options.enabled === true
     } catch {
@@ -185,7 +193,10 @@ export class RealFortnoxLedgerReader implements FortnoxLedgerReader {
         accessToken,
         path,
         method: 'GET',
-        rateLimitKey: this.#rateLimitKey,
+        rateLimitKey: fortnoxRateLimitKey(
+          this.#clientId,
+          this.#identity?.databaseNumber(accessToken) ?? null,
+        ),
         ...(query === undefined ? {} : { query }),
       })
       return result.data
