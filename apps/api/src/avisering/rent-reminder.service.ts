@@ -12,6 +12,7 @@ import {
   UserRole,
   type RentNotice,
   type RentNoticeEventType,
+  type RentNoticeStatus,
 } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -209,6 +210,12 @@ const INKASSO_READY_INCLUDE = {
 } satisfies Prisma.RentNoticeInclude
 
 type InkassoReadyNotice = Prisma.RentNoticeGetPayload<{ include: typeof INKASSO_READY_INCLUDE }>
+
+/**
+ * B-052-1 (TESTKUND-053): statusar där påminnelsejobbet avstår. Samma klass som utskicksjobbets regel
+ * (reglerad, makulerad eller historisk skuld); ingen ny statusregel.
+ */
+const PAMINNELSE_AVSTAR: readonly RentNoticeStatus[] = ['PAID', 'CANCELLED', 'OPENING']
 
 const REMINDER_NOTICE_INCLUDE = {
   tenant: { select: SAFE_TENANT_SELECT },
@@ -1246,6 +1253,16 @@ export class RentReminderService {
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
 
+    // B-052-1 (TESTKUND-053): en betald, annullerad eller historisk (OPENING) avi får ingen påminnelse — ingen
+    // rendering, ingen utskicksrad, ingen SENT/SEND_FAILED, inget köat mejl. Jobbet kan ha legat i kön medan
+    // kunden betalade eller avin annullerades. Avgift och kravsteg sattes vid eskaleringen och rörs inte här.
+    if (PAMINNELSE_AVSTAR.includes(notice.status)) {
+      this.logger.warn(
+        `[Kravtrappa] Påminnelse för avi ${noticeId} skickas inte: status ${notice.status} när jobbet startade.`,
+      )
+      return
+    }
+
     // ── GRIND 1: EN BULL-RETRY, INTE ETT OMFÖRSÖK ──────────────────────────
     //
     // Grinden ska finnas — en retry får aldrig ge dubbelmejl. Men "har någonsin
@@ -1333,6 +1350,20 @@ export class RentReminderService {
       const html = await this.buildReminderPdfHtml(notice, org)
       const pdfBuffer = await this.pdfService.generateFromHtml(html)
 
+      // B-052-1: ÅTERPRÖVNING EFTER RENDERINGEN, före lagrad pdf, utskicksrad, köning och händelse. Renderingen
+      // kan inte tas tillbaka, men en betalning eller annullering under den stoppar alla fortsatta effekter.
+      const aktuell = await this.prisma.rentNotice.findFirst({
+        where: { id: noticeId, organizationId: orgId },
+        select: { status: true },
+      })
+      if (!aktuell || PAMINNELSE_AVSTAR.includes(aktuell.status)) {
+        this.logger.warn(
+          `[Kravtrappa] Påminnelse för avi ${noticeId} skickas inte: status ${aktuell?.status ?? 'saknas'} efter ` +
+            'renderingen (reglerad/annullerad under tiden). Ingen pdf lagrad, ingen utskicksrad, inget köat.',
+        )
+        return
+      }
+
       // Inkasso PR 4b₀: lagra den FAKTISKT skickade påminnelse-PDF:en org-scopat
       // (reminders/{orgId}/…, samma R2-tenant-isolation som övriga dokument) så
       // dokumentkopian kan följa med i inkassoöverlämningen (PR 4b, INV-B).
@@ -1400,6 +1431,20 @@ export class RentReminderService {
         // inte i kö-fönstret — det var #651:s lärdom.
         idempotencyKey: `rent-reminder-${utskick.id}`,
       })
+
+      // O-050-4 (TESTKUND-051): '' = inget köades (transaktionella mejl avstängda). Ingen SENT-händelse, och den nyss
+      // skapade utskicksraden tas bort — den bär ingen leverans, och kvar skulle den spärra påminnelsen när ventilen
+      // öppnas igen (idempotensgrinden ovan läser senaste utskick).
+      if (!jobId) {
+        await this.prisma.rentNoticeSend
+          .delete({ where: { id: utskick.id } })
+          .catch(() => undefined)
+        this.logger.warn(
+          `[Kravtrappa] Påminnelse för avi ${noticeId} EJ skickad: mejlet köades inte (transaktionella mejl ` +
+            'avstängda). Ingen SENT-händelse skriven.',
+        )
+        return
+      }
 
       // FÄLTET HETER `jobId` DÄRFÖR ATT DET ÄR ETT JOBID (#651).
       //

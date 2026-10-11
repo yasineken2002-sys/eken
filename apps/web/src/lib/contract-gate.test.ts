@@ -18,6 +18,7 @@ describe('kontraktsfel — sista grinden mot det delade schemat', () => {
         amount: 1250,
         vatRate: 25,
         vatAmount: 250,
+        vatTreatment: 'HELT_AVDRAG',
       }),
     ).toBeNull()
   })

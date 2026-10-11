@@ -20,6 +20,9 @@ import {
   createSupplierInvoice,
   paySupplierInvoice,
   cancelSupplierInvoice,
+  getSupplierInvoiceDetails,
+  adjustSupplierInvoiceVat,
+  undoSupplierPayment,
 } from '../api/accounting.api'
 import type { JournalFilter } from '../api/accounting.api'
 
@@ -261,4 +264,23 @@ export function usePaySupplierInvoice() {
 export function useCancelSupplierInvoice() {
   const invalidera = useInvalideraLeverantorsfakturor()
   return useMutation({ mutationFn: cancelSupplierInvoice, onSuccess: invalidera })
+}
+
+/** TESTKUND-041: en faktura med momsval, justeringar och betalningsled. */
+export function useSupplierInvoiceDetails(id: string | null) {
+  return useQuery({
+    queryKey: ['accounting', 'supplier-invoices', 'detalj', id],
+    queryFn: () => getSupplierInvoiceDetails(id!),
+    enabled: !!id,
+  })
+}
+
+export function useAdjustSupplierInvoiceVat() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: adjustSupplierInvoiceVat, onSuccess: invalidera })
+}
+
+export function useUndoSupplierPayment() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: undoSupplierPayment, onSuccess: invalidera })
 }

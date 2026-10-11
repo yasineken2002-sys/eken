@@ -45,6 +45,8 @@ import {
   ReverseEntrySchema,
   ReopenPeriodSchema,
   PaySupplierInvoiceSchema,
+  SupplierInvoiceVatAdjustmentSchema,
+  UndoSupplierPaymentSchema,
   CreateJournalEntrySchema,
   CreateMeterSchema,
   CreatePropertySchema,
@@ -129,6 +131,8 @@ import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
 import {
   CreateSupplierInvoiceDto,
   PaySupplierInvoiceDto,
+  SupplierInvoiceVatAdjustmentDto,
+  UndoSupplierPaymentDto,
 } from '../../accounting/dto/supplier-invoice.dto'
 import { ReverseEntryDto } from '../../accounting/dto/reverse-entry.dto'
 import { ReopenPeriodDto } from '../../accounting/dto/reopen-period.dto'
@@ -434,6 +438,34 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     ogiltigVarfor: 'betalningsdatum är obligatoriskt och har ingen reserv i kontraktet',
   },
   {
+    endpoint: 'POST /accounting/supplier-invoices/:id/vat-adjustments',
+    inputTyp: 'SupplierInvoiceVatAdjustmentInput',
+    schema: SupplierInvoiceVatAdjustmentSchema,
+    dto: SupplierInvoiceVatAdjustmentDto,
+    giltig: {
+      till: 'INGET_AVDRAG',
+      date: '2026-09-01',
+      reason: 'Fel momsval vid registreringen',
+      clientKey: 'nyckel-12345678',
+    },
+    ogiltig: {
+      till: 'INGEN_MOMS',
+      date: '2026-09-01',
+      reason: 'Fel momsval vid registreringen',
+      clientKey: 'nyckel-12345678',
+    },
+    ogiltigVarfor: 'en justering byter bara mellan «dras av» och «dras inte av» (MJ-1)',
+  },
+  {
+    endpoint: 'POST /accounting/supplier-invoices/:id/payments/:journalEntryId/undo',
+    inputTyp: 'UndoSupplierPaymentInput',
+    schema: UndoSupplierPaymentSchema,
+    dto: UndoSupplierPaymentDto,
+    giltig: { reason: 'Fel betalningsdatum' },
+    ogiltig: { reason: 'x' },
+    ogiltigVarfor: 'skälet måste vara minst 5 tecken (BP1 U-1)',
+  },
+  {
     endpoint: 'POST /accounting/journal-entries',
     inputTyp: 'CreateJournalEntryInput',
     schema: CreateJournalEntrySchema,
@@ -485,6 +517,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       expenseAccount: 5070,
       amount: 1250,
       vatRate: 25,
+      vatTreatment: 'HELT_AVDRAG',
     },
     ogiltig: {
       description: 'Stambyte trapphus B',
@@ -493,6 +526,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       expenseAccount: 5070,
       amount: 1250,
       vatRate: 25,
+      vatTreatment: 'HELT_AVDRAG',
     },
     ogiltigVarfor: 'supplierName saknas — exakt formen som gav 400 i #795',
   },

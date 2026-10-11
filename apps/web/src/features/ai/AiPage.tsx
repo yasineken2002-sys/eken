@@ -10,6 +10,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PageWrapper } from '@/components/ui/PageWrapper'
+import { Modal } from '@/components/ui/Modal'
+import { MessageSquare } from 'lucide-react'
 import { AnalysisModal } from './components/AnalysisModal'
 import { Composer } from './components/Composer'
 import { ConfirmationCard } from './components/ConfirmationCard'
@@ -62,6 +64,9 @@ export function AiPage() {
   } | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [analysisOpen, setAnalysisOpen] = useState(false)
+  // F-046-1: under md nås konversationslistan, ny konversation, radering och portföljanalys via en knapp som
+  // öppnar samma panel i den delade Modal:en (fokusfälla, Escape, fokus åter till knappen).
+  const [panelMobil, setPanelMobil] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const streamCleanupRef = useRef<(() => void) | null>(null)
@@ -421,6 +426,19 @@ export function AiPage() {
             kompositören hamnar i botten. `layout` gör förflyttningen till en
             glidning i stället för ett hopp. */}
         <div className="bg-canvas flex min-w-0 flex-1 flex-col">
+          <div className="border-line flex items-center border-b px-4 py-2 md:hidden">
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={panelMobil}
+              aria-controls="ai-konversationspanel"
+              onClick={() => setPanelMobil(true)}
+              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-100"
+            >
+              <MessageSquare size={15} strokeWidth={1.8} />
+              Konversationer
+            </button>
+          </div>
           {isEmpty ? (
             <div className="flex flex-1 flex-col items-center justify-end px-8 pb-7">
               <WelcomeGreeting />
@@ -479,6 +497,37 @@ export function AiPage() {
           )}
         </div>
       </div>
+
+      <Modal
+        open={panelMobil}
+        onClose={() => setPanelMobil(false)}
+        title="Konversationer"
+        size="full"
+      >
+        <div id="ai-konversationspanel">
+          <ConversationSidebar
+            mobil
+            conversations={conversations}
+            isLoading={convLoading}
+            activeConversationId={activeConversationId}
+            confirmDeleteId={confirmDeleteId}
+            onSelect={(id) => {
+              handleSelectConversation(id)
+              setPanelMobil(false)
+            }}
+            onNewConversation={() => {
+              handleNewConversation()
+              setPanelMobil(false)
+            }}
+            onRequestDelete={setConfirmDeleteId}
+            onConfirmDelete={(id) => void handleDelete(id)}
+            onOpenAnalysis={() => {
+              setPanelMobil(false)
+              setAnalysisOpen(true)
+            }}
+          />
+        </div>
+      </Modal>
 
       <AnalysisModal open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
     </PageWrapper>

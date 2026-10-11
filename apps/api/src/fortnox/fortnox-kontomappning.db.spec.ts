@@ -399,6 +399,9 @@ medDb('TESTKUND-008: kontomappning för Fortnox-export', () => {
           vatRate: 25,
           vatAmount: String(moms),
           totalAmount: String(netto + moms),
+          // TESTKUND-041 (B-8): en faktura med moms kräver ett sparat val för att exporteras; fixturen
+          // representerar en faktura registrerad med «Moms dras av» (samma rader som tidigare).
+          ...(moms > 0 ? { vatTreatment: 'HELT_AVDRAG', vatTreatmentCurrent: 'HELT_AVDRAG' } : {}),
         },
       })
       return {

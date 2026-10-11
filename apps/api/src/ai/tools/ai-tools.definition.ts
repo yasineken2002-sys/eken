@@ -977,7 +977,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'create_journal_entry',
     description:
-      'Skapar ett manuellt verifikat (JournalEntry) med rader. Validerar att debet = kredit och att alla konton finns i BAS-kontoplanen. Kräver dubbelbekräftelse om summa > 100 000 kr.',
+      'Skapar ett manuellt verifikat (JournalEntry) med rader. Validerar att debet = kredit och att alla konton finns i BAS-kontoplanen. Kräver dubbelbekräftelse om summa > 100 000 kr. Rader på ingående moms (2641) bokförs inte här — det momsvalet gör kunden själv i «Ny verifikation».',
     input_schema: {
       type: 'object',
       properties: {
@@ -1005,7 +1005,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'record_expense',
     description:
-      'Bokför en utgift — debet på kostnadskonto (t.ex. 5070 Reparationer) och kredit på 1930 (Bank). Hanterar moms separat på 2641 om vatAmount anges.',
+      'Bokför en utgift UTAN moms — debet på kostnadskonto (t.ex. 5070 Reparationer) och kredit på 1930 (Bank). Har utgiften moms (vatAmount > 0) bokförs den inte: om momsen dras av eller inte är kundens eget val i formuläret «Registrera utgift» under Bokföring.',
     input_schema: {
       type: 'object',
       properties: {

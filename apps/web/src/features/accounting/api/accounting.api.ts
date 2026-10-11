@@ -8,6 +8,9 @@ import type {
   ReverseEntryInput,
   ReopenPeriodInput,
   PaySupplierInvoiceInput,
+  SupplierVatTreatment,
+  SupplierInvoiceVatAdjustmentInput,
+  UndoSupplierPaymentInput,
 } from '@eken/shared'
 
 export const fetchAccounts = (): Promise<Account[]> => get<Account[]>('/accounting/accounts')
@@ -326,6 +329,73 @@ export interface SupplierInvoice {
   status: 'OPEN' | 'PAID' | 'CANCELLED'
   overdue: boolean
   createdAt: string
+  /** TESTKUND-041: ursprungligt och gällande momsval (null = äldre, ej angivet). */
+  vatTreatment?: SupplierVatTreatment | null
+  vatTreatmentCurrent?: SupplierVatTreatment | null
+}
+
+/** TESTKUND-041: fakturans historik — momsval, justeringar och betalningsled. */
+export interface SupplierInvoiceDetails extends SupplierInvoice {
+  vatTreatmentDecidedById: string | null
+  vatTreatmentDecidedAt: string | null
+  momsvalAngivet: boolean
+  justeringar: Array<{
+    id: string
+    seq: number
+    fran: SupplierVatTreatment
+    till: SupplierVatTreatment
+    belopp: number
+    datum: string
+    skal: string
+    beslutadAv: string
+    roll: string
+    beslutadVid: string
+    journalEntryId: string
+    exportStatus: string
+  }>
+  betalningsled: Array<{
+    k: number
+    journalEntryId: string
+    verifikat: string
+    datum: string
+    gallande: boolean
+    exportStatus: string
+    angring: {
+      journalEntryId: string
+      verifikat: string
+      text: string
+      exportStatus: string
+    } | null
+  }>
+  betalningshistorikFel: string | null
+}
+
+export const getSupplierInvoiceDetails = (id: string) =>
+  get<SupplierInvoiceDetails>(`/accounting/supplier-invoices/${encodeURIComponent(id)}`)
+
+export const adjustSupplierInvoiceVat = (
+  input: SupplierInvoiceVatAdjustmentInput & { id: string },
+) => {
+  const kropp: SupplierInvoiceVatAdjustmentInput = {
+    till: input.till,
+    date: input.date,
+    reason: input.reason,
+    clientKey: input.clientKey,
+  }
+  return post<unknown>(
+    `/accounting/supplier-invoices/${encodeURIComponent(input.id)}/vat-adjustments`,
+    kropp,
+  )
+}
+
+export const undoSupplierPayment = (
+  input: UndoSupplierPaymentInput & { id: string; journalEntryId: string },
+) => {
+  const kropp: UndoSupplierPaymentInput = { reason: input.reason }
+  return post<unknown>(
+    `/accounting/supplier-invoices/${encodeURIComponent(input.id)}/payments/${encodeURIComponent(input.journalEntryId)}/undo`,
+    kropp,
+  )
 }
 
 export const getSupplierInvoices = (status?: 'OPEN' | 'PAID' | 'CANCELLED') =>

@@ -1063,21 +1063,39 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       const t = await setup()
       const { f, je } = await levFaktura(t)
       const o = await t.exports.dryRun(t.org.id, je.id)
+      // TESTKUND-041 (B-7b/MK-2): en GENERELL rättelse av leverantörsfakturans verifikat är nu
+      // spärrad i tjänsten (409, ingen effekt). Varianten «rättelse» mäter därför spärren: inget
+      // injiceras, och originalet går ut som vanligt (1 POST).
+      let spärrad: unknown = null
       t.setAfterBuild(async () => {
         t.setAfterBuild(null)
         if (vag === 'makulering') await makulera(t, f.id)
         else
-          await tjanster().acc.reverseJournalEntry({
-            entryId: je.id,
-            organizationId: t.org.id,
-            actorRole: 'OWNER',
-            actorUserId: await uid(t.org.id),
-            reason: 'Fel leverantör angavs',
-          })
+          spärrad = await tjanster()
+            .acc.reverseJournalEntry({
+              entryId: je.id,
+              organizationId: t.org.id,
+              actorRole: 'OWNER',
+              actorUserId: await uid(t.org.id),
+              reason: 'Fel leverantör angavs',
+            })
+            .catch((e: unknown) => e)
       })
-      await expect(t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)).rejects.toThrow()
-      expect((await t.dbRow(o.id)).state).toBe('BLOCKED')
-      expect(posts(t)).toBe(0)
+      if (vag === 'makulering') {
+        await expect(t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)).rejects.toThrow()
+        expect((await t.dbRow(o.id)).state).toBe('BLOCKED')
+        expect(posts(t)).toBe(0)
+      } else {
+        const res = await t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)
+        expect(spärrad).toBeInstanceOf(ConflictException)
+        expect(String((spärrad as Error).message)).toMatch(/kan inte rättas här/)
+        expect(
+          await prisma.journalEntry.count({
+            where: { organizationId: t.org.id, reversalOfEntryId: je.id },
+          }),
+        ).toBe(0)
+        expect([res.state, posts(t)]).toEqual(['CONFIRMED', 1])
+      }
     },
   )
 
@@ -1093,21 +1111,35 @@ medDb('FORTNOX-NATT: skarp skrivväg mot syntetisk HTTP och riktig Postgres', ()
       const { f, je } = await levFaktura(t)
       const o = await t.exports.dryRun(t.org.id, je.id)
       if (utfall === 'okänt') t.api.faults.push('drop_response_after_write')
+      // TESTKUND-041 (B-7b/MK-2): «rättelse» = generell rättelse, som nu ger 409 utan effekt.
+      let spärrad: unknown = null
       t.api.beforeWrite = async () => {
         t.api.beforeWrite = null
         expect((await t.dbRow(o.id)).state).toBe('SENDING')
         if (vag === 'makulering') await makulera(t, f.id)
         else
-          await tjanster().acc.reverseJournalEntry({
-            entryId: je.id,
-            organizationId: t.org.id,
-            actorRole: 'OWNER',
-            actorUserId: await uid(t.org.id),
-            reason: 'Fel leverantör angavs',
-          })
+          spärrad = await tjanster()
+            .acc.reverseJournalEntry({
+              entryId: je.id,
+              organizationId: t.org.id,
+              actorRole: 'OWNER',
+              actorUserId: await uid(t.org.id),
+              reason: 'Fel leverantör angavs',
+            })
+            .catch((e: unknown) => e)
       }
       const res = await t.sender.send(t.org.id, 'u1', o.id, o.draftHash!)
       expect(posts(t)).toBe(1)
+      if (vag === 'rättelse') {
+        expect(spärrad).toBeInstanceOf(ConflictException)
+        expect(
+          await prisma.journalEntry.count({
+            where: { organizationId: t.org.id, reversalOfEntryId: je.id },
+          }),
+        ).toBe(0)
+        expect(res.state).toBe(utfall === 'okänt' ? 'UNKNOWN' : 'CONFIRMED')
+        return
+      }
       const rattelse =
         vag === 'makulering'
           ? (await makJe(t, f.id))!

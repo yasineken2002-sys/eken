@@ -676,18 +676,49 @@ export interface ReportAccountBalance {
   balance: number
 }
 
+/**
+ * TESTKUND-041 (moms v1, B-4/B-5/MJ-9): varifrån den ingående momsen (2641) i perioden kommer, med
+ * kundens beslut och proveniens. Läses av människa och AI; AI sätter aldrig ett val.
+ */
+export interface VatIncomingSource {
+  kalla:
+    | 'LEVERANTORSFAKTURA'
+    | 'MAKULERING'
+    | 'MOMSJUSTERING'
+    | 'UTGIFT'
+    | 'MANUELLT_MOMSVAL'
+    | 'AI'
+    | 'OVRIGT'
+  verifikat: string
+  datum: string
+  belopp: number
+  momsval: string | null
+  beslutadAv: string | null
+  beslutadVid: string | null
+  leverantorsfakturaId: string | null
+  text: string
+}
+
 export interface VatReport {
   period: { from: string; to: string }
   outgoing: { vat25: number; vat12: number; vat6: number; total: number }
-  incoming: { total: number }
+  incoming: { total: number; sources?: VatIncomingSource[] }
   netToPay: number
   direction: 'BETALA' | 'ÅTERBÄRING'
 }
+
+/**
+ * TESTKUND-041 (P-4): text som märker en hyresintäkt som bokats på 3914 därför att avins avtal eller
+ * enhet saknades. Intäktens momsbehandling är då OKÄND — den får aldrig redovisas som belagd momsfri.
+ */
+export const INTAKTSKONTO_OKANT_TEXT = 'intäktskonto okänt: avtal saknas'
 
 export interface ProfitLossReport {
   period: { from: string; to: string }
   propertyFilter?: string
   note?: string
+  /** TESTKUND-041 (P-4): intäkt på fallbackkonto 3914 där avtal/enhet saknades. */
+  okantIntaktskonto?: { konto: number; belopp: number; antalVerifikat: number; text: string }
   revenue: { total: number; accounts: ReportAccountAmount[] }
   costs: {
     operating: { total: number; accounts: ReportAccountAmount[] }

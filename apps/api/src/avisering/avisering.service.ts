@@ -30,6 +30,12 @@ const REMINDER_FEE_REVERSAL_REASON_MIN_LENGTH = 10
 
 /** Öresavrundning, samma form som rent-debt.service.ts använder. */
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
+
+/**
+ * F-047-2: de statusar utskicksjobbet får skriva över (befintlig grind: en reglerad, makulerad eller redan
+ * skickad avi skickas aldrig; OPENING är en historisk skuld utan utskick).
+ */
+const UTSKICKBARA_STATUSAR: readonly RentNoticeStatus[] = ['PENDING', 'FAILED', 'OVERDUE']
 import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 import { isP2002From } from '../common/prisma/p2002-constraint'
@@ -1108,9 +1114,11 @@ export class AviseringService {
     // omskick (POST /avisering/send tar godtyckliga id:n) skulle då be hyresgästen betala
     // en betald hyra OCH skriva över PAID med SENT/FAILED nedan, så att reskontran ljuger.
     // En reglerad eller makulerad avi skickas aldrig.
-    if (notice.status === RentNoticeStatus.PAID || notice.status === RentNoticeStatus.CANCELLED) {
+    // O-050-1 (TESTKUND-051): samma tillåtna statusregel som återprövningen och statusskrivningen — en
+    // reglerad, makulerad eller historisk (OPENING) avi renderas inte ens.
+    if (!UTSKICKBARA_STATUSAR.includes(notice.status)) {
       this.logger.warn(
-        `[Avisering] Avi ${noticeId} skickas inte: status ${notice.status} (utskick av reglerad/makulerad avi).`,
+        `[Avisering] Avi ${noticeId} skickas inte: status ${notice.status} (utskick av reglerad/makulerad/historisk avi).`,
       )
       return
     }
@@ -1127,12 +1135,10 @@ export class AviseringService {
     // e-postadress nedan, och av samma skäl.
     const paymentTarget = checkPaymentTarget(org)
     if (!paymentTarget.ok) {
-      await this.prisma.rentNotice
-        .update({
-          where: { id: noticeId },
-          data: { status: RentNoticeStatus.FAILED, sendError: paymentTarget.block.message },
-        })
-        .catch(() => undefined)
+      await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: paymentTarget.block.message,
+      }).catch(() => false)
       this.logger.warn(
         `[Avisering] Avi ${noticeId} EJ skickad: ${paymentTarget.block.code} — ` +
           paymentTarget.block.message,
@@ -1143,18 +1149,33 @@ export class AviseringService {
     // Saknad e-post är ett permanent fel — markera FAILED utan att kasta,
     // annars gör Bull fem meningslösa retries.
     if (!notice.tenant.email) {
-      await this.prisma.rentNotice
-        .update({
-          where: { id: noticeId },
-          data: { status: RentNoticeStatus.FAILED, sendError: 'Hyresgästen saknar e-postadress' },
-        })
-        .catch(() => undefined)
+      await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: 'Hyresgästen saknar e-postadress',
+      }).catch(() => false)
       return
     }
 
     try {
       const pdfHtml = await this.buildNoticePdfHtml(notice, org)
       const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
+
+      // F-047-2: ÅTERPRÖVNING EFTER RENDERINGEN, FÖRE KÖNINGEN. Läsningen ovan kan vara inaktuell —
+      // renderingen tar tid, och under tiden kan avin ha annullerats eller betalats (cancelNotice,
+      // bankmatchning, markAsPaid). En kundhändelse som hunnit slutföras stoppar utskicket här, innan
+      // något mejl köas. Inget DB-lås hålls över renderingen; den slutliga statusskrivningen nedan är
+      // dessutom villkorad, så en händelse mellan den här läsningen och skrivningen återöppnar inget.
+      const aktuell = await this.prisma.rentNotice.findFirst({
+        where: { id: noticeId, organizationId: orgId },
+        select: { status: true, sentAt: true },
+      })
+      if (!aktuell || aktuell.sentAt || !UTSKICKBARA_STATUSAR.includes(aktuell.status)) {
+        this.logger.warn(
+          `[Avisering] Avi ${noticeId} skickas inte: status ${aktuell?.status ?? 'saknas'} efter renderingen ` +
+            '(avin reglerades, annullerades eller skickades under tiden). Inget mejl köat, ingen status skriven.',
+        )
+        return
+      }
 
       const tenantName =
         notice.tenant.type === 'INDIVIDUAL'
@@ -1163,7 +1184,7 @@ export class AviseringService {
 
       // Mejlet köas med idempotencyKey så att en Bull-retry (om DB-uppdateringen
       // nedan misslyckas efter att mejlet redan köats) inte ger dubbelmejl.
-      await this.mailService.sendRentNotice({
+      const mejljobb = await this.mailService.sendRentNotice({
         // #651: gör avins egen leverans korrelerbar. Utan den här visste vi bara
         // att Resend TOG EMOT avin, ingenting om att den kom fram.
         rentNoticeId: notice.id,
@@ -1181,26 +1202,70 @@ export class AviseringService {
         accentColor: org.invoiceColor ?? DEFAULT_BRAND_COLOR,
         idempotencyKey: `rent-notice-${notice.id}`,
       })
+      // O-050-4 (TESTKUND-051): MailQueue returnerar '' när inget köades (företagets transaktionella mejl är
+      // avstängda, eller organisationen saknas). Då har ingenting skickats: inga leveransmarkörer, ingen status.
+      if (!mejljobb) {
+        this.logger.warn(
+          `[Avisering] Avi ${noticeId} EJ skickad: mejlet köades inte (transaktionella mejl avstängda för ` +
+            'organisationen). Ingen status eller leveransmarkör skriven.',
+        )
+        return
+      }
 
-      await this.prisma.rentNotice.update({
-        where: { id: noticeId },
-        data: {
-          status: RentNoticeStatus.SENT,
-          sentAt: new Date(),
-          sentTo: notice.tenant.email,
-          sendError: null,
-        },
+      await this.skrivUtskicksstatus(orgId, noticeId, 'SENT', {
+        status: RentNoticeStatus.SENT,
+        sentAt: new Date(),
+        sentTo: notice.tenant.email,
+        sendError: null,
       })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
-      await this.prisma.rentNotice
-        .update({
-          where: { id: noticeId },
-          data: { status: RentNoticeStatus.FAILED, sendError: errorMessage },
-        })
-        .catch(() => undefined)
-      throw err
+      const skriven = await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: errorMessage,
+      }).catch(() => true)
+      // Har avin hunnit regleras/annulleras finns inget att försöka igen med: ingen retry, ingen FAILED.
+      if (skriven) throw err
     }
+  }
+
+  /**
+   * F-047-2: utskicksjobbets ENDA statusskrivning. Villkorad och org-bunden: bara en avi som fortfarande
+   * får skickas (UTSKICKBARA_STATUSAR och ännu inte skickad) ändras, och villkoret prövas atomiskt i
+   * samma UPDATE. En avi som hunnit bli PAID, CANCELLED (eller SENT av ett annat jobb) lämnas orörd —
+   * tidigare skrev en ovillkorlig `update` över dem och återöppnade en reglerad eller motbokad fordran.
+   * Returnerar om skrivningen skedde; count 0 loggas sanningsenligt och ger varken SENT eller FAILED.
+   * Betalningsfält, allokeringar, verifikat och export rörs aldrig här.
+   */
+  private async skrivUtskicksstatus(
+    orgId: string,
+    noticeId: string,
+    utfall: 'SENT' | 'FAILED',
+    data: Prisma.RentNoticeUpdateManyMutationInput,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.rentNotice.updateMany({
+      where: {
+        id: noticeId,
+        organizationId: orgId,
+        status: { in: [...UTSKICKBARA_STATUSAR] },
+        sentAt: null,
+      },
+      data,
+    })
+    if (count === 0) {
+      const nu = await this.prisma.rentNotice.findFirst({
+        where: { id: noticeId, organizationId: orgId },
+        select: { status: true },
+      })
+      this.logger.warn(
+        `[Avisering] Avi ${noticeId}: utskicksutfallet ${utfall} skrevs INTE — avin har status ` +
+          `${nu?.status ?? 'saknas'} (reglerad, annullerad eller redan skickad under jobbets gång).` +
+          (utfall === 'SENT'
+            ? ' Mejlet var redan köat; mejlarbetaren prövar avins status innan det skickas.'
+            : ''),
+      )
+    }
+    return count > 0
   }
 
   async getNoticePdfBuffer(noticeId: string, orgId: string): Promise<Buffer> {
@@ -2996,7 +3061,7 @@ export class AviseringService {
   async getStats(orgId: string, month: number, year: number) {
     await this.checkAndMarkOverdue(orgId)
 
-    const [notices, aggregate] = await Promise.all([
+    const [notices, antal] = await Promise.all([
       this.prisma.rentNotice.findMany({
         where: { organizationId: orgId, month, year },
         select: {
@@ -3012,11 +3077,7 @@ export class AviseringService {
           credits: { select: { amount: true } },
         },
       }),
-      this.prisma.rentNotice.aggregate({
-        where: { organizationId: orgId, month, year },
-        _sum: { totalAmount: true, paidAmount: true },
-        _count: true,
-      }),
+      this.prisma.rentNotice.count({ where: { organizationId: orgId, month, year } }),
     ])
 
     const byStatus: Record<string, number> = {}
@@ -3026,11 +3087,34 @@ export class AviseringService {
       byStatus[status] = (byStatus[status] ?? 0) + 1
     }
 
-    const totalAmount = Number(aggregate._sum.totalAmount ?? 0)
-    const paidAmount = Number(aggregate._sum.paidAmount ?? 0)
+    // F-046-2 (TESTKUND-047, ACCEPTANS-048 S1): beloppen per avi ur den KANONISKA restskulden
+    // (rentNoticeOutstanding) i stället för Σ totalAmount − Σ paidAmount över alla rader. Tidigare räknades
+    // (a) en manuellt betald depositionsavi (PAID, paidAmount null, ingen allokering) som utestående och
+    // (b) annullerade avier in i «Totalt att fakturera» och «Utestående». Ingen kolumn skrivs; historiska
+    // rader läses som de är. Identiteten totalAmount = paidAmount + outstandingAmount − överbetalt håller.
+    // Summeras i öre (heltal) och redovisas i kronor.
+    const ore = (kr: number) => Math.round(kr * 100)
+    let totalOre = 0
+    let paidOre = 0
+    let outstandingOre = 0
+    for (const notice of notices) {
+      if (notice.status === RentNoticeStatus.CANCELLED) continue
+      const o = rentNoticeOutstanding(notice)
+      totalOre += ore(o.nominalTotal)
+      if (notice.status === RentNoticeStatus.PAID) {
+        // PAID utan allokering = den bokförda manuella betalningen (t.ex. deposit-manual-payment).
+        paidOre += ore(notice.payments.length === 0 ? o.nominalTotal : o.paid)
+      } else {
+        paidOre += ore(o.paid)
+        outstandingOre += ore(o.payable)
+      }
+    }
+    const totalAmount = totalOre / 100
+    const paidAmount = paidOre / 100
+    const outstandingAmount = outstandingOre / 100
 
     return {
-      total: aggregate._count,
+      total: antal,
       pending: byStatus['PENDING'] ?? 0,
       sent: byStatus['SENT'] ?? 0,
       paid: byStatus['PAID'] ?? 0,
@@ -3038,7 +3122,7 @@ export class AviseringService {
       cancelled: byStatus['CANCELLED'] ?? 0,
       totalAmount,
       paidAmount,
-      outstandingAmount: totalAmount - paidAmount,
+      outstandingAmount,
     }
   }
 }

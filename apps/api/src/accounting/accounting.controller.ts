@@ -25,7 +25,12 @@ import { ReverseEntryDto } from './dto/reverse-entry.dto'
 // en typ-import raderar klassen, varpå ValidationPipe tappar all metadata.
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto'
 import { CreateExpenseDto } from './dto/create-expense.dto'
-import { CreateSupplierInvoiceDto, PaySupplierInvoiceDto } from './dto/supplier-invoice.dto'
+import {
+  CreateSupplierInvoiceDto,
+  PaySupplierInvoiceDto,
+  SupplierInvoiceVatAdjustmentDto,
+  UndoSupplierPaymentDto,
+} from './dto/supplier-invoice.dto'
 import { SupplierInvoiceService } from './supplier-invoice.service'
 import type { SupplierInvoiceStatus } from './supplier-invoice-status'
 import { randomUUID } from 'crypto'
@@ -415,6 +420,8 @@ export class AccountingController {
         kontonummer: dto.accountNumber,
         beskrivning,
       },
+      // TESTKUND-041 (B-6): människans val i formuläret; positiv moms utan val nekas i tjänsten.
+      momsbeslut: dto.vatTreatment ? { val: dto.vatTreatment, source: 'HTTP_FORMULAR' } : null,
     })
   }
 
@@ -450,6 +457,62 @@ export class AccountingController {
       vatRate: dto.vatRate,
       ...(dto.vatAmount !== undefined ? { vatAmount: dto.vatAmount } : {}),
       ...(dto.attachmentUrl ? { attachmentUrl: dto.attachmentUrl } : {}),
+      vatTreatment: dto.vatTreatment,
+      vatTreatmentSource: 'HTTP_FORMULAR',
+    })
+  }
+
+  /** TESTKUND-041: fakturans historik — momsval, justeringar och betalningsled. */
+  @Get('supplier-invoices/:id')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  async getSupplierInvoice(@Param('id') id: string, @OrgId() organizationId: string) {
+    return this.supplierInvoices.details(id, organizationId)
+  }
+
+  /**
+   * TESTKUND-041 (MJ-1..MJ-11): källbunden momsjustering «dras av» ↔ «dras inte av». Eget
+   * verifikat och egen export; originalet ändras aldrig. AI har ingen väg hit (MJ-11).
+   */
+  @Post('supplier-invoices/:id/vat-adjustments')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(201)
+  async adjustSupplierInvoiceVat(
+    @Param('id') id: string,
+    @OrgId() organizationId: string,
+    @Body() dto: SupplierInvoiceVatAdjustmentDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.supplierInvoices.adjustVat({
+      organizationId,
+      invoiceId: id,
+      user: { sub: user.sub, role: user.role },
+      till: dto.till,
+      date: new Date(dto.date),
+      reason: dto.reason,
+      clientKey: dto.clientKey,
+    })
+  }
+
+  /**
+   * TESTKUND-041 (BP1 U-1): ångra EN betalningsregistrering — exakt det betalningsverifikat som
+   * står i URL:en. Ingen banköverföring; bara registreringen i Eveno ångras.
+   */
+  @Post('supplier-invoices/:id/payments/:journalEntryId/undo')
+  @Roles('ACCOUNTANT', 'ADMIN', 'OWNER')
+  @HttpCode(200)
+  async undoSupplierPayment(
+    @Param('id') id: string,
+    @Param('journalEntryId') journalEntryId: string,
+    @OrgId() organizationId: string,
+    @Body() dto: UndoSupplierPaymentDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.supplierInvoices.undoPayment({
+      organizationId,
+      invoiceId: id,
+      paymentJournalEntryId: journalEntryId,
+      user: { sub: user.sub, role: user.role },
+      reason: dto.reason,
     })
   }
 
