@@ -168,7 +168,9 @@ describe('ägarverktygens enums har SAMMA källa', () => {
    */
   it('KANARIEFÅGEL: mängderna är icke-tomma, och de två saknade värdena finns nu', () => {
     expect(prismaStatusar).toHaveLength(6)
-    expect(prismaAviStatusar).toHaveLength(6)
+    // KUNDSTART-001: + OPENING (historisk skuld före brytdatum ur öppningspaket).
+    expect(prismaAviStatusar).toHaveLength(7)
+    expect(prismaAviStatusar).toContain('OPENING')
     expect(agarensEnum('get_maintenance_tickets', 'status')).toContain('CANCELLED')
     expect(agarensEnum('get_rent_notices', 'status')).toContain('FAILED')
     expect(() => agarensEnum('get_rent_notices', 'manad')).toThrow()

@@ -45,6 +45,8 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
 
     const prisma = {
       lease: { findMany: jest.fn().mockResolvedValue([lease]) },
+      // KUNDSTART: inget brytdatum = oförändrat beteende.
+      organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },
       // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
       // riggen ger löpande nummer i stället för samma varje gång.
       rentNoticeNumberSequence: {

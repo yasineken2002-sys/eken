@@ -984,6 +984,8 @@ export const RENT_NOTICE_STATUSES = [
   'OVERDUE',
   'CANCELLED',
   'FAILED',
+  // KUNDSTART-001: historisk öppen fordran ur verkställt öppningspaket (före brytdatum)
+  'OPENING',
 ] as const
 
 export type MaintenanceStatusValue = (typeof MAINTENANCE_STATUSES)[number]
@@ -1304,6 +1306,14 @@ export const CreateJournalEntrySchema = z.object({
   attachmentUrl: z.string().max(500).optional(),
 })
 
+/**
+ * TESTKUND-041 (moms v1, B-1): kundens uttryckliga momsval för en löpande svensk leverantörskostnad.
+ * Ingen standard. Kundtext (033 §0): «Moms X kr dras av (bokas som ingående moms)», «Moms X kr dras
+ * inte av (ingår i kostnaden Y kr)», «Ingen moms på fakturan».
+ */
+export const SupplierVatTreatmentSchema = z.enum(['INGEN_MOMS', 'HELT_AVDRAG', 'INGET_AVDRAG'])
+export type SupplierVatTreatment = z.infer<typeof SupplierVatTreatmentSchema>
+
 export const CreateExpenseSchema = z.object({
   date: z.string().date('Datum måste anges som ÅÅÅÅ-MM-DD'),
   description: z
@@ -1315,6 +1325,8 @@ export const CreateExpenseSchema = z.object({
   amount: BeloppSchema.min(0.01, 'Beloppet måste vara större än noll'),
   vatRate: z.number().optional(),
   vatAmount: BeloppSchema.min(0, 'Momsbeloppet kan inte vara negativt').optional(),
+  /** TESTKUND-041: krävs när vatAmount > 0 (prövas i tjänsten). */
+  vatTreatment: SupplierVatTreatmentSchema.optional(),
   accountNumber: BasKontoSchema,
   idempotencyKey: z.string().max(100).optional(),
   attachmentUrl: z.string().max(500).optional(),
@@ -1339,8 +1351,27 @@ export const CreateSupplierInvoiceSchema = z.object({
   vatRate: z.number(),
   /** Valfritt: servern räknar själv och godtar ett inskickat tal inom ett öre. */
   vatAmount: BeloppSchema.min(0, 'Momsbeloppet kan inte vara negativt').optional(),
+  /** TESTKUND-041 (B-1): obligatoriskt, uttryckligt val. Ingen standard. */
+  vatTreatment: SupplierVatTreatmentSchema,
   attachmentUrl: z.string().max(500).optional(),
 })
+
+/** TESTKUND-041 (MJ-1/MJ-2): källbunden momsjustering HELT ↔ INGET. */
+export const SupplierInvoiceVatAdjustmentSchema = z
+  .object({
+    till: z.enum(['HELT_AVDRAG', 'INGET_AVDRAG']),
+    date: IsoDatumSchema,
+    reason: z.string().trim().min(5, 'Ange ett skäl (minst 5 tecken)').max(500),
+    clientKey: z.string().min(8).max(100),
+  })
+  .strict()
+export type SupplierInvoiceVatAdjustmentInput = z.infer<typeof SupplierInvoiceVatAdjustmentSchema>
+
+/** TESTKUND-041 (BP1 U-1): ångra EN betalningsregistrering. */
+export const UndoSupplierPaymentSchema = z
+  .object({ reason: z.string().trim().min(5, 'Ange ett skäl (minst 5 tecken)').max(500) })
+  .strict()
+export type UndoSupplierPaymentInput = z.infer<typeof UndoSupplierPaymentSchema>
 
 // Period- och balansspärrar ligger kvar i tjänsterna. Ingen default:
 // betalningsdatumet väljs av människan och daterar verifikatet.
@@ -1758,6 +1789,12 @@ export type CreateRentNoticeCreditInput = z.infer<typeof CreateRentNoticeCreditS
 export const ManualMatchSchema = z.object({
   invoiceId: z.string().uuid('invoiceId måste vara ett UUID').optional(),
   rentNoticeId: z.string().uuid('rentNoticeId måste vara ett UUID').optional(),
+  /** KUNDSTART T4-1: manuell fördelning på flera avier, i den ordning de ska fyllas. */
+  rentNoticeIds: z
+    .array(z.string().uuid('rentNoticeIds måste vara UUID'))
+    .min(2)
+    .max(24)
+    .optional(),
 })
 
 export const EditedTransactionSchema = z.object({
@@ -1806,6 +1843,13 @@ export const CreateBankAccountSchema = z.object({
 })
 
 export type ManualMatchInput = z.infer<typeof ManualMatchSchema>
+
+// IMPORTSTOPP-009 (FORTNOX-100): uttrycklig upplösning av ett känt importstopp. Motiveringen
+// blir historik på stoppet (vem, när, varför); API:t prövar längden även efter trim.
+export const ResolveImportStopSchema = z.object({
+  note: z.string().min(10).max(1000),
+})
+export type ResolveImportStopInput = z.infer<typeof ResolveImportStopSchema>
 export type EditedTransactionInput = z.infer<typeof EditedTransactionSchema>
 export type ConfirmImportInput = z.infer<typeof ConfirmImportSchema>
 export type CreateBankAccountInput = z.infer<typeof CreateBankAccountSchema>
@@ -2609,3 +2653,5 @@ export const UpdateOrganizationSchema = z
   })
   .strict()
 export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>
+export * from './fortnox'
+export * from './kundstart'

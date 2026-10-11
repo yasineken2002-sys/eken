@@ -39,6 +39,7 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
   const txMock = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0), // KUNDSTART T4-1: ingen OPENING
       // H3 PR B: vattenfallet läser kandidater med findMany. Tom lista = inga
       // fler öppna avier, alltså inget vattenfall — riggens fall ägs av
       // enskildvägen och beteendet är oförändrat.
@@ -68,6 +69,7 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
       update: jest.fn().mockResolvedValue({}),
     },
     rentNotice: {
+      count: jest.fn().mockResolvedValue(0) /* KUNDSTART T4-1: ingen OPENING */,
       findFirst: jest.fn().mockResolvedValue({ id: 'rn-1' }), // OCR-kandidat
       findMany: jest.fn().mockResolvedValue([]),
     },

@@ -69,10 +69,18 @@ export function maskForDisplay(value: string): string {
  *
  * `Date` och `Buffer` lämnas orörda, och djupet är begränsat på samma sätt.
  */
+/**
+ * F-047-1 (TESTKUND-047): en sträng som I SIN HELHET är ett UUID är en identifierare (samtal, meddelande),
+ * inte innehåll. Den maskerades tidigare när ett segment råkade bestå av siffror (OCR-mönstret \d{8,25}),
+ * och kunden kunde då varken öppna eller radera samtalet. Löptext maskeras som förut.
+ */
+const HELT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export function maskAiContentForDisplay<T>(value: T, depth = 0): T {
   if (depth > 12) return value
   if (value === null || value === undefined) return value
-  if (typeof value === 'string') return maskForDisplay(value) as unknown as T
+  if (typeof value === 'string')
+    return (HELT_UUID.test(value) ? value : maskForDisplay(value)) as unknown as T
   if (Array.isArray(value)) {
     return value.map((v) => maskAiContentForDisplay(v, depth + 1)) as unknown as T
   }

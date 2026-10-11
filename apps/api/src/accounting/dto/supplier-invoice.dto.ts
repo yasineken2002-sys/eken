@@ -14,6 +14,8 @@ import type {
   CreateSupplierInvoiceInput,
   PaySupplierInvoiceInput,
   SammaNycklar,
+  SupplierInvoiceVatAdjustmentInput,
+  UndoSupplierPaymentInput,
 } from '@eken/shared'
 import { VAT_RATES } from '@eken/shared'
 import { StrictString } from '../../common/contract/strict-string.decorator'
@@ -101,12 +103,64 @@ export class CreateSupplierInvoiceDto implements CreateSupplierInvoiceInput {
   @Min(0, { message: 'Momsbeloppet kan inte vara negativt' })
   vatAmount?: number
 
+  /**
+   * TESTKUND-041 (B-1): kundens UTTRYCKLIGA momsval. Obligatoriskt; ingen standard. Positiv moms
+   * kräver HELT_AVDRAG eller INGET_AVDRAG, INGEN_MOMS kräver moms 0 (prövas i tjänsten).
+   */
+  @IsIn(['INGEN_MOMS', 'HELT_AVDRAG', 'INGET_AVDRAG'], {
+    message:
+      'Välj momsbehandling: «Ingen moms på fakturan», «Moms dras av» eller «Moms dras inte av»',
+  })
+  vatTreatment!: 'INGEN_MOMS' | 'HELT_AVDRAG' | 'INGET_AVDRAG'
+
   @IsOptional()
   @IsString()
   @MaxLength(500)
   @StrictString()
   attachmentUrl?: string
 }
+
+/** TESTKUND-041: kroppen till POST /accounting/supplier-invoices/:id/vat-adjustments. */
+export class SupplierInvoiceVatAdjustmentDto implements SupplierInvoiceVatAdjustmentInput {
+  @IsIn(['HELT_AVDRAG', 'INGET_AVDRAG'], {
+    message: 'Bara «Moms dras av» och «Moms dras inte av» kan väljas vid en justering',
+  })
+  till!: 'HELT_AVDRAG' | 'INGET_AVDRAG'
+
+  @StrictIsoDatum()
+  date!: string
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(5, { message: 'Ange ett skäl (minst 5 tecken)' })
+  @MaxLength(500)
+  @StrictString()
+  reason!: string
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  @StrictString()
+  clientKey!: string
+}
+
+/** TESTKUND-041: kroppen till POST /accounting/supplier-invoices/:id/payments/:je/undo. */
+export class UndoSupplierPaymentDto implements UndoSupplierPaymentInput {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(5, { message: 'Ange ett skäl (minst 5 tecken)' })
+  @MaxLength(500)
+  @StrictString()
+  reason!: string
+}
+
+const _kontraktJustering: SammaNycklar<
+  SupplierInvoiceVatAdjustmentDto,
+  SupplierInvoiceVatAdjustmentInput
+> = true
+void _kontraktJustering
+const _kontraktAngra: SammaNycklar<UndoSupplierPaymentDto, UndoSupplierPaymentInput> = true
+void _kontraktAngra
 
 /** Kroppen till POST /accounting/supplier-invoices/:id/pay. */
 export class PaySupplierInvoiceDto implements PaySupplierInvoiceInput {

@@ -664,7 +664,12 @@ export class ImportService {
 
     const units = await this.prisma.unit.findMany({
       where: { property: { organizationId } },
-      select: { id: true, unitNumber: true, propertyId: true },
+      select: {
+        id: true,
+        unitNumber: true,
+        propertyId: true,
+        property: { select: { name: true, propertyDesignation: true } },
+      },
     })
 
     const today = new Date()
@@ -691,13 +696,41 @@ export class ImportService {
           continue
         }
 
-        // Find unit by unitNumber
+        // F-IMP-1 (FORTNOX-100): enhetsnumret är unikt per FASTIGHET, inte per
+        // organisation (@@unique([propertyId, unitNumber])). Två hus kan båda ha lgh 1001.
+        // Tidigare valdes den första träffen — avtalet kunde hamna i fel fastighet utan
+        // att något syntes. Nu: anger raden fastighet (namn eller beteckning, exakt, utan
+        // skiftlägeskänslighet) avgränsas sökningen; är numret ändå tvetydigt avvisas raden
+        // med fastigheterna uppräknade. Ingen gissning.
         const unitNumber = data['unitNumber'] ?? ''
-        const unit = units.find((u) => u.unitNumber === unitNumber)
+        const fastighet = (data['propertyName'] ?? data['propertyDesignation'] ?? '')
+          .trim()
+          .toLowerCase()
+        const kandidater = units.filter(
+          (u) =>
+            u.unitNumber === unitNumber &&
+            (fastighet === '' ||
+              u.property.name.toLowerCase() === fastighet ||
+              u.property.propertyDesignation.toLowerCase() === fastighet),
+        )
+        if (kandidater.length > 1) {
+          errors.push({
+            row: rowNumber,
+            message:
+              `Enhet "${unitNumber}" finns i flera fastigheter (` +
+              kandidater.map((u) => u.property.name).join(', ') +
+              ') — ange fastighet (kolumnen "fastighet" eller "beteckning") så att avtalet kopplas rätt.',
+          })
+          errorRows++
+          continue
+        }
+        const unit = kandidater[0]
         if (!unit) {
           errors.push({
             row: rowNumber,
-            message: `Enhet "${unitNumber}" hittades inte`,
+            message: fastighet
+              ? `Enhet "${unitNumber}" hittades inte i fastigheten "${data['propertyName'] ?? data['propertyDesignation']}"`
+              : `Enhet "${unitNumber}" hittades inte`,
           })
           errorRows++
           continue

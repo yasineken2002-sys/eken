@@ -449,6 +449,8 @@ export interface BankTransaction {
   identityReviewReason?: string
   createdAt: string
   invoice?: { id: string; invoiceNumber: string; status: string }
+  /** G19 (FORTNOX-100): hyresavin raden är matchad mot (API:t har alltid returnerat den). */
+  matchedRentNotice?: { id: string; noticeNumber: string; status: string; totalAmount: number }
 }
 
 /**
@@ -674,18 +676,49 @@ export interface ReportAccountBalance {
   balance: number
 }
 
+/**
+ * TESTKUND-041 (moms v1, B-4/B-5/MJ-9): varifrån den ingående momsen (2641) i perioden kommer, med
+ * kundens beslut och proveniens. Läses av människa och AI; AI sätter aldrig ett val.
+ */
+export interface VatIncomingSource {
+  kalla:
+    | 'LEVERANTORSFAKTURA'
+    | 'MAKULERING'
+    | 'MOMSJUSTERING'
+    | 'UTGIFT'
+    | 'MANUELLT_MOMSVAL'
+    | 'AI'
+    | 'OVRIGT'
+  verifikat: string
+  datum: string
+  belopp: number
+  momsval: string | null
+  beslutadAv: string | null
+  beslutadVid: string | null
+  leverantorsfakturaId: string | null
+  text: string
+}
+
 export interface VatReport {
   period: { from: string; to: string }
   outgoing: { vat25: number; vat12: number; vat6: number; total: number }
-  incoming: { total: number }
+  incoming: { total: number; sources?: VatIncomingSource[] }
   netToPay: number
   direction: 'BETALA' | 'ÅTERBÄRING'
 }
+
+/**
+ * TESTKUND-041 (P-4): text som märker en hyresintäkt som bokats på 3914 därför att avins avtal eller
+ * enhet saknades. Intäktens momsbehandling är då OKÄND — den får aldrig redovisas som belagd momsfri.
+ */
+export const INTAKTSKONTO_OKANT_TEXT = 'intäktskonto okänt: avtal saknas'
 
 export interface ProfitLossReport {
   period: { from: string; to: string }
   propertyFilter?: string
   note?: string
+  /** TESTKUND-041 (P-4): intäkt på fallbackkonto 3914 där avtal/enhet saknades. */
+  okantIntaktskonto?: { konto: number; belopp: number; antalVerifikat: number; text: string }
   revenue: { total: number; accounts: ReportAccountAmount[] }
   costs: {
     operating: { total: number; accounts: ReportAccountAmount[] }
@@ -701,8 +734,28 @@ export interface ProfitLossReport {
 export interface BalanceSheet {
   asOf: string
   assets: { total: number; accounts: ReportAccountBalance[] }
+  /** `total` inkluderar `calculatedResult.amount` (beräknat, ej bokslutat resultat). */
   liabilitiesAndEquity: { total: number; accounts: ReportAccountBalance[] }
+  /**
+   * F-TK-1: ännu inte bokslutat resultat per asOf = Σ(kredit − debet) på resultatkonton
+   * (3000–8999) för verifikat med datum ≤ asOf. En BERÄKNAD rapportrad — inget verifikat och
+   * inget konto. Efter årsstängning är resultatkontona nollställda och resultatet ligger på
+   * årets resultat-konto (i `accounts`), så raden räknas aldrig dubbelt.
+   */
+  calculatedResult: { amount: number; label: string }
   difference: number
+  /**
+   * KUNDSTART-001 §12.9: öppningskomponent (externt bokförd i Fortnox före brytdatum) som
+   * EGEN del — verifikatsummorna ovan är oförändrade. null = ingen verkställd öppning.
+   */
+  oppningskomponent?: {
+    brytdatum: string
+    galler: boolean
+    text: string
+    begransning: string
+    avstamningstexter: string[]
+    rader: { konto: 1510 | 2890; verifikat: number; oppning: number; nettoInklOppning: number }[]
+  } | null
 }
 
 // ─── Förbrukning / IMD (Mätare, avläsningar, tariffer, charges) ───────────────
@@ -885,4 +938,9 @@ export interface GenerateNoticesPreview {
   dueDates: { dueDate: string; count: number }[]
   /** Avier som redan finns ändras inte och kan ha andra förfallodagar. */
   existingDueDates: { dueDate: string; count: number }[]
+  /**
+   * KUNDSTART: satt när perioden ligger före organisationens brytdatum — skälet, skrivet för
+   * hyresvärden. Då skapas inga avier (perioden är fakturerad i tidigare system).
+   */
+  beforeCutover?: string | null
 }

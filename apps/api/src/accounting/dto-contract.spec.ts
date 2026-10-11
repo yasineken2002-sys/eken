@@ -288,6 +288,7 @@ const leverantorsfaktura = {
   amount: 1250,
   vatRate: 25,
   vatAmount: 250,
+  vatTreatment: 'HELT_AVDRAG',
 }
 
 const utan = <T extends object>(o: T, nyckel: keyof T) => {

@@ -77,6 +77,8 @@ function rigg(opts: { createRejects?: unknown; befintlig?: unknown } = {}) {
       upsert: jest.fn().mockImplementation(() => Promise.resolve({ lastNumber: ++__seq })),
     },
     rentNotice: { findMany: jest.fn().mockResolvedValue([]), findFirst, create },
+    // KUNDSTART: ingen historisk deposition ur öppningspaket.
+    deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
   }
 

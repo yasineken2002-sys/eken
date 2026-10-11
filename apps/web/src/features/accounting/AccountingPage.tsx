@@ -12,7 +12,7 @@ import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
-import { useAccounts, useSeedAccounts, useJournalEntries } from './hooks/useAccounting'
+import { useAccounts, useSeedAccounts, useJournalPages } from './hooks/useAccounting'
 import { PeriodsPanel } from './components/PeriodsPanel'
 import { FiscalYearsPanel } from './components/FiscalYearsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
@@ -189,7 +189,14 @@ export function AccountingPage() {
 
   const accounts = useAccounts()
   const seedAccounts = useSeedAccounts()
-  const journalEntries = useJournalEntries()
+  // F-LIST-1 (FORTNOX-100): sidvis med totalantal. Listan med tak 100 dolde resten och
+  // räknaren visade 100 även när huvudboken hade fler.
+  const journalPages = useJournalPages()
+  const journalEntries = {
+    ...journalPages,
+    data: journalPages.data?.pages.flatMap((p) => p.entries),
+  }
+  const journalTotal = journalPages.data?.pages[0]?.total ?? 0
 
   const grouped = (accounts.data ?? []).reduce(
     (acc, a) => {
@@ -215,6 +222,7 @@ export function AccountingPage() {
   return (
     <PageWrapper id="accounting">
       <PageHeader
+        className="flex-wrap"
         title="Bokföring"
         description="BAS-kontoplan och verifikationsjournal"
         action={
@@ -223,7 +231,8 @@ export function AccountingPage() {
           // redovisningshandling, inte en förvaltningsåtgärd. Knappen visas
           // därför inte för den som ändå hade fått 403 på klick.
           mayReverse ? (
-            <div className="flex items-center gap-2">
+            // TESTKUND-041: knapparna radbryts i stället för att sticka ut vid 390 px (uppmätt i UI-riggen).
+            <div className="flex flex-wrap items-center justify-end gap-2">
               {/* Leverantörsfakturan hör till sin egen flik. Att visa knappen
                   bara där håller huvudet läsbart och gör valet mellan de två
                   bokföringsmetoderna till ett val i ETT sammanhang. */}
@@ -261,15 +270,12 @@ export function AccountingPage() {
       {/* Stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard title="Antal konton" value={accounts.data?.length ?? 0} icon={BookOpen} />
-        <StatCard
-          title="Antal verifikationer"
-          value={journalEntries.data?.length ?? 0}
-          icon={Database}
-        />
+        <StatCard title="Antal verifikationer" value={journalTotal} icon={Database} />
       </div>
 
       {/* View toggle */}
-      <div className="mt-6 flex w-fit items-center gap-1 rounded-xl bg-gray-100/70 p-1">
+      {/* TESTKUND-041: flikraden rullar i sidled vid smal skärm i stället för att vidga sidan. */}
+      <div className="mt-6 flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-xl bg-gray-100/70 p-1">
         {(
           [
             { id: 'chart', label: 'Kontoplan' },
@@ -282,7 +288,7 @@ export function AccountingPage() {
             key={v.id}
             onClick={() => setView(v.id)}
             className={cn(
-              'h-8 rounded-lg px-4 text-[13px] font-medium transition-all',
+              'h-8 shrink-0 whitespace-nowrap rounded-lg px-4 text-[13px] font-medium transition-all',
               view === v.id
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700',
@@ -383,14 +389,31 @@ export function AccountingPage() {
               description="Verifikationer skapas automatiskt när fakturor registreras."
             />
           ) : (
-            (journalEntries.data ?? []).map((je, i) => (
-              <JournalEntryCard
-                key={je.id}
-                entry={je}
-                delay={i * 0.06}
-                onClick={() => setSelectedEntry(je)}
-              />
-            ))
+            <>
+              {(journalEntries.data ?? []).map((je, i) => (
+                <JournalEntryCard
+                  key={je.id}
+                  entry={je}
+                  delay={Math.min(i, 20) * 0.06}
+                  onClick={() => setSelectedEntry(je)}
+                />
+              ))}
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-[13px] text-gray-500">
+                <span>
+                  Visar {(journalEntries.data ?? []).length} av {journalTotal} verifikationer
+                </span>
+                {journalPages.hasNextPage ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={journalPages.isFetchingNextPage}
+                    onClick={() => void journalPages.fetchNextPage()}
+                  >
+                    Visa fler
+                  </Button>
+                ) : null}
+              </div>
+            </>
           )}
         </div>
       )}

@@ -78,7 +78,12 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { ReconciliationService } from './reconciliation.service'
-import { filIdentitet } from './bank-import-identity'
+import {
+  beräknaImportavtryck,
+  bgMaxIdentitet,
+  filIdentitet,
+  hashaBytes,
+} from './bank-import-identity'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -105,18 +110,43 @@ function csv(rader: Array<[string, string, string, string]>): Buffer {
   )
 }
 
-// BgMax: 80 teckens fastformat. TC 05 bär sektionsdatum (pos 22-29), TC 20 bär
-// OCR (pos 12-36) och belopp i öre (pos 37-54) — samma offsets som parsern.
+// BgMax enligt Bankgirot, "Bankgiro Inbetalningar – Teknisk manual", okt 2023 (G7, FORTNOX-100):
+// TK05 öppnar avsnittet (valuta i pos 23–25, INGET datum), TK20 bär referens (pos 13–37, högerställd)
+// och belopp i öre (pos 38–55), TK15 avslutar avsnittet med BETALNINGSDAG (pos 38–45), insatt
+// belopp (51–68) och antal poster (72–79). Den tidigare fixturen lade datumet i TK05 — en layout
+// som bara parsern kände till och som därför inte kunde avslöja att riktiga filer saknar det.
 function bgmax(datum: string, poster: Array<{ ocr: string; belopp: number }>): Buffer {
-  const tc05 = ('05' + '0'.repeat(20) + datum.replace(/-/g, '')).padEnd(80, ' ')
-  const rader = poster.map(
-    ({ ocr, belopp }) =>
-      ('20' +
-        '0'.repeat(10) +
-        ocr.padEnd(25, ' ') +
-        String(Math.round(belopp * 100)).padStart(18, '0')) as string,
+  const h0 = (v: string | number, n: number) => String(v).padStart(n, '0').slice(-n)
+  const tk05 = ('05' + h0('56781230', 10) + ' '.repeat(10) + 'SEK').padEnd(80, ' ')
+  const rader = poster.map(({ ocr, belopp }, i) =>
+    (
+      '20' +
+      h0('0', 10) +
+      ocr.padStart(25, ' ') +
+      h0(Math.round(belopp * 100), 18) +
+      (ocr ? '2' : '0') +
+      '1' +
+      h0(i + 1, 12) +
+      '0'
+    ).padEnd(80, ' '),
   )
-  return Buffer.from([tc05, ...rader].join('\n'), 'utf8')
+  const summa = poster.reduce((s, p) => s + Math.round(p.belopp * 100), 0)
+  const tk15 = (
+    '15' +
+    h0('1234000123456', 35) +
+    datum.replace(/-/g, '') +
+    h0(1, 5) +
+    h0(summa, 18) +
+    'SEK' +
+    h0(poster.length, 8)
+  ).padEnd(80, ' ')
+  // Filens ram (tabell 2 och 17): startpost och slutpost med antal betalningar/avdrag/extra/insättningar.
+  const tk01 = ('01' + 'BGMAX'.padEnd(20, ' ') + '01' + '20261201080000000000' + 'P').padEnd(
+    80,
+    ' ',
+  )
+  const tk70 = ('70' + h0(poster.length, 8) + h0(0, 8) + h0(0, 8) + h0(1, 8)).padEnd(80, ' ')
+  return Buffer.from([tk01, tk05, ...rader, tk15, tk70].join('\n'), 'utf8')
 }
 
 describe('förutsättningar', () => {
@@ -332,6 +362,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
   })
 
   afterAll(async () => {
+    await prisma.user.deleteMany({ where: { organizationId: orgId } })
     await prisma.lease.deleteMany({ where: { organizationId: orgId } })
     await prisma.tenant.deleteMany({ where: { organizationId: orgId } })
     await prisma.unit.deleteMany({ where: { property: { organizationId: orgId } } })
@@ -847,4 +878,382 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
     // unika villkoret kan inte slå ihop dem.
     expect(new Set(rader.map((r) => r.identityKey)).size).toBe(2)
   })
+
+  // ── PARSER-006: filens ram och stoppade pengar genom HELA importvägen ─────────
+  it('PARSER-006 — avklippt BgMax (utan TK70) avvisas med skälet; inga rader, underlaget flyttas inte', async () => {
+    const hel = bgmax('2026-11-02', [{ ocr: ocrA, belopp: HYRA }]).toString('utf8')
+    const avklippt = hel.split('\n').slice(0, -1).join('\n')
+    await expect(
+      service.importBgMaxFile(Buffer.from(avklippt, 'utf8'), 'avklippt.txt', orgId, kontoId),
+    ).rejects.toThrow(/Inga giltiga BgMax-poster.*saknar slutpost \(TK70\)/)
+    expect(await prisma.bankTransaction.count({ where: { organizationId: orgId } })).toBe(0)
+    expect(await färskhet()).toBeNull()
+  })
+
+  it('PARSER-006 — stoppad betalare (TK21) importeras inte, och underlaget stannar dagen före stoppet', async () => {
+    const h0 = (v: string | number, n: number) => String(v).padStart(n, '0').slice(-n)
+    const p = (tk: string, bg: string, ref: string, öre: number, lopnr: number) =>
+      (tk + h0(bg, 10) + ref.padStart(25, ' ') + h0(öre, 18) + '21' + h0(lopnr, 12) + '0').padEnd(
+        80,
+        ' ',
+      )
+    const tk05 = ('05' + h0('56781230', 10) + ' '.repeat(10) + 'SEK').padEnd(80, ' ')
+    const tk15 = (dag: string, öre: number, antal: number, nr: number) =>
+      (
+        '15' +
+        h0('1234000123456', 35) +
+        dag +
+        h0(nr, 5) +
+        h0(öre, 18) +
+        'SEK' +
+        h0(antal, 8)
+      ).padEnd(80, ' ')
+    const fil = [
+      ('01' + 'BGMAX'.padEnd(20, ' ') + '01' + '20261201080000000000' + 'P').padEnd(80, ' '),
+      tk05,
+      p('20', '0', ocrA, HYRA * 100, 1),
+      p('20', '51234567', ocrB, HYRA * 100 + 10000, 2),
+      p('21', '51234567', 'KREDIT-1', 10000, 3),
+      tk15('20260902', HYRA * 100 * 2, 3, 1),
+      tk05,
+      p('20', '0', ocrC, HYRA * 100, 4),
+      tk15('20260930', HYRA * 100, 1, 2),
+      ('70' + h0(2 + 1, 8) + h0(1, 8) + h0(0, 8) + h0(2, 8)).padEnd(80, ' '),
+    ].join('\n')
+    const r = await service.importBgMaxFile(Buffer.from(fil, 'utf8'), 'stopp.txt', orgId, kontoId)
+    expect(r.imported).toBe(2)
+    expect(r.errors.join(' ')).toMatch(/bankgiro 0051234567 .* avdrag \(TK21\)/)
+    const rader = await prisma.bankTransaction.findMany({
+      where: { organizationId: orgId },
+      select: { rawOcr: true, date: true },
+      orderBy: { date: 'asc' },
+    })
+    expect(rader.map((x) => [x.rawOcr, x.date.toISOString().slice(0, 10)])).toEqual([
+      [ocrA, '2026-09-02'],
+      [ocrC, '2026-09-30'],
+    ])
+    // Datumen ligger före provdagen: underlaget kan aldrig gå förbi idag.
+    // Pengarna från betalaren med avdrag finns på banken men inte i Eveno → underlaget
+    // får inte påstå att 2 sep är komplett (annars kan en påminnelse gå till den som betalat).
+    expect((await färskhet())?.toISOString().slice(0, 10)).toBe('2026-09-01')
+  })
+
+  // ── FS1 (C2 REVIEW-FILESET-001-v2): ÖVERGÅNGEN från 848d5dab-logiken ────────────────
+  //
+  // Före G7 lagrade BgMax-importen IMPORTTIDPUNKTEN som radens datum (new Date(), med
+  // klockslag). Efter G7 bär raden betalningsdagen ur TK15 (UTC-midnatt) — och identiteten
+  // innehåller datumet. Samma betalning läst före och efter uppgradering får alltså olika
+  // identitet. Raderna nedan sås som 848d5dab hade lagrat dem (mätt i kor-9: date ≈ createdAt,
+  // ej midnatt, beskrivning "BgMax inbetalning (OCR …)").
+  const IMPORTTID = new Date('2026-09-05T10:11:12.345Z') // 848d5dab: importögonblicket
+  const PAYDAG = '2026-09-02'
+  async function gammalBgMaxRad(opts: {
+    ocr: string
+    belopp: number
+    konto: string | null
+    date?: Date
+    createdAt?: Date
+    org?: string
+  }) {
+    const belopp = new Prisma.Decimal(opts.belopp.toFixed(2))
+    const datum = opts.date ?? IMPORTTID
+    return prisma.bankTransaction.create({
+      data: {
+        organizationId: opts.org ?? orgId,
+        bankAccountId: opts.konto,
+        date: datum,
+        createdAt: opts.createdAt ?? new Date(datum.getTime() + 4),
+        description: `BgMax inbetalning (OCR ${opts.ocr})`,
+        amount: belopp,
+        rawOcr: opts.ocr,
+        status: 'UNMATCHED',
+        identityKey: opts.konto
+          ? bgMaxIdentitet({
+              bankAccountId: opts.konto,
+              date: IMPORTTID,
+              amount: belopp,
+              rawOcr: opts.ocr,
+            }).key
+          : '',
+        identitySeq: 0,
+      },
+    })
+  }
+  const raderFör = (ocr: string) =>
+    prisma.bankTransaction.findMany({
+      where: { organizationId: orgId, rawOcr: ocr },
+      select: { date: true, identityReviewAt: true, identityReviewReason: true, status: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+  it('FS1-a — samma bytes igen efter ett lyckat försök spelas upp: 0 nya rader', async () => {
+    const fil = bgmax(PAYDAG, [{ ocr: ocrA, belopp: 7100 }])
+    await service.importBgMaxFile(fil, 'fs1a.txt', orgId, kontoId)
+    const igen = await service.importBgMaxFile(fil, 'fs1a.txt', orgId, kontoId)
+    expect(igen.forsok?.replayed).toBe(true)
+    expect(await raderFör(ocrA)).toHaveLength(1)
+  })
+
+  it('FS1-b — annan fil med en betalning som 848d5dab redan lagrat: ingen tyst dubblett, raden granskas', async () => {
+    await gammalBgMaxRad({ ocr: ocrB, belopp: 7200, konto: kontoId })
+    const r = await service.importBgMaxFile(
+      bgmax(PAYDAG, [{ ocr: ocrB, belopp: 7200 }]),
+      'fs1b-ny-fil.txt',
+      orgId,
+      kontoId,
+    )
+    expect(r.behoverGranskas).toBe(1)
+    expect(r.autoMatched).toBe(0)
+    const rader = await raderFör(ocrB)
+    expect(rader).toHaveLength(2)
+    expect(rader[1]!.identityReviewReason).toBe('BGMAX_DATUMOVERGANG')
+    expect(rader[1]!.date.toISOString().slice(0, 10)).toBe(PAYDAG)
+  })
+
+  it('FS1-c — PARTIELLT 848d5dab-försök som tas över med samma bytes: samma granskning, ingen dubblett', async () => {
+    const fil = bgmax(PAYDAG, [{ ocr: ocrC, belopp: 7300 }])
+    await gammalBgMaxRad({ ocr: ocrC, belopp: 7300, konto: kontoId })
+    await prisma.bankImportAttempt.create({
+      data: {
+        organizationId: orgId,
+        bankAccountId: kontoId,
+        kind: 'BGMAX',
+        fileName: 'fs1c.txt',
+        contentHash: hashaBytes(fil),
+        mappingHash: hashaBytes(Buffer.from('', 'utf8')),
+        fingerprint: beräknaImportavtryck({
+          organizationId: orgId,
+          mål: kontoId,
+          kind: 'BGMAX',
+          contentHash: hashaBytes(fil),
+          mappingHash: hashaBytes(Buffer.from('', 'utf8')),
+        }),
+        status: 'PARTIAL',
+        finishedAt: IMPORTTID,
+      },
+    })
+    const r = await service.importBgMaxFile(fil, 'fs1c.txt', orgId, kontoId)
+    expect(r.forsok?.replayed).toBe(false)
+    const rader = await raderFör(ocrC)
+    expect(rader).toHaveLength(2)
+    expect(rader[1]!.identityReviewReason).toBe('BGMAX_DATUMOVERGANG')
+  })
+
+  it('FS1-d — äldre historik UTAN konto och utan filkvitto: samma granskning', async () => {
+    const ocrD = generateOcrNumber(340099)
+    await gammalBgMaxRad({ ocr: ocrD, belopp: 7400, konto: null })
+    await service.importBgMaxFile(
+      bgmax(PAYDAG, [{ ocr: ocrD, belopp: 7400 }]),
+      'fs1d.txt',
+      orgId,
+      kontoId,
+    )
+    const rader = await raderFör(ocrD)
+    expect(rader).toHaveLength(2)
+    expect(rader[1]!.identityReviewReason).toBe('BGMAX_DATUMOVERGANG')
+  })
+
+  it('FS1 kontroll — en VERKLIGT ny betalning (ny rad efter G7, midnatt) granskas inte i onödan', async () => {
+    await service.importBgMaxFile(
+      bgmax('2026-09-01', [{ ocr: ocrA, belopp: 7500 }]),
+      'fs1-ny1.txt',
+      orgId,
+      kontoId,
+    )
+    const r = await service.importBgMaxFile(
+      bgmax(PAYDAG, [{ ocr: ocrA, belopp: 7500 }]),
+      'fs1-ny2.txt',
+      orgId,
+      kontoId,
+    )
+    expect(r.behoverGranskas).toBe(0)
+    expect((await raderFör(ocrA)).every((x) => x.identityReviewReason === null)).toBe(true)
+  })
+
+  // ── FS1 v2 (BYGGLEDARE-OVERGANG-016): proveniens i stället för heuristik ──────────
+  // C2 MOTPROV-FS1-015 visade att 45 dagar, midnatt och createdAt≈date släppte igenom
+  // verkliga äldre rader. Regeln läser nu bara proveniensen (NULL = okänd).
+  let fs1v2Löpnr = 0 // fast sekvens (C2: ingen Math.random i fixturen)
+  it.each([
+    [
+      'sen äldre import (52 dagar efter betalning)',
+      new Date('2026-10-24T09:00:00.000Z'),
+      undefined,
+    ],
+    ['äldre rad exakt UTC-midnatt', new Date('2026-09-05T00:00:00.000Z'), undefined],
+    ['createdAt långt från date', IMPORTTID, new Date('2026-09-20T12:00:00.000Z')],
+    // C2 R2/P4: import 00:30 svensk tid PÅ betalningsdagen = 22:30Z dagen före i UTC.
+    [
+      'import 00:30 svensk tid på betalningsdagen (22:30Z dagen före)',
+      new Date('2026-09-01T22:30:00.000Z'),
+      undefined,
+    ],
+  ])('FS1 v2 — %s: granskning, inte tyst dubblett', async (_namn, datum, skapad) => {
+    const ocr = generateOcrNumber(340200 + ++fs1v2Löpnr)
+    await gammalBgMaxRad({
+      ocr,
+      belopp: 7600,
+      konto: kontoId,
+      date: datum,
+      ...(skapad ? { createdAt: skapad } : {}),
+    })
+    const r = await service.importBgMaxFile(
+      bgmax(PAYDAG, [{ ocr, belopp: 7600 }]),
+      `fs1v2-${ocr}.txt`,
+      orgId,
+      kontoId,
+    )
+    expect(r.behoverGranskas).toBe(1)
+    const rader = await raderFör(ocr)
+    // Ordningen följer inte createdAt här (den äldre radens createdAt kan ligga senare).
+    expect(rader.map((x) => x.identityReviewReason).sort()).toEqual(
+      ['BGMAX_DATUMOVERGANG', null].sort(),
+    )
+  })
+
+  it('FS1 v2 — rad med verifierad proveniens (TK15) utlöser aldrig regeln; omsänd fil spelas upp', async () => {
+    const ocr = generateOcrNumber(340777)
+    const fil1 = bgmax(PAYDAG, [{ ocr, belopp: 7700 }])
+    await service.importBgMaxFile(fil1, 'fs1v2-ny1.txt', orgId, kontoId)
+    const lagrad = await prisma.bankTransaction.findFirstOrThrow({
+      where: { organizationId: orgId, rawOcr: ocr },
+      select: { bgmaxDateSource: true },
+    })
+    expect(lagrad.bgmaxDateSource).toBe('TK15')
+    expect(
+      (await service.importBgMaxFile(fil1, 'fs1v2-ny1.txt', orgId, kontoId)).forsok?.replayed,
+    ).toBe(true)
+    const r = await service.importBgMaxFile(
+      bgmax('2026-09-01', [{ ocr, belopp: 7700 }]),
+      'fs1v2-ny2.txt',
+      orgId,
+      kontoId,
+    )
+    expect(r.behoverGranskas).toBe(0)
+  })
+
+  it('FS1 v2 — isolering: annan organisation och annat konto utlöser inte; kontolös äldre rad gör det', async () => {
+    const ocr = generateOcrNumber(340888)
+    const annanOrg = (
+      await prisma.organization.create({
+        data: {
+          name: `fs1-annan-${randomUUID()}`,
+          email: 'a@example.se',
+          street: 'a',
+          postalCode: '11111',
+          city: 'S',
+        },
+        select: { id: true },
+      })
+    ).id
+    const annatKonto = (
+      await prisma.bankAccount.create({
+        data: { organizationId: orgId, name: 'Annat', accountNumber: '9999-1' },
+        select: { id: true },
+      })
+    ).id
+    await gammalBgMaxRad({ ocr, belopp: 7800, konto: null, org: annanOrg })
+    await gammalBgMaxRad({ ocr, belopp: 7800, konto: annatKonto })
+    let r = await service.importBgMaxFile(
+      bgmax(PAYDAG, [{ ocr, belopp: 7800 }]),
+      'fs1v2-iso1.txt',
+      orgId,
+      kontoId,
+    )
+    expect(r.behoverGranskas).toBe(0)
+    const ocr2 = generateOcrNumber(340889)
+    await gammalBgMaxRad({ ocr: ocr2, belopp: 7800, konto: null })
+    r = await service.importBgMaxFile(
+      bgmax(PAYDAG, [
+        { ocr: ocr2, belopp: 7800 },
+        { ocr: ocr2, belopp: 7800 },
+      ]),
+      'fs1v2-iso2.txt',
+      orgId,
+      kontoId,
+    )
+    // Förekomstparitet: EN kontolös äldre rad täcker första förekomsten → den granskas;
+    // filens andra förekomst har ingen motsvarighet bland de okända → den lagras som ny.
+    expect(r.behoverGranskas).toBe(1)
+    expect(r.imported).toBe(2)
+    await prisma.bankTransaction.deleteMany({ where: { organizationId: annanOrg } })
+    await prisma.organization.delete({ where: { id: annanOrg } })
+  })
+
+  it('FS1 v2 — samtidighet: två samtidiga importer av olika filer ger granskning, ingen tyst dubblett', async () => {
+    const ocr = generateOcrNumber(340999)
+    await gammalBgMaxRad({ ocr, belopp: 7900, konto: kontoId })
+    await Promise.all([
+      service
+        .importBgMaxFile(bgmax(PAYDAG, [{ ocr, belopp: 7900 }]), 'fs1v2-s1.txt', orgId, kontoId)
+        .catch((e: unknown) => e),
+      service
+        .importBgMaxFile(
+          bgmax(PAYDAG, [
+            { ocr, belopp: 7900 },
+            { ocr: ocrB, belopp: 1 },
+          ]),
+          'fs1v2-s2.txt',
+          orgId,
+          kontoId,
+        )
+        .catch((e: unknown) => e),
+    ])
+    const rader = await raderFör(ocr)
+    expect(
+      rader.filter((x) => x.identityReviewReason === null && x.status === 'MATCHED'),
+    ).toHaveLength(0)
+    expect(rader.slice(1).every((x) => x.identityReviewReason === 'BGMAX_DATUMOVERGANG')).toBe(true)
+  })
+
+  it.each([
+    ['avin redan reglerad av den äldre raden', true],
+    ['avin öppen och äldre raden omatchad', false],
+  ])(
+    'FS1 v2 EFFEKT — %s: misstänkt rad allokerar inte och skriver inget andra betalningsverifikat',
+    async (_namn, reglerad) => {
+      const ocrE = generateOcrNumber(341000 + (reglerad ? 1 : 2))
+      const aviId = await avi({
+        tenantId: tenantA,
+        leaseId: leaseA,
+        unitId: unitA,
+        ocr: ocrE,
+        månad: reglerad ? 8 : 7,
+      })
+      const gammal = await gammalBgMaxRad({ ocr: ocrE, belopp: HYRA, konto: kontoId })
+      if (reglerad) {
+        const u = await prisma.user.create({
+          data: {
+            organizationId: orgId,
+            email: `fs1-${randomUUID()}@example.invalid`,
+            firstName: 'F',
+            lastName: 'S',
+            role: 'OWNER',
+          },
+          select: { id: true },
+        })
+        await service.manualMatch(gammal.id, { rentNoticeId: aviId }, orgId, u.id)
+      }
+      const föreAllok = await prisma.rentNoticePayment.count({ where: { rentNoticeId: aviId } })
+      const föreVer = await prisma.journalEntry.count({
+        where: { organizationId: orgId, source: 'PAYMENT' },
+      })
+      const r = await service.importBgMaxFile(
+        bgmax(PAYDAG, [{ ocr: ocrE, belopp: HYRA }]),
+        `fs1v2-eff-${reglerad}.txt`,
+        orgId,
+        kontoId,
+      )
+      expect(r.behoverGranskas).toBe(1)
+      expect(r.autoMatched).toBe(0)
+      expect(await prisma.rentNoticePayment.count({ where: { rentNoticeId: aviId } })).toBe(
+        föreAllok,
+      )
+      expect(
+        await prisma.journalEntry.count({ where: { organizationId: orgId, source: 'PAYMENT' } }),
+      ).toBe(föreVer)
+      const ny = (await raderFör(ocrE))[1]!
+      expect([ny.identityReviewReason, ny.status]).toEqual(['BGMAX_DATUMOVERGANG', 'UNMATCHED'])
+    },
+  )
 })

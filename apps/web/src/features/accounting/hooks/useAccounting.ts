@@ -1,9 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ReverseEntryInput } from '@eken/shared'
 import {
   fetchAccounts,
   seedAccounts,
   fetchJournalEntries,
+  fetchJournalPage,
   fetchPeriods,
   fetchPeriodPrecheck,
   fetchPeriodHistory,
@@ -19,7 +20,11 @@ import {
   createSupplierInvoice,
   paySupplierInvoice,
   cancelSupplierInvoice,
+  getSupplierInvoiceDetails,
+  adjustSupplierInvoiceVat,
+  undoSupplierPayment,
 } from '../api/accounting.api'
+import type { JournalFilter } from '../api/accounting.api'
 
 export function useAccounts() {
   return useQuery({
@@ -35,6 +40,22 @@ export function useSeedAccounts() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['accounting', 'accounts'] })
     },
+  })
+}
+
+/** F-LIST-1: huvudboken sidvis (100 åt gången) med totalantal. */
+export function useJournalPages(filters?: JournalFilter) {
+  return useInfiniteQuery({
+    // UNDER prefixet ['accounting','journal']: årsstängning, rättelse och manuell post
+    // invaliderar det prefixet. Utan det syntes nya verifikat först efter omladdning
+    // (CI E2E close-fiscal-year, BYGGLEDARE-CI-021).
+    queryKey: ['accounting', 'journal', 'page', filters],
+    queryFn: ({ pageParam }) => fetchJournalPage({ ...filters, offset: pageParam, limit: 100 }),
+    initialPageParam: 0,
+    getNextPageParam: (sida) =>
+      sida.offset + sida.entries.length < sida.total
+        ? sida.offset + sida.entries.length
+        : undefined,
   })
 }
 
@@ -243,4 +264,23 @@ export function usePaySupplierInvoice() {
 export function useCancelSupplierInvoice() {
   const invalidera = useInvalideraLeverantorsfakturor()
   return useMutation({ mutationFn: cancelSupplierInvoice, onSuccess: invalidera })
+}
+
+/** TESTKUND-041: en faktura med momsval, justeringar och betalningsled. */
+export function useSupplierInvoiceDetails(id: string | null) {
+  return useQuery({
+    queryKey: ['accounting', 'supplier-invoices', 'detalj', id],
+    queryFn: () => getSupplierInvoiceDetails(id!),
+    enabled: !!id,
+  })
+}
+
+export function useAdjustSupplierInvoiceVat() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: adjustSupplierInvoiceVat, onSuccess: invalidera })
+}
+
+export function useUndoSupplierPayment() {
+  const invalidera = useInvalideraLeverantorsfakturor()
+  return useMutation({ mutationFn: undoSupplierPayment, onSuccess: invalidera })
 }

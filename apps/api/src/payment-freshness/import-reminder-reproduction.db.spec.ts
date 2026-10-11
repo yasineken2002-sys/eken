@@ -29,7 +29,12 @@ import { Psd2SyncService } from '../psd2/psd2-sync.service'
 import type { BankDataProvider } from '../psd2/psd2.types'
 import { BankStatementImportService } from '../reconciliation/bank-statement-import.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
-import { PaymentDataPausedError, PaymentFreshnessService } from './payment-freshness.service'
+import {
+  IdentityReviewPausedError,
+  ImportStopPausedError,
+  PaymentDataPausedError,
+  PaymentFreshnessService,
+} from './payment-freshness.service'
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const NOW = new Date('2026-09-13T12:00:00.000Z')
@@ -2194,4 +2199,311 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
       (await db.organization.findUniqueOrThrow({ where: { id: orgId! } })).paymentImportStartedAt,
     ).toBeNull()
   }, 15_000)
+
+  // ── IMPORTSTOPP-009 (FORTNOX-100): känt olöst importstopp pausar VERKLIG påminnelse ──
+  //
+  // C2:s fall A (tolerans), B (monotont datum) och C (senare fil/annat konto) — mätt på
+  // avgift, verifikat, händelse och kö, inte bara grindens beslut. Positiv kontroll: efter
+  // uttrycklig upplösning går påminnelsen. BgMax byggs ur Bankgirots manual (okt 2023).
+  function bgmax(
+    avsnitt: Array<{
+      dag: string
+      poster: Array<{ ocr: string; öre: number; bg?: string; avdragÖre?: number }>
+    }>,
+  ): Buffer {
+    const h0 = (v: string | number, n: number) => String(v).padStart(n, '0').slice(-n)
+    const rader = [
+      ('01' + 'BGMAX'.padEnd(20, ' ') + '01' + '20260913080000000000' + 'P').padEnd(80, ' '),
+    ]
+    let lopnr = 1
+    let bet = 0
+    let avd = 0
+    avsnitt.forEach((a, i) => {
+      rader.push(('05' + h0('50501055', 10) + ' '.repeat(10) + 'SEK').padEnd(80, ' '))
+      let summa = 0
+      let antal = 0
+      for (const p of a.poster) {
+        rader.push(
+          (
+            '20' +
+            h0(p.bg ?? '0', 10) +
+            p.ocr.padStart(25, ' ') +
+            h0(p.öre, 18) +
+            '21' +
+            h0(lopnr++, 12) +
+            '0'
+          ).padEnd(80, ' '),
+        )
+        summa += p.öre
+        antal++
+        bet++
+        if (p.avdragÖre) {
+          rader.push(
+            (
+              '21' +
+              h0(p.bg ?? '0', 10) +
+              'KREDIT'.padStart(25, ' ') +
+              h0(p.avdragÖre, 18) +
+              '21' +
+              h0(lopnr++, 12) +
+              '0' +
+              '0'
+            ).padEnd(80, ' '),
+          )
+          summa -= p.avdragÖre
+          antal++
+          avd++
+        }
+      }
+      rader.push(
+        (
+          '15' +
+          h0('1234000123456', 35) +
+          a.dag.replace(/-/g, '') +
+          h0(i + 1, 5) +
+          h0(summa, 18) +
+          'SEK' +
+          h0(antal, 8)
+        ).padEnd(80, ' '),
+      )
+    })
+    rader.push(('70' + h0(bet, 8) + h0(avd, 8) + h0(0, 8) + h0(avsnitt.length, 8)).padEnd(80, ' '))
+    return Buffer.from(rader.join('\n') + '\n')
+  }
+  // En okänd OCR: raden lagras omatchad och rör inte provets avi.
+  const okändOcr = '4444444444'
+  const medStoppad = (stoppDag: string, senareDag: string) =>
+    bgmax([
+      {
+        dag: stoppDag,
+        poster: [{ ocr: '5555555555', öre: 910800, bg: '51234567', avdragÖre: 10000 }],
+      },
+      { dag: senareDag, poster: [{ ocr: okändOcr, öre: 12300 }] },
+    ])
+  const öppnaStopp = () =>
+    db.bankImportStop.findMany({ where: { organizationId: orgId!, resolvedAt: null } })
+  async function användare(roll: 'OWNER' | 'VIEWER' = 'OWNER') {
+    return (
+      await db.user.create({
+        data: {
+          organizationId: orgId!,
+          email: `is-${randomUUID()}@example.invalid`,
+          firstName: 'Is',
+          lastName: 'Stopp',
+          role: roll,
+        },
+        select: { id: true },
+      })
+    ).id
+  }
+  async function städaAnvändare() {
+    await db.user.deleteMany({ where: { organizationId: orgId! } })
+  }
+
+  it('IS-A TOLERANS: stopp 09-12 med färskt tak 09-11 pausar verklig påminnelse; upplösning släpper den', async () => {
+    const r = await importer.importBgMaxFile(
+      medStoppad('2026-09-12', '2026-09-13'),
+      'is-a.txt',
+      orgId!,
+      kontoId!,
+    )
+    expect(r.imported).toBe(1)
+    const stopp = await öppnaStopp()
+    expect(
+      stopp.map((x) => [
+        x.scope,
+        x.reasonCode,
+        x.paymentDate?.toISOString().slice(0, 10),
+        Number(x.amount),
+        x.payerBankgiro,
+        x.fileName,
+      ]),
+    ).toEqual([['BETALARE', 'AVDRAG_BETALARE', '2026-09-12', 9008, '0051234567', 'is-a.txt']])
+    const pausad = await runCron('IS-A', 1)
+    expect(pausad.through).toBe('2026-09-11')
+    expect(pausad.evaluateStaleDiagnostic).toBe(false) // färskt — ändå pausad
+    expectPaused(pausad)
+    // Positiv kontroll: uttrycklig, behörig upplösning med motivering.
+    const ägare = await användare()
+    await importer.resolveImportStop(
+      stopp[0]!.id,
+      orgId!,
+      ägare,
+      'Betalare 5123-4567 registrerad manuellt mot kreditfaktura',
+    )
+    const löst = await db.bankImportStop.findUniqueOrThrow({ where: { id: stopp[0]!.id } })
+    expect([löst.resolvedById, löst.resolutionNote, löst.resolvedAt?.toISOString()]).toEqual([
+      ägare,
+      'Betalare 5123-4567 registrerad manuellt mot kreditfaktura',
+      NOW.toISOString(),
+    ])
+    expectEffect(await runCron('IS-A-efter', 1))
+    await städaAnvändare()
+  })
+
+  it('IS-B MONOTONT: befintligt färskt datum + fil med stopp → datumet består men påminnelsen pausas', async () => {
+    await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+    await importer.importBgMaxFile(
+      medStoppad('2026-09-12', '2026-09-12'),
+      'is-b.txt',
+      orgId!,
+      kontoId!,
+    )
+    const r = await runCron('IS-B', 1)
+    expect(r.through).toBe(TODAY)
+    expectPaused(r)
+  })
+
+  it('IS-C SENARE FIL / ANNAT KONTO: komplett fil efteråt på annat konto häver inte stoppet', async () => {
+    await importer.importBgMaxFile(
+      medStoppad('2026-09-12', '2026-09-12'),
+      'is-c.txt',
+      orgId!,
+      kontoId!,
+    )
+    const annat = (
+      await db.bankAccount.create({
+        data: { organizationId: orgId!, name: 'Annat konto' },
+        select: { id: true },
+      })
+    ).id
+    await importer.importBankStatement(CSV_WITHDRAWAL, 'senare.csv', orgId!, annat)
+    const r = await runCron('IS-C', 1)
+    expect(r.through).toBe(TODAY)
+    expectPaused(r)
+    expect((await öppnaStopp()).length).toBe(1)
+  })
+
+  it('IS-D OLÄSBAR FIL: avklippt BgMax lagrar filstopp före 400 och pausar trots färskt datum', async () => {
+    await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+    const hel = bgmax([{ dag: '2026-09-12', poster: [{ ocr: okändOcr, öre: 12300 }] }]).toString()
+    const avklippt = Buffer.from(hel.split('\n').slice(0, -2).join('\n') + '\n')
+    await expect(
+      importer.importBgMaxFile(avklippt, 'avklippt.txt', orgId!, kontoId!),
+    ).rejects.toThrow(/saknar slutpost/)
+    const stopp = await öppnaStopp()
+    expect(stopp.map((x) => [x.scope, x.reasonCode, x.paymentDate, x.amount])).toEqual([
+      ['FIL', 'FILRAM', null, null],
+    ])
+    expectPaused(await runCron('IS-D'))
+  })
+
+  it('IS-E REPLAY/SAMTIDIGHET: samma bytes tre gånger (två samtidigt) ger ett stopp; löst stopp öppnas inte av samma fil', async () => {
+    const fil = medStoppad('2026-09-12', '2026-09-13')
+    await Promise.all([
+      importer.importBgMaxFile(fil, 'is-e.txt', orgId!, kontoId!).catch((e: unknown) => e),
+      importer.importBgMaxFile(fil, 'is-e.txt', orgId!, kontoId!).catch((e: unknown) => e),
+    ])
+    await importer.importBgMaxFile(fil, 'is-e.txt', orgId!, kontoId!).catch((e: unknown) => e)
+    const alla = await db.bankImportStop.findMany({ where: { organizationId: orgId! } })
+    expect(alla).toHaveLength(1)
+    const ägare = await användare()
+    await importer.resolveImportStop(
+      alla[0]!.id,
+      orgId!,
+      ägare,
+      'Hanterad manuellt mot kreditfakturan',
+    )
+    await expect(
+      importer.resolveImportStop(alla[0]!.id, orgId!, ägare, 'Andra försöket att lösa samma stopp'),
+    ).rejects.toThrow(/redan markerat/)
+    // Ny import av samma bytes (även ett övertaget försök) återöppnar inte det hanterade stoppet.
+    await importer.importBgMaxFile(fil, 'is-e.txt', orgId!, kontoId!).catch((e: unknown) => e)
+    expect(await öppnaStopp()).toHaveLength(0)
+    expect(await db.bankImportStop.count({ where: { organizationId: orgId! } })).toBe(1)
+    await städaAnvändare()
+  })
+
+  it('IS-F ORG/MOTIVERING: annan organisations stopp pausar inte och kan inte lösas härifrån; kort motivering nekas', async () => {
+    const annan = await db.organization.create({
+      data: {
+        name: 'IS annan ' + randomUUID(),
+        email: 'a@example.invalid',
+        street: 'g',
+        city: 'c',
+        postalCode: '11111',
+      },
+    })
+    extraOrgIds.push(annan.id)
+    const annatKonto = (
+      await db.bankAccount.create({
+        data: { organizationId: annan.id, name: 'K' },
+        select: { id: true },
+      })
+    ).id
+    await importer.importBgMaxFile(
+      medStoppad('2026-09-12', '2026-09-12'),
+      'annan.txt',
+      annan.id,
+      annatKonto,
+    )
+    const främmande = await db.bankImportStop.findFirstOrThrow({
+      where: { organizationId: annan.id },
+    })
+    const ägare = await användare()
+    await expect(
+      importer.resolveImportStop(
+        främmande.id,
+        orgId!,
+        ägare,
+        'Försök att lösa annan organisations stopp',
+      ),
+    ).rejects.toThrow(/hittades inte/)
+    await expect(importer.resolveImportStop(främmande.id, annan.id, ägare, 'kort')).rejects.toThrow(
+      /minst 10 tecken/,
+    )
+    // Egen org: färskt underlag, inget eget stopp → påminnelsen går.
+    await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+    expectEffect(await runCron('IS-F'))
+    // Fakturapåminnelsernas batchfilter (payment-reminder) ser samma paus.
+    expect([...(await freshness.pausadeAvGranskning([orgId!, annan.id]))]).toEqual([annan.id])
+    for (const w of [{ organizationId: annan.id }]) {
+      await db.bankImportStop.deleteMany({ where: w })
+      await db.bankTransaction.deleteMany({ where: w })
+      await db.bankImportAttempt.deleteMany({ where: w })
+    }
+    await städaAnvändare()
+  })
+
+  it('IS-G RÄNTA OCH KUNDFÖRLUST: samma grind nekar med ImportStopPausedError', async () => {
+    await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+    await importer.importBgMaxFile(
+      medStoppad('2026-09-12', '2026-09-12'),
+      'is-g.txt',
+      orgId!,
+      kontoId!,
+    )
+    const fel = await db
+      .$transaction((tx) => freshness.assertAutomaticEffectAllowed(tx, orgId!), {
+        isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+      })
+      .catch((e: unknown) => e)
+    expect(fel).toBeInstanceOf(ImportStopPausedError)
+    expect(fel).toBeInstanceOf(IdentityReviewPausedError)
+    expect((fel as Error).message).toMatch(/1 importstopp är olöst/)
+  })
+
+  // ── FS-4 (FORTNOX-100): blockerade bolag får inga automatiska krav ─────────────
+  // SUSPENDED/CANCELLED blockerar alla autentiserade endpoints: hyresvärden kan inte
+  // importera eller registrera betalningar. Påminnelse och avgift får då inte gå ut.
+  it.each(['SUSPENDED', 'CANCELLED'] as const)(
+    'FS-4 %s: färskt underlag men ingen påminnelse, avgift, verifikat eller kö',
+    async (status) => {
+      await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+      await db.organization.update({ where: { id: orgId! }, data: { status } })
+      const r = await runCron('FS-4-' + status)
+      expect(r.evaluateStaleDiagnostic).toBe(false)
+      expect(r).toMatchObject({ stage: 'NONE', fee: 0, events: 0, vouchers: 0, queued: 0 })
+      expect(r.summary.reminded).toBe(0)
+    },
+  )
+
+  it.each(['PAST_DUE', 'TRIAL'] as const)(
+    'FS-4 positiv kontroll %s: påminnelsen går som för ACTIVE',
+    async (status) => {
+      await importer.importBankStatement(CSV_WITHDRAWAL, 'komplett.csv', orgId!, kontoId!)
+      await db.organization.update({ where: { id: orgId! }, data: { status } })
+      expectEffect(await runCron('FS-4-' + status))
+    },
+  )
 })

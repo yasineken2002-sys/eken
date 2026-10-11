@@ -103,6 +103,10 @@ export const DELETION_STEPS: readonly Step[] = [
   // Inga barn: verifikaten den gav upphov till hänger i JournalEntry, inte i
   // en FK härifrån. Enda kanten är Restrict mot Organization, så den behöver
   // bara ligga före org-steget — inte före något särskilt annat.
+  // TESTKUND-041: momsjusteringen pekar på fakturan (Restrict) och måste bort före den. Utgiftens
+  // momsbeslut har ingen FK (bara organizationId som fält) och kan tas när som helst före org-steget.
+  { model: 'SupplierInvoiceVatAdjustment', restrictAgainst: 'SupplierInvoice', where: byOrg },
+  { model: 'ExpenseVatDecision', restrictAgainst: '', where: byOrg },
   { model: 'SupplierInvoice', restrictAgainst: 'Organization', where: byOrg },
   { model: 'MeterReading', restrictAgainst: 'Meter, Organization', where: byOrg },
   {
@@ -134,6 +138,16 @@ export const DELETION_STEPS: readonly Step[] = [
   // PERMANENT oraderbar (P2003) — en dataskyddsblockerare som hade upptäckts
   // först vid en raderingsbegäran.
   { model: 'LateFiscalYearPosting', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
+  // TESTKUND-008: kontomappningens rader pekar på sin revision med Restrict, och revisionen
+  // på organisationen med Restrict. Rader först, sedan revisioner.
+  {
+    model: 'FortnoxAccountMappingRow',
+    restrictAgainst: 'FortnoxAccountMappingRevision',
+    where: (ids) => ({ revision: byOrg(ids) }),
+  },
+  { model: 'FortnoxAccountMappingRevision', restrictAgainst: 'Organization', where: byOrg },
+  // FÖRE JournalEntry: exportkön pekar på sitt verifikat med Restrict (Fortnox A).
+  { model: 'FortnoxVoucherExport', restrictAgainst: 'JournalEntry, Organization', where: byOrg },
   { model: 'JournalEntrySequence', restrictAgainst: 'Organization', where: byOrg },
   { model: 'JournalEntry', restrictAgainst: 'Organization', where: byOrg },
   { model: 'InvoiceNumberSequence', restrictAgainst: 'Organization', where: byOrg },
@@ -153,6 +167,9 @@ export const DELETION_STEPS: readonly Step[] = [
   // ändrar FK:n till Restrict är vägen redan rätt i stället för att bli röd i
   // drift.
   { model: 'BankImportAttempt', restrictAgainst: '— (Cascade mot Organization)', where: byOrg },
+  // IMPORTSTOPP-009 — kända importstopp. CASCADE mot Organization, SET NULL mot kontot;
+  // står uttryckligen före kontot av samma skäl som importförsöken ovan.
+  { model: 'BankImportStop', restrictAgainst: '— (Cascade mot Organization)', where: byOrg },
   // #F034c — MÅLKONTOT, och det måste ligga EFTER bankraderna och
   // importförsöken. `BankTransaction.bankAccountId` är Restrict mot kontot, så
   // ett konto med bankrader under sig går inte att radera — raderna ovan tar

@@ -49,8 +49,12 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
   const billable = preview?.months.filter((m) => m.status === 'BILLABLE') ?? []
   const beyond = preview?.months.filter((m) => m.status === 'BEYOND_WARNING') ?? []
   const blocked =
-    preview?.months.filter((m) => m.status === 'BEYOND_HARD_CAP' || m.status === 'CLOSED_PERIOD') ??
-    []
+    preview?.months.filter(
+      (m) =>
+        m.status === 'BEYOND_HARD_CAP' ||
+        m.status === 'CLOSED_PERIOD' ||
+        m.status === 'BEFORE_CUTOVER',
+    ) ?? []
 
   const s = preview?.summary
   const selectedCount = (s?.billableCount ?? 0) + (allowBeyond ? (s?.beyondWarningCount ?? 0) : 0)
@@ -236,8 +240,9 @@ export function BackfillConfirmModal({ item, onClose, onDone }: Props) {
               {/* Ej debiterbart (info) */}
               {blocked.length > 0 && (
                 <p className="mt-4 text-[12px] leading-relaxed text-gray-400">
-                  {blocked.length} månad(er) skapas inte: preskriberade (&gt;3 år) eller i stängd
-                  räkenskapsperiod. De hanteras manuellt vid behov.
+                  {blocked.length} månad(er) skapas inte: preskriberade (&gt;3 år), i stängd
+                  räkenskapsperiod eller före brytdatum (fakturerade i tidigare system, hanteras via
+                  öppningspaketet).
                 </p>
               )}
 
@@ -310,6 +315,11 @@ function ResultView({ result }: { result: BackfillResult }) {
       { label: 'Utan godkännande (>12 mån)', value: result.skippedBeyondWarning, tone: 'muted' },
       { label: 'Preskriberade (>3 år)', value: result.blockedHardCap, tone: 'muted' },
       { label: 'Konto saknas i kontoplanen', value: result.skippedMissingAccount, tone: 'warn' },
+      {
+        label: 'Före brytdatum (öppningspaketet)',
+        value: result.skippedBeforeCutover ?? 0,
+        tone: 'muted',
+      },
     ] as const
   ).filter((r) => r.value > 0)
 

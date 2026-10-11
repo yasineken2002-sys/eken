@@ -58,19 +58,29 @@ import { useAuthStore } from '@/stores/auth.store'
 import { useInboxSummary } from '@/features/inbox/hooks/useInbox'
 import { SkarptLageSection } from './components/SkarptLageSection'
 import { ShadowAgentSection } from './components/ShadowAgentSection'
+import { FortnoxPanel } from './components/FortnoxPanel'
+import { FortnoxExportSetup } from './components/FortnoxExportSetup'
+import { FortnoxAccountMapping } from './components/FortnoxAccountMapping'
+import { KundstartPanel } from '../kundstart/components/KundstartPanel'
+import { FortnoxCustomerActivationPanel } from '../kundstart/components/FortnoxCustomerActivationPanel'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
 import { get, del, extractApiError } from '@/lib/api'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 import { tint, TINT } from '@/lib/tint'
 
-type SettingsTab = 'general' | 'plan' | 'security' | 'users'
+export type SettingsTab = 'general' | 'plan' | 'security' | 'users' | 'fortnox' | 'kundstart'
 
 const TABS: { id: SettingsTab; label: string; ownerOnly?: boolean }[] = [
   { id: 'general', label: 'Allmänt' },
   { id: 'plan', label: 'Plan och AI' },
   { id: 'security', label: 'Säkerhet' },
   { id: 'users', label: 'Användare' },
+  // Fortnox A: anslutning och återläsning i skuggläge. Panelen själv kontrollerar
+  // roll och visar "Inte aktiverat" när modulen är inert (serverns status).
+  { id: 'fortnox', label: 'Fortnox' },
+  // KUNDSTART-001: brytdatum och öppningspaket (historisk skuld och depositioner).
+  { id: 'kundstart', label: 'Kundstart' },
 ]
 
 // ─── Form schema ──────────────────────────────────────────────────────────────
@@ -96,12 +106,12 @@ type PaymentFormValues = z.infer<typeof PaymentFormSchema>
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export function SettingsPage() {
+export function SettingsPage({ initialTab = 'general' }: { initialTab?: SettingsTab } = {}) {
   const navigate = useNavigate()
   const { data: org, isLoading, isError } = useOrganization()
   const updateMutation = useUpdateOrganization()
   const uploadMutation = useUploadLogo()
-  const [tab, setTab] = useState<SettingsTab>('general')
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
   const currentUser = useAuthStore((s) => s.user)
   // Antalet skuggförslag hittills — läses ur samma summary som inkorgens KPI,
   // så de två ytorna inte kan säga olika saker om samma mängd.
@@ -435,7 +445,7 @@ export function SettingsPage() {
       <PageHeader title="Inställningar" description="Hantera din organisations uppgifter" />
 
       {/* Tab-väljare */}
-      <div className="mt-6 flex w-fit gap-1 rounded-xl bg-gray-100/70 p-1">
+      <div className="mt-6 flex w-fit max-w-full flex-wrap gap-1 rounded-xl bg-gray-100/70 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -500,6 +510,27 @@ export function SettingsPage() {
             isOwner={currentUser?.role === 'OWNER'}
             onLogout={() => useAuthStore.getState().logout()}
           />
+        </div>
+      )}
+
+      {tab === 'fortnox' && (
+        <div className="mt-5 min-w-0">
+          <FortnoxPanel />
+          <div className="mt-5">
+            <FortnoxAccountMapping />
+          </div>
+          <div className="mt-5">
+            <FortnoxCustomerActivationPanel />
+          </div>
+          <div className="mt-5">
+            <FortnoxExportSetup />
+          </div>
+        </div>
+      )}
+
+      {tab === 'kundstart' && (
+        <div className="mt-5 min-w-0">
+          <KundstartPanel />
         </div>
       )}
 

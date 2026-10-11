@@ -52,6 +52,8 @@ function makeInitialNoticesRig(startDate: Date) {
   }
   const prisma = {
     lease: { findUnique: jest.fn().mockResolvedValue(lease) },
+    // KUNDSTART: ingen historisk deposition ur öppningspaket.
+    deposit: { findFirst: jest.fn().mockResolvedValue(null) },
     organization: {
       // K2: ett giltigt betalningsmål hör numera till en NORMAL organisation —
       // `sendNotices` vägrar köa utan det. `5050-1055` är ett verkligt,
@@ -143,6 +145,8 @@ describe('T1.3 · C: EXPIRED avtal med dagar kvar i månaden aviseras', () => {
   function makeMonthlyRig(leases: unknown[]) {
     const prisma = {
       lease: { findMany: jest.fn().mockResolvedValue(leases) },
+      // KUNDSTART: inget brytdatum = oförändrat beteende.
+      organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },
       // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
       // riggen ger löpande nummer i stället för samma varje gång.
       rentNoticeNumberSequence: {

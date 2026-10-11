@@ -8,6 +8,9 @@ import type {
   ReverseEntryInput,
   ReopenPeriodInput,
   PaySupplierInvoiceInput,
+  SupplierVatTreatment,
+  SupplierInvoiceVatAdjustmentInput,
+  UndoSupplierPaymentInput,
 } from '@eken/shared'
 
 export const fetchAccounts = (): Promise<Account[]> => get<Account[]>('/accounting/accounts')
@@ -21,6 +24,38 @@ export const fetchJournalEntries = (filters?: {
   source?: string
 }): Promise<JournalEntry[]> =>
   get<JournalEntry[]>('/accounting/journal', filters as Record<string, unknown> | undefined)
+
+// ── F-LIST-1 (FORTNOX-100): huvudboken sidvis med totalantal ────────────────
+export interface JournalPage {
+  entries: JournalEntry[]
+  total: number
+  offset: number
+  limit: number
+}
+export type JournalFilter = { from?: string; to?: string; source?: string }
+
+export const fetchJournalPage = (
+  sida: { offset: number; limit: number } & JournalFilter,
+): Promise<JournalPage> =>
+  get<JournalPage>('/accounting/journal-page', sida as Record<string, unknown>)
+
+/**
+ * Alla verifikat i urvalet (upp till `tak`), sida för sida. `total` är alltid hela urvalets
+ * antal — är den större än `entries.length` har taket nåtts, och det ska synas.
+ */
+export async function fetchAllJournalEntries(
+  filter: JournalFilter,
+  tak = 2000,
+): Promise<{ entries: JournalEntry[]; total: number }> {
+  const första = await fetchJournalPage({ ...filter, offset: 0, limit: 200 })
+  const entries = [...första.entries]
+  while (entries.length < Math.min(första.total, tak)) {
+    const nästa = await fetchJournalPage({ ...filter, offset: entries.length, limit: 200 })
+    if (nästa.entries.length === 0) break
+    entries.push(...nästa.entries)
+  }
+  return { entries, total: första.total }
+}
 
 export const fetchJournalEntry = (id: string): Promise<JournalEntry> =>
   get<JournalEntry>(`/accounting/journal/${id}`)
@@ -294,6 +329,73 @@ export interface SupplierInvoice {
   status: 'OPEN' | 'PAID' | 'CANCELLED'
   overdue: boolean
   createdAt: string
+  /** TESTKUND-041: ursprungligt och gällande momsval (null = äldre, ej angivet). */
+  vatTreatment?: SupplierVatTreatment | null
+  vatTreatmentCurrent?: SupplierVatTreatment | null
+}
+
+/** TESTKUND-041: fakturans historik — momsval, justeringar och betalningsled. */
+export interface SupplierInvoiceDetails extends SupplierInvoice {
+  vatTreatmentDecidedById: string | null
+  vatTreatmentDecidedAt: string | null
+  momsvalAngivet: boolean
+  justeringar: Array<{
+    id: string
+    seq: number
+    fran: SupplierVatTreatment
+    till: SupplierVatTreatment
+    belopp: number
+    datum: string
+    skal: string
+    beslutadAv: string
+    roll: string
+    beslutadVid: string
+    journalEntryId: string
+    exportStatus: string
+  }>
+  betalningsled: Array<{
+    k: number
+    journalEntryId: string
+    verifikat: string
+    datum: string
+    gallande: boolean
+    exportStatus: string
+    angring: {
+      journalEntryId: string
+      verifikat: string
+      text: string
+      exportStatus: string
+    } | null
+  }>
+  betalningshistorikFel: string | null
+}
+
+export const getSupplierInvoiceDetails = (id: string) =>
+  get<SupplierInvoiceDetails>(`/accounting/supplier-invoices/${encodeURIComponent(id)}`)
+
+export const adjustSupplierInvoiceVat = (
+  input: SupplierInvoiceVatAdjustmentInput & { id: string },
+) => {
+  const kropp: SupplierInvoiceVatAdjustmentInput = {
+    till: input.till,
+    date: input.date,
+    reason: input.reason,
+    clientKey: input.clientKey,
+  }
+  return post<unknown>(
+    `/accounting/supplier-invoices/${encodeURIComponent(input.id)}/vat-adjustments`,
+    kropp,
+  )
+}
+
+export const undoSupplierPayment = (
+  input: UndoSupplierPaymentInput & { id: string; journalEntryId: string },
+) => {
+  const kropp: UndoSupplierPaymentInput = { reason: input.reason }
+  return post<unknown>(
+    `/accounting/supplier-invoices/${encodeURIComponent(input.id)}/payments/${encodeURIComponent(input.journalEntryId)}/undo`,
+    kropp,
+  )
 }
 
 export const getSupplierInvoices = (status?: 'OPEN' | 'PAID' | 'CANCELLED') =>

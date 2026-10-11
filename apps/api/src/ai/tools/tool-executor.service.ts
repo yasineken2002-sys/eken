@@ -11,6 +11,7 @@ import { noteSubjectCandidates } from '../../common/ai-subjects/ai-subjects.cont
 import { Prisma } from '@prisma/client'
 import type { InvoiceStatus, LeaseStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service'
+import { oppningskomponent } from '../../kundstart/opening-component'
 import { invoiceOutstanding } from '../../invoices/invoice-debt'
 import { bearsOpenDebt, isAtCollection } from '../../invoices/invoice-payment-status'
 import {
@@ -3969,6 +3970,8 @@ export class ToolExecutorService {
               PAID: 'Betald',
               OVERDUE: 'Försenad',
               CANCELLED: 'Avbruten',
+              FAILED: 'Utskick misslyckades',
+              OPENING: 'Historisk skuld före brytdatum (öppningspaket, ej skickad av Eveno)',
             }
             return m[s] ?? s
           }
@@ -4019,6 +4022,8 @@ export class ToolExecutorService {
               IN_PROGRESS: 'Pågår',
               COMPLETED: 'Slutförd',
               CANCELLED: 'Avbruten',
+              FAILED: 'Utskick misslyckades',
+              OPENING: 'Historisk skuld före brytdatum (öppningspaket, ej skickad av Eveno)',
             }
             return m[s] ?? s
           }
@@ -4274,7 +4279,25 @@ export class ToolExecutorService {
           const filters: { from?: string; to?: string } = {}
           if (typeof toolInput.fromDate === 'string') filters.from = toolInput.fromDate
           if (typeof toolInput.toDate === 'string') filters.to = toolInput.toDate
-          const all = await this.accountingService.getJournalEntries(organizationId, filters)
+          // F-LIST-1 (FORTNOX-100): listan med tak 100 svarade som om den vore hela
+          // huvudboken. Nu hämtas upp till 500 och totalen följer med, så att svaret
+          // aldrig påstår fullständighet det inte har.
+          const sida = await this.accountingService.getJournalEntriesPage(organizationId, filters, {
+            offset: 0,
+            limit: 200,
+          })
+          const all = [...sida.entries]
+          for (let offset = 200; offset < Math.min(sida.total, 500); offset += 200) {
+            const nästa = await this.accountingService.getJournalEntriesPage(
+              organizationId,
+              filters,
+              {
+                offset,
+                limit: 200,
+              },
+            )
+            all.push(...nästa.entries)
+          }
           const accountFilter =
             typeof toolInput.accountNumber === 'number' ? toolInput.accountNumber : null
           const filtered = accountFilter
@@ -4292,10 +4315,16 @@ export class ToolExecutorService {
               description: l.description,
             })),
           }))
+          const trunkerad = sida.total > all.length
           return {
             success: true,
             data,
-            message: `${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}`,
+            message:
+              `${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}` +
+              (trunkerad
+                ? ` bland de ${all.length} senaste av totalt ${sida.total} — urvalet är INTE hela ` +
+                  'huvudboken; snäva in med fromDate/toDate för en fullständig bild.'
+                : ''),
           }
         }
 
@@ -4323,6 +4352,30 @@ export class ToolExecutorService {
           const debit = Number(aggregate._sum.debit ?? 0)
           const credit = Number(aggregate._sum.credit ?? 0)
           const balance = debit - credit
+          const asOf = asOfDate.toISOString().slice(0, 10)
+          // KUNDSTART §12.9: för 1510/2890 redovisas öppningskomponenten SEPARAT (samma
+          // formel som balansrapporten). Saldot ovan är bara Evenos verifikat.
+          const ok =
+            account.number === 1510 || account.number === 2890
+              ? await oppningskomponent(this.prisma, organizationId, asOf)
+              : null
+          // Verktygets tecken är debet − kredit; 2890-komponenten är ett kreditsaldo.
+          const oppning = ok
+            ? account.number === 1510
+              ? ok.konton['1510']
+              : -ok.konton['2890']
+            : 0
+          const oppningData = ok
+            ? {
+                brytdatum: ok.brytdatum,
+                galler: ok.galler,
+                belopp: oppning,
+                saldoInklOppning: Math.round((balance + oppning) * 100) / 100,
+                text: ok.text,
+                begransning: ok.begransning,
+                avstamning: ok.avstamningstexter,
+              }
+            : null
           return {
             success: true,
             data: {
@@ -4332,9 +4385,16 @@ export class ToolExecutorService {
               debit,
               credit,
               balance,
-              asOf: asOfDate.toISOString().slice(0, 10),
+              asOf,
+              oppningskomponent: oppningData,
             },
-            message: `Konto ${account.number} ${account.name}: saldo ${formatAmount(balance)} kr per ${asOfDate.toISOString().slice(0, 10)}`,
+            message:
+              `Konto ${account.number} ${account.name}: saldo enligt Evenos verifikat ${formatAmount(balance)} kr per ${asOf}` +
+              (oppningData
+                ? oppningData.galler
+                  ? `; öppningskomponent (externt bokförd i Fortnox före ${oppningData.brytdatum}) ${formatAmount(oppningData.belopp)} kr redovisas separat → inklusive öppning ${formatAmount(oppningData.saldoInklOppning)} kr. ${oppningData.begransning}`
+                  : `; ${oppningData.text}`
+                : ''),
           }
         }
 
@@ -4346,6 +4406,8 @@ export class ToolExecutorService {
           }
           // EN sanningskälla: samma beräkning som REST-endpointen.
           const vat = await this.accountingService.getVatReport(organizationId, fromDate, toDate)
+          // TESTKUND-041 (B-5): källorna och kundens beslut följer med, så att AI:n kan förklara
+          // valet (aldrig sätta det). Äldre utan val märks uttryckligen.
           return {
             success: true,
             data: vat,
@@ -4370,7 +4432,12 @@ export class ToolExecutorService {
           return {
             success: true,
             data: pl,
-            message: `Resultaträkning ${fromDate}–${toDate}: intäkter ${formatAmount(pl.revenue.total)} kr, kostnader ${formatAmount(pl.costs.total)} kr → resultat ${formatAmount(pl.result)} kr`,
+            // TESTKUND-041 (P-4): fallbackintäkten redovisas med sin proveniens, aldrig som momsfri.
+            message:
+              `Resultaträkning ${fromDate}–${toDate}: intäkter ${formatAmount(pl.revenue.total)} kr, kostnader ${formatAmount(pl.costs.total)} kr → resultat ${formatAmount(pl.result)} kr` +
+              (pl.okantIntaktskonto
+                ? `. Obs: ${formatAmount(pl.okantIntaktskonto.belopp)} kr (${pl.okantIntaktskonto.antalVerifikat} verifikat) på 3914 — ${pl.okantIntaktskonto.text}`
+                : ''),
           }
         }
 
@@ -4378,10 +4445,22 @@ export class ToolExecutorService {
           const asOfStr = String(toolInput.asOfDate ?? '')
           if (!asOfStr) return { success: false, message: 'asOfDate krävs' }
           const bs = await this.accountingService.getBalanceSheet(organizationId, asOfStr)
+          const ok = bs.oppningskomponent
           return {
             success: true,
             data: bs,
-            message: `Balansräkning per ${asOfStr}: tillgångar ${formatAmount(bs.assets.total)} kr, skulder + EK ${formatAmount(bs.liabilitiesAndEquity.total)} kr`,
+            message:
+              `Balansräkning per ${asOfStr} (Evenos verifikat): tillgångar ${formatAmount(bs.assets.total)} kr, skulder + EK ${formatAmount(bs.liabilitiesAndEquity.total)} kr` +
+              // F-TK-1: samma innebörd som rapporten — det ej bokslutade resultatet är BERÄKNAT.
+              ` (varav ${bs.calculatedResult.label.toLowerCase()} ${formatAmount(bs.calculatedResult.amount)} kr — beräknat, inget verifikat)` +
+              (Math.abs(bs.difference) >= 0.005
+                ? `. Differens ${formatAmount(bs.difference)} kr — boken balanserar inte`
+                : '') +
+              (ok
+                ? ok.galler
+                  ? `. Öppningskomponent separat (ingår inte i summorna): ${ok.rader.map((r) => `${r.konto} ${formatAmount(r.oppning)} kr → inkl. öppning ${formatAmount(r.nettoInklOppning)} kr`).join(', ')}. ${ok.begransning}`
+                  : `. ${ok.text}`
+                : ''),
           }
         }
 
@@ -4437,6 +4516,18 @@ export class ToolExecutorService {
           const byggt = byggVerifikatrader(linesInput, konton)
           if (!byggt.ok) {
             return { success: false, message: byggt.fel }
+          }
+          // TESTKUND-041 (B-5/B-6): ett verifikat med ingående moms (2641) är ett uttryckligt
+          // redovisningsval av en behörig människa. AI:n får inte göra det åt kunden — modellens egna
+          // fält är inget mänskligt beslut. Kundvägen är formuläret «Ny verifikation».
+          if (linesInput.some((l) => Number(l.accountNumber) === 2641)) {
+            return {
+              success: false,
+              message:
+                'Ett verifikat med ingående moms (konto 2641) är ett momsval som en behörig person ' +
+                'måste göra själv. Jag bokför det inte. Använd «Ny verifikation» under Bokföring, eller ' +
+                'registrera en leverantörsfaktura/utgift där momsvalet görs i formuläret.',
+            }
           }
           const totalDebit = byggt.summa
           // IDEMPOTENSNYCKELN (se ai-journal-source.ts). Härledd ur ÅTGÄRDENS
@@ -4535,6 +4626,18 @@ export class ToolExecutorService {
             return {
               success: false,
               message: `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd.`,
+            }
+          }
+          // TESTKUND-041 (B-5/B-6): positiv moms kräver kundens UTTRYCKLIGA val (dras av / dras
+          // inte av), gjort i formuläret. AI:n får aldrig hitta på eller sätta valet — ett fält som
+          // modellen själv skriver är inget mänskligt beslut. Kundvägen: «Registrera utgift».
+          if ((vatAmount ?? 0) > 0) {
+            return {
+              success: false,
+              message:
+                'Utgiften har moms. Om momsen ska dras av eller inte är ett val som du måste göra ' +
+                'själv i formuläret «Registrera utgift» under Bokföring — jag bokför inte moms åt dig. ' +
+                'Utan moms kan jag registrera utgiften.',
             }
           }
           // Samma delade kontering som människans väg (POST /accounting/expenses).

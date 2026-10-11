@@ -35,7 +35,11 @@ import type {
 import type { Decimal } from '@prisma/client/runtime/library'
 
 import { isReminderFeeContractuallyAllowed } from './debt-origin'
-import { REMINDER_FEE_MAX_SEK } from '@eken/shared'
+import {
+  INTAKTSKONTO_OKANT_TEXT,
+  REMINDER_FEE_MAX_SEK,
+  revenueAccountForUnitType,
+} from '@eken/shared'
 import type { DebtOriginDate } from './debt-origin'
 import type {
   BalanceSheet,
@@ -45,24 +49,30 @@ import type {
   VatReport,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { oppningskomponent } from '../kundstart/opening-component'
 import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
 import { VerifikationsnummerService } from './verifikationsnummer.service'
-import { basChartFor } from './bas-chart'
+import { basChartFor, isResultAccountNumber } from './bas-chart'
 import {
   cancelBlockedReason,
   paymentSourceId,
   cancellationSourceId,
   receiptSourceId,
+  paymentUndoSourceId,
+  vatAdjustmentSourceId,
 } from './supplier-invoice-status'
 import {
   byggLeverantorsbetalningsrader,
   byggLeverantorsfakturareverseringsrader,
   byggLeverantorsfakturarader,
+  byggMomsjusteringsrader,
   byggUtgiftsrader,
   byggVerifikatrader,
   kontouppslagAv,
+  provaMomsval,
   type Kontouppslag,
+  type LeverantorsMomsval,
   type RadIndata,
   type UtgiftIndata,
 } from './manual-entry'
@@ -155,24 +165,9 @@ const VAT_TO_ACCOUNT: Record<number, number> = {
   6: 2631,
 }
 
-// BAS 2024-konto för hyresintäkt per upplåtelsetyp. Avgör vilket 39xx-konto
-// en hyresfaktura/-avi krediteras mot. Bostäder (3911) är undantagna moms
-// (ML 10 kap. 35 §); lokaler (3913) kan vara momspliktiga vid frivillig
-// beskattning (ML 12 kap.). Saknas koppling till en Unit används 3914
-// (övriga rörelseintäkter) som säker fallback.
-const REVENUE_ACCOUNT_BY_UNIT_TYPE: Record<UnitType, number> = {
-  APARTMENT: 3911,
-  PARKING: 3912,
-  OFFICE: 3913,
-  RETAIL: 3913,
-  STORAGE: 3914,
-  OTHER: 3914,
-}
-const DEFAULT_REVENUE_ACCOUNT = 3914
-
-export function revenueAccountForUnitType(type: UnitType | null | undefined): number {
-  return type ? REVENUE_ACCOUNT_BY_UNIT_TYPE[type] : DEFAULT_REVENUE_ACCOUNT
-}
+// Hyresintäktskonto per upplåtelsetyp: flyttad OFÖRÄNDRAD till @eken/shared (TESTKUND-006),
+// re-exporteras här så att befintliga importer fortsätter fungera.
+export { revenueAccountForUnitType } from '@eken/shared'
 
 // BAS-intäktskonto för förbrukningsersättning (IMD) per mätartyp. Bruttoredovisat
 // och skilt från hyresintäkten (39xx ovan): el/värme → 3920, vatten → 3970.
@@ -1129,34 +1124,76 @@ export class AccountingService {
     })
   }
 
+  // F-LIST-1 (FORTNOX-100): samma urval för listan och sidvisningen.
+  private journalWhere(
+    organizationId: string,
+    filters?: JournalFilters,
+  ): Prisma.JournalEntryWhereInput {
+    return {
+      organizationId,
+      ...(filters?.from || filters?.to
+        ? {
+            date: {
+              ...(filters.from ? { gte: new Date(filters.from) } : {}),
+              ...(filters.to ? { lte: new Date(filters.to) } : {}),
+            },
+          }
+        : {}),
+      ...(filters?.source
+        ? { source: filters.source as 'MANUAL' | 'INVOICE' | 'PAYMENT' | 'LEASE' }
+        : {}),
+    }
+  }
+
+  private readonly journalInclude = {
+    lines: {
+      include: { account: true },
+    },
+    // Rättelsekedjan (PR1c2): `reversedBy` = rättelsen av DEN HÄR posten
+    // (finns → knappen ska vara låst), `reversalOf` = posten den här RÄTTAR.
+    reversedBy: { select: { id: true, series: true, verNumber: true, date: true } },
+    reversalOf: { select: { id: true, series: true, verNumber: true, date: true } },
+  } satisfies Prisma.JournalEntryInclude
+
+  /**
+   * De 100 senaste verifikaten. Kontraktet är oförändrat (en lista) för befintliga
+   * anropare — men det är INTE hela huvudboken. Den som behöver helheten, eller
+   * antalet, använder `getJournalEntriesPage`.
+   */
   async getJournalEntries(organizationId: string, filters?: JournalFilters) {
     return this.prisma.journalEntry.findMany({
-      where: {
-        organizationId,
-        ...(filters?.from || filters?.to
-          ? {
-              date: {
-                ...(filters.from ? { gte: new Date(filters.from) } : {}),
-                ...(filters.to ? { lte: new Date(filters.to) } : {}),
-              },
-            }
-          : {}),
-        ...(filters?.source
-          ? { source: filters.source as 'MANUAL' | 'INVOICE' | 'PAYMENT' | 'LEASE' }
-          : {}),
-      },
-      include: {
-        lines: {
-          include: { account: true },
-        },
-        // Rättelsekedjan (PR1c2): `reversedBy` = rättelsen av DEN HÄR posten
-        // (finns → knappen ska vara låst), `reversalOf` = posten den här RÄTTAR.
-        reversedBy: { select: { id: true, series: true, verNumber: true, date: true } },
-        reversalOf: { select: { id: true, series: true, verNumber: true, date: true } },
-      },
+      where: this.journalWhere(organizationId, filters),
+      include: this.journalInclude,
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     })
+  }
+
+  /**
+   * F-LIST-1 (FORTNOX-100): sidvis lista MED totalantal. Ett bolag med 100 lägenheter
+   * har ~200 verifikat i månaden; listan med tak 100 dolde resten utan att säga det,
+   * och "Antal verifikationer" visade 100. Stabil ordning (datum, skapad, id) så att
+   * sidor inte överlappar eller hoppar över poster.
+   */
+  async getJournalEntriesPage(
+    organizationId: string,
+    filters: JournalFilters | undefined,
+    sida: { offset: number; limit: number },
+  ) {
+    const where = this.journalWhere(organizationId, filters)
+    // En läsvy: sidan och totalen läses parallellt utan transaktion (ingen atomicitet
+    // krävs; en samtidig skrivning syns senast vid nästa läsning).
+    const [entries, total] = await Promise.all([
+      this.prisma.journalEntry.findMany({
+        where,
+        include: this.journalInclude,
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        skip: sida.offset,
+        take: sida.limit,
+      }),
+      this.prisma.journalEntry.count({ where }),
+    ])
+    return { entries, total, offset: sida.offset, limit: sida.limit }
   }
 
   async getJournalEntry(id: string, organizationId: string) {
@@ -1452,13 +1489,144 @@ export class AccountingService {
     const outTotal = outVat25 + outVat12 + outVat6
     const inVat = vIn.debit - vIn.credit
     const netToPay = outTotal - inVat
+    const sources = await this.ingaendeMomsKallor(
+      organizationId,
+      accountByNumber.get(2641)?.id,
+      from,
+      to,
+    )
     return {
       period: { from, to },
       outgoing: { vat25: outVat25, vat12: outVat12, vat6: outVat6, total: outTotal },
-      incoming: { total: inVat },
+      incoming: { total: inVat, sources },
       netToPay,
       direction: netToPay >= 0 ? 'BETALA' : 'ÅTERBÄRING',
     }
+  }
+
+  /**
+   * TESTKUND-041 (B-4/B-5/MJ-9): den ingående momsen per verifikat i perioden, med källa och beslut.
+   * Justeringen syns i JUSTERINGSDATUMETS period; ursprunget skrivs inte om. Äldre leverantörs-
+   * fakturor utan sparat val märks «ej angiven (äldre, bokförd som avdragsgill)» (B-8).
+   */
+  private async ingaendeMomsKallor(
+    organizationId: string,
+    momskontoId: string | undefined,
+    from: string,
+    to: string,
+  ): Promise<import('@eken/shared').VatIncomingSource[]> {
+    if (!momskontoId) return []
+    const rader = await this.prisma.journalEntryLine.findMany({
+      where: {
+        accountId: momskontoId,
+        journalEntry: { organizationId, date: { gte: new Date(from), lte: new Date(to) } },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        journalEntry: {
+          select: {
+            id: true,
+            series: true,
+            verNumber: true,
+            date: true,
+            source: true,
+            sourceId: true,
+            description: true,
+          },
+        },
+      },
+      orderBy: [{ journalEntry: { date: 'asc' } }, { journalEntry: { verNumber: 'asc' } }],
+    })
+    const valText: Record<string, string> = {
+      INGEN_MOMS: 'Ingen moms',
+      HELT_AVDRAG: 'Moms dras av',
+      INGET_AVDRAG: 'Moms dras inte av',
+    }
+    const ut: import('@eken/shared').VatIncomingSource[] = []
+    for (const r of rader) {
+      const je = r.journalEntry
+      const belopp = Math.round((Number(r.debit ?? 0) - Number(r.credit ?? 0)) * 100) / 100
+      const bas = {
+        verifikat: `${je.series}${je.verNumber}`,
+        datum: je.date.toISOString().slice(0, 10),
+        belopp,
+        momsval: null as string | null,
+        beslutadAv: null as string | null,
+        beslutadVid: null as string | null,
+        leverantorsfakturaId: null as string | null,
+      }
+      const sid = je.sourceId ?? ''
+      let m: RegExpExecArray | null
+      if (
+        je.source === 'SUPPLIER_INVOICE' &&
+        (m = /^supplier-invoice-vat-adjustment:(.+)$/.exec(sid))
+      ) {
+        const j = await this.prisma.supplierInvoiceVatAdjustment.findFirst({
+          where: { id: m[1]!, organizationId },
+        })
+        ut.push({
+          ...bas,
+          kalla: 'MOMSJUSTERING',
+          momsval: j ? `${j.fran}→${j.till}` : null,
+          beslutadAv: j?.decidedById ?? null,
+          beslutadVid: j?.decidedAt.toISOString() ?? null,
+          leverantorsfakturaId: j?.supplierInvoiceId ?? null,
+          text: j
+            ? `Momsjustering ${valText[j.fran]} → ${valText[j.till]} (${j.date.toISOString().slice(0, 10)}): ${j.reason}`
+            : 'Momsjustering (posten saknas)',
+        })
+      } else if (
+        je.source === 'SUPPLIER_INVOICE' &&
+        (m = /^supplier-invoice(-cancel)?:(.+)$/.exec(sid))
+      ) {
+        const f = await this.prisma.supplierInvoice.findFirst({
+          where: { id: m[2]!, organizationId },
+          select: {
+            id: true,
+            vatTreatment: true,
+            vatTreatmentDecidedById: true,
+            vatTreatmentDecidedAt: true,
+          },
+        })
+        ut.push({
+          ...bas,
+          kalla: m[1] ? 'MAKULERING' : 'LEVERANTORSFAKTURA',
+          momsval: f?.vatTreatment ?? null,
+          beslutadAv: f?.vatTreatmentDecidedById ?? null,
+          beslutadVid: f?.vatTreatmentDecidedAt?.toISOString() ?? null,
+          leverantorsfakturaId: f?.id ?? null,
+          text: f?.vatTreatment
+            ? `${m[1] ? 'Makulering, ursprungligt val' : 'Kundens val'}: ${valText[f.vatTreatment]}`
+            : 'Momsbehandling ej angiven (äldre, bokförd som avdragsgill)',
+        })
+      } else if (je.source === 'MANUAL' || je.source === 'AI') {
+        const b = await this.prisma.expenseVatDecision.findUnique({
+          where: { journalEntryId: je.id },
+        })
+        if (b)
+          ut.push({
+            ...bas,
+            kalla: 'UTGIFT',
+            momsval: b.vatTreatment,
+            beslutadAv: b.decidedById,
+            beslutadVid: b.decidedAt.toISOString(),
+            text: `Utgift, kundens val: ${valText[b.vatTreatment]}`,
+          })
+        else
+          ut.push({
+            ...bas,
+            kalla: je.source === 'AI' ? 'AI' : 'MANUELLT_MOMSVAL',
+            text:
+              je.source === 'AI'
+                ? 'Äldre verifikat skapat av AI med 2641 (före momsvalet) — inget sparat mänskligt val'
+                : 'Manuellt verifikat med 2641 — ett uttryckligt redovisningsval av behörig person, ingen leverantörsfaktura',
+          })
+      } else {
+        ut.push({ ...bas, kalla: 'OVRIGT', text: `Källa ${je.source}` })
+      }
+    }
+    return ut
   }
 
   // Resultaträkning: intäkter (3xxx, kreditsaldo) minus kostnader
@@ -1495,10 +1663,17 @@ export class AccountingService {
       financial: 0,
     }
     const perAccount = new Map<number, { name: string; amount: number }>()
+    // TESTKUND-041 (P-4): märkta fallbackrader (3914 utan avtal/enhet) redovisas separat.
+    let okantBelopp = 0
+    const okantaVerifikat = new Set<string>()
     for (const l of lines) {
       const num = l.account.number
       const debit = Number(l.debit ?? 0)
       const credit = Number(l.credit ?? 0)
+      if (num === 3914 && (l.description ?? '').includes(INTAKTSKONTO_OKANT_TEXT)) {
+        okantBelopp += credit - debit
+        okantaVerifikat.add(l.journalEntryId)
+      }
       const value = num >= 3000 && num < 4000 ? credit - debit : debit - credit
       const cur = perAccount.get(num) ?? { name: l.account.name, amount: 0 }
       cur.amount += value
@@ -1546,6 +1721,18 @@ export class AccountingService {
         total: totalCosts,
       },
       result,
+      ...(okantaVerifikat.size > 0
+        ? {
+            okantIntaktskonto: {
+              konto: 3914,
+              belopp: Math.round(okantBelopp * 100) / 100,
+              antalVerifikat: okantaVerifikat.size,
+              text:
+                `${INTAKTSKONTO_OKANT_TEXT} — intäkten bokades på 3914 eftersom avins avtal eller enhet ` +
+                'saknades. Dess momsbehandling är okänd; den är inte belagd som momsfri bostadshyra.',
+            },
+          }
+        : {}),
     }
   }
 
@@ -1663,11 +1850,46 @@ export class AccountingService {
     }
     assets.sort((a, b) => a.number - b.number)
     liabilities.sort((a, b) => a.number - b.number)
+    // F-TK-1: ännu inte bokslutat resultat = Σ(kredit − debet) på resultatkontona (samma intervall
+    // som årsstängningen nollställer, isResultAccountNumber) för verifikat ≤ asOf. Årsstängningen
+    // bokför resultatet mot årets resultat-konto (20xx, redan i skulder/EK) och nollställer
+    // resultatkontona samma dag, så efter bokslutet är beloppet 0 — ingen dubbelräkning. En
+    // BERÄKNAD rapportrad: inget verifikat, inget konto, ingen bolagsformsregel. Utan raden
+    // visades korrekt bokföring som "boken balanserar inte" med exakt årets resultat.
+    let resultat = 0
+    for (const [num, info] of perAccount) if (isResultAccountNumber(num)) resultat += info.balance
+    const calculatedResult = {
+      amount: Math.round(resultat * 100) / 100,
+      label: 'Beräknat resultat (ej bokslutat)',
+    }
+    const totalLiabilitiesAndEquity = totalLiabilities + calculatedResult.amount
+    // KUNDSTART §12.9: öppningskomponenten som egen del, aldrig inbakad i summorna ovan.
+    const ok = await oppningskomponent(this.prisma, organizationId, asOf)
     return {
       asOf,
       assets: { total: totalAssets, accounts: assets },
-      liabilitiesAndEquity: { total: totalLiabilities, accounts: liabilities },
-      difference: totalAssets - totalLiabilities,
+      liabilitiesAndEquity: { total: totalLiabilitiesAndEquity, accounts: liabilities },
+      calculatedResult,
+      difference: Math.round((totalAssets - totalLiabilitiesAndEquity) * 100) / 100,
+      oppningskomponent: ok
+        ? {
+            brytdatum: ok.brytdatum,
+            galler: ok.galler,
+            text: ok.text,
+            begransning: ok.begransning,
+            avstamningstexter: ok.avstamningstexter,
+            rader: ([1510, 2890] as const).map((konto) => {
+              const verifikat = Math.round((perAccount.get(konto)?.balance ?? 0) * 100) / 100
+              const oppning = ok.konton[String(konto) as '1510' | '2890']
+              return {
+                konto,
+                verifikat,
+                oppning,
+                nettoInklOppning: Math.round((verifikat + oppning) * 100) / 100,
+              }
+            }),
+          }
+        : null,
     }
   }
 
@@ -2327,6 +2549,9 @@ export class AccountingService {
       )
     }
     const revenueAccountNumber = revenueAccountForUnitType(lease?.unit?.type ?? null)
+    // TESTKUND-041 (P-4): saknat avtal eller enhet ger fallback 3914. Raden märks, så att rapport och
+    // AI kan redovisa intäkten som «intäktskonto okänt» — aldrig som belagd momsfri hyra.
+    const okantIntaktskonto = !lease?.unit
 
     const receivableId = accountByNumber.get(1510)
     const revenueId = accountByNumber.get(revenueAccountNumber)
@@ -2401,7 +2626,9 @@ export class AccountingService {
     lines.push({
       accountId: revenueId,
       credit: net,
-      description: `Hyresintäkt ${notice.month}/${notice.year}`,
+      description: okantIntaktskonto
+        ? `Hyresintäkt ${notice.month}/${notice.year} – ${INTAKTSKONTO_OKANT_TEXT}`
+        : `Hyresintäkt ${notice.month}/${notice.year}`,
     })
 
     // Periodisering: intäkten hör till den månad avin avser.
@@ -2775,25 +3002,52 @@ export class AccountingService {
       )
     }
 
-    return this.createNumberedEntry({
-      organizationId: params.organizationId,
-      // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
-      date: new Date(),
-      description: params.description,
-      source: params.source,
-      sourceId: params.reversalSourceId,
-      createdById: params.createdById,
-      lines: this.buildReversalLines(params.original.lines, params.linePrefix),
-      idempotencyWhere: {
+    // TESTKUND-027 B2.6 (KONTRAKT-P2-027 §2.3): rättelsen och spärren av originalets eventuella
+    // färdiga Fortnox-export skrivs i SAMMA transaktion. Ett original som rättas innan det skickats
+    // får ingen kvarstående READY-rad: villkoret `state = DRY_RUN_READY` gör att antingen sändningens
+    // anspråk (DRY_RUN_READY → SENDING) eller den här spärren vinner — aldrig båda.
+    const skriv = async (db: Prisma.TransactionClient) => {
+      const entry = await this.createNumberedEntry({
         organizationId: params.organizationId,
+        // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
+        date: new Date(),
+        description: params.description,
         source: params.source,
         sourceId: params.reversalSourceId,
-      },
-      // Centralt, för ALLA vägar. Se docblocket ovan.
-      reversalOfEntryId: params.original.id,
-      ...(params.include ? { include: params.include } : {}),
-      ...(params.tx ? { tx: params.tx } : {}),
-    })
+        createdById: params.createdById,
+        lines: this.buildReversalLines(params.original.lines, params.linePrefix),
+        idempotencyWhere: {
+          organizationId: params.organizationId,
+          source: params.source,
+          sourceId: params.reversalSourceId,
+        },
+        // Centralt, för ALLA vägar. Se docblocket ovan.
+        reversalOfEntryId: params.original.id,
+        ...(params.include ? { include: params.include } : {}),
+        tx: db,
+      })
+      await db.fortnoxVoucherExport.updateMany({
+        where: {
+          organizationId: params.organizationId,
+          journalEntryId: params.original.id,
+          state: 'DRY_RUN_READY',
+        },
+        data: {
+          state: 'BLOCKED',
+          draft: Prisma.DbNull,
+          draftHash: null,
+          blockReason:
+            `REVERSED_BEFORE_EXPORT: Verifikatet rättades (${params.reversalSourceId}) innan det ` +
+            'exporterades — varken det eller rättelsen skickas till Fortnox; de tar ut varandra i Eveno',
+        },
+      })
+      return entry
+    }
+    // Samma gräns som createNumberedEntry själv använde när den öppnade transaktionen (före
+    // TESTKUND-027 låg verifikatet ensamt i en sådan); nu omfattar den även exportspärren.
+    return params.tx
+      ? skriv(params.tx)
+      : this.prisma.$transaction((t) => skriv(t), PRISMA_DEFAULT_TX_LIMITS)
   }
 
   async reverseJournalEntryForMiscCharge(
@@ -3260,6 +3514,26 @@ export class AccountingService {
     })
     if (!original) throw new NotFoundException('Verifikation hittades inte')
 
+    // ── TESTKUND-041 (MK-2 / B-7b): LEVERANTÖRSFAKTURANS VERIFIKAT RÄTTAS ALDRIG GENERELLT ──────
+    //
+    // Spärren avgörs av ORIGINALETS (source, sourceId) och ligger här i tjänsten, så att både
+    // HTTP `journal/:id/reverse` och AI:s ångra-väg (supportsUndo → reverseJournalEntry) träffar den.
+    // En generell rättelse av ett betalt fakturaverifikat hade återfört 2440 och lämnat paidAt satt;
+    // varje fall har i stället en egen källbunden kundväg på fakturan.
+    if (original.source === 'SUPPLIER_INVOICE') {
+      const sid = original.sourceId ?? ''
+      const skal = sid.startsWith('supplier-invoice-vat-adjustment:')
+        ? 'Det här är en momsjustering. Gör en ny justering tillbaka på leverantörsfakturan i stället.'
+        : sid.startsWith('supplier-invoice-cancel:')
+          ? 'Det här är en makulering av en leverantörsfaktura. En makulering rättas inte; registrera en ny faktura om den ska bokföras igen.'
+          : sid.startsWith('supplier-invoice-payment-undo:')
+            ? 'Det här är en ångrad betalningsregistrering. Registrera betalningen på nytt på leverantörsfakturan i stället.'
+            : sid.startsWith('supplier-invoice-payment:')
+              ? 'Det här är en betalningsregistrering av en leverantörsfaktura. Använd «Ångra betalning» på fakturan, som också återställer fakturans betalstatus.'
+              : 'Det här är en mottagen leverantörsfaktura. Är den obetald: makulera fakturan. Är den betald och momsvalet fel: gör en momsjustering (dras av ↔ dras inte av) på fakturan. Andra ändringar stöds inte här.'
+      throw new ConflictException(`Verifikatet kan inte rättas här. ${skal}`)
+    }
+
     // ── REDAN REVERSERAT — OAVSETT AV VILKEN VÄG ────────────────────────────
     //
     // Kontrollen fanns, men täckte bara manuell-mot-manuell: de sju AUTOMATISKA
@@ -3673,6 +3947,57 @@ export class AccountingService {
     this.failClosedNoAccrual(label, organizationId, accrualSourceId)
   }
 
+  // KUNDSTART-001 §12.1 (K-B1): betalningsvägens grind för en hyresavi. Accrual-
+  // verifikatet 'rent-notice:<id>' krävs som förut — fail-closed står kvar för ALLA
+  // avier. Det ENDA undantaget är en historisk öppen fordran ur ett verkställt
+  // öppningspaket: dess debet finns i Fortnox före brytdatum (externt bokförd, KONTRAKT
+  // §3), så D 1930 / K 1510 är rätt och ingen spökkredit. Undantaget kräver att allt
+  // verifieras genom SAMMA klient som skriver verifikatet:
+  //   origin = OPENING_PACKAGE, openingRowId → rad av typ RECEIVABLE i ett EXECUTED
+  //   paket i samma organisation, samma avtal och period, och registrerad som
+  //   verkställd källrad (OpeningExecutedSource).
+  // En avi som bara BÄR origin men saknar giltig paketrad nekas som vanligt.
+  private async assertRentNoticeReceivableBooked(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    noticeId: string,
+    label: string,
+  ): Promise<void> {
+    const accrualSourceId = `rent-notice:${noticeId}`
+    if (await this.hasReceivableAccrual(db, organizationId, accrualSourceId)) return
+    if (await this.isExecutedOpeningReceivable(db, organizationId, noticeId)) return
+    this.failClosedNoAccrual(label, organizationId, accrualSourceId)
+  }
+
+  async isExecutedOpeningReceivable(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    noticeId: string,
+  ): Promise<boolean> {
+    const notice = await db.rentNotice.findFirst({
+      where: { id: noticeId, organizationId, origin: 'OPENING_PACKAGE' },
+      select: { openingRowId: true, leaseId: true, year: true, month: true, type: true },
+    })
+    if (!notice?.openingRowId || notice.type !== RentNoticeType.RENT) return false
+    const row = await db.openingPackageRow.findFirst({
+      where: {
+        id: notice.openingRowId,
+        kind: 'RECEIVABLE',
+        leaseId: notice.leaseId,
+        periodYear: notice.year,
+        periodMonth: notice.month,
+        package: { organizationId, status: 'EXECUTED' },
+      },
+      select: { id: true },
+    })
+    if (!row) return false
+    const executed = await db.openingExecutedSource.findFirst({
+      where: { organizationId, rowId: row.id },
+      select: { id: true },
+    })
+    return executed != null
+  }
+
   // Faktura-vägen är TYP-medveten och känner TRE underlagsvägar:
   //
   //   1. VANLIG FAKTURA  — fordran under sourceId = invoice.id.
@@ -3871,10 +4196,10 @@ export class AccountingService {
     // #41/#109) och deras accrual är deposit-invoice-nycklad, inte rent-notice: →
     // hoppa guarden här för DEPOSIT (annars falsk-nekas en frisk depositionsbetalning).
     if (notice.type !== RentNoticeType.DEPOSIT) {
-      await this.assertReceivableAccrualBooked(
+      await this.assertRentNoticeReceivableBooked(
         db,
         organizationId,
-        `rent-notice:${notice.id}`,
+        notice.id,
         `hyresavi ${notice.noticeNumber}`,
       )
     }
@@ -3976,10 +4301,10 @@ export class AccountingService {
     // A2 fail-closed: RENT-only (DEPOSIT hoppas ovan). Neka om avins accrual saknas.
     // A2 läses genom SAMMA klient som skriver — annars kan grinden se ett annat
     // snapshot än verifikatet skrivs mot.
-    await this.assertReceivableAccrualBooked(
+    await this.assertRentNoticeReceivableBooked(
       db,
       organizationId,
-      `rent-notice:${notice.id}`,
+      notice.id,
       `hyresavi ${notice.noticeNumber}`,
     )
 
@@ -4321,9 +4646,16 @@ export class AccountingService {
       entry: { id: string },
       redanFanns: boolean,
     ) => Promise<void>
+    /**
+     * TESTKUND-041 (B-6): människans uttryckliga momsval i formuläret och dess källa. Sparas i
+     * ExpenseVatDecision i SAMMA transaktion som verifikatet. Positiv moms utan val nekas.
+     */
+    momsbeslut?: { val: LeverantorsMomsval; source: string } | null
   }) {
     const { organizationId, date } = params
     const source = params.source ?? 'MANUAL'
+    const momsfel = provaMomsval(params.utgift.moms ?? 0, params.momsbeslut?.val ?? null)
+    if (momsfel) throw new BadRequestException(momsfel)
 
     if (Number.isNaN(date.getTime())) {
       throw new UnprocessableEntityException('Ogiltigt datum.')
@@ -4338,8 +4670,33 @@ export class AccountingService {
     }
 
     const konton = await this.kontouppslag(organizationId)
-    const byggt = byggUtgiftsrader(params.utgift, konton)
+    const byggt = byggUtgiftsrader(
+      { ...params.utgift, momsval: params.momsbeslut?.val ?? null },
+      konton,
+    )
     if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+    const beslut = params.momsbeslut ?? null
+    const brutto = params.utgift.belopp
+    const moms = params.utgift.moms ?? 0
+    const efterSkrivning =
+      beslut || params.efterSkrivning
+        ? async (tx: Prisma.TransactionClient, entry: { id: string }, redanFanns: boolean) => {
+            if (beslut && !redanFanns)
+              await tx.expenseVatDecision.create({
+                data: {
+                  organizationId,
+                  journalEntryId: entry.id,
+                  vatTreatment: beslut.val,
+                  netAmount: beslut.val === 'INGET_AVDRAG' ? brutto : brutto - moms,
+                  vatAmount: moms,
+                  grossAmount: brutto,
+                  decidedById: params.createdById ?? null,
+                  source: beslut.source,
+                },
+              })
+            if (params.efterSkrivning) await params.efterSkrivning(tx, entry, redanFanns)
+          }
+        : undefined
 
     return this.createNumberedEntry({
       organizationId,
@@ -4357,7 +4714,7 @@ export class AccountingService {
       ...(params.aiToolExecutionId !== undefined
         ? { aiToolExecutionId: params.aiToolExecutionId }
         : {}),
-      ...(params.efterSkrivning ? { efterSkrivning: params.efterSkrivning } : {}),
+      ...(efterSkrivning ? { efterSkrivning } : {}),
       include: { lines: { include: { account: true } } },
     })
   }
@@ -4388,6 +4745,8 @@ export class AccountingService {
     expenseAccount: number
     totalAmount: number
     vatAmount?: number
+    /** TESTKUND-041: kundens momsval (INGET_AVDRAG = brutto på kostnad, ingen 2641). */
+    momsval?: LeverantorsMomsval | null
     createdById?: string | null
     attachmentUrl?: string | null
     /**
@@ -4415,6 +4774,7 @@ export class AccountingService {
       {
         belopp: params.totalAmount,
         ...(params.vatAmount !== undefined ? { moms: params.vatAmount } : {}),
+        momsval: params.momsval ?? null,
         kontonummer: params.expenseAccount,
         beskrivning: params.description,
       },
@@ -4454,6 +4814,11 @@ export class AccountingService {
     supplierName: string
     totalAmount: number
     createdById?: string | null
+    /**
+     * TESTKUND-041 (BP1): betalningsledets sourceId, beräknat under fakturans radlås. Utelämnat =
+     * led 1 (`supplier-invoice-payment:<id>`), som före BP1.
+     */
+    sourceId?: string
     /** Se `bookSupplierInvoiceReceipt` — samma atomicitetskrav. */
     tx?: Prisma.TransactionClient
   }) {
@@ -4472,7 +4837,7 @@ export class AccountingService {
     const byggt = byggLeverantorsbetalningsrader(params.totalAmount, konton)
     if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
 
-    const sourceId = paymentSourceId(params.invoiceId)
+    const sourceId = params.sourceId ?? paymentSourceId(params.invoiceId)
     return this.createNumberedEntry({
       organizationId,
       date: paidDate,
@@ -4516,6 +4881,8 @@ export class AccountingService {
     expenseAccount: number
     totalAmount: number
     vatAmount?: number
+    /** TESTKUND-041: ORIGINALETS momsval; makuleringen speglar exakt mottagningens rader. */
+    momsval?: LeverantorsMomsval | null
     createdById?: string | null
     /** Se `bookSupplierInvoiceReceipt` — samma atomicitetskrav. */
     tx?: Prisma.TransactionClient
@@ -4536,6 +4903,7 @@ export class AccountingService {
       {
         belopp: params.totalAmount,
         ...(params.vatAmount !== undefined ? { moms: params.vatAmount } : {}),
+        momsval: params.momsval ?? null,
         kontonummer: params.expenseAccount,
         beskrivning: params.description,
       },
@@ -4555,6 +4923,95 @@ export class AccountingService {
       idempotencyWhere: { organizationId, source: 'SUPPLIER_INVOICE', sourceId },
       ...(params.tx ? { tx: params.tx } : {}),
       include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * TESTKUND-041 (MJ-2/MJ-3): verifikatet för en källbunden momsjustering. Två rader kostnad/2641 på
+   * samma belopp; aldrig 2440 eller 19xx. Datumet är justeringens (kundens bokföringsdatum).
+   */
+  async bookSupplierInvoiceVatAdjustment(params: {
+    organizationId: string
+    adjustmentId: string
+    date: Date
+    supplierName: string
+    description: string
+    expenseAccount: number
+    amount: number
+    fran: LeverantorsMomsval
+    till: LeverantorsMomsval
+    createdById: string
+    tx: Prisma.TransactionClient
+  }) {
+    const { organizationId, date } = params
+    if (Number.isNaN(date.getTime()))
+      throw new UnprocessableEntityException('Ogiltigt justeringsdatum.')
+    if (await isPeriodClosed(params.tx, organizationId, date)) {
+      throw new UnprocessableEntityException(
+        `Bokföringsperioden ${periodKeyOf(periodOfDate(date))} är stängd. Välj ett datum i en öppen period.`,
+      )
+    }
+    const konton = await this.kontouppslag(organizationId)
+    const byggt = byggMomsjusteringsrader(
+      {
+        belopp: params.amount,
+        kontonummer: params.expenseAccount,
+        fran: params.fran,
+        till: params.till,
+        beskrivning: params.description,
+      },
+      konton,
+    )
+    if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
+    const sourceId = vatAdjustmentSourceId(params.adjustmentId)
+    const text = params.till === 'INGET_AVDRAG' ? 'dras inte av' : 'dras av'
+    return this.createNumberedEntry({
+      organizationId,
+      date,
+      description: `Momsjustering leverantörsfaktura: ${params.supplierName} – ${params.description} (moms ${text})`,
+      source: 'SUPPLIER_INVOICE',
+      sourceId,
+      createdById: params.createdById,
+      lines: byggt.rader,
+      idempotencyWhere: { organizationId, source: 'SUPPLIER_INVOICE', sourceId },
+      tx: params.tx,
+      include: { lines: { include: { account: true } } },
+    })
+  }
+
+  /**
+   * TESTKUND-041 (BP1 U-2): ångra EN betalningsregistrering. Rättelsen av exakt det betalnings-
+   * verifikatet, i anroparens transaktion (fakturalåset och `paidAt = null` ligger där), via
+   * `createReversalEntry` som också spärrar ledets färdiga export (REVERSED_BEFORE_EXPORT).
+   */
+  async bookSupplierInvoicePaymentUndo(params: {
+    organizationId: string
+    payment: {
+      id: string
+      series: string
+      verNumber: number
+      description: string
+      lines: Array<{
+        accountId: string
+        debit: Prisma.Decimal | null
+        credit: Prisma.Decimal | null
+        description: string | null
+      }>
+    }
+    reason: string
+    createdById: string
+    tx: Prisma.TransactionClient
+  }) {
+    return this.createReversalEntry({
+      organizationId: params.organizationId,
+      original: params.payment,
+      source: 'SUPPLIER_INVOICE',
+      reversalSourceId: paymentUndoSourceId(params.payment.id),
+      description: `Ångrad betalningsregistrering ${params.payment.series}${params.payment.verNumber}: ${params.reason}`,
+      createdById: params.createdById,
+      linePrefix: 'Ångrad betalning',
+      include: { lines: { include: { account: true } } },
+      tx: params.tx,
     })
   }
 

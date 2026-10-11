@@ -106,6 +106,10 @@ describe('N3 · fakturaworkerns betalningssnapshot', () => {
             return built
           },
           close: async () => undefined,
+          // G21 (FORTNOX-100): withPage spärrar sidans nätåtkomst med puppeteers
+          // request-interception; attrappen speglar Page-API:t (setContent hämtar inget).
+          setRequestInterception: async () => undefined,
+          on: () => undefined,
         }
       },
     } as never)

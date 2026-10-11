@@ -1,3 +1,4 @@
+import { FortnoxModule } from '../fortnox/fortnox.module'
 import { Module } from '@nestjs/common'
 import { QuestionModule } from './questions/question.module'
 import { AiAssistantController } from './ai-assistant.controller'
@@ -61,6 +62,9 @@ import { AiAssignmentsService } from './assignments/ai-assignments.service'
     PropertiesModule,
     UnitsModule,
     AccountingModule,
+    // Fortnox-återläsning i skuggläge till AI-kontexten (DataContextService). Modulen
+    // importerar bara PrismaModule, så ingen cykel; inert utan anslutning.
+    FortnoxModule,
     MailModule,
     MaintenanceModule,
     ContractorsModule,

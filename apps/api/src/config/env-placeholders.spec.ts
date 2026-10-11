@@ -113,20 +113,39 @@ describe('placeholderRejection — regel A (exakt) och B (form)', () => {
   })
 
   it('släpper igenom riktiga hemligheter — inga falsklarm', () => {
+    // DETERMINISTISKA bytes (sha256-räknare), inte osådd slump. Med crypto.randomBytes
+    // innehöll ungefär vart 180 000:e värde av en slump TVÅ ord ur PLACEHOLDER_WORDS
+    // (t.ex. 'xxx'+'jwt', 'jwt'+'demo') och nekades — korrekt enligt regel B — så
+    // provet föll i ca 0,2 % av körningarna (CI 37051776334). Formen och antalet är
+    // oförändrade; validatorn och tröskeln rörs inte.
+    const bytes = (n: number, seed: string) => {
+      const out: Buffer[] = []
+      for (let k = 0; Buffer.concat(out).length < n; k++) {
+        out.push(crypto.createHash('sha256').update(`${seed}:${k}`).digest())
+      }
+      return Buffer.concat(out).subarray(0, n)
+    }
     for (let i = 0; i < 200; i++) {
       expect(
-        placeholderRejection('JWT_SECRET', crypto.randomBytes(48).toString('base64')),
+        placeholderRejection('JWT_SECRET', bytes(48, `jwt:${i}`).toString('base64')),
       ).toBeNull()
       expect(
-        placeholderRejection('SIGNING_PII_KEY', crypto.randomBytes(32).toString('hex')),
+        placeholderRejection('SIGNING_PII_KEY', bytes(32, `pii:${i}`).toString('hex')),
       ).toBeNull()
       expect(
         placeholderRejection(
           'ANTHROPIC_API_KEY',
-          `sk-ant-api03-${crypto.randomBytes(64).toString('base64url')}`,
+          `sk-ant-api03-${bytes(64, `ant:${i}`).toString('base64url')}`,
         ),
       ).toBeNull()
     }
+  })
+
+  it('formregeln nekar ett slumpformat värde som av en slump bär två ord (därför är provet ovan deterministiskt)', () => {
+    // Observerat motexempel från reproduktionen: korrekt nekat enligt regel B.
+    const v = '+ZDxilLT8P2SxYgiPjwTkbjazSBYXXXx/xuXS/a5tyPn7OU33Li/EosVHtkVbS3s'
+    expect(placeholderWordHits(v)).toEqual(['xxx', 'jwt'])
+    expect(placeholderRejection('JWT_SECRET', v)).toMatch(/platshållare/)
   })
 
   it('formregeln rör INTE variabler utanför SECRET_FORM_VARS', () => {

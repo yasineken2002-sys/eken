@@ -108,6 +108,10 @@ export const SAFE_ORGANIZATION_SELECT = {
   paymentDataThrough: true,
   paymentDataStaleDays: true,
   paymentDataStaleAlertedAt: true,
+  // KUNDSTART-001: brytdatum (första dag Eveno fakturerar) och vem/när det sattes.
+  billingCutoverDate: true,
+  billingCutoverSetAt: true,
+  billingCutoverSetById: true,
 
   // Villkorsacceptans — läses av re-acceptance-modalen i frontend
   termsAcceptedAt: true,

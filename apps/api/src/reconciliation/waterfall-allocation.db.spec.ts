@@ -313,6 +313,9 @@ medDb('vattenfallet mot riktig Postgres', () => {
           ocrNumber: f.ocr,
           type: 'RENT',
           status,
+          // G15-012: en SENT/OVERDUE avi har skickats — sentAt bär det beviset. Utan det
+          // återöppnar avmatchningen (riktigt) som PENDING, inte SENT.
+          sentAt: new Date('2026-01-02T08:00:00Z'),
           month: manad,
           year: 2026,
           dueDate: new Date(forfaller),

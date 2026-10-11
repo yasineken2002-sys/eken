@@ -1,0 +1,260 @@
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res } from '@nestjs/common'
+import type { FastifyReply } from 'fastify'
+import type { JwtPayload } from '@eken/shared'
+import { Public } from '../common/decorators/public.decorator'
+import { Roles } from '../common/decorators/roles.decorator'
+import { OrgId } from '../common/decorators/org-id.decorator'
+import { CurrentUser } from '../common/decorators/current-user.decorator'
+import { FortnoxConnectionService } from './fortnox-connection.service'
+import { FortnoxReadbackService } from './fortnox-readback.service'
+import { FortnoxReadDto } from './dto/fortnox-read.dto'
+import { FortnoxMappingDto } from './dto/fortnox-mapping.dto'
+import { FortnoxExportSettingsDto } from './dto/fortnox-export-settings.dto'
+import { FortnoxDryRunDto } from './dto/fortnox-dry-run.dto'
+import { FortnoxSendDto } from './dto/fortnox-send.dto'
+import { FortnoxReconcileDto } from './dto/fortnox-reconcile.dto'
+import { FortnoxReleaseRejectedDto } from './dto/fortnox-release-rejected.dto'
+import {
+  FortnoxAccountMappingApproveDto,
+  FortnoxAccountMappingDraftDto,
+} from './dto/fortnox-account-mapping.dto'
+import { FortnoxKontomappningService } from './fortnox-kontomappning.service'
+import { FortnoxSendService } from './fortnox-send.service'
+import { FortnoxExportService } from './fortnox-export.service'
+import { FortnoxMappingService } from './fortnox-mapping.service'
+import { toReadView, toStatusResponse } from './fortnox-status'
+
+/**
+ * Fortnox (ägarval A: Eveno sköter avier/betalningar, Fortnox är huvudbok).
+ *
+ * INERT när FORTNOX_ENABLED != true: anslutning svarar 503, och utan ACTIVE
+ * anslutning finns inget att läsa. Allt är OWNER/ADMIN (bindande ekonomisk
+ * åtkomst). organizationId tas ur JWT, aldrig ur query/body. Callbacken är
+ * @Public — auktoriseringen bärs av den single-use state som skapades bakom JWT.
+ *
+ * Inget svar innehåller token, state, kod eller PKCE-verifier.
+ */
+@Controller('integrations/fortnox')
+export class FortnoxController {
+  constructor(
+    private readonly connections: FortnoxConnectionService,
+    private readonly readback: FortnoxReadbackService,
+    private readonly exports: FortnoxExportService,
+    private readonly mappings: FortnoxMappingService,
+    private readonly sender: FortnoxSendService,
+    private readonly kontomappning: FortnoxKontomappningService,
+  ) {}
+
+  @Get('status')
+  @Roles('OWNER', 'ADMIN')
+  async status(@OrgId() organizationId: string) {
+    const [connection, mappings, reads, exportQueue] = await Promise.all([
+      this.connections.status(organizationId),
+      this.mappings.list(organizationId),
+      this.readback.latest(organizationId),
+      this.sender
+        .expireLeases(organizationId)
+        .then(() => this.sender.sendingEnabledFor(organizationId))
+        .then((enabled) => this.exports.counts(organizationId, enabled)),
+    ])
+    return toStatusResponse({
+      enabled: this.connections.enabled,
+      connection,
+      mappings,
+      ...reads,
+      exports: exportQueue,
+    })
+  }
+
+  @Get('catalog')
+  @Roles('OWNER', 'ADMIN')
+  async catalog(
+    @OrgId() organizationId: string,
+    @Query('financialYearId') financialYearId?: string,
+  ) {
+    const id =
+      financialYearId === undefined || financialYearId === '' ? null : Number(financialYearId)
+    return this.readback.catalog(organizationId, id === null ? null : Number.isFinite(id) ? id : -1)
+  }
+
+  @Post('connect')
+  @Roles('OWNER', 'ADMIN')
+  async connect(@OrgId() organizationId: string, @CurrentUser() user: JwtPayload) {
+    return this.connections.begin(organizationId, user.sub)
+  }
+
+  @Public()
+  @Get('callback')
+  async callback(
+    @Res() reply: FastifyReply,
+    @Query('state') state?: string,
+    @Query('code') code?: string,
+  ): Promise<void> {
+    let ok = true
+    try {
+      await this.connections.handleCallback(state ?? '', code ?? '')
+    } catch {
+      ok = false
+    }
+    // Explicit 302 + Location (samma form som PSD2). Ingen detalj i redirecten.
+    void reply.status(302).header('location', this.connections.appReturnUrl(ok)).send()
+  }
+
+  @Post('disconnect')
+  @Roles('OWNER', 'ADMIN')
+  async disconnect(@OrgId() organizationId: string) {
+    return this.connections.disconnect(organizationId)
+  }
+
+  @Put('mappings')
+  @Roles('OWNER', 'ADMIN')
+  async upsertMapping(@OrgId() organizationId: string, @Body() body: FortnoxMappingDto) {
+    return this.mappings.upsert(organizationId, body)
+  }
+
+  @Delete('mappings/:id')
+  @Roles('OWNER', 'ADMIN')
+  async deleteMapping(@OrgId() organizationId: string, @Param('id') id: string) {
+    return this.mappings.remove(organizationId, id)
+  }
+
+  @Post('reads')
+  @Roles('OWNER', 'ADMIN')
+  async read(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: FortnoxReadDto,
+  ) {
+    // Samma läsvykontrakt som GET /status (selectedAccounts, civila datum, ålder).
+    return toReadView(await this.readback.read(organizationId, user.sub, body))
+  }
+
+  @Put('export-settings')
+  @Roles('OWNER', 'ADMIN')
+  async exportSettings(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: FortnoxExportSettingsDto,
+  ) {
+    const out: { exportVoucherSeries?: string; omitDimensions?: boolean } = {}
+    if (body?.voucherSeries !== undefined) {
+      Object.assign(
+        out,
+        await this.connections.setExportVoucherSeries(organizationId, body.voucherSeries),
+      )
+    }
+    if (body?.omitDimensions !== undefined) {
+      Object.assign(
+        out,
+        await this.connections.setExportOmitDimensions(
+          organizationId,
+          user.sub,
+          body.omitDimensions,
+        ),
+      )
+    }
+    return out
+  }
+
+  @Post('exports/:id/send')
+  @Roles('OWNER', 'ADMIN')
+  async send(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxSendDto,
+  ) {
+    return this.sender.send(organizationId, user.sub, id, body.draftHash)
+  }
+
+  @Post('exports/:id/verify')
+  @Roles('OWNER', 'ADMIN')
+  async verify(@OrgId() organizationId: string, @Param('id') id: string) {
+    return this.sender.verify(organizationId, id)
+  }
+
+  @Post('exports/:id/reconcile')
+  @Roles('OWNER', 'ADMIN')
+  async reconcile(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxReconcileDto,
+  ) {
+    return this.sender.reconcile(organizationId, user.sub, id, body)
+  }
+
+  // TESTKUND-035 P3-C1/C2: avstämning genom fullständig skanning av räkenskapsåret (FOUND/ABSENT).
+  @Post('exports/:id/reconcile-scan')
+  @Roles('OWNER', 'ADMIN')
+  async reconcileScan(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.sender.reconcileScan(organizationId, user.sub, id)
+  }
+
+  // TESTKUND-016 K3: frisläpp en bevisat avvisad export (rollen prövas även i tjänsten; ett
+  // kvitto i efterhand för en äldre avvisning kräver OWNER).
+  @Post('exports/:id/release-rejected')
+  @Roles('OWNER', 'ADMIN')
+  async releaseRejected(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxReleaseRejectedDto,
+  ) {
+    return this.sender.releaseRejected(organizationId, { sub: user.sub, role: user.role }, id, body)
+  }
+
+  // ── TESTKUND-008: kontomappning (läsa OWNER/ADMIN/ACCOUNTANT; utkast och godkännande
+  // OWNER/ADMIN som export-settings — KONTRAKTSBESKED-008 svar 5). Rollen prövas även i tjänsten.
+  @Get('account-mapping')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  async accountMapping(@OrgId() organizationId: string) {
+    return this.kontomappning.oversikt(organizationId)
+  }
+
+  @Post('account-mapping/revisions')
+  @Roles('OWNER', 'ADMIN')
+  async accountMappingDraft(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: FortnoxAccountMappingDraftDto,
+  ) {
+    return this.kontomappning.skapaUtkast(organizationId, { sub: user.sub, role: user.role }, body)
+  }
+
+  @Post('account-mapping/revisions/:id/approve')
+  @Roles('OWNER', 'ADMIN')
+  async accountMappingApprove(
+    @OrgId() organizationId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() body: FortnoxAccountMappingApproveDto,
+  ) {
+    return this.kontomappning.godkann(
+      organizationId,
+      { sub: user.sub, role: user.role },
+      id,
+      body.contentSha256,
+    )
+  }
+
+  @Get('exports')
+  @Roles('OWNER', 'ADMIN')
+  async listExports(@OrgId() organizationId: string) {
+    await this.sender.expireLeases(organizationId)
+    return { items: await this.exports.list(organizationId) }
+  }
+
+  @Post('exports/dry-run')
+  @Roles('OWNER', 'ADMIN')
+  async dryRun(@OrgId() organizationId: string, @Body() body: FortnoxDryRunDto) {
+    return this.exports.dryRun(
+      organizationId,
+      typeof body?.journalEntryId === 'string' ? body.journalEntryId : '',
+    )
+  }
+}

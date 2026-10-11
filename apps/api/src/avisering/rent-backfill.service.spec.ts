@@ -415,8 +415,11 @@ describe('T1.4 · RentBackfillService', () => {
       const { service, prisma } = makeService({ startDate: new Date('2026-05-01') })
       const preview = await service.detectGaps('lease-1', 'org-1')
       expect(preview.vatPeriods).toEqual([])
-      // ingen onödig org-query för icke-momspliktig lokal
-      expect(prisma.organization.findUnique).not.toHaveBeenCalled()
+      // ingen onödig MOMS-query för icke-momspliktig lokal (KUNDSTART: brytdatumet läses
+      // alltid — det är serverregeln för varje skapande väg, inte en momsfråga).
+      expect(prisma.organization.findUnique).not.toHaveBeenCalledWith(
+        expect.objectContaining({ select: expect.objectContaining({ vatReportingPeriod: true }) }),
+      )
     })
   })
 
@@ -475,6 +478,8 @@ describe('T1.4 · RentBackfillService', () => {
           ),
         },
         $queryRaw: jest.fn().mockResolvedValue([]),
+        // KUNDSTART: inget brytdatum = oförändrat beteende.
+        organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },
       }
       const service = new RentBackfillService(
         prisma as never,

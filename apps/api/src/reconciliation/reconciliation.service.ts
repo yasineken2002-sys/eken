@@ -7,6 +7,13 @@ import {
   ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common'
+import { tolkaBgMax, type BgMaxStopp } from './bgmax-parse'
+import {
+  BETALBARA_AVISTATUSAR,
+  MANUELLT_BETALBARA_AVISTATUSAR,
+  ärBetalbarAvistatus,
+} from './betalbara-avistatusar'
+import { ärMatchningsTidsgräns, tidsgränsText } from './match-tidsgrans'
 import * as crypto from 'crypto'
 import { Decimal } from '@prisma/client/runtime/library'
 import { Prisma, RentNoticeType } from '@prisma/client'
@@ -182,6 +189,8 @@ export interface FileIngestInput {
   // nattgranskningen 2026-09-17).
   // `organizationId` injiceras av `ingestFromFile` och får aldrig komma från raw.
   dedup: Prisma.BankTransactionWhereInput
+  /** FS1: bara BgMax-vägen — se övergångsregeln i `ingestFromFile`. */
+  bgmaxÖvergång?: { date: Date; amount: Prisma.Decimal; rawOcr: string | null }
   /**
    * #F034b — radidentiteten som ett DB-BÄRBART villkor, plus radens
    * förekomstnummer inom den fil som skapade den.
@@ -249,8 +258,16 @@ export type FileIngestResult =
  *   API_UTAN_KONTO      — raden krockar cross-source med en PSD2-API-rad som
  *                         saknar konto (`dedupKey` bär dag + belopp + OCR, inget
  *                         konto — se cross-source-grenen i `ingestFromFile`).
+ *   BGMAX_DATUMOVERGANG — (FS1, FORTNOX-100) samma belopp och OCR finns i en BgMax-rad
+ *                         med OKÄND datumproveniens (bgmaxDateSource NULL — äldre version
+ *                         eller äldre skrivare). Kan vara samma betalning med annan identitet.
  */
-export type Granskningsskäl = 'HISTORIK_UTAN_KONTO' | 'API_UTAN_KONTO'
+export type Granskningsskäl =
+  | 'HISTORIK_UTAN_KONTO'
+  | 'API_UTAN_KONTO'
+  | 'BGMAX_DATUMOVERGANG'
+  // KUNDSTART T4-1: hyresgästen har öppen historisk skuld före brytdatum (OPENING).
+  | 'HISTORISK_SKULD_FORE_BRYTDATUM'
 
 /**
  * PSD2 P1 — rå transaktion från en bank-API-källa (aggregator). `bookingDate` är
@@ -786,6 +803,46 @@ export class ReconciliationService {
       osäkerhet = {
         skäl: 'HISTORIK_UTAN_KONTO',
         detalj: `raden matchar ${kontolösHistorik} kontolös(a) historisk(a) rad(er)`,
+      }
+    }
+
+    // ── FS1 (FORTNOX-100, BYGGLEDARE-OVERGANG-016): ÖVERGÅNG MED PROVENIENS ──────
+    //
+    // Före G7 lagrade BgMax-importen importÖGONBLICKET som radens datum; efter G7 bär
+    // raden betalningsdagen ur TK15. Identiteten innehåller datumet, så samma betalning
+    // före och efter uppgradering möts inte. I stället för att gissa vilka äldre rader som
+    // kan vara samma betalning (dagsgränser och klockslag visade sig otillräckliga, C2
+    // MOTPROV-FS1-015) läses PROVENIENSEN: `bgmaxDateSource` är NULL för varje rad vars
+    // datum inte bevisligen kommer ur TK15 — alla äldre rader och allt som en äldre
+    // applikationsgeneration skriver efter migrationen. Bara den här tolken skriver 'TK15'.
+    //
+    // Finns lika många eller fler rader med OKÄND proveniens (samma konto eller kontolös,
+    // samma belopp och OCR, skrivna av BgMax-importen) daterade på eller efter
+    // betalningsdagen MINUS ETT DYGN — ett importögonblick kan inte ligga före betalningen,
+    // men det lagrades i UTC: en import 00:30 svensk tid på betalningsdagen är 22:30Z dagen
+    // före (C2 R2/P4). Marginalen ger fler granskningar, aldrig färre — som raden
+    // förekommer i filen, lagras den som GRANSKNINGSRAD: den matchas aldrig automatiskt
+    // och pausar krav (G2) tills en människa avgjort den. Falska positiva blir synligt
+    // arbete, aldrig tyst matchning eller tyst borttagning. Ingen historik skrivs om.
+    if (!osäkerhet && input.bgmaxÖvergång) {
+      const ö = input.bgmaxÖvergång
+      const äldre = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
+        SELECT count(*)::bigint AS n FROM "BankTransaction"
+        WHERE "organizationId" = ${organizationId}
+          AND ("bankAccountId" = ${input.bankAccountId} OR "bankAccountId" IS NULL)
+          AND amount = ${ö.amount}
+          AND "rawOcr" IS NOT DISTINCT FROM ${ö.rawOcr}
+          AND description LIKE 'BgMax inbetalning%'
+          AND "bgmaxDateSource" IS NULL
+          AND date >= ${new Date(ö.date.getTime() - 24 * 60 * 60 * 1000)}`
+      const n = Number(äldre[0]?.n ?? 0)
+      if (n > input.identity.seq) {
+        osäkerhet = {
+          skäl: 'BGMAX_DATUMOVERGANG',
+          detalj:
+            `samma belopp och OCR finns i ${n} BgMax-rad(er) med okänd datumproveniens ` +
+            '(importerade före betalningsdag ur TK15) — kan vara samma betalning',
+        }
       }
     }
 
@@ -1332,7 +1389,24 @@ export class ReconciliationService {
           continue
         }
         // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
-        if (outcome.matchError) throw outcome.matchError
+        if (outcome.matchError) {
+          // G20: tidsgräns i matchningen → läsbart besked; den tekniska orsaken bara i loggen.
+          if (ärMatchningsTidsgräns(outcome.matchError)) {
+            this.logger.warn(
+              `[import] matchningens tidsgräns för org ${organizationId}: ${outcome.matchError instanceof Error ? outcome.matchError.message : String(outcome.matchError)}`,
+            )
+            result.errors.push(
+              tidsgränsText({
+                radnr: i + 2,
+                belopp: amountDecimal.toFixed(2).replace('.', ','),
+                ocr: rawOcr ?? null,
+              }),
+            )
+            result.unmatched++
+            continue
+          }
+          throw outcome.matchError
+        }
         if (outcome.matched) {
           result.autoMatched++
         } else {
@@ -1408,6 +1482,87 @@ export class ReconciliationService {
     return medFörsöksinfo(kvittens)
   }
 
+  /**
+   * IMPORTSTOPP-009 (FORTNOX-100): lagra kända, olösta importstopp varaktigt.
+   *
+   * Samma EXKLUSIVA org-lås som G2-granskningsraderna (`lasOrdningForOlostGranskning`);
+   * effekternas grind tar det DELADE låset och läser stoppen i samma ögonblick. Nyckeln
+   * är fil + konto + stoppets nyckel inom filen, och `skipDuplicates` är `ON CONFLICT DO
+   * NOTHING`: replay, övertaget försök och samtidig import ger ett stopp — och ett redan
+   * LÖST stopp öppnas inte igen av samma bytes (det har hanterats).
+   */
+  private async registreraImportstopp(
+    organizationId: string,
+    fil: {
+      bankAccountId: string
+      kind: string
+      fileName: string
+      contentHash: string
+      stopp: BgMaxStopp[]
+    },
+  ): Promise<void> {
+    if (fil.stopp.length === 0) return
+    await this.prisma.$transaction(async (tx) => {
+      await this.freshness.lasOrdningForOlostGranskning(tx, organizationId)
+      await tx.bankImportStop.createMany({
+        data: fil.stopp.map((st) => ({
+          organizationId,
+          bankAccountId: fil.bankAccountId,
+          kind: fil.kind,
+          fileName: fil.fileName,
+          contentHash: fil.contentHash,
+          scope: st.omfattning,
+          reasonCode: st.skäl,
+          message: st.text,
+          paymentDate: st.dag,
+          amount: st.beloppOre === null ? null : new Decimal(st.beloppOre).div(100),
+          reference: st.referens,
+          payerBankgiro: st.avsandarBankgiro,
+          stopKey: crypto
+            .createHash('sha256')
+            .update(`${fil.kind}|${fil.contentHash}|${fil.bankAccountId}|${st.nyckel}`)
+            .digest('hex'),
+        })),
+        skipDuplicates: true,
+      })
+    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+    this.logger.warn(
+      `[importstopp] ${fil.stopp.length} stopp i ${fil.kind}-filen ${fil.fileName} (org ${organizationId}) — ` +
+        'automatiska krav pausas tills de markerats hanterade.',
+    )
+  }
+
+  /** IMPORTSTOPP-009: organisationens importstopp, olösta först. Historiken bevaras. */
+  async listImportStops(organizationId: string, status: 'open' | 'all' = 'open') {
+    const rader = await this.prisma.bankImportStop.findMany({
+      where: { organizationId, ...(status === 'open' ? { resolvedAt: null } : {}) },
+      include: { bankAccount: { select: { id: true, name: true, accountNumber: true } } },
+      orderBy: [{ resolvedAt: { sort: 'desc', nulls: 'first' } }, { createdAt: 'desc' }],
+      take: 500,
+    })
+    return rader.map((r) => ({ ...r, amount: r.amount === null ? null : Number(r.amount) }))
+  }
+
+  /**
+   * IMPORTSTOPP-009: uttrycklig, behörig upplösning med motivering, aktör och tid.
+   * Raden raderas aldrig. Ett redan löst stopp kan inte lösas igen (409) — historiken
+   * skrivs inte över. Organisationen ingår i WHERE: ett annat bolags stopp är 404.
+   */
+  async resolveImportStop(id: string, organizationId: string, userId: string, note: string) {
+    const motivering = note.trim()
+    if (motivering.length < 10) {
+      throw new BadRequestException('Beskriv hur stoppet hanterats (minst 10 tecken).')
+    }
+    const rad = await this.prisma.bankImportStop.findFirst({ where: { id, organizationId } })
+    if (!rad) throw new NotFoundException('Importstoppet hittades inte')
+    const { count } = await this.prisma.bankImportStop.updateMany({
+      where: { id, organizationId, resolvedAt: null },
+      data: { resolvedAt: new Date(), resolvedById: userId, resolutionNote: motivering },
+    })
+    if (count === 0) throw new ConflictException('Importstoppet är redan markerat som hanterat.')
+    this.logger.log(`[importstopp] ${id} (org ${organizationId}) markerat hanterat av ${userId}.`)
+  }
+
   /** Radloopen. Körs av `attempts.körEnGång` — högst en gång per avtryck. */
   private async körBgMaxImport(
     fileBuffer: Buffer,
@@ -1417,7 +1572,6 @@ export class ReconciliationService {
     pulsa: () => Promise<void>,
   ): Promise<{ resultat: ImportResult & { fileName: string }; partiellt: boolean }> {
     const text = fileBuffer.toString('utf8')
-    const lines = text.split(/\r?\n/).filter((l) => l.length > 0)
 
     const result: ImportResult & { fileName: string } = {
       fileName,
@@ -1430,111 +1584,115 @@ export class ReconciliationService {
       errors: [],
     }
 
-    let sectionDate: Date | null = null
+    // G7/G8 (FORTNOX-100): tolkning per avsnitt enligt Bankgirots manual (okt 2023). Betalnings-
+    // dagen kommer ur TK15 (pos 38–45), aldrig ur TK05 eller importtiden; TK21-avdrag blir aldrig
+    // inbetalningar. Stoppade avsnitt/poster redovisas som läsbara fel — ingen påhittad allokering.
+    const tolkning = tolkaBgMax(text)
+    result.errors.push(...tolkning.fel)
+    // IMPORTSTOPP-009: stoppen lagras FÖRE första raden tas in — och före ett eventuellt
+    // 400-svar för en oläsbar fil — så att inget automatiskt krav kan passera innan
+    // organisationen vet att pengar saknas.
+    await this.registreraImportstopp(organizationId, {
+      bankAccountId,
+      kind: 'BGMAX',
+      fileName,
+      contentHash: hashaBytes(fileBuffer),
+      stopp: tolkning.stopp,
+    })
     let latestCoverage: Date | null = null
     // #F034b — förekomstnummer per radidentitet INOM DEN HÄR FILEN.
     const förekomster = new Förekomsträknare()
     let radnr = 0
-    for (const line of lines) {
-      // Arrendets puls — se motsvarande not i CSV-loopen.
-      if (radnr > 0 && radnr % IMPORT_PULSE_EVERY_ROWS === 0) await pulsa()
-      radnr++
-      const tc = line.slice(0, 2)
+    for (const avsnitt of tolkning.avsnitt) {
+      const txDate = avsnitt.betalningsdag
+      if (!txDate) continue
+      for (const post of avsnitt.betalningar) {
+        // Arrendets puls — se motsvarande not i CSV-loopen.
+        if (radnr > 0 && radnr % IMPORT_PULSE_EVERY_ROWS === 0) await pulsa()
+        radnr++
+        try {
+          const ocr = post.referens
+          if (!latestCoverage || txDate > latestCoverage) latestCoverage = txDate
+          const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
+          const amountDecimal = new Decimal(post.belopp.toFixed(2))
 
-      // TC 05: 0-1=tc, 2-11=BG(10), 12-21=PG(10), 22-29=date(8 YYYYMMDD)
-      if (tc === '05') {
-        const dateStr = line.slice(22, 30)
-        if (/^\d{8}$/.test(dateStr)) {
-          sectionDate = new Date(
-            `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,
-          )
-        }
-        continue
-      }
-
-      // TC 20 / 21: OCR-betalning. Layout (Bankgirot v3):
-      //   pos 1-2:   TC
-      //   pos 3-12:  mottagar-bankgiro (10)
-      //   pos 13-37: betalarens referens / OCR (25)
-      //   pos 38-55: belopp i öre (18)
-      if (tc !== '20' && tc !== '21') continue
-
-      try {
-        const ocr = line.slice(12, 37).trim()
-        const amountOre = parseInt(line.slice(37, 55).trim(), 10)
-        if (!Number.isFinite(amountOre) || amountOre <= 0) {
-          result.errors.push('Rad: ogiltigt belopp')
-          continue
-        }
-        const amount = amountOre / 100
-        const txDate = sectionDate ?? new Date()
-        // PR 4 (B) — täckningsdatum för paymentDataThrough (även dubbletter räknas:
-        // datan finns redan, importen bekräftar att den är aktuell t.o.m. detta datum).
-        if (!latestCoverage || txDate > latestCoverage) latestCoverage = txDate
-        const description = `BgMax inbetalning${ocr ? ` (OCR ${ocr})` : ''}`
-        const amountDecimal = new Decimal(amount.toFixed(2))
-
-        // Delad ingest-kärna: fält-dedup (org, date, amount, rawOcr) → create → match.
-        //
-        // `rawOcr: ocr || null` — inte längre villkorad spridning. Utelämnat fält
-        // = inget villkor = JOKER: en BgMax-post UTAN OCR matchade tidigare vilken
-        // rad som helst med samma dag och belopp, även en rad som bär en ANNAN
-        // hyresgästs OCR, och försvann då tyst. Frånvaron av referens måste vara
-        // sitt eget värde.
-        //
-        // Här är det RÄTT att nyckeln är `rawOcr` och inte `reference`: BgMax har
-        // ingen referenskolumn, OCR:et är en rå teckenposition i fastformatet
-        // (`line.slice(12, 37)`) och är alltså inte härlett av någon regel som kan
-        // ändras. `description` utelämnas fortfarande med flit — den är syntetisk
-        // här, och att hålla den utanför är det som gör att samma betalning
-        // importerad via BÅDE BgMax och CSV känns igen som en.
-        // #F034b — BgMax har sin EGEN namnrymd i radidentiteten: fältuppsättningen
-        // är en annan (ingen textkolumn) och dess `description` är syntetisk.
-        // EN källa för båda lagren, se CSV-vägen ovan.
-        const identitet = bgMaxIdentitet({
-          bankAccountId,
-          date: txDate,
-          amount: amountDecimal,
-          rawOcr: ocr || null,
-        })
-        const förekomst = förekomster.nästa(identitet.key)
-        if (förekomst > 0) result.identiskaRader++
-
-        const outcome = await this.ingestFromFile(organizationId, {
-          dedup: identitet.dedup,
-          bankAccountId,
-          identity: { key: identitet.key, seq: förekomst },
-          data: {
+          const identitet = bgMaxIdentitet({
+            bankAccountId,
             date: txDate,
-            description,
             amount: amountDecimal,
-            ...(ocr ? { rawOcr: ocr } : {}),
-          },
-          crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
-        })
-        if (outcome.duplicate) {
-          result.duplicates++
-          continue
+            rawOcr: ocr || null,
+          })
+          const förekomst = förekomster.nästa(identitet.key)
+          if (förekomst > 0) result.identiskaRader++
+
+          const outcome = await this.ingestFromFile(organizationId, {
+            dedup: identitet.dedup,
+            bankAccountId,
+            identity: { key: identitet.key, seq: förekomst },
+            data: {
+              date: txDate,
+              description,
+              amount: amountDecimal,
+              ...(ocr ? { rawOcr: ocr } : {}),
+              // FS1: datumet kommer bevisligen ur TK15 (OVERGANG-016).
+              bgmaxDateSource: 'TK15',
+            },
+            crossSource: { date: txDate, amount: amountDecimal, ...(ocr ? { ocr } : {}) },
+            bgmaxÖvergång: { date: txDate, amount: amountDecimal, rawOcr: ocr || null },
+          })
+          if (outcome.duplicate) {
+            result.duplicates++
+            continue
+          }
+          result.imported++
+          if ('granskning' in outcome) {
+            result.behoverGranskas++
+            continue
+          }
+          if (outcome.matchError) {
+            // G20: tidsgräns i matchningen → läsbart besked; den tekniska orsaken bara i loggen.
+            if (ärMatchningsTidsgräns(outcome.matchError)) {
+              this.logger.warn(
+                `[bgmax] matchningens tidsgräns för org ${organizationId}: ${outcome.matchError instanceof Error ? outcome.matchError.message : String(outcome.matchError)}`,
+              )
+              result.errors.push(
+                tidsgränsText({
+                  belopp: post.belopp.toFixed(2).replace('.', ','),
+                  ocr: ocr || null,
+                }),
+              )
+              result.unmatched++
+              continue
+            }
+            throw outcome.matchError
+          }
+          if (outcome.matched) result.autoMatched++
+          else result.unmatched++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          result.errors.push(msg)
         }
-        result.imported++
-        if ('granskning' in outcome) {
-          result.behoverGranskas++
-          continue
-        }
-        // Matchfel → radfel (samma som när matchTransaction kastade i radens try förr).
-        if (outcome.matchError) throw outcome.matchError
-        if (outcome.matched) result.autoMatched++
-        else result.unmatched++
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        result.errors.push(msg)
       }
     }
 
     if (result.imported === 0 && result.duplicates === 0) {
       throw new BadRequestException(
-        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.',
+        'Inga giltiga BgMax-poster hittades i filen. Kontrollera att det är en BgMax-fil från Bankgirot.' +
+          (tolkning.fel.length > 0 ? ` ${tolkning.fel.join(' ')}` : ''),
       )
+    }
+
+    // PARSER-006: pengar som stoppats (avdrag, extra referenser, valuta, avsnitt som inte
+    // stämmer) finns på banken men inte i Eveno. Betalningsunderlaget får då inte påstå att
+    // det är komplett för den dagen — annars kan en påminnelse gå till någon som betalat.
+    // Stopp på okänd dag → underlaget flyttas inte alls av den här filen.
+    if (tolkning.stopp.length > 0 && latestCoverage) {
+      if (tolkning.stopp.some((s) => s.dag === null)) latestCoverage = null
+      else {
+        const första = Math.min(...tolkning.stopp.map((s) => s.dag!.getTime()))
+        const dagenFöre = new Date(första - 24 * 60 * 60 * 1000)
+        if (latestCoverage > dagenFöre) latestCoverage = dagenFöre
+      }
     }
 
     // PR 4 (B) — flytta fram paymentDataThrough till BgMax-filens senaste sektionsdatum.
@@ -1619,6 +1777,24 @@ export class ReconciliationService {
           `(${transaction.identityReviewReason ?? 'okänt skäl'}). Raden kräver ett ` +
           'mänskligt beslut — matcha den manuellt eller lägg den åt sidan.',
       )
+      return false
+    }
+
+    // ── KUNDSTART T4-1 (K-B2): HISTORISK SKULD GÖR BELOPPET TVETYDIGT ─────
+    //
+    // OCR identifierar bara hyresgästen, och BgMax bär ingen avireferens. Har
+    // hyresgästen en öppen OPENING-post (historisk skuld före brytdatum) kan
+    // beloppet inte avgöra om betalningen avser den gamla skulden eller en löpande
+    // avi (C2:s fall X/Y/Z). Automatiken allokerar då INGENTING — varken OCR,
+    // vattenfall, överskott eller beloppsgissning — utan raden blir en G2-
+    // granskningsrad med synlig orsak. Det pausar kravtrappan (påminnelse, avgift,
+    // ränta, inkasso) via samma grind som övriga oavgjorda rader, tills en människa
+    // fördelat betalningen manuellt. Hyresgäster utan OPENING påverkas inte.
+    if (
+      transaction.rawOcr &&
+      (await this.harOppenHistoriskSkuld(db, organizationId, { ocrNumber: transaction.rawOcr }))
+    ) {
+      await this.markeraHistoriskSkuld(transaction.id, organizationId)
       return false
     }
 
@@ -1722,7 +1898,7 @@ export class ReconciliationService {
         where: {
           organizationId,
           ocrNumber: transaction.rawOcr,
-          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          status: { in: [...BETALBARA_AVISTATUSAR] },
         },
         orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
       })
@@ -1811,7 +1987,7 @@ export class ReconciliationService {
         where: {
           organizationId,
           noticeNumber: noticeNumberMatch[1],
-          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          status: { in: [...BETALBARA_AVISTATUSAR] },
         },
       })
       // PR 3b — referensgrenen (avinummer i description) är lika deterministisk som
@@ -2413,7 +2589,18 @@ export class ReconciliationService {
 
       // Bara öppna (obetalda) avier kan ta emot en betalning. En PAID/CANCELLED avi
       // (eller en race-förlorare) → ingen allokering; låt tx:n falla vidare.
-      if (!['SENT', 'PENDING', 'OVERDUE'].includes(notice.status)) return false
+      // KUNDSTART T4-1, skyddsnät: en AUTOMATISK väg (userId null) allokerar aldrig till
+      // en hyresgäst med öppen historisk skuld — inte heller via referens eller beloppsgissning.
+      if (
+        userId === null &&
+        (await this.harOppenHistoriskSkuld(tx, organizationId, { noticeId: notice.id }))
+      )
+        return false
+      if (!ärBetalbarAvistatus(notice.status)) {
+        // KUNDSTART §12.2: en OPENING-avi (historisk skuld) regleras bara när en människa
+        // valt den (userId satt = manuell matchning). Automatiska vägar anropar med null.
+        if (!(notice.status === 'OPENING' && userId !== null && matchType !== 'fuzzy')) return false
+      }
 
       // #41: en DEPOSITIONS-avi hanteras separat. Den ingår ALDRIG i debt/kravtrappan
       // (computeRentDebt=0 för DEPOSIT, kravtrappan filtrerar type=RENT) — den lämnas
@@ -2451,7 +2638,11 @@ export class ReconciliationService {
           select: { id: true },
         })
         await tx.rentNotice.updateMany({
-          where: { id: noticeId, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } },
+          where: {
+            id: noticeId,
+            organizationId,
+            status: { in: [...MANUELLT_BETALBARA_AVISTATUSAR] },
+          },
           data: { status: 'PAID', paidAt: transactionDate, paidAmount: notice.totalAmount },
         })
         // Deposition → PAID: sanningskällan för återbetalning (markRefundPendingForLease
@@ -2573,7 +2764,7 @@ export class ReconciliationService {
           where: {
             id: noticeId,
             organizationId,
-            status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+            status: { in: [...MANUELLT_BETALBARA_AVISTATUSAR] },
           },
           data: {
             status: 'PAID',
@@ -2970,6 +3161,62 @@ export class ReconciliationService {
    * Därför en hård invariant: skiljer sig `tenantId` åt STANNAR vi och allokerar
    * ingenting. Det kostar inget i normalfallet och gör skaderisken omöjlig.
    */
+  /**
+   * KUNDSTART T4-1: har hyresgästen (via OCR eller via en avi) en öppen OPENING-post?
+   * En fråga: OPENING-avin bär hyresgästens ordinarie OCR (öppningspaketets verkställning).
+   */
+  private async harOppenHistoriskSkuld(
+    db: Prisma.TransactionClient,
+    organizationId: string,
+    vem: { ocrNumber: string } | { noticeId: string },
+  ): Promise<boolean> {
+    const antal = await db.rentNotice.count({
+      where: {
+        organizationId,
+        status: 'OPENING',
+        origin: 'OPENING_PACKAGE',
+        ...('ocrNumber' in vem
+          ? { ocrNumber: vem.ocrNumber }
+          : { tenant: { rentNotices: { some: { id: vem.noticeId, organizationId } } } }),
+      },
+    })
+    return antal > 0
+  }
+
+  /**
+   * KUNDSTART T4-1 p1/p3: gör raden till en G2-granskningsrad med orsak
+   * HISTORISK_SKULD_FORE_BRYTDATUM, under samma exklusiva lås och periodöppning som
+   * importens granskningsrader. Kravtrappan pausas därmed tills raden fördelats manuellt.
+   */
+  private async markeraHistoriskSkuld(transactionId: string, organizationId: string) {
+    let nyPeriod: string | null = null
+    await this.prisma.$transaction(async (tx) => {
+      await this.freshness.lasOrdningForOlostGranskning(tx, organizationId)
+      const r = await tx.bankTransaction.updateMany({
+        where: { id: transactionId, organizationId, status: 'UNMATCHED', identityReviewAt: null },
+        data: {
+          identityReviewAt: new Date(),
+          identityReviewReason: 'HISTORISK_SKULD_FORE_BRYTDATUM',
+        },
+      })
+      if (r.count === 1) nyPeriod = await this.freshness.oppnaGranskningsperiod(tx, organizationId)
+    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+    this.logger.warn(
+      `[reconciliation] tx=${transactionId} (org ${organizationId}): hyresgästen har historisk ` +
+        'skuld före brytdatum — ingen automatisk allokering; raden väntar på manuell fördelning ' +
+        'och kravtrappan är pausad.',
+    )
+    if (nyPeriod)
+      await this.freshness
+        .aviseraGranskningspaus(organizationId)
+        .catch((err: unknown) =>
+          this.logger.error(
+            `[granskningspaus] avisering misslyckades för org ${organizationId}: ` +
+              `${err instanceof Error ? err.message : String(err)} — svepet tar igen den.`,
+          ),
+        )
+  }
+
   private async applyWaterfallToRentNotices(
     transactionId: string,
     ocrNumber: string,
@@ -2977,8 +3224,12 @@ export class ReconciliationService {
     transactionAmount: Decimal,
     transactionDate: Date,
     userId: string | null,
+    // KUNDSTART T4-1 p4: MANUELL fördelning på flera avier i operatörens ordning (även
+    // OPENING). Utan listan: den automatiska vägen som förut.
+    valdaAvier?: string[],
   ): Promise<boolean> {
     const tolerance = new Decimal('1.00')
+    const manuell = valdaAvier !== undefined && userId !== null
 
     return this.prisma.$transaction(async (tx) => {
       // Samma bankradslåsning används av både waterfall och enskild matchning.
@@ -2998,11 +3249,13 @@ export class ReconciliationService {
       // enskildvägens `orderBy` — dueDate först, createdAt som tie-break — så att
       // två avier med samma förfallodag hanteras deterministiskt i stället för
       // efter databasens infall.
-      const kandidater = await tx.rentNotice.findMany({
+      if (!manuell && (await this.harOppenHistoriskSkuld(tx, organizationId, { ocrNumber })))
+        return false
+      const kandidaterOsorterade = await tx.rentNotice.findMany({
         where: {
           organizationId,
-          ocrNumber,
-          status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+          ...(manuell ? { id: { in: valdaAvier } } : { ocrNumber }),
+          status: { in: [...(manuell ? MANUELLT_BETALBARA_AVISTATUSAR : BETALBARA_AVISTATUSAR)] },
           // DEPOSIT har sitt eget 1510/2890-flöde (#41) och ingår aldrig i
           // kravtrappan — den lämnas orörd av vattenfallet, precis som av
           // enskildvägens carve-out.
@@ -3023,6 +3276,12 @@ export class ReconciliationService {
           interestAccruedAmount: true,
         },
       })
+      const kandidater = manuell
+        ? [...kandidaterOsorterade].sort(
+            (x, y) => valdaAvier!.indexOf(x.id) - valdaAvier!.indexOf(y.id),
+          )
+        : kandidaterOsorterade
+      if (manuell && kandidater.length !== valdaAvier!.length) return false
       if (kandidater.length < 2) return false
 
       // SAME-TENANT-INVARIANTEN. Fail-closed: stanna hellre än att sprida en
@@ -3113,7 +3372,13 @@ export class ReconciliationService {
 
         await tx.rentNotice.updateMany({
           where: reglerar
-            ? { id: r.notice.id, organizationId, status: { in: ['SENT', 'PENDING', 'OVERDUE'] } }
+            ? {
+                id: r.notice.id,
+                organizationId,
+                status: {
+                  in: [...(manuell ? MANUELLT_BETALBARA_AVISTATUSAR : BETALBARA_AVISTATUSAR)],
+                },
+              }
             : { id: r.notice.id, organizationId },
           data: reglerar
             ? {
@@ -3260,14 +3525,20 @@ export class ReconciliationService {
 
   async manualMatch(
     transactionId: string,
-    target: { invoiceId?: string; rentNoticeId?: string },
+    target: { invoiceId?: string; rentNoticeId?: string; rentNoticeIds?: string[] },
     organizationId: string,
     userId: string,
   ): Promise<void> {
-    if (!target.invoiceId && !target.rentNoticeId) {
-      throw new BadRequestException('Ange invoiceId eller rentNoticeId')
+    const antalMal =
+      Number(Boolean(target.invoiceId)) +
+      Number(Boolean(target.rentNoticeId)) +
+      Number(Boolean(target.rentNoticeIds?.length))
+    if (antalMal === 0) {
+      throw new BadRequestException('Ange invoiceId, rentNoticeId eller rentNoticeIds')
     }
-    if (target.invoiceId && target.rentNoticeId) {
+    if (target.rentNoticeIds && new Set(target.rentNoticeIds).size !== target.rentNoticeIds.length)
+      throw new BadRequestException('Samma avi får bara anges en gång i en fördelning')
+    if (antalMal > 1) {
       throw new BadRequestException(
         'Ange endast en av invoiceId / rentNoticeId — en transaktion kan inte matchas mot båda',
       )
@@ -3315,6 +3586,28 @@ export class ReconciliationService {
             'makulerad. Avmatcha den befintliga transaktionen först.',
         )
       }
+    } else if (target.rentNoticeIds) {
+      // KUNDSTART T4-1 p4: operatörens fördelning på flera avier, i vald ordning.
+      // Beloppet måste rymmas i de valda aviernas restskuld (överbetalning avvisas).
+      if (target.rentNoticeIds.length < 2)
+        throw new BadRequestException(
+          'En fördelning kräver minst två avier — använd rentNoticeId för en',
+        )
+      const ok = await this.applyWaterfallToRentNotices(
+        transactionId,
+        transaction.rawOcr ?? '',
+        organizationId,
+        transaction.amount,
+        transaction.date,
+        userId,
+        target.rentNoticeIds,
+      )
+      if (!ok)
+        throw new BadRequestException(
+          'Fördelningen kunde inte göras: beloppet ska överstiga den första avins restskuld och ' +
+            'rymmas i de valdas sammanlagda restskuld, avierna ska vara obetalda och tillhöra ' +
+            'samma hyresgäst.',
+        )
     } else if (target.rentNoticeId) {
       const notice = await this.prisma.rentNotice.findFirst({
         where: { id: target.rentNoticeId, organizationId },
@@ -3900,6 +4193,9 @@ export class ReconciliationService {
           select: {
             type: true,
             status: true,
+            sentAt: true,
+            sendError: true,
+            origin: true,
             totalAmount: true,
             consumptionAmount: true,
             miscChargeAmount: true,
@@ -3954,14 +4250,73 @@ export class ReconciliationService {
           // per faktisk löptid, RL 9 §). En redan obetald (delbetald) avi rör vi inte
           // statusen på — bara paidAmount-spegeln.
           const reopen = noticeRow.status === 'PAID' && ocrLeft > 0
+          // G15 (FORTNOX-100): en avi vars utskick misslyckades (FAILED) kan numera regleras
+          // av en bankbetalning. Återöppnas den får den inte bli SENT — "ingen status ljuger
+          // om ett utskick som inte skedde" (sendNotices). Aldrig skickad + utskicksfel →
+          // tillbaka till FAILED, så den syns i Misslyckade igen och kan skickas om.
+          // G15-012 (C2 MOTPROV-G15-012): härled ur leveransfakta, inte ur antagande.
+          // Aldrig skickad och utan utskicksfel (PENDING → betald → avmatchad) är PENDING,
+          // inte SENT — annars påstår avin ett utskick som aldrig skett (sentAt null).
+          // KUNDSTART-001: en historisk fordran (öppningspaket) återgår till OPENING — den har
+          // aldrig skickats av Eveno och får inte bli PENDING (som utskicket väljer).
+          const återöppnadStatus =
+            noticeRow.origin === 'OPENING_PACKAGE'
+              ? 'OPENING'
+              : noticeRow.sentAt !== null
+                ? 'SENT'
+                : noticeRow.sendError
+                  ? 'FAILED'
+                  : 'PENDING'
           // organizationId i WHERE som defense-in-depth (FIX 2-mönstret).
           await tx.rentNotice.updateMany({
             where: { id: avaktuellId, organizationId },
             data: {
               paidAmount: paidSum.gt(0) ? paidSum : null,
-              ...(reopen ? { status: 'SENT', paidAt: null } : {}),
+              ...(reopen ? { status: återöppnadStatus, paidAt: null } : {}),
             },
           })
+
+          // ── TESTKUND-027 B2.5 / KONTRAKTSBESKED-P2-028 V-1, V-3 ─────────────────────────────
+          // En bankbetald DEPOSITIONSavi satte Deposit → PAID (applyMatch, DEPOSIT-grenen). Utan
+          // återställning stod depositionen kvar som betald efter avmatchningen och kunde
+          // återbetalas utan mottagning. Bytet är statusvillkorat, i SAMMA transaktion som
+          // raderingen av allokeringen och rättelsen, och sist i låsordningen
+          // (BankTransaction → RentNotice → Deposit). count 0 kastar 409: HELA avmatchningen rullas
+          // tillbaka. En deposition som redan återbetalats, förverkats eller väntar på återbetalning —
+          // eller som inte är PAID trots betald avi — avmatchas aldrig här (ingen "reparation").
+          if (
+            noticeRow.type === RentNoticeType.DEPOSIT &&
+            removedNoticeAllocations.some((a) => a.rentNoticeId === avaktuellId)
+          ) {
+            const dep = await tx.deposit.findFirst({
+              where: { rentNoticeId: avaktuellId, organizationId },
+              select: { id: true, status: true },
+            })
+            if (dep) {
+              const claim = await tx.deposit.updateMany({
+                where: { id: dep.id, organizationId, status: 'PAID' },
+                data: { status: 'PENDING', paidAt: null },
+              })
+              if (claim.count !== 1) {
+                const nu = await tx.deposit.findFirst({
+                  where: { id: dep.id, organizationId },
+                  select: { status: true },
+                })
+                const statusText: Record<string, string> = {
+                  REFUNDED: 'återbetald',
+                  PARTIALLY_REFUNDED: 'delvis återbetald',
+                  FORFEITED: 'förverkad',
+                  REFUND_PENDING: 'under återbetalning',
+                  PENDING: 'inte registrerad som betald',
+                }
+                throw new ConflictException(
+                  `Depositionen är ${statusText[nu?.status ?? ''] ?? 'i ett okänt läge'} — en bankbetalning av depositionsavin kan inte ` +
+                    'avmatchas när depositionen inte längre är betald och oreglerad (t.ex. redan återbetald). ' +
+                    'Stäm av återbetalningen först. Ingenting ändrades.',
+                )
+              }
+            }
+          }
         }
       }
 

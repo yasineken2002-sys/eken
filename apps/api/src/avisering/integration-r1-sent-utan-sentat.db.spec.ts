@@ -351,9 +351,11 @@ medDb('R-1 · dokumentets utskicksbevis mot avmatchningens återöppning', () =>
     await recon.unmatchTransaction(tx1.id, orgId, userId, 'r1-riggens avmatchning')
     const efterUnmatch = await leverans(id)
 
-    // Det HÄR är R-1:s förutsättning. Uppstår den inte har vägen ändrats, och
-    // då ska provet säga det i stället för att tiga.
-    expect(efterUnmatch.rad.status).toBe('SENT')
+    // Vägen HAR ändrats, och provet säger det: G15-012 (FORTNOX-100, C2 MOTPROV-G15-012)
+    // rättade roten som R-1 lämnade orörd. Återöppningen härleds nu ur leveransfakta —
+    // aldrig skickad och utan utskicksfel blir PENDING, inte SENT. Status och dokument
+    // säger alltså samma sak: inget utskick har skett.
+    expect(efterUnmatch.rad.status).toBe('PENDING')
     expect(efterUnmatch.rad.sentAt).toBeNull()
     expect(mejl).toHaveLength(0)
 

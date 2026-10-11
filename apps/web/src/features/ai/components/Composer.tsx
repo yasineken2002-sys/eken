@@ -123,7 +123,12 @@ export function Composer({
   const openFilePicker = () => fileInputRef.current?.click()
 
   return (
-    <div className={cn('w-full', isHero ? 'px-8' : 'border-line bg-surface border-t px-6 py-4')}>
+    <div
+      className={cn(
+        'w-full',
+        isHero ? 'px-4 sm:px-8' : 'border-line bg-surface border-t px-4 py-4 sm:px-6',
+      )}
+    >
       <div className={cn('mx-auto w-full', isHero ? 'max-w-2xl' : 'max-w-3xl')}>
         {isListening && (
           <div className="mb-2 flex items-center gap-2 text-[13px] text-red-500">
@@ -154,7 +159,9 @@ export function Composer({
           }}
           onDrop={handleDrop}
           className={cn(
-            'border-line bg-surface flex items-end gap-3 border transition-all',
+            // F-045-1: under sm bryts raden — textfältet får en egen hel rad och knapparna hamnar under
+            // (tidigare åt knapparna hela bredden vid 390 px och textfältet blev 0 px brett).
+            'border-line bg-surface flex flex-wrap items-end gap-3 border transition-all sm:flex-nowrap',
             'focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100',
             isDragging && 'border-blue-400 bg-blue-50/60 ring-2 ring-blue-100',
             isHero ? 'rounded-3xl px-5 py-4 shadow-md' : 'rounded-2xl px-4 py-3',
@@ -175,12 +182,12 @@ export function Composer({
             }
             rows={isHero ? 2 : 1}
             className={cn(
-              'text-ink flex-1 resize-none bg-transparent placeholder-gray-400 outline-none',
+              'text-ink min-w-0 flex-1 basis-full resize-none bg-transparent placeholder-gray-400 outline-none sm:basis-0',
               isHero ? 'text-[15px] leading-relaxed' : 'text-[13.5px]',
             )}
             style={{ maxHeight: `${MAX_TEXTAREA_HEIGHT}px` }}
           />
-          <div className="flex flex-shrink-0 items-center gap-2">
+          <div className="ml-auto flex flex-shrink-0 items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"

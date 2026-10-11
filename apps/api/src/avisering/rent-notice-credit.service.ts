@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, RentNoticeType } from '@prisma/client'
 
 import { PrismaService } from '../common/prisma/prisma.service'
+import { arHistoriskSkuld, HISTORISK_SKULD_SPARR } from '../kundstart/historisk-skuld-sparr'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { computeRentDebt } from './rent-debt.service'
@@ -62,9 +63,13 @@ export function assessRentNoticeCreditability(
     writtenOffAt: Date | null
     payments: Array<unknown>
     exportedToCollection: boolean
+    origin?: string | null
   },
   debt: { ocrOutstanding: number },
 ): { allowed: boolean; reason: string | null } {
+  // KUNDSTART S3-2: ingen kreditering av historisk skuld — kreditens 39xx/1510-kontering
+  // vore ett antagande om det gamla systemets kontering, moms och period.
+  if (arHistoriskSkuld(notice)) return { allowed: false, reason: HISTORISK_SKULD_SPARR }
   // ── DEPOSITION ────────────────────────────────────────────────────────────
   //
   // En deposition är ingen kravavi: den ägs av depositionsflödets 1510/2890-

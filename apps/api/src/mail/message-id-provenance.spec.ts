@@ -74,7 +74,12 @@ function fejkPrisma(): {
       // #656: skrivningen är org-scopad, alltså `updateMany` — en icke-träff
       // blir noll rader i stället för ett kast som hade utlöst en Bull-retry på
       // ett mejl som redan är skickat.
-      rentNotice: { updateMany: rentNoticeUpdate },
+      // F-047-2 (TESTKUND-049): arbetaren prövar avins status innan ett avimejl skickas. Här är avin
+      // skickad (SENT), så utskicket går vidare som förut och provet mäter korrelationen som tidigare.
+      rentNotice: {
+        updateMany: rentNoticeUpdate,
+        findFirst: jest.fn().mockResolvedValue({ status: 'SENT' }),
+      },
       rentNoticeSend: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       tenant: { update: tenantUpdate },
       failedEmail: { create: failedEmailCreate },

@@ -23,6 +23,9 @@
   // och kunde tidigare gå sönder tyst — ts-node typkollar först vid körning,
   // alltså långt efter merge.
   //
+  // `prov-manuella/` (FORTNOX-100 G21): uttryckligt körda prov som kräver riktig Chrome —
+  // utanför jest:s rootDir men typkollade, så att de inte ruttnar.
+  //
   // `.proof-*/` utelämnas medvetet: gitignorerade engångssonder, inte kod som
   // någon annan ska kunna lita på.
   "extends": "./tsconfig.json",
@@ -31,6 +34,6 @@
     // Se blocket ovan: återställer byggets rootDir, som inte gäller här.
     "rootDir": "."
   },
-  "include": ["src", "scripts/**/*.ts", "prisma/*.ts", "jest.config.ts"],
+  "include": ["src", "scripts/**/*.ts", "prisma/*.ts", "jest.config.ts", "prov-manuella/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

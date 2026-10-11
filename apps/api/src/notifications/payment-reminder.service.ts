@@ -32,6 +32,7 @@ import {
   PaymentFreshnessService,
   paymentFreshnessTransactionOptions,
 } from '../payment-freshness/payment-freshness.service'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
 
 interface ProcessSummary {
   friendlySent: number
@@ -99,6 +100,8 @@ export class PaymentReminderService {
           where: {
             status: 'OVERDUE',
             remindersPaused: false,
+            // FS-4: blockerade bolag (SUSPENDED/CANCELLED) får inga automatiska krav.
+            organization: { status: { in: [...AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES] } },
           },
           include: {
             tenant: { select: SAFE_TENANT_SELECT },

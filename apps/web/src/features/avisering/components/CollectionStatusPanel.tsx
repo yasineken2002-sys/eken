@@ -164,6 +164,20 @@ const LAGE: Record<
     text: 'text-amber-800',
     prick: 'bg-amber-400',
   },
+  PAUSED_IDENTITY_REVIEW: {
+    rubrik: 'Kravtrappan är pausad',
+    ikon: PauseCircle,
+    ram: 'border-amber-100 bg-amber-50',
+    text: 'text-amber-800',
+    prick: 'bg-amber-400',
+  },
+  PAUSED_IMPORT_STOP: {
+    rubrik: 'Kravtrappan är pausad',
+    ikon: PauseCircle,
+    ram: 'border-amber-100 bg-amber-50',
+    text: 'text-amber-800',
+    prick: 'bg-amber-400',
+  },
   WAITING: {
     rubrik: 'Väntar',
     ikon: Clock,
@@ -206,6 +220,11 @@ function harnast(s: RentCollectionStatus): string {
         return 'En bankimport har påbörjats men betalningsdatum saknas. Kravtrappan är pausad. Kontrollera importens resultat och importera ett aktuellt utdrag.'
       }
       return `Betalningsdatan är ${s.freshness.ageDays ?? '?'} dygn gammal (gräns ${s.freshness.thresholdDays}). Kravtrappan pausas tills ny betalningsdata lästs in — annars kunde ett krav drivas vidare mot en skuld som redan är betald.`
+    case 'PAUSED_IDENTITY_REVIEW':
+      // STATUS-011: samma paus som nästa automatiska körning faktiskt möter.
+      return `${s.pausedBy.identityReview} importerad(e) betalning(ar) väntar på identitetsgranskning i bankavstämningen. Kravtrappan är pausad för hela organisationen tills de är avgjorda — matcha dem eller lägg dem åt sidan.`
+    case 'PAUSED_IMPORT_STOP':
+      return `${s.pausedBy.importStops} importstopp är olöst(a) — pengar som en bankimport inte kunde ta in. Kravtrappan är pausad för hela organisationen tills stoppen markerats hanterade i bankavstämningen.`
     case 'WAITING':
       return s.daysUntilEvaluation === 0
         ? 'Prövas vid nästa dygnskörning.'
@@ -284,6 +303,19 @@ export function CollectionStatusPanel({ status, noticeId }: Props) {
           </p>
         </div>
       </div>
+
+      {/* STATUS-011: pausen har en väg vidare — bankavstämningen. */}
+      {(status.state === 'PAUSED_IDENTITY_REVIEW' || status.state === 'PAUSED_IMPORT_STOP') && (
+        <Link
+          to="/reconciliation"
+          data-testid="collection-pause-link"
+          className="mt-2.5 inline-flex h-8 items-center rounded-[10px] border border-amber-200 bg-white px-3.5 text-[12.5px] font-medium text-amber-800 transition-colors hover:bg-amber-50"
+        >
+          {status.state === 'PAUSED_IMPORT_STOP'
+            ? 'Hantera importstopp i bankavstämningen'
+            : 'Avgör raderna i bankavstämningen'}
+        </Link>
+      )}
 
       {/* BETALNINGSMÅLET — och VÄGEN dit. En status som säger "blockerad" utan
           väg vidare lämnar hyresvärden med ett besked hen inte kan agera på.

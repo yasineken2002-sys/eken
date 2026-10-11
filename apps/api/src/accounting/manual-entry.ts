@@ -121,6 +121,40 @@ export const KONTO_INGAENDE_MOMS = 2641
 export const KONTO_LEVERANTORSSKULD = 2440
 
 /**
+ * TESTKUND-041 (moms v1, B-1/B-2): kundens UTTRYCKLIGA momsval för en löpande svensk
+ * leverantörskostnad. Inget «delvis» (B-9). Valet görs av en människa i formuläret; ingen
+ * standard och ingen härledning ur sats, konto eller AI.
+ *   INGEN_MOMS    moms måste vara 0
+ *   HELT_AVDRAG   kostnad = netto, 2641 = moms
+ *   INGET_AVDRAG  kostnad = brutto på valt kostnadskonto, ingen 2641-rad
+ */
+export type LeverantorsMomsval = 'INGEN_MOMS' | 'HELT_AVDRAG' | 'INGET_AVDRAG'
+export const LEVERANTORS_MOMSVAL: readonly LeverantorsMomsval[] = [
+  'INGEN_MOMS',
+  'HELT_AVDRAG',
+  'INGET_AVDRAG',
+]
+
+/**
+ * Prövar momsvalet mot momsbeloppet. `null` = godkänt. Positiv moms utan val nekas (ingen
+ * tyst avdragsrätt); ett okänt val nekas; INGEN kräver 0; ett avdragsval kräver moms > 0.
+ */
+export function provaMomsval(moms: number, val: unknown): string | null {
+  const harMoms = ioren(moms) > 0
+  if (val === undefined || val === null) {
+    return harMoms
+      ? 'Välj momsbehandling: dras momsen av, eller dras den inte av? Utan ett val bokförs ingen moms.'
+      : null
+  }
+  if (!LEVERANTORS_MOMSVAL.includes(val as LeverantorsMomsval))
+    return 'Okänd momsbehandling. Välj «Ingen moms», «Moms dras av» eller «Moms dras inte av» — delvis avdrag stöds inte.'
+  if (val === 'INGEN_MOMS' && harMoms)
+    return `«Ingen moms på fakturan» är valt men momsbeloppet är ${formatBelopp(moms)} kr. Ange moms 0 eller välj om momsen dras av.`
+  if (val !== 'INGEN_MOMS' && !harMoms) return 'Momsen är 0 — välj «Ingen moms på fakturan».'
+  return null
+}
+
+/**
  * Fritt verifikat: rad för rad mot kontoplanen, med balanskravet.
  *
  * Felmeddelandena är på svenska och SPECIFIKA — de går rakt ut i ett 400-svar
@@ -180,6 +214,8 @@ export interface UtgiftIndata {
   belopp: number
   /** Momsbeloppet i kronor, inte satsen. 0 eller utelämnat = ingen momsrad. */
   moms?: number | undefined
+  /** TESTKUND-041: INGET_AVDRAG = momsen ingår i kostnaden (brutto), ingen 2641-rad. */
+  momsval?: LeverantorsMomsval | null | undefined
   /** Kostnadskontot, t.ex. 5070 Reparationer. */
   kontonummer: number
   beskrivning: string
@@ -226,13 +262,15 @@ export function byggUtgiftsrader(indata: UtgiftIndata, konton: Kontouppslag): By
     }
   }
 
-  const netto = belopp - moms
+  // TESTKUND-041: momsen dras inte av → hela bruttot är kostnad och ingen 2641-rad.
+  const ejAvdrag = indata.momsval === 'INGET_AVDRAG'
+  const netto = ejAvdrag ? belopp : belopp - moms
   const rader: Verifikatrad[] = [
     { accountId: kostnadskonto, debit: netto, description: beskrivning },
     { accountId: bankkonto, credit: belopp, description: 'Betalning bank' },
   ]
 
-  if (moms > 0) {
+  if (moms > 0 && !ejAvdrag) {
     const momskonto = konton.get(KONTO_INGAENDE_MOMS)
     if (!momskonto) {
       return {
@@ -267,6 +305,8 @@ export interface LeverantorsfakturaIndata {
   belopp: number
   /** Momsbeloppet i kronor. 0 eller utelämnat = ingen momsrad. */
   moms?: number | undefined
+  /** TESTKUND-041: INGET_AVDRAG = momsen ingår i kostnaden (brutto), ingen 2641-rad. */
+  momsval?: LeverantorsMomsval | null | undefined
   kontonummer: number
   beskrivning: string
 }
@@ -309,13 +349,16 @@ export function byggLeverantorsfakturarader(
     }
   }
 
-  const netto = belopp - moms
+  // TESTKUND-041 (B-2): momsen dras inte av → kostnaden är bruttot, ingen 2641-rad. Momsbeloppet
+  // finns kvar på fakturan och i verifikatets proveniens.
+  const ejAvdrag = indata.momsval === 'INGET_AVDRAG'
+  const netto = ejAvdrag ? belopp : belopp - moms
   const rader: Verifikatrad[] = [
     { accountId: kostnadskonto, debit: netto, description: beskrivning },
     { accountId: skuldkonto, credit: belopp, description: 'Leverantörsskuld' },
   ]
 
-  if (moms > 0) {
+  if (moms > 0 && !ejAvdrag) {
     const momskonto = konton.get(KONTO_INGAENDE_MOMS)
     if (!momskonto) {
       return {
@@ -398,4 +441,53 @@ export function byggLeverantorsbetalningsrader(belopp: number, konton: Kontoupps
     ],
     summa: belopp,
   }
+}
+
+/**
+ * TESTKUND-041 (MJ-3): källbunden momsjustering HELT↔INGET. Exakt två rader på samma belopp V;
+ * aldrig 2440 eller 19xx. HELT→INGET: D kostnadskonto V, K 2641 V. INGET→HELT: D 2641 V, K kostnad V.
+ */
+export function byggMomsjusteringsrader(
+  indata: {
+    belopp: number
+    kontonummer: number
+    fran: LeverantorsMomsval
+    till: LeverantorsMomsval
+    beskrivning: string
+  },
+  konton: Kontouppslag,
+): Byggutfall {
+  const { belopp, kontonummer, fran, till } = indata
+  if (!(ioren(belopp) > 0)) return { ok: false, fel: 'Momsjusteringen kräver moms större än noll.' }
+  const riktning =
+    fran === 'HELT_AVDRAG' && till === 'INGET_AVDRAG'
+      ? 'TILL_KOSTNAD'
+      : fran === 'INGET_AVDRAG' && till === 'HELT_AVDRAG'
+        ? 'TILL_MOMS'
+        : null
+  if (!riktning)
+    return {
+      ok: false,
+      fel: 'Bara byte mellan «Moms dras av» och «Moms dras inte av» stöds; momsbeloppet ändras aldrig här.',
+    }
+  const kostnadskonto = konton.get(kontonummer)
+  if (!kostnadskonto) return { ok: false, fel: `Kostnadskonto ${kontonummer} finns inte.` }
+  const momskonto = konton.get(KONTO_INGAENDE_MOMS)
+  if (!momskonto)
+    return { ok: false, fel: `Konto ${KONTO_INGAENDE_MOMS} (Ingående moms) saknas i kontoplanen.` }
+  const rader: Verifikatrad[] =
+    riktning === 'TILL_KOSTNAD'
+      ? [
+          {
+            accountId: kostnadskonto,
+            debit: belopp,
+            description: 'Moms dras inte av – till kostnad',
+          },
+          { accountId: momskonto, credit: belopp, description: 'Ingående moms återförd' },
+        ]
+      : [
+          { accountId: momskonto, debit: belopp, description: 'Ingående moms dras av' },
+          { accountId: kostnadskonto, credit: belopp, description: 'Moms dras av – från kostnad' },
+        ]
+  return { ok: true, rader, summa: belopp }
 }

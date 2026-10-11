@@ -42,6 +42,17 @@ const CRITICAL_INDEXES = [
     where: "status='ACTIVE'",
   },
   {
+    label: 'Fortnox-kontomappning — högst EN godkänd revision per organisation och år (TESTKUND-008)',
+    expectedName: 'fortnox_account_mapping_one_approved',
+    migrationRef: '20261009120000_fortnox_kontomappning',
+    unique: true,
+    table: 'FortnoxAccountMappingRevision',
+    columns: ['organizationId', 'financialYearId'],
+    // Utan predikatet kunde en organisation aldrig godkänna en ny revision för samma år
+    // (SUPERSEDED-historiken står kvar). Med predikatet avgör databasen även samtidiga godkännanden.
+    where: "status='APPROVED'",
+  },
+  {
     label: 'en LEVANDE hyreshöjning per avtal och ikraftträdande',
     expectedName: 'rent_increase_lease_effective_live_unique',
     migrationRef: '20260902150000_rent_increase_live_unique',
@@ -166,6 +177,18 @@ const CRITICAL_INDEXES = [
     // definitionen, och den förväntade måste skrivas i samma form. Samma
     // skrivsätt som `identityKey<>''` ovan.
     where: 'endedAtISNULL',
+  },
+  {
+    label: 'Fortnox-kundaktivering — högst EN aktiv per organisation (KUNDSTART S-6)',
+    expectedName: 'fortnox_customer_activation_one_active',
+    migrationRef: '20261003190000_kundstart_en_aktiv_aktivering',
+    unique: true,
+    table: 'FortnoxCustomerActivation',
+    columns: ['organizationId'],
+    // Utan predikatet kunde en organisation aldrig få ett NYTT godkännande efter en
+    // återkallad eller ersatt aktivering (historiken står kvar). Med predikatet: en
+    // ACTIVE åt gången, avgjort av databasen även vid två samtidiga godkännanden.
+    where: "status='ACTIVE'",
   },
 ]
 

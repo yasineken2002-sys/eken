@@ -1,0 +1,297 @@
+import { Inject, Logger, Module } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { PrismaModule } from '../common/prisma/prisma.module'
+import { PrismaService } from '../common/prisma/prisma.service'
+import { RedisService } from '../common/redis/redis.service'
+import {
+  fortnoxCustomerWritesOptIn,
+  skrivarensKontroll,
+  type FortnoxCustomerBinding,
+} from './fortnox-customer-activation'
+import { FortnoxCustomerActivationService } from './fortnox-customer-activation.service'
+import { FortnoxCustomerActivationController } from './fortnox-customer-activation.controller'
+import { FortnoxController } from './fortnox.controller'
+import { FortnoxConnectionService } from './fortnox-connection.service'
+import { FortnoxReadbackService } from './fortnox-readback.service'
+import { FORTNOX_VOUCHER_DRAFT_BUILDER, FortnoxExportService } from './fortnox-export.service'
+import { VerifiedVoucherDraftBuilder } from './fortnox-export-builder'
+import {
+  FORTNOX_MAPPNINGSKONTROLL,
+  FortnoxKontomappningService,
+  type Mappningskontroll,
+} from './fortnox-kontomappning.service'
+import { FortnoxSendService } from './fortnox-send.service'
+import {
+  DisabledVoucherWriter,
+  FORTNOX_VOUCHER_WRITER,
+  MockVoucherWriter,
+  RealFortnoxVoucherWriter,
+} from './fortnox-voucher-writer'
+import { FortnoxMappingService } from './fortnox-mapping.service'
+import { FortnoxTokenCryptoService } from './fortnox-token-crypto.service'
+import {
+  MockFortnoxAuthProvider,
+  MockFortnoxLedgerReader,
+  StubFortnoxAuthProvider,
+  StubFortnoxLedgerReader,
+  fortnoxMode,
+  fortnoxRealConfig,
+  fortnoxTestVoucherWritesOptIn,
+} from './fortnox-providers'
+import { RealFortnoxAuthProvider, RealFortnoxLedgerReader } from './fortnox-real-provider'
+import type { FortnoxVoucher } from './fortnox.types'
+import { FortnoxOAuthClient, type FortnoxOAuthScope } from './provider/fortnox-oauth-client'
+import { FortnoxTransport } from './provider/fortnox-transport'
+import {
+  FORTNOX_RATE_IDENTITY,
+  FortnoxRateIdentity,
+  RedisFortnoxRateLimiter,
+  fortnoxRedisClient,
+} from './provider/fortnox-rate-limiter'
+
+/**
+ * Minsta använda scope-mängd: företagsbindning, huvudbok/år/konton, kostnadsställen
+ * och projekt (katalogen läser projekt). Inga leverantörs-/fakturascope.
+ */
+export const FORTNOX_SCOPES: readonly FortnoxOAuthScope[] = [
+  'companyinformation',
+  'bookkeeping',
+  'costcenter',
+  'project',
+]
+
+const FORTNOX_REAL_CLIENTS = Symbol('FORTNOX_REAL_CLIENTS')
+type RealClients = {
+  oauth: FortnoxOAuthClient
+  transport: FortnoxTransport
+  /** Endast vid uttrycklig opt-in för testföretaget; annars null (ingen skrivförmåga). */
+  writeTransport: FortnoxTransport | null
+  clientId: string
+  redirectUri: string
+  /** Tokenns lagrade företag → hink (samma instans som anslutningstjänsten fyller). */
+  identity: FortnoxRateIdentity
+} | null
+
+/**
+ * Singletons för den skarpa vägen (en OAuth-klient, en transport och den DELADE begränsaren).
+ * Skapas bara i REAL-läge; fetch injiceras uttryckligen här och ingen annanstans.
+ * TESTKUND-035 (P3-A1): begränsaren ligger i den befintliga Redis och gäller alla processer;
+ * utan Redis startar den skarpa vägen inte (ingen processlokal reserv).
+ */
+export function realClients(
+  config: ConfigService,
+  crypto: FortnoxTokenCryptoService,
+  redis?: Pick<RedisService, 'client'> | null,
+  identity?: FortnoxRateIdentity | null,
+): RealClients {
+  if (fortnoxMode(config, crypto) !== 'REAL') return null
+  const c = fortnoxRealConfig(config)
+  if (!redis?.client)
+    throw new Error('[fortnox] Skarp provider kräver Redis för den delade begränsaren')
+  const fetch = globalThis.fetch.bind(globalThis)
+  const rateLimiter = new RedisFortnoxRateLimiter({ redis: fortnoxRedisClient(redis.client) })
+  return {
+    oauth: new FortnoxOAuthClient({
+      fetch,
+      clientId: c.clientId,
+      clientSecret: c.clientSecret,
+      redirectUri: c.redirectUri,
+      enabled: true,
+    }),
+    transport: new FortnoxTransport({ fetch, rateLimiter }),
+    // Skrivtransport bara vid uttrycklig opt-in: testföretaget (aldrig produktion) eller
+    // KUNDSTART-flaggan FORTNOX_CUSTOMER_WRITES=aktiverad (kundvägen, varje sändning
+    // kräver ändå en verifierad aktivering i databasen).
+    writeTransport:
+      fortnoxTestVoucherWritesOptIn(config) || fortnoxCustomerWritesOptIn(config)
+        ? new FortnoxTransport({ fetch, rateLimiter, allowVoucherWrites: true })
+        : null,
+    clientId: c.clientId,
+    redirectUri: c.redirectUri,
+    identity: identity ?? new FortnoxRateIdentity(),
+  }
+}
+import {
+  FORTNOX_AUTH_PROVIDER,
+  FORTNOX_LEDGER_READER,
+  type FortnoxAuthProvider,
+} from './fortnox.types'
+
+/**
+ * Fortnox A. INERT som standard (FORTNOX_ENABLED != true → Stub, 503 på anslutning).
+ *
+ * Registrerar INGEN cron, kö, worker eller hook (K-F2): automationsinventeringen
+ * är oförändrad oavsett flagga. Läsning sker endast på uttrycklig begäran.
+ * Skarp provider endast vid uttryckligt FORTNOX_PROVIDER=real med komplett
+ * konfiguration; annars på → fail-fast vid boot.
+ */
+@Module({
+  imports: [PrismaModule],
+  controllers: [FortnoxController, FortnoxCustomerActivationController],
+  providers: [
+    FortnoxTokenCryptoService,
+    FortnoxConnectionService,
+    FortnoxReadbackService,
+    FortnoxExportService,
+    FortnoxMappingService,
+    { provide: FORTNOX_RATE_IDENTITY, useValue: new FortnoxRateIdentity() },
+    {
+      provide: FORTNOX_REAL_CLIENTS,
+      useFactory: realClients,
+      inject: [
+        ConfigService,
+        FortnoxTokenCryptoService,
+        { token: RedisService, optional: true },
+        FORTNOX_RATE_IDENTITY,
+      ],
+    },
+    {
+      provide: FORTNOX_AUTH_PROVIDER,
+      useFactory: (config: ConfigService, crypto: FortnoxTokenCryptoService, real: RealClients) => {
+        const mode = fortnoxMode(config, crypto)
+        if (mode === 'REAL' && real) {
+          return new RealFortnoxAuthProvider({
+            client: real.oauth,
+            redirectUri: real.redirectUri,
+            scopes: FORTNOX_SCOPES,
+            enabled: true,
+          })
+        }
+        return mode === 'MOCK' ? new MockFortnoxAuthProvider() : new StubFortnoxAuthProvider()
+      },
+      inject: [ConfigService, FortnoxTokenCryptoService, FORTNOX_REAL_CLIENTS],
+    },
+    {
+      provide: FORTNOX_LEDGER_READER,
+      useFactory: (config: ConfigService, crypto: FortnoxTokenCryptoService, real: RealClients) => {
+        const mode = fortnoxMode(config, crypto)
+        if (mode === 'REAL' && real) {
+          return new RealFortnoxLedgerReader({
+            transport: real.transport,
+            clientId: real.clientId,
+            enabled: true,
+            identity: real.identity,
+          })
+        }
+        if (mode !== 'MOCK') return new StubFortnoxLedgerReader()
+        const mock = new MockFortnoxLedgerReader()
+        // Syntetiskt demoscenario för produktprov (endast Mock, alltså NODE_ENV=test).
+        if (config.get<string>('FORTNOX_MOCK_SCENARIO') === 'demo')
+          mock.vouchers = mockDemoVouchers()
+        return mock
+      },
+      inject: [ConfigService, FortnoxTokenCryptoService, FORTNOX_REAL_CLIENTS],
+    },
+    // Förhandskontroll (dry run) med referenser verifierade i Fortnox i samma stund;
+    // transformern är den frysta exportkomponenten. Ingen sändning finns.
+    { provide: FORTNOX_VOUCHER_DRAFT_BUILDER, useClass: VerifiedVoucherDraftBuilder },
+    // TESTKUND-008: kontomappningens revisioner och kundaktiveringens mappningskontroll.
+    FortnoxKontomappningService,
+    {
+      provide: FORTNOX_MAPPNINGSKONTROLL,
+      useFactory:
+        (k: FortnoxKontomappningService): Mappningskontroll =>
+        (o, fy) =>
+          k.kontroll(o, fy),
+      inject: [FortnoxKontomappningService],
+    },
+    // Skrivare: Mock (syntetisk, NODE_ENV=test), eller skarp ENDAST i REAL med
+    // uttrycklig opt-in och då bara mot den hårdkodade testföretagslistan.
+    // Stub och REAL utan opt-in får DisabledVoucherWriter.
+    {
+      provide: FORTNOX_VOUCHER_WRITER,
+      useFactory: (
+        reader: unknown,
+        config: ConfigService,
+        real: RealClients,
+        prisma: PrismaService,
+      ) => {
+        // Validerar opt-in-värdena i alla lägen (felstavning stoppar boot).
+        const testWrites = fortnoxTestVoucherWritesOptIn(config)
+        const customerWrites = fortnoxCustomerWritesOptIn(config)
+        const verifyCustomer = (b: FortnoxCustomerBinding, datum: string) =>
+          skrivarensKontroll(prisma, b, datum)
+        if (reader instanceof RealFortnoxLedgerReader && real?.writeTransport) {
+          return new RealFortnoxVoucherWriter({
+            transport: real.writeTransport,
+            reader,
+            clientId: real.clientId,
+            testWrites,
+            customerWrites,
+            verifyCustomer,
+          })
+        }
+        if (!(reader instanceof MockFortnoxLedgerReader)) return new DisabledVoucherWriter()
+        const writer = new MockVoucherWriter(reader)
+        writer.verifyCustomer = verifyCustomer
+        // KUNDSTART-prov (endast Mock ⇒ NODE_ENV=test): syntetiska kundföretag som
+        // kräver kundaktivering, kommaseparerade databasnummer.
+        for (const n of (config.get<string>('FORTNOX_MOCK_CUSTOMER_COMPANIES') ?? '').split(','))
+          if (/^\d+$/.test(n.trim())) writer.customerCompanies.add(Number(n.trim()))
+        // Syntetiskt felscenario för produktprov (endast Mock ⇒ NODE_ENV=test):
+        // första sändningen skrivs men svaret tappas (okänt utfall).
+        if (config.get<string>('FORTNOX_MOCK_WRITE_FAULT') === 'unknown_after_write_once') {
+          writer.faults.push('unknown_after_write')
+        }
+        return writer
+      },
+      inject: [FORTNOX_LEDGER_READER, ConfigService, FORTNOX_REAL_CLIENTS, PrismaService],
+    },
+    FortnoxSendService,
+    FortnoxCustomerActivationService,
+  ],
+  exports: [FortnoxReadbackService],
+})
+export class FortnoxModule {
+  private readonly logger = new Logger(FortnoxModule.name)
+
+  constructor(@Inject(FORTNOX_AUTH_PROVIDER) auth: FortnoxAuthProvider) {
+    this.logger.log(
+      auth.name === 'STUB'
+        ? '[fortnox] inaktiverat (FORTNOX_ENABLED != true) — Stub, API-ytan inert.'
+        : auth.name === 'MOCK'
+          ? '[fortnox] MOCK-provider (endast NODE_ENV=test).'
+          : '[fortnox] SKARP provider uttryckligen konfigurerad.',
+    )
+  }
+}
+
+/** Facit S4a (syntetiskt): 12 000 HUSA, 4 000 HUSA + 2 000 HUSB, 2 000 utan dimension, återföring + ny. */
+function mockDemoVouchers(): FortnoxVoucher[] {
+  const v = (n: number, date: string, rows: Array<[number, number, number, string?]>) => ({
+    Year: 1,
+    VoucherSeries: 'L',
+    VoucherNumber: n,
+    TransactionDate: date,
+    VoucherRows: rows.map(([Account, Debit, Credit, CostCenter]) => ({
+      Account,
+      Debit,
+      Credit,
+      Removed: false,
+      ...(CostCenter ? { CostCenter } : {}),
+    })),
+  })
+  return [
+    v(1, '2026-10-02', [
+      [5170, 12000, 0, 'HUSA'],
+      [2440, 0, 12000],
+    ]),
+    v(2, '2026-10-05', [
+      [5170, 4000, 0, 'HUSA'],
+      [5170, 2000, 0, 'HUSB'],
+      [2440, 0, 6000],
+    ]),
+    v(3, '2026-10-07', [
+      [5170, 2000, 0],
+      [2440, 0, 2000],
+    ]),
+    v(4, '2026-10-20', [
+      [5170, 0, 12000, 'HUSA'],
+      [2440, 12000, 0],
+    ]),
+    v(5, '2026-10-20', [
+      [5170, 15000, 0, 'HUSA'],
+      [2440, 0, 15000],
+    ]),
+  ]
+}

@@ -116,6 +116,27 @@ describe('maskAiContentForDisplay — rekursivt över ett samtal', () => {
     expect(ut.createdAt).toEqual(samtal.createdAt)
   })
 
+  it('F-047-1: ett UUID med bara siffror i ett segment är en identifierare och maskeras inte (samtalet ska gå att öppna och radera)', () => {
+    const id = '12345678-cf2f-4239-9c8c-1c587ce86593'
+    const mid = '0a1b2c3d-4e5f-4a6b-8c7d-000000000019'
+    const ut = maskAiContentForDisplay({
+      ...samtal,
+      id,
+      messages: [{ ...samtal.messages[0]!, id: mid, conversationId: id }],
+    })
+    expect(ut.id).toBe(id)
+    expect(ut.messages[0]!.id).toBe(mid)
+    expect((ut.messages[0] as { conversationId?: string }).conversationId).toBe(id)
+  })
+
+  it('F-047-1 kontroll: siffror i löptext maskeras som förut, även när de står intill ett id-liknande mönster', () => {
+    const ut = maskAiContentForDisplay({
+      text: 'OCR 00000000019 och ärende 12345678-cf2f-4239-9c8c-1c587ce86593',
+    })
+    expect(ut.text).not.toContain('00000000019')
+    expect(ut.text).not.toContain('12345678')
+  })
+
   it('MUTERAR INTE indata — lagrad rad orörd', () => {
     const kopia = JSON.parse(JSON.stringify({ ...samtal, createdAt: undefined }))
     maskAiContentForDisplay(kopia)

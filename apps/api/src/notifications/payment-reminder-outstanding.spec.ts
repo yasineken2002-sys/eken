@@ -269,7 +269,13 @@ describe('#329 — urvalet är oförändrat', () => {
     const args = prisma.invoice.findMany.mock.calls[0]![0]
     // Exakt samma urval som före #329 — bara beloppet ändras, inte VILKA
     // fakturor som påminns.
-    expect(args.where).toEqual({ status: 'OVERDUE', remindersPaused: false })
+    // FS-4 (FORTNOX-100) ändrar urvalet AVSIKTLIGT på en punkt: blockerade bolag
+    // (SUSPENDED/CANCELLED) tas inte med. #329:s beloppsändring är oförändrad.
+    expect(args.where).toEqual({
+      status: 'OVERDUE',
+      remindersPaused: false,
+      organization: { status: { in: ['TRIAL', 'ACTIVE', 'PAST_DUE'] } },
+    })
     expect(args.include.payments).toEqual({ select: { amount: true } })
   })
 })

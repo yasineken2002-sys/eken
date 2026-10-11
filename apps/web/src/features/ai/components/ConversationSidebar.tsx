@@ -13,6 +13,8 @@ interface ConversationSidebarProps {
   onRequestDelete: (id: string | null) => void
   onConfirmDelete: (id: string) => void
   onOpenAnalysis: () => void
+  /** F-046-1: samma panel visad i mobilens överlägg (full bredd, alltid synliga radera-knappar). */
+  mobil?: boolean
 }
 
 /** Vänsterpanelen: rubrik, ny konversation, konversationslista och portföljanalys. */
@@ -26,9 +28,18 @@ export function ConversationSidebar({
   onRequestDelete,
   onConfirmDelete,
   onOpenAnalysis,
+  mobil = false,
 }: ConversationSidebarProps) {
   return (
-    <div className="flex w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white">
+    // F-045-1: under md (mobil) döljs konversationslistan så att chattytan och kompositören får hela bredden;
+    // tidigare klämdes chatten till ~60 px vid 390 px och gick inte att använda.
+    <div
+      className={
+        mobil
+          ? 'flex w-full flex-col bg-white'
+          : 'hidden w-[280px] flex-shrink-0 flex-col border-r border-gray-100 bg-white md:flex'
+      }
+    >
       {/* Header */}
       <div className="border-b border-gray-100 px-4 py-3">
         <div className="mb-3 flex items-center gap-2">
@@ -109,7 +120,10 @@ export function ConversationSidebar({
                         e.stopPropagation()
                         onRequestDelete(conv.id)
                       }}
-                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-gray-300 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+                      aria-label={`Ta bort konversation ${conv.title}`}
+                      className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-gray-300 transition-opacity hover:text-red-500 focus:opacity-100 ${
+                        mobil ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                      }`}
                     >
                       <Trash2 size={12} strokeWidth={1.8} />
                     </button>

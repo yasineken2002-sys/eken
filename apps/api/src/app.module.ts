@@ -42,6 +42,7 @@ import { AiModule } from './ai/ai.module'
 import { MaintenanceModule } from './maintenance/maintenance.module'
 import { ContractorsModule } from './contractors/contractors.module'
 import { AviseringModule } from './avisering/avisering.module'
+import { KundstartModule } from './kundstart/kundstart.module'
 import { InspectionsModule } from './inspections/inspections.module'
 import { MaintenancePlanModule } from './maintenance-plan/maintenance-plan.module'
 import { ContractsModule } from './contracts/contracts.module'
@@ -66,6 +67,7 @@ import { WebhooksModule } from './webhooks/webhooks.module'
 import { BackupModule } from './backup/backup.module'
 import { SigningModule } from './signing/signing.module'
 import { Psd2Module } from './psd2/psd2.module'
+import { FortnoxModule } from './fortnox/fortnox.module'
 
 @Module({
   imports: [
@@ -242,6 +244,8 @@ import { Psd2Module } from './psd2/psd2.module'
     MaintenanceModule,
     ContractorsModule,
     AviseringModule,
+    // KUNDSTART-001: brytdatum och öppningspaket
+    KundstartModule,
     InspectionsModule,
     MaintenancePlanModule,
     ContractsModule,
@@ -256,6 +260,7 @@ import { Psd2Module } from './psd2/psd2.module'
     BackupModule,
     SigningModule,
     Psd2Module,
+    FortnoxModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: UserOrIpThrottlerGuard }, GlobalExceptionFilter],
 })

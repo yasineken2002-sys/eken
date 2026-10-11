@@ -45,6 +45,8 @@ import {
   ReverseEntrySchema,
   ReopenPeriodSchema,
   PaySupplierInvoiceSchema,
+  SupplierInvoiceVatAdjustmentSchema,
+  UndoSupplierPaymentSchema,
   CreateJournalEntrySchema,
   CreateMeterSchema,
   CreatePropertySchema,
@@ -74,6 +76,7 @@ import {
   MarkNoticePaidSchema,
   CreateRentNoticeCreditSchema,
   ManualMatchSchema,
+  ResolveImportStopSchema,
   ConfirmImportSchema,
   CreateBankAccountSchema,
   UpdateMeterSchema,
@@ -128,6 +131,8 @@ import { CreateExpenseDto } from '../../accounting/dto/create-expense.dto'
 import {
   CreateSupplierInvoiceDto,
   PaySupplierInvoiceDto,
+  SupplierInvoiceVatAdjustmentDto,
+  UndoSupplierPaymentDto,
 } from '../../accounting/dto/supplier-invoice.dto'
 import { ReverseEntryDto } from '../../accounting/dto/reverse-entry.dto'
 import { ReopenPeriodDto } from '../../accounting/dto/reopen-period.dto'
@@ -217,6 +222,7 @@ import { SendNoticesDto } from '../../avisering/dto/send-notices.dto'
 import { MarkPaidDto } from '../../avisering/dto/mark-paid.dto'
 import { CreateRentNoticeCreditDto } from '../../avisering/dto/create-rent-notice-credit.dto'
 import { ManualMatchDto } from '../../reconciliation/dto/manual-match.dto'
+import { ResolveImportStopDto } from '../../reconciliation/dto/resolve-import-stop.dto'
 import { ConfirmImportDto, CreateBankAccountDto } from '../../reconciliation/dto/confirm-import.dto'
 import { AnswerQuestionDto } from '../../ai/assignments/dto/answer-question.dto'
 import { RequestUndoDto } from '../../ai/assignments/dto/request-undo.dto'
@@ -262,7 +268,148 @@ export interface KontraktsPost {
 
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
+import {
+  fortnoxDryRunInputSchema,
+  fortnoxExportSettingsInputSchema,
+  fortnoxReconcileInputSchema,
+  fortnoxReleaseRejectedInputSchema,
+  fortnoxSendInputSchema,
+  fortnoxMappingInputSchema,
+  fortnoxAccountMappingDraftInputSchema,
+  fortnoxAccountMappingApproveInputSchema,
+  fortnoxReadInputSchema,
+} from '@eken/shared'
+import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-settings.dto'
+import { FortnoxDryRunDto } from '../../fortnox/dto/fortnox-dry-run.dto'
+import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
+import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
+import { FortnoxReleaseRejectedDto } from '../../fortnox/dto/fortnox-release-rejected.dto'
+import { FortnoxReadDto } from '../../fortnox/dto/fortnox-read.dto'
+import { FortnoxMappingDto } from '../../fortnox/dto/fortnox-mapping.dto'
+import {
+  FortnoxAccountMappingApproveDto,
+  FortnoxAccountMappingDraftDto,
+} from '../../fortnox/dto/fortnox-account-mapping.dto'
+import {
+  approveCustomerActivationInputSchema,
+  approveOpeningPackageInputSchema,
+  bindOpeningReadInputSchema,
+  firstPeriodRegisterInputSchema,
+  separateLedgerInputSchema,
+  setCutoverInputSchema,
+  uploadOpeningPackageInputSchema,
+} from '@eken/shared'
+import {
+  ApproveOpeningPackageDto,
+  BindReadDto,
+  FirstPeriodRegisterDto,
+  SeparateLedgerDto,
+  SetCutoverDto,
+  UploadOpeningPackageDto,
+} from '../../kundstart/dto/kundstart.dto'
+import { ApproveCustomerActivationDto } from '../../fortnox/dto/customer-activation.dto'
+
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  // ── KUNDSTART-001 ─────────────────────────────────────────────────────────
+  {
+    endpoint: 'PUT /kundstart/cutover',
+    inputTyp: 'SetCutoverInput',
+    schema: setCutoverInputSchema,
+    dto: SetCutoverDto,
+    giltig: { cutoverDate: '2026-11-01' },
+    ogiltig: { cutoverDate: '1 november' },
+    ogiltigVarfor: 'brytdatum anges som ÅÅÅÅ-MM-DD (dagen prövas sedan av tjänsten)',
+  },
+  {
+    endpoint: 'POST /kundstart/opening-packages',
+    inputTyp: 'UploadOpeningPackageInput',
+    schema: uploadOpeningPackageInputSchema,
+    dto: UploadOpeningPackageDto,
+    giltig: { sourceName: 'paket.csv', innehall: 'radId;typ', nollOppning: false },
+    ogiltig: { sourceName: '', innehall: 'radId;typ' },
+    ogiltigVarfor: 'underlaget måste ha ett namn',
+  },
+  {
+    endpoint: 'POST /kundstart/opening-packages/:id/fortnox-read',
+    inputTyp: 'BindOpeningReadInput',
+    schema: bindOpeningReadInputSchema,
+    dto: BindReadDto,
+    giltig: { readRunId: '3f1c9a2e-5d0b-4c7e-9a1f-2b3c4d5e6f70' },
+    ogiltig: { readRunId: 'senaste' },
+    ogiltigVarfor: 'läsningen anges med sitt id, aldrig med ett ord',
+  },
+  {
+    endpoint: 'PUT /kundstart/opening-packages/:id/separate-ledger',
+    inputTyp: 'SeparateLedgerInput',
+    schema: separateLedgerInputSchema,
+    dto: SeparateLedgerDto,
+    giltig: { konto: '1510', beskrivning: 'Separat reskontra', filnamn: 's.csv', innehall: null },
+    ogiltig: { konto: '3011', beskrivning: 'Separat reskontra', filnamn: 's.csv', innehall: null },
+    ogiltigVarfor: 'bara 1510 och 2890 ingår i öppningens avstämning',
+  },
+  {
+    endpoint: 'PUT /kundstart/opening-packages/:id/first-period-register',
+    inputTyp: 'FirstPeriodRegisterInput',
+    schema: firstPeriodRegisterInputSchema,
+    dto: FirstPeriodRegisterDto,
+    giltig: {
+      filnamn: 'r.csv',
+      innehall: 'radId;hyresgast',
+      system: 'Gamla systemet',
+      ansvarig: 'Ekonomichef',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-11-30',
+      intaktskonton: [3911],
+      forskottskonton: [2420],
+    },
+    ogiltig: {
+      filnamn: 'r.csv',
+      innehall: 'radId;hyresgast',
+      system: 'Gamla systemet',
+      ansvarig: 'Ekonomichef',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-11-30',
+      intaktskonton: [39110],
+      forskottskonton: [],
+    },
+    ogiltigVarfor: 'ett kontonummer i BAS är fyrsiffrigt',
+  },
+  {
+    endpoint: 'POST /kundstart/opening-packages/:id/approve',
+    inputTyp: 'ApproveOpeningPackageInput',
+    schema: approveOpeningPackageInputSchema,
+    dto: ApproveOpeningPackageDto,
+    giltig: {
+      version: 2,
+      sourceSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    ogiltig: { version: 2, sourceSha256: 'abc' },
+    ogiltigVarfor: 'godkännandet binds till filens fullständiga sha256',
+  },
+  {
+    endpoint: 'POST /integrations/fortnox/customer-activation/approve',
+    inputTyp: 'ApproveCustomerActivationInput',
+    schema: approveCustomerActivationInputSchema,
+    dto: ApproveCustomerActivationDto,
+    giltig: {
+      financialYearId: 1,
+      consequencesSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    ogiltig: {
+      financialYearId: 0,
+      consequencesSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    },
+    ogiltigVarfor: 'räkenskapsåret är Fortnox positiva id',
+  },
+  {
+    endpoint: 'PATCH /reconciliation/import-stops/:id/resolve',
+    inputTyp: 'ResolveImportStopInput',
+    schema: ResolveImportStopSchema,
+    dto: ResolveImportStopDto,
+    giltig: { note: 'Registrerad manuellt mot kreditfakturan' },
+    ogiltig: { note: 'kort' },
+    ogiltigVarfor: 'motiveringen för ett hanterat importstopp ska vara minst 10 tecken',
+  },
   {
     endpoint: 'POST /accounting/journal/:id/reverse',
     inputTyp: 'ReverseEntryInput',
@@ -289,6 +436,34 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     giltig: { paidDate: '2026-09-01' },
     ogiltig: {},
     ogiltigVarfor: 'betalningsdatum är obligatoriskt och har ingen reserv i kontraktet',
+  },
+  {
+    endpoint: 'POST /accounting/supplier-invoices/:id/vat-adjustments',
+    inputTyp: 'SupplierInvoiceVatAdjustmentInput',
+    schema: SupplierInvoiceVatAdjustmentSchema,
+    dto: SupplierInvoiceVatAdjustmentDto,
+    giltig: {
+      till: 'INGET_AVDRAG',
+      date: '2026-09-01',
+      reason: 'Fel momsval vid registreringen',
+      clientKey: 'nyckel-12345678',
+    },
+    ogiltig: {
+      till: 'INGEN_MOMS',
+      date: '2026-09-01',
+      reason: 'Fel momsval vid registreringen',
+      clientKey: 'nyckel-12345678',
+    },
+    ogiltigVarfor: 'en justering byter bara mellan «dras av» och «dras inte av» (MJ-1)',
+  },
+  {
+    endpoint: 'POST /accounting/supplier-invoices/:id/payments/:journalEntryId/undo',
+    inputTyp: 'UndoSupplierPaymentInput',
+    schema: UndoSupplierPaymentSchema,
+    dto: UndoSupplierPaymentDto,
+    giltig: { reason: 'Fel betalningsdatum' },
+    ogiltig: { reason: 'x' },
+    ogiltigVarfor: 'skälet måste vara minst 5 tecken (BP1 U-1)',
   },
   {
     endpoint: 'POST /accounting/journal-entries',
@@ -342,6 +517,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       expenseAccount: 5070,
       amount: 1250,
       vatRate: 25,
+      vatTreatment: 'HELT_AVDRAG',
     },
     ogiltig: {
       description: 'Stambyte trapphus B',
@@ -350,6 +526,7 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       expenseAccount: 5070,
       amount: 1250,
       vatRate: 25,
+      vatTreatment: 'HELT_AVDRAG',
     },
     ogiltigVarfor: 'supplierName saknas — exakt formen som gav 400 i #795',
   },
@@ -1575,5 +1752,154 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     },
     ogiltig: { maxBankTxAmount: 50_000_001 },
     ogiltigVarfor: 'banktransaktionsgränsen får inte överstiga 50 MSEK',
+  },
+  {
+    // Fortnox A. Pariteten prövar MINST ETT KONTO — ett tomt urval får inte bli en
+    // "lyckad" läsning av ingenting. Årets gränser verifieras av tjänsten mot Fortnox.
+    endpoint: 'POST /integrations/fortnox/reads',
+    inputTyp: 'FortnoxReadInput',
+    schema: fortnoxReadInputSchema,
+    dto: FortnoxReadDto,
+    giltig: {
+      financialYearId: 1,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      costAccounts: [5170],
+    },
+    ogiltig: {
+      financialYearId: 1,
+      financialYearStart: '2026-01-01',
+      financialYearEnd: '2026-12-31',
+      periodFrom: '2026-10-01',
+      periodTo: '2026-10-31',
+      costAccounts: [],
+    },
+    ogiltigVarfor: 'en läsning utan valda konton har inget mått att redovisa',
+  },
+  {
+    // TESTKUND-008. Pariteten prövar KORSFÄLTSREGELN: rollens behandling är fast.
+    endpoint: 'POST /integrations/fortnox/account-mapping/revisions',
+    inputTyp: 'FortnoxAccountMappingDraftInput',
+    schema: fortnoxAccountMappingDraftInputSchema,
+    dto: FortnoxAccountMappingDraftDto,
+    giltig: {
+      financialYearId: 1,
+      rows: [
+        {
+          role: 'HYRESINTAKT',
+          vatTreatment: 'MOMSFRI',
+          sourceAccountNumber: 3911,
+          targetAccountNumber: 3915,
+        },
+      ],
+    },
+    ogiltig: {
+      financialYearId: 1,
+      rows: [
+        {
+          role: 'HYRESINTAKT',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 3911,
+          targetAccountNumber: 3915,
+        },
+      ],
+    },
+    ogiltigVarfor: 'hyresintäkt kan bara mappas med belagd momsfri behandling i denna version',
+  },
+  {
+    endpoint: 'POST /integrations/fortnox/account-mapping/revisions/:id/approve',
+    inputTyp: 'FortnoxAccountMappingApproveInput',
+    schema: fortnoxAccountMappingApproveInputSchema,
+    dto: FortnoxAccountMappingApproveDto,
+    giltig: { contentSha256: 'a'.repeat(64) },
+    ogiltig: { contentSha256: 'A'.repeat(64) },
+    ogiltigVarfor: 'godkännandet binds till exakt den gemena sha256 servern visade',
+  },
+  {
+    // Fortnox A. Pariteten prövar DIMENSIONSTYPEN — bara kostnadsställe/projekt finns.
+    endpoint: 'PUT /integrations/fortnox/mappings',
+    inputTyp: 'FortnoxMappingInput',
+    schema: fortnoxMappingInputSchema,
+    dto: FortnoxMappingDto,
+    giltig: { dimensionType: 'COST_CENTER', code: 'HUSA', propertyId: 'p-1' },
+    ogiltig: { dimensionType: 'ACCOUNT', code: 'HUSA', propertyId: 'p-1' },
+    ogiltigVarfor: 'endast kostnadsställe och projekt kan kopplas till fastighet',
+  },
+  {
+    // Fortnox A. Pariteten prövar SERIEKODEN — bara verifierade, korta koder.
+    endpoint: 'PUT /integrations/fortnox/export-settings',
+    inputTyp: 'FortnoxExportSettingsInput',
+    schema: fortnoxExportSettingsInputSchema,
+    dto: FortnoxExportSettingsDto,
+    giltig: { voucherSeries: 'A', omitDimensions: true },
+    ogiltig: { voucherSeries: 'A; DROP', omitDimensions: true },
+    ogiltigVarfor: 'en seriekod med andra tecken än bokstäver och siffror finns inte i Fortnox',
+  },
+  {
+    // Fortnox A. Pariteten prövar att ett verifikat faktiskt anges.
+    endpoint: 'POST /integrations/fortnox/exports/dry-run',
+    inputTyp: 'FortnoxDryRunInput',
+    schema: fortnoxDryRunInputSchema,
+    dto: FortnoxDryRunDto,
+    giltig: { journalEntryId: 'je-1' },
+    ogiltig: { journalEntryId: '' },
+    ogiltigVarfor: 'en förhandskontroll utan verifikat har inget att kontrollera',
+  },
+  {
+    // FORTNOX-SANDNING. Pariteten prövar den UTTRYCKLIGA bekräftelsen — sändning utan
+    // confirm=true får aldrig gå igenom på någon sida.
+    endpoint: 'POST /integrations/fortnox/exports/:id/send',
+    inputTyp: 'FortnoxSendInput',
+    schema: fortnoxSendInputSchema,
+    dto: FortnoxSendDto,
+    giltig: {
+      draftHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      confirm: true,
+    },
+    ogiltig: {
+      draftHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      confirm: false,
+    },
+    ogiltigVarfor: 'sändning kräver kundens uttryckliga bekräftelse',
+  },
+  {
+    // FORTNOX-SANDNING. Pariteten prövar ett POSITIVT verifikatnummer — identiteten måste vara exakt.
+    endpoint: 'POST /integrations/fortnox/exports/:id/reconcile',
+    inputTyp: 'FortnoxReconcileInput',
+    schema: fortnoxReconcileInputSchema,
+    dto: FortnoxReconcileDto,
+    giltig: { year: 1, series: 'A', number: 12 },
+    ogiltig: { year: 1, series: 'A', number: 0 },
+    ogiltigVarfor: 'ett verifikatnummer måste vara ett positivt heltal',
+  },
+  {
+    // TESTKUND-016 K3.4: kvittot i efterhand gäller bara 4xx (429 avvisas i tjänsten).
+    endpoint: 'POST /integrations/fortnox/exports/:id/release-rejected',
+    inputTyp: 'FortnoxReleaseRejectedInput',
+    schema: fortnoxReleaseRejectedInputSchema,
+    dto: FortnoxReleaseRejectedDto,
+    giltig: {
+      reason: 'Fortnox avvisade texten',
+      avvisningsbevis: {
+        http: 400,
+        code: 2000359,
+        rakvittoSha256: 'b'.repeat(64),
+        manifestSha256: 'c'.repeat(64),
+        sentPayloadHash: 'a'.repeat(64),
+      },
+    },
+    ogiltig: {
+      reason: 'Fortnox avvisade texten',
+      avvisningsbevis: {
+        http: 500,
+        code: 2000359,
+        rakvittoSha256: 'b'.repeat(64),
+        manifestSha256: 'c'.repeat(64),
+        sentPayloadHash: 'a'.repeat(64),
+      },
+    },
+    ogiltigVarfor: 'ett avvisningskvitto måste avse en 4xx-avvisning',
   },
 ]

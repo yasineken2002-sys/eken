@@ -330,6 +330,58 @@ medDb('collectionStatus', () => {
     expect(s.state).toBe('READY')
   })
 
+  // ── STATUS-011 (FORTNOX-100): vyn säger samma sak som grinden ───────────────
+  // Grinden (assertAutomaticEffectAllowed) pausar för olöst identitetsgranskning och
+  // olöst importstopp. Före rättningen visade vyn READY i båda fallen.
+  it('STATUS-011: importstopp → PAUSED_IMPORT_STOP; granskningsrad → PAUSED_IDENTITY_REVIEW; löst → READY', async () => {
+    const id = await avi({
+      dagarSedanFörfall: 40,
+      händelser: ['SENT', 'REMINDER_SENT', 'EMAIL_DELIVERED'],
+    })
+    expect((await status(id)).state).toBe('READY') // R0
+    const stopp = await prisma.bankImportStop.create({
+      data: {
+        organizationId: orgId,
+        kind: 'BGMAX',
+        fileName: 'f.txt',
+        contentHash: 'h',
+        scope: 'BETALARE',
+        reasonCode: 'AVDRAG_BETALARE',
+        message: 'm',
+        stopKey: `s-${randomUUID()}`,
+      },
+    })
+    let s = await status(id)
+    expect([s.state, s.pausedBy]).toEqual([
+      'PAUSED_IMPORT_STOP',
+      { identityReview: 0, importStops: 1 },
+    ]) // R1
+    const rad = await prisma.bankTransaction.create({
+      data: {
+        organizationId: orgId,
+        date: NU,
+        description: 'x',
+        amount: 1,
+        status: 'UNMATCHED',
+        identityReviewAt: NU,
+        identityReviewReason: 'HISTORIK_UTAN_KONTO',
+      },
+    })
+    s = await status(id)
+    // Samma ordning som grinden: granskningen prövas före importstoppet.
+    expect([s.state, s.pausedBy]).toEqual([
+      'PAUSED_IDENTITY_REVIEW',
+      { identityReview: 1, importStops: 1 },
+    ]) // R2
+    await prisma.bankTransaction.delete({ where: { id: rad.id } })
+    await prisma.bankImportStop.update({
+      where: { id: stopp.id },
+      data: { resolvedAt: NU, resolvedById: 'u', resolutionNote: 'hanterad i prov' },
+    })
+    expect((await status(id)).state).toBe('READY') // R1b/R2b
+    await prisma.bankImportStop.delete({ where: { id: stopp.id } })
+  })
+
   // ── #651: DE TVÅ LEVERANSERNA FÅR ALDRIG BLANDAS IHOP ─────────────────────
 
   it('AVINS leverans uppfyller INTE påminnelsens grind', async () => {

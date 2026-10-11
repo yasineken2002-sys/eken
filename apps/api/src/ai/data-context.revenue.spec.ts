@@ -39,6 +39,9 @@ function makePrisma() {
           ),
         ),
     },
+    // KUNDSTART: ingen verkställd öppning → ingen öppningskomponent eller historisk skuld.
+    openingPackage: { findMany: jest.fn().mockResolvedValue([]) },
+    rentNotice: { findMany: jest.fn().mockResolvedValue([]) },
     invoice: {
       // PAID-fakturor med en distinkt Invoice-only-summa (99999) som INTE får
       // presenteras som monetärt belopp (kassa-blint, konkurrerar med bokförd

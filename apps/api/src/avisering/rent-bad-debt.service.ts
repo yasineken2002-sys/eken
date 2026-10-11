@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -8,6 +9,7 @@ import {
 import { Cron } from '@nestjs/schedule'
 import { Prisma, RentNoticeType } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { arHistoriskSkuld, HISTORISK_SKULD_SPARR } from '../kundstart/historisk-skuld-sparr'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { AccountingService, MissingAccrualError } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
@@ -21,6 +23,7 @@ import {
 import { NotificationsService } from '../notifications/notifications.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
 
 interface BadDebtSummary {
   reclassified: number
@@ -44,6 +47,7 @@ interface BadDebtSummary {
 // Fälten kundförlust-flödet behöver för att avgöra moms-status och belopp.
 const BAD_DEBT_SELECT = {
   id: true,
+  origin: true,
   noticeNumber: true,
   status: true,
   type: true,
@@ -153,7 +157,11 @@ export class RentBadDebtService {
             collectionStage: 'INKASSO_READY',
             probableLossAt: null,
             status: { notIn: ['PAID', 'CANCELLED'] },
-            organization: { remindersEnabled: true },
+            // FS-4: blockerade bolag (SUSPENDED/CANCELLED) får inga automatiska krav.
+            organization: {
+              remindersEnabled: true,
+              status: { in: [...AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES] },
+            },
           },
           select: { id: true, organizationId: true, vatAmount: true },
         })
@@ -334,6 +342,8 @@ export class RentBadDebtService {
     automatic: boolean,
   ): Promise<{ booked: boolean }> {
     const notice = await this.loadNotice(noticeId, organizationId)
+    // KUNDSTART S3-3: ingen kundförlust på historisk skuld (manuell och automatisk väg).
+    if (arHistoriskSkuld(notice)) throw new BadRequestException(HISTORISK_SKULD_SPARR)
     this.assertMomsfri(notice)
 
     if (notice.collectionStage !== 'INKASSO_READY') {
@@ -435,6 +445,7 @@ export class RentBadDebtService {
     actorId: string | null,
   ): Promise<{ booked: boolean }> {
     const notice = await this.loadNotice(noticeId, organizationId)
+    if (arHistoriskSkuld(notice)) throw new BadRequestException(HISTORISK_SKULD_SPARR)
     this.assertMomsfri(notice)
 
     // Idempotent: redan avskriven → no-op.

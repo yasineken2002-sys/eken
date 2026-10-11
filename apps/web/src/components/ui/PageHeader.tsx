@@ -22,7 +22,9 @@ export function PageHeader({ title, description, action, className }: Props) {
         </h1>
         {description && <p className="mt-1 text-[14px] text-gray-500">{description}</p>}
       </div>
-      {action && <div className="flex-shrink-0 pt-0.5">{action}</div>}
+      {/* max-w-full: åtgärderna kan aldrig bli bredare än sidhuvudet (F-TK-2). Binder bara när
+          sidhuvudet radbryts (className="flex-wrap"); på bred skärm är layouten oförändrad. */}
+      {action && <div className="max-w-full flex-shrink-0 pt-0.5">{action}</div>}
     </motion.div>
   )
 }

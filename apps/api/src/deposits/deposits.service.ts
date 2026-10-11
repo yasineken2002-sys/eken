@@ -21,6 +21,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { summeraDepositionsavdrag } from '@eken/shared'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { automationPaused, AUTOMATION_PAUSE_VAR } from '../common/ops/automation-pause'
+import { BETALBARA_AVISTATUSAR } from '../reconciliation/betalbara-avistatusar'
 
 const INCLUDE = {
   lease: { include: { unit: { include: { property: true } } } },
@@ -647,14 +648,32 @@ export class DepositsService implements OnApplicationBootstrap {
         }
         // Flippa den länkade depositionsavin → PAID (status-guardad) så den inte
         // ligger kvar som obetald/bankmatchbar.
-        await tx.rentNotice.updateMany({
+        // F-043-1 (TESTKUND-045): samma betalbara statusar som bankvägen och AviseringService.markAsPaid
+        // (BETALBARA_AVISTATUSAR, inkl. FAILED = utskicket misslyckades men fordran är bokförd). Tidigare
+        // stod en FAILED depositionsavi kvar öppen trots PAID deposition och bokad betalning, och
+        // hyresgästens nästa bankbetalning (samma OCR) blev omatchad.
+        const flippad = await tx.rentNotice.updateMany({
           where: {
             id: deposit.rentNoticeId,
             organizationId,
-            status: { in: ['SENT', 'PENDING', 'OVERDUE'] },
+            status: { in: [...BETALBARA_AVISTATUSAR] },
           },
           data: { status: 'PAID', paidAt: now },
         })
+        // Fail-closed: efteråt ska avin vara PAID. Ett oväntat läge (t.ex. OPENING) får aldrig ge
+        // betald deposition och bokförd betalning bredvid en öppen eller okänd avi → 409, hel rollback.
+        if (flippad.count === 0) {
+          const nu = await tx.rentNotice.findFirst({
+            where: { id: deposit.rentNoticeId, organizationId },
+            select: { noticeNumber: true, status: true },
+          })
+          if (nu?.status !== 'PAID') {
+            throw new ConflictException(
+              `Depositionsavin ${nu?.noticeNumber ?? ''} har status ${nu?.status ?? 'okänd'} och kan inte ` +
+                'registreras som betald — ingenting har ändrats. Kontrollera avin innan betalningen registreras.',
+            )
+          }
+        }
       } else {
         // Deposition utan länkad faktura ELLER avi (registrerad utanför de två
         // flödena) — inget att bokföra, men statusen ska claimas som förut.
@@ -736,8 +755,17 @@ export class DepositsService implements OnApplicationBootstrap {
         },
       })
       if (claim.count === 0) {
+        // TESTKUND-027 V-2: säg vad som faktiskt hände. En samtidig avmatchning av bankbetalningen
+        // kan ha återställt depositionen till obetald; den är då inte "reglerad".
+        const nu = await tx.deposit.findFirst({
+          where: { id, organizationId },
+          select: { status: true },
+        })
         throw new ConflictException(
-          'Depositionen är redan reglerad — uppdatera sidan och försök igen',
+          nu?.status === 'PENDING'
+            ? 'Depositionen är inte längre registrerad som betald (betalningen har avmatchats) — ' +
+                'ingen återbetalning bokades. Uppdatera sidan.'
+            : 'Depositionen är redan reglerad — uppdatera sidan och försök igen',
         )
       }
 

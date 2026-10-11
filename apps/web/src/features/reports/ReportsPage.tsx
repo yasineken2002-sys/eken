@@ -107,6 +107,16 @@ function ProfitLossView({ data }: { data: ProfitLossReport }) {
           {data.note}
         </p>
       )}
+      {/* TESTKUND-041 (P-4): intäkt på fallbackkonto 3914 redovisas med sin proveniens. */}
+      {data.okantIntaktskonto && (
+        <p
+          className="mt-2 break-words rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12px] text-amber-800"
+          data-testid="okant-intaktskonto"
+        >
+          {formatCurrency(data.okantIntaktskonto.belopp)} ({data.okantIntaktskonto.antalVerifikat}{' '}
+          verifikat) på 3914: {data.okantIntaktskonto.text}
+        </p>
+      )}
 
       <div className="border-line overflow-hidden rounded-2xl border bg-white">
         <table className="w-full">
@@ -143,11 +153,15 @@ function BalanceColumn({
   title,
   total,
   accounts,
+  beraknat,
 }: {
   title: string
   total: number
   accounts: BalanceSheet['assets']['accounts']
+  /** F-TK-1: ej bokslutat resultat — en BERÄKNAD rad, inget konto och inget verifikat. */
+  beraknat?: BalanceSheet['calculatedResult']
 }) {
+  const visaBeraknat = beraknat !== undefined && Math.abs(beraknat.amount) >= 0.005
   return (
     <div className="border-line overflow-hidden rounded-2xl border bg-white">
       <div className="border-line flex items-center justify-between border-b px-4 py-3">
@@ -167,7 +181,21 @@ function BalanceColumn({
               </td>
             </tr>
           ))}
-          {accounts.length === 0 && (
+          {visaBeraknat && (
+            <tr className="border-line border-t bg-gray-50/60">
+              <td className="px-4 py-2.5 text-[13px] text-gray-400">–</td>
+              <td className="px-4 py-2.5 text-[13px] text-gray-700">
+                {beraknat.label}{' '}
+                <span className="ml-1 whitespace-nowrap rounded-full bg-amber-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-700">
+                  BERÄKNAD, inget verifikat
+                </span>
+              </td>
+              <td className="px-4 py-2.5 text-right text-[13px] tabular-nums text-gray-900">
+                {formatCurrency(beraknat.amount)}
+              </td>
+            </tr>
+          )}
+          {accounts.length === 0 && !visaBeraknat && (
             <tr>
               <td colSpan={3} className="px-4 py-6 text-center text-[13px] text-gray-400">
                 Inga poster
@@ -180,7 +208,7 @@ function BalanceColumn({
   )
 }
 
-function BalanceSheetView({ data }: { data: BalanceSheet }) {
+export function BalanceSheetView({ data }: { data: BalanceSheet }) {
   const balanced = Math.abs(data.difference) < 0.5
   return (
     <div className="mt-5 space-y-4">
@@ -204,9 +232,58 @@ function BalanceSheetView({ data }: { data: BalanceSheet }) {
           title="Skulder & eget kapital"
           total={data.liabilitiesAndEquity.total}
           accounts={data.liabilitiesAndEquity.accounts}
+          beraknat={data.calculatedResult}
         />
       </div>
+      {data.oppningskomponent && <OppningskomponentView ok={data.oppningskomponent} />}
     </div>
+  )
+}
+
+// KUNDSTART §12.9: öppningskomponenten som EGEN del — summorna ovan är Evenos verifikat.
+function OppningskomponentView({ ok }: { ok: NonNullable<BalanceSheet['oppningskomponent']> }) {
+  return (
+    <section
+      aria-label="Öppningskomponent"
+      className="min-w-0 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-3"
+    >
+      <h3 className="text-[13px] font-semibold text-gray-900">
+        Öppningskomponent (före brytdatum)
+      </h3>
+      <p className="mt-1 break-words text-[12.5px] text-gray-700">{ok.text}</p>
+      {ok.galler && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full min-w-[320px] text-[12.5px]">
+            <thead className="text-[11px] uppercase tracking-wide text-gray-400">
+              <tr>
+                <th className="py-1 text-left">Konto</th>
+                <th className="py-1 text-right">Evenos verifikat</th>
+                <th className="py-1 text-right">Öppning</th>
+                <th className="py-1 text-right">Inkl. öppning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ok.rader.map((r) => (
+                <tr key={r.konto} className="border-t border-blue-100">
+                  <td className="py-1">{r.konto}</td>
+                  <td className="py-1 text-right">{formatCurrency(r.verifikat)}</td>
+                  <td className="py-1 text-right">{formatCurrency(r.oppning)}</td>
+                  <td className="py-1 text-right font-semibold">
+                    {formatCurrency(r.nettoInklOppning)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {ok.avstamningstexter.map((t) => (
+        <p key={t} className="mt-1 break-words text-[12px] text-gray-600">
+          {t}
+        </p>
+      ))}
+      <p className="mt-1 text-[11.5px] text-gray-500">{ok.begransning}</p>
+    </section>
   )
 }
 
@@ -274,6 +351,30 @@ function VatView({ data }: { data: VatReport }) {
           </tbody>
         </table>
       </div>
+      {/* TESTKUND-041 (B-4/MJ-9): varifrån den ingående momsen kommer, med kundens beslut. */}
+      {(data.incoming.sources?.length ?? 0) > 0 && (
+        <div
+          className="border-line min-w-0 rounded-2xl border bg-white p-4"
+          data-testid="momskallor"
+        >
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-gray-400">
+            Ingående moms per verifikat
+          </p>
+          <ul className="space-y-1.5 text-[13px]">
+            {data.incoming.sources!.map((k, i) => (
+              <li
+                key={`${k.verifikat}-${i}`}
+                className="flex min-w-0 flex-wrap justify-between gap-x-3"
+              >
+                <span className="min-w-0 break-words text-gray-700">
+                  {k.verifikat} {k.datum}: {k.text}
+                </span>
+                <span className="tabular-nums text-gray-900">{formatCurrency(k.belopp)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }

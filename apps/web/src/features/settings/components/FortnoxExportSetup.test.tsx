@@ -1,0 +1,186 @@
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const mocks = vi.hoisted(() => ({
+  role: 'OWNER',
+  state: vi.fn(),
+  catalog: vi.fn(),
+  save: vi.fn(),
+  dryRun: vi.fn(),
+  list: vi.fn(),
+  entries: vi.fn(),
+}))
+
+vi.mock('@/stores/auth.store', () => ({
+  useAuthStore: (selector: (state: unknown) => unknown) =>
+    selector({ user: { id: 'u1', role: mocks.role }, organization: { id: 'o1' } }),
+}))
+vi.mock('../api/fortnox-export.api', () => ({
+  getFortnoxExportState: mocks.state,
+  getFortnoxSeriesCatalog: mocks.catalog,
+  saveFortnoxExportSettings: mocks.save,
+  startFortnoxDryRun: mocks.dryRun,
+  listFortnoxExports: mocks.list,
+}))
+// F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
+vi.mock('../../accounting/api/accounting.api', () => ({
+  fetchAllJournalEntries: async (...args: unknown[]) => {
+    const entries = (await mocks.entries(...args)) as unknown[]
+    return { entries, total: (mocks as { total?: number }).total ?? entries.length }
+  },
+}))
+vi.mock('@/lib/api', () => ({ extractApiError: () => 'Serverfel' }))
+
+import { FortnoxExportSetup } from './FortnoxExportSetup'
+
+function renderIt() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <FortnoxExportSetup />
+    </QueryClientProvider>,
+  )
+}
+
+const ACTIVE = (over: Record<string, unknown> = {}) => ({
+  enabled: true,
+  connection: { status: 'ACTIVE', exportVoucherSeries: null, exportOmitDimensions: false, ...over },
+  exports: { sendingEnabled: false, sendingDisabledReason: 'IDEMPOTENCY_UNRESOLVED' },
+})
+
+describe('FortnoxExportSetup', () => {
+  beforeEach(() => {
+    mocks.role = 'OWNER'
+    mocks.state.mockResolvedValue(ACTIVE())
+    mocks.catalog.mockImplementation(async (id: number | null) => ({
+      ready: true,
+      reason: null,
+      financialYears: [{ id: 1, from: '2026-01-01', to: '2026-12-31' }],
+      voucherSeries: id === 1 ? [{ code: 'A', description: 'Redovisning' }] : [],
+    }))
+    mocks.list.mockResolvedValue([])
+    mocks.entries.mockResolvedValue([
+      { id: 'je1', date: '2026-10-02', description: 'Reparation', series: 'A', verNumber: 7 },
+    ])
+    mocks.save.mockResolvedValue(undefined)
+  })
+  afterEach(() => {
+    cleanup()
+    vi.clearAllMocks()
+  })
+
+  it('F-LIST-1: alla 250 verifikat i urvalet går att välja, och etiketten säger hur många', async () => {
+    mocks.entries.mockResolvedValue(
+      Array.from({ length: 250 }, (_, i) => ({
+        id: `je${i}`,
+        date: '2026-10-02',
+        description: `Verifikat ${i}`,
+        series: 'A',
+        verNumber: i + 1,
+      })),
+    )
+    renderIt()
+    expect(await screen.findByText(/250 av 250/)).toBeTruthy()
+    // Tidigare: .slice(0, 100) — verifikat 101–250 gick inte att välja för export.
+    expect(screen.getByRole('option', { name: /A250 · 2026-10-02 · Verifikat 249/ })).toBeTruthy()
+  })
+
+  it('C2 U-1: rubriktexten följer sändningsläget', async () => {
+    renderIt()
+    expect(await screen.findByText(/Inget skickas till Fortnox\./)).toBeTruthy()
+    cleanup()
+    mocks.state.mockResolvedValue({
+      ...ACTIVE(),
+      exports: { sendingEnabled: true, sendingDisabledReason: null },
+    })
+    renderIt()
+    expect(await screen.findByText(/Sändning är aktiverad för det anslutna företaget/)).toBeTruthy()
+    expect(screen.queryByText(/Sändning är inte aktiverad/)).toBeNull()
+    expect(screen.queryByText(/Inget skickas till Fortnox\./)).toBeNull()
+  })
+
+  it('visas inte för roller utan integrationsadministration', () => {
+    mocks.role = 'MANAGER'
+    renderIt()
+    expect(screen.queryByText(/förhandskontroll/i)).toBeNull()
+    expect(mocks.state).not.toHaveBeenCalled()
+  })
+
+  it('saknat dimensionsbeslut är ett synligt stopp, inget väljs automatiskt', async () => {
+    renderIt()
+    expect(await screen.findByText(/inget beslut – förhandskontrollen spärras/)).toBeTruthy()
+    const save = screen.getByRole('button', { name: 'Spara beslut' }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(save.disabled).toBe(false)
+    fireEvent.click(save)
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith({ omitDimensions: true }))
+  })
+
+  it('serie väljs ur Fortnox-katalogen för valt år, inte fritext', async () => {
+    renderIt()
+    await screen.findByRole('option', { name: '2026-01-01 – 2026-12-31' })
+    fireEvent.change(screen.getByLabelText('Räkenskapsår i Fortnox'), { target: { value: '1' } })
+    await waitFor(() => expect(mocks.catalog).toHaveBeenCalledWith(1))
+    const serie = await screen.findByLabelText('Serie i Fortnox')
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'A – Redovisning' })).toBeTruthy(),
+    )
+    fireEvent.change(serie, { target: { value: 'A' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Spara serie' }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith({ voucherSeries: 'A' }))
+  })
+
+  it('READY visas aldrig som skickat; BLOCKED visar skäl', async () => {
+    mocks.state.mockResolvedValue(ACTIVE({ exportVoucherSeries: 'A', exportOmitDimensions: true }))
+    mocks.dryRun.mockResolvedValueOnce({
+      id: 'x',
+      journalEntryId: 'je1',
+      state: 'DRY_RUN_READY',
+      blockReason: null,
+      updatedAt: 'now',
+    })
+    renderIt()
+    await screen.findByRole('option', { name: /A7 · 2026-10-02 · Reparation/ })
+    fireEvent.change(screen.getByLabelText('Verifikat (senaste 90 dagarna)'), {
+      target: { value: 'je1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
+    expect((await screen.findByRole('status')).textContent).toMatch(/INTE skickat eller bokfört/)
+    mocks.dryRun.mockResolvedValueOnce({
+      id: 'x',
+      journalEntryId: 'je1',
+      state: 'BLOCKED',
+      blockReason: 'ACCOUNT_UNVERIFIED: Konto 5999',
+      updatedAt: 'now',
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toMatch(/Skäl: ACCOUNT_UNVERIFIED/),
+    )
+  })
+
+  it('serverfel vid sparande ger fel, aldrig framgång', async () => {
+    mocks.save.mockRejectedValueOnce(new Error('409'))
+    renderIt()
+    fireEvent.click(await screen.findByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Spara beslut' }))
+    expect(await screen.findByText('Serverfel')).toBeTruthy()
+  })
+
+  it('T-F1: tom men komplett årskatalog förklaras och serie kan inte väljas', async () => {
+    mocks.catalog.mockResolvedValue({
+      ready: true,
+      reason: null,
+      financialYears: [],
+      voucherSeries: [],
+    })
+    renderIt()
+    expect(await screen.findByText(/har inga räkenskapsår ännu/)).toBeTruthy()
+    expect((screen.getByLabelText('Serie i Fortnox') as HTMLSelectElement).disabled).toBe(true)
+    expect(
+      (screen.getByRole('button', { name: 'Spara serie' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+})
