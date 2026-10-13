@@ -349,6 +349,12 @@ enum OpeningRowKind {
   DEPOSIT
 }
 
+// HUVUDBOK-STEG1 (154): organisationens huvudbok. EVENO = oförändrat beteende.
+enum LedgerOwner {
+  EVENO
+  FORTNOX
+}
+
 enum FortnoxCustomerActivationStatus {
   ACTIVE
   REVOKED
@@ -922,6 +928,24 @@ model Organization {
   privacyVersion  String?
   privacyHash     String?
 
+  // ── HUVUDBOK-STEG1 (154): BESTÄNDIGT HUVUDBOKSVAL ───────────────────────────
+  // Skilt från FortnoxConnection.status och från kundaktiveringens status: en
+  // bortkoppling, utgången auth, återanslutning eller ogiltigförklarad aktivering
+  // ändrar INTE valet. EVENO = oförändrat beteende (alla befintliga organisationer).
+  // FORTNOX sätts bara av OWNER via kundaktiveringens kontrollerade väg och är
+  // bundet till aktiveringen + Fortnox-företaget (databasnummer + orgnr) vid valet.
+  // Inget byte tillbaka eller till annat företag i steg 1. CHECK i migrationen:
+  // EVENO, eller alla fem bindningsfält satta.
+  ledgerOwner                      LedgerOwner                @default(EVENO)
+  ledgerOwnerActivationId          String?
+  ledgerOwnerFortnoxDatabaseNumber Int?
+  ledgerOwnerFortnoxOrgNumber      String?
+  ledgerOwnerSetAt                 DateTime?
+  ledgerOwnerSetById               String?
+  // NO ACTION: en statusändring på aktiveringen påverkar inte FK:n; raden (ägarbeslutet)
+  // kan inte raderas fristående. Organisationsradering kaskaderar i samma sats.
+  ledgerOwnerActivation            FortnoxCustomerActivation? @relation("HuvudboksvalAktivering", fields: [ledgerOwnerActivationId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   users                     User[]
   properties                Property[]
   tenants                   Tenant[]
@@ -996,7 +1020,7 @@ model Organization {
   bankIdentityReviewPauses   BankIdentityReviewPause[]
   bankImportStops            BankImportStop[]
   openingPackages            OpeningPackage[]
-  fortnoxCustomerActivations FortnoxCustomerActivation[]
+  fortnoxCustomerActivations FortnoxCustomerActivation[] @relation("KundaktiveringOrganisation")
   fortnoxAccountMappingRevisions FortnoxAccountMappingRevision[]
   openingExecutedSources     OpeningExecutedSource[]
   // KUNDSTART: första dag Eveno fakturerar (alltid den 1:a i en månad, svensk
@@ -8011,7 +8035,9 @@ model FortnoxCustomerActivation {
   createdAt                     DateTime                        @default(now())
   updatedAt                     DateTime                        @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation("KundaktiveringOrganisation", fields: [organizationId], references: [id], onDelete: Cascade)
+  // HUVUDBOK-STEG1: organisationer vars huvudboksval gjordes mot den här aktiveringen.
+  huvudboksval Organization[] @relation("HuvudboksvalAktivering")
 
   @@index([organizationId, status])
 }

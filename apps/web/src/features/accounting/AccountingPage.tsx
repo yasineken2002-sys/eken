@@ -12,7 +12,12 @@ import { PermissionDeniedState } from '@/components/ui/PermissionDeniedState'
 import { formatCurrency, formatDate } from '@eken/shared'
 import type { Account, JournalEntry, JournalEntryLine } from '@eken/shared'
 import { cn } from '@/lib/cn'
-import { useAccounts, useSeedAccounts, useJournalPages } from './hooks/useAccounting'
+import {
+  useAccounts,
+  useSeedAccounts,
+  useJournalPages,
+  useLedgerOwner,
+} from './hooks/useAccounting'
 import { PeriodsPanel } from './components/PeriodsPanel'
 import { FiscalYearsPanel } from './components/FiscalYearsPanel'
 import { ReverseEntryModal } from './components/ReverseEntryModal'
@@ -186,6 +191,12 @@ export function AccountingPage() {
   // server-side. Speglat här så knappen inte visas för den som ändå nekas.
   const role = useAuthStore((s) => s.user?.role)
   const mayReverse = role === 'ACCOUNTANT' || role === 'ADMIN' || role === 'OWNER'
+  // HUVUDBOK-STEG1 (154): med Fortnox som huvudbok nekar servern fria verifikat, utgifter,
+  // leverantörsfakturor och rättelser. Knapparna visas då inte; skälet visas i stället.
+  // Servern är spärren; detta är bara ytan. Ett ännu oläst val ändrar därför inte dagens vy.
+  const huvudbok = useLedgerOwner()
+  const externHuvudbok = huvudbok.data?.agare === 'FORTNOX'
+  const mayWrite = mayReverse && !externHuvudbok
 
   const accounts = useAccounts()
   const seedAccounts = useSeedAccounts()
@@ -230,7 +241,7 @@ export function AccountingPage() {
           // MANAGER utesluts: att bokföra ett fritt verifikat är en
           // redovisningshandling, inte en förvaltningsåtgärd. Knappen visas
           // därför inte för den som ändå hade fått 403 på klick.
-          mayReverse ? (
+          mayWrite ? (
             // TESTKUND-041: knapparna radbryts i stället för att sticka ut vid 390 px (uppmätt i UI-riggen).
             <div className="flex flex-wrap items-center justify-end gap-2">
               {/* Leverantörsfakturan hör till sin egen flik. Att visa knappen
@@ -266,6 +277,16 @@ export function AccountingPage() {
           ) : undefined
         }
       />
+
+      {externHuvudbok && huvudbok.data?.skal && (
+        <div
+          role="status"
+          data-testid="extern-huvudbok"
+          className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-[13px] text-blue-900"
+        >
+          {huvudbok.data.skal}
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -451,7 +472,7 @@ export function AccountingPage() {
               </p>
             )}
 
-            {mayReverse && !selectedEntry.reversedBy && (
+            {mayWrite && !selectedEntry.reversedBy && (
               <ModalFooter>
                 <Button
                   variant="secondary"

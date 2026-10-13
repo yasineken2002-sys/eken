@@ -197,6 +197,12 @@ export class AccountingController {
    * Svaret bär inga belopp; det föreslagna verifikatet ligger i
    * `close-preview`, som är grindad hårdare.
    */
+  /** HUVUDBOK-STEG1 (154): läsning av huvudboksvalet (samma text som skrivvägarnas nekande). */
+  @Get('ledger-owner')
+  getLedgerOwner(@OrgId() organizationId: string) {
+    return this.accountingService.getHuvudboksval(organizationId)
+  }
+
   @Get('fiscal-years')
   async listFiscalYears(@OrgId() organizationId: string, @Query('years') years?: string) {
     const parsed = years != null ? Number(years) : undefined

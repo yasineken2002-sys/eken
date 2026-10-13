@@ -1,5 +1,9 @@
-import type { ApproveCustomerActivationInput, SammaNycklar } from '@eken/shared'
-import { IsInt, IsString, Matches, Min } from 'class-validator'
+import type {
+  ApproveCustomerActivationInput,
+  ChooseLedgerOwnerInput,
+  SammaNycklar,
+} from '@eken/shared'
+import { IsInt, IsString, IsUUID, Matches, Min } from 'class-validator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
 
 /** KUNDSTART-001 §6: kundaktivering, bunden till räkenskapsår och konsekvenstextens sha. */
@@ -17,3 +21,14 @@ export class ApproveCustomerActivationDto implements ApproveCustomerActivationIn
 /** KOMPILERINGSTIDENS KOPPLING till webben. */
 const _kontrakt: SammaNycklar<ApproveCustomerActivationDto, ApproveCustomerActivationInput> = true
 void _kontrakt
+
+/** HUVUDBOK-STEG1 (154): val av Fortnox som huvudbok, bundet till den aktiva kundaktiveringen. */
+export class ChooseLedgerOwnerDto implements ChooseLedgerOwnerInput {
+  @IsString()
+  @StrictString()
+  @IsUUID()
+  activationId!: string
+}
+
+const _kontraktHuvudbok: SammaNycklar<ChooseLedgerOwnerDto, ChooseLedgerOwnerInput> = true
+void _kontraktHuvudbok

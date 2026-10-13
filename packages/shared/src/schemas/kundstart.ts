@@ -61,3 +61,12 @@ export const approveCustomerActivationInputSchema = z.object({
   consequencesSha256: sha256,
 })
 export type ApproveCustomerActivationInput = z.infer<typeof approveCustomerActivationInputSchema>
+
+/**
+ * POST /integrations/fortnox/customer-activation/ledger-owner — HUVUDBOK-STEG1 (154): OWNER väljer
+ * Fortnox som huvudbok, bundet till organisationens AKTIVA kundaktivering.
+ */
+export const chooseLedgerOwnerInputSchema = z.object({
+  activationId: z.string().uuid(),
+})
+export type ChooseLedgerOwnerInput = z.infer<typeof chooseLedgerOwnerInputSchema>

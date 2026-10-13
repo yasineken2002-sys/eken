@@ -9,6 +9,7 @@ import { CompanyForm, NotificationType, Prisma, RentNoticeType, UserRole } from 
 import type { AccountingPeriodEventReasonCategory } from '@prisma/client'
 import { NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { assertLokalHuvudbokTillaten } from './huvudboksval'
 import { AccountingService } from './accounting.service'
 import { isResultAccountNumber, YEAR_RESULT_ACCOUNT_BY_FORM } from './bas-chart'
 import { fiscalYearBounds, fiscalYearOf, type FiscalYearBounds } from './fiscal-year'
@@ -1391,6 +1392,8 @@ export class AccountingPeriodService {
 
     const actorLabel = prepared.actorLabel
     const result = await this.prisma.$transaction(async (tx) => {
+      // HUVUDBOK-STEG1 (154): årsbokslutet görs i Fortnox när den är huvudbok — första sats.
+      await assertLokalHuvudbokTillaten(tx, organizationId, 'ARSBOKSLUT')
       const draft = await this.buildYearEndDraft(tx, organizationId, org, bounds)
 
       let journalEntryId: string | null = null

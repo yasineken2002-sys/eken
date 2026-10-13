@@ -95,6 +95,11 @@ export interface SenBokforingBeslut {
   actorLabel?: string | null
 }
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import {
+  assertLokalHuvudbokTillaten,
+  lasHuvudboksval,
+  type LokalHuvudbokshandling,
+} from './huvudboksval'
 
 // Konteringsrad i internt format innan den mappas till Prisma create-input.
 interface JournalLineInput {
@@ -477,6 +482,13 @@ export class AccountingService {
     // tillbaka statusändringar om bokföringen fallerar — BFL 5 kap 5 §/9 §).
     // Utan tx öppnar metoden en egen transaktion som tidigare.
     tx?: Prisma.TransactionClient
+    /**
+     * HUVUDBOK-STEG1 (154): sätts BARA av de fria huvudboksvägarna (fritt verifikat, utgift,
+     * leverantörsbokföring, generell rättelse). Kontrolleras som första sats i transaktionen,
+     * under FOR SHARE på organisationen — se `huvudboksval.ts`. Domänvägarna (avi, betalning,
+     * deposition och deras källbundna rättelser) sätter den aldrig och påverkas inte.
+     */
+    huvudboksHandling?: LokalHuvudbokshandling
   }) {
     // ── C0: IDEMPOTENSNYCKELN MÅSTE FINNAS OCH VARA ORG-SCOPAD ───────────────
     //
@@ -569,6 +581,9 @@ export class AccountingService {
     }
 
     const run = async (tx: Prisma.TransactionClient) => {
+      // HUVUDBOK-STEG1: före idempotensuppslag, nummer och rad — ett nekande lämnar ingenting.
+      if (params.huvudboksHandling)
+        await assertLokalHuvudbokTillaten(tx, params.organizationId, params.huvudboksHandling)
       // SNABBVÄG, INTE SPÄRR. Kontrollen matchar samma (org, source, sourceId)
       // som det unika DB-indexet, så app-kontroll och DB-constraint säger samma
       // sak — men den LÅSER ingenting när den inte hittar någon rad, och stoppar
@@ -1160,6 +1175,11 @@ export class AccountingService {
    * anropare — men det är INTE hela huvudboken. Den som behöver helheten, eller
    * antalet, använder `getJournalEntriesPage`.
    */
+  /** HUVUDBOK-STEG1 (154): organisationens huvudboksval för webbens läsvy. */
+  getHuvudboksval(organizationId: string) {
+    return lasHuvudboksval(this.prisma, organizationId)
+  }
+
   async getJournalEntries(organizationId: string, filters?: JournalFilters) {
     return this.prisma.journalEntry.findMany({
       where: this.journalWhere(organizationId, filters),
@@ -2978,6 +2998,8 @@ export class AccountingService {
     linePrefix?: string
     include?: Prisma.JournalEntryInclude
     tx?: Prisma.TransactionClient
+    /** HUVUDBOK-STEG1: endast generell rättelse och leverantörsvägen sätter den. */
+    huvudboksHandling?: LokalHuvudbokshandling
   }) {
     // ── LÄSBART FEL, INTE ETT RÅTT CONSTRAINT-FEL ─────────────────────────────
     //
@@ -3025,6 +3047,7 @@ export class AccountingService {
         reversalOfEntryId: params.original.id,
         ...(params.include ? { include: params.include } : {}),
         tx: db,
+        ...(params.huvudboksHandling ? { huvudboksHandling: params.huvudboksHandling } : {}),
       })
       await db.fortnoxVoucherExport.updateMany({
         where: {
@@ -3649,6 +3672,7 @@ export class AccountingService {
         source: 'MANUAL',
         reversalSourceId: `entry-reversal:${params.entryId}`,
         description: intendedDescription,
+        huvudboksHandling: 'RATTELSE_GENERELL',
         createdById: params.actorUserId,
         linePrefix: 'Rättelse',
         // reversalOfEntryId sätts centralt i createReversalEntry, för alla vägar.
@@ -4592,6 +4616,7 @@ export class AccountingService {
     if (!byggt.ok) throw new UnprocessableEntityException(byggt.fel)
 
     return this.createNumberedEntry({
+      huvudboksHandling: 'FRITT_VERIFIKAT',
       organizationId,
       date,
       description: description.trim(),
@@ -4699,6 +4724,7 @@ export class AccountingService {
         : undefined
 
     return this.createNumberedEntry({
+      huvudboksHandling: 'UTGIFT',
       organizationId,
       date,
       description: `Utgift: ${params.utgift.beskrivning.trim()}`,
@@ -4784,6 +4810,7 @@ export class AccountingService {
 
     const sourceId = receiptSourceId(params.invoiceId)
     return this.createNumberedEntry({
+      huvudboksHandling: 'LEVERANTORSFAKTURA',
       organizationId,
       date,
       description: `Leverantörsfaktura: ${params.supplierName} — ${params.description}`,
@@ -4839,6 +4866,7 @@ export class AccountingService {
 
     const sourceId = params.sourceId ?? paymentSourceId(params.invoiceId)
     return this.createNumberedEntry({
+      huvudboksHandling: 'LEVERANTORSFAKTURA',
       organizationId,
       date: paidDate,
       description: `Betald leverantörsfaktura: ${params.supplierName}`,
@@ -4913,6 +4941,7 @@ export class AccountingService {
 
     const sourceId = cancellationSourceId(params.invoiceId)
     return this.createNumberedEntry({
+      huvudboksHandling: 'LEVERANTORSFAKTURA',
       organizationId,
       date,
       description: `Makulerad leverantörsfaktura: ${params.supplierName} — ${params.description}`,
@@ -4966,6 +4995,7 @@ export class AccountingService {
     const sourceId = vatAdjustmentSourceId(params.adjustmentId)
     const text = params.till === 'INGET_AVDRAG' ? 'dras inte av' : 'dras av'
     return this.createNumberedEntry({
+      huvudboksHandling: 'LEVERANTORSFAKTURA',
       organizationId,
       date,
       description: `Momsjustering leverantörsfaktura: ${params.supplierName} – ${params.description} (moms ${text})`,
@@ -5012,6 +5042,7 @@ export class AccountingService {
       linePrefix: 'Ångrad betalning',
       include: { lines: { include: { account: true } } },
       tx: params.tx,
+      huvudboksHandling: 'LEVERANTORSFAKTURA',
     })
   }
 

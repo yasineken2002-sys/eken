@@ -15,6 +15,17 @@ import type {
 
 export const fetchAccounts = (): Promise<Account[]> => get<Account[]>('/accounting/accounts')
 
+// ── HUVUDBOK-STEG1 (154): organisationens huvudbok. Servern nekar fria bokföringshandlingar vid
+// FORTNOX; webben läser samma regel och samma text för att inte visa knappar som ändå nekas.
+export interface LedgerOwnerStatus {
+  agare: 'EVENO' | 'FORTNOX'
+  valdAt: string | null
+  fortnoxDatabasnummer: number | null
+  skal: string | null
+}
+export const fetchLedgerOwner = (): Promise<LedgerOwnerStatus> =>
+  get<LedgerOwnerStatus>('/accounting/ledger-owner')
+
 export const seedAccounts = (): Promise<{ message: string }> =>
   post<{ message: string }>('/accounting/accounts/seed')
 

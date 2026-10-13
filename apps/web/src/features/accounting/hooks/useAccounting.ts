@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tansta
 import type { ReverseEntryInput } from '@eken/shared'
 import {
   fetchAccounts,
+  fetchLedgerOwner,
   seedAccounts,
   fetchJournalEntries,
   fetchJournalPage,
@@ -30,6 +31,15 @@ export function useAccounts() {
   return useQuery({
     queryKey: ['accounting', 'accounts'],
     queryFn: fetchAccounts,
+  })
+}
+
+/** HUVUDBOK-STEG1 (154): huvudboksvalet (läsning; servern är spärren). */
+export function useLedgerOwner() {
+  return useQuery({
+    queryKey: ['accounting', 'ledger-owner'],
+    queryFn: fetchLedgerOwner,
+    retry: false,
   })
 }
 

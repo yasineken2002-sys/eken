@@ -9,6 +9,8 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
+  NotFoundException,
   Optional,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -22,6 +24,7 @@ import { saldoUrLasning, senasteSaldolasning } from '../kundstart/opening-fortno
 import type { Avstamning } from '../kundstart/opening-reconciliation'
 import { ogiltigforklaraAktiveringar } from '../kundstart/activation-invalidation'
 import { evenoPosterForeBrytdatum } from '../kundstart/pre-cutover-records'
+import { isOpen as leverantorsfakturaArOppen } from '../accounting/supplier-invoice-status'
 import { FORTNOX_MAPPNINGSKONTROLL, type Mappningskontroll } from './fortnox-kontomappning.service'
 import {
   fortnoxRiskkontroll,
@@ -30,6 +33,7 @@ import {
 } from '../kundstart/first-period'
 import {
   fortnoxCustomerWritesOptIn,
+  huvudbokForetagsfel,
   konsekvenstext,
   mappningsSha,
   sammaOrgnr,
@@ -61,6 +65,8 @@ interface Forslag {
 
 @Injectable()
 export class FortnoxCustomerActivationService {
+  private readonly logger = new Logger(FortnoxCustomerActivationService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -109,6 +115,11 @@ export class FortnoxCustomerActivationService {
     else {
       if (!sammaOrgnr(conn.fortnoxOrgNumber, org.orgNumber))
         hinder.push('Fortnox-företagets organisationsnummer är inte lika med Evenos.')
+      // HUVUDBOK-STEG1 T1-3: en ny aktivering får inte gälla ett annat företag än huvudboksvalet.
+      const huvudbok = await huvudbokForetagsfel(db, organizationId, [
+        { databaseNumber: conn.fortnoxDatabaseNumber, orgNumber: conn.fortnoxOrgNumber },
+      ])
+      if (huvudbok) hinder.push(huvudbok)
       if (!conn.exportVoucherSeries) hinder.push('Verifikatserie för export är inte vald.')
       const mapp = await db.fortnoxDimensionMapping.count({ where: { organizationId } })
       if (!conn.exportOmitDimensionsAt && mapp === 0)
@@ -301,8 +312,17 @@ export class FortnoxCustomerActivationService {
       },
     })
     const f = await this.forslag(this.prisma, organizationId, financialYearId)
+    const hb = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { ledgerOwner: true, ledgerOwnerSetAt: true, ledgerOwnerFortnoxDatabaseNumber: true },
+    })
     return {
       flaggaPa: this.flaggaPa,
+      huvudbok: {
+        agare: hb?.ledgerOwner ?? 'EVENO',
+        valdAt: hb?.ledgerOwnerSetAt ?? null,
+        fortnoxDatabasnummer: hb?.ledgerOwnerFortnoxDatabaseNumber ?? null,
+      },
       aktiv: aktiv.ok ? { id: aktiv.binding.activationId, giltig: true } : null,
       aktivHinder: aktiv.ok ? null : aktiv.skal,
       forslag: { ok: f.ok, hinder: f.hinder, text: f.text, textSha256: f.textSha256 },
@@ -342,6 +362,85 @@ export class FortnoxCustomerActivationService {
         },
         select: { id: true, status: true, approvedAt: true, consequencesSha256: true },
       })
+    }, PAYMENT_TX_LIMITS)
+  }
+
+  /**
+   * HUVUDBOK-STEG1 (154): OWNER väljer Fortnox som huvudbok. Enda vägen till FORTNOX.
+   *
+   * Samma lås som `approve` (FOR UPDATE på organisationen); skrivvägarnas regel läser värdet med
+   * FOR SHARE i sin egen transaktion, så beslut och skrivning kan inte passera med olika regler.
+   * Bindningen tas ur den AKTIVA kundaktiveringen, prövad med `provaAktivering` mot aktuell
+   * anslutning i samma transaktion. Ägarbeslutets spår är aktiveringsraden (approvedById,
+   * konsekvenstext) plus vem/när här. Inget byte tillbaka eller till annat företag: ett andra
+   * val nekas. Valet påverkas därefter inte av anslutningens eller aktiveringens status.
+   */
+  async valjFortnoxSomHuvudbok(
+    organizationId: string,
+    user: { sub: string; role: string },
+    input: { activationId: string },
+  ) {
+    if (user.role !== 'OWNER')
+      throw new ForbiddenException('Bara OWNER får välja Fortnox som huvudbok.')
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
+      const org = await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { ledgerOwner: true },
+      })
+      if (!org) throw new NotFoundException('Organisationen hittades inte')
+      if (org.ledgerOwner !== 'EVENO')
+        throw new ConflictException({
+          code: 'HUVUDBOK_REDAN_VALD',
+          message:
+            'Fortnox är redan vald som huvudbok. Valet kan inte ändras eller flyttas till ett annat företag här.',
+        })
+      const v = await provaAktivering(tx, organizationId, null)
+      if (!v.ok) throw new ConflictException(`Fortnox kan inte väljas som huvudbok: ${v.skal}`)
+      if (v.binding.activationId !== input.activationId)
+        throw new ConflictException(
+          'Valet gäller inte organisationens aktiva kundaktivering — läs om sidan och försök igen.',
+        )
+      const a = await tx.fortnoxCustomerActivation.findUniqueOrThrow({
+        where: { id: v.binding.activationId },
+        select: { id: true, fortnoxDatabaseNumber: true, fortnoxOrgNumber: true },
+      })
+      // T1-2: en öppen lokal leverantörsfaktura hade blivit strandad (BP-2 fryser den efter valet).
+      // Härlett tillstånd, inte en flagga: en ångrad betalning har paidAt = null och räknas.
+      const fakturor = await tx.supplierInvoice.findMany({
+        where: { organizationId },
+        select: { paidAt: true, cancelledAt: true },
+      })
+      const oppna = fakturor.filter(leverantorsfakturaArOppen).length
+      if (oppna > 0)
+        throw new ConflictException({
+          code: 'OPPNA_LEVERANTORSFAKTUROR',
+          message:
+            `Det finns ${oppna} öppna leverantörsfakturor i Eveno. Betala eller makulera dem i Eveno ` +
+            'innan Fortnox väljs som huvudbok – efter valet kan de inte hanteras här.',
+        })
+      const valdAt = new Date()
+      await tx.organization.update({
+        where: { id: organizationId },
+        data: {
+          ledgerOwner: 'FORTNOX',
+          ledgerOwnerActivationId: a.id,
+          ledgerOwnerFortnoxDatabaseNumber: a.fortnoxDatabaseNumber,
+          ledgerOwnerFortnoxOrgNumber: a.fortnoxOrgNumber,
+          ledgerOwnerSetAt: valdAt,
+          ledgerOwnerSetById: user.sub,
+        },
+      })
+      this.logger.log(
+        `[huvudbok] org ${organizationId}: Fortnox vald som huvudbok av ${user.sub} ` +
+          `(aktivering ${a.id}, databasnummer ${a.fortnoxDatabaseNumber})`,
+      )
+      return {
+        agare: 'FORTNOX' as const,
+        valdAt,
+        activationId: a.id,
+        fortnoxDatabasnummer: a.fortnoxDatabaseNumber,
+      }
     }, PAYMENT_TX_LIMITS)
   }
 

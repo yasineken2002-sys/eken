@@ -292,6 +292,7 @@ import {
 } from '../../fortnox/dto/fortnox-account-mapping.dto'
 import {
   approveCustomerActivationInputSchema,
+  chooseLedgerOwnerInputSchema,
   approveOpeningPackageInputSchema,
   bindOpeningReadInputSchema,
   firstPeriodRegisterInputSchema,
@@ -307,7 +308,10 @@ import {
   SetCutoverDto,
   UploadOpeningPackageDto,
 } from '../../kundstart/dto/kundstart.dto'
-import { ApproveCustomerActivationDto } from '../../fortnox/dto/customer-activation.dto'
+import {
+  ApproveCustomerActivationDto,
+  ChooseLedgerOwnerDto,
+} from '../../fortnox/dto/customer-activation.dto'
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
   // ── KUNDSTART-001 ─────────────────────────────────────────────────────────
@@ -400,6 +404,15 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
       consequencesSha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     },
     ogiltigVarfor: 'räkenskapsåret är Fortnox positiva id',
+  },
+  {
+    endpoint: 'POST /integrations/fortnox/customer-activation/ledger-owner',
+    inputTyp: 'ChooseLedgerOwnerInput',
+    schema: chooseLedgerOwnerInputSchema,
+    dto: ChooseLedgerOwnerDto,
+    giltig: { activationId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301' },
+    ogiltig: { activationId: 'inte-ett-id' },
+    ogiltigVarfor: 'valet binds till kundaktiveringens id (uuid)',
   },
   {
     endpoint: 'PATCH /reconciliation/import-stops/:id/resolve',
