@@ -63,6 +63,8 @@ function makeService(utfall: 'ny' | 'traff' | 'race') {
   const NY = { id: 'je-ny', series: 'A', verNumber: 43 }
 
   const tx = {
+    // HUVUDBOK-STEG1 (154): huvudboksregelns FOR SHARE-läsning; standardvalet EVENO.
+    $queryRaw: jest.fn().mockResolvedValue([{ ledgerOwner: 'EVENO' }]),
     journalEntry: {
       findFirst: jest.fn().mockResolvedValue(utfall === 'traff' ? BEFINTLIG : null),
       create:

@@ -246,6 +246,8 @@ describe('createManualJournalEntry — bilagan når journalEntry.create', () => 
       },
       accountingPeriodEvent: { findFirst: jest.fn().mockResolvedValue(null) },
       fiscalYearClose: { findUnique: jest.fn().mockResolvedValue(null) },
+      // HUVUDBOK-STEG1 (154): huvudboksregelns FOR SHARE-läsning; standardvalet EVENO.
+      $queryRaw: jest.fn().mockResolvedValue([{ ledgerOwner: 'EVENO' }]),
       $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(prisma)),
     }
     const verifikationsnummer = {

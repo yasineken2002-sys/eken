@@ -46,6 +46,7 @@ import { StorageService } from '../storage/storage.service'
 import { AiAuditService } from '../ai/audit/ai-audit.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
 import { prövaDelegerbarhet } from '../ai/delegation/delegation-scope'
+import { EFFECT_DECLARATIONS } from '../ai/tools/effect-idempotency'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -606,6 +607,157 @@ medDb('HUVUDBOK-STEG1 · huvudboksval och gemensamma serverregler', () => {
           where: { organizationId: o.id, type: 'CLOSED' },
         }),
       ).toBe(1)
+    })
+
+    // F-161-1: leverantörsfakturor som redan var PAID/CANCELLED vid valet. 409 ska komma FÖRE
+    // affärsregeln, och inget fält, ingen justering, inget verifikat eller nummer får ändras.
+    it('F4c: ångrad betalning, momsjustering, betalning och makulering på befintliga fakturor → 409 utan effekt', async () => {
+      const o = await nyOrg()
+      const id = async (r: { body: string }) =>
+        (JSON.parse(r.body) as { data: { id: string } }).data.id
+      const betald = await id(
+        await http(o, 'POST', '/accounting/supplier-invoices', levfaktura, 'ACCOUNTANT'),
+      )
+      const p = await http(
+        o,
+        'POST',
+        `/accounting/supplier-invoices/${betald}/pay`,
+        { paidDate: '2026-03-20' },
+        'ACCOUNTANT',
+      )
+      expect([200, 201]).toContain(p.statusCode)
+      const makulerad = await id(
+        await http(o, 'POST', '/accounting/supplier-invoices', levfaktura, 'ACCOUNTANT'),
+      )
+      const c = await http(
+        o,
+        'POST',
+        `/accounting/supplier-invoices/${makulerad}/cancel`,
+        {},
+        'ACCOUNTANT',
+      )
+      expect([200, 201]).toContain(c.statusCode)
+      const betalning = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          organizationId: o.id,
+          source: 'SUPPLIER_INVOICE',
+          sourceId: { startsWith: 'supplier-invoice-payment:' },
+        },
+      })
+      await fortnoxVald(o)
+
+      const fakturor = () =>
+        prisma.supplierInvoice.findMany({
+          where: { organizationId: o.id },
+          orderBy: { id: 'asc' },
+          select: { id: true, paidAt: true, cancelledAt: true, vatAmount: true },
+        })
+      const justeringar = () =>
+        prisma.supplierInvoiceVatAdjustment.count({ where: { organizationId: o.id } })
+      const fore = {
+        rader: await rader(o.id),
+        fakturor: await fakturor(),
+        justeringar: await justeringar(),
+      }
+
+      for (const [url, body] of [
+        [
+          `/accounting/supplier-invoices/${betald}/payments/${betalning.id}/undo`,
+          { reason: 'F4c ångring ska nekas' },
+        ],
+        [
+          `/accounting/supplier-invoices/${betald}/vat-adjustments`,
+          {
+            till: 'HELT_AVDRAG',
+            date: '2026-03-25',
+            reason: 'F4c justering ska nekas',
+            clientKey: `f4c-${randomUUID()}`,
+          },
+        ],
+        [`/accounting/supplier-invoices/${betald}/pay`, { paidDate: '2026-03-26' }],
+        [`/accounting/supplier-invoices/${makulerad}/cancel`, {}],
+        [`/accounting/supplier-invoices/${makulerad}/pay`, { paidDate: '2026-03-26' }],
+      ] as const) {
+        const r = await http(o, 'POST', url, body, 'ACCOUNTANT')
+        // Kundeffekten först: fakturans fält, justeringar, verifikat och nummer.
+        expect({
+          url,
+          rader: await rader(o.id),
+          fakturor: await fakturor(),
+          justeringar: await justeringar(),
+        }).toEqual({ url, ...fore })
+        nekadHttp(r)
+      }
+      expect(fore.fakturor.find((f) => f.id === betald)!.paidAt).not.toBeNull()
+      expect(fore.fakturor.find((f) => f.id === makulerad)!.cancelledAt).not.toBeNull()
+    })
+
+    // F-161-2: AI:s ångra av ett fritt verifikat. Den deklarerade ångra-vägen för
+    // create_journal_entry/record_expense (effect-idempotency, supportsUndo) är
+    // AccountingService.reverseJournalEntry; den nås också via HTTP-rättelsen i gränssnittet.
+    it('F4d: ångra av ett AI-skapat verifikat via den deklarerade vägen nekas utan ny rättelse', async () => {
+      const o = await nyOrg()
+      const principal = { kind: 'USER' as const, id: o.anv.OWNER }
+      const skapat = await executor.executeTool(
+        'create_journal_entry',
+        verifikat('AI före valet'),
+        o.id,
+        principal,
+        'OWNER',
+        { actionProof: { claimed: true } } as never,
+      )
+      expect(skapat.success).toBe(true)
+      const ai = await prisma.journalEntry.findFirstOrThrow({
+        where: { organizationId: o.id, description: 'AI före valet' },
+      })
+      await fortnoxVald(o)
+
+      for (const verktyg of ['create_journal_entry', 'record_expense']) {
+        const undo = EFFECT_DECLARATIONS[verktyg]!.supportsUndo
+        expect(undo).toMatchObject({
+          kind: 'VÄG',
+          fil: 'accounting/accounting.service.ts',
+          symbol: 'reverseJournalEntry',
+        })
+      }
+      const symbol = (
+        EFFECT_DECLARATIONS['create_journal_entry']!.supportsUndo as { symbol: string }
+      ).symbol
+      const fore = await rader(o.id)
+      const utfall = await (
+        accounting as unknown as Record<string, (p: unknown) => Promise<unknown>>
+      )
+        [symbol]!.call(accounting, {
+          entryId: ai.id,
+          organizationId: o.id,
+          actorRole: 'ACCOUNTANT',
+          actorUserId: o.anv.ACCOUNTANT,
+          reason: 'F4d ångra AI-verifikat ska nekas',
+        })
+        .then(
+          () => 'lyckades',
+          (e: unknown) => e,
+        )
+      expect(await rader(o.id)).toEqual(fore)
+      expect(
+        await prisma.journalEntry.count({
+          where: { organizationId: o.id, reversalOfEntryId: ai.id },
+        }),
+      ).toBe(0)
+      expect(utfall).toBeInstanceOf(ConflictException)
+      expect((utfall as ConflictException).getResponse()).toMatchObject({ code: EXTERN_HUVUDBOK })
+
+      // Samma ångra via gränssnittets HTTP-rättelse: nekad, inget falskt lyckat svar.
+      const r = await http(
+        o,
+        'POST',
+        `/accounting/journal/${ai.id}/reverse`,
+        { reason: 'F4d ångra via HTTP ska nekas' },
+        'ACCOUNTANT',
+      )
+      expect(await rader(o.id)).toEqual(fore)
+      nekadHttp(r)
+      expect(JSON.parse(r.body).success).toBe(false)
     })
 
     it('delegerad väg: verktygen är fortfarande EJ_ALLOWLISTAD (ingen ny rättighet)', () => {

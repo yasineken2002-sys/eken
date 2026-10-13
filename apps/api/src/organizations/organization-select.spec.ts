@@ -82,6 +82,18 @@ const MEDVETET_UTELÄMNADE: Record<string, string> = {
   excludeFromBilling: 'Intern flagga: undantas från plattformsfaktureringen.',
   transactionalEmailsDisabled:
     'Intern driftflagga: strypventil för utgående post. Inte en kundinställning.',
+  ledgerOwner:
+    'Huvudboksvalet (HUVUDBOK-STEG1) läses via GET /accounting/ledger-owner och kundaktiveringens status och sätts bara av OWNER via sin egen väg — inte en organisationsinställning.',
+  ledgerOwnerActivationId:
+    'Bindning för huvudboksvalet (aktivering, Fortnox-företag, vem/när) — revisionsuppgift, ingen kundinställning.',
+  ledgerOwnerFortnoxDatabaseNumber:
+    'Bindning för huvudboksvalet (aktivering, Fortnox-företag, vem/när) — revisionsuppgift, ingen kundinställning.',
+  ledgerOwnerFortnoxOrgNumber:
+    'Bindning för huvudboksvalet (aktivering, Fortnox-företag, vem/när) — revisionsuppgift, ingen kundinställning.',
+  ledgerOwnerSetAt:
+    'Bindning för huvudboksvalet (aktivering, Fortnox-företag, vem/när) — revisionsuppgift, ingen kundinställning.',
+  ledgerOwnerSetById:
+    'Bindning för huvudboksvalet (aktivering, Fortnox-företag, vem/när) — revisionsuppgift, ingen kundinställning.',
 }
 
 describe('SAFE_ORGANIZATION_SELECT', () => {
