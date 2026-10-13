@@ -67,8 +67,17 @@ describe('Bokföring och huvudboksvalet', () => {
     expect(screen.queryByTestId('record-expense')).toBeNull()
   })
 
+  it('valet är ännu inte läst: vyn är oförändrad (servern är spärren)', async () => {
+    api.fetchLedgerOwner.mockImplementation(() => new Promise(() => undefined))
+    visa()
+    expect(await screen.findByTestId('new-journal-entry')).toBeTruthy()
+    expect(screen.queryByTestId('extern-huvudbok')).toBeNull()
+  })
+
   it('valet går inte att läsa: vyn är oförändrad (servern är spärren)', async () => {
-    api.fetchLedgerOwner.mockRejectedValue(new Error('nät'))
+    api.fetchLedgerOwner.mockImplementation(async () => {
+      throw new Error('nät')
+    })
     visa()
     expect(await screen.findByTestId('new-journal-entry')).toBeTruthy()
     expect(screen.queryByTestId('extern-huvudbok')).toBeNull()
