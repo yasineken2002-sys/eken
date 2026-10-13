@@ -227,6 +227,10 @@ export class SupplierInvoiceService {
     paidDate: Date
     createdById: string
   }) {
+    // HUVUDBOK-STEG1 (FEEDBACK-161): samma regel och samma skäl FÖRE affärsreglerna nedan, så att
+    // en organisation med Fortnox som huvudbok får huvudboksbeskedet och inte "redan betald".
+    // Den bärande kontrollen är fortfarande första satsen i transaktionen.
+    await assertLokalHuvudbokTillaten(this.prisma, params.organizationId, 'LEVERANTORSFAKTURA')
     const faktura = await this.findOne(params.invoiceId, params.organizationId)
 
     if (faktura.paidAt) {
@@ -303,6 +307,10 @@ export class SupplierInvoiceService {
    * journalen.
    */
   async cancel(params: { organizationId: string; invoiceId: string; createdById: string }) {
+    // HUVUDBOK-STEG1 (FEEDBACK-161): samma regel och samma skäl FÖRE affärsreglerna nedan, så att
+    // en organisation med Fortnox som huvudbok får huvudboksbeskedet och inte "redan betald".
+    // Den bärande kontrollen är fortfarande första satsen i transaktionen.
+    await assertLokalHuvudbokTillaten(this.prisma, params.organizationId, 'LEVERANTORSFAKTURA')
     const faktura = await this.findOne(params.invoiceId, params.organizationId)
     this.accounting.assertMayCancelSupplierInvoice(faktura)
 
