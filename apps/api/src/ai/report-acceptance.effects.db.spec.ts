@@ -26,7 +26,7 @@ import {
   IMPORT_HEADER_207,
   prepareEvidencePackage,
 } from '../kundstart/opening-evidence.fixtures'
-import { SOURCE_HEADER } from '../kundstart/opening-evidence-format'
+import { SOURCE_HEADER, MAPPING_HEADER } from '../kundstart/opening-evidence-format'
 import {
   assistantRig,
   date,
@@ -338,6 +338,96 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     ],
   })
 
+  // Real synthetic binding rows, following report-contract.db.spec.ts. No activation API is exercised.
+  async function selectFortnoxLedger(databaseNumber = 101) {
+    const conn = await db.fortnoxConnection.upsert({
+      where: { organizationId: org },
+      create: {
+        organizationId: org,
+        status: 'ACTIVE',
+        fortnoxDatabaseNumber: databaseNumber,
+        fortnoxOrgNumber: '5560000000',
+        exportVoucherSeries: 'A',
+        connectedAt: new Date(),
+      },
+      update: {
+        status: 'ACTIVE',
+        fortnoxDatabaseNumber: databaseNumber,
+        fortnoxOrgNumber: '5560000000',
+        exportVoucherSeries: 'A',
+      },
+    })
+    const opening = await db.openingPackage.create({
+      data: {
+        organizationId: org,
+        status: 'EXECUTED',
+        cutoverDate: date('2026-07-01'),
+        sourceName: 'AF225-synthetic-zero.csv',
+        sourceSha256: createHash('sha256').update('AF225 synthetic zero opening').digest('hex'),
+        createdById: owner,
+        executedAt: new Date(),
+        reconciliationStatus: 'AVSTAMD',
+        zeroOpening: true,
+      },
+    })
+    const read = await db.fortnoxReadRun.create({
+      data: {
+        organizationId: org,
+        connectionId: conn.id,
+        fortnoxDatabaseNumber: databaseNumber,
+        status: 'COMPLETE',
+        financialYearId: 2026,
+        financialYearStart: date('2026-07-01'),
+        financialYearEnd: date('2027-06-30'),
+        periodFrom: date('2026-07-01'),
+        periodTo: date('2026-09-30'),
+        costAccounts: [1510, 2890],
+        completedAt: new Date(),
+        summary: { balanceBroughtForwardOre: { '1510': 0, '2890': 0 } },
+      },
+    })
+    // Preserve prior binding history and respect the one-ACTIVE-per-organisation index.
+    await db.fortnoxCustomerActivation.updateMany({
+      where: { organizationId: org, status: 'ACTIVE' },
+      data: { status: 'SUPERSEDED', supersededAt: new Date() },
+    })
+    const activation = await db.fortnoxCustomerActivation.create({
+      data: {
+        organizationId: org,
+        status: 'ACTIVE',
+        connectionId: conn.id,
+        connectionGeneration: conn.generation,
+        fortnoxDatabaseNumber: databaseNumber,
+        fortnoxOrgNumber: '5560000000',
+        financialYearId: 2026,
+        financialYearFrom: date('2026-07-01'),
+        financialYearTo: date('2027-06-30'),
+        voucherSeries: 'A',
+        financialYearAccountingMethod: 'ACCRUAL',
+        mappingSha256: createHash('sha256').update('AF225 synthetic mapping').digest('hex'),
+        openingPackageId: opening.id,
+        fortnoxReadRunId: read.id,
+        consequencesText: 'AF225 syntetiskt huvudboksval',
+        consequencesSha256: createHash('sha256')
+          .update('AF225 syntetiskt huvudboksval')
+          .digest('hex'),
+        approvedById: owner,
+      },
+    })
+    await db.organization.update({
+      where: { id: org },
+      data: {
+        ledgerOwner: 'FORTNOX',
+        ledgerOwnerActivationId: activation.id,
+        ledgerOwnerFortnoxDatabaseNumber: activation.fortnoxDatabaseNumber,
+        ledgerOwnerFortnoxOrgNumber: activation.fortnoxOrgNumber,
+        ledgerOwnerSetAt: activation.approvedAt,
+        ledgerOwnerSetById: activation.approvedById,
+      },
+    })
+    return activation
+  }
+
   async function confirm(
     r: ReturnType<typeof rig>,
     proposed: ChatResponse,
@@ -405,26 +495,16 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     async (variant) => {
       sdkScript([tool('create_journal_entry', journalInput())])
       const r = rig()
-      if (variant !== 'owner-switch')
-        await db.organization.update({
-          where: { id: org },
-          data: {
-            ledgerOwner: 'FORTNOX',
-            ledgerOwnerFortnoxDatabaseNumber: 101,
-            ledgerOwnerActivationId: 'AF216-before',
-            ledgerOwnerFortnoxOrgNumber: '5560000000',
-          },
-        })
+      const bindingBefore = variant !== 'owner-switch' ? await selectFortnoxLedger() : null
       const proposal = await r.ai.chat(org, owner, 'OWNER', 'Förbered en syntetisk bokning.')
-      await db.organization.update({
-        where: { id: org },
-        data: {
-          ledgerOwner: 'FORTNOX',
-          ledgerOwnerFortnoxDatabaseNumber: variant === 'binding-switch' ? 202 : 101,
-          ledgerOwnerActivationId: 'AF216-after',
-          ledgerOwnerFortnoxOrgNumber: '5560000000',
-        },
-      })
+      if (variant !== 'AUTH_LOST') {
+        const bindingAfter = await selectFortnoxLedger(variant === 'binding-switch' ? 202 : 101)
+        if (variant === 'binding-switch') {
+          expect(bindingAfter.id).not.toBe(bindingBefore!.id)
+          expect(bindingAfter.fortnoxDatabaseNumber).toBe(202)
+          expect(bindingBefore!.fortnoxDatabaseNumber).toBe(101)
+        }
+      }
       if (variant === 'AUTH_LOST')
         await db.fortnoxConnection.upsert({
           where: { organizationId: org },
@@ -453,15 +533,7 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       const r = rig()
       const proposal = await r.ai.chat(org, owner, 'OWNER', 'Förbered en bokning.')
       if (role !== 'UNKNOWN') await db.user.update({ where: { id: owner }, data: { role } })
-      await db.organization.update({
-        where: { id: org },
-        data: {
-          ledgerOwner: 'FORTNOX',
-          ledgerOwnerFortnoxDatabaseNumber: 101,
-          ledgerOwnerActivationId: 'AF216',
-          ledgerOwnerFortnoxOrgNumber: '5560000000',
-        },
-      })
+      await selectFortnoxLedger()
       const before = await snapshot()
       if (role === 'VIEWER' || role === 'UNKNOWN') {
         expect(() => guard(role, 'chat')).toThrow()
@@ -692,12 +764,12 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     const draft = await r.exports.dryRun(org, correction.id)
     expect(draft.state).toBe('BLOCKED')
     expect(draft.draftHash).toBeNull()
-    expect(draft.blockReason).toContain('ORIGINAL_NOT_CONFIRMED')
+    expect(draft.blockReason).toContain('ORIGIN_NOT_CONFIRMED')
     expect(
       (await db.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: r.row.id } })).state,
     ).toBe('UNKNOWN')
     const sdk = sdkScript([tool('get_profit_loss_report', SEPTEMBER), done()])
-    await db.organization.update({ where: { id: org }, data: { ledgerOwner: 'FORTNOX' } })
+    await selectFortnoxLedger()
     await rig().ai.chat(org, owner, 'OWNER', 'Kan rättelsen betraktas som exporterad?')
     expect(json(resultBlocks(sdk.requests))).toContain('EXTERNAL_REPORT_UNAVAILABLE')
     expect(r.writer.writes).toBe(1)
@@ -713,8 +785,23 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       SOURCE_HEADER +
       '\nSYNTHETIC_191;A;K-1;DOC-1;RECEIVABLE;2026-10;2026-10-31;200000;0;0;200000;;'
     f.input.sourceContent = independent
+    // Only A/K-1 has a source document; the fixture's default B/K-2 mapping is extra.
+    f.input.mappingContent =
+      MAPPING_HEADER +
+      `\nSYNTHETIC_191;A;K-1;${f.tenants[0]!.id};${f.leases[0]!.id};syntetisk kontraktskontroll`
     const evidence = await f.evidence.create(f.id, f.pkg.id, f.admin, f.input)
+    if (evidence.comparisonStatus !== 'OK')
+      log.error(
+        json({
+          case: 'AF03-evidence',
+          comparisonStatus: evidence.comparisonStatus,
+          stopp: evidence.stopp,
+          avvikelser: evidence.avvikelser,
+        }),
+      )
     expect(evidence.comparisonStatus).toBe('OK')
+    expect(evidence.stopp).toEqual([])
+    expect(evidence.avvikelser).toEqual([])
     await f.evidence.review(f.id, f.pkg.id, evidence.id, f.accountant, {
       evidenceSha256: evidence.evidenceSha256,
     })

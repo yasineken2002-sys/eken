@@ -7,6 +7,7 @@ import { Reflector } from '@nestjs/core'
 import { randomUUID } from 'node:crypto'
 import { AccountingService } from '../accounting/accounting.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
+import { computeRentDebt } from '../avisering/rent-debt.service'
 import { FortnoxReadbackService } from '../fortnox/fortnox-readback.service'
 import { MockFortnoxLedgerReader } from '../fortnox/fortnox-providers'
 import type { LedgerReadConfig } from '../fortnox/fortnox-ledger'
@@ -171,6 +172,16 @@ export function memoryDb(owner = 'EVENO') {
     payments: [{ amount: 4000 }],
     credits: [{ amount: 1000 }],
   }
+  // Validate the raw fixture through the production debt definition; credits are not payments.
+  // Keep returning unaggregated rows: OverdueDebtService still computes the cross-source total.
+  expect(
+    computeRentDebt({
+      ...notice,
+      type: 'RENT',
+      allocations: notice.payments.map((p) => p.amount),
+      credits: notice.credits.map((c) => c.amount),
+    }),
+  ).toMatchObject({ capital: 10000, paid: 4000, credited: 1000, outstanding: 5000 })
   type Query = {
     where?: { status?: string; origin?: string; id?: unknown; leaseId?: unknown }
     take?: number
