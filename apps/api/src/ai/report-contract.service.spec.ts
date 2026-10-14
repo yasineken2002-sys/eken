@@ -146,8 +146,10 @@ describe('verkliga rapporttjänster och promptbyggare', () => {
     expect(answer.data).toEqual({
       status: 'NOT_DETERMINABLE',
       code: 'REPORT_NOT_DETERMINABLE',
-      reason: 'PROPERTY_ALLOCATION_UNVERIFIED',
-      message: expect.any(String),
+      // Publika tool-result passerar befintlig prompt-injection-inramning.
+      reason: '⟦OSÄKER⟧PROPERTY_ALLOCATION_UNVERIFIED⟦/OSÄKER⟧',
+      message:
+        '⟦OSÄKER⟧Fastighetens resultat kan inte fastställas: verifierad fastighetsfördelning saknas.⟦/OSÄKER⟧',
     })
     expect(JSON.stringify(answer)).not.toContain('140000')
     expect(JSON.stringify(answer)).toContain('PROPERTY_ALLOCATION_UNVERIFIED')
@@ -178,7 +180,10 @@ describe('verkliga rapporttjänster och promptbyggare', () => {
       expect(result.data).toEqual({
         status: 'NOT_DETERMINABLE',
         code: 'REPORT_NOT_DETERMINABLE',
-        reason: owner === 'FORTNOX' ? 'EXTERNAL_REPORT_UNAVAILABLE' : 'OWNER_UNVERIFIED',
+        reason:
+          owner === 'FORTNOX'
+            ? '⟦OSÄKER⟧EXTERNAL_REPORT_UNAVAILABLE⟦/OSÄKER⟧'
+            : '⟦OSÄKER⟧OWNER_UNVERIFIED⟦/OSÄKER⟧',
         message: expect.any(String),
       })
       expect(result.message).toContain('kan inte fastställas')

@@ -86,6 +86,7 @@ describe('rapportkontrakt i riktig syntetisk Postgres (inga hoppade fall)', () =
       data: {
         propertyId: property,
         name: 'U-A',
+        unitNumber: 'U-A-190',
         type: 'APARTMENT',
         area: 50,
         monthlyRent: 3000,
@@ -118,6 +119,7 @@ describe('rapportkontrakt i riktig syntetisk Postgres (inga hoppade fall)', () =
       id: randomUUID(),
       propertyId: property,
       name: `U-extra-${i}`,
+      unitNumber: `U-extra-${i}`,
       type: 'APARTMENT' as const,
       area: 50,
       monthlyRent: 3000,
@@ -317,7 +319,7 @@ describe('rapportkontrakt i riktig syntetisk Postgres (inga hoppade fall)', () =
     expect(result.success).toBe(false)
     expect(result.data).toMatchObject({
       code: 'REPORT_NOT_DETERMINABLE',
-      reason: 'PROPERTY_ALLOCATION_UNVERIFIED',
+      reason: '⟦OSÄKER⟧PROPERTY_ALLOCATION_UNVERIFIED⟦/OSÄKER⟧',
     })
     expect(JSON.stringify(result)).not.toContain('120000')
     await Promise.all(audits)
