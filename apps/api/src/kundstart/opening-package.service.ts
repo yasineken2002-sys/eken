@@ -23,6 +23,8 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import type { ApproveOpeningPackageInput } from '@eken/shared'
+import { OpeningEvidenceService, requireOpeningActor } from './opening-evidence.service'
 import type { OpeningPackage, OpeningPackageRow } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PAYMENT_TX_LIMITS, PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -65,6 +67,7 @@ export class OpeningPackageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ocr: OcrService,
+    private readonly evidence: OpeningEvidenceService,
   ) {}
 
   private kravRoll(roll: Roll, tillatna: Roll[], vad: string) {
@@ -106,6 +109,8 @@ export class OpeningPackageService {
       rows: p.rows.map((r) => ({
         ...r,
         originalAmount: r.originalAmount.toFixed(2),
+        priorPaidAmount: r.priorPaidAmount?.toFixed(2) ?? null,
+        priorCreditedAmount: r.priorCreditedAmount?.toFixed(2) ?? null,
         openAmount: r.openAmount.toFixed(2),
         dueDate: r.dueDate ? brytdatumIso(r.dueDate) : null,
         receivedDate: r.receivedDate ? brytdatumIso(r.receivedDate) : null,
@@ -139,6 +144,7 @@ export class OpeningPackageService {
     input: { sourceName: string; innehall: string; nollOppning?: boolean },
   ) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'ladda upp ett öppningspaket')
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
       select: { billingCutoverDate: true, orgNumber: true },
@@ -171,11 +177,16 @@ export class OpeningPackageService {
     input: { sourceName: string; innehall: string; nollOppning?: boolean },
   ) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'ersätta öppningspaketets fil')
-    const p = await this.hamta(organizationId, id)
-    if (p.status === 'EXECUTED' || p.status === 'DISCARDED')
-      throw new ConflictException(`Ett ${p.status}-paket kan inte få ny fil.`)
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     const tolkat = this.tolka(input)
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
+      await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+      await requireOpeningActor(tx, organizationId, user, SKRIV_ROLLER)
+      const p = await tx.openingPackage.findFirst({ where: { id, organizationId } })
+      if (!p) throw new NotFoundException('Öppningspaketet hittades inte')
+      if (p.status === 'EXECUTED' || p.status === 'DISCARDED')
+        throw new ConflictException(`Ett ${p.status}-paket kan inte få ny fil.`)
       await tx.openingPackageRow.deleteMany({ where: { packageId: id } })
       return tx.openingPackage.update({
         where: { id },
@@ -189,6 +200,8 @@ export class OpeningPackageService {
           approvedById: null,
           approvedAt: null,
           approvedSha256: null,
+          approvedEvidenceId: null,
+          approvedEvidenceSha256: null,
           approvedVersion: null,
           approvedWatermark: null,
           approvedCutoverDate: null,
@@ -229,6 +242,8 @@ export class OpeningPackageService {
         dueDate: r.dueDate,
         receivedDate: r.receivedDate,
         originalAmount: oreTillKronorStr(r.originalOre ?? 0),
+        priorPaidAmount: r.paidOre === null ? null : oreTillKronorStr(r.paidOre),
+        priorCreditedAmount: r.creditedOre === null ? null : oreTillKronorStr(r.creditedOre),
         openAmount: oreTillKronorStr(r.openOre ?? 0),
         errors: r.errors.map((e) => `fil: ${e}`),
       })),
@@ -238,6 +253,7 @@ export class OpeningPackageService {
   // ── 2. Validering och avstämning ─────────────────────────────────────────
   async validate(organizationId: string, id: string, user: { sub: string; role: Roll }) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'validera ett öppningspaket')
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     const p = await this.hamta(organizationId, id)
     if (p.status !== 'DRAFT' && p.status !== 'VALIDATED')
       throw new ConflictException(`Ett ${p.status}-paket valideras inte om.`)
@@ -272,6 +288,23 @@ export class OpeningPackageService {
 
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
+      await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+      await requireOpeningActor(tx, organizationId, user, SKRIV_ROLLER)
+      const current = await tx.openingPackage.findFirst({ where: { id, organizationId } })
+      const currentOrg = await tx.organization.findUnique({ where: { id: organizationId } })
+      if (
+        !current ||
+        !['DRAFT', 'VALIDATED'].includes(current.status) ||
+        current.version !== p.version ||
+        current.sourceSha256 !== p.sourceSha256 ||
+        current.cutoverDate.getTime() !== p.cutoverDate.getTime() ||
+        currentOrg?.billingCutoverDate?.getTime() !== cutover.getTime() ||
+        currentOrg.orgNumber !== org.orgNumber
+      )
+        throw new ConflictException(
+          'Paketet har ändrats under valideringen — validera aktuell version igen.',
+        )
       for (const l of losning)
         await tx.openingPackageRow.update({
           where: { id: l.rowId },
@@ -382,6 +415,7 @@ export class OpeningPackageService {
     readRunId: string,
   ) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'binda en Fortnox-läsning')
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     const p = await this.hamta(organizationId, id)
     if (p.status === 'DISCARDED') throw new ConflictException('Paketet är kasserat.')
     const run = await this.prisma.fortnoxReadRun.findFirst({
@@ -406,6 +440,8 @@ export class OpeningPackageService {
               approvedAt: null,
               approvedById: null,
               approvedSha256: null,
+              approvedEvidenceId: null,
+              approvedEvidenceSha256: null,
               approvedVersion: null,
               approvedWatermark: null,
               approvedCutoverDate: null,
@@ -434,6 +470,7 @@ export class OpeningPackageService {
     },
   ) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'ange separat reskontra')
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     if (!KONTON.includes(input.konto))
       throw new BadRequestException('Konto måste vara 1510 eller 2890.')
     const p = await this.hamta(organizationId, id)
@@ -491,6 +528,7 @@ export class OpeningPackageService {
     },
   ) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'ladda upp registret för första perioden')
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     const p = await this.hamta(organizationId, id)
     if (p.status === 'EXECUTED' || p.status === 'DISCARDED')
       throw new ConflictException(`Ett ${p.status}-paket får inget nytt register.`)
@@ -535,6 +573,8 @@ export class OpeningPackageService {
               approvedAt: null,
               approvedById: null,
               approvedSha256: null,
+              approvedEvidenceId: null,
+              approvedEvidenceSha256: null,
               approvedVersion: null,
               approvedWatermark: null,
               approvedCutoverDate: null,
@@ -552,13 +592,15 @@ export class OpeningPackageService {
     organizationId: string,
     id: string,
     user: { sub: string; role: Roll },
-    input: { version: number; sourceSha256: string },
+    input: ApproveOpeningPackageInput,
   ) {
     this.kravRoll(user.role, ['OWNER'], 'godkänna ett öppningspaket')
+    await requireOpeningActor(this.prisma, organizationId, user, ['OWNER'])
     return this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
         await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+        await requireOpeningActor(tx, organizationId, user, ['OWNER'])
         const p = await tx.openingPackage.findFirst({
           where: { id, organizationId },
           include: { rows: true },
@@ -606,11 +648,20 @@ export class OpeningPackageService {
           throw new ConflictException(
             'Nollöppning kräver att Fortnox-saldot för både 1510 och 2890 är 0 per brytdatum (AVSTÄMD 0 = 0).',
           )
+        const evidence = await this.evidence.kravForGodkannande(
+          tx,
+          organizationId,
+          p,
+          user,
+          input.evidenceSha256,
+        )
         const wm = await ekonomisktLage(tx, organizationId, this.ref(p.rows))
         return tx.openingPackage.update({
           where: { id },
           data: {
             status: 'APPROVED',
+            approvedEvidenceId: evidence.evidenceId,
+            approvedEvidenceSha256: evidence.evidenceSha256,
             approvedById: user.sub,
             approvedAt: new Date(),
             approvedSha256: p.sourceSha256,
@@ -659,11 +710,13 @@ export class OpeningPackageService {
   // ── 4. Verkställning ─────────────────────────────────────────────────────
   async execute(organizationId: string, id: string, user: { sub: string; role: Roll }) {
     this.kravRoll(user.role, ['OWNER'], 'verkställa ett öppningspaket')
+    await requireOpeningActor(this.prisma, organizationId, user, ['OWNER'])
     try {
       return await this.prisma.$transaction(
         async (tx) => {
           await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`
           await tx.$queryRaw`SELECT id FROM "OpeningPackage" WHERE id = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`
+          await requireOpeningActor(tx, organizationId, user, ['OWNER'])
           const p = await tx.openingPackage.findFirst({
             where: { id, organizationId },
             include: { rows: { orderBy: { rowNo: 'asc' } } },
@@ -711,6 +764,13 @@ export class OpeningPackageService {
           if (fel.length > 0)
             throw new OpeningAbort(`Omprövningen hittade fel: ${fel.slice(0, 20).join(' | ')}`)
 
+          try {
+            await this.evidence.kravForVerkstallning(tx, organizationId, p, user)
+          } catch (error) {
+            if (error instanceof ConflictException || error instanceof BadRequestException)
+              throw new OpeningAbort(error.message)
+            throw error
+          }
           const tenants = new Map(
             (
               await tx.tenant.findMany({
@@ -816,6 +876,8 @@ export class OpeningPackageService {
             approvedAt: null,
             approvedById: null,
             approvedSha256: null,
+            approvedEvidenceId: null,
+            approvedEvidenceSha256: null,
             approvedVersion: null,
             approvedWatermark: null,
             approvedCutoverDate: null,
@@ -833,9 +895,15 @@ export class OpeningPackageService {
 
   async discard(organizationId: string, id: string, user: { sub: string; role: Roll }) {
     this.kravRoll(user.role, SKRIV_ROLLER, 'kassera ett öppningspaket')
+    await requireOpeningActor(this.prisma, organizationId, user, SKRIV_ROLLER)
     const r = await this.prisma.openingPackage.updateMany({
       where: { id, organizationId, status: { in: ['DRAFT', 'VALIDATED', 'APPROVED'] } },
-      data: { status: 'DISCARDED', discardedAt: new Date() },
+      data: {
+        status: 'DISCARDED',
+        discardedAt: new Date(),
+        approvedEvidenceId: null,
+        approvedEvidenceSha256: null,
+      },
     })
     if (r.count === 0) throw new ConflictException('Bara ett ej verkställt paket kan kasseras.')
     return this.get(organizationId, id)

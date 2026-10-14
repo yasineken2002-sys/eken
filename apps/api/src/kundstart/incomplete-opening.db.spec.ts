@@ -27,6 +27,9 @@ import { DepositsService } from '../deposits/deposits.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import { CutoverService } from './cutover.service'
 import { OpeningPackageService } from './opening-package.service'
+import { OpeningEvidenceService } from './opening-evidence.service'
+import { fixtureEvidenceInput, reviewedFixtureEvidence } from './opening-evidence.fixtures'
+import { SOURCE_HEADER, MAPPING_HEADER } from './opening-evidence-format'
 import { INCOMPLETE_OPENING_REASON } from './incomplete-opening'
 
 const db = new PrismaClient()
@@ -233,7 +236,11 @@ async function fixture(label: string, localMonth = false, deposit = 0) {
     scheduler,
     backfill,
     cutover,
-    packages: new OpeningPackageService(prisma, new OcrService(prisma)),
+    packages: new OpeningPackageService(
+      prisma,
+      new OcrService(prisma),
+      new OpeningEvidenceService(prisma),
+    ),
     year,
     month,
     cutDate,
@@ -242,7 +249,7 @@ async function fixture(label: string, localMonth = false, deposit = 0) {
 type Fixture = Awaited<ReturnType<typeof fixture>>
 function openingCsv(f: Fixture, document = 'DOC-1') {
   const end = new Date(Date.UTC(f.cutDate.getUTCFullYear(), f.cutDate.getUTCMonth(), 0))
-  return `${H}\n${document};FORDRAN;7771000011;K-1;;;${end.getUTCFullYear()};${end.getUTCMonth() + 1};${end.toISOString().slice(0, 10)};6000;6000;\n`
+  return `${H};betaltBelopp;krediteratBelopp\n${document};FORDRAN;7771000011;K-1;;;${end.getUTCFullYear()};${end.getUTCMonth() + 1};${end.toISOString().slice(0, 10)};6000;6000;;0;0\n`
 }
 async function opening(f: Fixture, state: OpeningPackageStatus, document = 'DOC-1') {
   let p = await f.packages.create(f.id, f.user, {
@@ -301,7 +308,21 @@ async function opening(f: Fixture, state: OpeningPackageStatus, document = 'DOC-
     intaktskonton: [3911],
     forskottskonton: [2420],
   })
-  await f.packages.approve(f.id, p.id, f.user, { version: p.version, sourceSha256: p.sourceSha256 })
+  const asOf = new Date(f.cutDate.getTime() - 86_400_000).toISOString().slice(0, 10)
+  const source = `${SOURCE_HEADER}\nREGRESSION;A;K-1;${document};RECEIVABLE;${asOf.slice(0, 7)};${asOf};600000;0;0;600000;;`
+  const mapping = `${MAPPING_HEADER}\nREGRESSION;A;K-1;${f.tenant.id};${f.lease.id};syntetisk kontraktskontroll`
+  const evidenceSha256 = await reviewedFixtureEvidence(
+    db,
+    f.id,
+    p.id,
+    f.user,
+    fixtureEvidenceInput(f.orgNumber, f.cutDate, source, mapping, 'REGRESSION'),
+  )
+  await f.packages.approve(f.id, p.id, f.user, {
+    version: p.version,
+    sourceSha256: p.sourceSha256,
+    evidenceSha256,
+  })
   if (state === 'EXECUTED')
     expect((await f.packages.execute(f.id, p.id, f.user)).status).toBe('EXECUTED')
   p = await db.openingPackage.findUniqueOrThrow({ where: { id: p.id }, include: { rows: true } })
@@ -638,6 +659,7 @@ it('R198 M20 concurrent DRAFT commit precedes generator lock', async () => {
       await new OpeningPackageService(
         tx as unknown as PrismaService,
         new OcrService(prisma),
+        new OpeningEvidenceService(prisma),
       ).create(f.id, f.user, { sourceName: 'SYNTHETIC-M20.csv', innehall: openingCsv(f) })
       writerReady.resolve(backend!.pid)
       await release.promise
@@ -684,6 +706,7 @@ it('R198 M21 concurrent generator precedes new DRAFT then next notice blocked', 
       return new OpeningPackageService(
         tx as unknown as PrismaService,
         new OcrService(prisma),
+        new OpeningEvidenceService(prisma),
       ).create(f.id, f.user, { sourceName: 'SYNTHETIC-M21.csv', innehall: openingCsv(f) })
     },
     { timeout: 15_000 },
