@@ -509,22 +509,32 @@ medDb('bankdatum med riktig Postgres', () => {
       ids.push(id)
       // Bokförd syntetisk fordran krävs av den riktiga betalningsmotorn.
       const accounts = await db.account.findMany({ where: { organizationId: f.id } })
-      await db.journalEntry.create({
-        data: {
-          organizationId: f.id,
-          date: new Date('2026-11-01'),
-          fiscalYear: 2026,
-          verNumber: i + 1,
-          description: 'SYNTETISK bokförd fordran',
-          source: 'INVOICE',
-          sourceId: kind === 'invoice' ? id : `rent-notice:${id}`,
-          lines: {
-            create: [
-              { accountId: accounts.find((a) => a.number === 1510)!.id, debit: amount, credit: 0 },
-              { accountId: accounts.find((a) => a.number === 3911)!.id, debit: 0, credit: amount },
-            ],
+      await db.$transaction(async (tx) => {
+        const allocated = await new Numbers(prisma).allocate(tx, f.id, new Date('2026-11-01'))
+        await tx.journalEntry.create({
+          data: {
+            organizationId: f.id,
+            date: new Date('2026-11-01'),
+            ...allocated,
+            description: 'SYNTETISK bokförd fordran',
+            source: 'INVOICE',
+            sourceId: kind === 'invoice' ? id : `rent-notice:${id}`,
+            lines: {
+              create: [
+                {
+                  accountId: accounts.find((a) => a.number === 1510)!.id,
+                  debit: amount,
+                  credit: 0,
+                },
+                {
+                  accountId: accounts.find((a) => a.number === 3911)!.id,
+                  debit: 0,
+                  credit: amount,
+                },
+              ],
+            },
           },
-        },
+        })
       })
     }
     return ids
