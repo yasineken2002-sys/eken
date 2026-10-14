@@ -1,4 +1,5 @@
 import { formatBookedRevenue } from './report-evidence'
+import { neutralizeUntrustedText } from './tools/untrusted-content'
 import { formatFortnoxShadowForAi } from '../fortnox/fortnox-ai-context'
 import { FortnoxReadbackService } from '../fortnox/fortnox-readback.service'
 import { Injectable, Optional } from '@nestjs/common'
@@ -259,7 +260,12 @@ export class DataContextService {
         lastName?: string | null
         companyName?: string | null
       } | null,
-    ) => (t ? (t.companyName ?? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim()) : '–')
+    ) =>
+      t
+        ? neutralizeUntrustedText(
+            t.companyName ?? `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim(),
+          )
+        : '–'
 
     const formatSEK = (amount: number) =>
       new Intl.NumberFormat('sv-SE', {
@@ -319,7 +325,7 @@ export class DataContextService {
       lines.push('', 'Avtal som löper ut inom 30 dagar:')
       for (const lease of expiringLeases) {
         lines.push(
-          `  - ${formatTenantName(lease.tenant)}, ${lease.unit.name} (${lease.unit.unitNumber}), utgår ${formatDate(lease.endDate)}, hyra ${formatSEK(Number(lease.monthlyRent))}/mån`,
+          `  - ${formatTenantName(lease.tenant)}, ${neutralizeUntrustedText(lease.unit.name)} (${lease.unit.unitNumber}), utgår ${formatDate(lease.endDate)}, hyra ${formatSEK(Number(lease.monthlyRent))}/mån`,
         )
       }
     }
@@ -391,7 +397,7 @@ export class DataContextService {
             : null
         const behaviorStr = onTimePct !== null ? `, betalningsbeteende: ${onTimePct}% i tid` : ''
         lines.push(
-          `  - ${name} (ID: ${t.id}, e-post: ${t.email ?? 'ingen e-post'}): ${activeLeases} aktiva kontrakt${behaviorStr}`,
+          `  - ${neutralizeUntrustedText(name)} (ID: ${t.id}, e-post: ${t.email ?? 'ingen e-post'}): ${activeLeases} aktiva kontrakt${behaviorStr}`,
         )
       }
       if (tenantCount > tenantList.length) {
@@ -411,7 +417,12 @@ export class DataContextService {
           0,
         )
         lines.push(
-          `  - ${p.name} (ID: ${p.id}): ${totalPropUnits} enheter, ${occupiedPropUnits} uthyrda (${propOccupancyPct}%), förväntad månadshyra: ${formatSEK(propMonthlyIncome)}`,
+          `  - ${neutralizeUntrustedText(p.name)} (ID: ${p.id}): ${totalPropUnits} enheter, ${occupiedPropUnits} uthyrda (${propOccupancyPct}%), förväntad månadshyra: ${formatSEK(propMonthlyIncome)}`,
+        )
+      }
+      if (propertyCount > propertyList.length) {
+        lines.push(
+          `  ... och ${propertyCount - propertyList.length} till (listan är ett urval: ${propertyList.length} av ${propertyCount} fastigheter)`,
         )
       }
     }
@@ -438,7 +449,7 @@ export class DataContextService {
         // JB-rättigheter, inte det enskilda avtalets startdatum.
         const tenancyStr2 = tenancyStr !== startStr ? `, hyresförhållande sedan ${tenancyStr}` : ''
         lines.push(
-          `  - ${tenantName} → ${l.unit.name} ${l.unit.unitNumber} (LeaseID: ${l.id}): ${formatSEK(Number(l.monthlyRent))}/mån, startade ${startStr}${tenancyStr2}, ${endStr}`,
+          `  - ${neutralizeUntrustedText(tenantName)} → ${neutralizeUntrustedText(l.unit.name)} ${l.unit.unitNumber} (LeaseID: ${l.id}): ${formatSEK(Number(l.monthlyRent))}/mån, startade ${startStr}${tenancyStr2}, ${endStr}`,
         )
       }
     }

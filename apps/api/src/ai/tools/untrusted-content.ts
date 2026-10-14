@@ -58,3 +58,8 @@ export function neutralizeUntrusted<T>(
   }
   return value
 }
+
+/** Frames an interpolated name using the existing free-text neutralization. */
+export function neutralizeUntrustedText(value: string): string {
+  return neutralizeUntrusted(value, 'content')
+}

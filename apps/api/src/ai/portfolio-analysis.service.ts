@@ -1,4 +1,5 @@
 import { formatBookedRevenue } from './report-evidence'
+import { neutralizeUntrustedText } from './tools/untrusted-content'
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import Anthropic from '@anthropic-ai/sdk'
@@ -192,7 +193,7 @@ Antal fakturor (senaste 12 mån): ${invoiceCount}`,
 Enheter per status: ${JSON.stringify(unitStats)}
 Totalt antal enheter: ${units.length}
 Avtal som löper ut inom 60 dagar: ${expiringLeases.length}
-${expiringLeases.map((l) => `- ${l.unit.name} (${l.tenant.companyName ?? `${l.tenant.firstName ?? ''} ${l.tenant.lastName ?? ''}`.trim()}): ${l.endDate?.toISOString().substring(0, 10) ?? 'löpande'}`).join('\n')}`,
+${expiringLeases.map((l) => `- ${neutralizeUntrustedText(l.unit.name)} (${neutralizeUntrustedText(l.tenant.companyName ?? `${l.tenant.firstName ?? ''} ${l.tenant.lastName ?? ''}`.trim())}): ${l.endDate?.toISOString().substring(0, 10) ?? 'löpande'}`).join('\n')}`,
       )
     }
 
@@ -259,12 +260,12 @@ ${overdueInvoices
       // olika saker om samma faktura.
       credits: i.creditNotes.map((c) => c.total),
     }).outstanding
-    return `- Faktura ${i.invoiceNumber}: ${outstanding.toNumber().toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, mottagare: ${partyName}`
+    return `- Faktura ${i.invoiceNumber}: ${outstanding.toNumber().toFixed(2)} SEK, förfallen ${i.dueDate.toISOString().substring(0, 10)}, mottagare: ${neutralizeUntrustedText(partyName)}`
   })
   .join('\n')}
 
 Avtal som löper ut inom 30 dagar (${expiringRiskLeases.length} st):
-${expiringRiskLeases.map((l) => `- ${l.unit.name}: ${l.endDate?.toISOString().substring(0, 10) ?? 'löpande'}, hyra ${Number(l.monthlyRent).toFixed(0)} SEK/mån`).join('\n')}`,
+${expiringRiskLeases.map((l) => `- ${neutralizeUntrustedText(l.unit.name)}: ${l.endDate?.toISOString().substring(0, 10) ?? 'löpande'}, hyra ${Number(l.monthlyRent).toFixed(0)} SEK/mån`).join('\n')}`,
       )
     }
 

@@ -262,7 +262,7 @@ medDb('F01 — förväntad månadshyra gäller HELA mängden aktiva avtal', () =
   const kontraktsdel = (text: string) =>
     text.split('## AKTIVA KONTRAKT')[1]?.split('\n## ')[0] ?? ''
   const listadeIndex = (text: string, N: number) =>
-    [...kontraktsdel(text).matchAll(new RegExp(`→ EMA${N}-(\\d+) `, 'g'))].map((m) => Number(m[1]))
+    [...kontraktsdel(text).matchAll(new RegExp(`→ ⟦OSÄKER⟧EMA${N}-(\\d+)⟦/OSÄKER⟧ `, 'g'))].map((m) => Number(m[1]))
 
   it.each(FALL)('N=%i instrument: DB-facit är exakt den konstruerade mängden', (N) => {
     const m = mätt.get(N)!
