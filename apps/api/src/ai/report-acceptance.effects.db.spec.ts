@@ -62,10 +62,11 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
   let foreignAttachment: string
   const preserved: string[] = []
   const audits: Promise<unknown>[] = []
+  let expectedDatabase: 'eveno_ai_215' | 'eken_dev'
 
   async function canary() {
     const rows = await connection.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`
-    if (rows.length !== 1 || rows[0]?.db !== 'eveno_ai_215')
+    if (rows.length !== 1 || rows[0]?.db !== expectedDatabase)
       throw new Error('AF216 DB canary mismatch')
   }
 
@@ -73,8 +74,23 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     if (!process.env.DATABASE_URL)
       throw new Error('AF216 requires C1 synthetic database; no conditional skip')
     const url = new URL(process.env.DATABASE_URL)
-    if (url.hostname !== '127.0.0.1' || url.port !== '55492' || url.pathname !== '/eveno_ai_215')
-      throw new Error('AF216 requires the C1-owned 127.0.0.1:55492/eveno_ai_215')
+    const github = process.env.GITHUB_ACTIONS === 'true'
+    if (
+      github &&
+      process.env.CI === 'true' &&
+      url.hostname === 'localhost' &&
+      url.port === '5432' &&
+      url.pathname === '/eken_dev'
+    )
+      expectedDatabase = 'eken_dev'
+    else if (
+      !github &&
+      url.hostname === '127.0.0.1' &&
+      url.port === '55492' &&
+      url.pathname === '/eveno_ai_215'
+    )
+      expectedDatabase = 'eveno_ai_215'
+    else throw new Error('AF216 requires exactly the approved C1-local or GitHub-CI DB profile')
     connection = new PrismaService()
     await connection.$connect()
     await canary()
@@ -661,30 +677,22 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     expect(unknown.state).toBe('UNKNOWN')
     const before = await snapshot()
     const invoiceId = r.journal.sourceId!.slice('supplier-invoice:'.length)
-    const cancelled = await new SupplierInvoiceService(db, accounting)
-      .cancel({ organizationId: org, invoiceId, createdById: owner })
-      .then(
-        () => true,
-        (error: unknown) => {
-          expect(error).toBeInstanceOf(Error)
-          expect((error as Error).message).toMatch(/UNKNOWN|okänt|avstäm|export|Fortnox|sänd/i)
-          return false
-        },
-      )
-    if (cancelled) {
-      const correction = await db.journalEntry.findFirstOrThrow({
-        where: {
-          organizationId: org,
-          sourceId: { contains: invoiceId },
-          id: { not: r.journal.id },
-        },
-      })
-      const draft = await r.exports.dryRun(org, correction.id)
-      expect(draft.state).toBe('BLOCKED')
-      expect(draft.draftHash).toBeNull()
-    } else {
-      expect((await snapshot()).domain.journals).toBe(before.domain.journals)
-    }
+    // F217-1: one fixed oracle. UNKNOWN does not undo the local cancellation;
+    // it blocks the correction's external export until the original is reconciled.
+    const cancelled = await new SupplierInvoiceService(db, accounting).cancel({
+      organizationId: org,
+      invoiceId,
+      createdById: owner,
+    })
+    expect(cancelled.cancelledAt).not.toBeNull()
+    expect((await snapshot()).domain.journals - before.domain.journals).toBe(1)
+    const correction = await db.journalEntry.findFirstOrThrow({
+      where: { organizationId: org, sourceId: { contains: invoiceId }, id: { not: r.journal.id } },
+    })
+    const draft = await r.exports.dryRun(org, correction.id)
+    expect(draft.state).toBe('BLOCKED')
+    expect(draft.draftHash).toBeNull()
+    expect(draft.blockReason).toContain('ORIGINAL_NOT_CONFIRMED')
     expect(
       (await db.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: r.row.id } })).state,
     ).toBe('UNKNOWN')
@@ -729,6 +737,7 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     expect(system).toMatch(/2\s000/)
     expect(system).toMatch(/historisk/i)
     expect(system).not.toMatch(/15\s?500/)
+    expect(system).not.toMatch(/11\s?500/)
     expect(system).toContain('inte en full balansräkning')
     log.log(
       json({

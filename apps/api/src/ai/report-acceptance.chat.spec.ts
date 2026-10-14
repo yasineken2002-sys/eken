@@ -79,7 +79,7 @@ describe('AF01–AF20 S: faktisk chatt/rapport → SDK-request (inte fri modellt
     },
   )
 
-  it('AF03 S actual shared debt9500 reaches model; historical import is not a full1510 bridge', async () => {
+  it('AF03 S operative debt9500 reaches model without an invented1510 bridge', async () => {
     const sdk = sdkScript([done()])
     const db = memoryDb('FORTNOX')
     const r = assistantRig(db.prisma)
@@ -337,6 +337,9 @@ describe('AF01–AF20 S: faktisk chatt/rapport → SDK-request (inte fri modellt
       if (role === 'ACCOUNTANT' || role === 'MANAGER') {
         expect(system).toContain('Fortnox-belopp är inte tillgängliga för denna läsbehörighet')
         expect(db.prisma.fortnoxReadRun.findFirst).not.toHaveBeenCalled()
+      } else {
+        expect(db.prisma.fortnoxReadRun.findFirst).toHaveBeenCalled()
+        expect(system).not.toContain('Fortnox-belopp är inte tillgängliga för denna läsbehörighet')
       }
     },
   )
@@ -536,6 +539,31 @@ describe('AF01–AF20 S: faktisk chatt/rapport → SDK-request (inte fri modellt
     expect(report?.data.kpis.invoiceStatistics).toMatchObject({ total: 35000, deposit: 15000 })
     expect(report?.data.summary.revenue.prevMonthPct).toBe(500)
     expect(json(sdk.requests[0]?.messages)).toContain(QUESTION)
+    expect(resultBlocks(sdk.requests)[0]).toMatchObject({
+      success: true,
+      data: {
+        period: { from: '2026-09-01', to: '2026-09-30' },
+        revenue: { total: 120000 },
+        costs: { total: 0 },
+        result: 120000,
+      },
+    })
+    // The actual P&L result has no source field. Verify the real request's source
+    // and the actual scoped DB read; do not add fabricated provenance to tool_result.
+    expect(json(sdk.requests[1]?.system)).toContain('källa: Evenos huvudbok')
+    expect(db.prisma.journalEntryLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          journalEntry: {
+            organizationId: 'O-A',
+            date: {
+              gte: date('2026-09-01'),
+              lte: date('2026-09-30'),
+            },
+          },
+        },
+      }),
+    )
     expect(json(resultBlocks(sdk.requests))).not.toMatch(/135000|35000/)
     expect(sdk.requests).toHaveLength(4)
     const monthlyRequest = json(sdk.requests[3])
@@ -544,7 +572,7 @@ describe('AF01–AF20 S: faktisk chatt/rapport → SDK-request (inte fri modellt
     const portfolioRequest = json(sdk.requests[2])
     // PRE217: preserve a finding if the surface can only supply YTD for the requested month.
     expect(portfolioRequest).toContain('2026-09-01–2026-09-30')
-    expect(portfolioRequest).not.toContain('140 000')
+    expect(portfolioRequest).not.toMatch(/140\s000/)
   })
 
   it('AF20 S twenty displayed of21 properties cannot constitute complete coverage', async () => {
