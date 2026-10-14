@@ -1,3 +1,6 @@
+import { assertEvenoReport } from './huvudboksval'
+import { reportFailure, REPORT_NOT_DETERMINABLE, isReportReason } from '../ai/report-evidence'
+import type { BookedRevenue, RevenueScope } from '../ai/report-evidence'
 import {
   BadRequestException,
   ConflictException,
@@ -1473,6 +1476,8 @@ export class AccountingService {
   // Momsrapport: utgående moms (kredit på 2611/2621/2631 = försäljning ökar
   // skuld) minus ingående moms (debet på 2641 = köp ökar fordran på SKV).
   async getVatReport(organizationId: string, from: string, to: string): Promise<VatReport> {
+    await assertEvenoReport(this.prisma, organizationId)
+    this.validateReportPeriod(from, to)
     const accounts = await this.prisma.account.findMany({
       where: { organizationId, number: { in: [2611, 2621, 2631, 2641] } },
     })
@@ -1657,6 +1662,11 @@ export class AccountingService {
     to: string,
     propertyId?: string,
   ): Promise<ProfitLossReport> {
+    await assertEvenoReport(this.prisma, organizationId)
+    this.validateReportPeriod(from, to)
+    if (propertyId !== undefined) {
+      throw new ConflictException(reportFailure('PROPERTY_ALLOCATION_UNVERIFIED'))
+    }
     const lines = await this.prisma.journalEntryLine.findMany({
       where: {
         journalEntry: {
@@ -1725,12 +1735,6 @@ export class AccountingService {
     const result = sums.revenue - totalCosts
     return {
       period: { from, to },
-      ...(propertyId
-        ? {
-            propertyFilter: propertyId,
-            note: 'Per-fastighets-resultat kräver att kostnader är taggade per fastighet — totalsumman gäller hela organisationen tills dess.',
-          }
-        : {}),
       revenue: { total: sums.revenue, accounts: buckets.revenue! },
       costs: {
         operating: { total: sums.operating, accounts: buckets.operating! },
@@ -1835,10 +1839,108 @@ export class AccountingService {
     return { total, from, to: now }
   }
 
+  private validateReportPeriod(from: string, to: string): void {
+    const valid = (day: string) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(day) &&
+      Number.isFinite(new Date(day).getTime()) &&
+      new Date(day).toISOString().slice(0, 10) === day
+    if (!valid(from) || !valid(to) || from > to) {
+      throw new BadRequestException(
+        'Rapportperioden måste ha giltiga datum med från-datum före eller lika med till-datum.',
+      )
+    }
+  }
+
+  /** Vald huvudbok för rapport/AI; råa lokala stödaggregat ovan behåller sin innebörd. */
+  async getBookedRevenueReport(
+    organizationId: string,
+    from: Date,
+    to: Date,
+  ): Promise<BookedRevenue> {
+    const scope: RevenueScope = {
+      organizationId,
+      metric: 'BOOKED_REVENUE',
+      propertyId: null,
+    }
+    try {
+      scope.period = {
+        from: from.toISOString().slice(0, 10),
+        to: throughStockholmDay(to).toISOString().slice(0, 10),
+      }
+      await assertEvenoReport(this.prisma, organizationId)
+      this.validateReportPeriod(scope.period!.from, scope.period!.to)
+      const total = await this.getRevenueTotal(organizationId, from, to)
+      const amountOre = Math.round(total * 100)
+      if (!Number.isSafeInteger(amountOre)) return { ...reportFailure('READ_FAILED'), scope }
+      return {
+        status: 'KNOWN',
+        scope: { ...scope, period: scope.period! },
+        source: 'EVENO_LEDGER',
+        accountSystem: 'EVENO',
+        accountRange: [3000, 3999],
+        definition: 'CREDIT_MINUS_DEBIT',
+        currency: 'SEK',
+        amountOre,
+        observedAt: new Date().toISOString(),
+        completeness: 'COMPLETE',
+      }
+    } catch (error) {
+      return { ...this.reportReadFailure(error), scope }
+    }
+  }
+
+  async getBookedRevenueYearToDate(
+    organizationId: string,
+    now = new Date(),
+  ): Promise<BookedRevenue> {
+    try {
+      const org = await assertEvenoReport(this.prisma, organizationId)
+      const { year, month } = stockholmCivilDate(now)
+      const startMonth = org.fiscalYearStartMonth
+      if (!Number.isInteger(startMonth) || startMonth < 1 || startMonth > 12) {
+        throw new Error('Ogiltig räkenskapsårsgräns')
+      }
+      const startYear = month >= startMonth ? year : year - 1
+      return this.getBookedRevenueReport(
+        organizationId,
+        new Date(Date.UTC(startYear, startMonth - 1, 1)),
+        now,
+      )
+    } catch (error) {
+      return {
+        ...this.reportReadFailure(error),
+        scope: {
+          organizationId,
+          metric: 'BOOKED_REVENUE',
+          propertyId: null,
+          ...(Number.isFinite(now.getTime()) ? { asOf: now.toISOString() } : {}),
+        },
+      }
+    }
+  }
+
+  private reportReadFailure(error: unknown): ReturnType<typeof reportFailure> {
+    if (error instanceof ConflictException) {
+      const body = error.getResponse()
+      if (
+        typeof body === 'object' &&
+        'code' in body &&
+        body.code === REPORT_NOT_DETERMINABLE &&
+        'reason' in body &&
+        isReportReason(body.reason)
+      ) {
+        return reportFailure(body.reason)
+      }
+    }
+    return reportFailure('READ_FAILED')
+  }
+
   // Balansräkning per ett datum: tillgångar (1xxx, debet−kredit) mot
   // skulder/eget kapital (2xxx, kredit−debet). difference ska vara 0 i en
   // balanserad bok.
   async getBalanceSheet(organizationId: string, asOf: string): Promise<BalanceSheet> {
+    await assertEvenoReport(this.prisma, organizationId)
+    this.validateReportPeriod(asOf, asOf)
     const lines = await this.prisma.journalEntryLine.findMany({
       where: {
         journalEntry: { organizationId, date: { lte: new Date(asOf) } },

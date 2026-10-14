@@ -308,6 +308,89 @@ export class FortnoxReadbackService {
   }
 
   /**
+   * Rapportvägen: befintliga read-rader styrker inte bindning till aktiverings-ID/orgnummer
+   * och den allmänna AI-kontexten har ingen verifierad period/kontofråga. Därför metadata,
+   * aldrig belopp. Det äldre snapshot-underlaget nedan är inte en färdig bolagsrapport.
+   */
+  async aiReportSnapshot(organizationId: string, readerRole?: string): Promise<FortnoxAiSnapshot> {
+    const unavailable = (reason: string, message: string): FortnoxAiSnapshot => ({
+      connection: null,
+      latestRead: null,
+      latestCompleteRead: null,
+      exports: null,
+      reportUnavailable: { reason, message },
+    })
+    if (readerRole !== 'OWNER' && readerRole !== 'ADMIN') {
+      return unavailable(
+        'NOT_AUTHORIZED',
+        'Fortnox-belopp är inte tillgängliga för denna läsbehörighet.',
+      )
+    }
+    const owner = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: {
+        ledgerOwner: true,
+        ledgerOwnerFortnoxDatabaseNumber: true,
+        ledgerOwnerActivationId: true,
+        ledgerOwnerFortnoxOrgNumber: true,
+      },
+    })
+    if (!owner || (owner.ledgerOwner !== 'EVENO' && owner.ledgerOwner !== 'FORTNOX')) {
+      return unavailable(
+        'OWNER_UNVERIFIED',
+        'Organisationens huvudboksval är inte verifierat. Inga Fortnox-belopp kan fastställas.',
+      )
+    }
+    if (owner.ledgerOwner === 'EVENO') {
+      return { connection: null, latestRead: null, latestCompleteRead: null, exports: null }
+    }
+    if (
+      !owner.ledgerOwnerFortnoxDatabaseNumber ||
+      !owner.ledgerOwnerActivationId ||
+      !owner.ledgerOwnerFortnoxOrgNumber
+    ) {
+      return unavailable(
+        'BINDING_UNVERIFIED',
+        'Fortnox-underlagets företagsbindning är inte verifierad. Inga rapportbelopp kan fastställas.',
+      )
+    }
+    const snapshot = await this.aiSnapshot(organizationId)
+    if (!snapshot.connection) {
+      return unavailable(
+        'SOURCE_MISSING',
+        'Organisationen har Fortnox som huvudbok men anslutningsunderlag saknas. Inga Fortnox-belopp kan fastställas.',
+      )
+    }
+    if (
+      snapshot.connection.fortnoxDatabaseNumber !== owner.ledgerOwnerFortnoxDatabaseNumber ||
+      (snapshot.latestCompleteRead &&
+        snapshot.latestCompleteRead.fortnoxDatabaseNumber !==
+          owner.ledgerOwnerFortnoxDatabaseNumber) ||
+      (snapshot.latestRead &&
+        snapshot.latestRead.fortnoxDatabaseNumber !== owner.ledgerOwnerFortnoxDatabaseNumber)
+    ) {
+      return unavailable(
+        'COMPANY_MISMATCH',
+        'Tillgänglig återläsning matchar inte organisationens valda Fortnox-företag. Inga belopp kan användas.',
+      )
+    }
+    return {
+      ...snapshot,
+      latestRead: snapshot.latestRead
+        ? { ...snapshot.latestRead, summary: null, reason: null, uncertainties: [] }
+        : null,
+      latestCompleteRead: snapshot.latestCompleteRead
+        ? { ...snapshot.latestCompleteRead, summary: null, reason: null, uncertainties: [] }
+        : null,
+      reportUnavailable: {
+        reason: 'REPORT_SCOPE_UNVERIFIED',
+        message:
+          'Bokföringsmåttet kan inte fastställas: återläsningen är inte verifierat bunden till frågans företag, år, period, konton och fullständiga mått. Historiska läsningar är inte nya saldon.',
+      },
+    }
+  }
+
+  /**
    * Underlag till AI-kontexten (se fortnox-ai-context.ts). Säkert urval: inga
    * tokens, inga rader/fritext — endast färdiga summor, period, tid och osäkerhet.
    */

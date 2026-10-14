@@ -13,6 +13,8 @@
  */
 
 export interface FortnoxAiSnapshot {
+  /** Serverns rapportgrind. Ett avstående innehåller inga belopp. */
+  reportUnavailable?: { reason: string; message: string }
   connection: {
     status: 'ACTIVE' | 'AUTH_LOST' | 'DISCONNECTED'
     fortnoxDatabaseNumber: number
@@ -105,7 +107,8 @@ const CONNECTION_TEXT = {
 } as const
 
 export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new Date()): string[] {
-  if (!s.connection) return []
+  if (!s.connection)
+    return s.reportUnavailable ? ['', '## FORTNOX-UNDERLAG', s.reportUnavailable.message] : []
   const c = s.connection
   const lines = [
     '',
@@ -115,7 +118,18 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
   ]
 
   const done = s.latestCompleteRead
-  if (!done || !done.completedAt || !isSummary(done.summary)) {
+  if (done && done.fortnoxDatabaseNumber !== c.fortnoxDatabaseNumber) {
+    lines.push(
+      'Återläsningen gäller ett annat Fortnox-företag. Inga belopp från den läsningen får användas.',
+    )
+  } else if (s.reportUnavailable) {
+    lines.push(s.reportUnavailable.message)
+    if (done?.completedAt) {
+      lines.push(
+        `Historisk läsning ${done.id}: period ${day(done.periodFrom)}–${day(done.periodTo)}, återläst per ${stockholm(done.completedAt)}. Inga rapportbelopp är fastställda här.`,
+      )
+    }
+  } else if (!done || !done.completedAt || !isSummary(done.summary)) {
     lines.push(
       'Ingen komplett återläsning finns. Säg att Fortnox-underlag saknas. Ange INGA Fortnox-belopp – inte heller 0.',
     )
@@ -126,11 +140,6 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
       done.financialYearStart && done.financialYearEnd
         ? `${day(done.financialYearStart)}–${day(done.financialYearEnd)} enligt Fortnox`
         : 'gränser ej verifierade'
-    if (done.fortnoxDatabaseNumber !== c.fortnoxDatabaseNumber) {
-      lines.push(
-        `OBS: den kompletta läsningen gäller Fortnox-företag med databasnummer ${done.fortnoxDatabaseNumber}, inte den nuvarande anslutningen. Använd den inte som underlag för nuvarande företag.`,
-      )
-    }
     lines.push(
       `Läs-id ${done.id}. ${coverageText(done.coverage)}`,
       `Senast kompletta återläsning: period ${day(done.periodFrom)}–${day(done.periodTo)} (räkenskapsår ${year}), återläst per ${stockholm(done.completedAt)} (${ageMin} min sedan). Säg "återläst per …", inte "aktuellt".`,
@@ -149,7 +158,7 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
       // KUNDSTART §3: öppningen före brytdatum är bokförd i Fortnox (IB/verifikat) och
       // finns som EGEN öppningskomponent i Eveno — samma belopp ur två källor.
       lines.push(
-        'Konto 1510/2890 i Fortnox omfattar öppningen före brytdatum. Evenos öppningskomponent är samma belopp ur en annan källa – lägg aldrig ihop dem.',
+        'Kontourvalet visar periodrörelse, inte verifierat saldo eller IB. En styrkt öppning som också redovisas i Evenos öppningskomponent får räknas bara en gång.',
       )
     }
     lines.push(
@@ -194,7 +203,7 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
     lines.push(
       last.status === 'RUNNING'
         ? `En läsning (id ${last.id}) pågår sedan ${stockholm(last.startedAt)}; dess resultat är inte känt än.`
-        : `Senaste läsförsök (id ${last.id}, ${stockholm(last.completedAt ?? last.startedAt)}) blev ofullständigt: ${last.reason ?? last.status}. ${done ? 'Beloppen ovan kommer från den tidigare kompletta läsningen.' : ''}`.trim(),
+        : `Senaste läsförsök (id ${last.id}, ${stockholm(last.completedAt ?? last.startedAt)}) blev ofullständigt: ${last.reason ?? last.status}. ${done ? 'Den tidigare kompletta läsningens ursprungliga lästid gäller fortsatt.' : ''}`.trim(),
     )
   }
   const ex = s.exports

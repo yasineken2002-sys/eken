@@ -27,6 +27,7 @@ import {
   stadaKontomappning,
 } from './fortnox-kontomappning.testing'
 import { toStatusResponse } from './fortnox-status'
+import { formatFortnoxShadowForAi } from './fortnox-ai-context'
 import { DataContextService } from '../ai/data-context.service'
 import { OverdueDebtService } from '../overdue/overdue-debt.service'
 import { AccountingService } from '../accounting/accounting.service'
@@ -807,7 +808,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     await expect(r.readback.read(o.id, 'u1', READ)).rejects.toThrow(/konto 5170 är inaktivt/)
   })
 
-  it('AI-kedjan: DataContext.buildContext (CommonJS) bär Fortnox-blocket med färdiga summor — inte felreserven', async () => {
+  it('AI-kedjan: äldre skuggunderlag behåller summor; generell EVENO-prompt får inte extern rapport', async () => {
     const o = await org()
     const r = rig()
     await connect(r, o.id)
@@ -827,7 +828,12 @@ medDb('Fortnox A mot riktig Postgres', () => {
     const db = prisma as unknown as PrismaService
     const accounting = new AccountingService(db, new VerifikationsnummerService(db))
     const ctx = new DataContextService(db, new OverdueDebtService(db), accounting, r.readback)
-    const text = await ctx.buildContext(o.id)
+    const prompt = await ctx.buildContext(o.id, 'OWNER')
+    expect(prompt).not.toContain('FORTNOX')
+    expect(prompt).not.toContain('14 000,00 kr')
+    expect(prompt).not.toContain('12 000,00 kr')
+    expect(prompt).not.toContain('2 000,00 kr')
+    const text = formatFortnoxShadowForAi(await r.readback.aiSnapshot(o.id)).join('\n')
     expect(text).toContain('## FORTNOX-ÅTERLÄSNING (skuggläge – separat källa)')
     expect(text).toContain('Summa: 14 000,00 kr')
     expect(text).toContain('Fastighet HUS-A: 12 000,00 kr')
@@ -835,7 +841,7 @@ medDb('Fortnox A mot riktig Postgres', () => {
     expect(text).not.toContain('kunde inte läsas')
     // Annan organisation: inget Fortnox-block alls.
     const other = await org()
-    expect(await ctx.buildContext(other.id)).not.toContain('FORTNOX')
+    expect(await ctx.buildContext(other.id, 'OWNER')).not.toContain('FORTNOX')
   })
 
   it('fastighet från annan organisation kan inte mappas', async () => {

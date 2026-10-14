@@ -1,3 +1,4 @@
+import { formatBookedRevenue } from './report-evidence'
 import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import Anthropic from '@anthropic-ai/sdk'
@@ -140,7 +141,7 @@ export class PortfolioAnalysisService {
     // revenueByMonth. Hämtas en gång, bara när en sektion behöver den.
     const needsRevenue = analysisType === 'revenue' || analysisType === 'full'
     const bookedRevenue = needsRevenue
-      ? await this.accounting.getRevenueYearToDate(organizationId, now)
+      ? await this.accounting.getBookedRevenueYearToDate(organizationId, now)
       : null
 
     if (analysisType === 'revenue' || analysisType === 'full') {
@@ -152,7 +153,7 @@ export class PortfolioAnalysisService {
 
       sections.push(
         `INTÄKTSDATA:
-Bokförd intäkt (Σ 3xxx accrual, räkenskapsår-till-idag): ${(bookedRevenue?.total ?? 0).toFixed(2)} SEK — samma som dashboardens "Totala intäkter"
+Bokförd intäkt (Σ 3xxx accrual, räkenskapsår-till-idag): ${bookedRevenue ? formatBookedRevenue(bookedRevenue) : 'Bokföringsmåttet kan inte fastställas: underlag saknas.'}
 Förfallen skuld (nuläge, hyresavier + fakturor, exkl. deposition): ${(overdueSnapshot?.total ?? 0).toFixed(2)} SEK (${overdueSnapshot?.count ?? 0} poster)
 Antal fakturor (senaste 12 mån): ${invoiceCount}`,
       )

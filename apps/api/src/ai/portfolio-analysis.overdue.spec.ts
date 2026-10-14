@@ -1,3 +1,14 @@
+jest.mock('@anthropic-ai/sdk', () => ({
+  __esModule: true,
+  default: class {
+    messages = {
+      create: () => {
+        throw new Error('LiveAI förbjudet i detta prov')
+      },
+    }
+  },
+}))
+
 /**
  * T4/#47 — Portföljanalysens revenue-/risks-sektioner läser nu DELADE
  * OverdueDebtService för "Förfallen skuld" i stället för sin blinda Invoice-only-
@@ -68,9 +79,23 @@ function makeService(getOverdueSnapshot: jest.Mock) {
     {} as never, // quota — ej rörd i fetchData
     { getOverdueSnapshot } as never,
     {
-      getRevenueYearToDate: jest
-        .fn()
-        .mockResolvedValue({ total: 0, from: new Date(), to: new Date() }),
+      getBookedRevenueYearToDate: jest.fn().mockResolvedValue({
+        status: 'KNOWN',
+        scope: {
+          organizationId: 'org-1',
+          metric: 'BOOKED_REVENUE',
+          propertyId: null,
+          period: { from: '2026-01-01', to: '2026-07-01' },
+        },
+        source: 'EVENO_LEDGER',
+        accountSystem: 'EVENO',
+        accountRange: [3000, 3999],
+        definition: 'CREDIT_MINUS_DEBIT',
+        currency: 'SEK',
+        amountOre: 0,
+        observedAt: '2026-07-01T08:00:00Z',
+        completeness: 'COMPLETE',
+      }),
     } as never, // accounting — bokförd intäkt (egen spec nedan täcker talet)
   )
   return { service, prisma }

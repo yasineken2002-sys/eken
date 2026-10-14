@@ -56,9 +56,23 @@ describe('DataContextService — förfallen skuld via delade OverdueDebtService'
       prisma as never,
       { getOverdueSnapshot } as never,
       {
-        getRevenueYearToDate: jest
-          .fn()
-          .mockResolvedValue({ total: 0, from: new Date(), to: new Date() }),
+        getBookedRevenueYearToDate: jest.fn().mockResolvedValue({
+          status: 'KNOWN',
+          scope: {
+            organizationId: 'org-1',
+            metric: 'BOOKED_REVENUE',
+            propertyId: null,
+            period: { from: '2026-01-01', to: '2026-07-01' },
+          },
+          source: 'EVENO_LEDGER',
+          accountSystem: 'EVENO',
+          accountRange: [3000, 3999],
+          definition: 'CREDIT_MINUS_DEBIT',
+          currency: 'SEK',
+          amountOre: 0,
+          observedAt: '2026-07-01T08:00:00Z',
+          completeness: 'COMPLETE',
+        }),
       } as never,
     )
 
@@ -90,9 +104,23 @@ describe('DataContextService — förfallen skuld via delade OverdueDebtService'
       makePrisma() as never,
       { getOverdueSnapshot } as never,
       {
-        getRevenueYearToDate: jest
-          .fn()
-          .mockResolvedValue({ total: 0, from: new Date(), to: new Date() }),
+        getBookedRevenueYearToDate: jest.fn().mockResolvedValue({
+          status: 'KNOWN',
+          scope: {
+            organizationId: 'org-1',
+            metric: 'BOOKED_REVENUE',
+            propertyId: null,
+            period: { from: '2026-01-01', to: '2026-07-01' },
+          },
+          source: 'EVENO_LEDGER',
+          accountSystem: 'EVENO',
+          accountRange: [3000, 3999],
+          definition: 'CREDIT_MINUS_DEBIT',
+          currency: 'SEK',
+          amountOre: 0,
+          observedAt: '2026-07-01T08:00:00Z',
+          completeness: 'COMPLETE',
+        }),
       } as never,
     )
     const ctx = await service.buildContext('org-2')

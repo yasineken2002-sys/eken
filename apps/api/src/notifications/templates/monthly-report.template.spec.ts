@@ -31,13 +31,33 @@ function makeData(overrides: Partial<MonthlyReportData> = {}): MonthlyReportData
       },
     },
     summary: {
-      revenue: { current: 125000, prevMonthPct: 4.2, prevYearPct: 10 },
+      revenue: {
+        current: {
+          status: 'KNOWN',
+          scope: {
+            organizationId: 'org-1',
+            metric: 'BOOKED_REVENUE',
+            propertyId: null,
+            period: { from: '2026-01-01', to: '2026-07-01' },
+          },
+          source: 'EVENO_LEDGER',
+          accountSystem: 'EVENO',
+          accountRange: [3000, 3999],
+          definition: 'CREDIT_MINUS_DEBIT',
+          currency: 'SEK',
+          amountOre: 12500000,
+          observedAt: '2026-07-01T08:00:00Z',
+          completeness: 'COMPLETE',
+        },
+        prevMonthPct: 4.2,
+        prevYearPct: 10,
+      },
       occupancy: { currentPct: 92.5, prevMonthDeltaPct: 1.1 },
       overdue: { count: 3, totalAmount: 18000, over30Count: 1 },
       tenants: { newLeases: 2, terminatedLeases: 1 },
     },
     kpis: {
-      revenue: {
+      invoiceStatistics: {
         total: 125000,
         rent: 100000,
         service: 10000,
@@ -57,7 +77,16 @@ function makeData(overrides: Partial<MonthlyReportData> = {}): MonthlyReportData
       payments: { onTime: 30, late1to7: 4, late8to30: 2, late30plus: 1 },
       maintenance: { incoming: 5, resolved: 4, avgResolutionDays: 3, topProperties: [] },
     },
-    properties: [{ name: 'Storgatan 1', revenue: 80000, occupancyPct: 95, vacant: 1, tickets: 2 }],
+    properties: [
+      {
+        propertyId: 'P-1',
+        name: 'Storgatan 1',
+        invoiceTotal: 80000,
+        occupancyPct: 95,
+        vacant: 1,
+        tickets: 2,
+      },
+    ],
     appendix: { newLeases: [], terminatedLeases: [] },
     aiInsights: 'Sammanfattning\n- Stark månad',
     ...overrides,
@@ -129,7 +158,16 @@ describe('generateMonthlyReportHtml — brandad shell', () => {
             city: null,
           },
         },
-        properties: [{ name: '<b>Fast</b>', revenue: 1, occupancyPct: 1, vacant: 0, tickets: 0 }],
+        properties: [
+          {
+            propertyId: 'P-1',
+            name: '<b>Fast</b>',
+            invoiceTotal: 1,
+            occupancyPct: 1,
+            vacant: 0,
+            tickets: 0,
+          },
+        ],
       }),
     )
     expect(html).not.toContain('<script>alert(1)</script>')
