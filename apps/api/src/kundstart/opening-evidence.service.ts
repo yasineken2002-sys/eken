@@ -39,11 +39,6 @@ const iso = (date: Date) => date.toISOString().slice(0, 10)
 const orgDigits = (value: string) => value.replace(/-/gu, '')
 const decimalOre = (value: Prisma.Decimal | null) =>
   value === null ? null : kronorTillOre(value.toFixed(2))
-const TX = {
-  ...PAYMENT_TX_LIMITS,
-  timeout: 60_000,
-  isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-}
 
 /** Token claims alone never authorize a write, including direct service calls. */
 export async function requireOpeningActor(
@@ -367,19 +362,28 @@ export class OpeningEvidenceService {
     raw: CreateOpeningEvidenceInput,
   ): Promise<OpeningEvidenceView> {
     const input = this.input(raw)
-    return this.prisma.$transaction(async (tx) => {
-      const p = await this.lockedPackage(tx, organizationId, packageId)
-      await requireOpeningActor(tx, organizationId, user, ['OWNER', 'ADMIN'])
-      if (p.status !== 'VALIDATED')
-        throw new ConflictException('Validera paketet före ny kundavstämning')
-      const c = await this.calculate(tx, p, input),
-        prior = await this.latest(tx, p)
-      const e = await tx.openingEvidence.create({
-        data: this.record(p, c, (prior?.evidenceVersion ?? 0) + 1, user.sub),
-        include: { review: true },
-      })
-      return this.view(tx, p, e)
-    }, TX)
+    return this.prisma.$transaction(
+      async (tx) => {
+        const p = await this.lockedPackage(tx, organizationId, packageId)
+        await requireOpeningActor(tx, organizationId, user, ['OWNER', 'ADMIN'])
+        if (p.status !== 'VALIDATED')
+          throw new ConflictException('Validera paketet före ny kundavstämning')
+        const c = await this.calculate(tx, p, input),
+          prior = await this.latest(tx, p)
+        const e = await tx.openingEvidence.create({
+          data: this.record(p, c, (prior?.evidenceVersion ?? 0) + 1, user.sub),
+          include: { review: true },
+        })
+        return this.view(tx, p, e)
+      },
+      {
+        // Recompute the bounded package under locks: allow 60 s for all rows and
+        // use SERIALIZABLE so evidence cannot commit against a stale package.
+        ...PAYMENT_TX_LIMITS,
+        timeout: 60_000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    )
   }
 
   async review(
@@ -391,40 +395,49 @@ export class OpeningEvidenceService {
   ): Promise<OpeningEvidenceView> {
     if (!reviewOpeningEvidenceInputSchema.strict().safeParse(input).success)
       throw new BadRequestException('Granskningen kräver exakt evidenshash')
-    return this.prisma.$transaction(async (tx) => {
-      const p = await this.lockedPackage(tx, organizationId, packageId)
-      await requireOpeningActor(tx, organizationId, user, ['ACCOUNTANT'])
-      if (p.status !== 'VALIDATED')
-        throw new ConflictException('Paketet måste vara VALIDATED för granskning')
-      const e = await tx.openingEvidence.findFirst({
-        where: { id: evidenceId, packageId, organizationId },
-        include: { review: true },
-      })
-      if (!e) throw new NotFoundException('Evidensen hittades inte')
-      if (e.evidenceSha256 !== input.evidenceSha256)
-        throw new ConflictException('Evidenshashen har ändrats')
-      requireMatchingEvidence(await this.current(tx, p, e))
-      if (e.review) {
-        if (
-          e.review.reviewerUserId !== user.sub ||
-          e.review.organizationId !== organizationId ||
-          e.review.evidenceSha256 !== e.evidenceSha256
-        )
-          throw new ConflictException('Evidensversionen har redan en annan granskning')
-        return this.view(tx, p, e)
-      }
-      await tx.openingEvidenceReview.create({
-        data: {
-          organizationId,
-          evidenceId: e.id,
-          evidenceSha256: e.evidenceSha256,
-          reviewerUserId: user.sub,
-          reviewerRole: 'ACCOUNTANT',
-          identityMode: 'APP_AUTENTISERAD_ACCOUNTANT',
-        },
-      })
-      return this.view(tx, p, (await this.latest(tx, p))!)
-    }, TX)
+    return this.prisma.$transaction(
+      async (tx) => {
+        const p = await this.lockedPackage(tx, organizationId, packageId)
+        await requireOpeningActor(tx, organizationId, user, ['ACCOUNTANT'])
+        if (p.status !== 'VALIDATED')
+          throw new ConflictException('Paketet måste vara VALIDATED för granskning')
+        const e = await tx.openingEvidence.findFirst({
+          where: { id: evidenceId, packageId, organizationId },
+          include: { review: true },
+        })
+        if (!e) throw new NotFoundException('Evidensen hittades inte')
+        if (e.evidenceSha256 !== input.evidenceSha256)
+          throw new ConflictException('Evidenshashen har ändrats')
+        requireMatchingEvidence(await this.current(tx, p, e))
+        if (e.review) {
+          if (
+            e.review.reviewerUserId !== user.sub ||
+            e.review.organizationId !== organizationId ||
+            e.review.evidenceSha256 !== e.evidenceSha256
+          )
+            throw new ConflictException('Evidensversionen har redan en annan granskning')
+          return this.view(tx, p, e)
+        }
+        await tx.openingEvidenceReview.create({
+          data: {
+            organizationId,
+            evidenceId: e.id,
+            evidenceSha256: e.evidenceSha256,
+            reviewerUserId: user.sub,
+            reviewerRole: 'ACCOUNTANT',
+            identityMode: 'APP_AUTENTISERAD_ACCOUNTANT',
+          },
+        })
+        return this.view(tx, p, (await this.latest(tx, p))!)
+      },
+      {
+        // Recompute the bounded package under locks: allow 60 s for all rows and
+        // use SERIALIZABLE so review cannot commit against stale evidence.
+        ...PAYMENT_TX_LIMITS,
+        timeout: 60_000,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    )
   }
 
   async kravForGodkannande(
