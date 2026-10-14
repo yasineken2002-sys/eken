@@ -62,6 +62,8 @@ function rigg(opts: { createRejects?: unknown; befintlig?: unknown } = {}) {
         )
 
   const prisma = {
+    // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+    $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
     lease: { findUnique: jest.fn().mockResolvedValue(lease) },
     organization: {
       // K2: ett giltigt betalningsmål hör numera till en NORMAL organisation —

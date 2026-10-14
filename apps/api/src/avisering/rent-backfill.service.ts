@@ -16,6 +16,7 @@ import { AviseringService } from './avisering.service'
 import { vatPeriodLabelsForMonths } from './vat-period.util'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { periodForeBrytdatum } from '../kundstart/cutover'
+import { IncompleteOpeningException } from '../kundstart/incomplete-opening'
 
 /**
  * T1.4 / #44 — motor för bakdaterad debitering (efterdebitering av bebodda men
@@ -365,6 +366,8 @@ export class RentBackfillService {
         )
         if (notice) result.created.push(notice)
       } catch (err) {
+        // Kundstartsstopp är inte en stängd bokföringsperiod. Bevara 409/skälet.
+        if (err instanceof IncompleteOpeningException) throw err
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           // @@unique([leaseId,year,month,type]) → månaden redan aviserad
           // (cron/initial/tidigare backfill). Idempotent no-op.

@@ -340,6 +340,8 @@ function makeSendRig(orgs: OrgSeed[]) {
   const enqueued: Array<{ organizationId: string; noticeId: string }> = []
 
   const prisma = {
+    // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+    $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
     lease: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
         Promise.resolve(leases.find((l) => l.id === where.id) ?? null),

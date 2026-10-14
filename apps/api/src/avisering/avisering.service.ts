@@ -65,6 +65,11 @@ import {
 } from '@eken/shared'
 import { buildBrandedPdfHtml, escapeHtml } from '../common/branding'
 import { foreBrytdatumSkal, periodForeBrytdatum } from '../kundstart/cutover'
+import {
+  assertNoIncompleteOpening,
+  IncompleteOpeningException,
+  INCOMPLETE_OPENING_REASON,
+} from '../kundstart/incomplete-opening'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 // getLogoDataUrl bor numera i common/branding (Steg 3, PR 2 — en sanning).
 // Vi re-exporterar den här så att rent-reminder.service.ts (som importerar
@@ -358,6 +363,7 @@ export class AviseringService {
     let created = 0
     // Varje avtal behåller sin egen atomiska avi + intäktsverifikation.
     let failed = 0
+    let blockedByOpening = 0
     const notices: RentNotice[] = []
     for (const { lease, proration, dueDate } of candidates) {
       let notice: RentNotice
@@ -380,6 +386,7 @@ export class AviseringService {
         // rullar tillbaka även ökningen, så inga nummer läcker (mätt mot riktig
         // Postgres — se rent-notice-number.ts).
         notice = await this.prisma.$transaction(async (tx) => {
+          await assertNoIncompleteOpening(tx, orgId)
           const noticeNumber = await allocateRentNoticeNumber(tx, orgId, year, month)
           const n = (await tx.rentNotice.create({
             data: {
@@ -414,6 +421,10 @@ export class AviseringService {
           return n
         }, PRISMA_DEFAULT_TX_LIMITS)
       } catch (err) {
+        if (err instanceof IncompleteOpeningException) {
+          blockedByOpening++
+          continue
+        }
         // Per-lease-isolering: logga + räkna + fortsätt. Ingen orphan (avin +
         // verifikat rullades tillbaka atomiskt). Avin fångas nästa körning
         // (idempotens) eller via T1.4-backfillen.
@@ -472,7 +483,15 @@ export class AviseringService {
       created++
     }
 
-    return { created, skipped, failed, notices, beforeCutover }
+    return {
+      created,
+      skipped,
+      failed,
+      notices,
+      beforeCutover,
+      blockedByOpening,
+      blockedReason: blockedByOpening > 0 ? INCOMPLETE_OPENING_REASON : null,
+    }
   }
 
   /**
@@ -561,6 +580,7 @@ export class AviseringService {
     const { proration, vatAmount, totalAmount } = this.computeRentNoticeAmounts(lease, year, month)
     if (proration.daysCharged <= 0) return null
 
+    await assertNoIncompleteOpening(tx, lease.organizationId)
     const noticeNumber = await allocateRentNoticeNumber(tx, lease.organizationId, year, month)
 
     const notice = (await tx.rentNotice.create({
@@ -821,6 +841,7 @@ export class AviseringService {
         // ökningen tillbaka med den, och en cron-omkörning som fastnar på
         // periodnyckeln nedan kostar inte längre ett nummer per försök.
         depositNotice = (await this.prisma.$transaction(async (tx) => {
+          await assertNoIncompleteOpening(tx, orgId)
           const noticeNumber = await allocateRentNoticeNumber(tx, orgId, year, month)
           return tx.rentNotice.create({
             data: {
@@ -895,6 +916,7 @@ export class AviseringService {
         // Kastar bokföringen (stängd period/DB-fel) rullas avin tillbaka → ingen
         // orphan (tidigare bokfördes den utanför tx och sväljdes/loggades).
         firstRentNotice = await this.prisma.$transaction(async (tx) => {
+          await assertNoIncompleteOpening(tx, orgId)
           const noticeNumber = await allocateRentNoticeNumber(tx, orgId, year, month)
           // Moms enligt upplåtelsetyp (ML 10 kap. 35 § / 9 kap). Bostad → 0.
           const { vatAmount, totalAmount } = this.rentVat(

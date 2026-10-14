@@ -44,6 +44,8 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     }
 
     const prisma = {
+      // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+      $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
       lease: { findMany: jest.fn().mockResolvedValue([lease]) },
       // KUNDSTART: inget brytdatum = oförändrat beteende.
       organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },

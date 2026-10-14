@@ -117,6 +117,8 @@ function makeRig(seed: LeaseSeed, opts: { withDeposit?: boolean; enqueueFails?: 
   }
 
   const prisma = {
+    // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+    $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
     lease: {
       findFirst: jest.fn(({ where }: { where: { id: string; organizationId: string } }) =>
         Promise.resolve(
