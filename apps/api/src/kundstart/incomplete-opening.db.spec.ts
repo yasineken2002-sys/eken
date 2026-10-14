@@ -577,7 +577,7 @@ function observedService(
   held?: ReturnType<typeof signal<void>>,
   release?: ReturnType<typeof signal<void>>,
 ) {
-  const trace: string[] = []
+  const trace: { backendPid: number; queries: string[] }[] = []
   const p = new Proxy(db, {
     get(target, key) {
       if (key !== '$transaction') return Reflect.get(target, key)
@@ -585,20 +585,19 @@ function observedService(
         target.$transaction(
           async (tx) => {
             const [backend] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
-            pid.resolve(backend!.pid)
+            const queries: string[] = []
+            trace.push({ backendPid: backend!.pid, queries })
             const proxy = new Proxy(tx, {
               get(t, k) {
                 if (k !== '$queryRaw') return Reflect.get(t, k)
                 return async (...args: unknown[]) => {
                   const sql = String(args[0])
-                  trace.push(sql)
+                  queries.push(sql)
+                  const noticeLock = sql.includes('"Organization"') && sql.includes('FOR UPDATE')
+                  // OCR has its own earlier transaction; signal the notice backend only.
+                  if (noticeLock) pid.resolve(backend!.pid)
                   const value = await Reflect.apply(t.$queryRaw, t, args)
-                  if (
-                    sql.includes('"Organization"') &&
-                    sql.includes('FOR UPDATE') &&
-                    held &&
-                    release
-                  ) {
+                  if (noticeLock && held && release) {
                     held.resolve()
                     await release.promise
                   }
@@ -612,7 +611,18 @@ function observedService(
         )
     },
   }) as unknown as PrismaService
-  return { service: makeAvisering(p), trace }
+  return {
+    service: makeAvisering(p),
+    trace,
+    assertNoticeLockFirst: () => {
+      const noticeTransactions = trace.filter((t) =>
+        t.queries.some((q) => q.includes('"Organization"')),
+      )
+      expect(noticeTransactions).toHaveLength(1)
+      expect(noticeTransactions[0]!.queries[0]).toContain('"Organization"')
+      expect(noticeTransactions[0]!.queries[0]).toContain('FOR UPDATE')
+    },
+  }
 }
 
 it('R198 M20 concurrent DRAFT commit precedes generator lock', async () => {
@@ -646,6 +656,7 @@ it('R198 M20 concurrent DRAFT commit precedes generator lock', async () => {
   await writer
   const result = await generation,
     after = await snapshot(f)
+  observed.assertNoticeLockFirst()
   record('R198 M20', { before, result, after, lock, transactionQueries: observed.trace })
   financialFacit(before, after, 0)
   expect(result.error).toBeNull()
@@ -688,6 +699,7 @@ it('R198 M21 concurrent generator precedes new DRAFT then next notice blocked', 
   const after = await snapshot(f)
   const next = await f.avisering.generateMonthlyNotices(f.id, 12, 2026),
     nextAfter = await snapshot(f)
+  observed.assertNoticeLockFirst()
   record('R198 M21', {
     before,
     result,
@@ -752,6 +764,7 @@ it('R198 M23 unrelated bank row insert waits for notice org lock then succeeds',
   const result = await generation,
     bankRow = await bank,
     after = await snapshot(f)
+  observed.assertNoticeLockFirst()
   record('R198 M23', { before, result, bankRow, after, lock, transactionQueries: observed.trace })
   expect(result.error).toBeNull()
   financialFacit(before, after, 1, 1)
