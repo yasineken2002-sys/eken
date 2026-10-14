@@ -105,7 +105,9 @@ beforeAll(async () => {
 })
 afterAll(async () => {
   try {
-    for (const f of fixtures) await db.organization.delete({ where: { id: f.id } })
+    // Preserve synthetic financial evidence, like the 176/198 reproductions.
+    // RentNotice deliberately restricts organization deletion; never weaken that FK.
+    console.log('207 PRESERVED_FIXTURES', JSON.stringify(fixtures.map((f) => f.id)))
   } finally {
     await Promise.all([observer.$disconnect(), db.$disconnect()])
   }
