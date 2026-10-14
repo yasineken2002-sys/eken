@@ -262,4 +262,4 @@ const _k5: SammaNycklar<FirstPeriodRegisterDto, FirstPeriodRegisterInput> = true
 const _k6: SammaNycklar<ApproveOpeningPackageDto, ApproveOpeningPackageInput> = true
 const _k7: SammaNycklar<CreateOpeningEvidenceDto, CreateOpeningEvidenceInput> = true
 const _k8: SammaNycklar<ReviewOpeningEvidenceDto, ReviewOpeningEvidenceInput> = true
-void [_k1, _k2, _k3, _k4, _k5, _k6]
+void [_k1, _k2, _k3, _k4, _k5, _k6, _k7, _k8]
