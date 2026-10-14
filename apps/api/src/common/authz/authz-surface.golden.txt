@@ -14,7 +14,7 @@ Filen säger inget om huruvida en gräns är RÄTT. Den gör bara omöjligt att
 flytta en gräns utan att någon ser det. Se authz-surface.ts.
 
 
-## 1. HTTP-endpoints med rollgrind (262 st)
+## 1. HTTP-endpoints med rollgrind (264 st)
 
 Endpoints utan @Roles står i avsnitt 1b — de saknades helt fram till #434.
 
@@ -46,6 +46,7 @@ GET /accounting/fiscal-years                                    ACCOUNTANT, ADMI
 GET /accounting/journal-page                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/journal/:id                                     ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/journal                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
+GET /accounting/ledger-owner                                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/periods/:year/:month/history                    ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/periods/:year/:month/precheck                   ACCOUNTANT, ADMIN, MANAGER, OWNER
 GET /accounting/periods                                         ACCOUNTANT, ADMIN, MANAGER, OWNER
@@ -214,6 +215,7 @@ POST /integrations/fortnox/account-mapping/revisions/:id/approve  ADMIN, OWNER
 POST /integrations/fortnox/account-mapping/revisions            ADMIN, OWNER
 POST /integrations/fortnox/connect                              ADMIN, OWNER
 POST /integrations/fortnox/customer-activation/approve          OWNER
+POST /integrations/fortnox/customer-activation/ledger-owner     OWNER
 POST /integrations/fortnox/customer-activation/revoke           OWNER
 POST /integrations/fortnox/disconnect                           ADMIN, OWNER
 POST /integrations/fortnox/exports/:id/reconcile-scan           ADMIN, OWNER

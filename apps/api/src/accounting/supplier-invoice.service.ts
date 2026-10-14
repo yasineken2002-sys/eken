@@ -10,6 +10,7 @@ import {
 import { Prisma } from '@prisma/client'
 import { arBelagdInnehallsavvisning, vatFromGross } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { assertLokalHuvudbokTillaten } from './huvudboksval'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { originalUtfall } from '../fortnox/fortnox-radklass'
 import { AccountingService } from './accounting.service'
@@ -158,6 +159,8 @@ export class SupplierInvoiceService {
     const netAmount = params.totalAmount - vatAmount
 
     return this.prisma.$transaction(async (tx) => {
+      // HUVUDBOK-STEG1 (154): första sats — leverantörsbokföring görs i Fortnox när den är huvudbok.
+      await assertLokalHuvudbokTillaten(tx, params.organizationId, 'LEVERANTORSFAKTURA')
       const faktura = await tx.supplierInvoice.create({
         data: {
           organizationId: params.organizationId,
@@ -224,6 +227,10 @@ export class SupplierInvoiceService {
     paidDate: Date
     createdById: string
   }) {
+    // HUVUDBOK-STEG1 (FEEDBACK-161): samma regel och samma skäl FÖRE affärsreglerna nedan, så att
+    // en organisation med Fortnox som huvudbok får huvudboksbeskedet och inte "redan betald".
+    // Den bärande kontrollen är fortfarande första satsen i transaktionen.
+    await assertLokalHuvudbokTillaten(this.prisma, params.organizationId, 'LEVERANTORSFAKTURA')
     const faktura = await this.findOne(params.invoiceId, params.organizationId)
 
     if (faktura.paidAt) {
@@ -236,6 +243,8 @@ export class SupplierInvoiceService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      // HUVUDBOK-STEG1 (154): första sats — leverantörsbokföring görs i Fortnox när den är huvudbok.
+      await assertLokalHuvudbokTillaten(tx, params.organizationId, 'LEVERANTORSFAKTURA')
       // TESTKUND-041 (BP1 P-1, låsordning faktura → export): fakturans radlås först. Under låset
       // räknas betalningsleden fram; ett nytt led efter en ångring får en EGEN sourceId (led k ≥ 2)
       // och ett historiskt id skrivs aldrig om.
@@ -298,6 +307,10 @@ export class SupplierInvoiceService {
    * journalen.
    */
   async cancel(params: { organizationId: string; invoiceId: string; createdById: string }) {
+    // HUVUDBOK-STEG1 (FEEDBACK-161): samma regel och samma skäl FÖRE affärsreglerna nedan, så att
+    // en organisation med Fortnox som huvudbok får huvudboksbeskedet och inte "redan betald".
+    // Den bärande kontrollen är fortfarande första satsen i transaktionen.
+    await assertLokalHuvudbokTillaten(this.prisma, params.organizationId, 'LEVERANTORSFAKTURA')
     const faktura = await this.findOne(params.invoiceId, params.organizationId)
     this.accounting.assertMayCancelSupplierInvoice(faktura)
 
@@ -305,6 +318,8 @@ export class SupplierInvoiceService {
     const idag = new Date()
 
     return this.prisma.$transaction(async (tx) => {
+      // HUVUDBOK-STEG1 (154): första sats — leverantörsbokföring görs i Fortnox när den är huvudbok.
+      await assertLokalHuvudbokTillaten(tx, params.organizationId, 'LEVERANTORSFAKTURA')
       await this.lasFaktura(tx, faktura.id, params.organizationId)
       await this.provaMakuleringskedjor(tx, faktura.id, params.organizationId)
       // TESTKUND-027 V-9: villkorat anspråk FÖRE bokningen (se markPaid).
@@ -552,6 +567,8 @@ export class SupplierInvoiceService {
     const { organizationId, invoiceId } = params
 
     return this.prisma.$transaction(async (tx) => {
+      // HUVUDBOK-STEG1 (154): första sats — leverantörsbokföring görs i Fortnox när den är huvudbok.
+      await assertLokalHuvudbokTillaten(tx, organizationId, 'LEVERANTORSFAKTURA')
       await this.lasFaktura(tx, invoiceId, organizationId)
       const f = await tx.supplierInvoice.findFirstOrThrow({
         where: { id: invoiceId, organizationId },
@@ -735,6 +752,8 @@ export class SupplierInvoiceService {
       throw new BadRequestException('Ange ett skäl (5–500 tecken)')
     const { organizationId, invoiceId } = params
     return this.prisma.$transaction(async (tx) => {
+      // HUVUDBOK-STEG1 (154): första sats — leverantörsbokföring görs i Fortnox när den är huvudbok.
+      await assertLokalHuvudbokTillaten(tx, organizationId, 'LEVERANTORSFAKTURA')
       await this.lasFaktura(tx, invoiceId, organizationId)
       const f = await tx.supplierInvoice.findFirstOrThrow({
         where: { id: invoiceId, organizationId },

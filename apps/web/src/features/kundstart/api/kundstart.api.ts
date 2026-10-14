@@ -1,5 +1,6 @@
 import type {
   ApproveCustomerActivationInput,
+  ChooseLedgerOwnerInput,
   ApproveOpeningPackageInput,
   BindOpeningReadInput,
   FirstPeriodRegisterInput,
@@ -141,6 +142,12 @@ export const discardPackage = (id: string) =>
 
 export interface ActivationStatus {
   flaggaPa: boolean
+  /** HUVUDBOK-STEG1 (154): organisationens beständiga huvudboksval. */
+  huvudbok: {
+    agare: 'EVENO' | 'FORTNOX'
+    valdAt: string | null
+    fortnoxDatabasnummer: number | null
+  }
   aktiv: { id: string; giltig: boolean } | null
   aktivHinder: string | null
   forslag: { ok: boolean; hinder: string[]; text: string | null; textSha256: string | null }
@@ -164,6 +171,12 @@ export const fetchActivation = (financialYearId: number | null) =>
   )
 export const approveActivation = (b: ApproveCustomerActivationInput) =>
   post<{ id: string; status: string }>('/integrations/fortnox/customer-activation/approve', b)
+/** HUVUDBOK-STEG1 (154): OWNER väljer Fortnox som huvudbok, bundet till den aktiva aktiveringen. */
+export const chooseLedgerOwner = (b: ChooseLedgerOwnerInput) =>
+  post<{ agare: 'FORTNOX'; valdAt: string }>(
+    '/integrations/fortnox/customer-activation/ledger-owner',
+    b,
+  )
 export const revokeActivation = () =>
   post<{ revoked: number }>('/integrations/fortnox/customer-activation/revoke')
 

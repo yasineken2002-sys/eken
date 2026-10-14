@@ -88,6 +88,35 @@ export async function mappningsSha(
   return createHash('sha256').update(JSON.stringify(underlag), 'utf8').digest('hex')
 }
 
+/**
+ * HUVUDBOK-STEG1 (154) T1-3: BESTÄNDIG FÖRETAGSBINDNING. När organisationen valt Fortnox som
+ * huvudbok får ingen anslutning, aktivering eller sändning gälla ett annat Fortnox-företag än
+ * det valet gjordes mot — varken databasnummer eller organisationsnummer. Vid EVENO: ingen effekt.
+ * En ny aktivering eller anslutning är därmed aldrig ett indirekt huvudboksbyte.
+ */
+export async function huvudbokForetagsfel(
+  db: Prisma.TransactionClient,
+  organizationId: string,
+  foretag: Array<{ databaseNumber: number; orgNumber: string | null }>,
+): Promise<string | null> {
+  const o = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      ledgerOwner: true,
+      ledgerOwnerFortnoxDatabaseNumber: true,
+      ledgerOwnerFortnoxOrgNumber: true,
+    },
+  })
+  if (!o || o.ledgerOwner !== 'FORTNOX') return null
+  for (const f of foretag) {
+    if (f.databaseNumber !== o.ledgerOwnerFortnoxDatabaseNumber)
+      return 'Fortnox-företaget (databasnummer) är ett annat än det som valdes som huvudbok — ingenting skickas till det.'
+    if (!sammaOrgnr(f.orgNumber, o.ledgerOwnerFortnoxOrgNumber))
+      return 'Fortnox-företagets organisationsnummer är ett annat än det som valdes som huvudbok — ingenting skickas till det.'
+  }
+  return null
+}
+
 export type Verifiering =
   | { ok: true; binding: FortnoxCustomerBinding }
   | { ok: false; skal: string; activationId: string | null }
@@ -136,6 +165,11 @@ export async function provaAktivering(
     return nej('Fortnox-företaget (databasnummer) är ett annat än vid godkännandet.')
   if (!sammaOrgnr(conn.fortnoxOrgNumber, a.fortnoxOrgNumber))
     return nej('Fortnox-företagets organisationsnummer har ändrats.')
+  const huvudbok = await huvudbokForetagsfel(db, organizationId, [
+    { databaseNumber: conn.fortnoxDatabaseNumber, orgNumber: conn.fortnoxOrgNumber },
+    { databaseNumber: a.fortnoxDatabaseNumber, orgNumber: a.fortnoxOrgNumber },
+  ])
+  if (huvudbok) return nej(huvudbok)
   const org = await db.organization.findUnique({
     where: { id: organizationId },
     select: { orgNumber: true, billingCutoverDate: true },

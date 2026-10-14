@@ -5,7 +5,12 @@ import { Badge } from '@/components/ui/Badge'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { getFortnoxSeriesCatalog } from '@/features/settings/api/fortnox-export.api'
-import { approveActivation, fetchActivation, revokeActivation } from '../api/kundstart.api'
+import {
+  approveActivation,
+  chooseLedgerOwner,
+  fetchActivation,
+  revokeActivation,
+} from '../api/kundstart.api'
 
 /**
  * KUNDSTART-001 §6: kontrollerad Fortnox-skrivning till ERT företag. Av som standard.
@@ -25,6 +30,7 @@ function Scoped() {
   const qc = useQueryClient()
   const [ar, setAr] = useState<number | null>(null)
   const [last, setLast] = useState(false)
+  const [huvudbokLast, setHuvudbokLast] = useState(false)
   const arLista = useQuery({
     queryKey: ['kundaktivering', 'ar'],
     queryFn: () => getFortnoxSeriesCatalog(null),
@@ -53,6 +59,14 @@ function Scoped() {
     },
   })
   const aterkalla = useMutation({ mutationFn: revokeActivation, onSuccess: refresh })
+  const valjHuvudbok = useMutation({
+    mutationFn: () => chooseLedgerOwner({ activationId: status.data!.aktiv!.id }),
+    onSuccess: async () => {
+      setHuvudbokLast(false)
+      await refresh()
+      await qc.invalidateQueries({ queryKey: ['accounting', 'ledger-owner'] })
+    },
+  })
 
   if (!kanLasa) return null
   if (status.isLoading) return <p className="text-ink-muted text-sm">Hämtar kundaktivering…</p>
@@ -63,7 +77,7 @@ function Scoped() {
       </p>
     )
   const s = status.data
-  const fel = godkann.error ?? aterkalla.error
+  const fel = godkann.error ?? aterkalla.error ?? valjHuvudbok.error
 
   return (
     <section
@@ -168,6 +182,47 @@ function Scoped() {
           )}
         </div>
       )}
+      <div className="border-line space-y-2 border-t pt-3" data-testid="huvudboksval">
+        <p className="text-ink text-sm">
+          <span className="font-medium">Huvudbok:</span>{' '}
+          {s.huvudbok?.agare === 'FORTNOX'
+            ? `Fortnox (vald ${s.huvudbok.valdAt?.slice(0, 10) ?? ''}, företag ${s.huvudbok.fortnoxDatabasnummer ?? ''})`
+            : 'Eveno'}
+        </p>
+        {s.huvudbok?.agare === 'FORTNOX' ? (
+          <p className="text-ink-muted text-[12px]">
+            Fria verifikat, utgifter, leverantörsfakturor, rättelser av verifikat och årsbokslut
+            görs i Fortnox. Valet ändras inte av att anslutningen bryts eller aktiveringen upphör.
+          </p>
+        ) : (
+          isOwner &&
+          s.aktiv && (
+            <>
+              <label className="text-ink flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={huvudbokLast}
+                  onChange={(e) => setHuvudbokLast(e.target.checked)}
+                />
+                <span>
+                  Jag förstår att Fortnox blir huvudbok för detta företag: fria verifikat, utgifter,
+                  leverantörsfakturor och årsbokslut görs därefter i Fortnox. Valet går inte att
+                  ångra eller flytta till ett annat företag här.
+                </span>
+              </label>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!huvudbokLast}
+                loading={valjHuvudbok.isPending}
+                onClick={() => valjHuvudbok.mutate()}
+              >
+                Välj Fortnox som huvudbok
+              </Button>
+            </>
+          )
+        )}
+      </div>
       {fel && (
         <p role="alert" className="text-sm text-red-600">
           {extractApiError(fel, 'Åtgärden misslyckades.')}

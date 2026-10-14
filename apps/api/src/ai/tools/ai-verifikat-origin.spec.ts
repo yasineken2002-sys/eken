@@ -35,6 +35,8 @@ function makePrisma(created: Created[]) {
     { id: 'acc-2641', number: 2641, name: 'Ingående moms', type: 'ASSET', isActive: true },
   ]
   const tx = {
+    // HUVUDBOK-STEG1 (154): huvudboksregelns FOR SHARE-läsning; standardvalet EVENO.
+    $queryRaw: jest.fn().mockResolvedValue([{ ledgerOwner: 'EVENO' }]),
     journalEntry: {
       // Idempotensuppslaget som ligger FÖRE create i skrivvägen: finns redan ett
       // verifikat med samma (org, source, sourceId) skapas inget nytt. Här ska

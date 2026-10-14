@@ -32,6 +32,8 @@ function makePrisma(befintligt: typeof BEFINTLIGT | null) {
   const create = jest.fn().mockResolvedValue({ ...BEFINTLIGT, id: 'je-nytt', verNumber: 43 })
   const findFirst = jest.fn().mockResolvedValue(befintligt)
   const tx = {
+    // HUVUDBOK-STEG1 (154): huvudboksregelns FOR SHARE-läsning; standardvalet EVENO.
+    $queryRaw: jest.fn().mockResolvedValue([{ ledgerOwner: 'EVENO' }]),
     journalEntry: { findFirst, create },
   }
   return {

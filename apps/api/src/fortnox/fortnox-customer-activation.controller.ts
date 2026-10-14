@@ -13,7 +13,7 @@ import { OrgId } from '../common/decorators/org-id.decorator'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { FortnoxCustomerActivationService } from './fortnox-customer-activation.service'
-import { ApproveCustomerActivationDto } from './dto/customer-activation.dto'
+import { ApproveCustomerActivationDto, ChooseLedgerOwnerDto } from './dto/customer-activation.dto'
 
 /** KUNDSTART-001 §6: kundaktivering. Läsa: OWNER, ADMIN, ACCOUNTANT. Besluta: bara OWNER. */
 @Controller('integrations/fortnox/customer-activation')
@@ -37,6 +37,18 @@ export class FortnoxCustomerActivationController {
     @Body() dto: ApproveCustomerActivationDto,
   ) {
     return this.svc.approve(orgId, { sub: user.sub, role: user.role }, dto)
+  }
+
+  /** HUVUDBOK-STEG1 (154): OWNER väljer Fortnox som huvudbok. Enda vägen; ingen generell PATCH. */
+  @Post('ledger-owner')
+  @HttpCode(HttpStatus.OK)
+  @Roles('OWNER')
+  chooseLedgerOwner(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChooseLedgerOwnerDto,
+  ) {
+    return this.svc.valjFortnoxSomHuvudbok(orgId, { sub: user.sub, role: user.role }, dto)
   }
 
   @Post('revoke')
