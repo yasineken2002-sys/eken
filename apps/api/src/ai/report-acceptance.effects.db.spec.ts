@@ -665,7 +665,11 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       .cancel({ organizationId: org, invoiceId, createdById: owner })
       .then(
         () => true,
-        () => false,
+        (error: unknown) => {
+          expect(error).toBeInstanceOf(Error)
+          expect((error as Error).message).toMatch(/UNKNOWN|okänt|avstäm|export|Fortnox|sänd/i)
+          return false
+        },
       )
     if (cancelled) {
       const correction = await db.journalEntry.findFirstOrThrow({

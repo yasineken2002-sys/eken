@@ -481,10 +481,14 @@ describe('AF01–AF20 S: faktisk chatt/rapport → SDK-request (inte fri modellt
     db.prisma.property.findMany.mockResolvedValue([
       { id: 'P-A', name: 'Eken', type: 'RESIDENTIAL', units: [{ status: 'OCCUPIED', leases: [] }] },
     ])
-    db.prisma.invoice.groupBy.mockResolvedValue([
-      { type: 'OTHER', _sum: { total: 20000 } },
-      { type: 'DEPOSIT', _sum: { total: 15000 } },
-    ])
+    db.prisma.invoice.groupBy.mockImplementation(async (query: { by: string[] }) =>
+      query.by.includes('type')
+        ? [
+            { type: 'OTHER', _sum: { total: 20000 } },
+            { type: 'DEPOSIT', _sum: { total: 15000 } },
+          ]
+        : [{ status: 'SENT', _count: { id: 2 }, _sum: { total: 35000 } }],
+    )
     db.prisma.invoice.findMany.mockImplementation(async (args) =>
       args.where?.leaseId
         ? ([{ total: 35000, lease: { unit: { propertyId: 'P-A' } } }] as never)
