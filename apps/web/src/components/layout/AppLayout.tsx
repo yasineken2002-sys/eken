@@ -26,6 +26,7 @@ import {
   Newspaper,
   Receipt,
   ScanText,
+  Send,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -41,6 +42,7 @@ import { logoutApi } from '@/features/auth/api/auth.api'
 import { NotificationBell } from '@/features/notifications/components/NotificationBell'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { ViewerBanner } from '@/components/ViewerBanner'
+import { useHuvudbokslage } from '@/features/fortnox-overforing/huvudbokslage'
 
 // URL:er för sidonavigeringens poster. Begränsad union så <Link to> typkollar.
 type AppPath =
@@ -63,6 +65,7 @@ type AppPath =
   | '/rent-increases'
   | '/terminations'
   | '/accounting'
+  | '/fortnox/overforing'
   | '/reports'
   | '/reconciliation'
   | '/collections'
@@ -119,6 +122,19 @@ const NAV_FINANCE: NavItem[] = [
   { to: '/collections', label: 'Inkasso', icon: Gavel },
 ]
 
+// MENY-ETAPP 4 (201): BARA för organisationer som verifierat har Fortnox som
+// huvudbok. Bokföring ersätts på samma plats av överföringsvyn och finns kvar som
+// läsbart arkiv direkt under. Allt annat — poster, etiketter, ordning — är som
+// ovan. EVENO och ett oläst val får NAV_FINANCE oförändrad.
+const NAV_FINANCE_FORTNOX: NavItem[] = NAV_FINANCE.flatMap((item) =>
+  item.to === '/accounting'
+    ? [
+        { to: '/fortnox/overforing', label: 'Överföring och avstämning', icon: Send },
+        { ...item, label: 'Bokföringsarkiv' },
+      ]
+    : [item],
+)
+
 const NAV_TOOLS: NavItem[] = [
   { to: '/inspections', label: 'Besiktningar', icon: ClipboardCheck },
   { to: '/maintenance', label: 'Underhåll', icon: Wrench },
@@ -134,15 +150,16 @@ const NAV_TOOLS: NavItem[] = [
 
 interface NavGroupProps {
   label?: string
+  testId?: string
   items: NavItem[]
   collapsed: boolean
   onMobileClose: () => void
 }
 
-function NavGroup({ label, items, collapsed, onMobileClose }: NavGroupProps) {
+function NavGroup({ label, testId, items, collapsed, onMobileClose }: NavGroupProps) {
   const { pathname } = useLocation()
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-0.5" data-testid={testId}>
       {label && !collapsed && (
         <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/20 first:mt-2">
           {label}
@@ -216,6 +233,7 @@ export function AppLayout({ children }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const user = useAuthStore((s) => s.user)
   const clearAuth = useAuthStore((s) => s.clearAuth)
+  const navFinance = useHuvudbokslage() === 'FORTNOX' ? NAV_FINANCE_FORTNOX : NAV_FINANCE
 
   const handleLogout = async () => {
     try {
@@ -231,7 +249,7 @@ export function AppLayout({ children }: Props) {
   const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : '?'
   const shortName = user ? `${user.firstName} ${user.lastName[0]}.` : ''
   const currentLabel =
-    [...NAV_PRIMARY, ...NAV_PORTFOLIO, ...NAV_FINANCE, ...NAV_TOOLS].find((n) => n.to === pathname)
+    [...NAV_PRIMARY, ...NAV_PORTFOLIO, ...navFinance, ...NAV_TOOLS].find((n) => n.to === pathname)
       ?.label ?? 'Översikt'
 
   return (
@@ -318,24 +336,28 @@ export function AppLayout({ children }: Props) {
           {/* Navigation */}
           <nav className="scrollbar-thin flex-1 overflow-y-auto px-2.5 py-3">
             <NavGroup
+              testId="nav-grupp-primar"
               items={NAV_PRIMARY}
               collapsed={collapsed}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
               label="Portfölj"
+              testId="nav-grupp-portfolj"
               items={NAV_PORTFOLIO}
               collapsed={collapsed}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
               label="Ekonomi"
-              items={NAV_FINANCE}
+              testId="nav-grupp-ekonomi"
+              items={navFinance}
               collapsed={collapsed}
               onMobileClose={() => setMobileOpen(false)}
             />
             <NavGroup
               label="Verktyg"
+              testId="nav-grupp-verktyg"
               items={NAV_TOOLS}
               collapsed={collapsed}
               onMobileClose={() => setMobileOpen(false)}
@@ -407,6 +429,7 @@ export function AppLayout({ children }: Props) {
           {/* Topbar */}
           <header className="flex h-14 flex-shrink-0 items-center gap-3 border-b border-gray-100 bg-white/80 px-6 backdrop-blur-sm">
             <button
+              aria-label="Öppna meny"
               onClick={() => setMobileOpen(true)}
               className="flex h-8 w-8 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 lg:hidden"
             >
