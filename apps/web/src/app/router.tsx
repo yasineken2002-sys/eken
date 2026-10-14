@@ -49,6 +49,7 @@ import { DelegationerPage } from '../features/delegationer/DelegationerPage'
 import { TerminationsPage } from '../features/terminations/TerminationsPage'
 import { AccountingPage } from '../features/accounting/AccountingPage'
 import { ReportsPage } from '../features/reports/ReportsPage'
+import { FortnoxOverforingPage } from '../features/fortnox-overforing/FortnoxOverforingPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { OverviewPage } from '../features/overview/OverviewPage'
 import { ReconciliationPage } from '../features/reconciliation/ReconciliationPage'
@@ -333,6 +334,8 @@ const inboxRoute = createRoute({
 const delegationerRoute = appPage('/delegationer', DelegationerPage)
 const terminationsRoute = appPage('/terminations', TerminationsPage)
 const accountingRoute = appPage('/accounting', AccountingPage)
+// MENY-ETAPP 4 (201): Fortnox › Överföring och avstämning. Nytt; inga routes tas bort.
+const fortnoxOverforingRoute = appPage('/fortnox/overforing', FortnoxOverforingPage)
 const reportsRoute = appPage('/reports', ReportsPage)
 const reconciliationRoute = appPage('/reconciliation', ReconciliationPage)
 
@@ -456,6 +459,7 @@ const routeTree = rootRoute.addChildren([
     delegationerRoute,
     terminationsRoute,
     accountingRoute,
+    fortnoxOverforingRoute,
     reportsRoute,
     reconciliationRoute,
     bankConnectionRoute,

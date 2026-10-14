@@ -287,6 +287,17 @@ export function AccountingPage() {
           {huvudbok.data.skal}
         </div>
       )}
+      {/* MENY-ETAPP 4 (201): vägen till överföringsvyn. Utanför rutan så att serverns
+          skäl står ordagrant; vanligt ankare eftersom sidan också renderas utan router. */}
+      {externHuvudbok && (
+        <a
+          href="/fortnox/overforing"
+          data-testid="lank-overforing"
+          className="mt-2 inline-block text-[13px] font-medium text-blue-900 underline"
+        >
+          Överföring och avstämning
+        </a>
+      )}
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

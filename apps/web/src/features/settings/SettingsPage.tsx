@@ -65,7 +65,8 @@ import { KundstartPanel } from '../kundstart/components/KundstartPanel'
 import { FortnoxCustomerActivationPanel } from '../kundstart/components/FortnoxCustomerActivationPanel'
 import { LateBookingMaterialitySection } from './components/LateBookingMaterialitySection'
 import { get, del, extractApiError } from '@/lib/api'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { useHuvudbokslage } from '@/features/fortnox-overforing/huvudbokslage'
 import { cn } from '@/lib/cn'
 import { tint, TINT } from '@/lib/tint'
 
@@ -113,6 +114,7 @@ export function SettingsPage({ initialTab = 'general' }: { initialTab?: Settings
   const uploadMutation = useUploadLogo()
   const [tab, setTab] = useState<SettingsTab>(initialTab)
   const currentUser = useAuthStore((s) => s.user)
+  const huvudbokslage = useHuvudbokslage()
   // Antalet skuggförslag hittills — läses ur samma summary som inkorgens KPI,
   // så de två ytorna inte kan säga olika saker om samma mängd.
   const inboxSummary = useInboxSummary()
@@ -515,6 +517,15 @@ export function SettingsPage({ initialTab = 'general' }: { initialTab?: Settings
 
       {tab === 'fortnox' && (
         <div className="mt-5 min-w-0">
+          {huvudbokslage === 'FORTNOX' && (
+            <p data-testid="lank-overforing" className="mb-4 text-[13px]">
+              Överföringar och avstämning finns under{' '}
+              <Link to="/fortnox/overforing" className="font-medium underline">
+                Överföring och avstämning
+              </Link>
+              .
+            </p>
+          )}
           <FortnoxPanel />
           <div className="mt-5">
             <FortnoxAccountMapping />
