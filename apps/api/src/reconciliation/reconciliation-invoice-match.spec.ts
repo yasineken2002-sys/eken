@@ -38,7 +38,14 @@ function makeService(
     // #307 C: radlåset på fakturan tas först i transaktionen. Returvärdet används
     // inte — låset ÄR effekten.
     $queryRaw: jest.fn().mockResolvedValue([]),
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-15'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     // deposit-F1: applyMatchToInvoice synkar en ev. länkad Deposit → PAID.
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: opts.depositCount ?? 0 }) },
     // C4: allokeringsmodellen. Tom lista = inga tidigare betalningar → hela

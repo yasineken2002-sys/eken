@@ -83,7 +83,14 @@ function rigg() {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-01-01'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   }
   const prisma = {
     // ── AGENT 2:S GRIND, MED FLAGGAN AV ────────────────────────────────

@@ -31,7 +31,14 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
   const txMock = {
     // Radlåset (#307 C). Prisma returnerar en tom lista; värdet används inte.
     $queryRaw: jest.fn().mockResolvedValue([]),
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-15'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     rentNoticePayment: { findMany: jest.fn().mockResolvedValue([]) },
     invoicePayment: {

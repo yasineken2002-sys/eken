@@ -85,7 +85,14 @@ function makeService(opts: {
         ),
       create: jest.fn().mockResolvedValue({ id: 'rnp-x' }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-15'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     rentNoticeEvent: { create: jest.fn().mockResolvedValue({}) },
   }
 

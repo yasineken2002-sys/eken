@@ -50,7 +50,14 @@ function makeService(opts: { payable?: number; prior?: number[] } = {}) {
       findMany: jest.fn().mockResolvedValue((opts.prior ?? []).map((n) => ({ amount: dec(n) }))),
       create: jest.fn().mockResolvedValue({ id: 'rnp-42' }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-20'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   }
   const rentNoticeEvents = { record: jest.fn().mockResolvedValue({}) }
   const prisma = { $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)) }

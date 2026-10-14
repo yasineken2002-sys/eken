@@ -65,6 +65,7 @@ import {
   hashaBytes,
 } from './bank-import-identity'
 import { BankImportAttemptService, type Importkvittens } from './bank-import-attempt.service'
+import { bankdagForeBrytdatum, bankdagForeBrytdatumSkal } from '../kundstart/payment-cutover'
 
 /**
  * #F034b — vad ett importFÖRSÖK slutade i, till skillnad från vad det RÄKNADE.
@@ -2240,6 +2241,30 @@ export class ReconciliationService {
   //
   // Nu allokeras det FAKTISKA transaktionsbeloppet (InvoicePayment) och
   // verifikatet bokförs på det. Restskulden är beräknad, aldrig lagrad.
+  /** Anropas under bankradens FOR UPDATE, före varje allokeringsvägs första effekt. */
+  private async bankdagTillaterBetalning(
+    tx: Prisma.TransactionClient,
+    transactionId: string,
+    organizationId: string,
+    userId: string | null,
+  ): Promise<boolean> {
+    const bank = await tx.bankTransaction.findFirst({
+      where: { id: transactionId, organizationId },
+      select: { date: true, organization: { select: { billingCutoverDate: true } } },
+    })
+    if (!bank) throw new NotFoundException('Banktransaktionen hittades inte')
+    // Läs den låsta radens dag, aldrig anroparens potentiellt inaktuella transactionDate.
+    // Samma Stockholm-normalisering som API-importen och samma DATE-format som kundstart.
+    const bankdag = normalizeToStockholmDay(bank.date)
+    const cutover = bank.organization.billingCutoverDate
+    if (!bankdagForeBrytdatum(bankdag, cutover)) return true
+    if (userId === null) return false
+    throw new ConflictException({
+      code: 'BEFORE_CUTOVER',
+      message: bankdagForeBrytdatumSkal(bankdag, cutover!),
+    })
+  }
+
   private async applyMatchToInvoice(
     transactionId: string,
     invoiceId: string,
@@ -2266,6 +2291,8 @@ export class ReconciliationService {
   ): Promise<boolean> {
     const claimedNumber = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      if (!(await this.bankdagTillaterBetalning(tx, transactionId, organizationId, userId)))
+        return false
       const priorBankAllocations = await tx.rentNoticePayment.findMany({
         where: { bankTransactionId: transactionId },
       })
@@ -2530,6 +2557,8 @@ export class ReconciliationService {
       // Lås bankraden före avin. Det gör tillgängliga bankmedel och den nya
       // allokeringen atomiska även när samma inbetalning matchas samtidigt.
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      if (!(await this.bankdagTillaterBetalning(tx, transactionId, organizationId, userId)))
+        return false
 
       // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
       // får därför allokeras bara inom SAMMA vattenfallstransaktion. En redan
@@ -3236,6 +3265,8 @@ export class ReconciliationService {
       // Efter låset får endast den första transaktionen skapa allokeringar;
       // samtidiga försök ser då den redan förbrukade bankbudgeten.
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      if (!(await this.bankdagTillaterBetalning(tx, transactionId, organizationId, userId)))
+        return false
       const priorBankAllocations = await tx.rentNoticePayment.findMany({
         where: { bankTransactionId: transactionId },
       })

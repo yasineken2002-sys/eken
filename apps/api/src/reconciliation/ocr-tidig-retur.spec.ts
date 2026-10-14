@@ -76,7 +76,14 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ id: 'rnp-1' }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-20'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   }
 
   const fuzzyNotices = opts.fuzzyKandidat === false ? [] : [notice]
