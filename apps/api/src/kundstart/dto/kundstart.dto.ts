@@ -1,6 +1,8 @@
 import type {
   ApproveOpeningPackageInput,
   BindOpeningReadInput,
+  CreateOpeningEvidenceInput,
+  ReviewOpeningEvidenceInput,
   FirstPeriodRegisterInput,
   SammaNycklar,
   SeparateLedgerInput,
@@ -160,6 +162,68 @@ export class ApproveOpeningPackageDto implements ApproveOpeningPackageInput {
   @StrictString()
   @Matches(SHA256)
   sourceSha256!: string
+
+  /** KUNDSTART-205: den granskade kundavstämningens sha256 (servern prövar mot sin egen). */
+  @IsString()
+  @StrictString()
+  @Matches(SHA256)
+  evidenceSha256!: string
+}
+
+/**
+ * KUNDSTART-205: kundavstämningsunderlag (OWNER/ADMIN). Text i formaten EVENO-RESKONTRA-1
+ * och EVENO-MAPPNING-1; inga URL-/referensfält. Servern hashar och lagrar exakt bytes.
+ */
+export class CreateOpeningEvidenceDto implements CreateOpeningEvidenceInput {
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(100)
+  sourceSystemProduct!: string
+
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(100)
+  sourceCompanyKey!: string
+
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(2000)
+  scopeDeclaration!: string
+
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(200)
+  sourceName!: string
+
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(900_000)
+  sourceContent!: string
+
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(200)
+  mappingName!: string
+
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(900_000)
+  mappingContent!: string
+}
+
+/** KUNDSTART-205: ekonomigranskarens granskning av exakt en evidensversion (ACCOUNTANT). */
+export class ReviewOpeningEvidenceDto implements ReviewOpeningEvidenceInput {
+  @IsString()
+  @StrictString()
+  @Matches(SHA256)
+  evidenceSha256!: string
 }
 
 /** KOMPILERINGSTIDENS KOPPLING till webben. */
@@ -169,4 +233,6 @@ const _k3: SammaNycklar<BindReadDto, BindOpeningReadInput> = true
 const _k4: SammaNycklar<SeparateLedgerDto, SeparateLedgerInput> = true
 const _k5: SammaNycklar<FirstPeriodRegisterDto, FirstPeriodRegisterInput> = true
 const _k6: SammaNycklar<ApproveOpeningPackageDto, ApproveOpeningPackageInput> = true
+const _k7: SammaNycklar<CreateOpeningEvidenceDto, CreateOpeningEvidenceInput> = true
+const _k8: SammaNycklar<ReviewOpeningEvidenceDto, ReviewOpeningEvidenceInput> = true
 void [_k1, _k2, _k3, _k4, _k5, _k6]

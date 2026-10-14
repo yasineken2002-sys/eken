@@ -52,6 +52,8 @@ export type FirstPeriodRegisterInput = z.infer<typeof firstPeriodRegisterInputSc
 export const approveOpeningPackageInputSchema = z.object({
   version: z.number().int().min(1),
   sourceSha256: sha256,
+  // KUNDSTART-205: den granskade kundavstämningens version (servern prövar mot sin egen).
+  evidenceSha256: sha256,
 })
 export type ApproveOpeningPackageInput = z.infer<typeof approveOpeningPackageInputSchema>
 
@@ -70,3 +72,90 @@ export const chooseLedgerOwnerInputSchema = z.object({
   activationId: z.string().uuid(),
 })
 export type ChooseLedgerOwnerInput = z.infer<typeof chooseLedgerOwnerInputSchema>
+
+// ── KUNDSTART-205 (R165-3): kundavstämning mot tidigare reskontra ────────────────────
+
+/**
+ * POST /kundstart/opening-packages/:id/evidence (OWNER/ADMIN). Källa och mappning skickas
+ * som TEXT i formaten EVENO-RESKONTRA-1 och EVENO-MAPPNING-1 (apps/api/src/kundstart/
+ * EVIDENSFORMAT.md). Inga URL- eller referensfält: bevis är bytes som servern lagrar och
+ * hashar själv. `scopeDeclaration` är en deklaration om omfattning, inte ett bevis.
+ */
+export const createOpeningEvidenceInputSchema = z.object({
+  sourceSystemProduct: z.string().min(1).max(100),
+  sourceCompanyKey: z.string().min(1).max(100),
+  scopeDeclaration: z.string().min(1).max(2000),
+  sourceName: z.string().min(1).max(200),
+  sourceContent: z.string().min(1).max(900_000),
+  mappingName: z.string().min(1).max(200),
+  mappingContent: z.string().min(1).max(900_000),
+})
+export type CreateOpeningEvidenceInput = z.infer<typeof createOpeningEvidenceInputSchema>
+
+/** POST /kundstart/opening-packages/:id/evidence/:evidenceId/review (ACCOUNTANT). */
+export const reviewOpeningEvidenceInputSchema = z.object({ evidenceSha256: sha256 })
+export type ReviewOpeningEvidenceInput = z.infer<typeof reviewOpeningEvidenceInputSchema>
+
+/** Beräknas av servern; skickas aldrig in. */
+export type OpeningEvidenceStatus = 'OK' | 'AVVIKELSE' | 'STOPP'
+
+/** Ett stopp före summering (tolkning, dubblett, saknat/extra, mappning, organisation …). */
+export interface OpeningEvidenceStop {
+  kod: string
+  fil: 'KALLA' | 'MAPPNING' | 'IMPORT' | null
+  rad: number | null
+  nyckel: string | null
+  skal: string
+}
+
+/** En konkret differens per dokument eller per kund/avtal. Belopp i öre; null = saknas. */
+export interface OpeningEvidenceDifference {
+  niva: 'DOKUMENT' | 'KUND_AVTAL'
+  typ: 'RECEIVABLE' | 'DEPOSIT'
+  nyckel: string
+  kund: string | null
+  avtal: string | null
+  falt: string
+  kalla: string | number | null
+  import: string | number | null
+  skal: string
+}
+
+export interface OpeningEvidenceView {
+  id: string
+  evidenceVersion: number
+  packageVersion: number
+  formatVersion: string
+  mappingFormatVersion: string
+  sourceSystemProduct: string
+  sourceCompanyKey: string
+  sourceAsOfDate: string
+  scopeDeclaration: string
+  sourceName: string
+  mappingName: string
+  comparisonStatus: OpeningEvidenceStatus
+  counts: {
+    dokumentKalla: number
+    dokumentImport: number
+    matchade: number
+    avvikelser: number
+    stopp: number
+  }
+  stopp: OpeningEvidenceStop[]
+  avvikelser: OpeningEvidenceDifference[]
+  createdById: string
+  createdAt: string
+  evidenceSha256: string
+  granskning: { reviewerUserId: string; reviewerRole: string; reviewedAt: string } | null
+  /** Serverns omhashning av lagrade bytes mot sparade sha256. */
+  artefaktKontroll: { kallaOk: boolean; mappningOk: boolean }
+  /** Om versionen fortfarande gäller aktuellt paket, brytdatum och kopplingar. */
+  giltighet: { forGranskning: boolean; forGodkannande: boolean; skal: string[] }
+}
+
+export interface OpeningEvidenceListView {
+  packageId: string
+  packageVersion: number
+  aktuell: OpeningEvidenceView | null
+  tidigare: OpeningEvidenceView[]
+}
