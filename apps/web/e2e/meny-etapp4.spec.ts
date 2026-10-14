@@ -10,7 +10,7 @@ import { API, registerOrg, sqlValue } from './helpers/seed'
  * posten "Överföring och avstämning" i Ekonomi; Bokföring finns då kvar som
  * "Bokföringsarkiv". En EVENO-organisation ser exakt dagens meny. Provet mäter
  * det användaren ser i en verklig webbläsare, på desktop och 390 px, och att
- * servern fortfarande nekar fria verifikat (409 EXTERN_HUVUDBOK) — menyn är
+ * servern fortfarande nekar fria verifikat (409 med grindens fasta skäl) — menyn är
  * aldrig spärren.
  *
  * ── Den syntetiska FORTNOX-fixturen ──────────────────────────────────────────
@@ -183,9 +183,15 @@ test.describe('meny-etapp 4: Ekonomi följer det beständiga huvudboksvalet', ()
         ],
       },
     })
+    // Det globala felfiltret sätter error.code till HTTP-statusens namn; grindens
+    // domänkod når klienten som den fasta skältexten i error.message. Texten står
+    // här ordagrant (huvudboksval.ts, fria verifikat) — inte hämtad ur produkten.
     expect(nekad.status()).toBe(409)
-    expect(((await nekad.json()) as { error?: { code?: string } }).error?.code).toBe(
-      'EXTERN_HUVUDBOK',
+    const fel = ((await nekad.json()) as { error?: { code?: string; message?: string } }).error
+    expect(fel?.code).toBe('CONFLICT')
+    expect(fel?.message).toBe(
+      'Organisationen har Fortnox som huvudbok. Fria verifikat bokförs i Fortnox, inte i Eveno. ' +
+        'Avier, betalningar och depositioner hanteras som vanligt i Eveno. Ingenting ändrades.',
     )
     expect(antal()).toBe(fore)
 
