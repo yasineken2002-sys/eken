@@ -51,6 +51,8 @@ function makeInitialNoticesRig(startDate: Date) {
     },
   }
   const prisma = {
+    // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+    $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
     lease: { findUnique: jest.fn().mockResolvedValue(lease) },
     // KUNDSTART: ingen historisk deposition ur öppningspaket.
     deposit: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -144,6 +146,8 @@ describe('T1.3 · A/B: gap-avins förfallodag', () => {
 describe('T1.3 · C: EXPIRED avtal med dagar kvar i månaden aviseras', () => {
   function makeMonthlyRig(leases: unknown[]) {
     const prisma = {
+      // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+      $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
       lease: { findMany: jest.fn().mockResolvedValue(leases) },
       // KUNDSTART: inget brytdatum = oförändrat beteende.
       organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },

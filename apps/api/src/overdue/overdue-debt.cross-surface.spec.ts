@@ -21,6 +21,8 @@
 // och inte transformeras av jest-konfigen. Rapporten rör aldrig lagringen i det
 // här testet (logoStorageKey är null), så modulen attrappas vid gränsen.
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
+// Ingen modell används; SDK-konstruktorn ska inte kräva en extern credential.
+jest.mock('@anthropic-ai/sdk', () => ({ __esModule: true, default: class {} }))
 
 import { OverdueDebtService } from './overdue-debt.service'
 import { DashboardService } from '../dashboard/dashboard.service'
@@ -104,9 +106,23 @@ describe('#325 · alla ytor visar SAMMA tal, och talet är restskulden', () => {
       prisma as never,
       realOverdueService() as never,
       {
-        getRevenueYearToDate: jest
-          .fn()
-          .mockResolvedValue({ total: 0, from: new Date(), to: new Date() }),
+        getBookedRevenueYearToDate: jest.fn().mockResolvedValue({
+          status: 'KNOWN',
+          scope: {
+            organizationId: 'org-1',
+            metric: 'BOOKED_REVENUE',
+            propertyId: null,
+            period: { from: '2026-01-01', to: '2026-07-01' },
+          },
+          source: 'EVENO_LEDGER',
+          accountSystem: 'EVENO',
+          accountRange: [3000, 3999],
+          definition: 'CREDIT_MINUS_DEBIT',
+          currency: 'SEK',
+          amountOre: 0,
+          observedAt: '2026-07-01T08:00:00Z',
+          completeness: 'COMPLETE',
+        }),
       } as never,
     )
 
@@ -164,6 +180,28 @@ describe('#325 · alla ytor visar SAMMA tal, och talet är restskulden', () => {
       ),
     }
 
+    Object.assign(service, {
+      accounting: {
+        getBookedRevenueReport: jest.fn().mockResolvedValue({
+          status: 'KNOWN',
+          scope: {
+            organizationId: 'org-1',
+            metric: 'BOOKED_REVENUE',
+            propertyId: null,
+            period: { from: '2026-01-01', to: '2026-07-01' },
+          },
+          source: 'EVENO_LEDGER',
+          accountSystem: 'EVENO',
+          accountRange: [3000, 3999],
+          definition: 'CREDIT_MINUS_DEBIT',
+          currency: 'SEK',
+          amountOre: 0,
+          observedAt: '2026-07-01T08:00:00Z',
+          completeness: 'COMPLETE',
+        }),
+      },
+    })
+
     const data = await (
       service as unknown as {
         buildReportData: (orgId: string) => Promise<{
@@ -207,9 +245,23 @@ describe('#325 · alla ytor visar SAMMA tal, och talet är restskulden', () => {
       {} as never, // quota — ej rörd i fetchData
       realOverdueService() as never,
       {
-        getRevenueYearToDate: jest
-          .fn()
-          .mockResolvedValue({ total: 0, from: new Date(), to: new Date() }),
+        getBookedRevenueYearToDate: jest.fn().mockResolvedValue({
+          status: 'KNOWN',
+          scope: {
+            organizationId: 'org-1',
+            metric: 'BOOKED_REVENUE',
+            propertyId: null,
+            period: { from: '2026-01-01', to: '2026-07-01' },
+          },
+          source: 'EVENO_LEDGER',
+          accountSystem: 'EVENO',
+          accountRange: [3000, 3999],
+          definition: 'CREDIT_MINUS_DEBIT',
+          currency: 'SEK',
+          amountOre: 0,
+          observedAt: '2026-07-01T08:00:00Z',
+          completeness: 'COMPLETE',
+        }),
       } as never,
     )
 

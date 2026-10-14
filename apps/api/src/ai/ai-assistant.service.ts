@@ -659,7 +659,7 @@ export class AiAssistantService {
 
     // 2. Build data context + memories
     const [dataCtx, memoriesCtx] = await Promise.all([
-      this.dataContext.buildContext(organizationId),
+      this.dataContext.buildContext(organizationId, userRole),
       this.memory.getMemories(organizationId, userId),
     ])
 

@@ -212,7 +212,7 @@ export class AiAssistantController {
       //    memories-injektion som non-streaming chat() så att SSE-flödet
       //    inte får ett degraderat svar.
       const [dataCtx, memoriesCtx] = await Promise.all([
-        this.dataContext.buildContext(organizationId),
+        this.dataContext.buildContext(organizationId, user.role),
         this.memoryService.getMemories(organizationId, user.sub),
       ])
       const dateContext = this.dataContext.getCurrentDateContext()

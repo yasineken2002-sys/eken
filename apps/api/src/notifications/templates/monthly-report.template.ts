@@ -1,10 +1,12 @@
+import { formatBookedRevenue } from '../../ai/report-evidence'
+import type { BookedRevenue } from '../../ai/report-evidence'
 import { formatCurrency, DEFAULT_BRAND_COLOR } from '@eken/shared'
 import { buildBrandedPdfHtml } from '../../common/branding'
 
 // ── Datakontrakt ─────────────────────────────────────────────────────────────
 // Produceras av MonthlyReportService.buildReportData() och konsumeras enbart
-// av generateMonthlyReportHtml() nedan. Alla belopp är råa tal (SEK) —
-// formatering sker i mallen via formatCurrency.
+// av generateMonthlyReportHtml() och månadsnotisen. Bokförd intäkt har ett typat
+// källunderlag (ören när känt); övrig operativ statistik är råa tal i SEK.
 
 export interface MonthlyReportData {
   header: {
@@ -30,13 +32,13 @@ export interface MonthlyReportData {
     }
   }
   summary: {
-    revenue: { current: number; prevMonthPct: number | null; prevYearPct: number | null }
+    revenue: { current: BookedRevenue; prevMonthPct: number | null; prevYearPct: number | null }
     occupancy: { currentPct: number; prevMonthDeltaPct: number | null }
     overdue: { count: number; totalAmount: number; over30Count: number }
     tenants: { newLeases: number; terminatedLeases: number }
   }
   kpis: {
-    revenue: {
+    invoiceStatistics: {
       total: number
       rent: number
       service: number
@@ -62,8 +64,9 @@ export interface MonthlyReportData {
     }
   }
   properties: Array<{
+    propertyId: string
     name: string
-    revenue: number
+    invoiceTotal: number
     occupancyPct: number
     vacant: number
     tickets: number
@@ -123,7 +126,7 @@ function pct(n: number): string {
 // inleds med -, • eller * blir <li>; övriga icke-tomma rader blir rubriker.
 function renderAiInsights(text: string): string {
   if (!text.trim()) {
-    return `<p class="ai-fallback">AI-insikterna kunde inte genereras för denna månad. Övriga delar av rapporten är fullständiga.</p>`
+    return `<p class="ai-fallback">AI-insikterna kunde inte genereras för denna månad. Tillgänglighet och begränsningar anges vid respektive mått.</p>`
   }
   const lines = text.split('\n').map((l) => stripEmoji(l))
   const out: string[] = []
@@ -176,8 +179,10 @@ function buildPage1(data: MonthlyReportData): string {
     <div class="card-grid">
       ${summaryCard(
         '#0F7B3E',
-        'Omsättning denna månad',
-        formatCurrency(s.revenue.current),
+        'Bokförd intäkt denna månad',
+        s.revenue.current.status === 'KNOWN'
+          ? formatCurrency(s.revenue.current.amountOre / 100)
+          : 'Ej fastställbar',
         `${deltaBadge(s.revenue.prevMonthPct)} mot förra månaden`,
         `${deltaBadge(s.revenue.prevYearPct)} mot samma månad förra året`,
       )}
@@ -204,6 +209,7 @@ function buildPage1(data: MonthlyReportData): string {
         `${s.tenants.terminatedLeases} avslutade kontrakt`,
       )}
     </div>
+    <p class="text-muted">${esc(formatBookedRevenue(s.revenue.current))}</p>
   </section>`
 }
 
@@ -215,14 +221,20 @@ function buildPage2(data: MonthlyReportData): string {
     totalPaidCount > 0 ? ` (${Math.round((n / totalPaidCount) * 100)}%)` : ''
 
   const revenueCard = kpiCard(
-    'Intäkter',
-    kpiRow('Total fakturerad intäkt', formatCurrency(k.revenue.total)) +
-      kpiRow('Hyresintäkter (RENT)', formatCurrency(k.revenue.rent)) +
-      kpiRow('Tjänster (SERVICE)', formatCurrency(k.revenue.service)) +
-      kpiRow('Förbrukning (UTILITY)', formatCurrency(k.revenue.utility)) +
-      kpiRow('Deposition (DEPOSIT)', formatCurrency(k.revenue.deposit)) +
-      kpiRow('Övrigt (OTHER)', formatCurrency(k.revenue.other)) +
-      kpiRow('Varav inbetalt under månaden', formatCurrency(k.revenue.paid)),
+    'Fakturastatistik — Invoice, exklusive hyresavier',
+    kpiRow(
+      'Fakturerat i urvalet, inklusive deposition',
+      formatCurrency(k.invoiceStatistics.total),
+    ) +
+      kpiRow('Hyresfakturor (RENT)', formatCurrency(k.invoiceStatistics.rent)) +
+      kpiRow('Tjänster (SERVICE)', formatCurrency(k.invoiceStatistics.service)) +
+      kpiRow('Förbrukning (UTILITY)', formatCurrency(k.invoiceStatistics.utility)) +
+      kpiRow('Deposition (DEPOSIT)', formatCurrency(k.invoiceStatistics.deposit)) +
+      kpiRow('Övrigt (OTHER)', formatCurrency(k.invoiceStatistics.other)) +
+      kpiRow(
+        'Fakturor markerade betalda under månaden (totalbelopp)',
+        formatCurrency(k.invoiceStatistics.paid),
+      ),
   )
 
   const occupancyCard = kpiCard(
@@ -278,7 +290,7 @@ function buildPage3(data: MonthlyReportData): string {
             (p) => `
         <tr>
           <td class="td-name">${esc(p.name)}</td>
-          <td class="td-num">${formatCurrency(p.revenue)}</td>
+          <td class="td-num">${formatCurrency(p.invoiceTotal)}</td>
           <td class="td-num">${pct(p.occupancyPct)}</td>
           <td class="td-num">${p.vacant}</td>
           <td class="td-num">${p.tickets}</td>
@@ -289,11 +301,12 @@ function buildPage3(data: MonthlyReportData): string {
   return `
   <section class="page">
     <h2 class="section-title">Per fastighet</h2>
+    <p class="text-muted">Fakturastatistik inklusive deposition, exklusive hyresavier. Inte bokförd intäkt eller fastighetsresultat. Noll gäller bara detta Invoice-urval.</p>
     <table class="data-table">
       <thead>
         <tr>
           <th>Fastighet</th>
-          <th class="th-num">Intäkter</th>
+          <th class="th-num">Fakturerat i Invoice-urvalet</th>
           <th class="th-num">Beläggning</th>
           <th class="th-num">Vakanta</th>
           <th class="th-num">Ärenden</th>

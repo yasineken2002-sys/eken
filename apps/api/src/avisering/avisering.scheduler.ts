@@ -5,6 +5,7 @@ import { runCronSafely } from '../common/cron/cron-safety'
 import { AviseringService } from './avisering.service'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
+import { INCOMPLETE_OPENING_REASON } from '../kundstart/incomplete-opening'
 
 /**
  * Schemalagd generering av månatliga hyresavier. Körs 1:a varje månad
@@ -92,6 +93,8 @@ export class AviseringScheduler {
      * signalen förlorad i den andra.
      */
     blocked: number
+    blockedByOpening: number
+    blockedReason: string | null
   }> {
     const orgs = await this.prisma.organization.findMany({
       where: { status: { in: [...AVISERING_ORG_STATUSES] } },
@@ -103,6 +106,7 @@ export class AviseringScheduler {
     let failed = 0
     let queued = 0
     let blocked = 0
+    let blockedByOpening = 0
 
     for (const org of orgs) {
       try {
@@ -110,6 +114,10 @@ export class AviseringScheduler {
         created += result.created
         skipped += result.skipped
         failed += result.failed
+        blockedByOpening += result.blockedByOpening ?? 0
+        if (result.blockedByOpening) {
+          this.logger.warn(`[avisering-cron] ${INCOMPLETE_OPENING_REASON}`)
+        }
 
         let sendFailed = 0
         let sendBlocked = 0
@@ -164,6 +172,8 @@ export class AviseringScheduler {
       failed,
       queued,
       blocked,
+      blockedByOpening,
+      blockedReason: blockedByOpening > 0 ? INCOMPLETE_OPENING_REASON : null,
     }
   }
 }

@@ -623,14 +623,18 @@ medDb('F02 — betalda fakturors total per HELA svenska kalenderdagar', () => {
   })
 
   it('måtten skiljer sig begripligt: kontexten och verktyget säger olika saker om samma org', async () => {
+    const observation = jest.spyOn(accounting, 'getBookedRevenueYearToDate')
     const text = await context.buildContext(orgId)
+    const evidence = await observation.mock.results[0]!.value
+    observation.mockRestore()
+    expect(evidence.status).toBe('KNOWN')
     skriv('F02-kontext.txt', text)
     const år = await accounting.getRevenueYearToDate(orgId, new Date())
     expect(radMed(text, 'Förväntad månadshyra')).toBe(
       `Förväntad månadshyra (avtalad, aktiva kontrakt): ${kr(10_000)}`,
     )
     expect(radMed(text, 'Bokförd intäkt i år')).toBe(
-      `Bokförd intäkt i år (Σ 3xxx, räkenskapsår-till-idag): ${kr(år.total)}`,
+      `Bokförd intäkt i år (Σ 3xxx, räkenskapsår-till-idag): ${kr(år.total)} — källa: Evenos huvudbok, 3xxx kredit−debet, period ${evidence.scope.period!.from}–${evidence.scope.period!.to}, läst per ${evidence.observedAt}`,
     )
     const verktyget = (await rev('2026-08-01', '2026-08-31')).data?.totalRevenue
     const bokfördAug = await accounting.getRevenueTotal(

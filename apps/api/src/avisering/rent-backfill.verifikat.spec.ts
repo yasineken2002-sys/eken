@@ -27,6 +27,8 @@ function makeRig(opts: {
   let noticeData: Record<string, unknown> | null = null
 
   const tx = {
+    // R198: befintlig organisation med NULL-brytdatum vid transaktionens orglås.
+    $queryRaw: jest.fn().mockResolvedValue([{ billingCutoverDate: null }]),
     // M3: avinumret allokeras ur RentNoticeNumberSequence. Räknaren gör att
     // riggen ger löpande nummer i stället för samma varje gång.
     rentNoticeNumberSequence: {

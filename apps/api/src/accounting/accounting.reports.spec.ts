@@ -31,7 +31,13 @@ function makeService(opts?: {
   const prisma = {
     account: { findMany: jest.fn().mockResolvedValue(vatAccounts) },
     // KUNDSTART: ingen öppning → öppningskomponent null.
-    organization: { findUnique: jest.fn().mockResolvedValue({ billingCutoverDate: null }) },
+    organization: {
+      findUnique: jest.fn().mockResolvedValue({
+        billingCutoverDate: null,
+        ledgerOwner: 'EVENO',
+        fiscalYearStartMonth: 1,
+      }),
+    },
     openingPackage: { findMany: jest.fn().mockResolvedValue([]) },
     journalEntryLine: {
       findMany: jest.fn().mockResolvedValue(opts?.lines ?? []),
@@ -103,11 +109,13 @@ describe('AccountingService — resultaträkning', () => {
     expect(r.result).toBe(35000)
   })
 
-  it('propertyId sätter propertyFilter + note (kostnader ej taggade per fastighet)', async () => {
+  it('propertyId avstår när verifierad fördelning saknas', async () => {
     const { service } = makeService({ lines: [] })
-    const r = await service.getProfitLossReport('org-1', '2026-01-01', '2026-12-31', 'prop-9')
-    expect(r.propertyFilter).toBe('prop-9')
-    expect(r.note).toContain('taggade per fastighet')
+    await expect(
+      service.getProfitLossReport('org-1', '2026-01-01', '2026-12-31', 'prop-9'),
+    ).rejects.toMatchObject({
+      response: { code: 'REPORT_NOT_DETERMINABLE', reason: 'PROPERTY_ALLOCATION_UNVERIFIED' },
+    })
   })
 })
 

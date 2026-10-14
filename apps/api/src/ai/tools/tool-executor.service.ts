@@ -1,4 +1,12 @@
-import { Injectable, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
+import { assertEvenoReport } from '../../accounting/huvudboksval'
+import { REPORT_NOT_DETERMINABLE, isReportReason, reportFailure } from '../report-evidence'
+import {
+  Injectable,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { assertUppdragsgivare, runAsAi } from '../../common/ai-origin/ai-origin.context'
 import { krävMänskligtSubjekt } from './human-subject'
@@ -4320,7 +4328,7 @@ export class ToolExecutorService {
             success: true,
             data,
             message:
-              `${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}` +
+              `Evenos lokala journal (inte en extern huvudboksrapport): ${data.length} verifikat hittades${accountFilter ? ` på konto ${accountFilter}` : ''}` +
               (trunkerad
                 ? ` bland de ${all.length} senaste av totalt ${sida.total} — urvalet är INTE hela ` +
                   'huvudboken; snäva in med fromDate/toDate för en fullständig bild.'
@@ -4329,6 +4337,7 @@ export class ToolExecutorService {
         }
 
         case 'get_account_balance': {
+          await assertEvenoReport(this.prisma, organizationId)
           const accountNumber =
             typeof toolInput.accountNumber === 'number' ? toolInput.accountNumber : NaN
           if (!Number.isFinite(accountNumber)) {
@@ -4738,7 +4747,7 @@ export class ToolExecutorService {
               data: closed.summary,
               message:
                 `Period ${year}-${String(month).padStart(2, '0')} stängd. ` +
-                `Intäkter ${formatAmount(closed.summary.revenue)} kr, kostnader ` +
+                `Evenos lokala journal: Intäkter ${formatAmount(closed.summary.revenue)} kr, kostnader ` +
                 `${formatAmount(closed.summary.expenses)} kr, resultat ` +
                 `${formatAmount(closed.summary.result)} kr.` +
                 (warnings.length > 0
@@ -4867,6 +4876,19 @@ export class ToolExecutorService {
           return { success: false, message: `Okänt verktyg: ${toolName}` }
       }
     } catch (error) {
+      if (error instanceof ConflictException) {
+        const body = error.getResponse()
+        if (
+          typeof body === 'object' &&
+          'code' in body &&
+          body.code === REPORT_NOT_DETERMINABLE &&
+          'reason' in body &&
+          isReportReason(body.reason)
+        ) {
+          const failure = reportFailure(body.reason)
+          return { success: false, data: failure, message: failure.message }
+        }
+      }
       // FIX 4: all unexpected errors return gracefully instead of throwing
       const msg = error instanceof Error ? error.message : String(error)
       return {

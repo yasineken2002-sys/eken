@@ -9,6 +9,7 @@ import { StatCard } from '@/components/ui/StatCard'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { formatCurrency } from '@eken/shared'
 import { cn } from '@/lib/cn'
+import { extractApiError } from '@/lib/api'
 import { useBalanceSheet, useProfitLoss, useVatReport } from './hooks/useReports'
 import { downloadSie4 } from './api/reports.api'
 import type { BalanceSheet, ProfitLossReport, ReportAccountAmount, VatReport } from '@eken/shared'
@@ -40,13 +41,13 @@ function LoadingRows() {
   )
 }
 
-function ErrorState() {
+function ErrorState({ error }: { error: unknown }) {
   return (
     <div className="mt-5">
       <EmptyState
         icon={FileX}
         title="Kunde inte hämta rapporten"
-        description="Kontrollera perioden och försök igen."
+        description={extractApiError(error, 'Kontrollera perioden och försök igen.')}
       />
     </div>
   )
@@ -490,7 +491,7 @@ export function ReportsPage() {
           (pl.isLoading ? (
             <LoadingRows />
           ) : pl.isError ? (
-            <ErrorState />
+            <ErrorState error={pl.error} />
           ) : pl.data ? (
             <ProfitLossView data={pl.data} />
           ) : null)}
@@ -499,7 +500,7 @@ export function ReportsPage() {
           (bs.isLoading ? (
             <LoadingRows />
           ) : bs.isError ? (
-            <ErrorState />
+            <ErrorState error={bs.error} />
           ) : bs.data ? (
             <BalanceSheetView data={bs.data} />
           ) : null)}
@@ -508,7 +509,7 @@ export function ReportsPage() {
           (vat.isLoading ? (
             <LoadingRows />
           ) : vat.isError ? (
-            <ErrorState />
+            <ErrorState error={vat.error} />
           ) : vat.data ? (
             <VatView data={vat.data} />
           ) : null)}
