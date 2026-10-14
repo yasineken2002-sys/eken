@@ -354,6 +354,7 @@ async function snapshot(f: Fixture) {
     db.rentNoticeNumberSequence.findMany({ where: { organizationId: f.id } }),
     db.openingPackage.findMany({
       where: { organizationId: f.id },
+      orderBy: { id: 'asc' },
       select: { id: true, status: true, cutoverDate: true, version: true, sourceSha256: true },
     }),
     f.cutover.get(f.id),
