@@ -3,6 +3,10 @@ import type {
   ChooseLedgerOwnerInput,
   ApproveOpeningPackageInput,
   BindOpeningReadInput,
+  CreateOpeningEvidenceInput,
+  OpeningEvidenceListView,
+  OpeningEvidenceView,
+  ReviewOpeningEvidenceInput,
   FirstPeriodRegisterInput,
   SeparateLedgerInput,
   SetCutoverInput,
@@ -133,6 +137,13 @@ export const setSeparateLedger = (id: string, b: SeparateLedgerInput) =>
     .then((r) => r.data)
 export const approvePackage = (id: string, b: ApproveOpeningPackageInput) =>
   post<OpeningPackage>(`/kundstart/opening-packages/${id}/approve`, b)
+// KUNDSTART-205: kundavstämning mot tidigare reskontra (servern jämför, lagrar och binder).
+export const fetchEvidence = (id: string) =>
+  get<OpeningEvidenceListView>(`/kundstart/opening-packages/${id}/evidence`)
+export const createEvidence = (id: string, b: CreateOpeningEvidenceInput) =>
+  post<OpeningEvidenceView>(`/kundstart/opening-packages/${id}/evidence`, b)
+export const reviewEvidence = (id: string, evidenceId: string, b: ReviewOpeningEvidenceInput) =>
+  post<OpeningEvidenceView>(`/kundstart/opening-packages/${id}/evidence/${evidenceId}/review`, b)
 export const executePackage = (id: string) =>
   post<{ status: 'EXECUTED'; fordringar?: number; depositioner?: number }>(
     `/kundstart/opening-packages/${id}/execute`,
