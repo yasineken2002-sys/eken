@@ -46,6 +46,12 @@ import {
 import { FortnoxMappingService } from './fortnox-mapping.service'
 import { CutoverService } from '../kundstart/cutover.service'
 import { OpeningPackageService } from '../kundstart/opening-package.service'
+import { OpeningEvidenceService } from '../kundstart/opening-evidence.service'
+import {
+  fixtureEvidenceInput,
+  reviewedFixtureEvidence,
+} from '../kundstart/opening-evidence.fixtures'
+import { SOURCE_HEADER, MAPPING_HEADER } from '../kundstart/opening-evidence-format'
 import { OcrService } from '../common/ocr/ocr.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
@@ -204,7 +210,7 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     const sender = new FortnoxSendService(db, connections, verified, reader, writer)
     const readback = new FortnoxReadbackService(db, connections, reader, writer)
     const aktivering = new FortnoxCustomerActivationService(db, config)
-    const paket = new OpeningPackageService(db, new OcrService(db))
+    const paket = new OpeningPackageService(db, new OcrService(db), new OpeningEvidenceService(db))
     const ägare = { sub: owner.id, role: 'OWNER' as const }
 
     const { authUrl } = await connections.begin(org.id, owner.id)
@@ -214,6 +220,8 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
     await connections.setExportOmitDimensions(org.id, owner.id, true)
     await new CutoverService(db).set(org.id, ägare, CUT)
     let depCsv = HUVUD
+    let source = SOURCE_HEADER,
+      mapping = MAPPING_HEADER
     if (dep !== null) {
       // Syntetisk hyresgäst och avtal med en DOKUMENTERAT mottagen deposition före brytdatum.
       const prop = await prisma.property.create({
@@ -248,7 +256,7 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
           ocrNumber: `9${String(Date.now()).slice(-9)}`,
         },
       })
-      await prisma.lease.create({
+      const lease = await prisma.lease.create({
         data: {
           organizationId: org.id,
           unitId: unit.id,
@@ -268,6 +276,8 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       ] as const)
         await prisma.account.create({ data: { organizationId: org.id, number, name, type } })
       depCsv = `${HUVUD}\nKC2-D1;DEPOSITION;${ten.ocrNumber};KC2-${sfx};;;;;;${dep};${dep};2025-01-01`
+      source += `\nREGRESSION;A;K-1;KC2-D1;DEPOSIT;;;${Math.round(dep * 100)};0;0;${Math.round(dep * 100)};2025-01-01;syntetiskt kvitto KC2-D1`
+      mapping += `\nREGRESSION;A;K-1;${ten.id};${lease.id};syntetisk kontraktskontroll`
     }
 
     // Nollöppning med verklig (Mock-)läsning: IB 0 + inga rörelser t.o.m. 2026-10-31.
@@ -299,7 +309,18 @@ medDb('KUNDSTART kundaktivering mot riktig Postgres', () => {
       forskottskonton: [2420],
     })
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pk.id } })
-    await paket.approve(org.id, pk.id, ägare, { version: g.version, sourceSha256: g.sourceSha256 })
+    const evidenceSha256 = await reviewedFixtureEvidence(
+      prisma,
+      org.id,
+      pk.id,
+      ägare,
+      fixtureEvidenceInput(orgnr, new Date(CUT), source, mapping, 'REGRESSION'),
+    )
+    await paket.approve(org.id, pk.id, ägare, {
+      version: g.version,
+      sourceSha256: g.sourceSha256,
+      evidenceSha256,
+    })
     await paket.execute(org.id, pk.id, ägare)
     // Kompletterande riskkontroll: läsning över brytdatum på 1510, intäkts- och förskottskonto.
     const riskLas = () =>

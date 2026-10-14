@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { getFortnoxSeriesCatalog } from '@/features/settings/api/fortnox-export.api'
+import { KundavstamningPanel, godkannandeHinder, useKundavstamning } from './KundavstamningPanel'
 import { startFortnoxRead } from '@/features/settings/api/fortnox.api'
 import {
   approvePackage,
@@ -246,6 +247,10 @@ function KundstartScoped() {
 
 function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }) {
   const role = useAuthStore((s) => s.user?.role)
+  const userId = useAuthStore((s) => s.user?.id)
+  // KUNDSTART-205: kundavstämningen styr om ägaren kan godkänna (servern prövar igen).
+  const evidens = useKundavstamning(id)
+  const hinder = godkannandeHinder(evidens.data, userId)
   const isOwner = role === 'OWNER'
   const kanSkriva = role === 'OWNER' || role === 'ADMIN'
   const qc = useQueryClient()
@@ -337,7 +342,11 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
   })
   const godkann = useMutation({
     mutationFn: () =>
-      approvePackage(id, { version: q.data!.version, sourceSha256: q.data!.sourceSha256 }),
+      approvePackage(id, {
+        version: q.data!.version,
+        sourceSha256: q.data!.sourceSha256,
+        evidenceSha256: evidens.data!.aktuell!.evidenceSha256,
+      }),
     onSuccess: refresh,
   })
   const verkstall = useMutation({ mutationFn: () => executePackage(id), onSuccess: refresh })
@@ -621,9 +630,23 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
         </div>
       )}
 
+      {p.status !== 'DRAFT' && p.status !== 'DISCARDED' && (
+        <KundavstamningPanel packageId={p.id} packageStatus={p.status} />
+      )}
+
       {p.status === 'VALIDATED' && (
         <div className="space-y-2 rounded-xl border border-gray-100 p-3">
           <h4 className="text-ink text-sm font-semibold">Godkännande (ägaren)</h4>
+          {hinder.length > 0 && (
+            <ul
+              data-testid="godkannande-sparr"
+              className="list-disc pl-5 text-[13px] text-amber-800"
+            >
+              {hinder.map((h) => (
+                <li key={h}>{h}</li>
+              ))}
+            </ul>
+          )}
           {isOwner ? (
             <>
               <label className="text-ink flex items-start gap-2 text-sm">
@@ -640,7 +663,7 @@ function PaketVy({ id, cutoverDate }: { id: string; cutoverDate: string | null }
               </label>
               <Button
                 size="sm"
-                disabled={!bekraftGodk}
+                disabled={!bekraftGodk || hinder.length > 0}
                 loading={godkann.isPending}
                 onClick={() => godkann.mutate()}
               >

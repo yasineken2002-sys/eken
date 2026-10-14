@@ -73,6 +73,12 @@ const SKYDDADE = [
   // Samma undantag och samma funktion som AccountingPeriodEvent och
   // TenantAnonymizationLog — `append_only_guard_actor('actorUserId')`.
   'LateFiscalYearPosting',
+  // KUNDSTART-205: kundavstämningens underlag och ekonomigranskarens granskning. En
+  // ändrad källa, mappning eller granskning ska vara en NY version, aldrig en UPDATE –
+  // annars kan ett godkännande peka på något annat än det som granskades. Satsnivå
+  // räcker: FK:erna är CASCADE och aktörs-id är nakna kolumner utan relation.
+  'OpeningEvidence',
+  'OpeningEvidenceReview',
   'PiiSecretRotation',
   'RentNoticeCredit',
   'RentNoticeEvent',

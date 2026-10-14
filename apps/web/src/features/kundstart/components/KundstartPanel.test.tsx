@@ -23,6 +23,7 @@ const api = {
   saveCutover: vi.fn(),
   approvePackage: vi.fn(),
   executePackage: vi.fn(),
+  fetchEvidence: vi.fn(),
 }
 vi.mock('../api/kundstart.api', async (orig) => {
   const o = (await orig()) as Record<string, unknown>
@@ -34,6 +35,7 @@ vi.mock('../api/kundstart.api', async (orig) => {
     saveCutover: (d: string | null) => api.saveCutover(d),
     approvePackage: (id: string, b: unknown) => api.approvePackage(id, b),
     executePackage: (id: string) => api.executePackage(id),
+    fetchEvidence: (id: string) => api.fetchEvidence(id),
   }
 })
 
@@ -120,6 +122,13 @@ beforeEach(() => {
   })
   api.fetchPackages.mockResolvedValue([paket()])
   api.fetchPackage.mockResolvedValue(paket())
+  // KUNDSTART-205: utan kundavstämning finns inget att granska eller godkänna.
+  api.fetchEvidence.mockResolvedValue({
+    packageId: 'p1',
+    packageVersion: 2,
+    aktuell: null,
+    tidigare: [],
+  })
 })
 afterEach(cleanup)
 
@@ -149,8 +158,51 @@ describe('KundstartPanel', () => {
     expect(screen.queryByLabelText('Brytdatum, månad')).toBeNull()
   })
 
+  it('KUNDSTART-205: utan granskad kundavstämning går paketet inte att godkänna', async () => {
+    rendera()
+    fireEvent.click(await screen.findByText('paket.csv'))
+    expect((await screen.findByTestId('godkannande-sparr')).textContent).toMatch(
+      /Ingen kundavstämning/,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: /granskat version 2/ }))
+    const knapp = screen.getByRole('button', { name: 'Godkänn paketet' }) as HTMLButtonElement
+    expect(knapp.disabled).toBe(true)
+  })
+
   it('DIFFERENS: förklaras, ingen kvitteringsknapp finns; godkännande binds till version och sha', async () => {
     api.approvePackage.mockResolvedValue(paket({ status: 'APPROVED' }))
+    // KUNDSTART-205: granskad (av annan användare) och giltig kundavstämning för version 2.
+    api.fetchEvidence.mockResolvedValue({
+      packageId: 'p1',
+      packageVersion: 2,
+      aktuell: {
+        id: 'e1',
+        evidenceVersion: 1,
+        packageVersion: 2,
+        formatVersion: 'EVENO-RESKONTRA-1',
+        mappingFormatVersion: 'EVENO-MAPPNING-1',
+        sourceSystemProduct: 'SYNTETISK',
+        sourceCompanyKey: 'GAMMALT-AB',
+        sourceAsOfDate: '2026-10-31',
+        scopeDeclaration: 'Hela',
+        declaredSourceOrgNumber: '556677-8899',
+        sourceExportedAt: '2026-11-01T08:00:00Z',
+        scopeResponsible: 'Ekonomichef',
+        sourceName: 'r.csv',
+        mappingName: 'm.csv',
+        comparisonStatus: 'OK',
+        counts: { dokumentKalla: 1, dokumentImport: 1, matchade: 1, avvikelser: 0, stopp: 0 },
+        stopp: [],
+        avvikelser: [],
+        createdById: 'admin',
+        createdAt: '2026-10-14T00:00:00Z',
+        evidenceSha256: 'b'.repeat(64),
+        granskning: { reviewerUserId: 'acc', reviewerRole: 'ACCOUNTANT', reviewedAt: '2026-10-14' },
+        artefaktKontroll: { kallaOk: true, mappningOk: true },
+        giltighet: { forGranskning: false, forGodkannande: true, skal: [] },
+      },
+      tidigare: [],
+    })
     rendera()
     fireEvent.click(await screen.findByText('paket.csv'))
     await screen.findByText(/kan inte godkännas bort/)
@@ -163,6 +215,7 @@ describe('KundstartPanel', () => {
       expect(api.approvePackage).toHaveBeenCalledWith('p1', {
         version: 2,
         sourceSha256: 'a'.repeat(64),
+        evidenceSha256: 'b'.repeat(64),
       }),
     )
   })

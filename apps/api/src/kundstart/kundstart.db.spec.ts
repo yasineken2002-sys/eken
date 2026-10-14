@@ -31,6 +31,13 @@ import { OcrService } from '../common/ocr/ocr.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import { CutoverService } from './cutover.service'
 import { OpeningPackageService } from './opening-package.service'
+import { OpeningEvidenceService } from './opening-evidence.service'
+import {
+  fixtureActor,
+  fixtureEvidenceInput,
+  reviewedFixtureEvidence,
+} from './opening-evidence.fixtures'
+import { SOURCE_HEADER, MAPPING_HEADER } from './opening-evidence-format'
 import { oppningskomponent, historiskSkuld } from './opening-component'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -210,11 +217,11 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       createForAllOrgUsers: async () => undefined,
     } as never)
     cutover = new CutoverService(p)
-    paket = new OpeningPackageService(p, ocr)
+    paket = new OpeningPackageService(p, ocr, new OpeningEvidenceService(p))
 
     const o = await skapaOrg(ORG)
     OWNER.sub = o.userId
-    ADMIN.sub = o.userId
+    ADMIN.sub = (await fixtureActor(prisma, ORG, 'ADMIN')).sub
     connId = o.connId
     await prisma.property.create({
       data: {
@@ -326,52 +333,29 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
 
   const rad = (...c: (string | number)[]) => c.join(';')
   const GILTIG = [
-    HUVUD,
-    rad(
-      'F1',
-      'FORDRAN',
-      '7771000011',
-      'K-1',
-      '',
-      '',
-      2026,
-      10,
-      '2026-10-31',
-      '6000,00',
-      '6000,00',
-      '',
-    ),
-    // A3: avslutat avtal med verklig skuld inom löptiden (giltigt).
-    rad(
-      'F2',
-      'FORDRAN',
-      `${K}-t2@example.invalid`,
-      'K-2',
-      '',
-      '',
-      2026,
-      8,
-      '2026-08-31',
-      '5000',
-      '4000',
-      '',
-    ),
-    // A10: dokumenterat mottagen deposition.
-    rad(
-      'D3',
-      'DEPOSITION',
-      '7771000033',
-      '',
-      'Riggfastigheten',
-      '1003',
-      '',
-      '',
-      '',
-      '12000',
-      '12000',
-      '2026-02-01',
-    ),
+    HUVUD + ';betaltBelopp;krediteratBelopp',
+    'F1;FORDRAN;7771000011;K-1;;;2026;10;2026-10-31;6000,00;6000,00;;0;0',
+    `F2;FORDRAN;${K}-t2@example.invalid;K-2;;;2026;8;2026-08-31;5000;4000;;1000;0`,
+    'D3;DEPOSITION;7771000033;;Riggfastigheten;1003;;;;12000;12000;2026-02-01;;',
   ].join('\n')
+  // Separately declared ledger: values are not read from imported package rows.
+  const KALLA =
+    SOURCE_HEADER +
+    '\n' +
+    [
+      'REGRESSION;A;K-1;F1;RECEIVABLE;2026-10;2026-10-31;600000;0;0;600000;;',
+      'REGRESSION;B;K-2;F2;RECEIVABLE;2026-08;2026-08-31;500000;100000;0;400000;;',
+      'REGRESSION;C;K-3;D3;DEPOSIT;;;1200000;0;0;1200000;2026-02-01;syntetiskt kvitto D3',
+    ].join('\n')
+  const MAPPNING =
+    MAPPING_HEADER +
+    '\n' +
+    [1, 2, 3]
+      .map(
+        (n) =>
+          `REGRESSION;${['A', 'B', 'C'][n - 1]};K-${n};${ORG}-t${n};${ORG}-l${n};syntetisk kontraktskontroll`,
+      )
+      .join('\n')
 
   // ── Brytdatum ──────────────────────────────────────────────────────────────
   it('C2: brytdatum mitt i månaden avvisas med skäl; bara OWNER sätter; den 1:a godtas', async () => {
@@ -473,7 +457,7 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
   it('utkast + ny version: ny fil höjer versionen och kräver ny validering', async () => {
     const pk = await paket.create(ORG, ADMIN, {
       sourceName: 'v1.csv',
-      innehall: GILTIG.replace('4000', '3999'),
+      innehall: GILTIG.replace('4000', '3999').replace('1000;0', '1001;0'),
     })
     pkgId = pk.id
     const v1 = await paket.validate(ORG, pkgId, ADMIN)
@@ -599,7 +583,18 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
     const g0 = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
     if (!g0.firstPeriodRegister) await registrera(ORG, pkgId, OWNER)
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
-    return paket.approve(ORG, pkgId, OWNER, { version: g.version, sourceSha256: g.sourceSha256 })
+    const evidenceSha256 = await reviewedFixtureEvidence(
+      prisma,
+      ORG,
+      pkgId,
+      OWNER,
+      fixtureEvidenceInput(ORGNR, new Date('2026-11-01'), KALLA, MAPPNING, 'REGRESSION'),
+    )
+    return paket.approve(ORG, pkgId, OWNER, {
+      version: g.version,
+      sourceSha256: g.sourceSha256,
+      evidenceSha256,
+    })
   }
   const omvalidera = async () => {
     await paket.validate(ORG, pkgId, ADMIN)
@@ -613,7 +608,11 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
   it('KUNDSTART-009: utan register för första perioden, eller med poster i det, kan paketet inte godkännas', async () => {
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
     await expect(
-      paket.approve(ORG, pkgId, OWNER, { version: g.version, sourceSha256: g.sourceSha256 }),
+      paket.approve(ORG, pkgId, OWNER, {
+        version: g.version,
+        sourceSha256: g.sourceSha256,
+        evidenceSha256: '0'.repeat(64),
+      }),
     ).rejects.toThrow(/Underlag för första perioden saknas/)
     // Täckningen måste börja på brytdatum och omfatta hela första månaden.
     await expect(
@@ -636,7 +635,11 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       `${REG_HUVUD}\nR1;7771000011;K-1;2026;11;GS-2026-11-1;6000;6000`,
     )
     await expect(
-      paket.approve(ORG, pkgId, OWNER, { version: g.version, sourceSha256: g.sourceSha256 }),
+      paket.approve(ORG, pkgId, OWNER, {
+        version: g.version,
+        sourceSha256: g.sourceSha256,
+        evidenceSha256: '0'.repeat(64),
+      }),
     ).rejects.toThrow(/Version 1 kan inte representera/)
     await registrera(ORG, pkgId, OWNER)
   })
@@ -644,10 +647,18 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
   it('godkännande: bara OWNER, bundet till den granskade versionen och filen', async () => {
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pkgId } })
     await expect(
-      paket.approve(ORG, pkgId, ADMIN, { version: g.version, sourceSha256: g.sourceSha256 }),
+      paket.approve(ORG, pkgId, ADMIN, {
+        version: g.version,
+        sourceSha256: g.sourceSha256,
+        evidenceSha256: '0'.repeat(64),
+      }),
     ).rejects.toBeInstanceOf(ForbiddenException)
     await expect(
-      paket.approve(ORG, pkgId, OWNER, { version: g.version - 1, sourceSha256: g.sourceSha256 }),
+      paket.approve(ORG, pkgId, OWNER, {
+        version: g.version - 1,
+        sourceSha256: g.sourceSha256,
+        evidenceSha256: '0'.repeat(64),
+      }),
     ).rejects.toThrow(/ändrats sedan du granskade/)
   })
 
@@ -1185,11 +1196,26 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
     await registrera(ORG0, pk.id, ägare)
     const g = await prisma.openingPackage.findUniqueOrThrow({ where: { id: pk.id } })
     await expect(
-      paket.approve(ORG0, pk.id, ägare, { version: g.version, sourceSha256: g.sourceSha256 }),
+      paket.approve(ORG0, pk.id, ägare, {
+        version: g.version,
+        sourceSha256: g.sourceSha256,
+        evidenceSha256: '0'.repeat(64),
+      }),
     ).rejects.toThrow(/Nollöppning kräver/)
     const noll = await lasning(ORG0, fel.connectionId, 0, 0)
     await paket.bindFortnoxRead(ORG0, pk.id, ägare, noll.id)
-    await paket.approve(ORG0, pk.id, ägare, { version: g.version, sourceSha256: g.sourceSha256 })
+    const evidenceSha256 = await reviewedFixtureEvidence(
+      prisma,
+      ORG0,
+      pk.id,
+      ägare,
+      fixtureEvidenceInput('559999-0002', new Date('2026-11-01'), SOURCE_HEADER, MAPPING_HEADER),
+    )
+    await paket.approve(ORG0, pk.id, ägare, {
+      version: g.version,
+      sourceSha256: g.sourceSha256,
+      evidenceSha256,
+    })
     const r = await paket.execute(ORG0, pk.id, ägare)
     expect(r).toMatchObject({ status: 'EXECUTED', fordringar: 0, depositioner: 0 })
     // Ett paket med rader kan inte kallas nollöppning.

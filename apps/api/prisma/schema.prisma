@@ -338,6 +338,13 @@ enum OpeningPackageStatus {
   DISCARDED
 }
 
+// KUNDSTART-205 (R165-3): kundavstämningens beräknade utfall. Skickas aldrig in.
+enum OpeningEvidenceStatus {
+  OK
+  AVVIKELSE
+  STOPP
+}
+
 enum OpeningReconciliationStatus {
   AVSTAMD
   AVGRANSAD
@@ -1017,17 +1024,19 @@ model Organization {
   supplierInvoices SupplierInvoice[]
 
   // G2-AVSLUT — granskningspausens perioder.
-  bankIdentityReviewPauses   BankIdentityReviewPause[]
-  bankImportStops            BankImportStop[]
-  openingPackages            OpeningPackage[]
-  fortnoxCustomerActivations FortnoxCustomerActivation[] @relation("KundaktiveringOrganisation")
+  bankIdentityReviewPauses       BankIdentityReviewPause[]
+  bankImportStops                BankImportStop[]
+  openingPackages                OpeningPackage[]
+  openingEvidence                OpeningEvidence[]
+  openingEvidenceReviews         OpeningEvidenceReview[]
+  fortnoxCustomerActivations     FortnoxCustomerActivation[]     @relation("KundaktiveringOrganisation")
   fortnoxAccountMappingRevisions FortnoxAccountMappingRevision[]
-  openingExecutedSources     OpeningExecutedSource[]
+  openingExecutedSources         OpeningExecutedSource[]
   // KUNDSTART: första dag Eveno fakturerar (alltid den 1:a i en månad, svensk
   // kalender). NULL = ingen gräns (oförändrat beteende). Låses efter ekonomisk effekt.
-  billingCutoverDate         DateTime?                   @db.Date
-  billingCutoverSetAt        DateTime?
-  billingCutoverSetById      String?
+  billingCutoverDate             DateTime?                       @db.Date
+  billingCutoverSetAt            DateTime?
+  billingCutoverSetById          String?
 
   @@index([orgNumber])
   @@index([customerNumber])
@@ -6961,11 +6970,11 @@ model SupplierInvoice {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization   Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   // SetNull UTSKRIVET, inte ärvt av Prismas default: en raderad användare ska
   // inte kunna radera en bokförd faktura, och att policyn står här gör det till
   // ett val i stället för en tyst förvalsverkan.
-  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy      User?                          @relation(fields: [createdById], references: [id], onDelete: SetNull)
   vatAdjustments SupplierInvoiceVatAdjustment[]
 
   @@index([organizationId])
@@ -7030,7 +7039,6 @@ model ExpenseVatDecision {
 
   @@index([organizationId])
 }
-
 
 model MiscCharge {
   id String @id @default(uuid())
@@ -7903,56 +7911,62 @@ model FortnoxVoucherExport {
 // Bundet till organisation, brytdatum, underlagets sha256 och version. Raderas
 // aldrig efter verkställning (historik).
 model OpeningPackage {
-  id                    String                       @id @default(uuid())
-  organizationId        String
-  status                OpeningPackageStatus         @default(DRAFT)
-  version               Int                          @default(1)
-  cutoverDate           DateTime                     @db.Date
-  sourceName            String
-  sourceSha256          String
+  id                     String                       @id @default(uuid())
+  organizationId         String
+  status                 OpeningPackageStatus         @default(DRAFT)
+  version                Int                          @default(1)
+  cutoverDate            DateTime                     @db.Date
+  sourceName             String
+  sourceSha256           String
   // Bolagsbindning: Evenos orgnr och, om anslutet, Fortnox-företaget vid valideringen.
-  orgNumber             String?
-  fortnoxDatabaseNumber Int?
-  fortnoxConnectionId   String?
+  orgNumber              String?
+  fortnoxDatabaseNumber  Int?
+  fortnoxConnectionId    String?
   // Totaler per hyresgäst och saldoart, samt avstämning mot angivna Fortnox-saldon.
-  totals                Json?
-  reconciliation        Json?
+  totals                 Json?
+  reconciliation         Json?
   // Angivna Fortnox-saldon per brytdatum (öre). En differens kan INTE kvitteras bort
   // (BYGGLEDARE-002): status AVSTAMD (0), AVGRANSAD (hela differensen förklarad av en
   // verifierbar specifikation av separat reskontra) eller DIFFERENS (blockerar aktivering).
   // ACK-009: samma format och gräns som raderna — kronor Decimal(12,2), max 9 999 999 999,99.
-  fortnoxBalance1510    Decimal?                     @db.Decimal(12, 2)
-  fortnoxBalance2890    Decimal?                     @db.Decimal(12, 2)
+  fortnoxBalance1510     Decimal?                     @db.Decimal(12, 2)
+  fortnoxBalance2890     Decimal?                     @db.Decimal(12, 2)
   // ACK-009 (första perioden): kontrollerat periodbundet underlag ur tidigare system för
   // perioder FRÅN brytdatum (fakturerat och/eller betalt). Saknas → kundstart blockerad;
   // minst en post → blockerad (v1 kan inte representera förskott/framtida perioder).
-  firstPeriodRegister   Json?
-  reconciliationStatus  OpeningReconciliationStatus?
+  firstPeriodRegister    Json?
+  reconciliationStatus   OpeningReconciliationStatus?
   // Per konto: { sha256, antal, summaOre, beskrivning } för separat reskontra.
-  separateLedgerSpec    Json?
+  separateLedgerSpec     Json?
   // §12.6: saldot per brytdatum kommer ur en COMPLETE FortnoxReadRun (aldrig manuellt).
-  fortnoxReadRunId      String?
+  fortnoxReadRunId       String?
   // §12.7: nollöppning — uttryckligt paket utan rader för ett bolag utan övertagna saldon.
-  zeroOpening           Boolean                      @default(false)
+  zeroOpening            Boolean                      @default(false)
   // §12.4: vattenmärke över organisationens ekonomiska läge vid godkännandet.
-  approvedWatermark     String?
-  approvedCutoverDate   DateTime?                    @db.Date
-  approvedReadRunId     String?
-  invalidatedReason     String?
-  createdById           String
-  createdAt             DateTime                     @default(now())
-  validatedAt           DateTime?
-  approvedById          String?
-  approvedAt            DateTime?
-  approvedSha256        String?
-  approvedVersion       Int?
-  executedById          String?
-  executedAt            DateTime?
-  discardedAt           DateTime?
-  updatedAt             DateTime                     @updatedAt
+  approvedWatermark      String?
+  approvedCutoverDate    DateTime?                    @db.Date
+  approvedReadRunId      String?
+  invalidatedReason      String?
+  createdById            String
+  createdAt              DateTime                     @default(now())
+  validatedAt            DateTime?
+  approvedById           String?
+  approvedAt             DateTime?
+  approvedSha256         String?
+  approvedVersion        Int?
+  // KUNDSTART-205: den granskade kundavstämning som godkännandet gäller. Nollställs när
+  // godkännandet upphör; execute omprövar den under lås före första OPENING-effekt.
+  approvedEvidenceId     String?
+  approvedEvidenceSha256 String?
+  executedById           String?
+  executedAt             DateTime?
+  discardedAt            DateTime?
+  updatedAt              DateTime                     @updatedAt
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  rows         OpeningPackageRow[]
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rows             OpeningPackageRow[]
+  evidence         OpeningEvidence[]   @relation("PaketEvidens")
+  approvedEvidence OpeningEvidence?    @relation("GodkandEvidens", fields: [approvedEvidenceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([organizationId, status])
 }
@@ -7973,32 +7987,108 @@ model OpeningExecutedSource {
 }
 
 model OpeningPackageRow {
-  id             String         @id @default(uuid())
-  packageId      String
-  rowNo          Int
-  sourceId       String
-  kind           OpeningRowKind
+  id                  String         @id @default(uuid())
+  packageId           String
+  rowNo               Int
+  sourceId            String
+  kind                OpeningRowKind
   // Källans referenser (oförändrade) och de entydigt lösta id:na.
-  tenantRef      String
-  leaseRef       String?
-  propertyRef    String?
-  unitRef        String?
-  periodYear     Int?
-  periodMonth    Int?
-  dueDate        DateTime?      @db.Date
-  receivedDate   DateTime?      @db.Date
-  originalAmount Decimal        @db.Decimal(12, 2)
-  openAmount     Decimal        @db.Decimal(12, 2)
-  tenantId       String?
-  leaseId        String?
-  propertyId     String?
-  errors         Json?
-  createdAt      DateTime       @default(now())
+  tenantRef           String
+  leaseRef            String?
+  propertyRef         String?
+  unitRef             String?
+  periodYear          Int?
+  periodMonth         Int?
+  dueDate             DateTime?      @db.Date
+  receivedDate        DateTime?      @db.Date
+  originalAmount      Decimal        @db.Decimal(12, 2)
+  openAmount          Decimal        @db.Decimal(12, 2)
+  // KUNDSTART-205 (A2): tidigare betalt och krediterat per dokument ur importen (kronor).
+  // NULL = uppgiften saknas (äldre 12-kolumnsfiler, verkställda paket) – aldrig gissad 0.
+  priorPaidAmount     Decimal?       @db.Decimal(12, 2)
+  priorCreditedAmount Decimal?       @db.Decimal(12, 2)
+  tenantId            String?
+  leaseId             String?
+  propertyId          String?
+  errors              Json?
+  createdAt           DateTime       @default(now())
 
   package OpeningPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
 
   @@unique([packageId, sourceId])
   @@unique([packageId, rowNo])
+}
+
+// KUNDSTART-205 (R165-3): oföränderligt kundavstämningsunderlag för ett öppningspaket.
+// append-only: en ändring av källa, mappning, paket, brytdatum eller kopplingar ger en NY
+// version, aldrig en uppdatering. Råa bytes bevaras (serverns sha256 över exakt dessa
+// bytes); en hash bevisar filens identitet, inte att exporten är sann eller fullständig.
+// Ingen URL-referens: bevis är lagrade bytes inom organisationen.
+model OpeningEvidence {
+  id                      String                @id @default(uuid())
+  organizationId          String
+  packageId               String
+  evidenceVersion         Int
+  formatVersion           String
+  mappingFormatVersion    String
+  normalizationVersion    String
+  orgNumber               String
+  cutoverDate             DateTime              @db.Date
+  sourceAsOfDate          DateTime              @db.Date
+  packageVersion          Int
+  packageSourceSha256     String
+  sourceSystemProduct     String
+  sourceCompanyKey        String
+  scopeDeclaration        String
+  scopeDeclarationSha256  String
+  // A2: uttryckliga deklarationer (prövas mot Organization och brytdatum, binds i evidenceSha256).
+  declaredSourceOrgNumber String
+  sourceExportedAt        DateTime
+  scopeResponsible        String
+  sourceName              String
+  sourceRaw               Bytes
+  sourceRawSha256         String
+  sourceRawBytes          Int
+  mappingName             String
+  mappingRaw              Bytes
+  mappingRawSha256        String
+  mappingNormalizedSha256 String
+  // Lösta tenant/lease-kopplingar (mappning + paketrader) vid jämförelsen.
+  bindingSha256           String
+  comparisonStatus        OpeningEvidenceStatus
+  comparisonResult        Json
+  comparisonResultSha256  String
+  comparisonCounts        Json
+  evidenceSha256          String
+  createdById             String
+  createdAt               DateTime              @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  package      OpeningPackage         @relation("PaketEvidens", fields: [packageId], references: [id], onDelete: Cascade)
+  review       OpeningEvidenceReview?
+  approvedFor  OpeningPackage[]       @relation("GodkandEvidens")
+
+  @@unique([packageId, evidenceVersion])
+  @@index([organizationId, packageId])
+}
+
+// KUNDSTART-205: en ekonomigranskares granskning av EXAKT en evidensversion.
+// append-only: granskaren läses ur databasen på servern (aldrig ur klienten) och
+// granskningen ändras aldrig; ny evidens kräver ny granskning.
+model OpeningEvidenceReview {
+  id             String   @id @default(uuid())
+  organizationId String
+  evidenceId     String   @unique
+  evidenceSha256 String
+  reviewerUserId String
+  reviewerRole   UserRole
+  identityMode   String
+  reviewedAt     DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  evidence     OpeningEvidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
 }
 
 // ── KUNDSTART: kontrollerad aktivering av Fortnox-skrivning för ett kundföretag ──
@@ -8035,7 +8125,7 @@ model FortnoxCustomerActivation {
   createdAt                     DateTime                        @default(now())
   updatedAt                     DateTime                        @updatedAt
 
-  organization Organization @relation("KundaktiveringOrganisation", fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization   @relation("KundaktiveringOrganisation", fields: [organizationId], references: [id], onDelete: Cascade)
   // HUVUDBOK-STEG1: organisationer vars huvudboksval gjordes mot den här aktiveringen.
   huvudboksval Organization[] @relation("HuvudboksvalAktivering")
 

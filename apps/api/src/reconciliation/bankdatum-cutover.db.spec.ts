@@ -28,6 +28,13 @@ import { RentNoticeEventsService as NoticeEvents } from '../avisering/rent-notic
 import { OcrService as Ocr } from '../common/ocr/ocr.service'
 import { CutoverService as Cutover } from '../kundstart/cutover.service'
 import { OpeningPackageService as Packages } from '../kundstart/opening-package.service'
+// KUNDSTART-205: approve kräver granskad, oberoende kundavstämning (fixturanpassning, REQUEST-205-T4).
+import { OpeningEvidenceService } from '../kundstart/opening-evidence.service'
+import {
+  fixtureEvidenceInput,
+  reviewedFixtureEvidence,
+} from '../kundstart/opening-evidence.fixtures'
+import { MAPPING_HEADER, SOURCE_HEADER } from '../kundstart/opening-evidence-format'
 import { VerifiedVoucherDraftBuilder as ExportBuilder } from '../fortnox/fortnox-export-builder'
 const db = new PrismaClient()
 const prisma = db as unknown as PrismaService
@@ -40,7 +47,7 @@ describe('förutsättningar', () => {
   })
 })
 const H =
-  'radId;typ;hyresgast;avtal;fastighet;enhet;periodAr;periodManad;forfallodag;ursprungligtBelopp;oppetBelopp;mottagetDatum'
+  'radId;typ;hyresgast;avtal;fastighet;enhet;periodAr;periodManad;forfallodag;ursprungligtBelopp;oppetBelopp;mottagetDatum;betaltBelopp;krediteratBelopp'
 const REG = 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt'
 const record = (name: string, data: object) => {
   if (process.env.BANKDATUM176_OUTPUT)
@@ -223,7 +230,7 @@ medDb('bankdatum med riktig Postgres', () => {
       controller,
       accounting,
       cutover,
-      paket: new Packages(prisma, ocr),
+      paket: new Packages(prisma, ocr, new OpeningEvidenceService(prisma)),
     }
   }
   type Fixture = Awaited<ReturnType<typeof fixture>>
@@ -247,6 +254,8 @@ medDb('bankdatum med riktig Postgres', () => {
             amount,
             amount,
             '',
+            0,
+            0,
           ].join(';')
         }),
       ].join('\n') + '\n'
@@ -302,7 +311,36 @@ medDb('bankdatum med riktig Postgres', () => {
     return db.openingPackage.findUniqueOrThrow({ where: { id: p.id } })
   }
   async function execute(f: Fixture, p: Awaited<ReturnType<typeof prepare>>) {
-    await f.paket.approve(f.id, p.id, f.user, { version: p.version, sourceSha256: p.sourceSha256 })
+    // Oberoende syntetisk källa per fixturposition (aldrig ur importens rader) och explicit
+    // mappning till fixturens egna tenant/lease; granskad av en syntetisk ACCOUNTANT.
+    const kunder = ['A', 'B'],
+      belopp = [600000, 400000]
+    const kalla = [
+      SOURCE_HEADER,
+      ...f.tenants.map(
+        (t, i) =>
+          `SYNTHETIC_191;${kunder[i]};${t.lease.contractNumber};DOC-${i + 1};RECEIVABLE;2026-10;2026-10-31;${belopp[i]};0;0;${belopp[i]};;`,
+      ),
+    ].join('\n')
+    const mappning = [
+      MAPPING_HEADER,
+      ...f.tenants.map(
+        (t, i) =>
+          `SYNTHETIC_191;${kunder[i]};${t.lease.contractNumber};${t.id};${t.lease.id};syntetisk fixtur`,
+      ),
+    ].join('\n')
+    const evidenceSha256 = await reviewedFixtureEvidence(
+      db,
+      f.id,
+      p.id,
+      f.user,
+      fixtureEvidenceInput(f.orgNumber, new Date('2026-11-01'), kalla, mappning),
+    )
+    await f.paket.approve(f.id, p.id, f.user, {
+      version: p.version,
+      sourceSha256: p.sourceSha256,
+      evidenceSha256,
+    })
     const executed = await f.paket.execute(f.id, p.id, f.user)
     // Syntetisk huvudboksbindning efter verkligt verkställd öppning. f33:s DB-constraint
     // kräver aktiverings-id + företagsbindning; ensam ledgerOwner=FORTNOX är ogiltig fixture.

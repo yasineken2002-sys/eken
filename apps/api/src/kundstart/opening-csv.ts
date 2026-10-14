@@ -39,6 +39,8 @@ export interface ParsedOpeningRow {
   receivedDate: Date | null
   originalOre: number | null
   openOre: number | null
+  paidOre: number | null
+  creditedOre: number | null
   errors: string[]
 }
 
@@ -187,6 +189,31 @@ export function tolkaOpeningCsv(text: string): OpeningCsvResult {
     }
     const originalOre = belopp('ursprungligtBelopp')
     const openOre = belopp('oppetBelopp')
+    const optionalAmount = (name: 'betaltBelopp' | 'krediteratBelopp') => {
+      const value = (rader[r]?.[huvud.indexOf(name)] ?? '').trim()
+      if (!value) return null
+      const amount = kronorTillOre(value)
+      if (amount === null || amount < 0 || !inomBeloppsgrans(amount)) {
+        errors.push(`${name} är inte ett giltigt icke-negativt exakt belopp.`)
+        return null
+      }
+      return amount
+    }
+    const paidOre = optionalAmount('betaltBelopp')
+    const creditedOre = optionalAmount('krediteratBelopp')
+    if (
+      kind === 'RECEIVABLE' &&
+      paidOre !== null &&
+      creditedOre !== null &&
+      originalOre !== null &&
+      openOre !== null &&
+      originalOre - paidOre - creditedOre !== openOre
+    )
+      errors.push(
+        'ursprungligtBelopp minus betaltBelopp och krediteratBelopp måste vara oppetBelopp.',
+      )
+    if (kind === 'DEPOSIT' && (paidOre !== null || creditedOre !== null))
+      errors.push('betaltBelopp och krediteratBelopp ska vara tomma för DEPOSITION.')
 
     if (kind === 'RECEIVABLE') {
       if (periodYear === null || periodMonth === null)
@@ -226,6 +253,8 @@ export function tolkaOpeningCsv(text: string): OpeningCsvResult {
       receivedDate,
       originalOre,
       openOre,
+      paidOre,
+      creditedOre,
       errors,
     })
   }

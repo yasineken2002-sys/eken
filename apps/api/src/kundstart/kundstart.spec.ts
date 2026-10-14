@@ -242,3 +242,19 @@ describe('KUNDSTART-009: första periodens blockerare', () => {
     expect(tackningOk('2026-10-01', '2026-12-31', b)).toMatch(/börja på brytdatum/)
   })
 })
+
+// 207: additive chain columns preserve the old format without inventing zero.
+describe('207 importkedja', () => {
+  const row = 'A;FORDRAN;111;K;;;2026;10;2026-10-31;10000;6000;'
+  it('12 kolumner behåller null', () => {
+    const r = tolkaOpeningCsv(HUVUD + '\n' + row)
+    expect(r.ok && r.rows[0]).toMatchObject({ paidOre: null, creditedOre: null, errors: [] })
+  })
+  it('uttrycklig betalning och kredit jämförs med original och öppet', () => {
+    const header = HUVUD + ';betaltBelopp;krediteratBelopp'
+    const r = tolkaOpeningCsv(header + '\n' + row + ';2500;1500')
+    expect(r.ok && r.rows[0]).toMatchObject({ paidOre: 250000, creditedOre: 150000, errors: [] })
+    const bad = tolkaOpeningCsv(header + '\n' + row + ';2000;1500')
+    expect(bad.ok && bad.rows[0]!.errors.join(' ')).toMatch(/måste vara oppetBelopp/u)
+  })
+})
