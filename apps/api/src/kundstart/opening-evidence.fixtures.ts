@@ -92,7 +92,7 @@ export async function reviewedFixtureEvidence(
 // One worker, monotonic local candidates plus an existence check for preserved prior runs.
 // The previous four-digit random suffix collided during V4 (C1 log45).
 let fixtureOrgSerial = BigInt(Date.now()) % 100_000_000n
-async function nextFixtureOrgNumber(db: PrismaClient) {
+export async function nextFixtureOrgNumber(db: PrismaClient) {
   for (;;) {
     fixtureOrgSerial = (fixtureOrgSerial + 1n) % 100_000_000n
     const digits = '90' + fixtureOrgSerial.toString().padStart(8, '0')

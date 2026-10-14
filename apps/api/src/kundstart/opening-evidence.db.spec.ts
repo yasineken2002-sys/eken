@@ -9,6 +9,7 @@ import {
   prepareEvidencePackage,
   evidenceEffects,
   fixtureActor,
+  nextFixtureOrgNumber,
   SOURCE_191,
   IMPORT_191,
   SWAPPED_191,
@@ -293,7 +294,10 @@ describe('207 kundavstämning med riktiga transaktioner och effekter', () => {
           data: { billingCutoverDate: new Date('2026-12-01') },
         })
       else if (change === 'orgNumber')
-        await db.organization.update({ where: { id: f.id }, data: { orgNumber: '559998-0001' } })
+        await db.organization.update({
+          where: { id: f.id },
+          data: { orgNumber: await nextFixtureOrgNumber(db) },
+        })
       else
         await db.tenant.update({
           where: { id: f.tenants[0]!.id },
