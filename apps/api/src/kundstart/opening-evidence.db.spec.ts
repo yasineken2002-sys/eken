@@ -19,6 +19,9 @@ import { SOURCE_HEADER, MAPPING_HEADER } from './opening-evidence-format'
 
 jest.setTimeout(120_000)
 const db = new PrismaClient()
+// Holder + two competing writers occupy the three runtime connections.
+// A separate read-only observer must still be able to inspect pg_blocking_pids.
+const observer = new PrismaClient()
 const fixtures: EvidenceFixture[] = []
 const fixture = async (name: string, csv = IMPORT_191) => {
   const f = await createEvidenceFixture(db, name, csv)
@@ -34,7 +37,21 @@ const approve = async (f: EvidenceFixture, evidenceSha256: string) => {
     evidenceSha256,
   })
 }
-const create = (f: EvidenceFixture) => f.evidence.create(f.id, f.pkg.id, f.admin, f.input)
+const create = async (f: EvidenceFixture) => {
+  const e = await f.evidence.create(f.id, f.pkg.id, f.admin, f.input)
+  console.log(
+    '207 EVIDENCE_OBSERVATION',
+    JSON.stringify({
+      fixture: f.id,
+      version: e.evidenceVersion,
+      status: e.comparisonStatus,
+      counts: e.counts,
+      stops: e.stopp,
+      differences: e.avvikelser,
+    }),
+  )
+  return e
+}
 const review = async (f: EvidenceFixture) => {
   const e = await create(f)
   await f.evidence.review(f.id, f.pkg.id, e.id, f.accountant, { evidenceSha256: e.evidenceSha256 })
@@ -42,6 +59,7 @@ const review = async (f: EvidenceFixture) => {
 }
 const noEffects = async (f: EvidenceFixture) => {
   const effects = await evidenceEffects(db, f)
+  console.log('207 ZERO_EFFECT_OBSERVATION', JSON.stringify({ fixture: f.id, effects }))
   expect(effects).toMatchObject({
     opening: [],
     journals: 0,
@@ -63,7 +81,7 @@ const deferred = <T>() => {
 async function observeBlock(blocker: number, minimum = 1) {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
-    const rows = await db.$queryRaw<
+    const rows = await observer.$queryRaw<
       { pid: number; blockers: number[] }[]
     >`SELECT pid, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0`
     const connected = new Set([blocker])
@@ -86,8 +104,11 @@ beforeAll(async () => {
   await db.$connect()
 })
 afterAll(async () => {
-  for (const f of fixtures) await db.organization.delete({ where: { id: f.id } })
-  await db.$disconnect()
+  try {
+    for (const f of fixtures) await db.organization.delete({ where: { id: f.id } })
+  } finally {
+    await Promise.all([observer.$disconnect(), db.$disconnect()])
+  }
 })
 
 describe('207 kundavstämning med riktiga transaktioner och effekter', () => {
