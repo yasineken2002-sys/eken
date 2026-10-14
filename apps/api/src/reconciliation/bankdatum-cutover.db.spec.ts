@@ -31,7 +31,14 @@ import { OpeningPackageService as Packages } from '../kundstart/opening-package.
 import { VerifiedVoucherDraftBuilder as ExportBuilder } from '../fortnox/fortnox-export-builder'
 const db = new PrismaClient()
 const prisma = db as unknown as PrismaService
-const medDb = process.env.DATABASE_URL ? describe : describe.skip
+const HAR_DB = Boolean(process.env.DATABASE_URL)
+const medDb = HAR_DB ? describe : describe.skip
+
+describe('förutsättningar', () => {
+  it('KANARIEFÅGEL: sviten körs mot en RIKTIG databas', () => {
+    expect(HAR_DB).toBe(true)
+  })
+})
 const H =
   'radId;typ;hyresgast;avtal;fastighet;enhet;periodAr;periodManad;forfallodag;ursprungligtBelopp;oppetBelopp;mottagetDatum'
 const REG = 'radId;hyresgast;avtal;periodAr;periodManad;dokument;fakturerat;betalt'
