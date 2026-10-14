@@ -78,7 +78,14 @@ function rigg(opt: RiggOpt = {}) {
         ),
       create: jest.fn().mockResolvedValue({ id: 'alloc-1' }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-20'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     // Depositionssynken körs bara vid FULL reglering (#41): en delbetald
     // deposition är inte betald.
     deposit: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },

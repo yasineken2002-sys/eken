@@ -58,7 +58,14 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
       findFirst: jest.fn().mockResolvedValue(opts.linkedDeposit ?? null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-15'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   }
 
   const createJournalEntryForRentNoticePayment = jest.fn().mockResolvedValue({ id: 'je-dep' })

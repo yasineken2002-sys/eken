@@ -105,7 +105,14 @@ function makeService(
         return Promise.resolve({ id: `rnp-${skapade.length}` })
       }),
     },
-    bankTransaction: { update: jest.fn().mockResolvedValue({}) },
+    bankTransaction: {
+      // Befintlig kund utan brytdatum; bankraden läses under allokeringslåset.
+      findFirst: jest.fn().mockResolvedValue({
+        date: new Date('2026-06-20'),
+        organization: { billingCutoverDate: null },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
   }
 
   const createJournalEntryForRentNoticePayment = jest.fn().mockResolvedValue({ id: 'je-1' })
