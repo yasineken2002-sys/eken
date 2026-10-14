@@ -1,6 +1,6 @@
 /**
  * T4/#47 — AI-datakontexten rapporterar nu BOKFÖRD intäkt (Σ 3xxx accrual via
- * delade AccountingService.getRevenueYearToDate = samma tal som dashboardens
+ * delade AccountingService.getBookedRevenueYearToDate = samma tal som dashboardens
  * "Totala intäkter"), och etiketterar den gamla Σ monthlyRent-summan ärligt som
  * "Förväntad månadshyra" (teoretisk run-rate) i stället för att presentera den
  * som intäkt. Bevisar skillnaden på testdata: förväntad 30000/mån vs bokförd
@@ -63,16 +63,30 @@ const fmtSEK = (n: number) =>
 
 describe('DataContextService — bokförd intäkt vs förväntad månadshyra', () => {
   it('rapporterar bokförd intäkt (accrual) OCH förväntad månadshyra, tydligt åtskilda', async () => {
-    const getRevenueYearToDate = jest
-      .fn()
-      .mockResolvedValue({ total: 250000, from: new Date(), to: new Date() })
+    const getBookedRevenueYearToDate = jest.fn().mockResolvedValue({
+      status: 'KNOWN',
+      scope: {
+        organizationId: 'org-1',
+        metric: 'BOOKED_REVENUE',
+        propertyId: null,
+        period: { from: '2026-01-01', to: '2026-07-01' },
+      },
+      source: 'EVENO_LEDGER',
+      accountSystem: 'EVENO',
+      accountRange: [3000, 3999],
+      definition: 'CREDIT_MINUS_DEBIT',
+      currency: 'SEK',
+      amountOre: 25000000,
+      observedAt: '2026-07-01T08:00:00Z',
+      completeness: 'COMPLETE',
+    })
     const prisma = makePrisma()
     const service = new DataContextService(
       prisma as never,
       {
         getOverdueSnapshot: jest.fn().mockResolvedValue({ total: 0, count: 0, over30Count: 0 }),
       } as never,
-      { getRevenueYearToDate } as never,
+      { getBookedRevenueYearToDate } as never,
     )
 
     const ctx = await service.buildContext('org-1')
@@ -93,6 +107,6 @@ describe('DataContextService — bokförd intäkt vs förväntad månadshyra', (
     expect(ctx).not.toContain('Betalda: 4 st, totalt')
 
     // Tenant-scoping: bokförd intäkt hämtas för org-id:t.
-    expect(getRevenueYearToDate).toHaveBeenCalledWith('org-1', expect.any(Date))
+    expect(getBookedRevenueYearToDate).toHaveBeenCalledWith('org-1', expect.any(Date))
   })
 })

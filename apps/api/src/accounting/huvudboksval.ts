@@ -24,6 +24,7 @@
  */
 import { ConflictException, NotFoundException } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
+import { reportFailure } from '../ai/report-evidence'
 
 export type LokalHuvudbokshandling =
   | 'FRITT_VERIFIKAT'
@@ -85,4 +86,19 @@ export async function assertLokalHuvudbokTillaten(
   if (rader[0]!.ledgerOwner !== 'EVENO') {
     throw new ConflictException({ code: EXTERN_HUVUDBOK, message: externHuvudbokSkal(handling) })
   }
+}
+
+/** Rapportläsning, skild från skrivgrinden ovan. Ingen default från anslutnings/statusvyn. */
+export async function assertEvenoReport(db: Prisma.TransactionClient, organizationId: string) {
+  const org = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { ledgerOwner: true, fiscalYearStartMonth: true },
+  })
+  if (!org || (org.ledgerOwner !== 'EVENO' && org.ledgerOwner !== 'FORTNOX')) {
+    throw new ConflictException(reportFailure('OWNER_UNVERIFIED'))
+  }
+  if (org.ledgerOwner === 'FORTNOX') {
+    throw new ConflictException(reportFailure('EXTERNAL_REPORT_UNAVAILABLE'))
+  }
+  return org
 }

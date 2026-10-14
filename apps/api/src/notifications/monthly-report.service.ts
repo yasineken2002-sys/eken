@@ -1,3 +1,6 @@
+import { formatBookedRevenue } from '../ai/report-evidence'
+import type { BookedRevenue } from '../ai/report-evidence'
+import type { AccountingService } from '../accounting/accounting.service'
 import type { OnModuleInit } from '@nestjs/common'
 import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
@@ -52,6 +55,7 @@ export class MonthlyReportService implements OnModuleInit {
   private pdf!: PdfService
   private ai!: AiAssistantService
   private dashboard!: DashboardService
+  private accounting!: AccountingService
 
   constructor(
     private readonly prisma: PrismaService,
@@ -64,14 +68,16 @@ export class MonthlyReportService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const [pdfMod, aiMod, dashMod] = await Promise.all([
+    const [pdfMod, aiMod, dashMod, accountingMod] = await Promise.all([
       import('../invoices/pdf.service'),
       import('../ai/ai-assistant.service'),
       import('../dashboard/dashboard.service'),
+      import('../accounting/accounting.service'),
     ])
     this.pdf = this.moduleRef.get(pdfMod.PdfService, { strict: false })
     this.ai = this.moduleRef.get(aiMod.AiAssistantService, { strict: false })
     this.dashboard = this.moduleRef.get(dashMod.DashboardService, { strict: false })
+    this.accounting = this.moduleRef.get(accountingMod.AccountingService, { strict: false })
   }
 
   /**
@@ -115,9 +121,7 @@ export class MonthlyReportService implements OnModuleInit {
     const series = await this.dashboard.getTimeseries(organizationId, 14)
     const report = series[12]
     if (!report) return null
-    const prevMonthRevenue = series[11]?.revenue ?? 0
     const prevMonthOccupancy = series[11]?.occupancy ?? 0
-    const prevYearRevenue = series[0]?.revenue ?? 0
 
     // report.month har formatet "YYYY-MM".
     const [yStr, mStr] = report.month.split('-')
@@ -130,6 +134,22 @@ export class MonthlyReportService implements OnModuleInit {
     )
     const now = new Date()
     const inMonth = { gte: monthStart, lte: monthEnd }
+    // Huvudboken använder civila @db.Date-gränser, inte fakturornas tidsserie.
+    const readMonth = (y: number, m: number) =>
+      this.accounting.getBookedRevenueReport(
+        organizationId,
+        new Date(Date.UTC(y, m - 1, 1)),
+        new Date(Date.UTC(y, m, 0)),
+      )
+    const [bookedRevenue, prevMonthBooked, prevYearBooked] = await Promise.all([
+      readMonth(year, month),
+      readMonth(year, month - 1),
+      readMonth(year - 1, month),
+    ])
+    const bookedChange = (base: BookedRevenue): number | null =>
+      bookedRevenue.status === 'KNOWN' && base.status === 'KNOWN'
+        ? pctChange(bookedRevenue.amountOre, base.amountOre)
+        : null
 
     const [
       properties,
@@ -212,14 +232,14 @@ export class MonthlyReportService implements OnModuleInit {
 
     if (properties.length === 0) return null // tom org — skicka inte tom rapport
 
-    // ── Intäkter per fakturatyp ──────────────────────────────────────────────
+    // ── Fakturastatistik (Invoice-urval, inte bokförd intäkt) ──────────────────────────────────────────────
     const revMap = new Map(revByType.map((g) => [g.type, Number(g._sum.total ?? 0)]))
     const rent = revMap.get('RENT') ?? 0
     const service = revMap.get('SERVICE') ?? 0
     const utility = revMap.get('UTILITY') ?? 0
     const deposit = revMap.get('DEPOSIT') ?? 0
     const other = revMap.get('OTHER') ?? 0
-    const revenueTotal = rent + service + utility + deposit + other
+    const invoiceTotal = rent + service + utility + deposit + other
 
     // ── Beläggning (nuläge via Unit.status) ──────────────────────────────────
     const statusMap = new Map(unitsByStatus.map((g) => [g.status, g._count.id]))
@@ -285,8 +305,9 @@ export class MonthlyReportService implements OnModuleInit {
       const occ = p.units.filter((u) => u.status === 'OCCUPIED').length
       const vac = p.units.filter((u) => u.status === 'VACANT').length
       return {
+        propertyId: p.id,
         name: p.name,
-        revenue: revenueByProperty.get(p.id) ?? 0,
+        invoiceTotal: revenueByProperty.get(p.id) ?? 0,
         occupancyPct: unitCount > 0 ? Math.round((occ / unitCount) * 1000) / 10 : 0,
         vacant: vac,
         tickets: ticketCountById.get(p.id) ?? 0,
@@ -311,9 +332,12 @@ export class MonthlyReportService implements OnModuleInit {
     // ── AI-insikter ──────────────────────────────────────────────────────────
     const monthSummary = [
       `Rapportmånad: ${monthLabel}`,
-      `Omsättning (fakturerat): ${revenueTotal} kr — förra månaden ${prevMonthRevenue} kr, samma månad förra året ${prevYearRevenue} kr`,
-      `Inbetalt under månaden: ${report.paidRevenue} kr`,
-      `Intäkter per typ — hyra ${rent}, tjänster ${service}, förbrukning ${utility}, deposition ${deposit}, övrigt ${other}`,
+      `Bokförd intäkt: ${formatBookedRevenue(bookedRevenue)}`,
+      `Bokförd intäkt föregående månad: ${formatBookedRevenue(prevMonthBooked)}`,
+      `Bokförd intäkt samma månad föregående år: ${formatBookedRevenue(prevYearBooked)}`,
+      `Fakturerat i Invoice-urvalet: ${invoiceTotal} kr, inklusive deposition; hyresavier ingår inte. Detta är inte bokförd intäkt.`,
+      `Fakturastatistik (Invoice): totalbelopp på fakturor markerade betalda under månaden ${report.paidRevenue} kr, inte verifierat bankinflöde.`,
+      `Invoice per typ — hyra ${rent}, tjänster ${service}, förbrukning ${utility}, deposition ${deposit}, övrigt ${other}. Deposition är inte intäkt.`,
       `Beläggning: ${ratePct}% (${occupied} uthyrda, ${vacant} lediga, ${renovation} under renovering, ${reserved} reserverade av ${totalUnits})`,
       `Förfallen skuld just nu: ${overdueCount} poster, ${overdueAmount} kr, varav ${over30Count} äldre än 30 dagar`,
       `Nya kontrakt: ${report.newLeases}, avslutade kontrakt: ${report.terminatedLeases}`,
@@ -357,9 +381,9 @@ export class MonthlyReportService implements OnModuleInit {
       },
       summary: {
         revenue: {
-          current: revenueTotal,
-          prevMonthPct: pctChange(revenueTotal, prevMonthRevenue),
-          prevYearPct: pctChange(revenueTotal, prevYearRevenue),
+          current: bookedRevenue,
+          prevMonthPct: bookedChange(prevMonthBooked),
+          prevYearPct: bookedChange(prevYearBooked),
         },
         occupancy: {
           currentPct: report.occupancy,
@@ -369,8 +393,8 @@ export class MonthlyReportService implements OnModuleInit {
         tenants: { newLeases: report.newLeases, terminatedLeases: report.terminatedLeases },
       },
       kpis: {
-        revenue: {
-          total: revenueTotal,
+        invoiceStatistics: {
+          total: invoiceTotal,
           rent,
           service,
           utility,

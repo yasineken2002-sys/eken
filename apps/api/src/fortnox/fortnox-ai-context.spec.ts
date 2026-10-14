@@ -90,7 +90,7 @@ describe('Fortnox AI-underlag (skuggläge)', () => {
       latestRead: run({ id: 'r2', status: 'PARTIAL', summary: null, reason: 'avbrott' }),
       latestCompleteRead: run(),
     })
-    expect(t).toContain('Beloppen ovan kommer från den tidigare kompletta läsningen')
+    expect(t).toContain('Den tidigare kompletta läsningens ursprungliga lästid gäller fortsatt')
   })
 
   it('frånkopplad/AUTH_LOST anges', () => {
@@ -155,8 +155,6 @@ describe('Fortnox AI-underlag (skuggläge)', () => {
       latestCompleteRead: run(),
       exports: null,
     })
-    expect(t).toContain(
-      'gäller Fortnox-företag med databasnummer 900001, inte den nuvarande anslutningen',
-    )
+    expect(t).toContain('gäller ett annat Fortnox-företag')
   })
 })

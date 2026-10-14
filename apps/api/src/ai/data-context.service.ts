@@ -1,3 +1,4 @@
+import { formatBookedRevenue } from './report-evidence'
 import { formatFortnoxShadowForAi } from '../fortnox/fortnox-ai-context'
 import { FortnoxReadbackService } from '../fortnox/fortnox-readback.service'
 import { Injectable, Optional } from '@nestjs/common'
@@ -32,7 +33,7 @@ export class DataContextService {
     @Optional() private readonly fortnox?: FortnoxReadbackService,
   ) {}
 
-  async buildContext(organizationId: string): Promise<string> {
+  async buildContext(organizationId: string, readerRole?: string): Promise<string> {
     const now = new Date()
     const ninetyDaysFromNow = new Date(now)
     ninetyDaysFromNow.setDate(ninetyDaysFromNow.getDate() + 90)
@@ -204,7 +205,7 @@ export class DataContextService {
       this.overdue.getOverdueSnapshot(organizationId, now),
       // Bokförd intäkt räkenskapsår-till-idag (Σ 3xxx accrual) — samma tal som
       // dashboardens "Totala intäkter". Org-scopat i tjänsten.
-      this.accounting.getRevenueYearToDate(organizationId, now),
+      this.accounting.getBookedRevenueYearToDate(organizationId, now),
       // Förväntad månadshyra över ALLA aktiva avtal — en aggregering i DB, inte
       // en summa över den begränsade listan ovan (som tappade de äldsta).
       this.prisma.lease.aggregate({
@@ -276,7 +277,7 @@ export class DataContextService {
       'PORTFÖLJSAMMANFATTNING:',
       // BOKFÖRD intäkt (Σ 3xxx accrual, räkenskapsår-till-idag) = samma tal som
       // dashboardens "Totala intäkter". Den auktoritativa intäktssiffran.
-      `Bokförd intäkt i år (Σ 3xxx, räkenskapsår-till-idag): ${formatSEK(bookedRevenue.total)}`,
+      `Bokförd intäkt i år (Σ 3xxx, räkenskapsår-till-idag): ${formatBookedRevenue(bookedRevenue)}`,
       // FÖRVÄNTAD månadshyra = Σ avtalad monthlyRent på aktiva kontrakt. En
       // TEORETISK run-rate (vad kontrakten ska ge/mån), INTE bokförd intäkt —
       // ärligt etiketterad så AI:n aldrig förväxlar den med raden ovan.
@@ -444,7 +445,12 @@ export class DataContextService {
 
     if (this.fortnox) {
       try {
-        lines.push(...formatFortnoxShadowForAi(await this.fortnox.aiSnapshot(organizationId), now))
+        lines.push(
+          ...formatFortnoxShadowForAi(
+            await this.fortnox.aiReportSnapshot(organizationId, readerRole),
+            now,
+          ),
+        )
       } catch {
         // Saknat underlag får inte bli tyst: säg det, utan belopp.
         lines.push(

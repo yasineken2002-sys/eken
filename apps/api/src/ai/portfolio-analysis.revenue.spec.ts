@@ -1,6 +1,17 @@
+jest.mock('@anthropic-ai/sdk', () => ({
+  __esModule: true,
+  default: class {
+    messages = {
+      create: () => {
+        throw new Error('LiveAI förbjudet i detta prov')
+      },
+    }
+  },
+}))
+
 /**
  * T4/#47 — Portföljanalysens revenue-sektion rapporterar nu BOKFÖRD intäkt
- * (Σ 3xxx accrual via delade AccountingService.getRevenueYearToDate = samma tal
+ * (Σ 3xxx accrual via delade AccountingService.getBookedRevenueYearToDate = samma tal
  * som dashboarden), i stället för sin gamla kassa-blinda Σ Invoice PAID (missade
  * all RentNotice-betalning). Bevisar via privata fetchData (ingen Anthropic).
  */
@@ -26,7 +37,7 @@ function makePrisma() {
   }
 }
 
-function makeService(getRevenueYearToDate: jest.Mock) {
+function makeService(getBookedRevenueYearToDate: jest.Mock) {
   const prisma = makePrisma()
   const service = new PortfolioAnalysisService(
     prisma as never,
@@ -35,17 +46,31 @@ function makeService(getRevenueYearToDate: jest.Mock) {
     {
       getOverdueSnapshot: jest.fn().mockResolvedValue({ total: 0, count: 0, over30Count: 0 }),
     } as never,
-    { getRevenueYearToDate } as never,
+    { getBookedRevenueYearToDate } as never,
   )
   return { service, prisma }
 }
 
-describe('PortfolioAnalysisService — bokförd intäkt via delade getRevenueYearToDate', () => {
+describe('PortfolioAnalysisService — bokförd intäkt via delade getBookedRevenueYearToDate', () => {
   it('revenue-analys: rapporterar accrual-intäkten, inte kassa-blinda Σ Invoice PAID', async () => {
-    const getRevenueYearToDate = jest
-      .fn()
-      .mockResolvedValue({ total: 250000, from: new Date(), to: now })
-    const { service, prisma } = makeService(getRevenueYearToDate)
+    const getBookedRevenueYearToDate = jest.fn().mockResolvedValue({
+      status: 'KNOWN',
+      scope: {
+        organizationId: 'org-1',
+        metric: 'BOOKED_REVENUE',
+        propertyId: null,
+        period: { from: '2026-01-01', to: '2026-07-01' },
+      },
+      source: 'EVENO_LEDGER',
+      accountSystem: 'EVENO',
+      accountRange: [3000, 3999],
+      definition: 'CREDIT_MINUS_DEBIT',
+      currency: 'SEK',
+      amountOre: 25000000,
+      observedAt: '2026-07-01T08:00:00Z',
+      completeness: 'COMPLETE',
+    })
+    const { service, prisma } = makeService(getBookedRevenueYearToDate)
 
     const data = await (
       service as unknown as {
@@ -53,9 +78,14 @@ describe('PortfolioAnalysisService — bokförd intäkt via delade getRevenueYea
       }
     ).fetchData('org-1', 'revenue', now, twelveMonthsAgo, sixtyDaysFromNow, thirtyDaysFromNow)
 
-    // Accrual-intäkten (250000) märkt som samma som dashboarden.
+    // Samma bokförda belopp (250000), nu med käll- och periodproveniens.
     expect(data).toContain(
-      'Bokförd intäkt (Σ 3xxx accrual, räkenskapsår-till-idag): 250000.00 SEK — samma som dashboardens "Totala intäkter"',
+      'Bokförd intäkt (Σ 3xxx accrual, räkenskapsår-till-idag): ' +
+        new Intl.NumberFormat('sv-SE', {
+          style: 'currency',
+          currency: 'SEK',
+          maximumFractionDigits: 0,
+        }).format(250000),
     )
     // Gamla kassa-blinda begrepp är borta.
     expect(data).not.toContain('Totalt betalt')
@@ -65,18 +95,18 @@ describe('PortfolioAnalysisService — bokförd intäkt via delade getRevenueYea
     expect(prisma.invoice.count).toHaveBeenCalled()
 
     // EN hämtning, org-scopad.
-    expect(getRevenueYearToDate).toHaveBeenCalledTimes(1)
-    expect(getRevenueYearToDate).toHaveBeenCalledWith('org-1', now)
+    expect(getBookedRevenueYearToDate).toHaveBeenCalledTimes(1)
+    expect(getBookedRevenueYearToDate).toHaveBeenCalledWith('org-1', now)
   })
 
   it('occupancy-analys hämtar ingen bokförd intäkt (ingen onödig query)', async () => {
-    const getRevenueYearToDate = jest.fn()
-    const { service } = makeService(getRevenueYearToDate)
+    const getBookedRevenueYearToDate = jest.fn()
+    const { service } = makeService(getBookedRevenueYearToDate)
     await (
       service as unknown as {
         fetchData: (o: string, t: string, n: Date, a: Date, b: Date, c: Date) => Promise<string>
       }
     ).fetchData('org-1', 'occupancy', now, twelveMonthsAgo, sixtyDaysFromNow, thirtyDaysFromNow)
-    expect(getRevenueYearToDate).not.toHaveBeenCalled()
+    expect(getBookedRevenueYearToDate).not.toHaveBeenCalled()
   })
 })

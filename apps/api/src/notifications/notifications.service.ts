@@ -1,14 +1,10 @@
+import { formatBookedRevenue } from '../ai/report-evidence'
 import type { OnModuleInit } from '@nestjs/common'
 import { ConflictException, Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Notification, NotificationType, Prisma } from '@prisma/client'
-import {
-  formatCurrency,
-  DEFAULT_BRAND_COLOR,
-  startOfSwedishDay,
-  swedishCalendarDate,
-} from '@eken/shared'
+import { DEFAULT_BRAND_COLOR, startOfSwedishDay, swedishCalendarDate } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { invoiceOutstanding } from '../invoices/invoice-debt'
 import { checkPaymentTarget } from '../avisering/payment-target'
@@ -936,7 +932,7 @@ export class NotificationsService implements OnModuleInit {
         if (!result) continue
         const { pdf, data } = result
         const filename = `manadsrapport-${monthKey}.pdf`
-        const summaryLine = `Omsättning ${formatCurrency(data.summary.revenue.current)}, beläggning ${data.summary.occupancy.currentPct}%. Rapporten finns som PDF-bilaga i mejlet.`
+        const summaryLine = `Bokförd intäkt: ${formatBookedRevenue(data.summary.revenue.current)}. Beläggning ${data.summary.occupancy.currentPct}%. Rapporten finns som PDF-bilaga i mejlet.`
 
         for (const user of org.users) {
           // In-app-notis först, oavsett e-post (se sendMorningInsights).

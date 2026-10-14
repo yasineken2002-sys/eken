@@ -1,5 +1,13 @@
+import { isReportReason } from '../../ai/report-evidence'
 import type { ExceptionFilter, ArgumentsHost } from '@nestjs/common'
-import { Catch, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common'
+import {
+  Catch,
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+} from '@nestjs/common'
 import * as Sentry from '@sentry/nestjs'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { PlatformErrorsService } from '../../platform/errors/platform-errors.service'
@@ -113,6 +121,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let message = ramverksfel?.message ?? 'Internal server error'
     let details: Record<string, string[]> | undefined
+    let report:
+      | { code: 'REPORT_NOT_DETERMINABLE'; status: 'NOT_DETERMINABLE'; reason: string }
+      | undefined
 
     if (exception instanceof HttpException) {
       const response = exception.getResponse()
@@ -120,6 +131,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message = response
       } else if (typeof response === 'object' && response !== null) {
         const r = response as Record<string, unknown>
+        if (
+          exception instanceof ConflictException &&
+          r['code'] === 'REPORT_NOT_DETERMINABLE' &&
+          r['status'] === 'NOT_DETERMINABLE' &&
+          isReportReason(r['reason'])
+        ) {
+          report = {
+            code: 'REPORT_NOT_DETERMINABLE',
+            status: 'NOT_DETERMINABLE',
+            reason: r['reason'],
+          }
+        }
         message = (r['message'] as string) ?? message
         if (Array.isArray(r['message'])) {
           const messages = r['message'] as string[]
@@ -136,6 +159,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       success: false,
       error: {
         code: HttpStatus[status] ?? 'UNKNOWN_ERROR',
+        ...report,
         message,
         ...(details ? { details } : {}),
         path: request.url,
