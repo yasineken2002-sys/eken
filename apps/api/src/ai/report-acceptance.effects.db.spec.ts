@@ -70,6 +70,39 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       throw new Error('AF216 DB canary mismatch')
   }
 
+  async function organization(tag: string) {
+    const id = randomUUID()
+    await db.organization.create({
+      data: {
+        id,
+        name: `AF216-${tag}-${id}`,
+        email: `${id}@example.invalid`,
+        street: 'Syntetgatan',
+        city: 'Provstad',
+        postalCode: '11111',
+        fiscalYearStartMonth: 7,
+      },
+    })
+    preserved.push(id)
+    await accounting.seedDefaultAccounts(id)
+    return id
+  }
+
+  async function user(organizationId: string) {
+    return (
+      await db.user.create({
+        data: {
+          organizationId,
+          email: `${randomUUID()}@example.invalid`,
+          passwordHash: 'synthetic-no-login',
+          firstName: 'Syn',
+          lastName: 'Tetisk',
+          role: 'OWNER',
+        },
+      })
+    ).id
+  }
+
   beforeAll(async () => {
     if (!process.env.DATABASE_URL)
       throw new Error('AF216 requires C1 synthetic database; no conditional skip')
@@ -105,39 +138,8 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       },
     }) as unknown as PrismaService
     accounting = new AccountingService(db, new VerifikationsnummerService(db))
-    async function organization(tag: string) {
-      const id = randomUUID()
-      await db.organization.create({
-        data: {
-          id,
-          name: `AF216-${tag}-${id}`,
-          email: `${id}@example.invalid`,
-          street: 'Syntetgatan',
-          city: 'Provstad',
-          postalCode: '11111',
-          fiscalYearStartMonth: 7,
-        },
-      })
-      preserved.push(id)
-      await accounting.seedDefaultAccounts(id)
-      return id
-    }
     org = await organization('A')
     other = await organization('B_SECRET')
-    async function user(organizationId: string) {
-      return (
-        await db.user.create({
-          data: {
-            organizationId,
-            email: `${randomUUID()}@example.invalid`,
-            passwordHash: 'synthetic-no-login',
-            firstName: 'Syn',
-            lastName: 'Tetisk',
-            role: 'OWNER',
-          },
-        })
-      ).id
-    }
     owner = await user(org)
     colleague = await user(org)
     otherUser = await user(other)
@@ -249,9 +251,9 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     return { ...r, audit, markPaid, sendEmail }
   }
 
-  async function snapshot() {
+  async function snapshot(organizationId = org) {
     await Promise.all(audits)
-    const ids = { in: [org, other] }
+    const ids = { in: [organizationId, other] }
     const [
       journals,
       lines,
@@ -298,8 +300,8 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
         orderBy: { id: 'asc' },
         select: { id: true, consumedAt: true },
       }),
-      db.aiConversation.count({ where: { organizationId: org } }),
-      db.aiMessage.count({ where: { conversation: { organizationId: org } } }),
+      db.aiConversation.count({ where: { organizationId } }),
+      db.aiMessage.count({ where: { conversation: { organizationId } } }),
     ])
     return {
       domain: {
@@ -339,11 +341,11 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
   })
 
   // Real synthetic binding rows, following report-contract.db.spec.ts. No activation API is exercised.
-  async function selectFortnoxLedger(databaseNumber = 101) {
+  async function selectFortnoxLedger(databaseNumber = 101, organizationId = org, ownerId = owner) {
     const conn = await db.fortnoxConnection.upsert({
-      where: { organizationId: org },
+      where: { organizationId },
       create: {
-        organizationId: org,
+        organizationId,
         status: 'ACTIVE',
         fortnoxDatabaseNumber: databaseNumber,
         fortnoxOrgNumber: '5560000000',
@@ -359,12 +361,12 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     })
     const opening = await db.openingPackage.create({
       data: {
-        organizationId: org,
+        organizationId,
         status: 'EXECUTED',
         cutoverDate: date('2026-07-01'),
         sourceName: 'AF225-synthetic-zero.csv',
         sourceSha256: createHash('sha256').update('AF225 synthetic zero opening').digest('hex'),
-        createdById: owner,
+        createdById: ownerId,
         executedAt: new Date(),
         reconciliationStatus: 'AVSTAMD',
         zeroOpening: true,
@@ -372,7 +374,7 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     })
     const read = await db.fortnoxReadRun.create({
       data: {
-        organizationId: org,
+        organizationId,
         connectionId: conn.id,
         fortnoxDatabaseNumber: databaseNumber,
         status: 'COMPLETE',
@@ -388,12 +390,12 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     })
     // Preserve prior binding history and respect the one-ACTIVE-per-organisation index.
     await db.fortnoxCustomerActivation.updateMany({
-      where: { organizationId: org, status: 'ACTIVE' },
+      where: { organizationId, status: 'ACTIVE' },
       data: { status: 'SUPERSEDED', supersededAt: new Date() },
     })
     const activation = await db.fortnoxCustomerActivation.create({
       data: {
-        organizationId: org,
+        organizationId,
         status: 'ACTIVE',
         connectionId: conn.id,
         connectionGeneration: conn.generation,
@@ -411,11 +413,11 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
         consequencesSha256: createHash('sha256')
           .update('AF225 syntetiskt huvudboksval')
           .digest('hex'),
-        approvedById: owner,
+        approvedById: ownerId,
       },
     })
     await db.organization.update({
-      where: { id: org },
+      where: { id: organizationId },
       data: {
         ledgerOwner: 'FORTNOX',
         ledgerOwnerActivationId: activation.id,
@@ -682,7 +684,9 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
     ).toBe(0)
   })
 
-  async function exportRig() {
+  async function exportRig(caseName: 'AF15-A' | 'AF15-B') {
+    const exportOrg = await organization(caseName)
+    const exportOwner = await user(exportOrg)
     const config = {
       get: (key: string) => (key === 'FORTNOX_TOKEN_KEY' ? 'cd'.repeat(32) : undefined),
     }
@@ -694,35 +698,48 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       new MockFortnoxAuthProvider(),
       reader,
     )
-    const { authUrl } = await connections.begin(org, owner)
+    expect(await db.fortnoxConnection.count({ where: { organizationId: exportOrg } })).toBe(0)
+    const { authUrl } = await connections.begin(exportOrg, exportOwner)
     const state = new URL(authUrl).searchParams.get('state')!
     await connections.handleCallback(state, `mock-code-${state.slice(0, 8)}`)
-    await connections.setExportVoucherSeries(org, 'A')
-    await connections.setExportOmitDimensions(org, owner, true)
-    await godkannMappning(db, connections, reader, org)
+    await connections.setExportVoucherSeries(exportOrg, 'A')
+    await connections.setExportOmitDimensions(exportOrg, exportOwner, true)
+    await godkannMappning(db, connections, reader, exportOrg)
     const builder = new VerifiedVoucherDraftBuilder(db, connections, reader)
     const exports = new FortnoxExportService(db, builder)
     const writer = new MockVoucherWriter(reader)
     const sender = new FortnoxSendService(db, connections, builder, reader, writer)
-    const journal = await leverantorsfaktura(db, org, { belopp: '10000', datum: '2026-09-15' })
-    const row = await exports.dryRun(org, journal.id)
+    const journal = await leverantorsfaktura(db, exportOrg, {
+      belopp: '10000',
+      datum: '2026-09-15',
+    })
+    const row = await exports.dryRun(exportOrg, journal.id)
     expect(row.state).toBe('DRY_RUN_READY')
     if (!row.draftHash) throw new Error('READY missing draftHash')
-    return { writer, sender, exports, journal, row, hash: row.draftHash }
+    return {
+      org: exportOrg,
+      owner: exportOwner,
+      writer,
+      sender,
+      exports,
+      journal,
+      row,
+      hash: row.draftHash,
+    }
   }
 
   it('AF15-A D old READY is unusable after real local cancellation; actual send obtains zero claims', async () => {
-    const r = await exportRig()
+    const r = await exportRig('AF15-A')
     const invoiceId = r.journal.sourceId!.slice('supplier-invoice:'.length)
     await new SupplierInvoiceService(db, accounting).cancel({
-      organizationId: org,
+      organizationId: r.org,
       invoiceId,
-      createdById: owner,
+      createdById: r.owner,
     })
     const before = await db.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: r.row.id } })
     expect(before.state).toBe('BLOCKED')
     expect(before.sendAttemptId).toBeNull()
-    await expect(r.sender.send(org, owner, r.row.id, r.hash)).rejects.toThrow(
+    await expect(r.sender.send(r.org, r.owner, r.row.id, r.hash)).rejects.toThrow(
       'Verifikatet kan inte skickas i sitt nuvarande läge',
     )
     const after = await db.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: r.row.id } })
@@ -743,25 +760,29 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
   })
 
   it('AF15-B D UNKNOWN original cannot promise correction export', async () => {
-    const r = await exportRig()
+    const r = await exportRig('AF15-B')
     r.writer.faults.push('unknown_after_write')
-    const unknown = await r.sender.send(org, owner, r.row.id, r.hash)
+    const unknown = await r.sender.send(r.org, r.owner, r.row.id, r.hash)
     expect(unknown.state).toBe('UNKNOWN')
-    const before = await snapshot()
+    const before = await snapshot(r.org)
     const invoiceId = r.journal.sourceId!.slice('supplier-invoice:'.length)
     // F217-1: one fixed oracle. UNKNOWN does not undo the local cancellation;
     // it blocks the correction's external export until the original is reconciled.
     const cancelled = await new SupplierInvoiceService(db, accounting).cancel({
-      organizationId: org,
+      organizationId: r.org,
       invoiceId,
-      createdById: owner,
+      createdById: r.owner,
     })
     expect(cancelled.cancelledAt).not.toBeNull()
-    expect((await snapshot()).domain.journals - before.domain.journals).toBe(1)
+    expect((await snapshot(r.org)).domain.journals - before.domain.journals).toBe(1)
     const correction = await db.journalEntry.findFirstOrThrow({
-      where: { organizationId: org, sourceId: { contains: invoiceId }, id: { not: r.journal.id } },
+      where: {
+        organizationId: r.org,
+        sourceId: { contains: invoiceId },
+        id: { not: r.journal.id },
+      },
     })
-    const draft = await r.exports.dryRun(org, correction.id)
+    const draft = await r.exports.dryRun(r.org, correction.id)
     expect(draft.state).toBe('BLOCKED')
     expect(draft.draftHash).toBeNull()
     expect(draft.blockReason).toContain('ORIGIN_NOT_CONFIRMED')
@@ -769,8 +790,8 @@ describe('AF03/07/11/12/14/15/16/17/18 D: real pending→confirm and exact synth
       (await db.fortnoxVoucherExport.findUniqueOrThrow({ where: { id: r.row.id } })).state,
     ).toBe('UNKNOWN')
     const sdk = sdkScript([tool('get_profit_loss_report', SEPTEMBER), done()])
-    await selectFortnoxLedger()
-    await rig().ai.chat(org, owner, 'OWNER', 'Kan rättelsen betraktas som exporterad?')
+    await selectFortnoxLedger(101, r.org, r.owner)
+    await rig().ai.chat(r.org, r.owner, 'OWNER', 'Kan rättelsen betraktas som exporterad?')
     expect(json(resultBlocks(sdk.requests))).toContain('EXTERNAL_REPORT_UNAVAILABLE')
     expect(r.writer.writes).toBe(1)
   })
