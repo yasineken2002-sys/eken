@@ -5,7 +5,7 @@
  */
 import { cleanup, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/stores/auth.store', () => ({
   useAuthStore: (sel: (s: unknown) => unknown) =>
@@ -28,18 +28,25 @@ import { AccountingPage } from './AccountingPage'
 const SKAL =
   'Organisationen har Fortnox som huvudbok. Fria verifikat, utgifter, leverantörsfakturor, rättelser av verifikat och årsbokslut görs i Fortnox, inte i Eveno.'
 
-const visa = () =>
-  render(
-    <QueryClientProvider
-      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-    >
+// En klient per prov som RENSAS efteråt (logg 21/22: utan detta hängde laddningsfallet och
+// felfallet gav en ohanterad avvisning; diagnosen i logg 23 med samma livscykel gick igenom).
+let klient: QueryClient | null = null
+const visa = () => {
+  klient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={klient}>
       <AccountingPage />
     </QueryClientProvider>,
   )
+}
 
 describe('Bokföring och huvudboksvalet', () => {
-  beforeEach(() => api.fetchLedgerOwner.mockReset())
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    klient?.clear()
+    klient = null
+    api.fetchLedgerOwner.mockReset()
+  })
 
   it('EVENO: skrivknapparna finns, ingen informationsruta', async () => {
     api.fetchLedgerOwner.mockResolvedValue({
