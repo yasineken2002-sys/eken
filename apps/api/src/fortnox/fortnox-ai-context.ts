@@ -12,6 +12,8 @@
  *  - Fritext från Fortnox (beskrivningar) skickas inte med.
  */
 
+import { neutralizeUntrustedText } from '../ai/tools/untrusted-content'
+
 export interface FortnoxAiSnapshot {
   /** Serverns rapportgrind. Ett avstående innehåller inga belopp. */
   reportUnavailable?: { reason: string; message: string }
@@ -114,7 +116,7 @@ export function formatFortnoxShadowForAi(s: FortnoxAiSnapshot, now: Date = new D
     '',
     '## FORTNOX-ÅTERLÄSNING (skuggläge – separat källa)',
     'Detta är en observation ur Fortnox huvudbok. Den ändrar INTE Evenos egna siffror ovan och får aldrig läggas ihop med dem.',
-    `Källa: Fortnox, företag ${c.fortnoxCompanyName ?? 'namn okänt'} (databasnummer ${c.fortnoxDatabaseNumber}). Anslutning: ${CONNECTION_TEXT[c.status]}.`,
+    `Källa: Fortnox, företag ${neutralizeUntrustedText(c.fortnoxCompanyName ?? 'namn okänt')} (databasnummer ${c.fortnoxDatabaseNumber}). Anslutning: ${CONNECTION_TEXT[c.status]}.`,
   ]
 
   const done = s.latestCompleteRead
