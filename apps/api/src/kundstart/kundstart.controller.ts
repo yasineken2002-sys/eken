@@ -15,10 +15,13 @@ import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { Roles } from '../common/decorators/roles.decorator'
 import { CutoverService } from './cutover.service'
 import { OpeningPackageService } from './opening-package.service'
+import { OpeningEvidenceService } from './opening-evidence.service'
 import {
   ApproveOpeningPackageDto,
   BindReadDto,
+  CreateOpeningEvidenceDto,
   FirstPeriodRegisterDto,
+  ReviewOpeningEvidenceDto,
   SeparateLedgerDto,
   SetCutoverDto,
   UploadOpeningPackageDto,
@@ -29,12 +32,18 @@ import {
  * i tjänsten (bärande spärren): läsa = OWNER, ADMIN, ACCOUNTANT; ladda upp/validera/binda
  * läsning/separat reskontra/kassera = OWNER, ADMIN; brytdatum, godkänna och verkställa =
  * bara OWNER.
+ *
+ * KUNDSTART-205: kundavstämningsunderlag skapas av OWNER/ADMIN och läses av OWNER, ADMIN och
+ * ACCOUNTANT. ACCOUNTANT får EN ny handling — granska exakt en evidensversion — och ingen
+ * annan skrivväg. Tjänsten läser granskarens aktuella roll och organisation ur databasen
+ * (JWT-rollen räcker inte) och kräver att granskare och godkännare är olika användare.
  */
 @Controller('kundstart')
 export class KundstartController {
   constructor(
     private readonly cutover: CutoverService,
     private readonly paket: OpeningPackageService,
+    private readonly evidens: OpeningEvidenceService,
   ) {}
 
   private u(user: JwtPayload) {
@@ -166,5 +175,35 @@ export class KundstartController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.paket.discard(orgId, id, this.u(user))
+  }
+
+  @Get('opening-packages/:id/evidence')
+  @Roles('OWNER', 'ADMIN', 'ACCOUNTANT')
+  listEvidence(@OrgId() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.evidens.list(orgId, id)
+  }
+
+  @Post('opening-packages/:id/evidence')
+  @Roles('OWNER', 'ADMIN')
+  createEvidence(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateOpeningEvidenceDto,
+  ) {
+    return this.evidens.create(orgId, id, this.u(user), dto)
+  }
+
+  @Post('opening-packages/:id/evidence/:evidenceId/review')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ACCOUNTANT')
+  reviewEvidence(
+    @OrgId() orgId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
+    @Body() dto: ReviewOpeningEvidenceDto,
+  ) {
+    return this.evidens.review(orgId, id, evidenceId, this.u(user), dto)
   }
 }
