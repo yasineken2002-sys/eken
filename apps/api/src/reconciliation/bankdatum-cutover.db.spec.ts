@@ -129,7 +129,7 @@ medDb('bankdatum med riktig Postgres', () => {
       [3911, 'Bostadshyra', 'REVENUE'],
     ] as const)
       await db.account.create({ data: { organizationId: id, number, name, type } })
-    const tenants: Array<Tenant & { lease: Lease }> = []
+    const tenants: Array<Tenant & { ocrNumber: string; lease: Lease }> = []
     for (let n = 1; n <= count; n++) {
       const tenant = await db.tenant.create({
         data: {
@@ -164,7 +164,7 @@ medDb('bankdatum med riktig Postgres', () => {
           depositAmount: new Prisma.Decimal(0),
         },
       })
-      tenants.push({ ...tenant, lease })
+      tenants.push({ ...tenant, ocrNumber: `77710000${n}${n}`, lease })
     }
     const accounting = new Accounting(prisma, new Numbers(prisma)),
       events = new InvoiceEvents(prisma)
@@ -206,6 +206,7 @@ medDb('bankdatum med riktig Postgres', () => {
     await cutover.set(id, user, '2026-11-01')
     return {
       id,
+      orgNumber,
       user,
       conn,
       tenants,
@@ -305,7 +306,7 @@ medDb('bankdatum med riktig Postgres', () => {
         connectionId: f.conn.id,
         connectionGeneration: f.conn.generation,
         fortnoxDatabaseNumber: 990165,
-        fortnoxOrgNumber: f.conn.fortnoxOrgNumber,
+        fortnoxOrgNumber: f.orgNumber,
         financialYearId: 1,
         financialYearFrom: new Date('2026-01-01'),
         financialYearTo: new Date('2026-12-31'),
@@ -325,7 +326,7 @@ medDb('bankdatum med riktig Postgres', () => {
         ledgerOwner: 'FORTNOX',
         ledgerOwnerActivationId: activation.id,
         ledgerOwnerFortnoxDatabaseNumber: 990165,
-        ledgerOwnerFortnoxOrgNumber: f.conn.fortnoxOrgNumber,
+        ledgerOwnerFortnoxOrgNumber: f.orgNumber,
         ledgerOwnerSetAt: new Date(),
         ledgerOwnerSetById: f.user.sub,
       },
@@ -403,6 +404,8 @@ medDb('bankdatum med riktig Postgres', () => {
         expect(afterImport.notices[0]!.status).toBe('OPENING')
         expect(afterImport.payments).toHaveLength(0)
         expect(afterImport.journals).toHaveLength(0)
+        await f.recon.autoMatchAll(f.id)
+        expect((await snapshot(f.id)).payments).toHaveLength(0) // OPENING-pausen gäller även lagrat svep.
         const matched = await attempt(() =>
           f.recon.manualMatch(
             afterImport.bankRows[0]!.id,
@@ -637,6 +640,40 @@ medDb('bankdatum med riktig Postgres', () => {
       record('null-cutover', { kind, orgId: f.id, after })
     },
   )
+
+  it('en redan allokerad äldre betalning kan fortfarande avmatchas', async () => {
+    const f = await fixture('legacy-unmatch')
+    await db.organization.update({ where: { id: f.id }, data: { billingCutoverDate: null } })
+    await targets(f, 'rent')
+    await f.controller.importStatement(
+      f.id,
+      bankRequest('2026-10-31', f.tenants[0]!.ocrNumber) as unknown as FastifyRequest,
+      f.bank.id,
+    )
+    const paid = await snapshot(f.id)
+    expect(paid.payments).toHaveLength(1)
+    // Representerar en historisk allokering som redan fanns före denna rättning.
+    // Endast fixtureuppsättning; produktens CutoverService-flyttspärr ändras inte.
+    await db.organization.update({
+      where: { id: f.id },
+      data: { billingCutoverDate: new Date('2026-11-01') },
+    })
+    await f.recon.unmatchTransaction(
+      paid.bankRows[0]!.id,
+      f.id,
+      f.user.sub,
+      'SYNTETISK felallokering',
+    )
+    const undone = await snapshot(f.id)
+    expect(undone.payments).toHaveLength(0)
+    expect(undone.bankRows[0]!.status).toBe('UNMATCHED')
+    expect(undone.bankRows[0]!.autoMatchExcludedAt).not.toBeNull()
+    expect(undone.notices[0]!.status).toBe('SENT')
+    expect(undone.journals).toHaveLength(paid.journals.length + 1)
+    await f.recon.autoMatchAll(f.id)
+    expect((await snapshot(f.id)).payments).toHaveLength(0)
+    record('legacy-unmatch', { orgId: f.id, paid, undone })
+  })
 
   it('konto och mål måste tillhöra samma organisation; avvecklat konto stoppas', async () => {
     const a = await fixture('scope-a'),
