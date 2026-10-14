@@ -154,6 +154,17 @@ describe('207 oberoende heltalsfacit och strikt format', () => {
       strictCsv(SOURCE_HEADER + '\n' + ('x;'.repeat(12) + 'x\n').repeat(1001), SOURCE_HEADER),
     ).toThrow(/1000/u)
   })
+  it.each(['2026-11', '2027-01', '2026-13'])(
+    'E19: framtida eller ogiltig källperiod %s stoppas',
+    (period) => {
+      const s = parseSource(
+        SOURCE_191.replace('RECEIVABLE;2026-10;', `RECEIVABLE;${period};`),
+        'SYNTHETIC_191',
+        '2026-11-01',
+      )
+      expect(compare(s).comparisonStatus).toBe('STOPP')
+    },
+  )
   it('V2: gränsvärde och kundsumma är exakta bortom 32 bitar', () => {
     const s = source(),
       i = imports()

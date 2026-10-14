@@ -1,6 +1,6 @@
 /** Independent synthetic ledger and explicit mapping. Never reconstructed from package rows. */
 import { randomUUID } from 'crypto'
-import { PrismaClient, type UserRole } from '@prisma/client'
+import { PrismaClient, type UserRole, type Tenant, type Lease } from '@prisma/client'
 import type { CreateOpeningEvidenceInput } from '@eken/shared'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import { OcrService } from '../common/ocr/ocr.service'
@@ -120,8 +120,8 @@ export async function createEvidenceFixture(db: PrismaClient, label: string, csv
       totalArea: 100,
     },
   })
-  const tenants = [],
-    leases = []
+  const tenants: Tenant[] = [],
+    leases: Lease[] = []
   for (const [name, ocr, contract] of [
     ['A', '7771000011', 'K-1'],
     ['B', '7771000022', 'K-2'],
@@ -156,6 +156,7 @@ export async function createEvidenceFixture(db: PrismaClient, label: string, csv
         startDate: new Date('2026-01-01'),
         tenancyStartDate: new Date('2026-01-01'),
         monthlyRent: 6000,
+        depositAmount: 0,
       },
     })
     tenants.push(t)

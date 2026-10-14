@@ -60,15 +60,20 @@ const deferred = <T>() => {
   })
   return { promise, resolve }
 }
-async function observeBlock(blocker: number) {
+async function observeBlock(blocker: number, minimum = 1) {
   const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
     const rows = await db.$queryRaw<
       { pid: number; blockers: number[] }[]
-    >`SELECT pid, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE datname = current_database() AND ${blocker} = ANY(pg_blocking_pids(pid))`
-    if (rows.length) {
-      console.log('207 OBSERVED_LOCK', JSON.stringify(rows))
-      return rows
+    >`SELECT pid, pg_blocking_pids(pid) AS blockers FROM pg_stat_activity WHERE datname = current_database() AND cardinality(pg_blocking_pids(pid)) > 0`
+    const connected = new Set([blocker])
+    for (let i = 0; i < rows.length; i++)
+      for (const row of rows)
+        if (row.blockers.some((pid) => connected.has(pid))) connected.add(row.pid)
+    const waiting = rows.filter((row) => connected.has(row.pid))
+    if (waiting.length >= minimum) {
+      console.log('207 OBSERVED_LOCK', JSON.stringify(waiting))
+      return waiting
     }
     await new Promise((r) => setTimeout(r, 20))
   }
@@ -602,6 +607,84 @@ describe('207 kundavstämning med riktiga transaktioner och effekter', () => {
     expect(effects.opening).toHaveLength(2)
     expect(effects.journals).toBe(0)
   })
+
+  it.each(['review', 'execute'] as const)(
+    'E15: ny källversion före väntande %s serialiseras utan gammal attest',
+    async (action) => {
+      const f = await fixture('E15-source-' + action),
+        e = action === 'execute' ? await review(f) : await create(f)
+      if (action === 'execute') await approve(f, e.evidenceSha256)
+      const held = deferred<number>(),
+        release = deferred<void>()
+      const holder = db.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${f.id} FOR UPDATE`
+          const [pid] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+          held.resolve(pid!.pid)
+          await release.promise
+        },
+        { timeout: 30_000 },
+      )
+      const pid = await held.promise
+      const replacing = f.packages
+        .replaceSource(f.id, f.pkg.id, f.admin, {
+          sourceName: 'ny-version.csv',
+          innehall: IMPORT_191 + '\n',
+        })
+        .then(
+          (value) => ({ ok: true, value }),
+          (error) => ({ ok: false, error }),
+        )
+      let following: Promise<unknown> | undefined
+      try {
+        await observeBlock(pid)
+        following = (
+          action === 'execute'
+            ? f.packages.execute(f.id, f.pkg.id, f.owner)
+            : f.evidence.review(f.id, f.pkg.id, e.id, f.accountant, {
+                evidenceSha256: e.evidenceSha256,
+              })
+        ).then(
+          (value) => ({ ok: true, value }),
+          (error) => ({ ok: false, error: error.message }),
+        )
+        await observeBlock(pid, 2)
+      } finally {
+        release.resolve()
+      }
+      await holder
+      expect(await replacing).toMatchObject({ ok: true })
+      expect(await following).toMatchObject({ ok: false })
+      const current = await db.openingPackage.findUniqueOrThrow({ where: { id: f.pkg.id } })
+      expect(current).toMatchObject({
+        version: 2,
+        status: 'DRAFT',
+        approvedEvidenceId: null,
+        approvedEvidenceSha256: null,
+      })
+      if (action === 'review')
+        expect(await db.openingEvidenceReview.count({ where: { evidenceId: e.id } })).toBe(0)
+      await noEffects(f)
+    },
+  )
+
+  it.each(['sourceContent', 'mappingContent'] as const)(
+    'E9: %s kan inte ersättas under APPROVED',
+    async (field) => {
+      const f = await fixture('E9-' + field),
+        e = await review(f)
+      await approve(f, e.evidenceSha256)
+      f.input[field] += '\n'
+      await expect(create(f)).rejects.toThrow(/Validera/u)
+      expect(await db.openingEvidence.count({ where: { packageId: f.pkg.id } })).toBe(1)
+      await noEffects(f)
+      await f.packages.execute(f.id, f.pkg.id, f.owner)
+      expect((await evidenceEffects(db, f)).opening).toMatchObject([
+        { customer: 'A', ore: 600000 },
+        { customer: 'B', ore: 400000 },
+      ])
+    },
+  )
 
   it.each(['approve', 'execute'] as const)(
     'E15b: gammal validate får inte skriva över senare %s',

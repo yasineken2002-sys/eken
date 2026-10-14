@@ -136,6 +136,7 @@ export class OpeningEvidenceService {
     })
     const asOf = iso(new Date(p.cutoverDate.getTime() - 86_400_000))
     if (
+      !org.orgNumber ||
       !org.billingCutoverDate ||
       org.billingCutoverDate.getTime() !== p.cutoverDate.getTime() ||
       org.orgNumber !== p.orgNumber ||
@@ -227,6 +228,8 @@ export class OpeningEvidenceService {
     evidenceVersion: number,
     createdById: string,
   ) {
+    if (!p.orgNumber)
+      throw new ConflictException('Organisationsnummer saknas — validera aktuellt paket')
     const i = c.input
     const metadata = {
       organizationId: p.organizationId,
