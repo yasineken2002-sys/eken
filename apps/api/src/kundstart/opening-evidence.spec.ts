@@ -107,6 +107,20 @@ describe('207 oberoende heltalsfacit och strikt format', () => {
     expect(r.counts.avvikelser).toBe(1)
     expect(r.avvikelser.map((d) => d.falt).sort()).toEqual(['credited', 'paid'])
   })
+  it.each(['original', 'paid', 'credited', 'open', 'period', 'due'] as const)(
+    'V1: dokumentfältet %s får inte utelämnas ur jämförelsen',
+    (field) => {
+      const i = imports()
+      const row = i[0]!
+      if (field === 'period') row.period = '2026-09'
+      else if (field === 'due') row.due = '2026-10-30'
+      else row[field] = row[field]! + 1
+      const result = compare(source(), mapping(), i)
+      expect(result.comparisonStatus).toBe('AVVIKELSE')
+      expect(result.counts.avvikelser).toBe(1)
+      expect(result.avvikelser.some((d) => d.niva === 'DOKUMENT' && d.falt === field)).toBe(true)
+    },
+  )
   it('E6/E7: främmande/okänd/tvetydig mappning stoppas utan främmande id i skälet', () => {
     const m = mapping()
     m[0]!.valid = false
@@ -171,6 +185,15 @@ describe('207 oberoende heltalsfacit och strikt format', () => {
     s[0]!.original = s[0]!.open = 999999999999
     i[0]!.original = i[0]!.open = 999999999999
     expect(compare(s, mapping(), i).comparisonStatus).toBe('OK')
+    expect(
+      compare(
+        parseSource(
+          SOURCE_191.replace(';600000;0;0;600000;', ';1000000000000;0;0;1000000000000;'),
+          'SYNTHETIC_191',
+          '2026-11-01',
+        ),
+      ).comparisonStatus,
+    ).toBe('STOPP')
     const manyS = Array.from({ length: 1000 }, (_, n) => ({
       ...s[0]!,
       row: n + 1,

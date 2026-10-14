@@ -89,9 +89,22 @@ export async function reviewedFixtureEvidence(
   return evidence.evidenceSha256
 }
 
+// One worker, monotonic local candidates plus an existence check for preserved prior runs.
+// The previous four-digit random suffix collided during V4 (C1 log45).
+let fixtureOrgSerial = BigInt(Date.now()) % 100_000_000n
+async function nextFixtureOrgNumber(db: PrismaClient) {
+  for (;;) {
+    fixtureOrgSerial = (fixtureOrgSerial + 1n) % 100_000_000n
+    const digits = '90' + fixtureOrgSerial.toString().padStart(8, '0')
+    const orgNumber = digits.slice(0, 6) + '-' + digits.slice(6)
+    if (!(await db.organization.findUnique({ where: { orgNumber }, select: { id: true } })))
+      return orgNumber
+  }
+}
+
 export async function createEvidenceFixture(db: PrismaClient, label: string, csv = IMPORT_191) {
   const id = `evidence207-${label}-${randomUUID()}`
-  const orgNumber = '559999-' + String(Math.floor(Math.random() * 10_000)).padStart(4, '0')
+  const orgNumber = await nextFixtureOrgNumber(db)
   const cutover = new Date('2026-11-01')
   await db.organization.create({
     data: {
