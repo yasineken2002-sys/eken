@@ -85,6 +85,14 @@ export const createOpeningEvidenceInputSchema = z.object({
   sourceSystemProduct: z.string().min(1).max(100),
   sourceCompanyKey: z.string().min(1).max(100),
   scopeDeclaration: z.string().min(1).max(2000),
+  // A2 (REQUEST-205-T2): uttryckliga deklarationer. Servern prövar orgnr mot organisationen
+  // och avstämningsdagen mot brytdatum − 1; allt binds i evidenceSha256. Ingen sanningsgaranti.
+  sourceOrgNumber: z.string().regex(/^\d{6}-\d{4}$/, 'Organisationsnummer anges som NNNNNN-NNNN'),
+  sourceAsOfDate: datum,
+  sourceExportedAt: z
+    .string()
+    .datetime({ offset: true, message: 'Exporttiden anges som ISO-tid med tidszon' }),
+  scopeResponsible: z.string().min(1).max(200),
   sourceName: z.string().min(1).max(200),
   sourceContent: z.string().min(1).max(900_000),
   mappingName: z.string().min(1).max(200),
@@ -131,6 +139,9 @@ export interface OpeningEvidenceView {
   sourceCompanyKey: string
   sourceAsOfDate: string
   scopeDeclaration: string
+  declaredSourceOrgNumber: string
+  sourceExportedAt: string
+  scopeResponsible: string
   sourceName: string
   mappingName: string
   comparisonStatus: OpeningEvidenceStatus

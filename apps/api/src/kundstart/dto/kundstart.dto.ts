@@ -27,6 +27,7 @@ import {
 } from 'class-validator'
 import { StrictBoolean } from '../../common/contract/strict-boolean.decorator'
 import { StrictString } from '../../common/contract/strict-string.decorator'
+import { StrictIsoDatum } from '../../common/contract/strict-iso-datum.decorator'
 
 // KUNDSTART-001: formen bor i @eken/shared (schemas/kundstart.ts). Varje DTO bär
 // `implements` + nyckelparitet, och KONTRAKTSREGISTER kör giltig/ogiltig genom båda.
@@ -192,6 +193,32 @@ export class CreateOpeningEvidenceDto implements CreateOpeningEvidenceInput {
   @MinLength(1)
   @MaxLength(2000)
   scopeDeclaration!: string
+
+  /** A2: källföretagets organisationsnummer (prövas mot organisationen). */
+  @IsString()
+  @StrictString()
+  @Matches(/^\d{6}-\d{4}$/)
+  sourceOrgNumber!: string
+
+  /** A2: avstämningsdag (prövas = brytdatum − 1 dag). */
+  @IsString()
+  @StrictString()
+  @Matches(DATUM)
+  sourceAsOfDate!: string
+
+  /** A2: exportens tidpunkt (ISO, deklarerad). */
+  @IsString()
+  @StrictString()
+  @StrictIsoDatum()
+  @Matches(/^\d{4}-\d{2}-\d{2}T/)
+  sourceExportedAt!: string
+
+  /** A2: ansvarig för exportens fullständighet (deklarerad). */
+  @IsString()
+  @StrictString()
+  @MinLength(1)
+  @MaxLength(200)
+  scopeResponsible!: string
 
   @IsString()
   @StrictString()

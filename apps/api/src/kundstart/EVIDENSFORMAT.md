@@ -10,17 +10,44 @@ Formatet är **neutralt och versionsbestämt** och används för att jämföra e
 
 ## Det som bevisas och det som inte bevisas
 
-| | Vad det betyder |
-|---|---|
-| **Råhash** | Servern hashar exakt de bytes som lämnats (`sourceRawSha256`, `mappingRawSha256`). En hash bevisar att det är **samma fil**. Den bevisar inte att exporten är sann, auktoritativ eller fullständig. |
-| **Omfattning** | `scopeDeclaration` är en **deklaration** från den som lämnar underlaget, inte ett tekniskt bevis på fullständighet. |
-| **Mottagningsbevis för deposition** | Ett **deklarerat referensvärde** (text), inte verifierade bytes. Ett saknat värde stoppar jämförelsen. |
-| **Ingen rekonstruktion** | Källan får inte byggas upp från Evenos egen import. Den ska komma ur det tidigare systemet. |
-| **Inga URL:er** | Inga URL- eller referensfält accepteras. Bevis är lagrade bytes inom organisationen. |
+|                                     | Vad det betyder                                                                                                                                                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Råhash**                          | Servern hashar exakt de bytes som lämnats (`sourceRawSha256`, `mappingRawSha256`). En hash bevisar att det är **samma fil**. Den bevisar inte att exporten är sann, auktoritativ eller fullständig. |
+| **Omfattning**                      | `scopeDeclaration` är en **deklaration** från den som lämnar underlaget, inte ett tekniskt bevis på fullständighet.                                                                                 |
+| **Mottagningsbevis för deposition** | Ett **deklarerat referensvärde** (text), inte verifierade bytes. Ett saknat värde stoppar jämförelsen.                                                                                              |
+| **Ingen rekonstruktion**            | Källan får inte byggas upp från Evenos egen import. Den ska komma ur det tidigare systemet.                                                                                                         |
+| **Inga URL:er**                     | Inga URL- eller referensfält accepteras. Bevis är lagrade bytes inom organisationen.                                                                                                                |
 
 ## Gränser
 
-Varje fil skickas som text, högst 900 000 tecken och högst 1 048 576 UTF-8-bytes. Teckenkodningen ska vara UTF-8, och separatorn är `;`.
+- Varje fil skickas som text och får vara högst 900 000 tecken.
+- Källa och mappning får **tillsammans** vara högst 960 000 UTF-8-bytes. Då ryms hela anropet under API:ts gräns på 1 048 576 bytes. Servern prövar gränsen själv, inte bara formuläret.
+- Varje fil får innehålla högst 1000 dokument respektive 1000 mappningsrader.
+- Teckenkodningen ska vara UTF-8, och separatorn är `;`. En UTF-8-BOM får bara stå först i filen. Rubriken ska vara exakt den angivna. Fel, dubbla eller extra rubriker, fel antal celler och oavslutade citattecken stoppar jämförelsen.
+
+## Deklarationer i uppladdningen
+
+Följande uppgifter anges i uppladdningen och binds i underlagets kontrollsumma. De är **deklarationer** och ingen garanti för att exporten är sann eller fullständig.
+
+| Fält                  | Prövning                                                                          |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `sourceSystemProduct` | Det tidigare systemets namn (fritt).                                              |
+| `sourceCompanyKey`    | Ska stå i varje rad i **både** källan och mappningen. Annars stoppas jämförelsen. |
+| `sourceOrgNumber`     | Källföretagets organisationsnummer. Ska vara lika med organisationens.            |
+| `sourceAsOfDate`      | Avstämningsdag. Ska vara dagen före organisationens aktuella brytdatum.           |
+| `sourceExportedAt`    | När exporten togs ut (ISO-tid med tidszon).                                       |
+| `scopeDeclaration`    | Vad exporten omfattar.                                                            |
+| `scopeResponsible`    | Vem som ansvarar för att exporten är fullständig.                                 |
+
+## Importens betalt och krediterat (A2)
+
+Öppningspaketets import (12 kolumner, se `opening-csv.ts`) kan ha två **valfria** kolumner till efter `mottagetDatum`: `betaltBelopp` och `krediteratBelopp`, i kronor med samma beloppsregel som övriga belopp.
+
+- En äldre fil med 12 kolumner godtas som förut. Kedjefälten blir då **NULL**, alltså att uppgiften saknas, och aldrig 0.
+- För en fordran med satta fält gäller `ursprungligtBelopp − betaltBelopp − krediteratBelopp = oppetBelopp`.
+- En ny kundavstämning **stoppar** för varje importerad fordran där betalt eller krediterat saknas, med beskedet "Importen saknar betalt/krediterat för dokumentet".
+- För depositioner ska kolumnerna vara tomma.
+- Verkställda paket rörs inte. Deras rader står kvar med NULL.
 
 ## EVENO-RESKONTRA-1 (källan)
 
@@ -30,15 +57,15 @@ Rubriken ska vara exakt denna rad:
 kallforetag;kund;avtal;dokument;typ;period;forfallodag;ursprungOre;betaltOre;krediteratOre;oppetOre;mottagetDatum;mottagningsbevis
 ```
 
-| Fält | Regel |
-|---|---|
-| `kallforetag` | Det tidigare systemets företagsnyckel. Den ska vara densamma som `sourceCompanyKey` i begäran. |
-| `kund`, `avtal` | Gamla nycklar. De översätts **bara** via mappningsfilen. |
-| `dokument`, `typ` | Dokumentnyckeln är `kallforetag` + `dokument` + `typ`. `typ` är `RECEIVABLE` eller `DEPOSIT`. |
-| `period` | `ÅÅÅÅ-MM`. Krävs för RECEIVABLE och ska vara tom för DEPOSIT. |
-| `forfallodag` | `ÅÅÅÅ-MM-DD`. Krävs för RECEIVABLE. |
+| Fält                                                    | Regel                                                                                                                                                                                                         |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kallforetag`                                           | Det tidigare systemets företagsnyckel. Den ska vara densamma som `sourceCompanyKey` i begäran.                                                                                                                |
+| `kund`, `avtal`                                         | Gamla nycklar. De översätts **bara** via mappningsfilen.                                                                                                                                                      |
+| `dokument`, `typ`                                       | Dokumentnyckeln är `kallforetag` + `dokument` + `typ`. `typ` är `RECEIVABLE` eller `DEPOSIT`.                                                                                                                 |
+| `period`                                                | `ÅÅÅÅ-MM`. Krävs för RECEIVABLE och ska vara tom för DEPOSIT.                                                                                                                                                 |
+| `forfallodag`                                           | `ÅÅÅÅ-MM-DD`. Krävs för RECEIVABLE.                                                                                                                                                                           |
 | `ursprungOre`, `betaltOre`, `krediteratOre`, `oppetOre` | Heltal i **öre**. Ett **tomt** fält betyder SAKNAS och stoppar jämförelsen. Det är aldrig 0. Värdet `0` är ett giltigt uttryckligt värde. För RECEIVABLE gäller `ursprung − betalt − krediterat = öppet ≥ 0`. |
-| `mottagetDatum`, `mottagningsbevis` | Krävs för DEPOSIT. Mottagningsbeviset är ett deklarerat referensvärde. |
+| `mottagetDatum`, `mottagningsbevis`                     | Krävs för DEPOSIT. Mottagningsbeviset är ett deklarerat referensvärde.                                                                                                                                        |
 
 Depositioner jämförs **separat** och nettas aldrig mot hyresfordringar. Tillgodohavanden, negativa saldon, förskott och redan fakturerade framtida perioder stoppas, precis som i den befintliga kundstarten.
 
@@ -73,6 +100,8 @@ GAMMALT-AB;B;K-2;<tenant B>;<avtal K-2>;syntetiskt prov
 
 Utfall:
 
+- **E5b, fel fördelning:** källan har ursprung 1 000 000, betalt 250 000, krediterat 150 000 och öppet 600 000 öre. Importen har samma ursprung och öppet men betalt 150 000 och krediterat 250 000. Det ger en dokumentavvikelse, trots att både ursprung och öppet stämmer.
+
 - En import där DOC-1 ligger på B och DOC-2 på A ger **2 dokumentavvikelser**: A −200 000 öre och B +200 000 öre. Det gäller trots att totalsumman blir 0, och godkännande stoppas.
 - En korrekt import ger 0 avvikelser.
 
@@ -81,6 +110,7 @@ Utfall:
 Evidensen är oföränderlig, och varje ändring ger en ny version.
 
 **Servern binder evidensen till:**
+
 - organisationen och organisationsnumret;
 - brytdatumet;
 - paketets version och sha256;
@@ -89,6 +119,7 @@ Evidensen är oföränderlig, och varje ändring ger en ny version.
 - jämförelsens resultat.
 
 **Godkännandet kräver:**
+
 - en granskning av exakt den versionen, gjord av en inloggad ekonomigranskare (ACCOUNTANT, läst ur databasen);
 - en annan användare som OWNER, också läst ur databasen.
 

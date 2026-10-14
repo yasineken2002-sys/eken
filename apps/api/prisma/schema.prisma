@@ -7987,27 +7987,31 @@ model OpeningExecutedSource {
 }
 
 model OpeningPackageRow {
-  id             String         @id @default(uuid())
-  packageId      String
-  rowNo          Int
-  sourceId       String
-  kind           OpeningRowKind
+  id                  String         @id @default(uuid())
+  packageId           String
+  rowNo               Int
+  sourceId            String
+  kind                OpeningRowKind
   // Källans referenser (oförändrade) och de entydigt lösta id:na.
-  tenantRef      String
-  leaseRef       String?
-  propertyRef    String?
-  unitRef        String?
-  periodYear     Int?
-  periodMonth    Int?
-  dueDate        DateTime?      @db.Date
-  receivedDate   DateTime?      @db.Date
-  originalAmount Decimal        @db.Decimal(12, 2)
-  openAmount     Decimal        @db.Decimal(12, 2)
-  tenantId       String?
-  leaseId        String?
-  propertyId     String?
-  errors         Json?
-  createdAt      DateTime       @default(now())
+  tenantRef           String
+  leaseRef            String?
+  propertyRef         String?
+  unitRef             String?
+  periodYear          Int?
+  periodMonth         Int?
+  dueDate             DateTime?      @db.Date
+  receivedDate        DateTime?      @db.Date
+  originalAmount      Decimal        @db.Decimal(12, 2)
+  openAmount          Decimal        @db.Decimal(12, 2)
+  // KUNDSTART-205 (A2): tidigare betalt och krediterat per dokument ur importen (kronor).
+  // NULL = uppgiften saknas (äldre 12-kolumnsfiler, verkställda paket) – aldrig gissad 0.
+  priorPaidAmount     Decimal?       @db.Decimal(12, 2)
+  priorCreditedAmount Decimal?       @db.Decimal(12, 2)
+  tenantId            String?
+  leaseId             String?
+  propertyId          String?
+  errors              Json?
+  createdAt           DateTime       @default(now())
 
   package OpeningPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
 
@@ -8037,6 +8041,10 @@ model OpeningEvidence {
   sourceCompanyKey        String
   scopeDeclaration        String
   scopeDeclarationSha256  String
+  // A2: uttryckliga deklarationer (prövas mot Organization och brytdatum, binds i evidenceSha256).
+  declaredSourceOrgNumber String
+  sourceExportedAt        DateTime
+  scopeResponsible        String
   sourceName              String
   sourceRaw               Bytes
   sourceRawSha256         String
