@@ -1,0 +1,81 @@
+$ node apps/api/scripts/check-actor-stamping.mjs --self-test
+✅ #713 (1)(2) MISSAD: modellnamn med svensk initial härleds ur schemat och känns igen som literal
+✅ #713 (3) MISSAD: aktörsslag med svenskt tecken härleds helt
+✅ den delade skannerns kanariefåglar: 13 lägen, noll fallna
+✅ en korrekt uppsättning är ren
+✅ fångad: extensionen inte påkopplad
+✅ fångad: anropet borttaget men IMPORTEN kvar
+✅ fångad: påkopplingen står bara i en kommentar
+✅ fångad: $extends-resultatet kastas
+✅ fångad: mekanismen saknas helt
+✅ fångad: modellmängden listad i stället för härledd
+✅ fångad: härledning PLUS hårdkodad lista
+✅ fångad: ingen gräns alls
+✅ fångad: en gräns saknas (AGENT)
+✅ fångad: en FJÄRDE gräns tillkommer
+✅ fångad: någon sätter kolumnen för hand
+✅ direkt Prisma-select läser actorKind
+✅ nästlad Prisma-select får välja bort actorKind
+✅ select får följa ett separat data-objekt utan aktörstilldelning
+✅ data-anropets spärr slutar före syskonets select
+✅ citerad data utan aktör hindrar inte syskonets select
+✅ fångad: boolesk tilldelning i data är inte ett fältval
+✅ fångad: ett select-namn under data gör inte skrivningen till en läsning
+✅ fångad: citerad data kan inte dölja en aktörstilldelning
+✅ fångad: beräknad data kan inte dölja en aktörstilldelning
+✅ fångad: data genom ett funktionsanrop kan inte dölja en aktörstilldelning
+✅ fångad: variabel i select är inte ett belagt booleskt fältval
+✅ fångad: uttryck med boolesk början i select får inget undantag
+✅ fångad: yttre select döljer inte aktör i nästlat objekt
+✅ fångad: nästlad data inne i select döljs inte
+✅ fångad: ett grönt select döljer inte nästa skrivning
+✅ fångad: select och skrivning som syskon granskas separat
+✅ fångad: select i sträng och kommentar döljer inte data
+✅ fångad: obalanserat select får inget undantag
+✅ en kommentar som nämner actorKind: fäller inte
+✅ fångad: en gräns som bara står i en KOMMENTAR räknas inte
+✅ fångad: svepet läser inte brytpunkten
+✅ fångad: brytpunkten saknas i kontexten
+✅ fångad: svepet har egen tabellista
+
+✅ Självtest OK.
+
+exit=0
+
+$ node apps/api/scripts/check-actor-stamping.mjs
+✅ aktörsstämplingen är påkopplad; modellmängden härleds ur schemat, tre gränser satta, inga handpåläggningar. (4 referenser i extensionen)
+
+exit=0
+
+$ node apps/api/scripts/check-identifier-regex.mjs
+Inga nya ASCII-härledningar — 58 vaktskript, 8 förekomster över 8 poster, exakt baslinjen.
+
+exit=0
+
+$ node apps/api/scripts/check-guard-preprocessors.mjs
+Förbehandling är delad — 58 skript granskade, 53 via scripts/lib/source-scan.mjs, 3 kvitterade (läser själva, med skäl), 0 handrullade lexer-former.
+
+exit=0
+
+$ node apps/api/scripts/check-source-scan-canaries.mjs
+✅ regex                RÖD    regex-läget känns aldrig igen (defekt 1 återinförd)
+✅ regex                RÖD    regexSlut hittar aldrig slutet (andra halvan av samma läge)
+✅ sträng               RÖD    strängar tokeniseras aldrig
+✅ mallsträng           RÖD    mallsträngar tokeniseras aldrig
+✅ radkommentar         RÖD    radkommentarer känns aldrig igen
+✅ blockkommentar       RÖD    blockkommentarer känns aldrig igen
+✅ escape i sträng      RÖD    backslash-hoppet i strängskannern tas bort
+✅ escape i mallsträng  RÖD    backslash-hoppet i mallskannern tas bort
+✅ ${}-tokenisering     RÖD    uttrycksSlut blir en naiv klammerräkning utan strängkännedom
+✅ regex i ${}          RÖD    enTokenVid känner ingen regex (defekt 1 inuti ${})
+✅ regex i ${}          RÖD    uttrycksSlut spårar inget förra — enTokenVid får aldrig kontexten
+✅ unicode-identifierare RÖD    tokenizeTs hoppar bara över ASCII-identifierare
+✅ unicode-identifierare RÖD    uttrycksSlut hoppar bara över ASCII-identifierare (samma fälla inuti ${})
+✅ unicode-identifierare RÖD    REGEX_LÄGE avgränsar nyckelorden med ASCII-\b igen (andra halvan)
+✅ SQL-radkommentar     RÖD    SQL-dialekten tappar sin radkommentar
+✅ CSS-dialekt          RÖD    CSS mappas till SQL — den uppmätta allowlist-incidenten
+✅ removeImports        RÖD    removeImports slutar undanta literaler
+
+✅ Skannerns kanariefåglar fäller varje läge — 17 mutationer över 13 lägen, alla RÖDA, och paritet åt båda hållen.
+
+exit=0

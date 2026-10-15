@@ -25,6 +25,10 @@
  * `actor-stamp.db.spec.ts`, som skriver genom var och en av de tre gränserna
  * mot riktig Postgres och kräver rätt stämpel.
  *
+ * R4 känner syntaktiska fältval (`select: { actorKind: true/false }`), inte
+ * dataflöden. Den följer inte alias, spreads eller beräknade egenskaper; den
+ * ersätter därför inte extensionens skrivskydd eller databasproven ovan.
+ *
  * Kör med `--self-test` för kanariefåglarna.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -57,6 +61,60 @@ function allaKällfiler(dir = SRC) {
     if (statSync(full).isDirectory()) return allaKällfiler(full)
     return full.endsWith('.ts') && !full.endsWith('.spec.ts') ? [full] : []
   })
+}
+
+/**
+ * Endast direkta booleska fältval i `select: { ... }` är läsningar.
+ * Kodmasken har redan blankat kommentarer och stränginnehåll. Stacken
+ * avgränsar varje objekt: ett yttre select får aldrig frikänna nästlad data
+ * eller en senare skrivning. Okänd syntax får inget undantag.
+ */
+function aktörsläsningar(kodVy) {
+  const token = [...kodVy.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*|[^\s]/gu)]
+  const stack = []
+  const läsningar = []
+  const stänger = { '}': '{', ')': '(', ']': '[' }
+  const identifierare = /^[\p{L}_$][\p{L}\p{N}_$]*$/u
+  for (let i = 0; i < token.length; i++) {
+    const text = token[i][0]
+    const parent = stack.at(-1)
+    if ('{(['.includes(text)) {
+      stack.push({
+        tecken: text,
+        select: text === '{' && parent?.tecken === '{' &&
+          parent.egenskap === 'select' && parent.kolon === i - 1,
+        // Egenskapen gäller hela värdet, även genom build(...) och arrayer.
+        // Citerade/beräknade nycklar är okända i kodmasken: inget undantag.
+        spärrad: parent?.spärrad || ['data', 'okänd'].includes(parent?.egenskap),
+        egenskap: null,
+        fältStart: i + 1,
+        kolon: null,
+        stängd: false,
+      })
+    } else if (Object.hasOwn(stänger, text)) {
+      if (parent?.tecken !== stänger[text]) return new Set()
+      parent.stängd = true
+      stack.pop()
+    } else if (text === ',' && parent?.tecken === '{') {
+      parent.egenskap = null
+      parent.fältStart = i + 1
+      parent.kolon = null
+    } else if (text === ':' && parent?.tecken === '{' && parent.egenskap === null) {
+      const namn = token[parent.fältStart]?.[0]
+      parent.egenskap = i === parent.fältStart + 1 && identifierare.test(namn ?? '')
+        ? namn : 'okänd'
+      parent.kolon = i
+    } else if (
+      text === 'actorKind' && parent?.select && !parent.spärrad &&
+      ['{', ','].includes(token[i - 1]?.[0]) && token[i + 1]?.[0] === ':' &&
+      ['true', 'false'].includes(token[i + 2]?.[0]) &&
+      [',', '}'].includes(token[i + 3]?.[0])
+    ) {
+      läsningar.push({ index: token[i].index, parent })
+    }
+  }
+  if (stack.length > 0) return new Set()
+  return new Set(läsningar.filter((läsning) => läsning.parent.stängd).map((läsning) => läsning.index))
 }
 
 export function evaluate({ extText, prismaText, kontextText, svepText, schemaText, källor }) {
@@ -157,7 +215,11 @@ export function evaluate({ extText, prismaText, kontextText, svepText, schemaTex
   const förhand = []
   for (const [fil, kod] of källor) {
     if (fil === EXT_FIL) continue
-    if (/actorKind\s*:/.test(codeMask(kod))) förhand.push(fil.replace(API + '/', ''))
+    const kodVy = codeMask(kod)
+    const träffar = [...kodVy.matchAll(/actorKind\s*:/g)]
+    if (träffar.length === 0) continue
+    const läsningar = aktörsläsningar(kodVy)
+    if (träffar.some((träff) => !läsningar.has(träff.index))) förhand.push(fil.replace(API + '/', ''))
   }
   if (förhand.length > 0) {
     säg(
@@ -349,6 +411,26 @@ function selfTest() {
 
   // R4
   röd('någon sätter kolumnen för hand', evaluate({ ...BAS, källor: [...KÄLLOR_OK, ['/a/svc.ts', 'prisma.invoice.create({ data: { actorKind: "HUMAN" } })']] }), 'för hand')
+
+  const medAktörskod = (kod) => evaluate({ ...BAS, källor: [...KÄLLOR_OK, ['/a/svc.ts', kod]] })
+  grön('direkt Prisma-select läser actorKind', medAktörskod('prisma.invoice.findMany({ select: { id: true, actorKind: true } })'))
+  grön('nästlad Prisma-select får välja bort actorKind', medAktörskod('prisma.invoice.findMany({ select: { lease: { select: { actorKind: false } }, actorKind: true } })'))
+  grön('select får följa ett separat data-objekt utan aktörstilldelning', medAktörskod('prisma.invoice.create({ data: { amount: 1 }, select: { actorKind: true } })'))
+  grön('data-anropets spärr slutar före syskonets select', medAktörskod('prisma.invoice.create({ data: build({ amount: 1 }, 2), select: { actorKind: true } })'))
+  grön('citerad data utan aktör hindrar inte syskonets select', medAktörskod('prisma.invoice.create({ "data": { amount: 1 }, select: { actorKind: true } })'))
+  röd('boolesk tilldelning i data är inte ett fältval', medAktörskod('prisma.invoice.create({ data: { actorKind: true } })'), 'för hand')
+  röd('ett select-namn under data gör inte skrivningen till en läsning', medAktörskod('prisma.invoice.create({ data: { select: { actorKind: true } } })'), 'för hand')
+  röd('citerad data kan inte dölja en aktörstilldelning', medAktörskod("prisma.invoice.create({ 'data': { select: { actorKind: true } } })"), 'för hand')
+  röd('beräknad data kan inte dölja en aktörstilldelning', medAktörskod("prisma.invoice.create({ ['data']: { select: { actorKind: true } } })"), 'för hand')
+  röd('data genom ett funktionsanrop kan inte dölja en aktörstilldelning', medAktörskod('prisma.invoice.create({ data: build({ select: { actorKind: true } }) })'), 'för hand')
+  röd('variabel i select är inte ett belagt booleskt fältval', medAktörskod('prisma.invoice.findMany({ select: { actorKind: väljAktör } })'), 'för hand')
+  röd('uttryck med boolesk början i select får inget undantag', medAktörskod('prisma.invoice.findMany({ select: { actorKind: true || annan } })'), 'för hand')
+  röd('yttre select döljer inte aktör i nästlat objekt', medAktörskod('prisma.invoice.findMany({ select: { lease: { actorKind: true } } })'), 'för hand')
+  röd('nästlad data inne i select döljs inte', medAktörskod('prisma.invoice.findMany({ select: { lease: { data: { actorKind: "HUMAN" } } } })'), 'för hand')
+  röd('ett grönt select döljer inte nästa skrivning', medAktörskod('prisma.invoice.findMany({ select: { actorKind: true } }); prisma.invoice.create({ data: { actorKind: "HUMAN" } })'), 'för hand')
+  röd('select och skrivning som syskon granskas separat', medAktörskod('prisma.invoice.create({ select: { actorKind: true }, data: { actorKind: true } })'), 'för hand')
+  röd('select i sträng och kommentar döljer inte data', medAktörskod('const exempel = "select: {"; /* select: { */ prisma.invoice.create({ data: { actorKind: true } })'), 'för hand')
+  röd('obalanserat select får inget undantag', medAktörskod('prisma.invoice.findMany({ select: { actorKind: true, '), 'för hand')
 
   // R4:s MOTPROV — en KOMMENTAR som nämner fältet får inte fälla. Utan den här
   // raden är R4 en regel som läser prosa, och varje docblock som förklarar

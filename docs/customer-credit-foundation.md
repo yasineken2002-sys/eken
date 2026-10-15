@@ -89,15 +89,22 @@ Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
 - Kontrakts-, DTO-placerings-, koercions-, append-only-, aktörs- och kritiska
   indexvakter samt historikregister: gröna. Dagens koercionsvakt heter `check-strict-koercion.mjs`;
   det äldre filnamnet `check-strict-boolean.mjs` finns inte längre på main.
+- Aktörsvakten gav ett falskt larm för historikens två `actorKind: true` i
+  Prisma-`select`. Den skiljer nu direkta booleska fältval från tilldelningar.
+  18 nya självtestfall bevarar spärren mot manuella skrivningar, även när
+  `select` och `data` är nästlade eller förekommer i samma anrop. Inget
+  produktionsfält döljs och inget undantag läggs till i en baslinje.
 - Full API-typecheck slog i den satta heapgränsen 1536 MB. Ingen godkänd full
-  typecheck påstås lokalt; CI måste verifiera hela projektet. Första CI-körningens fulla typecheck och
-  schema-drift blev gröna på `ec408e61`; där hittades den historikregisterlucka
-  som därefter rättades. Senaste commit måste ha egen grön CI. De riktade
+  typecheck påstås lokalt; CI måste verifiera hela projektet. Full typecheck och
+  schema-drift blev gröna i CI på både `ec408e61` och `d4a0a9f8`. Den första
+  körningens historikregisterlucka är rättad; den andra körningen bekräftar
+  historikregistret. Senaste commit måste ha egen grön CI. De riktade
   Jest-körningarna använde ordinarie ts-jest med typkontroll.
 
 [Råa provloggar](eval/customer-credit-foundation/) sparas med utkastet.
 `customer-credit-history.txt` är senaste historik-/DB-körningen;
 `customer-credit-db.txt` bevarar den tidigare 33-fallsmätningen före historikkopplingen.
+`actor-guard-selftest.txt` innehåller självtesterna för den rättade aktörsvakten.
 Inga modell-, bank- eller produktionsanrop har gjorts.
 
 Kör från repositoryts rot. Maskinen delas med andra arbeten och har två
