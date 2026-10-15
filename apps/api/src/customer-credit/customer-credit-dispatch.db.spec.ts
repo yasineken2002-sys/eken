@@ -23,6 +23,12 @@ jest.setTimeout(30_000)
 
 const ISOLATED = isIsolatedDatabase()
 const medDb = ISOLATED ? describe : describe.skip
+
+// Körs även när DB-sviten skulle hoppas över. Saknad isolerad databas får
+// aldrig ge en grön mätning utan att affärsfallen faktiskt har körts.
+it('testförutsättningen är en uttryckligt isolerad databas', () => {
+  expect(ISOLATED).toBe(true)
+})
 const Decimal = Prisma.Decimal
 
 function preparation(f: Fixture) {

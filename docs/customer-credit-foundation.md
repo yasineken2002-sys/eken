@@ -246,11 +246,12 @@ Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
 
 Den nya fasen med automatisk användning och beständigt utskick:
 
-- **402/402 prov i 21 riktade sviter**, körda seriellt i tre grupper: 94
+- **404/404 prov i 21 riktade sviter**, körda seriellt i tre grupper: 96
   utskicks-/återhämtningsprov (sex sviter), 161 ekonomiska regressionsprov
   (sex sviter) och 147 bank-/tillgodo-/portal-/inventarieprov (nio sviter).
-  De 94 omfattar 22 verkliga DB-kärnprov, 19 prov genom tjänstekedjan,
-  28 recoveryprov och 25 kö-/legacy-/kvittensprov. Det är kodprov, inte en
+  De 96 omfattar 22 verkliga DB-kärnprov, 19 prov genom tjänstekedjan,
+  28 recoveryprov, 25 kö-/legacy-/kvittensprov och två obligatoriska
+  miljöförutsättningar. Det är kodprov, inte en
   uppmätt kundvolym eller matchningsprocent. De sista körningarna avslutades
   2026-10-16 svensk tid.
 - DB och bokföring är verkliga och isolerade; PDF-renderaren, Redis och
@@ -267,11 +268,27 @@ Den nya fasen med automatisk användning och beständigt utskick:
   redan funna beständiga rad-id:n med CAS och omprövad utskicksspärr.
   Inventariet ser också två rent syntetiska fixture-skrivningar. Inga
   skyddsundantag eller testassertioner har tagits bort för att få grönt.
-- **16/16 relevanta vakter** är gröna, inklusive 35 klassade cron-jobb och
+- **18/18 relevanta vakter** är gröna (inklusive CI-uppföljningen), inklusive 35 klassade cron-jobb och
   deras varaktiga felsänka. ESLint på 55 ändrade TS-filer samt uppföljning
   på slutändringarna är grön. Full typecheck/hela sviten mäts av CI på den
   nya committen; tidigare grönt CI ersätter inte den mätningen.
 - Råa utfall ligger under `docs/eval/customer-credit-foundation/dispatch-*.txt`.
+- CI på `41748a38` upptäckte en saknad ovillkorlig DB-förutsättningskontroll.
+  Båda nya DB-sviter prövar nu uttryckligen miljön även om DB-blocket skulle
+  hoppas över. Ingen skip-vakt eller baslinje har lättats.
+- PDF-vakten följer nu också den sparade HTML-kedjan från producent via
+  validerad callback/DB-skrivning till validerad läsare. Tolv nya källmutationsprov
+  täcker brutna bindningar, externa resurser, konstruerade läsarargument och
+  Prisma-shorthand. Ingen producent undantas och ingen baslinje lättas.
+  Detta är syntaktisk spårning av deklarerade direkta vägar; alias, indirekta
+  eller nästlade Prisma-skrivningar och rå SQL är ingen bevisad fullständig
+  dataproveniens. Begränsningen står i vaktens kod.
+- Metavaktens 55/55 vakter fäller sina avsiktliga fel med `TMPDIR=/private/tmp`.
+  Första lokala körningen gav 13 tysta utfall även med HEAD-versionen av
+  PDF-vakten: macOS `/var`-alias gjorde att dessa skripts direktkörningsvillkor
+  inte startade självtesten. Samma injicerade fil via kanonisk `/private/var`
+  fällde korrekt. Ingen annan vakt ändras; diagnos och slutresultat finns i
+  `dispatch-pdf-guard-followup.txt`.
 - Tre nya additiva migrationer inför utskicksreservationen, spärren mot ett
   tidigare utskicksanspråk och recoveryprogress. Inga tidigare migrationer
   skrivs om. Dokumentets oföränderliga fält och kvittenser skyddas i databasen;

@@ -37,7 +37,14 @@ import { RentNoticeCreditService } from './rent-notice-credit.service'
 import { readPreparedNoticeMail } from './notice-dispatch'
 
 jest.setTimeout(30_000)
-const medDb = isIsolatedDatabase() ? describe : describe.skip
+const ISOLATED = isIsolatedDatabase()
+const medDb = ISOLATED ? describe : describe.skip
+
+// Körs även när DB-sviten skulle hoppas över. Saknad isolerad databas får
+// aldrig ge en grön mätning utan att affärsfallen faktiskt har körts.
+it('testförutsättningen är en uttryckligt isolerad databas', () => {
+  expect(ISOLATED).toBe(true)
+})
 
 function unused<T>(): T {
   return new Proxy(
