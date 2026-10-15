@@ -1,5 +1,116 @@
 # Agent 2 — referenser före fördelning, experiment
 
+## Uppföljning 2026-10-15: tillgodo och återbetalning i lokal SQLite
+
+En separat prototyp prövar nu sparat tillgodo, användning på nästa avi och
+återbetalning efter avslutat avtal. Den använder transaktioner i en lokal
+SQLite-fil och symboliska bokföringskonton. **Det är inte produktens
+PostgreSQL-databas eller bokföringstjänst.** Ingen produktionskod, riktig
+bankanslutning eller modell används.
+
+Den viktigaste iakttagelsen är att samma oförändrade betalningsdata fortfarande
+lämnar **250 kr som verksamheten är skyldig hyresgästen**. Tillgodo på nästa avi
+löser inte detta ensamt: testhyresgästen betalar fortsatt 9 800 kr varje månad
+för en hyra på 9 775 kr. Nästa avdrag gör då nästa överskott större.
+
+| Månad i försöket | Tidigare tillgodo används | Kontant till avin | Nytt tillgodo efter betalning |
+| ---------------- | ------------------------: | ----------------: | ----------------------------: |
+| 1                |                      0 kr |          9 775 kr |                         25 kr |
+| 2                |                     25 kr |          9 750 kr |                         50 kr |
+| 10               |                    225 kr |          9 550 kr |                        250 kr |
+
+Nio källposter används och en källpost återstår. Historiskt skapade tillgodon
+är 1 375 kr och använda tillgodon 1 125 kr; nettoskulden är 250 kr. Att nio
+poster är förbrukade betyder alltså **inte att nio ekonomiska åtaganden har
+försvunnit**. Vi räknar inte om de tio ursprungliga överskottsbetalningarna
+till bara ett kvarstående betalningsärende för att nå målet tjugo.
+
+De två kronologiska körningarna, med olika ordning inom samma bankdag, ger
+samma beslut och ekonomiska slutläge. Ursprungsfacit är oförändrat:
+**1 970 strikt godkända, tio avvikelser för överskottshanteringen och tjugo
+utan identifierbar entydig fördelning.** Alla 2 000 bankbetalningar återspelas
+utan nya ekonomiska effekter; stängning och återöppning av databasen bevarar
+tillståndet. Körningarna använder samma 2 000 unika, påhittade betalningar.
+
+**Indatagräns:** belopp, datum, banktext och bank-ID är oförändrade. OCR-fältet
+återskapas däremot från testets `ocrFranHyresgast`, inte från den äldre
+importörens härledda `rawOcr`. I 168 fall hade importören plockat ut årtalet
+`2026` trots att testbetalaren inte angav OCR: 126 avinummerfall och 42
+namn/period-fall. Dessa referensfält är tomma här. Denna projektion används
+även i de tidigare fristående referensproven; den förutsätter tillförlitlig
+information om OCR-källan och är **inte en återkörning av hela bankimporten**.
+Alla sparade bankfält är alltså inte identiska, även när betalarens uppgifter
+är oförändrade. Produktionsvägen för detta återstår att verifiera.
+
+I en **separat kopia** av databasen lägger testet till tre nya uppgifter som
+saknas i originalunderlaget: ett antaget avtalsslut, ett testverifierat
+returkonto knutet till källbetalningen och en testbekräftad bankutbetalning
+på 250 kr. Begäran reserverar beloppet men minskar inte skulden. Först den
+bekräftade testutbetalningen minskar både bankmedel och skuld med 250 kr.
+Detta bevisar prototypens händelsekedja under dessa antaganden, **inte en
+riktig bankutbetalning, kontoverifiering eller att originalmaterialet klarar
+målet högst tjugo**.
+
+Prototypens regler och verifiering:
+
+- Tillgodo kräver uttryckligen aktiverad testpolicy per avtal och får användas
+  endast inom samma organisation, hyresgäst och avtal. Saknade månader,
+  tidigare obetalda avier och redan betalda eller ännu inte utställda avier
+  får inte kringgås. Avdraget begränsas till aktuell restskuld.
+- Varje ekonomisk rörelse behåller bankradens UUID, testfallets ID och
+  källavin. Kredit mot en ny avi minskar skuld och kundfordran; den skapar
+  ingen ny inbetalning. Ören bevaras per bankrad, avi och tillgodokälla.
+- Händelse-ID och bankradens ID hindrar dubbletter. Samma ID med ändrat
+  innehåll avvisas. Ett injicerat fel före commit återställer alla poster.
+  Två samtidiga återbetalningsförsök i separata SQLite-anslutningar kan
+  reservera samma pengar endast en gång.
+- Återbetalning kräver avslutat avtal utan öppen aviskuld och en uttrycklig
+  testverifiering av mottagarkontot för just källbetalningen. Belopp,
+  mottagare och bankbekräftelse måste stämma. Timeout frigör inte reservation;
+  ett slutligt testavslag gör det. En sen motstridig bekräftelse avvisas.
+- Datum jämförs som UTC-tidpunkter. Retroaktiva pengadispositioner avvisas
+  efter en senare disposition på avtalet; de behöver ett separat förfarande
+  i en verklig integration. Tidszoner får inte göra en framtida avi tillgänglig.
+- **99/99 unittest-metoder passerar**, varav 46 nya livscykelprov och 53
+  tidigare referens-/text-/överskottsprov. Bland regressionerna finns
+  okänd organisation, ändrat datum i en återbetalningsbekräftelse,
+  bakdaterade händelser och tre tidszonsfall.
+- Modellanrop: noll; modellavgift: **0 kr**. Detta mäter inte driftkostnad
+  per riktig banktransaktion. Inga riktiga bankanrop eller utbetalningar sker.
+
+Rårapport, källhashar, logg och oberoende kontroll finns i
+`docs/eval/referensprov-v3/`. SQLite-filerna sparas lokalt i testkatalogen;
+de ingår inte i Git. Rapporten innehåller databasens ekonomiska poster så att
+beloppen kan räknas om utan prototypens kontrollfunktion.
+
+### Vad som återstår före produktionsintegration
+
+Produktens `rent-notice-credit.service.ts` avvisar i dag kreditering av betalda
+eller delbetalda avier eftersom kundtillgodo och återbetalning saknas.
+`RentNoticePaymentSource` har bara bankavstämning och manuell betalning.
+Den befintliga betalningsbokningen debiterar bank varje gång; den får därför
+inte återanvändas oförändrad för tillgodo. En kreditnota återför hyra och är
+inte samma sak som att använda redan mottagna pengar.
+
+Nästa produktionssteg behöver en egen beständig tillgodomodell, godkänd
+kontomappning, hantering av låsta perioder, migration, koppling till riktiga
+bankbesked och tester genom produktens bokföringstjänst. Denna prototyp
+omfattar en hyresavi per avtal/månad i SEK. Avgifter, ränta, kreditnotor,
+annulleringar och rättsliga villkor är inte implementerade här. Befintlig
+`apps/api/src/reconciliation/` har inte ändrats. **99,98 % i drift och högst
+tjugo manuella betalningar är fortfarande inte bevisat.**
+
+Kör den isolerade livscykeln från reporoten; utdatakatalogen måste vara ny:
+
+```sh
+python3 -B -m unittest discover -s apps/api/scripts -p 'test_referensprov*.py' -v
+python3 -B apps/api/scripts/eval_referensprov_credit.py /tmp/ny-kreditlivscykel
+python3 -B apps/api/scripts/audit_referensprov_credit.py /tmp/ny-kreditlivscykel
+```
+
+Avsnitten nedan beskriver tidigare steg; ovanstående livscykelprov tillkommer
+utan att göra deras historiska körningar till produktionsbevis.
+
 ## Uppföljning 2026-10-15: textfel och separat överskott
 
 Texttolkningen i experimentet är korrigerad. `oktober 2026`, `okt 2026`,

@@ -1,0 +1,338 @@
+{
+  "status": "PASS",
+  "artifact_hashes": {
+    "resultat.json": "b049a53aa3990c13b7a0f5a36d581b7af2b420fec3d5905ddf9ab3f7d9e77985",
+    "forward.sqlite": "2b1b6602a1a28bc4936d129c0bca78e21814fb28815add5d3a48a18fb408550d",
+    "reverse.sqlite": "2a567eeb66330a08549ba1174469819f92d0e7f4a733a40a816a4508358573dc",
+    "synthetic-closure.sqlite": "625251dffebf1079bccaa767b9c66362fcc3c493ea633e959853e31e8ade51a2"
+  },
+  "check_count": 77134,
+  "checks": {
+    "frozen_files": 15,
+    "source_hashes": 5,
+    "sqlite_integrity": 3,
+    "notice_conservation": 6000,
+    "notice_source_scope": 6000,
+    "receipt_input": 6000,
+    "reference_projection": 6000,
+    "receipt_conservation": 6000,
+    "receipt_decision": 6000,
+    "non_overpayment_original_gold": 5970,
+    "report_receipt_row": 4000,
+    "overpayment_progression": 30,
+    "movement_source_scope": 6193,
+    "bank_linkage": 6165,
+    "credit_linkage": 27,
+    "credit_no_skipped_month": 27,
+    "lot_conservation": 30,
+    "lot_source_scope": 30,
+    "journal_each_event": 18604,
+    "journal_orphans": 3,
+    "account_totals": 3,
+    "original_scores": 3,
+    "snapshot_matches_report": 3,
+    "report_totals": 3,
+    "expected_final_liability": 3,
+    "refund_source_linkage": 1,
+    "one_synthetic_refund": 1,
+    "refund_binding": 1,
+    "refund_event_payloads": 1,
+    "refund_event_sequence": 1,
+    "pending_keeps_liability": 1,
+    "settlement_outflow_only": 1,
+    "projection_metadata": 2,
+    "projection_explanation": 1,
+    "previous_rows_unchanged": 2,
+    "previous_financials_unchanged": 2,
+    "previous_closure_unchanged": 1,
+    "same_order_results": 1,
+    "limits_labelled": 1
+  },
+  "summaries": [
+    {
+      "database": "forward.sqlite",
+      "table_counts": {
+        "leases": 200,
+        "notices": 2000,
+        "receipts": 2000,
+        "lots": 10,
+        "movements": 2064,
+        "return_accounts": 0,
+        "refunds": 0,
+        "journal": 8028,
+        "events": 6200
+      },
+      "scores": {
+        "correct": 1970,
+        "review": 20,
+        "deviation": 10
+      },
+      "totals": {
+        "incomingOre": 1542574750,
+        "liabilityOre": 25000,
+        "creditAppliedOre": 112500,
+        "refundedOre": 0,
+        "reservedOre": 0,
+        "accounts": {
+          "BANK": 1542574750,
+          "RECEIVABLE": 19550750,
+          "CUSTOMER_LIABILITY": -25000,
+          "UNIDENTIFIED": -19550750,
+          "RENT": -1542549750
+        }
+      },
+      "overpayment_progression": [
+        [
+          0,
+          0,
+          977500,
+          2500
+        ],
+        [
+          1,
+          2500,
+          975000,
+          5000
+        ],
+        [
+          2,
+          5000,
+          972500,
+          7500
+        ],
+        [
+          3,
+          7500,
+          970000,
+          10000
+        ],
+        [
+          4,
+          10000,
+          967500,
+          12500
+        ],
+        [
+          5,
+          12500,
+          965000,
+          15000
+        ],
+        [
+          6,
+          15000,
+          962500,
+          17500
+        ],
+        [
+          7,
+          17500,
+          960000,
+          20000
+        ],
+        [
+          8,
+          20000,
+          957500,
+          22500
+        ],
+        [
+          9,
+          22500,
+          955000,
+          25000
+        ]
+      ]
+    },
+    {
+      "database": "reverse.sqlite",
+      "table_counts": {
+        "leases": 200,
+        "notices": 2000,
+        "receipts": 2000,
+        "lots": 10,
+        "movements": 2064,
+        "return_accounts": 0,
+        "refunds": 0,
+        "journal": 8028,
+        "events": 6200
+      },
+      "scores": {
+        "correct": 1970,
+        "review": 20,
+        "deviation": 10
+      },
+      "totals": {
+        "incomingOre": 1542574750,
+        "liabilityOre": 25000,
+        "creditAppliedOre": 112500,
+        "refundedOre": 0,
+        "reservedOre": 0,
+        "accounts": {
+          "BANK": 1542574750,
+          "RECEIVABLE": 19550750,
+          "CUSTOMER_LIABILITY": -25000,
+          "UNIDENTIFIED": -19550750,
+          "RENT": -1542549750
+        }
+      },
+      "overpayment_progression": [
+        [
+          0,
+          0,
+          977500,
+          2500
+        ],
+        [
+          1,
+          2500,
+          975000,
+          5000
+        ],
+        [
+          2,
+          5000,
+          972500,
+          7500
+        ],
+        [
+          3,
+          7500,
+          970000,
+          10000
+        ],
+        [
+          4,
+          10000,
+          967500,
+          12500
+        ],
+        [
+          5,
+          12500,
+          965000,
+          15000
+        ],
+        [
+          6,
+          15000,
+          962500,
+          17500
+        ],
+        [
+          7,
+          17500,
+          960000,
+          20000
+        ],
+        [
+          8,
+          20000,
+          957500,
+          22500
+        ],
+        [
+          9,
+          22500,
+          955000,
+          25000
+        ]
+      ]
+    },
+    {
+      "database": "synthetic-closure.sqlite",
+      "table_counts": {
+        "leases": 200,
+        "notices": 2000,
+        "receipts": 2000,
+        "lots": 10,
+        "movements": 2065,
+        "return_accounts": 1,
+        "refunds": 1,
+        "journal": 8030,
+        "events": 6204
+      },
+      "scores": {
+        "correct": 1970,
+        "review": 20,
+        "deviation": 10
+      },
+      "totals": {
+        "incomingOre": 1542574750,
+        "liabilityOre": 0,
+        "creditAppliedOre": 112500,
+        "refundedOre": 25000,
+        "reservedOre": 0,
+        "accounts": {
+          "BANK": 1542549750,
+          "RECEIVABLE": 19550750,
+          "CUSTOMER_LIABILITY": 0,
+          "UNIDENTIFIED": -19550750,
+          "RENT": -1542549750
+        }
+      },
+      "overpayment_progression": [
+        [
+          0,
+          0,
+          977500,
+          2500
+        ],
+        [
+          1,
+          2500,
+          975000,
+          5000
+        ],
+        [
+          2,
+          5000,
+          972500,
+          7500
+        ],
+        [
+          3,
+          7500,
+          970000,
+          10000
+        ],
+        [
+          4,
+          10000,
+          967500,
+          12500
+        ],
+        [
+          5,
+          12500,
+          965000,
+          15000
+        ],
+        [
+          6,
+          15000,
+          962500,
+          17500
+        ],
+        [
+          7,
+          17500,
+          960000,
+          20000
+        ],
+        [
+          8,
+          20000,
+          957500,
+          22500
+        ],
+        [
+          9,
+          22500,
+          955000,
+          25000
+        ]
+      ]
+    }
+  ]
+}
