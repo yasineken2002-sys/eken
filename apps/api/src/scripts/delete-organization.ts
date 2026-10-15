@@ -56,6 +56,37 @@ const byOrg = (ids: string[]) => ({ organizationId: { in: ids } })
  * den raderas sist av `deleteOrganizations` och tar kaskad-tabellerna med sig.
  */
 export const DELETION_STEPS: readonly Step[] = [
+  // Kundtillgodots två betalningsslag kräver olika ordning. Ta först ENDAST
+  // användningsallokeringarna, som är Restrict mot CustomerCreditApplication.
+  // Källans vanliga bankallokering får inte tas här: CustomerCredit.sourcePayment
+  // är Restrict mot den. Den försvinner senare med RentNotice-kaskaden, efter
+  // att användningarna och tillgodot har tagits bort. Detta är fortfarande
+  // enbart dev-verktygets uttryckliga helradering, aldrig GDPR-avidentifiering.
+  {
+    model: 'RentNoticePayment',
+    restrictAgainst: 'CustomerCreditApplication',
+    where: (ids) => ({
+      source: 'CUSTOMER_CREDIT',
+      rentNotice: byOrg(ids),
+      customerCreditApplication: byOrg(ids),
+    }),
+  },
+  {
+    model: 'CustomerCreditApplication',
+    restrictAgainst: 'CustomerCredit, RentNotice, JournalEntry, Organization',
+    where: byOrg,
+  },
+  {
+    model: 'CustomerCredit',
+    restrictAgainst:
+      'RentNoticePayment, RentNotice, BankTransaction, JournalEntry, Account, Lease, Tenant, Organization',
+    where: byOrg,
+  },
+  {
+    model: 'CustomerCreditPolicy',
+    restrictAgainst: 'Account, BankAccount, Organization',
+    where: byOrg,
+  },
   // #518 — MÅSTE ligga före både RentNoticeLine och RentNotice.
   //
   // `RentNoticeCredit` är Restrict mot Organization OCH mot RentNotice, och dess

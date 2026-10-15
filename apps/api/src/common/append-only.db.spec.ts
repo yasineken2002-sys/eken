@@ -61,6 +61,11 @@ const SKYDDADE = [
   // `actorUserId` är en NAKEN kolumn utan relation just för att en raderad
   // användare inte ska kunna skriva om historiken via en SET NULL.
   'AiDelegationEvent',
+  // Överbetalningens skuld och varje användning är oföränderlig historik.
+  // Båda spärrarna är på satsnivå: UPDATE-provet nedan måste därför fälla
+  // även i CI:s tomma tabeller, utan att särskilda tillgodofixturer skapas.
+  'CustomerCredit',
+  'CustomerCreditApplication',
   'FailedEmail',
   'InvoiceEvent',
   // Sen bokföring i ett stängt räkenskapsår. Spåret ÄR beviset för att

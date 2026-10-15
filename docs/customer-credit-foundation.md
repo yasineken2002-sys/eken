@@ -43,6 +43,11 @@ Mottagning och användning ingår även i hyresgästens befintliga historik,
 med ursprunglig tidpunkt, belopp, aktörsslag och pekare till respektive
 oföränderlig rad. Både organisation och hyresgäst avgränsar läsningen.
 
+Kundtillgodo ingår i den befintliga spärren mot hårdradering av en hyresgäst;
+beskedet hänvisar till avidentifiering. Dev-verktygets uttryckliga helradering
+har uppdaterad FK-ordning för de nya tabellerna. Det ändrar inte produktens
+bevarandepolicy och verktyget har inte körts för att radera tillgodounderlaget.
+
 ## Kvar före produktionskoppling
 
 1. Ett uttryckligt uppdrag som tillåter ändringar i `reconciliation` krävs.
@@ -67,9 +72,7 @@ oföränderlig rad. Både organisation och hyresgäst avgränsar läsningen.
 7. Fortnox-stödet för de nya `customer-credit-*`-källorna och deras
    kontomappning återstår. Ett lokalt balanserat verifikat bevisar inte att
    exporten stöder källan.
-8. Organisationsradering och bevarandepolicy måste hantera de nya tabellerna
-   uttryckligen; befintligt raderingsskript känner ännu inte till dem.
-9. Hela CI och Claudes granskning krävs före merge. Detta är ett utkast och
+8. Hela CI och Claudes granskning krävs före merge. Detta är ett utkast och
    aktiverar inte automatisk tillgodo eller ett komplett kundflöde.
 
 ## Avgränsad verifiering
@@ -82,7 +85,10 @@ Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
   historikprov mot PostgreSQL. Inkluderar två
   samtidiga transaktioner, omkörning, felaktigt källunderlag, direkt försök att
   kringgå tjänstens saldokontroll, periodlås och kronologiska gränsfall.
-- Totalt **167 godkända prov**, inte 167 oberoende kundbetalningar och inte
+- Efter bred CI: 6 ytterligare berörda regressionssviter, **56/56 prov**, grönt.
+  De prövar organisationsinventariet i kontrolläge, append-only mot PostgreSQL,
+  båda reverseringsordningarna, dev-raderingsordningen och GDPR:s bevarandegrind.
+- Totalt **223 godkända riktade prov**, inte 223 oberoende kundbetalningar och inte
   ett mått på automatisk matchningsträffsäkerhet.
 - 202 migrationer applicerade på separat syntetisk lokal databas. Schema
   validerat och egen Prisma-klient genererad; inga andra arbetskopior berörda.
@@ -100,11 +106,18 @@ Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
   körningens historikregisterlucka är rättad; den andra körningen bekräftar
   historikregistret. Senaste commit måste ha egen grön CI. De riktade
   Jest-körningarna använde ordinarie ts-jest med typkontroll.
+- Första breda CI-körningen gav **578 gröna och 5 röda sviter**
+  (8 421 gröna och 7 röda prov). Den hittade fyra saknade schema-/inventarie-
+  kopplingar samt en äldre testattrapp utan den nya låsningen. Kopplingarna är
+  nu rättade och de berörda proven gröna lokalt; detta ersätter inte en ny
+  full CI-körning. Ett lokalt lintanrop från repo-roten avbröts med SIGSEGV;
+  samma berörda filer klarade ESLint seriellt från API-paketet med 1536 MB heap.
 
 [Råa provloggar](eval/customer-credit-foundation/) sparas med utkastet.
 `customer-credit-history.txt` är senaste historik-/DB-körningen;
 `customer-credit-db.txt` bevarar den tidigare 33-fallsmätningen före historikkopplingen.
 `actor-guard-selftest.txt` innehåller självtesterna för den rättade aktörsvakten.
+`ci-integration-regression.txt` innehåller de 56 uppföljande regressionsproven.
 Inga modell-, bank- eller produktionsanrop har gjorts.
 
 Kör från repositoryts rot. Maskinen delas med andra arbeten och har två

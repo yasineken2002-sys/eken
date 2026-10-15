@@ -74,6 +74,41 @@ describe('raderingsordningen för en organisation', () => {
     expect(DELETION_STEPS.length).toBe(handled.size)
   })
 
+  it('löser tillgodoanvändning före källan utan att först radera källans bankallokering', () => {
+    const index = (model: string) => {
+      const position = DELETION_STEPS.findIndex((step) => step.model === model)
+      expect(position).toBeGreaterThanOrEqual(0)
+      return position
+    }
+    expect(index('RentNoticePayment')).toBeLessThan(index('CustomerCreditApplication'))
+    expect(index('CustomerCreditApplication')).toBeLessThan(index('CustomerCredit'))
+    for (const parent of ['RentNotice', 'JournalEntry', 'BankTransaction', 'Account', 'Lease']) {
+      expect(index('CustomerCredit')).toBeLessThan(index(parent))
+    }
+    expect(index('CustomerCreditApplication')).toBeLessThan(index('JournalEntry'))
+    expect(index('CustomerCreditPolicy')).toBeLessThan(index('Account'))
+    expect(index('CustomerCreditPolicy')).toBeLessThan(index('BankAccount'))
+  })
+
+  it('tidiga betalningssteget omfattar enbart utpekade organisationers tillgodoanvändningar', () => {
+    const step = DELETION_STEPS.find((entry) => entry.model === 'RentNoticePayment')!
+    expect(step.where(['org-1', 'org-2'])).toEqual({
+      source: 'CUSTOMER_CREDIT',
+      rentNotice: { organizationId: { in: ['org-1', 'org-2'] } },
+      customerCreditApplication: { organizationId: { in: ['org-1', 'org-2'] } },
+    })
+    // source-filtret är avgörande: vanliga bankallokeringar är fortfarande
+    // refererade av CustomerCredit och får inte tas av detta tidiga steg.
+  })
+
+  it('tillgodo, användningar och policy är begränsade till de uttryckligen valda organisationerna', () => {
+    for (const model of ['CustomerCredit', 'CustomerCreditApplication', 'CustomerCreditPolicy']) {
+      const step = DELETION_STEPS.find((entry) => entry.model === model)!
+      expect(step.where(['org-1'])).toEqual({ organizationId: { in: ['org-1'] } })
+      expect(step.where([])).toEqual({ organizationId: { in: [] } })
+    }
+  })
+
   // Kanariefåglarna mäter SKILLNADEN injektionen gör, inte hela schemats
   // renhet. Skrivna som `toEqual([...])` mot hela mängden hade de blivit röda
   // av någon ANNANS otäckta tabell — alltså av rätt fel men fel orsak, och

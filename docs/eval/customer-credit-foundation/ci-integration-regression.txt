@@ -1,0 +1,12 @@
+PASS src/common/append-only.db.spec.ts
+PASS src/accounting/reversal-both-orders.spec.ts
+PASS src/scripts/delete-organization.spec.ts
+PASS src/tenants/tenants-remove-gate.spec.ts
+PASS src/common/gdpr/tenant-history.spec.ts
+PASS src/common/authz/object-scope.spec.ts
+
+Test Suites: 6 passed, 6 total
+Tests:       56 passed, 56 total
+Snapshots:   0 total
+Time:        5.924 s
+Ran all test suites within paths "src/common/authz/object-scope.spec.ts", "src/common/append-only.db.spec.ts", "src/accounting/reversal-both-orders.spec.ts", "src/scripts/delete-organization.spec.ts", "src/common/gdpr/tenant-history.spec.ts", "src/tenants/tenants-remove-gate.spec.ts".
