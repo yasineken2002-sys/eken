@@ -1,0 +1,13 @@
+{
+  "codeCommit": "241efd4",
+  "reportUncompressedSha256": "cee3b24282a8e124e3f787cecc2c6c08858e7432a955cc82d871d957d518672b",
+  "reportUncompressedBytes": 2163340,
+  "testSourceSha256": "e83e1cf49c2bb17f20f6c7111f9930a6f72f9902744694e972031af6ccc83f5b",
+  "negativeControl": {
+    "mutation": "OCR first before explicit invoice reference check",
+    "expectedFailures": 2,
+    "observedFailures": 2,
+    "errors": 0,
+    "filesModified": false
+  }
+}

@@ -1,0 +1,33 @@
+test_conflicting_paid_and_unpaid_ocr_owner_both_stop (test_referensprov.ReferenceDecisionTest) ... ok
+test_explicit_current_invoice_over_old_debt (test_referensprov.ReferenceDecisionTest) ... ok
+test_explicit_overpayment_cannot_spill_into_old_debt (test_referensprov.ReferenceDecisionTest) ... ok
+test_explicit_reference_and_period_disagree (test_referensprov.ReferenceDecisionTest) ... ok
+test_garage_ref_collision_does_not_silently_select_one (test_referensprov.ReferenceDecisionTest) ... ok
+test_invalid_amount_and_overfull_debt_stop (test_referensprov.ReferenceDecisionTest) ... ok
+test_legacy_without_period_explicitly_keeps_oldest_first_policy (test_referensprov.ReferenceDecisionTest) ... ok
+test_multiple_invoice_references_do_not_choose_first (test_referensprov.ReferenceDecisionTest) ... ok
+test_name_collision_including_paid_account_is_not_unique (test_referensprov.ReferenceDecisionTest) ... ok
+test_name_substring_is_not_an_identity (test_referensprov.ReferenceDecisionTest) ... ok
+test_name_without_period_never_amount_only_match (test_referensprov.ReferenceDecisionTest) ... ok
+test_negated_intent_never_becomes_positive_reference (test_referensprov.ReferenceDecisionTest) ... ok
+test_no_bank_date_inference_for_missing_year (test_referensprov.ReferenceDecisionTest) ... ok
+test_old_ocr_partial_and_combined_payments_still_work (test_referensprov.ReferenceDecisionTest) ... ok
+test_opaque_ids_do_not_encode_a_hidden_answer (test_referensprov.ReferenceDecisionTest) ... ok
+test_other_organization_and_not_yet_issued_excluded (test_referensprov.ReferenceDecisionTest) ... ok
+test_partial_payment_for_explicit_current_invoice (test_referensprov.ReferenceDecisionTest) ... ok
+test_period_is_rent_period_not_due_date_or_bank_month (test_referensprov.ReferenceDecisionTest) ... ok
+test_projection_never_reads_gold (test_referensprov.ReferenceDecisionTest) ... ok
+test_reference_and_name_contradiction_stops_without_ocr (test_referensprov.ReferenceDecisionTest) ... ok
+test_shared_ocr_across_contracts_requires_invoice (test_referensprov.ReferenceDecisionTest) ... ok
+test_single_bad_check_digit_requires_name_and_period (test_referensprov.ReferenceDecisionTest) ... ok
+test_unique_and_legacy_reference_namespace_collision_stops (test_referensprov.ReferenceDecisionTest) ... ok
+test_unique_reference_retains_paid_identity_for_conflict (test_referensprov.ReferenceDecisionTest) ... ok
+test_unique_reference_selects_current_invoice_despite_old_debt (test_referensprov.ReferenceDecisionTest) ... ok
+test_unknown_reference_and_prefix_do_not_match (test_referensprov.ReferenceDecisionTest) ... ok
+test_unknown_valid_explicit_ocr_stops_even_with_good_name (test_referensprov.ReferenceDecisionTest) ... ok
+test_year_that_passes_checksum_is_not_owned_ocr (test_referensprov.ReferenceDecisionTest) ... ok
+
+----------------------------------------------------------------------
+Ran 28 tests in 0.199s
+
+OK

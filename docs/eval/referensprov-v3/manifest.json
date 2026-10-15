@@ -1,0 +1,40 @@
+{
+  "parentCommit": "4aa15745d95c52a4cb7cfa348db0d1e623e8bb77",
+  "files": {
+    "aterkorning.txt": {
+      "storedSha256": "146f75937cb54a6e3228791a50fa39266114e9849749b05848a3bf8ca5219537",
+      "uncompressedSha256": "146f75937cb54a6e3228791a50fa39266114e9849749b05848a3bf8ca5219537",
+      "uncompressedBytes": 7755
+    },
+    "kontrollprov.txt": {
+      "storedSha256": "836bd1b6c00144edc4bacef0683f5b741cd7ca1e1d64420e6d9e5bf34bf251c8",
+      "uncompressedSha256": "836bd1b6c00144edc4bacef0683f5b741cd7ca1e1d64420e6d9e5bf34bf251c8",
+      "uncompressedBytes": 11520
+    },
+    "livscykel.json.gz": {
+      "storedSha256": "c9af664bbf0758f8eab085a6758381869257bc25a88ad6621a7840276358a929",
+      "uncompressedSha256": "b049a53aa3990c13b7a0f5a36d581b7af2b420fec3d5905ddf9ab3f7d9e77985",
+      "uncompressedBytes": 17686124
+    },
+    "oberoende-kontroll.json": {
+      "storedSha256": "a6ef09fe8f7ade41068aea50c5a78e51fb3f34d767b49b345d3cb15768a1b514",
+      "uncompressedSha256": "a6ef09fe8f7ade41068aea50c5a78e51fb3f34d767b49b345d3cb15768a1b514",
+      "uncompressedBytes": 6694
+    }
+  },
+  "sourceFileSha256": {
+    "apps/api/scripts/referensprov_credit.py": "9d665b4b403b6ff5deb005d8494eaf9d8fe7fdd6f0e16fe5f12cb8448f5aab48",
+    "apps/api/scripts/eval_referensprov_credit.py": "ef5aa72a24cc344b19718bbb0114a090c500242e91668bb9f823fcceb502808a",
+    "apps/api/scripts/test_referensprov_credit_cases.py": "be62aeb40b9317079fc4c090f96ffc0817ef9623b1179f71ada2a5f0e3e17fc9",
+    "apps/api/scripts/audit_referensprov_credit.py": "d912c45f2f1e4de3571b80fa1ed6c9d4128977a4a9b2674e9152fd78ca701935"
+  },
+  "productionCodeChanged": false,
+  "productionDatabaseUsed": false,
+  "databaseEngine": "SQLite (local synthetic experiment)",
+  "uniqueUnderlyingPayments": 2000,
+  "originalGoldChanged": false,
+  "legacyParsedRawOcrDifferenceCount": 168,
+  "modelCalls": 0,
+  "realBankCalls": 0,
+  "originalMax20Proven": false
+}

@@ -1,0 +1,25 @@
+name: Referensprov
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/scripts/*referensprov*.py'
+      - 'docs/eval/kundflode-2000/**'
+      - '.github/workflows/referensprov.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Python reference experiment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the isolated policy and surplus ledger
+        run: python3 -B -m unittest discover -s apps/api/scripts -p 'test_referensprov*.py' -v
+
+# This checks the pure experiment, not production accounting, bank ingestion,
+# model accuracy or the longer 2,000-payment replays saved with the report.

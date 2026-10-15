@@ -1,0 +1,71 @@
+{
+  "independentRecount": "PASS",
+  "sourceHashesMatch": true,
+  "uniqueUnderlyingPayments": 2000,
+  "unitsPassed": 53,
+  "previousAdversarialCasesPassed": 13,
+  "runs": [
+    {
+      "mode": "GEMENSAM_REFERENSKONTROLL",
+      "reverse": false,
+      "correct": 1890,
+      "review": 110
+    },
+    {
+      "mode": "GEMENSAM_REFERENSKONTROLL",
+      "reverse": true,
+      "correct": 1890,
+      "review": 110
+    },
+    {
+      "mode": "REFERENS_OCH_PERIOD",
+      "reverse": false,
+      "correct": 1970,
+      "review": 30
+    },
+    {
+      "mode": "REFERENS_OCH_PERIOD",
+      "reverse": true,
+      "correct": 1970,
+      "review": 30
+    },
+    {
+      "mode": "UNIK_AVI_OCH_PERIOD",
+      "reverse": false,
+      "correct": 1970,
+      "review": 30
+    },
+    {
+      "mode": "UNIK_AVI_OCH_PERIOD",
+      "reverse": true,
+      "correct": 1970,
+      "review": 30
+    },
+    {
+      "mode": "PROPOSED_HOLD",
+      "reverse": false,
+      "resolved": 1970,
+      "review": 20,
+      "held": 10,
+      "money": {
+        "bankOre": 1542574750,
+        "allocatedOre": 1522999000,
+        "heldOre": 25000,
+        "unresolvedOre": 19550750
+      }
+    },
+    {
+      "mode": "PROPOSED_HOLD",
+      "reverse": true,
+      "resolved": 1970,
+      "review": 20,
+      "held": 10,
+      "money": {
+        "bankOre": 1542574750,
+        "allocatedOre": 1522999000,
+        "heldOre": 25000,
+        "unresolvedOre": 19550750
+      }
+    }
+  ]
+}
