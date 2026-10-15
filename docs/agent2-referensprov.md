@@ -1,6 +1,96 @@
 # Agent 2 — referenser före fördelning, experiment
 
-## Resultat och beslut
+## Uppföljning 2026-10-15: textfel och separat överskott
+
+Texttolkningen i experimentet är korrigerad. `oktober 2026`, `okt 2026`,
+`okt. 2026`, `2026-10`, `2026/10` och `10/2026` identifierar samma lagrade
+hyresperiod. Perioden härleds aldrig från bankdatum eller förfallodatum.
+Kända namn och avireferenser tas bort före periodtolkningen, så datumdelen i
+ett avinummer inte blir en extra instruktion.
+
+Parsern har en sluten grammatik. Oförstådda ord, datumformat, relativa perioder,
+negationer, osäkerhet och okända symboler stoppar automatisk fördelning. Den
+får inte falla tillbaka till en äldre skuld när betalningen innehåller en
+instruktion som inte förståtts. Detta är **inte allmän språkförståelse**:
+vanliga men ännu inte stödda uttryck kan därför kräva fler granskningar hos
+riktiga kunder. Inga sådana verkliga frekvenser är uppmätta.
+
+Ett separat försök prövar också regeln **betala exakt angiven avi och håll
+överskottet separat**. Den är avstängd i den ursprungliga policyn och stöds
+bara för en uttryckligt identifierad, öppen avi efter alla konfliktkontroller.
+Överskottet är inte en kreditnota, återbetalning eller tillgänglig betalning
+av nästa avi. Varje post behåller bankradens UUID, testfallets ID,
+organisation, hyresgäst, avtal, avi, ören och status
+`HELD_PENDING_DISPOSITION`.
+
+| Utfall per 2 000 oförändrade betalningar           | Ursprunglig regel efter textlagning | Föreslagen överskottsregel |
+| -------------------------------------------------- | ----------------------------------: | -------------------------: |
+| Helt avslutade enligt ursprungligt facit           |                      1 970 (98,5 %) |             1 970 (98,5 %) |
+| Avi betald, separat överskott kvar att hantera     |                                   0 |                         10 |
+| Identifiering/konflikt/överskott kräver granskning |                                  30 |                         20 |
+| Totalt betalningar med kvarvarande åtgärd          |                              **30** |                     **30** |
+
+Den nya regeln ger 1 980 automatiskt fördelade och beloppsmässigt redovisade
+betalningar **inom simuleringen**. Det betyder inte 1 980 slutligt lösta
+betalningar. De tio överskotten är tio månadsbetalningar från samma
+testhyresgäst: 9 775 kr till respektive avi och 25 kr separat per betalning,
+totalt **250 kr i öppna överskott**. Oförändrat ursprungsfacit ger 1 970
+godkända, tio avvikelser från den gamla regeln och tjugo utan allokering.
+Den nya regeln bedöms därför mot ett separat, uttryckligt förslag till facit.
+**Målet högst tjugo betalningar med kvarvarande åtgärd är fortfarande inte nått.**
+
+Validering av denna uppföljning:
+
+- 53/53 unittest-metoder: ursprungliga 28 samt 15 text-/referensprov och tio
+  prov av överskott. Textmatrisen har elva stödda skrivsätt och 41 uttryck som
+  ska stoppas, prövade med äldre skuld, OCR, avinummer och unik referens.
+- De tidigare fem felande banktextfallen klarar sina krav. Samtliga 13
+  tidigare extrafall passerar, inklusive fem positiva kontroller och tre
+  defensiva/föreslagna referensregisterfall. Dubbla avinummer inom en
+  organisation är ett defensivt gränssnittsprov, eftersom databasen redan
+  förbjuder tillståndet.
+- Sex grundkörningar ger samma utfall som tidigare och noll felaktiga
+  automatiska beslut. 150/150 delbetalningar och 75/75 samlingsbetalningar
+  fortsätter att klara ursprungsfacit i varje grundvariant.
+- Två ytterligare körningar med överskottsregeln ger identiska beslut i
+  båda ordningarna inom dagen. Inga avvikelser från det separat deklarerade
+  överskottsförslaget; inga bankindata eller ursprungliga facit ändrades.
+- Per bankrad gäller belopp = allokerat + sparat överskott + oidentifierat.
+  Per avi gäller ursprunglig skuld = restskuld + allokeringar. Oberoende
+  omräkning av åtta körningar och deras källhashar passerar.
+- Alla 2 000 källrader återspelas i varje överskottskörning utan ändrade
+  saldon eller dubbla poster. Samma käll-ID med ändrat innehåll avvisas;
+  fel före publicering lämnar simuleringens tillstånd oförändrat.
+- Okända/betalda/framtida avier, identitetskonflikter, flera avireferenser
+  och enbart månad eller gammalt OCR får inte skapa överskottsposter.
+- Inga produktionsfiler, bankanslutningar, riktiga bokföringsverifikat,
+  modell- eller databasjobb används. Modellavgift: 0 kr. Inga nya lokala
+  Jest-/TypeScript-körningar för dessa Python-/dokumentändringar.
+
+Råresultat, logg och manifest för uppföljningen finns i
+`docs/eval/referensprov-v2/`. Det är samma 2 000 konstruerade betalningar,
+inte 16 000 oberoende kundfall. Förutsättningarna för varianten med unikt OCR
+nedan gäller fortfarande; dess bankindata ändras uttryckligen i experimentet.
+
+`referensprov_ledger.py` är ett register i minnet med sekventiell återspelning,
+inte en färdig bokföringsmodell. Databaspersistens, samtidiga importer,
+reverseringar, återbetalning, disposition av överskott och driftens deduplicering
+återstår att utforma och testa. 99,98 % precision eller högst tjugo manuella
+ärenden i drift är inte bevisat. Produktionsintegration ingår inte i utkastet.
+
+Kör uppföljningen från reporoten:
+
+```sh
+python3 -B -m unittest discover -s apps/api/scripts -p 'test_referensprov*.py' -v
+python3 -B apps/api/scripts/eval_referensprov.py /tmp/ny-grundrapport.json
+python3 -B apps/api/scripts/eval_referensprov_surplus.py /tmp/ny-overskottsrapport.json
+```
+
+Det nya, separata workflowet `Referensprov` kör unittest-proven på relevanta
+PR-ändringar. De längre återspelningarna körs lokalt och ligger frysta med
+manifestet. Workflowet ändrar inte produktions-CI:s obligatoriska jobb.
+
+## Ursprungligt resultat före textlagning och överskottsförsök
 
 En fristående, återkopplad Python-simulering av samma frysta 2 000 syntetiska
 betalningar ger **1 970 korrekta automatiska beslut (98,5 %), noll felaktiga
@@ -13,13 +103,13 @@ betalningsagenten. Ingen databas, bokföringstjänst, bankanslutning, modell ell
 extern kö kördes. Inga produktionsfiler har ändrats. Den tidigare uttryckliga
 gränsen runt `apps/api/src/reconciliation/` har bevarats.
 
-| Mätning per 2 000 betalningar | Korrekt automatisk | Fel/kontrollbrist automatiskt | Granskning/åtgärd |
-| --- | ---: | ---: | ---: |
-| Tidigare produktionskod i lokal DB, grundordning | 1 890 (94,5 %) | 19 | 110 |
-| Tidigare produktionskod i lokal DB, omvänd inom dagen | 1 880 (94,0 %) | 19 | 120 |
-| Simulering: gemensam referenskontroll | 1 890 (94,5 %) | 0 | 110 |
-| Simulering: referenser + hyresperiod/avtal | 1 970 (98,5 %) | 0 | 30 |
-| Simulering: dessutom unikt OCR per avi | 1 970 (98,5 %) | 0 | 30 |
+| Mätning per 2 000 betalningar                         | Korrekt automatisk | Fel/kontrollbrist automatiskt | Granskning/åtgärd |
+| ----------------------------------------------------- | -----------------: | ----------------------------: | ----------------: |
+| Tidigare produktionskod i lokal DB, grundordning      |     1 890 (94,5 %) |                            19 |               110 |
+| Tidigare produktionskod i lokal DB, omvänd inom dagen |     1 880 (94,0 %) |                            19 |               120 |
+| Simulering: gemensam referenskontroll                 |     1 890 (94,5 %) |                             0 |               110 |
+| Simulering: referenser + hyresperiod/avtal            |     1 970 (98,5 %) |                             0 |                30 |
+| Simulering: dessutom unikt OCR per avi                |     1 970 (98,5 %) |                             0 |                30 |
 
 De två första raderna är historiska DB-resultat från #868, inte nya körningar.
 Simuleringens tre varianter kördes i båda ordningarna: sex körningar men bara

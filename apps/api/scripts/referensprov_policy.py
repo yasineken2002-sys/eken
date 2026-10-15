@@ -4,19 +4,71 @@ Caller supplies only issued notices and bank-visible fields, never scenario/gold
 This deliberately supports a narrow Swedish month/year grammar, not general AI.
 """
 from dataclasses import dataclass
+from functools import lru_cache
 import re
 import unicodedata
 
 
 MONTHS = ('januari februari mars april maj juni juli augusti september oktober november december').split()
+MONTH_ALIASES = {
+    alias: month for month, aliases in enumerate((
+        'januari jan', 'februari feb', 'mars mar', 'april apr', 'maj', 'juni jun',
+        'juli jul', 'augusti aug', 'september sep sept', 'oktober okt',
+        'november nov', 'december dec',
+    ), 1) for alias in aliases.split()
+}
+MONTH_PATTERN = '|'.join(sorted(MONTH_ALIASES, key=len, reverse=True))
+NOTICE_PATTERN = r'(?<!\w)avi-\d{4}-\d{2}-\d{4,}(?!\w)'
+# This is a deliberately closed experiment grammar. Unconsumed words/numbers
+# require review, including unknown intent; no blacklist can understand prose.
+PAYMENT_LABELS = {'hyra', 'hyran', 'hyresbetalning', 'delbetalning', 'inbetalning',
+                  'betalning', 'ocr', 'avi', 'avinummer', 'referens', 'för',
+                  'avser', 'period', 'månad', 'hyresavi'}
 
 
+@lru_cache(maxsize=8192)
 def normalize(text):
-    return ' '.join(unicodedata.normalize('NFKC', text).casefold().split())
+    normalized = unicodedata.normalize('NFKC', text).casefold()
+    return ' '.join(normalized.translate(str.maketrans('‐‑–—', '----')).split())
 
 
 def whole(text, value):
     return bool(re.search(r'(?<!\w)' + re.escape(normalize(value)) + r'(?!\w)', normalize(text)))
+
+
+def read_period(text):
+    """Return a single explicit rent period and unconsumed text, or an error.
+
+    Caller first removes names and references, so an AVI number's embedded date
+    is not mistaken for a second payment instruction. No bank-year inference.
+    Full dates, ranges, missing years and relative periods are not accepted.
+    """
+    if re.search(r'[^\w\s.,:;()/\-#]', text):
+        return None, text, 'TEXT_KRAVER_TOLKNING'
+    periods = set()
+    residual = text
+    patterns = (
+        (rf'(?<!\w)({MONTH_PATTERN})\.?\s+(20\d{{2}})(?!\w)', 'named'),
+        (r'(?<![\w/.-])(20\d{2})\s*[-/]\s*(\d{1,2})(?!\w|\s*[-/.]\s*\d)', 'ym'),
+        (r'(?<![\w/.-])(\d{1,2})\s*/\s*(20\d{2})(?!\w|\s*[-/.]\s*\d)', 'my'),
+    )
+    for pattern, form in patterns:
+        def consume(match):
+            a, b = match.groups()
+            year, month = ((int(b), MONTH_ALIASES[a]) if form == 'named' else
+                           (int(a), int(b)) if form == 'ym' else (int(b), int(a)))
+            periods.add((year, month))
+            return ' '
+        residual = re.sub(pattern, consume, residual)
+    if len(periods) > 1 or any(not 1 <= month <= 12 for _, month in periods):
+        return None, residual, 'OKLAR_PERIOD'
+    # No silent oldest-first fallback for abbreviated, malformed or missing periods.
+    remaining_words = set(re.findall(r'\w+', residual))
+    if not periods and remaining_words & {'period', 'månad'}:
+        return None, residual, 'OKLAR_PERIOD'
+    if remaining_words - PAYMENT_LABELS:
+        return None, residual, 'TEXT_KRAVER_TOLKNING'
+    return next(iter(periods), None), residual, None
 
 
 def checksum(base):
@@ -60,9 +112,10 @@ class Bank:
 class Decision:
     reason: str
     allocations: tuple = ()
+    held_surplus: int = 0
 
 
-def decide(bank, notices, period_support=True):
+def decide(bank, notices, period_support=True, hold_surplus=False):
     """No side effects. All checks finish before a caller may allocate money."""
     def review(reason):
         return Decision(reason)
@@ -71,15 +124,21 @@ def decide(bank, notices, period_support=True):
         return review('OGILTIGT_BELOPP')
     known = [n for n in notices if n.org == bank.org and n.issued <= bank.date]
     text = normalize(bank.text + ' ' + bank.reference)
-    if re.search(r'(?<!\w)(inte|bestrider|återbetalning|makulerad|ignorera|felaktig)(?!\w)', text):
-        return review('TEXT_KRAVER_TOLKNING')
-    by_number = {n.number.casefold(): n for n in known}
-    named_numbers = set(re.findall(r'(?<!\w)avi-\d{4}-\d{2}-\d{4,}(?!\w)', text))
+    by_number = {}
+    for n in known:
+        by_number.setdefault(n.number.casefold(), []).append(n)
+    named_numbers = set(re.findall(NOTICE_PATTERN, text))
     if named_numbers - by_number.keys():
         return review('OKAND_AVI')
-    explicit = {by_number[num].id for num in named_numbers}
+    if any(len(by_number[num]) != 1 for num in named_numbers):
+        return review('TVETYDIG_AVIREFERENS')
+    explicit = {by_number[num][0].id for num in named_numbers}
     # Keep paid notices in the identity registry: payment order cannot erase conflicts.
     numeric = set(re.findall(r'(?<!\w)[0-9]{4,25}(?!\w)', text))
+    legacy_refs = {n.ocr for n in known}
+    unique_refs = {n.unique_ref for n in known if n.unique_ref}
+    if numeric & legacy_refs & unique_refs:
+        return review('REFERENSKOLLISION')
     owners = {n.tenant for n in known if n.ocr in numeric or
               (n.unique_ref and n.unique_ref in numeric)}
     explicit.update(n.id for n in known if n.unique_ref and n.unique_ref in numeric)
@@ -87,16 +146,25 @@ def decide(bank, notices, period_support=True):
     recognized_raw = any(raw == n.ocr or (n.unique_ref and raw == n.unique_ref) for n in known)
     if raw and not recognized_raw and valid_ocr(raw):
         return review('OKAND_GILTIG_REFERENS')
-    names = {n.tenant for n in known if whole(text, n.name)}
+    mentioned_names = {(n.tenant, n.name) for n in known}
+    mentioned_names = {(tenant, name) for tenant, name in mentioned_names if whole(text, name)}
+    names = {tenant for tenant, _ in mentioned_names}
     explicit_owners = {n.tenant for n in known if n.id in explicit}
     if len(owners | names | explicit_owners) > 1:
         return review('IDENTITETSKONFLIKT')
-    # A recognized month with no explicit year is not silently assigned the bank year.
-    months = {i + 1 for i, name in enumerate(MONTHS) if whole(text, name)}
-    years = set(re.findall(r'(?<!\w)(20\d{2})(?!\w)', normalize(bank.text)))
-    if len(months) > 1 or (months and len(years) != 1):
-        return review('OKLAR_PERIOD')
-    period = (int(next(iter(years))), next(iter(months))) if months else None
+    prose = re.sub(NOTICE_PATTERN, ' ', text)
+    for _, name in sorted(mentioned_names, key=lambda pair: len(pair[1]), reverse=True):
+        prose = re.sub(r'(?<!\w)' + re.escape(normalize(name)) + r'(?!\w)', ' ', prose)
+    # The reference column's numeric value is a reference, even when misspelled;
+    # its validation below must not mistake its digits for a free-text period.
+    remove_refs = (legacy_refs | unique_refs) & numeric
+    if re.fullmatch(r'[0-9]{4,25}', raw):
+        remove_refs.add(raw)
+    for reference in remove_refs:
+        prose = re.sub(r'(?<!\w)' + re.escape(reference) + r'(?!\w)', ' ', prose)
+    period, _, period_error = read_period(prose)
+    if period_error:
+        return review(period_error)
     if len(explicit) > 1:
         return review('FLERA_EXPLICITA_AVIER')
     if explicit:
@@ -126,9 +194,10 @@ def decide(bank, notices, period_support=True):
         return review('OTILLRACKLIG_IDENTIFIERING')
     if not candidates or any(n.debt <= 0 for n in candidates):
         return review('INGEN_OPPEN_SKULD')
-    if bank.amount > sum(n.debt for n in candidates):
+    surplus = max(0, bank.amount - sum(n.debt for n in candidates))
+    if surplus and not (hold_surplus and len(explicit) == 1 and len(candidates) == 1):
         return review('OVERSKOTT_KRAVER_HANTERING')
-    remaining = bank.amount
+    remaining = bank.amount - surplus
     allocations = []
     for n in sorted(candidates, key=lambda n: (n.due, n.id)):
         amount = min(n.debt, remaining)
@@ -138,4 +207,5 @@ def decide(bank, notices, period_support=True):
         if not remaining:
             break
     assert remaining == 0
-    return Decision('AUTOMATISK', tuple(allocations))
+    return Decision('AVI_BETALD_OVERSKOTT_RESERVERAT' if surplus else 'AUTOMATISK',
+                    tuple(allocations), surplus)

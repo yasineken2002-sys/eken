@@ -1,0 +1,23 @@
+{
+  "parentCommit": "ca29554ae4033b9546d3fb42687a7ad2a8414fdb",
+  "files": {
+    "grund.json.gz": {
+      "uncompressedSha256": "61110b87365e6571684a945ed5deb9d45ae4b533ce4606b9e10b1d4ab9a1707b",
+      "uncompressedBytes": 2163396
+    },
+    "overskott.json.gz": {
+      "uncompressedSha256": "eaba3c287103f47f8a00cf30ba3f0845bb1a65af70faa6f2efe1df0f9c3dd65e",
+      "uncompressedBytes": 4658552
+    },
+    "extrafall.json.gz": {
+      "uncompressedSha256": "93bbc7a5d484a0a5b5a6699f9036ad42062008ba2b70953c12fcd0a7b41d4ec2",
+      "uncompressedBytes": 26177
+    },
+    "kontrollprov.txt": {
+      "uncompressedSha256": "d97d8a9c95e4e589b5089fa08ec60f8992add39287e4d06c4bd2805f99db0915",
+      "uncompressedBytes": 5717
+    }
+  },
+  "productionCodeChanged": false,
+  "modelCalls": 0
+}

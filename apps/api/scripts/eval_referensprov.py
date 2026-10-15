@@ -138,7 +138,7 @@ def main():
         'limitations': [
             'Frozen constructed texts, names and frequencies; not customer data.',
             'New policy is Python simulation, not production matcher, AI or database integration.',
-            'Named periods use a narrow exact month+year grammar, no arbitrary prose understanding.',
+            'Period parsing uses a closed grammar of full/abbreviated Swedish month plus year, YYYY-MM, YYYY/MM and MM/YYYY; unknown prose requires review.',
             'Full name+period uniqueness is a proposed policy, not proof of payer identity.',
             'Original fixture due dates are in rental month; separate tests vary due date.',
             'Unique-reference arm changes 1635 bank inputs and assumes correct copying.',
