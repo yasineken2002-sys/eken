@@ -104,6 +104,20 @@ interface JournalLineInput {
   description?: string
 }
 
+interface CustomerCreditJournalInput {
+  organizationId: string
+  eventId: string
+  rentNoticeId: string
+  amount: Prisma.Decimal
+  liabilityAccountId: string
+  date: Date
+  createdById?: string | null
+}
+
+interface CustomerCreditBankJournalInput extends CustomerCreditJournalInput {
+  bankTransactionId: string
+}
+
 interface JournalFilters {
   from?: string
   to?: string
@@ -2978,6 +2992,8 @@ export class AccountingService {
     linePrefix?: string
     include?: Prisma.JournalEntryInclude
     tx?: Prisma.TransactionClient
+    customerCreditBankTransactionId?: string
+    customerCreditRentNoticeId?: string
   }) {
     // ── LÄSBART FEL, INTE ETT RÅTT CONSTRAINT-FEL ─────────────────────────────
     //
@@ -3007,6 +3023,46 @@ export class AccountingService {
     // får ingen kvarstående READY-rad: villkoret `state = DRY_RUN_READY` gör att antingen sändningens
     // anspråk (DRY_RUN_READY → SENDING) eller den här spärren vinner — aldrig båda.
     const skriv = async (db: Prisma.TransactionClient) => {
+      // Samma lås som tillgodots skrivväg, FÖRE verifikationsnumret. En olåst
+      // förkontroll hade kunnat passeras medan en annan process skapar tillgodo.
+      // Bank före avi; ingen granskningsmarkering skrivs i denna hjälpare.
+      if (params.customerCreditBankTransactionId) {
+        const bankId = params.customerCreditBankTransactionId
+        await db.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${bankId} AND "organizationId" = ${params.organizationId} FOR UPDATE`
+        const credit = await db.customerCredit.findFirst({
+          where: { organizationId: params.organizationId, sourceBankTransactionId: bankId },
+          select: { id: true },
+        })
+        if (credit) {
+          throw new ConflictException(
+            'Betalningen har skapat kundtillgodo och kan inte rättas separat. ' +
+              'Tillgodot och dess användning måste hanteras tillsammans med betalningen.',
+          )
+        }
+      }
+      if (params.customerCreditRentNoticeId) {
+        const noticeId = params.customerCreditRentNoticeId
+        await db.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${params.organizationId} FOR UPDATE`
+        const credit = await db.customerCredit.findFirst({
+          where: {
+            organizationId: params.organizationId,
+            OR: [
+              { sourceRentNoticeId: noticeId },
+              {
+                applications: {
+                  some: { organizationId: params.organizationId, rentNoticeId: noticeId },
+                },
+              },
+            ],
+          },
+          select: { id: true },
+        })
+        if (credit) {
+          throw new ConflictException(
+            'Avin ingår i ett kundtillgodoflöde och dess verifikat kan inte rättas separat.',
+          )
+        }
+      }
       const entry = await this.createNumberedEntry({
         organizationId: params.organizationId,
         // Rättelseverifikatet dateras till dagen det skapas, inte originalets datum.
@@ -3514,6 +3570,19 @@ export class AccountingService {
     })
     if (!original) throw new NotFoundException('Verifikation hittades inte')
 
+    // Dessa tre händelser ändrar även tillgodots reskontra. Att bara vända
+    // huvudboken lämnar beloppet tillgängligt/använt trots motsatt kontering.
+    // Källan är oföränderlig, så denna klassificering behöver inget radlås.
+    if (
+      original.source === 'PAYMENT' &&
+      /^customer-credit-(receipt|application|refund):/.test(original.sourceId ?? '')
+    ) {
+      throw new ConflictException(
+        'Kundtillgodots verifikat kan inte rättas separat från tillgodot. ' +
+          'En bokföringsrättelse är inte en återbetalning.',
+      )
+    }
+
     // ── TESTKUND-041 (MK-2 / B-7b): LEVERANTÖRSFAKTURANS VERIFIKAT RÄTTAS ALDRIG GENERELLT ──────
     //
     // Spärren avgörs av ORIGINALETS (source, sourceId) och ligger här i tjänsten, så att både
@@ -3639,6 +3708,31 @@ export class AccountingService {
     const bookedOn = original.date.toISOString().slice(0, 10)
     const intendedDescription = `Rättelse av verifikat ${original.series}${original.verNumber} (bokfört ${bookedOn}): ${reason}`
 
+    // Hitta låsets identitet, inte tillgodots aktuella existens. Den senare
+    // frågan ställs under låset INUTI rättelsens skrivtransaktion nedan.
+    let customerCreditBankTransactionId: string | undefined
+    if (original.source === 'PAYMENT' && original.sourceId) {
+      const allocationId = /^rent-notice-bank-payment:(.+)$/.exec(original.sourceId)?.[1]
+      if (allocationId) {
+        const allocation = await this.prisma.rentNoticePayment.findFirst({
+          where: { id: allocationId, rentNotice: { organizationId: params.organizationId } },
+          select: { bankTransactionId: true },
+        })
+        customerCreditBankTransactionId = allocation?.bankTransactionId ?? undefined
+      } else if (!original.sourceId.includes(':')) {
+        // Betalningsverifikat före allokeringsnycklarna bar banktransaktionens id.
+        const bank = await this.prisma.bankTransaction.findFirst({
+          where: { id: original.sourceId, organizationId: params.organizationId },
+          select: { id: true },
+        })
+        customerCreditBankTransactionId = bank?.id
+      }
+    }
+    const customerCreditRentNoticeId =
+      original.source === 'INVOICE'
+        ? /^rent-notice:(.+)$/.exec(original.sourceId ?? '')?.[1]
+        : undefined
+
     try {
       const created = await this.createReversalEntry({
         organizationId: params.organizationId,
@@ -3653,6 +3747,8 @@ export class AccountingService {
         linePrefix: 'Rättelse',
         // reversalOfEntryId sätts centralt i createReversalEntry, för alla vägar.
         include: { lines: { include: { account: true } } },
+        ...(customerCreditBankTransactionId ? { customerCreditBankTransactionId } : {}),
+        ...(customerCreditRentNoticeId ? { customerCreditRentNoticeId } : {}),
       })
 
       // IDEMPOTENSTRÄFF = någon annan hann före.
@@ -4169,6 +4265,173 @@ export class AccountingService {
     return true
   }
 
+  // Kundtillgodotjänsten äger källbevis, reservationer och händelsens oföränderliga
+  // nyttolast. Här bokförs dess redan validerade händelse i SAMMA transaktion.
+  // Skuldkontot väljs uttryckligen: depositionskontot är ingen fallback (#535).
+  private async customerCreditAccounts(
+    params: CustomerCreditJournalInput,
+    counterpartNumber: 1510 | 1930,
+    tx: Prisma.TransactionClient,
+  ) {
+    if (!tx || '$transaction' in tx) {
+      throw new InternalServerErrorException('Kundtillgodo kräver en pågående transaktion')
+    }
+    if (
+      !params.amount.isFinite() ||
+      !params.amount.greaterThan(0) ||
+      params.amount.decimalPlaces() > 2 ||
+      params.amount.greaterThan('99999999.99')
+    ) {
+      throw new BadRequestException(
+        'Kundtillgodo kräver ett positivt belopp i hela ören inom verifikatets beloppsgräns',
+      )
+    }
+    if (
+      !params.organizationId.trim() ||
+      !params.eventId.trim() ||
+      !params.rentNoticeId.trim() ||
+      !params.liabilityAccountId.trim() ||
+      !Number.isFinite(params.date.getTime())
+    ) {
+      throw new BadRequestException('Kundtillgodots identitet och bokföringsdatum måste anges')
+    }
+
+    const accounts = await tx.account.findMany({
+      where: {
+        organizationId: params.organizationId,
+        isActive: true,
+        OR: [
+          { id: params.liabilityAccountId, type: 'LIABILITY' },
+          { number: counterpartNumber, type: 'ASSET' },
+        ],
+      },
+      select: { id: true, number: true, type: true },
+    })
+    const liability = accounts.find(
+      (a) => a.id === params.liabilityAccountId && a.type === 'LIABILITY',
+    )
+    const counterpart = accounts.find((a) => a.number === counterpartNumber && a.type === 'ASSET')
+    if (!liability || !counterpart) {
+      throw new ConflictException(
+        `Kundtillgodo kräver organisationens aktiva skuldkonto och tillgångskonto ${counterpartNumber}`,
+      )
+    }
+    // Den kontrollerade Decimal(10,2)-mängden ryms exakt i skrivgränsens
+    // decimalrepresentation. Ingen avrundning av subören sker här.
+    return {
+      liabilityId: liability.id,
+      counterpartId: counterpart.id,
+      amount: params.amount.toNumber(),
+    }
+  }
+
+  // Domäntjänsten håller avilåset. Kundtillgodo stöder bara EVENO-avins egen
+  // fordran; en verifierad öppningsfordran är inte en alternativ källa här.
+  private async assertCustomerCreditReceivableLive(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    rentNoticeId: string,
+  ): Promise<void> {
+    const sourceId = `rent-notice:${rentNoticeId}`
+    const journal = await tx.journalEntry.findFirst({
+      where: { organizationId, source: 'INVOICE', sourceId },
+      select: { id: true, reversedBy: { select: { id: true } } },
+    })
+    if (!journal) this.failClosedNoAccrual(`hyresavi ${rentNoticeId}`, organizationId, sourceId)
+    if (journal.reversedBy) {
+      throw new ConflictException('Kundtillgodo kan inte knytas till en återförd hyresfordran')
+    }
+  }
+
+  async createJournalEntryForCustomerCreditReceipt(
+    params: CustomerCreditBankJournalInput,
+    tx: Prisma.TransactionClient,
+  ) {
+    const { liabilityId, counterpartId, amount } = await this.customerCreditAccounts(
+      params,
+      1930,
+      tx,
+    )
+    if (!params.bankTransactionId.trim()) {
+      throw new BadRequestException('Kundtillgodots banktransaktion måste anges')
+    }
+    await this.assertCustomerCreditReceivableLive(tx, params.organizationId, params.rentNoticeId)
+    const sourceId = `customer-credit-receipt:${params.eventId}`
+    return this.createNumberedEntry({
+      organizationId: params.organizationId,
+      date: params.date,
+      description: `Mottaget kundtillgodo för hyresavi ${params.rentNoticeId}, banktransaktion ${params.bankTransactionId}`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: counterpartId, debit: amount, description: 'Överbetalning bank' },
+        { accountId: liabilityId, credit: amount, description: 'Skuld till hyresgäst' },
+      ],
+      idempotencyWhere: { organizationId: params.organizationId, source: 'PAYMENT', sourceId },
+      include: { lines: { include: { account: true } } },
+      tx,
+    })
+  }
+
+  async createJournalEntryForCustomerCreditApplication(
+    params: CustomerCreditJournalInput,
+    tx: Prisma.TransactionClient,
+  ) {
+    const { liabilityId, counterpartId, amount } = await this.customerCreditAccounts(
+      params,
+      1510,
+      tx,
+    )
+    await this.assertCustomerCreditReceivableLive(tx, params.organizationId, params.rentNoticeId)
+    const sourceId = `customer-credit-application:${params.eventId}`
+    return this.createNumberedEntry({
+      organizationId: params.organizationId,
+      date: params.date,
+      description: `Kundtillgodo använt på hyresavi ${params.rentNoticeId}`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: liabilityId, debit: amount, description: 'Använt kundtillgodo' },
+        { accountId: counterpartId, credit: amount, description: 'Reglering hyresfordran' },
+      ],
+      idempotencyWhere: { organizationId: params.organizationId, source: 'PAYMENT', sourceId },
+      include: { lines: { include: { account: true } } },
+      tx,
+    })
+  }
+
+  async createJournalEntryForCustomerCreditRefund(
+    params: CustomerCreditBankJournalInput,
+    tx: Prisma.TransactionClient,
+  ) {
+    const { liabilityId, counterpartId, amount } = await this.customerCreditAccounts(
+      params,
+      1930,
+      tx,
+    )
+    if (!params.bankTransactionId.trim()) {
+      throw new BadRequestException('Återbetalningens banktransaktion måste anges')
+    }
+    const sourceId = `customer-credit-refund:${params.eventId}`
+    return this.createNumberedEntry({
+      organizationId: params.organizationId,
+      date: params.date,
+      description: `Återbetalat kundtillgodo för hyresavi ${params.rentNoticeId}, banktransaktion ${params.bankTransactionId}`,
+      source: 'PAYMENT',
+      sourceId,
+      createdById: params.createdById ?? null,
+      lines: [
+        { accountId: liabilityId, debit: amount, description: 'Återbetalt kundtillgodo' },
+        { accountId: counterpartId, credit: amount, description: 'Bekräftad utbetalning bank' },
+      ],
+      idempotencyWhere: { organizationId: params.organizationId, source: 'PAYMENT', sourceId },
+      include: { lines: { include: { account: true } } },
+      tx,
+    })
+  }
+
   async createJournalEntryForRentNoticePayment(
     notice: { id: string; noticeNumber: string; type?: RentNoticeType },
     transaction: Pick<BankTransaction, 'id' | 'date' | 'amount'>,
@@ -4382,6 +4645,7 @@ export class AccountingService {
         reversalSourceId: `reversal:${sourceId}`,
         description: `Hävd matchning: ${original.description}`,
         createdById,
+        customerCreditBankTransactionId: transactionId,
         ...(tx ? { tx } : {}),
       })
       return

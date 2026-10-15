@@ -1,0 +1,29 @@
+✅ Kontraktet webb↔API: 0 kända överträdelser i 0 filer, inga nya och inga stale.
+✅ Regel 2: 121 delade nyttolasttyper, alla härledda i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.
+   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av SammaNycklar-raden i DTO:n (Typecheck) och av dto.spec-provet — inte av den här.
+✅ DTO-placering: 0 kända felplacerade klasser, inga nya och inga stale.
+   Regeln gör check-request-contracts premiss sann: när talet är 0 är "gå igenom *.dto.ts" uttömmande per konstruktion.
+✅ Strikt koercion: varje DTO-fält bär sin dekorator — 0 oskyddade.
+   Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av strict-boolean.spec.ts, strict-string.spec.ts och strict-iso-datum.spec.ts, som kör den riktiga pipen.
+✅ Append-only: 15 modeller säger det i schemat, och alla 15 har en BEFORE UPDATE-trigger i migrationerna. (DELETE är med flit inte spärrad — organisationsraderingen och retentionen behöver den.)
+✅ aktörsstämplingen är påkopplad; modellmängden härleds ur schemat, tre gränser satta, inga handpåläggningar. (4 referenser i extensionen)
+✅ dubbeluthyrnings-skydd — högst ETT ACTIVE-kontrakt per enhet
+   "lease_unit_active_unique" intakt (UNIQUE ON Lease(unitId) WHERE status='ACTIVE').
+✅ Fortnox-kontomappning — högst EN godkänd revision per organisation och år (TESTKUND-008)
+   "fortnox_account_mapping_one_approved" intakt (UNIQUE ON FortnoxAccountMappingRevision(organizationId,financialYearId) WHERE status='APPROVED').
+✅ en LEVANDE hyreshöjning per avtal och ikraftträdande
+   "rent_increase_lease_effective_live_unique" intakt (UNIQUE ON RentIncrease(leaseId,effectiveDate) WHERE statusIN('DRAFT','NOTICE_SENT','ACCEPTED','APPLIED')).
+✅ en hyresfaktura per avtal och period
+   "invoice_rent_period_unique" intakt (UNIQUE ON Invoice(leaseId,rentPeriodYear,rentPeriodMonth) WHERE type='RENT'ANDcreditedInvoiceIdISNULLANDstatus<>'VOID').
+✅ återupptagningsmotorns läsning av PÅBÖRJADE verktygskörningar
+   "ai_tool_execution_started_idx" intakt (ON AiToolExecution(createdAt) WHERE completedAtISNULL).
+✅ ETT leveransutfall per UTSKICK — inte per avi (#656)
+   "RentNoticeEvent_delivery_idempotency_key" intakt (UNIQUE ON RentNoticeEvent(rentNoticeId,type,sendId) WHERE typeIN('EMAIL_DELIVERED','EMAIL_BOUNCED','NOTICE_EMAIL_DELIVERED','NOTICE_EMAIL_BOUNCED')).
+✅ filimportens radidentitet — en bankrad per (identitet, förekomst) (#F034b)
+   "bank_transaction_identity_unique" intakt (UNIQUE ON BankTransaction(organizationId,identityKey,identitySeq) WHERE identityKey<>'').
+✅ granskningspausens period — EN öppen paus per organisation (G2-AVSLUT)
+   "bank_identity_review_pause_open_unique" intakt (UNIQUE ON BankIdentityReviewPause(organizationId) WHERE endedAtISNULL).
+✅ Fortnox-kundaktivering — högst EN aktiv per organisation (KUNDSTART S-6)
+   "fortnox_customer_activation_one_active" intakt (UNIQUE ON FortnoxCustomerActivation(organizationId) WHERE status='ACTIVE').
+
+✅ Alla 9 kritiska index intakta i migrations-sluttillståndet.

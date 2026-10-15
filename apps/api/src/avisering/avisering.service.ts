@@ -45,6 +45,7 @@ import {
   PaymentMethod,
   Prisma,
   RentCollectionStage,
+  RentNoticePaymentSource,
   RentNoticeStatus,
   RentNoticeType,
   UserRole,
@@ -83,8 +84,34 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
     // #518 — typen är spärren: utan `credits` i queryn typcheckar inte
     // `rentNoticePayableTotal`, som dokumentet och mejlet båda läser.
     credits: { select: { amount: true } }
+    payments: { select: { amount: true; source: true } }
   }
 }>
+
+/**
+ * Avins betalningsinstruktion avräknar tillgodo som redan har använts mot avin.
+ * Hyra, moms och kreditnotor behåller sina egna belopp. Historiska bank- och
+ * manuella betalningar ändrar inte originalavins betalningsinstruktion.
+ */
+function noticePaymentPresentation(notice: NoticeWithRelations): {
+  customerCredit: number
+  payable: number
+} {
+  const customerCredit = noticeCustomerCredit(notice.payments)
+  return {
+    customerCredit: customerCredit.toNumber(),
+    payable: Prisma.Decimal.max(
+      0,
+      new Prisma.Decimal(rentNoticePayableTotal(notice)).minus(customerCredit),
+    ).toNumber(),
+  }
+}
+
+function noticeCustomerCredit(payments: NoticeWithRelations['payments']): Prisma.Decimal {
+  return (payments ?? [])
+    .filter((payment) => payment.source === RentNoticePaymentSource.CUSTOMER_CREDIT)
+    .reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0))
+}
 
 /**
  * Den ENDA P2002 aviseringens aktiveringsväg får behandla som benign idempotens.
@@ -1103,6 +1130,7 @@ export class AviseringService {
         // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
         // annars burit ett OCR-belopp som är högre än fordran.
         credits: { select: { amount: true } },
+        payments: { select: { amount: true, source: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -1167,7 +1195,11 @@ export class AviseringService {
       // dessutom villkorad, så en händelse mellan den här läsningen och skrivningen återöppnar inget.
       const aktuell = await this.prisma.rentNotice.findFirst({
         where: { id: noticeId, organizationId: orgId },
-        select: { status: true, sentAt: true },
+        select: {
+          status: true,
+          sentAt: true,
+          payments: { select: { amount: true, source: true } },
+        },
       })
       if (!aktuell || aktuell.sentAt || !UTSKICKBARA_STATUSAR.includes(aktuell.status)) {
         this.logger.warn(
@@ -1175,6 +1207,18 @@ export class AviseringService {
             '(avin reglerades, annullerades eller skickades under tiden). Inget mejl köat, ingen status skriven.',
         )
         return
+      }
+
+      // Ett tillgodo som användes under renderingen gör PDF:ens belopp inaktuellt.
+      // Befintlig FAILED/retry-väg renderar då om innan något mejl köas. Detta är
+      // en defensiv återläsning, inte ett lås: intervallet återläsning → mejlkö
+      // måste stängas med en gemensam utskicksreservation före automatisk
+      // tillgodo-integration. Bank- och manuella betalningar ändrar inte den
+      // historiska originalavins betalningsinstruktion och jämförs därför inte.
+      if (!noticeCustomerCredit(aktuell.payments).equals(noticeCustomerCredit(notice.payments))) {
+        throw new ConflictException(
+          'Tillgodo ändrades under PDF-renderingen. Avin behöver renderas om.',
+        )
       }
 
       const tenantName =
@@ -1194,7 +1238,7 @@ export class AviseringService {
         ocrNumber: notice.ocrNumber,
         // Betalbar total = hyra + förbrukning (IMD) + övriga debiterbara poster
         // (skada/nyckel). Vad hyresgästen faktiskt betalar med avins OCR.
-        amount: rentNoticePayableTotal(notice),
+        amount: noticePaymentPresentation(notice).payable,
         dueDate: notice.dueDate,
         pdfBuffer,
         organizationName: org.name,
@@ -1279,6 +1323,7 @@ export class AviseringService {
         // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
         // annars burit ett OCR-belopp som är högre än fordran.
         credits: { select: { amount: true } },
+        payments: { select: { amount: true, source: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -1403,7 +1448,7 @@ export class AviseringService {
     // Betalbar total = hyra + förbrukning (IMD-rader) + övriga debiterbara poster
     // (skada/nyckel). Hyresgästen betalar EN summa med ETT OCR. notice.totalAmount
     // avser bara hyran (hyresverifikatet).
-    const payable = rentNoticePayableTotal(notice)
+    const { payable, customerCredit } = noticePaymentPresentation(notice)
     const consumptionLines = notice.lines ?? []
     // HTML för förbrukningsrader (visas mellan hyra och totalsumma).
     const consumptionRowsHtml = consumptionLines
@@ -1899,6 +1944,15 @@ export class AviseringService {
         <td>${fmt(Number(notice.totalAmount))} kr</td>
       </tr>
       ${consumptionRowsHtml}`
+          : ''
+      }
+      ${
+        customerCredit > 0
+          ? `
+      <tr>
+        <td>Tillgodo använt:</td>
+        <td>−${fmt(customerCredit)} kr</td>
+      </tr>`
           : ''
       }
       <tr class="total-final">

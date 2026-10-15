@@ -633,6 +633,10 @@ enum CompanyForm {
 // ─── Organization (Tenant in multi-tenant context) ────────────────────────────
 
 model Organization {
+  customerCreditPolicy       CustomerCreditPolicy?
+  customerCredits            CustomerCredit[]
+  customerCreditApplications CustomerCreditApplication[]
+
   id                   String             @id @default(uuid())
   name                 String
   orgNumber            String?            @unique
@@ -993,17 +997,17 @@ model Organization {
   supplierInvoices SupplierInvoice[]
 
   // G2-AVSLUT — granskningspausens perioder.
-  bankIdentityReviewPauses   BankIdentityReviewPause[]
-  bankImportStops            BankImportStop[]
-  openingPackages            OpeningPackage[]
-  fortnoxCustomerActivations FortnoxCustomerActivation[]
+  bankIdentityReviewPauses       BankIdentityReviewPause[]
+  bankImportStops                BankImportStop[]
+  openingPackages                OpeningPackage[]
+  fortnoxCustomerActivations     FortnoxCustomerActivation[]
   fortnoxAccountMappingRevisions FortnoxAccountMappingRevision[]
-  openingExecutedSources     OpeningExecutedSource[]
+  openingExecutedSources         OpeningExecutedSource[]
   // KUNDSTART: första dag Eveno fakturerar (alltid den 1:a i en månad, svensk
   // kalender). NULL = ingen gräns (oförändrat beteende). Låses efter ekonomisk effekt.
-  billingCutoverDate         DateTime?                   @db.Date
-  billingCutoverSetAt        DateTime?
-  billingCutoverSetById      String?
+  billingCutoverDate             DateTime?                       @db.Date
+  billingCutoverSetAt            DateTime?
+  billingCutoverSetById          String?
 
   @@index([orgNumber])
   @@index([customerNumber])
@@ -1289,6 +1293,8 @@ model Unit {
 // ─── Tenant (Hyresgäst) ───────────────────────────────────────────────────────
 
 model Tenant {
+  customerCredits CustomerCredit[]
+
   id             String     @id @default(uuid())
   organizationId String
   type           TenantType
@@ -1547,6 +1553,8 @@ enum CustomerType {
 // ─── Lease (Hyresavtal) ───────────────────────────────────────────────────────
 
 model Lease {
+  customerCredits CustomerCredit[]
+
   id                      String        @id @default(uuid())
   organizationId          String
   unitId                  String
@@ -2104,6 +2112,9 @@ model PaymentReminder {
 // ─── Accounting ───────────────────────────────────────────────────────────────
 
 model Account {
+  customerCreditPolicies CustomerCreditPolicy[]
+  customerCredits        CustomerCredit[]
+
   id             String      @id @default(uuid())
   organizationId String
   number         Int
@@ -2145,6 +2156,9 @@ model Account {
 }
 
 model JournalEntry {
+  customerCreditReceipt     CustomerCredit?            @relation("CustomerCreditReceiptJournal")
+  customerCreditApplication CustomerCreditApplication? @relation("CustomerCreditApplicationJournal")
+
   id             String             @id @default(uuid())
   organizationId String
   date           DateTime           @db.Date
@@ -2570,6 +2584,8 @@ model FiscalYearClose {
 // ─── Bank Reconciliation (Bankavstämning) ─────────────────────────────────────
 
 model BankTransaction {
+  customerCredit CustomerCredit?
+
   id                  String                @id @default(uuid())
   organizationId      String
   date                DateTime
@@ -2897,6 +2913,8 @@ model BankImportStop {
 }
 
 model BankAccount {
+  customerCreditPolicies CustomerCreditPolicy[]
+
   id             String  @id @default(uuid())
   organizationId String
   /// Operatörens namn på kontot. Det som visas i väljaren.
@@ -5274,6 +5292,9 @@ model MaintenanceComment {
 // ─── Rent Notice (Hyresavi) ───────────────────────────────────────────────────
 
 model RentNotice {
+  customerCredits            CustomerCredit[]
+  customerCreditApplications CustomerCreditApplication[]
+
   id             String           @id @default(uuid())
   organizationId String
   tenantId       String
@@ -5671,6 +5692,10 @@ model RentNoticeEvent {
 // Detta är ren härledd betalningsdata (BFL: stöd-/sidoordnad information), inte
 // ett verifikat. Ingen status, inget utskick, inget kravbeslut skrivs här.
 model RentNoticePayment {
+  customerCreditSource        CustomerCredit?
+  customerCreditApplicationId String?                    @unique
+  customerCreditApplication   CustomerCreditApplication? @relation(fields: [customerCreditApplicationId], references: [id], onDelete: Restrict)
+
   id           String @id @default(uuid())
   rentNoticeId String
 
@@ -5820,6 +5845,7 @@ model RentNoticeCreditLine {
 // importerad bank-transaktion (OCR/referens/fuzzy/manuell matchning). MANUAL =
 // registrerad via markAsPaid (ingen bank-transaktion).
 enum RentNoticePaymentSource {
+  CUSTOMER_CREDIT
   BANK_RECONCILIATION
   MANUAL
 }
@@ -6937,11 +6963,11 @@ model SupplierInvoice {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization   Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   // SetNull UTSKRIVET, inte ärvt av Prismas default: en raderad användare ska
   // inte kunna radera en bokförd faktura, och att policyn står här gör det till
   // ett val i stället för en tyst förvalsverkan.
-  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy      User?                          @relation(fields: [createdById], references: [id], onDelete: SetNull)
   vatAdjustments SupplierInvoiceVatAdjustment[]
 
   @@index([organizationId])
@@ -7006,7 +7032,6 @@ model ExpenseVatDecision {
 
   @@index([organizationId])
 }
-
 
 model MiscCharge {
   id String @id @default(uuid())
@@ -8105,4 +8130,78 @@ model FortnoxAccountMappingRow {
   revision FortnoxAccountMappingRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
 
   @@unique([revisionId, role, sourceAccountNumber, vatTreatment])
+}
+
+// Förberedande domänmodell. Ingen produktionsväg aktiverar denna policy ännu.
+// Ett konto väljs uttryckligen efter granskning, aldrig genom en BAS-default.
+model CustomerCreditPolicy {
+  organizationId      String     @id
+  enabled             Boolean    @default(false)
+  carryForwardEnabled Boolean    @default(false)
+  liabilityAccountId  String
+  bankAccountId       String
+  createdAt           DateTime   @default(now())
+  actorKind           ActorKind?
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  liabilityAccount Account      @relation(fields: [liabilityAccountId], references: [id], onDelete: Restrict)
+  bankAccount      BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+}
+
+// Append-only: en oföränderlig skuld från EN överbetalning. Tillgängligt belopp härleds ur
+// originalet minus tillämpningar. Det är inte en kreditering av hyresintäkt.
+// Källallokeringen kan inte raderas av vanlig avmatchning (Restrict).
+model CustomerCredit {
+  id                      String     @id @default(uuid())
+  organizationId          String
+  tenantId                String
+  leaseId                 String
+  sourceRentNoticeId      String
+  sourceBankTransactionId String     @unique
+  sourcePaymentId         String     @unique
+  liabilityAccountId      String
+  journalEntryId          String     @unique
+  amount                  Decimal    @db.Decimal(10, 2)
+  sourceProofHash         String
+  receivedAt              DateTime
+  createdAt               DateTime   @default(now())
+  actorKind               ActorKind?
+
+  organization          Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  tenant                Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lease                 Lease                       @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  sourceRentNotice      RentNotice                  @relation(fields: [sourceRentNoticeId], references: [id], onDelete: Restrict)
+  sourceBankTransaction BankTransaction             @relation(fields: [sourceBankTransactionId], references: [id], onDelete: Restrict)
+  sourcePayment         RentNoticePayment           @relation(fields: [sourcePaymentId], references: [id], onDelete: Restrict)
+  liabilityAccount      Account                     @relation(fields: [liabilityAccountId], references: [id], onDelete: Restrict)
+  journalEntry          JournalEntry                @relation("CustomerCreditReceiptJournal", fields: [journalEntryId], references: [id], onDelete: Restrict)
+  applications          CustomerCreditApplication[]
+
+  @@index([organizationId, leaseId])
+}
+
+// Append-only reglering av nästa avi med redan mottagna pengar. Idempotensen
+// avser anropets fullständiga innehåll; ändrat innehåll med samma nyckel avvisas.
+model CustomerCreditApplication {
+  id             String     @id @default(uuid())
+  organizationId String
+  creditId       String
+  rentNoticeId   String
+  requestId      String
+  requestHash    String
+  journalEntryId String     @unique
+  amount         Decimal    @db.Decimal(10, 2)
+  appliedAt      DateTime
+  createdAt      DateTime   @default(now())
+  actorKind      ActorKind?
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  credit       CustomerCredit     @relation(fields: [creditId], references: [id], onDelete: Restrict)
+  rentNotice   RentNotice         @relation(fields: [rentNoticeId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry       @relation("CustomerCreditApplicationJournal", fields: [journalEntryId], references: [id], onDelete: Restrict)
+  payment      RentNoticePayment?
+
+  @@unique([organizationId, requestId])
+  @@unique([creditId, rentNoticeId])
+  @@index([rentNoticeId])
 }
