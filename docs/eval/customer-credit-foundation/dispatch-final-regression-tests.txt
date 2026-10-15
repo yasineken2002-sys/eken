@@ -1,0 +1,29 @@
+PASS src/avisering/rent-notice-credit.spec.ts (6.214 s)
+[Nest] 67065  - 10/16/2026, 12:33:54 AM     LOG [NotificationsService] Marked 3 rent notices as OVERDUE
+[Nest] 67065  - 10/16/2026, 12:33:57 AM    WARN [ReconciliationService] [reconciliation] transaktion adffc539-8d0d-48a8-8ab1-ba216157e2bb (org 318e565d-ad83-4c0d-96ec-bda0d81cb2a8) bär OCR 00000000019 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+[Nest] 67065  - 10/16/2026, 12:33:57 AM    WARN [ReconciliationService] [reconciliation] transaktion e21cc1d4-011a-43d1-a5c5-44520a4490e1 (org 12bd6c70-a2aa-4127-9d9a-768eccd089a2) bär OCR 00000000019 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+[Nest] 67065  - 10/16/2026, 12:33:57 AM    WARN [ReconciliationService] [reconciliation] tx=9b25fb92-dc16-42cc-abd1-faefcfa86f2f (org 00e48a7a-8db5-452a-854f-b759d5878ea1): hyresgästen har historisk skuld före brytdatum — ingen automatisk allokering; raden väntar på manuell fördelning och kravtrappan är pausad.
+[Nest] 67065  - 10/16/2026, 12:33:58 AM     LOG [ReconciliationService] [reconciliation] vattenfall: transaktion 24c14167-7a6b-45fd-9949-2432c2c0a556 fördelad över 2 avier (org 3901652c-153b-47f5-994a-fd3813e3f411, OCR 00000000019).
+PASS src/reconciliation/customer-credit-bank-import.db.spec.ts
+PASS src/customer-credit/customer-credit.db.spec.ts
+PASS src/tenant-portal/tenant-portal.leak.spec.ts
+PASS src/tenant-portal/tenant-portal.rentnotice-leak.spec.ts
+PASS src/avisering/avisering.payment-target.spec.ts
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-utan: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-blank: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-fejk: PAYMENT_TARGET_INVALID — Bankgiro kan inte bestå av enbart nollor — ange organisationens riktiga bankgiro. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-a: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] Avi rn-1 EJ skickad: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-klar: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-m: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-m: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 67065  - 10/16/2026, 12:34:07 AM    WARN [AviseringService] [Avisering] Avi notice-1 EJ skickad: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+PASS src/avisering/avisering.customer-credit-display.spec.ts
+PASS src/tenant-portal/tenant-portal.notice-document-export.spec.ts
+PASS src/common/authz/object-scope.spec.ts
+
+Test Suites: 9 passed, 9 total
+Tests:       147 passed, 147 total
+Snapshots:   0 total
+Time:        20.556 s
+Ran all test suites matching /src\/common\/authz\/object-scope.spec.ts|src\/customer-credit\/customer-credit.db.spec.ts|src\/reconciliation\/customer-credit-bank-import.db.spec.ts|src\/tenant-portal\/tenant-portal.notice-document-export.spec.ts|src\/tenant-portal\/tenant-portal.leak.spec.ts|src\/tenant-portal\/tenant-portal.rentnotice-leak.spec.ts|src\/avisering\/avisering.customer-credit-display.spec.ts|src\/avisering\/avisering.payment-target.spec.ts|src\/avisering\/rent-notice-credit.spec.ts/i.

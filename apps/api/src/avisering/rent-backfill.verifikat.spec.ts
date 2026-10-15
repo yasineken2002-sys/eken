@@ -9,7 +9,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { UnprocessableEntityException } from '@nestjs/common'
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 import { AccountingService } from '../accounting/accounting.service'
 import { backfillRentDueDate, BACKFILL_MIN_DAYS_UNTIL_DUE } from '@eken/shared'
 
@@ -59,7 +59,7 @@ function makeRig(opts: {
   const noop = {} as never
   // Audit-spårets spion (PR2): fångar CREATED-eventet som skrivs i tx:en.
   const events = { record: jest.fn().mockResolvedValue({ id: 'ev-1' }) }
-  const avisering = new AviseringService(
+  const avisering = aviseringUtanAutomatisktTillgodo(
     tx as never, // prisma (createBackfillRentNoticeInTx tar tx explicit; prisma-ytan orörd)
     noop, // ocr
     noop, // mail

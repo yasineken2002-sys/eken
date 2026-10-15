@@ -50,6 +50,7 @@ import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
+import { CustomerCreditService } from '../customer-credit/customer-credit.service'
 import { AiPaymentShadowQueue } from '../ai/shadow/payment/payment-shadow.queue'
 import { PaymentOutcomeService } from '../ai/shadow/payment/payment-outcome.service'
 import { PdfStatementParserService } from './pdf-statement-parser.service'
@@ -58,6 +59,7 @@ import { BankAccountService } from './bank-account.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { ReconciliationController } from './reconciliation.controller'
 import { ReconciliationService } from './reconciliation.service'
+import { kundtillgodoAvstängt } from './customer-credit.test-double'
 import { IMPORT_LEASE_TTL_MS } from './bank-import-identity'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -159,6 +161,12 @@ medDb('bankimportens filnivåskydd över HTTP (#F034b)', () => {
         ReconciliationService,
         BankStatementImportService,
         BankImportAttemptService,
+        // HTTP-fixturen saknar tillgodopolicy men använder riktig Nest-DI.
+        {
+          provide: CustomerCreditService,
+          useFactory: kundtillgodoAvstängt,
+          inject: [PrismaService, AccountingService, PaymentFreshnessService],
+        },
         // #F034c — RIKTIG tjänst, inte attrapp: ägandekontrollen är precis det
         // den här filen ska pröva över tråden.
         BankAccountService,

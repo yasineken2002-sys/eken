@@ -18,7 +18,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  */
 
 import { Logger } from '@nestjs/common'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 /**
@@ -33,7 +33,7 @@ function rigg(utfall: Array<boolean | Error>) {
   }
   // Bara prisma används av autoMatchAll; övriga beroenden nås aldrig i den här
   // vägen och stubbas som tomma objekt.
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     {} as never,

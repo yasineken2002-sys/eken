@@ -1,0 +1,13 @@
+PASS src/avisering/avisering.cancel-deposit-accrual.spec.ts (5.48 s)
+  #301 — cancelNotice reverserar depositionsavins accrual
+    ✓ reverserar BÅDA namnrymderna: avins intäkt (no-op) och depositionens accrual (4 ms)
+    ✓ LÅSORDNING: depositionen låses FÖRST, före avin rörs (Deposit → RentNotice) (1 ms)
+    ✓ atomiskt: reverseringen får transaktionsklienten, inte prisma bredvid den
+    ✓ SPÄRR: deposition som inte är PENDING → INGEN reversering (2 ms)
+    ✓ vanlig hyresavi utan deposition → bara den befintliga reverseringen
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        5.531 s
+Ran all test suites matching /src\/avisering\/avisering.cancel-deposit-accrual.spec.ts/i.

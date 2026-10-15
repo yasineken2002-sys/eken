@@ -1,8 +1,10 @@
 import { MailService } from './mail.service'
+import { MailRenderer } from './mail.renderer'
+import { ConfigService } from '@nestjs/config'
 
 it('avi och påminnelse visar samma svenska förfallodag även vid lokal midnatt', async () => {
   const queue = { enqueue: jest.fn().mockResolvedValue('synthetic-job') }
-  const service = new MailService(queue as never)
+  const service = new MailService(queue as never, new MailRenderer(), new ConfigService({}))
   const common = {
     organizationId: 'synthetic-org',
     rentNoticeId: 'synthetic-notice',

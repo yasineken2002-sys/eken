@@ -16,7 +16,8 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import type { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const dec = (n: number | string) => new Decimal(n)
@@ -64,7 +65,7 @@ function makeService(opts: { priorAllocations?: number[]; status?: string } = {}
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)),
   }
 
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     { claimPaidWithinTx, notifyInvoicePaid } as never,
     { record: jest.fn().mockResolvedValue(undefined) } as never,

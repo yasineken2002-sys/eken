@@ -1,0 +1,1 @@
+✅ 141 spec-fil(er) med villkorlig överhoppning — alla prövar sin förutsättning i ett block som alltid körs.

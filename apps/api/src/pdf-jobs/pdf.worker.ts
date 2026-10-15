@@ -2,6 +2,7 @@ import { OnQueueFailed, Process, Processor } from '@nestjs/bull'
 import { Injectable, Logger } from '@nestjs/common'
 import { ModuleRef } from '@nestjs/core'
 import type { Job } from 'bull'
+import { runWithActor } from '../common/actor/actor.context'
 import { type PdfJobPayload, QUEUE_PDF } from './pdf.types'
 import { AviseringService } from '../avisering/avisering.service'
 import { RentReminderService } from '../avisering/rent-reminder.service'
@@ -38,7 +39,9 @@ export class PdfWorker {
     switch (data.kind) {
       case 'avisering-send': {
         const svc = this.moduleRef.get(AviseringService, { strict: false })
-        await svc.processNoticeSendJob(data.organizationId, data.noticeId)
+        await runWithActor('SYSTEM', () =>
+          svc.processNoticeSendJob(data.organizationId, data.noticeId),
+        )
         break
       }
       case 'avisering-reminder': {

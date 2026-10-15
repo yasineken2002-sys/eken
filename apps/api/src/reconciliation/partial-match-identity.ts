@@ -69,8 +69,10 @@
  * PÅSTÅENDE en människa kan rätta. Bankvägens motsvarighet är klassificerarens
  * tredje gren, som returnerar utan att allokera.
  *
- * Den nya vägen ärver det skyddet i sin helhet, därför att den går genom SAMMA
- * klassificerare — den lägger inte till någon egen gren. Se
+ * `allowPartial` öppnar aldrig för överbetalning. Det separata kundtillgodoflödet
+ * får ta emot ett överskott endast med verifierat avibevis och aktiv policy;
+ * allokeringen begränsas till skulden och resten bokförs som kundtillgodo i
+ * samma transaktion. Utan det separata beviset gäller avvisningen ovan. Se
  * `check-partial-match-identity.mjs` R5: varje ny ALLOKERINGSSKRIVARE måste
  * registreras, så en framtida dörr in till allokeringen inte kan öppnas tyst.
  */
@@ -97,6 +99,7 @@ export const PARTIAL_ALDRIG_VID_GISSNING = false
  * något som glider igenom i en refaktorering.
  */
 export const ENTYDIGA_MATCHNINGSVAGAR = [
+  'matchTransaction:customer-credit-notice-reference',
   'matchTransaction:notice-ocr',
   'matchTransaction:invoice-number',
   'matchTransaction:notice-number',

@@ -200,6 +200,7 @@ function rigg(
     writtenOffAt: null,
     lines: opts.lines ?? [],
     payments: [],
+    sends: [],
     credits: redan ? [{ amount: D(redan) }] : [],
   }
 

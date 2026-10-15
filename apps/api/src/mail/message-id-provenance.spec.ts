@@ -63,26 +63,46 @@ function fejkPrisma(): {
   const rentNoticeUpdate = jest.fn().mockResolvedValue({})
   const tenantUpdate = jest.fn().mockResolvedValue({})
   const failedEmailCreate = jest.fn().mockResolvedValue({})
+  const legacySends: Array<{
+    id: string
+    jobId: string
+    toHash: string
+    dispatchKey: null
+  }> = []
+  const database = {
+    organization: {
+      findUnique: jest.fn().mockResolvedValue({ transactionalEmailsDisabled: false }),
+    },
+    // Korrelationen provas på en skickbar avi. Ett legacy-anspråk tillkommer
+    // under avilåset men är inte ett providerkvitto och ändrar inte avifälten.
+    $queryRaw: jest.fn().mockResolvedValue([{ id: NOTICE }]),
+    rentNotice: {
+      updateMany: rentNoticeUpdate,
+      findFirst: jest.fn(
+        async (args: { select?: { sends?: { where?: { dispatchKey?: unknown } } } }) => ({
+          status: 'SENT',
+          sends: args.select?.sends?.where?.dispatchKey ? [] : [...legacySends],
+        }),
+      ),
+    },
+    rentNoticeSend: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      create: jest.fn(async ({ data }: { data: { jobId: string; toHash: string } }) => {
+        const send = { id: 'legacy-send-1', dispatchKey: null, ...data }
+        legacySends.push(send)
+        return send
+      }),
+    },
+    tenant: { update: tenantUpdate },
+    failedEmail: { create: failedEmailCreate },
+  }
   return {
     rentNoticeUpdate,
     tenantUpdate,
     failedEmailCreate,
     prisma: {
-      organization: {
-        findUnique: jest.fn().mockResolvedValue({ transactionalEmailsDisabled: false }),
-      },
-      // #656: skrivningen är org-scopad, alltså `updateMany` — en icke-träff
-      // blir noll rader i stället för ett kast som hade utlöst en Bull-retry på
-      // ett mejl som redan är skickat.
-      // F-047-2 (TESTKUND-049): arbetaren prövar avins status innan ett avimejl skickas. Här är avin
-      // skickad (SENT), så utskicket går vidare som förut och provet mäter korrelationen som tidigare.
-      rentNotice: {
-        updateMany: rentNoticeUpdate,
-        findFirst: jest.fn().mockResolvedValue({ status: 'SENT' }),
-      },
-      rentNoticeSend: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      tenant: { update: tenantUpdate },
-      failedEmail: { create: failedEmailCreate },
+      ...database,
+      $transaction: (callback: (tx: typeof database) => unknown) => callback(database),
     } as unknown as PrismaService,
   }
 }

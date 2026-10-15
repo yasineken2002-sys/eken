@@ -536,12 +536,18 @@ export class RentNoticeCreditService {
       const notice = await tx.rentNotice.findFirst({
         where: { id: noticeId, organizationId },
         include: {
+          sends: { where: { dispatchKey: { not: null }, acceptedAt: null }, select: { id: true } },
           lines: true,
           payments: { select: { amount: true } },
           credits: { select: { amount: true } },
         },
       })
       if (!notice) throw new NotFoundException('Hyresavi hittades inte')
+      if (notice.sends.length > 0) {
+        throw new BadRequestException(
+          'Avins fastställda utskick pågår. Kontrollera leveransutfallet innan avin krediteras.',
+        )
+      }
 
       const debtBefore = computeRentDebt({
         type: notice.type,

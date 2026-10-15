@@ -44,7 +44,8 @@ import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-do
 import { PrismaClient, Prisma } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
-import { ReconciliationService } from './reconciliation.service'
+import type { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
@@ -130,7 +131,7 @@ medDb('vattenfallet mot riktig Postgres', () => {
       stub('OcrService') as never,
       stub('PdfQueue') as never,
     )
-    service = new ReconciliationService(
+    service = reconciliationUtanKundtillgodo(
       p,
       invoices,
       invoiceEvents,

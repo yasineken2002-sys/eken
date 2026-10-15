@@ -1,0 +1,26 @@
+PASS src/avisering/avisering.payment-target.spec.ts (6.232 s)
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-utan: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-blank: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-fejk: PAYMENT_TARGET_INVALID — Bankgiro kan inte bestå av enbart nollor — ange organisationens riktiga bankgiro. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-a: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] Avi rn-1 EJ skickad: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-klar: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-m: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+[Nest] 53087  - 10/15/2026, 7:34:40 PM    WARN [AviseringService] [Avisering] 1 avi(er) EJ skickade för org org-m: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.
+PASS src/accounting/accounting.fee-interest-reversal.spec.ts
+[Nest] 53087  - 10/15/2026, 7:34:41 PM   ERROR [AccountingService] [Accounting] Likvidkonto 1910 eller 1510 saknas i kontoplanen (org org-1) — betalningsverifikat för hyresavi AVI-2026-06-0001 skapas ej.
+PASS src/accounting/accounting.rentnotice-payment.spec.ts
+PASS src/avisering/avisering.notice-pdf-branding.spec.ts
+PASS src/accounting/accounting.reversal.spec.ts
+PASS src/accounting/accounting.payment-counterparty.spec.ts
+[Nest] 53087  - 10/15/2026, 7:34:41 PM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+[Nest] 53087  - 10/15/2026, 7:34:41 PM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+PASS src/accounting/accounting.customer-credit.spec.ts
+PASS src/avisering/avisering.customer-credit-display.spec.ts
+
+Test Suites: 8 passed, 8 total
+Tests:       116 passed, 116 total
+Snapshots:   0 total
+Time:        7.397 s, estimated 8 s
+Ran all test suites within paths "src/accounting/accounting.customer-credit.spec.ts", "src/avisering/avisering.customer-credit-display.spec.ts", "src/accounting/accounting.reversal.spec.ts", "src/accounting/accounting.rentnotice-payment.spec.ts", "src/accounting/accounting.payment-counterparty.spec.ts", "src/accounting/accounting.fee-interest-reversal.spec.ts", "src/avisering/avisering.payment-target.spec.ts", "src/avisering/avisering.notice-pdf-branding.spec.ts".
+[Nest] 53087  - 10/15/2026, 7:34:42 PM    WARN [AviseringService] [Avisering] Avi notice-1 EJ skickad: PAYMENT_TARGET_MISSING — Bankgiro saknas — hyresgästen har ingen betalningsmottagare att betala till. Lägg till organisationens bankgiro under Inställningar → Betalningsinformation.

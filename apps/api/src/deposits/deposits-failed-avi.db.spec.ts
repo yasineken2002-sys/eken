@@ -21,13 +21,15 @@ import { PrismaClient, Prisma } from '@prisma/client'
 import type { RentNoticeStatus } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import type { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { AviseringService } from '../avisering/avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from '../avisering/customer-credit.test-double'
 import { OcrService } from '../common/ocr/ocr.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import { DepositsService } from './deposits.service'
@@ -78,7 +80,7 @@ medDb('F-043-1: manuell depositionsbetalning via FAILED depositionsavi', () => {
       stub('OcrService') as never,
       stub('PdfQueue') as never,
     )
-    recon = new ReconciliationService(
+    recon = reconciliationUtanKundtillgodo(
       p,
       invoices,
       invoiceEvents,
@@ -99,7 +101,7 @@ medDb('F-043-1: manuell depositionsbetalning via FAILED depositionsavi', () => {
       { createForAllOrgUsers: async () => undefined } as never,
       invoiceEvents,
     )
-    avisering = new AviseringService(
+    avisering = aviseringUtanAutomatisktTillgodo(
       p,
       new OcrService(p),
       stub('MailService') as never,

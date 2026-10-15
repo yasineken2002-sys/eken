@@ -69,6 +69,7 @@ import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { ReconciliationService } from './reconciliation.service'
+import { kundtillgodoGränsAvstängd } from './customer-credit.test-double'
 
 const Decimal = Prisma.Decimal
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -203,6 +204,7 @@ medDb('autoMatchAll som bulkkörning', () => {
     )
     service = Object.create(ReconciliationService.prototype) as ReconciliationService
     Object.assign(service, {
+      customerCredit: kundtillgodoGränsAvstängd(),
       prisma,
       accounting,
       rentNoticeEvents: new RentNoticeEventsService(prisma as never),

@@ -1,0 +1,42 @@
+PASS src/customer-credit/customer-credit.db.spec.ts (7.502 s)
+  kundtillgodots databasförutsättningar
+    ✓ KANARIEFÅGEL: endast explicit lokal syntetisk DB eller CI:s testcontainer (1 ms)
+  kundtillgodo med verklig Postgres och bokföring
+    ✓ bokför 25 kr skuld och reglerar nästa avi utan att debitera bank en gång till (154 ms)
+    ✓ mottagningsreplay återanvänder tillgodo och verifikat utan ny effekt (74 ms)
+    ✓ saknat ordinärt betalningsverifikat rullar tillbaka hela mottagningen (50 ms)
+    ✓ identisk användningsreplay bevarar alla rader och verifikationsnummer (80 ms)
+    ✓ samma requestId med ändrat belopp avvisas utan effekt (94 ms)
+    ✓ ändrad källbanksumma efter mottagning stoppar användning utan ny bokföring (73 ms)
+    ✓ delbelopp under hela tillgängliga min-beloppet nekas, sedan fungerar hela beloppet (88 ms)
+    ✓ två samtidiga transaktioner kan inte använda samma 25 kr två gånger (130 ms)
+    ✓ en annan organisation kan varken använda tillgodot eller få sin avi reglerad (91 ms)
+    ✓ hyresgästens andra avtal får inte använda tillgodot (69 ms)
+    ✓ avstängd policy rullar tillbaka mottagningens allokering och bokföring (43 ms)
+    ✓ tillgodo kan inte användas när automatisk överföring är avstängd (61 ms)
+    ✓ redan skickad avi ändras inte även om status råkar vara PENDING (60 ms)
+    ✓ avi med probableLossAt får inte regleras på 1510 även om status fortfarande är PENDING (60 ms)
+    ✓ avi med writtenOffAt får inte regleras på 1510 även om status fortfarande är PENDING (59 ms)
+    ✓ stängd bokföringsperiod rullar tillbaka tillämpning, betalningsrad och verifikat (75 ms)
+    ✓ databasens FK hindrar att källbetalningen tas bort under ett tillgodo (56 ms)
+    ✓ databasens saldospärr stoppar direkt insättning på 26 kr och rullar tillbaka dess riktiga verifikat (58 ms)
+    ✓ databasen avvisar ändringar av både tillgodot och dess användningshistorik (73 ms)
+    ✓ databasen avvisar CUSTOMER_CREDIT-betalning utan länk till bokförd användning (28 ms)
+    ✓ användning nekas när avtalet är avslutat (59 ms)
+    ✓ användning nekas när avtalet är utgånget (58 ms)
+    ✓ användning nekas när avtalet är aktivt men slutdatum passerat (63 ms)
+    ✓ nästa aviperiod måste överlappa avtalet även när användningsdagen ligger före slutdatum (59 ms)
+    ✓ resttillgodo får inte bakdateras före den första användningen (102 ms)
+    ✓ framtidsdaterad betalning på målavi får inte göra tillgodot till en förtida slutreglering (66 ms)
+    ✓ ogiltigt eller otäckt belopp 0 skriver inget (48 ms)
+    ✓ ogiltigt eller otäckt belopp -1.00 skriver inget (48 ms)
+    ✓ ogiltigt eller otäckt belopp 25.01 skriver inget (59 ms)
+    ✓ ogiltigt eller otäckt belopp 0.001 skriver inget (49 ms)
+    ✓ tillgodo kan inte hoppa över nästa månad till en senare avi (63 ms)
+    ✓ användningen begränsas av avins aktuella skuld, inte bara tillgodots belopp (107 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       33 passed, 33 total
+Snapshots:   0 total
+Time:        7.564 s
+Ran all test suites within paths "src/customer-credit/customer-credit.db.spec.ts".

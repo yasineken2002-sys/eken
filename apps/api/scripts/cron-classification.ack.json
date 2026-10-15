@@ -35,6 +35,10 @@
       "class": "B",
       "invariant": "RentNotice @@unique([leaseId, year, month, type]) — andra körningen får P2002, som fångas som benign idempotens (avisering.service.ts:426). Ingen dubbel avi kan skapas."
     },
+    "avisering/notice-dispatch-recovery.scheduler.ts::recoverPreparedNotices": {
+      "class": "B",
+      "invariant": "RentNoticeSend updateMany på id, recoveryAttempts, recoveryAfter förfallet och acceptedAt=null flyttar recoveryAfter och ökar försöksräknaren atomiskt före köning. Endast count=1 köar; återförsök använder samma frysta reservation och leverantörsnyckel."
+    },
     "avisering/rent-reminder.service.ts::escalateOverdueRentNotices": {
       "class": "B",
       "invariant": "RentNotice updateMany-claim på (status=OVERDUE, collectionStage=NONE); count=0 → escalateNoticeToReminded returnerar false utan att boka påminnelseavgift eller skicka."

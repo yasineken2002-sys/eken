@@ -3,8 +3,13 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { Job } from 'bull'
 import { Resend } from 'resend'
+import { isCreditPaidInformation, readPreparedNoticeMail } from '../avisering/notice-dispatch'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
+import { DEFAULT_MAIL_FROM } from './mail.types'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { claimLegacyNoticeDispatch } from './legacy-notice-dispatch'
 import { MailRenderer } from './mail.renderer'
 import {
   type MailCorrelation,
@@ -16,7 +21,7 @@ import {
   QUEUE_NORMAL,
 } from './mail.types'
 
-const DEFAULT_FROM = 'Eveno Fastigheter <noreply@eveno.se>'
+const DEFAULT_FROM = DEFAULT_MAIL_FROM
 const CONCURRENCY = 5
 
 @Injectable()
@@ -66,11 +71,31 @@ abstract class MailWorkerBase {
     // Vi returnerar utan att kasta: ett kast hade gett fem Bull-retries och en
     // FailedEmail-rad för något som är en konfiguration, inte ett fel.
     if (await this.isSuppressed(job.data.organizationId)) {
+      if (correlation?.kind === 'rent-notice' && correlation.sendId) {
+        const pending = await this.prisma.rentNoticeSend.findFirst({
+          where: {
+            id: correlation.sendId,
+            rentNoticeId: correlation.rentNoticeId,
+            rentNotice: { organizationId: job.data.organizationId },
+          },
+          select: { dispatchStartedAt: true, acceptedAt: true },
+        })
+        if (pending?.dispatchStartedAt && !pending.acceptedAt)
+          throw new Error(
+            'Mejl har stängts av efter påbörjat utskick. Okänt leveransutfall behöver kontrolleras.',
+          )
+      }
+
       this.logger.warn(
         `[${job.queue.name}] SUPPRESSERAT jobId=${job.id} template=${template} to=${to} ` +
           `org=${job.data.organizationId}: transactionalEmailsDisabled var satt när jobbet plockades. ` +
           'Jobbet kastas, inget skickas.',
       )
+      return
+    }
+
+    if (correlation?.kind === 'rent-notice' && correlation.sendId) {
+      await this.processPreparedNotice(job, correlation.sendId, correlation.rentNoticeId)
       return
     }
 
@@ -83,8 +108,12 @@ abstract class MailWorkerBase {
     if (correlation?.kind === 'rent-notice' || correlation?.kind === 'rent-notice-reminder') {
       const avi = await this.prisma.rentNotice.findFirst({
         where: { id: correlation.rentNoticeId, organizationId: job.data.organizationId },
-        select: { status: true },
+        select: {
+          status: true,
+          sends: { where: { dispatchKey: { not: null } }, select: { id: true } },
+        },
       })
+      if (correlation.kind === 'rent-notice' && (avi?.sends?.length ?? 0) > 0) return
       if (!avi || avi.status === 'PAID' || avi.status === 'CANCELLED' || avi.status === 'OPENING') {
         this.logger.warn(
           `[${job.queue.name}] AVIMEJL SKICKAS INTE jobId=${job.id} avi=${correlation.rentNoticeId} ` +
@@ -102,6 +131,17 @@ abstract class MailWorkerBase {
       template as TemplateName,
       props as TemplatePropsMap[TemplateName],
     )
+
+    if (correlation?.kind === 'rent-notice') {
+      const claimed = await claimLegacyNoticeDispatch(
+        this.prisma,
+        job.data.organizationId,
+        correlation.rentNoticeId,
+        to,
+        String(job.id),
+      )
+      if (!claimed) return
+    }
 
     // Idempotency-Key skickas till Resend så att retries (efter worker-stall,
     // container-restart, transient timeout efter att Resend accepterat mejlet)
@@ -146,6 +186,101 @@ abstract class MailWorkerBase {
     }
   }
 
+  private async processPreparedNotice(
+    job: Job<MailJobPayload>,
+    sendId: string,
+    noticeId: string,
+  ): Promise<void> {
+    const organizationId = job.data.organizationId
+    const prepared = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      const send = await tx.rentNoticeSend.findFirst({
+        where: { id: sendId, rentNoticeId: noticeId, rentNotice: { organizationId } },
+        include: {
+          rentNotice: {
+            select: {
+              status: true,
+              tenant: { select: { anonymizedAt: true } },
+              organization: { select: { status: true, transactionalEmailsDisabled: true } },
+            },
+          },
+        },
+      })
+      if (!send) throw new Error('Avins utskicksreservation saknas')
+      if (send.acceptedAt) return null
+      const mail = readPreparedNoticeMail(send, organizationId)
+      if (
+        send.rentNotice.tenant.anonymizedAt ||
+        send.rentNotice.organization.transactionalEmailsDisabled ||
+        !AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES.some(
+          (status) => status === send.rentNotice.organization.status,
+        )
+      ) {
+        if (send.dispatchStartedAt)
+          throw new Error(
+            'Hyresgästen eller organisationen har spärrats efter påbörjat utskick. Okänt leveransutfall behöver kontrolleras.',
+          )
+        return null
+      }
+      const status = send.rentNotice.status
+      if (
+        status === 'CANCELLED' ||
+        status === 'OPENING' ||
+        (status === 'PAID' && !isCreditPaidInformation(send))
+      ) {
+        if (send.dispatchStartedAt)
+          throw new Error(
+            'Avin har ändrats efter påbörjat utskick. Okänt leveransutfall behöver kontrolleras utan nytt betalningsmejl.',
+          )
+        return null
+      }
+      const now = new Date(Date.now())
+      // Resend behåller idempotensnycklar i 24h. En timmes marginal:
+      // okänt utfall utanför fönstret får inte bli ett blint dubbelutskick.
+      // https://resend.com/docs/dashboard/emails/idempotency-keys
+      if (
+        send.dispatchStartedAt &&
+        now.getTime() - send.dispatchStartedAt.getTime() >= 23 * 60 * 60 * 1000
+      ) {
+        throw new Error(
+          'Utskickets leveransutfall är okänt efter omförsöksfönstret och behöver kontrolleras',
+        )
+      }
+      await tx.rentNoticeSend.updateMany({
+        where: { id: sendId, rentNotice: { organizationId }, dispatchStartedAt: null },
+        data: { dispatchStartedAt: now },
+      })
+      return mail
+    }, PRISMA_DEFAULT_TX_LIMITS)
+    if (!prepared) return
+
+    // Inga databaslås hålls under leverantörsanropet. Allt, även avsändare,
+    // färdig HTML och PDF-byte, kommer ur samma oföränderliga underlag.
+    const result = await this.resend.emails.send(
+      {
+        from: prepared.from,
+        to: prepared.to,
+        subject: prepared.subject,
+        html: prepared.html,
+        text: prepared.text,
+        attachments: prepared.attachments.map((a) => ({
+          filename: a.filename,
+          content: Buffer.from(a.contentBase64, 'base64'),
+        })),
+      },
+      { idempotencyKey: prepared.idempotencyKey },
+    )
+    if (result.error) throw new Error(`Resend rejected mail: ${result.error.message}`)
+    const resendId = result.data?.id
+    if (!resendId) throw new Error('Mejlleverantören saknar leveransidentifierare')
+
+    await this.persistResendId(
+      { kind: 'rent-notice', rentNoticeId: noticeId, sendId },
+      resendId,
+      organizationId,
+    )
+  }
+
   /**
    * Läser strypventilen igen, vid konsumtion. Okänd org fäller — samma
    * fail-closed-riktning som producenten (MailQueue.isSuppressed): kan vi inte
@@ -164,6 +299,42 @@ abstract class MailWorkerBase {
     resendId: string,
     organizationId: string,
   ): Promise<void> {
+    if (correlation.kind === 'rent-notice' && correlation.sendId) {
+      const sendId = correlation.sendId
+      const noticeId = correlation.rentNoticeId
+      // Ack-fel måste bubbla: omförsöket använder samma leverantörsnyckel och
+      // återhämtar kvittot. Ett redan sparat kvitto gör senare retry till no-op.
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${organizationId} FOR UPDATE`
+        const send = await tx.rentNoticeSend.findFirst({
+          where: { id: sendId, rentNoticeId: noticeId, rentNotice: { organizationId } },
+        })
+        if (!send) throw new Error('Avins utskicksreservation saknas vid kvittering')
+        if (send.acceptedAt) {
+          if (send.messageId !== resendId)
+            throw new Error('Mejlleverantören gav två olika kvitton för samma utskick')
+          return
+        }
+        await tx.rentNoticeSend.updateMany({
+          where: { id: sendId, rentNotice: { organizationId }, acceptedAt: null },
+          data: { messageId: resendId, acceptedAt: new Date() },
+        })
+        await tx.rentNotice.updateMany({
+          where: { id: noticeId, organizationId, sentAt: null },
+          data: {
+            sentAt: new Date(),
+            sentTo: readPreparedNoticeMail(send, organizationId).to,
+            noticeMessageId: resendId,
+            sendError: null,
+          },
+        })
+        await tx.rentNotice.updateMany({
+          where: { id: noticeId, organizationId, status: { in: ['PENDING', 'FAILED', 'OVERDUE'] } },
+          data: { status: 'SENT' },
+        })
+      }, PRISMA_DEFAULT_TX_LIMITS)
+      return
+    }
     try {
       switch (correlation.kind) {
         case 'tenant-invite':

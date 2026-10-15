@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { CustomerCreditModule } from '../customer-credit/customer-credit.module'
 import { PrismaModule } from '../common/prisma/prisma.module'
 import { MailModule } from '../mail/mail.module'
 import { InvoicesModule } from '../invoices/invoices.module'
@@ -12,6 +13,7 @@ import { DepositsModule } from '../deposits/deposits.module'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { AviseringController } from './avisering.controller'
 import { AviseringService } from './avisering.service'
+import { NoticeDispatchRecoveryScheduler } from './notice-dispatch-recovery.scheduler'
 import { AviseringScheduler } from './avisering.scheduler'
 import { RentReminderService } from './rent-reminder.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
@@ -25,6 +27,7 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 @Module({
   imports: [
     PrismaModule,
+    CustomerCreditModule,
     MailModule,
     InvoicesModule,
     OcrModule,
@@ -41,6 +44,7 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
   providers: [
     AviseringService,
     AviseringScheduler,
+    NoticeDispatchRecoveryScheduler,
     RentReminderService,
     RentNoticeEventsService,
     RentInterestService,

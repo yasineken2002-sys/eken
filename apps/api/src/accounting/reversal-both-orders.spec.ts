@@ -113,6 +113,10 @@ function huvudbok() {
     account: { findMany: jest.fn().mockResolvedValue([]) },
     // TESTKUND-027: createReversalEntry spärrar originalets READY-export i samma transaktion.
     fortnoxVoucherExport: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    // Den här riggen har inget kundtillgodo. Den manuella rättelsen låser
+    // källavin och kontrollerar det före skrivningen; reverseringsreglerna körs skarpt.
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'rn-1' }]),
+    customerCredit: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: (cb: (tx: unknown) => unknown) => cb(prisma),
   }
   const verifikationsnummer = {

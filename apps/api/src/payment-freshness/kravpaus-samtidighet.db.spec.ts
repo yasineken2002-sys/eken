@@ -56,6 +56,7 @@ import { VerifikationsnummerService } from '../accounting/verifikationsnummer.se
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { RentReminderService } from '../avisering/rent-reminder.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { kundtillgodoGränsAvstängd } from '../reconciliation/customer-credit.test-double'
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 import { PaymentReminderService } from '../notifications/payment-reminder.service'
 import { IdentityReviewPausedError, PaymentFreshnessService } from './payment-freshness.service'
@@ -321,6 +322,7 @@ medDb('G2-AVSLUT — ny paus mellan kontroll och effekt', () => {
     const acc = new AccountingService(p as never, new VerifikationsnummerService(p as never))
     const s = Object.create(ReconciliationService.prototype) as ReconciliationService
     Object.assign(s, {
+      customerCredit: kundtillgodoGränsAvstängd(),
       prisma: p,
       accounting: acc,
       rentNoticeEvents: new RentNoticeEventsService(p as never),

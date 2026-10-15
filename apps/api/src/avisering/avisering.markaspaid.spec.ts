@@ -20,7 +20,7 @@ import {
   ConflictException,
   InternalServerErrorException,
 } from '@nestjs/common'
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 function makeService(opts?: {
   notice?: Record<string, unknown>
@@ -103,7 +103,7 @@ function makeService(opts?: {
   }
   const noop = {}
 
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     noop as never, // ocr
     noop as never, // mail

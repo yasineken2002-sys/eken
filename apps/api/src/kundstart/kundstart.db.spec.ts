@@ -16,7 +16,8 @@ import { ConflictException, ForbiddenException, BadRequestException } from '@nes
 import { PrismaClient, Prisma } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import type { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import { AccountingService, MissingAccrualError } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
@@ -26,6 +27,7 @@ import { DepositsService } from '../deposits/deposits.service'
 import { RentNoticeCreditService } from '../avisering/rent-notice-credit.service'
 import { RentBadDebtService } from '../avisering/rent-bad-debt.service'
 import { AviseringService } from '../avisering/avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from '../avisering/customer-credit.test-double'
 import { RentBackfillService } from '../avisering/rent-backfill.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -170,7 +172,7 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       stub('PdfQueue') as never,
     )
     freshness = new PaymentFreshnessService(p, { send: async () => undefined } as never)
-    recon = new ReconciliationService(
+    recon = reconciliationUtanKundtillgodo(
       p,
       invoices,
       invoiceEvents,
@@ -193,7 +195,7 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       invoiceEvents,
     )
     const ocr = new OcrService(p)
-    avisering = new AviseringService(
+    avisering = aviseringUtanAutomatisktTillgodo(
       p,
       ocr,
       stub('MailService') as never,

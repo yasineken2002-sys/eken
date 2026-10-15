@@ -25,7 +25,7 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn(), addBreadcrumb:
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Prisma, UserRole } from '@prisma/client'
 import * as Sentry from '@sentry/nestjs'
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 let __seq = 0
 
@@ -188,7 +188,7 @@ function makeRig(seed: LeaseSeed, opts: { withDeposit?: boolean; enqueueFails?: 
   }
   const noop = {}
 
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') } as never,
     noop as never, // mail

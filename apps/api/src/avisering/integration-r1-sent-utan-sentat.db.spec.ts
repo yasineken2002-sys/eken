@@ -33,11 +33,13 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient, RentNoticeType } from '@prisma/client'
 
 import { AviseringService } from './avisering.service'
+import { automatisktTillgodoGränsAvstängd } from './customer-credit.test-double'
 import { OcrService } from '../common/ocr/ocr.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { kundtillgodoGränsAvstängd } from '../reconciliation/customer-credit.test-double'
 import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -163,6 +165,7 @@ medDb('R-1 · dokumentets utskicksbevis mot avmatchningens återöppning', () =>
 
     avisering = Object.create(AviseringService.prototype) as AviseringService
     Object.assign(avisering, {
+      customerCredit: automatisktTillgodoGränsAvstängd(),
       prisma,
       ocrService: new OcrService(prisma as never),
       // LOKAL FÅNGARE — ingen leverantör, ingen kö.
@@ -190,6 +193,7 @@ medDb('R-1 · dokumentets utskicksbevis mot avmatchningens återöppning', () =>
 
     recon = Object.create(ReconciliationService.prototype) as ReconciliationService
     Object.assign(recon, {
+      customerCredit: kundtillgodoGränsAvstängd(),
       prisma,
       accounting,
       rentNoticeEvents: events,

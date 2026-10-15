@@ -51,6 +51,7 @@ export const TENANT_HISTORY_RELATIONS: readonly TenantHistoryRelation[] = [
   { model: 'Document', column: 'signedByTenantId', label: 'signerade dokument' },
   { model: 'MaintenanceTicket', column: 'tenantId', label: 'felanmälningar' },
   { model: 'RentNotice', column: 'tenantId', label: 'hyresavier' },
+  { model: 'CustomerCredit', column: 'tenantId', label: 'kundtillgodo' },
   { model: 'Inspection', column: 'tenantId', label: 'besiktningar' },
   { model: 'SentMessage', column: 'tenantId', label: 'skickade meddelanden' },
   { model: 'Deposit', column: 'tenantId', label: 'depositioner' },

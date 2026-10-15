@@ -1,0 +1,45 @@
+Started: 2026-10-15T22:48:02.881Z
+Node: /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node (v24.19.0)
+TMPDIR for child commands: /private/tmp (canonical macOS path)
+Earlier diagnosis: original /var/folders temp path gave 13 TIGER results with both HEAD and modified PDF guard. The same injected ai-display-masking file returned exit 0 with empty stdout/stderr in 39 ms via /var/folders, but exit 1 with ZZ-METAVAKT in stderr in 1436 ms via /private/var/folders realpath. Neither run had a signal, timeout or spawn error. The PDF guard itself returned FÄLLER/exit 1 under direct mät().
+
+COMMAND: node apps/api/scripts/check-pdf-templates-selfcontained.mjs --self-test
+SJÄLVTEST GRÖNT — 3 renderingsställen, 10 producenter, 75 funktioner i kedjan, 59 mall-literaler i 13 filer, 7 kanariefåglar (12 bryggprov).
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-pdf-templates-selfcontained.mjs
+PDF-mallar självförsörjande — 3 renderingsställen, 10 producenter, 59 mall-literaler i 13 filer granskade.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-identifier-regex.mjs
+Inga nya ASCII-härledningar — 58 vaktskript, 8 förekomster över 8 poster, exakt baslinjen.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-self-tests-fail.mjs --self-test
+✅ delad skanner: kanariefåglarna gröna
+✅ fixtur fore-enradig: injektionspunkt hittad  → fail()
+✅ fixtur fore-enradig: baslinjen grön  → exitkod 0 — en fixtur som redan är röd mäter ingenting
+✅ fixtur fore-enradig: muterad ger exitkod 0 (TIGER)  → fick 0
+✅ fixtur fore-enradig: statisk flagga A sätts  → ["process.exitCode sätts på rad 3, men process.exit(ok ? 0 : 1) på rad 5 skriver
+✅ fixtur efter-enradig: injektionspunkt hittad  → fail()
+✅ fixtur efter-enradig: baslinjen grön  → exitkod 0 — en fixtur som redan är röd mäter ingenting
+✅ fixtur efter-enradig: muterad ger exitkod 1 (FÄLLER)  → fick 1
+✅ fixtur efter-enradig: statisk flagga A sätts inte  → []
+✅ fixtur fore-flerradig: injektionspunkt hittad  → fail()
+✅ fixtur fore-flerradig: baslinjen grön  → exitkod 0 — en fixtur som redan är röd mäter ingenting
+✅ fixtur fore-flerradig: muterad ger exitkod 0 (TIGER)  → fick 0
+✅ fixtur fore-flerradig: statisk flagga A sätts  → ["process.exitCode sätts på rad 5, men process.exit(ok ? 0 : 1) på rad 8 skriver
+✅ fixtur efter-flerradig: injektionspunkt hittad  → fail()
+✅ fixtur efter-flerradig: baslinjen grön  → exitkod 0 — en fixtur som redan är röd mäter ingenting
+✅ fixtur efter-flerradig: muterad ger exitkod 1 (FÄLLER)  → fick 1
+✅ fixtur efter-flerradig: statisk flagga A sätts inte  → []
+✅ skuggträdet: en OMUTERAD kopia i tmpdir kör grönt
+✅ skuggträdet: trädet är orört
+✅ omfång: 55 vaktskript (golv 40)
+✅ baslinjen är grön
+✅ alla 55 fäller
+
+✅ Självtest OK — 4 fixturer (enradig och flerradig, före och efter), skuggträdet läser repot, 55 vakter mätta och alla fäller.
+EXIT CODE: 0
+
+Finished: 2026-10-15T22:48:15.087Z

@@ -78,7 +78,7 @@ export interface MailAttachment {
  */
 export type MailCorrelation =
   | { kind: 'tenant-invite'; tenantId: string }
-  | { kind: 'rent-notice'; rentNoticeId: string }
+  | { kind: 'rent-notice'; rentNoticeId: string; sendId?: string }
   /**
    * `sendId` pekar ut DET HÄR UTSKICKET (#656). Optionell därför att jobb som
    * redan låg i kön när fältet infördes saknar det — webhooken faller då
@@ -143,3 +143,5 @@ export const QUEUE_BY_PRIORITY: Record<MailPriority, string> = {
   normal: QUEUE_NORMAL,
   low: QUEUE_LOW,
 }
+
+export const DEFAULT_MAIL_FROM = 'Eveno Fastigheter <noreply@eveno.se>'

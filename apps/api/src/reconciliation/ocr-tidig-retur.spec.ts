@@ -30,7 +30,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  */
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 const dec = (v: string | number) => new Decimal(v)
@@ -107,7 +107,7 @@ function makeService(opts: { ocrTräff?: boolean; fuzzyKandidat?: boolean } = {}
     },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)),
   }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     { record: jest.fn() } as never,
@@ -188,7 +188,7 @@ describe('autoMatchAll räknar dem för sig', () => {
   function riggMed(utfall: Array<{ rawOcr: string | null; matchar: boolean }>) {
     const candidates = utfall.map((u, i) => ({ id: `tx-${i + 1}`, rawOcr: u.rawOcr }))
     const prisma = { bankTransaction: { findMany: jest.fn().mockResolvedValue(candidates) } }
-    const service = new ReconciliationService(
+    const service = reconciliationUtanKundtillgodo(
       prisma as never,
       {} as never,
       {} as never,

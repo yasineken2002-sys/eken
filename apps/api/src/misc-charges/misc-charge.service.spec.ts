@@ -358,7 +358,11 @@ function makeAttach(charges: Array<Record<string, unknown>>) {
   const lineCreate = jest.fn().mockResolvedValue({ id: 'rnl-1' })
   const noticeUpdate = jest.fn().mockResolvedValue({ count: 1 })
   const chargeUpdateMany = jest.fn().mockResolvedValue({ count: 1 })
+  const lock = jest.fn().mockResolvedValue([{ id: 'rn-1' }])
+  const findDispatch = jest.fn().mockResolvedValue(null)
   const prisma: Record<string, unknown> = {
+    $queryRaw: lock,
+    rentNoticeSend: { findFirst: findDispatch },
     miscCharge: {
       findMany: jest.fn().mockResolvedValue(charges),
       updateMany: chargeUpdateMany,
@@ -372,7 +376,7 @@ function makeAttach(charges: Array<Record<string, unknown>>) {
     reverseJournalEntryForMiscCharge: jest.fn(),
   }
   const service = new MiscChargeService(prisma as never, accounting as never)
-  return { service, lineCreate, noticeUpdate, chargeUpdateMany }
+  return { service, lineCreate, noticeUpdate, chargeUpdateMany, lock, findDispatch }
 }
 
 const confirmedCharge = (id: string, total: number) => ({
@@ -385,6 +389,34 @@ const confirmedCharge = (id: string, total: number) => ({
 })
 
 describe('attachMiscChargesToRentNotice', () => {
+  it('nekar reserverad avi före avgiftsclaim och radskapande, även efter låsväntan', async () => {
+    const { service, lock, findDispatch, lineCreate, noticeUpdate, chargeUpdateMany } = makeAttach([
+      confirmedCharge('mc-1', 1500),
+    ])
+    lock.mockImplementation(async () => {
+      findDispatch.mockResolvedValue({ id: 'dispatch-1' })
+      return [{ id: 'rn-1' }]
+    })
+    await expect(
+      service.attachMiscChargesToRentNotice({
+        organizationId: 'org-1',
+        leaseId: 'lease-1',
+        rentNoticeId: 'rn-1',
+      }),
+    ).rejects.toThrow(ConflictException)
+    expect(findDispatch).toHaveBeenCalledWith({
+      where: {
+        rentNoticeId: 'rn-1',
+        rentNotice: { organizationId: 'org-1' },
+        dispatchKey: { not: null },
+      },
+      select: { id: true },
+    })
+    expect(chargeUpdateMany).not.toHaveBeenCalled()
+    expect(lineCreate).not.toHaveBeenCalled()
+    expect(noticeUpdate).not.toHaveBeenCalled()
+  })
+
   it('claim:ar CONFIRMED→ATTACHED, skapar RentNoticeLine.miscChargeId, summerar miscChargeAmount', async () => {
     const { service, lineCreate, noticeUpdate, chargeUpdateMany } = makeAttach([
       confirmedCharge('mc-1', 1500),

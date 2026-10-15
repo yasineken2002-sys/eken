@@ -12,6 +12,7 @@ import { MaintenanceService } from '../maintenance/maintenance.service'
 import { NotificationsService } from '../notifications/notifications.service'
 import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from '../avisering/rent-debt.service'
+import { NoticeDispatchSnapshotSchema } from '../avisering/notice-dispatch'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { readTenantWithCredentials } from './tenant-credential-read'
 import { anonymizeTenantWithin } from '../common/gdpr/anonymize-tenant'
@@ -380,6 +381,44 @@ export const PORTAL_RENT_NOTICE_VIEW_SELECT = {
   // Ligger i VYNS select och inte i den delade — exporten är orörd (#344).
   credits: { select: { amount: true } },
 } as const satisfies Prisma.RentNoticeSelect
+
+/**
+ * Exportera hyresgästens sparade original, inte outboxens interna jobbdata.
+ * Originalavins namn, adressuppgifter och betalningsinstruktion bevaras med
+ * räkenskapsunderlaget enligt samma policy som anonymize-tenant.ts beskriver.
+ * Den historiska adressen är dokumentation, aldrig en adresskälla för nya
+ * utskick efter avidentifiering; producent och konsument har egna spärrar.
+ */
+export const PORTAL_NOTICE_DOCUMENT_SELECT = {
+  snapshot: true,
+  preparedAt: true,
+  queuedAt: true,
+  acceptedAt: true,
+} as const satisfies Prisma.RentNoticeSendSelect
+
+type PortalNoticeDocumentRow = Prisma.RentNoticeSendGetPayload<{
+  select: typeof PORTAL_NOTICE_DOCUMENT_SELECT
+}>
+
+export function mapExportNoticeDocument(noticeId: string, row: PortalNoticeDocumentRow) {
+  const parsed = NoticeDispatchSnapshotSchema.safeParse(row.snapshot)
+  if (!parsed.success || !row.preparedAt) {
+    throw new BadRequestException('Det sparade aviunderlaget kan inte läsas för export')
+  }
+  const snapshot = parsed.data
+  return {
+    noticeId,
+    noticeNumber: snapshot.noticeNumber,
+    preparedAt: row.preparedAt,
+    queuedAt: row.queuedAt,
+    // Leverantörens acceptans är inte ett påstående att mejlet levererats.
+    providerAcceptedAt: row.acceptedAt,
+    recipient: { name: snapshot.tenantName, email: snapshot.to },
+    payableAmount: snapshot.payableAmount,
+    customerCreditAmount: snapshot.customerCreditAmount,
+    originalDocument: { format: 'html', content: snapshot.html },
+  }
+}
 
 type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
   select: typeof PORTAL_RENT_NOTICE_VIEW_SELECT
@@ -1105,7 +1144,18 @@ export class TenantPortalService {
         // kravtrapp-fält och framtida interna fält läckte automatiskt. Byt till
         // SAMMA allow-list-select som getNotices/getRentNotices (allow-list, inte
         // blocklist) så bara hyresgäst-säkra fält ingår i GDPR-exporten.
-        rentNotices: { select: SAFE_PORTAL_RENT_NOTICE_SELECT },
+        rentNotices: {
+          select: {
+            ...SAFE_PORTAL_RENT_NOTICE_SELECT,
+            // Relationen utgår enbart från DENNA hyresgästs avier. Inga
+            // sökningar på lägenhet, e-post eller organisationens alla utskick.
+            sends: {
+              where: { kind: 'NOTICE', dispatchKey: { not: null } },
+              orderBy: { createdAt: 'asc' },
+              select: PORTAL_NOTICE_DOCUMENT_SELECT,
+            },
+          },
+        },
         // SECURITY (PR 5a): estimatedCost/actualCost är hyresvärdens interna
         // siffror — INTE hyresgästens personuppgift — och får inte ingå i en
         // GDPR Art. 15-export. SAFE_TICKET_SELECT stänger dem (+ organizationId/
@@ -1149,7 +1199,10 @@ export class TenantPortalService {
       organization: tenant.organization,
       leases: tenant.leases,
       invoices: tenant.invoices.map(mapExportInvoice),
-      rentNotices: tenant.rentNotices,
+      rentNotices: tenant.rentNotices.map(({ sends: _sends, ...notice }) => notice),
+      rentNoticeDocuments: tenant.rentNotices.flatMap((notice) =>
+        notice.sends.map((send) => mapExportNoticeDocument(notice.id, send)),
+      ),
       maintenanceTickets: tenant.maintenanceTickets,
       documents: tenant.documents,
     }

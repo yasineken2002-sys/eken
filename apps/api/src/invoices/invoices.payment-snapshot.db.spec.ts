@@ -15,6 +15,8 @@ import { PrismaClient, type InvoiceStatus } from '@prisma/client'
 import puppeteer from 'puppeteer'
 import { MailQueue } from '../mail/mail.queue'
 import { MailService } from '../mail/mail.service'
+import { MailRenderer } from '../mail/mail.renderer'
+import { ConfigService } from '@nestjs/config'
 import type { MailJobPayload } from '../mail/mail.types'
 import { InvoiceEventsService } from './invoice-events.service'
 import { InvoicesService } from './invoices.service'
@@ -127,7 +129,7 @@ describe('N3 · fakturaworkerns betalningssnapshot', () => {
       prisma as never,
       new InvoiceEventsService(prisma as never),
       pdf,
-      new MailService(mailQueue),
+      new MailService(mailQueue, new MailRenderer(), new ConfigService({})),
       {} as never,
       {} as never,
       {} as never,

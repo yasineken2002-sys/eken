@@ -261,6 +261,78 @@ const rentNotices: HistorySourceDefinition = {
   },
 }
 
+const customerCredits: HistorySourceDefinition = {
+  key: 'customer-credit',
+  table: 'CustomerCredit',
+  relations: { tenant: 'customerCredits' },
+  // Mottagning och användning är skilda ekonomiska händelser. Läs dem ur
+  // respektive domänrad utan bankuppgifter, källbevis eller personfält.
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      { tenant: { organizationId, tenantId: q.subject.id } },
+      'customer-credit',
+    )
+    const rows = await prisma.customerCredit.findMany({
+      where,
+      select: {
+        id: true,
+        receivedAt: true,
+        actorKind: true,
+        amount: true,
+        sourceRentNoticeId: true,
+        sourceRentNotice: { select: { noticeNumber: true } },
+        applications: {
+          where: { organizationId, rentNotice: { organizationId, tenantId: q.subject.id } },
+          select: {
+            id: true,
+            appliedAt: true,
+            actorKind: true,
+            amount: true,
+            rentNoticeId: true,
+            rentNotice: { select: { noticeNumber: true } },
+          },
+        },
+      },
+    })
+    const out: HistoryEvent[] = []
+    for (const row of rows) {
+      out.push({
+        at: row.receivedAt,
+        type: 'CUSTOMER_CREDIT_RECEIVED',
+        actor: { kind: row.actorKind ?? 'UNKNOWN', id: null, label: null },
+        subject: {
+          kind: 'RENT_NOTICE',
+          id: row.sourceRentNoticeId,
+          label: row.sourceRentNotice.noticeNumber,
+        },
+        description: `Tillgodo mottaget från hyresavi ${row.sourceRentNotice.noticeNumber}`,
+        amount: toAmount(row.amount),
+        severity: 'INFO',
+        source: { table: 'CustomerCredit', id: row.id },
+      })
+      for (const application of row.applications) {
+        out.push({
+          at: application.appliedAt,
+          type: 'CUSTOMER_CREDIT_APPLIED',
+          actor: { kind: application.actorKind ?? 'UNKNOWN', id: null, label: null },
+          subject: {
+            kind: 'RENT_NOTICE',
+            id: application.rentNoticeId,
+            label: application.rentNotice.noticeNumber,
+          },
+          description: `Tillgodo använt på hyresavi ${application.rentNotice.noticeNumber}`,
+          amount: toAmount(application.amount),
+          severity: 'INFO',
+          source: { table: 'CustomerCreditApplication', id: application.id },
+        })
+      }
+    }
+    return out
+  },
+}
+
 /**
  * Kravtrappans steg är olika allvarliga — det är hela poängen med trappan.
  *
@@ -1416,6 +1488,7 @@ export const HISTORY_SOURCES: readonly HistorySourceDefinition[] = [
   leases,
   invoices,
   rentNotices,
+  customerCredits,
   maintenanceTickets,
   inspections,
   keyHandovers,

@@ -1,0 +1,22 @@
+PASS src/reconciliation/unmatch-reversal.spec.ts (5.625 s)
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-part-2 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-final (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM     LOG [ReconciliationService] [BFL] Avmatchade banktransaktion tx-1 (org org-1) — status återställd och motverifikat bokfört atomiskt.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM    WARN [ReconciliationService] [reconciliation] transaktion tx-1 (org org-1) bär OCR 00000000019 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM    WARN [ReconciliationService] [reconciliation] transaktion tx-1 (org org-1) bär OCR 00000000019 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+[Nest] 60991  - 10/15/2026, 8:57:06 PM    WARN [ReconciliationService] [reconciliation] transaktion tx-1 (org org-1) bär OCR 12345678 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+PASS src/reconciliation/ocr-proveniens.spec.ts
+PASS src/reconciliation/reconciliation-api-ingest.spec.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       30 passed, 30 total
+Snapshots:   0 total
+Time:        6.634 s, estimated 7 s
+Ran all test suites within paths "src/reconciliation/ocr-proveniens.spec.ts", "src/reconciliation/unmatch-reversal.spec.ts", "src/reconciliation/reconciliation-api-ingest.spec.ts".
+[Nest] 60991  - 10/15/2026, 8:57:07 PM    WARN [ReconciliationService] [bankimport] Identiteten kunde inte avgöras för tx=tx-2 i org org-1 (API_UTAN_KONTO): raden delar cross-source-nyckel med 1 API-rad(er) utan konto (tx-1). Raden är LAGRAD men INTE matchad — automatiken rör den aldrig, en människa måste avgöra.

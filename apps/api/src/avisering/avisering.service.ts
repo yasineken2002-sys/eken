@@ -10,7 +10,17 @@ import {
 import { PrismaService } from '../common/prisma/prisma.service'
 import { arHistoriskSkuld, HISTORISK_SKULD_SPARR } from '../kundstart/historisk-skuld-sparr'
 import { OcrService } from '../common/ocr/ocr.service'
+import { AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES } from '../common/org/automation-org-statuses'
 import { MailService } from '../mail/mail.service'
+import { CustomerCreditService } from '../customer-credit/customer-credit.service'
+import {
+  NoticeDispatchSnapshotSchema,
+  noticeRecipientHash,
+  readNoticeSnapshot,
+  readPreparedNoticeMail,
+  isCreditPaidInformation,
+} from './notice-dispatch'
+import type { RentNoticeSend } from '@prisma/client'
 import { PdfService } from '../invoices/pdf.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfQueue } from '../pdf-jobs/pdf.queue'
@@ -45,6 +55,7 @@ import {
   PaymentMethod,
   Prisma,
   RentCollectionStage,
+  RentNoticePaymentSource,
   RentNoticeStatus,
   RentNoticeType,
   UserRole,
@@ -83,8 +94,34 @@ type NoticeWithRelations = Prisma.RentNoticeGetPayload<{
     // #518 — typen är spärren: utan `credits` i queryn typcheckar inte
     // `rentNoticePayableTotal`, som dokumentet och mejlet båda läser.
     credits: { select: { amount: true } }
+    payments: { select: { amount: true; source: true } }
   }
 }>
+
+/**
+ * Avins betalningsinstruktion avräknar tillgodo som redan har använts mot avin.
+ * Hyra, moms och kreditnotor behåller sina egna belopp. Historiska bank- och
+ * manuella betalningar ändrar inte originalavins betalningsinstruktion.
+ */
+function noticePaymentPresentation(notice: NoticeWithRelations): {
+  customerCredit: number
+  payable: number
+} {
+  const customerCredit = noticeCustomerCredit(notice.payments)
+  return {
+    customerCredit: customerCredit.toNumber(),
+    payable: Prisma.Decimal.max(
+      0,
+      new Prisma.Decimal(rentNoticePayableTotal(notice)).minus(customerCredit),
+    ).toNumber(),
+  }
+}
+
+function noticeCustomerCredit(payments: NoticeWithRelations['payments']): Prisma.Decimal {
+  return (payments ?? [])
+    .filter((payment) => payment.source === RentNoticePaymentSource.CUSTOMER_CREDIT)
+    .reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0))
+}
 
 /**
  * Den ENDA P2002 aviseringens aktiveringsväg får behandla som benign idempotens.
@@ -119,6 +156,7 @@ export class AviseringService {
     private readonly miscCharges: MiscChargeService,
     private readonly deposits: DepositsService,
     private readonly rentNoticeEvents: RentNoticeEventsService,
+    private readonly customerCredit: CustomerCreditService,
   ) {}
 
   // Beräknar moms på en hyra utifrån enhetens upplåtelsetyp och frivilliga
@@ -1093,6 +1131,73 @@ export class AviseringService {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } })
     if (!org) throw new NotFoundException('Organisation hittades inte')
 
+    // Loggan hämtas före bokföringstransaktionen. Inget nätverksanrop görs
+    // mellan tillgodoavdraget och den beständiga utskicksreservationen.
+    const logo = await getLogoDataUrl(this.storage, org.logoStorageKey)
+    try {
+      const dispatch = await this.customerCredit.prepareNoticeForSend({
+        organizationId: orgId,
+        rentNoticeId: noticeId,
+        buildSnapshot: async (tx) => {
+          const currentOrg = await tx.organization.findUnique({ where: { id: orgId } })
+          const currentNotice = await tx.rentNotice.findFirst({
+            where: { id: noticeId, organizationId: orgId },
+            include: {
+              tenant: { select: SAFE_TENANT_SELECT },
+              lease: { include: { unit: { include: { property: true } } } },
+              lines: true,
+              credits: { select: { amount: true } },
+              payments: { select: { amount: true, source: true } },
+            },
+          })
+          if (
+            !currentOrg ||
+            !currentNotice ||
+            !currentNotice.tenant.email ||
+            currentNotice.tenant.anonymizedAt ||
+            currentOrg.transactionalEmailsDisabled ||
+            !AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES.some((status) => status === currentOrg.status) ||
+            !checkPaymentTarget(currentOrg).ok ||
+            currentOrg.logoStorageKey !== org.logoStorageKey
+          ) {
+            throw new ConflictException(
+              'Avins mottagare, betalningsmål eller utskicksinställningar behöver kontrolleras',
+            )
+          }
+          const amounts = noticePaymentPresentation(currentNotice)
+          const snapshot = NoticeDispatchSnapshotSchema.parse({
+            version: 1,
+            html: await this.buildNoticePdfHtml(currentNotice, currentOrg, logo),
+            to: currentNotice.tenant.email,
+            tenantName:
+              currentNotice.tenant.type === 'INDIVIDUAL'
+                ? `${currentNotice.tenant.firstName ?? ''} ${currentNotice.tenant.lastName ?? ''}`.trim()
+                : (currentNotice.tenant.companyName ?? currentNotice.tenant.email),
+            organizationName: currentOrg.name,
+            noticeNumber: currentNotice.noticeNumber,
+            ocrNumber: currentNotice.ocrNumber,
+            dueDate: currentNotice.dueDate.toISOString(),
+            accentColor: currentOrg.invoiceColor,
+            payableAmount: amounts.payable,
+            customerCreditAmount: amounts.customerCredit,
+          })
+          return { snapshot, toHash: noticeRecipientHash(snapshot.to) }
+        },
+      })
+      if (dispatch) {
+        await this.processPreparedNoticeSend(orgId, dispatch)
+        return
+      }
+    } catch (error) {
+      await this.skrivUtskicksstatus(orgId, noticeId, 'FAILED', {
+        status: RentNoticeStatus.FAILED,
+        sendError: error instanceof Error ? error.message : 'Utskicket kunde inte förberedas',
+      }).catch(() => false)
+      // Även en 0-kronorsavi behöver sitt informationsutskick. PAID får inte
+      // svälja ett renderings- eller köfel efter att tillgodot redan bokförts.
+      throw error
+    }
+
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
       include: {
@@ -1103,6 +1208,7 @@ export class AviseringService {
         // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
         // annars burit ett OCR-belopp som är högre än fordran.
         credits: { select: { amount: true } },
+        payments: { select: { amount: true, source: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -1157,7 +1263,7 @@ export class AviseringService {
     }
 
     try {
-      const pdfHtml = await this.buildNoticePdfHtml(notice, org)
+      const pdfHtml = await this.buildNoticePdfHtml(notice, org, logo)
       const pdfBuffer = await this.pdfService.generateFromHtml(pdfHtml)
 
       // F-047-2: ÅTERPRÖVNING EFTER RENDERINGEN, FÖRE KÖNINGEN. Läsningen ovan kan vara inaktuell —
@@ -1167,7 +1273,11 @@ export class AviseringService {
       // dessutom villkorad, så en händelse mellan den här läsningen och skrivningen återöppnar inget.
       const aktuell = await this.prisma.rentNotice.findFirst({
         where: { id: noticeId, organizationId: orgId },
-        select: { status: true, sentAt: true },
+        select: {
+          status: true,
+          sentAt: true,
+          payments: { select: { amount: true, source: true } },
+        },
       })
       if (!aktuell || aktuell.sentAt || !UTSKICKBARA_STATUSAR.includes(aktuell.status)) {
         this.logger.warn(
@@ -1175,6 +1285,18 @@ export class AviseringService {
             '(avin reglerades, annullerades eller skickades under tiden). Inget mejl köat, ingen status skriven.',
         )
         return
+      }
+
+      // Ett tillgodo som användes under renderingen gör PDF:ens belopp inaktuellt.
+      // Befintlig FAILED/retry-väg renderar då om innan något mejl köas. Detta är
+      // en defensiv återläsning, inte ett lås: intervallet återläsning → mejlkö
+      // måste stängas med en gemensam utskicksreservation före automatisk
+      // tillgodo-integration. Bank- och manuella betalningar ändrar inte den
+      // historiska originalavins betalningsinstruktion och jämförs därför inte.
+      if (!noticeCustomerCredit(aktuell.payments).equals(noticeCustomerCredit(notice.payments))) {
+        throw new ConflictException(
+          'Tillgodo ändrades under PDF-renderingen. Avin behöver renderas om.',
+        )
       }
 
       const tenantName =
@@ -1194,7 +1316,7 @@ export class AviseringService {
         ocrNumber: notice.ocrNumber,
         // Betalbar total = hyra + förbrukning (IMD) + övriga debiterbara poster
         // (skada/nyckel). Vad hyresgästen faktiskt betalar med avins OCR.
-        amount: rentNoticePayableTotal(notice),
+        amount: noticePaymentPresentation(notice).payable,
         dueDate: notice.dueDate,
         pdfBuffer,
         organizationName: org.name,
@@ -1227,6 +1349,77 @@ export class AviseringService {
       // Har avin hunnit regleras/annulleras finns inget att försöka igen med: ingen retry, ingen FAILED.
       if (skriven) throw err
     }
+  }
+
+  private async processPreparedNoticeSend(orgId: string, initial: RentNoticeSend): Promise<void> {
+    let dispatch = initial
+    if (dispatch.acceptedAt) return
+    const snapshot = readNoticeSnapshot(dispatch)
+    if (dispatch.mailPayload === null) {
+      const pdfBuffer = await this.pdfService.generateFromHtml(snapshot.html)
+      const mail = await this.mailService.prepareRentNoticeMail({
+        organizationId: orgId,
+        rentNoticeId: dispatch.rentNoticeId,
+        sendId: dispatch.id,
+        to: snapshot.to,
+        tenantName: snapshot.tenantName,
+        organizationName: snapshot.organizationName,
+        noticeNumber: snapshot.noticeNumber,
+        ocrNumber: snapshot.ocrNumber,
+        dueDate: snapshot.dueDate,
+        amount: snapshot.payableAmount,
+        pdfBuffer,
+        ...(snapshot.accentColor ? { accentColor: snapshot.accentColor } : {}),
+        creditPaidInformation: isCreditPaidInformation(dispatch),
+      })
+      // Två renderare kan ha olika PDF-byte. Exakt en payload sparas och
+      // båda köar vinnaren; provider-idempotensen får aldrig olika innehåll.
+      await this.prisma.rentNoticeSend.updateMany({
+        where: {
+          id: dispatch.id,
+          rentNotice: { organizationId: orgId },
+          mailPayload: { equals: Prisma.DbNull },
+        },
+        data: { mailPayload: mail },
+      })
+      const saved = await this.customerCredit.findPreparedNotice(orgId, dispatch.rentNoticeId)
+      if (!saved) throw new ConflictException('Avins utskicksreservation saknas')
+      dispatch = saved
+    }
+    const mail = readPreparedNoticeMail(dispatch, orgId)
+    const current = await this.prisma.rentNotice.findFirst({
+      where: { id: dispatch.rentNoticeId, organizationId: orgId },
+      select: {
+        status: true,
+        tenant: { select: { anonymizedAt: true } },
+        organization: { select: { status: true, transactionalEmailsDisabled: true } },
+      },
+    })
+    if (
+      !current ||
+      current.tenant.anonymizedAt ||
+      current.organization.transactionalEmailsDisabled ||
+      !AUTOMATISKA_KUNDEFFEKTER_ORG_STATUSES.some(
+        (status) => status === current.organization.status,
+      ) ||
+      current.status === 'CANCELLED' ||
+      current.status === 'OPENING' ||
+      (current.status === 'PAID' && !isCreditPaidInformation(dispatch))
+    ) {
+      if (dispatch.dispatchStartedAt)
+        throw new ConflictException(
+          'Utskicket har påbörjats men får inte fortsätta. Okänt leveransutfall behöver kontrolleras.',
+        )
+      return
+    }
+    const jobId = await this.mailService.enqueuePreparedRentNotice(mail)
+    if (!jobId) return
+    await this.prisma.rentNoticeSend.updateMany({
+      where: { id: dispatch.id, rentNotice: { organizationId: orgId }, queuedAt: null },
+      data: { jobId, queuedAt: new Date() },
+    })
+    // SENT/sentAt skrivs först när mejlleverantören kvitterat det sparade
+    // underlaget. Ett köjobb är inte ett bevis på att mejlet accepterats.
   }
 
   /**
@@ -1269,6 +1462,15 @@ export class AviseringService {
   }
 
   async getNoticePdfBuffer(noticeId: string, orgId: string): Promise<Buffer> {
+    const dispatch = await this.customerCredit.findPreparedNotice(orgId, noticeId)
+    if (dispatch) {
+      const snapshot = readNoticeSnapshot(dispatch)
+      if (dispatch.mailPayload !== null) {
+        const mail = readPreparedNoticeMail(dispatch, orgId)
+        return Buffer.from(mail.attachments[0]!.contentBase64, 'base64')
+      }
+      return this.pdfService.generateFromHtml(snapshot.html)
+    }
     const notice = await this.prisma.rentNotice.findFirst({
       where: { id: noticeId, organizationId: orgId },
       include: {
@@ -1279,6 +1481,7 @@ export class AviseringService {
         // En avi som krediterats och sedan skickas om (FAILED-omsändning) hade
         // annars burit ett OCR-belopp som är högre än fordran.
         credits: { select: { amount: true } },
+        payments: { select: { amount: true, source: true } },
       },
     })
     if (!notice) throw new NotFoundException('Avi hittades inte')
@@ -1304,8 +1507,12 @@ export class AviseringService {
       brandFont?: string | null
       logoStorageKey?: string | null
     },
+    preparedLogo?: string | null,
   ): Promise<string> {
-    const logoDataUrl = await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
+    const logoDataUrl =
+      preparedLogo !== undefined
+        ? preparedLogo
+        : await getLogoDataUrl(this.storage, org.logoStorageKey ?? null)
     // Steg 3, PR 3b/3c: hårdkodad #1a6b3c → delad DEFAULT_BRAND_COLOR (= '#1a6b3c',
     // alltså pixel-identiskt för orgs utan egen invoiceColor). Avbockad i kartan.
     const primaryColor = org.invoiceColor ?? DEFAULT_BRAND_COLOR
@@ -1403,7 +1610,7 @@ export class AviseringService {
     // Betalbar total = hyra + förbrukning (IMD-rader) + övriga debiterbara poster
     // (skada/nyckel). Hyresgästen betalar EN summa med ETT OCR. notice.totalAmount
     // avser bara hyran (hyresverifikatet).
-    const payable = rentNoticePayableTotal(notice)
+    const { payable, customerCredit } = noticePaymentPresentation(notice)
     const consumptionLines = notice.lines ?? []
     // HTML för förbrukningsrader (visas mellan hyra och totalsumma).
     const consumptionRowsHtml = consumptionLines
@@ -1901,6 +2108,15 @@ export class AviseringService {
       ${consumptionRowsHtml}`
           : ''
       }
+      ${
+        customerCredit > 0
+          ? `
+      <tr>
+        <td>Tillgodo använt:</td>
+        <td>−${fmt(customerCredit)} kr</td>
+      </tr>`
+          : ''
+      }
       <tr class="total-final">
         <td>Att betala:</td>
         <td>${fmt(payable)} kr</td>
@@ -1908,13 +2124,20 @@ export class AviseringService {
     </table>
   </div>
 
-  <div class="due-notice">
+  ${
+    customerCredit > 0 && payable === 0
+      ? '<div class="due-notice">Avin är helt reglerad med ditt tillgodo. Inget återstår att betala.</div>'
+      : `<div class="due-notice">
     &#9888; Dröjsmål debiteras med referensränta + 8% —
     Förfallodatum: <strong>${swedishDateKey(notice.dueDate)}</strong>
-  </div>
+  </div>`
+  }
 </div>
 
-<!-- ═══ TEAR OFF LINE ═══ -->
+${
+  customerCredit > 0 && payable === 0
+    ? ''
+    : `<!-- ═══ TEAR OFF LINE ═══ -->
 <div class="tearoff">
   <span class="tearoff-label">&#9986; Avrivningskupong — skicka in vid betalning</span>
 </div>
@@ -1991,6 +2214,7 @@ export class AviseringService {
   </div>`
   }
 </div>`
+}`
 
     return buildBrandedPdfHtml({
       // Footern är dold (hideFooter) → org-kontakt ligger i övre delen ovan.
@@ -2530,6 +2754,9 @@ export class AviseringService {
         WHERE "rentNoticeId" = ${noticeId} AND "organizationId" = ${orgId}
         FOR UPDATE`
 
+      // Läsningssnapshot för relationsgrindarna måste tas EFTER låset. En
+      // updateMany som väntar på ett avilås kan annars läsa gamla allokeringar.
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${orgId} FOR UPDATE`
       // Bankavstämnings-härdning PR 2 — en avbruten avi lämnar kravtrappan: nollställ
       // collectionStage till NONE ATOMISKT. updateMany med organizationId i WHERE
       // org-scopar uppdateringen (defense-in-depth mot ett läckt noticeId).
@@ -2562,6 +2789,8 @@ export class AviseringService {
           //
           // `none: {}` matchar raden bara om den saknar krediteringar helt.
           credits: { none: {} },
+          payments: { none: {} },
+          OR: [{ paidAmount: null }, { paidAmount: { equals: 0 } }],
         },
         data: { status: RentNoticeStatus.CANCELLED, collectionStage: RentCollectionStage.NONE },
       })
@@ -2582,8 +2811,18 @@ export class AviseringService {
             status: true,
             // #518 — fjärde skälet: en kreditering vann kapplöpningen.
             credits: { select: { id: true }, take: 1 },
+            payments: { select: { id: true }, take: 1 },
+            paidAmount: true,
           },
         })
+        if (
+          aktuell &&
+          ((aktuell.payments?.length ?? 0) > 0 || Number(aktuell.paidAmount ?? 0) > 0)
+        ) {
+          throw new ConflictException(
+            'Avin har fått en betalning eller tillgodo och kan inte annulleras',
+          )
+        }
         if (aktuell && aktuell.credits.length > 0) {
           throw new BadRequestException(
             `Avi ${aktuell.noticeNumber} kan inte annulleras — den har redan krediterats. ` +

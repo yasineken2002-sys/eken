@@ -31,7 +31,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 /**
@@ -59,7 +59,7 @@ function makeService(bankTransaction: { count: jest.Mock; create: jest.Mock }) {
     bankTransaction,
     $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
   }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never, // invoices
     {} as never, // events

@@ -77,6 +77,7 @@ import { VerifikationsnummerService } from '../accounting/verifikationsnummer.se
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 import { ReconciliationService, computeBankDedupKey } from './reconciliation.service'
+import { kundtillgodoGränsAvstängd } from './customer-credit.test-double'
 
 const Decimal = Prisma.Decimal
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -256,6 +257,7 @@ medDb('granskningsmarkeringen stoppar automatiken (#F034c)', () => {
     )
     recon = Object.create(ReconciliationService.prototype) as ReconciliationService
     Object.assign(recon, {
+      customerCredit: kundtillgodoGränsAvstängd(),
       prisma,
       accounting,
       rentNoticeEvents: new RentNoticeEventsService(prisma as never),

@@ -14,7 +14,8 @@
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { TENANT_HISTORY_RELATIONS } from './tenant-history'
+import type { Prisma } from '@prisma/client'
+import { TENANT_HISTORY_RELATIONS, findTenantHistory } from './tenant-history'
 
 const SCHEMA_PATH = join(__dirname, '..', '..', '..', 'prisma', 'schema.prisma')
 
@@ -86,6 +87,26 @@ describe('TENANT_HISTORY_RELATIONS speglar schemat', () => {
         expect(TENANT_HISTORY_RELATIONS.map((r) => r.model)).not.toContain(model)
       }
     }
+  })
+})
+
+describe('kundtillgodo bevaras som ekonomisk hyresgästhistorik', () => {
+  it('rapporterar kundtillgodo som hinder även när övrig historik saknas', async () => {
+    const delegates = Object.fromEntries(
+      TENANT_HISTORY_RELATIONS.map(({ model }) => [
+        model.charAt(0).toLowerCase() + model.slice(1),
+        { count: jest.fn().mockResolvedValue(0) },
+      ]),
+    )
+    delegates.customerCredit!.count.mockResolvedValue(1)
+
+    expect(
+      await findTenantHistory(delegates as unknown as Prisma.TransactionClient, 'tenant-1'),
+    ).toEqual(['kundtillgodo'])
+    expect(delegates.customerCredit!.count).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1' },
+      take: 1,
+    })
   })
 })
 

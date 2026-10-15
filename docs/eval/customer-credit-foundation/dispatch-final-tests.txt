@@ -1,0 +1,113 @@
+[Nest] 67347  - 10/16/2026, 12:37:28 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=b09c2fc9-4a91-4bae-a7be-cfd22e565e9d kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:28 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=35373d0c-f1bf-48b9-af22-a9b4cd7ec48f kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=8ba84e35-8e91-4b57-8193-7e89f8189cc5 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-9b8847b2-5611-4a7c-b5e2-20d63af6192f template=custom to=tenant-45d9a14a-fe2f-446a-9d8e-609203a24f76@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=8ba84e35-8e91-4b57-8193-7e89f8189cc5 kind=avisering-send duration=92ms
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=8ba84e35-8e91-4b57-8193-7e89f8189cc5 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=8ba84e35-8e91-4b57-8193-7e89f8189cc5 kind=avisering-send duration=3ms
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=0613bc78-47b8-4921-897f-f6620775ca08 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-fcf8326c-858b-4572-b3fa-53570264d77d template=custom to=tenant-30991b98-39ae-464e-9242-772813ef4789@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=0613bc78-47b8-4921-897f-f6620775ca08 kind=avisering-send duration=44ms
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=7f08ee14-301f-4b33-bb0f-32c63fefb700 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM    WARN [AviseringService] [Avisering] Avi 7f08ee14-301f-4b33-bb0f-32c63fefb700: utskicksutfallet FAILED skrevs INTE — avin har status PAID (reglerad, annullerad eller redan skickad under jobbets gång).
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=7f08ee14-301f-4b33-bb0f-32c63fefb700 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-75aeef29-ef45-46a1-b1b6-092c91727114 template=custom to=tenant-cc52cd9a-dc80-43e6-b2a7-43c7b4708d22@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=7f08ee14-301f-4b33-bb0f-32c63fefb700 kind=avisering-send duration=11ms
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=f3c0c67c-b21d-4d61-9be7-92d8cdef0b86 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=f3c0c67c-b21d-4d61-9be7-92d8cdef0b86 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-215b6c9d-8300-40f6-8670-60b10a39fe4f template=custom to=tenant-109bd7d2-9b17-4585-b18b-c95340a3a864@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=f3c0c67c-b21d-4d61-9be7-92d8cdef0b86 kind=avisering-send duration=6ms
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=69764b37-57c4-409a-ab6c-ec7bb397640e kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-551059c2-a333-456f-9fdc-a450361604d7 template=custom to=tenant-a6d9d002-3d1e-4fce-bdbf-f21e8a059b16@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=69764b37-57c4-409a-ab6c-ec7bb397640e kind=avisering-send duration=40ms
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=4dc9f2c8-770a-46b4-ad89-fb904a98c499 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-724cfd75-e7b1-45de-a5c9-7ad9811388d5 template=custom to=tenant-8a489ab3-dde3-46a2-812e-34420c5dd48f@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:29 AM     LOG [PdfWorker] [pdf] done jobId=4dc9f2c8-770a-46b4-ad89-fb904a98c499 kind=avisering-send duration=41ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=0347ab91-cc6e-40bb-82df-9e7984f6ba5f kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-50380ca6-9bd4-404c-921d-62622ad03e82 template=custom to=tenant-e2c34907-7595-471c-8745-57f243de9ef2@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=0347ab91-cc6e-40bb-82df-9e7984f6ba5f kind=avisering-send duration=45ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=aa89bf19-8e8c-4104-818e-a35f895bb197 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-e8474dba-04b2-41e2-9d07-3054ef520749 template=custom to=tenant-a59cdb98-fb80-4835-aa8d-d06aaa2d8114@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=aa89bf19-8e8c-4104-818e-a35f895bb197 kind=avisering-send duration=41ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=5b70a343-2c23-460a-97ce-4a8b88942e86 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-b3def253-be03-4977-803d-dbc2772d229f template=custom to=tenant-78f07d13-1ed1-479b-954b-b015dbf1308c@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=5b70a343-2c23-460a-97ce-4a8b88942e86 kind=avisering-send duration=37ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=860d1c6a-2177-4f27-b040-dc6ce7d075c4 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-ed173f75-8fe8-48dd-b321-721042fa019e template=custom to=tenant-04f8f911-ec35-4db8-b283-5afd1b09d7f9@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=860d1c6a-2177-4f27-b040-dc6ce7d075c4 kind=avisering-send duration=40ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=e7308441-99ed-4477-a9ea-21868d8e0832 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-6a953197-ad2f-489f-a5d5-b0e2b0dfc078 template=custom to=tenant-718eb716-10f0-4a0b-a2e6-853343955467@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=e7308441-99ed-4477-a9ea-21868d8e0832 kind=avisering-send duration=38ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=8d84388b-7328-49b9-b934-1255cec9e429 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-02ea2df1-72d4-4f1d-977b-b4cff5857812 template=custom to=tenant-0c986412-755f-4124-9a50-720eec5faad9@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=8d84388b-7328-49b9-b934-1255cec9e429 kind=avisering-send duration=37ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=bb79eedd-7d87-4fd7-ada6-d1ed5c460074 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-ba64624a-9b40-4e74-ab4c-b75101f0b90b template=custom to=tenant-0984d687-78e3-40c3-b719-935003db1358@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=bb79eedd-7d87-4fd7-ada6-d1ed5c460074 kind=avisering-send duration=45ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=091f196c-f4c3-40d8-85d1-695c17cda879 kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-9aa1e114-d3c2-4133-91f2-fbb5a89244ab template=custom to=tenant-a6b01b19-6a5d-45c5-83c3-0cdabd76cfbe@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] done jobId=091f196c-f4c3-40d8-85d1-695c17cda879 kind=avisering-send duration=41ms
+[Nest] 67347  - 10/16/2026, 12:37:30 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=55b35016-7e61-47fd-9c90-9f809138ccba kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-adf64c33-a649-4b4b-8826-3e493cf79345 template=custom to=tenant-3a6016f6-5df5-4aa8-8043-a1be25364d4e@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] done jobId=55b35016-7e61-47fd-9c90-9f809138ccba kind=avisering-send duration=38ms
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=69a3ef5b-1e1f-466b-ade9-2c445ac3470d kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=69a3ef5b-1e1f-466b-ade9-2c445ac3470d kind=avisering-send
+PASS src/avisering/customer-credit-send.db.spec.ts (9.428 s)
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-066804a1-66a7-42e9-b588-0699db021247 template=custom to=tenant-034c33ea-a3c1-4d8a-bd4b-b67234e467ff@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-066804a1-66a7-42e9-b588-0699db021247 template=custom to=tenant-034c33ea-a3c1-4d8a-bd4b-b67234e467ff@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] done jobId=69a3ef5b-1e1f-466b-ade9-2c445ac3470d kind=avisering-send duration=45ms
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] done jobId=69a3ef5b-1e1f-466b-ade9-2c445ac3470d kind=avisering-send duration=45ms
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] attempt=1 jobId=fa16a6c3-991e-4bd8-ad43-e66e3236652b kind=avisering-send
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-16700b80-053a-4f62-a151-d4af2ae6661f template=custom to=tenant-c02b04e1-e5c4-4692-aa01-f5e0d6ff06c0@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:31 AM     LOG [PdfWorker] [pdf] done jobId=fa16a6c3-991e-4bd8-ad43-e66e3236652b kind=avisering-send duration=23ms
+PASS src/customer-credit/customer-credit-dispatch.db.spec.ts
+[Nest] 67347  - 10/16/2026, 12:37:33 AM   ERROR [MailWorkerNormal] Kunde inte skriva SEND_FAILED på avi rn-651 (jobId=2e064da1-59d8-4c34-b1de-943f9621a365): Cannot read properties of undefined (reading 'findFirst')
+PASS src/mail/message-id-provenance.spec.ts
+[Nest] 67347  - 10/16/2026, 12:37:34 AM   ERROR [NoticeDispatchRecoveryScheduler] [cron:notice-dispatch-recovery] MISSLYCKADES: synthetic-read-failure
+Error: synthetic-read-failure
+    at Object.<anonymous> (/Users/test/Desktop/eveno/eken-kundtillgodo/apps/api/src/avisering/notice-dispatch-recovery.scheduler.spec.ts:410:44)
+    at Promise.then.completed (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:298:28)
+    at new Promise (<anonymous>)
+    at callAsyncCircusFn (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:231:10)
+    at _callCircusTest (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:316:40)
+    at async _runTest (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:252:3)
+    at async _runTestsForDescribeBlock (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:126:9)
+    at async _runTestsForDescribeBlock (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:121:9)
+    at async run (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:71:3)
+    at async runAndTransformResultsToJestFormat (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+    at async jestAdapter (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+    at async runTestInternal (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:367:16)
+    at async runTest (/Users/test/Desktop/eveno/eken-kundtillgodo/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:444:34)
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] attempt=1 jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] sent jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid duration=0ms resendId=rent-reminder-ser-ut-som-ett-jobid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] attempt=1 jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] sent jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid duration=0ms resendId=rent-reminder-ser-ut-som-ett-jobid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] attempt=1 jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] sent jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid duration=0ms resendId=rent-reminder-ser-ut-som-ett-jobid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] attempt=1 jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] sent jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid duration=0ms resendId=rent-reminder-ser-ut-som-ett-jobid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] attempt=1 jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM     LOG [MailWorkerNormal] [mail:normal] sent jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid duration=0ms resendId=rent-reminder-ser-ut-som-ett-jobid
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] [mail:normal] failed jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid attempt=5/5 permanent=true error=Resend rejected mail: domain not verified
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] [mail:normal] failed jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid attempt=5/5 permanent=true error=Resend rejected mail: domain not verified
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] RESEND_API_KEY saknas — mailutskick kommer misslyckas
+[Nest] 67347  - 10/16/2026, 12:37:33 AM    WARN [MailWorkerNormal] [mail:normal] failed jobId=2e064da1-59d8-4c34-b1de-943f9621a365 template=custom to=mottagare@exempel.invalid attempt=0/5 permanent=false error=Resend rejected mail: domain not verified
+[Nest] 67347  - 10/16/2026, 12:37:34 AM    WARN [NoticeDispatchRecoveryScheduler] Återhämtning nådde taket 100; fler förberedda utskick kan vänta till nästa pass.
+PASS src/avisering/notice-dispatch-recovery.scheduler.spec.ts
+PASS src/mail/legacy-notice-dispatch.spec.ts
+PASS src/mail/notice-dispatch-queue.spec.ts
+
+Test Suites: 6 passed, 6 total
+Tests:       96 passed, 96 total
+Snapshots:   0 total
+Time:        12.839 s, estimated 16 s
+Ran all test suites matching /src\/customer-credit\/customer-credit-dispatch.db.spec.ts|src\/avisering\/customer-credit-send.db.spec.ts|src\/avisering\/notice-dispatch-recovery.scheduler.spec.ts|src\/mail\/legacy-notice-dispatch.spec.ts|src\/mail\/notice-dispatch-queue.spec.ts|src\/mail\/message-id-provenance.spec.ts/i.
+[Nest] 67347  - 10/16/2026, 12:37:34 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-one template=custom to=tenant@example.invalid priority=normal
+[Nest] 67347  - 10/16/2026, 12:37:34 AM     LOG [MailQueue] Enqueued mail jobId=rent-notice-send-one template=custom to=tenant@example.invalid priority=normal

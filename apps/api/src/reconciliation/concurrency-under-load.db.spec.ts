@@ -90,6 +90,7 @@ import { VerifikationsnummerService } from '../accounting/verifikationsnummer.se
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { ReconciliationService } from './reconciliation.service'
+import { kundtillgodoGränsAvstängd } from './customer-credit.test-double'
 
 const Decimal = Prisma.Decimal
 
@@ -148,6 +149,7 @@ medDb('bankavstämningen under samtidighet', () => {
     )
     const s = Object.create(ReconciliationService.prototype) as ReconciliationService
     Object.assign(s, {
+      customerCredit: kundtillgodoGränsAvstängd(),
       prisma: klientEn,
       accounting,
       rentNoticeEvents: new RentNoticeEventsService(klientEn as never),

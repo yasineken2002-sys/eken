@@ -23,6 +23,7 @@ import { TenantAuthGuard } from '../tenant-portal/tenant-auth.guard'
 import { AviseringController } from './avisering.controller'
 import { PrismaClient, type RentNoticeStatus } from '@prisma/client'
 import { AviseringService } from './avisering.service'
+import { automatisktTillgodoGränsAvstängd } from './customer-credit.test-double'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { OcrService } from '../common/ocr/ocr.service'
@@ -45,6 +46,7 @@ it('requires a real database', () => expect(hasDb).toBe(true))
   let referenceRateId: string | undefined
   let sequence = 0
   const avisering = Object.assign(Object.create(AviseringService.prototype), {
+    customerCredit: automatisktTillgodoGränsAvstängd(),
     prisma,
   }) as AviseringService
   const accounting = new AccountingService(

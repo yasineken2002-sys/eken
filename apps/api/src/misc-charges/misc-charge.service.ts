@@ -281,6 +281,20 @@ export class MiscChargeService {
 
     let miscTotal = 0
     await this.prisma.$transaction(async (tx) => {
+      // Ta avilåset före charge-claim/radskapande. Utskicksreservationen tar
+      // samma lås och fryser vilka avgifter det skickade dokumentet omfattar.
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${params.rentNoticeId} AND "organizationId" = ${params.organizationId} FOR UPDATE`
+      const dispatch = await tx.rentNoticeSend.findFirst({
+        where: {
+          rentNoticeId: params.rentNoticeId,
+          rentNotice: { organizationId: params.organizationId },
+          dispatchKey: { not: null },
+        },
+        select: { id: true },
+      })
+      if (dispatch) {
+        throw new ConflictException('Avin är fastställd för utskick och kan inte få nya avgifter')
+      }
       for (const charge of charges) {
         // Atomiskt anspråk CONFIRMED → ATTACHED (race-säkert): bara vinnaren skapar
         // raden. @unique(miscChargeId) på RentNoticeLine är backstop.

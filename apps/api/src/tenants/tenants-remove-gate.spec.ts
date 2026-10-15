@@ -58,6 +58,7 @@ function setup(opts: { anonymizedAt?: Date | null; counts?: Record<string, numbe
     document: delegate('document'),
     maintenanceTicket: delegate('maintenanceTicket'),
     rentNotice: delegate('rentNotice'),
+    customerCredit: delegate('customerCredit'),
     inspection: delegate('inspection'),
     sentMessage: delegate('sentMessage'),
     deposit: delegate('deposit'),
@@ -83,6 +84,16 @@ describe('remove — grinden mäter existens', () => {
     const { service, del } = setup({ counts: { rentNotice: 3 } })
 
     await expect(service.remove(TENANT, ORG)).rejects.toThrow(BadRequestException)
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('kundtillgodo blockerar hårdradering och hänvisar till avidentifiering', async () => {
+    const { service, del } = setup({ counts: { customerCredit: 1 } })
+    const err = await service.remove(TENANT, ORG).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(BadRequestException)
+    expect((err as BadRequestException).message).toContain('kundtillgodo')
+    expect((err as BadRequestException).message).toContain('avidentifiering')
     expect(del).not.toHaveBeenCalled()
   })
 
@@ -139,6 +150,7 @@ describe('KANARIEFÅGEL — den legitima raderingen fungerar fortfarande', () =>
       'document',
       'maintenanceTicket',
       'rentNotice',
+      'customerCredit',
       'inspection',
       'sentMessage',
       'deposit',
