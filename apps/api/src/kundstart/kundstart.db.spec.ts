@@ -27,6 +27,7 @@ import { DepositsService } from '../deposits/deposits.service'
 import { RentNoticeCreditService } from '../avisering/rent-notice-credit.service'
 import { RentBadDebtService } from '../avisering/rent-bad-debt.service'
 import { AviseringService } from '../avisering/avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from '../avisering/customer-credit.test-double'
 import { RentBackfillService } from '../avisering/rent-backfill.service'
 import { OcrService } from '../common/ocr/ocr.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -194,7 +195,7 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       invoiceEvents,
     )
     const ocr = new OcrService(p)
-    avisering = new AviseringService(
+    avisering = aviseringUtanAutomatisktTillgodo(
       p,
       ocr,
       stub('MailService') as never,

@@ -18,7 +18,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 import { DEFAULT_BRAND_COLOR } from '@eken/shared'
 
 // Bygger en avi med kända, kontrollerade värden så att den exakta OCR-raden kan
@@ -78,7 +78,7 @@ const ORG = {
 
 function makeService() {
   const noop = {}
-  return new AviseringService(
+  return aviseringUtanAutomatisktTillgodo(
     noop as never, // prisma
     noop as never, // ocr
     noop as never, // mail

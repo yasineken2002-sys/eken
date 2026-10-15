@@ -531,6 +531,8 @@ function makeLeverans(charges: Record<string, unknown>[]) {
     invoices: [],
   }
   const prisma: Record<string, unknown> = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'rn-1' }]),
+    rentNoticeSend: { findFirst: jest.fn().mockResolvedValue(null) },
     lease: { findFirst: jest.fn().mockResolvedValue({ id: 'lease-1', tenantId: 'ten-1' }) },
     consumptionCharge: {
       findMany: jest.fn().mockResolvedValue(charges),
@@ -566,6 +568,8 @@ function makeLeverans(charges: Record<string, unknown>[]) {
 }
 
 interface LeveransPrisma {
+  $queryRaw: jest.Mock
+  rentNoticeSend: MockTable
   lease: MockTable
   consumptionCharge: MockTable
   rentNoticeLine: MockTable
@@ -594,6 +598,34 @@ function leveransCharge(over: Record<string, unknown> = {}) {
 }
 
 describe('attachRentNoticeLineCharges (RENT_NOTICE_LINE, PR 4)', () => {
+  it('nekar reserverad avi före avgiftsclaim och radskapande, även efter låsväntan', async () => {
+    const { service, prisma, created } = makeLeverans([leveransCharge()])
+    prisma.$queryRaw.mockImplementation(async () => {
+      prisma.rentNoticeSend.findFirst!.mockResolvedValue({ id: 'dispatch-1' })
+      return [{ id: 'rn-1' }]
+    })
+    await expect(
+      service.attachRentNoticeLineCharges({
+        organizationId: 'org-1',
+        leaseId: 'lease-1',
+        rentNoticeId: 'rn-1',
+        aviMonth: 7,
+        aviYear: 2026,
+      }),
+    ).rejects.toThrow(ConflictException)
+    expect(prisma.rentNoticeSend.findFirst).toHaveBeenCalledWith({
+      where: {
+        rentNoticeId: 'rn-1',
+        rentNotice: { organizationId: 'org-1' },
+        dispatchKey: { not: null },
+      },
+      select: { id: true },
+    })
+    expect(prisma.consumptionCharge.updateMany).not.toHaveBeenCalled()
+    expect(prisma.rentNotice.updateMany).not.toHaveBeenCalled()
+    expect(created.lines).toEqual([])
+  })
+
   it('2-mån-lag: hämtar charges med periodEnd <= sista dagen i (aviMonth − 2)', async () => {
     const { service, prisma } = makeLeverans([leveransCharge()])
     await service.attachRentNoticeLineCharges({

@@ -417,4 +417,22 @@ describe('Kundtillgodo får inte rättas genom att bara vända huvudboken', () =
     expect(r.order).toEqual(['lock', 'credit-read'])
     expect(r.tx.journalEntry.create).not.toHaveBeenCalled()
   })
+
+  it('normal aviannullering använder tillgodospärren i anroparens transaktion', async () => {
+    const r = reversalRig('rent-notice:notice-1')
+    r.state.hasCredit = false
+    r.state.appearsAtLock = true
+    await expect(
+      r.service.reverseJournalEntryForRentNotice(
+        'notice-1',
+        'org-a',
+        null,
+        r.tx as unknown as Prisma.TransactionClient,
+      ),
+    ).rejects.toThrow('Avin ingår i ett kundtillgodoflöde')
+    expect(r.pool.$transaction).not.toHaveBeenCalled()
+    expect(r.order).toEqual(['lock', 'credit-read'])
+    expect(r.tx.journalEntry.create).not.toHaveBeenCalled()
+    expect(r.allocate).not.toHaveBeenCalled()
+  })
 })

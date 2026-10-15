@@ -1,4 +1,9 @@
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { MailRenderer } from './mail.renderer'
+import { PreparedNoticeMailSchema, type PreparedNoticeMail } from '../avisering/notice-dispatch'
+import { DEFAULT_MAIL_FROM } from './mail.types'
+import { escapeHtml } from '../common/branding'
 import { DEFAULT_BRAND_COLOR, SWEDISH_TIME_ZONE } from '@eken/shared'
 import { MailQueue } from './mail.queue'
 import type {
@@ -213,6 +218,9 @@ export interface SendMaintenanceUpdateOptions extends OrgScopedMailOptions {
 }
 
 export interface SendRentNoticeOptions extends OrgScopedMailOptions {
+  /** Endast ett verifierat, tillgodoreglerat informationsutskick. */
+  creditPaidInformation?: boolean
+  sendId?: string
   /**
    * Avin mejlet gäller. OBLIGATORISK, av samma skäl som `organizationId` är
    * det: fältet blir `correlation`, och `correlation` är det enda som gör att
@@ -291,7 +299,11 @@ function formatDateSv(d: Date | string): string {
 
 @Injectable()
 export class MailService {
-  constructor(private readonly queue: MailQueue) {}
+  constructor(
+    private readonly queue: MailQueue,
+    private readonly renderer: MailRenderer,
+    private readonly config: ConfigService,
+  ) {}
 
   /**
    * Generisk enqueue — exponeras för avancerad användning, t.ex. om man vill
@@ -692,9 +704,9 @@ export class MailService {
     )
   }
 
-  async sendRentNotice(opts: SendRentNoticeOptions): Promise<string> {
+  private rentNoticeMailOptions(opts: SendRentNoticeOptions): EnqueueMailOptions<'custom'> {
     const accent = opts.accentColor ?? DEFAULT_BRAND_COLOR
-    const bodyHtml = `
+    const paymentBodyHtml = `
       <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
         Bifogat hittar du din hyresavi <strong>${opts.noticeNumber}</strong>. Ange OCR-numret vid betalning.
       </p>
@@ -710,25 +722,83 @@ export class MailService {
               </td></tr>
         </table>
       </div>`
-    return this.enqueueTyped(
-      'custom',
-      'normal',
-      {
-        preview: `Hyresavi ${opts.noticeNumber} — ${formatSek(opts.amount)} förfaller ${formatDateSv(opts.dueDate)}`,
+    const information = opts.creditPaidInformation === true && opts.amount === 0
+    const bodyHtml = information
+      ? `<p>Bifogat finns hyresavi <strong>${escapeHtml(opts.noticeNumber)}</strong>.</p>
+         <p>Avin är helt reglerad med ditt tillgodo. <strong>Inget återstår att betala (0 kr).</strong></p>`
+      : paymentBodyHtml +
+        (opts.sendId
+          ? '<p>Beloppet avser avin när den fastställdes. Har du betalat efter det ser du aktuellt kvarvarande belopp i hyresgästportalen.</p>'
+          : '')
+    return {
+      template: 'custom',
+      priority: 'normal',
+      props: {
+        preview: information
+          ? `Hyresavi ${opts.noticeNumber} — inget att betala`
+          : `Hyresavi ${opts.noticeNumber} — ${formatSek(opts.amount)} förfaller ${formatDateSv(opts.dueDate)}`,
         tenantName: opts.tenantName,
         organizationName: opts.organizationName,
         bodyHtml,
         whyReceived: 'Du får detta mail eftersom du har ett aktivt hyresavtal hos oss.',
       },
-      {
-        to: opts.to,
-        organizationId: opts.organizationId,
-        subject: `Hyresavi ${opts.noticeNumber} — förfaller ${formatDateSv(opts.dueDate)}`,
-        attachments: [{ filename: `hyresavi-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
-        idempotencyKey: opts.idempotencyKey,
-        correlation: { kind: 'rent-notice', rentNoticeId: opts.rentNoticeId },
+      to: opts.to,
+      organizationId: opts.organizationId,
+      subject: information
+        ? `Hyresavi ${opts.noticeNumber} — reglerad med tillgodo`
+        : `Hyresavi ${opts.noticeNumber} — förfaller ${formatDateSv(opts.dueDate)}`,
+      attachments: [{ filename: `hyresavi-${opts.noticeNumber}.pdf`, content: opts.pdfBuffer }],
+      ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
+      correlation: {
+        kind: 'rent-notice',
+        rentNoticeId: opts.rentNoticeId,
+        ...(opts.sendId ? { sendId: opts.sendId } : {}),
       },
-    )
+    }
+  }
+
+  async sendRentNotice(opts: SendRentNoticeOptions): Promise<string> {
+    return this.queue.enqueue(this.rentNoticeMailOptions(opts))
+  }
+
+  async prepareRentNoticeMail(
+    opts: SendRentNoticeOptions & { sendId: string },
+  ): Promise<PreparedNoticeMail> {
+    const mail = this.rentNoticeMailOptions(opts)
+    const rendered = await this.renderer.render('custom', mail.props)
+    return PreparedNoticeMailSchema.parse({
+      version: 1,
+      organizationId: opts.organizationId,
+      rentNoticeId: opts.rentNoticeId,
+      sendId: opts.sendId,
+      to: mail.to,
+      subject: mail.subject,
+      from: this.config.get<string>('MAIL_FROM') ?? DEFAULT_MAIL_FROM,
+      ...rendered,
+      props: mail.props,
+      attachments: mail.attachments?.map((a) => ({
+        filename: a.filename,
+        contentBase64: a.content.toString('base64'),
+      })),
+      idempotencyKey: `rent-notice-send-${opts.sendId}`,
+    })
+  }
+
+  async enqueuePreparedRentNotice(mail: PreparedNoticeMail): Promise<string> {
+    return this.queue.enqueue({
+      template: 'custom',
+      priority: 'normal',
+      props: mail.props,
+      to: mail.to,
+      subject: mail.subject,
+      organizationId: mail.organizationId,
+      attachments: mail.attachments.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.contentBase64, 'base64'),
+      })),
+      idempotencyKey: mail.idempotencyKey,
+      correlation: { kind: 'rent-notice', rentNoticeId: mail.rentNoticeId, sendId: mail.sendId },
+    })
   }
 
   async sendRentIncreaseNotice(opts: SendRentIncreaseNoticeOptions): Promise<string> {

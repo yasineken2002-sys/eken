@@ -17,7 +17,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { rentDueDateForPeriodStart, calculateFirstPaymentDueDate } from '@eken/shared'
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 let __seq = 0
 
@@ -82,7 +82,7 @@ function makeInitialNoticesRig(startDate: Date) {
   const ocrService = { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') }
   const accounting = { createJournalEntryForRentNotice: jest.fn().mockResolvedValue({ id: 'je-1' }) } // prettier-ignore
   const noop = {}
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     ocrService as never,
     noop as never, // mail
@@ -168,7 +168,7 @@ describe('T1.3 · C: EXPIRED avtal med dagar kvar i månaden aviseras', () => {
       $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
     }
     const noop = {}
-    const service = new AviseringService(
+    const service = aviseringUtanAutomatisktTillgodo(
       prisma as never,
       { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') } as never,
       noop as never,

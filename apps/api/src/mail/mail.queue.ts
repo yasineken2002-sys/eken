@@ -99,6 +99,26 @@ export class MailQueue {
       if (delay > 0) jobOptions.delay = delay
     }
 
+    // Förberedda avier har redan ett oföränderligt mejl i databasen. Ett
+    // avslutat/supprimerat eller misslyckat Bull-jobb får inte blockera dess
+    // återhämtning i sju dagar. Samma providerkey och payload behålls.
+    if (
+      opts.correlation?.kind === 'rent-notice' &&
+      opts.correlation.sendId &&
+      opts.idempotencyKey
+    ) {
+      const existing = await queue.getJob(opts.idempotencyKey)
+      if (existing) {
+        const state = await existing.getState()
+        if (state === 'failed') {
+          await existing.retry()
+          return String(existing.id)
+        }
+        if (state === 'completed') await existing.remove()
+        else return String(existing.id)
+      }
+    }
+
     const job = await queue.add(payload, jobOptions)
     this.logger.log(
       `Enqueued mail jobId=${job.id} template=${opts.template} to=${opts.to} priority=${opts.priority ?? 'normal'}`,

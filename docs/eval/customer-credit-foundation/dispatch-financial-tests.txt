@@ -1,0 +1,17 @@
+PASS src/consumption/consumption.compliance.spec.ts
+PASS src/avisering/rent-interest.service.spec.ts
+[Nest] 65375  - 10/15/2026, 10:00:01 PM   ERROR [MiscChargeService] [MiscCharge] Bokföring av post mc-1 gav ingen verifikation (saknat konto/total≤0)
+[Nest] 65375  - 10/15/2026, 10:00:00 PM    WARN [RentInterestService] Ingen referensränta gäller för delperioden 2026-05-02–2026-05-31 — dröjsmålsränta beräknades inte för avi rn-1
+[Nest] 65375  - 10/15/2026, 10:00:00 PM    WARN [RentInterestService] Ingen referensränta gäller för delperioden 2026-07-01–2026-07-15 — dröjsmålsränta beräknades inte för avi rn-1
+PASS src/misc-charges/misc-charge.service.spec.ts
+PASS src/accounting/reversal-both-orders.spec.ts
+[Nest] 65375  - 10/15/2026, 10:00:01 PM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+[Nest] 65375  - 10/15/2026, 10:00:01 PM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+PASS src/accounting/accounting.customer-credit.spec.ts
+PASS src/accounting/accounting.reversal.spec.ts
+
+Test Suites: 6 passed, 6 total
+Tests:       161 passed, 161 total
+Snapshots:   0 total
+Time:        6.198 s
+Ran all test suites matching /src\/accounting\/accounting.customer-credit.spec.ts|src\/accounting\/accounting.reversal.spec.ts|src\/accounting\/reversal-both-orders.spec.ts|src\/consumption\/consumption.compliance.spec.ts|src\/misc-charges\/misc-charge.service.spec.ts|src\/avisering\/rent-interest.service.spec.ts/i.

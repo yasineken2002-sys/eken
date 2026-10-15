@@ -34,8 +34,11 @@ interface InterestSegment {
   days: number
   referenceRatePercent: number
   effectiveRatePercent: number
-  // Segmentets ränta i öresavrundad form. Öresavrundningens rest läggs på det
-  // SISTA segmentet så att Σ segment.amount === interestTotal exakt — en
+  // Kapitalet under JUST denna delperiod. Tillgodo sänker basen från sin
+  // svenska betalningsdag, aldrig retroaktivt för tidigare räntedagar.
+  base: number
+  // Segmentets ränta i öresavrundad form. Kumulativ avrundning gör att
+  // Σ segment.amount === interestTotal exakt — en
   // specificerad räntekalkyl (PR 4b) summerar därmed alltid till det bokförda
   // beloppet (ingen 1-öresdrift mellan specifikation och verifikat/1510-fordran).
   amount: number
@@ -101,9 +104,15 @@ export class RentInterestService {
   ): Promise<CrystallizeResult | null> {
     return this.prisma.$transaction(async (tx) => {
       await this.freshness.assertAutomaticEffectAllowed(tx, organizationId)
+      // Kundtillgodo och andra betalningsvägar håller samma lås. Både status
+      // och allokeringar måste läsas efter låset, före räntebeslutet.
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${noticeId} AND "organizationId" = ${organizationId} FOR UPDATE`
       const notice = await tx.rentNotice.findFirst({
         where: { id: noticeId, organizationId },
-        include: { credits: { select: { amount: true } } },
+        include: {
+          credits: { select: { amount: true } },
+          payments: { select: { amount: true, paidAt: true, source: true } },
+        },
       })
       if (!notice) return null
       // Dröjsmålsränta löper bara på obetald hyra. Deposition har eget flöde.
@@ -154,11 +163,27 @@ export class RentInterestService {
       const dueMid = swedishCalendarDate(notice.dueDate)
       const periodStart = addDays(dueMid, 1)
       const periodEnd = addDays(dueMid, days)
-      const ranges = halfYearRanges(periodStart, periodEnd)
+      // Kundtillgodo är en betalning, inte en retroaktiv nedsättning av
+      // ursprungsfordran. Dela även vid dess betalningsdag så ett senare
+      // avdrag aldrig sänker redan förflutna dagars kapital. Övriga
+      // betalningskällors befintliga räntepolicy ändras inte i denna fas.
+      const customerCredits = notice.payments
+        .filter((payment) => payment.source === 'CUSTOMER_CREDIT')
+        .map((payment) => ({
+          amount: Number(payment.amount),
+          day: swedishCalendarDate(payment.paidAt),
+        }))
+      const ranges = customerCreditRanges(
+        halfYearRanges(periodStart, periodEnd),
+        base,
+        customerCredits,
+      )
+      if (ranges.every((range) => range.base === 0)) return null
 
       let rawTotal = 0
       let weightedRefNum = 0
       let weightedEffNum = 0
+      const rawAmounts: number[] = []
       const segments: InterestSegment[] = []
       for (const range of ranges) {
         // Referensräntan för DET halvår segmentet ligger i. Ankras på segmentets
@@ -175,7 +200,8 @@ export class RentInterestService {
           return null
         }
         const effectiveRatePercent = referenceRate + INTEREST_RATE_ADDITION_PP
-        const rawAmount = base * (effectiveRatePercent / 100) * (range.days / DAYS_PER_YEAR)
+        const rawAmount = range.base * (effectiveRatePercent / 100) * (range.days / DAYS_PER_YEAR)
+        rawAmounts.push(rawAmount)
         rawTotal += rawAmount
         weightedRefNum += referenceRate * range.days
         weightedEffNum += effectiveRatePercent * range.days
@@ -185,6 +211,7 @@ export class RentInterestService {
           days: range.days,
           referenceRatePercent: referenceRate,
           effectiveRatePercent,
+          base: range.base,
           amount: round2(rawAmount),
         })
       }
@@ -197,16 +224,17 @@ export class RentInterestService {
       const effectiveRatePercent = round2(weightedEffNum / days)
       const referenceRatePercent = round2(weightedRefNum / days)
 
-      // Lägg öresavrundningens rest på sista segmentet → Σ segment.amount blir
-      // EXAKT totalInterest. Då kan PR 4b:s export summera segmenten utan att
-      // hamna 1 öre fel mot det bokförda beloppet/1510-fordran. För ETT segment
-      // är restjusteringen identitet (amount = total).
-      if (segments.length > 0) {
-        let allocated = 0
-        for (let i = 0; i < segments.length - 1; i++) {
-          allocated = round2(allocated + segments[i]!.amount)
-        }
-        segments[segments.length - 1]!.amount = round2(totalInterest - allocated)
+      // Avrunda den kumulativa summan, fördela differensen per segment.
+      // Summan blir exakt totalInterest, även när ett senare tillgodo ger
+      // nollbas. Att lägga hela avrundningsresten på sista segmentet kunde
+      // annars ge det ränta trots noll kapital (eller ett negativt öre).
+      let rawAccumulated = 0
+      let allocated = 0
+      for (let i = 0; i < segments.length; i++) {
+        rawAccumulated += rawAmounts[i]!
+        const cumulative = round2(rawAccumulated)
+        segments[i]!.amount = round2(cumulative - allocated)
+        allocated = cumulative
       }
 
       const alreadyBooked = Number(notice.interestAccruedAmount)
@@ -259,7 +287,8 @@ export class RentInterestService {
           referenceRatePercent,
           effectiveRatePercent,
           days,
-          base,
+          base: ranges[ranges.length - 1]!.base,
+          baseBeforeCustomerCredit: base,
           interestDelta: delta,
           interestTotal: totalInterest,
           // Period-uppdelningen (räntelagen 9 §) — PR 4b:s export specificerar
@@ -318,4 +347,33 @@ function halfYearRanges(start: Date, end: Date): { start: Date; end: Date; days:
     segStart = addDays(segEnd, 1)
   }
   return ranges
+}
+
+function customerCreditRanges(
+  ranges: { start: Date; end: Date; days: number }[],
+  base: number,
+  credits: { amount: number; day: Date }[],
+): { start: Date; end: Date; days: number; base: number }[] {
+  const boundaries = [...new Set(credits.map((credit) => credit.day.getTime()))].sort(
+    (a, b) => a - b,
+  )
+  return ranges.flatMap((range) => {
+    const starts = [
+      range.start.getTime(),
+      ...boundaries.filter((day) => day > range.start.getTime() && day <= range.end.getTime()),
+    ]
+    return starts.map((start, index) => {
+      const end = index + 1 < starts.length ? starts[index + 1]! - DAY_MS : range.end.getTime()
+      const applied = credits.reduce(
+        (sum, credit) => sum + (credit.day.getTime() <= start ? credit.amount : 0),
+        0,
+      )
+      return {
+        start: new Date(start),
+        end: new Date(end),
+        days: Math.round((end - start) / DAY_MS) + 1,
+        base: Math.max(0, round2(base - applied)),
+      }
+    })
+  })
 }

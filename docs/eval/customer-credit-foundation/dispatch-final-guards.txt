@@ -1,0 +1,156 @@
+Guard run started: 2026-10-15T20:05:50.887Z
+Checkout: /Users/test/Desktop/eveno/eken-kundtillgodo
+Node: /Users/test/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node (v24.19.0)
+
+COMMAND: node apps/api/scripts/check-partial-match-identity.mjs
+✅ 9 matchningsanrop klassade, 4 allokeringsskrivningar i registrerade funktioner — delbetalning bara vid entydig identitet.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-ocr-provenance.mjs
+✅ 4 extraktoranrop, alla klassade — prosa bara bakom kontrollsiffran.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-ocr-lookup-fields.mjs
+✅ 4 OCR-uppslag, alla klassade — fritext bara bakom identitetsgrinden.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-module-cycles.mjs
+✅ 67 moduler, 240 hårda kanter — inga odeklarerade cykler (3 forwardRef-kanter, alltså deklarerade och tillåtna).
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-di-type-imports.mjs
+Inga typ-raderade DI-beroenden — 243 klasser med @Injectable/@Controller granskade i 1269 filer, 0 träffar.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-transaction-limits.mjs
+✅ Transaktionsgränser: varje $transaction har en medveten gräns eller en kvittering (3 kvitterade i 2 filer)
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-actor-stamping.mjs
+✅ aktörsstämplingen är påkopplad; modellmängden härleds ur schemat, tre gränser satta, inga handpåläggningar. (4 referenser i extensionen)
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-as-never.mjs
+✅ as never: 2 kända cast i produktionskod, inga nya och inga stale.
+   Vakten mäter att castet är BORTA — inte att valideringen som kom i stället prövar rätt mängd. Det ägs av maintenance-enum-source.spec.ts och enum-validering.spec.ts.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-request-contract.mjs
+✅ Kontraktet webb↔API: 0 kända överträdelser i 0 filer, inga nya och inga stale.
+✅ Regel 2: 121 delade nyttolasttyper, alla härledda i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.
+   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av SammaNycklar-raden i DTO:n (Typecheck) och av dto.spec-provet — inte av den här.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-dto-placement.mjs
+✅ DTO-placering: 0 kända felplacerade klasser, inga nya och inga stale.
+   Regeln gör check-request-contracts premiss sann: när talet är 0 är "gå igenom *.dto.ts" uttömmande per konstruktion.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-strict-koercion.mjs
+✅ Strikt koercion: varje DTO-fält bär sin dekorator — 0 oskyddade.
+   Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av strict-boolean.spec.ts, strict-string.spec.ts och strict-iso-datum.spec.ts, som kör den riktiga pipen.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-identifier-regex.mjs
+Inga nya ASCII-härledningar — 58 vaktskript, 8 förekomster över 8 poster, exakt baslinjen.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-mail-id-provenance.mjs
+✅ 6 skrivningar av korrelations-id — 5 från persistResendId eller nollställning, 1 kvitterade. 3 fält frågas av webhooken.
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-cron-classification.mjs
+✅ 35 @Cron-jobb, alla klassificerade — 13 låsta (A), 22 med namngiven invariant (B).
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-cron-error-sink.mjs
+✅ 35 @Cron-jobb — 35 når den varaktiga felsänkan, 0 kvitterade (rapportmetod härledd: report).
+EXIT CODE: 0
+
+COMMAND: node apps/api/scripts/check-automation-pause.mjs
+Driftpausen är påkopplad — 11 @Processor-klasser, alla bakom pausedUnless; ScheduleModule.forRoot() innanför schedulerShouldRegister; 11 könamn inventerade i båda riktningarna.
+EXIT CODE: 0
+
+Guard run finished: 2026-10-15T20:05:58.908Z
+[
+  {
+    "guard": "partial-match-identity",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "ocr-provenance",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "ocr-lookup-fields",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "module-cycles",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "di-type-imports",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "transaction-limits",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "actor-stamping",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "as-never",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "request-contract",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "dto-placement",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "strict-koercion",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "identifier-regex",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "mail-id-provenance",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "cron-classification",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "cron-error-sink",
+    "exitCode": 0,
+    "signal": null
+  },
+  {
+    "guard": "automation-pause",
+    "exitCode": 0,
+    "signal": null
+  }
+]

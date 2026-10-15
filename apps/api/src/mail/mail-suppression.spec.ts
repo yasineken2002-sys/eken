@@ -35,6 +35,8 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { Resend } from 'resend'
 import { MailQueue } from './mail.queue'
 import { MailService } from './mail.service'
+import { MailRenderer } from './mail.renderer'
+import { ConfigService } from '@nestjs/config'
 import { MailWorkerNormal } from './mail.worker'
 import type { EnqueueMailOptions, MailJobPayload } from './mail.types'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -238,7 +240,11 @@ describe('KANARIEFÅGEL — varje send*-metod bär org-id vidare till kön', () 
 
   it('vidarebefordrar organizationId från VARJE publik send*-metod', async () => {
     const enqueue = jest.fn().mockResolvedValue('job-1')
-    const service = new MailService({ enqueue } as unknown as MailQueue)
+    const service = new MailService(
+      { enqueue } as unknown as MailQueue,
+      new MailRenderer(),
+      new ConfigService({}),
+    )
 
     const metoder = Object.getOwnPropertyNames(MailService.prototype).filter(
       (namn) =>

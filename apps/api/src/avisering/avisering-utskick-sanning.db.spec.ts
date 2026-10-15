@@ -27,12 +27,15 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { AviseringService } from '../avisering/avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from '../avisering/customer-credit.test-double'
 import { OcrService } from '../common/ocr/ocr.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import { DepositsService } from '../deposits/deposits.service'
 import { MailWorkerNormal } from '../mail/mail.worker'
 import { MailQueue } from '../mail/mail.queue'
 import { MailService } from '../mail/mail.service'
+import { MailRenderer } from '../mail/mail.renderer'
+import { ConfigService } from '@nestjs/config'
 import { RentReminderService } from './rent-reminder.service'
 import { RentDebtService } from './rent-debt.service'
 
@@ -102,7 +105,7 @@ medDb('051: utskickets sanning (ventil, påminnelsegrind, OPENING) mot riktig Po
       { createForAllOrgUsers: async () => undefined } as never,
       invoiceEvents,
     )
-    avisering = new AviseringService(
+    avisering = aviseringUtanAutomatisktTillgodo(
       p,
       new OcrService(p),
       stub('MailService') as never,
@@ -217,6 +220,8 @@ medDb('051: utskickets sanning (ventil, påminnelsegrind, OPENING) mot riktig Po
   beforeAll(async () => {
     mail = new MailService(
       new MailQueue(kofangare as never, kofangare as never, kofangare as never, p),
+      new MailRenderer(),
+      new ConfigService({}),
     )
     const accounting = new AccountingService(p, new VerifikationsnummerService(p))
     const pdf = {
@@ -230,7 +235,7 @@ medDb('051: utskickets sanning (ventil, påminnelsegrind, OPENING) mot riktig Po
         return Buffer.from('%PDF-syntetisk')
       },
     }
-    jobb = new AviseringService(
+    jobb = aviseringUtanAutomatisktTillgodo(
       p,
       new OcrService(p),
       mail as never,

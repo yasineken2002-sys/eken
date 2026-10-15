@@ -3,7 +3,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { Prisma, RentNoticePaymentSource } from '@prisma/client'
 import { ConflictException } from '@nestjs/common'
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 const D = (amount: number) => new Prisma.Decimal(amount)
 const fmt = (amount: number) =>
@@ -66,7 +66,7 @@ function rig(overrides: Record<string, unknown> = {}, bankgiro: string | null = 
   // Fångar den riktiga dokumenttemplaten. Puppeteer och extern mejlleverans
   // behövs inte för att jämföra de tre betalningsbärande beloppen.
   const pdf = { generateFromHtml: jest.fn(async (html: string) => Buffer.from(html)) }
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     {} as never,
     mail as never,
@@ -221,8 +221,10 @@ describe('Kundtillgodo i hyresavins PDF, OCR-rad och mejl', () => {
     })
     const html = (await service.getNoticePdfBuffer('notice-1', 'org-1')).toString()
 
-    expectAmount(html, 0)
-    expect(html).toContain('# 1234567890 # 0 00 0 > 50501055#41#')
+    expect(html).toContain(`<td>${fmt(0)} kr</td>`)
+    expect(html).toContain('Inget återstår att betala')
+    expect(html).not.toContain('ocr-machine-line\">')
+    expect(html).not.toContain('Avrivningskupong')
   })
 
   it('tillgodo kringgår inte kravet på giltigt bankgiro', async () => {

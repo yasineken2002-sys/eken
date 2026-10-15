@@ -34,6 +34,7 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 
 import { AviseringService } from './avisering.service'
+import { automatisktTillgodoGränsAvstängd } from './customer-credit.test-double'
 import { OcrService } from '../common/ocr/ocr.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
@@ -128,6 +129,7 @@ medDb('B2 · utskicksbeviset i avins dokument', () => {
     prisma = new PrismaClient()
     service = Object.create(AviseringService.prototype) as AviseringService
     Object.assign(service, {
+      customerCredit: automatisktTillgodoGränsAvstängd(),
       prisma,
       ocrService: new OcrService(prisma as never),
       mailService: {

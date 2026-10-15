@@ -3342,6 +3342,7 @@ export class AccountingService {
       reversalSourceId: `rent-notice-reversal:${noticeId}`,
       description: `Annullerad hyresavi: ${original.description}`,
       createdById,
+      customerCreditRentNoticeId: noticeId,
       ...(tx ? { tx } : {}),
     })
   }

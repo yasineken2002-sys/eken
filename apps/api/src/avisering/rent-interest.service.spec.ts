@@ -24,6 +24,7 @@ const baseNotice = {
   reminderFeeAmount: new Decimal(60),
   interestAccruedAmount: new Decimal(0),
   credits: [],
+  payments: [],
 }
 
 function makeService(
@@ -36,6 +37,7 @@ function makeService(
 ) {
   const notice = opts.notice === undefined ? { ...baseNotice } : opts.notice
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'rn-1' }]),
     rentNotice: {
       findFirst: jest.fn().mockResolvedValue(notice),
       update: jest.fn().mockResolvedValue({}),
@@ -77,6 +79,7 @@ function makeSegmentService(opts: {
   bookReturns?: { id: string } | null
 }) {
   const tx = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'rn-1' }]),
     rentNotice: {
       findFirst: jest.fn().mockResolvedValue(opts.notice),
       update: jest.fn().mockResolvedValue({}),
@@ -376,6 +379,167 @@ describe('crystallizeInterest', () => {
 })
 
 // Gränserna är svenska kalenderdagar även när UTC-datumet ännu är det gamla.
+describe('kundtillgodo i räntebasen', () => {
+  const payment = (amount: number, paidAt: string, source = 'CUSTOMER_CREDIT') => ({
+    amount: new Decimal(amount),
+    paidAt: new Date(paidAt),
+    source,
+  })
+
+  it('25 kr tillgodo före förfall gör att en avi på 1000 kr bär ränta på 975 kr', async () => {
+    const { service, rentNoticeEvents } = makeService({
+      ratePercent: 2,
+      notice: {
+        ...baseNotice,
+        totalAmount: new Decimal(1000),
+        payments: [payment(25, '2026-04-30T12:00:00Z')],
+      },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31'))
+    expect(result).toMatchObject({ total: 8.01, delta: 8.01, days: 30 })
+    expect(result?.segments).toEqual([expect.objectContaining({ base: 975, days: 30 })])
+    expect(rentNoticeEvents.record.mock.calls[0]![4]).toMatchObject({
+      base: 975,
+      baseBeforeCustomerCredit: 1000,
+    })
+  })
+
+  it('sent tillgodo ändrar bara räntedagar från betalningsdagen, aldrig de första 15 dagarna', async () => {
+    const { service, accounting } = makeService({
+      ratePercent: 2,
+      notice: {
+        ...baseNotice,
+        interestAccruedAmount: new Decimal(32.88),
+        payments: [payment(1000, '2026-05-17T12:00:00Z')],
+      },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31'))
+    expect(result).toMatchObject({ total: 61.64, delta: 28.76 })
+    expect(result?.segments).toEqual([
+      expect.objectContaining({ from: '2026-05-02', to: '2026-05-16', days: 15, base: 8000 }),
+      expect.objectContaining({ from: '2026-05-17', to: '2026-05-31', days: 15, base: 7000 }),
+    ])
+    expect(accounting.bookInterest).toHaveBeenCalledWith(expect.objectContaining({ amount: 28.76 }))
+  })
+
+  it('använder svensk betalningsdag när UTC fortfarande visar föregående dag', async () => {
+    const { service } = makeService({
+      ratePercent: 2,
+      notice: {
+        ...baseNotice,
+        payments: [payment(500, '2026-05-15T22:00:00Z')],
+      },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31'))
+    expect(result?.total).toBe(63.56)
+    expect(result?.segments).toEqual([
+      expect.objectContaining({ from: '2026-05-02', to: '2026-05-15', days: 14, base: 8000 }),
+      expect.objectContaining({ from: '2026-05-16', to: '2026-05-31', days: 16, base: 7500 }),
+    ])
+  })
+
+  it('flera lotter samma dag och halvårsskifte ger en sammanhängande specifikation', async () => {
+    const { service } = makeSegmentService({
+      rateFor: rateH1H2,
+      notice: {
+        ...baseNotice,
+        totalAmount: new Decimal(1000),
+        dueDate: new Date('2026-06-29T00:00:00Z'),
+        payments: [
+          payment(100, '2026-07-02T10:00:00Z'),
+          payment(100, '2026-07-01T10:00:00Z'),
+          payment(100, '2026-07-02T12:00:00Z'),
+          payment(500, '2026-07-04T12:00:00Z'),
+        ],
+      },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-07-03'))
+    expect(result).toMatchObject({ total: 0.97, days: 4 })
+    expect(result?.segments).toEqual([
+      expect.objectContaining({ from: '2026-06-30', to: '2026-06-30', days: 1, base: 1000 }),
+      expect.objectContaining({ from: '2026-07-01', to: '2026-07-01', days: 1, base: 900 }),
+      expect.objectContaining({ from: '2026-07-02', to: '2026-07-03', days: 2, base: 700 }),
+    ])
+    expect(result?.segments.reduce((sum, segment) => sum + segment.amount, 0)).toBeCloseTo(0.97, 2)
+  })
+
+  it('full täckning före förfall ger ingen ränta även om statuscachen ännu inte är PAID', async () => {
+    const { service, accounting, tx } = makeService({
+      ratePercent: 2,
+      notice: {
+        ...baseNotice,
+        totalAmount: new Decimal(1000),
+        payments: [payment(1000, '2026-04-30T12:00:00Z')],
+      },
+    })
+    await expect(
+      service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31')),
+    ).resolves.toBeNull()
+    expect(accounting.bookInterest).not.toHaveBeenCalled()
+    expect(tx.rentNotice.update).not.toHaveBeenCalled()
+  })
+
+  it('bevarar tidigare räntedagar men klampar senare bas till noll vid full kapitaltäckning', async () => {
+    const { service } = makeService({
+      ratePercent: 2,
+      notice: { ...baseNotice, payments: [payment(9000, '2026-05-17T12:00:00Z')] },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31'))
+    expect(result?.total).toBe(32.88)
+    expect(result?.segments).toEqual([
+      expect.objectContaining({ days: 15, base: 8000 }),
+      expect.objectContaining({ days: 15, base: 0, amount: 0 }),
+    ])
+  })
+
+  it('lägger ingen avrundningsrest på dagar där tillgodo redan täcker hela kapitalet', async () => {
+    const { service } = makeSegmentService({
+      rateFor: rateH1H2,
+      notice: {
+        ...baseNotice,
+        totalAmount: new Decimal(1000),
+        dueDate: new Date('2026-06-29T00:00:00Z'),
+        payments: [payment(100, '2026-07-01T10:00:00Z'), payment(900, '2026-07-02T10:00:00Z')],
+      },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-07-03'))
+    expect(result?.total).toBe(0.55)
+    expect(result?.segments).toEqual([
+      expect.objectContaining({ base: 1000, amount: 0.27 }),
+      expect.objectContaining({ base: 900, amount: 0.28 }),
+      expect.objectContaining({ base: 0, amount: 0 }),
+    ])
+  })
+
+  it('läser status efter avilåset så en full reglering under låsväntan stoppar räntan', async () => {
+    const { service, tx, accounting } = makeService({ ratePercent: 2 })
+    tx.$queryRaw.mockImplementation(async () => {
+      tx.rentNotice.findFirst.mockResolvedValue({ ...baseNotice, status: 'PAID' })
+      return [{ id: 'rn-1' }]
+    })
+    await expect(
+      service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31')),
+    ).resolves.toBeNull()
+    expect(accounting.bookInterest).not.toHaveBeenCalled()
+  })
+
+  it('ändrar inte övriga betalningskällors befintliga räntepolicy', async () => {
+    const { service } = makeService({
+      ratePercent: 2,
+      notice: {
+        ...baseNotice,
+        payments: [
+          payment(1000, '2026-04-30T12:00:00Z', 'BANK_RECONCILIATION'),
+          payment(1000, '2026-04-30T12:00:00Z', 'MANUAL'),
+        ],
+      },
+    })
+    const result = await service.crystallizeInterest('rn-1', 'org-1', new Date('2026-05-31'))
+    expect(result?.total).toBe(65.75)
+    expect(result?.segments).toEqual([expect.objectContaining({ base: 8000, days: 30 })])
+  })
+})
+
 describe('räntedagar i Europe/Stockholm', () => {
   it.each([
     ['2026-05-01T00:00:00Z', '2026-05-01T22:00:00Z', '2026-05-02'],

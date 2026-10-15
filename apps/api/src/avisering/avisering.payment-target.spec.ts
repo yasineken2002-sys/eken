@@ -19,7 +19,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 /** Samma kända avi som brandningsprovet, så OCR-raden går att förutsäga. */
 function buildNotice(overrides: Record<string, unknown> = {}) {
@@ -83,7 +83,7 @@ const ORG_MED_MAL = { ...ORG_UTAN_MAL, bankgiro: '5050-1055' }
 
 function makeService() {
   const noop = {}
-  return new AviseringService(
+  return aviseringUtanAutomatisktTillgodo(
     noop as never, // prisma
     noop as never, // ocr
     noop as never, // mail
@@ -446,7 +446,7 @@ function makeSendRig(orgs: OrgSeed[]) {
     }),
   }
 
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     { assignOcrToTenant: jest.fn().mockResolvedValue('00000000019') } as never,
     mailService as never,

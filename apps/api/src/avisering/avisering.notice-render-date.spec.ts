@@ -33,7 +33,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 function buildNotice() {
   return {
@@ -89,7 +89,7 @@ const ORG = {
 
 function render(org: Record<string, unknown> = ORG): Promise<string> {
   const noop = {}
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     noop as never,
     noop as never,
     noop as never,

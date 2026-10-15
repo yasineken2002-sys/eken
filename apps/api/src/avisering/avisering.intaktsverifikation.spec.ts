@@ -13,7 +13,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 let __seq = 0
 
@@ -79,7 +79,7 @@ describe('FIX 9 · PR 2 — generateMonthlyNotices bokför hyresintäkt', () => 
     }
     const noop = {}
 
-    const service = new AviseringService(
+    const service = aviseringUtanAutomatisktTillgodo(
       prisma as never,
       ocrService as never,
       noop as never, // mail

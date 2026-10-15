@@ -26,6 +26,7 @@ import { RentNoticeEventsService } from '../avisering/rent-notice-events.service
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { AviseringService } from '../avisering/avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from '../avisering/customer-credit.test-double'
 import { OcrService } from '../common/ocr/ocr.service'
 import type { PrismaService } from '../common/prisma/prisma.service'
 import { DepositsService } from '../deposits/deposits.service'
@@ -99,7 +100,7 @@ medDb('F-047-2: utskicksjobbet mot annullering och betalning (barriärer, riktig
       { createForAllOrgUsers: async () => undefined } as never,
       invoiceEvents,
     )
-    avisering = new AviseringService(
+    avisering = aviseringUtanAutomatisktTillgodo(
       p,
       new OcrService(p),
       stub('MailService') as never,
@@ -226,7 +227,7 @@ medDb('F-047-2: utskicksjobbet mot annullering och betalning (barriärer, riktig
     })
     const kp = krokad as unknown as PrismaService
     const accounting = new AccountingService(kp, new VerifikationsnummerService(kp))
-    jobb = new AviseringService(
+    jobb = aviseringUtanAutomatisktTillgodo(
       kp,
       new OcrService(kp),
       {

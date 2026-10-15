@@ -33,6 +33,7 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient, RentNoticeType } from '@prisma/client'
 
 import { AviseringService } from './avisering.service'
+import { automatisktTillgodoGränsAvstängd } from './customer-credit.test-double'
 import { OcrService } from '../common/ocr/ocr.service'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
@@ -164,6 +165,7 @@ medDb('R-1 · dokumentets utskicksbevis mot avmatchningens återöppning', () =>
 
     avisering = Object.create(AviseringService.prototype) as AviseringService
     Object.assign(avisering, {
+      customerCredit: automatisktTillgodoGränsAvstängd(),
       prisma,
       ocrService: new OcrService(prisma as never),
       // LOKAL FÅNGARE — ingen leverantör, ingen kö.

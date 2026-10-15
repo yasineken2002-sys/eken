@@ -20,7 +20,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { Prisma } from '@prisma/client'
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 let __seq = 0
 
@@ -82,7 +82,7 @@ function rigg(opts: { createRejects?: unknown; befintlig?: unknown } = {}) {
     $transaction: (cb: (t: unknown) => unknown) => cb(prisma),
   }
 
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') } as never,
     {} as never,

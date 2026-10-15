@@ -5,10 +5,11 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { BankTransaction, RentNotice, RentNoticePayment } from '@prisma/client'
+import type { BankTransaction, RentNotice, RentNoticePayment, RentNoticeSend } from '@prisma/client'
 import { createHash, randomUUID } from 'node:crypto'
 import { AccountingService, bankPaymentSourceId } from '../accounting/accounting.service'
 import { rentNoticeOcrComponents } from '../avisering/rent-debt.service'
+import { NoticeDispatchSnapshotSchema, noticeRecipientHash } from '../avisering/notice-dispatch'
 import { currentActor } from '../common/actor/actor.context'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -20,6 +21,16 @@ import {
 
 const debtInclude = { payments: true, credits: true } as const
 type Notice = Prisma.RentNoticeGetPayload<{ include: typeof debtInclude }>
+
+export interface PrepareCustomerCreditNoticeInput {
+  organizationId: string
+  rentNoticeId: string
+  /** DB-läsningar och minnesarbete enbart. Inga filer, PDF:er eller nätverksanrop i transaktionen. */
+  buildSnapshot: (tx: Prisma.TransactionClient) => Promise<{
+    snapshot: Prisma.InputJsonValue
+    toHash: string
+  }>
+}
 
 export interface ApplyCustomerCreditInput {
   organizationId: string
@@ -90,8 +101,8 @@ function sourceProof(
 
 /**
  * Bankimporten kan ta emot ett entydigt överbelopp bakom en avstängd policy.
- * Automatisk användning på nästa avi och atomisk utskicksreservation är ännu
- * inte inkopplade. Tillgodo är redan mottagna pengar, inte ny intäkt.
+ * Automatisk användning och en beständig utskicksreservation bokförs i samma
+ * transaktion. Tillgodo är redan mottagna pengar, inte ny intäkt.
  *
  * Låsordning: färskhets-/granskningslås → avtalets tillgodolås → bankrad →
  * avier i id-ordning → tillgodo → verifikationsnummer. Samma bank-/avilås
@@ -345,8 +356,227 @@ export class CustomerCreditService {
     })
   }
 
+  findPreparedNotice(organizationId: string, rentNoticeId: string): Promise<RentNoticeSend | null> {
+    return this.prisma.rentNoticeSend.findFirst({
+      where: {
+        dispatchKey: `customer-credit-notice:${rentNoticeId}`,
+        rentNotice: { organizationId },
+      },
+    })
+  }
+
+  /**
+   * Fryser betalningsunderlaget i samma commit som tillgodot används. PDF och
+   * mejlkö körs efter commit och måste återanvända den sparade reservationen.
+   * En tidigare reservation återlämnas även när avin sedan blivit PAID eller
+   * policyn stängts av: ett omförsök får aldrig skapa en andra avräkning.
+   */
+  async prepareNoticeForSend(
+    input: PrepareCustomerCreditNoticeInput,
+  ): Promise<RentNoticeSend | null> {
+    const dispatchKey = `customer-credit-notice:${input.rentNoticeId}`
+    const existing = await this.findPreparedNotice(input.organizationId, input.rentNoticeId)
+    if (existing) return existing
+
+    const enabled = await this.prisma.customerCreditPolicy.findUnique({
+      where: { organizationId: input.organizationId },
+      select: { enabled: true, carryForwardEnabled: true },
+    })
+    if (!enabled?.enabled || !enabled.carryForwardEnabled) return null
+
+    const before = await this.prisma.rentNotice.findFirst({
+      where: { id: input.rentNoticeId, organizationId: input.organizationId },
+      select: { leaseId: true, year: true, month: true, type: true, origin: true },
+    })
+    if (!before) throw new NotFoundException('Avi hittades inte')
+    // Tillgodo kan aldrig användas mot en deposition eller importerad fordran.
+    // De dokumenten fortsätter genom sitt befintliga utskicksflöde.
+    if (before.type !== 'RENT' || before.origin !== 'EVENO') return null
+
+    this.assertActor()
+    return this.prisma.$transaction(async (tx) => {
+      await this.freshness.assertAutomaticEffectAllowed(tx, input.organizationId)
+      await this.lockLease(tx, input.organizationId, before.leaseId)
+      const reserved = await tx.rentNoticeSend.findFirst({
+        where: { dispatchKey, rentNotice: { organizationId: input.organizationId } },
+      })
+      if (reserved) return reserved
+
+      const policy = await this.policy(tx, input.organizationId)
+      if (!policy.carryForwardEnabled) {
+        throw new ConflictException('Automatisk användning av kundtillgodo har stängts av')
+      }
+      // Avtalslåset serialiserar nya tillgodoposter. Läs om kandidaterna efter
+      // låset, och lås hela mängden innan första bokföringsposten skapas.
+      const credits = await tx.customerCredit.findMany({
+        where: {
+          organizationId: input.organizationId,
+          leaseId: before.leaseId,
+          sourceRentNotice: {
+            OR: [{ year: { lt: before.year } }, { year: before.year, month: { lt: before.month } }],
+          },
+        },
+        include: { applications: { select: { amount: true } } },
+        orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+      })
+      const availableCredits = credits
+        .map((credit) => ({
+          credit,
+          available: credit.applications.reduce(
+            (available, application) => available.minus(application.amount),
+            credit.amount,
+          ),
+        }))
+        .filter(({ available }) => available.gt(0))
+
+      for (const bankId of [
+        ...new Set(availableCredits.map(({ credit }) => credit.sourceBankTransactionId)),
+      ].sort()) {
+        await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${bankId} AND "organizationId" = ${input.organizationId} FOR UPDATE`
+      }
+      const earlier = await tx.rentNotice.findMany({
+        where: {
+          organizationId: input.organizationId,
+          leaseId: before.leaseId,
+          type: 'RENT',
+          OR: [{ year: { lt: before.year } }, { year: before.year, month: { lt: before.month } }],
+        },
+        select: { id: true },
+      })
+      await this.lockNotices(tx, input.organizationId, [
+        input.rentNoticeId,
+        ...earlier.map((notice) => notice.id),
+        ...availableCredits.map(({ credit }) => credit.sourceRentNoticeId),
+      ])
+      for (const creditId of availableCredits.map(({ credit }) => credit.id).sort()) {
+        await tx.$queryRaw`SELECT id FROM "CustomerCredit" WHERE id = ${creditId} AND "organizationId" = ${input.organizationId} FOR UPDATE`
+      }
+
+      const target = await tx.rentNotice.findFirst({
+        where: { id: input.rentNoticeId, organizationId: input.organizationId },
+        include: debtInclude,
+      })
+      const earlierSend = await tx.rentNoticeSend.findFirst({
+        where: {
+          rentNoticeId: input.rentNoticeId,
+          kind: 'NOTICE',
+          rentNotice: { organizationId: input.organizationId },
+        },
+        select: { id: true },
+      })
+      if (earlierSend) {
+        throw new ConflictException('Avins tidigare betalningsunderlag har redan börjat skickas')
+      }
+      const appliedAt = new Date()
+      const civil = stockholmCivilDate(appliedAt)
+      const appliedDay = new Date(Date.UTC(civil.year, civil.month - 1, civil.day))
+      const hasAvailableCredit = availableCredits.length > 0
+      // Ett nytt avdrag kräver fortfarande en avi före förfall. Utan saldo
+      // fastställer vi bara det oförändrade beloppet, även efter förfall.
+      const allowedStatuses = hasAvailableCredit
+        ? ['PENDING', 'FAILED']
+        : ['PENDING', 'FAILED', 'OVERDUE']
+      if (
+        !target ||
+        target.leaseId !== before.leaseId ||
+        target.year !== before.year ||
+        target.month !== before.month ||
+        target.type !== 'RENT' ||
+        target.origin !== 'EVENO' ||
+        target.isBackfill ||
+        target.sentAt ||
+        !allowedStatuses.includes(target.status) ||
+        (hasAvailableCredit && appliedDay >= target.dueDate) ||
+        target.payments.length !== 0 ||
+        target.credits.length !== 0 ||
+        target.paidAmount?.gt(0) ||
+        target.reminderFeeAmount.gt(0) ||
+        target.interestAccruedAmount.gt(0) ||
+        target.interestAccruedThrough ||
+        target.collectionStage !== 'NONE' ||
+        target.remindedAt ||
+        target.collectionReadyAt ||
+        target.probableLossAt ||
+        target.writtenOffAt
+      ) {
+        throw new ConflictException(
+          'Avin är inte ett oförändrat betalningsunderlag för automatiskt tillgodo',
+        )
+      }
+      let outstanding = debt(target)
+      if (!outstanding.gt(0)) {
+        throw new ConflictException('Avin saknar positiv skuld att använda tillgodot mot')
+      }
+      const sendId = randomUUID()
+      let customerCreditAmount = new Prisma.Decimal(0)
+      for (const { credit, available } of availableCredits) {
+        if (!outstanding.gt(0)) break
+        const amount = Prisma.Decimal.min(available, outstanding)
+        await this.applyToNextNoticeInTransaction(
+          {
+            organizationId: input.organizationId,
+            creditId: credit.id,
+            rentNoticeId: input.rentNoticeId,
+            requestId: `customer-credit-send:${sendId}:${credit.id}`,
+            appliedAt,
+            amount,
+          },
+          tx,
+        )
+        customerCreditAmount = customerCreditAmount.plus(amount)
+        outstanding = outstanding.minus(amount)
+      }
+      const { snapshot, toHash } = await input.buildSnapshot(tx)
+      const parsed = NoticeDispatchSnapshotSchema.safeParse(snapshot)
+      if (
+        !parsed.success ||
+        toHash !== noticeRecipientHash(parsed.data.to) ||
+        !customerCreditAmount.equals(parsed.data.customerCreditAmount) ||
+        !outstanding.equals(parsed.data.payableAmount)
+      ) {
+        throw new ConflictException('Utskicket saknar ett giltigt sparat underlag')
+      }
+      return tx.rentNoticeSend.create({
+        data: {
+          id: sendId,
+          rentNoticeId: target.id,
+          kind: 'NOTICE',
+          dispatchKey,
+          snapshotVersion: 1,
+          snapshot: parsed.data,
+          customerCreditAmount,
+          payableAmount: outstanding,
+          preparedAt: appliedAt,
+          toHash,
+        },
+      })
+    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+  }
+
   async applyToNextNotice(input: ApplyCustomerCreditInput) {
     this.assertActor()
+    return this.prisma.$transaction(async (tx) => {
+      await this.freshness.assertAutomaticEffectAllowed(tx, input.organizationId)
+      const before = await tx.customerCredit.findFirst({
+        where: { id: input.creditId, organizationId: input.organizationId },
+      })
+      if (!before) throw new NotFoundException('Tillgodot finns inte')
+      await this.lockLease(tx, input.organizationId, before.leaseId)
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${before.sourceBankTransactionId} AND "organizationId" = ${input.organizationId} FOR UPDATE`
+      await this.lockNotices(tx, input.organizationId, [
+        before.sourceRentNoticeId,
+        input.rentNoticeId,
+      ])
+      await tx.$queryRaw`SELECT id FROM "CustomerCredit" WHERE id = ${before.id} FOR UPDATE`
+      return this.applyToNextNoticeInTransaction(input, tx)
+    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+  }
+
+  /** Callern har redan tagit samtliga lås i gemensam ordning, före första verifikatet. */
+  private async applyToNextNoticeInTransaction(
+    input: ApplyCustomerCreditInput,
+    tx: Prisma.TransactionClient,
+  ) {
     positiveMoney(input.amount)
     if (
       !input.requestId.trim() ||
@@ -366,175 +596,172 @@ export class CustomerCreditService {
         ]),
       )
       .digest('hex')
-    return this.prisma.$transaction(async (tx) => {
-      await this.freshness.assertAutomaticEffectAllowed(tx, input.organizationId)
-      const before = await tx.customerCredit.findFirst({
-        where: { id: input.creditId, organizationId: input.organizationId },
-      })
-      if (!before) throw new NotFoundException('Tillgodot finns inte')
-      await this.lockLease(tx, input.organizationId, before.leaseId)
-      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${before.sourceBankTransactionId} AND "organizationId" = ${input.organizationId} FOR UPDATE`
-      await this.lockNotices(tx, input.organizationId, [
-        before.sourceRentNoticeId,
-        input.rentNoticeId,
-      ])
-      await tx.$queryRaw`SELECT id FROM "CustomerCredit" WHERE id = ${before.id} FOR UPDATE`
-      const existing = await tx.customerCreditApplication.findUnique({
-        where: {
-          organizationId_requestId: {
-            organizationId: input.organizationId,
-            requestId: input.requestId,
-          },
-        },
-      })
-      if (existing) {
-        if (existing.requestHash !== requestHash)
-          throw new ConflictException('Anropsnyckeln har redan använts med annat innehåll')
-        await this.assertLiveJournal(
-          tx,
-          input.organizationId,
-          `customer-credit-application:${existing.id}`,
-        )
-        return existing
-      }
-      const policy = await this.policy(tx, input.organizationId)
-      const credit = await tx.customerCredit.findUniqueOrThrow({
-        where: { id: before.id },
-        include: {
-          applications: { include: { rentNotice: true } },
-          sourceRentNotice: true,
-          sourceBankTransaction: true,
-          sourcePayment: true,
-          lease: true,
-        },
-      })
-      const target = await tx.rentNotice.findFirst({
-        where: { id: input.rentNoticeId, organizationId: input.organizationId },
-        include: debtInclude,
-      })
-      const latestPeriod = credit.applications.reduce(
-        (period, application) =>
-          Math.max(period, application.rentNotice.year * 12 + application.rentNotice.month),
-        credit.sourceRentNotice.year * 12 + credit.sourceRentNotice.month,
-      )
-      const civil = stockholmCivilDate(input.appliedAt)
-      const appliedDay = new Date(Date.UTC(civil.year, civil.month - 1, civil.day))
-      if (
-        !policy.carryForwardEnabled ||
-        policy.liabilityAccountId !== credit.liabilityAccountId ||
-        policy.bankAccountId !== credit.sourceBankTransaction.bankAccountId ||
-        credit.sourceBankTransaction.status !== 'MATCHED' ||
-        credit.sourceBankTransaction.identityReviewAt ||
-        credit.sourceBankTransaction.autoMatchExcludedAt ||
-        credit.lease.status !== 'ACTIVE' ||
-        credit.lease.tenantId !== credit.tenantId ||
-        credit.lease.organizationId !== input.organizationId ||
-        (credit.lease.endDate && appliedDay > credit.lease.endDate) ||
-        !target ||
-        (credit.lease.endDate &&
-          new Date(Date.UTC(target.year, target.month - 1, 1)) > credit.lease.endDate) ||
-        new Date(Date.UTC(target.year, target.month, 0)) < credit.lease.startDate ||
-        target.type !== 'RENT' ||
-        target.origin !== 'EVENO' ||
-        target.probableLossAt ||
-        target.writtenOffAt ||
-        target.leaseId !== credit.leaseId ||
-        target.tenantId !== credit.tenantId ||
-        target.sentAt ||
-        !['PENDING', 'FAILED'].includes(target.status) ||
-        target.year * 12 + target.month !== latestPeriod + 1 ||
-        input.appliedAt < credit.receivedAt ||
-        input.appliedAt < target.createdAt ||
-        target.payments.some((payment) => payment.paidAt > input.appliedAt) ||
-        target.credits.some((creditNote) => creditNote.creditedAt > input.appliedAt) ||
-        credit.applications.some((application) => application.appliedAt > input.appliedAt)
-      )
-        throw new ConflictException('Tillgodot kan inte användas på denna avi')
-      if (
-        sourceProof(credit.sourceBankTransaction, credit.sourceRentNotice, credit.sourcePayment) !==
-        credit.sourceProofHash
-      ) {
-        throw new ConflictException('Tillgodots källunderlag har ändrats')
-      }
-      await this.assertSourcePayment(tx, input.organizationId, credit.sourcePayment)
-      await this.assertLiveJournal(tx, input.organizationId, `customer-credit-receipt:${credit.id}`)
-      const earlier = await tx.rentNotice.findMany({
-        where: {
+    const existing = await tx.customerCreditApplication.findUnique({
+      where: {
+        organizationId_requestId: {
           organizationId: input.organizationId,
-          leaseId: credit.leaseId,
-          type: 'RENT',
-          status: { not: 'CANCELLED' },
-          OR: [{ year: { lt: target.year } }, { year: target.year, month: { lt: target.month } }],
-        },
-        include: debtInclude,
-      })
-      if (
-        earlier.some(
-          (notice) =>
-            debt(notice).gt(0) ||
-            notice.payments.some((payment) => payment.paidAt > input.appliedAt) ||
-            notice.credits.some((creditNote) => creditNote.creditedAt > input.appliedAt),
-        )
-      ) {
-        throw new ConflictException('Tidigare skuld måste utredas före tillgodo på nästa avi')
-      }
-      const available = credit.applications.reduce(
-        (sum, application) => sum.minus(application.amount),
-        credit.amount,
-      )
-      const outstanding = debt(target)
-      if (input.amount.gt(available) || input.amount.gt(outstanding)) {
-        throw new ConflictException('Beloppet överstiger tillgängligt tillgodo eller avins skuld')
-      }
-      if (!input.amount.eq(Prisma.Decimal.min(available, outstanding))) {
-        throw new ConflictException('Använd hela det tillgodo som ryms på avin')
-      }
-      const id = randomUUID()
-      const journal = await this.accounting.createJournalEntryForCustomerCreditApplication(
-        {
-          organizationId: input.organizationId,
-          eventId: id,
-          rentNoticeId: target.id,
-          amount: input.amount,
-          liabilityAccountId: credit.liabilityAccountId,
-          date: input.appliedAt,
-        },
-        tx,
-      )
-      const application = await tx.customerCreditApplication.create({
-        data: {
-          id,
-          organizationId: input.organizationId,
-          creditId: credit.id,
-          rentNoticeId: target.id,
           requestId: input.requestId,
-          requestHash,
-          amount: input.amount,
-          appliedAt: input.appliedAt,
-          journalEntryId: journal.id,
         },
-      })
-      await tx.rentNoticePayment.create({
-        data: {
-          rentNoticeId: target.id,
-          amount: input.amount,
-          paidAt: input.appliedAt,
-          source: 'CUSTOMER_CREDIT',
-          customerCreditApplicationId: application.id,
-        },
-      })
-      const paidAmount = target.payments.reduce(
-        (sum, payment) => sum.plus(payment.amount),
-        input.amount,
+      },
+    })
+    if (existing) {
+      if (existing.requestHash !== requestHash)
+        throw new ConflictException('Anropsnyckeln har redan använts med annat innehåll')
+      await this.assertLiveJournal(
+        tx,
+        input.organizationId,
+        `customer-credit-application:${existing.id}`,
       )
-      await tx.rentNotice.update({
-        where: { id: target.id },
-        data: {
-          paidAmount,
-          ...(outstanding.eq(input.amount) ? { status: 'PAID', paidAt: input.appliedAt } : {}),
-        },
-      })
-      return application
-    }, paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS))
+      return existing
+    }
+    const reserved = await tx.rentNoticeSend.findFirst({
+      where: {
+        rentNoticeId: input.rentNoticeId,
+        kind: 'NOTICE',
+        rentNotice: { organizationId: input.organizationId },
+      },
+      select: { id: true },
+    })
+    if (reserved) {
+      throw new ConflictException('Avins betalningsunderlag är redan förberett för utskick')
+    }
+    const policy = await this.policy(tx, input.organizationId)
+    const credit = await tx.customerCredit.findUniqueOrThrow({
+      where: { id: input.creditId },
+      include: {
+        applications: { include: { rentNotice: true } },
+        sourceRentNotice: true,
+        sourceBankTransaction: true,
+        sourcePayment: true,
+        lease: true,
+      },
+    })
+    const target = await tx.rentNotice.findFirst({
+      where: { id: input.rentNoticeId, organizationId: input.organizationId },
+      include: debtInclude,
+    })
+    const latestPeriod = credit.applications.reduce(
+      (period, application) =>
+        Math.max(period, application.rentNotice.year * 12 + application.rentNotice.month),
+      credit.sourceRentNotice.year * 12 + credit.sourceRentNotice.month,
+    )
+    const civil = stockholmCivilDate(input.appliedAt)
+    const appliedDay = new Date(Date.UTC(civil.year, civil.month - 1, civil.day))
+    if (
+      !policy.carryForwardEnabled ||
+      policy.liabilityAccountId !== credit.liabilityAccountId ||
+      policy.bankAccountId !== credit.sourceBankTransaction.bankAccountId ||
+      credit.sourceBankTransaction.status !== 'MATCHED' ||
+      credit.sourceBankTransaction.identityReviewAt ||
+      credit.sourceBankTransaction.autoMatchExcludedAt ||
+      credit.lease.status !== 'ACTIVE' ||
+      credit.lease.tenantId !== credit.tenantId ||
+      credit.lease.organizationId !== input.organizationId ||
+      (credit.lease.endDate && appliedDay > credit.lease.endDate) ||
+      !target ||
+      (credit.lease.endDate &&
+        new Date(Date.UTC(target.year, target.month - 1, 1)) > credit.lease.endDate) ||
+      new Date(Date.UTC(target.year, target.month, 0)) < credit.lease.startDate ||
+      target.type !== 'RENT' ||
+      target.origin !== 'EVENO' ||
+      target.probableLossAt ||
+      target.writtenOffAt ||
+      target.leaseId !== credit.leaseId ||
+      target.tenantId !== credit.tenantId ||
+      target.sentAt ||
+      !['PENDING', 'FAILED'].includes(target.status) ||
+      target.year * 12 + target.month !== latestPeriod + 1 ||
+      input.appliedAt < credit.receivedAt ||
+      input.appliedAt < target.createdAt ||
+      target.payments.some((payment) => payment.paidAt > input.appliedAt) ||
+      target.credits.some((creditNote) => creditNote.creditedAt > input.appliedAt) ||
+      credit.applications.some((application) => application.appliedAt > input.appliedAt)
+    )
+      throw new ConflictException('Tillgodot kan inte användas på denna avi')
+    if (
+      sourceProof(credit.sourceBankTransaction, credit.sourceRentNotice, credit.sourcePayment) !==
+      credit.sourceProofHash
+    ) {
+      throw new ConflictException('Tillgodots källunderlag har ändrats')
+    }
+    await this.assertSourcePayment(tx, input.organizationId, credit.sourcePayment)
+    await this.assertLiveJournal(tx, input.organizationId, `customer-credit-receipt:${credit.id}`)
+    const earlier = await tx.rentNotice.findMany({
+      where: {
+        organizationId: input.organizationId,
+        leaseId: credit.leaseId,
+        type: 'RENT',
+        status: { not: 'CANCELLED' },
+        OR: [{ year: { lt: target.year } }, { year: target.year, month: { lt: target.month } }],
+      },
+      include: debtInclude,
+    })
+    if (
+      earlier.some(
+        (notice) =>
+          debt(notice).gt(0) ||
+          notice.payments.some((payment) => payment.paidAt > input.appliedAt) ||
+          notice.credits.some((creditNote) => creditNote.creditedAt > input.appliedAt),
+      )
+    ) {
+      throw new ConflictException('Tidigare skuld måste utredas före tillgodo på nästa avi')
+    }
+    const available = credit.applications.reduce(
+      (sum, application) => sum.minus(application.amount),
+      credit.amount,
+    )
+    const outstanding = debt(target)
+    if (input.amount.gt(available) || input.amount.gt(outstanding)) {
+      throw new ConflictException('Beloppet överstiger tillgängligt tillgodo eller avins skuld')
+    }
+    if (!input.amount.eq(Prisma.Decimal.min(available, outstanding))) {
+      throw new ConflictException('Använd hela det tillgodo som ryms på avin')
+    }
+    const id = randomUUID()
+    const journal = await this.accounting.createJournalEntryForCustomerCreditApplication(
+      {
+        organizationId: input.organizationId,
+        eventId: id,
+        rentNoticeId: target.id,
+        amount: input.amount,
+        liabilityAccountId: credit.liabilityAccountId,
+        date: input.appliedAt,
+      },
+      tx,
+    )
+    const application = await tx.customerCreditApplication.create({
+      data: {
+        id,
+        organizationId: input.organizationId,
+        creditId: credit.id,
+        rentNoticeId: target.id,
+        requestId: input.requestId,
+        requestHash,
+        amount: input.amount,
+        appliedAt: input.appliedAt,
+        journalEntryId: journal.id,
+      },
+    })
+    await tx.rentNoticePayment.create({
+      data: {
+        rentNoticeId: target.id,
+        amount: input.amount,
+        paidAt: input.appliedAt,
+        source: 'CUSTOMER_CREDIT',
+        customerCreditApplicationId: application.id,
+      },
+    })
+    const paidAmount = target.payments.reduce(
+      (sum, payment) => sum.plus(payment.amount),
+      input.amount,
+    )
+    await tx.rentNotice.update({
+      where: { id: target.id },
+      data: {
+        paidAmount,
+        ...(outstanding.eq(input.amount) ? { status: 'PAID', paidAt: input.appliedAt } : {}),
+      },
+    })
+    return application
   }
 }

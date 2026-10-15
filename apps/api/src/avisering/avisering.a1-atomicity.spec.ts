@@ -11,7 +11,7 @@
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
-import { AviseringService } from './avisering.service'
+import { aviseringUtanAutomatisktTillgodo } from './customer-credit.test-double'
 
 let __seq = 0
 
@@ -57,7 +57,7 @@ function makeRig(leases: unknown[]) {
   }
   const accounting = { createJournalEntryForRentNotice: jest.fn().mockResolvedValue({ id: 'je' }) }
   const noop = {}
-  const service = new AviseringService(
+  const service = aviseringUtanAutomatisktTillgodo(
     prisma as never,
     { assignOcrToTenant: jest.fn().mockResolvedValue('1234567890') } as never,
     noop as never, // mail

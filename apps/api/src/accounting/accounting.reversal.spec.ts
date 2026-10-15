@@ -45,6 +45,8 @@ function makeService(opts: { existing?: unknown } = {}) {
       return Promise.resolve(opts.existing ?? null)
     })
   const prisma = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'rn-1' }]),
+    customerCredit: { findFirst: jest.fn().mockResolvedValue(null) },
     journalEntry: {
       findFirst,
       create: jest.fn().mockImplementation((arg: Created) => {

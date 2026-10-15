@@ -1,4 +1,4 @@
-# Kundtillgodo – produktkärna och bankmottagning
+# Kundtillgodo – mottagning, automatisk användning och beständigt aviutskick
 
 Arbetet utgår från `main` på `9c17daec`, i grenen
 `codex/agent2-kundtillgodo`. Tjänsten är registrerad i bankimportens modul,
@@ -6,11 +6,14 @@ bakom en organisationspolicy som är **avstängd som standard**. Ingen policy
 aktiveras av migrationerna och inget nytt aktiverings-API införs. Historiska
 bankallokeringar ändras inte.
 
-Den här etappen innehåller datamodell, transaktionell mottagning och användning
-av tillgodo, bokföringsmetoder, presentation på avin och en snäv bankimportväg
-för mottagning. Automatisk användning på nästa avi är ännu inte inkopplad.
-Etappen innehåller inga
-nya matchningsprocent och ingen ny körning av 2 000 betalningar. Experimentet i
+Den här etappen innehåller datamodell, transaktionell bankmottagning och
+automatisk användning av tillgodo vid nästa ordinarie avisering. Användningen
+och avins fastställda innehåll sparas i samma databastransaktion. PDF, mejlkö
+och leverantörskvitto hanteras därefter med ett beständigt utskicksunderlag
+och återhämtning. **Kopplingen är byggd men fortfarande avstängd i kunddata.**
+
+Etappen innehåller inga nya matchningsprocent och ingen ny körning av 2 000
+betalningar. Experimentet i
 [#869](https://github.com/yasineken2002-sys/eken/pull/869) är separat evidens från
 syntetiska data och en tidigare prototyp; det bevisar inte denna integration.
 
@@ -36,11 +39,6 @@ syntetiska data och en tidigare prototyp; det bevisar inte denna integration.
   befintliga hantering av historiska bankbetalningar och manuella betalningar
   ändras inte. `rentNoticePayableTotal` ändras inte globalt.
 
-En defensiv återläsning stoppar utskicket om tillgodosumman ändrats under
-PDF-renderingen; befintlig retry renderar då om. Den är **inte en atomisk
-utskicksreservation**. Intervallet mellan återläsning och mejlkö måste stängas
-innan automatisk användning vid avisering.
-
 Mottagning och användning ingår även i hyresgästens befintliga historik,
 med ursprunglig tidpunkt, belopp, aktörsslag och pekare till respektive
 oföränderlig rad. Både organisation och hyresgäst avgränsar läsningen.
@@ -49,6 +47,136 @@ Kundtillgodo ingår i den befintliga spärren mot hårdradering av en hyresgäst
 beskedet hänvisar till avidentifiering. Dev-verktygets uttryckliga helradering
 har uppdaterad FK-ordning för de nya tabellerna. Det ändrar inte produktens
 bevarandepolicy och verktyget har inte körts för att radera tillgodounderlaget.
+
+## Automatisk användning och fastställt aviunderlag
+
+`prepareNoticeForSend` återanvänder först en befintlig reservation. Det gäller
+även om avin nu är `PAID` eller policyn har stängts av: ett tidigare bokfört
+avdrag får inte försvinna eller göras en gång till. Utan reservation och utan
+aktiv policy används det befintliga aviflödet. Depositioner och historiska
+öppningsavier omfattas inte av den nya automatiska tillgodoanvändningen.
+
+Ett automatiskt tillgodoavdrag kräver en ännu oskickad ordinarie `EVENO`-hyresavi
+före förfallodagen. Utan tillgängligt tillgodo får en oförändrad avi även
+fastställas efter förfall, med 0 kr avdrag och hela beloppet. Den får inte
+redan ha betalningar, kreditnotor,
+påminnelseavgift, upplupen ränta, inkassosteg eller kundförlust. Saknas säkra
+förutsättningar avbryts förberedelsen; den faller inte vidare till ett
+betalningsmejl med ett gissat belopp. Befintliga krav på färska bankdata,
+känd aktör, period, källbevis och hantering av äldre skuld gäller fortsatt.
+
+Efter färskhetsgrinden låses avtalet, alla berörda bankrader, alla berörda
+avier och tillgodoposter i bestämd ordning. Saldo läses om under lås.
+Tillgodo från tidigare perioder används i ordningen mottagningstid och id,
+aldrig mer än avins skuld. Alla avdrag, betalningsallokeringar, verifikat och
+en `RentNoticeSend` skrivs i **samma transaktion**, med samma tillämpningstid.
+Underlagets schema, mottagarhash och båda beloppen måste stämma innan commit.
+Ett fel i underlaget rullar också tillbaka ekonomin och verifikationsnumren.
+Inget PDF-, Redis- eller mejlanrop görs inne i den transaktionen.
+
+Även en godkänd avi med **0 kr tillgodo** får en reservation när policyn är
+aktiv. Annars skulle ett äldre jobb kunna skicka fullbeloppet samtidigt som
+ett annat jobb räknar av ett nytillkommet tillgodo. Reservationsnyckeln är
+unik per avi. Originalets HTML, mottagare, betalningsbelopp och använt tillgodo
+är därefter oföränderliga, även genom direkta databasuppdateringar. Nya
+tillgodoavdrag på samma avi avvisas. Senare betalningar påverkar saldot men
+skriver inte om det redan fastställda originalet. Mejlet förklarar detta och
+hänvisar till aktuellt saldo i portalen: ett fastställt belopp på 975 kr kan
+exempelvis ha 475 kr kvar efter en senare delbetalning på 500 kr.
+
+Ett äldre mejljobb tar också ett utskicksanspråk under **samma avilås** precis
+före leverantörsanropet. Har den gamla vägen redan tagit anspråket får den
+nya vägen inte boka tillgodo. Har den nya reservationen hunnit först får det
+gamla jobbet inte skicka sitt gamla belopp. Samma äldre jobb kan återförsöka
+sitt eget anspråk; ett annat jobb får inte ta över ett okänt utfall.
+
+## PDF, mejl och återhämtning
+
+PDF renderas från den sparade HTML-versionen efter commit. Färdig mejl-HTML,
+text, avsändare, mottagare och PDF-byte sparas tillsammans som `mailPayload`
+före första mejlköningen. Om två renderare konkurrerar får bara en payload
+sparas; båda läser och använder vinnaren. Omförsök skickar samma sparade byte
+med samma leverantörsnyckel. Ett PDF-fel lämnar reservationen kvar så att
+renderingen kan göras om utan ett nytt avdrag. Nedladdning använder den
+sparade PDF:en när den finns, annars det fastställda HTML-underlaget.
+
+När tillgodot täcker hela avin är avin fortsatt `PAID`, men informationsmejlet
+ska ändå skickas. Underlaget visar **0 kr att betala** och att tillgodot
+reglerat avin. Betalkupong, OCR-betalningsuppmaning och dröjsmålsvarning
+utelämnas. Att vara `PAID` är alltså inte samma sak som att informationen
+har skickats. En avi som i stället hunnit betalas på annat sätt får inget nytt
+betalningsmejl från denna reservation.
+
+`queuedAt` betyder att ett mejljobb köats. `dispatchStartedAt` betyder att
+ett leverantörsförsök påbörjats. Först ett sparat leverantörs-id ger
+`acceptedAt` och `sentAt`; en helt kreditbetald avi behåller status `PAID`.
+**Leverantörens acceptans är inte bevis på leverans till hyresgästens inkorg.**
+Leverans och studs hör fortsatt till leverantörens separata händelser.
+Kvittensfel återförsöks med samma sparade innehåll och nyckel; ett redan sparat
+identiskt kvitto blir en tom omkörning, medan två olika kvitton avvisas.
+
+Resend dokumenterar ett **24-timmarsfönster** för idempotensnycklar. Vår
+konsument stoppar därför nya försök när ett påbörjat men okvitterat utskick
+är minst **23 timmar** gammalt. Den timmens marginal är ett lokalt
+säkerhetsval. Ett sådant utfall kräver kontroll av leverantörskvittot; systemet
+byter inte nyckel och chansar med ett nytt mejl. Se
+[Resends dokumentation om idempotensnycklar](https://resend.com/docs/dashboard/emails/idempotency-keys),
+kontrollerad 2026-10-15. Flödet ger ingen obegränsad garanti om exakt en extern
+leverans: databasen och mejlleverantören delar ingen transaktion.
+
+`NoticeDispatchRecoveryScheduler` söker **var femtonde minut** efter
+reservationer utan leverantörskvitto, tidigast femton minuter efter
+förberedelsen. Varje pass tar högst **100** rader. Ett atomiskt anspråk på
+`recoveryAttempts` och förfallen `recoveryAfter` bestämmer vilken process som
+får köa. Anspråket sparas före Redis-anropet, med nästa försök tidigast efter
+**1 timme, 4 timmar och därefter 24 timmar**. Därmed försvinner inte en
+reservation om processen dör mellan databasen och kön, och ett permanent fel
+tar inte samma första hundra platser varje kvart.
+
+Återhämtningen köar ett nytt PDF-jobb som läser samma reservation; den skapar
+inget nytt tillgodo. Även helt kreditbetalda informationsavier omfattas.
+Organisationens status, mejlspärr, anonymisering och avistatus kontrolleras
+igen. Organisationsstatus kontrolleras också i den ekonomiska transaktionen;
+mejlspärren återläses efter konsumentens avilås, så en gammal förkontroll
+inte ensam kan godkänna ett utskick. Upprepade fel rapporteras via cron-felhanteringen. Ett gammalt eller
+numera spärrat leverantörsförsök med okänt utfall ger ett larm och **inget nytt
+utskick**; kontrollen återkommer med dygnspaus. Ett fullt batchurval loggas så
+att kvarvarande kö inte misstolkas som färdigbehandlad. Schema och återhämtning
+aktiverar ingen kundpolicy.
+
+## Skydd vid senare ändringar och personuppgifter
+
+- **Kreditnota:** en ny kreditnota avvisas under avilås medan den fastställda
+  reservationen saknar leverantörskvitto. Det skyddar även en reservation
+  med 0 kr tillgodo, som annars saknar betalningsrader att upptäcka.
+- **Förbrukning och extra avgifter:** nya sådana rader får inte läggas på en
+  avi som redan har ett fastställt underlag. De måste hanteras genom en
+  annan korrekt debitering, inte genom att ändra originalets betalningsbelopp.
+- **Annullering och verifikaträttelse:** kontrollen av betalningar och
+  tillgodokopplingar görs under det gemensamma avilåset, respektive banklåset
+  för källbetalningen. En samtidig tillgodoanvändning får inte döljas av en
+  gammal förläsning. Osammanhängande annullering eller rättelse av tillgodots
+  käll-/användningsverifikat avvisas.
+- **Ränta:** kundtillgodo behandlas som betalning på dess faktiska
+  tillämpningsdag. Ränteperioden delas vid den dagen så att avdraget varken
+  ignoreras för senare dagar eller sänker kapitalet retroaktivt. Övriga
+  betalningskällors räntepolicy ändras inte här.
+
+Det sparade originalet innehåller personuppgifter, bland annat namn, adress
+och betalningsinstruktion. Det bevaras med räkenskapsunderlaget enligt
+projektets befintliga avidentifieringspolicy. Oföränderligheten innebär inte
+att den historiska mejladressen får användas igen: förberedelse, producent,
+konsument och återhämtning kontrollerar avidentifiering före nya utskick.
+Ett redan påbörjat externt anrop kan inte återkallas genom en senare lokal
+statusändring; ett okänt utfall behöver då följas upp.
+
+Hyresgästens GDPR-export omfattar nu den egna avins sparade HTML-original,
+historisk mottagare, belopp och förberedelse-/kö-/acceptanstider. Urvalet går
+via just den hyresgästens avier och en uttrycklig fältlista. Interna jobb-id:n,
+leverantörsnycklar och hela mejlpayloaden exporteras inte. Exportfältet heter
+`providerAcceptedAt`, inte levererad. Befintliga generella GDPR-inventarier
+täcker inte alla personuppgifter i JSON-kolumner; därför finns särskilda prov
+för denna export och spärren efter avidentifiering.
 
 ## Bankimportens mottagning
 
@@ -87,33 +215,70 @@ den aktörskontext som krävs för denna mottagning.
 
 ## Kvar före aktivering och komplett kundflöde
 
-1. En atomisk utskicksreservation måste samordna tillgodo, rendering, mejlkö
-   och avins status. Helt täckta avier behöver ett uttryckligt dokument- och
-   leveransflöde; att sätta `PAID` är inte ett bevis på att hyresgästen fått
-   information.
-2. Annulleringsrace och avmatchning behöver en sammanhängande rättelse av
-   bankallokering, tillgodoreskontra och verifikat. Främmande nycklar och
-   rättelsespärrar hindrar vissa osammanhängande ingrepp, men ersätter inte
-   denna kundväg.
-3. Återbetalning saknar en riktig bankbevisport och en komplett domänlivscykel
+1. Avmatchning och andra rättelser behöver en sammanhängande kundväg för
+   bankallokering, tillgodoreskontra, aviunderlag och verifikat. Lås och
+   rättelsespärrar stoppar osammanhängande ingrepp; de ersätter inte ett
+   genomfört rättelseflöde.
+2. Återbetalning saknar en riktig bankbevisport och en komplett domänlivscykel
    med reservation, bekräftelse och avvisad utbetalning. En bokföringsmetod
    eller ett manuellt besked är inte bevis på att pengar har betalats ut.
-4. Revisor behöver uttryckligen välja skuldkontot och bekräfta kopplingen
+3. Revisor behöver uttryckligen välja skuldkontot och bekräfta kopplingen
    mellan bankkontot och bokföringens `1930`. Testkonton är inga godkända
    standardval och depositionskontot används inte som automatisk ersättning.
-5. Fortnox-stödet för de nya `customer-credit-*`-källorna och deras
+4. Fortnox-stödet för de nya `customer-credit-*`-källorna och deras
    kontomappning återstår. Ett lokalt balanserat verifikat bevisar inte att
    exporten stöder källan.
-6. PSD2 behöver verifierad kontokoppling och aktörskontext. En referensväg
+5. PSD2 behöver verifierad kontokoppling och aktörskontext. En referensväg
    som bara täcker uttryckliga AVI-nummer bevisar inte målet för alla bankformat.
-7. Hela CI och Claudes granskning krävs före merge. Detta är ett utkast och
-   aktiverar inte automatisk tillgodo eller ett komplett kundflöde.
+6. Första reservationen på en redan delbetald/krediterad avi eller en avi
+   med ränta/kravsteg är inte stödd med aktiv carry-policy. Finns tillgängligt
+   tillgodo på en redan förfallen avi stoppas också förberedelsen. Detta måste
+   hanteras innan bred aktivering; nollsaldoundantaget gäller bara helt
+   oförändrade avier.
+7. Hela CI på den nya committen och Claudes granskning krävs före merge.
+   Produktionsaktivering är ett separat beslut efter verifierad kontokoppling
+   och genomgång av återhämtningens larm. Detta är fortfarande ett utkast med
+   avstängd policy, inte ett aktiverat komplett kundflöde.
 
 ## Avgränsad verifiering
 
 Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
 
-Bankimportuppföljningen:
+Den nya fasen med automatisk användning och beständigt utskick:
+
+- **402/402 prov i 21 riktade sviter**, körda seriellt i tre grupper: 94
+  utskicks-/återhämtningsprov (sex sviter), 161 ekonomiska regressionsprov
+  (sex sviter) och 147 bank-/tillgodo-/portal-/inventarieprov (nio sviter).
+  De 94 omfattar 22 verkliga DB-kärnprov, 19 prov genom tjänstekedjan,
+  28 recoveryprov och 25 kö-/legacy-/kvittensprov. Det är kodprov, inte en
+  uppmätt kundvolym eller matchningsprocent. De sista körningarna avslutades
+  2026-10-16 svensk tid.
+- DB och bokföring är verkliga och isolerade; PDF-renderaren, Redis och
+  mejlleverantören är kontrollerade testdubblar. React-mejlmallen renderas
+  med ReactDOMServer i stället för paketets dynamiska ESM-adapter. Inga
+  riktiga mejl skickas, inga bank-/modell-/produktionsanrop görs.
+- Två samtidiga riktiga DB-transaktioner prövar äldre utskicksanspråk mot
+  ny reservation: exakt en väg vinner. Andra prov täcker PDF-/köfel,
+  provideraccept följd av timeout/DB-fel, konkurrerande PDF-byte, PAID0,
+  senare delbetalning, anonymisering och ändrad organisationsstatus/mejlspärr.
+- Objektscope-inventariet blev först rött för nya skrivningar. Diffen är
+  granskad och registrerad: reservationer skapas från en org-scopad avi;
+  payload/kvittens skrivs via `rentNotice.organizationId`; recovery tar
+  redan funna beständiga rad-id:n med CAS och omprövad utskicksspärr.
+  Inventariet ser också två rent syntetiska fixture-skrivningar. Inga
+  skyddsundantag eller testassertioner har tagits bort för att få grönt.
+- **16/16 relevanta vakter** är gröna, inklusive 35 klassade cron-jobb och
+  deras varaktiga felsänka. ESLint på 55 ändrade TS-filer samt uppföljning
+  på slutändringarna är grön. Full typecheck/hela sviten mäts av CI på den
+  nya committen; tidigare grönt CI ersätter inte den mätningen.
+- Råa utfall ligger under `docs/eval/customer-credit-foundation/dispatch-*.txt`.
+- Tre nya additiva migrationer inför utskicksreservationen, spärren mot ett
+  tidigare utskicksanspråk och recoveryprogress. Inga tidigare migrationer
+  skrivs om. Dokumentets oföränderliga fält och kvittenser skyddas i databasen;
+  recoveryfält får ändras, men negativa försök och recovery på legacyrader
+  avvisas. Schema-drift ska mätas mot separat tom shadowdatabas.
+
+Bankimportuppföljningen före denna fas:
 
 - **117/117 prov i sex riktade sviter**: 26 bankimportprov (25 affärsfall och
   miljöförutsättning), 27 referensprov, 34 befintliga tillgodoprov och 30
@@ -136,6 +301,10 @@ Bankimportuppföljningen:
   DB-regressioner nådde heapgränsen 1536 MB före testresultat. Dessa är inte
   godkända lokalt. Full typecheck, HTTP-/G2-samtidighet och de tyngre äldre
   regressionssviterna lämnas till CI på den nya committen.
+- Den följande CI-körningen på **`ab52a440` är helt grön, 65 jobb**:
+  [körning 38790046379](https://github.com/yasineken2002-sys/eken/actions/runs/38790046379).
+  Det verifierar bankimportfasen före det nya utskicksflödet. Resultatet
+  ersätter inte CI på de nu tillagda ändringarna.
 
 Tidigare kärnverifiering, före bankkopplingen:
 
@@ -185,9 +354,9 @@ Tidigare kärnverifiering, före bankkopplingen:
 `actor-guard-selftest.txt` innehåller självtesterna för den rättade aktörsvakten.
 `ci-integration-regression.txt` innehåller de 56 uppföljande regressionsproven.
 `bank-import-tests.txt` och `bank-import-legacy-tests.txt` innehåller de 117
-senaste riktade proven; `bank-import-guards.txt` och
+riktade proven från bankimportfasen; `bank-import-guards.txt` och
 `partial-match-guard-selftest.txt` visar vakterna för bankkopplingen.
-Inga modell-, bank- eller produktionsanrop har gjorts.
+Inga riktiga mejl-, modell-, bank- eller produktionsanrop har gjorts.
 
 Kör från repositoryts rot. Maskinen delas med andra arbeten och har två
 kärnor. Före varje Jest- eller typecheck-körning:
@@ -239,7 +408,9 @@ databasmiljö:
   pnpm --filter @eken/api exec prisma migrate deploy --schema prisma/schema.prisma
   pnpm --filter @eken/api exec jest --runInBand --runTestsByPath \
     src/customer-credit/customer-credit.db.spec.ts \
-    src/reconciliation/customer-credit-bank-import.db.spec.ts
+    src/reconciliation/customer-credit-bank-import.db.spec.ts \
+    src/customer-credit/customer-credit-dispatch.db.spec.ts \
+    src/avisering/customer-credit-send.db.spec.ts
 )
 ```
 

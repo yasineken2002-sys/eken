@@ -720,6 +720,20 @@ export class ConsumptionService {
 
     let consumptionTotal = 0
     await this.prisma.$transaction(async (tx) => {
+      // Samma avilås som fastställandet av utskicket, före charge-claim och
+      // radskapande. En redan reserverad avi har ett oföränderligt underlag.
+      await tx.$queryRaw`SELECT id FROM "RentNotice" WHERE id = ${params.rentNoticeId} AND "organizationId" = ${params.organizationId} FOR UPDATE`
+      const dispatch = await tx.rentNoticeSend.findFirst({
+        where: {
+          rentNoticeId: params.rentNoticeId,
+          rentNotice: { organizationId: params.organizationId },
+          dispatchKey: { not: null },
+        },
+        select: { id: true },
+      })
+      if (dispatch) {
+        throw new ConflictException('Avin är fastställd för utskick och kan inte få nya avgifter')
+      }
       for (const charge of charges) {
         // Atomiskt anspråk CONFIRMED → ATTACHED (race-säkert): bara den som
         // vinner får skapa raden. @unique(consumptionChargeId) är backstop.

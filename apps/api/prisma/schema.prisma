@@ -5605,11 +5605,34 @@ model RentNoticeSend {
   /// och gränssnittet säger det i stället för att gissa.
   toHash String?
 
+  /// Förberett aviutskick med automatiskt tillgodo. Null på äldre utskick och
+  /// påminnelser. Nyckeln och dokumentets ekonomiska innehåll fryses i samma
+  /// transaktion som tillgodot används; omförsök återanvänder denna rad.
+  dispatchKey          String?   @unique
+  snapshotVersion      Int?
+  snapshot             Json?
+  customerCreditAmount Decimal?  @db.Decimal(10, 2)
+  payableAmount        Decimal?  @db.Decimal(10, 2)
+  preparedAt           DateTime?
+
+  /// Utgående mejl blir skrivbart en gång efter PDF-rendering. Tidpunkterna
+  /// får därefter bara sättas en gång, aldrig nollas eller flyttas vid retry.
+  mailPayload       Json?
+  queuedAt          DateTime?
+  dispatchStartedAt DateTime?
+  acceptedAt        DateTime?
+
+  /// Beständig återhämtning av förberedda utskick. Dessa fält beskriver
+  /// omförsöken och får ändras utan att dokumentet eller beloppen ändras.
+  recoveryAfter    DateTime?
+  recoveryAttempts Int       @default(0)
+
   createdAt DateTime @default(now())
 
   rentNotice RentNotice @relation(fields: [rentNoticeId], references: [id], onDelete: Cascade)
 
   @@index([rentNoticeId, createdAt])
+  @@index([acceptedAt, recoveryAfter, preparedAt])
 }
 
 // Append-only krav-/leveranslogg för en hyresavi. Speglar InvoiceEvent: ingen
