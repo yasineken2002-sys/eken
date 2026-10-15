@@ -39,10 +39,23 @@ function makeService(opts: { depositStatus?: string | null; noticeStatus?: strin
   }
 
   const tx = {
-    // Deposit-radlåset. Returnerar en rad → #301-grenen aktiveras.
-    $queryRaw: jest.fn((..._a: unknown[]) => {
-      ordning.push('lås-deposition')
-      return Promise.resolve(opts.depositStatus === null ? [] : [{ id: DEPOSIT_ID }])
+    // Skilj låsen åt: båda måste tas, i ordningen Deposit → RentNotice.
+    // En konstant attrapp skulle felaktigt märka även avilåset som deposition.
+    $queryRaw: jest.fn((query: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = query.join('?')
+      expect(values).toEqual([NOTICE_ID, 'org-1'])
+      expect(sql).toMatch(/FOR UPDATE/)
+      if (sql.includes('FROM "Deposit"')) {
+        expect(sql).toMatch(/WHERE "rentNoticeId" = \? AND "organizationId" = \?/)
+        ordning.push('lås-deposition')
+        return Promise.resolve(opts.depositStatus === null ? [] : [{ id: DEPOSIT_ID }])
+      }
+      if (sql.includes('FROM "RentNotice"')) {
+        expect(sql).toMatch(/WHERE id = \? AND "organizationId" = \?/)
+        ordning.push('lås-avi')
+        return Promise.resolve([{ id: NOTICE_ID }])
+      }
+      throw new Error(`Oväntad låsfråga: ${sql}`)
     }),
     rentNotice: {
       updateMany: jest.fn((..._a: unknown[]) => {
@@ -141,9 +154,8 @@ describe('#301 — cancelNotice reverserar depositionsavins accrual', () => {
 
     await service.cancelNotice(NOTICE_ID, 'org-1', 'user-1')
 
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1)
-    expect(ordning[0]).toBe('lås-deposition')
-    expect(ordning.indexOf('lås-deposition')).toBeLessThan(ordning.indexOf('annullera-avi'))
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2)
+    expect(ordning.slice(0, 3)).toEqual(['lås-deposition', 'lås-avi', 'annullera-avi'])
     expect(ordning.indexOf('lås-deposition')).toBeLessThan(ordning.indexOf('läs-deposition'))
     // Reverseringen sker EFTER att avin annullerats, i samma transaktion.
     expect(ordning.indexOf('annullera-avi')).toBeLessThan(ordning.indexOf('reversera-deposition'))

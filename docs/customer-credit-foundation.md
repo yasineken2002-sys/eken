@@ -246,16 +246,18 @@ Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
 
 Den nya fasen med automatisk användning och beständigt utskick:
 
-- **404/404 prov i 21 riktade sviter**, körda seriellt i tre grupper: 96
+- **409/409 prov i 22 riktade sviter**, körda seriellt: 96
   utskicks-/återhämtningsprov (sex sviter), 161 ekonomiska regressionsprov
-  (sex sviter) och 147 bank-/tillgodo-/portal-/inventarieprov (nio sviter).
+  (sex sviter), 147 bank-/tillgodo-/portal-/inventarieprov (nio sviter)
+  och fem depositionsannulleringsprov (en svit) efter CI:s låsordningsfynd.
   De 96 omfattar 22 verkliga DB-kärnprov, 19 prov genom tjänstekedjan,
   28 recoveryprov, 25 kö-/legacy-/kvittensprov och två obligatoriska
   miljöförutsättningar. Det är kodprov, inte en
   uppmätt kundvolym eller matchningsprocent. De sista körningarna avslutades
   2026-10-16 svensk tid.
-- DB och bokföring är verkliga och isolerade; PDF-renderaren, Redis och
-  mejlleverantören är kontrollerade testdubblar. React-mejlmallen renderas
+- I DB- och tjänstekedjeproven är databasen och bokföringen verkliga och
+  isolerade; övriga enhetsprov använder testdubblar. PDF-renderaren, Redis
+  och mejlleverantören är kontrollerade testdubblar. React-mejlmallen renderas
   med ReactDOMServer i stället för paketets dynamiska ESM-adapter. Inga
   riktiga mejl skickas, inga bank-/modell-/produktionsanrop görs.
 - Två samtidiga riktiga DB-transaktioner prövar äldre utskicksanspråk mot
@@ -273,6 +275,14 @@ Den nya fasen med automatisk användning och beständigt utskick:
   på slutändringarna är grön. Full typecheck/hela sviten mäts av CI på den
   nya committen; tidigare grönt CI ersätter inte den mätningen.
 - Råa utfall ligger under `docs/eval/customer-credit-foundation/dispatch-*.txt`.
+- CI på `fd728297` gav 591/592 API-sviter och 8 595/8 596 prov gröna.
+  Det enda provfelet var den äldre depositionsfixturens antagande om ett
+  enda SQL-lås. Produktionen tar nu Deposit följt av RentNotice före
+  annullering. Provet skiljer därför tabellerna åt och kräver båda låsen i
+  rätt ordning, med rätt id/organisation och `FOR UPDATE`. Alla tidigare
+  kontroller av reversering och transaktion är kvar. De fem proven är
+  lokalt gröna; ingen produktionskod ändrades i denna uppföljning. Hela CI
+  måste fortfarande pröva den nya committen.
 - CI på `41748a38` upptäckte en saknad ovillkorlig DB-förutsättningskontroll.
   Båda nya DB-sviter prövar nu uttryckligen miljön även om DB-blocket skulle
   hoppas över. Ingen skip-vakt eller baslinje har lättats.
