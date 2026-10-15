@@ -27,3 +27,4 @@
    "fortnox_customer_activation_one_active" intakt (UNIQUE ON FortnoxCustomerActivation(organizationId) WHERE status='ACTIVE').
 
 ✅ Alla 9 kritiska index intakta i migrations-sluttillståndet.
+✅ Alla relationer hanterade i tre dimensioner — Tenant: 25 relationer (17 registrerade, 8 kvitterade) · Unit: 10 relationer (8 registrerade, 2 kvitterade) · Property: 10 relationer (7 registrerade, 3 kvitterade).

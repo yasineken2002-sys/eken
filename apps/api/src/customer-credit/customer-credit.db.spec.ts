@@ -21,6 +21,7 @@ import { computeRentDebt } from '../avisering/rent-debt.service'
 import { runWithActor } from '../common/actor/actor.context'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { HistoryService } from '../history/history.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { CustomerCreditService } from './customer-credit.service'
 
@@ -439,6 +440,54 @@ medDb('kundtillgodo med verklig Postgres och bokföring', () => {
     ).toBe(975)
     expect(target.status).toBe('PENDING')
     expect(target.sentAt).toBeNull()
+  })
+
+  it('hyresgästens verkliga historik visar mottagande och användning med rätt källa och aktör', async () => {
+    const f = await fixture(prisma)
+    const credit = await receive(prisma, f)
+    const applied = await runWithActor('SYSTEM', () =>
+      services(prisma).credit.applyToNextNotice(application(f, credit)),
+    )
+    const history = new HistoryService(prisma)
+    const events = await history.forTenant(f.organizationId, f.tenantId, 'OWNER')
+    const creditTables = ['CustomerCredit', 'CustomerCreditApplication']
+    const creditEvents = events.filter((event) => creditTables.includes(event.source.table))
+    expect(creditEvents).toHaveLength(2)
+    expect(creditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'CUSTOMER_CREDIT_RECEIVED',
+          at: RECEIVED_AT,
+          amount: 25,
+          actor: { kind: 'SYSTEM', id: null, label: null },
+          source: { table: 'CustomerCredit', id: credit.id },
+          subject: { kind: 'RENT_NOTICE', id: f.source.id, label: f.source.noticeNumber },
+        }),
+        expect.objectContaining({
+          type: 'CUSTOMER_CREDIT_APPLIED',
+          at: APPLIED_AT,
+          amount: 25,
+          actor: { kind: 'SYSTEM', id: null, label: null },
+          source: { table: 'CustomerCreditApplication', id: applied.id },
+          subject: { kind: 'RENT_NOTICE', id: f.target.id, label: f.target.noticeNumber },
+        }),
+      ]),
+    )
+    const neighbor = await runWithActor('SYSTEM', () =>
+      prisma.tenant.create({
+        data: {
+          organizationId: f.organizationId,
+          type: 'INDIVIDUAL',
+          firstName: 'Annan syntetisk',
+          lastName: 'Hyresgäst',
+          email: `${randomUUID()}@example.invalid`,
+        },
+      }),
+    )
+    const neighborHistory = await history.forTenant(f.organizationId, neighbor.id, 'OWNER')
+    expect(neighborHistory.filter((event) => creditTables.includes(event.source.table))).toEqual([])
+    const other = await fixture(prisma)
+    await expect(history.forTenant(other.organizationId, f.tenantId, 'OWNER')).rejects.toThrow()
   })
 
   it('mottagningsreplay återanvänder tillgodo och verifikat utan ny effekt', async () => {

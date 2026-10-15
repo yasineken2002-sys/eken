@@ -1,0 +1,37 @@
+PASS src/history/tenant-history.db.spec.ts (5.308 s)
+  ● Console
+
+    console.warn
+      [historik] förväntat=19 faktiskt=19 per källa={"lease":4,"key-handover":3,"maintenance-ticket":3,"deposit":2,"ai-tool-execution":1,"ai-assignment":0,"invoice-event":0,"rent-notice-event":0,"customer-credit":0,"inspection":2,"termination-request":2,"document":1,"document-signed":0,"sent-message":1,"consumption-charge":0,"misc-charge":0,"anonymization":0}
+
+      429 |     const historik = await service.forTenant(orgId, tenantId, 'OWNER')
+      430 |
+    > 431 |     console.warn(
+          |             ^
+      432 |       `[historik] förväntat=${facit.total} faktiskt=${historik.length} ` +
+      433 |         `per källa=${JSON.stringify(facit.per)}`,
+      434 |     )
+
+      at Object.<anonymous> (history/tenant-history.db.spec.ts:431:13)
+
+    console.warn
+      [historik] OWNER=19 VIEWER=18 (AI: 1 vs 0)
+
+      501 |     const aiHosViewer = somViewer.filter((e) => e.source.table === 'AiToolExecution').length
+      502 |
+    > 503 |     console.warn(
+          |             ^
+      504 |       `[historik] OWNER=${somOwner.length} VIEWER=${somViewer.length} (AI: ${aiHosOwner} vs ${aiHosViewer})`,
+      505 |     )
+      506 |
+
+      at Object.<anonymous> (history/tenant-history.db.spec.ts:503:13)
+
+PASS src/history/customer-credit-history.spec.ts
+PASS src/customer-credit/customer-credit.db.spec.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       51 passed, 51 total
+Snapshots:   0 total
+Time:        8.344 s
+Ran all test suites within paths "src/customer-credit/customer-credit.db.spec.ts", "src/history/customer-credit-history.spec.ts", "src/history/tenant-history.db.spec.ts".

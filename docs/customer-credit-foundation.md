@@ -39,6 +39,10 @@ PDF-renderingen; befintlig retry renderar då om. Den är **inte en atomisk
 utskicksreservation**. Intervallet mellan återläsning och mejlkö måste stängas
 innan automatisk integration.
 
+Mottagning och användning ingår även i hyresgästens befintliga historik,
+med ursprunglig tidpunkt, belopp, aktörsslag och pekare till respektive
+oföränderlig rad. Både organisation och hyresgäst avgränsar läsningen.
+
 ## Kvar före produktionskoppling
 
 1. Ett uttryckligt uppdrag som tillåter ändringar i `reconciliation` krävs.
@@ -73,21 +77,27 @@ innan automatisk integration.
 Mätt lokalt 2026-10-15, Node 24.19.0 / Prisma 5.22.0 / PostgreSQL 16.15:
 
 - 8 riktade bokförings-/aviseringssviter: **116/116 prov**, grönt.
-- Verklig PostgreSQL, 1 svit: **33/33 prov**, grönt. Inkluderar två
+- Tillgodo och historik, 3 sviter: **51/51 prov**, grönt. Där ingår 34
+  tillgodoprov mot verklig PostgreSQL, 7 historikenhetsprov och 10 befintliga
+  historikprov mot PostgreSQL. Inkluderar två
   samtidiga transaktioner, omkörning, felaktigt källunderlag, direkt försök att
   kringgå tjänstens saldokontroll, periodlås och kronologiska gränsfall.
-- Totalt **149 godkända prov**, inte 149 oberoende kundbetalningar och inte
+- Totalt **167 godkända prov**, inte 167 oberoende kundbetalningar och inte
   ett mått på automatisk matchningsträffsäkerhet.
 - 202 migrationer applicerade på separat syntetisk lokal databas. Schema
   validerat och egen Prisma-klient genererad; inga andra arbetskopior berörda.
 - Kontrakts-, DTO-placerings-, koercions-, append-only-, aktörs- och kritiska
-  indexvakter: gröna. Dagens koercionsvakt heter `check-strict-koercion.mjs`;
+  indexvakter samt historikregister: gröna. Dagens koercionsvakt heter `check-strict-koercion.mjs`;
   det äldre filnamnet `check-strict-boolean.mjs` finns inte längre på main.
 - Full API-typecheck slog i den satta heapgränsen 1536 MB. Ingen godkänd full
-  typecheck påstås lokalt; CI måste verifiera hela projektet. De riktade
+  typecheck påstås lokalt; CI måste verifiera hela projektet. Första CI-körningens fulla typecheck och
+  schema-drift blev gröna på `ec408e61`; där hittades den historikregisterlucka
+  som därefter rättades. Senaste commit måste ha egen grön CI. De riktade
   Jest-körningarna använde ordinarie ts-jest med typkontroll.
 
 [Råa provloggar](eval/customer-credit-foundation/) sparas med utkastet.
+`customer-credit-history.txt` är senaste historik-/DB-körningen;
+`customer-credit-db.txt` bevarar den tidigare 33-fallsmätningen före historikkopplingen.
 Inga modell-, bank- eller produktionsanrop har gjorts.
 
 Kör från repositoryts rot. Maskinen delas med andra arbeten och har två

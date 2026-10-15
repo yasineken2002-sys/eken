@@ -382,6 +382,17 @@ medDb('hyresgästens historik — antalet härleds ur källtabellerna', () => {
     per['rent-notice-event'] = await prisma.rentNoticeEvent.count({
       where: { rentNotice: { organizationId: orgId, tenantId } },
     })
+    // Tillgodo: en mottagningshändelse per källrad och en användningshändelse
+    // per tillämpning. Räkna båda domäntabellerna oberoende av projektionen.
+    per['customer-credit'] =
+      (await prisma.customerCredit.count({ where: { organizationId: orgId, tenantId } })) +
+      (await prisma.customerCreditApplication.count({
+        where: {
+          organizationId: orgId,
+          credit: { organizationId: orgId, tenantId },
+          rentNotice: { organizationId: orgId, tenantId },
+        },
+      }))
     per.inspection =
       (await prisma.inspection.count({ where: { organizationId: orgId, tenantId } })) +
       (await prisma.inspection.count({
