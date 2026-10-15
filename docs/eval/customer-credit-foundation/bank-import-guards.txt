@@ -1,0 +1,64 @@
+$ node apps/api/scripts/check-partial-match-identity.mjs
+✅ 9 matchningsanrop klassade, 4 allokeringsskrivningar i registrerade funktioner — delbetalning bara vid entydig identitet.
+
+exit=0
+
+$ node apps/api/scripts/check-ocr-provenance.mjs
+✅ 4 extraktoranrop, alla klassade — prosa bara bakom kontrollsiffran.
+
+exit=0
+
+$ node apps/api/scripts/check-ocr-lookup-fields.mjs
+✅ 4 OCR-uppslag, alla klassade — fritext bara bakom identitetsgrinden.
+
+exit=0
+
+$ node apps/api/scripts/check-module-cycles.mjs
+✅ 67 moduler, 239 hårda kanter — inga odeklarerade cykler (3 forwardRef-kanter, alltså deklarerade och tillåtna).
+
+exit=0
+
+$ node apps/api/scripts/check-di-type-imports.mjs
+Inga typ-raderade DI-beroenden — 242 klasser med @Injectable/@Controller granskade i 1258 filer, 0 träffar.
+
+exit=0
+
+$ node apps/api/scripts/check-transaction-limits.mjs
+✅ Transaktionsgränser: varje $transaction har en medveten gräns eller en kvittering (3 kvitterade i 2 filer)
+
+exit=0
+
+$ node apps/api/scripts/check-actor-stamping.mjs
+✅ aktörsstämplingen är påkopplad; modellmängden härleds ur schemat, tre gränser satta, inga handpåläggningar. (4 referenser i extensionen)
+
+exit=0
+
+$ node apps/api/scripts/check-as-never.mjs
+✅ as never: 2 kända cast i produktionskod, inga nya och inga stale.
+   Vakten mäter att castet är BORTA — inte att valideringen som kom i stället prövar rätt mängd. Det ägs av maintenance-enum-source.spec.ts och enum-validering.spec.ts.
+
+exit=0
+
+$ node apps/api/scripts/check-request-contract.mjs
+✅ Kontraktet webb↔API: 0 kända överträdelser i 0 filer, inga nya och inga stale.
+✅ Regel 2: 121 delade nyttolasttyper, alla härledda i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.
+   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av SammaNycklar-raden i DTO:n (Typecheck) och av dto.spec-provet — inte av den här.
+
+exit=0
+
+$ node apps/api/scripts/check-dto-placement.mjs
+✅ DTO-placering: 0 kända felplacerade klasser, inga nya och inga stale.
+   Regeln gör check-request-contracts premiss sann: när talet är 0 är "gå igenom *.dto.ts" uttömmande per konstruktion.
+
+exit=0
+
+$ node apps/api/scripts/check-strict-koercion.mjs
+✅ Strikt koercion: varje DTO-fält bär sin dekorator — 0 oskyddade.
+   Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av strict-boolean.spec.ts, strict-string.spec.ts och strict-iso-datum.spec.ts, som kör den riktiga pipen.
+
+exit=0
+
+$ node apps/api/scripts/check-identifier-regex.mjs
+Inga nya ASCII-härledningar — 58 vaktskript, 8 förekomster över 8 poster, exakt baslinjen.
+
+exit=0

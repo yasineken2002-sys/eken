@@ -65,6 +65,9 @@ function sourceProof(
         bank.amount.toFixed(2),
         bank.date.toISOString(),
         bank.bankAccountId,
+        bank.rawOcr,
+        bank.reference,
+        bank.description,
         bank.matchedRentNoticeId,
         notice.id,
         notice.organizationId,
@@ -86,9 +89,9 @@ function sourceProof(
 }
 
 /**
- * Förberedande kärna, ännu inte registrerad i en produktionsmodul eller route.
- * Bankimportens matchbeslut och atomisk utskicksreservation måste kopplas in
- * innan den får aktiveras. Tillgodo är redan mottagna pengar, inte ny intäkt.
+ * Bankimporten kan ta emot ett entydigt överbelopp bakom en avstängd policy.
+ * Automatisk användning på nästa avi och atomisk utskicksreservation är ännu
+ * inte inkopplade. Tillgodo är redan mottagna pengar, inte ny intäkt.
  *
  * Låsordning: färskhets-/granskningslås → avtalets tillgodolås → bankrad →
  * avier i id-ordning → tillgodo → verifikationsnummer. Samma bank-/avilås
@@ -104,6 +107,36 @@ export class CustomerCreditService {
 
   private assertActor(): void {
     if (!currentActor()) throw new ConflictException('Kundtillgodo kräver känd aktörskontext')
+  }
+
+  /** Bara kandidatur. Konton och policy kontrolleras igen inne i betalningens transaktion. */
+  async isReceiptEnabled(organizationId: string): Promise<boolean> {
+    const policy = await this.prisma.customerCreditPolicy.findUnique({
+      where: { organizationId },
+      select: { enabled: true },
+    })
+    return policy?.enabled === true
+  }
+
+  /** Callern håller bankradens lås; en vanlig avmatchning kan inte rätta en tillgodoskuld. */
+  async assertBankCanBeUnmatchedInTransaction(
+    input: { organizationId: string; bankTransactionId: string },
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    if ('$transaction' in tx)
+      throw new ConflictException('Avmatchning kräver en betalningstransaktion')
+    const credit = await tx.customerCredit.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        sourceBankTransactionId: input.bankTransactionId,
+      },
+      select: { id: true },
+    })
+    if (credit) {
+      throw new ConflictException(
+        'Bankbetalningen har skapat kundtillgodo och måste rättas tillsammans med tillgodot',
+      )
+    }
   }
 
   private async lockLease(tx: Prisma.TransactionClient, organizationId: string, leaseId: string) {
@@ -187,7 +220,16 @@ export class CustomerCreditService {
     this.assertActor()
     if ('$transaction' in tx)
       throw new ConflictException('Tillgodo kräver en betalningstransaktion')
-    await this.freshness.assertAutomaticEffectAllowed(tx, input.organizationId)
+    const [settings] = await tx.$queryRaw<
+      Array<{ isolation: string }>
+    >`SELECT current_setting('transaction_isolation') AS isolation`
+    if (settings?.isolation !== 'read committed') {
+      throw new ConflictException('Kundtillgodo kräver transaktionsisoleringen Read Committed')
+    }
+    // Importen kan vara den som återställer färskheten. Mottagningen skyddas av
+    // samma orglås och gransknings-/importstopp, utan att skriva falsk färskhet.
+    // Användning av tillgodot på en annan avi behåller hela färskhetsgrinden.
+    await this.freshness.assertIngenOlostIdentitetsgranskning(tx, input.organizationId)
     const notice = await tx.rentNotice.findFirst({
       where: { id: input.rentNoticeId, organizationId: input.organizationId },
       select: { leaseId: true },
@@ -196,7 +238,8 @@ export class CustomerCreditService {
     await this.lockLease(tx, input.organizationId, notice.leaseId)
     await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} AND "organizationId" = ${input.organizationId} FOR UPDATE`
     await this.lockNotices(tx, input.organizationId, [input.rentNoticeId])
-    return notice
+    const policy = await this.policy(tx, input.organizationId)
+    return { ...notice, policy }
   }
 
   /**
@@ -204,14 +247,14 @@ export class CustomerCreditService {
    * men INUTI samma transaktion. Callern måste först ha anropat
    * lockReceiptInTransaction, FÖRE sina allokeringar/verifikationsnummer.
    * Ett fristående efterjobb får inte reparera halva betalningar.
-   * Ingen caller finns i bankimporten i denna förberedande etapp.
+   * Bankimportens snäva avinummerväg är den enda produktionsanroparen.
    */
   async recordReceiptInTransaction(
     input: { organizationId: string; bankTransactionId: string; rentNoticeId: string },
     tx: Prisma.TransactionClient,
   ) {
     const before = await this.lockReceiptInTransaction(input, tx)
-    const policy = await this.policy(tx, input.organizationId)
+    const policy = before.policy
     const bank = await tx.bankTransaction.findFirst({
       where: { id: input.bankTransactionId, organizationId: input.organizationId },
       include: { rentNoticePayments: true, invoicePayment: true },

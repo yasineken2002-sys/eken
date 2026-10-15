@@ -17,7 +17,8 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: async () => ''
 import { PrismaClient, Prisma } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import type { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
@@ -73,7 +74,7 @@ medDb('F-046-2: månadsöversiktens belopp (getStats) mot riktig Postgres', () =
       stub('OcrService') as never,
       stub('PdfQueue') as never,
     )
-    recon = new ReconciliationService(
+    recon = reconciliationUtanKundtillgodo(
       p,
       invoices,
       invoiceEvents,

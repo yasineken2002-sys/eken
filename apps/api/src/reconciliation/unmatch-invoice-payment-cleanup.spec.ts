@@ -17,7 +17,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
@@ -133,7 +133,7 @@ function makeService(
     return Promise.resolve()
   })
 
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     new InvoiceEventsService(prisma as never) as never,

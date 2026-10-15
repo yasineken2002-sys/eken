@@ -77,7 +77,8 @@ import { VerifikationsnummerService } from '../accounting/verifikationsnummer.se
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { BankStatementImportService } from './bank-statement-import.service'
-import { ReconciliationService } from './reconciliation.service'
+import type { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import {
   beräknaImportavtryck,
   bgMaxIdentitet,
@@ -295,7 +296,7 @@ medDb('bankimportens transaktionsidentitet (F034)', () => {
       },
     )
 
-    service = new ReconciliationService(
+    service = reconciliationUtanKundtillgodo(
       prisma as never,
       kastare as never, // invoices — hyresavivägen rör den inte
       kastare as never, // invoice events — d:o

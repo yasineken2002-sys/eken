@@ -17,7 +17,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 function notice(over: Record<string, unknown> = {}) {
@@ -50,7 +50,7 @@ function makeService(noticeRow: Record<string, unknown> | null) {
       findMany: jest.fn().mockResolvedValue([]),
     },
   }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     db as never,
     {} as never,
     {} as never,

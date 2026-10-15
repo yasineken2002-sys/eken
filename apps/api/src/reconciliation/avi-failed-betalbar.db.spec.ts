@@ -24,7 +24,8 @@ import { VerifikationsnummerService } from '../accounting/verifikationsnummer.se
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PaymentFreshnessService } from '../payment-freshness/payment-freshness.service'
 import { BankImportAttemptService } from './bank-import-attempt.service'
-import { ReconciliationService } from './reconciliation.service'
+import type { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -286,7 +287,7 @@ medDb('G15: en avi med misslyckat utskick kan regleras av en betalning', () => {
         },
       },
     )
-    service = new ReconciliationService(
+    service = reconciliationUtanKundtillgodo(
       prisma as never,
       kastare as never,
       kastare as never,

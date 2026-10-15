@@ -1,0 +1,35 @@
+✅ kanariefågel: argumentläsningen skiljer bart, gissning och VILLKORAT (2 + 2 + 1)
+✅ kanariefågel: 9 apply*-anrop och 4 allokeringsskrivningar i den riktiga källan
+✅ inget falsklarm: paritet
+✅ inget falsklarm: tillgodobevis efter allowPartial
+✅ fångad: true som allowPartial med proof efter (applyMatchToRentNotice() får allowPartial som bar `true`)
+✅ fångad: false som allowPartial med proof efter (applyMatchToRentNotice() får allowPartial som bar `false`)
+✅ fångad: oklassat som allowPartial med proof efter (applyMatchToRentNotice() får ett OKLASSAT allowPartial-argument: `oklassat`)
+✅ fångad: undefined som allowPartial med proof efter (applyMatchToRentNotice() får ett OKLASSAT allowPartial-argument: `undefined`)
+✅ fångad: saknat allowPartial med proof på dess plats (applyMatchToRentNotice() får ett OKLASSAT allowPartial-argument: `proof`)
+✅ fångad: saknat allowPartial utan efterföljande argument (applyMatchToRentNotice() får ett OKLASSAT allowPartial-argument: ``)
+✅ fångad: bar true i exekverbart malluttryck med proof (applyMatchToRentNotice() får allowPartial som bar `true`)
+✅ fångad: bar true i nästlat exekverbart malluttryck med proof (applyMatchToRentNotice() får allowPartial som bar `true`)
+✅ fångad: applyMatchToInvoice: nytt argument före allowPartial (applyMatchToInvoice: SIGNATUR kräver allowPartial: boolean på index 8)
+✅ fångad: applyMatchToInvoice: deklarationen saknas (applyMatchToInvoice: SIGNATUR saknas eller är tvetydig (0 träffar))
+✅ fångad: applyMatchToRentNotice: nytt argument före allowPartial (applyMatchToRentNotice: SIGNATUR kräver allowPartial: boolean på index 6)
+✅ fångad: applyMatchToRentNotice: deklarationen saknas (applyMatchToRentNotice: SIGNATUR saknas eller är tvetydig (0 träffar))
+✅ fångad: ändrad parameter: allowPartial?: boolean (applyMatchToInvoice: SIGNATUR kräver allowPartial: boolean på index 8)
+✅ fångad: ändrad parameter: allowPartial: boolean = true (applyMatchToInvoice: SIGNATUR kräver allowPartial: boolean på index 8)
+✅ fångad: ändrad parameter: allowPartial: string (applyMatchToInvoice: SIGNATUR kräver allowPartial: boolean på index 8)
+✅ fångad: ändrad parameter: annan: boolean (applyMatchToInvoice: SIGNATUR kräver allowPartial: boolean på index 8)
+✅ fångad: dubbla metodsignaturer (applyMatchToInvoice: SIGNATUR saknas eller är tvetydig (2 träffar))
+✅ fångad: bar `true` som allowPartial (applyMatchToInvoice() får allowPartial som bar `true`)
+✅ fångad: delbetalning öppnad på fuzzy-grenen (3 anropsställen skickar ett bart PARTIAL_VID_ENTYDIG_IDENTITET, registret har 2)
+✅ fångad: villkorat uttryck utbytt mot ett bart identitetsargument (fritext får delbetala) (3 anropsställen skickar ett bart PARTIAL_VID_ENTYDIG_IDENTITET, registret har 2)
+✅ fångad: båda konstanterna satta till true (PARTIAL_VID_ENTYDIG_IDENTITET och PARTIAL_ALDRIG_VID_GISSNING har SAMMA värde (true))
+✅ fångad: konstanterna omkastade (PARTIAL_VID_ENTYDIG_IDENTITET=false, PARTIAL_ALDRIG_VID_GISSNING=true — omkastade)
+✅ fångad: tomt vägregister (ENTYDIGA_MATCHNINGSVAGAR saknas eller är tomt)
+✅ fångad: tomt skrivarregister (ALLOKERINGSSKRIVARE saknas eller är tomt)
+✅ fångad: konstanterna används inte i matchningen (konstanterna används inte i reconciliation.service.ts)
+✅ fångad: allokering i en oregistrerad funktion (ny dörr in till pengarna) (rentNoticePayment.create i OREGISTRERAD funktion `nyGenvag`)
+✅ fångad: inga apply*-anrop alls (blind skanning) (NOLL apply*-anrop hittades i reconciliation.service.ts)
+
+✅ Självtest OK.
+✅ #668 MISSAD: metod med svensk INITIAL härleds
+✅ #668 KAPAD: hela namnet fångas, inte svansen

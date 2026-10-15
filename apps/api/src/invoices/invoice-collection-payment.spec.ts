@@ -31,7 +31,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { Prisma } from '@prisma/client'
 import { INVOICE_TRANSITIONS, isValidTransition } from '@eken/shared'
 import { InvoicesService } from './invoices.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from './invoice-payment-status'
 import type { InvoiceStatus } from '@prisma/client'
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
@@ -137,7 +137,7 @@ function makeReconciliation(opts: { status: InvoiceStatus; priorAllocations?: nu
   const claimPaidWithinTx = jest
     .fn()
     .mockResolvedValue({ claimed: true, invoiceNumber: 'F-2026-0001' })
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     { $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(tx)) } as never,
     { claimPaidWithinTx, notifyInvoicePaid: jest.fn() } as never,
     events as never,

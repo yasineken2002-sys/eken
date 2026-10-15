@@ -30,7 +30,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { ConflictException } from '@nestjs/common'
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { ToolExecutorService } from '../ai/tools/tool-executor.service'
@@ -122,7 +122,7 @@ function makeService(transaction: unknown, statusInsideTx?: string) {
     $transaction,
   }
   const reverseJournalEntryForPayment = jest.fn().mockResolvedValue(undefined)
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     new InvoiceEventsService(prisma as never) as never,

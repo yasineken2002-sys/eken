@@ -45,7 +45,8 @@ import { ConsumptionService } from '../consumption/consumption.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { OcrService } from '../common/ocr/ocr.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import type { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import { BankImportAttemptService } from '../reconciliation/bank-import-attempt.service'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -88,7 +89,7 @@ medDb('UTILITY-faktura: betalningsgrinden', () => {
       new OcrService(prisma as never),
       inert,
     )
-    reconciliation = new ReconciliationService(
+    reconciliation = reconciliationUtanKundtillgodo(
       prisma as never,
       invoices as never,
       events as never,

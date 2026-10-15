@@ -20,6 +20,8 @@ import { Prisma, RentNoticeType } from '@prisma/client'
 import type { BankTransaction } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { currentActor } from '../common/actor/actor.context'
+import { CustomerCreditService } from '../customer-credit/customer-credit.service'
 import { InvoicesService } from '../invoices/invoices.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { paymentTargetStatus, isPaymentTransitionAllowed } from '../invoices/invoice-payment-status'
@@ -65,6 +67,7 @@ import {
   hashaBytes,
 } from './bank-import-identity'
 import { BankImportAttemptService, type Importkvittens } from './bank-import-attempt.service'
+import { resolveCustomerCreditReference } from './customer-credit-reference'
 
 /**
  * #F034b — vad ett importFÖRSÖK slutade i, till skillnad från vad det RÄKNADE.
@@ -613,6 +616,7 @@ export class ReconciliationService {
     // att pröva utan att dra in hela avstämningen, och det delas med
     // PDF-vägen i `BankStatementImportService`.
     private readonly attempts: BankImportAttemptService,
+    private readonly customerCredit: CustomerCreditService,
   ) {}
 
   /**
@@ -1798,6 +1802,44 @@ export class ReconciliationService {
       return false
     }
 
+    // Avinumret anger en bestämd månad. Det måste prövas FÖRE tenant-OCR,
+    // annars kan den äldre avin ta pengarna trots en annan uttrycklig målavi.
+    // Policyn är av som standard; övriga matchningsvägar behåller sitt beteende.
+    if (
+      transaction.bankAccountId &&
+      currentActor() &&
+      (await this.customerCredit.isReceiptEnabled(organizationId))
+    ) {
+      const proof = resolveCustomerCreditReference(transaction)
+      if (proof.kind === 'blocked') return false
+      if (proof.kind === 'notice') {
+        const notice = await db.rentNotice.findFirst({
+          where: { organizationId, noticeNumber: proof.noticeNumber },
+          select: { id: true },
+        })
+        if (!notice) return false
+        // Avin identifierar hyresgästen även utan OCR. Samma historiska skuld
+        // måste då ge samma granskningspaus som OCR-grenen ovan. Markera före
+        // betalningstransaktionen så att dess delade orglås aldrig uppgraderas.
+        if (await this.harOppenHistoriskSkuld(db, organizationId, { noticeId: notice.id })) {
+          await this.markeraHistoriskSkuld(transaction.id, organizationId)
+          return false
+        }
+        // Detta är ett slutligt avimål, aldrig en ledtråd för senare vattenfall.
+        return this.applyMatchToRentNotice(
+          transaction.id,
+          notice.id,
+          organizationId,
+          transaction.amount,
+          transaction.date,
+          null,
+          PARTIAL_VID_ENTYDIG_IDENTITET,
+          undefined,
+          proof,
+        )
+      }
+    }
+
     // ── 1. OCR-match (deterministisk) ────────────────────────────────────
     // Sök i båda tabeller: kommersiell faktura och hyresavi. Hyresavin
     // (RentNotice) har egen OCR-serie genererad av OcrService — utan den
@@ -2501,7 +2543,8 @@ export class ReconciliationService {
   //                  Endast om allowPartial (deterministisk OCR/referens) — fuzzy är
   //                  allt-eller-inget (D3): allowPartial=false → en partiell-klass
   //                  avvisas (return false).
-  //   • ÖVERBETALN. amount > restskuld + 1 kr → ingen match (D4, hanteras ej här).
+  //   • ÖVERBETALN. amount > restskuld + 1 kr → endast en separat, verifierad
+  //                  tillgodoreferens får slutreglera avin och ta emot överskottet.
   //
   // FOR UPDATE-låset serialiserar samtidiga delbetalningar på samma avi så Σ
   // allokeringar aldrig kan överstiga skulden via en race (READ COMMITTED skulle
@@ -2523,13 +2566,52 @@ export class ReconciliationService {
     // saknade märkningen helt, så en gissning var oskiljbar från en OCR-träff i
     // historiken — och därmed omätbar.
     matchType?: 'fuzzy',
+    creditProof?: Extract<ReturnType<typeof resolveCustomerCreditReference>, { kind: 'notice' }>,
   ): Promise<boolean> {
     const tolerance = new Decimal('1.00')
 
-    return this.prisma.$transaction(async (tx) => {
+    const match = async (tx: Prisma.TransactionClient) => {
+      // Tillgodo måste ta org-/avtalslåsen FÖRE det gamla bank-/avilåset och
+      // före första verifikationsnumret. allowPartial är aldrig ett kreditbevis.
+      const receiptScope = creditProof
+        ? await this.customerCredit.lockReceiptInTransaction(
+            { organizationId, bankTransactionId: transactionId, rentNoticeId: noticeId },
+            tx,
+          )
+        : null
       // Lås bankraden före avin. Det gör tillgängliga bankmedel och den nya
       // allokeringen atomiska även när samma inbetalning matchas samtidigt.
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+
+      if (creditProof && receiptScope) {
+        const bank = await tx.bankTransaction.findFirst({
+          where: { id: transactionId, organizationId },
+        })
+        if (
+          !bank ||
+          bank.status !== 'UNMATCHED' ||
+          bank.invoiceId ||
+          bank.matchedRentNoticeId ||
+          bank.identityReviewAt ||
+          bank.autoMatchExcludedAt ||
+          bank.bankAccountId !== receiptScope.policy.bankAccountId ||
+          !bank.amount.isFinite() ||
+          bank.amount.lte(0) ||
+          bank.amount.decimalPlaces() > 2 ||
+          !Number.isFinite(bank.date.getTime())
+        )
+          return false
+        const currentProof = resolveCustomerCreditReference(bank)
+        if (
+          currentProof.kind !== 'notice' ||
+          currentProof.noticeNumber !== creditProof.noticeNumber ||
+          currentProof.ocr !== creditProof.ocr
+        )
+          return false
+        // Endast bankens låsta värden får ligga till grund för pengar och datum.
+        transactionAmount = bank.amount
+        transactionDate = bank.date
+      }
 
       // En anropad matchningsväg använder hela bankinbetalningen. Flera avier
       // får därför allokeras bara inom SAMMA vattenfallstransaktion. En redan
@@ -2575,6 +2657,14 @@ export class ReconciliationService {
         select: {
           id: true,
           noticeNumber: true,
+          ocrNumber: true,
+          tenantId: true,
+          leaseId: true,
+          origin: true,
+          probableLossAt: true,
+          writtenOffAt: true,
+          tenant: { select: { organizationId: true, ocrNumber: true } },
+          lease: { select: { organizationId: true, tenantId: true } },
           status: true,
           collectionStage: true,
           type: true,
@@ -2586,6 +2676,23 @@ export class ReconciliationService {
         },
       })
       if (!notice) throw new NotFoundException('Hyresavi hittades inte')
+
+      if (
+        creditProof &&
+        (!receiptScope ||
+          notice.noticeNumber !== creditProof.noticeNumber ||
+          notice.leaseId !== receiptScope.leaseId ||
+          notice.lease.organizationId !== organizationId ||
+          notice.lease.tenantId !== notice.tenantId ||
+          notice.tenant.organizationId !== organizationId ||
+          notice.type !== RentNoticeType.RENT ||
+          notice.origin !== 'EVENO' ||
+          notice.probableLossAt ||
+          notice.writtenOffAt ||
+          (creditProof.ocr !== null &&
+            (creditProof.ocr !== notice.ocrNumber || creditProof.ocr !== notice.tenant.ocrNumber)))
+      )
+        return false
 
       // Bara öppna (obetalda) avier kan ta emot en betalning. En PAID/CANCELLED avi
       // (eller en race-förlorare) → ingen allokering; låt tx:n falla vidare.
@@ -2696,7 +2803,7 @@ export class ReconciliationService {
 
       const priorAllocs = await tx.rentNoticePayment.findMany({
         where: { rentNoticeId: noticeId },
-        select: { amount: true },
+        select: { amount: true, paidAt: true },
       })
       // #518 — under samma radlås som allokeringarna. Utan krediteringarna
       // räknas restskulden på bruttot, och en inbetalning på det KREDITERADE
@@ -2704,8 +2811,15 @@ export class ReconciliationService {
       // stället för att reglera avin.
       const priorCredits = await tx.rentNoticeCredit.findMany({
         where: { rentNoticeId: noticeId },
-        select: { amount: true },
+        select: { amount: true, creditedAt: true },
       })
+      // Senare daterade händelser får inte skapa ett överskott bakåt i tiden.
+      if (
+        creditProof &&
+        (priorAllocs.some((allocation) => allocation.paidAt > transactionDate) ||
+          priorCredits.some((credit) => credit.creditedAt > transactionDate))
+      )
+        return false
 
       const debtInput = {
         type: notice.type,
@@ -2724,6 +2838,7 @@ export class ReconciliationService {
       const diff = remaining.minus(transactionAmount)
       let allocationAmount: Decimal
       let completesNotice: boolean
+      let receivesCustomerCredit = false
       if (diff.abs().lte(tolerance)) {
         // FULL — absorbera öre-fel genom att allokera exakt restskulden.
         allocationAmount = remaining
@@ -2734,8 +2849,12 @@ export class ReconciliationService {
         allocationAmount = transactionAmount
         completesNotice = false
       } else {
-        // amount > restskuld + tolerans → överbetalning (D4): hanteras ej här.
-        return false
+        // OCR-only, manuella och fuzzy-vägar får inget nytt överskottsmandat.
+        // Räntan är en separat fordran och måste vara noll före kundtillgodo.
+        if (!creditProof || !receiptScope || !notice.interestAccruedAmount.isZero()) return false
+        allocationAmount = remaining
+        completesNotice = true
+        receivesCustomerCredit = true
       }
 
       // Det sammansatta indexet skyddar paret bankrad/avi.
@@ -2852,8 +2971,21 @@ export class ReconciliationService {
         )
       }
 
+      if (receivesCustomerCredit) {
+        // Samma transaktion: vanlig betalning först, därefter verifierat
+        // överskott. Fel i tillgodots underlag eller bokföring rullar tillbaka allt.
+        await this.customerCredit.recordReceiptInTransaction(
+          { organizationId, bankTransactionId: transactionId, rentNoticeId: noticeId },
+          tx,
+        )
+      }
+
       return true
-    }, PAYMENT_TX_LIMITS)
+    }
+    return this.prisma.$transaction(
+      match,
+      creditProof ? paymentFreshnessTransactionOptions(PAYMENT_TX_LIMITS) : PAYMENT_TX_LIMITS,
+    )
   }
 
   // ── Get transactions ─────────────────────────────────────────────────────────
@@ -3923,6 +4055,10 @@ export class ReconciliationService {
       // (perioden öppnas längst ned, när raden bevisligen blivit olöst igen)
       // BankTransaction → Invoice/RentNotice → Deposit.
       await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${transactionId} AND "organizationId" = ${organizationId} FOR UPDATE`
+      await this.customerCredit.assertBankCanBeUnmatchedInTransaction(
+        { organizationId, bankTransactionId: transactionId },
+        tx,
+      )
       // ── #326 A: OMPRÖVNINGEN INNANFÖR RADLÅSET ÄR DEN LASTBÄRANDE ─────────
       //
       // Förkontrollen ovan läser statusen OLÅST, utanför transaktionen. Den är

@@ -32,7 +32,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  */
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { extractOcr, extractOcrFromProse } from './ocr-proveniens'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 import { bankImportAttemptAttrapp } from './bank-import-attempt.test-double'
@@ -121,7 +121,7 @@ function rigg() {
     bankImportAttempt: bankImportAttemptAttrapp().delegat,
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb(txMock)),
   }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     { record: jest.fn() } as never,

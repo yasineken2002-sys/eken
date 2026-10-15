@@ -28,7 +28,8 @@ import { BankConsentCryptoService } from '../psd2/bank-consent-crypto.service'
 import { Psd2SyncService } from '../psd2/psd2-sync.service'
 import type { BankDataProvider } from '../psd2/psd2.types'
 import { BankStatementImportService } from '../reconciliation/bank-statement-import.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import type { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import {
   IdentityReviewPausedError,
   ImportStopPausedError,
@@ -304,7 +305,7 @@ describe('betalningsfärskhet — import till verklig påminnelse', () => {
     accounting = new AccountingService(db as never, new VerifikationsnummerService(db as never))
     const events = new RentNoticeEventsService(db as never)
     freshness = new PaymentFreshnessService(db as never, mail as never)
-    importer = new ReconciliationService(
+    importer = reconciliationUtanKundtillgodo(
       db as never,
       outside as never,
       outside as never,

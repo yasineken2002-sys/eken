@@ -1,0 +1,13 @@
+[Nest] 60709  - 10/15/2026, 8:54:21 PM    WARN [ReconciliationService] [reconciliation] transaktion 27446d30-019e-4b9e-8319-2b2f2c449e86 (org 9acb4919-89ef-4423-b201-f2858283c8a3) bär OCR 00000000019 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+[Nest] 60709  - 10/15/2026, 8:54:21 PM    WARN [ReconciliationService] [reconciliation] transaktion b240b665-82d2-4cb7-9010-c9665665a4ca (org 36f21f76-087a-4a13-b7a1-76075f3fe0a8) bär OCR 00000000019 som inte löste ut mot någon faktura eller avi. Lämnas UNMATCHED för manuell granskning — beloppsgissning (fuzzy) hoppas över med flit.
+[Nest] 60709  - 10/15/2026, 8:54:21 PM    WARN [ReconciliationService] [reconciliation] tx=cd28794d-8496-4d6c-af81-a6327c928c04 (org 8bf120a6-98a8-4240-a5bb-904af434642f): hyresgästen har historisk skuld före brytdatum — ingen automatisk allokering; raden väntar på manuell fördelning och kravtrappan är pausad.
+[Nest] 60709  - 10/15/2026, 8:54:22 PM     LOG [ReconciliationService] [reconciliation] vattenfall: transaktion 5702156b-e5c5-4a1f-88dc-44c2b218ba04 fördelad över 2 avier (org cd1fb3ce-882e-4a1e-ae77-ef35c257d1c0, OCR 00000000019).
+PASS src/reconciliation/customer-credit-bank-import.db.spec.ts (8.093 s)
+PASS src/reconciliation/customer-credit-reference.spec.ts
+PASS src/customer-credit/customer-credit.db.spec.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       87 passed, 87 total
+Snapshots:   0 total
+Time:        10.697 s, estimated 17 s
+Ran all test suites within paths "src/reconciliation/customer-credit-bank-import.db.spec.ts", "src/reconciliation/customer-credit-reference.spec.ts", "src/customer-credit/customer-credit.db.spec.ts".

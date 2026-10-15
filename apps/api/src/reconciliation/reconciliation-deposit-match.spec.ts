@@ -14,7 +14,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 function dec(n: number | string) {
@@ -81,7 +81,7 @@ function makeService(opts: { linkedDeposit?: Record<string, unknown> | null }) {
   }
   const accounting = { createJournalEntryForRentNoticePayment }
   const events = { record: jest.fn().mockResolvedValue(undefined) }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     events as never,

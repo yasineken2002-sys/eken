@@ -68,6 +68,7 @@ import { BankAccountService } from './bank-account.service'
 import { BankStatementImportService } from './bank-statement-import.service'
 import { IMPORT_LEASE_TTL_MS, hashaBytes } from './bank-import-identity'
 import { ReconciliationService } from './reconciliation.service'
+import { kundtillgodoGränsAvstängd } from './customer-credit.test-double'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
 const medDb = HAR_DB ? describe : describe.skip
@@ -221,6 +222,7 @@ function nyaTjänster(p: PrismaClient): Riggtjänster {
 
   const recon = Object.create(ReconciliationService.prototype) as ReconciliationService
   Object.assign(recon, {
+    customerCredit: kundtillgodoGränsAvstängd(),
     prisma: p,
     accounting,
     rentNoticeEvents: new RentNoticeEventsService(p as never),

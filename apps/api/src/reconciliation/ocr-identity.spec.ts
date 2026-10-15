@@ -5,7 +5,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import {
   harSystemtilldelatOcr,
   SYSTEM_ASSIGNED_OCR_FIELDS,
@@ -139,7 +139,7 @@ function makeService(opts: { identitetFinns: boolean }) {
     tenant: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((cb: (t: unknown) => unknown) => cb({})),
   }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     {} as never,
     {} as never,

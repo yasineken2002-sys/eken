@@ -16,7 +16,8 @@ import { ConflictException, ForbiddenException, BadRequestException } from '@nes
 import { PrismaClient, Prisma } from '@prisma/client'
 import { InvoicesService } from '../invoices/invoices.service'
 import { InvoiceEventsService } from '../invoices/invoice-events.service'
-import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import type { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { reconciliationUtanKundtillgodo } from '../reconciliation/customer-credit.test-double'
 import { AccountingService, MissingAccrualError } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
@@ -170,7 +171,7 @@ medDb('KUNDSTART-001 mot riktig Postgres', () => {
       stub('PdfQueue') as never,
     )
     freshness = new PaymentFreshnessService(p, { send: async () => undefined } as never)
-    recon = new ReconciliationService(
+    recon = reconciliationUtanKundtillgodo(
       p,
       invoices,
       invoiceEvents,

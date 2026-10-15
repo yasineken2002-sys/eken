@@ -27,7 +27,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
  */
 
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import {
   ALLOKERINGSSKRIVARE,
   ENTYDIGA_MATCHNINGSVAGAR,
@@ -114,7 +114,7 @@ function rigg(opt: RiggOpt = {}) {
     // Notisen skickas EFTER transaktionen och bara vid full reglering.
     notifyInvoicePaid: jest.fn(),
   }
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     prisma as never,
     invoices as never,
     { record: jest.fn() } as never,

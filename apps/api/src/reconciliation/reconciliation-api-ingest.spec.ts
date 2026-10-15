@@ -16,7 +16,7 @@ jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/library'
-import { ReconciliationService } from './reconciliation.service'
+import { reconciliationUtanKundtillgodo } from './customer-credit.test-double'
 import { BankImportAttemptService } from './bank-import-attempt.service'
 
 // In-memory BankTransaction-tabell med de where-former ingest-vägarna använder.
@@ -99,7 +99,7 @@ function makeFake() {
 
 function makeService() {
   const fake = makeFake()
-  const service = new ReconciliationService(
+  const service = reconciliationUtanKundtillgodo(
     fake.prisma as never,
     {} as never,
     {} as never,

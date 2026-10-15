@@ -4,6 +4,7 @@ import { InvoicesModule } from '../invoices/invoices.module'
 import { AccountingModule } from '../accounting/accounting.module'
 import { AiUsageModule } from '../ai/usage/ai-usage.module'
 import { PaymentFreshnessModule } from '../payment-freshness/payment-freshness.module'
+import { CustomerCreditModule } from '../customer-credit/customer-credit.module'
 import { AviseringModule } from '../avisering/avisering.module'
 import { ReconciliationController } from './reconciliation.controller'
 import { ReconciliationService } from './reconciliation.service'
@@ -19,6 +20,7 @@ import { BankAccountService } from './bank-account.service'
     AccountingModule,
     AiUsageModule,
     PaymentFreshnessModule,
+    CustomerCreditModule,
     // #326 C — RentNoticeEventsService denormaliserar aktörsetiketten.
     forwardRef(() => AviseringModule),
   ],

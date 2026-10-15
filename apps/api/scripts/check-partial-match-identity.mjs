@@ -32,6 +32,8 @@
  *     `ALLOKERINGSSKRIVARE`. En NY dörr in till pengarna kan då inte öppnas tyst
  *     — H4 (#483) uppstod just för att en sådan dörr saknade den spärr som
  *     syskonvägen hade.
+ * R6  Metodsignaturerna måste ha obligatoriskt `allowPartial: boolean` på det
+ *     index vakten läser. Signaturglidning får aldrig göra fel argument grönt.
  *
  * ⚠️ GUARDENS GRÄNS, UTSKRIVEN. R5 mäter att dörren är REGISTRERAD, inte att den
  * avvisar överbetalning. Den egenskapen mäts beteendemässigt i
@@ -46,7 +48,12 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { withoutComments, kanariefåglar } from '../../../scripts/lib/source-scan.mjs'
+import {
+  blankComments,
+  codeMask,
+  withoutComments,
+  kanariefåglar,
+} from '../../../scripts/lib/source-scan.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const API_SRC = join(HERE, '..', 'src')
@@ -55,7 +62,8 @@ const MATCH_FILE = join(API_SRC, 'reconciliation', 'reconciliation.service.ts')
 
 const IDENTITY = 'PARTIAL_VID_ENTYDIG_IDENTITET'
 const GUESS = 'PARTIAL_ALDRIG_VID_GISSNING'
-const APPLIERS = ['applyMatchToInvoice', 'applyMatchToRentNotice']
+const ALLOW_PARTIAL_INDEX = { applyMatchToInvoice: 8, applyMatchToRentNotice: 6 }
+const APPLIERS = Object.keys(ALLOW_PARTIAL_INDEX)
 const ALLOCATION_WRITES = ['invoicePayment.create', 'rentNoticePayment.create']
 
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length
@@ -116,48 +124,77 @@ export function parseBoolConst(text, name) {
 /**
  * Hitta varje anrop till en apply*-funktion och läs dess `allowPartial`-argument.
  *
- * Argumentet är det SISTA före ett eventuellt `matchType` ('fuzzy'). Vi tar därför
- * alla argument och plockar det sista som inte är en strängliteral.
+ * Indexet följer metodsignaturen, som R6 kontrollerar separat. Ett senare
+ * argument kan vara `matchType` eller ett tillgodobevis, inte `allowPartial`.
+ * Bara kommentarer maskeras: körbar kod i `${...}` måste synas, även i
+ * nästlade mallsträngar. Skanningen är konservativ som tidigare — text som
+ * liknar ett anrop i en ren literal kan också fångas och ge ett falsklarm.
  */
 export function findApplyCalls(text) {
   const träffar = []
+  const mask = blankComments(text)
   for (const fn of APPLIERS) {
     const re = new RegExp(`this\\.${fn}\\s*\\(`, 'g')
     let m
-    while ((m = re.exec(text))) {
-      // Parentesbalanserad argumentlista.
-      const start = text.indexOf('(', m.index)
-      let depth = 0
-      let end = start
-      for (let i = start; i < text.length; i++) {
-        if (text[i] === '(') depth++
-        else if (text[i] === ')') {
-          depth--
-          if (depth === 0) {
-            end = i
-            break
-          }
-        }
-      }
-      const args = text.slice(start + 1, end)
+    while ((m = re.exec(mask))) {
+      const args = readArguments(text, mask, mask.indexOf('(', m.index))
       // Dela på TOPPNIVÅKOMMATECKEN, inte på radbrytningar. Radvis delning
       // fungerade bara för flerradiga anrop — ett enradigt anrop blev EN sträng,
       // och guarden läste hela argumentlistan som `allowPartial`. Den läste då
       // aldrig fel argument i den riktiga källan (som är flerradig), vilket är
       // precis varför självtestets kanariefågel behövde en enradig fixtur.
-      const argv = splitTopLevelArgs(args)
-      // allowPartial = sista argumentet som inte är en strängliteral (matchType).
-      let allowPartial = null
-      for (let i = argv.length - 1; i >= 0; i--) {
-        const a = argv[i]
-        if (/^'.*'$/.test(a)) continue
-        allowPartial = a
-        break
-      }
+      const argv = args === null ? [] : splitTopLevelArgs(args)
+      const allowPartial = argv[ALLOW_PARTIAL_INDEX[fn]] ?? null
       träffar.push({ fn, allowPartial, line: lineOf(text, m.index) })
     }
   }
   return träffar
+}
+
+/** Vyn bevarar positioner; anropsläsningen blankar bara kommentarer. */
+function readArguments(text, mask, start) {
+  let depth = 0
+  for (let i = start; i < mask.length; i++) {
+    if (mask[i] === '(') depth++
+    else if (mask[i] === ')' && --depth === 0) return text.slice(start + 1, i)
+  }
+  return null
+}
+
+export function checkApplySignatures(text) {
+  const problem = []
+  const mask = codeMask(text)
+  for (const fn of APPLIERS) {
+    const re = new RegExp(
+      `^[ \\t]*(?:(?:private|public|protected)\\s+)?(?:async\\s+)?${fn}\\s*\\(`,
+      'gm',
+    )
+    const signatures = [...mask.matchAll(re)]
+    if (signatures.length !== 1) {
+      problem.push({
+        rule: `${fn}: SIGNATUR saknas eller är tvetydig (${signatures.length} träffar)`,
+        detail:
+          'Vakten kräver exakt en metodsignatur för att kunna verifiera argumentets position.',
+      })
+      continue
+    }
+    const start = mask.indexOf('(', signatures[0].index)
+    const args = readArguments(text, mask, start)
+    const params = args === null ? [] : splitTopLevelArgs(args)
+    const index = ALLOW_PARTIAL_INDEX[fn]
+    if (
+      !/^allowPartial\s*:\s*boolean$/.test(params[index] ?? '') ||
+      params.filter((param) => /^allowPartial(?![\p{L}\p{N}_$])/u.test(param)).length !== 1
+    ) {
+      problem.push({
+        line: lineOf(text, start),
+        rule: `${fn}: SIGNATUR kräver allowPartial: boolean på index ${index}`,
+        detail:
+          'Parametern har flyttats, ändrats eller försvunnit. Uppdatera signatur och vakt tillsammans.',
+      })
+    }
+  }
+  return problem
 }
 
 /** Hitta varje allokeringsskrivning och vilken funktion den ligger i. */
@@ -240,6 +277,10 @@ export function evaluate({ ruleText, matchText }) {
     })
   }
   if (problem.length > 0) return problem // vidare kontroller vore meningslösa
+
+  // R6 — läs aldrig en fast position utan att verifiera den verkliga signaturen.
+  problem.push(...checkApplySignatures(matchText))
+  if (problem.length > 0) return problem
 
   // ── R1 + R2 — anropsställena ──────────────────────────────────────────────
   const anrop = findApplyCalls(matchText)
@@ -347,7 +388,7 @@ export const ALLOKERINGSSKRIVARE = ['applyMatchToInvoice'] as const
 // gissningsanrop, så att ett omklassificerat anrop inte råkar ta bort konstanten
 // ur filen och kortsluta R4.
 const MATCH_OK = `
-  private async applyMatchToInvoice(a, b) {
+  private async applyMatchToInvoice(a, b, c, d, e, f, g, h, allowPartial: boolean, matchType?: 'fuzzy') {
     const x = await this.applyMatchToInvoice(id, invId, org, tot, amt, date, null, null, ${IDENTITY})
     const y = await this.applyMatchToRentNotice(id, nid, org, amt, date, null, ${IDENTITY})
     const z = await this.applyMatchToRentNotice(id, nid, org, amt, date, null, ${GUESS}, 'fuzzy')
@@ -355,7 +396,13 @@ const MATCH_OK = `
     const v = await this.applyMatchToInvoice(id, invId, org, tot, amt, date, null, null, flagga ? ${IDENTITY} : ${GUESS})
     const allocationRow = await tx.invoicePayment.create({ data: {} })
   }
+  private async applyMatchToRentNotice(a, b, c, d, e, f, allowPartial: boolean, matchType?: 'fuzzy', creditProof?: Extract<Proof, { kind: 'notice' }>) {}
 `
+const NOTICE_CALL = `this.applyMatchToRentNotice(id, nid, org, amt, date, null, ${IDENTITY})`
+const MATCH_WITH_PROOF = MATCH_OK.replace(
+  NOTICE_CALL,
+  `this.applyMatchToRentNotice(id, nid, org, amt, date, null, ${IDENTITY}, undefined, proof)`,
+)
 
 function selfTest() {
   let ok = true
@@ -398,7 +445,10 @@ function selfTest() {
   const riktigaText = readFileSync(MATCH_FILE, 'utf8')
   const riktiga = findApplyCalls(riktigaText)
   const riktigaSkrivningar = findAllocationWrites(riktigaText)
-  if (riktiga.length === 0) {
+  const signaturproblem = checkApplySignatures(riktigaText)
+  if (signaturproblem.length > 0) {
+    fail(`kanariefågel: verkliga metodsignaturer → ${signaturproblem[0].rule}`)
+  } else if (riktiga.length === 0) {
     fail('kanariefågel: NOLL apply*-anrop i reconciliation.service.ts — skanningen har gått blind')
   } else if (riktigaSkrivningar.length === 0) {
     fail('kanariefågel: NOLL allokeringsskrivningar i den riktiga källan')
@@ -410,6 +460,108 @@ function selfTest() {
   }
 
   grön('paritet', evaluate({ ruleText: RULE_OK, matchText: MATCH_OK }))
+  grön(
+    'tillgodobevis efter allowPartial',
+    evaluate({ ruleText: RULE_OK, matchText: MATCH_WITH_PROOF }),
+  )
+
+  // Proof får aldrig misstas för allowPartial, även när den riktiga grinden är fel.
+  for (const arg of ['true', 'false', 'oklassat', 'undefined']) {
+    röd(
+      `${arg} som allowPartial med proof efter`,
+      evaluate({
+        ruleText: RULE_OK,
+        matchText: MATCH_WITH_PROOF.replace(
+          `${IDENTITY}, undefined, proof`,
+          `${arg}, undefined, proof`,
+        ),
+      }),
+      arg === 'true' || arg === 'false' ? `bar \`${arg}\`` : 'OKLASSAT',
+    )
+  }
+  röd(
+    'saknat allowPartial med proof på dess plats',
+    evaluate({
+      ruleText: RULE_OK,
+      matchText: MATCH_OK.replace(
+        NOTICE_CALL,
+        'this.applyMatchToRentNotice(id, nid, org, amt, date, null, proof)',
+      ),
+    }),
+    'OKLASSAT',
+  )
+  röd(
+    'saknat allowPartial utan efterföljande argument',
+    evaluate({
+      ruleText: RULE_OK,
+      matchText: MATCH_OK.replace(
+        NOTICE_CALL,
+        'this.applyMatchToRentNotice(id, nid, org, amt, date, null)',
+      ),
+    }),
+    'OKLASSAT',
+  )
+
+  // Kod i ${...} körs även i en mallsträng. En kodmask som döljer hela
+  // mallen får inte göra dessa nya, oklassade matchningsanrop osynliga.
+  for (const [label, probe] of [
+    [
+      'bar true i exekverbart malluttryck med proof',
+      'const probe = `value ${this.applyMatchToRentNotice(id, nid, org, amt, date, null, true, "fuzzy", proof)}`',
+    ],
+    [
+      'bar true i nästlat exekverbart malluttryck med proof',
+      'const probe = `outer ${`inner ${this.applyMatchToRentNotice(id, nid, org, amt, date, null, true, "fuzzy", proof)}`}`',
+    ],
+  ]) {
+    röd(
+      label,
+      evaluate({ ruleText: RULE_OK, matchText: MATCH_OK + '\n' + probe }),
+      'bar `true`',
+    )
+  }
+
+  // R6: kanariefåglar för BÅDA indexen, frånvaro, tvetydighet och ändrad typ.
+  for (const fn of APPLIERS) {
+    const start = MATCH_OK.indexOf(`private async ${fn}(`)
+    const param = MATCH_OK.indexOf('allowPartial: boolean', start)
+    röd(
+      `${fn}: nytt argument före allowPartial`,
+      evaluate({
+        ruleText: RULE_OK,
+        matchText: MATCH_OK.slice(0, param) + 'nytt: string, ' + MATCH_OK.slice(param),
+      }),
+      'SIGNATUR',
+    )
+    röd(
+      `${fn}: deklarationen saknas`,
+      evaluate({
+        ruleText: RULE_OK,
+        matchText: MATCH_OK.replace(`private async ${fn}(`, `private async annan_${fn}(`),
+      }),
+      'SIGNATUR',
+    )
+  }
+  for (const param of [
+    'allowPartial?: boolean',
+    'allowPartial: boolean = true',
+    'allowPartial: string',
+    'annan: boolean',
+  ]) {
+    röd(
+      `ändrad parameter: ${param}`,
+      evaluate({ ruleText: RULE_OK, matchText: MATCH_OK.replace('allowPartial: boolean', param) }),
+      'SIGNATUR',
+    )
+  }
+  röd(
+    'dubbla metodsignaturer',
+    evaluate({
+      ruleText: RULE_OK,
+      matchText: MATCH_OK + '\n  private async applyMatchToInvoice(a) {}',
+    }),
+    'SIGNATUR',
+  )
 
   // ── R1 — bar literal (den enteckensändring guarden finns för) ─────────────
   röd(
@@ -510,7 +662,7 @@ function selfTest() {
     'inga apply*-anrop alls (blind skanning)',
     evaluate({
       ruleText: RULE_OK,
-      matchText: `const a = ${IDENTITY}\nconst b = ${GUESS}\nconst c = tx.invoicePayment.create`,
+      matchText: MATCH_OK.replace(/this\.applyMatchTo/g, 'this.annanMatchTo'),
     }),
     'NOLL apply*-anrop',
   )

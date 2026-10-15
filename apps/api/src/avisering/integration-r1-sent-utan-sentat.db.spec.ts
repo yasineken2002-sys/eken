@@ -38,6 +38,7 @@ import { AccountingService } from '../accounting/accounting.service'
 import { VerifikationsnummerService } from '../accounting/verifikationsnummer.service'
 import { RentNoticeEventsService } from './rent-notice-events.service'
 import { ReconciliationService } from '../reconciliation/reconciliation.service'
+import { kundtillgodoGränsAvstängd } from '../reconciliation/customer-credit.test-double'
 import { färskhetsdubbel } from '../payment-freshness/payment-freshness.test-double'
 
 const HAR_DB = Boolean(process.env.DATABASE_URL)
@@ -190,6 +191,7 @@ medDb('R-1 · dokumentets utskicksbevis mot avmatchningens återöppning', () =>
 
     recon = Object.create(ReconciliationService.prototype) as ReconciliationService
     Object.assign(recon, {
+      customerCredit: kundtillgodoGränsAvstängd(),
       prisma,
       accounting,
       rentNoticeEvents: events,
