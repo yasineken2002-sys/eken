@@ -1428,6 +1428,9 @@ model Tenant {
 
   @@unique([organizationId, email])
   @@unique([organizationId, ocrNumber])
+  // Portalinloggning och lösenordsåterställning söker innan hyresvärden är vald.
+  // Icke-unikt: samma adress får fortfarande finnas hos flera hyresvärdar.
+  @@index([email])
   @@index([organizationId])
   @@index([organizationId, personalNumberHash])
   // ── GLOBALT UPPSLAG PÅ BLINDINDEXET (#745 PR 4) ──────────────────────────
