@@ -13,6 +13,7 @@ import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
@@ -401,7 +402,7 @@ export class TenantAuthService {
         throw new UnauthorizedException('Felaktig e-post eller lösenord')
       }
       return this.createSession(current, tx)
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Glömt lösenord ───────────────────────────────────────────────────────────
@@ -498,7 +499,7 @@ export class TenantAuthService {
       // Lösenord, förbrukade länkar och ersatt session lyckas eller rullas
       // tillbaka tillsammans. Kontrakts-/mejlsidoeffekter sker efter commit.
       return this.createSession(updated, tx)
-    })
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Sessionshantering ────────────────────────────────────────────────────────
