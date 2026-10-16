@@ -1,0 +1,14 @@
+PASS src/invoices/invoice-customer-select.spec.ts
+PASS src/customer-credit/customer-credit-refund.db.spec.ts (5.904 s)
+PASS src/common/append-only.db.spec.ts
+PASS src/customer-credit/customer-credit-refund-release.db.spec.ts
+PASS src/customer-credit/customer-credit.db.spec.ts
+PASS src/customer-credit/customer-credit-dispatch.db.spec.ts
+PASS src/tenants/tenants-remove-gate.spec.ts
+
+Test Suites: 7 passed, 7 total
+Tests:       130 passed, 130 total
+Snapshots:   0 total
+Time:        21.813 s, estimated 24 s
+Ran all test suites matching /src\/common\/append-only.db.spec.ts|src\/tenants\/tenants-remove-gate.spec.ts|src\/invoices\/invoice-customer-select.spec.ts|src\/customer-credit\/customer-credit-refund.db.spec.ts|src\/customer-credit\/customer-credit-refund-release.db.spec.ts|src\/customer-credit\/customer-credit.db.spec.ts|src\/customer-credit\/customer-credit-dispatch.db.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-refund-20261016/ci-fixes-regression.json

@@ -22,7 +22,9 @@
  * `scripts/delete-organization.ts` raderar fem av tabellerna, och AI-retentionen
  * gallrar andra loggar. En full spärr hade brutit organisationsraderingen — och
  * det hade upptäckts först vid en GDPR-begäran. Testet nedan kräver därför att
- * DELETE fortfarande fungerar; en framtida "härdning" som spärrar den blir röd.
+ * DELETE fortfarande fungerar för de gallringsbara tabellerna; en framtida
+ * "härdning" som spärrar dem blir röd. Kundtillgodoåterbetalningens händelser
+ * har däremot en uttrycklig DELETE-spärr, prövad i återbetalningens DB-svit.
  */
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
@@ -66,6 +68,9 @@ const SKYDDADE = [
   // även i CI:s tomma tabeller, utan att särskilda tillgodofixturer skapas.
   'CustomerCredit',
   'CustomerCreditApplication',
+  // Återbetalningens bank- och bokföringshistorik får inte skrivas om.
+  // Satsnivå: samma råa UPDATE-prov gäller även när tabellen är tom.
+  'CustomerCreditRefundEvent',
   'FailedEmail',
   'InvoiceEvent',
   // Sen bokföring i ett stängt räkenskapsår. Spåret ÄR beviset för att

@@ -1,0 +1,70 @@
+FAIL src/customer-credit/customer-credit-refund-release.db.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/customer-credit/customer-credit-refund-release.db.spec.ts[0m:[93m140[0m:[93m14[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+    [7m140[0m       expect(applications[0].rentNoticeId).toBe(target.id)
+    [7m   [0m [91m             ~~~~~~~~~~~~~~~[0m
+    [96msrc/customer-credit/customer-credit-refund-release.db.spec.ts[0m:[93m141[0m:[93m14[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+    [7m141[0m       expect(applications[0].amount.toFixed(2)).toBe('25.00')
+    [7m   [0m [91m             ~~~~~~~~~~~~~~~[0m
+    [96msrc/customer-credit/customer-credit-refund-release.db.spec.ts[0m:[93m306[0m:[93m36[0m - [91merror[0m[90m TS2532: [0mObject is possibly 'undefined'.
+
+    [7m306[0m       const observation = rejected(r.bank.send.mock.calls[0][0])
+    [7m   [0m [91m                                   ~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+PASS src/customer-credit/customer-credit-refund.db.spec.ts (5.823 s)
+PASS src/customer-credit/customer-credit-refund-recovery.scheduler.spec.ts
+[Nest] 82102  - 10/16/2026, 1:31:20 PM    WARN [CustomerCreditRefundRecoveryScheduler] Återbetalningskontrollen nådde taket 100; fler påbörjade återbetalningar kan vänta till nästa pass.
+PASS src/history/tenant-history.db.spec.ts
+  ● Console
+
+    console.warn
+      [historik] förväntat=19 faktiskt=19 per källa={"lease":4,"key-handover":3,"maintenance-ticket":3,"deposit":2,"ai-tool-execution":1,"ai-assignment":0,"invoice-event":0,"rent-notice-event":0,"customer-credit":0,"customer-credit-refund":0,"inspection":2,"termination-request":2,"document":1,"document-signed":0,"sent-message":1,"consumption-charge":0,"misc-charge":0,"anonymization":0}
+
+      439 |     const historik = await service.forTenant(orgId, tenantId, 'OWNER')
+      440 |
+    > 441 |     console.warn(
+          |             ^
+      442 |       `[historik] förväntat=${facit.total} faktiskt=${historik.length} ` +
+      443 |         `per källa=${JSON.stringify(facit.per)}`,
+      444 |     )
+
+      at Object.<anonymous> (history/tenant-history.db.spec.ts:441:13)
+
+    console.warn
+      [historik] OWNER=19 VIEWER=18 (AI: 1 vs 0)
+
+      511 |     const aiHosViewer = somViewer.filter((e) => e.source.table === 'AiToolExecution').length
+      512 |
+    > 513 |     console.warn(
+          |             ^
+      514 |       `[historik] OWNER=${somOwner.length} VIEWER=${somViewer.length} (AI: ${aiHosOwner} vs ${aiHosViewer})`,
+      515 |     )
+      516 |
+
+      at Object.<anonymous> (history/tenant-history.db.spec.ts:513:13)
+
+PASS src/customer-credit/customer-credit.db.spec.ts
+PASS src/customer-credit/customer-credit-dispatch.db.spec.ts
+PASS src/tenant-portal/tenant-portal.customer-credit-refund-export.spec.ts
+PASS src/tenant-portal/tenant-portal.leak.spec.ts
+[Nest] 82102  - 10/16/2026, 1:31:29 PM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+[Nest] 82102  - 10/16/2026, 1:31:29 PM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+PASS src/accounting/accounting.customer-credit.spec.ts
+PASS src/tenant-portal/tenant-portal.rentnotice-leak.spec.ts
+PASS src/history/customer-credit-refund-history.spec.ts
+PASS src/tenant-portal/tenant-portal.notice-document-export.spec.ts
+PASS src/common/authz/object-scope.spec.ts
+PASS src/common/gdpr/tenant-history.spec.ts
+PASS src/scripts/delete-organization.spec.ts
+PASS src/customer-credit/customer-credit-refund-bank-gate.spec.ts
+PASS src/history/customer-credit-history.spec.ts
+
+Test Suites: 1 failed, 16 passed, 17 total
+Tests:       269 passed, 269 total
+Snapshots:   0 total
+Time:        21.613 s, estimated 37 s
+Ran all test suites matching /src\/customer-credit|src\/accounting\/accounting.customer-credit.spec.ts|src\/history\/customer-credit-history.spec.ts|src\/history\/customer-credit-refund-history.spec.ts|src\/history\/tenant-history.db.spec.ts|src\/common\/gdpr\/tenant-history.spec.ts|src\/scripts\/delete-organization.spec.ts|src\/tenant-portal\/tenant-portal.leak.spec.ts|src\/tenant-portal\/tenant-portal.rentnotice-leak.spec.ts|src\/tenant-portal\/tenant-portal.notice-document-export.spec.ts|src\/tenant-portal\/tenant-portal.customer-credit-refund-export.spec.ts|src\/common\/authz\/object-scope.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-refund-20261016/targeted-tests-final.json

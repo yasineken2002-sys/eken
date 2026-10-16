@@ -16,7 +16,14 @@
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { DELETION_STEPS, clientKey, assertDevDatabase } from './delete-organization'
+import {
+  DELETION_STEPS,
+  DELETION_BLOCKERS,
+  clientKey,
+  assertDevDatabase,
+  deleteOrganizations,
+} from './delete-organization'
+import type { PrismaClient } from '@prisma/client'
 
 const SCHEMA = join(__dirname, '..', '..', 'prisma', 'schema.prisma')
 
@@ -51,7 +58,7 @@ export function uncovered(models: Model[], handled: ReadonlySet<string>): string
 describe('raderingsordningen för en organisation', () => {
   const schema = readFileSync(SCHEMA, 'utf8')
   const models = parseModels(schema)
-  const handled = new Set(DELETION_STEPS.map((s) => s.model))
+  const handled = new Set([...DELETION_STEPS, ...DELETION_BLOCKERS].map((s) => s.model))
 
   it('parsern hittar faktiskt modeller i schemat', () => {
     // Utan den här raden kan alla påståenden nedan vara tomma och gröna.
@@ -67,11 +74,25 @@ describe('raderingsordningen för en organisation', () => {
 
   it('varje steg i skriptet motsvarar en modell som finns i schemat', () => {
     const names = new Set(models.map((m) => m.name))
-    expect(DELETION_STEPS.map((s) => s.model).filter((m) => !names.has(m))).toEqual([])
+    expect(
+      [...DELETION_STEPS, ...DELETION_BLOCKERS].map((s) => s.model).filter((m) => !names.has(m)),
+    ).toEqual([])
   })
 
   it('inget steg står två gånger', () => {
-    expect(DELETION_STEPS.length).toBe(handled.size)
+    expect(DELETION_STEPS.length + DELETION_BLOCKERS.length).toBe(handled.size)
+  })
+
+  it('återbetalningens rader täcks av ett uttryckligt stopp, aldrig ett raderingssteg', () => {
+    expect(DELETION_BLOCKERS.map((step) => step.model)).toEqual([
+      'CustomerCreditRefund',
+      'CustomerCreditRefundEvent',
+    ])
+    for (const blocker of DELETION_BLOCKERS) {
+      expect(DELETION_STEPS.some((step) => step.model === blocker.model)).toBe(false)
+      expect(blocker.where(['org-1'])).toEqual({ organizationId: { in: ['org-1'] } })
+      expect(blocker.where([])).toEqual({ organizationId: { in: [] } })
+    }
   })
 
   it('löser tillgodoanvändning före källan utan att först radera källans bankallokering', () => {
@@ -171,4 +192,40 @@ describe('clientKey', () => {
     expect(clientKey('JournalEntryLine')).toBe('journalEntryLine')
     expect(clientKey('Account')).toBe('account')
   })
+})
+
+describe('dev-purge respekterar återbetalningens bevarande', () => {
+  it.each(['customerCreditRefund', 'customerCreditRefundEvent'])(
+    'avbryter före första delete när %s finns',
+    async (blockedModel) => {
+      const deleteMany = jest.fn()
+      const count = jest.fn().mockResolvedValue(0)
+      const blockedCount = jest.fn().mockResolvedValue(1)
+      const tx = {
+        $queryRaw: jest.fn().mockResolvedValue([]),
+        customerCreditRefund: {
+          count: blockedModel === 'customerCreditRefund' ? blockedCount : count,
+        },
+        customerCreditRefundEvent: {
+          count: blockedModel === 'customerCreditRefundEvent' ? blockedCount : count,
+        },
+        ...Object.fromEntries(
+          DELETION_STEPS.map((step) => [clientKey(step.model), { deleteMany }]),
+        ),
+        organization: { deleteMany },
+      }
+      const prisma = {
+        $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx),
+      }
+
+      await expect(
+        deleteOrganizations(prisma as unknown as PrismaClient, ['org-1', 'org-2']),
+      ).rejects.toThrow('innan några rader tas bort')
+      expect(deleteMany).not.toHaveBeenCalled()
+      expect(blockedCount).toHaveBeenCalledWith({
+        where: { organizationId: { in: ['org-1', 'org-2'] } },
+      })
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(2)
+    },
+  )
 })

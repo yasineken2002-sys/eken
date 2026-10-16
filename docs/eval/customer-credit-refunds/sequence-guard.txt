@@ -1,0 +1,2 @@
+✅ 8 nummerserier, 8 anropsplatser — alla atomära increment-UPSERT, en per serie, och varje allokerare tar sin
+   transaktionsklient av typen (R4).

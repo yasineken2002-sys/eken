@@ -1,0 +1,8 @@
+PASS src/customer-credit/customer-credit-refund.db.spec.ts (9.789 s)
+PASS src/customer-credit/customer-credit-refund-release.db.spec.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       52 passed, 52 total
+Snapshots:   0 total
+Time:        13.052 s, estimated 18 s
+Ran all test suites matching /src\/customer-credit\/customer-credit-refund.db.spec.ts|src\/customer-credit\/customer-credit-refund-release.db.spec.ts/i.

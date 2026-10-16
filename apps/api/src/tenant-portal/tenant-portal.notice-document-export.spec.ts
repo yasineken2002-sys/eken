@@ -89,6 +89,7 @@ describe('GDPR-export av sparat aviunderlag', () => {
         findUnique: jest.fn().mockResolvedValue({
           id: 'own-tenant',
           organization: { id: 'own-organization', name: 'Syntetiskt bolag' },
+          customerCreditRefunds: [],
           leases: [],
           invoices: [],
           maintenanceTickets: [],

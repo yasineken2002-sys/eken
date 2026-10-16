@@ -636,6 +636,8 @@ model Organization {
   customerCreditPolicy       CustomerCreditPolicy?
   customerCredits            CustomerCredit[]
   customerCreditApplications CustomerCreditApplication[]
+  customerCreditRefunds      CustomerCreditRefund[]
+  customerCreditRefundEvents CustomerCreditRefundEvent[]
 
   id                   String             @id @default(uuid())
   name                 String
@@ -1293,7 +1295,8 @@ model Unit {
 // ─── Tenant (Hyresgäst) ───────────────────────────────────────────────────────
 
 model Tenant {
-  customerCredits CustomerCredit[]
+  customerCredits       CustomerCredit[]
+  customerCreditRefunds CustomerCreditRefund[]
 
   id             String     @id @default(uuid())
   organizationId String
@@ -1553,7 +1556,8 @@ enum CustomerType {
 // ─── Lease (Hyresavtal) ───────────────────────────────────────────────────────
 
 model Lease {
-  customerCredits CustomerCredit[]
+  customerCredits       CustomerCredit[]
+  customerCreditRefunds CustomerCreditRefund[]
 
   id                      String        @id @default(uuid())
   organizationId          String
@@ -2112,8 +2116,11 @@ model PaymentReminder {
 // ─── Accounting ───────────────────────────────────────────────────────────────
 
 model Account {
-  customerCreditPolicies CustomerCreditPolicy[]
-  customerCredits        CustomerCredit[]
+  customerCreditPolicies          CustomerCreditPolicy[]
+  customerCredits                 CustomerCredit[]
+  customerCreditRefundPolicies    CustomerCreditPolicy[] @relation("CustomerCreditRefundPolicyBankLedger")
+  customerCreditRefundLiabilities CustomerCreditRefund[] @relation("CustomerCreditRefundLiability")
+  customerCreditRefundBankLedgers CustomerCreditRefund[] @relation("CustomerCreditRefundBankLedger")
 
   id             String      @id @default(uuid())
   organizationId String
@@ -2158,6 +2165,7 @@ model Account {
 model JournalEntry {
   customerCreditReceipt     CustomerCredit?            @relation("CustomerCreditReceiptJournal")
   customerCreditApplication CustomerCreditApplication? @relation("CustomerCreditApplicationJournal")
+  customerCreditRefund      CustomerCreditRefund?      @relation("CustomerCreditRefundJournal")
 
   id             String             @id @default(uuid())
   organizationId String
@@ -2914,6 +2922,7 @@ model BankImportStop {
 
 model BankAccount {
   customerCreditPolicies CustomerCreditPolicy[]
+  customerCreditRefunds  CustomerCreditRefund[]
 
   id             String  @id @default(uuid())
   organizationId String
@@ -8158,21 +8167,26 @@ model FortnoxAccountMappingRow {
 // Förberedande domänmodell. Ingen produktionsväg aktiverar denna policy ännu.
 // Ett konto väljs uttryckligen efter granskning, aldrig genom en BAS-default.
 model CustomerCreditPolicy {
-  organizationId      String     @id
-  enabled             Boolean    @default(false)
-  carryForwardEnabled Boolean    @default(false)
-  liabilityAccountId  String
-  bankAccountId       String
-  createdAt           DateTime   @default(now())
-  actorKind           ActorKind?
+  organizationId            String     @id
+  enabled                   Boolean    @default(false)
+  carryForwardEnabled       Boolean    @default(false)
+  refundEnabled             Boolean    @default(false)
+  // Ingen BAS-default: återbetalning kräver uttrycklig bokföringskontomappning.
+  refundBankLedgerAccountId String?
+  liabilityAccountId        String
+  bankAccountId             String
+  createdAt                 DateTime   @default(now())
+  actorKind                 ActorKind?
 
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  liabilityAccount Account      @relation(fields: [liabilityAccountId], references: [id], onDelete: Restrict)
-  bankAccount      BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  liabilityAccount        Account      @relation(fields: [liabilityAccountId], references: [id], onDelete: Restrict)
+  bankAccount             BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  refundBankLedgerAccount Account?     @relation("CustomerCreditRefundPolicyBankLedger", fields: [refundBankLedgerAccountId], references: [id], onDelete: Restrict)
 }
 
 // Append-only: en oföränderlig skuld från EN överbetalning. Tillgängligt belopp härleds ur
-// originalet minus tillämpningar. Det är inte en kreditering av hyresintäkt.
+// originalet minus tillämpningar och återbetalningsorder som inte frigivits.
+// Det är inte en kreditering av hyresintäkt.
 // Källallokeringen kan inte raderas av vanlig avmatchning (Restrict).
 model CustomerCredit {
   id                      String     @id @default(uuid())
@@ -8199,6 +8213,7 @@ model CustomerCredit {
   liabilityAccount      Account                     @relation(fields: [liabilityAccountId], references: [id], onDelete: Restrict)
   journalEntry          JournalEntry                @relation("CustomerCreditReceiptJournal", fields: [journalEntryId], references: [id], onDelete: Restrict)
   applications          CustomerCreditApplication[]
+  refunds               CustomerCreditRefund[]
 
   @@index([organizationId, leaseId])
 }
@@ -8227,4 +8242,98 @@ model CustomerCreditApplication {
   @@unique([organizationId, requestId])
   @@unique([creditId, rentNoticeId])
   @@index([rentNoticeId])
+}
+
+enum CustomerCreditRefundState {
+  RESERVED
+  SUBMITTING
+  UNKNOWN
+  BANK_CONFIRMED
+  SETTLED
+  REJECTED
+  CANCELLED
+}
+
+// Beständig reservation av EN tillgodopost. Även bankbekräftade/bokförda order
+// förbrukar saldot. Endast annullering före start eller bevisad icke-exekvering
+// frigör beloppet. Databasen fryser instruktionen och bevakar övergångarna.
+model CustomerCreditRefund {
+  id                  String                    @id @default(uuid())
+  organizationId      String
+  creditId            String
+  tenantId            String
+  leaseId             String
+  requestId           String
+  requestHash         String
+  amount              Decimal                   @db.Decimal(10, 2)
+  currency            String                    @default("SEK")
+  liabilityAccountId  String
+  bankAccountId       String
+  bankLedgerAccountId String
+  provider            String
+  providerAccountRef  String
+  // Leverantörens verifierade opaka mottagarreferens, aldrig ett fritt kontonummer.
+  recipientRef        String
+  recipientProofHash  String
+  recipientVerifiedAt DateTime
+  recipientValidUntil DateTime
+  instructionHash     String
+  state               CustomerCreditRefundState @default(RESERVED)
+  preparedAt          DateTime
+  submissionStartedAt DateTime?
+  providerTransferId  String?
+  bankProofKey        String?                   @unique
+  bankProofHash       String?
+  bankEvidence        Json?
+  bankConfirmedAt     DateTime?
+  bankBookedAt        DateTime?
+  // Bankens externa transaktions-id: identiteten är provider + konto + detta id.
+  // Det är inte en lokal BankTransaction-FK och inte globalt unikt på egen hand.
+  bankTransactionId   String?
+  journalEntryId      String?                   @unique
+  settledAt           DateTime?
+  cancelledAt         DateTime?
+  rejectedAt          DateTime?
+  rejectionProofHash  String?
+  rejectionEvidence   Json?
+  recoveryAfter       DateTime?
+  recoveryAttempts    Int                       @default(0)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  actorKind           ActorKind?
+
+  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  credit            CustomerCredit              @relation(fields: [creditId], references: [id], onDelete: Restrict)
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lease             Lease                       @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  liabilityAccount  Account                     @relation("CustomerCreditRefundLiability", fields: [liabilityAccountId], references: [id], onDelete: Restrict)
+  bankAccount       BankAccount                 @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  bankLedgerAccount Account                     @relation("CustomerCreditRefundBankLedger", fields: [bankLedgerAccountId], references: [id], onDelete: Restrict)
+  journalEntry      JournalEntry?               @relation("CustomerCreditRefundJournal", fields: [journalEntryId], references: [id], onDelete: Restrict)
+  events            CustomerCreditRefundEvent[]
+
+  @@unique([organizationId, requestId])
+  @@unique([provider, providerAccountRef, providerTransferId], map: "CustomerCreditRefund_transfer_identity_key")
+  @@unique([provider, providerAccountRef, bankTransactionId], map: "CustomerCreditRefund_bank_proof_identity_key")
+  @@index([organizationId, creditId])
+  @@index([state, recoveryAfter, preparedAt])
+}
+
+// Append-only räkenskapsunderlag och transitionsspår; både UPDATE och DELETE är spärrade.
+// Endast hash och klassad orsak lagras, aldrig råa banksvar eller mottagarkonton.
+model CustomerCreditRefundEvent {
+  id              String     @id @default(uuid())
+  organizationId  String
+  refundId        String
+  type            String
+  occurredAt      DateTime
+  observationHash String?
+  reasonCode      String?
+  createdAt       DateTime   @default(now())
+  actorKind       ActorKind?
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  refund       CustomerCreditRefund @relation(fields: [refundId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, refundId, occurredAt])
 }

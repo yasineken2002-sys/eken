@@ -1,0 +1,41 @@
+PASS src/customer-credit/customer-credit-refund.db.spec.ts (9.751 s)
+  ✓ återbetalningsproven kräver en uttryckligt isolerad databas även om sviten annars hoppas över (55 ms)
+  kundtillgodoåterbetalning, bankbevis och oföränderlig reskontra
+    ✓ reserverar utan bokning, lagrar bankfact och bokför först vid separat bekräftelse (477 ms)
+    ✓ låter tidigare delanvändning lämna återbetalningsbar rest, men aldrig mer (154 ms)
+    ✓ avvisar noll, minus, subören och överbelopp utan reservation eller verifikat (87 ms)
+    ✓ två öppna transaktioner: refund-first mot samtidig automatisk aviavräkning (106 ms)
+    ✓ två öppna transaktioner: notice-first mot samtidig automatisk aviavräkning (103 ms)
+    ✓ två samtidiga återbetalningsbegäranden kan inte reservera samma öre (79 ms)
+    ✓ samtidig submit efter SUBMITTING gör bara lookup, behåller saldot och bokför banksvaret en gång (188 ms)
+    ✓ timeout efter bankaccept lämnar UNKNOWN och recovery använder bara samma instruktion via lookup (153 ms)
+    ✓ cancel frigör reservationen exakt en gång utan verifikat (95 ms)
+    ✓ rejected frigör reservationen exakt en gång utan verifikat (106 ms)
+    ✓ motsägande bankbekräftelse (amount) förbrukar aldrig bevis eller frigör pengar (107 ms)
+    ✓ motsägande bankbekräftelse (organizationId) förbrukar aldrig bevis eller frigör pengar (100 ms)
+    ✓ motsägande bankbekräftelse (tenantId) förbrukar aldrig bevis eller frigör pengar (102 ms)
+    ✓ motsägande bankbekräftelse (bankAccountId) förbrukar aldrig bevis eller frigör pengar (101 ms)
+    ✓ motsägande bankbekräftelse (providerAccountRef) förbrukar aldrig bevis eller frigör pengar (100 ms)
+    ✓ motsägande bankbekräftelse (recipientRef) förbrukar aldrig bevis eller frigör pengar (101 ms)
+    ✓ motsägande bankbekräftelse (instructionHash) förbrukar aldrig bevis eller frigör pengar (102 ms)
+    ✓ motsägande bankbekräftelse (currency) förbrukar aldrig bevis eller frigör pengar (98 ms)
+    ✓ samma banktransaktion kan inte bekräfta två reservationer även med olika anropsnycklar (121 ms)
+    ✓ sen bankfact kan bokföras efter policyoff och anonymisering utan ny submit (117 ms)
+    ✓ ändrad policy före start stoppar banken och behåller reservationen (77 ms)
+    ✓ ändrad account före start stoppar banken och behåller reservationen (71 ms)
+    ✓ ändrad tenant före start stoppar banken och behåller reservationen (74 ms)
+    ✓ avstängd policy, främmande organisation och AGENT/okänd aktör kan inte reservera (56 ms)
+    ✓ mottagarportens felaktiga org/kontobindning kan inte bli en reservation (59 ms)
+    ✓ bokföringsfel rullar tillbaka bokningen men bevarar bankfact för exakt en senare bokning (106 ms)
+    ✓ SQL kan inte överspendera, ändra instruktionen, sätta SETTLED eller radera bevisrader (68 ms)
+    ✓ DB-spärren kräver READ COMMITTED även för en direkt SQL-reservation med ledigt saldo (65 ms)
+    ✓ SQL kan inte byta tenant/kontobindning eller lägga en händelse under annan organisation (67 ms)
+    ✓ direkt aviavräkning efter reservation nekas av databasen, inte bara tjänsten (64 ms)
+    ✓ bankfact/historik/export bevaras vid anonymisering och dev-purge vägrar före radering (119 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       32 passed, 32 total
+Snapshots:   0 total
+Time:        9.811 s
+Ran all test suites matching /src\/customer-credit\/customer-credit-refund.db.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-refund-20261016/refund-lifecycle-final.json

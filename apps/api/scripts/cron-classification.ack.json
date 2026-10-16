@@ -39,6 +39,10 @@
       "class": "B",
       "invariant": "RentNoticeSend updateMany på id, recoveryAttempts, recoveryAfter förfallet och acceptedAt=null flyttar recoveryAfter och ökar försöksräknaren atomiskt före köning. Endast count=1 köar; återförsök använder samma frysta reservation och leverantörsnyckel."
     },
+    "customer-credit/customer-credit-refund-recovery.scheduler.ts::recoverStartedRefunds": {
+      "class": "B",
+      "invariant": "CustomerCreditRefund updateMany på id, organizationId, state, submissionStartedAt, recoveryAttempts och förfallen recoveryAfter flyttar nästa försök atomiskt före bankuppslag. Endast count=1 följer upp samma frysta instruktion; återhämtning skickar aldrig en ny betalning. Kundtillgodo och återbetalning låses före bankbevis och den unika journalEntryId-kopplingen fastställs atomiskt med SETTLED."
+    },
     "avisering/rent-reminder.service.ts::escalateOverdueRentNotices": {
       "class": "B",
       "invariant": "RentNotice updateMany-claim på (status=OVERDUE, collectionStage=NONE); count=0 → escalateNoticeToReminded returnerar false utan att boka påminnelseavgift eller skicka."
