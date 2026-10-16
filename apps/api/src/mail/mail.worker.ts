@@ -19,6 +19,7 @@ import {
 
 const DEFAULT_FROM = 'Eveno Fastigheter <noreply@eveno.se>'
 const CONCURRENCY = 5
+type InviteBinding = { email: string; tokenHash: string }
 
 @Injectable()
 abstract class MailWorkerBase {
@@ -215,7 +216,7 @@ abstract class MailWorkerBase {
     correlation: MailCorrelation,
     resendId: string,
     organizationId: string,
-    invite?: { email: string; tokenHash: string },
+    invite?: InviteBinding,
   ): Promise<void> {
     try {
       switch (correlation.kind) {
