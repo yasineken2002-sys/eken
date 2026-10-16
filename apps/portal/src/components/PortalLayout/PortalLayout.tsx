@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useEffect, useState } from 'react'
 import { Link, Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { TenantAiChat, TenantAiFab } from '@/features/ai/TenantAiChat'
@@ -177,6 +178,7 @@ const NAV_ITEMS: { to: string; label: string; icon: React.ReactNode; end: boolea
 ]
 
 export function PortalLayout() {
+  const currentSession = useSessionGuard()
   const location = useLocation()
   const navigate = useNavigate()
   const sessionToken = useSessionStore((s) => s.sessionToken)
@@ -184,11 +186,12 @@ export function PortalLayout() {
   const [aiOpen, setAiOpen] = useState(false)
   const [initialMessage, setInitialMessage] = useState<string | undefined>()
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    if (!currentSession()) return
     if (sessionToken) {
       // Bästa möjliga ansträngning att invalidera token i backend — vi loggar
       // ut lokalt oavsett om anropet lyckas.
-      await logoutSession(sessionToken).catch(() => undefined)
+      void logoutSession(sessionToken).catch(() => undefined)
     }
     clearSession()
     navigate('/login', { replace: true })

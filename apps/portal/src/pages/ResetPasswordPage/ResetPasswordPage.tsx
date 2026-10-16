@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useSessionMutation } from '@/lib/session-guard'
 import { validatePasswordStrength } from '@eken/shared'
 import { resetPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
@@ -18,7 +18,7 @@ export function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const mutation = useMutation({
+  const mutation = useSessionMutation({
     mutationFn: () => resetPassword({ token, password }),
     onSuccess: (result) => {
       setSession(result.sessionToken, result.tenant, result.expiresAt)

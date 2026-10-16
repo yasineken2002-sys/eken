@@ -8,6 +8,15 @@ export interface PortalTenant {
   phone?: string
 }
 
+/** Authsvaret är en sammanfattning; företagsform saknas tills dashboard hämtats. */
+export type PortalSessionTenant = Pick<PortalTenant, 'id' | 'email'> & {
+  type?: PortalTenant['type']
+  firstName?: string | null
+  lastName?: string | null
+  companyName?: string | null
+  phone?: string | null
+}
+
 export interface PortalUnit {
   id: string
   name: string
@@ -184,7 +193,7 @@ export interface PortalMiscCharge {
 
 export interface PortalAuthResult {
   sessionToken: string
-  tenant: PortalTenant
+  tenant: PortalSessionTenant
   expiresAt: string
 }
 
@@ -214,7 +223,7 @@ export interface PortalBankIdCandidate {
 export type PortalBankIdCollect =
   | { status: 'pending'; hintCode?: string }
   | { status: 'failed'; reason: string }
-  | { status: 'complete'; sessionToken: string; expiresAt: string; tenant: PortalTenant }
+  | { status: 'complete'; sessionToken: string; expiresAt: string; tenant: PortalSessionTenant }
   | { status: 'choose'; chooseToken: string; candidates: PortalBankIdCandidate[] }
 
 export interface PortalActivationInfo {

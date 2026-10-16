@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useEffect, useReducer, useState } from 'react'
 import QRCode from 'qrcode'
 import { useQuery } from '@tanstack/react-query'
@@ -48,6 +49,7 @@ const POLL_MS = 2000
  * går genom en egen händelse.
  */
 export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResult) => void }) {
+  const currentSession = useSessionGuard()
   const { data: flaggor } = useQuery({
     queryKey: ['public-config'],
     queryFn: publicFeatures,
@@ -71,11 +73,11 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
     if (!orderRef) return
     let stopp = false
     const id = setInterval(() => {
-      if (stopp) return
+      if (stopp || !currentSession()) return
       bankIdCollect(orderRef)
-        .then((svar) => !stopp && dispatch({ typ: 'svar', svar }))
+        .then((svar) => !stopp && currentSession() && dispatch({ typ: 'svar', svar }))
         .catch((err: unknown) => {
-          if (stopp) return
+          if (stopp || !currentSession()) return
           const status = (err as { response?: { status?: number } })?.response?.status
           dispatch({
             typ: 'fel',
@@ -87,7 +89,7 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
       stopp = true
       clearInterval(id)
     }
-  }, [orderRef])
+  }, [orderRef, currentSession])
 
   // ── QR ────────────────────────────────────────────────────────────────────
   const qrData = state.steg === 'pollar' ? state.qrData : undefined
@@ -108,23 +110,27 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
   }, [qrData])
 
   useEffect(() => {
-    if (state.steg === 'klar') onSession(state.session)
-  }, [state, onSession])
+    if (state.steg === 'klar' && currentSession()) onSession(state.session)
+  }, [state, onSession, currentSession])
 
   function starta() {
+    if (!currentSession()) return
     dispatch({ typ: 'starta' })
     bankIdStart()
-      .then((start) => dispatch({ typ: 'startad', start }))
-      .catch((err: unknown) =>
-        dispatch({ typ: 'fel', meddelande: extractApiError(err, 'BankID kunde inte startas') }),
+      .then((start) => currentSession() && dispatch({ typ: 'startad', start }))
+      .catch(
+        (err: unknown) =>
+          currentSession() &&
+          dispatch({ typ: 'fel', meddelande: extractApiError(err, 'BankID kunde inte startas') }),
       )
   }
 
   function valj(tenantId: string) {
-    if (state.steg !== 'val') return
+    if (state.steg !== 'val' || !currentSession()) return
     setValjer(true)
     bankIdChoose(state.chooseToken, tenantId)
       .then((svar) => {
+        if (!currentSession()) return
         if (svar.status !== 'complete') throw new Error('Oväntat svar')
         dispatch({
           typ: 'vald',
@@ -135,8 +141,10 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
           },
         })
       })
-      .catch((err: unknown) =>
-        dispatch({ typ: 'fel', meddelande: extractApiError(err, 'Valet kunde inte slutföras') }),
+      .catch(
+        (err: unknown) =>
+          currentSession() &&
+          dispatch({ typ: 'fel', meddelande: extractApiError(err, 'Valet kunde inte slutföras') }),
       )
       .finally(() => setValjer(false))
   }

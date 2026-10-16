@@ -12,13 +12,14 @@ import { useSessionStore } from '@/store/session.store'
 export function RequireAuth({ children }: { children: ReactNode }) {
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated)
   const checkAndClearIfExpired = useSessionStore((s) => s.checkAndClearIfExpired)
+  const isExpired = useSessionStore((s) => s.isExpired)
   const location = useLocation()
 
   useEffect(() => {
     checkAndClearIfExpired()
   }, [location.pathname, checkAndClearIfExpired])
 
-  if (!isAuthenticated || checkAndClearIfExpired()) {
+  if (!isAuthenticated || isExpired()) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 

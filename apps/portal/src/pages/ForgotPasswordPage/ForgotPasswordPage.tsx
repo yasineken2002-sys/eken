@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useSessionMutation } from '@/lib/session-guard'
 import { requestForgotPassword } from '@/api/portal.api'
 import styles from '../LoginPage/LoginPage.module.css'
 
@@ -11,7 +11,7 @@ export function ForgotPasswordPage() {
   const [state, setState] = useState<State>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const mutation = useMutation({
+  const mutation = useSessionMutation({
     mutationFn: (em: string) => requestForgotPassword(em),
     onSuccess: () => setState('sent'),
     onError: () => setErrorMsg('Något gick fel. Försök igen om en stund.'),

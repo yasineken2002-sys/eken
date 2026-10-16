@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -37,6 +38,7 @@ const btnSecondary: React.CSSProperties = {
 }
 
 export function SettingsPage() {
+  const currentSession = useSessionGuard()
   const navigate = useNavigate()
   const sessionToken = useSessionStore((s) => s.sessionToken)
   const tenant = useSessionStore((s) => s.tenant)
@@ -49,9 +51,11 @@ export function SettingsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleExport = async () => {
+    if (!currentSession()) return
     setExportLoading(true)
     try {
       const data = await exportMyData()
+      if (!currentSession()) return
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -62,6 +66,7 @@ export function SettingsPage() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (err) {
+      if (!currentSession()) return
       toast.error(extractApiError(err, 'Kunde inte exportera dina uppgifter'))
     } finally {
       setExportLoading(false)
@@ -69,16 +74,19 @@ export function SettingsPage() {
   }
 
   const handleDelete = async () => {
+    if (!currentSession()) return
     setDeleteError(null)
     setDeleteLoading(true)
     try {
       await deleteMyAccount(deletePassword)
+      if (!currentSession()) return
       if (sessionToken) {
-        await logoutSession(sessionToken).catch(() => undefined)
+        void logoutSession(sessionToken).catch(() => undefined)
       }
       clearSession()
       navigate('/login', { replace: true })
     } catch (err: unknown) {
+      if (!currentSession()) return
       const e = err as { response?: { data?: { error?: { message?: string } } }; message?: string }
       setDeleteError(e?.response?.data?.error?.message ?? e?.message ?? 'Kunde inte radera kontot')
       setDeleteLoading(false)

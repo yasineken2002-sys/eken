@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { useSessionMutation } from '@/lib/session-guard'
 import { validatePasswordStrength } from '@eken/shared'
 import { activateAccount, fetchActivationContract, fetchActivationInfo } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
@@ -82,7 +83,7 @@ export function ActivatePage() {
     }
   }, [infoQuery.data, signatureName])
 
-  const activateMutation = useMutation({
+  const activateMutation = useSessionMutation({
     mutationFn: () => activateAccount({ token, password, signatureName: signatureName.trim() }),
     onSuccess: (result) => {
       setSession(result.sessionToken, result.tenant, result.expiresAt)
