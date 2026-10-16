@@ -131,9 +131,13 @@ av matchningsprecision, andel manuella granskningar eller kostnad per betalning.
 - **78/78 bokföringsprov även i en separat process med
   `TZ=America/Los_Angeles`**, inklusive bankens Stockholmsdag.
   [Zonkörning](./eval/customer-credit-refunds/accounting-los-angeles.txt).
-- **20 relevanta vakter gröna**, inklusive transaktionsgränser, aktörsstämpling,
+- **21 relevanta vakter gröna**, inklusive transaktionsgränser, aktörsstämpling,
   cronklassificering, felsänka, historikinventarium och append-only.
-  [Vaktutdata](./eval/customer-credit-refunds/guards.txt).
+  [Vaktutdata](./eval/customer-credit-refunds/guards.txt) och
+  [nummerserievakten](./eval/customer-credit-refunds/sequence-guard.txt).
+  Testernas läsning av verifikationsräknare ligger i spec-filerna; den används
+  bara för att verifiera rollback och skapar inga nummerserier.
+  [52/52 DB-prov efter flytten av hjälparen](./eval/customer-credit-refunds/sequence-fix-regression.txt).
 - Prisma validerat, klient genererad och den enda nya migrationen applicerad
   i isolerad lokal testdatabas. Riktad ESLint och `git diff --check` gröna.
 - Hela API-typkontrollen nådde den avtalade lokala minnesgränsen på 1,5 GB

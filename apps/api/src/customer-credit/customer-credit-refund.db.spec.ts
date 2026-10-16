@@ -17,7 +17,6 @@ import { TenantPortalService } from '../tenant-portal/tenant-portal.service'
 import { isIsolatedDatabase } from './customer-credit-dispatch.test-fixtures'
 import type { CustomerCreditRefundBankObservation } from './customer-credit-refund-bank.port'
 import {
-  accountingSnapshot,
   booked,
   digest,
   holdFirstCommit,
@@ -28,6 +27,23 @@ import {
   rejected,
   syntheticDestination,
 } from './customer-credit-refund.test-fixtures'
+
+// Läsningen mäter rollback i testerna, den allokerar aldrig verifikationsnummer.
+async function accountingSnapshot(prisma: PrismaService, organizationId: string) {
+  return JSON.stringify(
+    await Promise.all([
+      prisma.journalEntry.findMany({
+        where: { organizationId },
+        orderBy: { id: 'asc' },
+        include: { lines: { orderBy: { id: 'asc' } } },
+      }),
+      prisma.journalEntrySequence.findMany({
+        where: { organizationId },
+        orderBy: [{ series: 'asc' }, { fiscalYear: 'asc' }],
+      }),
+    ]),
+  )
+}
 
 jest.setTimeout(30_000)
 const ISOLATED = isIsolatedDatabase()

@@ -253,19 +253,3 @@ export function observeTransactionStart(prisma: PrismaService) {
   })
   return { prisma: wrapped, reached }
 }
-
-export async function accountingSnapshot(prisma: PrismaService, organizationId: string) {
-  return JSON.stringify(
-    await Promise.all([
-      prisma.journalEntry.findMany({
-        where: { organizationId },
-        orderBy: { id: 'asc' },
-        include: { lines: { orderBy: { id: 'asc' } } },
-      }),
-      prisma.journalEntrySequence.findMany({
-        where: { organizationId },
-        orderBy: [{ series: 'asc' }, { fiscalYear: 'asc' }],
-      }),
-    ]),
-  )
-}
