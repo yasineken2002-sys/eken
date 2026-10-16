@@ -104,9 +104,14 @@ describe('TenantAuthService.createSession — credential-strip (B1 defense-in-de
     }
     const findFirst = jest.fn().mockResolvedValue(tenantRow)
     const create = jest.fn().mockResolvedValue({})
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: tenantRow.id }]),
+      tenant: { findUnique: jest.fn().mockResolvedValue(tenantRow) },
+      tenantSession: { create },
+    }
     const prisma = {
       tenant: { findFirst },
-      tenantSession: { create },
+      $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)),
     }
     const service = new TenantAuthService(
       prisma as never,

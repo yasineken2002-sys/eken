@@ -13,6 +13,7 @@ import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
@@ -63,6 +64,29 @@ function assertStrongPassword(password: string): void {
   const result = validatePasswordStrength(password)
   if (!result.valid) {
     throw new BadRequestException(result.errors.join('. '))
+  }
+}
+
+type PasswordGrant = 'activation' | 'reset'
+
+function assertPasswordGrant(
+  tenant: Tenant | null,
+  tokenHash: string,
+  grant: PasswordGrant,
+): asserts tenant is Tenant {
+  const storedHash =
+    grant === 'activation' ? tenant?.activationTokenHash : tenant?.passwordResetTokenHash
+  const expiresAt =
+    grant === 'activation' ? tenant?.activationTokenExpiresAt : tenant?.passwordResetTokenExpiresAt
+  if (!tenant || storedHash !== tokenHash || !expiresAt) {
+    throw new UnauthorizedException(
+      grant === 'activation' ? 'Ogiltig aktiveringslänk' : 'Ogiltig återställningslänk',
+    )
+  }
+  if (expiresAt.getTime() <= Date.now()) {
+    throw new UnauthorizedException(
+      grant === 'activation' ? 'Aktiveringslänken har gått ut' : 'Återställningslänken har gått ut',
+    )
   }
 }
 
@@ -274,27 +298,16 @@ export class TenantAuthService {
       where: { activationTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.activationTokenExpiresAt) {
-      throw new UnauthorizedException('Ogiltig aktiveringslänk')
-    }
-    if (tenant.activationTokenExpiresAt < new Date()) {
-      throw new UnauthorizedException('Aktiveringslänken har gått ut')
-    }
+    assertPasswordGrant(tenant, tokenHash, 'activation')
 
     const passwordHash = await bcrypt.hash(password, 12)
-
-    const updated = await this.prisma.tenant.update({
-      where: { id: tenant.id },
-      data: {
-        passwordHash,
-        portalActivated: true,
-        portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
-        activationTokenHash: null,
-        activationTokenExpiresAt: null,
-        activationReminderSentAt: null,
-      },
-      include: { organization: { select: { id: true, name: true } } },
-    })
+    const session = await this.completePasswordChange(
+      tenant.id,
+      tokenHash,
+      passwordHash,
+      'activation',
+    )
+    const updated = session.tenant
 
     // Lås den senaste kontrakts-PDF:en för hyresgästens aktiva kontrakt och
     // skriv signaturmetadata. Vi inväntar låsningen så att vi vet exakt vilket
@@ -319,7 +332,7 @@ export class TenantAuthService {
       })
     }
 
-    return this.createSession(updated)
+    return session
   }
 
   private async lockLatestContractForTenant(
@@ -376,7 +389,20 @@ export class TenantAuthService {
       throw new UnauthorizedException('Felaktig e-post eller lösenord')
     }
 
-    return this.createSession(tenant)
+    // Bcrypt hålls utanför transaktionen. Jämförelsen får inte ge en session
+    // om ett lösenordsbyte hann slutföras medan den pågick.
+    return this.prisma.$transaction(async (tx) => {
+      const current = await this.readLockedPasswordTenant(tx, tenant.id)
+      if (
+        !current?.portalActivated ||
+        current.passwordHash !== tenant.passwordHash ||
+        current.email !== normalizedEmail ||
+        current.organizationId !== tenant.organizationId
+      ) {
+        throw new UnauthorizedException('Felaktig e-post eller lösenord')
+      }
+      return this.createSession(current, tx)
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Glömt lösenord ───────────────────────────────────────────────────────────
@@ -428,28 +454,52 @@ export class TenantAuthService {
       where: { passwordResetTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.passwordResetTokenExpiresAt) {
-      throw new UnauthorizedException('Ogiltig återställningslänk')
-    }
-    if (tenant.passwordResetTokenExpiresAt < new Date()) {
-      throw new UnauthorizedException('Återställningslänken har gått ut')
-    }
+    assertPasswordGrant(tenant, tokenHash, 'reset')
 
     const passwordHash = await bcrypt.hash(password, 12)
+    return this.completePasswordChange(tenant.id, tokenHash, passwordHash, 'reset')
+  }
 
-    const updated = await this.prisma.tenant.update({
-      where: { id: tenant.id },
-      data: {
-        passwordHash,
-        portalActivated: true,
-        portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
-        passwordResetTokenHash: null,
-        passwordResetTokenExpiresAt: null,
-      },
+  private async readLockedPasswordTenant(tx: Prisma.TransactionClient, tenantId: string) {
+    // Samma radlås för login, aktivering och reset. Läs EFTER låset: en annan
+    // transaktion kan ha förbrukat/roterat tokenen medan vi väntade.
+    await tx.$queryRaw`SELECT "id" FROM "Tenant" WHERE "id" = ${tenantId} FOR UPDATE`
+    return readTenantWithCredentials(tx, {
+      where: { id: tenantId },
       include: { organization: { select: { id: true, name: true } } },
     })
+  }
 
-    return this.createSession(updated)
+  private async completePasswordChange(
+    tenantId: string,
+    tokenHash: string,
+    passwordHash: string,
+    grant: PasswordGrant,
+  ): Promise<SessionResult> {
+    return this.prisma.$transaction(async (tx) => {
+      const tenant = await this.readLockedPasswordTenant(tx, tenantId)
+      assertPasswordGrant(tenant, tokenHash, grant)
+      const updated = await tx.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          passwordHash,
+          portalActivated: true,
+          portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
+          // Efter ett lyckat byte får ingen tidigare länk byta lösenord igen,
+          // oavsett om länken skickades som aktivering eller återställning.
+          activationTokenHash: null,
+          activationTokenExpiresAt: null,
+          activationReminderSentAt: null,
+          passwordResetTokenHash: null,
+          passwordResetTokenExpiresAt: null,
+        },
+        include: { organization: { select: { id: true, name: true } } },
+      })
+      await tx.tenantSession.deleteMany({ where: { tenantId } })
+      // Lösenord, förbrukade länkar och ersatt session lyckas eller rullas
+      // tillbaka tillsammans. Kontrakts-/mejlsidoeffekter sker efter commit.
+      return this.createSession(updated, tx)
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Sessionshantering ────────────────────────────────────────────────────────
@@ -481,13 +531,14 @@ export class TenantAuthService {
 
   private async createSession(
     tenant: Tenant & { organization: { id: string; name: string } },
+    prisma: Pick<PrismaService, 'tenantSession'> = this.prisma,
   ): Promise<SessionResult> {
     const sessionToken = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
     // Lagra SHA-256-hash av token, inte token själv. Klienten håller den
     // ohashade token i Authorization-headern; vid validering hashar vi
     // inkommande och slår upp.
-    await this.prisma.tenantSession.create({
+    await prisma.tenantSession.create({
       data: { tenantId: tenant.id, token: sha256(sessionToken), expiresAt },
     })
     // Strippa portal-credentials innan tenant returneras (B1 defense-in-depth).
