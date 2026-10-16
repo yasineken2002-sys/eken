@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { api, get, post } from '@/lib/api'
 import {
+  fortnoxExportRowSchema,
+  fortnoxExportsPageQuerySchema,
+  fortnoxExportsPageSchema,
+  type FortnoxExportsPageQuery,
   fortnoxReleaseRejectedInputSchema,
   type FortnoxReleaseRejectedInput,
   fortnoxReconcileInputSchema,
@@ -42,38 +46,7 @@ const seriesCatalogSchema = z.object({
 })
 export type FortnoxSeriesCatalog = z.infer<typeof seriesCatalogSchema>
 
-export const exportRowSchema = z.object({
-  id: z.string(),
-  journalEntryId: z.string(),
-  state: z.enum([
-    'DRY_RUN_READY',
-    'BLOCKED',
-    'SENDING',
-    'UNKNOWN',
-    'REJECTED',
-    'RECEIPT_IDENTIFIED',
-    'RECEIPT_MISMATCH',
-    'CONFIRMED',
-  ]),
-  blockReason: z.string().nullable(),
-  draftHash: z.string().nullable().optional(),
-  lastOutcome: z.string().nullable().optional(),
-  externalYear: z.number().nullable().optional(),
-  externalSeries: z.string().nullable().optional(),
-  externalNumber: z.number().nullable().optional(),
-  // TESTKUND-016: fält där exporttexten skiljer sig från Eveno-texten (originalet skrivs aldrig om).
-  exportText: z
-    .array(
-      z.object({
-        falt: z.string(),
-        rad: z.number().nullable(),
-        originaltext: z.string(),
-        exporttext: z.string(),
-      }),
-    )
-    .optional(),
-  updatedAt: z.string(),
-})
+export const exportRowSchema = fortnoxExportRowSchema
 export type FortnoxExportRow = z.infer<typeof exportRowSchema>
 
 export async function getFortnoxExportState(): Promise<FortnoxExportState> {
@@ -104,6 +77,12 @@ export async function listFortnoxExports(): Promise<FortnoxExportRow[]> {
   return z
     .object({ items: z.array(exportRowSchema) })
     .parse(await get<unknown>(`${PREFIX}/exports`)).items
+}
+
+/** En sida, filtrerad på servern före gränsen. Hämtar aldrig all historik automatiskt. */
+export async function listFortnoxExportsPage(input: FortnoxExportsPageQuery = {}) {
+  const query: FortnoxExportsPageQuery = fortnoxExportsPageQuerySchema.parse(input)
+  return fortnoxExportsPageSchema.parse(await get<unknown>(`${PREFIX}/exports-page`, query))
 }
 
 /** Sändning (endast syntetisk leverantör i test). Bunden till förhandskontrollens hash. */

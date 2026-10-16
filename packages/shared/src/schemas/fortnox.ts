@@ -12,6 +12,82 @@ const isCivilDate = (value: string): boolean =>
 
 const civilDate = z.string().refine(isCivilDate, 'Ogiltigt datum')
 
+/** JournalEntrySource speglas här utan att dra in Prisma i webben; kontraktsprovet binder listan. */
+export const FORTNOX_EXPORT_SOURCES = [
+  'MANUAL',
+  'AI',
+  'INVOICE',
+  'PAYMENT',
+  'LEASE',
+  'RENT_NOTICE',
+  'MISC_CHARGE',
+  'SUPPLIER_INVOICE',
+] as const
+export const FORTNOX_EXPORT_GROUPS = ['ALL', 'NEEDS_REVIEW', 'OTHER'] as const
+
+const queryInteger = (value: unknown): unknown =>
+  typeof value === 'string' && /^(0|[1-9]\d*)$/.exec(value)?.[0] === value ? Number(value) : value
+
+/** GET /integrations/fortnox/exports-page — standardvärden väljs först av tjänsten. */
+export const fortnoxExportsPageQuerySchema = z
+  .object({
+    offset: z.preprocess(queryInteger, z.number().int().min(0).max(2147483647)).optional(),
+    limit: z.preprocess(queryInteger, z.number().int().min(1).max(200)).optional(),
+    from: civilDate.optional(),
+    to: civilDate.optional(),
+    source: z.enum(FORTNOX_EXPORT_SOURCES).optional(),
+    group: z.enum(FORTNOX_EXPORT_GROUPS).optional(),
+  })
+  .strict()
+  .refine((query) => query.from === undefined || query.to === undefined || query.from <= query.to, {
+    message: 'Från-datum får inte vara efter till-datum',
+    path: ['to'],
+  })
+export type FortnoxExportsPageQuery = z.infer<typeof fortnoxExportsPageQuerySchema>
+
+/** Samma svar som exportens befintliga webbkontrakt, även för dry-run och sändning. */
+export const fortnoxExportRowSchema = z.object({
+  id: z.string(),
+  journalEntryId: z.string(),
+  state: z.enum([
+    'DRY_RUN_READY',
+    'BLOCKED',
+    'SENDING',
+    'UNKNOWN',
+    'REJECTED',
+    'RECEIPT_IDENTIFIED',
+    'RECEIPT_MISMATCH',
+    'CONFIRMED',
+  ]),
+  blockReason: z.string().nullable(),
+  draftHash: z.string().nullable().optional(),
+  lastOutcome: z.string().nullable().optional(),
+  externalYear: z.number().nullable().optional(),
+  externalSeries: z.string().nullable().optional(),
+  externalNumber: z.number().nullable().optional(),
+  // TESTKUND-016: fält där exporttexten skiljer sig från Eveno-texten (originalet skrivs aldrig om).
+  exportText: z
+    .array(
+      z.object({
+        falt: z.string(),
+        rad: z.number().nullable(),
+        originaltext: z.string(),
+        exporttext: z.string(),
+      }),
+    )
+    .optional(),
+  updatedAt: z.string(),
+})
+export type FortnoxExportRow = z.infer<typeof fortnoxExportRowSchema>
+
+export const fortnoxExportsPageSchema = z.object({
+  items: z.array(fortnoxExportRowSchema),
+  total: z.number().int().nonnegative().safe(),
+  offset: z.number().int().min(0).max(2147483647),
+  limit: z.number().int().min(1).max(200),
+})
+export type FortnoxExportsPage = z.infer<typeof fortnoxExportsPageSchema>
+
 /** POST /integrations/fortnox/reads */
 export const fortnoxReadInputSchema = z
   .object({

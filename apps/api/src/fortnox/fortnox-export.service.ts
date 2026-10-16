@@ -1,5 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common'
-import { Prisma } from '@prisma/client'
+import { Prisma, type FortnoxExportState } from '@prisma/client'
+import type { FortnoxExportsPageQuery } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { exportView } from './fortnox-export-view'
 
@@ -160,6 +161,54 @@ export class FortnoxExportService {
       select: EXPORT_VIEW,
     })
     return rows.map(exportView)
+  }
+
+  /** Komplett arbetslista: status/datum filtreras före sidgränsen, även äldre problem. */
+  async listPage(organizationId: string, input: FortnoxExportsPageQuery = {}) {
+    const offset = input.offset ?? 0
+    const limit = input.limit ?? 50
+    const needsReview: FortnoxExportState[] = [
+      'UNKNOWN',
+      'REJECTED',
+      'RECEIPT_MISMATCH',
+      'RECEIPT_IDENTIFIED',
+    ]
+    const where: Prisma.FortnoxVoucherExportWhereInput = {
+      organizationId,
+      // Även den relaterade journalen måste tillhöra samma organisation.
+      journalEntry: {
+        is: {
+          organizationId,
+          ...(input.source ? { source: input.source } : {}),
+          ...(input.from || input.to
+            ? {
+                date: {
+                  ...(input.from ? { gte: new Date(input.from) } : {}),
+                  ...(input.to ? { lte: new Date(input.to) } : {}),
+                },
+              }
+            : {}),
+        },
+      },
+      ...(input.group === 'NEEDS_REVIEW'
+        ? { state: { in: needsReview } }
+        : input.group === 'OTHER'
+          ? { state: { notIn: needsReview } }
+          : {}),
+    }
+    // Levande sidlista, inte en låst revisionsögonblicksbild. Samma filter för
+    // sida/total; varken alla historiska utkast eller alla sidor laddas i minnet.
+    const [rows, total] = await Promise.all([
+      this.prisma.fortnoxVoucherExport.findMany({
+        where,
+        orderBy: [{ journalEntry: { date: 'desc' } }, { createdAt: 'desc' }, { id: 'desc' }],
+        skip: offset,
+        take: limit,
+        select: EXPORT_VIEW,
+      }),
+      this.prisma.fortnoxVoucherExport.count({ where }),
+    ])
+    return { items: rows.map(exportView), total, offset, limit }
   }
 
   async counts(organizationId: string, sendingEnabled = FORTNOX_SENDING_ENABLED) {

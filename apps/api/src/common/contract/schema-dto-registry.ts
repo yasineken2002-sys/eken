@@ -269,6 +269,7 @@ export interface KontraktsPost {
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
 import {
+  fortnoxExportsPageQuerySchema,
   fortnoxDryRunInputSchema,
   fortnoxExportSettingsInputSchema,
   fortnoxReconcileInputSchema,
@@ -281,6 +282,7 @@ import {
 } from '@eken/shared'
 import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from '../../fortnox/dto/fortnox-dry-run.dto'
+import { FortnoxExportsPageQueryDto } from '../../fortnox/dto/fortnox-exports-page-query.dto'
 import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
 import { FortnoxReleaseRejectedDto } from '../../fortnox/dto/fortnox-release-rejected.dto'
@@ -318,6 +320,15 @@ import {
 } from '../../fortnox/dto/customer-activation.dto'
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  {
+    endpoint: 'GET /integrations/fortnox/exports-page',
+    inputTyp: 'FortnoxExportsPageQuery',
+    schema: fortnoxExportsPageQuerySchema,
+    dto: FortnoxExportsPageQueryDto,
+    giltig: { offset: 0, limit: 50, group: 'NEEDS_REVIEW', from: '2024-02-29' },
+    ogiltig: { offset: '12abc' },
+    ogiltigVarfor: 'sidans start måste vara ett kanoniskt heltal, inte ett numeriskt prefix',
+  },
   // ── KUNDSTART-001 ─────────────────────────────────────────────────────────
   {
     endpoint: 'PUT /kundstart/cutover',

@@ -2,14 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { useAuthStore } from '@/stores/auth.store'
-import {
-  getFortnoxExportState,
-  listFortnoxExports,
-} from '@/features/settings/api/fortnox-export.api'
-import { FortnoxExportRowView } from '@/features/settings/components/FortnoxExportRow'
+import { getFortnoxExportState } from '@/features/settings/api/fortnox-export.api'
+import { FortnoxExportList } from '@/features/settings/components/FortnoxExportList'
 import { FortnoxPanel } from '@/features/settings/components/FortnoxPanel'
 import { useHuvudbokslage } from './huvudbokslage'
-import { ordnaForAvstamning } from './overforing-ordning'
 
 /**
  * MENY-ETAPP 4 (201): Fortnox › Överföring och avstämning.
@@ -98,18 +94,12 @@ function Overforingar() {
     queryFn: getFortnoxExportState,
     retry: false,
   })
-  const exports = useQuery({
-    queryKey: ['fortnox', 'exports', ...scope],
-    queryFn: listFortnoxExports,
-    retry: false,
-  })
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ['fortnox'] })
   }
 
   const anslutning = state.data?.connection?.status ?? null
   const sendingEnabled = state.data?.exports.sendingEnabled === true
-  const { attStammaAv, ovriga } = ordnaForAvstamning(exports.data ?? [])
 
   return (
     <div className="space-y-4">
@@ -129,56 +119,26 @@ function Overforingar() {
         </p>
       )}
 
-      {(state.isError || exports.isError) && (
+      {state.isError && (
         <p data-testid="overforing-fel" className="text-sm text-red-700">
           Överföringarna kunde inte läsas.
         </p>
       )}
 
-      {exports.isSuccess && (
-        <>
-          <section aria-label="Att stämma av" data-testid="att-stamma-av">
-            <h2 className="text-ink text-sm font-semibold">Att stämma av ({attStammaAv.length})</h2>
-            {attStammaAv.length === 0 ? (
-              <p className="text-ink-muted text-sm">Inget att stämma av.</p>
-            ) : (
-              <ul className="mt-1 space-y-1 text-sm">
-                {attStammaAv.map((row) => (
-                  <FortnoxExportRowView
-                    key={row.id}
-                    row={row}
-                    sendingEnabled={sendingEnabled}
-                    onChanged={refresh}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section aria-label="Övriga överföringar" data-testid="ovriga-overforingar">
-            <h2 className="text-ink text-sm font-semibold">
-              Övriga överföringar ({ovriga.length})
-            </h2>
-            {!sendingEnabled && (
-              <p className="text-ink-muted text-sm">Sändning till Fortnox är inte aktiverad.</p>
-            )}
-            {ovriga.length === 0 ? (
-              <p className="text-ink-muted text-sm">Inga överföringar.</p>
-            ) : (
-              <ul className="mt-1 space-y-1 text-sm">
-                {ovriga.map((row) => (
-                  <FortnoxExportRowView
-                    key={row.id}
-                    row={row}
-                    sendingEnabled={sendingEnabled}
-                    onChanged={refresh}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
-        </>
-      )}
+      <FortnoxExportList
+        group="NEEDS_REVIEW"
+        title="Att stämma av"
+        testId="att-stamma-av"
+        sendingEnabled={sendingEnabled}
+        onChanged={refresh}
+      />
+      <FortnoxExportList
+        group="OTHER"
+        title="Övriga överföringar"
+        testId="ovriga-overforingar"
+        sendingEnabled={sendingEnabled}
+        onChanged={refresh}
+      />
     </div>
   )
 }

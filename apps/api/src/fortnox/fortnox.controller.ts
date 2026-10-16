@@ -11,6 +11,7 @@ import { FortnoxReadDto } from './dto/fortnox-read.dto'
 import { FortnoxMappingDto } from './dto/fortnox-mapping.dto'
 import { FortnoxExportSettingsDto } from './dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from './dto/fortnox-dry-run.dto'
+import { FortnoxExportsPageQueryDto } from './dto/fortnox-exports-page-query.dto'
 import { FortnoxSendDto } from './dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from './dto/fortnox-reconcile.dto'
 import { FortnoxReleaseRejectedDto } from './dto/fortnox-release-rejected.dto'
@@ -247,6 +248,17 @@ export class FortnoxController {
   async listExports(@OrgId() organizationId: string) {
     await this.sender.expireLeases(organizationId)
     return { items: await this.exports.list(organizationId) }
+  }
+
+  @Get('exports-page')
+  @Roles('OWNER', 'ADMIN')
+  async listExportsPage(
+    @OrgId() organizationId: string,
+    @Query() query: FortnoxExportsPageQueryDto,
+  ) {
+    // Samma leasekontroll som den äldre listvägen; ingen ny sändningsåtgärd.
+    await this.sender.expireLeases(organizationId)
+    return this.exports.listPage(organizationId, query)
   }
 
   @Post('exports/dry-run')
