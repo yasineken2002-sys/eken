@@ -28,6 +28,7 @@ import {
   readManyTenantsWithCredentials,
 } from './tenant-credential-read'
 import { LockService } from '../common/redis/lock.service'
+import { CLEARED_TENANT_INVITE_STATE } from '../tenants/tenant-invite-state'
 
 /**
  * SELECT för en hyresgäst som autentiserats via portal-session och returneras
@@ -72,6 +73,7 @@ type PasswordGrant = 'activation' | 'reset'
 type ActivationRecipient = Pick<Tenant, 'organizationId' | 'email'> & {
   onlyNotActivated?: true
   previousTokenHash?: string
+  forInvitation?: true
 }
 
 function assertPasswordGrant(
@@ -187,7 +189,9 @@ export class TenantAuthService {
             organizationId: expectedRecipient.organizationId,
             email: expectedRecipient.email,
             anonymizedAt: null,
-            ...(expectedRecipient.onlyNotActivated ? { portalActivated: false } : {}),
+            ...(expectedRecipient.onlyNotActivated || expectedRecipient.forInvitation
+              ? { portalActivated: false }
+              : {}),
             ...(expectedRecipient.previousTokenHash !== undefined
               ? {
                   activationTokenHash: expectedRecipient.previousTokenHash,
@@ -204,6 +208,8 @@ export class TenantAuthService {
         // en ny påminnelse efter 48 h (annars skulle hyresgäster som fick en
         // ny länk aldrig få en påminnelse).
         activationReminderSentAt: null,
+        // Rotation och rensning måste committa tillsammans före enqueue.
+        ...(expectedRecipient?.forInvitation ? CLEARED_TENANT_INVITE_STATE : {}),
       },
     })
     if (updated.count !== 1) {

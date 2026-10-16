@@ -36,13 +36,13 @@ const STATUS_META: Record<
     className: 'bg-amber-50 text-amber-700',
     icon: MailWarning,
   },
-  INVITED: { label: 'Inbjuden', className: 'bg-gray-200 text-gray-500', icon: Mail },
+  INVITED: { label: 'Leverans ej bekräftad', className: 'bg-gray-200 text-gray-500', icon: Mail },
   NOT_INVITED: { label: 'Ej inbjuden', className: 'bg-gray-100 text-gray-600', icon: Clock },
   NO_EMAIL: { label: 'Saknar mejl', className: 'bg-red-50 text-red-600', icon: MailX },
 }
 
 function summarize(r: InviteResult): string {
-  const parts = [`${r.invited} inbjudna`]
+  const parts = [`${r.invited} köade`]
   if (r.skippedNoEmail) parts.push(`${r.skippedNoEmail} saknar mejl`)
   if (r.alreadyActivated) parts.push(`${r.alreadyActivated} redan aktiverade`)
   if (r.skippedRecent) parts.push(`${r.skippedRecent} nyligen inbjudna`)
@@ -97,7 +97,7 @@ export function InvitePortalModal({ open, onClose }: Props) {
   }
 
   function handleResult(r: InviteResult) {
-    if (r.invited > 0) toast.success(`Inbjudningar skickade: ${summarize(r)}`)
+    if (r.invited > 0) toast.success(`Portalinbjudningar: ${summarize(r)}`)
     else toast.info(`Inga nya inbjudningar — ${summarize(r)}`)
     if (r.skippedNoEmail > 0) {
       toast.warning(
