@@ -970,6 +970,8 @@ model Organization {
   fortnoxReadRuns           FortnoxReadRun[]
   fortnoxReadManifestPages  FortnoxReadManifestPage[]
   fortnoxReadVoucherCheckpoints FortnoxReadVoucherCheckpoint[]
+  fortnoxReadContextSnapshots FortnoxReadContextSnapshot[]
+  fortnoxReadContextPages   FortnoxReadContextPage[]
   fortnoxVoucherExports     FortnoxVoucherExport[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -7858,6 +7860,7 @@ model FortnoxReadRun {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   manifestPages FortnoxReadManifestPage[]
   voucherCheckpoints FortnoxReadVoucherCheckpoint[]
+  contextSnapshot FortnoxReadContextSnapshot?
 
   @@unique([id, organizationId])
   @@index([organizationId, startedAt])
@@ -7901,6 +7904,50 @@ model FortnoxReadVoucherCheckpoint {
   run FortnoxReadRun @relation(fields: [runId, organizationId], references: [id, organizationId], onDelete: Cascade)
 
   @@unique([runId, key])
+  @@index([organizationId])
+}
+
+enum FortnoxReadContextKind {
+  MAPPINGS
+  OWN_EXPORTS
+}
+
+// Fryst kopia av en befintlig v1-kontext. Ingen v2-körning eller produktkoppling.
+// SQL skyddar förseglingen och tillåter bara riktig run-/organisationscascade.
+model FortnoxReadContextSnapshot {
+  id String @id @default(uuid())
+  organizationId String
+  runId String @unique
+  manifest Json
+  digest String
+  sealedAt DateTime?
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run FortnoxReadRun @relation(fields: [runId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  pages FortnoxReadContextPage[]
+
+  @@unique([id, organizationId])
+  @@unique([runId, organizationId])
+  @@index([organizationId])
+}
+
+// Append-only: sidans innehåll får aldrig ändras; efter seal får inga sidor läggas till.
+// Högst 100 poster per sida är ingen bytegräns för de bevarade v1-värdena.
+model FortnoxReadContextPage {
+  id String @id @default(uuid())
+  organizationId String
+  snapshotId String
+  kind FortnoxReadContextKind
+  page Int
+  itemCount Int
+  digest String
+  items Json
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  snapshot FortnoxReadContextSnapshot @relation(fields: [snapshotId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([snapshotId, kind, page])
   @@index([organizationId])
 }
 
