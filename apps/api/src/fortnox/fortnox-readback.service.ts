@@ -11,6 +11,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
 import { readCatalog } from './fortnox-catalog'
+import { kallkonton, type Egen } from './fortnox-read-provenance'
 import type { FortnoxAiSnapshot } from './fortnox-ai-context'
 import { FORTNOX_VOUCHER_WRITER, type FortnoxVoucherWriter } from './fortnox-voucher-writer'
 import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
@@ -527,29 +528,4 @@ export class RefreshingLedgerReader implements FortnoxLedgerReader {
       return this.inner.get<T>(this.current.token, path, query) // andra 401 propagerar → AUTH_LOST
     }
   }
-}
-
-type Egen = { journalEntryId: string; revision: number | null; perMal: Map<number, number[]> }
-
-/** Källkonto per målkonto ur exportens frysta utkast (TESTKUND-008 K5.3; äldre utkast 1:1). */
-function kallkonton(draft: unknown): Omit<Egen, 'journalEntryId'> {
-  const d = (draft ?? {}) as {
-    provenance?: {
-      lines?: Array<{ localAccountNumber?: unknown; externalAccountNumber?: unknown }>
-    }
-    kontomappning?: { revision?: unknown }
-  }
-  const perMal = new Map<number, number[]>()
-  for (const l of d.provenance?.lines ?? []) {
-    if (
-      !Number.isSafeInteger(l.localAccountNumber) ||
-      !Number.isSafeInteger(l.externalAccountNumber)
-    )
-      continue
-    const lista = perMal.get(l.externalAccountNumber as number) ?? []
-    if (!lista.includes(l.localAccountNumber as number)) lista.push(l.localAccountNumber as number)
-    perMal.set(l.externalAccountNumber as number, lista)
-  }
-  const rev = d.kontomappning?.revision
-  return { perMal, revision: Number.isSafeInteger(rev) ? (rev as number) : null }
 }

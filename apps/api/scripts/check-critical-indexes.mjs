@@ -190,6 +190,17 @@ const CRITICAL_INDEXES = [
     // ACTIVE åt gången, avgjort av databasen även vid två samtidiga godkännanden.
     where: "status='ACTIVE'",
   },
+  {
+    label: 'Fortnox-läsning — högst EN beständig pågående körning per organisation',
+    expectedName: 'fortnox_read_one_managed_running',
+    migrationRef: '20261016222500_fortnox_read_checkpoints',
+    unique: true,
+    table: 'FortnoxReadRun',
+    columns: ['organizationId'],
+    // Äldre synkrona körningar saknar workVersion. Historik och färdiga
+    // körningar ska inte hindra en ny beställning; aktiva delsteg ska göra det.
+    where: "workVersion=1ANDstatus='RUNNING'",
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────

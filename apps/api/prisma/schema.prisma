@@ -968,6 +968,8 @@ model Organization {
   fortnoxOAuthStates        FortnoxOAuthState[]
   fortnoxDimensionMappings  FortnoxDimensionMapping[]
   fortnoxReadRuns           FortnoxReadRun[]
+  fortnoxReadManifestPages  FortnoxReadManifestPage[]
+  fortnoxReadVoucherCheckpoints FortnoxReadVoucherCheckpoint[]
   fortnoxVoucherExports     FortnoxVoucherExport[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -7805,6 +7807,13 @@ enum FortnoxReadStatus {
   WRONG_COMPANY
 }
 
+enum FortnoxReadPhase {
+  CATALOG
+  MANIFEST
+  DETAILS
+  READY_TO_REDUCE
+}
+
 // En återläsning av Fortnox huvudbok för en period. summary/rows är null när
 // läsningen inte är komplett — aldrig noll. coverage/uncertainties bär vad som
 // faktiskt lästes och vad som inte kan bevisas (ingen atomisk ögonblicksbild).
@@ -7831,9 +7840,65 @@ model FortnoxReadRun {
   reason                String?
   triggeredByUserId     String?
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Version 1 är den ännu ej HTTP-/köinkopplade checkpointkärnan. Legacy är null.
+  workVersion          Int?
+  phase                FortnoxReadPhase?
+  connectionGeneration Int?
+  fortnoxOrgNumber      String?
+  requestHash          String?
+  frozenContext        Json?
+  catalog              Json?
+  nextManifestPage     Int @default(1)
+  claimVersion         Int @default(0)
+  claimToken           String?
+  leaseUntil           DateTime?
+  nextAttemptAt        DateTime?
+  checkpointUpdatedAt  DateTime?
 
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manifestPages FortnoxReadManifestPage[]
+  voucherCheckpoints FortnoxReadVoucherCheckpoint[]
+
+  @@unique([id, organizationId])
   @@index([organizationId, startedAt])
+}
+
+// Endast validerad sidmetadata och hash per listidentitet, aldrig råa API-objekt.
+model FortnoxReadManifestPage {
+  id String @id @default(uuid())
+  organizationId String
+  runId String
+  page Int
+  totalPages Int
+  totalResources Int
+  itemCount Int
+  digest String
+  entries Json
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run FortnoxReadRun @relation(fields: [runId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([runId, page])
+  @@index([organizationId])
+}
+
+// Högst en validerad detalj per identitet; läsaren ordnar key med COLLATE C.
+model FortnoxReadVoucherCheckpoint {
+  id String @id @default(uuid())
+  organizationId String
+  runId String
+  key String
+  manifestDigest String
+  detailDigest String?
+  validated Json?
+  observedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run FortnoxReadRun @relation(fields: [runId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([runId, key])
+  @@index([organizationId])
 }
 
 enum FortnoxExportState {
