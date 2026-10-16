@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -76,6 +77,7 @@ function DownloadIcon() {
 }
 
 export function NoticesPage() {
+  const currentSession = useSessionGuard()
   // Tillåt djuplänkning till en specifik flik (t.ex. dashboardens "Visa" på
   // förfallna fakturor → ?tab=invoices). Default är avier.
   const [searchParams] = useSearchParams()
@@ -105,6 +107,7 @@ export function NoticesPage() {
   })
 
   async function handleDownload(id: string, label: string, fn: () => Promise<void>): Promise<void> {
+    if (!currentSession()) return
     setDownloadingId(id)
     setErrorByRow((prev) => {
       if (!(id in prev)) return prev
@@ -117,6 +120,7 @@ export function NoticesPage() {
     try {
       await fn()
     } catch (err) {
+      if (!currentSession()) return
       setErrorByRow((prev) => ({
         ...prev,
         [id]: extractApiError(err, `Kunde inte ladda ner ${label}`),

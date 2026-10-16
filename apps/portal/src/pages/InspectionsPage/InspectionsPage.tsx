@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -318,6 +319,7 @@ function Bildkontroll({ inspectionId }: { inspectionId: string }) {
 /* ── Ett protokoll ─────────────────────────────────────────────────────────── */
 
 function Protokollkort({ rad }: { rad: PortalInspectionListItem }) {
+  const currentSession = useSessionGuard()
   const [oppet, setOppet] = useState(false)
   const [laddarPdf, setLaddarPdf] = useState(false)
 
@@ -328,11 +330,12 @@ function Protokollkort({ rad }: { rad: PortalInspectionListItem }) {
   })
 
   async function laddaNedPdf() {
-    if (laddarPdf) return
+    if (laddarPdf || !currentSession()) return
     setLaddarPdf(true)
     try {
       await downloadInspectionPdf(rad.id, rad.version)
     } catch (err) {
+      if (!currentSession()) return
       toast.error('Kunde inte ladda ned protokollet', {
         description: extractApiError(err, 'Försök igen om en stund.'),
       })
@@ -342,10 +345,13 @@ function Protokollkort({ rad }: { rad: PortalInspectionListItem }) {
   }
 
   async function oppnaBild(imageId: string, filnamn: string) {
+    if (!currentSession()) return
     try {
       const { url, filename } = await fetchInspectionImageUrl(rad.id, imageId)
+      if (!currentSession()) return
       openPresignedDownload(url, sanitizeFilename(filename || filnamn))
     } catch (err) {
+      if (!currentSession()) return
       toast.error('Kunde inte öppna bilden', {
         description: extractApiError(err, 'Försök igen om en stund.'),
       })
