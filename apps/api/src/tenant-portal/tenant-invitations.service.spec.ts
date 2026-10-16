@@ -18,6 +18,7 @@ jest.mock('../invoices/pdf.service', () => ({ PdfService: class {} }))
 jest.mock('../storage/storage.service', () => ({ StorageService: class {} }))
 
 import { BadRequestException } from '@nestjs/common'
+import { createHash } from 'node:crypto'
 import { TenantInvitationsService } from './tenant-invitations.service'
 
 interface TenantOverride {
@@ -64,7 +65,7 @@ function makeService(findManyReturns: ReturnType<typeof tenant>[]) {
     },
     tenant: {
       findMany: jest.fn().mockResolvedValue(findManyReturns),
-      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
   }
   const mail = { sendTenantPortalInvite: jest.fn().mockResolvedValue('mail-job-1') }
@@ -118,22 +119,20 @@ describe('TenantInvitationsService — urval + saknar-mejl', () => {
       organizationId: 'org-1',
       email: 'ok@example.se',
       onlyNotActivated: true,
+      forInvitation: true,
     })
-    // PR 2: lastInviteMessageId sätts INTE här längre (workern skriver Resend-id
-    // efter lyckat utskick). Vid (om)skick nollställs det + leverans-/bounce-state.
-    expect(prisma.tenant.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'ok' },
-        data: expect.objectContaining({
-          inviteCount: { increment: 1 },
-          lastInviteMessageId: null,
-          inviteDeliveredAt: null,
-          inviteBouncedAt: null,
-          inviteBounceReason: null,
-          inviteComplainedAt: null,
-        }),
-      }),
-    )
+    // Tokenrotationen rensar innan enqueue. Efteråt får ett snabbt kvitto
+    // aldrig raderas; bara aktuell generations kökvittering registreras.
+    expect(prisma.tenant.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'ok',
+        organizationId: 'org-1',
+        email: 'ok@example.se',
+        activationTokenHash: createHash('sha256').update('tok_abcdef1234567890').digest('hex'),
+        anonymizedAt: null,
+      },
+      data: { invitedAt: expect.any(Date), inviteCount: { increment: 1 } },
+    })
     // Korrelations-deskriptorn följer med så workern kan koppla id:t till tenant.
     expect(mail.sendTenantPortalInvite).toHaveBeenCalledWith(
       expect.objectContaining({ correlation: { kind: 'tenant-invite', tenantId: 'ok' } }),

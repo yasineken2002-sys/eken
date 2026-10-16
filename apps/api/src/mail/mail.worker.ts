@@ -6,6 +6,7 @@ import { Resend } from 'resend'
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailRenderer } from './mail.renderer'
+import { tenantInviteTokenHash } from './tenant-invite-binding'
 import {
   type MailCorrelation,
   type MailJobPayload,
@@ -18,12 +19,14 @@ import {
 
 const DEFAULT_FROM = 'Eveno Fastigheter <noreply@eveno.se>'
 const CONCURRENCY = 5
+type InviteBinding = { email: string; tokenHash: string }
 
 @Injectable()
 abstract class MailWorkerBase {
   protected readonly logger = new Logger(this.constructor.name)
   protected readonly resend: Resend
   protected readonly from: string
+  private readonly portalUrl: string
 
   constructor(
     private readonly renderer: MailRenderer,
@@ -40,6 +43,7 @@ abstract class MailWorkerBase {
     this.resend = new Resend(apiKey ?? 'missing-key')
     const explicitFrom = config.get<string>('MAIL_FROM')
     this.from = explicitFrom ?? DEFAULT_FROM
+    this.portalUrl = config.get<string>('PORTAL_URL') ?? 'http://localhost:5174'
 
     const isProduction = config.get<string>('NODE_ENV') === 'production'
     if (isProduction && this.from.includes('resend.dev')) {
@@ -74,6 +78,18 @@ abstract class MailWorkerBase {
       return
     }
 
+    const isPortalInvite =
+      template === 'tenant-portal-invite' || correlation?.kind === 'tenant-invite'
+    const inviteTokenHash = isPortalInvite ? tenantInviteTokenHash(job.data, this.portalUrl) : null
+    if (isPortalInvite && !inviteTokenHash) {
+      this.logger.warn({
+        event: 'portal-invite-invalid-binding',
+        jobId: job.id,
+        organizationId: job.data.organizationId,
+      })
+      return
+    }
+
     // F-047-2: AVINS GILTIGHET VID KONSUMTION. Ett avimejl som köades medan avin fortfarande var
     // skickbar kan plockas efter att avin betalats eller annullerats. Då skickas det inte: hyresgästen ska
     // inte få en betalningsuppmaning för en reglerad eller makulerad fordran. Saknas avin (annan
@@ -102,6 +118,38 @@ abstract class MailWorkerBase {
       template as TemplateName,
       props as TemplatePropsMap[TemplateName],
     )
+
+    // Pröva efter renderingen, precis före leverantörsanropet. Ett gammalt
+    // köjobb får inte skicka en länk som roterats, förbrukats eller bytt adress.
+    if (inviteTokenHash && correlation?.kind === 'tenant-invite') {
+      let current: { id: string } | null
+      try {
+        current = await this.prisma.tenant.findFirst({
+          where: {
+            id: correlation.tenantId,
+            organizationId: job.data.organizationId,
+            email: to,
+            activationTokenHash: inviteTokenHash,
+            activationTokenExpiresAt: { gt: new Date() },
+            portalActivated: false,
+            anonymizedAt: null,
+          },
+          select: { id: true },
+        })
+      } catch {
+        // Prismafel kan återge where-villkoren. Behåll retry utan att föra
+        // credential-hash eller mottagaradress vidare till logg/DLQ-feltext.
+        throw new Error('PORTAL_INVITE_BINDING_READ_FAILED')
+      }
+      if (!current) {
+        this.logger.warn({
+          event: 'portal-invite-stale',
+          jobId: job.id,
+          organizationId: job.data.organizationId,
+        })
+        return
+      }
+    }
 
     // Idempotency-Key skickas till Resend så att retries (efter worker-stall,
     // container-restart, transient timeout efter att Resend accepterat mejlet)
@@ -142,7 +190,12 @@ abstract class MailWorkerBase {
     // kastar inte (det skulle trigga en onödig Bull-retry). Resultatet blir
     // bara att statusen fastnar på "skickad" tills nästa utskick.
     if (correlation && resendId) {
-      await this.persistResendId(correlation, resendId, job.data.organizationId)
+      await this.persistResendId(
+        correlation,
+        resendId,
+        job.data.organizationId,
+        inviteTokenHash ? { email: to, tokenHash: inviteTokenHash } : undefined,
+      )
     }
   }
 
@@ -163,12 +216,21 @@ abstract class MailWorkerBase {
     correlation: MailCorrelation,
     resendId: string,
     organizationId: string,
+    invite?: InviteBinding,
   ): Promise<void> {
     try {
       switch (correlation.kind) {
         case 'tenant-invite':
-          await this.prisma.tenant.update({
-            where: { id: correlation.tenantId },
+          if (!invite) return
+          await this.prisma.tenant.updateMany({
+            where: {
+              id: correlation.tenantId,
+              organizationId,
+              email: invite.email,
+              activationTokenHash: invite.tokenHash,
+              anonymizedAt: null,
+              OR: [{ lastInviteMessageId: null }, { lastInviteMessageId: resendId }],
+            },
             data: { lastInviteMessageId: resendId },
           })
           break
@@ -214,12 +276,14 @@ abstract class MailWorkerBase {
           })
           break
       }
-    } catch (err) {
-      this.logger.error(
-        `Failed to persist resendId=${resendId} for correlation=${JSON.stringify(
-          correlation,
-        )}: ${(err as Error).message}`,
-      )
+    } catch {
+      // Databasfel kan innehålla bindningens e-post och credential-hash.
+      this.logger.error({
+        event: 'mail-correlation-write-failed',
+        kind: correlation.kind,
+        organizationId,
+        resendId,
+      })
     }
   }
 
