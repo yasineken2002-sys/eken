@@ -61,7 +61,7 @@ const tokens = { a: 'PRIVATE_SESSION_ALPHA', b: 'PRIVATE_SESSION_BETA' }
 let settings
 let counters
 function reset() {
-  settings = { fallback: 'valid', version: 1, navigation500: false }
+  settings = { fallback: 'valid', version: 1, navigation500: false, dropNavigation: false }
   counters = { posts: [], privateReads: [], documentReads: [], offlineRequests: 0 }
 }
 reset()
@@ -177,6 +177,10 @@ async function handle(req, res) {
     )
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Metod ej tillåten')
+  if (settings.dropNavigation && spa.has(path)) {
+    res.destroy()
+    return
+  }
   if (settings.navigation500 && path === '/documents') return send(res, 500, 'REAL_NAVIGATION_500')
 
   let filename = path

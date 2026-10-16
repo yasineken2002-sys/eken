@@ -75,7 +75,8 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // Bundlad full Chromium; samma headless-motor som portalens PWA-prov.
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chromium' } }],
 
   // Startar dev-servrarna vid behov. Redan körande servrar återanvänds.
   webServer: [

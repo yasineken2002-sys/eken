@@ -47,10 +47,25 @@ E-motivet från portalens befintliga varumärke.
 ## Verifiering före publicering
 
 Kör `pnpm --filter @eken/portal build` och `pnpm --filter @eken/portal test:pwa`.
-Proven använder byggd dist, riktig loopback-HTTP-server och en ny Chromiumprofil
-med service workers tillåtna. API-svaren är syntetiska. Portalens vanliga
-Vitest-svit och befintliga E2E körs också. CI återanvänder befintligt Chromium i
-E2E-jobbet; installationsproven körs separat efter den ordinarie sviten.
+Installera först matchande testmotorer med `pnpm --filter @eken/portal exec
+playwright install --no-shell chromium webkit`. På Linux krävs även den installerade
+Playwright-versionens WebKit-systemberoenden.
+
+Proven använder byggd dist, riktig loopback-HTTP-server och nya profiler i både
+Chromium och WebKit, med service workers tillåtna. Tio fall per motor körs med en
+worker, utan omförsök eller undantagna fall. API-svaren är syntetiska. Ett separat
+TCP-avbrott stänger serversvaret och jämför klient med och utan worker; detta
+ersätter inte klientens offlineprov. Båda måste klara sina egna krav.
+
+Web och portal använder samma låsta Playwright-version och bundlad full Chromium
+med `channel: 'chromium'` (nytt headless-läge), inte en godtycklig systembrowser.
+Playwright 1.64.1 innehåller WebKit-rättningen för offlinenavigation med service
+worker. Versionsbytet får aldrig ersätta kraven på faktisk 503 från workern och
+utebliven fallback för API/PDF/token/externt origin. Portalens vanliga Vitest-svit
+och befintliga E2E körs också. CI kör båda motorerna i befintligt E2E-jobb efter
+den ordinarie sviten och kräver exakt 20 godkända PWA-prov utan fel, flaky eller
+skip. Browsercachen binds till installerad version, OS-version och arkitektur;
+WebKits OS-bibliotek installeras med separat timeout även vid cacheträff.
 
 Kontrollera i publicerad testmiljö att manifest, worker, offlinefil och ikoner
 har rätt innehåll/MIME och inte ersätts av SPA-rewrite. Vercelkonfigurationens
@@ -58,7 +73,7 @@ smala headers är en avsikt, inte bevis för en faktisk driftsatt server. Worker
 och manifestet ska revalideras. Första installation, naturlig uppdatering och
 kallstart ska provas där. Publicering ingår inte i den lokala verifieringen.
 
-Chromiumprov och mobil viewport bevisar inte en lyckad installation på en fysisk
+Chromium-/WebKitprov och mobil viewport bevisar inte en lyckad installation på en fysisk
 iPhone. Gör separat Safari-/iPhone-kontroll av hemskärmsval, start, utloggning och
 nätavbrott. Lova inte App Store-distribution eller generell privat offlineåtkomst.
 
@@ -67,3 +82,6 @@ nätavbrott. Lova inte App Store-distribution eller generell privat offlineåtko
 - [MDN: fetch-event och nät/fallback](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerGlobalScope/fetch_event)
 - [Playwright: service workers och begränsningar](https://playwright.dev/docs/service-workers)
 - [Vite: publika byggresurser](https://vite.dev/guide/assets.html)
+
+- [Playwright: bundlade motorer och nytt headless-läge](https://playwright.dev/docs/browsers)
+- [Playwright: WebKit-rättning av offline/fetch-event](https://github.com/microsoft/playwright/pull/42894)
