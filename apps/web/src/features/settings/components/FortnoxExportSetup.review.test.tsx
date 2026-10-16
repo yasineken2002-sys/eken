@@ -21,7 +21,10 @@ vi.mock('../api/fortnox-export.api', () => ({
   getFortnoxSeriesCatalog: mocks.catalog,
   saveFortnoxExportSettings: mocks.save,
   startFortnoxDryRun: mocks.dryRun,
-  listFortnoxExports: mocks.list,
+  listFortnoxExportsPage: async (query: { offset?: number; limit?: number }) => {
+    const items = (await mocks.list()) as unknown[]
+    return { items, total: items.length, offset: query.offset ?? 0, limit: query.limit ?? 50 }
+  },
 }))
 // F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
 vi.mock('../../accounting/api/accounting.api', () => ({
@@ -105,7 +108,7 @@ function choose(id = 'je-org-A1') {
 }
 async function run() {
   fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
-  await screen.findByRole('status')
+  await screen.findByTestId('fortnox-dry-run-result')
 }
 
 describe('Independent export UI effects', () => {
@@ -133,7 +136,7 @@ describe('Independent export UI effects', () => {
     mocks.user = 'owner-B'
     view.rerender(component())
     await screen.findByRole('option', { name: /Verifikat org-B 1/ })
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByTestId('fortnox-dry-run-result')).toBeNull()
     expect(
       (screen.getByRole('button', { name: 'Förhandskontrollera' }) as HTMLButtonElement).disabled,
     ).toBe(true)
@@ -162,7 +165,7 @@ describe('Independent export UI effects', () => {
     expect(
       (screen.getByLabelText('Verifikat (senaste 90 dagarna)') as HTMLSelectElement).value,
     ).toBe('je-org-A2')
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByTestId('fortnox-dry-run-result')).toBeNull()
   })
   it('R3 failed recheck does not retain an unlabelled previous successful result', async () => {
     await show()
@@ -171,7 +174,7 @@ describe('Independent export UI effects', () => {
     mocks.dryRun.mockRejectedValueOnce(new Error('server rejected'))
     fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
     await screen.findByText('Serverfel')
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByTestId('fortnox-dry-run-result')).toBeNull()
   })
   it('R4 inert module has no export actions or provider catalog request even with stored ACTIVE connection', async () => {
     mocks.state.mockResolvedValue(active(false))
@@ -199,7 +202,7 @@ describe('Independent export UI effects', () => {
       await show()
       choose()
       await run()
-      expect(screen.getByRole('status').textContent).toContain(
+      expect(screen.getByTestId('fortnox-dry-run-result').textContent).toContain(
         state === 'UNKNOWN' ? 'Okänt utfall' : 'Bekräftad i Fortnox',
       )
       expect(screen.queryByRole('button', { name: /^skicka|^sänd|omsänd/i })).toBeNull()

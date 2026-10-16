@@ -5,11 +5,11 @@ import { Select } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
 import { fetchAllJournalEntries } from '../../accounting/api/accounting.api'
-import { FortnoxExportRowView, FortnoxExportTextView } from './FortnoxExportRow'
+import { FortnoxExportTextView } from './FortnoxExportRow'
+import { FortnoxExportList } from './FortnoxExportList'
 import {
   getFortnoxExportState,
   getFortnoxSeriesCatalog,
-  listFortnoxExports,
   saveFortnoxExportSettings,
   startFortnoxDryRun,
   type FortnoxExportRow,
@@ -77,12 +77,6 @@ function FortnoxExportSetupScoped() {
     // lägenheter har ~600 verifikat på 90 dagar; resten gick inte att välja för export.
     queryFn: () => fetchAllJournalEntries({ from: daysAgo(90), to: daysAgo(0) }),
     enabled: active,
-    retry: false,
-  })
-  const exports = useQuery({
-    queryKey: ['fortnox', 'exports', ...scope],
-    queryFn: listFortnoxExports,
-    enabled: allowed,
     retry: false,
   })
 
@@ -311,7 +305,11 @@ function FortnoxExportSetupScoped() {
         </Button>
         {dryRun.isError && <p className="text-sm text-red-600">{extractApiError(dryRun.error)}</p>}
         {result && result.journalEntryId === entryId && (
-          <div role="status" className="border-line rounded-lg border p-3 text-sm">
+          <div
+            role="status"
+            data-testid="fortnox-dry-run-result"
+            className="border-line rounded-lg border p-3 text-sm"
+          >
             <p className="text-ink font-medium">{EXPORT_STATE_TEXT[result.state]}</p>
             {result.blockReason && (
               <p className="text-ink-muted break-words">Skäl: {result.blockReason}</p>
@@ -321,26 +319,12 @@ function FortnoxExportSetupScoped() {
         )}
       </div>
 
-      {exports.data && exports.data.length > 0 && (
-        <div className="space-y-1">
-          <h4 className="text-ink text-sm font-semibold">
-            Senaste förhandskontroller och sändningar
-          </h4>
-          {!state.data.exports.sendingEnabled && (
-            <p className="text-ink-muted text-sm">Sändning till Fortnox är inte aktiverad.</p>
-          )}
-          <ul className="space-y-1 text-sm">
-            {exports.data.slice(0, 10).map((row) => (
-              <FortnoxExportRowView
-                key={row.id}
-                row={row}
-                sendingEnabled={state.data.exports.sendingEnabled}
-                onChanged={refresh}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
+      <FortnoxExportList
+        group="ALL"
+        title="Förhandskontroller och sändningar"
+        sendingEnabled={state.data.exports.sendingEnabled}
+        onChanged={refresh}
+      />
     </section>
   )
 }

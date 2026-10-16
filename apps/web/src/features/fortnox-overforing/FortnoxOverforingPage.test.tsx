@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -23,7 +23,14 @@ vi.mock('@/features/accounting/api/accounting.api', () => ({
 }))
 vi.mock('@/features/settings/api/fortnox-export.api', () => ({
   getFortnoxExportState: mocks.state,
-  listFortnoxExports: mocks.list,
+  listFortnoxExportsPage: async (query: { group: string; offset: number; limit: number }) => {
+    const response = (await mocks.list(query)) as Array<{ state: string }>
+    const review = new Set(['UNKNOWN', 'REJECTED', 'RECEIPT_MISMATCH', 'RECEIPT_IDENTIFIED'])
+    const items = response.filter((row) =>
+      query.group === 'NEEDS_REVIEW' ? review.has(row.state) : !review.has(row.state),
+    )
+    return { items, total: items.length, offset: query.offset, limit: query.limit }
+  },
   sendFortnoxExport: mocks.send,
   verifyFortnoxExport: mocks.verify,
   reconcileFortnoxExport: mocks.reconcile,
@@ -99,6 +106,9 @@ describe('Fortnox › Överföring och avstämning', () => {
     renderIt()
     const forst = await screen.findByTestId('att-stamma-av')
     const ovriga = screen.getByTestId('ovriga-overforingar')
+    // Sektionerna syns även under laddning; kontrollera resultatet först när båda sidorna lästs.
+    await within(forst).findByRole('heading', { name: 'Att stämma av (5)' })
+    await within(ovriga).findByRole('heading', { name: 'Övriga överföringar (7)' })
     const tillstand = (el: HTMLElement) =>
       Array.from(el.querySelectorAll('[data-export-state]')).map((li) =>
         li.getAttribute('data-export-state'),
@@ -133,7 +143,7 @@ describe('Fortnox › Överföring och avstämning', () => {
       const banner = await screen.findByTestId('anslutning-bruten')
       expect(banner.textContent).toContain('Huvudboksvalet gäller fortfarande')
       expect(banner.textContent).toContain('Inget skickas eller skickas om automatiskt')
-      await screen.findByTestId('att-stamma-av')
+      await screen.findByRole('heading', { name: 'Att stämma av (5)' })
       for (const m of MUTATIONER()) expect(m).not.toHaveBeenCalled()
     },
   )
@@ -141,7 +151,7 @@ describe('Fortnox › Överföring och avstämning', () => {
   it.each(['ADMIN'])('M6: %s ser överföringarna', async (role) => {
     mocks.role = role
     renderIt()
-    await screen.findByTestId('att-stamma-av')
+    await screen.findByRole('heading', { name: 'Att stämma av (5)' })
   })
 
   it.each(['MANAGER', 'ACCOUNTANT'])(
@@ -161,7 +171,7 @@ describe('Fortnox › Överföring och avstämning', () => {
     mocks.role = 'VIEWER'
     renderIt()
     expect(screen.getByTestId('huvudbok-okand')).toBeTruthy()
-    await new Promise((r) => setTimeout(r, 0))
+    await act(async () => new Promise((r) => setTimeout(r, 0)))
     expect(mocks.ledgerOwner).not.toHaveBeenCalled()
     expect(mocks.state).not.toHaveBeenCalled()
     expect(mocks.list).not.toHaveBeenCalled()
@@ -184,7 +194,7 @@ describe('Fortnox › Överföring och avstämning', () => {
     setup()
     renderIt()
     await waitFor(() => expect(screen.getByTestId('huvudbok-okand')).toBeTruthy())
-    await new Promise((r) => setTimeout(r, 0))
+    await act(async () => new Promise((r) => setTimeout(r, 0)))
     expect(screen.getByTestId('huvudbok-okand')).toBeTruthy()
     expect(mocks.state).not.toHaveBeenCalled()
     expect(mocks.list).not.toHaveBeenCalled()

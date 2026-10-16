@@ -21,7 +21,10 @@ vi.mock('../api/fortnox-export.api', () => ({
   getFortnoxSeriesCatalog: mocks.catalog,
   saveFortnoxExportSettings: mocks.save,
   startFortnoxDryRun: mocks.dryRun,
-  listFortnoxExports: mocks.list,
+  listFortnoxExportsPage: async (query: { offset?: number; limit?: number }) => {
+    const items = (await mocks.list()) as unknown[]
+    return { items, total: items.length, offset: query.offset ?? 0, limit: query.limit ?? 50 }
+  },
 }))
 // F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
 vi.mock('../../accounting/api/accounting.api', () => ({
@@ -147,7 +150,9 @@ describe('FortnoxExportSetup', () => {
       target: { value: 'je1' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
-    expect((await screen.findByRole('status')).textContent).toMatch(/INTE skickat eller bokfört/)
+    expect((await screen.findByTestId('fortnox-dry-run-result')).textContent).toMatch(
+      /INTE skickat eller bokfört/,
+    )
     mocks.dryRun.mockResolvedValueOnce({
       id: 'x',
       journalEntryId: 'je1',
@@ -157,7 +162,9 @@ describe('FortnoxExportSetup', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
     await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toMatch(/Skäl: ACCOUNT_UNVERIFIED/),
+      expect(screen.getByTestId('fortnox-dry-run-result').textContent).toMatch(
+        /Skäl: ACCOUNT_UNVERIFIED/,
+      ),
     )
   })
 
