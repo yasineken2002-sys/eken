@@ -1,7 +1,8 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common'
+import { Inject, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
 import { Prisma, type FortnoxExportState } from '@prisma/client'
 import type { FortnoxExportsPageQuery } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { exportView } from './fortnox-export-view'
 
 /**
@@ -68,6 +69,11 @@ const EXPORT_VIEW = {
   reconciledAt: true,
   updatedAt: true,
 } satisfies Prisma.FortnoxVoucherExportSelect
+
+interface WorklistSelection {
+  total: bigint
+  ids: string[]
+}
 
 @Injectable()
 export class FortnoxExportService {
@@ -173,42 +179,81 @@ export class FortnoxExportService {
       'RECEIPT_MISMATCH',
       'RECEIPT_IDENTIFIED',
     ]
-    const where: Prisma.FortnoxVoucherExportWhereInput = {
-      organizationId,
-      // Även den relaterade journalen måste tillhöra samma organisation.
-      journalEntry: {
-        is: {
-          organizationId,
-          ...(input.source ? { source: input.source } : {}),
-          ...(input.from || input.to
-            ? {
-                date: {
-                  ...(input.from ? { gte: new Date(input.from) } : {}),
-                  ...(input.to ? { lte: new Date(input.to) } : {}),
-                },
-              }
-            : {}),
-        },
+    const filters = [
+      Prisma.sql`e."organizationId" = ${organizationId}`,
+      Prisma.sql`j."organizationId" = ${organizationId}`,
+    ]
+    if (input.source) filters.push(Prisma.sql`j."source" = ${input.source}::"JournalEntrySource"`)
+    if (input.from) filters.push(Prisma.sql`j."date" >= ${input.from}::date`)
+    if (input.to) filters.push(Prisma.sql`j."date" <= ${input.to}::date`)
+    const states = Prisma.join(
+      needsReview.map((state) => Prisma.sql`${state}::"FortnoxExportState"`),
+    )
+    if (input.group === 'NEEDS_REVIEW') filters.push(Prisma.sql`e."state" IN (${states})`)
+    if (input.group === 'OTHER') filters.push(Prisma.sql`e."state" NOT IN (${states})`)
+
+    // En smal join ger både total och sidans identiteter. Att sortera EXPORT_VIEW
+    // direkt drar med historiska JSON-utkast och skapade två journaljoins i Prisma.
+    // Bara sidans detaljer hämtas nedan. RR håller urval/total/detaljer sammanhängande
+    // när en annan transaktion ändrar status; nästa sidbyte får en ny läsbild.
+    return this.prisma.$transaction(
+      async (tx) => {
+        const selections = await tx.$queryRaw<WorklistSelection[]>(Prisma.sql`
+        WITH matched AS MATERIALIZED (
+          SELECT e."id", j."date", e."createdAt"
+          FROM "FortnoxVoucherExport" e
+          INNER JOIN "JournalEntry" j ON j."id" = e."journalEntryId"
+          WHERE ${Prisma.join(filters, ' AND ')}
+        ), ordered_page AS (
+          SELECT "id", "date", "createdAt" FROM matched
+          ORDER BY "date" DESC, "createdAt" DESC, "id" DESC
+          LIMIT ${limit} OFFSET ${offset}
+        )
+        SELECT (SELECT count(*) FROM matched) AS total,
+          COALESCE(
+            (SELECT array_agg("id" ORDER BY "date" DESC, "createdAt" DESC, "id" DESC)
+             FROM ordered_page),
+            ARRAY[]::text[]
+          ) AS ids
+      `)
+        const selected = selections[0]
+        if (
+          selections.length !== 1 ||
+          !selected ||
+          typeof selected.total !== 'bigint' ||
+          selected.total < 0n ||
+          selected.total > BigInt(Number.MAX_SAFE_INTEGER) ||
+          !Array.isArray(selected.ids) ||
+          selected.ids.length > limit ||
+          selected.ids.some((id) => typeof id !== 'string') ||
+          new Set(selected.ids).size !== selected.ids.length
+        )
+          throw new InternalServerErrorException('Kunde inte läsa Fortnox-arbetslistan')
+        const total = Number(selected.total)
+        if (!selected.ids.length) return { items: [], total, offset, limit }
+        const rows = await tx.fortnoxVoucherExport.findMany({
+          // Filtren tillämpas en gång i matched. Identiteter och båda företagsvillkor
+          // begränsar detaljläsningen inom samma oföränderliga transaktionsläsbild.
+          where: {
+            organizationId,
+            journalEntry: { is: { organizationId } },
+            id: { in: selected.ids },
+          },
+          select: EXPORT_VIEW,
+        })
+        const byId = new Map(rows.map((row) => [row.id, row]))
+        const items = selected.ids.map((id) => {
+          const row = byId.get(id)
+          if (!row) throw new InternalServerErrorException('Kunde inte läsa Fortnox-arbetslistan')
+          return exportView(row)
+        })
+        return { items, total, offset, limit }
       },
-      ...(input.group === 'NEEDS_REVIEW'
-        ? { state: { in: needsReview } }
-        : input.group === 'OTHER'
-          ? { state: { notIn: needsReview } }
-          : {}),
-    }
-    // Levande sidlista, inte en låst revisionsögonblicksbild. Samma filter för
-    // sida/total; varken alla historiska utkast eller alla sidor laddas i minnet.
-    const [rows, total] = await Promise.all([
-      this.prisma.fortnoxVoucherExport.findMany({
-        where,
-        orderBy: [{ journalEntry: { date: 'desc' } }, { createdAt: 'desc' }, { id: 'desc' }],
-        skip: offset,
-        take: limit,
-        select: EXPORT_VIEW,
-      }),
-      this.prisma.fortnoxVoucherExport.count({ where }),
-    ])
-    return { items: rows.map(exportView), total, offset, limit }
+      {
+        ...PRISMA_DEFAULT_TX_LIMITS,
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      },
+    )
   }
 
   async counts(organizationId: string, sendingEnabled = FORTNOX_SENDING_ENABLED) {
