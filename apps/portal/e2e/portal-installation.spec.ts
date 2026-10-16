@@ -1,5 +1,5 @@
 /**
- * Riktig byggd portal, Chromium, HTTP, service worker och CacheStorage.
+ * Riktig byggd portal, Chromium/WebKit, HTTP, service worker och CacheStorage.
  * API/bank/dokument är syntetiska svar från en lokal HTTP-server; ingen route
  * uppfyller nät- eller workersvar. Bevisar inte livebackend eller OS-installation
  * på iPhone. V2 byter bara versionsnamn i den byggda produktionsworkern.
@@ -238,6 +238,7 @@ test('login A, privata API/dokument, logout och login B lämnar endast offentlig
 test('verkligt offline ger fallback bara för tillåtna navigationer, aldrig API, PDF, token eller extern origin', async ({
   page,
   context,
+  browserName,
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await openControlled(page)
@@ -311,10 +312,18 @@ test('verkligt offline ger fallback bara för tillåtna navigationer, aldrig API
       try {
         const result = await probe.goto(path.startsWith('http') ? path : `${ORIGIN}${path}`).then(
           (response) => ({ response, error: null }),
-          (error: Error) => ({ response: null, error: error.message }),
+          (error: Error) => ({ response: null, error }),
         )
         expect(result.response, path).toBeNull()
-        expect(result.error, path).toMatch(/ERR_INTERNET_DISCONNECTED|ERR_FAILED/)
+        expect(result.error, path).toBeInstanceOf(Error)
+        expect(result.error, path).not.toBeInstanceOf(errors.TimeoutError)
+        // WebKit rapporterar detta nätfel vid en avvisad navigation. De tre
+        // tillåtna navigationerna ovan måste fortfarande ge faktisk SW-503.
+        expect(result.error?.message, path).toMatch(
+          browserName === 'webkit'
+            ? /WebKit encountered an internal error/
+            : /ERR_INTERNET_DISCONNECTED|ERR_FAILED/,
+        )
       } finally {
         await probe.close()
       }

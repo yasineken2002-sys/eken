@@ -1,12 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const port = Number(process.env.PWA_TEST_PORT ?? 4179)
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
 
 // Bygg dist först. Den här riggen startar ingen Vite-/API-/databasserver.
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'portal-installation.spec.ts',
+  testMatch: ['portal-installation.spec.ts', 'portal-transport.spec.ts'],
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -22,12 +21,21 @@ export default defineConfig({
     serviceWorkers: 'allow',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: {
-      ...(executablePath ? { executablePath } : {}),
-      args: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'],
-    },
   },
-  projects: [{ name: 'chromium-pwa', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium-pwa',
+      use: {
+        ...devices['Desktop Chrome'],
+        // Bundlad full Chromium med nytt headless-läge, samma motor lokalt/CI.
+        channel: 'chromium',
+        launchOptions: {
+          args: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'],
+        },
+      },
+    },
+    { name: 'webkit-pwa', use: { ...devices['Desktop Safari'] } },
+  ],
   webServer: {
     command: 'node e2e/fixture-server.mjs',
     url: `http://127.0.0.1:${port}/__fixture/health`,
