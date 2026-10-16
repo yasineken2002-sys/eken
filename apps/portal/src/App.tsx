@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { PortalLayout } from '@/components/PortalLayout/PortalLayout'
 import { RequireAuth } from '@/components/RequireAuth'
 import { CookieBanner } from '@/components/CookieBanner'
+import { NetworkStatus } from '@/components/NetworkStatus'
 import { DashboardPage } from '@/pages/DashboardPage/DashboardPage'
 import { NoticesPage } from '@/pages/NoticesPage/NoticesPage'
 import { MaintenancePage } from '@/pages/MaintenancePage/MaintenancePage'
@@ -22,6 +23,7 @@ import { CookiesPage as LegalCookiesPage } from '@/pages/legal/CookiesPage'
 export function App() {
   return (
     <>
+      <NetworkStatus />
       <Routes>
         {/* Publika auth-routes — aktiveringslänken skickas i välkomstmejlet
             som /activate?token=... och har 72h TTL. */}

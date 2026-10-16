@@ -1623,7 +1623,9 @@ jobs:
       # bitarna aldrig hade körts i en vy.
       # 2026-10-16: 18 → 20. Portalens hyresvärdsval med syntetiska API-svar,
       # riktig DOM/CSS, tangentbord och långa namn vid 320×740 och 1280×900.
-      E2E_EXPECTED_TESTS: '20'
+      # 2026-10-16: 20 → 21. Verkligt browser-offline och återanslutning får
+      # aldrig eftersända en gammal återställningsbegäran utan nytt klick.
+      E2E_EXPECTED_TESTS: '21'
 
     steps:
       - uses: actions/checkout@v4

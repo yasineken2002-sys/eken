@@ -1,0 +1,12 @@
+.notice {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  padding: 12px 16px;
+  background: var(--color-warning-light);
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-warning);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

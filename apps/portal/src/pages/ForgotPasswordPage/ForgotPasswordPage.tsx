@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useSessionMutation } from '@/lib/session-guard'
+import { PortalNetworkError } from '@/lib/network-state'
 import { requestForgotPassword } from '@/api/portal.api'
 import styles from '../LoginPage/LoginPage.module.css'
 
@@ -14,7 +15,12 @@ export function ForgotPasswordPage() {
   const mutation = useSessionMutation({
     mutationFn: (em: string) => requestForgotPassword(em),
     onSuccess: () => setState('sent'),
-    onError: () => setErrorMsg('Något gick fel. Försök igen om en stund.'),
+    onError: (error: unknown) =>
+      setErrorMsg(
+        error instanceof PortalNetworkError
+          ? error.message
+          : 'Något gick fel. Försök igen om en stund.',
+      ),
   })
 
   function handleSubmit(e: React.FormEvent) {
@@ -79,7 +85,11 @@ export function ForgotPasswordPage() {
             disabled={mutation.isPending}
           />
 
-          {errorMsg && <p className={styles.errorMsg}>{errorMsg}</p>}
+          {errorMsg && (
+            <p className={styles.errorMsg} role="alert">
+              {errorMsg}
+            </p>
+          )}
 
           <button
             type="submit"
