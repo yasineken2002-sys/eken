@@ -35,6 +35,8 @@ import { TenantInvitationsService, type TenantInviteStatus } from './tenant-invi
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { CurrentTenant } from './current-tenant.decorator'
 import type { Tenant } from '@prisma/client'
+import { TenantLoginResolveResultSchema, type TenantLoginResolveResult } from '@eken/shared'
+import type { TenantLoginContext } from './tenant-login-budget.service'
 import { readTenantWithCredentials } from './tenant-credential-read'
 import { TenantBankIdService } from './tenant-bankid.service'
 import { InviteTenantsDto, ResendInvitesDto } from './dto/invite-tenants.dto'
@@ -168,12 +170,70 @@ export class TenantAuthController {
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    const result = await this.tenantAuthService.login(dto.email, dto.password, dto.organizationId)
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const result = await this.withLoginConnection(req, reply, (context) =>
+      this.tenantAuthService.login(dto.email, dto.password, dto.organizationId, context),
+    )
     return {
       sessionToken: result.sessionToken,
       expiresAt: result.expiresAt.toISOString(),
       tenant: tenantSummary(result.tenant),
+    }
+  }
+
+  @Post('login/resolve')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(HttpStatus.OK)
+  async resolveLogin(
+    @Body() dto: LoginDto,
+    @Req() req: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<TenantLoginResolveResult> {
+    const resolution = await this.withLoginConnection(req, reply, (context) =>
+      this.tenantAuthService.resolveLogin(dto.email, dto.password, dto.organizationId, context),
+    )
+    // Explicit allowlist även i complete-grenen: ingen rå tenant/credential
+    // eller sessionsuppgift i choose-svaret. Ny route bevarar gamla /login-formen.
+    return TenantLoginResolveResultSchema.parse(
+      resolution.status === 'choose'
+        ? {
+            status: 'choose',
+            candidates: resolution.candidates.map(({ organizationId, organizationName }) => ({
+              organizationId,
+              organizationName,
+            })),
+          }
+        : {
+            status: 'complete',
+            sessionToken: resolution.result.sessionToken,
+            expiresAt: resolution.result.expiresAt.toISOString(),
+            tenant: tenantSummary(resolution.result.tenant),
+          },
+    )
+  }
+
+  private async withLoginConnection<T>(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    work: (context: Omit<TenantLoginContext, 'email'>) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    const responseClosed = () => {
+      if (!reply.raw.writableFinished) controller.abort()
+    }
+    req.raw.once('aborted', abort)
+    reply.raw.once('close', responseClosed)
+    if (req.raw.aborted || reply.raw.destroyed) controller.abort()
+    try {
+      return await work({ ip: req.ip, signal: controller.signal })
+    } finally {
+      req.raw.off('aborted', abort)
+      reply.raw.off('close', responseClosed)
     }
   }
 

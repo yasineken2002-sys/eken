@@ -3,6 +3,7 @@ import { CronErrorSinkModule } from '../common/cron/cron-error-sink.module'
 import { MaintenanceModule } from '../maintenance/maintenance.module'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { PrismaModule } from '../common/prisma/prisma.module'
+import { RedisModule } from '../common/redis/redis.module'
 import { ContractsModule } from '../contracts/contracts.module'
 import { BankidModule } from '../bankid/bankid.module'
 import { TenantBankIdService } from './tenant-bankid.service'
@@ -11,6 +12,7 @@ import { InvoicesModule } from '../invoices/invoices.module'
 import { AviseringModule } from '../avisering/avisering.module'
 import { InspectionsModule } from '../inspections/inspections.module'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { TenantPortalService } from './tenant-portal.service'
 import { TenantInvitationsService } from './tenant-invitations.service'
@@ -27,6 +29,7 @@ import {
     MaintenanceModule,
     NotificationsModule,
     PrismaModule,
+    RedisModule,
     StorageModule,
     InvoicesModule,
     AviseringModule,
@@ -48,6 +51,7 @@ import {
   controllers: [TenantAuthController, TenantPortalController, TenantPortalAdminController],
   providers: [
     TenantAuthService,
+    TenantLoginBudget,
     TenantAuthGuard,
     TenantPortalService,
     TenantInvitationsService,

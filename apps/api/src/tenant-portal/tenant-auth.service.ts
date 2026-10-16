@@ -29,6 +29,11 @@ import {
 } from './tenant-credential-read'
 import { LockService } from '../common/redis/lock.service'
 import { CLEARED_TENANT_INVITE_STATE } from '../tenants/tenant-invite-state'
+import {
+  MAX_LOGIN_CANDIDATES,
+  TenantLoginBudget,
+  type TenantLoginContext,
+} from './tenant-login-budget.service'
 
 /**
  * SELECT för en hyresgäst som autentiserats via portal-session och returneras
@@ -119,6 +124,10 @@ interface SessionResult {
   tenant: Tenant & { organization: { id: string; name: string } }
 }
 
+type PasswordLoginResolution =
+  | { status: 'complete'; result: SessionResult }
+  | { status: 'choose'; candidates: Array<{ organizationId: string; organizationName: string }> }
+
 /**
  * TTL för aktiveringspåminnelsernas cron-lås.
  *
@@ -160,6 +169,8 @@ export class TenantAuthService {
      * tystare.
      */
     private readonly cronErrors: CronErrorSink,
+    @Inject(TenantLoginBudget)
+    private readonly loginBudget: Pick<TenantLoginBudget, 'run'>,
   ) {}
 
   // ── Aktiveringstoken ─────────────────────────────────────────────────────────
@@ -418,43 +429,117 @@ export class TenantAuthService {
 
   // ── Lösenordsinloggning ──────────────────────────────────────────────────────
 
-  async login(email: string, password: string, organizationId?: string): Promise<SessionResult> {
-    // E-post lagras alltid som lowercase i DB (normalizeEmail vid alla writes).
-    // Vi normaliserar också input här — så B-tree-indexet för email kan
-    // användas av Postgres istället för en sekvensskanning som
-    // mode: 'insensitive' annars hade tvingat fram.
+  async login(
+    email: string,
+    password: string,
+    organizationId?: string,
+    context?: Omit<TenantLoginContext, 'email'>,
+  ): Promise<SessionResult> {
+    const resolution = await this.passwordLogin(email, password, organizationId, false, context)
+    if (resolution.status !== 'complete') {
+      throw new UnauthorizedException('Felaktig e-post eller lösenord')
+    }
+    return resolution.result
+  }
+
+  async resolveLogin(
+    email: string,
+    password: string,
+    organizationId?: string,
+    context?: Omit<TenantLoginContext, 'email'>,
+  ): Promise<PasswordLoginResolution> {
+    return this.passwordLogin(email, password, organizationId, true, context)
+  }
+
+  private async passwordLogin(
+    email: string,
+    password: string,
+    organizationId: string | undefined,
+    allowChoice: boolean,
+    context?: Omit<TenantLoginContext, 'email'>,
+  ): Promise<PasswordLoginResolution> {
+    // Exakt normaliserat uppslag använder email-indexet även utan vald hyresvärd.
     const normalizedEmail = normalizeEmail(email)
     const where = organizationId
-      ? { email: normalizedEmail, organizationId }
-      : { email: normalizedEmail }
-    const tenant = await findTenantWithCredentials(this.prisma, {
-      where,
-      include: { organization: { select: { id: true, name: true } } },
-    })
-    if (!tenant || !tenant.portalActivated || !tenant.passwordHash) {
-      // Samma generiska fel oavsett orsak — ingen enumeration
-      throw new UnauthorizedException('Felaktig e-post eller lösenord')
-    }
+      ? {
+          email: normalizedEmail,
+          organizationId,
+          portalActivated: true,
+          anonymizedAt: null,
+          passwordHash: { not: null },
+        }
+      : {
+          email: normalizedEmail,
+          portalActivated: true,
+          anonymizedAt: null,
+          passwordHash: { not: null },
+        }
+    return this.loginBudget.run(
+      {
+        email: normalizedEmail,
+        ip: context?.ip ?? 'internal',
+        ...(context?.signal ? { signal: context.signal } : {}),
+      },
+      async (permit) => {
+        const candidates = await readManyTenantsWithCredentials(this.prisma, {
+          where,
+          orderBy: { id: 'asc' },
+          // Extra raden upptäcker overflow. Budgeten nekar HELA försöket innan
+          // bcrypt; vi lämnar aldrig en avklippt lista eller första träffen.
+          take: MAX_LOGIN_CANDIDATES + 1,
+          include: { organization: { select: { id: true, name: true } } },
+        })
+        await permit.reserve(candidates.map((candidate) => candidate.passwordHash ?? ''))
+        const matched: typeof candidates = []
+        for (const candidate of candidates) {
+          permit.assertActive()
+          if (candidate.passwordHash && (await bcrypt.compare(password, candidate.passwordHash))) {
+            matched.push(candidate)
+          }
+        }
+        permit.assertActive()
+        if (matched.length === 0) {
+          throw new UnauthorizedException('Felaktig e-post eller lösenord')
+        }
 
-    const valid = await bcrypt.compare(password, tenant.passwordHash)
-    if (!valid) {
-      throw new UnauthorizedException('Felaktig e-post eller lösenord')
-    }
-
-    // Bcrypt hålls utanför transaktionen. Jämförelsen får inte ge en session
-    // om ett lösenordsbyte hann slutföras medan den pågick.
-    return this.prisma.$transaction(async (tx) => {
-      const current = await this.readLockedPasswordTenant(tx, tenant.id)
-      if (
-        !current?.portalActivated ||
-        current.passwordHash !== tenant.passwordHash ||
-        current.email !== normalizedEmail ||
-        current.organizationId !== tenant.organizationId
-      ) {
-        throw new UnauthorizedException('Felaktig e-post eller lösenord')
-      }
-      return this.createSession(current, tx)
-    }, PRISMA_DEFAULT_TX_LIMITS)
+        // Bcrypt ligger utanför låsen. Konton som ändras medan jämförelsen
+        // pågår måste åter verifieras; en tidigare lista ger ingen behörighet.
+        matched.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        return this.prisma.$transaction(async (tx) => {
+          const currentMatches: typeof candidates = []
+          for (const candidate of matched) {
+            permit.assertActive()
+            const current = await this.readLockedPasswordTenant(tx, candidate.id)
+            if (
+              current?.portalActivated &&
+              current.anonymizedAt === null &&
+              current.passwordHash === candidate.passwordHash &&
+              current.email === normalizedEmail &&
+              current.organizationId === candidate.organizationId
+            ) {
+              currentMatches.push(current)
+            }
+          }
+          permit.assertActive()
+          if (currentMatches.length === 0 || (!allowChoice && currentMatches.length > 1)) {
+            throw new UnauthorizedException('Felaktig e-post eller lösenord')
+          }
+          if (currentMatches.length > 1) {
+            return {
+              status: 'choose' as const,
+              candidates: currentMatches.map((tenant) => ({
+                organizationId: tenant.organizationId,
+                organizationName: tenant.organization.name,
+              })),
+            }
+          }
+          const result = await this.createSession(currentMatches[0]!, tx)
+          // Ett observerat avbrott före commit ska även rulla tillbaka inserten.
+          permit.assertActive()
+          return { status: 'complete' as const, result }
+        }, PRISMA_DEFAULT_TX_LIMITS)
+      },
+    )
   }
 
   // ── Glömt lösenord ───────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ import { ContractTemplateService } from '../contracts/contract-template.service'
 import { MailService } from '../mail/mail.service'
 import { TENANT_CREDENTIAL_KEYS } from '../tenants/tenant-credential-keys'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 
 let mockAfterHash: ((password: string, hash: string) => Promise<void>) | undefined
 let mockAfterCompare:
@@ -117,6 +118,14 @@ describe('portalens lösenordsåterställning · riktiga DB-race och sessionsliv
     const module = await Test.createTestingModule({
       providers: [
         TenantAuthService,
+        {
+          provide: TenantLoginBudget,
+          // Domänprov; den verkliga Redis-budgeten provas i separat svit.
+          useValue: {
+            run: async (_context, work) =>
+              work({ reserve: async () => {}, assertActive: () => {} }),
+          } satisfies Pick<TenantLoginBudget, 'run'>,
+        },
         { provide: PrismaService, useValue: client },
         { provide: ConfigService, useValue: new ConfigService({}) },
         { provide: MailService, useValue: {} },
