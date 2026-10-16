@@ -6,6 +6,7 @@ import {
   type TenantLoginResolveResult,
 } from '@eken/shared'
 import { useSessionGuard } from '@/lib/session-guard'
+import { PortalNetworkError } from '@/lib/network-state'
 import { kontraktsfel } from '@/lib/contract-gate'
 import { resolvePasswordLogin } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
@@ -139,11 +140,13 @@ export function LoginPage() {
       clearPrivateState()
       const status = (error as { response?: { status?: number } })?.response?.status
       setErrorMsg(
-        status === 401
-          ? 'Felaktig e-post eller lösenord.'
-          : status === 429
-            ? 'Inloggning är tillfälligt begränsad. Vänta en stund och försök igen.'
-            : 'Något gick fel. Försök igen.',
+        error instanceof PortalNetworkError
+          ? error.message
+          : status === 401
+            ? 'Felaktig e-post eller lösenord.'
+            : status === 429
+              ? 'Inloggning är tillfälligt begränsad. Vänta en stund och försök igen.'
+              : 'Något gick fel. Försök igen.',
       )
       setFocusTarget('error')
     } finally {

@@ -2,6 +2,7 @@ import axios from 'axios'
 import { TenantLoginResolveResultSchema, type TenantLoginResolveResult } from '@eken/shared'
 import { isSessionCurrent, useSessionStore } from '@/store/session.store'
 import { SessionChangedError } from '@/lib/session-guard'
+import { isPortalOffline, PortalNetworkError } from '@/lib/network-state'
 import type {
   PortalActivationInfo,
   PortalAuthResult,
@@ -52,6 +53,7 @@ portalApi.interceptors.request.use(
   (config) => {
     const state = useSessionStore.getState()
     if (state.checkAndClearIfExpired()) throw new SessionChangedError()
+    if (isPortalOffline()) throw new PortalNetworkError('offline')
     const protectedRequest =
       !!config.url &&
       (config.url.startsWith('/portal/') || config.url.startsWith('/tenant-portal/ai/'))
@@ -95,6 +97,15 @@ portalApi.interceptors.response.use(
         useSessionStore.getState().clearSession()
         throw new SessionChangedError()
       }
+    }
+    if (
+      axios.isAxiosError(error) &&
+      !error.response &&
+      (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT')
+    ) {
+      // Ett skickat anrop kan redan ha sparats. Behåll inga råa config-/cause-
+      // uppgifter och utlova varken misslyckad skrivning eller säker återförsökning.
+      return Promise.reject(new PortalNetworkError('unconfirmed'))
     }
     return Promise.reject(error)
   },
