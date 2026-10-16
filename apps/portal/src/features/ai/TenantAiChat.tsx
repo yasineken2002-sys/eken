@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useSessionMutation } from '@/lib/session-guard'
 import { useFocusTrap } from '@eken/ui/hooks'
 import { TenantChatSchema, type TenantChatInput } from '@eken/shared'
 import { kontraktsfel } from '@/lib/contract-gate'
@@ -45,7 +46,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
   const sendingRef = useRef(false)
   const queryClient = useQueryClient()
 
-  const sendMutation = useMutation({
+  const sendMutation = useSessionMutation({
     mutationFn: (sent: SentMessage) => sendAiMessage(sent.message, conversationId ?? undefined),
     onSuccess: (res, sent) => {
       if (res.conversationId !== conversationId) {
@@ -83,7 +84,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
 
   const { mutate: sendMessage } = sendMutation
 
-  const confirmMutation = useMutation({
+  const confirmMutation = useSessionMutation({
     mutationFn: (confirmed: boolean) => {
       if (!pendingAction || !conversationId) {
         throw new Error('Ingen pågående åtgärd')
