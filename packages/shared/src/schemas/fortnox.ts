@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { JOURNAL_SOURCES } from './journal'
 
 /**
  * Fortnox A — DELADE nyttolaster webb ↔ API (check-request-contract).
@@ -12,17 +13,8 @@ const isCivilDate = (value: string): boolean =>
 
 const civilDate = z.string().refine(isCivilDate, 'Ogiltigt datum')
 
-/** JournalEntrySource speglas här utan att dra in Prisma i webben; kontraktsprovet binder listan. */
-export const FORTNOX_EXPORT_SOURCES = [
-  'MANUAL',
-  'AI',
-  'INVOICE',
-  'PAYMENT',
-  'LEASE',
-  'RENT_NOTICE',
-  'MISC_CHARGE',
-  'SUPPLIER_INVOICE',
-] as const
+/** Samma källor som journalen; det befintliga Fortnox-kontraktets exportnamn bevaras. */
+export const FORTNOX_EXPORT_SOURCES = JOURNAL_SOURCES
 export const FORTNOX_EXPORT_GROUPS = ['ALL', 'NEEDS_REVIEW', 'OTHER'] as const
 
 const queryInteger = (value: unknown): unknown =>

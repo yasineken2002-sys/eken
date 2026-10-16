@@ -25,6 +25,7 @@ import { ReverseEntryDto } from './dto/reverse-entry.dto'
 // en typ-import raderar klassen, varpå ValidationPipe tappar all metadata.
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto'
 import { CreateExpenseDto } from './dto/create-expense.dto'
+import { JournalPageQueryDto } from './dto/journal-page-query.dto'
 import {
   CreateSupplierInvoiceDto,
   PaySupplierInvoiceDto,
@@ -284,27 +285,15 @@ export class AccountingController {
    * behåller sitt kontrakt (lista, högst 100) för befintliga anropare. limit 1–200.
    */
   @Get('journal-page')
-  async getJournalPage(
-    @OrgId() organizationId: string,
-    @Query('offset') offset?: string,
-    @Query('limit') limit?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('source') source?: string,
-  ) {
-    const o = Number.parseInt(offset ?? '0', 10)
-    const l = Number.parseInt(limit ?? '100', 10)
-    if (!Number.isSafeInteger(o) || o < 0 || !Number.isSafeInteger(l) || l < 1 || l > 200) {
-      throw new BadRequestException('offset måste vara ≥ 0 och limit 1–200')
-    }
+  async getJournalPage(@OrgId() organizationId: string, @Query() query: JournalPageQueryDto) {
     return this.accountingService.getJournalEntriesPage(
       organizationId,
       {
-        ...(from != null ? { from } : {}),
-        ...(to != null ? { to } : {}),
-        ...(source != null ? { source } : {}),
+        ...(query.from !== undefined ? { from: query.from } : {}),
+        ...(query.to !== undefined ? { to: query.to } : {}),
+        ...(query.source !== undefined ? { source: query.source } : {}),
       },
-      { offset: o, limit: l },
+      { offset: query.offset ?? 0, limit: query.limit ?? 100 },
     )
   }
 

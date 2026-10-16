@@ -1,10 +1,12 @@
-import { get, post } from '@/lib/api'
+import { api, get, post } from '@/lib/api'
+import { journalPageQuerySchema } from '@eken/shared'
 import type {
   Account,
   CreateExpenseInput,
   CreateJournalEntryInput,
   CreateSupplierInvoiceInput,
   JournalEntry,
+  JournalPageQuery,
   ReverseEntryInput,
   ReopenPeriodInput,
   PaySupplierInvoiceInput,
@@ -43,12 +45,18 @@ export interface JournalPage {
   offset: number
   limit: number
 }
-export type JournalFilter = { from?: string; to?: string; source?: string }
+export type JournalFilter = Pick<JournalPageQuery, 'from' | 'to' | 'source'>
 
-export const fetchJournalPage = (
+export const fetchJournalPage = async (
   sida: { offset: number; limit: number } & JournalFilter,
-): Promise<JournalPage> =>
-  get<JournalPage>('/accounting/journal-page', sida as Record<string, unknown>)
+  signal?: AbortSignal,
+): Promise<JournalPage> => {
+  const { data } = await api.get<{ data: JournalPage }>('/accounting/journal-page', {
+    params: journalPageQuerySchema.parse(sida),
+    ...(signal ? { signal } : {}),
+  })
+  return data.data
+}
 
 /**
  * Alla verifikat i urvalet (upp till `tak`), sida för sida. `total` är alltid hela urvalets

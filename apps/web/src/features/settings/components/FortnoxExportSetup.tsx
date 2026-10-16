@@ -4,23 +4,15 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
 import { extractApiError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth.store'
-import { fetchAllJournalEntries } from '../../accounting/api/accounting.api'
-import { FortnoxExportTextView } from './FortnoxExportRow'
 import { FortnoxExportList } from './FortnoxExportList'
+import { FortnoxJournalPicker } from './FortnoxJournalPicker'
 import {
   getFortnoxExportState,
   getFortnoxSeriesCatalog,
   saveFortnoxExportSettings,
-  startFortnoxDryRun,
-  type FortnoxExportRow,
 } from '../api/fortnox-export.api'
 
-import { EXPORT_STATE_TEXT } from './fortnox-export-text'
 export { EXPORT_NEXT_STEP, EXPORT_STATE_TEXT } from './fortnox-export-text'
-
-function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10)
-}
 
 /**
  * Export mot Fortnox huvudbok — kundval och lokal förhandskontroll. Sändning finns
@@ -46,8 +38,6 @@ function FortnoxExportSetupScoped() {
   const [yearId, setYearId] = useState<number | null>(null)
   const [series, setSeries] = useState('')
   const [omitConfirmed, setOmitConfirmed] = useState(false)
-  const [entryId, setEntryId] = useState('')
-  const [result, setResult] = useState<FortnoxExportRow | null>(null)
 
   const state = useQuery({
     queryKey: ['fortnox', 'export-state', ...scope],
@@ -71,15 +61,6 @@ function FortnoxExportSetupScoped() {
     enabled: active && yearId !== null,
     retry: false,
   })
-  const entries = useQuery({
-    queryKey: ['fortnox', 'export-entries', ...scope],
-    // F-LIST-1 (FORTNOX-100): HELA urvalet, inte de 100 senaste. Ett bolag med 100
-    // lägenheter har ~600 verifikat på 90 dagar; resten gick inte att välja för export.
-    queryFn: () => fetchAllJournalEntries({ from: daysAgo(90), to: daysAgo(0) }),
-    enabled: active,
-    retry: false,
-  })
-
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ['fortnox'] })
   }
@@ -93,18 +74,6 @@ function FortnoxExportSetupScoped() {
     retry: false,
     onSuccess: refresh,
   })
-  const dryRun = useMutation({
-    mutationFn: (journalEntryId: string) => startFortnoxDryRun({ journalEntryId }),
-    retry: false,
-    // U03: varje nytt försök nollställer tidigare resultat — ingen tyst gammal framgång.
-    onMutate: () => setResult(null),
-    onSuccess: async (row, requested) => {
-      // U02: svaret visas bara för det verifikat det gäller.
-      if (row.journalEntryId === requested) setResult(row)
-      await refresh()
-    },
-  })
-
   if (!allowed) return null
   if (state.isLoading) return <p className="text-ink-muted text-sm">Hämtar exportinställningar…</p>
   if (state.isError || !state.data)
@@ -260,64 +229,7 @@ function FortnoxExportSetupScoped() {
         )}
       </div>
 
-      <div className="space-y-2">
-        <h4 className="text-ink text-sm font-semibold">3. Förhandskontrollera ett verifikat</h4>
-        <Select
-          label="Verifikat (senaste 90 dagarna)"
-          value={entryId}
-          disabled={dryRun.isPending}
-          options={[
-            { value: '', label: entries.isLoading ? 'Hämtar verifikat…' : 'Välj verifikat' },
-            ...(entries.data?.entries ?? []).map((e) => ({
-              value: e.id,
-              label: `${e.series ?? ''}${e.verNumber ?? ''} · ${e.date.slice(0, 10)} · ${e.description}`,
-            })),
-          ]}
-          onChange={(e) => {
-            setEntryId(e.target.value)
-            setResult(null)
-          }}
-        />
-        {entries.data ? (
-          // F-LIST-1: hela urvalet, och antalet syns — inget tyst tak.
-          <p className="text-ink-muted text-xs">
-            Visar {entries.data.entries.length} av {entries.data.total} verifikat
-            {entries.data.entries.length < entries.data.total
-              ? ' — snäva in perioden för att se resten.'
-              : '.'}
-          </p>
-        ) : null}
-        {entries.isError && (
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm text-red-600">Verifikaten kunde inte hämtas.</p>
-            <Button size="sm" variant="secondary" onClick={() => void entries.refetch()}>
-              Försök igen
-            </Button>
-          </div>
-        )}
-        <Button
-          size="sm"
-          variant="primary"
-          disabled={!entryId || dryRun.isPending}
-          onClick={() => dryRun.mutate(entryId)}
-        >
-          {dryRun.isPending ? 'Kontrollerar…' : 'Förhandskontrollera'}
-        </Button>
-        {dryRun.isError && <p className="text-sm text-red-600">{extractApiError(dryRun.error)}</p>}
-        {result && result.journalEntryId === entryId && (
-          <div
-            role="status"
-            data-testid="fortnox-dry-run-result"
-            className="border-line rounded-lg border p-3 text-sm"
-          >
-            <p className="text-ink font-medium">{EXPORT_STATE_TEXT[result.state]}</p>
-            {result.blockReason && (
-              <p className="text-ink-muted break-words">Skäl: {result.blockReason}</p>
-            )}
-            <FortnoxExportTextView items={result.exportText} />
-          </div>
-        )}
-      </div>
+      <FortnoxJournalPicker onChanged={refresh} />
 
       <FortnoxExportList
         group="ALL"

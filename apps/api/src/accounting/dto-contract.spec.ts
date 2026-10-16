@@ -7,6 +7,7 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   CHAT_MAX_ATTACHMENTS,
   REMINDER_FEE_MAX_SEK,
+  journalPageQuerySchema,
 } from '@eken/shared'
 import { ChatDto } from '../ai/dto/chat.dto'
 import { ConfirmActionDto } from '../ai/dto/confirm-action.dto'
@@ -100,6 +101,7 @@ import { ReverseEntrySchema, ReopenPeriodSchema, PaySupplierInvoiceSchema } from
 import { ReverseEntryDto } from './dto/reverse-entry.dto'
 import { ReopenPeriodDto } from './dto/reopen-period.dto'
 import { PaySupplierInvoiceDto } from './dto/supplier-invoice.dto'
+import { JournalPageQueryDto } from './dto/journal-page-query.dto'
 
 /**
  * PRODUKTIONENS pipe, inte en egen. Raden ovan skrev tidigare fyra av `main.ts`
@@ -416,6 +418,16 @@ describe('leverantörsfaktura — schema och DTO ger samma svar', () => {
  * webben står här — det kan ett prov inte se, och det står därför i vaktens fil.
  */
 describe('KONTRAKTSREGISTER — paritet för varje delat schema med en DTO', () => {
+  it('journalens querykontrakt ingår exakt en gång i den gemensamma pariteten', () => {
+    expect(KONTRAKTSREGISTER.filter((post) => post.inputTyp === 'JournalPageQuery')).toEqual([
+      expect.objectContaining({
+        endpoint: 'GET /accounting/journal-page',
+        schema: journalPageQuerySchema,
+        dto: JournalPageQueryDto,
+      }),
+    ])
+  })
+
   it('registret är icke-trivialt', () => {
     // En loop över en tom lista är grön om ingenting. Talet är en undre gräns,
     // inte en sanning: växer registret ska den här inte behöva ändras.
