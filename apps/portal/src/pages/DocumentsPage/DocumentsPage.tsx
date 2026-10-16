@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -80,6 +81,7 @@ function formatDateSv(dateStr: string): string {
 }
 
 function DocumentCard({ doc }: { doc: PortalDocument }) {
+  const currentSession = useSessionGuard()
   const [loading, setLoading] = useState(false)
   const iconStyle = getFileIconStyle(doc.mimeType)
   const category = CATEGORY_LABELS[doc.category] ?? doc.category
@@ -89,12 +91,14 @@ function DocumentCard({ doc }: { doc: PortalDocument }) {
   // av portalApi-interceptorn) — INTE i query-stringen som tidigare. Det
   // gör att tokens inte läcker via referrer, browser-historik eller serverloggar.
   async function handleDownload() {
-    if (loading) return
+    if (loading || !currentSession()) return
     setLoading(true)
     try {
       const { url, filename } = await fetchDocumentDownload(doc.id)
+      if (!currentSession()) return
       openPresignedDownload(url, sanitizeFilename(filename || doc.name))
     } catch (err) {
+      if (!currentSession()) return
       toast.error('Kunde inte ladda ner dokumentet', {
         description: extractApiError(err, 'Försök igen om en stund.'),
       })

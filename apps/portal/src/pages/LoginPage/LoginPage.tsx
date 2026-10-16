@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useSessionMutation } from '@/lib/session-guard'
 import { loginWithPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
@@ -14,7 +14,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const mutation = useMutation({
+  const mutation = useSessionMutation({
     // E-post är case-insensitiv. Backend matchar nu också case-insensitivt,
     // men vi normaliserar i klienten också så samma e-post inte sparas i
     // flera olika varianter över tid.

@@ -1,3 +1,4 @@
+import { useSessionGuard } from '@/lib/session-guard'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -93,17 +94,21 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
   const queryClient = useQueryClient()
+  const currentSession = useSessionGuard()
 
   const publicComments = ticket.comments.filter((c) => !c.isInternal)
 
   async function handleComment() {
+    if (!currentSession()) return
     if (!comment.trim()) return
     setSending(true)
     try {
       await addTicketComment(ticket.id, comment.trim())
+      if (!currentSession()) return
       setComment('')
       await queryClient.invalidateQueries({ queryKey: ['portal', 'maintenance'] })
     } catch (err) {
+      if (!currentSession()) return
       toast.error(extractApiError(err, 'Kunde inte skicka kommentaren'))
     } finally {
       setSending(false)
@@ -163,6 +168,7 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
 }
 
 export function MaintenancePage() {
+  const currentSession = useSessionGuard()
   const [showSheet, setShowSheet] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -176,6 +182,7 @@ export function MaintenancePage() {
   })
 
   const handleSubmit = async () => {
+    if (!currentSession()) return
     if (!title.trim() || !description.trim()) return
     setIsSubmitting(true)
     try {
@@ -184,6 +191,7 @@ export function MaintenancePage() {
         description: description.trim(),
         category,
       })
+      if (!currentSession()) return
       // Bilderna laddas upp i ett andra steg: vi vill inte blanda JSON och
       // multipart i samma request. Felar uppladdningen visar vi en mjuk
       // varning men ticket:en finns redan och listan refetchas.
@@ -191,10 +199,12 @@ export function MaintenancePage() {
         try {
           await uploadMaintenanceImages(ticket.id, images)
         } catch (err) {
+          if (!currentSession()) return
           console.error('[maintenance] kunde inte ladda upp bilder', err)
           toast.warning('Felanmälan skickades, men en eller flera bilder kunde inte laddas upp.')
         }
       }
+      if (!currentSession()) return
       setShowSheet(false)
       setTitle('')
       setDescription('')
@@ -202,6 +212,7 @@ export function MaintenancePage() {
       setCategory('OTHER')
       void refetch()
     } catch (err) {
+      if (!currentSession()) return
       toast.error(extractApiError(err, 'Kunde inte skicka felanmälan. Försök igen.'))
     } finally {
       setIsSubmitting(false)
