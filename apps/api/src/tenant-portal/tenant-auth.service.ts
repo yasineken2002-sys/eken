@@ -69,6 +69,11 @@ function assertStrongPassword(password: string): void {
 
 type PasswordGrant = 'activation' | 'reset'
 
+type ActivationRecipient = Pick<Tenant, 'organizationId' | 'email'> & {
+  onlyNotActivated?: true
+  previousTokenHash?: string
+}
+
 function assertPasswordGrant(
   tenant: Tenant | null,
   tokenHash: string,
@@ -165,12 +170,33 @@ export class TenantAuthService {
    * Anropas från LeasesService när ett kontrakt blir ACTIVE och från
    * admin-resend-endpointen.
    */
-  async issueActivationToken(tenantId: string, ttlMs = ACTIVATION_TTL_MS): Promise<string> {
+  async issueActivationToken(
+    tenantId: string,
+    ttlMs = ACTIVATION_TTL_MS,
+    expectedRecipient?: ActivationRecipient,
+  ): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + ttlMs)
 
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
+    // En fördröjd kandidatläsning får inte utfärda en ny giltig länk till
+    // en tidigare adress. Påminnelser binds även till länken som listades.
+    const updated = await this.prisma.tenant.updateMany({
+      where: expectedRecipient
+        ? {
+            id: tenantId,
+            organizationId: expectedRecipient.organizationId,
+            email: expectedRecipient.email,
+            anonymizedAt: null,
+            ...(expectedRecipient.onlyNotActivated ? { portalActivated: false } : {}),
+            ...(expectedRecipient.previousTokenHash !== undefined
+              ? {
+                  activationTokenHash: expectedRecipient.previousTokenHash,
+                  activationTokenExpiresAt: { gt: new Date() },
+                  activationReminderSentAt: null,
+                }
+              : {}),
+          }
+        : { id: tenantId },
       data: {
         activationTokenHash: sha256(token),
         activationTokenExpiresAt: expiresAt,
@@ -180,6 +206,9 @@ export class TenantAuthService {
         activationReminderSentAt: null,
       },
     })
+    if (updated.count !== 1) {
+      throw new UnauthorizedException('Aktiveringslänken kunde inte förberedas')
+    }
 
     return token
   }
@@ -620,7 +649,10 @@ export class TenantAuthService {
       return
     }
 
-    const token = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS)
+    const token = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS, {
+      organizationId: tenant.organizationId,
+      email: tenant.email,
+    })
     const activationUrl = this.buildActivationUrl(token)
     const tenantName = tenant.firstName
       ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
@@ -816,10 +848,16 @@ export class TenantAuthService {
       // efter påminnelsen) blir ogiltig, men praktiken är att påminnelsen
       // är den de använder. issueActivationToken nollar
       // activationReminderSentAt — vi sätter den explicit efter mejlet.
-      const newToken = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS)
-      const activationUrl = this.buildActivationUrl(newToken)
-
+      let stage = 'token'
       try {
+        const newToken = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS, {
+          organizationId: tenant.organizationId,
+          email: tenant.email,
+          onlyNotActivated: true,
+          previousTokenHash: tenant.activationTokenHash!,
+        })
+        const activationUrl = this.buildActivationUrl(newToken)
+        stage = 'mejlkö'
         await this.mail.sendTenantActivationReminder({
           to: tenant.email,
           organizationId: tenant.organizationId,
@@ -829,17 +867,36 @@ export class TenantAuthService {
           validForHours: 72,
           idempotencyKey: `tenant-activation-reminder-${tenant.id}-${newToken.substring(0, 8)}`,
         })
-        await this.prisma.tenant.update({
-          where: { id: tenant.id },
+        stage = 'påminnelsemarkering'
+        await this.prisma.tenant.updateMany({
+          where: {
+            id: tenant.id,
+            organizationId: tenant.organizationId,
+            email: tenant.email,
+            activationTokenHash: sha256(newToken),
+            portalActivated: false,
+            anonymizedAt: null,
+          },
           data: { activationReminderSentAt: new Date() },
         })
         sent++
-      } catch (err) {
-        this.logger.error(`Aktiveringspåminnelse för ${tenant.email} failade: ${String(err)}`)
-        await this.cronErrors.report('tenant-activation-reminders', err, {
+      } catch {
+        // Kö-/databasfel kan innehålla adress eller länk. Bevara felsänkan
+        // och kontoreferenserna utan att spara den råa feltexten.
+        this.logger.error({
+          event: 'activation-reminder-failed',
+          stage,
+          tenantId: tenant.id,
           organizationId: tenant.organizationId,
-          detail: { steg: 'påminnelseutskick', tenantId: tenant.id },
         })
+        await this.cronErrors.report(
+          'tenant-activation-reminders',
+          new Error(`Aktiveringspåminnelse misslyckades (${stage})`),
+          {
+            organizationId: tenant.organizationId,
+            detail: { steg: stage, tenantId: tenant.id },
+          },
+        )
       }
     }
 
