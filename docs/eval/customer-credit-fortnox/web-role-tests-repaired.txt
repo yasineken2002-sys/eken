@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /Users/test/Desktop/eveno/eken-kundtillgodo/apps/web
+
+ ✓ src/features/settings/components/FortnoxAccountMapping.test.tsx (5 tests) 80ms
+ ✓ src/features/settings/api/fortnox-account-mapping.api.test.ts (4 tests) 4ms
+
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+   Start at  15:07:51
+   Duration  1.63s (transform 149ms, setup 0ms, collect 335ms, tests 85ms, environment 750ms, prepare 68ms)

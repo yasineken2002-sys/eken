@@ -1,0 +1,30 @@
+PASS src/fortnox/fortnox-customer-credit-evidence.spec.ts
+[Nest] 89167  - 10/16/2026, 3:16:53 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 93c23e2f-e85c-4122-9d10-c09239cc48b0 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:54 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org cd5f40a7-2aef-438c-9546-38e037013b3a (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:54 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org e6a887d3-7dfb-4e8b-a269-b0c64e83945d (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:55 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 3e26bfbe-32f5-4d8c-8aef-dd3432ae4196 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:55 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 1977d006-de33-4de7-9900-53f90a158635 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:55 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org e3ff2e6a-6f17-407e-9ff2-baf9466be971 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:56 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org b65bcde8-1e01-48dd-8ef7-32e3fdfbb226 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:56 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org bd9caea9-5367-4f7f-bae1-993602ac0690 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:56 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 1f807331-eba9-4316-89da-d17c009fbdaa (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:57 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 5835ffd3-61eb-413a-ab51-1781e1d07784 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:57 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org ec19be40-7caa-48fa-82fd-3588e1419d9b (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:57 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 7a0be944-b17a-4194-af2f-ba9680dcc9cd (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:57 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org e79f64f6-8623-4019-a806-2a12f35955be (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:57 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 6a7cac1b-7a82-4f65-ab8d-a712055c2b8a (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:58 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org a89f5428-a63c-4f87-af20-f70e1c93e4d2 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:58 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org b49a56ae-ea77-48bd-a8ef-df849de04f38 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:58 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org bca6e928-fe51-4772-911a-6bdfebc91c0e (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:58 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org b26ac7fb-2fab-4f61-9802-c0ca3dbc8276 (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:59 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org b06ead92-9e54-4720-b48b-40945ea8612c (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:59 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 0f155f28-dcc2-49ee-9ad6-36ab00e021ec (företag 900001)
+[Nest] 89167  - 10/16/2026, 3:16:59 PM     LOG [FortnoxConnectionService] [fortnox] anslutning lagrad för org 574d6367-4b5f-4ff3-8dd2-75f04745cf4d (företag 900001)
+PASS src/fortnox/fortnox-customer-credit.db.spec.ts (8.324 s)
+
+Test Suites: 2 passed, 2 total
+Tests:       42 passed, 42 total
+Snapshots:   0 total
+Time:        12.703 s
+Ran all test suites matching /src\/fortnox\/fortnox-customer-credit.db.spec.ts|src\/fortnox\/fortnox-customer-credit-evidence.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-fortnox-20261016/credit-fortnox-tests-fixed.json

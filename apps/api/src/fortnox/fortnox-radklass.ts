@@ -35,6 +35,8 @@ import type { Prisma } from '@prisma/client'
 import { arBelagdInnehallsavvisning } from '@eken/shared'
 import { arIntaktskonto, harledBehandlingar } from './fortnox-intaktsgrind'
 import { iKontoklass, type Momsbehandling, type Roll } from './fortnox-kontomappning'
+import { klassaKundtillgodo } from './fortnox-customer-credit-classification'
+import type { CustomerCreditExportOrigins } from './fortnox-customer-credit.types'
 
 export interface Radklass {
   roll: Roll
@@ -47,6 +49,7 @@ export type Klassning =
       handelse: string
       rader: Map<string, Radklass>
       rattelseAv: string | null
+      kundtillgodo?: CustomerCreditExportOrigins
       /**
        * TESTKUND-041 (MJ-4 v2): frysta Fortnox-mål per rad för en momsjustering. Byggaren använder
        * dem i stället för dagens mappning (ingen omkontering vid mappningsbyte).
@@ -69,7 +72,7 @@ type Rad = {
   credit: Prisma.Decimal | null
   account: { number: number; type?: string | null }
 }
-type Verifikat = {
+export type Verifikat = {
   id: string
   sourceId: string | null
   source: string
@@ -402,6 +405,8 @@ export async function klassaVerifikat(
       },
     })
     if (!orig) return ej('rättelsens original finns inte i organisationen')
+    if (/^customer-credit-(receipt|application|refund):/.test(orig.sourceId ?? ''))
+      return ej('rättelse av kundtillgodo kräver ett sammanhängande rättelseflöde')
     const fryst = await frystKlass(db, organizationId, orig.id, databaseNumber)
     const k = fryst
       ? ({ ok: true, ...fryst, rattelseAv: null } as const)
@@ -432,6 +437,8 @@ export async function klassaVerifikat(
 
   const sid = entry.sourceId ?? ''
   let m: RegExpExecArray | null
+
+  if (sid.startsWith('customer-credit-')) return klassaKundtillgodo(db, organizationId, entry)
 
   // ── H1 hyra bostad ──
   // Produkten bokför hyresavin med source INVOICE och sourceId rent-notice:<id>
@@ -480,10 +487,13 @@ export async function klassaVerifikat(
       where: { id: m[1]!, rentNotice: { organizationId } },
       select: {
         amount: true,
+        source: true,
         rentNotice: { select: { id: true, type: true, origin: true, openingRowId: true } },
       },
     })
     if (!alloc) return ej('betalningen saknar allokering till en hyresavi i organisationen')
+    if (alloc.source === 'CUSTOMER_CREDIT')
+      return ej('kundtillgodo är en reglering av skuld, inte en ny bankinbetalning')
     const t = tvaRader(entry, arLikvid, (n) => n === 1510)
     if (!t) return ej('betalningen är inte en ren inbetalning 19xx/1510')
     if (t.belopp !== ore(alloc.amount)) return ej('beloppet motsvarar inte allokeringen')

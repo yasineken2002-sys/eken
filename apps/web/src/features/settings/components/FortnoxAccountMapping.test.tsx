@@ -141,6 +141,56 @@ describe('FortnoxAccountMapping', () => {
     expect(document.body.textContent).not.toMatch(/startklar|klar att exportera/i)
   })
 
+  it('kundtillgodoskuld har egen etikett och kräver ett uttryckligt kontoval före utkast', async () => {
+    // Kontonumren är syntetiska val i provet, aldrig produktens förval.
+    mocks.oversikt.mockResolvedValue({
+      behov: [
+        {
+          role: 'KUNDTILLGODOSKULD',
+          vatTreatment: 'EJ_TILLAMPLIG',
+          sourceAccountNumber: 2998,
+          sourceAccountName: 'Syntetiskt kundtillgodo',
+          varfor: 'mottaget kundtillgodo',
+        },
+      ],
+      ejStodda: [],
+      revisioner: [],
+    })
+    mocks.catalog.mockResolvedValue({
+      financialYears: [{ id: 1, from: '2026-01-01', to: '2026-12-31' }],
+      costAccounts: [{ number: 2997, name: 'Syntetiskt målkonto', selectable: true, reason: null }],
+    })
+    renderIt()
+    fireEvent.change(await screen.findByLabelText('Räkenskapsår i Fortnox'), {
+      target: { value: '1' },
+    })
+    const val = (await screen.findByLabelText(
+      'Fortnox-konto för Eveno 2998 (Kundtillgodoskuld)',
+    )) as HTMLSelectElement
+    await waitFor(() => expect(val.options.length).toBe(2))
+    expect(val.value).toBe('')
+    expect((screen.getByTestId('km-spara') as HTMLButtonElement).disabled).toBe(true)
+    expect(mocks.draft).not.toHaveBeenCalled()
+    fireEvent.change(val, { target: { value: '2997' } })
+    mocks.draft.mockResolvedValue({ id: 'rev-credit', revision: 1, contentSha256: 'c'.repeat(64) })
+    fireEvent.click(screen.getByTestId('km-spara'))
+    await waitFor(() =>
+      expect(mocks.draft).toHaveBeenCalledWith({
+        financialYearId: 1,
+        rows: [
+          {
+            role: 'KUNDTILLGODOSKULD',
+            vatTreatment: 'EJ_TILLAMPLIG',
+            sourceAccountNumber: 2998,
+            targetAccountNumber: 2997,
+          },
+        ],
+      }),
+    )
+    expect(mocks.approve).not.toHaveBeenCalled()
+    expect(screen.getByTestId('km-ingen').textContent).toContain('Ingen godkänd kontomappning')
+  })
+
   it('godkännande av en förenlig revision skickar exakt revisionens sha; texten säger att godkännandet avser innebörd', async () => {
     mocks.oversikt.mockResolvedValue({
       behov: BEHOV,

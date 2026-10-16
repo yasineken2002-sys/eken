@@ -1,0 +1,15 @@
+Riktade lokala prov, isolerad Postgres, syntetisk bank och MockFortnox.
+role-and-source-regression: 3/3 sviter, 64/64 prov, 0 pending.
+  fortnox/fortnox-ai-context.spec.ts: 10 prov, passed
+  fortnox/fortnox-customer-credit-role.spec.ts: 20 prov, passed
+  customer-credit/customer-credit.db.spec.ts: 34 prov, passed
+credit-regression: 3/3 sviter, 75/75 prov, 0 pending.
+  customer-credit/customer-credit-refund.db.spec.ts: 32 prov, passed
+  customer-credit/customer-credit-refund-release.db.spec.ts: 20 prov, passed
+  customer-credit/customer-credit-dispatch.db.spec.ts: 23 prov, passed
+credit-fortnox-tests-fixed: 2/2 sviter, 42/42 prov, 0 pending.
+  fortnox/fortnox-customer-credit-evidence.spec.ts: 21 prov, passed
+  fortnox/fortnox-customer-credit.db.spec.ts: 21 prov, passed
+API: 181 godkända prov i 8 olika filer.
+Webb: 9/9 i två filer (web-role-tests-repaired.txt).
+Samlad äldre Fortnox-regression stannade vid V8-heapgränsen 1536 MB efter en passerad svit. Även separat fortnox-send.db.spec.ts nådde samma minnesgräns. Dessa körningar räknas inte som godkända. Hela sviten och full typkontroll verifieras av CI.

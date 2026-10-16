@@ -49,6 +49,7 @@ export const BALANSROLLER: readonly Roll[] = [
   'KUNDFORDRAN',
   'LIKVID',
   'DEPOSITIONSSKULD',
+  'KUNDTILLGODOSKULD',
   'LEVERANTORSSKULD',
   'KOSTNAD',
 ]
@@ -76,6 +77,10 @@ export const KONTOKLASS: Readonly<Record<Roll, readonly [number, number]>> = {
   LIKVID: [1900, 1999],
   KUNDFORDRAN: [1510, 1510],
   DEPOSITIONSSKULD: [2890, 2890],
+  // Teknisk skuldklass: eget kapital ligger utanför. Intervallet väljer inget
+  // kundkonto och bevisar inte kontots innebörd; den måste godkännas uttryckligen.
+  // Kundtillgodo är en egen roll och har inget låst mål eller depositionsförval.
+  KUNDTILLGODOSKULD: [2300, 2999],
   LEVERANTORSSKULD: [2400, 2499],
   INGAENDE_MOMS: [2640, 2649],
   HYRESINTAKT: [3000, 3999],
@@ -93,6 +98,7 @@ export const ROLL_TEXT: Record<Roll, string> = {
   HYRESINTAKT: 'hyresintäkt',
   LIKVID: 'bank/likvid',
   DEPOSITIONSSKULD: 'depositionsskuld',
+  KUNDTILLGODOSKULD: 'kundtillgodoskuld',
   KOSTNAD: 'kostnad',
   INGAENDE_MOMS: 'ingående moms',
   LEVERANTORSSKULD: 'leverantörsskuld',

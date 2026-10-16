@@ -12,6 +12,8 @@
  *  - Fritext från Fortnox (beskrivningar) skickas inte med.
  */
 
+import type { FortnoxAccountRole } from '@eken/shared'
+
 export interface FortnoxAiSnapshot {
   connection: {
     status: 'ACTIVE' | 'AUTH_LOST' | 'DISCONNECTED'
@@ -93,10 +95,11 @@ const ROLL_AI: Record<string, string> = {
   HYRESINTAKT: 'hyresintäkt',
   LIKVID: 'bank',
   DEPOSITIONSSKULD: 'depositionsskuld',
+  KUNDTILLGODOSKULD: 'kundtillgodoskuld',
   KOSTNAD: 'kostnad',
   INGAENDE_MOMS: 'ingående moms',
   LEVERANTORSSKULD: 'leverantörsskuld',
-}
+} satisfies Record<FortnoxAccountRole, string>
 
 const CONNECTION_TEXT = {
   ACTIVE: 'aktiv',

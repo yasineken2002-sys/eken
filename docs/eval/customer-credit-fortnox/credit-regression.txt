@@ -1,0 +1,10 @@
+PASS src/customer-credit/customer-credit-refund.db.spec.ts (11.173 s)
+PASS src/customer-credit/customer-credit-refund-release.db.spec.ts
+PASS src/customer-credit/customer-credit-dispatch.db.spec.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       75 passed, 75 total
+Snapshots:   0 total
+Time:        16.961 s
+Ran all test suites matching /src\/customer-credit\/customer-credit-dispatch.db.spec.ts|src\/customer-credit\/customer-credit-refund.db.spec.ts|src\/customer-credit\/customer-credit-refund-release.db.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-fortnox-20261016/credit-regression.json

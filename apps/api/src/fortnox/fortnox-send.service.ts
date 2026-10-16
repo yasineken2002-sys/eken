@@ -10,6 +10,11 @@ import {
 import { Prisma, type FortnoxVoucherExport } from '@prisma/client'
 import { arBelagdInnehallsavvisning } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import {
+  CustomerCreditExportEvidenceError,
+  recheckCustomerCreditExportInTransaction,
+} from './fortnox-customer-credit-evidence'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import {
   FORTNOX_VOUCHER_DRAFT_BUILDER,
@@ -192,6 +197,17 @@ export class FortnoxSendService {
     // Färsk förhandskontroll: samma underlag, konfiguration, år, serie och företag.
     const fresh = await this.builder.build(organizationId, row.journalEntryId)
     if (!fresh.ok || fresh.draftHash !== draftHash) throw new ConflictException(stale)
+    const provenance = fresh.draft.provenance
+    if (
+      provenance &&
+      typeof provenance === 'object' &&
+      !Array.isArray(provenance) &&
+      'sourceId' in provenance &&
+      typeof provenance.sourceId === 'string' &&
+      provenance.sourceId.startsWith('customer-credit-') &&
+      fresh.draft.kundtillgodo === undefined
+    )
+      throw new ConflictException(stale)
     const draft = fresh.draft as unknown as FrozenDraft
     const conn = await this.prisma.fortnoxConnection.findUnique({ where: { organizationId } })
     if (!conn || conn.status !== 'ACTIVE') throw new ConflictException('Fortnox är inte anslutet')
@@ -227,26 +243,58 @@ export class FortnoxSendService {
 
     const attemptId = randomUUID()
     const now = new Date()
-    const claim = await this.prisma.fortnoxVoucherExport.updateMany({
-      where: { id: row.id, organizationId, state: 'DRY_RUN_READY', draftHash },
-      data: {
-        state: 'SENDING',
-        sendAttemptId: attemptId,
-        sendClaimedAt: now,
-        sendLeaseUntil: new Date(now.getTime() + LEASE_MS),
-        sendConnectionId: conn.id,
-        sendGeneration: conn.generation,
-        fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
-        sendFinancialYear: draft.query.financialyear,
-        sendSeries: String(draft.payload.Voucher.VoucherSeries),
-        sentPayloadHash: draftHash,
-        draft: fresh.draft as Prisma.InputJsonValue,
-        sendConfirmedBy: userId,
-        sendConfirmedAt: now,
-        lastOutcome: 'CLAIMED',
-        lastOutcomeAt: now,
-      },
-    })
+    const claimWith = (db: Pick<Prisma.TransactionClient, 'fortnoxVoucherExport'>) =>
+      db.fortnoxVoucherExport.updateMany({
+        where: { id: row.id, organizationId, state: 'DRY_RUN_READY', draftHash },
+        data: {
+          state: 'SENDING',
+          sendAttemptId: attemptId,
+          sendClaimedAt: now,
+          sendLeaseUntil: new Date(now.getTime() + LEASE_MS),
+          sendConnectionId: conn.id,
+          sendGeneration: conn.generation,
+          fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
+          sendFinancialYear: draft.query.financialyear,
+          sendSeries: String(draft.payload.Voucher.VoucherSeries),
+          sentPayloadHash: draftHash,
+          draft: fresh.draft as Prisma.InputJsonValue,
+          sendConfirmedBy: userId,
+          sendConfirmedAt: now,
+          lastOutcome: 'CLAIMED',
+          lastOutcomeAt: now,
+        },
+      })
+    // Kundtillgodots bokförda källor och originalexporter kan ha ändrats medan
+    // byggaren läste Fortnox. Lås/återläs dem och ta SAMMA CAS i en DB-only tx.
+    // Ingen POST, tokenhämtning eller annan nät-I/O sker inom transaktionen.
+    let claim: Prisma.BatchPayload
+    if (fresh.draft.kundtillgodo !== undefined) {
+      if (!conn.fortnoxOrgNumber) throw new ConflictException(stale)
+      const organizationNumber = conn.fortnoxOrgNumber
+      try {
+        claim = await this.prisma.$transaction(
+          async (tx) => {
+            await recheckCustomerCreditExportInTransaction(tx, {
+              organizationId,
+              journalEntryId: row.journalEntryId,
+              databaseNumber: conn.fortnoxDatabaseNumber,
+              organizationNumber,
+              expected: fresh.draft.kundtillgodo,
+              draft: fresh.draft,
+              connectionId: conn.id,
+              generation: conn.generation,
+            })
+            return claimWith(tx)
+          },
+          { ...PAYMENT_TX_LIMITS, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+        )
+      } catch (error) {
+        if (error instanceof CustomerCreditExportEvidenceError) throw new ConflictException(stale)
+        throw error
+      }
+    } else {
+      claim = await claimWith(this.prisma)
+    }
     if (claim.count !== 1)
       throw new ConflictException('Verifikatet skickas redan eller har ändrats')
 

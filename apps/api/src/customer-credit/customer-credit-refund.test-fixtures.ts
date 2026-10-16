@@ -116,9 +116,17 @@ export function refundServices(prisma: PrismaService, bank: CustomerCreditRefund
 
 export async function refundFixture(
   prisma: PrismaService,
-  options: { creditAmount?: string; targetAmount?: string; enabled?: boolean } = {},
+  options: {
+    creditAmount?: string
+    targetAmount?: string
+    enabled?: boolean
+    sourcePeriod?: Date
+  } = {},
 ) {
-  const f = await fixture(prisma, { targetAmount: options.targetAmount ?? '1000.00' })
+  const f = await fixture(prisma, {
+    targetAmount: options.targetAmount ?? '1000.00',
+    ...(options.sourcePeriod === undefined ? {} : { sourcePeriod: options.sourcePeriod }),
+  })
   const ledger = await prisma.account.findFirstOrThrow({
     where: { organizationId: f.organizationId, number: 1930 },
   })

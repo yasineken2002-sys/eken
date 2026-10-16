@@ -1,0 +1,29 @@
+FAIL src/fortnox/fortnox-customer-credit.db.spec.ts
+  ● Test suite failed to run
+
+    src/fortnox/fortnox-customer-credit.db.spec.ts:87:41 - error TS2379: Argument of type '{ creditAmount: string; targetAmount: string; sourcePeriod: Date | undefined; }' is not assignable to parameter of type '{ creditAmount?: string; targetAmount?: string; enabled?: boolean; sourcePeriod?: Date; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+      Types of property 'sourcePeriod' are incompatible.
+        Type 'Date | undefined' is not assignable to type 'Date'.
+          Type 'undefined' is not assignable to type 'Date'.
+
+     87   const r = await refundFixture(prisma, {
+                                                ~
+     88     creditAmount: '100.00',
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ...
+     90     sourcePeriod: options.sourcePeriod,
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     91   })
+        ~~~
+
+PASS src/fortnox/fortnox-customer-credit-evidence.spec.ts
+
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       18 passed, 18 total
+Snapshots:   0 total
+Time:        5.223 s
+Ran all test suites matching /src\/fortnox\/fortnox-customer-credit.db.spec.ts|src\/fortnox\/fortnox-customer-credit-evidence.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-fortnox-20261016/credit-fortnox-tests.json
+undefined
+/Users/test/Desktop/eveno/eken-kundtillgodo/apps/api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: jest src/fortnox/fortnox-customer-credit.db.spec.ts src/fortnox/fortnox-customer-credit-evidence.spec.ts --runInBand --json --outputFile=/Users/test/Desktop/eveno/runtime-kundtillgodo-fortnox-20261016/credit-fortnox-tests.json

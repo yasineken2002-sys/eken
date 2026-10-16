@@ -5,11 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import type { BankTransaction, RentNotice, RentNoticePayment, RentNoticeSend } from '@prisma/client'
+import type { RentNoticePayment, RentNoticeSend } from '@prisma/client'
 import { createHash, randomUUID } from 'node:crypto'
 import { AccountingService, bankPaymentSourceId } from '../accounting/accounting.service'
 import { rentNoticeOcrComponents } from '../avisering/rent-debt.service'
 import { NoticeDispatchSnapshotSchema, noticeRecipientHash } from '../avisering/notice-dispatch'
+import { customerCreditSourceProof as sourceProof } from './customer-credit-source-proof'
 import { currentActor } from '../common/actor/actor.context'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PAYMENT_TX_LIMITS } from '../common/prisma/transaction-limits'
@@ -80,42 +81,6 @@ function debt(notice: Notice): Prisma.Decimal {
     .minus(
       notice.payments.reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0)),
     )
-}
-
-function sourceProof(
-  bank: BankTransaction,
-  notice: RentNotice,
-  payment: RentNoticePayment,
-): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify([
-        bank.id,
-        bank.organizationId,
-        bank.amount.toFixed(2),
-        bank.date.toISOString(),
-        bank.bankAccountId,
-        bank.rawOcr,
-        bank.reference,
-        bank.description,
-        bank.matchedRentNoticeId,
-        notice.id,
-        notice.organizationId,
-        notice.tenantId,
-        notice.leaseId,
-        notice.year,
-        notice.month,
-        notice.type,
-        notice.origin,
-        payment.id,
-        payment.rentNoticeId,
-        payment.bankTransactionId,
-        payment.amount.toFixed(2),
-        payment.paidAt.toISOString(),
-        payment.source,
-      ]),
-    )
-    .digest('hex')
 }
 
 /**

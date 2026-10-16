@@ -29,6 +29,10 @@ import {
 } from './fortnox-kontomappning'
 import { klassaVerifikat, originalUtfall } from './fortnox-radklass'
 import {
+  CustomerCreditExportEvidenceError,
+  readCustomerCreditExportEvidence,
+} from './fortnox-customer-credit-evidence'
+import {
   buildFortnoxVoucherDraft,
   type FortnoxVoucherDraftConfig,
   type LocalJournalEntrySnapshot,
@@ -350,6 +354,20 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           `Kontomappningen (revision ${revision.revision}) godkändes för en annan Fortnox-anslutning, ` +
             'ett annat företag eller andra årsgränser — skapa och godkänn en ny revision',
         )
+      if (klass.kundtillgodo && (klass.rattelseAv || klass.frystaMal))
+        return block(
+          'CUSTOMER_CREDIT_ORIGIN_UNVERIFIED',
+          'Kundtillgodots ursprung kan inte blandas med en annan rättelsekedja',
+        )
+      const kundtillgodo = klass.kundtillgodo
+        ? await readCustomerCreditExportEvidence(this.prisma, {
+            organizationId,
+            databaseNumber: conn.fortnoxDatabaseNumber,
+            organizationNumber: orgNumber,
+            origins: klass.kundtillgodo,
+            journal: entry,
+          })
+        : undefined
       // V1 / TESTKUND-027 (L3.2, B2.5): en rättelse — avmatchning, annullering eller makulering —
       // bokas på originalets EXPORTERADE målkonto och mappningsrevision, lästa ur originalexportens
       // frysta utkast. Dagens mappning används aldrig för rättelsen (ingen tyst omkontering, och
@@ -466,6 +484,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         kallkonto: number
         malkonto: number
         mappningsradId: string
+        mappingRevision?: { id: string; revision: number; contentSha256: string }
         ogonblick: {
           namn: string | null
           aktiv: boolean | null
@@ -553,6 +572,62 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
             localAccountId: l.account.id,
             localAccountNumber: l.account.number,
             externalAccountNumber: mk,
+          })
+          continue
+        }
+        // Kundtillgodo fryser bara de serverhärledda ankareraderna. Mottagningens
+        // NYA skuld använder fortfarande en uttryckligt godkänd mappning nedan.
+        // Momsjusteringens separata, heltäckande frystaMal-kontrakt ändras inte.
+        const ankare = kundtillgodo?.anchors.find((a) => a.journalEntryLineId === l.id)
+        if (ankare) {
+          const mal = ankare.targetAccountNumber
+          if (ankare.role !== rk.roll || ankare.localAccountId !== l.accountId)
+            return block(
+              'CUSTOMER_CREDIT_ORIGIN_UNVERIFIED',
+              'Kundtillgodots rad motsvarar inte originalets konto och roll',
+            )
+          if (!iKontoklass(rk.roll, mal))
+            return block(
+              'ACCOUNT_CLASS_MISMATCH',
+              `Originalets mål ${mal} ligger utanför kontoklassen ${klassText(rk.roll)}`,
+            )
+          const nu = await lasKonto(mal)
+          if (!nu.exists || nu.active !== true)
+            return block(
+              'ACCOUNT_MAPPING_DRIFT',
+              `Originalets Fortnox-konto ${mal} finns inte eller är inaktivt i räkenskapsår ${fy.Id}`,
+            )
+          const tk = teknik(rk.roll, rk.behandling, nu, fy.Id, mal)
+          if (tk.teknik !== 'FORENLIG')
+            return block(
+              tk.teknik === 'KONFLIKT' ? 'ACCOUNT_VAT_MISMATCH' : 'ACCOUNT_MAPPING_DRIFT',
+              `Fortnox-konto ${mal}: ${tk.skal}`,
+            )
+          const tidigare = malPerKonto.get(l.accountId)
+          if (tidigare !== undefined && tidigare !== mal)
+            return block(
+              'ACCOUNT_MAPPING_AMBIGUOUS',
+              `Konto ${l.account.number} har två olika målkonton i samma verifikat`,
+            )
+          mappningsrader.push({
+            journalEntryLineId: l.id,
+            roll: rk.roll,
+            behandling: rk.behandling,
+            kallkonto: l.account.number,
+            malkonto: mal,
+            mappningsradId: ankare.mappingRow.id,
+            mappingRevision: ankare.mappingRevision,
+            ogonblick: ankare.mappingRow.snapshot,
+          })
+          if (tidigare !== undefined) continue
+          malPerKonto.set(l.accountId, mal)
+          accounts.push({
+            ...binding(
+              `kundtillgodo-originalexport:${ankare.originExportId}:${ankare.originJournalEntryLineId}+GET /3/accounts/${mal}?financialyear=${fy.Id}`,
+            ),
+            localAccountId: l.accountId,
+            localAccountNumber: l.account.number,
+            externalAccountNumber: mal,
           })
           continue
         }
@@ -667,6 +742,15 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           kallkonto: l.account.number,
           malkonto: rad.targetAccountNumber,
           mappningsradId: rad.id,
+          ...(kundtillgodo
+            ? {
+                mappingRevision: {
+                  id: revision.id,
+                  revision: revision.revision,
+                  contentSha256: revision.contentSha256,
+                },
+              }
+            : {}),
           ogonblick: {
             namn: rad.targetName,
             aktiv: rad.targetActive,
@@ -751,6 +835,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
         payload: res.payload,
         query: res.query,
         provenance: res.provenance,
+        ...(kundtillgodo ? { kundtillgodo } : {}),
         // K5.3: exportproveniens per rad (lokalt konto, roll/behandling, revision, mål, ögonblick).
         kontomappning: {
           revisionId: original ? original.revisionId : revision.id,
@@ -796,6 +881,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
                 ra: [snapshot.description, ...snapshot.lines.map((l) => l.description)],
               },
               binding: {
+                ...(kundtillgodo ? { kundtillgodo: kundtillgodo.digest } : {}),
                 journalEntryId: entry.id,
                 databaseNumber: conn.fortnoxDatabaseNumber,
                 orgNumber,
@@ -820,6 +906,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
                     r.malkonto,
                     r.roll,
                     r.behandling,
+                    ...(kundtillgodo ? [r.mappingRevision] : []),
                   ]),
                 ],
               },
@@ -828,6 +915,7 @@ export class VerifiedVoucherDraftBuilder implements FortnoxVoucherDraftBuilder {
           .digest('hex'),
       }
     } catch (err) {
+      if (err instanceof CustomerCreditExportEvidenceError) return block(err.code, err.message)
       if (err instanceof UnverifiedRef) return block(err.code, err.message)
       if (err instanceof FortnoxReadError) {
         if (err.kind === 'auth')

@@ -214,7 +214,7 @@ export class FortnoxReadbackService {
               journalEntryId: e.journalEntryId,
               // Entydigt bara om exakt ett Eveno-konto mappades till detta Fortnox-konto.
               sourceAccount: kallor.length === 1 ? kallor[0]! : null,
-              mappingRevision: e.revision,
+              mappingRevision: e.revisionPerMal.get(r.account) ?? null,
             },
           }
         }),
@@ -446,27 +446,81 @@ export class RefreshingLedgerReader implements FortnoxLedgerReader {
   }
 }
 
-type Egen = { journalEntryId: string; revision: number | null; perMal: Map<number, number[]> }
+type Egen = {
+  journalEntryId: string
+  revisionPerMal: Map<number, number | null>
+  perMal: Map<number, number[]>
+}
+
+const objekt = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+/** Ett revisionsnummer utan sin frysta identitet och innehållshash är inget radbevis. */
+function radrevision(value: unknown): number | null {
+  if (
+    !objekt(value) ||
+    typeof value.id !== 'string' ||
+    value.id.trim().length === 0 ||
+    typeof value.revision !== 'number' ||
+    !Number.isSafeInteger(value.revision) ||
+    value.revision <= 0 ||
+    typeof value.contentSha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(value.contentSha256)
+  )
+    return null
+  return value.revision
+}
 
 /** Källkonto per målkonto ur exportens frysta utkast (TESTKUND-008 K5.3; äldre utkast 1:1). */
 function kallkonton(draft: unknown): Omit<Egen, 'journalEntryId'> {
-  const d = (draft ?? {}) as {
-    provenance?: {
-      lines?: Array<{ localAccountNumber?: unknown; externalAccountNumber?: unknown }>
-    }
-    kontomappning?: { revision?: unknown }
-  }
+  const d = objekt(draft) ? draft : {}
+  const provenance = objekt(d.provenance) ? d.provenance : {}
+  const mapping = objekt(d.kontomappning) ? d.kontomappning : {}
+  const lines: unknown[] = Array.isArray(provenance.lines) ? provenance.lines : []
+  const rows: unknown[] = Array.isArray(mapping.rader) ? mapping.rader : []
+  const mappingRows = rows.filter(objekt)
+  // Äldre exporter saknar radrevisioner. Bara de får använda toppnivåns revision;
+  // ett nytt tillgodoutkast med saknat/trasigt radbevis får aldrig ett gissat värde.
+  const legacy =
+    !('kundtillgodo' in d) &&
+    !(
+      typeof provenance.sourceId === 'string' && provenance.sourceId.startsWith('customer-credit-')
+    ) &&
+    !mappingRows.some((row) => 'mappingRevision' in row)
+  const legacyRevision =
+    typeof mapping.revision === 'number' && Number.isSafeInteger(mapping.revision)
+      ? mapping.revision
+      : null
   const perMal = new Map<number, number[]>()
-  for (const l of d.provenance?.lines ?? []) {
+  const revisionPerMal = new Map<number, number | null>()
+  for (const l of lines) {
     if (
+      !objekt(l) ||
+      typeof l.localAccountNumber !== 'number' ||
+      typeof l.externalAccountNumber !== 'number' ||
       !Number.isSafeInteger(l.localAccountNumber) ||
       !Number.isSafeInteger(l.externalAccountNumber)
     )
       continue
-    const lista = perMal.get(l.externalAccountNumber as number) ?? []
-    if (!lista.includes(l.localAccountNumber as number)) lista.push(l.localAccountNumber as number)
-    perMal.set(l.externalAccountNumber as number, lista)
+    const mal = l.externalAccountNumber
+    const lista = perMal.get(mal) ?? []
+    if (!lista.includes(l.localAccountNumber)) lista.push(l.localAccountNumber)
+    perMal.set(mal, lista)
+    const matches =
+      typeof l.journalEntryLineId === 'string' && l.journalEntryLineId.length > 0
+        ? mappingRows.filter((row) => row.journalEntryLineId === l.journalEntryLineId)
+        : []
+    const revision = legacy
+      ? legacyRevision
+      : matches.length === 1
+        ? radrevision(matches[0]!.mappingRevision)
+        : null
+    // Flera rader till samma mål kan ha olika ursprung. Saknat bevis eller olika
+    // revisionssiffror gör hela målkontots revision okänd, även om en annan rad är giltig.
+    revisionPerMal.set(
+      mal,
+      revisionPerMal.has(mal) && revisionPerMal.get(mal) !== revision ? null : revision,
+    )
   }
-  const rev = d.kontomappning?.revision
-  return { perMal, revision: Number.isSafeInteger(rev) ? (rev as number) : null }
+  return { perMal, revisionPerMal }
 }
