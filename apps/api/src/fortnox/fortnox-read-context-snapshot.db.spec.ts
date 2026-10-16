@@ -424,27 +424,16 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
   })
 
   it.each([false, true])(
-    'fel efter verklig sidskrivning lämnar ingen oförseglad snapshot (fångat i caller: %s)',
+    'fel före försegling efter verkliga sidinsertar lämnar ingen snapshot (fångat i caller: %s)',
     async (catchInside) => {
       const f = await fixture(contextWithCount(101))
       let injectedAfterWrite = false
-      const injected = new Error('SYNTHETIC_SNAPSHOT_AFTER_PAGE_WRITE')
-      const client = db().$extends({
-        query: {
-          fortnoxReadContextPage: {
-            async createMany({ args, query }) {
-              const result = await query(args)
-              expect(result.count).toBeGreaterThan(0)
-              injectedAfterWrite = true
-              throw injected
-            },
-          },
-        },
-      })
+      let sealAttempted = false
+      const injected = new Error('SYNTHETIC_SNAPSHOT_BEFORE_SEAL_AFTER_PAGE_WRITE')
       let callerCaught = false
       let sameTransactionObserved = false
       let afterCatchMarkerWritten = false
-      const write = client.$transaction(async (tx) => {
+      const write = db().$transaction(async (tx) => {
         await tx.fortnoxReadRun.update({
           where: { id: f.runId },
           data: { reason: 'SYNTHETIC_BEFORE_FREEZE' },
@@ -452,12 +441,17 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
         expect((await tx.fortnoxReadRun.findUniqueOrThrow({ where: { id: f.runId } })).reason).toBe(
           'SYNTHETIC_BEFORE_FREEZE',
         )
+        const seal = jest
+          .spyOn(tx.fortnoxReadContextSnapshot, 'update')
+          .mockImplementationOnce(() => {
+            sealAttempted = true
+            throw injected
+          })
         try {
           await freezeCheckpointContext(tx, f.organizationId, f.runId)
         } catch (error) {
-          if (!catchInside) throw error
           expect(error).toBe(injected)
-          callerCaught = true
+          expect(seal).toHaveBeenCalledTimes(1)
           expect(
             (await tx.fortnoxReadContextSnapshot.findUniqueOrThrow({ where: { runId: f.runId } }))
               .sealedAt,
@@ -478,7 +472,10 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
           expect(rows.filter((row) => row.kind === 'snapshot')).toHaveLength(1)
           expect(rows.filter((row) => row.kind === 'page')).toHaveLength(4)
           expect(rows.every((row) => row.xid === row.current)).toBe(true)
+          injectedAfterWrite = true
           sameTransactionObserved = true
+          if (!catchInside) throw error
+          callerCaught = true
           await tx.fortnoxReadRun.update({
             where: { id: f.runId },
             data: { reason: 'SYNTHETIC_AFTER_CATCH' },
@@ -487,6 +484,8 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
             (await tx.fortnoxReadRun.findUniqueOrThrow({ where: { id: f.runId } })).reason,
           ).toBe('SYNTHETIC_AFTER_CATCH')
           afterCatchMarkerWritten = true
+        } finally {
+          seal.mockRestore()
         }
       }, PRISMA_DEFAULT_TX_LIMITS)
       // Första mätningen gav23/24: Prisma5.22 rapporterade fulfilled trots
@@ -498,9 +497,10 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
         expect(outcome.status).toBe('rejected')
         if (outcome.status === 'rejected') expect(outcome.reason).toBe(injected)
       }
+      expect(sealAttempted).toBe(true)
       expect(injectedAfterWrite).toBe(true)
       expect(callerCaught).toBe(catchInside)
-      expect(sameTransactionObserved).toBe(catchInside)
+      expect(sameTransactionObserved).toBe(true)
       expect(afterCatchMarkerWritten).toBe(catchInside)
       const observer = new PrismaClient({ datasources: { db: { url: isolatedDatabaseUrl() } } })
       try {
@@ -522,33 +522,33 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
     },
   )
 
-  it('fångat JS-fel ger SQL23514 vid IMMEDIATE före commit, medan korrekt försegling passerar', async () => {
+  it('fångat fel före försegling efter verkliga sidinsertar ger SQL23514 vid IMMEDIATE, medan korrekt försegling passerar', async () => {
     const f = await fixture(contextWithCount(1))
-    const injected = new Error('SYNTHETIC_SNAPSHOT_IMMEDIATE_AFTER_WRITE')
+    const injected = new Error('SYNTHETIC_SNAPSHOT_IMMEDIATE_BEFORE_SEAL_AFTER_WRITE')
     let injectedAfterWrite = false
     let reachedConstraint = false
-    const client = db().$extends({
-      query: {
-        fortnoxReadContextPage: {
-          async createMany({ args, query }) {
-            const result = await query(args)
-            expect(result.count).toBe(2)
-            injectedAfterWrite = true
-            throw injected
-          },
-        },
-      },
-    })
     await expect(
-      client.$transaction(async (tx) => {
+      db().$transaction(async (tx) => {
         await tx.fortnoxReadRun.update({
           where: { id: f.runId },
           data: { reason: 'SYNTHETIC_IMMEDIATE_BEFORE' },
         })
+        const seal = jest
+          .spyOn(tx.fortnoxReadContextSnapshot, 'update')
+          .mockImplementationOnce(() => {
+            throw injected
+          })
         try {
           await freezeCheckpointContext(tx, f.organizationId, f.runId)
         } catch (error) {
           expect(error).toBe(injected)
+          expect(seal).toHaveBeenCalledTimes(1)
+          expect(
+            await tx.fortnoxReadContextPage.count({ where: { organizationId: f.organizationId } }),
+          ).toBe(2)
+          injectedAfterWrite = true
+        } finally {
+          seal.mockRestore()
         }
         expect(injectedAfterWrite).toBe(true)
         expect(

@@ -62,6 +62,9 @@ const SKYDDADE = [
   // användare inte ska kunna skriva om historiken via en SET NULL.
   'AiDelegationEvent',
   'FailedEmail',
+  // Frysta Fortnox-sidor: satsnivå stoppar varje UPDATE. Den separata
+  // snapshot-specen prövar verkliga sidor, försegling och tillåten run/org-cascade.
+  'FortnoxReadContextPage',
   'InvoiceEvent',
   // Sen bokföring i ett stängt räkenskapsår. Spåret ÄR beviset för att
   // verifikatets `date` avviker från `eventDate` med avsikt, och vem som
