@@ -219,6 +219,7 @@ describe('TenantPortalService — PR 5a läcktätning (MaintenanceTicket)', () =
         findUnique: jest.fn().mockResolvedValue({
           id: 'tenant-1',
           organization: { id: 'org-1', name: 'Eken' },
+          customerCreditRefunds: [],
           leases: [],
           invoices: [],
           rentNotices: [],

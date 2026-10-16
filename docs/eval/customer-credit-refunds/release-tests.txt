@@ -1,0 +1,29 @@
+PASS src/customer-credit/customer-credit-refund-release.db.spec.ts (7.879 s)
+  ✓ frigivningsproven kräver en uttryckligt isolerad databas även om sviten annars hoppas över (42 ms)
+  frigivet kundtillgodo efter en helt reserverad mellanavi
+    ✓ CANCELLED: fullbetald mellanavi tillåter nästa månads avdrag och oförändrad replay (208 ms)
+    ✓ REJECTED: fullbetald mellanavi tillåter nästa månads avdrag och oförändrad replay (163 ms)
+    ✓ CANCELLED: kvarskuld ger ingen avräkning eller utskicksreservation på senare avi (136 ms)
+    ✓ CANCELLED: saknad månad ger ingen avräkning eller utskicksreservation på senare avi (125 ms)
+    ✓ CANCELLED: annullerad avi ger ingen avräkning eller utskicksreservation på senare avi (130 ms)
+    ✓ CANCELLED: befarad förlust ger ingen avräkning eller utskicksreservation på senare avi (127 ms)
+    ✓ CANCELLED: framtida betalning ger ingen avräkning eller utskicksreservation på senare avi (121 ms)
+    ✓ REJECTED: kvarskuld ger ingen avräkning eller utskicksreservation på senare avi (141 ms)
+    ✓ REJECTED: saknad månad ger ingen avräkning eller utskicksreservation på senare avi (133 ms)
+    ✓ REJECTED: annullerad avi ger ingen avräkning eller utskicksreservation på senare avi (131 ms)
+    ✓ REJECTED: befarad förlust ger ingen avräkning eller utskicksreservation på senare avi (144 ms)
+    ✓ REJECTED: framtida betalning ger ingen avräkning eller utskicksreservation på senare avi (140 ms)
+    ✓ UNKNOWN håller hela beloppet reserverat även när mellanavin är fullt betald (140 ms)
+    ✓ CANCELLED får inte frigöra saldo i en bakdaterad avräkning före frigivningen (138 ms)
+    ✓ REJECTED får inte frigöra saldo i en bakdaterad avräkning före frigivningen (154 ms)
+    ✓ en slutbetald mellanavi räcker inte ensam utan en frigiven återbetalningsreservation (80 ms)
+    ✓ två redan påbörjade bankuppslag: senare kontrolltid efter det första avslaget (131 ms)
+    ✓ två redan påbörjade bankuppslag: ändrad orsak efter det första avslaget (129 ms)
+    ✓ två redan påbörjade bankuppslag: ändrat bevis efter det första avslaget (134 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       20 passed, 20 total
+Snapshots:   0 total
+Time:        7.925 s
+Ran all test suites matching /src\/customer-credit\/customer-credit-refund-release.db.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-refund-20261016/refund-release-tests.json

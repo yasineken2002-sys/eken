@@ -1,0 +1,90 @@
+[Nest] 82328  - 10/16/2026, 4:32:50 AM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+[Nest] 82328  - 10/16/2026, 4:32:50 AM   ERROR [AccountingService] [Accounting] FAIL-CLOSED: hyresavi notice-1 saknar bokförd fordran (accrual 'rent-notice:notice-1', org org-a) — 1510 krediteras INTE (skulle kreditera utan motsvarande debet = spökkredit). Intäktsverifikatet måste repareras (T5 A3) först.
+PASS src/accounting/accounting.customer-credit.spec.ts
+  Kundtillgodo genom den ordinarie verifikatskrivaren
+    ✓ mottagande, användning och återbetalning har skilda källnycklar och balanserade kontorörelser (6 ms)
+    ✓ createJournalEntryForCustomerCreditReceipt återanvänder samma verifikat vid omkörning (1 ms)
+    ✓ createJournalEntryForCustomerCreditApplication återanvänder samma verifikat vid omkörning
+    ✓ createJournalEntryForCustomerCreditRefund återanvänder samma verifikat vid omkörning (1 ms)
+    ✓ createJournalEntryForCustomerCreditReceipt lämnar periodgrindens fel oförändrat och skriver ingenting
+    ✓ createJournalEntryForCustomerCreditApplication lämnar periodgrindens fel oförändrat och skriver ingenting
+    ✓ createJournalEntryForCustomerCreditRefund lämnar periodgrindens fel oförändrat och skriver ingenting
+    ✓ avvisar beloppet 0 utan konto- eller journalskrivning (1 ms)
+    ✓ avvisar beloppet -0.01 utan konto- eller journalskrivning
+    ✓ avvisar beloppet 0.001 utan konto- eller journalskrivning (1 ms)
+    ✓ avvisar beloppet NaN utan konto- eller journalskrivning
+    ✓ avvisar beloppet Infinity utan konto- eller journalskrivning
+    ✓ avvisar beloppet 100000000 utan konto- eller journalskrivning (1 ms)
+    ✓ bevarar det giltiga öresbeloppet 0.01
+    ✓ bevarar det giltiga öresbeloppet 99999999.99
+    ✓ avvisar ett skuldkonto som är annan organisation (1 ms)
+    ✓ avvisar ett skuldkonto som är inaktivt
+    ✓ avvisar ett skuldkonto som är fel kontotyp (1 ms)
+    ✓ avvisar konton som saknas, även om ett annat skuldkonto finns
+    ✓ createJournalEntryForCustomerCreditReceipt avvisar inaktivt motkonto (1 ms)
+    ✓ createJournalEntryForCustomerCreditApplication avvisar inaktivt motkonto
+    ✓ createJournalEntryForCustomerCreditRefund avvisar inaktivt motkonto
+    ✓ createJournalEntryForCustomerCreditReceipt kräver avins eget fordransverifikat (8 ms)
+    ✓ createJournalEntryForCustomerCreditApplication kräver avins eget fordransverifikat (1 ms)
+    ✓ createJournalEntryForCustomerCreditReceipt avvisar en redan återförd hyresfordran
+    ✓ createJournalEntryForCustomerCreditApplication avvisar en redan återförd hyresfordran (1 ms)
+    ✓ createJournalEntryForCustomerCreditReceipt kräver transaktionsklienten även vid anrop förbi TypeScript (1 ms)
+    ✓ createJournalEntryForCustomerCreditApplication kräver transaktionsklienten även vid anrop förbi TypeScript
+    ✓ createJournalEntryForCustomerCreditRefund kräver transaktionsklienten även vid anrop förbi TypeScript (1 ms)
+  Återbetalning kräver beständig order och bankbevis före bokföring
+    ✓ samma bankfakta behåller sin hash vid senare verifiering, men ändrade ekonomiska fakta gör det inte
+    ✓ läser rätt organisations order efter orderlåset (1 ms)
+    ✓ ett angivet bank-id räcker inte för en order i RESERVED
+    ✓ ett angivet bank-id räcker inte för en order i SUBMITTING
+    ✓ ett angivet bank-id räcker inte för en order i UNKNOWN
+    ✓ ett angivet bank-id räcker inte för en order i REJECTED
+    ✓ ett angivet bank-id räcker inte för en order i CANCELLED
+    ✓ saknad order eller annan organisation kan inte bokföras med ett bank-id
+    ✓ nekar saknat eller obokat sparat bankbevis 0 (1 ms)
+    ✓ nekar saknat eller obokat sparat bankbevis 1
+    ✓ nekar saknat eller obokat sparat bankbevis 2
+    ✓ nekar bankfakta med fel instructionId även om bevisets hash är intakt (1 ms)
+    ✓ nekar bankfakta med fel instructionHash även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel organizationId även om bevisets hash är intakt (1 ms)
+    ✓ nekar bankfakta med fel tenantId även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel bankAccountId även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel provider även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel providerAccountRef även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel recipientRef även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel amount även om bevisets hash är intakt (1 ms)
+    ✓ nekar bankfakta med fel providerTransferId även om bevisets hash är intakt
+    ✓ nekar bankfakta med fel bankTransactionId även om bevisets hash är intakt (1 ms)
+    ✓ nekar förändrad bankProofHash
+    ✓ nekar förändrad bankProofKey
+    ✓ samma händelsenyckel accepterar inte ändrat bokföringsinnehåll 0 (1 ms)
+    ✓ samma händelsenyckel accepterar inte ändrat bokföringsinnehåll 1
+    ✓ samma händelsenyckel accepterar inte ändrat bokföringsinnehåll 2
+    ✓ samma händelsenyckel accepterar inte ändrat bokföringsinnehåll 3
+    ✓ samma händelsenyckel accepterar inte ändrat bokföringsinnehåll 4 (1 ms)
+    ✓ kräver uttryckligt bankkonto och har ingen 1930-fallback
+    ✓ väljer enbart den frysta orderns bankkonto, aldrig ett kontonummer
+    ✓ bokför bankens Stockholmsdag även när UTC-dagen är en annan (1 ms)
+    ✓ nekar replay när det tidigare verifikatet är reversed
+    ✓ nekar replay när det tidigare verifikatet är wrong amount (1 ms)
+    ✓ nekar replay när det tidigare verifikatet är wrong account
+    ✓ nekar replay när det tidigare verifikatet är extra line
+    ✓ nekar replay när det tidigare verifikatet är wrong date
+    ✓ nekar replay när det tidigare verifikatet är wrong link
+    ✓ nekar ett befintligt men olänkat verifikat och en SETTLED-order utan verifikat (1 ms)
+  Kundtillgodo får inte rättas genom att bara vända huvudboken
+    ✓ nekar generell rättelse av customer-credit-receipt
+    ✓ nekar generell rättelse av customer-credit-application (1 ms)
+    ✓ nekar generell rättelse av customer-credit-refund
+    ✓ nekar rättelse av en källbetalning med nyckeln rent-notice-bank-payment:allocation-1 under banklåset
+    ✓ nekar rättelse av en källbetalning med nyckeln bank-1 under banklåset (1 ms)
+    ✓ läser tillgodot efter låsväntan, inte i en olåst förkontroll
+    ✓ en vanlig bankbetalning utan tillgodo kan fortfarande rättas
+    ✓ nekar separat rättelse av aviunderlag som deltar i tillgodoflödet
+    ✓ betalningsrättelsen använder anroparens transaktion så hela avmatchningen kan rullas tillbaka
+    ✓ normal aviannullering använder tillgodospärren i anroparens transaktion
+
+Test Suites: 1 passed, 1 total
+Tests:       78 passed, 78 total
+Snapshots:   0 total
+Time:        4.228 s
+Ran all test suites matching /src\/accounting\/accounting.customer-credit.spec.ts/i.

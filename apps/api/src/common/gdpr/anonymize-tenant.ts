@@ -344,6 +344,12 @@ export async function anonymizeTenantWithin(
   // Samma grepp som UsersService.deactivate återkallar refresh-tokens.
   await tx.tenantSession.deleteMany({ where: { tenantId } })
 
+  // Kundtillgodoåterbetalningarnas ekonomiska fakta och frysta bevis ändras
+  // inte här. DELETE skulle frigöra reserverat saldo och spärras i databasen.
+  // Mottagar-/bankreferenser används aldrig i historik eller generell export;
+  // nya utbetalningar måste dessutom pröva anonymizedAt, medan ett redan
+  // påbörjat okänt bankutfall måste kunna utredas utan att reservationen släpps.
+
   // ── FRITEXTNAMN I ANGRÄNSANDE TABELL ──────────────────────────────────────
   //
   // `KeyHandover.issuedToName` bär namnet på den som fysiskt kvitterade nyckeln

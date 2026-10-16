@@ -22,7 +22,8 @@ syntetiska data och en tidigare prototyp; det bevisar inte denna integration.
 - **Sparar en skuld till hyresgästen.** En entydig överbetalning binds till
   organisation, hyresgäst, avtal, källavi, banktransaktion, betalningsallokering
   och verifikat. Tillgängligt tillgodo härleds från ursprungsbeloppet minus
-  bokförda användningar. Unika nycklar, databaslås och saldokontroll hindrar
+  bokförda användningar och ännu förbrukande återbetalningar (se
+  [återbetalningsetappen](./customer-credit-refunds.md)). Unika nycklar, databaslås och saldokontroll hindrar
   dubbel användning.
 - **Bevarar källunderlaget.** `sourceProofHash` binder de kontrollerade
   bankuppgifterna och källallokeringen. Mottagningsreplay och användning måste
@@ -45,7 +46,10 @@ oföränderlig rad. Både organisation och hyresgäst avgränsar läsningen.
 
 Kundtillgodo ingår i den befintliga spärren mot hårdradering av en hyresgäst;
 beskedet hänvisar till avidentifiering. Dev-verktygets uttryckliga helradering
-har uppdaterad FK-ordning för de nya tabellerna. Det ändrar inte produktens
+har uppdaterad FK-ordning för mottagning och användning. Organisationer med
+återbetalningar eller återbetalningshändelser spärras däremot helt före
+radering, enligt [återbetalningsetappen](./customer-credit-refunds.md).
+Det ändrar inte produktens
 bevarandepolicy och verktyget har inte körts för att radera tillgodounderlaget.
 
 ## Automatisk användning och fastställt aviunderlag
@@ -219,9 +223,11 @@ den aktörskontext som krävs för denna mottagning.
    bankallokering, tillgodoreskontra, aviunderlag och verifikat. Lås och
    rättelsespärrar stoppar osammanhängande ingrepp; de ersätter inte ett
    genomfört rättelseflöde.
-2. Återbetalning saknar en riktig bankbevisport och en komplett domänlivscykel
-   med reservation, bekräftelse och avvisad utbetalning. En bokföringsmetod
-   eller ett manuellt besked är inte bevis på att pengar har betalats ut.
+2. Återbetalning har nu en separat [domänlivscykel och bankport](./customer-credit-refunds.md)
+   med reservation, beständiga bankbesked, bokföring och uppföljning. Den enda
+   produktionsadaptern är fortfarande stoppande. Verklig bankintegration,
+   mottagarverifiering och en behörighetskontrollerad produktväg återstår;
+   ett manuellt besked är inte bevis på att pengar har betalats ut.
 3. Revisor behöver uttryckligen välja skuldkontot och bekräfta kopplingen
    mellan bankkontot och bokföringens `1930`. Testkonton är inga godkända
    standardval och depositionskontot används inte som automatisk ersättning.

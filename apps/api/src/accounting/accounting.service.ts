@@ -49,6 +49,10 @@ import type {
   VatReport,
 } from '@eken/shared'
 import { PrismaService } from '../common/prisma/prisma.service'
+import {
+  CustomerCreditRefundBookedDebitSchema,
+  customerCreditRefundBankProofHash,
+} from '../customer-credit/customer-credit-refund-bank.port'
 import { oppningskomponent } from '../kundstart/opening-component'
 import { stockholmCivilDate, throughStockholmDay } from '../common/time/stockholm-period'
 import { encodeCp437 } from './cp437'
@@ -116,6 +120,11 @@ interface CustomerCreditJournalInput {
 
 interface CustomerCreditBankJournalInput extends CustomerCreditJournalInput {
   bankTransactionId: string
+}
+
+interface CustomerCreditRefundJournalInput extends CustomerCreditBankJournalInput {
+  // Hämtat från den serverfrysta ordern. Inget standardkonto eller fallback.
+  bankLedgerAccountId: string
 }
 
 interface JournalFilters {
@@ -4404,18 +4413,140 @@ export class AccountingService {
   }
 
   async createJournalEntryForCustomerCreditRefund(
-    params: CustomerCreditBankJournalInput,
+    params: CustomerCreditRefundJournalInput,
     tx: Prisma.TransactionClient,
   ) {
-    const { liabilityId, counterpartId, amount } = await this.customerCreditAccounts(
-      params,
-      1930,
-      tx,
-    )
-    if (!params.bankTransactionId.trim()) {
-      throw new BadRequestException('Återbetalningens banktransaktion måste anges')
+    if (!tx || '$transaction' in tx) {
+      throw new InternalServerErrorException('Kundtillgodo kräver en pågående transaktion')
     }
+    if (
+      !params.amount.isFinite() ||
+      !params.amount.greaterThan(0) ||
+      params.amount.decimalPlaces() > 2 ||
+      params.amount.greaterThan('99999999.99')
+    ) {
+      throw new BadRequestException('Återbetalningen kräver ett positivt belopp i hela ören')
+    }
+    if (
+      !params.organizationId?.trim() ||
+      !params.eventId?.trim() ||
+      !params.rentNoticeId?.trim() ||
+      !params.liabilityAccountId?.trim() ||
+      !params.bankLedgerAccountId?.trim() ||
+      !params.bankTransactionId?.trim() ||
+      !Number.isFinite(params.date.getTime())
+    ) {
+      throw new BadRequestException(
+        'Återbetalningens identitet, konton och bokföringsdatum måste anges',
+      )
+    }
+
+    // Domäntjänsten tar först organisationens/avtalets lås. Orderlåset hålls
+    // genom både journalskrivningen och dess SETTLED-övergång i samma tx.
+    await tx.$queryRaw`SELECT "id" FROM "CustomerCreditRefund"
+      WHERE "id" = ${params.eventId} AND "organizationId" = ${params.organizationId} FOR UPDATE`
+    const refund = await tx.customerCreditRefund.findFirst({
+      where: { id: params.eventId, organizationId: params.organizationId },
+      include: { credit: { select: { sourceRentNoticeId: true } } },
+    })
+    if (!refund || (refund.state !== 'BANK_CONFIRMED' && refund.state !== 'SETTLED')) {
+      throw new ConflictException('Återbetalningen saknar en bankbekräftad order')
+    }
+    const parsedEvidence = CustomerCreditRefundBookedDebitSchema.safeParse(refund.bankEvidence)
+    if (!parsedEvidence.success) {
+      throw new ConflictException('Återbetalningen saknar ett giltigt sparat bankbevis')
+    }
+    const proof = parsedEvidence.data
+    const bankDay = stockholmCivilDate(proof.bankBookedAt)
+    const journalDay = stockholmCivilDate(params.date)
+    if (
+      refund.credit.sourceRentNoticeId !== params.rentNoticeId ||
+      !refund.amount.equals(params.amount) ||
+      refund.liabilityAccountId !== params.liabilityAccountId ||
+      refund.bankLedgerAccountId !== params.bankLedgerAccountId ||
+      refund.bankTransactionId !== params.bankTransactionId ||
+      proof.instructionId !== refund.id ||
+      proof.instructionHash !== refund.instructionHash ||
+      proof.organizationId !== refund.organizationId ||
+      proof.tenantId !== refund.tenantId ||
+      proof.bankAccountId !== refund.bankAccountId ||
+      proof.provider !== refund.provider ||
+      proof.providerAccountRef !== refund.providerAccountRef ||
+      proof.recipientRef !== refund.recipientRef ||
+      proof.amount !== refund.amount.toFixed(2) ||
+      proof.currency !== refund.currency ||
+      proof.providerTransferId !== refund.providerTransferId ||
+      proof.bankTransactionId !== refund.bankTransactionId ||
+      proof.bankBookedAt.getTime() !== refund.bankBookedAt?.getTime() ||
+      !refund.bankConfirmedAt ||
+      refund.bankProofKey !==
+        JSON.stringify([proof.provider, proof.providerAccountRef, proof.bankTransactionId]) ||
+      customerCreditRefundBankProofHash(proof) !== refund.bankProofHash ||
+      bankDay.year !== journalDay.year ||
+      bankDay.month !== journalDay.month ||
+      bankDay.day !== journalDay.day
+    ) {
+      throw new ConflictException(
+        'Återbetalningens order, bankbevis och bokföringsinnehåll stämmer inte överens',
+      )
+    }
+
+    const accounts = await tx.account.findMany({
+      where: {
+        organizationId: params.organizationId,
+        isActive: true,
+        OR: [
+          { id: params.liabilityAccountId, type: 'LIABILITY' },
+          { id: params.bankLedgerAccountId, type: 'ASSET' },
+        ],
+      },
+      select: { id: true, type: true },
+    })
+    if (
+      !accounts.some((a) => a.id === params.liabilityAccountId && a.type === 'LIABILITY') ||
+      !accounts.some((a) => a.id === params.bankLedgerAccountId && a.type === 'ASSET')
+    ) {
+      throw new ConflictException(
+        'Återbetalningen kräver orderns aktiva skuld- och bankkonton i samma organisation',
+      )
+    }
+
     const sourceId = `customer-credit-refund:${params.eventId}`
+    const existing = await tx.journalEntry.findFirst({
+      where: { organizationId: params.organizationId, source: 'PAYMENT', sourceId },
+      include: { lines: { include: { account: true } }, reversedBy: { select: { id: true } } },
+    })
+    if (existing) {
+      const existingDay = stockholmCivilDate(existing.date)
+      const liabilityLine = existing.lines.find(
+        (line) => line.accountId === params.liabilityAccountId,
+      )
+      const bankLine = existing.lines.find((line) => line.accountId === params.bankLedgerAccountId)
+      if (
+        refund.state !== 'SETTLED' ||
+        refund.journalEntryId !== existing.id ||
+        !refund.settledAt ||
+        existing.reversedBy ||
+        existing.reversalOfEntryId ||
+        existingDay.year !== bankDay.year ||
+        existingDay.month !== bankDay.month ||
+        existingDay.day !== bankDay.day ||
+        existing.lines.length !== 2 ||
+        !new Prisma.Decimal(liabilityLine?.debit ?? 0).equals(params.amount) ||
+        !new Prisma.Decimal(liabilityLine?.credit ?? 0).isZero() ||
+        !new Prisma.Decimal(bankLine?.credit ?? 0).equals(params.amount) ||
+        !new Prisma.Decimal(bankLine?.debit ?? 0).isZero()
+      ) {
+        throw new ConflictException(
+          'Återbetalningens befintliga verifikat är återfört eller har annat innehåll',
+        )
+      }
+      return existing
+    }
+    if (refund.state === 'SETTLED' || refund.journalEntryId || refund.settledAt) {
+      throw new ConflictException('Återbetalningens bokföringskoppling är ofullständig')
+    }
+    const amount = params.amount.toNumber()
     return this.createNumberedEntry({
       organizationId: params.organizationId,
       date: params.date,
@@ -4424,8 +4555,16 @@ export class AccountingService {
       sourceId,
       createdById: params.createdById ?? null,
       lines: [
-        { accountId: liabilityId, debit: amount, description: 'Återbetalt kundtillgodo' },
-        { accountId: counterpartId, credit: amount, description: 'Bekräftad utbetalning bank' },
+        {
+          accountId: params.liabilityAccountId,
+          debit: amount,
+          description: 'Återbetalt kundtillgodo',
+        },
+        {
+          accountId: params.bankLedgerAccountId,
+          credit: amount,
+          description: 'Bekräftad utbetalning bank',
+        },
       ],
       idempotencyWhere: { organizationId: params.organizationId, source: 'PAYMENT', sourceId },
       include: { lines: { include: { account: true } } },

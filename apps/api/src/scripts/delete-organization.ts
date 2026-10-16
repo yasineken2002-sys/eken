@@ -51,6 +51,12 @@ type Step = {
 
 const byOrg = (ids: string[]) => ({ organizationId: { in: ids } })
 
+/** Dessa bevis får inte raderas ens av dev-purge: det skulle frigöra reserverat saldo. */
+export const DELETION_BLOCKERS = [
+  { model: 'CustomerCreditRefund', where: byOrg },
+  { model: 'CustomerCreditRefundEvent', where: byOrg },
+] as const
+
 /**
  * Raderingsordningen. Barn före förälder. `Organization` själv står inte här —
  * den raderas sist av `deleteOrganizations` och tar kaskad-tabellerna med sig.
@@ -241,7 +247,7 @@ export async function countRows(
   ids: string[],
 ): Promise<{ model: string; rows: number }[]> {
   const out: { model: string; rows: number }[] = []
-  for (const step of DELETION_STEPS) {
+  for (const step of [...DELETION_BLOCKERS, ...DELETION_STEPS]) {
     out.push({
       model: step.model,
       rows: await delegate(prisma, step.model).count({ where: step.where(ids) }),
@@ -265,6 +271,22 @@ export async function deleteOrganizations(
   ids: string[],
 ): Promise<{ model: string; rows: number }[]> {
   return prisma.$transaction(async (tx) => {
+    // Lås först organisationerna så nya Restrict-FK-rader inte kan tillkomma
+    // mellan förkontrollen och raderingen. Inga rader tas bort före spärren.
+    for (const id of [...new Set(ids)].sort()) {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${id} FOR UPDATE`
+    }
+    for (const blocker of DELETION_BLOCKERS) {
+      const count = await delegate(tx as unknown as PrismaClient, blocker.model).count({
+        where: blocker.where(ids),
+      })
+      if (count > 0) {
+        throw new Error(
+          'Organisationen har kundtillgodoåterbetalningar som måste bevaras. ' +
+            'Dev-radering avbryts innan några rader tas bort.',
+        )
+      }
+    }
     const deleted: { model: string; rows: number }[] = []
     for (const step of DELETION_STEPS) {
       const { count } = await delegate(tx as unknown as PrismaClient, step.model).deleteMany({

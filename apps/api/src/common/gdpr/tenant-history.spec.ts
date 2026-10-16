@@ -91,6 +91,23 @@ describe('TENANT_HISTORY_RELATIONS speglar schemat', () => {
 })
 
 describe('kundtillgodo bevaras som ekonomisk hyresgästhistorik', () => {
+  it('återbetalning är ett uttryckligt raderingshinder även utan annan historik', async () => {
+    const delegates = Object.fromEntries(
+      TENANT_HISTORY_RELATIONS.map(({ model }) => [
+        model.charAt(0).toLowerCase() + model.slice(1),
+        { count: jest.fn().mockResolvedValue(0) },
+      ]),
+    )
+    delegates.customerCreditRefund!.count.mockResolvedValue(1)
+    expect(
+      await findTenantHistory(delegates as unknown as Prisma.TransactionClient, 'tenant-1'),
+    ).toEqual(['kundtillgodoåterbetalningar'])
+    expect(delegates.customerCreditRefund!.count).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1' },
+      take: 1,
+    })
+  })
+
   it('rapporterar kundtillgodo som hinder även när övrig historik saknas', async () => {
     const delegates = Object.fromEntries(
       TENANT_HISTORY_RELATIONS.map(({ model }) => [

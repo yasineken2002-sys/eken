@@ -420,6 +420,45 @@ export function mapExportNoticeDocument(noticeId: string, row: PortalNoticeDocum
   }
 }
 
+/** Egen återbetalningshistorik; interna bank- och mottagarbevis lämnar inte databasen. */
+export const PORTAL_CUSTOMER_CREDIT_REFUND_SELECT = {
+  id: true,
+  amount: true,
+  currency: true,
+  state: true,
+  preparedAt: true,
+  bankBookedAt: true,
+  bankConfirmedAt: true,
+  settledAt: true,
+  cancelledAt: true,
+  rejectedAt: true,
+  events: {
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    select: { type: true, occurredAt: true },
+  },
+} as const satisfies Prisma.CustomerCreditRefundSelect
+
+type PortalCustomerCreditRefundRow = Prisma.CustomerCreditRefundGetPayload<{
+  select: typeof PORTAL_CUSTOMER_CREDIT_REFUND_SELECT
+}>
+
+export function mapExportCustomerCreditRefund(row: PortalCustomerCreditRefundRow) {
+  return {
+    id: row.id,
+    amount: Number(row.amount),
+    currency: row.currency,
+    state: row.state,
+    reservedAt: row.preparedAt,
+    bankBookedAt: row.bankBookedAt,
+    bankConfirmedAt: row.bankConfirmedAt,
+    // Bankens bekräftelse och den lokala bokföringen är skilda fakta.
+    accountedAt: row.settledAt,
+    cancelledAt: row.cancelledAt,
+    rejectedAt: row.rejectedAt,
+    events: row.events.map((event) => ({ type: event.type, occurredAt: event.occurredAt })),
+  }
+}
+
 type PortalRentNoticeRow = Prisma.RentNoticeGetPayload<{
   select: typeof PORTAL_RENT_NOTICE_VIEW_SELECT
 }>
@@ -1118,6 +1157,10 @@ export class TenantPortalService {
       where: { id: tenantId },
       include: {
         organization: { select: { id: true, name: true } },
+        customerCreditRefunds: {
+          orderBy: [{ preparedAt: 'asc' }, { id: 'asc' }],
+          select: PORTAL_CUSTOMER_CREDIT_REFUND_SELECT,
+        },
         // SECURITY (PR 5a): lease-kedjan läckte property.fireSafetyNotes och
         // documents.storageKey (intern R2-nyckel) in i GDPR-exporten. Allow-list
         // på unit/property; documents behåller hyresgästens egna signeringsspår
@@ -1197,6 +1240,7 @@ export class TenantPortalService {
         createdAt: tenant.createdAt,
       },
       organization: tenant.organization,
+      customerCreditRefunds: tenant.customerCreditRefunds.map(mapExportCustomerCreditRefund),
       leases: tenant.leases,
       invoices: tenant.invoices.map(mapExportInvoice),
       rentNotices: tenant.rentNotices.map(({ sends: _sends, ...notice }) => notice),

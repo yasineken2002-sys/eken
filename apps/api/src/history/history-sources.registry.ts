@@ -333,6 +333,75 @@ const customerCredits: HistorySourceDefinition = {
   },
 }
 
+const refundEventLabels: Readonly<Record<string, string>> = {
+  RESERVED: 'Tillgodo reserverat för återbetalning',
+  SUBMITTING: 'Återbetalning påbörjad; bankutfall inväntas',
+  UNKNOWN: 'Återbetalningens bankutfall är okänt',
+  BANK_PENDING: 'Banken behandlar återbetalningen',
+  BANK_NOT_FOUND: 'Banken har ännu inget bekräftat återbetalningsutfall',
+  BANK_CONFIRMED: 'Utbetalningen bekräftad av banken; bokföring inväntas',
+  SETTLED: 'Bankbekräftad återbetalning bokförd',
+  REJECTED: 'Återbetalningen avvisad; reservationen släppt',
+  CANCELLED: 'Återbetalningsreservationen avbruten före utbetalning',
+}
+
+const customerCreditRefunds: HistorySourceDefinition = {
+  key: 'customer-credit-refund',
+  table: 'CustomerCreditRefund',
+  relations: { tenant: 'customerCreditRefunds' },
+  async load(q) {
+    const { prisma, organizationId } = q
+    const where = villkorFör(
+      q,
+      {
+        tenant: {
+          organizationId,
+          tenantId: q.subject.id,
+          credit: { organizationId, tenantId: q.subject.id },
+        },
+      },
+      'customer-credit-refund',
+    )
+    const rows = await prisma.customerCreditRefund.findMany({
+      where,
+      select: {
+        amount: true,
+        credit: {
+          select: {
+            sourceRentNoticeId: true,
+            sourceRentNotice: { select: { noticeNumber: true } },
+          },
+        },
+        events: {
+          where: { organizationId },
+          orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+          select: { id: true, type: true, occurredAt: true, actorKind: true },
+        },
+      },
+    })
+    // Läs domänhändelserna, inte en historik som gissas ur senaste statusen.
+    // Inga mottagarreferenser, konton, hashvärden eller bankens fritext läses.
+    return rows.flatMap((row) =>
+      row.events.map(
+        (event): HistoryEvent => ({
+          at: event.occurredAt,
+          type: `CUSTOMER_CREDIT_REFUND_${event.type}`,
+          actor: { kind: event.actorKind ?? 'UNKNOWN', id: null, label: null },
+          subject: {
+            kind: 'RENT_NOTICE',
+            id: row.credit.sourceRentNoticeId,
+            label: row.credit.sourceRentNotice.noticeNumber,
+          },
+          description: refundEventLabels[event.type] ?? 'Händelse för kundtillgodoåterbetalning',
+          amount: toAmount(row.amount),
+          severity: event.type === 'UNKNOWN' ? 'WARNING' : 'INFO',
+          source: { table: 'CustomerCreditRefundEvent', id: event.id },
+        }),
+      ),
+    )
+  },
+}
+
 /**
  * Kravtrappans steg är olika allvarliga — det är hela poängen med trappan.
  *
@@ -1489,6 +1558,7 @@ export const HISTORY_SOURCES: readonly HistorySourceDefinition[] = [
   invoices,
   rentNotices,
   customerCredits,
+  customerCreditRefunds,
   maintenanceTickets,
   inspections,
   keyHandovers,

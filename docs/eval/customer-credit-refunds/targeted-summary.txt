@@ -1,0 +1,27 @@
+{
+  "suites": 17,
+  "passedSuites": 17,
+  "tests": 290,
+  "passed": 290,
+  "skipped": 0,
+  "failed": 0
+}
+
+Senaste körning per fil. Frigivningssvitens rena typfel rättades och kördes om separat; huvudlivscykeln omkörd efter ytterligare samtidighetstest.
+passed: customer-credit/customer-credit-refund-release.db.spec.ts — 20 prov
+passed: customer-credit/customer-credit-refund.db.spec.ts — 32 prov
+passed: customer-credit/customer-credit-refund-recovery.scheduler.spec.ts — 15 prov
+passed: history/tenant-history.db.spec.ts — 10 prov
+passed: customer-credit/customer-credit.db.spec.ts — 34 prov
+passed: customer-credit/customer-credit-dispatch.db.spec.ts — 23 prov
+passed: tenant-portal/tenant-portal.customer-credit-refund-export.spec.ts — 3 prov
+passed: tenant-portal/tenant-portal.leak.spec.ts — 8 prov
+passed: accounting/accounting.customer-credit.spec.ts — 78 prov
+passed: tenant-portal/tenant-portal.rentnotice-leak.spec.ts — 3 prov
+passed: history/customer-credit-refund-history.spec.ts — 4 prov
+passed: tenant-portal/tenant-portal.notice-document-export.spec.ts — 3 prov
+passed: common/authz/object-scope.spec.ts — 15 prov
+passed: common/gdpr/tenant-history.spec.ts — 7 prov
+passed: scripts/delete-organization.spec.ts — 17 prov
+passed: customer-credit/customer-credit-refund-bank-gate.spec.ts — 11 prov
+passed: history/customer-credit-history.spec.ts — 7 prov

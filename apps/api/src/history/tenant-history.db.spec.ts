@@ -393,6 +393,16 @@ medDb('hyresgästens historik — antalet härleds ur källtabellerna', () => {
           rentNotice: { organizationId: orgId, tenantId },
         },
       }))
+    per['customer-credit-refund'] = await prisma.customerCreditRefundEvent.count({
+      where: {
+        organizationId: orgId,
+        refund: {
+          organizationId: orgId,
+          tenantId,
+          credit: { organizationId: orgId, tenantId },
+        },
+      },
+    })
     per.inspection =
       (await prisma.inspection.count({ where: { organizationId: orgId, tenantId } })) +
       (await prisma.inspection.count({
