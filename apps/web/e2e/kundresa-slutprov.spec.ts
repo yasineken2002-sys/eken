@@ -689,7 +689,9 @@ test.describe('kundresan i en session', () => {
       await expect(kryssruta).toBeEnabled()
       await kryssruta.check()
       await page.getByRole('button', { name: /Bjud in valda \(1\)/ }).click()
-      await expect(page.getByText(/1 inbjudna/)).toBeVisible({ timeout: 20_000 })
+      await expect(page.getByText('Portalinbjudningar: 1 köade', { exact: true })).toBeVisible({
+        timeout: 20_000,
+      })
 
       expect(
         db(`SELECT CASE WHEN "invitedAt" IS NULL THEN 'NULL' ELSE 'SATT' END
