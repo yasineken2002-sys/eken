@@ -1,0 +1,1638 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 Removed, dimensioner, Eveno och lexikografisk detaljordning 1-10-2 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/10",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+      "/3/projects": {
+        "itemsSeen": 1,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 1,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [
+      {
+        "referenceNumber": "tidigare-L1",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|1",
+      },
+      {
+        "referenceNumber": "tidigare-L2",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|10",
+      },
+      {
+        "referenceNumber": "referens-utan-typ",
+        "referenceType": null,
+        "voucher": "1|L|2",
+      },
+    ],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 500,
+        "bucket": "UNCERTAIN_REMOVED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": false,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+      {
+        "account": 5170,
+        "amountOre": 700,
+        "bucket": "UNALLOCATED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": false,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|10",
+      },
+      {
+        "account": 5170,
+        "amountOre": 1000,
+        "bucket": "UNMAPPED",
+        "code": "HUSC",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": true,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-10",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 2000,
+        "bucket": "PROPERTY",
+        "code": "7",
+        "dimensionType": "PROJECT",
+        "evenoExport": true,
+        "propertyId": "p-b",
+        "row": 2,
+        "transactionDate": "2026-10-10",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 3000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": true,
+        "propertyId": "p-a",
+        "row": 3,
+        "transactionDate": "2026-10-10",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 4000,
+        "bucket": "UNALLOCATED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": true,
+        "propertyId": null,
+        "row": 4,
+        "transactionDate": "2026-10-10",
+        "voucher": "1|L|2",
+      },
+    ],
+    "status": "COMPLETE_WITH_UNCERTAINTY",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 3000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+        {
+          "amountOre": 2000,
+          "propertyId": "p-b",
+          "propertyName": "HUS-B",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 10000,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 10700,
+      "unallocatedOre": 4700,
+      "uncertainRemovedOre": 500,
+      "unmappedDimensions": [
+        {
+          "amountOre": 1000,
+          "code": "HUSC",
+          "dimensionType": "COST_CENTER",
+        },
+      ],
+    },
+    "uncertainties": [
+      "Verifikat 1|L|1 rad 1 är markerad som borttagen i Fortnox; innebörden är inte belagd och raden ingår inte i summan.",
+      "Verifikat 1|L|10: dimension finns bara på verifikatets huvud och har inte förts över till raden.",
+      "1 Fortnox-dimension(er) saknar koppling till fastighet och redovisas som okopplade.",
+      "En del av beloppet kommer från verifikat som Eveno själv har exporterat; lägg inte ihop det med Evenos egna siffror.",
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 S1 ett verifikat 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 1,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 1,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1200000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 1200000,
+      "unallocatedOre": 0,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 S2 två fastigheter 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+      {
+        "account": 5170,
+        "amountOre": 400000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "PROPERTY",
+        "code": "HUSB",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-b",
+        "row": 2,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1600000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+        {
+          "amountOre": 200000,
+          "propertyId": "p-b",
+          "propertyName": "HUS-B",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 1800000,
+      "unallocatedOre": 0,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 S3 även ofördelat 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/3",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+      {
+        "account": 5170,
+        "amountOre": 400000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "PROPERTY",
+        "code": "HUSB",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-b",
+        "row": 2,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "UNALLOCATED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": false,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-07",
+        "voucher": "1|L|3",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1600000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+        {
+          "amountOre": 200000,
+          "propertyId": "p-b",
+          "propertyName": "HUS-B",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 2000000,
+      "unallocatedOre": 200000,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 S4a återföring och ny post 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/3",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/4",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/5",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 5,
+        "pages": 3,
+        "totalPages": 3,
+        "totalResources": 5,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [
+      {
+        "referenceNumber": "L1",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|4",
+      },
+    ],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+      {
+        "account": 5170,
+        "amountOre": 400000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "PROPERTY",
+        "code": "HUSB",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-b",
+        "row": 2,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "UNALLOCATED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": false,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-07",
+        "voucher": "1|L|3",
+      },
+      {
+        "account": 5170,
+        "amountOre": -1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-20",
+        "voucher": "1|L|4",
+      },
+      {
+        "account": 5170,
+        "amountOre": 1500000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-20",
+        "voucher": "1|L|5",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1900000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+        {
+          "amountOre": 200000,
+          "propertyId": "p-b",
+          "propertyName": "HUS-B",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 2300000,
+      "unallocatedOre": 200000,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 S4b differenspost 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/3",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/4",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 4,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 4,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+      {
+        "account": 5170,
+        "amountOre": 400000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "PROPERTY",
+        "code": "HUSB",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-b",
+        "row": 2,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "UNALLOCATED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": false,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-07",
+        "voucher": "1|L|3",
+      },
+      {
+        "account": 5170,
+        "amountOre": 300000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-20",
+        "voucher": "1|L|4",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1900000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+        {
+          "amountOre": 200000,
+          "propertyId": "p-b",
+          "propertyName": "HUS-B",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 2300000,
+      "unallocatedOre": 200000,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 enskilt belopp utanför säkert öreområde är parserfel även efter giltiga detaljer 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/9",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "Verifikat 1|L|9 rad 1: ogiltigt belopp",
+    "references": [],
+    "rows": null,
+    "status": "PARTIAL",
+    "summary": null,
+    "uncertainties": [
+      "Kostnadsstället GHOST är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 giltiga detaljbelopp överflödar först vid summering och behåller redan lagda referenser 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/3",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "Beloppssumman ligger utanför säkert talområde",
+    "references": [
+      {
+        "referenceNumber": "tidigare-L1",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|1",
+      },
+      {
+        "referenceNumber": "tidigare-L2",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|2",
+      },
+      {
+        "referenceNumber": "tidigare-L3",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|3",
+      },
+    ],
+    "rows": null,
+    "status": "PARTIAL",
+    "summary": null,
+    "uncertainties": [
+      "Kostnadsstället GHOST är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.",
+      "Verifikat 1|L|1 rad 1 är markerad som borttagen i Fortnox; innebörden är inte belagd och raden ingår inte i summan.",
+      "Verifikat 1|L|2: dimension finns bara på verifikatets huvud och har inte förts över till raden.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 identisk dublett över sidgräns hämtas en gång med oförändrad varning och coverage 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/3",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 4,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+      {
+        "account": 5170,
+        "amountOre": 400000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "PROPERTY",
+        "code": "HUSB",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-b",
+        "row": 2,
+        "transactionDate": "2026-10-05",
+        "voucher": "1|L|2",
+      },
+      {
+        "account": 5170,
+        "amountOre": 200000,
+        "bucket": "UNALLOCATED",
+        "code": null,
+        "dimensionType": null,
+        "evenoExport": false,
+        "propertyId": null,
+        "row": 1,
+        "transactionDate": "2026-10-07",
+        "voucher": "1|L|3",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1600000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+        {
+          "amountOre": 200000,
+          "propertyId": "p-b",
+          "propertyName": "HUS-B",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 2000000,
+      "unallocatedOre": 200000,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Verifikat 1|L|2 förekom flera gånger i listan och räknades en gång.",
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 motsägande dublett över sidgräns stoppar före varje detaljGET 1`] = `
+{
+  "detailGets": [],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 4,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "KONFLIKT: verifikat 1|L|2 med olika innehåll",
+    "references": [],
+    "rows": null,
+    "status": "PARTIAL",
+    "summary": null,
+    "uncertainties": [],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 period från rättelsedatum behåller rättelsens referens 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/4",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/5",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [
+      {
+        "referenceNumber": "L1",
+        "referenceType": "MANUAL",
+        "voucher": "1|L|4",
+      },
+    ],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": -1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-20",
+        "voucher": "1|L|4",
+      },
+      {
+        "account": 5170,
+        "amountOre": 1500000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-20",
+        "voucher": "1|L|5",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 300000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 300000,
+      "unallocatedOre": 0,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 period före rättelsen validerar ändå alla detaljer 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/4",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/5",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1200000,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1200000,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 1200000,
+      "unallocatedOre": 0,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 saknad inaktiv beloppssida, exakt decimal, explicit IB-noll och saknad bokföringsmetod 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 1,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 1,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [
+      {
+        "account": 5170,
+        "amountOre": 1005,
+        "bucket": "PROPERTY",
+        "code": "HUSA",
+        "dimensionType": "COST_CENTER",
+        "evenoExport": false,
+        "propertyId": "p-a",
+        "row": 1,
+        "transactionDate": "2026-10-02",
+        "voucher": "1|L|1",
+      },
+    ],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": 0,
+      },
+      "byProperty": [
+        {
+          "amountOre": 1005,
+          "propertyId": "p-a",
+          "propertyName": "HUS-A",
+        },
+      ],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": null,
+      "totalOre": 1005,
+      "unallocatedOre": 0,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 saknad sen detalj lämnar inga tidigare reducerreferenser 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/9",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "Fortnox svar kunde inte tolkas",
+    "references": [],
+    "rows": null,
+    "status": "PARTIAL",
+    "summary": null,
+    "uncertainties": [
+      "Kostnadsstället GHOST är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 sen authförlust bevarar katalogunderlag men inget tidigare reducerresultat 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/9",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "Fortnox nekade åtkomst (inloggningen har upphört)",
+    "references": [],
+    "rows": null,
+    "status": "AUTH_LOST",
+    "summary": null,
+    "uncertainties": [
+      "Kostnadsstället GHOST är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 sen ogiltig rad på annat konto utanför perioden kastar reducerreferenser och reducerosäkerheter 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/9",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 4,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "Verifikat 1|L|9 rad 2: ogiltigt konto",
+    "references": [],
+    "rows": null,
+    "status": "PARTIAL",
+    "summary": null,
+    "uncertainties": [
+      "Kostnadsstället GHOST är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.",
+      "Verifikat 1|L|2 förekom flera gånger i listan och räknades en gång.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 sen parserogiltighet vinner över tidigare möjlig summeringsoverflow 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/2",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/3",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/9",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 4,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 4,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": "Verifikat 1|L|9 rad 2: ogiltigt konto",
+    "references": [],
+    "rows": null,
+    "status": "PARTIAL",
+    "summary": null,
+    "uncertainties": [
+      "Kostnadsstället GHOST är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.",
+    ],
+  },
+}
+`;
+
+exports[`Fortnox ledger — fryst referens från 2b7d6817 tom vald period ger noll först efter alla detaljer 1`] = `
+{
+  "detailGets": [
+    {
+      "path": "/3/vouchers/L/1",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/4",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+    {
+      "path": "/3/vouchers/L/5",
+      "query": {
+        "financialyear": 1,
+      },
+    },
+  ],
+  "result": {
+    "coverage": {
+      "/3/costcenters": {
+        "itemsSeen": 2,
+        "pages": 1,
+        "totalPages": 1,
+        "totalResources": 2,
+      },
+      "/3/vouchers/sublist": {
+        "itemsSeen": 3,
+        "pages": 2,
+        "totalPages": 2,
+        "totalResources": 3,
+      },
+    },
+    "financialYear": {
+      "fromDate": "2026-01-01",
+      "id": 1,
+      "toDate": "2026-12-31",
+    },
+    "reason": null,
+    "references": [],
+    "rows": [],
+    "status": "COMPLETE",
+    "summary": {
+      "balanceBroughtForwardOre": {
+        "5170": null,
+      },
+      "byProperty": [],
+      "currency": "SEK",
+      "evenoExportOre": 0,
+      "financialYearAccountingMethod": "ACCRUAL",
+      "totalOre": 0,
+      "unallocatedOre": 0,
+      "uncertainRemovedOre": 0,
+      "unmappedDimensions": [],
+    },
+    "uncertainties": [
+      "Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.",
+    ],
+  },
+}
+`;
