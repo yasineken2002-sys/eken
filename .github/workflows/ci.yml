@@ -1796,6 +1796,37 @@ jobs:
           set -o pipefail
           npx playwright test --reporter=line 2>&1 | tee /tmp/e2e-run.log
 
+      # Service worker kräver byggd portal. Samma Chromiuminstallation återanvänds,
+      # men egen loopback-fixture och profil körs efter vanliga E2E, utan backend.
+      - name: Build portal for installation proof
+        run: pnpm --filter @eken/portal build
+
+      - name: Kanariefågel — portalens installationsprov
+        working-directory: apps/portal
+        run: |
+          pnpm exec playwright test --list > /tmp/portal-pwa-list.txt
+          cat /tmp/portal-pwa-list.txt
+          found=$(sed -n 's/^Total: \([0-9][0-9]*\) test.*/\1/p' /tmp/portal-pwa-list.txt)
+          if [ "$found" != "9" ]; then
+            echo "::error::Portalens installationsprov ska vara exakt 9; hittade '${found:-inget tal}'."
+            exit 1
+          fi
+
+      - name: Test built portal installation and public offline boundary
+        working-directory: apps/portal
+        env:
+          PORTAL_PWA_REPORT_PATH: test-results/pwa-report.json
+        run: |
+          pnpm test:pwa
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs'
+          const report = JSON.parse(readFileSync('test-results/pwa-report.json', 'utf8'))
+          const { expected, unexpected, flaky, skipped } = report.stats
+          if (expected !== 9 || unexpected !== 0 || flaky !== 0 || skipped !== 0 || report.errors.length) {
+            throw new Error(`PWA: kräver 9 godkända och inga fel/omförsök/skip: ${JSON.stringify(report.stats)}`)
+          }
+          JS
+
       # `retries: 2` gör att ett instabilt test kan passera på andra försöket och
       # rapporteras som grönt. Det är rätt för merge-flödet men fel för vad vi
       # VET: en flake som ingen ser blir ett rött jobb senare, på någon annans PR.
@@ -1825,7 +1856,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
-          path: apps/web/test-results/
+          path: |
+            apps/web/test-results/
+            apps/portal/test-results/
           retention-days: 7
 
   ai-journal-source-guard:

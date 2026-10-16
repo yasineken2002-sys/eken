@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { exportMyData, deleteMyAccount, logoutSession, extractApiError } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
+import { InstallPortal } from '@/components/InstallPortal'
 
 const card: React.CSSProperties = {
   background: 'var(--ev-surface)',
@@ -131,6 +132,7 @@ export function SettingsPage() {
         </p>
 
         <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <InstallPortal />
           <section style={card}>
             <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ev-text)' }}>
               Dina rättigheter (GDPR)

@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import { App } from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SessionBoundary } from './components/SessionBoundary'
+import { registerPortalWorker } from './lib/register-portal-worker'
 import './styles/tokens.css'
 
 const root = document.getElementById('root')
@@ -23,3 +24,5 @@ createRoot(root).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+
+registerPortalWorker()
