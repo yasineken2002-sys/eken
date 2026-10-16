@@ -70,7 +70,9 @@ function page(numbers: number[], current = 1, totalPages = 1, totalResources = n
   }
 }
 
-function detail(number: number, amount = 10.05): FortnoxVoucher {
+type SyntheticVoucher = FortnoxVoucher & { UnknownProviderField: { body: string } }
+
+function detail(number: number, amount = 10.05): SyntheticVoucher {
   return {
     Year: 1,
     VoucherSeries: 'L',
@@ -688,18 +690,20 @@ describe('Fortnox-checkpoints mot riktig PostgreSQL', () => {
       let injectedAfterWrite = false
       const interruptedDb = db().$extends({
         query: {
-          $allModels: {
-            async $allOperations({ model, operation, args, query }) {
+          fortnoxReadManifestPage: {
+            async create({ args, query }) {
               const result = await query(args)
-              const pageWritten =
-                stage === 'page' &&
-                model === 'FortnoxReadManifestPage' &&
-                (operation === 'create' || operation === 'createMany')
-              const detailWritten =
-                stage === 'detail' &&
-                model === 'FortnoxReadVoucherCheckpoint' &&
-                (operation === 'update' || operation === 'updateMany')
-              if (pageWritten || detailWritten) {
+              if (stage === 'page') {
+                injectedAfterWrite = true
+                throw fault
+              }
+              return result
+            },
+          },
+          fortnoxReadVoucherCheckpoint: {
+            async update({ args, query }) {
+              const result = await query(args)
+              if (stage === 'detail') {
                 injectedAfterWrite = true
                 throw fault
               }

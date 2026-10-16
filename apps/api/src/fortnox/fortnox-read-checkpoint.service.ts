@@ -488,7 +488,7 @@ export class FortnoxReadCheckpointService {
           : null
       if (reason) {
         await this.terminal(tx, run, now, reason)
-        return { ok: false as const, reason }
+        return { ok: false, reason } as const
       }
       return { ok: true as const, value: await action(tx, locked) }
     }, PRISMA_DEFAULT_TX_LIMITS)
