@@ -188,17 +188,34 @@ export class TenantAuthService {
    * Skapa en separat lösenordsåterställningstoken. Använder en egen kolumn
    * (passwordResetTokenHash) så att aktiveringsflödet inte överskrivs.
    */
-  async issuePasswordResetToken(tenantId: string, ttlMs = RESET_TTL_MS): Promise<string> {
+  async issuePasswordResetToken(
+    tenantId: string,
+    ttlMs = RESET_TTL_MS,
+    expectedRecipient?: Pick<Tenant, 'organizationId' | 'email'>,
+  ): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + ttlMs)
 
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
+    // Vid utskick måste mottagaren fortfarande vara densamma som vid
+    // listningen. Ett annat kontos köanrop kan ha väntat under tiden.
+    const updated = await this.prisma.tenant.updateMany({
+      where: expectedRecipient
+        ? {
+            id: tenantId,
+            organizationId: expectedRecipient.organizationId,
+            email: expectedRecipient.email,
+            portalActivated: true,
+            anonymizedAt: null,
+          }
+        : { id: tenantId },
       data: {
         passwordResetTokenHash: sha256(token),
         passwordResetTokenExpiresAt: expiresAt,
       },
     })
+    if (updated.count !== 1) {
+      throw new UnauthorizedException('Återställningslänken kunde inte förberedas')
+    }
 
     return token
   }
@@ -408,42 +425,49 @@ export class TenantAuthService {
   // ── Glömt lösenord ───────────────────────────────────────────────────────────
 
   /**
-   * Skicka mejl med återställningslänk. Returnerar void även om mejlet inte gick
-   * iväg eller hyresgästen inte finns — för att undvika enumeration. Loggas vid
-   * fel så hyresvärden kan felsöka.
+   * En separat, organisationsmärkt länk per aktiverat konto med samma e-post.
+   * Svaret avslöjar varken konton eller antal. Ett enskilt skriv-/köfel får
+   * inte hindra andra hyresvärdars konton från att få sin återställningslänk.
    */
   async sendForgotPassword(email: string): Promise<void> {
-    const tenant = await findTenantWithCredentials(this.prisma, {
-      where: { email: normalizeEmail(email) },
+    const tenants = await readManyTenantsWithCredentials(this.prisma, {
+      where: { email: normalizeEmail(email), portalActivated: true, anonymizedAt: null },
+      orderBy: { id: 'asc' },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.portalActivated) {
-      this.logger.warn(`Forgot password för ${email} — ingen aktiverad hyresgäst`)
-      return
+    for (const tenant of tenants) {
+      let stage: 'token' | 'mail' = 'token'
+      try {
+        const token = await this.issuePasswordResetToken(tenant.id, RESET_TTL_MS, {
+          organizationId: tenant.organizationId,
+          email: tenant.email,
+        })
+        const tenantName = tenant.firstName
+          ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
+          : (tenant.companyName ?? tenant.email)
+        stage = 'mail'
+        await this.mail.sendPasswordReset({
+          to: tenant.email,
+          organizationId: tenant.organizationId,
+          recipientName: tenantName,
+          resetUrl: this.buildResetUrl(token),
+          organizationName: tenant.organization.name,
+          validForHours: 24,
+          // Separat nyckel per konto och länk; samma brevlåda får inte dedupas
+          // mellan hyresvärdar. Ingen återställning av token vid köfel: en
+          // samtidig begäran kan redan ha roterat fram en nyare länk.
+          idempotencyKey: `tenant-reset-${tenant.id}-${token.substring(0, 8)}`,
+        })
+      } catch {
+        // Råa kö-/DB-fel kan innehålla e-post eller återställningslänkar.
+        this.logger.warn({
+          event: 'tenant_password_reset_failed',
+          stage,
+          tenantId: tenant.id,
+          organizationId: tenant.organizationId,
+        })
+      }
     }
-
-    const token = await this.issuePasswordResetToken(tenant.id, RESET_TTL_MS)
-    const resetUrl = this.buildResetUrl(token)
-
-    const tenantName = tenant.firstName
-      ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
-      : (tenant.companyName ?? tenant.email)
-
-    await this.mail
-      .sendPasswordReset({
-        to: tenant.email,
-        organizationId: tenant.organizationId,
-        recipientName: tenantName,
-        resetUrl,
-        organizationName: tenant.organization.name,
-        validForHours: 24,
-        // Stabil nyckel per (tenant, token-prefix) — Bull-jobId dedupar dubbla
-        // enqueues och Resend dedupar dubbla worker-körningar.
-        idempotencyKey: `tenant-reset-${tenant.id}-${token.substring(0, 8)}`,
-      })
-      .catch((err: unknown) => {
-        this.logger.warn(`Forgot-password mail för ${email} failade: ${String(err)}`)
-      })
   }
 
   async resetPassword(token: string, password: string): Promise<SessionResult> {
