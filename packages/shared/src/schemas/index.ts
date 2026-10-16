@@ -2076,6 +2076,42 @@ export const TenantLoginSchema = z
   })
   .strict()
 
+/** Password verification reveals only organizations whose credentials matched. */
+export const TenantLoginResolveResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      status: z.literal('complete'),
+      sessionToken: z.string().min(1),
+      expiresAt: z.string().datetime(),
+      tenant: z
+        .object({
+          id: z.string().uuid(),
+          firstName: z.string().nullable(),
+          lastName: z.string().nullable(),
+          companyName: z.string().nullable(),
+          email: z.string().email(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal('choose'),
+      candidates: z
+        .array(
+          z
+            .object({
+              organizationId: z.string().uuid(),
+              organizationName: z.string(),
+            })
+            .strict(),
+        )
+        .min(2),
+    })
+    .strict(),
+])
+export type TenantLoginResolveResult = z.infer<typeof TenantLoginResolveResultSchema>
+
 /**
  * POST /tenant-portal/activate
  *

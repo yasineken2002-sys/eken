@@ -288,7 +288,7 @@ PUT /kundstart/opening-packages/:id/separate-ledger             ADMIN, OWNER
 PUT /kundstart/opening-packages/:id/source                      ADMIN, OWNER
 
 
-## 1b. HTTP-endpoints UTAN rollgrind (184 st)
+## 1b. HTTP-endpoints UTAN rollgrind (185 st)
 
 RADERNA HÄR ÄR INTE GRANSKADE — utom de som uttryckligen står som
 granskade i avsnitt a). De står här för att en NY ogrindad endpoint ska bli
@@ -859,7 +859,7 @@ POST /portal/maintenance                                        TenantAuthGuard 
 POST /tenant-portal/ai/chat                                     TenantAuthGuard               tenant-ai.controller.ts
 POST /tenant-portal/ai/confirm                                  TenantAuthGuard               tenant-ai.controller.ts
 
-### c) VERKLIGT ÖPPNA — ingen autentisering alls (34 st)
+### c) VERKLIGT ÖPPNA — ingen autentisering alls (35 st)
 
 @Public() utan någon egen guard. Ingen inloggning krävs. En NY rad här är
 den mest säkerhetskänsliga ändring den här filen kan visa.
@@ -893,6 +893,7 @@ POST /tenant-portal/auth/bankid/choose                          tenant-portal.co
 POST /tenant-portal/auth/bankid/collect                         tenant-portal.controller.ts
 POST /tenant-portal/auth/bankid/start                           tenant-portal.controller.ts
 POST /tenant-portal/forgot-password                             tenant-portal.controller.ts
+POST /tenant-portal/login/resolve                               tenant-portal.controller.ts
 POST /tenant-portal/login                                       tenant-portal.controller.ts
 POST /tenant-portal/logout                                      tenant-portal.controller.ts
 POST /tenant-portal/reset-password                              tenant-portal.controller.ts

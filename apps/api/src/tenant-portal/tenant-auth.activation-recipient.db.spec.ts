@@ -17,6 +17,7 @@ import { LockService } from '../common/redis/lock.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { MailService } from '../mail/mail.service'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 import { TenantInvitationsService } from './tenant-invitations.service'
 
 type WelcomeMail = Parameters<MailService['sendTenantWelcomeWithContract']>[0]
@@ -99,6 +100,14 @@ describe('aktiveringsutskick · mottagarbyte och tokenrotation i riktig DB', () 
     const module = await Test.createTestingModule({
       providers: [
         TenantAuthService,
+        {
+          provide: TenantLoginBudget,
+          // Domänprov; den verkliga Redis-budgeten provas i separat svit.
+          useValue: {
+            run: async (_context, work) =>
+              work({ reserve: async () => {}, assertActive: () => {} }),
+          } satisfies Pick<TenantLoginBudget, 'run'>,
+        },
         TenantInvitationsService,
         { provide: PrismaService, useValue: client },
         {
