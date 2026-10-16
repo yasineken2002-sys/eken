@@ -7884,6 +7884,9 @@ model FortnoxReadManifestPage {
 }
 
 // Högst en validerad detalj per identitet; läsaren ordnar key med COLLATE C.
+// Rå-SQL-indexen fortnox_read_pending_key_c och fortnox_read_key_c stöder samma
+// ordning, för kvarvarande respektive alla detaljer. Prisma uttrycker inte deras
+// C-kollation; check-critical-indexes.mjs skyddar definitionerna i migrationerna.
 model FortnoxReadVoucherCheckpoint {
   id String @id @default(uuid())
   organizationId String

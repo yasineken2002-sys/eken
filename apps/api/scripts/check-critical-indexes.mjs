@@ -201,6 +201,27 @@ const CRITICAL_INDEXES = [
     // körningar ska inte hindra en ny beställning; aktiva delsteg ska göra det.
     where: "workVersion=1ANDstatus='RUNNING'",
   },
+  {
+    label: 'Fortnox-checkpoint — nästa kvarvarande detalj i C-ordning',
+    expectedName: 'fortnox_read_pending_key_c',
+    migrationRef: '20261016233000_fortnox_read_pending_key_c',
+    unique: false,
+    table: 'FortnoxReadVoucherCheckpoint',
+    columns: ['organizationId', 'runId', 'key COLLATE C'],
+    // Prestandainvariant: färdiga detaljer ska inte skannas för varje nästa steg.
+    // C-kollationen måste motsvara frågan; standardkollation ger inte samma index.
+    where: 'detailDigestISNULL',
+  },
+  {
+    label: 'Fortnox-checkpoint — sidvis återläsning av alla detaljer i C-ordning',
+    expectedName: 'fortnox_read_key_c',
+    migrationRef: '20261016233100_fortnox_read_key_c',
+    unique: false,
+    table: 'FortnoxReadVoucherCheckpoint',
+    columns: ['organizationId', 'runId', 'key COLLATE C'],
+    // Även färdiga detaljer behövs vid återläsning; pendingindexet räcker inte.
+    where: null,
+  },
 ]
 
 // ── normalisering ──────────────────────────────────────────────────────────
@@ -412,6 +433,45 @@ function självtest() {
     normTable('a.b.c') === 'b.c', JSON.stringify(normTable('a.b.c')))
   kräv('MOTPROV (en punkt inuti ett namn utan prefix är inget prefix)',
     normTable('x') === 'x', JSON.stringify(normTable('x')))
+
+  // Verklig CREATE-parser + samma semantiska jämförelse som huvudvakten.
+  // Negativa satser måste fortfarande parsas, annars bevisar de inte avvikelsen.
+  for (const [name, predicate] of [
+    ['fortnox_read_pending_key_c', ' WHERE "detailDigest" IS NULL'],
+    ['fortnox_read_key_c', ''],
+  ]) {
+    const inv = CRITICAL_INDEXES.find((i) => i.expectedName === name)
+    kräv(`GOLV (${name} har en deklarativ invariant)`, !!inv)
+    if (!inv) continue
+    const sql = `CREATE INDEX CONCURRENTLY "${name}" ON "FortnoxReadVoucherCheckpoint" ("organizationId", "runId", "key" COLLATE "C")${predicate}`
+    const cases = [
+      ['korrekt C-index', sql, true],
+      ['legitim omdöpning', sql.replace(`"${name}"`, '"annat_indexnamn"'), true],
+      ['saknad C-kollation', sql.replace(' COLLATE "C"', ''), false],
+      ['fel kollation', sql.replace('COLLATE "C"', 'COLLATE "default"'), false],
+      ['saknat organisationsscope', sql.replace('"organizationId", ', ''), false],
+      ['saknat körningsscope', sql.replace('"runId", ', ''), false],
+      ['ändrad kolumnordning', sql.replace('"organizationId", "runId"', '"runId", "organizationId"'), false],
+      ['oväntad unikhet', sql.replace('CREATE INDEX', 'CREATE UNIQUE INDEX'), false],
+      ...(predicate ? [
+        ['saknat predikat', sql.replace(predicate, ''), false],
+        ['omvänt predikat', sql.replace('IS NULL', 'IS NOT NULL'), false],
+      ] : [
+        ['oväntat pendingpredikat', `${sql} WHERE "detailDigest" IS NULL`, false],
+      ]),
+    ]
+    for (const [label, source, expected] of cases) {
+      const match = CREATE_RE.exec(source)
+      kräv(`C-INDEX (${name}: ${label} parsas)`, !!match)
+      if (!match) continue
+      const actual = {
+        unique: !!match[1], table: normTable(match[3]),
+        columns: normCols(match[4]), where: normPredicate(match[5] ?? ''),
+      }
+      kräv(`C-INDEX (${name}: ${label})`, satisfies(actual, inv) === expected,
+        JSON.stringify(actual))
+    }
+  }
 
   // GOLV — parsern ska se de riktiga migrationerna. En parser som gått blind
   // ger noll index och är grön om hela mängden.
