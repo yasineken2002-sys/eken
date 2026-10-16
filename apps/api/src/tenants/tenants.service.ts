@@ -271,25 +271,49 @@ export class TenantsService {
   }
 
   async update(id: string, dto: UpdateTenantDto, organizationId: string) {
-    const existing = await this.prisma.tenant.findFirst({ where: { id, organizationId } })
-    if (!existing) throw new NotFoundException('Hyresgästen hittades inte')
+    const tenant = await this.prisma.$transaction(async (tx) => {
+      // Samma radlås som portalens login/aktivering/reset: inga gamla länkar
+      // eller pågående lösenordsbyten får återskapa åtkomst efter e-postbytet.
+      await tx.$queryRaw`
+        SELECT "id" FROM "Tenant"
+        WHERE "id" = ${id} AND "organizationId" = ${organizationId} FOR UPDATE
+      `
+      const existing = await tx.tenant.findFirst({
+        where: { id, organizationId },
+        select: { email: true },
+      })
+      if (!existing) throw new NotFoundException('Hyresgästen hittades inte')
+      const email = dto.email != null ? normalizeEmail(dto.email) : undefined
+      const emailChanged = email !== undefined && email !== normalizeEmail(existing.email)
 
-    const tenant = await this.prisma.tenant.update({
-      where: { id },
-      data: {
-        ...(dto.type != null ? { type: dto.type } : {}),
-        ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
-        ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
-        ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
-        ...(dto.email != null ? { email: normalizeEmail(dto.email) } : {}),
-        ...(dto.phone != null ? { phone: dto.phone } : {}),
-        ...this.pn.protect(dto.personalNumber),
-        ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
-        ...(dto.street != null ? { street: dto.street } : {}),
-        ...(dto.city != null ? { city: dto.city } : {}),
-        ...(dto.postalCode != null ? { postalCode: dto.postalCode } : {}),
-      },
-    })
+      const updated = await tx.tenant.update({
+        where: { id },
+        data: {
+          ...(dto.type != null ? { type: dto.type } : {}),
+          ...(dto.firstName != null ? { firstName: dto.firstName } : {}),
+          ...(dto.lastName != null ? { lastName: dto.lastName } : {}),
+          ...(dto.companyName != null ? { companyName: dto.companyName } : {}),
+          ...(email !== undefined ? { email } : {}),
+          ...(dto.phone != null ? { phone: dto.phone } : {}),
+          ...this.pn.protect(dto.personalNumber),
+          ...(dto.orgNumber != null ? { orgNumber: dto.orgNumber } : {}),
+          ...(dto.street != null ? { street: dto.street } : {}),
+          ...(dto.city != null ? { city: dto.city } : {}),
+          ...(dto.postalCode != null ? { postalCode: dto.postalCode } : {}),
+          ...(emailChanged
+            ? {
+                activationTokenHash: null,
+                activationTokenExpiresAt: null,
+                activationReminderSentAt: null,
+                passwordResetTokenHash: null,
+                passwordResetTokenExpiresAt: null,
+              }
+            : {}),
+        },
+      })
+      if (emailChanged) await tx.tenantSession.deleteMany({ where: { tenantId: id } })
+      return updated
+    }, PRISMA_DEFAULT_TX_LIMITS)
     return mapTenant(tenant, this.pn.reveal(tenant.personalNumberEnc))
   }
 

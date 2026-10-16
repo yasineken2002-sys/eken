@@ -301,7 +301,11 @@ export class TenantInvitationsService {
   }
 
   private async sendOne(org: { id: string; name: string }, t: TenantRow): Promise<void> {
-    const token = await this.tenantAuth.issueActivationToken(t.id)
+    const token = await this.tenantAuth.issueActivationToken(t.id, undefined, {
+      organizationId: org.id,
+      email: t.email,
+      onlyNotActivated: true,
+    })
     const activationUrl = this.tenantAuth.buildActivationUrl(token)
 
     const messageId = await this.mail.sendTenantPortalInvite({

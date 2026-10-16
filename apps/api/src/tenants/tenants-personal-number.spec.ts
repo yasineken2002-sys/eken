@@ -39,8 +39,16 @@ describe('krav 8 — TenantsService skriver chiffertext, aldrig klartext', () =>
       unit: {
         findFirst: jest.fn().mockResolvedValue({ id: 'u1', property: { organizationId: 'org-1' } }),
       },
-      $transaction: jest.fn(async (fn: (tx: unknown) => unknown) =>
-        fn({ tenant: { create }, lease: { create: jest.fn().mockResolvedValue({ id: 'l1' }) } }),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 't1' }]),
+      tenantSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      $transaction: jest.fn(
+        async (fn: (tx: unknown) => unknown): Promise<unknown> =>
+          fn({
+            tenant: prisma.tenant,
+            $queryRaw: prisma.$queryRaw,
+            tenantSession: prisma.tenantSession,
+            lease: { create: jest.fn().mockResolvedValue({ id: 'l1' }) },
+          }),
       ),
     }
     return { prisma, create, service: new TenantsService(prisma as never, pn) }

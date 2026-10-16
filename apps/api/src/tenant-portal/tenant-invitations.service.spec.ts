@@ -114,7 +114,11 @@ describe('TenantInvitationsService — urval + saknar-mejl', () => {
     )
     // Token utfärdades + invitedAt/inviteCount uppdaterades för den behöriga.
     expect(tenantAuth.issueActivationToken).toHaveBeenCalledTimes(1)
-    expect(tenantAuth.issueActivationToken).toHaveBeenCalledWith('ok')
+    expect(tenantAuth.issueActivationToken).toHaveBeenCalledWith('ok', undefined, {
+      organizationId: 'org-1',
+      email: 'ok@example.se',
+      onlyNotActivated: true,
+    })
     // PR 2: lastInviteMessageId sätts INTE här längre (workern skriver Resend-id
     // efter lyckat utskick). Vid (om)skick nollställs det + leverans-/bounce-state.
     expect(prisma.tenant.update).toHaveBeenCalledWith(
