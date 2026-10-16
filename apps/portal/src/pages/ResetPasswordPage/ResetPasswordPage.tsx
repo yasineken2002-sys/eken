@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useSessionMutation } from '@/lib/session-guard'
+import { PortalNetworkError } from '@/lib/network-state'
 import { validatePasswordStrength } from '@eken/shared'
 import { resetPassword } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
@@ -25,6 +26,10 @@ export function ResetPasswordPage() {
       navigate('/dashboard', { replace: true })
     },
     onError: (err: unknown) => {
+      if (err instanceof PortalNetworkError) {
+        setErrorMsg(err.message)
+        return
+      }
       const e = err as {
         response?: { status?: number; data?: { error?: { message?: string } } }
       }
@@ -108,7 +113,11 @@ export function ResetPasswordPage() {
             autoComplete="new-password"
           />
 
-          {errorMsg && <p className={styles.errorMsg}>{errorMsg}</p>}
+          {errorMsg && (
+            <p className={styles.errorMsg} role="alert">
+              {errorMsg}
+            </p>
+          )}
 
           <button
             type="submit"
