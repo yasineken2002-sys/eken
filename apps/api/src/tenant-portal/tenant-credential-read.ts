@@ -92,7 +92,7 @@ export type PublicTenant<T = Tenant> = Omit<T, TenantCredentialKey> & {
  * upptäckte det genom att mocka `findUnique`; utan dem hade det gått igenom.
  */
 export async function readTenantWithCredentials<A extends Prisma.TenantFindUniqueArgs>(
-  prisma: PrismaService,
+  prisma: Pick<PrismaService, 'tenant'>,
   args: A,
 ): Promise<TenantWithCredentials<Prisma.TenantGetPayload<A>> | null> {
   const rad = await prisma.tenant.findUnique(args)
