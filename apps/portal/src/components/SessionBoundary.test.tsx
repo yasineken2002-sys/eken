@@ -27,14 +27,14 @@ vi.mock('sonner', () => ({ toast: notifications }))
 
 const KEY = ['portal', 'dashboard'] as const
 const A: PortalTenant = {
-  id: 'tenant-a',
+  id: '50000000-0000-4000-8000-000000000001',
   type: 'INDIVIDUAL',
   firstName: 'Endast A',
   email: 'a@synthetic.invalid',
 }
 // Ett annat hyresförhållande, även hos en annan hyresvärd, har egen Tenant.id.
 const B: PortalTenant = {
-  id: 'tenant-b',
+  id: '50000000-0000-4000-8000-000000000002',
   type: 'INDIVIDUAL',
   firstName: 'Endast B',
   email: 'b@synthetic.invalid',
@@ -51,6 +51,20 @@ const dashboard = (tenant: PortalTenant): PortalDashboard => ({
   overdueInvoices: 0,
   openMaintenanceTickets: 0,
   unreadNotices: 0,
+})
+
+// Lösenords-API:ts verkliga tenantSummary, utan profilfält som type/phone.
+const passwordResolution = (tenant: PortalSessionTenant, sessionToken: string) => ({
+  status: 'complete',
+  sessionToken,
+  expiresAt: sessionExpiry,
+  tenant: {
+    id: tenant.id,
+    email: tenant.email,
+    firstName: tenant.firstName ?? null,
+    lastName: tenant.lastName ?? null,
+    companyName: tenant.companyName ?? null,
+  },
 })
 
 function deferred<T>() {
@@ -577,11 +591,11 @@ describe('riktiga in- och utloggningsvyer', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Logga in' }))
     await waitFor(() =>
-      expect(requests.some((r) => r.config.url === '/tenant-portal/login')).toBe(true),
+      expect(requests.some((r) => r.config.url === '/tenant-portal/login/resolve')).toBe(true),
     )
-    const old = requests.find((r) => r.config.url === '/tenant-portal/login')!
+    const old = requests.find((r) => r.config.url === '/tenant-portal/login/resolve')!
     act(() => signIn(B, 'token-b'))
-    await act(async () => old.resolve({ sessionToken: 'token-a', tenant: A, expiresAt: expires() }))
+    await act(async () => old.resolve(passwordResolution(A, 'token-a')))
     expect(useSessionStore.getState().sessionToken).toBe('token-b')
     expect(useSessionStore.getState().tenant?.id).toBe(B.id)
     expect(notifications.error).not.toHaveBeenCalled()
@@ -615,21 +629,115 @@ describe('riktiga in- och utloggningsvyer', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Logga in' }))
     await waitFor(() =>
-      expect(requests.some((request) => request.config.url === '/tenant-portal/login')).toBe(true),
+      expect(
+        requests.some((request) => request.config.url === '/tenant-portal/login/resolve'),
+      ).toBe(true),
     )
-    const login = requests.find((request) => request.config.url === '/tenant-portal/login')!
-    await act(async () =>
-      login.resolve({ sessionToken: 'new-session', tenant, expiresAt: sessionExpiry }),
-    )
+    const login = requests.find((request) => request.config.url === '/tenant-portal/login/resolve')!
+    await act(async () => login.resolve(passwordResolution(tenant, 'new-session')))
     await waitFor(() =>
       expect(screen.getByLabelText('aktuell sida')).toHaveTextContent('/dashboard'),
     )
     expect(useSessionStore.getState().isAuthenticated).toBe(true)
     expect(useSessionStore.getState().tenant?.id).toBe(tenant.id)
-    expect(useSessionStore.getState().tenant?.type).toBe(tenant.type)
+    expect(useSessionStore.getState().tenant?.type).toBeUndefined()
+    expect(useSessionStore.getState().tenant?.firstName).toBe(tenant.firstName ?? undefined)
+    expect(useSessionStore.getState().tenant?.lastName).toBe(tenant.lastName ?? undefined)
+    expect(useSessionStore.getState().tenant?.companyName).toBe(tenant.companyName ?? undefined)
     expect(screen.getByLabelText('inloggat konto')).toHaveTextContent(tenant.id)
     expect(notifications.error).not.toHaveBeenCalled()
   })
+
+  it.each(['BankID', 'lösenord'] as const)(
+    'behåller %s som vinnare när den andra verkliga inloggningsvägen svarar senare',
+    async (winner) => {
+      bankIdEnabled = true
+      render(
+        <MemoryRouter initialEntries={['/login']}>
+          <SessionBoundary>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/dashboard" element={<LocalProbe />} />
+            </Routes>
+            <LocationProbe />
+          </SessionBoundary>
+        </MemoryRouter>,
+      )
+      fireEvent.change(screen.getByLabelText('E-postadress'), { target: { value: A.email } })
+      fireEvent.change(screen.getByLabelText('Lösenord'), {
+        target: { value: 'syntetiskt-losenord' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Logga in' }))
+      await waitFor(() =>
+        expect(
+          requests.some((request) => request.config.url === '/tenant-portal/login/resolve'),
+        ).toBe(true),
+      )
+      const password = requests.find(
+        (request) => request.config.url === '/tenant-portal/login/resolve',
+      )!
+      fireEvent.click(await screen.findByRole('button', { name: 'Logga in med BankID' }))
+      await waitFor(() =>
+        expect(
+          requests.some((request) => request.config.url === '/tenant-portal/auth/bankid/start'),
+        ).toBe(true),
+      )
+      const start = requests.find(
+        (request) => request.config.url === '/tenant-portal/auth/bankid/start',
+      )!
+      // Endast BankID:s pollintervall styrs. Båda inloggningsanropen går genom
+      // verkliga komponenter, API-funktioner och Axios-/sessionsgrindar.
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+      try {
+        await act(async () => start.resolve({ orderRef: 'synthetic-competing-order' }))
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2000)
+        })
+        const collect = requests.find(
+          (request) => request.config.url === '/tenant-portal/auth/bankid/collect',
+        )!
+        expect(collect).toBeDefined()
+        expect(useSessionStore.getState().isAuthenticated).toBe(false)
+        const bankIdResult = passwordResolution(B, 'bankid-winner-session')
+        const passwordResult = passwordResolution(A, 'password-winner-session')
+
+        await act(async () => {
+          if (winner === 'BankID') collect.resolve(bankIdResult)
+          else password.resolve(passwordResult)
+        })
+        const expected = winner === 'BankID' ? bankIdResult : passwordResult
+        expect(useSessionStore.getState().sessionToken).toBe(expected.sessionToken)
+        expect(useSessionStore.getState().tenant?.id).toBe(expected.tenant.id)
+        expect(screen.getByLabelText('inloggat konto')).toHaveTextContent(expected.tenant.id)
+        expect(screen.getByLabelText('aktuell sida')).toHaveTextContent('/dashboard')
+        const generation = useSessionStore.getState().sessionGeneration
+        const storedSession = localStorage.getItem('tenant_session')
+
+        // Adaptern levererar även efter eventuell abort; förlorarens riktiga
+        // complete-svar får inte ersätta vinnaren eller återstarta pollningen.
+        await act(async () => {
+          if (winner === 'BankID') password.resolve(passwordResult)
+          else collect.resolve(bankIdResult)
+        })
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2000)
+        })
+        expect(useSessionStore.getState().sessionGeneration).toBe(generation)
+        expect(useSessionStore.getState().sessionToken).toBe(expected.sessionToken)
+        expect(useSessionStore.getState().tenant?.id).toBe(expected.tenant.id)
+        expect(localStorage.getItem('tenant_session')).toBe(storedSession)
+        expect(screen.getByLabelText('inloggat konto')).toHaveTextContent(expected.tenant.id)
+        expect(screen.getByLabelText('aktuell sida')).toHaveTextContent('/dashboard')
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(notifications.error).not.toHaveBeenCalled()
+        expect(
+          requests.filter((request) => request.config.url === '/tenant-portal/auth/bankid/collect'),
+        ).toHaveLength(1)
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
 
   it('tar emot BankID:s verkliga sessionssammanfattning utan type och med nullfält', async () => {
     bankIdEnabled = true

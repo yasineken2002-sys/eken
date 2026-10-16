@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { TenantLoginResolveResultSchema, type TenantLoginResolveResult } from '@eken/shared'
 import { isSessionCurrent, useSessionStore } from '@/store/session.store'
 import { SessionChangedError } from '@/lib/session-guard'
 import type {
@@ -142,6 +143,25 @@ export const activateAccount = (payload: TenantActivateInput) =>
 
 export const loginWithPassword = (payload: TenantLoginInput) =>
   post<PortalAuthResult>('/tenant-portal/login', payload)
+
+/** Kontoval används endast i formulärets minne, aldrig som React Query-mutation. */
+export async function resolvePasswordLogin(
+  payload: TenantLoginInput,
+  signal?: AbortSignal,
+): Promise<TenantLoginResolveResult> {
+  const { data } = await portalApi.post<{ data: unknown }>(
+    '/tenant-portal/login/resolve',
+    payload,
+    signal ? { signal } : {},
+  )
+  const result = TenantLoginResolveResultSchema.safeParse(data?.data)
+  if (!result.success) {
+    // Zod-/Axiosdetaljer kan bära ett rått svar. Endast en fast feltext lämnar
+    // kontraktsgrinden; ingen felaktig session eller kandidatlista används.
+    throw new Error('Inloggningssvaret kunde inte verifieras. Försök igen.')
+  }
+  return result.data
+}
 
 // ── BankID (#745 PR 4) ───────────────────────────────────────────────────────
 //
