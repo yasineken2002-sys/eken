@@ -1,5 +1,7 @@
 import axios from 'axios'
-import { useSessionStore } from '@/store/session.store'
+import { TenantLoginResolveResultSchema, type TenantLoginResolveResult } from '@eken/shared'
+import { isSessionCurrent, useSessionStore } from '@/store/session.store'
+import { SessionChangedError } from '@/lib/session-guard'
 import type {
   PortalActivationInfo,
   PortalAuthResult,
@@ -41,17 +43,61 @@ export const portalApi = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-portalApi.interceptors.request.use((config) => {
-  const devId = import.meta.env.VITE_DEV_TENANT_ID
-  if (devId) config.headers['X-Dev-Tenant-Id'] = devId
-  const token = useSessionStore.getState().getSessionToken()
-  if (token) config.headers['Authorization'] = `Bearer ${token}`
-  return config
-})
+const requestSessions = new WeakMap<object, { generation: number; protected: boolean }>()
+
+// Synkront: A:s nyttolast får aldrig hinna få B:s token i en senare mikrotask.
+// Även publika auth-anrop ägs av sin startgeneration, men deras 401 är authfel,
+// inte ett besked att den befintliga portalsessionen ska raderas.
+portalApi.interceptors.request.use(
+  (config) => {
+    const state = useSessionStore.getState()
+    if (state.checkAndClearIfExpired()) throw new SessionChangedError()
+    const protectedRequest =
+      !!config.url &&
+      (config.url.startsWith('/portal/') || config.url.startsWith('/tenant-portal/ai/'))
+    requestSessions.set(config, {
+      generation: state.sessionGeneration,
+      protected: protectedRequest,
+    })
+    const devId = import.meta.env.VITE_DEV_TENANT_ID
+    if (devId) config.headers['X-Dev-Tenant-Id'] = devId
+    if (protectedRequest && state.sessionToken) {
+      config.headers['Authorization'] = `Bearer ${state.sessionToken}`
+    }
+    return config
+  },
+  (error: unknown) => {
+    throw error
+  },
+  { synchronous: true },
+)
+
+function assertCurrentRequest(config: object) {
+  const owner = requestSessions.get(config)
+  if (!owner || !isSessionCurrent(owner.generation)) {
+    if (owner?.generation === useSessionStore.getState().sessionGeneration) {
+      useSessionStore.getState().checkAndClearIfExpired()
+    }
+    throw new SessionChangedError()
+  }
+  return owner
+}
 
 portalApi.interceptors.response.use(
-  (res) => res,
-  (error: unknown) => Promise.reject(error),
+  (res) => {
+    assertCurrentRequest(res.config)
+    return res
+  },
+  (error: unknown) => {
+    if (axios.isAxiosError(error) && error.config) {
+      const owner = assertCurrentRequest(error.config)
+      if (owner.protected && error.response?.status === 401) {
+        useSessionStore.getState().clearSession()
+        throw new SessionChangedError()
+      }
+    }
+    return Promise.reject(error)
+  },
 )
 
 async function get<T>(url: string): Promise<T> {
@@ -97,6 +143,25 @@ export const activateAccount = (payload: TenantActivateInput) =>
 
 export const loginWithPassword = (payload: TenantLoginInput) =>
   post<PortalAuthResult>('/tenant-portal/login', payload)
+
+/** Kontoval används endast i formulärets minne, aldrig som React Query-mutation. */
+export async function resolvePasswordLogin(
+  payload: TenantLoginInput,
+  signal?: AbortSignal,
+): Promise<TenantLoginResolveResult> {
+  const { data } = await portalApi.post<{ data: unknown }>(
+    '/tenant-portal/login/resolve',
+    payload,
+    signal ? { signal } : {},
+  )
+  const result = TenantLoginResolveResultSchema.safeParse(data?.data)
+  if (!result.success) {
+    // Zod-/Axiosdetaljer kan bära ett rått svar. Endast en fast feltext lämnar
+    // kontraktsgrinden; ingen felaktig session eller kandidatlista används.
+    throw new Error('Inloggningssvaret kunde inte verifieras. Försök igen.')
+  }
+  return result.data
+}
 
 // ── BankID (#745 PR 4) ───────────────────────────────────────────────────────
 //
@@ -156,7 +221,9 @@ export const fetchRentNotices = () => get<PortalRentNotice[]>('/portal/rent-noti
  * en native download i webbläsaren och städar upp blob-URL:en efter klick.
  */
 async function downloadPdfBlob(url: string, filename: string): Promise<void> {
+  const generation = useSessionStore.getState().sessionGeneration
   const response = await portalApi.get<Blob>(url, { responseType: 'blob' })
+  if (!isSessionCurrent(generation)) throw new SessionChangedError()
   const blobUrl = URL.createObjectURL(response.data)
   const a = document.createElement('a')
   a.href = blobUrl
