@@ -306,7 +306,7 @@ describe('Inert fryst Fortnox-källa mot riktig PostgreSQL', () => {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
     })
   }
-  function capture(org: string, id = randomUUID(), input: StartCheckpointInput = INPUT) {
+  function capture(org: string, id: string = randomUUID(), input: StartCheckpointInput = INPUT) {
     return rr((tx) => captureCheckpointSource(tx, org, id, input))
   }
   async function organization() {
