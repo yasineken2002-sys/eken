@@ -417,7 +417,7 @@ export class FortnoxReadCheckpointService {
         >`
         SELECT "key", "detailDigest", "validated" FROM "FortnoxReadVoucherCheckpoint"
         WHERE "organizationId" = ${run.organizationId} AND "runId" = ${run.id}
-          AND (${afterKey}::text IS NULL OR "key" COLLATE "C" > ${afterKey}::text COLLATE "C")
+          ${afterKey === null ? Prisma.empty : Prisma.sql`AND "key" COLLATE "C" > ${afterKey}::text COLLATE "C"`}
         ORDER BY "key" COLLATE "C" ASC LIMIT ${limit}`
         const items: ValidatedLedgerVoucher[] = []
         for (const row of rows) {
