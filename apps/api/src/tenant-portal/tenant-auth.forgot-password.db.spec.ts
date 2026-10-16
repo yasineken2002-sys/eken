@@ -18,6 +18,7 @@ import { LockService } from '../common/redis/lock.service'
 import { ContractTemplateService } from '../contracts/contract-template.service'
 import { MailService } from '../mail/mail.service'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 
 type ResetMail = Parameters<MailService['sendPasswordReset']>[0]
 const PORTAL_URL = 'https://portal.example.invalid'
@@ -75,6 +76,14 @@ describe('glömt lösenord · flera hyresvärdar med samma e-postadress', () => 
     const module = await Test.createTestingModule({
       providers: [
         TenantAuthService,
+        {
+          provide: TenantLoginBudget,
+          // Domänprov; den verkliga Redis-budgeten provas i separat svit.
+          useValue: {
+            run: async (_context, work) =>
+              work({ reserve: async () => {}, assertActive: () => {} }),
+          } satisfies Pick<TenantLoginBudget, 'run'>,
+        },
         { provide: PrismaService, useValue: client },
         // Miljöfilens PORTAL_URL får inte styra den syntetiska mottagarlänken.
         {

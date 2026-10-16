@@ -34,6 +34,7 @@ import { MailService } from '../mail/mail.service'
 import { TENANT_CREDENTIAL_KEYS } from '../tenants/tenant-credential-keys'
 import { TenantsService } from '../tenants/tenants.service'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 
 let mockAfterHash: (() => Promise<void>) | undefined
 const actualBcrypt = jest.requireActual<typeof import('bcryptjs')>('bcryptjs')
@@ -147,6 +148,14 @@ describe('e-postbyte · återkallade portallänkar och sessioner i riktig DB', (
       providers: [
         TenantsService,
         TenantAuthService,
+        {
+          provide: TenantLoginBudget,
+          // Domänprov; den verkliga Redis-budgeten provas i separat svit.
+          useValue: {
+            run: async (_context, work) =>
+              work({ reserve: async () => {}, assertActive: () => {} }),
+          } satisfies Pick<TenantLoginBudget, 'run'>,
+        },
         { provide: PrismaService, useValue: db },
         { provide: PersonalNumberService, useValue: pn },
         { provide: ConfigService, useValue: new ConfigService({}) },

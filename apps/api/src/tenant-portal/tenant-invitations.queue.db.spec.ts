@@ -38,6 +38,7 @@ import { type MailJobPayload, QUEUE_HIGH, QUEUE_LOW, QUEUE_NORMAL } from '../mai
 import { TenantsService } from '../tenants/tenants.service'
 import { ResendWebhookService } from '../webhooks/resend-webhook.service'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 import { TenantInvitationsService } from './tenant-invitations.service'
 
 type ProviderPayload = { to: string | string[] }
@@ -392,6 +393,14 @@ describe('portalinbjudan · verklig Bull-kö och leveranskorrelation i DB', () =
         MailWorkerHigh,
         RentNoticeEventsService,
         TenantAuthService,
+        {
+          provide: TenantLoginBudget,
+          // Domänprov; den verkliga Redis-budgeten provas i separat svit.
+          useValue: {
+            run: async (_context, work) =>
+              work({ reserve: async () => {}, assertActive: () => {} }),
+          } satisfies Pick<TenantLoginBudget, 'run'>,
+        },
         TenantInvitationsService,
         TenantsService,
         ResendWebhookService,

@@ -40,6 +40,7 @@ import { TenantPortalController } from './tenant-portal.controller'
 import { TenantPortalService } from './tenant-portal.service'
 import { TenantAuthGuard } from './tenant-auth.guard'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { StorageService } from '../storage/storage.service'
 import { PdfService } from '../invoices/pdf.service'
@@ -150,6 +151,14 @@ medDb('portalens besiktningsendpoints över HTTP', () => {
         TenantPortalService,
         TenantAuthGuard,
         TenantAuthService,
+        {
+          provide: TenantLoginBudget,
+          // Domänprov; den verkliga Redis-budgeten provas i separat svit.
+          useValue: {
+            run: async (_context, work) =>
+              work({ reserve: async () => {}, assertActive: () => {} }),
+          } satisfies Pick<TenantLoginBudget, 'run'>,
+        },
         InspectionsService,
         InspectionImageIntegrityService,
         { provide: PrismaService, useValue: prisma },
