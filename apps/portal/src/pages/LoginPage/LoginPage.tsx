@@ -12,6 +12,7 @@ import { resolvePasswordLogin } from '@/api/portal.api'
 import { useSessionStore } from '@/store/session.store'
 import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 import { BankIdLogin } from '@/components/BankIdLogin/BankIdLogin'
+import { InstallPortal } from '@/components/InstallPortal'
 import styles from './LoginPage.module.css'
 
 type LoginChoice = Extract<TenantLoginResolveResult, { status: 'choose' }>
@@ -320,6 +321,7 @@ export function LoginPage() {
             Glömt lösenord?
           </Link>
         </div>
+        <InstallPortal />
       </div>
     </div>
   )

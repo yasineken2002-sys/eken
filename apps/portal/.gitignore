@@ -1,1 +1,5 @@
 .vercel
+
+# Playwrights lokala rapporter och browserartefakter
+test-results/
+playwright-report/

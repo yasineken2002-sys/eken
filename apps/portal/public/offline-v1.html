@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="eveno-public-offline" content="v1" />
+    <title>Offline — Eveno Hyresgästportal</title>
+    <style>
+      /* Frysta offentliga färger från packages/ui/src/tokens.ts. Ingen extern resurs. */
+      :root {
+        color-scheme: light;
+        --ev-brand: #1a6b3c;
+        --ev-bg: #f6f4f0;
+        --ev-surface: #ffffff;
+        --ev-text: #241f1a;
+        --ev-text-muted: #5a5248;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        color: var(--ev-text);
+        background: var(--ev-bg);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        margin: 0;
+        padding: 24px 16px;
+        display: grid;
+        place-items: center;
+      }
+      main {
+        width: 100%;
+        max-width: 420px;
+        padding: 28px 24px;
+        border-radius: 20px;
+        background: var(--ev-surface);
+        overflow-wrap: anywhere;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        color: var(--ev-surface);
+        background: var(--ev-brand);
+        font-size: 24px;
+        font-weight: 700;
+      }
+      .name {
+        font-weight: 700;
+      }
+      .product {
+        font-size: 14px;
+        color: var(--ev-text-muted);
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 26px;
+      }
+      p {
+        margin: 0 0 16px;
+        line-height: 1.6;
+      }
+      .hint {
+        color: var(--ev-text-muted);
+        font-size: 14px;
+      }
+      a {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        padding: 12px 16px;
+        margin-top: 24px;
+        border-radius: 10px;
+        color: var(--ev-surface);
+        background: var(--ev-brand);
+        font-weight: 600;
+        text-decoration: none;
+      }
+      a:focus-visible {
+        outline: 3px solid var(--ev-brand);
+        outline-offset: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <span class="mark" aria-hidden="true">E</span>
+        <div>
+          <div class="name">Eveno</div>
+          <div class="product">Hyresgästportal</div>
+        </div>
+      </div>
+      <h1>Du är offline</h1>
+      <p>Portalen kunde inte nås. Kontrollera din internetanslutning och öppna portalen igen.</p>
+      <p class="hint">
+        Dina avier, dokument och andra personliga uppgifter visas när du är ansluten.
+      </p>
+      <p class="hint">
+        Om du nyss skickade en åtgärd, kontrollera resultatet när anslutningen är tillbaka innan du
+        försöker igen.
+      </p>
+      <a href="/" rel="noreferrer">Öppna portalen igen</a>
+    </main>
+  </body>
+</html>

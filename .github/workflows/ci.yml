@@ -1641,25 +1641,38 @@ jobs:
       # psql används av tre specar för att sätta/läsa kända tokens och rader.
       # Egen timeout: steget hämtar över nätet från Ubuntu-arkivet, och den
       # spegeln kan gå från 10 sekunder till obegränsat utan förvarning — se
-      # noten vid "Install Chromium" nedan. Faller hellre på 5 min än bränner
+      # noten vid browserinstallationen nedan. Faller hellre på 5 min än bränner
       # jobbets 25.
       - name: Install postgresql-client
         timeout-minutes: 5
         run: sudo apt-get install -y --no-install-recommends postgresql-client
 
-      # Chromium är ~130 MB. Utan cache betalar varje körning nedladdningen och
-      # ett 2,5-minutersjobb blir ett femminutersjobb av fel skäl. Nyckeln binds
-      # till Playwright-VERSIONEN — en uppgradering måste ge en cache-miss,
-      # annars kör vi en webbläsare som inte matchar biblioteket.
-      - name: Resolve Playwright version
+      # Web och portal delar browserbuntar. Läs installerad version efter den
+      # frysta installationen, inte ett semverintervall från package.json.
+      # OS-version och arkitektur ingår: samma WebKit-revision har olika
+      # binärer för Ubuntu 24.04/26.04 när ubuntu-latest byter runner-image.
+      - name: Resolve Playwright version and platform
         id: pw
-        run: echo "version=$(node -p "require('./apps/web/package.json').devDependencies['@playwright/test'].replace(/[^0-9.]/g,'')")" >> "$GITHUB_OUTPUT"
+        run: |
+          node <<'JS'
+          const { appendFileSync } = require('node:fs')
+          const web = require('./apps/web/node_modules/@playwright/test/package.json').version
+          const portal = require('./apps/portal/node_modules/@playwright/test/package.json').version
+          if (web !== portal || !/^\d+\.\d+\.\d+$/.test(web)) {
+            throw new Error(`Web och portal måste ha samma stabila Playwright-version: web=${web}, portal=${portal}`)
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${web}\n`)
+          console.log(`Installerad Playwright-version för web och portal: ${web}`)
+          JS
+          . /etc/os-release
+          : "${ID:?OS-id saknas}" "${VERSION_ID:?OS-version saknas}"
+          printf 'os=%s-%s\n' "$ID" "$VERSION_ID" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
         id: pw-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: playwright-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.pw.outputs.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
 
       # ── VARFÖR DET INTE STÅR `--with-deps` HÄR ────────────────────────────
       #
@@ -1696,10 +1709,22 @@ jobs:
       # paketen — se PR:en för siffrorna. Skulle en framtida runner-image sakna
       # ett bibliotek Chromium behöver, misslyckas jobbet SYNLIGT vid browser
       # launch; det blir inte tyst grönt.
-      - name: Install Chromium
+      # WebKit tillkommer nu och behöver bland annat GTK4/GStreamer-bibliotek.
+      # Chromium-mätningen ovan visar inte att dessa finns i runner-imagen.
+      # Använd den installerade Playwright-versionens OS-lista, med ett eget
+      # femminuterstak. Kommandot inkluderar även tools/typsnitt; det är ingen
+      # fontfri installation. OS-paketen måste installeras på varje ny VM även
+      # vid browsercacheträff. Ingen generell install-deps för Chromium återinförs.
+      - name: Install WebKit system dependencies
+        timeout-minutes: 5
+        run: pnpm --filter @eken/portal exec playwright install-deps webkit
+
+      # Båda Chromiumprojekt använder full Chromium (channel: chromium).
+      # Hämta inte också den oanvända headless-shell-bunten.
+      - name: Install Chromium and WebKit
         if: steps.pw-cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
-        run: pnpm --filter @eken/web exec playwright install chromium
+        run: pnpm --filter @eken/portal exec playwright install --no-shell chromium webkit
 
       # `dev` = `nest start --watch` och går UTANFÖR turbo, så den ärver ingen
       # `dependsOn: ["^build"]`. Utan det här steget hittar API:t inte @eken/shared
@@ -1797,6 +1822,37 @@ jobs:
           set -o pipefail
           npx playwright test --reporter=line 2>&1 | tee /tmp/e2e-run.log
 
+      # Service worker kräver byggd portal. Chromium och WebKit kör tio fall var
+      # med egen loopback-fixture och profil efter vanliga E2E, utan backend.
+      - name: Build portal for installation proof
+        run: pnpm --filter @eken/portal build
+
+      - name: Kanariefågel — portalens installationsprov
+        working-directory: apps/portal
+        run: |
+          pnpm exec playwright test --list > /tmp/portal-pwa-list.txt
+          cat /tmp/portal-pwa-list.txt
+          found=$(sed -n 's/^Total: \([0-9][0-9]*\) test.*/\1/p' /tmp/portal-pwa-list.txt)
+          if [ "$found" != "20" ]; then
+            echo "::error::Portalens installationsprov ska vara exakt 20; hittade '${found:-inget tal}'."
+            exit 1
+          fi
+
+      - name: Test built portal installation and public offline boundary
+        working-directory: apps/portal
+        env:
+          PORTAL_PWA_REPORT_PATH: test-results/pwa-report.json
+        run: |
+          pnpm test:pwa
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs'
+          const report = JSON.parse(readFileSync('test-results/pwa-report.json', 'utf8'))
+          const { expected, unexpected, flaky, skipped } = report.stats
+          if (expected !== 20 || unexpected !== 0 || flaky !== 0 || skipped !== 0 || report.errors.length) {
+            throw new Error(`PWA: kräver 20 godkända och inga fel/omförsök/skip: ${JSON.stringify(report.stats)}`)
+          }
+          JS
+
       # `retries: 2` gör att ett instabilt test kan passera på andra försöket och
       # rapporteras som grönt. Det är rätt för merge-flödet men fel för vad vi
       # VET: en flake som ingen ser blir ett rött jobb senare, på någon annans PR.
@@ -1826,7 +1882,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
-          path: apps/web/test-results/
+          path: |
+            apps/web/test-results/
+            apps/portal/test-results/
           retention-days: 7
 
   ai-journal-source-guard:
