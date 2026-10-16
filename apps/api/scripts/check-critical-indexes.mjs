@@ -193,13 +193,14 @@ const CRITICAL_INDEXES = [
   {
     label: 'Fortnox-läsning — högst EN beständig pågående körning per organisation',
     expectedName: 'fortnox_read_one_managed_running',
-    migrationRef: '20261016222500_fortnox_read_checkpoints',
+    migrationRef: '20261017020100_fortnox_source_run_binding',
     unique: true,
     table: 'FortnoxReadRun',
     columns: ['organizationId'],
     // Äldre synkrona körningar saknar workVersion. Historik och färdiga
-    // körningar ska inte hindra en ny beställning; aktiva delsteg ska göra det.
-    where: "workVersion=1ANDstatus='RUNNING'",
+    // körningar ska inte hindra en ny beställning; v1 och källbunden v2 delar
+    // samma aktiva plats. Ett separat index per version hade tillåtit två runs.
+    where: "workVersionIN(1,2)ANDstatus='RUNNING'",
   },
   {
     label: 'Fortnox-checkpoint — nästa kvarvarande detalj i C-ordning',
@@ -469,6 +470,36 @@ function självtest() {
         columns: normCols(match[4]), where: normPredicate(match[5] ?? ''),
       }
       kräv(`C-INDEX (${name}: ${label})`, satisfies(actual, inv) === expected,
+        JSON.stringify(actual))
+    }
+  }
+
+  const runningInv = CRITICAL_INDEXES.find((i) => i.expectedName === 'fortnox_read_one_managed_running')
+  kräv('GOLV (gemensam v1/v2-invariant finns)', !!runningInv)
+  if (runningInv) {
+    const sql = 'CREATE UNIQUE INDEX "fortnox_read_one_managed_running" ON "FortnoxReadRun" ("organizationId") WHERE "workVersion" IN (1, 2) AND "status" = \'RUNNING\''
+    const cases = [
+      ['båda versionerna, gemensamt organisationsscope', sql, true],
+      ['legitim omdöpning', sql.replace('"fortnox_read_one_managed_running"', '"omdopt_index"'), true],
+      ['bara v1', sql.replace('IN (1, 2)', '= 1'), false],
+      ['bara v2', sql.replace('IN (1, 2)', '= 2'), false],
+      ['annan version', sql.replace('IN (1, 2)', 'IN (1, 3)'), false],
+      ['separat plats per version', sql.replace('("organizationId")', '("organizationId", "workVersion")'), false],
+      ['saknat organisationsscope', sql.replace('("organizationId")', '("connectionId")'), false],
+      ['fel status', sql.replace("'RUNNING'", "'FAILED'"), false],
+      ['historik blockerar', sql.replace(' AND "status" = \'RUNNING\'', ''), false],
+      ['legacy omfattas också', sql.replace('"workVersion" IN (1, 2) AND ', ''), false],
+      ['unikhet borttagen', sql.replace('CREATE UNIQUE INDEX', 'CREATE INDEX'), false],
+    ]
+    for (const [label, source, expected] of cases) {
+      const match = CREATE_RE.exec(source)
+      kräv(`RUNNING (${label} parsas)`, !!match)
+      if (!match) continue
+      const actual = {
+        unique: !!match[1], table: normTable(match[3]),
+        columns: normCols(match[4]), where: normPredicate(match[5] ?? ''),
+      }
+      kräv(`RUNNING (${label})`, satisfies(actual, runningInv) === expected,
         JSON.stringify(actual))
     }
   }

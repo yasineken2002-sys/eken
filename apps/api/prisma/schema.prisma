@@ -7817,6 +7817,7 @@ enum FortnoxReadPhase {
   MANIFEST
   DETAILS
   READY_TO_REDUCE
+  SOURCE_CAPTURED
 }
 
 // En återläsning av Fortnox huvudbok för en period. summary/rows är null när
@@ -7845,9 +7846,11 @@ model FortnoxReadRun {
   reason                String?
   triggeredByUserId     String?
 
-  // Version 1 är den ännu ej HTTP-/köinkopplade checkpointkärnan. Legacy är null.
+  // Version 1 är checkpointkärnan; version 2 har bara en atomiskt fryst råkälla.
+  // Båda är ännu ej HTTP-/köinkopplade. Legacy är null.
   workVersion          Int?
   phase                FortnoxReadPhase?
+  sourceCaptureId      String? @unique
   connectionGeneration Int?
   fortnoxOrgNumber      String?
   requestHash          String?
@@ -7864,8 +7867,10 @@ model FortnoxReadRun {
   manifestPages FortnoxReadManifestPage[]
   voucherCheckpoints FortnoxReadVoucherCheckpoint[]
   contextSnapshot FortnoxReadContextSnapshot?
+  sourceCapture FortnoxReadSourceCapture? @relation(fields: [sourceCaptureId, organizationId], references: [id, organizationId], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([id, organizationId])
+  @@unique([sourceCaptureId, organizationId])
   @@index([organizationId, startedAt])
 }
 
@@ -7954,7 +7959,8 @@ model FortnoxReadContextPage {
   @@index([organizationId])
 }
 
-// Fryst råkälla från samma databasögonblick. Ännu ingen Run-/v2-/produktkoppling.
+// Fryst råkälla från samma databasögonblick; v2-run kan bindas atomiskt till den.
+// Historisk källa är inte en validerad kontext eller rätt att fortsätta en run.
 // Historiska identiteter saknar avsiktligt FK till levande anslutning och källor.
 // SQL tillåter bara första förseglingen och verklig organisationscascade.
 model FortnoxReadSourceCapture {
@@ -7975,6 +7981,7 @@ model FortnoxReadSourceCapture {
   organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   mappings     FortnoxReadSourceMapping[]
   exports      FortnoxReadSourceExport[]
+  run          FortnoxReadRun?
 
   @@unique([id, organizationId])
   @@index([organizationId])
