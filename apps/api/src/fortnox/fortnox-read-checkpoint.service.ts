@@ -54,6 +54,30 @@ type ConnectionBinding = Pick<
   'id' | 'organizationId' | 'status' | 'generation' | 'fortnoxDatabaseNumber' | 'fortnoxOrgNumber'
 >
 type Locked = { run: FortnoxReadRun; connection: ConnectionBinding | null; now: Date }
+type RestoredContext = {
+  context: ReturnType<typeof CheckpointContextSchema.parse>
+  catalog: CheckpointCatalog | null
+}
+type CheckedLocked = Locked & RestoredContext
+// Den låsta kontexten ändras aldrig av checkpoint-progress. Alla ändrade fält
+// kommer fortfarande från databasens UPDATE-retur, även en ny katalog.
+type RunProgressUpdate = Pick<
+  Prisma.FortnoxReadRunUpdateInput,
+  | 'phase'
+  | 'catalog'
+  | 'financialYearStart'
+  | 'financialYearEnd'
+  | 'checkpointUpdatedAt'
+  | 'nextManifestPage'
+  | 'status'
+  | 'reason'
+  | 'completedAt'
+  | 'claimToken'
+  | 'leaseUntil'
+  | 'nextAttemptAt'
+  | 'summary'
+  | 'rows'
+>
 const LEASE_MS = 60_000
 const json = (value: unknown) => value as Prisma.InputJsonValue
 const date = (value: string) => new Date(`${value}T00:00:00Z`)
@@ -194,6 +218,7 @@ export class FortnoxReadCheckpointService {
           reason: null,
           checkpointUpdatedAt: now,
         },
+        select: { claimVersion: true, claimToken: true },
       })
       return {
         organizationId,
@@ -205,9 +230,9 @@ export class FortnoxReadCheckpointService {
   }
 
   async commitCatalog(lease: CheckpointLease, input: unknown): Promise<FortnoxReadRun> {
-    return this.withLease(lease, async (tx, { run, now }) => {
+    return this.withLease(lease, async (tx, { run, now, context }) => {
       const parsed = CheckpointCatalogSchema.safeParse(input)
-      if (!parsed.success || !this.catalogMatches(run, parsed.data))
+      if (!parsed.success || !this.catalogMatches(run, parsed.data, context))
         return this.terminal(tx, run, now, 'CATALOG_CONFLICT')
       if (run.catalog !== null) {
         if (checkpointDigest(run.catalog) !== checkpointDigest(parsed.data))
@@ -216,15 +241,12 @@ export class FortnoxReadCheckpointService {
       }
       if (run.phase !== 'CATALOG')
         throw new ConflictException('Katalogen hör inte till aktuellt lässteg')
-      return tx.fortnoxReadRun.update({
-        where: { id: run.id, organizationId: run.organizationId },
-        data: {
-          catalog: json(parsed.data),
-          phase: 'MANIFEST',
-          financialYearStart: date(parsed.data.financialYear.fromDate),
-          financialYearEnd: date(parsed.data.financialYear.toDate),
-          checkpointUpdatedAt: now,
-        },
+      return this.updateRun(tx, run, {
+        catalog: json(parsed.data),
+        phase: 'MANIFEST',
+        financialYearStart: date(parsed.data.financialYear.fromDate),
+        financialYearEnd: date(parsed.data.financialYear.toDate),
+        checkpointUpdatedAt: now,
       })
     })
   }
@@ -301,6 +323,7 @@ export class FortnoxReadCheckpointService {
           ...page,
           entries: json(page.entries),
         },
+        select: { id: true },
       })
       if (added.length)
         await tx.fortnoxReadVoucherCheckpoint.createMany({
@@ -311,13 +334,10 @@ export class FortnoxReadCheckpointService {
             manifestDigest,
           })),
         })
-      return tx.fortnoxReadRun.update({
-        where: { id: run.id, organizationId: run.organizationId },
-        data: {
-          nextManifestPage: page.page + 1,
-          phase: last ? (page.totalResources === 0 ? 'READY_TO_REDUCE' : 'DETAILS') : 'MANIFEST',
-          checkpointUpdatedAt: now,
-        },
+      return this.updateRun(tx, run, {
+        nextManifestPage: page.page + 1,
+        phase: last ? (page.totalResources === 0 ? 'READY_TO_REDUCE' : 'DETAILS') : 'MANIFEST',
+        checkpointUpdatedAt: now,
       })
     })
   }
@@ -327,8 +347,8 @@ export class FortnoxReadCheckpointService {
     key: string,
     voucher: FortnoxVoucher | undefined,
   ): Promise<FortnoxReadRun> {
-    return this.withLease(lease, async (tx, { run, now }) => {
-      const catalog = CheckpointCatalogSchema.parse(run.catalog)
+    return this.withLease(lease, async (tx, { run, now, catalog: restoredCatalog }) => {
+      const catalog = restoredCatalog ?? CheckpointCatalogSchema.parse(run.catalog)
       let validated
       try {
         validated = NormalizedVoucherSchema.parse(
@@ -356,11 +376,12 @@ export class FortnoxReadCheckpointService {
       await tx.fortnoxReadVoucherCheckpoint.update({
         where: { id: checkpoint.id, organizationId: run.organizationId },
         data: { validated: json(validated), detailDigest, observedAt: now },
+        select: { id: true },
       })
       const next = await this.nextKey(tx, run)
-      return tx.fortnoxReadRun.update({
-        where: { id: run.id, organizationId: run.organizationId },
-        data: { phase: next ? 'DETAILS' : 'READY_TO_REDUCE', checkpointUpdatedAt: now },
+      return this.updateRun(tx, run, {
+        phase: next ? 'DETAILS' : 'READY_TO_REDUCE',
+        checkpointUpdatedAt: now,
       })
     })
   }
@@ -385,35 +406,38 @@ export class FortnoxReadCheckpointService {
     if (!parsed.success) throw new BadRequestException('Ogiltig detaljsida')
     const afterKey = parsed.data.afterKey ?? null
     const limit = parsed.data.limit ?? 100
-    const result = await this.withLease(lease, async (tx, { run, now }) => {
-      if (run.phase !== 'READY_TO_REDUCE')
-        throw new ConflictException('Alla detaljer är inte sparade')
-      const catalog = CheckpointCatalogSchema.parse(run.catalog)
-      const rows = await tx.$queryRaw<
-        Array<{ key: string; detailDigest: string | null; validated: Prisma.JsonValue | null }>
-      >`
+    const result = await this.withLease(
+      lease,
+      async (tx, { run, now, catalog: restoredCatalog }) => {
+        if (run.phase !== 'READY_TO_REDUCE')
+          throw new ConflictException('Alla detaljer är inte sparade')
+        const catalog = restoredCatalog ?? CheckpointCatalogSchema.parse(run.catalog)
+        const rows = await tx.$queryRaw<
+          Array<{ key: string; detailDigest: string | null; validated: Prisma.JsonValue | null }>
+        >`
         SELECT "key", "detailDigest", "validated" FROM "FortnoxReadVoucherCheckpoint"
         WHERE "organizationId" = ${run.organizationId} AND "runId" = ${run.id}
           AND (${afterKey}::text IS NULL OR "key" COLLATE "C" > ${afterKey}::text COLLATE "C")
         ORDER BY "key" COLLATE "C" ASC LIMIT ${limit}`
-      const items: ValidatedLedgerVoucher[] = []
-      for (const row of rows) {
-        const detail = NormalizedVoucherSchema.safeParse(row.validated)
-        if (
-          !detail.success ||
-          detail.data.key !== row.key ||
-          Number(row.key.split('|')[0]) !== catalog.financialYear.id ||
-          detail.data.date < catalog.financialYear.fromDate ||
-          detail.data.date > catalog.financialYear.toDate ||
-          row.detailDigest !== checkpointDigest(detail.data)
-        ) {
-          await this.terminal(tx, run, now, 'INVALID_CONTEXT')
-          return { valid: false as const }
+        const items: ValidatedLedgerVoucher[] = []
+        for (const row of rows) {
+          const detail = NormalizedVoucherSchema.safeParse(row.validated)
+          if (
+            !detail.success ||
+            detail.data.key !== row.key ||
+            Number(row.key.split('|')[0]) !== catalog.financialYear.id ||
+            detail.data.date < catalog.financialYear.fromDate ||
+            detail.data.date > catalog.financialYear.toDate ||
+            row.detailDigest !== checkpointDigest(detail.data)
+          ) {
+            await this.terminal(tx, run, now, 'INVALID_CONTEXT')
+            return { valid: false as const }
+          }
+          items.push(detail.data)
         }
-        items.push(detail.data)
-      }
-      return { valid: true as const, items }
-    })
+        return { valid: true as const, items }
+      },
+    )
     if (!result.valid) throw new ConflictException(REASONS.INVALID_CONTEXT)
     return result.items
   }
@@ -423,6 +447,7 @@ export class FortnoxReadCheckpointService {
       await tx.fortnoxReadRun.update({
         where: { id: run.id, organizationId: run.organizationId },
         data: { claimToken: null, leaseUntil: null, checkpointUpdatedAt: now },
+        select: { id: true },
       })
     })
   }
@@ -449,6 +474,7 @@ export class FortnoxReadCheckpointService {
           nextAttemptAt: retryAt,
           checkpointUpdatedAt: now,
         },
+        select: { id: true },
       })
     })
   }
@@ -466,7 +492,7 @@ export class FortnoxReadCheckpointService {
 
   private async withLease<T>(
     lease: CheckpointLease,
-    action: (tx: Tx, locked: Locked) => Promise<T>,
+    action: (tx: Tx, locked: CheckedLocked) => Promise<T>,
   ): Promise<T> {
     const result = await this.prisma.$transaction(async (tx) => {
       const locked = await this.lockRun(tx, lease.organizationId, lease.runId)
@@ -481,16 +507,18 @@ export class FortnoxReadCheckpointService {
         run.leaseUntil <= now
       )
         throw new ConflictException('Läsanspråket har upphört')
-      const reason = !this.sameConnection(run, connection)
-        ? 'CONNECTION_CHANGED'
-        : !this.validContext(run)
-          ? 'INVALID_CONTEXT'
-          : null
-      if (reason) {
-        await this.terminal(tx, run, now, reason)
-        return { ok: false, reason } as const
+      if (!this.sameConnection(run, connection)) {
+        await this.terminal(tx, run, now, 'CONNECTION_CHANGED')
+        return { ok: false as const, reason: 'CONNECTION_CHANGED' as const }
       }
-      return { ok: true as const, value: await action(tx, locked) }
+      // Varje transaktion återläser och validerar hela sin egen kontext. Det
+      // validerade resultatet återanvänds bara inom detta låsta anrop.
+      const restored = this.validContext(run)
+      if (!restored) {
+        await this.terminal(tx, run, now, 'INVALID_CONTEXT')
+        return { ok: false as const, reason: 'INVALID_CONTEXT' as const }
+      }
+      return { ok: true as const, value: await action(tx, { ...locked, ...restored }) }
     }, PRISMA_DEFAULT_TX_LIMITS)
     // Kasta först efter commit så det varaktiga stoppet inte rullas tillbaka.
     if (!result.ok) throw new ConflictException(REASONS[result.reason])
@@ -538,7 +566,7 @@ export class FortnoxReadCheckpointService {
     )
   }
 
-  private validContext(run: FortnoxReadRun): boolean {
+  private validContext(run: FortnoxReadRun): RestoredContext | null {
     if (
       run.workVersion !== 1 ||
       !['CATALOG', 'MANIFEST', 'DETAILS', 'READY_TO_REDUCE'].includes(run.phase ?? '') ||
@@ -549,9 +577,9 @@ export class FortnoxReadCheckpointService {
       run.summary !== null ||
       run.rows !== null
     )
-      return false
+      return null
     const parsed = CheckpointContextSchema.safeParse(run.frozenContext)
-    if (!parsed.success) return false
+    if (!parsed.success) return null
     const input = parsed.data.input
     if (
       checkpointDigest(canonicalCheckpointInput(input)) !== run.requestHash ||
@@ -560,20 +588,26 @@ export class FortnoxReadCheckpointService {
       input.periodTo !== run.periodTo.toISOString().slice(0, 10) ||
       checkpointDigest(input.costAccounts) !== checkpointDigest(run.costAccounts)
     )
-      return false
-    if (run.catalog === null) return run.phase === 'CATALOG'
+      return null
+    if (run.catalog === null)
+      return run.phase === 'CATALOG' ? { context: parsed.data, catalog: null } : null
     const catalog = CheckpointCatalogSchema.safeParse(run.catalog)
-    return (
-      run.phase !== 'CATALOG' &&
-      catalog.success &&
-      this.catalogMatches(run, catalog.data) &&
-      run.financialYearStart?.toISOString().slice(0, 10) === catalog.data.financialYear.fromDate &&
-      run.financialYearEnd?.toISOString().slice(0, 10) === catalog.data.financialYear.toDate
+    if (
+      run.phase === 'CATALOG' ||
+      !catalog.success ||
+      !this.catalogMatches(run, catalog.data, parsed.data) ||
+      run.financialYearStart?.toISOString().slice(0, 10) !== catalog.data.financialYear.fromDate ||
+      run.financialYearEnd?.toISOString().slice(0, 10) !== catalog.data.financialYear.toDate
     )
+      return null
+    return { context: parsed.data, catalog: catalog.data }
   }
 
-  private catalogMatches(run: FortnoxReadRun, catalog: CheckpointCatalog): boolean {
-    const context = CheckpointContextSchema.parse(run.frozenContext)
+  private catalogMatches(
+    run: FortnoxReadRun,
+    catalog: CheckpointCatalog,
+    context: RestoredContext['context'],
+  ): boolean {
     const input = context.input
     const year = catalog.financialYear
     if (
@@ -666,6 +700,21 @@ export class FortnoxReadCheckpointService {
     return next?.key ?? null
   }
 
+  private async updateRun(
+    tx: Tx,
+    run: FortnoxReadRun,
+    data: RunProgressUpdate,
+  ): Promise<FortnoxReadRun> {
+    const updated = await tx.fortnoxReadRun.update({
+      where: { id: run.id, organizationId: run.organizationId },
+      data,
+      omit: { frozenContext: true },
+    })
+    // Samma transaktions radlås skyddar kontexten, och ovanstående skrivtyp kan
+    // inte ändra den. Övriga fält är databasens faktiska retur, inte data-patchen.
+    return { ...updated, frozenContext: run.frozenContext }
+  }
+
   private terminal(
     tx: Tx,
     run: FortnoxReadRun,
@@ -680,19 +729,16 @@ export class FortnoxReadCheckpointService {
           : reason === 'CONNECTION_CHANGED' || reason === 'INVALID_CONTEXT'
             ? 'FAILED'
             : 'PARTIAL'
-    return tx.fortnoxReadRun.update({
-      where: { id: run.id, organizationId: run.organizationId },
-      data: {
-        status,
-        reason: REASONS[reason],
-        completedAt: now,
-        claimToken: null,
-        leaseUntil: null,
-        nextAttemptAt: null,
-        checkpointUpdatedAt: now,
-        summary: Prisma.DbNull,
-        rows: Prisma.DbNull,
-      },
+    return this.updateRun(tx, run, {
+      status,
+      reason: REASONS[reason],
+      completedAt: now,
+      claimToken: null,
+      leaseUntil: null,
+      nextAttemptAt: null,
+      checkpointUpdatedAt: now,
+      summary: Prisma.DbNull,
+      rows: Prisma.DbNull,
     })
   }
 }
