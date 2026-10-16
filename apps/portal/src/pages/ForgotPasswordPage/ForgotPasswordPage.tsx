@@ -31,8 +31,12 @@ export function ForgotPasswordPage() {
           <div className={styles.successIcon}>📧</div>
           <h1 className={styles.title}>Mejl skickat</h1>
           <p className={styles.subtitle}>
-            Om ett konto finns för <strong>{email}</strong> har vi skickat instruktioner för att
-            återställa lösenordet. Länken är giltig i 24 timmar.
+            Om det finns aktiverade konton för <strong>{email}</strong> skickar vi instruktioner för
+            att återställa lösenordet. Varje länk är giltig i 24 timmar.
+          </p>
+          <p className={styles.smallHint}>
+            Har du konton hos flera hyresvärdar får du separata länkar. Hyresvärdens namn står i
+            mejlet så att du kan välja rätt konto.
           </p>
           <p className={styles.smallHint}>Inget mail? Kontrollera skräpposten.</p>
           <Link to="/login" className={styles.linkBtn}>
