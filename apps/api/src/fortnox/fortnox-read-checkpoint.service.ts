@@ -84,7 +84,8 @@ const date = (value: string) => new Date(`${value}T00:00:00Z`)
 
 /**
  * En lokal checkpointkärna utan HTTP-, kö- eller modulkoppling. Samordnar bara
- * workVersion=1; den äldre endpointens samtidighet och tidsgräns är oförändrade.
+ * workVersion=1; v2 delar startspärren men behandlas inte av denna kärna.
+ * Den äldre endpointens samtidighet och tidsgräns är oförändrade.
  * Inga token, fria API-kroppar eller ekonomiska delsummeringar lagras här.
  */
 @Injectable()
@@ -105,10 +106,12 @@ export class FortnoxReadCheckpointService {
         throw new ConflictException('Ingen aktiv Fortnox-anslutning')
       const now = await this.databaseNow(tx)
       const existing = await tx.fortnoxReadRun.findFirst({
-        where: { organizationId, workVersion: 1, status: 'RUNNING' },
+        where: { organizationId, workVersion: { in: [1, 2] }, status: 'RUNNING' },
       })
       if (existing) {
         await tx.$queryRaw`SELECT "id" FROM "FortnoxReadRun" WHERE "id" = ${existing.id} AND "organizationId" = ${organizationId} FOR UPDATE`
+        if (existing.workVersion !== 1)
+          throw new ConflictException('En annan version av Fortnox-läsningen pågår redan')
         if (!this.sameConnection(existing, connection)) {
           await this.terminal(tx, existing, now, 'CONNECTION_CHANGED')
         } else if (!this.validContext(existing)) {
