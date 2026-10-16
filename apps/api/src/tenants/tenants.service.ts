@@ -10,6 +10,7 @@ import { TENANT_CREDENTIAL_KEYS, type TenantCredentialKey } from './tenant-crede
 import { anonymizeTenantWithin, type AnonymizeActor } from '../common/gdpr/anonymize-tenant'
 import { findTenantHistory } from '../common/gdpr/tenant-history'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
+import { CLEARED_TENANT_INVITE_STATE } from './tenant-invite-state'
 
 /**
  * Safe Prisma SELECT for tenant data exposed via API.
@@ -307,6 +308,7 @@ export class TenantsService {
                 activationReminderSentAt: null,
                 passwordResetTokenHash: null,
                 passwordResetTokenExpiresAt: null,
+                ...CLEARED_TENANT_INVITE_STATE,
               }
             : {}),
         },
