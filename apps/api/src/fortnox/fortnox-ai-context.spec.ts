@@ -44,6 +44,36 @@ const text = (
 ) => formatFortnoxShadowForAi({ exports: null, ...s }, NOW).join('\n')
 
 describe('Fortnox AI-underlag (skuggläge)', () => {
+  it('namnger kundtillgodoskulden i rätt företags godkända mappning utan att blanda ihop systemens konton', () => {
+    const t = text({
+      connection: conn,
+      latestRead: null,
+      latestCompleteRead: null,
+      accountMappings: [
+        {
+          revision: 1,
+          financialYearId: 1,
+          fortnoxDatabaseNumber: conn.fortnoxDatabaseNumber,
+          rows: [
+            { role: 'KUNDTILLGODOSKULD', sourceAccountNumber: 2998, targetAccountNumber: 2997 },
+          ],
+        },
+        {
+          revision: 2,
+          financialYearId: 1,
+          fortnoxDatabaseNumber: 900002,
+          rows: [
+            { role: 'KUNDTILLGODOSKULD', sourceAccountNumber: 2996, targetAccountNumber: 2995 },
+          ],
+        },
+      ],
+    })
+    expect(t).toContain('Fortnox 2997 ← Eveno 2998 (kundtillgodoskuld)')
+    expect(t).not.toContain('KUNDTILLGODOSKULD')
+    expect(t).not.toContain('2995')
+    expect(t).toContain('ange alltid vilket system ett konto avser')
+  })
+
   it('ingen anslutning → inget block (dagens kontext oförändrad)', () => {
     expect(
       formatFortnoxShadowForAi({

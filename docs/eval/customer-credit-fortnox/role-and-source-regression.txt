@@ -1,0 +1,31 @@
+PASS src/fortnox/fortnox-ai-context.spec.ts
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/schemas/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/constants/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/constants/platform.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/utils/index.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/utils/rent-notice-display.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /Users/test/Desktop/eveno/eken-kundtillgodo/packages/shared/dist/cjs/schemas/fortnox.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+PASS src/fortnox/fortnox-customer-credit-role.spec.ts
+PASS src/customer-credit/customer-credit.db.spec.ts
+
+Test Suites: 3 passed, 3 total
+Tests:       64 passed, 64 total
+Snapshots:   0 total
+Time:        9.689 s
+Ran all test suites matching /src\/fortnox\/fortnox-customer-credit-role.spec.ts|src\/fortnox\/fortnox-ai-context.spec.ts|src\/customer-credit\/customer-credit.db.spec.ts/i.
+Test results written to: ../../../runtime-kundtillgodo-fortnox-20261016/role-and-source-regression.json

@@ -61,6 +61,7 @@ export interface Fixture {
   bankAccountId: string
   bankTransactionId: string
   liabilityAccountId: string
+  receivedAt?: Date
   source: RentNotice
   target: RentNotice
 }
@@ -70,9 +71,10 @@ export async function notice(
   input: Pick<Fixture, 'organizationId' | 'tenantId' | 'leaseId'>,
   month: number,
   amount = '1000.00',
+  sourcePeriod = SOURCE_PERIOD,
 ) {
   const period = new Date(
-    Date.UTC(SOURCE_PERIOD.getUTCFullYear(), SOURCE_PERIOD.getUTCMonth() + month - 9, 1),
+    Date.UTC(sourcePeriod.getUTCFullYear(), sourcePeriod.getUTCMonth() + month - 9, 1),
   )
   return prisma.$transaction(async (tx) => {
     const row = await tx.rentNotice.create({
@@ -88,7 +90,7 @@ export async function notice(
         createdAt: period,
         dueDate: new Date(Date.UTC(period.getUTCFullYear(), period.getUTCMonth() + 2, 0, 12)),
         status: month === 9 ? 'SENT' : 'PENDING',
-        ...(month === 9 ? { sentAt: SOURCE_PERIOD } : {}),
+        ...(month === 9 ? { sentAt: sourcePeriod } : {}),
         type: 'RENT',
       },
     })
@@ -105,10 +107,14 @@ export async function notice(
 
 export async function fixture(
   prisma: PrismaService,
-  options: { enabled?: boolean; carry?: boolean; targetAmount?: string } = {},
+  options: { enabled?: boolean; carry?: boolean; targetAmount?: string; sourcePeriod?: Date } = {},
 ): Promise<Fixture> {
   return runWithActor('SYSTEM', async () => {
     const suffix = randomUUID()
+    const sourcePeriod = options.sourcePeriod ?? SOURCE_PERIOD
+    const receivedAt = new Date(
+      Date.UTC(sourcePeriod.getUTCFullYear(), sourcePeriod.getUTCMonth(), 25, 12),
+    )
     const org = await prisma.organization.create({
       data: {
         name: `SYNTETISKT kundtillgodo ${suffix}`,
@@ -183,22 +189,22 @@ export async function fixture(
         monthlyRent: 1000,
         depositAmount: 0,
         startDate: new Date(
-          Date.UTC(SOURCE_PERIOD.getUTCFullYear(), SOURCE_PERIOD.getUTCMonth() - 1, 1),
+          Date.UTC(sourcePeriod.getUTCFullYear(), sourcePeriod.getUTCMonth() - 1, 1),
         ),
         tenancyStartDate: new Date(
-          Date.UTC(SOURCE_PERIOD.getUTCFullYear(), SOURCE_PERIOD.getUTCMonth() - 1, 1),
+          Date.UTC(sourcePeriod.getUTCFullYear(), sourcePeriod.getUTCMonth() - 1, 1),
         ),
         status: 'ACTIVE',
       },
     })
     const scope = { organizationId: org.id, tenantId: tenant.id, leaseId: lease.id }
-    const source = await notice(prisma, scope, 9)
-    const target = await notice(prisma, scope, 10, options.targetAmount)
+    const source = await notice(prisma, scope, 9, '1000.00', sourcePeriod)
+    const target = await notice(prisma, scope, 10, options.targetAmount, sourcePeriod)
     const bank = await prisma.bankTransaction.create({
       data: {
         organizationId: org.id,
         bankAccountId: bankAccount.id,
-        date: RECEIVED_AT,
+        date: receivedAt,
         description: `SYNTETISK överbetalning ${suffix}`,
         amount: new Decimal('1025.00'),
         rawOcr: source.ocrNumber,
@@ -210,6 +216,7 @@ export async function fixture(
       bankAccountId: bankAccount.id,
       bankTransactionId: bank.id,
       liabilityAccountId: liability.id,
+      receivedAt,
       source,
       target,
     }
@@ -222,6 +229,7 @@ export async function receive(
   f: Fixture,
   options: { omitPaymentJournal?: boolean } = {},
 ): Promise<CustomerCredit> {
+  const receivedAt = f.receivedAt ?? RECEIVED_AT
   return runWithActor('SYSTEM', () =>
     prisma.$transaction(async (tx) => {
       const s = services(prisma)
@@ -238,22 +246,22 @@ export async function receive(
           rentNoticeId: f.source.id,
           bankTransactionId: f.bankTransactionId,
           amount: new Decimal('1000.00'),
-          paidAt: RECEIVED_AT,
+          paidAt: receivedAt,
           source: 'BANK_RECONCILIATION',
         },
       })
       await tx.rentNotice.update({
         where: { id: f.source.id },
-        data: { status: 'PAID', paidAmount: 1000, paidAt: RECEIVED_AT },
+        data: { status: 'PAID', paidAmount: 1000, paidAt: receivedAt },
       })
       await tx.bankTransaction.update({
         where: { id: f.bankTransactionId },
-        data: { status: 'MATCHED', matchedRentNoticeId: f.source.id, matchedAt: RECEIVED_AT },
+        data: { status: 'MATCHED', matchedRentNoticeId: f.source.id, matchedAt: receivedAt },
       })
       if (!options.omitPaymentJournal) {
         const entry = await s.accounting.createJournalEntryForRentNoticePayment(
           f.source,
-          { id: f.bankTransactionId, date: RECEIVED_AT, amount: new Decimal('1000.00') },
+          { id: f.bankTransactionId, date: receivedAt, amount: new Decimal('1000.00') },
           f.organizationId,
           null,
           tx,

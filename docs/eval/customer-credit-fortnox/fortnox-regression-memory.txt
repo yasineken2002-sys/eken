@@ -1,0 +1,3 @@
+PASS src/fortnox/fortnox-kontomappning.db.spec.ts (11.179 s)
+FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command was killed with SIGABRT (Aborted): jest src/fortnox/fortnox-send.db.spec.ts src/fortnox/fortnox-kontomappning.db.spec.ts src/fortnox/fortnox-intaktsgrind.db.spec.ts src/fortnox/fortnox-moms-bp1.db.spec.ts --runInBand --json --outputFile=/Users/test/Desktop/eveno/runtime-kundtillgodo-fortnox-20261016/fortnox-regression.json

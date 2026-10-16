@@ -1,0 +1,46 @@
+
+### check-request-contract: exit 0
+✅ Kontraktet webb↔API: 0 kända överträdelser i 0 filer, inga nya och inga stale.
+✅ Regel 2: 121 delade nyttolasttyper, alla härledda i en DTO (SammaNycklar) och uppräknade i KONTRAKTSREGISTER.
+   Vakten mäter WEBBENS halva. Att API:ts DTO använder samma schema bärs av SammaNycklar-raden i DTO:n (Typecheck) och av dto.spec-provet — inte av den här.
+
+### check-dto-placement: exit 0
+✅ DTO-placering: 0 kända felplacerade klasser, inga nya och inga stale.
+   Regeln gör check-request-contracts premiss sann: när talet är 0 är "gå igenom *.dto.ts" uttömmande per konstruktion.
+
+### check-strict-koercion: exit 0
+✅ Strikt koercion: varje DTO-fält bär sin dekorator — 0 oskyddade.
+   Vakten mäter att dekoratorn FINNS. Att den GÖR något ägs av strict-boolean.spec.ts, strict-string.spec.ts och strict-iso-datum.spec.ts, som kör den riktiga pipen.
+
+### check-transaction-limits: exit 0
+✅ Transaktionsgränser: varje $transaction har en medveten gräns eller en kvittering (3 kvitterade i 2 filer)
+
+### check-sequence-allocation: exit 0
+✅ 8 nummerserier, 8 anropsplatser — alla atomära increment-UPSERT, en per serie, och varje allokerare tar sin
+   transaktionsklient av typen (R4).
+
+### check-module-cycles: exit 0
+✅ 67 moduler, 241 hårda kanter — inga odeklarerade cykler (3 forwardRef-kanter, alltså deklarerade och tillåtna).
+
+### check-di-type-imports: exit 0
+Inga typ-raderade DI-beroenden — 246 klasser med @Injectable/@Controller granskade i 1286 filer, 0 träffar.
+
+### check-history-registry: exit 0
+✅ Alla relationer hanterade i tre dimensioner — Tenant: 26 relationer (18 registrerade, 8 kvitterade) · Unit: 10 relationer (8 registrerade, 2 kvitterade) · Property: 10 relationer (7 registrerade, 3 kvitterade).
+
+### check-append-only: exit 0
+✅ Append-only: 16 modeller säger det i schemat, och alla 16 har en BEFORE UPDATE-trigger i migrationerna. (DELETE är med flit inte spärrad — organisationsraderingen och retentionen behöver den.)
+
+### check-actor-stamping: exit 0
+✅ aktörsstämplingen är påkopplad; modellmängden härleds ur schemat, tre gränser satta, inga handpåläggningar. (4 referenser i extensionen)
+
+### check-as-never: exit 0
+✅ as never: 2 kända cast i produktionskod, inga nya och inga stale.
+   Vakten mäter att castet är BORTA — inte att valideringen som kom i stället prövar rätt mängd. Det ägs av maintenance-enum-source.spec.ts och enum-validering.spec.ts.
+
+### check-skip-preconditions: exit 0
+✅ 144 spec-fil(er) med villkorlig överhoppning — alla prövar sin förutsättning i ett block som alltid körs.
+
+### check-spread-where: exit 0
+skannade 685 filer · 127 modeller, 83 med organizationId
+✅ inga where-satser där organizationId kan falla bort tyst

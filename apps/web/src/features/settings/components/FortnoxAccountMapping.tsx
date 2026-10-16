@@ -18,6 +18,7 @@ export const ROLL_TEXT: Record<FortnoxAccountRole, string> = {
   HYRESINTAKT: 'Hyresintäkt',
   LIKVID: 'Bank',
   DEPOSITIONSSKULD: 'Depositionsskuld',
+  KUNDTILLGODOSKULD: 'Kundtillgodoskuld',
   KOSTNAD: 'Kostnad',
   INGAENDE_MOMS: 'Ingående moms',
   LEVERANTORSSKULD: 'Leverantörsskuld',
