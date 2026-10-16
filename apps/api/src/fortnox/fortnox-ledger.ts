@@ -24,6 +24,20 @@
  */
 import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { FortnoxReadError, type FortnoxLedgerReader, type FortnoxVoucher } from './fortnox.types'
+import { createLedgerAccumulator } from './fortnox-ledger-reducer'
+import {
+  Incomplete,
+  isDate,
+  isPosInt,
+  stable,
+  voucherKey,
+  toOre,
+  validateLedgerVoucher,
+  type ValidatedLedgerVoucher,
+} from './fortnox-ledger-validation'
+
+// Behåller befintliga importer och samma felklass, bland annat i sändningens läsgrind.
+export { Incomplete, toOre } from './fortnox-ledger-validation'
 
 export type LedgerStatus =
   | 'COMPLETE'
@@ -112,104 +126,6 @@ export interface LedgerReadResult {
     referenceType: string | null
     referenceNumber: string | null
   }>
-}
-
-/** Läsningen kan inte fullföljas; ger PARTIAL/FAILED med orsak. */
-export class Incomplete extends Error {}
-
-const LIMITATION =
-  'Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.'
-
-const DATE = /^\d{4}-\d{2}-\d{2}$/
-
-function isDate(v: unknown): v is string {
-  if (typeof v !== 'string' || !DATE.test(v)) return false
-  const d = new Date(`${v}T00:00:00Z`)
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
-}
-
-function isPosInt(v: unknown): v is number {
-  return typeof v === 'number' && Number.isInteger(v) && v >= 0
-}
-
-/** Belopp → öre. Null om inte ett ändligt tal med högst två decimaler. */
-/**
- * Belopp → heltal öre, EXAKT ur talets decimala form (ingen flyttalsaritmetik,
- * ingen epsilon). Saknat värde är ogiltigt — inte noll. Mer än två decimaler,
- * exponentform eller ett resultat utanför säkra heltal ger null.
- */
-export function toOre(v: unknown): number | null {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return null
-  // String() ger den kortaste decimalform som återger exakt samma double — dvs.
-  // den form JSON-svaret hade. Exponentform (1e21, 1e-7) avvisas.
-  const m = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(String(v))
-  if (!m) return null
-  const ore = BigInt(m[2] ?? '0') * 100n + BigInt((m[3] ?? '').padEnd(2, '0') || '0')
-  const signed = m[1] === '-' ? -ore : ore
-  if (signed > BigInt(Number.MAX_SAFE_INTEGER) || signed < -BigInt(Number.MAX_SAFE_INTEGER))
-    return null
-  return Number(signed)
-}
-
-/** Summering med grind: utanför säkra heltal → ogiltigt (aldrig tyst avrundning). */
-function add(a: number, b: number): number {
-  const s = a + b
-  if (!Number.isSafeInteger(s))
-    throw new Incomplete('Beloppssumman ligger utanför säkert talområde')
-  return s
-}
-
-const absent = (v: unknown) => v === undefined || v === null
-/** En sida av en rad: saknad = 0 (inaktiv sida); annars exakt toOre. */
-const sideOre = (v: unknown): number | null => (absent(v) ? 0 : toOre(v))
-
-const optionalCode = (x: unknown) => x === undefined || x === null || typeof x === 'string'
-
-/**
- * Strikt kontroll av en verifikatrad ur Fortnox, för ALLA rader i året (inte bara
- * valda konton och inte bara perioden). Ett fel gör läsningen ofullständig — en
- * rad med t.ex. konto som sträng får aldrig tyst falla bort ur summan.
- */
-function rowProblem(r: unknown): string | null {
-  if (!r || typeof r !== 'object') return 'rad saknas'
-  const x = r as Record<string, unknown>
-  if (
-    typeof x.Account !== 'number' ||
-    !Number.isInteger(x.Account) ||
-    x.Account < 1000 ||
-    x.Account > 9999
-  ) {
-    return 'ogiltigt konto'
-  }
-  // En saknad sida är den inaktiva sidan (= 0, dokumenterat). BÅDA saknade är
-  // saknat underlag, inte noll. En närvarande sida måste vara ett giltigt belopp.
-  if (absent(x.Debit) && absent(x.Credit)) return 'belopp saknas på båda sidor'
-  const d = sideOre(x.Debit)
-  const c = sideOre(x.Credit)
-  if (d === null || c === null) return 'ogiltigt belopp'
-  if (d < 0 || c < 0) return 'negativt belopp (semantik obelagd)'
-  if (x.Removed !== undefined && typeof x.Removed !== 'boolean')
-    return 'ogiltig borttagningsmarkering'
-  if (!optionalCode(x.CostCenter) || !optionalCode(x.Project)) return 'ogiltig dimension'
-  return null
-}
-
-function stable(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`
-  if (v && typeof v === 'object') {
-    return `{${Object.keys(v as object)
-      .sort()
-      .map((k) => `${JSON.stringify(k)}:${stable((v as Record<string, unknown>)[k])}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(v ?? null)
-}
-
-function voucherKey(v: FortnoxVoucher): string | null {
-  if (!isPosInt(v.Year) || typeof v.VoucherSeries !== 'string' || !isPosInt(v.VoucherNumber))
-    return null
-  if (!/^[A-Za-z0-9]{1,10}$/.test(v.VoucherSeries)) return null
-  return `${v.Year}|${v.VoucherSeries}|${v.VoucherNumber}`
 }
 
 export async function paged<T>(
@@ -446,40 +362,28 @@ export async function readLedger(
       )
     }
 
-    const vouchers: Array<{ key: string; v: FortnoxVoucher }> = []
+    // Alla detaljer måste vara validerade före första summeringen. Ett sent
+    // detaljfel ska fortfarande vinna över en tidigare möjlig summeringsoverflow.
+    const vouchers: ValidatedLedgerVoucher[] = []
     for (const key of [...seen.keys()].sort()) {
-      const [year, series, number] = key.split('|')
+      const [, series, number] = key.split('|')
       const body = await reader.get<{ Voucher?: FortnoxVoucher }>(
         token,
         `/3/vouchers/${series}/${number}`,
-        {
-          financialyear: cfg.financialYearId,
-        },
+        { financialyear: cfg.financialYearId },
       )
-      const v = body?.Voucher
-      if (!v || voucherKey(v) !== key)
-        throw new Incomplete(`Detalj saknas eller avviker för verifikat ${key}`)
-      if (Number(year) !== cfg.financialYearId)
-        throw new Incomplete(`Verifikat ${key} hör till fel räkenskapsår`)
-      if (
-        !isDate(v.TransactionDate) ||
-        v.TransactionDate < yearStart ||
-        v.TransactionDate > yearEnd
-      ) {
-        throw new Incomplete(`Verifikat ${key} har saknat eller ogiltigt datum`)
-      }
-      // R2e: detaljschemat (fortnox_Bf_VoucherSingleItem) kräver minst två rader.
-      if (!Array.isArray(v.VoucherRows) || v.VoucherRows.length < 2) {
-        throw new Incomplete(`Verifikat ${key} saknar rader`)
-      }
-      for (const [i, r] of (v.VoucherRows as unknown[]).entries()) {
-        const p = rowProblem(r)
-        if (p) throw new Incomplete(`Verifikat ${key} rad ${i + 1}: ${p}`)
-      }
-      vouchers.push({ key, v })
+      vouchers.push(
+        validateLedgerVoucher(key, body?.Voucher, {
+          id: cfg.financialYearId,
+          fromDate: yearStart,
+          toDate: yearEnd,
+        }),
+      )
     }
 
-    const res = aggregate(vouchers, { ...cfg, mappings: usable }, base)
+    const accumulator = createLedgerAccumulator({ ...cfg, mappings: usable }, base)
+    for (const voucher of vouchers) accumulator.add(voucher)
+    const res = accumulator.finish()
     if (res.summary) {
       res.summary.balanceBroughtForwardOre = ingaende
       // KUNDSTART K-B8: årets bokföringsmetod ur samma svar; null = saknades (aldrig antaget).
@@ -498,138 +402,5 @@ export async function readLedger(
       return fail('PARTIAL', 'Läsningen avbröts (nätverk, tidsgräns eller begränsning)')
     }
     throw err
-  }
-}
-
-function aggregate(
-  vouchers: Array<{ key: string; v: FortnoxVoucher }>,
-  cfg: LedgerReadConfig,
-  base: Pick<LedgerReadResult, 'coverage' | 'uncertainties' | 'references' | 'financialYear'>,
-): LedgerReadResult {
-  const accounts = new Set(cfg.costAccounts)
-  const rows: LedgerRowProvenance[] = []
-  const byProperty = new Map<
-    string,
-    { propertyId: string; propertyName: string; amountOre: number }
-  >()
-  const unmapped = new Map<
-    string,
-    { dimensionType: 'COST_CENTER' | 'PROJECT'; code: string; amountOre: number }
-  >()
-  let total = 0
-  let unallocated = 0
-  let removed = 0
-  let eveno = 0
-  let uncertain = false
-
-  for (const { key, v } of vouchers) {
-    const date = v.TransactionDate as string
-    if (date < cfg.periodFrom || date > cfg.periodTo) continue
-    const evenoExport = cfg.evenoExported.has(key)
-    if (v.ReferenceType || v.ReferenceNumber) {
-      base.references.push({
-        voucher: key,
-        referenceType: typeof v.ReferenceType === 'string' ? v.ReferenceType : null,
-        referenceNumber: typeof v.ReferenceNumber === 'string' ? v.ReferenceNumber : null,
-      })
-    }
-    const vRows = v.VoucherRows as Array<Record<string, unknown>>
-    for (const [i, r] of vRows.entries()) {
-      if (typeof r.Account !== 'number' || !accounts.has(r.Account)) continue
-      const debit = sideOre(r.Debit)
-      const credit = sideOre(r.Credit)
-      if (debit === null || credit === null) {
-        return {
-          status: 'PARTIAL',
-          reason: `Ogiltigt belopp i verifikat ${key} rad ${i + 1}`,
-          summary: null,
-          rows: null,
-          ...base,
-        }
-      }
-      const amountOre = debit - credit
-      const cc = typeof r.CostCenter === 'string' && r.CostCenter ? r.CostCenter : null
-      const pr = typeof r.Project === 'string' && r.Project ? r.Project : null
-      const dimensionType = cc ? 'COST_CENTER' : pr ? 'PROJECT' : null
-      const code = cc ?? pr
-      const prov: LedgerRowProvenance = {
-        voucher: key,
-        row: i + 1,
-        transactionDate: date,
-        account: r.Account,
-        amountOre,
-        bucket: 'UNALLOCATED',
-        dimensionType,
-        code,
-        propertyId: null,
-        evenoExport,
-      }
-      if (r.Removed === true) {
-        prov.bucket = 'UNCERTAIN_REMOVED'
-        removed = add(removed, amountOre)
-        uncertain = true
-        base.uncertainties.push(
-          `Verifikat ${key} rad ${i + 1} är markerad som borttagen i Fortnox; innebörden är inte belagd och raden ingår inte i summan.`,
-        )
-        rows.push(prov)
-        continue
-      }
-      total = add(total, amountOre)
-      if (evenoExport) eveno = add(eveno, amountOre)
-      if (!dimensionType && (v.CostCenter || v.Project)) {
-        uncertain = true
-        base.uncertainties.push(
-          `Verifikat ${key}: dimension finns bara på verifikatets huvud och har inte förts över till raden.`,
-        )
-      }
-      if (dimensionType && code) {
-        const m = cfg.mappings.get(`${dimensionType}:${code}`)
-        if (m) {
-          prov.bucket = 'PROPERTY'
-          prov.propertyId = m.propertyId
-          const cur = byProperty.get(m.propertyId) ?? { ...m, amountOre: 0 }
-          cur.amountOre = add(cur.amountOre, amountOre)
-          byProperty.set(m.propertyId, cur)
-        } else {
-          prov.bucket = 'UNMAPPED'
-          const k = `${dimensionType}:${code}`
-          const cur = unmapped.get(k) ?? { dimensionType, code, amountOre: 0 }
-          cur.amountOre = add(cur.amountOre, amountOre)
-          unmapped.set(k, cur)
-        }
-      } else {
-        unallocated = add(unallocated, amountOre)
-      }
-      rows.push(prov)
-    }
-  }
-
-  if (unmapped.size) {
-    base.uncertainties.push(
-      `${unmapped.size} Fortnox-dimension(er) saknar koppling till fastighet och redovisas som okopplade.`,
-    )
-  }
-  if (eveno) {
-    base.uncertainties.push(
-      'En del av beloppet kommer från verifikat som Eveno själv har exporterat; lägg inte ihop det med Evenos egna siffror.',
-    )
-  }
-  base.uncertainties.push(LIMITATION)
-  return {
-    status: uncertain ? 'COMPLETE_WITH_UNCERTAINTY' : 'COMPLETE',
-    reason: null,
-    summary: {
-      currency: 'SEK',
-      totalOre: total,
-      byProperty: [...byProperty.values()].sort((a, b) =>
-        a.propertyName.localeCompare(b.propertyName, 'sv'),
-      ),
-      unmappedDimensions: [...unmapped.values()].sort((a, b) => a.code.localeCompare(b.code, 'sv')),
-      unallocatedOre: unallocated,
-      uncertainRemovedOre: removed,
-      evenoExportOre: eveno,
-    },
-    rows,
-    ...base,
   }
 }
