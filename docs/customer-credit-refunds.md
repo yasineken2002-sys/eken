@@ -120,7 +120,7 @@ av matchningsprecision, andel manuella granskningar eller kostnad per betalning.
 
 ## Verifiering i denna etapp
 
-- **290/290 prov i 17 riktade sviter**, räknat på senaste körning per fil.
+- **311/311 prov i 20 riktade sviter**, räknat på senaste körning per fil.
   Den sista frigivningssviten kunde först inte starta på grund av tre strikta
   TypeScript-kontroller i testfilen; efter rättelse klarade den 20/20.
   [Sammanställning](./eval/customer-credit-refunds/targeted-summary.txt),
@@ -138,6 +138,13 @@ av matchningsprecision, andel manuella granskningar eller kostnad per betalning.
   Testernas läsning av verifikationsräknare ligger i spec-filerna; den används
   bara för att verifiera rollback och skapar inga nummerserier.
   [52/52 DB-prov efter flytten av hjälparen](./eval/customer-credit-refunds/sequence-fix-regression.txt).
+- Full CI på `5b242726` fann två saknade testinventarier och två breda
+  hyresgästläsningar. Inventarierna omfattar nu återbetalningsmodellerna och
+  frågorna väljer bara `organizationId` och `anonymizedAt`. Befintliga
+  integritetsvakter är oförändrade. Ett nytt prov verifierar att
+  återbetalningshistorik blockerar hårdradering oavsett tillstånd.
+  [CI-felet före rättelse](./eval/customer-credit-refunds/ci-integration-failures.txt)
+  och [130/130 prov i sju sviter efter rättelse](./eval/customer-credit-refunds/ci-fixes-regression.txt).
 - Prisma validerat, klient genererad och den enda nya migrationen applicerad
   i isolerad lokal testdatabas. Riktad ESLint och `git diff --check` gröna.
 - Hela API-typkontrollen nådde den avtalade lokala minnesgränsen på 1,5 GB

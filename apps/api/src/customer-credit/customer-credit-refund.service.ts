@@ -273,7 +273,11 @@ export class CustomerCreditRefundService {
 
     const before = await this.prisma.customerCredit.findFirst({
       where: { id: input.creditId, organizationId: input.organizationId },
-      include: { sourceBankTransaction: true, tenant: true, lease: true },
+      include: {
+        sourceBankTransaction: true,
+        tenant: { select: { organizationId: true, anonymizedAt: true } },
+        lease: true,
+      },
     })
     if (!before) throw new NotFoundException('Tillgodot finns inte')
     const preparedConfig = await this.configuration(this.prisma, before)

@@ -277,7 +277,7 @@ export class CustomerCreditService {
         sourceBankTransaction: true,
         sourcePayment: true,
         lease: true,
-        tenant: true,
+        tenant: { select: { organizationId: true, anonymizedAt: true } },
       },
     })
   }

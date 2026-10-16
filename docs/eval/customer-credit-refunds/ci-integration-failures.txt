@@ -1,0 +1,178 @@
+CI 38895371762 på 5b242726: underkänt före rättelsen. Utdrag ur API-jobbet.
+Summary of all failing tests
+FAIL common/append-only.db.spec.ts (1351 MB heap size)
+  ● append-only-spärren i databasen › varje skyddad tabell HAR en aktiv BEFORE UPDATE-trigger i databasen
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 0
+    + Received  + 1
+
+    @@ -2,10 +2,11 @@
+        "AccountingPeriodEvent",
+        "AiAssignmentEvent",
+        "AiDelegationEvent",
+        "CustomerCredit",
+        "CustomerCreditApplication",
+    +   "CustomerCreditRefundEvent",
+        "FailedEmail",
+        "FiscalYearClose",
+        "InvoiceEvent",
+        "LateFiscalYearPosting",
+        "PiiSecretRotation",
+
+      144 |     )
+      145 |     const funna = rader.map((r) => r.tabell).sort()
+    > 146 |     expect(funna).toEqual([...SKYDDADE].sort())
+          |                   ^
+      147 |   })
+      148 |
+      149 |   it('(1) UPDATE mot en skyddad tabell MISSLYCKAS — mätt, inte antaget', async () => {
+
+      at Object.<anonymous> (common/append-only.db.spec.ts:146:19)
+
+FAIL tenants/tenants-remove-gate.spec.ts (1328 MB heap size)
+  ● remove — grinden mäter existens › ett AVSLUTAT avtal blockerar, precis som FK-villkoret gör
+
+    expect(received).rejects.toThrow(expected)
+
+    Expected constructor: BadRequestException
+    Received constructor: Error
+
+    Received message: "[gdpr] TENANT_HISTORY_RELATIONS pekar på modellen CustomerCreditRefund, som inte finns i Prisma-klienten. Listan och schemat har divergerat."
+
+           96 |     ]
+           97 |     if (!delegate) {
+        >  98 |       throw new Error(
+              |             ^
+           99 |         `[gdpr] TENANT_HISTORY_RELATIONS pekar på modellen ${rel.model}, som inte finns i ` +
+          100 |           'Prisma-klienten. Listan och schemat har divergerat.',
+          101 |       )
+
+      at findTenantHistory (common/gdpr/tenant-history.ts:98:13)
+      at TenantsService.remove (tenants/tenants.service.ts:342:21)
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:79:5)
+      at Object.toThrow (../../../node_modules/.pnpm/expect@29.7.0/node_modules/expect/build/index.js:218:22)
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:79:55)
+
+  ● remove — grinden mäter existens › BETALDA avier blockerar — de kontrollerades inte alls tidigare
+
+    expect(received).rejects.toThrow(expected)
+
+    Expected constructor: BadRequestException
+    Received constructor: Error
+
+    Received message: "[gdpr] TENANT_HISTORY_RELATIONS pekar på modellen CustomerCreditRefund, som inte finns i Prisma-klienten. Listan och schemat har divergerat."
+
+           96 |     ]
+           97 |     if (!delegate) {
+        >  98 |       throw new Error(
+              |             ^
+           99 |         `[gdpr] TENANT_HISTORY_RELATIONS pekar på modellen ${rel.model}, som inte finns i ` +
+          100 |           'Prisma-klienten. Listan och schemat har divergerat.',
+          101 |       )
+
+      at findTenantHistory (common/gdpr/tenant-history.ts:98:13)
+      at TenantsService.remove (tenants/tenants.service.ts:342:21)
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:86:5)
+      at Object.toThrow (../../../node_modules/.pnpm/expect@29.7.0/node_modules/expect/build/index.js:218:22)
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:86:55)
+
+  ● remove — grinden mäter existens › kundtillgodo blockerar hårdradering och hänvisar till avidentifiering
+
+    expect(received).toBeInstanceOf(expected)
+
+    Expected constructor: BadRequestException
+    Received constructor: Error
+
+      92 |     const err = await service.remove(TENANT, ORG).catch((e: unknown) => e)
+      93 |
+    > 94 |     expect(err).toBeInstanceOf(BadRequestException)
+         |                 ^
+      95 |     expect((err as BadRequestException).message).toContain('kundtillgodo')
+      96 |     expect((err as BadRequestException).message).toContain('avidentifiering')
+      97 |     expect(del).not.toHaveBeenCalled()
+
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:94:17)
+
+  ● remove — grinden mäter existens › felet är 400 med orsak och hänvisning — inte 500 med ett FK-fel
+
+    expect(received).toBeInstanceOf(expected)
+
+    Expected constructor: BadRequestException
+    Received constructor: Error
+
+      103 |     const err = await service.remove(TENANT, ORG).catch((e: unknown) => e)
+      104 |
+    > 105 |     expect(err).toBeInstanceOf(BadRequestException)
+          |                 ^
+      106 |     const msg = (err as BadRequestException).message
+      107 |     // Säger VAD som blockerar …
+      108 |     expect(msg).toContain('hyresavtal')
+
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:105:17)
+
+  ● KANARIEFÅGEL — den legitima raderingen fungerar fortfarande › en hyresgäst UTAN historik raderas
+
+    expect(received).resolves.toBeUndefined()
+
+    Received promise rejected instead of resolved
+    Rejected to value: [Error: [gdpr] TENANT_HISTORY_RELATIONS pekar på modellen CustomerCreditRefund, som inte finns i Prisma-klienten. Listan och schemat har divergerat.]
+
+      137 |     const { service, del } = setup()
+      138 |
+    > 139 |     await expect(service.remove(TENANT, ORG)).resolves.toBeUndefined()
+          |           ^
+      140 |     expect(del).toHaveBeenCalledWith({ where: { id: TENANT } })
+      141 |   })
+      142 |
+
+      at expect (../../../node_modules/.pnpm/expect@29.7.0/node_modules/expect/build/index.js:113:15)
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:139:11)
+
+  ● KANARIEFÅGEL — den legitima raderingen fungerar fortfarande › varje historik-tabell frågas — ingen hoppas över
+
+    [gdpr] TENANT_HISTORY_RELATIONS pekar på modellen CustomerCreditRefund, som inte finns i Prisma-klienten. Listan och schemat har divergerat.
+
+       96 |     ]
+       97 |     if (!delegate) {
+    >  98 |       throw new Error(
+          |             ^
+       99 |         `[gdpr] TENANT_HISTORY_RELATIONS pekar på modellen ${rel.model}, som inte finns i ` +
+      100 |           'Prisma-klienten. Listan och schemat har divergerat.',
+      101 |       )
+
+      at findTenantHistory (common/gdpr/tenant-history.ts:98:13)
+      at TenantsService.remove (tenants/tenants.service.ts:342:21)
+      at Object.<anonymous> (tenants/tenants-remove-gate.spec.ts:145:5)
+
+FAIL invoices/invoice-customer-select.spec.ts (1329 MB heap size)
+  ● #284 · kundens krypterade kolumner lämnar aldrig backend › INGET ställe gör `customer: true` eller `tenant: true` utan ett medvetet skäl
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 4
+
+    - Array []
+    + Array [
+    +   "customer-credit/customer-credit-refund.service.ts:276 — tenant: true",
+    +   "customer-credit/customer-credit.service.ts:280 — tenant: true",
+    + ]
+
+      106 |       }
+      107 |     }
+    > 108 |     expect(öppna).toEqual([])
+          |                   ^
+      109 |   })
+      110 |
+      111 |   it('varje undantag motsvarar ett ställe som FAKTISKT finns', () => {
+
+      at Object.<anonymous> (invoices/invoice-customer-select.spec.ts:108:19)
+
+
+Test Suites: 3 failed, 595 passed, 598 total
+Tests:       8 failed, 8716 passed, 8724 total
+Snapshots:   0 total
+Time:        985.253 s
+Ran all test suites.

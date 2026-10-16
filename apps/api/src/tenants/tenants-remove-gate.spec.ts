@@ -59,6 +59,7 @@ function setup(opts: { anonymizedAt?: Date | null; counts?: Record<string, numbe
     maintenanceTicket: delegate('maintenanceTicket'),
     rentNotice: delegate('rentNotice'),
     customerCredit: delegate('customerCredit'),
+    customerCreditRefund: delegate('customerCreditRefund'),
     inspection: delegate('inspection'),
     sentMessage: delegate('sentMessage'),
     deposit: delegate('deposit'),
@@ -94,6 +95,20 @@ describe('remove — grinden mäter existens', () => {
     expect(err).toBeInstanceOf(BadRequestException)
     expect((err as BadRequestException).message).toContain('kundtillgodo')
     expect((err as BadRequestException).message).toContain('avidentifiering')
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('kundtillgodoåterbetalningar blockerar hårdradering oavsett återbetalningens tillstånd', async () => {
+    const { service, prisma, del } = setup({ counts: { customerCreditRefund: 1 } })
+    const err = await service.remove(TENANT, ORG).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(BadRequestException)
+    expect((err as BadRequestException).message).toContain('kundtillgodoåterbetalningar')
+    expect((err as BadRequestException).message).toContain('avidentifiering')
+    expect(prisma.customerCreditRefund.count).toHaveBeenCalledWith({
+      where: { tenantId: TENANT },
+      take: 1,
+    })
     expect(del).not.toHaveBeenCalled()
   })
 
@@ -151,6 +166,7 @@ describe('KANARIEFÅGEL — den legitima raderingen fungerar fortfarande', () =>
       'maintenanceTicket',
       'rentNotice',
       'customerCredit',
+      'customerCreditRefund',
       'inspection',
       'sentMessage',
       'deposit',
