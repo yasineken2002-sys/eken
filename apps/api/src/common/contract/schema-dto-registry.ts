@@ -269,6 +269,7 @@ export interface KontraktsPost {
 const adress = { street: 'Storgatan 1', city: 'Stockholm', postalCode: '11122', country: 'SE' }
 
 import {
+  journalPageQuerySchema,
   fortnoxExportsPageQuerySchema,
   fortnoxDryRunInputSchema,
   fortnoxExportSettingsInputSchema,
@@ -283,6 +284,7 @@ import {
 import { FortnoxExportSettingsDto } from '../../fortnox/dto/fortnox-export-settings.dto'
 import { FortnoxDryRunDto } from '../../fortnox/dto/fortnox-dry-run.dto'
 import { FortnoxExportsPageQueryDto } from '../../fortnox/dto/fortnox-exports-page-query.dto'
+import { JournalPageQueryDto } from '../../accounting/dto/journal-page-query.dto'
 import { FortnoxSendDto } from '../../fortnox/dto/fortnox-send.dto'
 import { FortnoxReconcileDto } from '../../fortnox/dto/fortnox-reconcile.dto'
 import { FortnoxReleaseRejectedDto } from '../../fortnox/dto/fortnox-release-rejected.dto'
@@ -320,6 +322,15 @@ import {
 } from '../../fortnox/dto/customer-activation.dto'
 
 export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
+  {
+    endpoint: 'GET /accounting/journal-page',
+    inputTyp: 'JournalPageQuery',
+    schema: journalPageQuerySchema,
+    dto: JournalPageQueryDto,
+    giltig: { offset: '0', limit: '100', from: '2024-02-29', source: 'RENT_NOTICE' },
+    ogiltig: { from: '2026-02-29' },
+    ogiltigVarfor: 'verifikationsdatum måste vara ett verkligt kalenderdatum',
+  },
   {
     endpoint: 'GET /integrations/fortnox/exports-page',
     inputTyp: 'FortnoxExportsPageQuery',

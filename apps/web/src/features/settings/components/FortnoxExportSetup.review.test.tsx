@@ -12,10 +12,17 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   entries: vi.fn(),
 }))
-vi.mock('@/stores/auth.store', () => ({
-  useAuthStore: (select: (s: unknown) => unknown) =>
-    select({ user: { id: mocks.user, role: mocks.role }, organization: { id: mocks.org } }),
-}))
+vi.mock('@/stores/auth.store', () => {
+  const getState = () => ({
+    user: { id: mocks.user, role: mocks.role },
+    organization: { id: mocks.org },
+  })
+  return {
+    useAuthStore: Object.assign((select: (s: unknown) => unknown) => select(getState()), {
+      getState,
+    }),
+  }
+})
 vi.mock('../api/fortnox-export.api', () => ({
   getFortnoxExportState: mocks.state,
   getFortnoxSeriesCatalog: mocks.catalog,
@@ -26,11 +33,16 @@ vi.mock('../api/fortnox-export.api', () => ({
     return { items, total: items.length, offset: query.offset ?? 0, limit: query.limit ?? 50 }
   },
 }))
-// F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
+// Samma underlag; nätgränsen returnerar endast den efterfrågade sidan.
 vi.mock('../../accounting/api/accounting.api', () => ({
-  fetchAllJournalEntries: async (...args: unknown[]) => {
-    const entries = (await mocks.entries(...args)) as unknown[]
-    return { entries, total: (mocks as { total?: number }).total ?? entries.length }
+  fetchJournalPage: async (query: { offset: number; limit: number }) => {
+    const entries = (await mocks.entries(query)) as unknown[]
+    return {
+      entries: entries.slice(query.offset, query.offset + query.limit),
+      total: (mocks as { total?: number }).total ?? entries.length,
+      offset: query.offset,
+      limit: query.limit,
+    }
   },
 }))
 vi.mock('@/lib/api', () => ({ extractApiError: () => 'Serverfel' }))
@@ -102,7 +114,7 @@ async function show() {
   return view
 }
 function choose(id = 'je-org-A1') {
-  fireEvent.change(screen.getByLabelText('Verifikat (senaste 90 dagarna)'), {
+  fireEvent.change(screen.getByLabelText('Verifikat'), {
     target: { value: id },
   })
 }
@@ -153,18 +165,14 @@ describe('Independent export UI effects', () => {
     choose()
     fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))
     await waitFor(() => expect(mocks.dryRun).toHaveBeenCalledWith({ journalEntryId: 'je-org-A1' }))
-    if ((screen.getByLabelText('Verifikat (senaste 90 dagarna)') as HTMLSelectElement).disabled) {
+    if ((screen.getByLabelText('Verifikat') as HTMLSelectElement).disabled) {
       await act(async () => resolve(row('DRY_RUN_READY', 'je-org-A1')))
-      expect(
-        (screen.getByLabelText('Verifikat (senaste 90 dagarna)') as HTMLSelectElement).value,
-      ).toBe('je-org-A1')
+      expect((screen.getByLabelText('Verifikat') as HTMLSelectElement).value).toBe('je-org-A1')
       return
     }
     choose('je-org-A2')
     await act(async () => resolve(row('DRY_RUN_READY', 'je-org-A1')))
-    expect(
-      (screen.getByLabelText('Verifikat (senaste 90 dagarna)') as HTMLSelectElement).value,
-    ).toBe('je-org-A2')
+    expect((screen.getByLabelText('Verifikat') as HTMLSelectElement).value).toBe('je-org-A2')
     expect(screen.queryByTestId('fortnox-dry-run-result')).toBeNull()
   })
   it('R3 failed recheck does not retain an unlabelled previous successful result', async () => {

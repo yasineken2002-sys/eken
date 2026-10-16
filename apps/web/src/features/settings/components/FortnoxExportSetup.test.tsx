@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,10 +12,14 @@ const mocks = vi.hoisted(() => ({
   entries: vi.fn(),
 }))
 
-vi.mock('@/stores/auth.store', () => ({
-  useAuthStore: (selector: (state: unknown) => unknown) =>
-    selector({ user: { id: 'u1', role: mocks.role }, organization: { id: 'o1' } }),
-}))
+vi.mock('@/stores/auth.store', () => {
+  const getState = () => ({ user: { id: 'u1', role: mocks.role }, organization: { id: 'o1' } })
+  return {
+    useAuthStore: Object.assign((selector: (state: unknown) => unknown) => selector(getState()), {
+      getState,
+    }),
+  }
+})
 vi.mock('../api/fortnox-export.api', () => ({
   getFortnoxExportState: mocks.state,
   getFortnoxSeriesCatalog: mocks.catalog,
@@ -26,11 +30,16 @@ vi.mock('../api/fortnox-export.api', () => ({
     return { items, total: items.length, offset: query.offset ?? 0, limit: query.limit ?? 50 }
   },
 }))
-// F-LIST-1: väljaren hämtar hela urvalet sidvis; provet styr samma lista som förut.
+// Samma underlag; nätgränsen returnerar endast den efterfrågade sidan.
 vi.mock('../../accounting/api/accounting.api', () => ({
-  fetchAllJournalEntries: async (...args: unknown[]) => {
-    const entries = (await mocks.entries(...args)) as unknown[]
-    return { entries, total: (mocks as { total?: number }).total ?? entries.length }
+  fetchJournalPage: async (query: { offset: number; limit: number }) => {
+    const entries = (await mocks.entries(query)) as unknown[]
+    return {
+      entries: entries.slice(query.offset, query.offset + query.limit),
+      total: (mocks as { total?: number }).total ?? entries.length,
+      offset: query.offset,
+      limit: query.limit,
+    }
   },
 }))
 vi.mock('@/lib/api', () => ({ extractApiError: () => 'Serverfel' }))
@@ -84,7 +93,14 @@ describe('FortnoxExportSetup', () => {
       })),
     )
     renderIt()
-    expect(await screen.findByText(/250 av 250/)).toBeTruthy()
+    expect(await screen.findByText(/1–50 av 250/)).toBeTruthy()
+    fireEvent.click(
+      within(screen.getByRole('region', { name: 'Välj verifikat för förhandskontroll' })).getByRole(
+        'button',
+        { name: 'Sista sidan' },
+      ),
+    )
+    await screen.findByText(/201–250 av 250/)
     // Tidigare: .slice(0, 100) — verifikat 101–250 gick inte att välja för export.
     expect(screen.getByRole('option', { name: /A250 · 2026-10-02 · Verifikat 249/ })).toBeTruthy()
   })
@@ -146,7 +162,7 @@ describe('FortnoxExportSetup', () => {
     })
     renderIt()
     await screen.findByRole('option', { name: /A7 · 2026-10-02 · Reparation/ })
-    fireEvent.change(screen.getByLabelText('Verifikat (senaste 90 dagarna)'), {
+    fireEvent.change(screen.getByLabelText('Verifikat'), {
       target: { value: 'je1' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Förhandskontrollera' }))

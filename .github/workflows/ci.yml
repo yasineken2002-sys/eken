@@ -1621,7 +1621,7 @@ jobs:
       # vid 1280×900 och 390×844. Granskningen fällde att de tre befintliga
       # specarna gör var sin bit av resan mot VARSIN seedad org, så SKARVEN mellan
       # bitarna aldrig hade körts i en vy.
-      E2E_EXPECTED_TESTS: '28'
+      E2E_EXPECTED_TESTS: '29'
 
     steps:
       - uses: actions/checkout@v4

@@ -2654,4 +2654,5 @@ export const UpdateOrganizationSchema = z
   .strict()
 export type UpdateOrganizationInput = z.infer<typeof UpdateOrganizationSchema>
 export * from './fortnox'
+export * from './journal'
 export * from './kundstart'
