@@ -636,17 +636,23 @@ describe('portalinbjudan · verklig Bull-kö och leveranskorrelation i DB', () =
     '%s räknas inte som inbjudan och skriver ingen skickatmarkör',
     async (mode) => {
       const tenant = await fixture()
-      const unexpected = planReply()
-      unexpected.release.resolve() // Felaktigt provider-anrop ska bli direkt mätbart, aldrig hänga.
       if (mode === 'undertryckt utskick') {
         await db.organization.update({
           where: { id: tenant.organizationId },
           data: { transactionalEmailsDisabled: true },
         })
       } else {
+        // isReady() väntar på klienten, inte Bull-workerns hela startkedja.
+        // En verklig avslutad kontrollinbjudan skiljer producentstopp från start/stopp-race.
+        const readyTenant = await fixture()
+        const readyReply = planReply()
+        expect(await invite(readyTenant)).toMatchObject({ invited: 1 })
+        await complete(readyReply)
         // Verklig stängd anslutning: ingen fake enqueue-funktion avgör utgången.
         await bounded(high.close(), 'stäng producent före enqueue')
       }
+      const unexpected = planReply()
+      unexpected.release.resolve() // Felaktigt provider-anrop ska bli direkt mätbart, aldrig hänga.
       expect(await invite(tenant)).toMatchObject({ invited: 0 })
       expect(await metadata(tenant.id)).toMatchObject({
         invitedAt: null,
