@@ -80,6 +80,7 @@ export async function leverantorsfaktura(
     beskrivning?: string
     radtext?: [string | null, string | null]
     kostnadskonto?: number
+    verNumber?: number
   } = {},
 ) {
   const belopp = opts.belopp ?? '1234.50'
@@ -110,7 +111,7 @@ export async function leverantorsfaktura(
       date: datum,
       description: opts.beskrivning ?? 'Reparation trapphus',
       fiscalYear: datum.getUTCFullYear(),
-      verNumber: Math.floor(Math.random() * 1e6) + 1,
+      verNumber: opts.verNumber ?? Math.floor(Math.random() * 1e6) + 1,
       source: 'SUPPLIER_INVOICE',
       sourceId: `supplier-invoice:${f.id}`,
       lines: {
