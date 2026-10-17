@@ -1,7 +1,16 @@
 import { ConflictException } from '@nestjs/common'
-import type { FortnoxReadManifestPage, FortnoxReadRun, Prisma } from '@prisma/client'
-import { checkpointDigest, ManifestEntriesSchema } from './fortnox-read-checkpoint-context'
-import { isPosInt, voucherKey } from './fortnox-ledger-validation'
+import { Prisma, type FortnoxReadManifestPage, type FortnoxReadRun } from '@prisma/client'
+import {
+  checkpointDigest,
+  ManifestEntriesSchema,
+  NormalizedVoucherSchema,
+} from './fortnox-read-checkpoint-context'
+import {
+  isPosInt,
+  validateLedgerVoucher,
+  voucherKey,
+  type ValidatedLedgerVoucher,
+} from './fortnox-ledger-validation'
 import type { FortnoxVoucher } from './fortnox.types'
 
 type Tx = Prisma.TransactionClient
@@ -32,6 +41,27 @@ export type ManifestAppendResult =
     }
   | { kind: 'CONFLICT' }
   | { kind: 'WRONG_POSITION' }
+export type VoucherDetailReceipt = {
+  runId: string
+  checkpointId: string
+  key: string
+  detailDigest: string
+}
+export type VoucherDetailAppendResult =
+  | { kind: 'REPLAY'; receipt: VoucherDetailReceipt }
+  | {
+      kind: 'WRITTEN'
+      receipt: VoucherDetailReceipt
+      nextPhase: 'DETAILS' | 'READY_TO_REDUCE'
+    }
+  | { kind: 'CONFLICT' }
+  | { kind: 'MISSING' }
+  | { kind: 'WRONG_POSITION' }
+type VoucherFinancialYear = Parameters<typeof validateLedgerVoucher>[2]
+type DetailRow = { key: string; detailDigest: string | null; validated: Prisma.JsonValue | null }
+export type ValidatedVoucherPageResult =
+  | { kind: 'VALID'; items: ValidatedLedgerVoucher[] }
+  | { kind: 'INVALID' }
 
 /** V1:s befintliga parser. Behåller metadataregler och hela listobjektets hash. */
 export function parseVoucherManifestPage(
@@ -218,4 +248,131 @@ export async function nextVoucherKey(tx: Tx, run: ManifestRunScope): Promise<str
     Array<{ key: string }>
   >`SELECT "key" FROM "FortnoxReadVoucherCheckpoint" WHERE "organizationId" = ${run.organizationId} AND "runId" = ${run.id} AND "detailDigest" IS NULL ORDER BY "key" COLLATE "C" ASC LIMIT 1`
   return next?.key ?? null
+}
+
+/** V1:s detaljvalidering, före lookup/position och utan DB-arbete i catch. */
+export function parseVoucherDetail(
+  key: string,
+  voucher: FortnoxVoucher | undefined,
+  financialYear: VoucherFinancialYear,
+): ValidatedLedgerVoucher | null {
+  try {
+    return NormalizedVoucherSchema.parse(validateLedgerVoucher(key, voucher, financialYear))
+  } catch {
+    return null
+  }
+}
+
+function detailReceipt(
+  run: ManifestRunScope,
+  checkpointId: string,
+  key: string,
+  detailDigest: string,
+): VoucherDetailReceipt {
+  return { runId: run.id, checkpointId, key, detailDigest }
+}
+
+/** Normalformen, inte manifestets rålistdigest, är identitet vid detaljreplay. */
+export async function appendVoucherDetail(
+  tx: Tx,
+  run: ManifestRunScope,
+  validated: ValidatedLedgerVoucher,
+  now: Date,
+): Promise<VoucherDetailAppendResult> {
+  const key = validated.key
+  const detailDigest = checkpointDigest(validated)
+  const checkpoint = await tx.fortnoxReadVoucherCheckpoint.findUnique({
+    where: { runId_key: { runId: run.id, key }, organizationId: run.organizationId },
+  })
+  if (!checkpoint) return { kind: 'MISSING' }
+  if (checkpoint.detailDigest !== null) {
+    if (
+      !NormalizedVoucherSchema.safeParse(checkpoint.validated).success ||
+      checkpoint.detailDigest !== detailDigest ||
+      checkpointDigest(checkpoint.validated) !== detailDigest
+    )
+      return { kind: 'CONFLICT' }
+    return {
+      kind: 'REPLAY',
+      receipt: detailReceipt(run, checkpoint.id, key, detailDigest),
+    }
+  }
+  if (run.phase !== 'DETAILS' || (await nextVoucherKey(tx, run)) !== key)
+    return { kind: 'WRONG_POSITION' }
+  const written = await tx.fortnoxReadVoucherCheckpoint.update({
+    where: { id: checkpoint.id, organizationId: run.organizationId },
+    data: { validated: validated as Prisma.InputJsonValue, detailDigest, observedAt: now },
+    select: { id: true },
+  })
+  const next = await nextVoucherKey(tx, run)
+  return {
+    kind: 'WRITTEN',
+    receipt: detailReceipt(run, written.id, key, detailDigest),
+    nextPhase: next ? 'DETAILS' : 'READY_TO_REDUCE',
+  }
+}
+
+function checkedDetail(
+  row: DetailRow,
+  financialYear: VoucherFinancialYear,
+): ValidatedLedgerVoucher | null {
+  const detail = NormalizedVoucherSchema.safeParse(row.validated)
+  if (
+    !detail.success ||
+    detail.data.key !== row.key ||
+    Number(row.key.split('|')[0]) !== financialYear.id ||
+    detail.data.date < financialYear.fromDate ||
+    detail.data.date > financialYear.toDate ||
+    row.detailDigest !== checkpointDigest(detail.data)
+  )
+    return null
+  return detail.data
+}
+
+/** Separat DB-kvitto över den verkliga raden, även efter replay/ny lease. */
+export async function readVoucherDetailReceipt(
+  tx: Tx,
+  run: ManifestRunScope,
+  financialYear: VoucherFinancialYear,
+  key: string,
+  expectedDigest: string,
+): Promise<VoucherDetailReceipt> {
+  const row = await tx.fortnoxReadVoucherCheckpoint.findUnique({
+    where: { runId_key: { runId: run.id, key }, organizationId: run.organizationId },
+  })
+  if (
+    !row ||
+    row.organizationId !== run.organizationId ||
+    row.runId !== run.id ||
+    row.key !== key ||
+    row.detailDigest !== expectedDigest ||
+    !(row.observedAt instanceof Date) ||
+    !Number.isFinite(row.observedAt.getTime()) ||
+    !checkedDetail(row, financialYear)
+  )
+    throw new ConflictException('Sparat detaljunderlag är ofullständigt eller ogiltigt')
+  return detailReceipt(run, row.id, row.key, expectedDigest)
+}
+
+/** Caller validerar options/fas och äger fence samt policy för lagringskorruption. */
+export async function readValidatedVoucherPage(
+  tx: Tx,
+  run: ManifestRunScope,
+  financialYear: VoucherFinancialYear,
+  options: { afterKey?: string | undefined; limit?: number | undefined },
+): Promise<ValidatedVoucherPageResult> {
+  const afterKey = options.afterKey ?? null
+  const limit = options.limit ?? 100
+  const rows = await tx.$queryRaw<DetailRow[]>`
+    SELECT "key", "detailDigest", "validated" FROM "FortnoxReadVoucherCheckpoint"
+    WHERE "organizationId" = ${run.organizationId} AND "runId" = ${run.id}
+      ${afterKey === null ? Prisma.empty : Prisma.sql`AND "key" COLLATE "C" > ${afterKey}::text COLLATE "C"`}
+    ORDER BY "key" COLLATE "C" ASC LIMIT ${limit}`
+  const items: ValidatedLedgerVoucher[] = []
+  for (const row of rows) {
+    const detail = checkedDetail(row, financialYear)
+    if (!detail) return { kind: 'INVALID' }
+    items.push(detail)
+  }
+  return { kind: 'VALID', items }
 }

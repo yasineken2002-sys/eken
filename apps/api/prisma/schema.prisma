@@ -7849,8 +7849,8 @@ model FortnoxReadRun {
   triggeredByUserId     String?
 
   // Version 1 är checkpointkärnan; version 2 fryser råkälla och normaliserad
-  // kontext och sparar sedan katalog och listmanifest. Detaljer/resultat är
-  // ännu inte inkopplade i v2; en tom READY-fas publicerar ingen nollrapport.
+  // kontext och sparar sedan katalog, listmanifest och validerade detaljer.
+  // READY är verifierat läsunderlag, ännu inga ekonomiska resultat.
   // Båda är ännu ej HTTP-/köinkopplade. Legacy är null.
   workVersion          Int?
   phase                FortnoxReadPhase?
