@@ -709,8 +709,12 @@ describe('FortnoxJournalPicker', () => {
       act(() => {
         refetch = client.invalidateQueries({ queryKey: ['accounting', 'journal'] })
       })
-      await waitFor(() => expect(visibleJournalIds()).toEqual([]))
-      expect(screen.queryByRole('alert')).toBeNull()
+      // Raderna försvinner i render; mutationsfelet rensas i en passiv effekt.
+      // Observera båda innan nätresponsen släpps, inte ett mellanläge i DOM.
+      await waitFor(() => {
+        expect(visibleJournalIds()).toEqual([])
+        expect(screen.queryByRole('alert')).toBeNull()
+      })
       await act(async () => refreshed.resolve(page(DEFAULT_QUERY, 100)))
       await refetch
       await expectJournal(1)
