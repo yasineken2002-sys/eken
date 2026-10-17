@@ -1,8 +1,8 @@
 /**
  * Verklig syntetisk PostgreSQL: interna v1/v2-körningar får inte påverka
- * legacy-konsumenter. Ingen extern provider, kundaktivering eller publicering.
- * COMPLETE är ännu förbjudet för managed-runs: endast E-fallen kompletterar
- * beteendefacitet med faktisk SQL, utan att kringgå databasspärrarna.
+ * legacy-konsumenter. Ingen extern provider eller kundaktivering.
+ * P26–P28 publicerar ett lagligt internt v2-resultat via verklig produktkedja;
+ * gamla A–E-prov och SQL-gränser kvarstår utan triggerbypass.
  */
 import { randomUUID } from 'node:crypto'
 import { ConflictException, NotFoundException } from '@nestjs/common'
@@ -30,8 +30,10 @@ import {
   type CheckpointLease,
 } from './fortnox-read-checkpoint.service'
 import { FortnoxReadSourceRunService, type SourceRunLease } from './fortnox-read-source-run.service'
-import type { StartCheckpointInput } from './fortnox-read-checkpoint-context'
+import type { CheckpointCatalog, StartCheckpointInput } from './fortnox-read-checkpoint-context'
 import { FortnoxCustomerActivationService } from './fortnox-customer-activation.service'
+import type { FortnoxVoucher } from './fortnox.types'
+import { decodeLedgerResult } from './fortnox-read-result-format'
 
 const INPUT = {
   financialYearId: 1,
@@ -312,6 +314,139 @@ describe('Fortnox: legacy-konsumentgräns mot riktiga managed v1/v2-körningar',
       }),
       snapshots: await client.fortnoxReadContextSnapshot.findMany({
         where: { organizationId: f.org },
+      }),
+    }
+  }
+
+  /** Ingen specimport eller fri terminal UPDATE: källan är tom, men ett riktigt
+   * externt verifikat går genom katalog/manifest/detalj/A–F och publiceringsparet.
+   */
+  async function publishedManaged(
+    f: Fixture,
+    options: {
+      uncertain?: boolean
+      input?: StartCheckpointInput
+      accountingMethod?: 'ACCRUAL' | 'CASH'
+      balances?: Record<string, number>
+    } = {},
+  ) {
+    const input = options.input ?? INPUT
+    const service = new FortnoxReadSourceRunService(db())
+    const started = await service.start(f.org, null, input)
+    const lease = await service.claim(f.org, started.id)
+    if (!lease) throw new Error('Publiceringsfixturen saknar eget v2-anspråk')
+    let progress = await service.prepareNormalization(lease)
+    while (progress.next) {
+      await service.normalizePage(lease, progress.next)
+      progress = await service.prepareNormalization(lease)
+    }
+    const catalog: CheckpointCatalog = {
+      version: 1,
+      companyDatabaseNumber: f.connection.fortnoxDatabaseNumber,
+      financialYear: {
+        id: 1,
+        fromDate: '2026-01-01',
+        toDate: '2026-12-31',
+        accountingMethod: options.accountingMethod ?? 'ACCRUAL',
+      },
+      accounts: input.costAccounts.map((number) => ({
+        number,
+        active: true,
+        balanceBroughtForwardOre: options.balances?.[String(number)] ?? 0,
+      })),
+      dimensions: [],
+      coverage: { costCenters: { pages: 1, totalPages: 0, totalResources: 0, itemsSeen: 0 } },
+    }
+    await service.commitCatalog(lease, catalog)
+    await service.commitVoucherPage(lease, {
+      MetaInformation: { '@CurrentPage': 1, '@TotalPages': 1, '@TotalResources': 1 },
+      Vouchers: [{ Year: 1, VoucherSeries: 'L', VoucherNumber: 1 }],
+    })
+    const voucher: FortnoxVoucher = {
+      Year: 1,
+      VoucherSeries: 'L',
+      VoucherNumber: 1,
+      TransactionDate: '2026-10-01',
+      ReferenceNumber: 'SYNTHETIC_INTERNAL_PUBLICATION',
+      VoucherRows: [
+        { Account: input.costAccounts[0]!, Debit: 900, Removed: options.uncertain ?? false },
+        { Account: 2440, Credit: 900 },
+      ],
+    }
+    await service.commitVoucherDetail(lease, '1|L|1', voucher)
+    const receipt = await service.publishReadyLedger(lease)
+    const run = await observed().fortnoxReadRun.findUniqueOrThrow({
+      where: { id: started.id, organizationId: f.org },
+    })
+    const publication = await observed().fortnoxReadPublication.findUniqueOrThrow({
+      where: { runId: started.id, organizationId: f.org },
+    })
+    const status = options.uncertain ? 'COMPLETE_WITH_UNCERTAINTY' : 'COMPLETE'
+    expect(receipt.status).toBe(status)
+    expect(run).toMatchObject({
+      status,
+      workVersion: 2,
+      phase: 'READY_TO_REDUCE',
+      summary: null,
+      rows: null,
+      frozenContext: null,
+      coverage: {},
+      uncertainties: [],
+      claimToken: null,
+      leaseUntil: null,
+      completedAt: receipt.publishedAt,
+    })
+    expect(publication).toMatchObject({
+      id: receipt.id,
+      status,
+      runId: run.id,
+      organizationId: f.org,
+    })
+    expect(publication.canonicalBytes).not.toBeNull()
+    const body = decodeLedgerResult({
+      formatVersion: publication.formatVersion,
+      status: publication.status,
+      reason: publication.reason,
+      resultDigest: publication.resultDigest,
+      canonicalBytes: Number(publication.canonicalBytes),
+      financialYear: publication.financialYear,
+      summary: publication.summary,
+      rows: publication.rows,
+      coverage: publication.coverage,
+      uncertainties: publication.uncertainties,
+    })
+    expect(body.status).toBe(status)
+    expect(body.rows).toHaveLength(1)
+    expect(body.rows[0]).toMatchObject({
+      account: input.costAccounts[0],
+      amountOre: 90000,
+      bucket: options.uncertain ? 'UNCERTAIN_REMOVED' : 'UNALLOCATED',
+    })
+    // Oberoende klient återläser hela faktiska publikationen, inte bara service-returen.
+    const receiptObserver = new TestPrisma({ datasources: { db: { url: observerUrl.toString() } } })
+    try {
+      const historical = new FortnoxReadSourceRunService(receiptObserver)
+      expect(await historical.readPublicationReceipt(f.org, run.id)).toStrictEqual(receipt)
+    } finally {
+      await receiptObserver.$disconnect()
+    }
+    expect(f.reader.calls).toEqual([])
+    return { run, receipt, body }
+  }
+
+  async function durablePublication(f: Fixture, runId: string) {
+    return {
+      ...(await durableManaged(f, runId)),
+      publication: await observed().fortnoxReadPublication.findUniqueOrThrow({
+        where: { runId, organizationId: f.org },
+      }),
+      manifest: await observed().fortnoxReadManifestPage.findMany({
+        where: { runId, organizationId: f.org },
+        orderBy: { page: 'asc' },
+      }),
+      vouchers: await observed().fortnoxReadVoucherCheckpoint.findMany({
+        where: { runId, organizationId: f.org },
+        orderBy: { key: 'asc' },
       }),
     }
   }
@@ -693,6 +828,199 @@ describe('Fortnox: legacy-konsumentgräns mot riktiga managed v1/v2-körningar',
     )
   })
 
+  it.each([false, true])(
+    'P26: lagligt publicerad v2 (osäker=%s) förblir osynlig för latest/AI',
+    async (uncertain) => {
+      const only = await fixture()
+      const onlyInternal = await publishedManaged(only, { uncertain })
+      const onlyBefore = await durablePublication(only, onlyInternal.run.id)
+      expect(await only.readback.latest(only.org)).toEqual({
+        latestRead: null,
+        latestCompleteRead: null,
+      })
+      expect(await only.readback.aiSnapshot(only.org)).toMatchObject({
+        latestRead: null,
+        latestCompleteRead: null,
+      })
+      expect(await durablePublication(only, onlyInternal.run.id)).toStrictEqual(onlyBefore)
+
+      const f = await fixture()
+      const complete = await legacy(f)
+      const partial = await legacy(f, {
+        status: 'PARTIAL',
+        startedAt: new Date(Date.now() - 60_000),
+      })
+      const latestBefore = await f.readback.latest(f.org)
+      const aiBefore = await f.readback.aiSnapshot(f.org)
+      expect(latestBefore.latestRead?.id).toBe(partial.id)
+      expect(latestBefore.latestCompleteRead?.id).toBe(complete.id)
+      expect(aiBefore.latestRead?.id).toBe(partial.id)
+      expect(aiBefore.latestCompleteRead?.id).toBe(complete.id)
+      const internal = await publishedManaged(f, { uncertain })
+      expect(internal.run.startedAt.getTime()).toBeGreaterThan(partial.startedAt.getTime())
+      const before = await durablePublication(f, internal.run.id)
+      expect(await f.readback.latest(f.org)).toStrictEqual(latestBefore)
+      expect(await f.readback.aiSnapshot(f.org)).toStrictEqual(aiBefore)
+      expect(await durablePublication(f, internal.run.id)).toStrictEqual(before)
+      expect(f.reader.calls).toEqual([])
+    },
+  )
+
+  it('P27: publicerad v2-saldoläsning varken blir senaste legacy-saldo eller kan bindas explicit', async () => {
+    const f = await fixture()
+    const admin = await fixtureActor(db(), f.org, 'ADMIN')
+    const packages = new OpeningPackageService(
+      db(),
+      new OcrService(db()),
+      new OpeningEvidenceService(db()),
+    )
+    const pkg = await packages.create(f.org, admin, {
+      sourceName: 'synthetic-publication-boundary-empty.csv',
+      innehall: IMPORT_HEADER_207,
+      nollOppning: true,
+    })
+    const good = await legacy(f, {
+      costAccounts: [1510, 2890],
+      summary: { balanceBroughtForwardOre: { '1510': 100000, '2890': -50000 } },
+    })
+    const baseline = await senasteSaldolasning(db(), f.org)
+    expect(baseline?.id).toBe(good.id)
+    const internal = await publishedManaged(f, {
+      input: SALDO_INPUT,
+      balances: { '1510': 700000, '2890': -900000 },
+    })
+    expect(internal.run.startedAt.getTime()).toBeGreaterThan(good.startedAt.getTime())
+    expect(internal.body.summary.balanceBroughtForwardOre).toEqual({
+      '1510': 700000,
+      '2890': -900000,
+    })
+    expect(await senasteSaldolasning(db(), f.org)).toStrictEqual(baseline)
+    const history = await durablePublication(f, internal.run.id)
+    const before = await observed().openingPackage.findUniqueOrThrow({ where: { id: pkg.id } })
+    const denied = packages.bindFortnoxRead(f.org, pkg.id, admin, internal.run.id)
+    await expect(denied).rejects.toBeInstanceOf(NotFoundException)
+    await expect(denied).rejects.toThrow(NOT_FOUND)
+    expect(
+      await observed().openingPackage.findUniqueOrThrow({ where: { id: pkg.id } }),
+    ).toStrictEqual(before)
+    expect(await packages.bindFortnoxRead(f.org, pkg.id, admin, good.id)).toMatchObject({
+      fortnoxReadRunId: good.id,
+      fortnoxBalance1510Ore: 100000,
+      fortnoxBalance2890Ore: 50000,
+    })
+    expect(await durablePublication(f, internal.run.id)).toStrictEqual(history)
+    expect(await observed().rentNotice.count({ where: { organizationId: f.org } })).toBe(0)
+    expect(await observed().journalEntry.count({ where: { organizationId: f.org } })).toBe(0)
+    expect(
+      await observed().fortnoxCustomerActivation.count({ where: { organizationId: f.org } }),
+    ).toBe(0)
+    expect(f.reader.calls).toEqual([])
+  })
+
+  it('P27: publicerad v2 med annat årsfacit ändrar inte verklig första-periodrisk eller legacy årsmetod', async () => {
+    const f = await fixture()
+    const good = await legacy(f, {
+      periodTo: '2026-12-31',
+      costAccounts: [1510, 2890, 3911, 2420],
+      summary: {
+        financialYearAccountingMethod: 'ACCRUAL',
+        balanceBroughtForwardOre: { '1510': 0, '2890': 0, '3911': 0, '2420': 0 },
+      },
+      rows: {
+        rows: [
+          {
+            account: 3911,
+            amountOre: -10000,
+            transactionDate: '2026-11-01',
+            evenoExport: false,
+            bucket: 'UNALLOCATED',
+          },
+        ],
+        references: [],
+      },
+    })
+    const reg: ForstaPeriodRegister = {
+      sha256: 'b'.repeat(64),
+      filnamn: 'synthetic-publication-period.csv',
+      system: 'Syntetiskt tidigare system',
+      ansvarig: 'Syntetisk ansvarig',
+      tackningFran: '2026-11-01',
+      tackningTill: '2026-12-31',
+      intaktskonton: [3911],
+      forskottskonton: [2420],
+      antal: 0,
+      poster: [],
+      registreradAv: 'synthetic-boundary-actor',
+      registreradTid: '2026-10-01T00:00:00.000Z',
+    }
+    const activation = new FortnoxCustomerActivationService(db(), f.config)
+    const riskBefore = await fortnoxRiskkontroll(db(), f.org, f.connection.id, CUTOVER, reg)
+    const statusBefore = await activation.status(f.org, 1)
+    expect(riskBefore).toBe(
+      'Fortnox har 1 verifikatrader från tidigare system på eller efter brytdatum 2026-11-01 på konto 3911 — första perioden kan redan vara fakturerad eller betald. Kundstarten är blockerad.',
+    )
+    expect(
+      statusBefore.forslag.hinder.some(
+        (reason) =>
+          reason.includes('är inte verifierat i Fortnox') ||
+          reason.includes('Eveno stödjer bara faktureringsmetoden'),
+      ),
+    ).toBe(false)
+    const internal = await publishedManaged(f, {
+      input: { ...INPUT, periodTo: '2026-12-31', costAccounts: [1510, 2890, 3911, 2420] },
+      accountingMethod: 'CASH',
+    })
+    expect(internal.run.startedAt.getTime()).toBeGreaterThan(good.startedAt.getTime())
+    expect(internal.body.summary.financialYearAccountingMethod).toBe('CASH')
+    const before = await durablePublication(f, internal.run.id)
+    expect(await fortnoxRiskkontroll(db(), f.org, f.connection.id, CUTOVER, reg)).toBe(riskBefore)
+    expect(await activation.status(f.org, 1)).toStrictEqual(statusBefore)
+    expect(statusBefore.flaggaPa).toBe(false)
+    expect(statusBefore.aktiv).toBeNull()
+    expect(await durablePublication(f, internal.run.id)).toStrictEqual(before)
+    expect(
+      await observed().fortnoxCustomerActivation.count({ where: { organizationId: f.org } }),
+    ).toBe(0)
+    expect(await observed().fortnoxVoucherExport.count({ where: { organizationId: f.org } })).toBe(
+      0,
+    )
+    expect(f.reader.calls).toEqual([])
+  })
+
+  it('P28: intern publicering lämnar hela vattenmärket; ny riktig legacy mock-read ändrar endast läskomponenten', async () => {
+    const f = await fixture()
+    await legacy(f)
+    const readWatermark = () =>
+      tx((client) => ekonomisktLage(client, f.org, { leaseIds: [], tenantIds: [] }))
+    const baseline = await readWatermark()
+    const internal = await publishedManaged(f)
+    expect(await readWatermark()).toStrictEqual(baseline)
+    const before = await durablePublication(f, internal.run.id)
+    expect(f.reader.calls).toEqual([])
+    const result = await f.readback.read(f.org, null, INPUT)
+    expect(result.status).toBe('COMPLETE')
+    expect(result.summary).toMatchObject({ totalOre: 10000 })
+    expect(f.reader.calls).toContain('/3/vouchers/sublist')
+    expect(
+      await observed().fortnoxReadRun.findUniqueOrThrow({ where: { id: result.id } }),
+    ).toMatchObject({
+      organizationId: f.org,
+      workVersion: null,
+      status: 'COMPLETE',
+    })
+    const changed = await readWatermark()
+    expect(changed.sha256).not.toBe(baseline.sha256)
+    expect(changed.delar.lasningar).not.toBe(baseline.delar.lasningar)
+    expect({ ...changed.delar, lasningar: baseline.delar.lasningar }).toStrictEqual(baseline.delar)
+    expect(await durablePublication(f, internal.run.id)).toStrictEqual(before)
+    expect(
+      await observed().fortnoxCustomerActivation.count({ where: { organizationId: f.org } }),
+    ).toBe(0)
+    expect(await observed().fortnoxVoucherExport.count({ where: { organizationId: f.org } })).toBe(
+      0,
+    )
+  })
+
   beforeAll(async () => {
     prisma = new TestPrisma({ datasources: { db: { url: DATABASE_URL } } })
     observer = new PrismaClient({ datasources: { db: { url: observerUrl.toString() } } })
@@ -719,6 +1047,9 @@ describe('Fortnox: legacy-konsumentgräns mot riktiga managed v1/v2-körningar',
         expect(await prisma.fortnoxReadSourceCapture.count({ where })).toBe(0)
         expect(await prisma.fortnoxReadContextSnapshot.count({ where })).toBe(0)
         expect(await prisma.fortnoxReadNormalizationStage.count({ where })).toBe(0)
+        expect(await prisma.fortnoxReadPublication.count({ where })).toBe(0)
+        expect(await prisma.fortnoxReadManifestPage.count({ where })).toBe(0)
+        expect(await prisma.fortnoxReadVoucherCheckpoint.count({ where })).toBe(0)
         expect(await prisma.openingPackage.count({ where })).toBe(0)
       }
     } finally {
