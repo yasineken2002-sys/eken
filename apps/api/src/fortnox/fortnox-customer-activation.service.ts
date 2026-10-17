@@ -213,6 +213,7 @@ export class FortnoxCustomerActivationService {
         where: {
           organizationId,
           financialYearId,
+          workVersion: null,
           status: 'COMPLETE',
           financialYearStart: { not: null },
           financialYearEnd: { not: null },

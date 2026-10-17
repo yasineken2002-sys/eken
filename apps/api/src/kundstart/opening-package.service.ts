@@ -419,7 +419,7 @@ export class OpeningPackageService {
     const p = await this.hamta(organizationId, id)
     if (p.status === 'DISCARDED') throw new ConflictException('Paketet är kasserat.')
     const run = await this.prisma.fortnoxReadRun.findFirst({
-      where: { id: readRunId, organizationId },
+      where: { id: readRunId, organizationId, workVersion: null },
     })
     if (!run) throw new NotFoundException('Läsningen hittades inte')
     const senaste = await senasteSaldolasning(this.prisma, organizationId)

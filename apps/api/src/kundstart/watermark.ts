@@ -69,7 +69,8 @@ export async function ekonomisktLage(
          FROM "FortnoxDimensionMapping" WHERE "organizationId" = ${organizationId}) AS mappningar,
       (SELECT count(*)::text || '|' || coalesce(max("startedAt")::text,'') || '|' ||
               coalesce(max("completedAt")::text,'')
-         FROM "FortnoxReadRun" WHERE "organizationId" = ${organizationId}) AS lasningar
+         FROM "FortnoxReadRun" WHERE "organizationId" = ${organizationId}
+          AND "workVersion" IS NULL) AS lasningar
   `)
   const r = rader[0]
   if (!r) throw new Error('Vattenmärket kunde inte läsas')
