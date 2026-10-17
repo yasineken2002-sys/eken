@@ -309,8 +309,7 @@ describe('Inert fryst Fortnox-källa mot riktig PostgreSQL', () => {
   function capture(org: string, id: string = randomUUID(), input: StartCheckpointInput = INPUT) {
     return rr((tx) => captureCheckpointSource(tx, org, id, input))
   }
-  async function organization() {
-    const id = randomUUID()
+  async function organization(id: string = randomUUID()) {
     await db().organization.create({
       data: {
         id,
@@ -669,7 +668,7 @@ describe('Inert fryst Fortnox-källa mot riktig PostgreSQL', () => {
     },
   )
 
-  it.each([0, 1, 100, 101, 201])(
+  it.each([0, 1, 99, 100, 101, 201])(
     '%i poster i båda samlingarna: exakt enum/textordning och sidgränser',
     async (count) => {
       const org = await organization(),
@@ -710,7 +709,10 @@ describe('Inert fryst Fortnox-källa mot riktig PostgreSQL', () => {
       expect(actualExports.map((row) => row.ordinal)).toStrictEqual(
         Array.from({ length: count }, (_, i) => BigInt(i + 1)),
       )
-      for (const after of [...new Set([0, Math.min(100, count), count])]) {
+      const positions = new Set(
+        [0, 1, 99, 100, 101, Math.max(0, count - 1), count].map((after) => Math.min(after, count)),
+      )
+      for (const after of positions) {
         const m = await transaction((tx) =>
           readCheckpointSourceMappingPage(tx, org, id, BigInt(after)),
         )
@@ -735,6 +737,147 @@ describe('Inert fryst Fortnox-källa mot riktig PostgreSQL', () => {
       ).rejects.toBeInstanceOf(BadRequestException)
     },
   )
+
+  it.each(
+    (['mapping', 'export'] as const).flatMap((collection) =>
+      (['empty-extra', 'short-extra', 'full-gap'] as const).map((fault) => ({
+        collection,
+        fault,
+      })),
+    ),
+  )(
+    '$collection/$fault: sidläsaren nekar extra rader och luckor efter verklig DB-läsning',
+    async ({ collection, fault }) => {
+      const org = await organization()
+      const count = fault === 'empty-extra' ? 1 : fault === 'short-extra' ? 31 : 101
+      if (collection === 'mapping') await seedMappings(org, count)
+      else await seedExports(Array.from({ length: count }, () => ({ organizationId: org })))
+      const header = await capture(org)
+      const read = async (tx: Prisma.TransactionClient) =>
+        collection === 'mapping'
+          ? readCheckpointSourceMappingPage(tx, org, header.id)
+          : readCheckpointSourceExportPage(tx, org, header.id)
+      const baseline = await transaction(read)
+      expect(baseline.items.map((row) => row.ordinal)).toStrictEqual(
+        Array.from({ length: Math.min(100, count) }, (_, index) => BigInt(index + 1)),
+      )
+      const tail =
+        fault !== 'full-gap'
+          ? null
+          : collection === 'mapping'
+            ? await db().fortnoxReadSourceMapping.findUniqueOrThrow({
+                where: { captureId_ordinal: { captureId: header.id, ordinal: 101n } },
+              })
+            : await db().fortnoxReadSourceExport.findUniqueOrThrow({
+                where: { captureId_ordinal: { captureId: header.id, ordinal: 101n } },
+              })
+      const reader = new SourceTestPrisma({ datasources: { db: { url: DATABASE_URL } } })
+      let observedHeader: unknown
+      let observedItems: unknown
+      let injectedPageLength: number | undefined
+      let headerReads = 0
+      let pageReads = 0
+      reader.$use(async (params, next) => {
+        const result: unknown = await next(params)
+        if (params.model === 'FortnoxReadSourceCapture' && params.action === 'findUnique') {
+          observedHeader = result
+          headerReads += 1
+          if (fault !== 'full-gap') {
+            if (result === null || typeof result !== 'object')
+              throw new Error('Den verkliga källheadern saknas före returstörningen')
+            // Databasen tillåter inte en förseglad count-mismatch. Förvräng endast
+            // den verkliga headerreturen: barnfrågan måste fortfarande upptäcka
+            // extra rad1 vid count0 respektive extra rad31 vid count30.
+            return {
+              ...result,
+              [collection === 'mapping' ? 'mappingCount' : 'exportCount']: count - 1,
+            }
+          }
+        }
+        // Export läses via raw SQL; stör först den faktiskt hämtade sidan.
+        // Ingen SQL-kopia: assertions nedan kräver exakt en läsning och dess data.
+        const isPageRead =
+          collection === 'mapping'
+            ? params.model === 'FortnoxReadSourceMapping' && params.action === 'findMany'
+            : params.action === 'queryRaw'
+        if (isPageRead) {
+          observedItems = result
+          pageReads += 1
+          if (fault === 'full-gap') {
+            if (!Array.isArray(result) || tail === null)
+              throw new Error('De verkliga källraderna saknas före returstörningen')
+            const rows: unknown[] = result
+            // Hundra verkliga rader, men ordinal50 saknas och verklig rad101
+            // fyller dess plats sist. Längdkontroll ensam får inte godkänna det.
+            const changed = [...rows.slice(0, 49), ...rows.slice(50), tail]
+            injectedPageLength = changed.length
+            return changed
+          }
+        }
+        return result
+      })
+      try {
+        await reader.$connect()
+        await expect(transaction(read, reader)).rejects.toBeInstanceOf(ConflictException)
+        expect(headerReads).toBe(1)
+        expect(pageReads).toBe(1)
+        expect(observedHeader).toStrictEqual(header)
+        expect(observedItems).toStrictEqual(baseline.items)
+        if (fault === 'full-gap') expect(injectedPageLength).toBe(100)
+      } finally {
+        await reader.$disconnect()
+      }
+      // Returstörningen ändrar inga skyddade rader och överlever inte klienten.
+      expect(
+        await transaction((tx) => readCheckpointSourceHeader(tx, org, header.id)),
+      ).toStrictEqual(header)
+      expect(await transaction(read)).toStrictEqual(baseline)
+    },
+  )
+
+  it('bevarar hela källsidan för ett text-org-ID med apostrof/Unicode och nekar främmande scope', async () => {
+    const org = await organization(`${randomUUID()}-å'Ö`)
+    const other = await organization()
+    const accountSource = {
+      provenance: { lines: [line, null] },
+      kontomappning: { revision: 0 },
+    } satisfies Prisma.InputJsonObject
+    const own = await seedExports([
+      { organizationId: org, draft: accountSource },
+      { organizationId: org },
+    ])
+    await seedExports([{ organizationId: other }])
+    const header = await capture(org)
+    const foreign = await capture(other)
+    const expected = await db().fortnoxReadSourceExport.findMany({
+      where: { organizationId: org, captureId: header.id },
+      orderBy: { ordinal: 'asc' },
+    })
+    expect(expected).toHaveLength(2)
+    expect(expected.map((row) => row.ordinal)).toStrictEqual([1n, 2n])
+    expect(
+      expected.find((row) => row.journalEntryId === own[0]!.journalEntryId)?.accountSource,
+    ).toStrictEqual(accountSource)
+    // Oberoende Prisma-läsning av den beständiga källan: ALLA fält, BigInt och
+    // JSON jämförs, ingen SQL kopieras och ingen queryretur är stubbad.
+    expect(
+      await transaction((tx) => readCheckpointSourceExportPage(tx, org, header.id)),
+    ).toStrictEqual({ items: expected, nextAfterOrdinal: null })
+    await expect(
+      transaction((tx) => readCheckpointSourceExportPage(tx, other, header.id)),
+    ).rejects.toBeInstanceOf(ConflictException)
+    await expect(
+      transaction((tx) => readCheckpointSourceExportPage(tx, org, foreign.id)),
+    ).rejects.toBeInstanceOf(ConflictException)
+    const foreignExpected = await db().fortnoxReadSourceExport.findMany({
+      where: { organizationId: other, captureId: foreign.id },
+      orderBy: { ordinal: 'asc' },
+    })
+    expect(foreignExpected).toHaveLength(1)
+    expect(
+      await transaction((tx) => readCheckpointSourceExportPage(tx, other, foreign.id)),
+    ).toStrictEqual({ items: foreignExpected, nextAfterOrdinal: null })
+  })
 
   it('behåller båda orgfiltren, propertyscope, företag/år/status/nullfilter och hela året', async () => {
     const org = await organization(),
