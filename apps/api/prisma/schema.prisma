@@ -977,6 +977,7 @@ model Organization {
   fortnoxReadSourceExports  FortnoxReadSourceExport[]
   fortnoxReadNormalizationStages FortnoxReadNormalizationStage[]
   fortnoxReadNormalizationPages FortnoxReadNormalizationPage[]
+  fortnoxReadPublications FortnoxReadPublication[]
   fortnoxVoucherExports     FortnoxVoucherExport[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -7850,7 +7851,7 @@ model FortnoxReadRun {
 
   // Version 1 är checkpointkärnan; version 2 fryser råkälla och normaliserad
   // kontext och sparar sedan katalog, listmanifest och validerade detaljer.
-  // READY är verifierat läsunderlag, ännu inga ekonomiska resultat.
+  // READY avser verifierat läsunderlag. Ett v2-slututfall lagras separat i publication.
   // Båda är ännu ej HTTP-/köinkopplade. Legacy är null.
   workVersion          Int?
   phase                FortnoxReadPhase?
@@ -7873,10 +7874,43 @@ model FortnoxReadRun {
   contextSnapshot FortnoxReadContextSnapshot?
   sourceCapture FortnoxReadSourceCapture? @relation(fields: [sourceCaptureId, organizationId], references: [id, organizationId], onDelete: NoAction, onUpdate: NoAction)
   normalizationStage FortnoxReadNormalizationStage?
+  publication FortnoxReadPublication?
 
   @@unique([id, organizationId])
   @@unique([sourceCaptureId, organizationId])
   @@index([organizationId, startedAt])
+}
+
+
+// Append-only internt v2-slututfall; aldrig legacy-runens summary/rows eller kund-API.
+// SQL binder INSERT till aktuell lease och kräver atomiskt matchande terminal run.
+// publishedAt sätts av DB; canonicalBytes är codecens safe integer lagrad som BigInt.
+model FortnoxReadPublication {
+  id                String            @id @default(uuid())
+  organizationId    String
+  runId             String            @unique
+  formatVersion     Int               @default(1)
+  status            FortnoxReadStatus
+  failureCode       String?
+  reason            String?
+  publishedAt       DateTime          @db.Timestamptz(3)
+  binding           Json
+  proof             Json
+  resultDigest      String?
+  canonicalBytes    BigInt?
+  publicationDigest String
+  financialYear     Json?
+  summary           Json?
+  rows              Json?
+  coverage          Json?
+  uncertainties     Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  run FortnoxReadRun @relation(fields: [runId, organizationId], references: [id, organizationId], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([id, organizationId])
+  @@unique([runId, organizationId])
+  @@index([organizationId])
 }
 
 // Endast validerad sidmetadata och hash per listidentitet, aldrig råa API-objekt.

@@ -170,6 +170,18 @@ export async function readCompletedNormalizationStage(
   source: SourceHeader,
 ): Promise<Stage> {
   await lockStage(tx, run)
+  return readStoredCompletedNormalizationStage(tx, run, source)
+}
+
+/** Historisk, endast läsande metadata. Samma form-/scopekontroll, inga parentlås
+ * och inget krav på RUNNING eller aktuell anslutning. Anroparen verifierar det
+ * verkliga terminalparet; en terminal run får aldrig ersättas med en falsk kopia.
+ */
+export async function readStoredCompletedNormalizationStage(
+  tx: Tx,
+  run: FortnoxReadRun,
+  source: SourceHeader,
+): Promise<Stage> {
   const stage = await readStage(tx, run, source)
   if (stage.status !== 'NORMALIZED') throw invalid()
   return stage

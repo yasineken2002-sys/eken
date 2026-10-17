@@ -1,6 +1,6 @@
-/** Verklig syntetisk PostgreSQL: intern v2-reducering, ingen provider/publicering.
+/** Verklig syntetisk PostgreSQL: intern v2-reducering och riktade publiceringsregressioner.
  * Handräknat fullfacit och oberoende hashbytes. Felen injiceras först efter riktiga
- * queries; lagrade immutabla rader/guardar ändras aldrig. Root kör seriellt.
+ * queries; lagrade immutabla rader/guardar ändras aldrig. Ingen provider. Root kör seriellt.
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { setTimeout as pause } from 'node:timers/promises'
@@ -18,6 +18,7 @@ import * as economic from './fortnox-ledger-reducer'
 import * as reduction from './fortnox-read-reduction'
 import * as normalizedContext from './fortnox-read-normalized-context'
 import { CheckpointContextSchema } from './fortnox-read-checkpoint-context'
+import { decodeLedgerResult } from './fortnox-read-result-format'
 
 const INPUT: StartCheckpointInput = {
   financialYearId: 1,
@@ -540,6 +541,18 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
       await observer.$disconnect()
     }
   }
+  async function storedPublications() {
+    const observer = new TestPrisma({ datasources: { db: { url: DATABASE_URL } } })
+    try {
+      await observer.$connect()
+      return await observer.fortnoxReadPublication.findMany({
+        where: { organizationId: { in: [...orgs] } },
+        orderBy: { id: 'asc' },
+      })
+    } finally {
+      await observer.$disconnect()
+    }
+  }
   async function assertInert(f: Fixture) {
     const current = await durable(f.org)
     expect(current.runs.find((r) => r.id === f.run.id)).toMatchObject({
@@ -857,6 +870,51 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
       },
     })
     await assertInert(f)
+
+    // Publication is deliberately AFTER all original inert/restart assertions.
+    // Decode actual JSONB through another client; a correct receipt alone does
+    // not prove that the complete economic result survived transport/storage.
+    const publication = await restarted.publishReadyLedger(lease)
+    const publicationProof = {
+      ...(await proof(
+        f,
+        HAND.map((h) => h.expected),
+      )),
+      claimVersion: f.lease.claimVersion + 1,
+    }
+    expect(publication.proof).toStrictEqual(publicationProof)
+    expect(publication.resultDigest).toBe(hash(expected))
+    expect(publication.canonicalBytes).toBe(Buffer.byteLength(JSON.stringify(ordered(expected))))
+    const observer = new TestPrisma({ datasources: { db: { url: DATABASE_URL } } })
+    try {
+      await observer.$connect()
+      const saved = await observer.fortnoxReadPublication.findUniqueOrThrow({
+        where: { runId: f.run.id, organizationId: f.org },
+      })
+      if (saved.canonicalBytes === null || saved.canonicalBytes > BigInt(Number.MAX_SAFE_INTEGER))
+        throw new Error('Det publicerade handfacitets byteantal saknas eller är osäkert')
+      expect(
+        decodeLedgerResult({
+          formatVersion: saved.formatVersion,
+          resultDigest: saved.resultDigest,
+          canonicalBytes: Number(saved.canonicalBytes),
+          status: saved.status,
+          reason: saved.reason,
+          summary: saved.summary,
+          rows: saved.rows,
+          coverage: saved.coverage,
+          uncertainties: saved.uncertainties,
+          financialYear: saved.financialYear,
+        }),
+      ).toStrictEqual(expected)
+      expect(saved.proof).toStrictEqual(publicationProof)
+      expect(saved.id).toBe(publication.id)
+      expect(await service(observer).readPublicationReceipt(f.org, f.run.id)).toStrictEqual(
+        publication,
+      )
+    } finally {
+      await observer.$disconnect()
+    }
   })
 
   it('tomt manifest ger noll rörelse men en verklig manifestsida och exakt bokstavligt hashformat', async () => {
@@ -1196,9 +1254,16 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
     },
   )
 
-  it.each(['corrupt', 'sql', 'expired', 'only-overflow'] as const)(
-    'verklig tidig pass2-overflow lämnar inte före sista101-detaljsidan: %s',
-    async (mode) => {
+  it.each([
+    ['reduce', 'corrupt'],
+    ['reduce', 'sql'],
+    ['reduce', 'expired'],
+    ['reduce', 'only-overflow'],
+    ['publish', 'corrupt'],
+    ['publish', 'sql'],
+  ] as const)(
+    '%s: verklig tidig pass2-overflow lämnar inte före sista101-detaljsidan: %s',
+    async (operation, mode) => {
       const amounts = (n: number) => (n === 1 ? 9007199254740990 : n === 10 ? 2 : 0)
       const f = await fixture(Array.from({ length: 101 }, (_, i) => raw(i + 1, amounts(i + 1)))),
         c = await controlled()
@@ -1209,10 +1274,13 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
         lease = await claim(f, owner)
       }
       const before = await durable(f.org),
+        publicationsBefore = await storedPublications(),
         observed = observeAccumulator()
+      expect(publicationsBefore.filter((row) => row.organizationId === f.org)).toHaveLength(0)
       let reads = 0,
         lateRead = false,
         finalCount = false
+      let sqlFailure: unknown
       c.hooks.after = async (params, value) => {
         if (detailRead(params)) {
           reads++
@@ -1222,7 +1290,14 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
             expect(observed.seen.overflow).toBe(true)
             expect(observed.seen.firstError).toBeInstanceOf(economic.LedgerAmountOverflow)
             lateRead = true
-            if (mode === 'sql') await db().$queryRaw`SELECT 1/0`
+            if (mode === 'sql') {
+              try {
+                await db().$queryRaw`SELECT 1/0`
+              } catch (error) {
+                sqlFailure = error
+                throw error
+              }
+            }
             if (mode === 'expired') await databaseAfter(await deadline(f))
           }
         }
@@ -1239,10 +1314,12 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
         return value
       }
       try {
-        const pending = owner.reduceReadyLedger(lease)
-        if (mode === 'sql')
+        const pending =
+          operation === 'publish' ? owner.publishReadyLedger(lease) : owner.reduceReadyLedger(lease)
+        if (mode === 'sql') {
           await expect(pending).rejects.toMatchObject({ code: 'P2010', meta: { code: '22012' } })
-        else if (mode === 'expired') await expect(pending).rejects.toThrow(EXPIRED)
+          await expect(pending).rejects.toBe(sqlFailure)
+        } else if (mode === 'expired') await expect(pending).rejects.toThrow(EXPIRED)
         else if (mode === 'corrupt') await expect(pending).rejects.toThrow(INVALID_CONTEXT)
         else {
           const numbers = Array.from({ length: 101 }, (_, i) => i + 1).sort((a, b) =>
@@ -1269,6 +1346,9 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
         expect(after.pages).toStrictEqual(before.pages)
         expect(after.snapshots).toStrictEqual(before.snapshots)
         expect(after.contextPages).toStrictEqual(before.contextPages)
+        // Includes any earlier owned publication: no insertion or overwrite on
+        // a failed attempt, read through an independent committed observer.
+        expect(await storedPublications()).toStrictEqual(publicationsBefore)
         if (mode === 'corrupt')
           expect(after.runs[0]).toMatchObject({
             status: 'FAILED',
@@ -1601,6 +1681,9 @@ describe('Fortnox v2: intern reducering från oförändrad READY-källa', () => 
       await prisma.account.deleteMany({ where: { id: { in: [...accounts] } } })
       await prisma.organization.deleteMany({ where: { id: { in: [...orgs] } } })
       expect(await prisma.organization.count({ where: { id: { in: [...orgs] } } })).toBe(0)
+      expect(
+        await prisma.fortnoxReadPublication.count({ where: { organizationId: { in: [...orgs] } } }),
+      ).toBe(0)
     } finally {
       await prisma.$disconnect()
       prisma = undefined

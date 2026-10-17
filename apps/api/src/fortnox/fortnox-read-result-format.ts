@@ -173,6 +173,12 @@ function transportJson(value: unknown, ancestors = new Set<object>(), depth = 0)
   ancestors.delete(current)
 }
 
+/** Reuse the exact result transport guard for the small publication envelope. */
+export function assertLedgerTransportJson(value: unknown): void {
+  rejectInheritedJsonHooks()
+  transportJson(value)
+}
+
 function row(value: unknown): void {
   const r = fields(value, ROW_KEYS)
   string(r.voucher)

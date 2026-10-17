@@ -67,6 +67,8 @@ const SKYDDADE = [
   'FortnoxReadContextPage',
   // Den egna stage-specen provar sidans atomiska räknarsteg och orgcascade.
   'FortnoxReadNormalizationPage',
+  // Slututfallets egna DB-prov täcker atomiskt par och faktisk orgcascade.
+  'FortnoxReadPublication',
   // Förseglad råkälla. Den egna capture-specen provar båda barnens riktiga
   // data, scoped FK, försegling och organisationscascade.
   'FortnoxReadSourceMapping',
@@ -178,9 +180,15 @@ medDb('append-only-spärren i databasen', () => {
       )
       const namn = kol[0]?.column_name
       expect(namn).toBeTruthy()
-      await expect(
-        prisma.$executeRawUnsafe(`UPDATE "${tabell}" SET "${namn}" = "${namn}"`),
-      ).rejects.toThrow(/append-only/)
+      const update = prisma.$executeRawUnsafe(`UPDATE "${tabell}" SET "${namn}" = "${namn}"`)
+      if (tabell === 'FortnoxReadPublication') {
+        // Den nya publiceringen har en egen satsvakt för både UPDATE och
+        // TRUNCATE. Kräv dess exakta SQL-fel, inte ett godtyckligt avslag.
+        await expect(update).rejects.toMatchObject({
+          code: 'P2010',
+          meta: { code: '23514', message: 'ERROR: FortnoxReadPublication is immutable' },
+        })
+      } else await expect(update).rejects.toThrow(/append-only/)
     }
   }, 60_000)
 

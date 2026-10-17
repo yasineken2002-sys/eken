@@ -29,6 +29,14 @@ import {
   type ReductionProof,
 } from './fortnox-read-reduction'
 export type { ReadyLedgerReduction, ReductionProof } from './fortnox-read-reduction'
+import { encodeLedgerPublication, PublicationFormatError } from './fortnox-read-publication-format'
+import {
+  insertLedgerPublication,
+  readStoredLedgerPublication,
+  checkedPublicationReceipt,
+  type PublicationReceipt,
+} from './fortnox-read-publication'
+export type { PublicationReceipt } from './fortnox-read-publication'
 import type { FortnoxVoucher } from './fortnox.types'
 import {
   appendVoucherDetail,
@@ -766,8 +774,88 @@ export class FortnoxReadSourceRunService {
     return result.items
   }
 
+  /** Serverägd publicering från den faktiska A–F-kedjan. Ingen caller kan
+   * lämna resultat, bindning eller bevis; ingen HTTP-/köaktivering införs.
+   */
+  async publishReadyLedger(lease: SourceRunLease): Promise<PublicationReceipt> {
+    const { held, expected, outcome } = await this.reduceReadyLedgerInternal(lease)
+    // Codec/CPU-arbete ligger utanför write-TX. Efter det krävs åter aktuell
+    // lease; renew får aldrig återuppliva ett utgånget anspråk.
+    const encoded = encodeLedgerPublication(randomUUID(), expected.context, outcome)
+    await this.renewContextLeaseIfNeeded(held)
+    const committed = await this.withNormalizedContext(held.value, async (tx, run, context) => {
+      await this.assertReductionContext(tx, run, context, expected)
+      if (run.claimVersion !== outcome.proof.claimVersion) throw invalidReduction()
+      await this.assertContextLeaseTime(tx, run)
+      await tx.$executeRaw`SET CONSTRAINTS "fortnox_publication_must_finish", "fortnox_run_publication_required" DEFERRED`
+      const publication = await insertLedgerPublication(tx, encoded)
+      const now = await this.assertContextLeaseTime(tx, run)
+      await tx.fortnoxReadRun.update({
+        where: {
+          id: run.id,
+          organizationId: run.organizationId,
+          claimVersion: held.value.claimVersion,
+          claimToken: held.value.claimToken,
+        },
+        data: {
+          status: encoded.status,
+          reason: encoded.reason,
+          completedAt: publication.publishedAt,
+          checkpointUpdatedAt: new Date(Math.max(now.getTime(), publication.publishedAt.getTime())),
+          claimToken: null,
+          leaseUntil: null,
+        },
+        select: { id: true, status: true },
+      })
+      await tx.$executeRaw`SET CONSTRAINTS "fortnox_publication_must_finish", "fortnox_run_publication_required" IMMEDIATE`
+      // Avsiktligt OLD-runen: token/version är fortfarande låsta och dess
+      // deadline måste vara giltig även efter samtliga write-/pair-frågor.
+      await this.assertContextLeaseTime(tx, run)
+      return publication.id
+    })
+    // Ingen success baserad enbart på ett fulfilled Prisma-COMMIT. Kvitto
+    // läser den verkliga kopian i en separat TX, inklusive hela resultatet.
+    const receipt = await this.readPublicationReceipt(held.value.organizationId, held.value.runId)
+    if (
+      !receipt ||
+      receipt.id !== committed ||
+      receipt.id !== encoded.id ||
+      receipt.publicationDigest !== encoded.publicationDigest
+    )
+      throw new PublicationFormatError()
+    return receipt
+  }
+
+  /** Historiskt kvitto: ingen withLease/liveconnection, inga writes och ingen
+   * automatisk återpublicering efter förlorat svar. Saknad rad är endast null.
+   */
+  async readPublicationReceipt(
+    organizationId: string,
+    runId: string,
+  ): Promise<PublicationReceipt | null> {
+    this.checkIdentity(organizationId, runId)
+    const stored = await this.prisma.$transaction(
+      (tx) => readStoredLedgerPublication(tx, organizationId, runId),
+      {
+        ...PRISMA_DEFAULT_TX_LIMITS,
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+      },
+    )
+    // Immutable resultat och bindning kan valideras efter read-TX, utan att
+    // hålla en databastransaktion öppen över full JSON-hashning.
+    return stored === null ? null : checkedPublicationReceipt(stored)
+  }
+
   /** Intern beräkning av fryst READY-underlag; skriver aldrig ekonomiskt resultat. */
   async reduceReadyLedger(lease: SourceRunLease): Promise<ReadyLedgerReduction> {
+    return (await this.reduceReadyLedgerInternal(lease)).outcome
+  }
+
+  private async reduceReadyLedgerInternal(lease: SourceRunLease): Promise<{
+    held: HeldContextLease
+    expected: ReductionBinding
+    outcome: ReadyLedgerReduction
+  }> {
     const parsed = leaseSchema.safeParse(lease)
     if (!parsed.success) throw new BadRequestException('Ogiltigt läsanspråk')
     const held: HeldContextLease = { value: parsed.data }
@@ -819,9 +907,11 @@ export class FortnoxReadSourceRunService {
       voucherCount: second.proof.count,
       claimVersion: held.value.claimVersion,
     }
-    return result === null
-      ? { kind: 'FAILED', code: 'AMOUNT_OVERFLOW', proof }
-      : { kind: 'REDUCED', proof, result }
+    const outcome: ReadyLedgerReduction =
+      result === null
+        ? { kind: 'FAILED', code: 'AMOUNT_OVERFLOW', proof }
+        : { kind: 'REDUCED', proof, result }
+    return { held, expected, outcome }
   }
 
   private async bindReadyReduction(held: HeldContextLease): Promise<ReductionBinding> {
