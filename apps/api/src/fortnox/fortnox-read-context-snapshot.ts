@@ -1,45 +1,31 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type FortnoxReadContextSnapshot } from '@prisma/client'
-import { z } from 'zod'
 import { CheckpointContextDigest } from './fortnox-read-context-digest'
 import {
   canonicalCheckpointInput,
   checkpointDigest,
   CheckpointContextSchema,
-  CheckpointInputSchema,
 } from './fortnox-read-checkpoint-context'
 
+import {
+  CONTEXT_PAGE_SIZE as PAGE_SIZE,
+  CONTEXT_KINDS as KINDS,
+  ContextManifestSchema as ManifestSchema,
+  type ContextKind as Kind,
+  type ContextItems as Items,
+  type ContextManifest as Manifest,
+  type ContextHeader as Header,
+  checkedContextHeader,
+  checkedContextPage,
+  contextBindingDigest as bindingDigest,
+  contextInitialRoot as initialRoot,
+  contextExtendRoot as extendRoot,
+  contextPageDigest as pageDigest,
+  contextHeaderDigest as headerDigest,
+} from './fortnox-read-context-format'
+
 type Tx = Prisma.TransactionClient
-const PAGE_SIZE = 100
-const KINDS = ['MAPPINGS', 'OWN_EXPORTS'] as const
-type Kind = (typeof KINDS)[number]
-const count = z.number().int().nonnegative().safe()
-const hash = z.string().regex(/^[a-f0-9]{64}$/)
-const collection = z
-  .object({ itemCount: count, pageCount: count, root: hash })
-  .strict()
-  .refine((v) => v.pageCount === Math.ceil(v.itemCount / PAGE_SIZE))
-const ManifestSchema = z
-  .object({
-    version: z.literal(1),
-    input: CheckpointInputSchema,
-    sourceDigest: hash,
-    connection: z
-      .object({
-        id: z.string(),
-        generation: count,
-        databaseNumber: z.number().int().positive().safe(),
-        orgNumber: z.string().nullable(),
-      })
-      .strict(),
-    collections: z.object({ MAPPINGS: collection, OWN_EXPORTS: collection }).strict(),
-  })
-  .strict()
-type Manifest = z.infer<typeof ManifestSchema>
-type Header = Omit<FortnoxReadContextSnapshot, 'manifest'> & { manifest: Manifest }
-type Context = z.infer<typeof CheckpointContextSchema>
-type Items = Context['mappings'] | Context['ownExports']
 const runSelect = {
   id: true,
   organizationId: true,
@@ -78,40 +64,6 @@ function connectionOf(run: RunBinding): Manifest['connection'] {
     databaseNumber: run.fortnoxDatabaseNumber,
     orgNumber: run.fortnoxOrgNumber,
   }
-}
-
-function bindingDigest(header: Pick<Header, 'id' | 'organizationId' | 'runId' | 'manifest'>) {
-  const { version, input, sourceDigest, connection } = header.manifest
-  return checkpointDigest({
-    snapshotId: header.id,
-    organizationId: header.organizationId,
-    runId: header.runId,
-    version,
-    input,
-    sourceDigest,
-    connection,
-  })
-}
-
-function initialRoot(binding: string, kind: Kind) {
-  return checkpointDigest({ version: 1, binding, kind })
-}
-
-function extendRoot(previousRoot: string, page: number, itemCount: number, digest: string) {
-  return checkpointDigest({ previousRoot, page, itemCount, digest })
-}
-
-function pageDigest(binding: string, kind: Kind, page: number, items: Items) {
-  return checkpointDigest({ version: 1, binding, kind, page, itemCount: items.length, items })
-}
-
-function headerDigest(header: Pick<Header, 'id' | 'organizationId' | 'runId' | 'manifest'>) {
-  return checkpointDigest({
-    id: header.id,
-    organizationId: header.organizationId,
-    runId: header.runId,
-    manifest: header.manifest,
-  })
 }
 
 /**
@@ -201,15 +153,12 @@ export async function freezeCheckpointContext(tx: Tx, organizationId: string, ru
 }
 
 function checkedHeader(row: FortnoxReadContextSnapshot, run: RunBinding): Header {
-  const parsed = ManifestSchema.safeParse(row.manifest)
-  if (!parsed.success || !row.sealedAt) throw invalid()
-  const header = { ...row, manifest: parsed.data }
+  const header = checkedContextHeader(row)
   if (
     row.organizationId !== run.organizationId ||
     row.runId !== run.id ||
-    row.digest !== headerDigest(header) ||
-    !inputMatches(run, parsed.data.input) ||
-    checkpointDigest(parsed.data.connection) !== checkpointDigest(connectionOf(run))
+    !inputMatches(run, header.manifest.input) ||
+    checkpointDigest(header.manifest.connection) !== checkpointDigest(connectionOf(run))
   )
     throw invalid()
   return header
@@ -235,25 +184,7 @@ async function checkedPage(tx: Tx, header: Header, kind: Kind, page: number) {
       organizationId: header.organizationId,
     },
   })
-  const schema =
-    kind === 'MAPPINGS'
-      ? CheckpointContextSchema.shape.mappings
-      : CheckpointContextSchema.shape.ownExports
-  const parsed = schema.safeParse(row?.items)
-  const expected = Math.min(
-    PAGE_SIZE,
-    header.manifest.collections[kind].itemCount - (page - 1) * PAGE_SIZE,
-  )
-  if (
-    !row ||
-    !parsed.success ||
-    expected < 1 ||
-    row.itemCount !== expected ||
-    parsed.data.length !== expected ||
-    row.digest !== pageDigest(bindingDigest(header), kind, page, parsed.data)
-  )
-    throw invalid()
-  return { items: parsed.data, digest: row.digest }
+  return checkedContextPage(row, header, kind, page)
 }
 
 /**
