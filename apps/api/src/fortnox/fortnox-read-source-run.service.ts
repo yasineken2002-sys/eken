@@ -8,12 +8,27 @@ import {
   canonicalCheckpointInput,
   checkpointDigest,
   CheckpointCatalogSchema,
+  CheckpointContextSchema,
   CheckpointReadPageSchema,
   type CheckpointCatalog,
   type StartCheckpointInput,
 } from './fortnox-read-checkpoint-context'
 import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
 import type { ValidatedLedgerVoucher } from './fortnox-ledger-validation'
+import { createLedgerAccumulator, LedgerAmountOverflow } from './fortnox-ledger-reducer'
+import {
+  appendReductionMappings,
+  appendReductionOwnExports,
+  buildReductionConfig,
+  createFrozenReductionMaps,
+  DetailReductionProof,
+  finishReducedLedger,
+  ManifestReductionProof,
+  type FrozenReductionMaps,
+  type ReadyLedgerReduction,
+  type ReductionProof,
+} from './fortnox-read-reduction'
+export type { ReadyLedgerReduction, ReductionProof } from './fortnox-read-reduction'
 import type { FortnoxVoucher } from './fortnox.types'
 import {
   appendVoucherDetail,
@@ -24,6 +39,7 @@ import {
   readValidatedVoucherPage,
   readVoucherDetailReceipt,
   readVoucherManifestReceipt,
+  readVoucherManifestPageForReduction,
   type VoucherDetailReceipt,
   type VoucherManifestReceipt,
 } from './fortnox-read-voucher-checkpoint'
@@ -125,6 +141,36 @@ type CatalogContext = {
   header: ContextHeader
   hasProjectMapping: boolean
 }
+const reductionManifestSelect = {
+  id: true,
+  organizationId: true,
+  runId: true,
+  page: true,
+  totalPages: true,
+  totalResources: true,
+  itemCount: true,
+  digest: true,
+} as const satisfies Prisma.FortnoxReadManifestPageSelect
+type ReductionManifestHeader = Prisma.FortnoxReadManifestPageGetPayload<{
+  select: typeof reductionManifestSelect
+}>
+type ReductionManifest = {
+  pageCount: number
+  totalPages: number
+  totalResources: number
+  nextManifestPage: number
+  first: ReductionManifestHeader
+  last: ReductionManifestHeader
+}
+type ReductionBinding = {
+  context: NormalizedContextBinding
+  header: ContextHeader
+  catalog: CheckpointCatalog
+  catalogDigest: string
+  manifest: ReductionManifest
+}
+const invalidReduction = () =>
+  new ConflictException('Underlaget för reducering är ofullständigt eller ändrades under läsningen')
 const MAX_CLAIM_VERSION = 2_147_483_647
 const leaseSchema = z
   .object({
@@ -684,11 +730,29 @@ export class FortnoxReadSourceRunService {
     lease: SourceRunLease,
     options: { afterKey?: string; limit?: number } = {},
   ): Promise<ValidatedLedgerVoucher[]> {
+    return this.readValidatedPageInternal(lease, options)
+  }
+
+  private async readValidatedPageInternal(
+    lease: SourceRunLease,
+    options: { afterKey?: string; limit?: number },
+    expectedReductionBinding?: ReductionBinding,
+  ): Promise<ValidatedLedgerVoucher[]> {
     const parsed = CheckpointReadPageSchema.safeParse(options)
     if (!parsed.success) throw new BadRequestException('Ogiltig detaljsida')
-    const result = await this.withLease(lease, async (tx, run) => {
+    const result = await this.withLease(lease, async (tx, run, _now, source) => {
       if (run.phase !== 'READY_TO_REDUCE')
         throw new ConflictException('Alla detaljer är inte sparade')
+      if (expectedReductionBinding) {
+        const stage = await readCompletedNormalizationStage(tx, run, source)
+        await this.assertContextLeaseTime(tx, run)
+        await this.assertReductionContext(
+          tx,
+          run,
+          normalizedContextBinding(run, source, stage),
+          expectedReductionBinding,
+        )
+      }
       const catalog = CheckpointCatalogSchema.parse(run.catalog)
       const page = await readValidatedVoucherPage(tx, run, catalog.financialYear, parsed.data)
       if (page.kind === 'INVALID') {
@@ -700,6 +764,302 @@ export class FortnoxReadSourceRunService {
     })
     if (!result.valid) throw new ConflictException(INVALID_CONTEXT)
     return result.items
+  }
+
+  /** Intern beräkning av fryst READY-underlag; skriver aldrig ekonomiskt resultat. */
+  async reduceReadyLedger(lease: SourceRunLease): Promise<ReadyLedgerReduction> {
+    const parsed = leaseSchema.safeParse(lease)
+    if (!parsed.success) throw new BadRequestException('Ogiltigt läsanspråk')
+    const held: HeldContextLease = { value: parsed.data }
+    const expected = await this.bindReadyReduction(held)
+    const maps = await this.buildFrozenReductionMaps(held, expected)
+    const manifest = await this.verifyReductionManifest(held, expected)
+    const first = await this.runReductionDetailPass(held, expected, manifest.keys)
+    const { config, base } = buildReductionConfig(
+      expected.context.input,
+      expected.catalog,
+      maps,
+      {
+        pages: manifest.pageCount,
+        totalPages: expected.manifest.totalPages,
+        totalResources: expected.manifest.totalResources,
+        itemsSeen: manifest.itemsSeen,
+      },
+      manifest.duplicateWarnings,
+    )
+    // Alla detaljer har verifierats före den första ekonomiska summeringen.
+    const accumulator = createLedgerAccumulator(config, base)
+    const second = await this.runReductionDetailPass(held, expected, manifest.keys, accumulator)
+    if (
+      first.proof.count !== second.proof.count ||
+      first.proof.digest !== second.proof.digest ||
+      first.proof.firstKey !== second.proof.firstKey ||
+      first.proof.lastKey !== second.proof.lastKey
+    )
+      throw invalidReduction()
+    const result = second.overflow
+      ? null
+      : finishReducedLedger(accumulator.finish(), expected.catalog, maps.ownExports)
+    // CPU-arbetet ovan kan överskrida lease. Sista DB-fencen ligger därför
+    // efter finish och proveniens, även när det enda utfallet är overflow.
+    await this.finalReductionFence(held, expected, manifest.keys.size)
+    const proof: ReductionProof = {
+      version: 1,
+      organizationId: expected.context.organizationId,
+      runId: expected.context.runId,
+      sourceCaptureId: expected.context.sourceCaptureId,
+      snapshotId: expected.header.id,
+      snapshotDigest: expected.header.digest,
+      sourceDigest: expected.header.manifest.sourceDigest,
+      catalogDigest: expected.catalogDigest,
+      manifestDigest: manifest.digest,
+      detailDigest: second.proof.digest,
+      manifestPageCount: manifest.pageCount,
+      manifestItemsSeen: manifest.itemsSeen,
+      voucherCount: second.proof.count,
+      claimVersion: held.value.claimVersion,
+    }
+    return result === null
+      ? { kind: 'FAILED', code: 'AMOUNT_OVERFLOW', proof }
+      : { kind: 'REDUCED', proof, result }
+  }
+
+  private async bindReadyReduction(held: HeldContextLease): Promise<ReductionBinding> {
+    // Avvisa fel fas innan ett fullständigt kontextpass startas.
+    await this.withLease(held.value, async (tx, run) => {
+      if (run.phase !== 'READY_TO_REDUCE') throw invalidReduction()
+      await this.assertContextLeaseTime(tx, run)
+    })
+    const receipt = await this.freezeNormalizedContext(held.value)
+    await this.renewContextLeaseIfNeeded(held)
+    return this.withNormalizedContext(held.value, async (tx, run, context) => {
+      if (run.phase !== 'READY_TO_REDUCE' || receipt.runId !== run.id) throw invalidReduction()
+      const header = await findNormalizedContextHeader(tx, context)
+      assertNormalizedContextHeader(
+        header,
+        { id: receipt.snapshotId, digest: receipt.headerDigest },
+        receipt.sourceDigest,
+      )
+      const catalog = checkedRunCatalog(run, context.input, false)
+      const manifest = await this.readReductionManifest(tx, run)
+      await this.assertContextLeaseTime(tx, run)
+      return { context, header, catalog, catalogDigest: checkpointDigest(catalog), manifest }
+    })
+  }
+
+  private async readReductionManifest(tx: Tx, run: FortnoxReadRun): Promise<ReductionManifest> {
+    if (run.phase !== 'READY_TO_REDUCE' || run.nextManifestPage < 2) throw invalidReduction()
+    const lastPage = run.nextManifestPage - 1
+    const rows = await tx.fortnoxReadManifestPage.findMany({
+      where: {
+        organizationId: run.organizationId,
+        runId: run.id,
+        page: { in: lastPage > 1 ? [1, lastPage] : [1] },
+      },
+      select: reductionManifestSelect,
+    })
+    const first = rows.find((row) => row.page === 1)
+    const last = rows.find((row) => row.page === lastPage)
+    if (
+      !first ||
+      !last ||
+      rows.length !== (lastPage > 1 ? 2 : 1) ||
+      rows.some(
+        (row) =>
+          row.organizationId !== run.organizationId ||
+          row.runId !== run.id ||
+          typeof row.id !== 'string' ||
+          !row.id ||
+          !Number.isSafeInteger(row.page) ||
+          row.page < 1 ||
+          !Number.isSafeInteger(row.totalPages) ||
+          row.totalPages < 0 ||
+          !Number.isSafeInteger(row.totalResources) ||
+          row.totalResources < 0 ||
+          !Number.isSafeInteger(row.itemCount) ||
+          row.itemCount < 0 ||
+          row.itemCount > 100 ||
+          !/^[a-f0-9]{64}$/.test(row.digest) ||
+          row.totalPages !== first.totalPages ||
+          row.totalResources !== first.totalResources ||
+          (row.totalPages === 0
+            ? !(row.page === 1 && row.totalResources === 0 && row.itemCount === 0)
+            : row.page > row.totalPages),
+      ) ||
+      lastPage !== Math.max(1, first.totalPages)
+    )
+      throw invalidReduction()
+    return {
+      pageCount: lastPage,
+      totalPages: first.totalPages,
+      totalResources: first.totalResources,
+      nextManifestPage: run.nextManifestPage,
+      first,
+      last,
+    }
+  }
+
+  private async assertReductionContext(
+    tx: Tx,
+    run: FortnoxReadRun,
+    context: NormalizedContextBinding,
+    expected: ReductionBinding,
+  ): Promise<ContextHeader> {
+    if (run.phase !== 'READY_TO_REDUCE') throw invalidReduction()
+    assertSameNormalizedContextBinding(context, expected.context)
+    const header = await findNormalizedContextHeader(tx, context)
+    assertNormalizedContextHeader(header, expected.header, expected.header.manifest.sourceDigest)
+    const catalog = checkedRunCatalog(run, context.input, false)
+    if (
+      checkpointDigest(catalog) !== expected.catalogDigest ||
+      checkpointDigest(await this.readReductionManifest(tx, run)) !==
+        checkpointDigest(expected.manifest)
+    )
+      throw invalidReduction()
+    return header
+  }
+
+  private async buildFrozenReductionMaps(
+    held: HeldContextLease,
+    expected: ReductionBinding,
+  ): Promise<FrozenReductionMaps> {
+    const maps = createFrozenReductionMaps()
+    const stream = new CheckpointContextDigest(expected.header.manifest.input)
+    const digestBinding = contextBindingDigest(expected.header)
+    for (const kind of CONTEXT_KINDS) {
+      const collection = expected.header.manifest.collections[kind]
+      let root = contextInitialRoot(digestBinding, kind)
+      let seen = 0
+      for (let page = 1; page <= collection.pageCount; page++) {
+        await this.renewContextLeaseIfNeeded(held)
+        const checked = await this.withNormalizedContext(held.value, async (tx, run, context) => {
+          const header = await this.assertReductionContext(tx, run, context, expected)
+          const observed = await readNormalizedContextPage(tx, header, kind, page)
+          await this.assertContextLeaseTime(tx, run)
+          return observed
+        })
+        // Samma validerade payload bygger både konfiguration och full källdigest.
+        if (kind === 'MAPPINGS') {
+          const items = CheckpointContextSchema.shape.mappings.parse(checked.items)
+          stream.append(kind, items)
+          appendReductionMappings(maps, items)
+        } else {
+          const items = CheckpointContextSchema.shape.ownExports.parse(checked.items)
+          stream.append(kind, items)
+          appendReductionOwnExports(maps, items)
+        }
+        seen += checked.items.length
+        root = contextExtendRoot(root, page, checked.items.length, checked.digest)
+      }
+      if (seen !== collection.itemCount || root !== collection.root)
+        throw invalidNormalizedContext()
+    }
+    if (stream.digest() !== expected.header.manifest.sourceDigest) throw invalidNormalizedContext()
+    await this.renewContextLeaseIfNeeded(held)
+    await this.withNormalizedContext(held.value, async (tx, run, context) => {
+      await this.assertReductionContext(tx, run, context, expected)
+      checkedRunCatalog(run, context.input, maps.hasProjectMapping)
+      for (const kind of CONTEXT_KINDS) {
+        const count = await tx.fortnoxReadContextPage.count({
+          where: { organizationId: context.organizationId, snapshotId: expected.header.id, kind },
+        })
+        if (count !== expected.header.manifest.collections[kind].pageCount)
+          throw invalidNormalizedContext()
+      }
+      await this.assertContextLeaseTime(tx, run)
+    })
+    return maps
+  }
+
+  private async verifyReductionManifest(
+    held: HeldContextLease,
+    expected: ReductionBinding,
+  ): Promise<ReturnType<ManifestReductionProof['finish']>> {
+    await this.renewContextLeaseIfNeeded(held)
+    // Verklig mängd före payloadloopen: förfalskat stort sidhuvud får inte
+    // orsaka en obegränsad serie resultatlösa sidfrågor.
+    await this.withNormalizedContext(held.value, async (tx, run, context) => {
+      await this.assertReductionContext(tx, run, context, expected)
+      const count = await tx.fortnoxReadManifestPage.count({
+        where: { organizationId: run.organizationId, runId: run.id },
+      })
+      if (count !== expected.manifest.pageCount) throw invalidReduction()
+      await this.assertContextLeaseTime(tx, run)
+    })
+    const proof = new ManifestReductionProof({
+      pageCount: expected.manifest.pageCount,
+      totalPages: expected.manifest.totalPages,
+      totalResources: expected.manifest.totalResources,
+    })
+    for (let page = 1; page <= expected.manifest.pageCount; page++) {
+      await this.renewContextLeaseIfNeeded(held)
+      const observed = await this.withNormalizedContext(held.value, async (tx, run, context) => {
+        await this.assertReductionContext(tx, run, context, expected)
+        const stored = await readVoucherManifestPageForReduction(tx, run, page, expected.manifest)
+        await this.assertContextLeaseTime(tx, run)
+        return stored
+      })
+      proof.append(observed)
+    }
+    return proof.finish()
+  }
+
+  private async runReductionDetailPass(
+    held: HeldContextLease,
+    expected: ReductionBinding,
+    keys: ReadonlyMap<string, string>,
+    accumulator?: ReturnType<typeof createLedgerAccumulator>,
+  ): Promise<{ proof: ReturnType<DetailReductionProof['finish']>; overflow: boolean }> {
+    const proof = new DetailReductionProof(keys)
+    let afterKey: string | undefined
+    let overflow: LedgerAmountOverflow | null = null
+    for (;;) {
+      await this.renewContextLeaseIfNeeded(held)
+      const items = await this.readValidatedPageInternal(
+        held.value,
+        afterKey === undefined ? { limit: 100 } : { afterKey, limit: 100 },
+        expected,
+      )
+      if (items.length > 100) throw invalidReduction()
+      proof.append(items)
+      if (!items.length) break
+      for (const item of items) {
+        if (accumulator && overflow === null) {
+          try {
+            accumulator.add(item)
+          } catch (error) {
+            if (!(error instanceof LedgerAmountOverflow)) throw error
+            overflow = error
+          }
+        }
+      }
+      afterKey = items[items.length - 1]!.key
+    }
+    return { proof: proof.finish(), overflow: overflow !== null }
+  }
+
+  private async finalReductionFence(
+    held: HeldContextLease,
+    expected: ReductionBinding,
+    voucherCount: number,
+  ): Promise<void> {
+    await this.renewContextLeaseIfNeeded(held)
+    await this.withNormalizedContext(held.value, async (tx, run, context) => {
+      await this.assertReductionContext(tx, run, context, expected)
+      const pages = await tx.fortnoxReadManifestPage.count({
+        where: { organizationId: run.organizationId, runId: run.id },
+      })
+      const vouchers = await tx.fortnoxReadVoucherCheckpoint.count({
+        where: { organizationId: run.organizationId, runId: run.id },
+      })
+      if (
+        pages !== expected.manifest.pageCount ||
+        vouchers !== expected.manifest.totalResources ||
+        vouchers !== voucherCount
+      )
+        throw invalidReduction()
+      await this.assertContextLeaseTime(tx, run)
+    })
   }
 
   private async stopVoucherConflict(

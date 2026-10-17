@@ -243,6 +243,78 @@ export async function readVoucherManifestReceipt(
   return receipt(run, row.id, row.page, row.digest)
 }
 
+/** Fenced caller; en faktisk sida och dess högst100 scoped checkpointnycklar. */
+export async function readVoucherManifestPageForReduction(
+  tx: Tx,
+  run: ManifestRunScope,
+  page: number,
+  expected: { totalPages: number; totalResources: number },
+): Promise<VoucherManifestPage> {
+  const invalid = () =>
+    new ConflictException('Sparat manifestunderlag är ofullständigt eller ogiltigt')
+  const row = await tx.fortnoxReadManifestPage.findUnique({
+    where: { runId_page: { runId: run.id, page }, organizationId: run.organizationId },
+  })
+  if (
+    !row ||
+    row.organizationId !== run.organizationId ||
+    row.runId !== run.id ||
+    row.page !== page ||
+    !Number.isSafeInteger(row.page) ||
+    row.page < 1 ||
+    !Number.isSafeInteger(row.totalPages) ||
+    row.totalPages < 0 ||
+    !Number.isSafeInteger(row.totalResources) ||
+    row.totalResources < 0 ||
+    row.totalPages !== expected.totalPages ||
+    row.totalResources !== expected.totalResources ||
+    (row.totalPages === 0
+      ? !(row.page === 1 && row.totalResources === 0 && row.itemCount === 0)
+      : row.page > row.totalPages) ||
+    !storedPageValid(row)
+  )
+    throw invalid()
+  const entries = ManifestEntriesSchema.parse(row.entries)
+  const unique = new Map<string, string>()
+  for (const entry of entries) {
+    if (Number(entry.key.split('|')[0]) !== run.financialYearId) throw invalid()
+    const previous = unique.get(entry.key)
+    if (previous !== undefined && previous !== entry.digest) throw invalid()
+    unique.set(entry.key, entry.digest)
+  }
+  if (unique.size) {
+    const checkpoints = await tx.fortnoxReadVoucherCheckpoint.findMany({
+      where: {
+        organizationId: run.organizationId,
+        runId: run.id,
+        key: { in: [...unique.keys()] },
+      },
+      select: { organizationId: true, runId: true, key: true, manifestDigest: true },
+    })
+    if (checkpoints.length !== unique.size) throw invalid()
+    const checked = new Set<string>()
+    for (const checkpoint of checkpoints) {
+      if (
+        checkpoint.organizationId !== run.organizationId ||
+        checkpoint.runId !== run.id ||
+        !unique.has(checkpoint.key) ||
+        unique.get(checkpoint.key) !== checkpoint.manifestDigest ||
+        checked.has(checkpoint.key)
+      )
+        throw invalid()
+      checked.add(checkpoint.key)
+    }
+  }
+  return {
+    page: row.page,
+    totalPages: row.totalPages,
+    totalResources: row.totalResources,
+    itemCount: row.itemCount,
+    entries,
+    digest: row.digest,
+  }
+}
+
 export async function nextVoucherKey(tx: Tx, run: ManifestRunScope): Promise<string | null> {
   const [next] = await tx.$queryRaw<
     Array<{ key: string }>

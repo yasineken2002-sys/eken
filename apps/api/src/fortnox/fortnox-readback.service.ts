@@ -11,7 +11,7 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { FortnoxConnectionService, FortnoxNotConnectedError } from './fortnox-connection.service'
 import { readLedger, type LedgerReadResult } from './fortnox-ledger'
 import { readCatalog } from './fortnox-catalog'
-import { kallkonton, type Egen } from './fortnox-read-provenance'
+import { enrichEvenoLedgerResult, kallkonton, type Egen } from './fortnox-read-provenance'
 import type { FortnoxAiSnapshot } from './fortnox-ai-context'
 import { FORTNOX_VOUCHER_WRITER, type FortnoxVoucherWriter } from './fortnox-voucher-writer'
 import { FORTNOX_LEDGER_READER, FortnoxReadError, type FortnoxLedgerReader } from './fortnox.types'
@@ -202,24 +202,7 @@ export class FortnoxReadbackService {
     }
     if (stale) result = { ...result, status: 'FAILED', reason: stale, summary: null, rows: null }
     // TESTKUND-008 K7.1: egna exporter får sin Eveno-proveniens (källkonto ↔ målkonto ↔ revision).
-    if (result.rows)
-      result = {
-        ...result,
-        rows: result.rows.map((r) => {
-          const e = r.evenoExport ? egna.get(r.voucher) : undefined
-          if (!e) return r
-          const kallor = e.perMal.get(r.account) ?? []
-          return {
-            ...r,
-            evenoSource: {
-              journalEntryId: e.journalEntryId,
-              // Entydigt bara om exakt ett Eveno-konto mappades till detta Fortnox-konto.
-              sourceAccount: kallor.length === 1 ? kallor[0]! : null,
-              mappingRevision: e.revision,
-            },
-          }
-        }),
-      }
+    result = enrichEvenoLedgerResult(result, egna)
 
     const saved = await this.prisma.fortnoxReadRun.update({
       where: { id: run.id },
