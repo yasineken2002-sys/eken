@@ -186,6 +186,79 @@ describe('SettingsPage: raderingslösenord och session är skilda kontroller', (
     expect(notifications.error).not.toHaveBeenCalled()
   })
 
+  it('två synkrona bekräftelseklick före React-commit skickar bara ett DELETE', async () => {
+    show()
+    const password = 'Syntetiskt-synkront-123!'
+    fireEvent.change(screen.getByPlaceholderText('Bekräfta med ditt lösenord'), {
+      target: { value: password },
+    })
+    const confirm = screen.getByRole('button', { name: 'Bekräfta radering' })
+    // Native DOM-klick i samma act: disabled har ännu inte committats mellan dem.
+    // Ingen direkt handler-/API-mock får ersätta den riktiga händelsekedjan.
+    act(() => {
+      confirm.click()
+      confirm.click()
+    })
+    await act(async () => {
+      await nextHostTask()
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]!.config.headers.Authorization).toBe('Bearer synthetic-token-a')
+    expect(JSON.parse(requests[0]!.config.data as string)).toEqual({ password })
+    expect(screen.getByRole('button', { name: 'Raderar…' })).toBeDisabled()
+    await finish(requests[0]!, 204)
+    expect(requests).toHaveLength(1)
+    expect(logoutCalls()).toHaveLength(1)
+    expect(screen.getByText('Inloggningssidan i testet')).toBeInTheDocument()
+  })
+
+  it('ett skickat DELETE kan inte döljas med Avbryt och låser lösenordskontroller tills svaret', async () => {
+    show()
+    // Avbryt är fortfarande en verklig möjlighet innan något anrop har skickats.
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }))
+    expect(screen.queryByPlaceholderText('Bekräfta med ditt lösenord')).not.toBeInTheDocument()
+    expect(requests).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Radera konto' }))
+    const password = 'Syntetiskt-pagaende-123!'
+    fireEvent.change(screen.getByPlaceholderText('Bekräfta med ditt lösenord'), {
+      target: { value: password },
+    })
+    const confirm = screen.getByRole('button', { name: 'Bekräfta radering' })
+    const cancel = screen.getByRole('button', { name: 'Avbryt' })
+    // Bekräfta → Avbryt före commit behöver en synkron spärr, inte bara disabled.
+    act(() => {
+      confirm.click()
+      cancel.click()
+    })
+    await act(async () => {
+      await nextHostTask()
+    })
+    expect(requests).toHaveLength(1)
+    expect(JSON.parse(requests[0]!.config.data as string)).toEqual({ password })
+    const input = screen.getByPlaceholderText('Bekräfta med ditt lösenord')
+    expect(input).toBeVisible()
+    expect(input).toHaveValue(password)
+    expect(input).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Visa lösenord' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Avbryt' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Raderar…' })).toBeDisabled()
+    act(() => cancel.click())
+    expect(input).toBeInTheDocument()
+    expect(requests).toHaveLength(1)
+
+    await finish(requests[0]!, 400, 'Felaktigt lösenord')
+    expectSession('a')
+    expect(screen.getByText('Felaktigt lösenord')).toBeInTheDocument()
+    expect(input).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Visa lösenord' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Avbryt' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }))
+    expect(screen.queryByPlaceholderText('Bekräfta med ditt lösenord')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Radera konto' })).toBeEnabled()
+    expect(requests).toHaveLength(1)
+    expect(logoutCalls()).toHaveLength(0)
+  })
+
   it('behåller riktig 401 som sessionsfel även på raderingsvägen', async () => {
     show()
     const invalidSession = await submit('Syntetiskt-ratt-123!')

@@ -1,5 +1,5 @@
 import { useSessionGuard } from '@/lib/session-guard'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { exportMyData, deleteMyAccount, logoutSession, extractApiError } from '@/api/portal.api'
@@ -49,6 +49,7 @@ export function SettingsPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const deleteInFlight = useRef(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleExport = async () => {
@@ -75,7 +76,8 @@ export function SettingsPage() {
   }
 
   const handleDelete = async () => {
-    if (!currentSession()) return
+    if (!currentSession() || deleteInFlight.current) return
+    deleteInFlight.current = true
     setDeleteError(null)
     setDeleteLoading(true)
     try {
@@ -90,7 +92,9 @@ export function SettingsPage() {
       if (!currentSession()) return
       const e = err as { response?: { data?: { error?: { message?: string } } }; message?: string }
       setDeleteError(e?.response?.data?.error?.message ?? e?.message ?? 'Kunde inte radera kontot')
-      setDeleteLoading(false)
+    } finally {
+      deleteInFlight.current = false
+      if (currentSession()) setDeleteLoading(false)
     }
   }
 
@@ -203,8 +207,11 @@ export function SettingsPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setConfirmDelete((v) => !v)}
-                    disabled={confirmDelete}
+                    onClick={() => {
+                      if (deleteInFlight.current) return
+                      setConfirmDelete((v) => !v)
+                    }}
+                    disabled={confirmDelete || deleteLoading}
                     style={btnSecondary}
                   >
                     Radera konto
@@ -212,8 +219,13 @@ export function SettingsPage() {
                 </div>
 
                 {confirmDelete && (
-                  <div
+                  <fieldset
+                    disabled={deleteLoading}
                     style={{
+                      margin: 0,
+                      minWidth: 0,
+                      border: 0,
+                      padding: 0,
                       marginTop: 12,
                       paddingTop: 12,
                       borderTop: '1px solid var(--ev-danger-200)',
@@ -236,6 +248,7 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => {
+                          if (deleteInFlight.current) return
                           setConfirmDelete(false)
                           setDeletePassword('')
                           setDeleteError(null)
@@ -256,7 +269,7 @@ export function SettingsPage() {
                         {deleteLoading ? 'Raderar…' : 'Bekräfta radering'}
                       </button>
                     </div>
-                  </div>
+                  </fieldset>
                 )}
               </div>
             </div>
