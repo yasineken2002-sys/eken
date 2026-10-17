@@ -203,7 +203,7 @@ function fillDraft(draft: typeof A, categoryLabel: string, image: File) {
 // öppen. Detta kontrollerar komponentens verkliga transform-tillstånd, inte
 // layout, geometri eller tillgänglighet i en riktig webbläsare.
 function expectSheetOpen(open: boolean) {
-  const heading = screen.getByRole('heading', { name: 'Ny felanmälan' })
+  const heading = screen.getByText('Ny felanmälan', { selector: 'h2' })
   const sheet = heading.parentElement?.parentElement
   if (!(sheet instanceof HTMLElement)) throw new Error('Felanmälans panel saknas')
   expect(sheet.style.transform).toBe(
