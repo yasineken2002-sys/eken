@@ -59,6 +59,8 @@
   padding: 24px;
   width: 100%;
   max-width: 360px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   text-align: center;
 }
 
@@ -124,6 +126,8 @@
 }
 
 .candidate {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: flex;
   flex-direction: column;
   gap: 2px;

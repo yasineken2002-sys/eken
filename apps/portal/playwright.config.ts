@@ -5,7 +5,11 @@ const port = Number(process.env.PWA_TEST_PORT ?? 4179)
 // Bygg dist först. Den här riggen startar ingen Vite-/API-/databasserver.
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['portal-installation.spec.ts', 'portal-transport.spec.ts'],
+  testMatch: [
+    'portal-installation.spec.ts',
+    'portal-transport.spec.ts',
+    'portal-bankid-dialog.spec.ts',
+  ],
   fullyParallel: false,
   workers: 1,
   retries: 0,

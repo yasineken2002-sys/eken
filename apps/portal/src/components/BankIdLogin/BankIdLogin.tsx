@@ -1,4 +1,5 @@
 import { useSessionGuard } from '@/lib/session-guard'
+import { useFocusTrap } from '@eken/ui/hooks'
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { useQuery } from '@tanstack/react-query'
@@ -197,7 +198,20 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
       })
   }
 
+  // Explicit tabIndex på kontrollerna ger även WebKit knappfokus och Tab-ordning.
+  // Disabled kandidater får -1 så de inte återtas av hookens tabindex-selektor.
   const oppen = state.steg !== 'inaktiv' && state.steg !== 'klar'
+  const trapRef = useFocusTrap<HTMLDivElement>(oppen)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!oppen || !trapRef.current) return
+    const focused = document.activeElement
+    // Ett steg kan ta bort eller inaktivera den fokuserade kandidatknappen.
+    // Bevara giltigt fokus, men lämna aldrig tangentbordet bakom dialogen då.
+    if (!trapRef.current.contains(focused) || focused?.matches(':disabled')) {
+      cancelRef.current?.focus()
+    }
+  }, [oppen, state.steg, valjer, trapRef])
 
   if (!flaggor?.features.bankId) return null
 
@@ -211,6 +225,7 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
 
       <button
         type="button"
+        tabIndex={0}
         className={styles.button}
         onClick={starta}
         data-testid="bankid-login-button"
@@ -219,8 +234,19 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
       </button>
 
       {oppen && (
-        <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="BankID">
-          <div className={styles.panel} data-testid="bankid-panel">
+        <div
+          className={styles.overlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label="BankID"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            event.preventDefault()
+            event.stopPropagation()
+            avbryt()
+          }}
+        >
+          <div ref={trapRef} tabIndex={-1} className={styles.panel} data-testid="bankid-panel">
             <p className={styles.panelTitle}>Logga in med BankID</p>
 
             {state.steg === 'startar' && <p className={styles.panelText}>Startar BankID…</p>}
@@ -244,6 +270,7 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
                 <p className={styles.hint}>{hintText(state.hintCode)}</p>
                 {state.autoStartToken && (
                   <a
+                    tabIndex={0}
                     className={styles.autostart}
                     href={`bankid:///?autostarttoken=${state.autoStartToken}&redirect=null`}
                   >
@@ -263,6 +290,7 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
                     <button
                       key={k.tenantId}
                       type="button"
+                      tabIndex={valjer ? -1 : 0}
                       className={styles.candidate}
                       disabled={valjer}
                       onClick={() => valj(k.tenantId)}
@@ -281,13 +309,19 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
                 <p className={styles.error} data-testid="bankid-error">
                   {state.meddelande}
                 </p>
-                <button type="button" className={styles.button} onClick={starta}>
+                <button type="button" tabIndex={0} className={styles.button} onClick={starta}>
                   Försök igen
                 </button>
               </>
             )}
 
-            <button type="button" className={styles.cancel} onClick={avbryt}>
+            <button
+              ref={cancelRef}
+              type="button"
+              tabIndex={0}
+              className={styles.cancel}
+              onClick={avbryt}
+            >
               Avbryt
             </button>
           </div>
