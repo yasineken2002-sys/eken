@@ -57,7 +57,7 @@ type StoredPublicationEvidence = {
   storedFinancialYear: Prisma.JsonValue | null
 }
 
-const invalid = (): never => {
+const invalid: () => never = () => {
   throw new PublicationFormatError()
 }
 const validDate = (value: unknown): value is Date =>
