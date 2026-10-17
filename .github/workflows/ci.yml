@@ -163,7 +163,7 @@ jobs:
       # för API-sviten. Webs och portals rena enhetsprov behöver ingetdera, och
       # att köra dem här hade gjort dem beroende av en databas de aldrig rör.
       - name: Run test suite
-        run: pnpm exec turbo test:ci --filter=@eken/api
+        run: pnpm exec turbo test:ci --filter=@eken/api --ui=stream --log-order=stream --output-logs=full
 
       # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
       #
