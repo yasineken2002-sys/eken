@@ -1,5 +1,5 @@
 import { useSessionGuard } from '@/lib/session-guard'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -170,6 +170,22 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
         </div>
       )}
     </div>
+  )
+}
+
+function ImagePreview({ file }: { file: File }) {
+  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null)
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file)
+    setPreview({ file, url })
+    return () => URL.revokeObjectURL(url)
+  }, [file])
+
+  // Vid filbyte får en gammal, snart återkallad adress inte visa fel bild.
+  if (!preview || preview.file !== file) return null
+  return (
+    <img src={preview.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
   )
 }
 
@@ -436,11 +452,7 @@ export function MaintenancePage() {
                         overflow: 'hidden',
                       }}
                     >
-                      <img
-                        src={URL.createObjectURL(img)}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        alt=""
-                      />
+                      <ImagePreview file={img} />
                     </div>
                   ))}
                 </div>

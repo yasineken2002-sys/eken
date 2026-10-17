@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { onlineManager, useQueryClient, type QueryClient } from '@tanstack/react-query'
@@ -71,6 +71,9 @@ const clients = new Set<QueryClient>()
 const originalAdapter = portalApi.defaults.adapter
 const originalOnline = Object.getOwnPropertyDescriptor(window.navigator, 'onLine')
 const originalObjectURL = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+const originalRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+const previewFiles = new Map<string, File>()
+const revokedPreviews: string[] = []
 let managerWasOnline = true
 let serverTickets: PortalMaintenanceTicket[] = []
 let reads = 0
@@ -130,24 +133,31 @@ function ObserveClient() {
   return null
 }
 
-async function show(tickets: PortalMaintenanceTicket[] = []) {
+async function show(tickets: PortalMaintenanceTicket[] = [], strict = false) {
   serverTickets = tickets
   useSessionStore
     .getState()
     .setSession(TOKEN, TENANT, new Date(Date.now() + 3_600_000).toISOString())
-  render(
+  const page = (
     <MemoryRouter>
       <SessionBoundary>
         <ObserveClient />
         <MaintenancePage />
       </SessionBoundary>
-    </MemoryRouter>,
+    </MemoryRouter>
   )
+  const view = render(strict ? <StrictMode>{page}</StrictMode> : page)
   await waitFor(() => {
-    expect(reads).toBe(1)
-    expect(clients.size).toBe(1)
+    if (strict) {
+      expect(reads).toBeGreaterThan(0)
+      expect(clients.size).toBeGreaterThan(0)
+    } else {
+      expect(reads).toBe(1)
+      expect(clients.size).toBe(1)
+    }
     for (const client of clients) expect(client.isFetching()).toBe(0)
   })
+  return view
 }
 
 async function pending(path: string, index = 0): Promise<Write> {
@@ -201,6 +211,37 @@ function expectSheetOpen(open: boolean) {
   )
 }
 
+// Resursfacit efter avslutad React-act: File-identitet och verkliga img-src,
+// inte filnamn, komponentstate eller ett antaget antal StrictMode-effekter.
+function expectPreviewOwnership() {
+  const renderedUrls = Array.from(document.querySelectorAll('img[src]'))
+    .map((image) => image.getAttribute('src'))
+    .filter((url): url is string => url !== null && url.startsWith('blob:synthetic-preview-'))
+  expect(new Set(revokedPreviews).size).toBe(revokedPreviews.length)
+  for (const url of revokedPreviews) expect(previewFiles.has(url)).toBe(true)
+  for (const url of renderedUrls) {
+    expect(previewFiles.has(url)).toBe(true)
+    expect(revokedPreviews).not.toContain(url)
+  }
+  const liveUrls = [...previewFiles.keys()].filter((url) => !revokedPreviews.includes(url))
+  expect(liveUrls.sort()).toEqual([...renderedUrls].sort())
+  return renderedUrls
+}
+
+function expectPreview(file: File): string {
+  const urls = expectPreviewOwnership()
+  expect(urls).toHaveLength(1)
+  const url = urls[0]
+  if (!url) throw new Error('Förhandsbildens URL saknas')
+  expect(previewFiles.get(url)).toBe(file)
+  return url
+}
+
+function expectPreviewsReleased() {
+  expect(expectPreviewOwnership()).toEqual([])
+  expect([...revokedPreviews].sort()).toEqual([...previewFiles.keys()].sort())
+}
+
 async function respond(write: Write, data: unknown) {
   await act(async () => {
     write.respond(data)
@@ -231,12 +272,22 @@ beforeEach(() => {
   clients.clear()
   reads = 0
   serverTickets = []
+  previewFiles.clear()
+  revokedPreviews.length = 0
   managerWasOnline = onlineManager.isOnline()
   onlineManager.setOnline(true)
   Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => true })
   Object.defineProperty(URL, 'createObjectURL', {
     configurable: true,
-    value: vi.fn(() => 'blob:synthetic-maintenance-preview'),
+    value: vi.fn((file: File) => {
+      const url = `blob:synthetic-preview-${previewFiles.size + 1}`
+      previewFiles.set(url, file)
+      return url
+    }),
+  })
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    value: vi.fn((url: string) => revokedPreviews.push(url)),
   })
   localStorage.clear()
   useSessionStore.getState().clearSession()
@@ -258,6 +309,9 @@ afterEach(async () => {
   else Reflect.deleteProperty(window.navigator, 'onLine')
   if (originalObjectURL) Object.defineProperty(URL, 'createObjectURL', originalObjectURL)
   else Reflect.deleteProperty(URL, 'createObjectURL')
+  if (originalRevokeObjectURL)
+    Object.defineProperty(URL, 'revokeObjectURL', originalRevokeObjectURL)
+  else Reflect.deleteProperty(URL, 'revokeObjectURL')
   onlineManager.setOnline(managerWasOnline)
   localStorage.clear()
 })
@@ -404,5 +458,131 @@ describe('MaintenancePage – senare utkast under pågående inskick', () => {
     expect(screen.getByPlaceholderText('Lägg till ett meddelande...')).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Skicka' })).toBeDisabled()
     expect(screen.getByText(COMMENT_A, { selector: 'p' })).toBeInTheDocument()
+  })
+})
+
+describe('MaintenancePage – förhandsbildens URL-livstid', () => {
+  it('behåller samma preview genom redigering och stäng/öppna, och frigör A vid bildbyte', async () => {
+    const view = await show()
+    // Samma filnamn får inte förväxla två olika valda File-objekt.
+    const imageA = new File(['preview-A'], 'bild.png', { type: 'image/png' })
+    const imageB = new File(['preview-B'], 'bild.png', { type: 'image/png' })
+    fireEvent.click(screen.getByRole('button', { name: 'Ny felanmälan' }))
+    chooseImage(imageA)
+    const urlA = expectPreview(imageA)
+    const createdBeforeEdits = previewFiles.size
+
+    fireEvent.change(screen.getByLabelText('Rubrik *'), { target: { value: A.title } })
+    expect(expectPreview(imageA)).toBe(urlA)
+    fireEvent.change(screen.getByLabelText('Beskrivning *'), { target: { value: A.description } })
+    expect(expectPreview(imageA)).toBe(urlA)
+    fireEvent.click(screen.getByRole('button', { name: 'VVS' }))
+    expect(expectPreview(imageA)).toBe(urlA)
+    fireEvent.click(screen.getByRole('button', { name: 'Avbryt' }))
+    expectSheetOpen(false)
+    expect(expectPreview(imageA)).toBe(urlA)
+    fireEvent.click(screen.getByRole('button', { name: 'Ny felanmälan' }))
+    expectSheetOpen(true)
+    expect(expectPreview(imageA)).toBe(urlA)
+    expect(previewFiles.size).toBe(createdBeforeEdits)
+
+    chooseImage(imageB)
+    const urlB = expectPreview(imageB)
+    expect(urlB).not.toBe(urlA)
+    expect(revokedPreviews).toContain(urlA)
+    expect(writes).toHaveLength(0)
+    view.unmount()
+    expectPreviewsReleased()
+  })
+
+  it('bevarar B-preview efter A:s sena bildkedja och frigör B först vid dess egen oförändrade framgång', async () => {
+    await show()
+    const imageA = new File(['upload-A'], 'a.png', { type: 'image/png' })
+    const imageB = new File(['upload-B-longer'], 'b.png', { type: 'image/png' })
+    fireEvent.click(screen.getByRole('button', { name: 'Ny felanmälan' }))
+    fillDraft(A, 'VVS', imageA)
+    const urlA = expectPreview(imageA)
+    fireEvent.click(screen.getByRole('button', { name: 'Skicka felanmälan' }))
+    const createA = await pending(URL_PATH)
+    expect(jsonPayload(createA)).toEqual(A)
+    expect(expectPreview(imageA)).toBe(urlA)
+
+    fillDraft(B, 'El', imageB)
+    const urlB = expectPreview(imageB)
+    expect(revokedPreviews).toContain(urlA)
+    await respond(createA, TICKET_A)
+    const uploadA = await pending(`${URL_PATH}/${TICKET_A.id}/images`)
+    expectImage(uploadA, imageA)
+    expect(expectPreview(imageB)).toBe(urlB)
+    expectSheetOpen(true)
+    await finish(uploadA, [{ id: 'image-a', storageUrl: '/synthetic/image-a' }], [TICKET_A])
+    expect(writes).toHaveLength(2)
+    expectSheetOpen(true)
+    expect(screen.getByLabelText('Rubrik *')).toHaveValue(B.title)
+    expect(screen.getByLabelText('Beskrivning *')).toHaveValue(B.description)
+    expect(expectPreview(imageB)).toBe(urlB)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skicka felanmälan' }))
+    const createB = await pending(URL_PATH, 1)
+    expect(jsonPayload(createB)).toEqual(B)
+    expect(expectPreview(imageB)).toBe(urlB)
+    const ticketB: PortalMaintenanceTicket = {
+      ...TICKET_A,
+      ...B,
+      id: '71000000-0000-4000-8000-000000000002',
+      ticketNumber: 'TEST-2',
+    }
+    await respond(createB, ticketB)
+    const uploadB = await pending(`${URL_PATH}/${ticketB.id}/images`)
+    expectImage(uploadB, imageB)
+    expect(expectPreview(imageB)).toBe(urlB)
+    await finish(
+      uploadB,
+      [{ id: 'image-b', storageUrl: '/synthetic/image-b' }],
+      [TICKET_A, ticketB],
+    )
+    expect(writes).toHaveLength(4)
+    expectSheetOpen(false)
+    expect(screen.getByLabelText('Rubrik *')).toHaveValue('')
+    expect(screen.getByLabelText('Beskrivning *')).toHaveValue('')
+    expect(screen.queryByText('1 bild(er) valda')).not.toBeInTheDocument()
+    expectPreviewsReleased()
+  })
+
+  it('balanserar StrictMode, verkligt sessionsbyte och unmount utan återkallade aktiva src', async () => {
+    const view = await show([], true)
+    const imageA = new File(['strict-A'], 'a.png', { type: 'image/png' })
+    const imageB = new File(['strict-B'], 'b.png', { type: 'image/png' })
+    fireEvent.click(screen.getByRole('button', { name: 'Ny felanmälan' }))
+    fillDraft(A, 'VVS', imageA)
+    expectPreview(imageA)
+    expect(previewFiles.size).toBeGreaterThan(0)
+    const generationA = useSessionStore.getState().sessionGeneration
+    const readsBeforeSwitch = reads
+
+    await act(async () => {
+      useSessionStore
+        .getState()
+        .setSession(
+          'synthetic-maintenance-session-B',
+          { ...TENANT, id: '70000000-0000-4000-8000-000000000002' },
+          new Date(Date.now() + 3_600_000).toISOString(),
+        )
+    })
+    await waitFor(() => {
+      expect(reads).toBeGreaterThan(readsBeforeSwitch)
+      for (const client of clients) expect(client.isFetching()).toBe(0)
+    })
+    expect(useSessionStore.getState().sessionGeneration).toBeGreaterThan(generationA)
+    expect(screen.getByLabelText('Rubrik *')).toHaveValue('')
+    expectSheetOpen(false)
+    expectPreviewsReleased()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ny felanmälan' }))
+    chooseImage(imageB)
+    expectPreview(imageB)
+    expect(writes).toHaveLength(0)
+    view.unmount()
+    expectPreviewsReleased()
   })
 })
