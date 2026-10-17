@@ -4,11 +4,36 @@ import { Incomplete, type ValidatedLedgerVoucher } from './fortnox-ledger-valida
 const LIMITATION =
   'Läsningen är en genomgång sida för sida, inte en låst ögonblicksbild: ändringar under läsningen och raderingar upptäcks inte alltid.'
 
+export class LedgerAmountOverflow extends Incomplete {
+  constructor() {
+    super('Beloppssumman ligger utanför säkert talområde')
+  }
+}
+
 function addOre(left: number, right: number): number {
   const sum = left + right
-  if (!Number.isSafeInteger(sum))
-    throw new Incomplete('Beloppssumman ligger utanför säkert talområde')
+  if (!Number.isSafeInteger(sum)) throw new LedgerAmountOverflow()
   return sum
+}
+
+/** Endast kopplingar vars dimension finns i den verifierade katalogen används. */
+export function selectVerifiedLedgerMappings(
+  mappings: LedgerReadConfig['mappings'],
+  verified: ReadonlySet<string>,
+  uncertainties: string[],
+): Map<string, { propertyId: string; propertyName: string }> {
+  const usable = new Map<string, { propertyId: string; propertyName: string }>()
+  for (const [key, m] of mappings) {
+    if (verified.has(key)) usable.set(key, m)
+    else {
+      const sep = key.indexOf(':')
+      const kind = key.slice(0, sep) === 'PROJECT' ? 'Projektet' : 'Kostnadsstället'
+      uncertainties.push(
+        `${kind} ${key.slice(sep + 1)} är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.`,
+      )
+    }
+  }
+  return usable
 }
 
 type LedgerBase = Pick<

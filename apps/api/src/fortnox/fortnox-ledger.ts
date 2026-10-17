@@ -24,7 +24,7 @@
  */
 import { isExactEmptyFirstPage } from './fortnox-pagination'
 import { FortnoxReadError, type FortnoxLedgerReader, type FortnoxVoucher } from './fortnox.types'
-import { createLedgerAccumulator } from './fortnox-ledger-reducer'
+import { createLedgerAccumulator, selectVerifiedLedgerMappings } from './fortnox-ledger-reducer'
 import {
   Incomplete,
   isDate,
@@ -323,18 +323,7 @@ export async function readLedger(
         throw new Incomplete('/3/projects: antalet unika projekt stämmer inte')
     }
 
-    // Endast kopplingar vars dimension FINNS i Fortnox används för fördelning.
-    const usable = new Map<string, { propertyId: string; propertyName: string }>()
-    for (const [key, m] of cfg.mappings) {
-      if (verified.has(key)) usable.set(key, m)
-      else {
-        const sep = key.indexOf(':')
-        const kind = key.slice(0, sep) === 'PROJECT' ? 'Projektet' : 'Kostnadsstället'
-        uncertainties.push(
-          `${kind} ${key.slice(sep + 1)} är kopplat i Eveno men finns inte i Fortnox; kopplingen används inte.`,
-        )
-      }
-    }
+    const usable = selectVerifiedLedgerMappings(cfg.mappings, verified, uncertainties)
 
     const list = await paged<FortnoxVoucher>(
       reader,
