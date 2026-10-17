@@ -244,3 +244,124 @@ describe('TenantAiChat — utkast och kontrakt före skick', () => {
     expect(screen.getByRole('textbox')).toBeEnabled()
   })
 })
+
+describe('TenantAiChat — en bekräftelse åt gången', () => {
+  const pendingAction = {
+    toolName: 'create_maintenance_ticket',
+    toolInput: { title: 'Läckande kran', description: 'Kranen läcker i köket.' },
+    confirmationMessage: 'Skapa felanmälan: Läckande kran',
+    details: { Titel: 'Läckande kran' },
+  }
+
+  async function visaÅtgärd() {
+    skickat.mockResolvedValue({ conversationId: 'konversation-1', reply: '', pendingAction })
+    visa()
+    skriv('Kranen läcker i köket.')
+    skicka()
+    await screen.findByRole('button', { name: 'Bekräfta' })
+  }
+
+  it.each([
+    ['Bekräfta', 'Bekräfta', true],
+    ['Avbryt', 'Avbryt', false],
+    ['Bekräfta', 'Avbryt', true],
+    ['Avbryt', 'Bekräfta', false],
+  ] as const)(
+    'skickar bara första valet vid %s följt av %s före omrendering',
+    async (första, andra, confirmed) => {
+      const väntande = väntandeSvar()
+      bekräftat.mockReturnValue(väntande.promise)
+      await visaÅtgärd()
+      const förstaKnappen = screen.getByRole('button', { name: första })
+      const andraKnappen = screen.getByRole('button', { name: andra })
+
+      // Båda DOM-händelserna når samma render; disabled har ännu inte uppdaterats.
+      act(() => {
+        förstaKnappen.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        andraKnappen.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+      try {
+        await waitFor(() => expect(bekräftat).toHaveBeenCalled())
+        expect(screen.getByRole('button', { name: 'Avbryt' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'Skickar...' })).toBeDisabled()
+      } finally {
+        await act(async () => väntande.resolve({ conversationId: 'konversation-1', reply: '' }))
+        await waitFor(() => expect(klienter.at(-1)!.isMutating()).toBe(0))
+      }
+      expect(bekräftat).toHaveBeenCalledTimes(1)
+      expect(bekräftat).toHaveBeenCalledWith({
+        toolName: pendingAction.toolName,
+        toolInput: pendingAction.toolInput,
+        conversationId: 'konversation-1',
+        confirmed,
+      })
+      expect(screen.getByRole('textbox')).toBeEnabled()
+      expect(screen.queryByRole('button', { name: 'Bekräfta' })).not.toBeInTheDocument()
+    },
+  )
+
+  it.each(['Bekräfta', 'Avbryt'] as const)(
+    'kan göra ett nytt uttryckligt %s efter fel utan gammalt felmeddelande',
+    async (val) => {
+      const väntande = väntandeSvar()
+      bekräftat
+        .mockRejectedValueOnce(new Error('Åtgärden avvisades.'))
+        .mockReturnValueOnce(väntande.promise)
+      await visaÅtgärd()
+      fireEvent.click(screen.getByRole('button', { name: val }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Åtgärden avvisades.')
+      expect(bekräftat).toHaveBeenCalledTimes(1)
+      expect(screen.getByRole('button', { name: val })).toBeEnabled()
+
+      fireEvent.click(screen.getByRole('button', { name: val }))
+      try {
+        await waitFor(() => expect(bekräftat).toHaveBeenCalledTimes(2))
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Avbryt' })).toBeDisabled()
+      } finally {
+        await act(async () =>
+          väntande.resolve({ conversationId: 'konversation-1', reply: 'Klart.' }),
+        )
+        await waitFor(() => expect(klienter.at(-1)!.isMutating()).toBe(0))
+      }
+      expect(await screen.findByText('Klart.')).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(bekräftat).toHaveBeenCalledTimes(2)
+      expect(screen.getByRole('textbox')).toBeEnabled()
+    },
+  )
+
+  it('kan bekräfta en ny åtgärd i samma chatt efter ett lyckat svar', async () => {
+    bekräftat
+      .mockResolvedValueOnce({ conversationId: 'konversation-1', reply: 'Första ärendet skapat.' })
+      .mockResolvedValueOnce({ conversationId: 'konversation-1', reply: 'Andra ärendet skapat.' })
+    await visaÅtgärd()
+    fireEvent.click(screen.getByRole('button', { name: 'Bekräfta' }))
+    await screen.findByText('Första ärendet skapat.')
+
+    const nästaÅtgärd = {
+      ...pendingAction,
+      toolInput: { title: 'Trasig kyl', description: 'Kylen är varm.' },
+      confirmationMessage: 'Skapa felanmälan: Trasig kyl',
+      details: { Titel: 'Trasig kyl' },
+    }
+    skickat.mockResolvedValue({
+      conversationId: 'konversation-1',
+      reply: '',
+      pendingAction: nästaÅtgärd,
+    })
+    skriv('Kylen är också trasig.')
+    skicka()
+    fireEvent.click(await screen.findByRole('button', { name: 'Bekräfta' }))
+    await screen.findByText('Andra ärendet skapat.')
+
+    expect(bekräftat).toHaveBeenCalledTimes(2)
+    expect(bekräftat).toHaveBeenNthCalledWith(2, {
+      toolName: nästaÅtgärd.toolName,
+      toolInput: nästaÅtgärd.toolInput,
+      conversationId: 'konversation-1',
+      confirmed: true,
+    })
+    expect(screen.getByRole('textbox')).toBeEnabled()
+  })
+})

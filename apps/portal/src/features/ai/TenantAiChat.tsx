@@ -44,6 +44,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
   const initialSentRef = useRef<string | null>(null)
   const draftVersionRef = useRef(0)
   const sendingRef = useRef(false)
+  const confirmingRef = useRef(false)
   const queryClient = useQueryClient()
 
   const sendMutation = useSessionMutation({
@@ -111,7 +112,18 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
       const message = err instanceof Error ? err.message : 'Åtgärden gick inte att slutföra.'
       setError(message)
     },
+    onSettled: () => {
+      confirmingRef.current = false
+    },
   })
+
+  const handleConfirm = (confirmed: boolean) => {
+    // Båda knapparna delar spärr även innan pending har renderats.
+    if (confirmingRef.current || !pendingAction || !conversationId) return
+    confirmingRef.current = true
+    setError(null)
+    confirmMutation.mutate(confirmed)
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -275,7 +287,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
               <button
                 type="button"
                 className={styles.confirmCancel}
-                onClick={() => confirmMutation.mutate(false)}
+                onClick={() => handleConfirm(false)}
                 disabled={confirmMutation.isPending}
               >
                 Avbryt
@@ -283,7 +295,7 @@ export function TenantAiChat({ open, onClose, initialMessage }: Props) {
               <button
                 type="button"
                 className={styles.confirmAccept}
-                onClick={() => confirmMutation.mutate(true)}
+                onClick={() => handleConfirm(true)}
                 disabled={confirmMutation.isPending}
               >
                 {confirmMutation.isPending ? 'Skickar...' : 'Bekräfta'}
