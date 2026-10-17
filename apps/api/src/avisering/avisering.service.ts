@@ -40,6 +40,7 @@ import { rentNoticePayableTotal } from '../common/utils/rent-notice-total.util'
 import { assertPaymentWithinDebt } from '../common/payments/payment-within-debt'
 import { isP2002From } from '../common/prisma/p2002-constraint'
 import { allocateRentNoticeNumber } from './rent-notice-number'
+import { rentNoticePeriodDate } from './rent-notice-period-date'
 import {
   EventActorType,
   PaymentMethod,
@@ -396,8 +397,8 @@ export class AviseringService {
               dueDate,
               status: RentNoticeStatus.PENDING,
               type: RentNoticeType.RENT,
-              periodStart: proration.periodStart,
-              periodEnd: proration.periodEnd,
+              periodStart: rentNoticePeriodDate(proration.periodStart),
+              periodEnd: rentNoticePeriodDate(proration.periodEnd),
               daysCharged: proration.daysCharged,
               totalDays: proration.totalDays,
               isProrated: proration.isProrated,
@@ -579,8 +580,8 @@ export class AviseringService {
         status: RentNoticeStatus.PENDING,
         type: RentNoticeType.RENT,
         isBackfill: true,
-        periodStart: proration.periodStart,
-        periodEnd: proration.periodEnd,
+        periodStart: rentNoticePeriodDate(proration.periodStart),
+        periodEnd: rentNoticePeriodDate(proration.periodEnd),
         daysCharged: proration.daysCharged,
         totalDays: proration.totalDays,
         isProrated: proration.isProrated,
@@ -607,8 +608,9 @@ export class AviseringService {
           isBackfill: true,
           year,
           month,
-          periodStart: proration.periodStart.toISOString(),
-          periodEnd: proration.periodEnd.toISOString(),
+          // Återge create-returens sparade @db.Date, inte kalkylatorns lokala instant.
+          periodStart: notice.periodStart!.toISOString(),
+          periodEnd: notice.periodEnd!.toISOString(),
           ageMonths: audit.ageMonths,
           beyondWarning: audit.beyondWarning,
           allowBeyondWarning: audit.allowBeyondWarning,
@@ -918,8 +920,8 @@ export class AviseringService {
               dueDate,
               status: RentNoticeStatus.PENDING,
               type: RentNoticeType.RENT,
-              periodStart: proration.periodStart,
-              periodEnd: proration.periodEnd,
+              periodStart: rentNoticePeriodDate(proration.periodStart),
+              periodEnd: rentNoticePeriodDate(proration.periodEnd),
               daysCharged: proration.daysCharged,
               totalDays: proration.totalDays,
               isProrated: proration.isProrated,
