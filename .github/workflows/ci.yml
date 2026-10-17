@@ -123,8 +123,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `test:ci` = `jest --ci --maxWorkers=1 --workerIdleMemoryLimit=1536MB
-      # --logHeapUsage`: EN arbetsprocess, seriellt, som Jest startar om efter en
+      # `test:ci` behåller Jest-shimmen och lägger --expose-gc till NODE_OPTIONS
+      # (stöds av CI:s Node 20.20.2). Befintliga Node-options bevaras. Därmed kan
+      # --logHeapUsage rensa skräp före mätningen, utan ändrad paketupplösning.
+      # Samma --maxWorkers=1 och --workerIdleMemoryLimit=1536MB behålls.
+      # GC sker före miljöns teardown och efter Jests rapporterade svittid:
+      # jämför därför även hel körtid, inte bara heaplogg eller filsekunder.
+      # EN arbetsprocess, seriellt, som Jest startar om efter en
       # testfil när dess heap passerat 1536 MB. Tidigare `--runInBand` (allt i EN
       # process) tog slut på V8-heap i det här jobbet: Node 20.20.2 föll med
       # "Reached heap limit" vid ~3,9 GB använd heap (~4,1 GB reserverad), efter
