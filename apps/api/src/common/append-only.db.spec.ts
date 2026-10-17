@@ -65,6 +65,8 @@ const SKYDDADE = [
   // Frysta Fortnox-sidor: satsnivå stoppar varje UPDATE. Den separata
   // snapshot-specen prövar verkliga sidor, försegling och tillåten run/org-cascade.
   'FortnoxReadContextPage',
+  // Den egna stage-specen provar sidans atomiska räknarsteg och orgcascade.
+  'FortnoxReadNormalizationPage',
   // Förseglad råkälla. Den egna capture-specen provar båda barnens riktiga
   // data, scoped FK, försegling och organisationscascade.
   'FortnoxReadSourceMapping',

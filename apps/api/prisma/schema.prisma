@@ -975,6 +975,8 @@ model Organization {
   fortnoxReadSourceCaptures FortnoxReadSourceCapture[]
   fortnoxReadSourceMappings FortnoxReadSourceMapping[]
   fortnoxReadSourceExports  FortnoxReadSourceExport[]
+  fortnoxReadNormalizationStages FortnoxReadNormalizationStage[]
+  fortnoxReadNormalizationPages FortnoxReadNormalizationPage[]
   fortnoxVoucherExports     FortnoxVoucherExport[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -7846,7 +7848,8 @@ model FortnoxReadRun {
   reason                String?
   triggeredByUserId     String?
 
-  // Version 1 är checkpointkärnan; version 2 har bara en atomiskt fryst råkälla.
+  // Version 1 är checkpointkärnan; version 2 har en atomiskt fryst råkälla
+  // med separat sidvis normalisering, ännu ingen färdig ekonomisk kontext.
   // Båda är ännu ej HTTP-/köinkopplade. Legacy är null.
   workVersion          Int?
   phase                FortnoxReadPhase?
@@ -7868,6 +7871,7 @@ model FortnoxReadRun {
   voucherCheckpoints FortnoxReadVoucherCheckpoint[]
   contextSnapshot FortnoxReadContextSnapshot?
   sourceCapture FortnoxReadSourceCapture? @relation(fields: [sourceCaptureId, organizationId], references: [id, organizationId], onDelete: NoAction, onUpdate: NoAction)
+  normalizationStage FortnoxReadNormalizationStage?
 
   @@unique([id, organizationId])
   @@unique([sourceCaptureId, organizationId])
@@ -7982,6 +7986,7 @@ model FortnoxReadSourceCapture {
   mappings     FortnoxReadSourceMapping[]
   exports      FortnoxReadSourceExport[]
   run          FortnoxReadRun?
+  normalizationStage FortnoxReadNormalizationStage?
 
   @@unique([id, organizationId])
   @@index([organizationId])
@@ -8027,6 +8032,54 @@ model FortnoxReadSourceExport {
 
   @@unique([captureId, ordinal])
   @@unique([captureId, sourceId])
+  @@index([organizationId])
+}
+
+// Sidvis normalisering av en förseglad råkälla under runens aktuella anspråk.
+// NORMALIZED avser bara dessa sidor, aldrig färdig ekonomisk återläsning.
+// SQL avancerar räknarna atomiskt med sidans INSERT och verifierar slutmängden.
+model FortnoxReadNormalizationStage {
+  id String @id
+  organizationId String
+  runId String @unique
+  sourceCaptureId String @unique
+  formatVersion Int @default(1)
+  requestHash String
+  mappingCount Int
+  exportCount Int
+  mappingsDone Int @default(0)
+  exportsDone Int @default(0)
+  status String
+  normalizedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run FortnoxReadRun @relation(fields: [runId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  sourceCapture FortnoxReadSourceCapture @relation(fields: [sourceCaptureId, organizationId], references: [id, organizationId], onDelete: NoAction, onUpdate: NoAction)
+  pages FortnoxReadNormalizationPage[]
+
+  @@unique([id, organizationId])
+  @@unique([runId, organizationId])
+  @@unique([sourceCaptureId, organizationId])
+  @@index([organizationId])
+}
+
+// Append-only: normalformer och deras källbundna siddigest får aldrig ändras.
+// Högst 100 råposter per sida är ingen bytegräns; riktig orgcascade är tillåten.
+model FortnoxReadNormalizationPage {
+  id String @id @default(uuid())
+  organizationId String
+  stageId String
+  kind FortnoxReadContextKind
+  afterOrdinal BigInt
+  itemCount Int
+  digest String
+  items Json
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stage FortnoxReadNormalizationStage @relation(fields: [stageId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([stageId, kind, afterOrdinal])
   @@index([organizationId])
 }
 
