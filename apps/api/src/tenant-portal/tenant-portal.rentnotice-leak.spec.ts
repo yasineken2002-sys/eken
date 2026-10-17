@@ -234,7 +234,12 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     assertSelectShape(arg, true)
     // T1.4 (hyresjurist): getNotices får ALDRIG visa PENDING/CANCELLED — en
     // efterdebiterad (backfill) avi vilar i PENDING tills manuell frisläppning.
-    expect(arg.where.status).toEqual({ in: ['SENT', 'PAID', 'OVERDUE'] })
+    expect(arg.where).toEqual({
+      tenantId: 'tenant-1',
+      AND: {
+        OR: [{ status: { in: ['SENT', 'PAID'] } }, { status: 'OVERDUE', sentAt: { not: null } }],
+      },
+    })
   })
 
   it('getRentNotices: svaret saknar interna fält + allow-list-select (status-filter bevarat)', async () => {
@@ -256,8 +261,13 @@ describe('TenantPortalService — RentNotice-läcktätning', () => {
     expectNoRentNoticeLeak(result[0] as Record<string, unknown>)
     const arg = prisma.rentNotice.findMany.mock.calls[0][0]
     assertSelectShape(arg, true)
-    // Bara SENT/PAID/OVERDUE till hyresgästen (oförändrat beteende).
-    expect(arg.where.status).toEqual({ in: ['SENT', 'PAID', 'OVERDUE'] })
+    // Samma synlighet som getNotices; OVERDUE utan utskicksstämpel är inte publicerad.
+    expect(arg.where).toEqual({
+      tenantId: 'tenant-1',
+      AND: {
+        OR: [{ status: { in: ['SENT', 'PAID'] } }, { status: 'OVERDUE', sentAt: { not: null } }],
+      },
+    })
   })
 
   it('exportTenantData.rentNotices: allow-list-select (inte omit/include) utan interna fält', async () => {

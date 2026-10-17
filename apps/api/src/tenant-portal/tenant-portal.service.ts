@@ -14,6 +14,7 @@ import { SAFE_TENANT_SELECT } from '../tenants/tenants.service'
 import { rentNoticeOutstanding } from '../avisering/rent-debt.service'
 import { computeInvoiceDebt } from '../invoices/invoice-debt'
 import { readTenantWithCredentials } from './tenant-credential-read'
+import { portalRentNoticeVisibilityWhere } from './portal-rent-notice-visibility'
 import { anonymizeTenantWithin } from '../common/gdpr/anonymize-tenant'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { StorageService } from '../storage/storage.service'
@@ -748,13 +749,9 @@ export class TenantPortalService {
     const rows = await this.prisma.rentNotice.findMany({
       where: {
         tenantId,
-        // SECURITY / T1.4 (hyresjurist): visa BARA avier hyresvärden faktiskt
-        // skickat/markerat — aldrig PENDING/CANCELLED. Samma filter som
-        // getRentNotices. Kritiskt för bakdaterad debitering (#44): en
-        // efterdebiterad avi vilar i PENDING tills en människa aktivt släpper
-        // in den; utan detta filter skulle den synas för hyresgästen direkt vid
-        // skapandet, förbi det bindande kommunikationsbeslutet.
-        status: { in: ['SENT', 'PAID', 'OVERDUE'] },
+        // Samma synlighetsgrind som avilistan och PDF: adminens statusbyte
+        // PENDING → OVERDUE får inte ensamt göra en oskickad avi synlig.
+        AND: portalRentNoticeVisibilityWhere(),
       },
       select: PORTAL_RENT_NOTICE_VIEW_SELECT,
       orderBy: { dueDate: 'desc' },
@@ -790,9 +787,7 @@ export class TenantPortalService {
     const rows = await this.prisma.rentNotice.findMany({
       where: {
         tenantId,
-        // Skicka inte PENDING/CANCELLED till hyresgästen — bara avier som
-        // hyresvärden faktiskt skickat eller markerat betalda.
-        status: { in: ['SENT', 'PAID', 'OVERDUE'] },
+        AND: portalRentNoticeVisibilityWhere(),
       },
       select: PORTAL_RENT_NOTICE_VIEW_SELECT,
       orderBy: [{ year: 'desc' }, { month: 'desc' }],

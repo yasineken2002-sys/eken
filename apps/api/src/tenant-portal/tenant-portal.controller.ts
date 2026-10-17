@@ -38,6 +38,7 @@ import type { Tenant } from '@prisma/client'
 import { TenantLoginResolveResultSchema, type TenantLoginResolveResult } from '@eken/shared'
 import type { TenantLoginContext } from './tenant-login-budget.service'
 import { readTenantWithCredentials } from './tenant-credential-read'
+import { portalRentNoticeVisibilityWhere } from './portal-rent-notice-visibility'
 import { TenantBankIdService } from './tenant-bankid.service'
 import { InviteTenantsDto, ResendInvitesDto } from './dto/invite-tenants.dto'
 import { AddTenantCommentDto, SubmitMaintenanceDto } from './dto/submit-maintenance.dto'
@@ -580,13 +581,14 @@ export class TenantPortalController {
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const notice = await this.prisma.rentNotice.findFirst({
-      where: { id: noticeId, tenantId: tenant.id },
+      where: {
+        id: noticeId,
+        tenantId: tenant.id,
+        AND: portalRentNoticeVisibilityWhere(),
+      },
       select: { id: true, organizationId: true, noticeNumber: true, status: true },
     })
     if (!notice) throw new NotFoundException('Avin hittades inte')
-    if (notice.status === 'PENDING' || notice.status === 'CANCELLED') {
-      throw new NotFoundException('Avin är inte tillgänglig')
-    }
 
     const buffer = await this.aviseringService.getNoticePdfBuffer(notice.id, notice.organizationId)
     void reply
