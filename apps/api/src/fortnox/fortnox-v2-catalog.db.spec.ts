@@ -367,8 +367,6 @@ describe('Fortnox v2-katalog: återupptagbar SOURCE_CAPTURED → MANIFEST', () =
     const saved = await durable(f.org)
     expect(receipt).toStrictEqual({
       runId: f.run.id,
-      phase: 'MANIFEST',
-      nextManifestPage: 1,
       catalogDigest: hash(expected),
     })
     expect(saved.runs[0]).toMatchObject({

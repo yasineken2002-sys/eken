@@ -13,6 +13,14 @@ import {
 } from './fortnox-read-checkpoint-context'
 import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
 import {
+  appendVoucherManifestPage,
+  nextVoucherKey,
+  parseVoucherManifestPage,
+  readVoucherManifestReceipt,
+  type VoucherManifestReceipt,
+} from './fortnox-read-voucher-checkpoint'
+export type { VoucherManifestReceipt } from './fortnox-read-voucher-checkpoint'
+import {
   captureCheckpointSource,
   readCheckpointSourceHeader,
   readCheckpointSourceMappingPage,
@@ -90,13 +98,15 @@ export type SourceCatalogStep =
       databaseNumber: number
       readProjects: boolean
     }
-  | { kind: 'MANIFEST'; catalog: CheckpointCatalog; nextManifestPage: 1 }
+  | { kind: 'MANIFEST'; catalog: CheckpointCatalog; nextManifestPage: number }
 export type SourceCatalogReceipt = {
   runId: string
-  phase: 'MANIFEST'
-  nextManifestPage: 1
   catalogDigest: string
 }
+export type SourceVoucherStep =
+  | { phase: 'MANIFEST'; page: number }
+  | { phase: 'DETAILS'; key: string }
+  | { phase: 'READY_TO_REDUCE' }
 type HeldContextLease = { value: SourceRunLease }
 type CatalogContext = {
   held: HeldContextLease
@@ -135,6 +145,10 @@ const expired = () => new ConflictException('Läsanspråket har upphört')
 const CONNECTION_CHANGED = 'Fortnox-anslutningen har ändrats; starta en ny läsning.'
 const INVALID_SOURCE = 'Det frysta källunderlaget kan inte normaliseras; starta en ny läsning.'
 const CATALOG_CONFLICT = 'Katalogunderlaget ändrades under läsningen.'
+const MANIFEST_CONFLICT = 'Verifikationslistan är ofullständig eller ändrades under läsningen.'
+const wrongVoucherStep = () =>
+  new ConflictException('Verifikationssidan hör inte till aktuellt lässteg')
+const wrongCatalogStep = () => new ConflictException('Katalogen hör inte till aktuellt lässteg')
 const date = (value: string) => new Date(`${value}T00:00:00Z`)
 
 function canonicalInput(input: StartCheckpointInput): StartCheckpointInput {
@@ -191,7 +205,7 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
   if (
     run.workVersion !== 2 ||
     run.status !== 'RUNNING' ||
-    (run.phase !== 'SOURCE_CAPTURED' && run.phase !== 'MANIFEST') ||
+    !['SOURCE_CAPTURED', 'MANIFEST', 'DETAILS', 'READY_TO_REDUCE'].includes(run.phase ?? '') ||
     run.id !== header.id ||
     run.sourceCaptureId !== header.id ||
     run.organizationId !== header.organizationId ||
@@ -218,11 +232,17 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
     !Array.isArray(run.uncertainties) ||
     run.uncertainties.length !== 0 ||
     run.nextAttemptAt !== null ||
-    run.nextManifestPage !== 1
+    !Number.isSafeInteger(run.nextManifestPage) ||
+    run.nextManifestPage < 1
   )
     throw invalid()
   if (run.phase === 'SOURCE_CAPTURED') {
-    if (run.catalog !== null || run.financialYearStart !== null || run.financialYearEnd !== null)
+    if (
+      run.nextManifestPage !== 1 ||
+      run.catalog !== null ||
+      run.financialYearStart !== null ||
+      run.financialYearEnd !== null
+    )
       throw invalid()
   } else {
     // Billig återställning: djup projektpolicy prövas mot snapshotens samtliga
@@ -238,7 +258,7 @@ function checkedRunCatalog(
 ): CheckpointCatalog {
   const parsed = CheckpointCatalogSchema.safeParse(run.catalog)
   if (
-    run.phase !== 'MANIFEST' ||
+    !['MANIFEST', 'DETAILS', 'READY_TO_REDUCE'].includes(run.phase ?? '') ||
     !parsed.success ||
     !run.financialYearStart ||
     !run.financialYearEnd ||
@@ -499,12 +519,120 @@ export class FortnoxReadSourceRunService {
     )
   }
 
+  /** En aktuell manifestposition eller första väntande C-sorterade nyckel. */
+  async getVoucherStep(lease: SourceRunLease): Promise<SourceVoucherStep> {
+    return this.withLease(lease, async (tx, run) => {
+      let step: SourceVoucherStep
+      if (run.phase === 'MANIFEST') {
+        step = { phase: 'MANIFEST', page: run.nextManifestPage }
+      } else if (run.phase === 'DETAILS') {
+        const key = await nextVoucherKey(tx, run)
+        if (!key) throw invalid()
+        step = { phase: 'DETAILS', key }
+      } else if (run.phase === 'READY_TO_REDUCE') {
+        step = { phase: 'READY_TO_REDUCE' }
+      } else {
+        throw wrongVoucherStep()
+      }
+      await this.assertContextLeaseTime(tx, run)
+      return step
+    })
+  }
+
+  async commitVoucherPage(
+    lease: SourceRunLease,
+    envelope: unknown,
+  ): Promise<VoucherManifestReceipt> {
+    const result = await this.withLease(lease, async (tx, run) => {
+      // Ingen providersida får stoppa en körning som ännu saknar katalog.
+      // Parsern körs efter aktuell fence, även för feltypade envelopes.
+      if (run.phase === 'SOURCE_CAPTURED') throw wrongVoucherStep()
+      const page = parseVoucherManifestPage(envelope, run.financialYearId)
+      if (!page) {
+        await this.stopManifestConflict(tx, run)
+        return { ok: false as const }
+      }
+      await tx.$executeRaw`SET CONSTRAINTS "fortnox_manifest_page_must_advance" DEFERRED`
+      const appended = await appendVoucherManifestPage(tx, run, page)
+      if (appended.kind === 'CONFLICT') {
+        // Helpern har kontrollerat alla innehållskonflikter före barnINSERT.
+        // DB-/timeout-/fencefel fångas aldrig som providersvar.
+        await this.stopManifestConflict(tx, run)
+        return { ok: false as const }
+      }
+      if (appended.kind === 'WRONG_POSITION') throw wrongVoucherStep()
+      if (appended.kind === 'APPENDED') {
+        const now = await this.assertContextLeaseTime(tx, run)
+        await tx.fortnoxReadRun.update({
+          where: {
+            id: run.id,
+            organizationId: run.organizationId,
+            claimVersion: run.claimVersion,
+            claimToken: run.claimToken,
+          },
+          data: { ...appended.progress, checkpointUpdatedAt: now },
+          select: { id: true },
+        })
+      }
+      await tx.$executeRaw`SET CONSTRAINTS "fortnox_manifest_page_must_advance" IMMEDIATE`
+      await this.assertContextLeaseTime(tx, run)
+      return { ok: true as const, receipt: appended.receipt }
+    })
+    // Den avsiktliga terminalen ska bestå även när caller får ett maskerat fel.
+    if (!result.ok) throw new ConflictException(MANIFEST_CONFLICT)
+
+    // Ny TX läser det verkliga lagringskvittot, också efter identisk replay.
+    // En senare fence/expiry kan neka kvittot utan att påstå att commit saknas.
+    return this.withLease(lease, async (tx, run) => {
+      if (run.phase === 'SOURCE_CAPTURED' || run.nextManifestPage <= result.receipt.page)
+        throw invalid()
+      const observed = await readVoucherManifestReceipt(
+        tx,
+        run,
+        result.receipt.page,
+        result.receipt.digest,
+      )
+      if (observed.pageId !== result.receipt.pageId || observed.runId !== result.receipt.runId)
+        throw invalid()
+      await this.assertContextLeaseTime(tx, run)
+      return observed
+    })
+  }
+
+  private async stopManifestConflict(tx: Tx, run: FortnoxReadRun): Promise<void> {
+    const now = await this.assertContextLeaseTime(tx, run)
+    await tx.fortnoxReadRun.update({
+      where: {
+        id: run.id,
+        organizationId: run.organizationId,
+        claimVersion: run.claimVersion,
+        claimToken: run.claimToken,
+      },
+      data: {
+        status: 'FAILED',
+        reason: MANIFEST_CONFLICT,
+        completedAt: now,
+        checkpointUpdatedAt: now,
+        claimToken: null,
+        leaseUntil: null,
+      },
+      select: { id: true, status: true },
+    })
+    await this.assertContextLeaseTime(tx, run)
+  }
+
   /** Fryst katalogbegäran eller det redan beständiga nästa steget; ingen nätläsning. */
   async getCatalogStep(lease: SourceRunLease): Promise<SourceCatalogStep> {
+    // Fel steg kan avgöras under fence utan ett fullständigt kontextpass.
+    await this.withLease(lease, async (tx, run) => {
+      if (run.phase !== 'SOURCE_CAPTURED' && run.phase !== 'MANIFEST') throw wrongCatalogStep()
+      await this.assertContextLeaseTime(tx, run)
+    })
     const context = await this.readVerifiedCatalogContext(lease)
     await this.renewContextLeaseIfNeeded(context.held)
     return this.withNormalizedContext(context.held.value, async (tx, run, binding) => {
       await this.assertCatalogContext(tx, binding, context)
+      if (run.phase !== 'SOURCE_CAPTURED' && run.phase !== 'MANIFEST') throw wrongCatalogStep()
       // En annan caller kan ha committat medan fullpasset pågick. Avgör
       // returgrenen från den sista låsta runen, aldrig från initial metadata.
       const step: SourceCatalogStep =
@@ -518,7 +646,7 @@ export class FortnoxReadSourceRunService {
           : {
               kind: 'MANIFEST',
               catalog: checkedRunCatalog(run, binding.input, context.hasProjectMapping),
-              nextManifestPage: 1,
+              nextManifestPage: run.nextManifestPage,
             }
       await this.assertContextLeaseTime(tx, run)
       return step
@@ -544,7 +672,7 @@ export class FortnoxReadSourceRunService {
             parsed.data,
           )
         const previous =
-          run.phase === 'MANIFEST'
+          run.phase !== 'SOURCE_CAPTURED'
             ? checkedRunCatalog(run, binding.input, context.hasProjectMapping)
             : null
         if (
@@ -612,8 +740,6 @@ export class FortnoxReadSourceRunService {
       await this.assertContextLeaseTime(tx, run)
       const receipt: SourceCatalogReceipt = {
         runId: run.id,
-        phase: 'MANIFEST',
-        nextManifestPage: 1,
         catalogDigest: result.catalogDigest,
       }
       return receipt
@@ -695,7 +821,7 @@ export class FortnoxReadSourceRunService {
     // A: fryst metadata och eventuell första snapshot, under aktuell fence.
     const initial = await this.withNormalizedContext(held.value, async (tx, run, binding) => {
       const existing = await findNormalizedContextHeader(tx, binding)
-      if (run.phase === 'MANIFEST' && !existing) throw invalidNormalizedContext()
+      if (run.phase !== 'SOURCE_CAPTURED' && !existing) throw invalidNormalizedContext()
       return { binding, existing }
     })
     const binding = initial.binding
@@ -934,7 +1060,7 @@ export class FortnoxReadSourceRunService {
     if (!run.sourceCaptureId || !run.requestHash) throw invalid()
     const header = await readCheckpointSourceHeader(tx, run.organizationId, run.sourceCaptureId)
     checkBinding(run, header, run.requestHash)
-    if (run.phase === 'MANIFEST') {
+    if (run.phase !== 'SOURCE_CAPTURED') {
       // Slutförd stage och sealed header är immutabla. Billig återställning
       // behöver bara deras metadata; inga extra parentlås från kvittoläsaren
       // och ingen helkontextläsning vid claim/start/renew/release.
@@ -959,8 +1085,61 @@ export class FortnoxReadSourceRunService {
         status: 'NORMALIZED',
       })
       if (!(await findNormalizedContextHeader(tx, binding))) throw invalidNormalizedContext()
+      await this.checkManifestProgress(tx, run)
     }
     return header
+  }
+
+  private async checkManifestProgress(tx: Tx, run: FortnoxReadRun): Promise<void> {
+    // Två skalära sidhuvuden räcker för återställning av positionen. SQL:s
+    // atomiska cursorgren och immutabla barn bär hela täckningsbeviset;
+    // återspelning omhashar dessutom den faktiskt efterfrågade sidan.
+    const previousPage = run.nextManifestPage - 1
+    const pages = await tx.fortnoxReadManifestPage.findMany({
+      where: {
+        organizationId: run.organizationId,
+        runId: run.id,
+        page: { in: previousPage > 1 ? [1, previousPage] : [1] },
+      },
+      select: { page: true, totalPages: true, totalResources: true, itemCount: true },
+    })
+    if (run.nextManifestPage === 1) {
+      if (run.phase !== 'MANIFEST' || pages.length !== 0) throw invalid()
+      return
+    }
+    const first = pages.find((page) => page.page === 1)
+    const previous = pages.find((page) => page.page === previousPage)
+    if (
+      !first ||
+      !previous ||
+      pages.length !== (previousPage > 1 ? 2 : 1) ||
+      pages.some(
+        (page) =>
+          !Number.isSafeInteger(page.page) ||
+          page.page < 1 ||
+          !Number.isSafeInteger(page.totalPages) ||
+          page.totalPages < 0 ||
+          !Number.isSafeInteger(page.totalResources) ||
+          page.totalResources < 0 ||
+          !Number.isSafeInteger(page.itemCount) ||
+          page.itemCount < 0 ||
+          page.itemCount > 100 ||
+          page.totalPages !== first.totalPages ||
+          page.totalResources !== first.totalResources ||
+          (page.totalPages === 0
+            ? !(page.page === 1 && page.totalResources === 0 && page.itemCount === 0)
+            : page.page > page.totalPages),
+      )
+    )
+      throw invalid()
+    if (run.phase === 'MANIFEST') {
+      if (run.nextManifestPage > first.totalPages) throw invalid()
+    } else if (
+      run.nextManifestPage !== Math.max(1, first.totalPages) + 1 ||
+      (run.phase === 'DETAILS' ? first.totalResources === 0 : first.totalResources !== 0)
+    ) {
+      throw invalid()
+    }
   }
 
   private async readBoundRun(

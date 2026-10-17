@@ -7848,8 +7848,9 @@ model FortnoxReadRun {
   reason                String?
   triggeredByUserId     String?
 
-  // Version 1 är checkpointkärnan; version 2 har en atomiskt fryst råkälla
-  // med separat sidvis normalisering, ännu ingen färdig ekonomisk kontext.
+  // Version 1 är checkpointkärnan; version 2 fryser råkälla och normaliserad
+  // kontext och sparar sedan katalog och listmanifest. Detaljer/resultat är
+  // ännu inte inkopplade i v2; en tom READY-fas publicerar ingen nollrapport.
   // Båda är ännu ej HTTP-/köinkopplade. Legacy är null.
   workVersion          Int?
   phase                FortnoxReadPhase?
@@ -7924,7 +7925,7 @@ enum FortnoxReadContextKind {
   OWN_EXPORTS
 }
 
-// Fryst kopia av en befintlig v1-kontext. Ingen v2-körning eller produktkoppling.
+// Fryst sidkopia av v1-kontext eller v2:s färdigställda normalisering.
 // SQL skyddar förseglingen och tillåter bara riktig run-/organisationscascade.
 model FortnoxReadContextSnapshot {
   id String @id @default(uuid())

@@ -5,20 +5,19 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { kallkonton } from './fortnox-read-provenance'
 import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
-import {
-  isPosInt,
-  validateLedgerVoucher,
-  voucherKey,
-  type ValidatedLedgerVoucher,
-} from './fortnox-ledger-validation'
+import { validateLedgerVoucher, type ValidatedLedgerVoucher } from './fortnox-ledger-validation'
 import type { FortnoxVoucher } from './fortnox.types'
+import {
+  appendVoucherManifestPage,
+  nextVoucherKey,
+  parseVoucherManifestPage,
+} from './fortnox-read-voucher-checkpoint'
 import {
   canonicalCheckpointInput,
   checkpointDigest,
   CheckpointCatalogSchema,
   CheckpointContextSchema,
   CheckpointReadPageSchema,
-  ManifestEntriesSchema,
   NormalizedVoucherSchema,
   type CheckpointCatalog,
   type StartCheckpointInput,
@@ -257,92 +256,14 @@ export class FortnoxReadCheckpointService {
 
   async commitVoucherPage(lease: CheckpointLease, envelope: unknown): Promise<FortnoxReadRun> {
     return this.withLease(lease, async (tx, { run, now }) => {
-      const page = this.normalizePage(envelope, run.financialYearId)
+      const page = parseVoucherManifestPage(envelope, run.financialYearId)
       if (!page) return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
-      const previous = await tx.fortnoxReadManifestPage.findUnique({
-        where: {
-          runId_page: { runId: run.id, page: page.page },
-          organizationId: run.organizationId,
-        },
-      })
-      if (previous) {
-        if (
-          !ManifestEntriesSchema.safeParse(previous.entries).success ||
-          previous.itemCount !== page.entries.length ||
-          previous.digest !==
-            checkpointDigest({
-              page: previous.page,
-              totalPages: previous.totalPages,
-              totalResources: previous.totalResources,
-              itemCount: previous.itemCount,
-              entries: previous.entries,
-            }) ||
-          previous.digest !== page.digest
-        )
-          return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
-        return run
-      }
-      if (run.phase !== 'MANIFEST' || run.nextManifestPage !== page.page)
+      const result = await appendVoucherManifestPage(tx, run, page)
+      if (result.kind === 'CONFLICT') return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
+      if (result.kind === 'WRONG_POSITION')
         throw new ConflictException('Verifikationssidan hör inte till aktuellt lässteg')
-      const first = await tx.fortnoxReadManifestPage.findUnique({
-        where: { runId_page: { runId: run.id, page: 1 }, organizationId: run.organizationId },
-      })
-      if (
-        first &&
-        (first.totalPages !== page.totalPages || first.totalResources !== page.totalResources)
-      )
-        return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
-      // Kontrollera alla konflikter innan någon barnrad skrivs. Högst 100 objekt.
-      const unique = new Map<string, string>()
-      for (const entry of page.entries) {
-        const duplicate = unique.get(entry.key)
-        if (duplicate && duplicate !== entry.digest)
-          return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
-        unique.set(entry.key, entry.digest)
-      }
-      const existing = await tx.fortnoxReadVoucherCheckpoint.findMany({
-        where: {
-          organizationId: run.organizationId,
-          runId: run.id,
-          key: { in: [...unique.keys()] },
-        },
-        select: { key: true, manifestDigest: true },
-      })
-      if (existing.some((e) => unique.get(e.key) !== e.manifestDigest))
-        return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
-      const existingKeys = new Set(existing.map((e) => e.key))
-      const added = [...unique].filter(([key]) => !existingKeys.has(key))
-      const last = page.totalPages === 0 || page.page === page.totalPages
-      if (last) {
-        const stored = await tx.fortnoxReadVoucherCheckpoint.count({
-          where: { organizationId: run.organizationId, runId: run.id },
-        })
-        if (stored + added.length !== page.totalResources)
-          return this.terminal(tx, run, now, 'MANIFEST_CONFLICT')
-      }
-      await tx.fortnoxReadManifestPage.create({
-        data: {
-          organizationId: run.organizationId,
-          runId: run.id,
-          ...page,
-          entries: json(page.entries),
-        },
-        select: { id: true },
-      })
-      if (added.length)
-        await tx.fortnoxReadVoucherCheckpoint.createMany({
-          data: added.map(([key, manifestDigest]) => ({
-            organizationId: run.organizationId,
-            runId: run.id,
-            key,
-            manifestDigest,
-          })),
-        })
-      return this.updateRun(tx, run, {
-        nextManifestPage: page.page + 1,
-        phase: last ? (page.totalResources === 0 ? 'READY_TO_REDUCE' : 'DETAILS') : 'MANIFEST',
-        checkpointUpdatedAt: now,
-      })
+      if (result.kind === 'REPLAY') return run
+      return this.updateRun(tx, run, { ...result.progress, checkpointUpdatedAt: now })
     })
   }
 
@@ -620,55 +541,8 @@ export class FortnoxReadCheckpointService {
     )
   }
 
-  private normalizePage(envelope: unknown, financialYearId: number) {
-    if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return null
-    const body = envelope as Record<string, unknown>
-    const meta = body.MetaInformation
-    if (
-      !meta ||
-      typeof meta !== 'object' ||
-      Array.isArray(meta) ||
-      !Array.isArray(body.Vouchers) ||
-      body.Vouchers.length > 100
-    )
-      return null
-    const metadata = meta as Record<string, unknown>
-    const page = metadata['@CurrentPage'],
-      totalPages = metadata['@TotalPages'],
-      totalResources = metadata['@TotalResources']
-    if (
-      !isPosInt(page) ||
-      !isPosInt(totalPages) ||
-      !isPosInt(totalResources) ||
-      !Number.isSafeInteger(page) ||
-      !Number.isSafeInteger(totalPages) ||
-      !Number.isSafeInteger(totalResources) ||
-      page < 1
-    )
-      return null
-    if (
-      totalPages === 0
-        ? !(page === 1 && totalResources === 0 && body.Vouchers.length === 0)
-        : page > totalPages
-    )
-      return null
-    const entries: Array<{ key: string; digest: string }> = []
-    for (const raw of body.Vouchers) {
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-      const key = voucherKey(raw as FortnoxVoucher)
-      if (!key || Number(key.split('|')[0]) !== financialYearId) return null
-      entries.push({ key, digest: checkpointDigest(raw) })
-    }
-    if (!ManifestEntriesSchema.safeParse(entries).success) return null
-    const normalized = { page, totalPages, totalResources, itemCount: entries.length, entries }
-    return { ...normalized, digest: checkpointDigest(normalized) }
-  }
-
   private async nextKey(tx: Tx, run: FortnoxReadRun): Promise<string | null> {
-    const [next] = await tx.$queryRaw<
-      Array<{ key: string }>
-    >`SELECT "key" FROM "FortnoxReadVoucherCheckpoint" WHERE "organizationId" = ${run.organizationId} AND "runId" = ${run.id} AND "detailDigest" IS NULL ORDER BY "key" COLLATE "C" ASC LIMIT 1`
-    return next?.key ?? null
+    return nextVoucherKey(tx, run)
   }
 
   private async updateRun(
