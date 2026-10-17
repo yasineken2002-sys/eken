@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type FortnoxReadRun } from '@prisma/client'
+import { z } from 'zod'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import {
@@ -8,10 +9,45 @@ import {
   checkpointDigest,
   type StartCheckpointInput,
 } from './fortnox-read-checkpoint-context'
-import { captureCheckpointSource, readCheckpointSourceHeader } from './fortnox-read-source-capture'
+import {
+  captureCheckpointSource,
+  readCheckpointSourceHeader,
+  readCheckpointSourceMappingPage,
+  readCheckpointSourceExportPage,
+} from './fortnox-read-source-capture'
 
 type Tx = Prisma.TransactionClient
 type SourceHeader = Awaited<ReturnType<typeof readCheckpointSourceHeader>>
+export type SourceRunLease = {
+  organizationId: string
+  runId: string
+  claimVersion: number
+  claimToken: string
+  leaseUntil: Date
+}
+export type SourceRunPageInput = {
+  kind: 'MAPPINGS' | 'OWN_EXPORTS'
+  afterOrdinal: bigint
+}
+export type SourceRunPage =
+  | Awaited<ReturnType<typeof readCheckpointSourceMappingPage>>
+  | Awaited<ReturnType<typeof readCheckpointSourceExportPage>>
+const MAX_CLAIM_VERSION = 2_147_483_647
+const leaseSchema = z
+  .object({
+    organizationId: z.string().min(1),
+    runId: z.string().min(1),
+    claimVersion: z.number().int().min(1).max(MAX_CLAIM_VERSION),
+    claimToken: z.string().uuid(),
+    leaseUntil: z.date(),
+  })
+  .strict()
+const pageSchema = z
+  .object({
+    kind: z.enum(['MAPPINGS', 'OWN_EXPORTS']),
+    afterOrdinal: z.bigint().min(0n),
+  })
+  .strict()
 const connectionSelect = {
   id: true,
   organizationId: true,
@@ -23,6 +59,8 @@ const connectionSelect = {
 type Connection = Prisma.FortnoxConnectionGetPayload<{ select: typeof connectionSelect }>
 const conflict = () => new ConflictException('En annan Fortnox-läsning pågår redan')
 const invalid = () => new ConflictException('Körningen saknar ett giltigt fryst källunderlag')
+const expired = () => new ConflictException('Läsanspråket har upphört')
+const CONNECTION_CHANGED = 'Fortnox-anslutningen har ändrats; starta en ny läsning.'
 const date = (value: string) => new Date(`${value}T00:00:00Z`)
 
 function canonicalInput(input: StartCheckpointInput): StartCheckpointInput {
@@ -39,8 +77,9 @@ function canonicalInput(input: StartCheckpointInput): StartCheckpointInput {
   }
 }
 
-function sameConnection(run: FortnoxReadRun, connection: Connection): boolean {
+function sameConnection(run: FortnoxReadRun, connection: Connection | null): boolean {
   return (
+    connection !== null &&
     connection.status === 'ACTIVE' &&
     run.organizationId === connection.organizationId &&
     run.connectionId === connection.id &&
@@ -50,12 +89,36 @@ function sameConnection(run: FortnoxReadRun, connection: Connection): boolean {
   )
 }
 
+function checkLeaseShape(run: FortnoxReadRun): void {
+  if (
+    !Number.isSafeInteger(run.claimVersion) ||
+    run.claimVersion < 0 ||
+    run.claimVersion > MAX_CLAIM_VERSION
+  )
+    throw invalid()
+  if (run.claimToken === null && run.leaseUntil === null) return
+  if (
+    !leaseSchema.safeParse({
+      organizationId: run.organizationId,
+      runId: run.id,
+      claimVersion: run.claimVersion,
+      claimToken: run.claimToken,
+      leaseUntil: run.leaseUntil,
+    }).success
+  )
+    throw invalid()
+}
+
 function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: string): void {
+  // Ägarskap får vara aktivt, utgånget eller frigivet vid startreplay. Formen
+  // är strikt, men tidsmässig giltighet bedöms bara av operativa lease-metoder.
+  checkLeaseShape(run)
   const input = header.input
   if (
     run.workVersion !== 2 ||
     run.status !== 'RUNNING' ||
     run.phase !== 'SOURCE_CAPTURED' ||
+    run.id !== header.id ||
     run.sourceCaptureId !== header.id ||
     run.organizationId !== header.organizationId ||
     run.connectionId !== header.connectionId ||
@@ -76,9 +139,13 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
     run.financialYearEnd !== null ||
     run.completedAt !== null ||
     run.checkpointUpdatedAt === null ||
-    run.claimVersion !== 0 ||
-    run.claimToken !== null ||
-    run.leaseUntil !== null ||
+    run.reason !== null ||
+    run.coverage === null ||
+    typeof run.coverage !== 'object' ||
+    Array.isArray(run.coverage) ||
+    Object.keys(run.coverage).length !== 0 ||
+    !Array.isArray(run.uncertainties) ||
+    run.uncertainties.length !== 0 ||
     run.nextAttemptAt !== null ||
     run.nextManifestPage !== 1
   )
@@ -87,8 +154,9 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
 
 /**
  * Inert start för v2: en liten körning binds atomiskt till komplett råkälla.
- * SOURCE_CAPTURED innebär ännu ingen validerad kontext, lease eller ekonomiskt
- * resultat. Ingen HTTP-, kö-, normaliserings- eller providerkoppling finns här.
+ * SOURCE_CAPTURED innebär ännu ingen validerad kontext eller ekonomiskt resultat.
+ * En lease styr bara ägd råkällsläsning, aldrig beständig bearbetningsprogress.
+ * Ingen HTTP-, kö-, normaliserings- eller providerkoppling finns här.
  */
 @Injectable()
 export class FortnoxReadSourceRunService {
@@ -133,18 +201,7 @@ export class FortnoxReadSourceRunService {
               existing.requestHash,
             )
             if (!sameConnection(previous, connection)) {
-              const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`
-              SELECT clock_timestamp() AS "now"`
-              if (!clock) throw invalid()
-              await tx.fortnoxReadRun.update({
-                where: { id: existing.id, organizationId },
-                data: {
-                  status: 'FAILED',
-                  reason: 'Fortnox-anslutningen har ändrats; starta en ny läsning.',
-                  completedAt: clock.now,
-                  checkpointUpdatedAt: clock.now,
-                },
-              })
+              await this.stopChangedConnection(tx, previous, await this.databaseNow(tx))
             } else {
               if (existing.requestHash !== requestHash) throw conflict()
               return previous
@@ -206,6 +263,196 @@ export class FortnoxReadSourceRunService {
     )
   }
 
+  /** Serverpolicy, ingen begärandeparameter. Kortare intervall kan provas i en subclass. */
+  protected leaseDurationMs(): number {
+    return 60_000
+  }
+
+  async claim(organizationId: string, runId: string): Promise<SourceRunLease | null> {
+    this.checkIdentity(organizationId, runId)
+    const duration = this.checkedLeaseDuration()
+    return this.prisma.$transaction(async (tx) => {
+      const { run, connection, now } = await this.lockRun(tx, organizationId, runId)
+      if (run.workVersion !== 2 || run.status !== 'RUNNING') return null
+      await this.checkBoundRun(tx, run)
+      // En ny claimant får inte stoppa en ännu giltig ägares körning.
+      if (run.leaseUntil && run.leaseUntil > now) return null
+      if (!sameConnection(run, connection)) {
+        await this.stopChangedConnection(tx, run, now)
+        return null
+      }
+      if (run.claimVersion === MAX_CLAIM_VERSION) throw invalid()
+      const updated = await tx.fortnoxReadRun.update({
+        where: { id: run.id, organizationId },
+        data: {
+          claimVersion: { increment: 1 },
+          claimToken: randomUUID(),
+          leaseUntil: new Date(now.getTime() + duration),
+          checkpointUpdatedAt: now,
+        },
+        select: { claimVersion: true, claimToken: true, leaseUntil: true },
+      })
+      return this.toLease(run, updated)
+    }, PRISMA_DEFAULT_TX_LIMITS)
+  }
+
+  async renew(lease: SourceRunLease): Promise<SourceRunLease> {
+    const duration = this.checkedLeaseDuration()
+    return this.withLease(lease, async (tx, run, now) => {
+      const next = new Date(now.getTime() + duration)
+      // Samma millisekund kan ge samma deadline. Behåll då den giltiga leasen
+      // utan UPDATE; aldrig förkorta den eller överskrida serverns maxintervall.
+      if (run.leaseUntil && next <= run.leaseUntil) return this.toLease(run, run)
+      const updated = await tx.fortnoxReadRun.update({
+        where: {
+          id: run.id,
+          organizationId: run.organizationId,
+          claimVersion: run.claimVersion,
+          claimToken: run.claimToken,
+        },
+        data: { leaseUntil: next, checkpointUpdatedAt: now },
+        select: { claimVersion: true, claimToken: true, leaseUntil: true },
+      })
+      return this.toLease(run, updated)
+    })
+  }
+
+  async release(lease: SourceRunLease): Promise<void> {
+    await this.withLease(lease, async (tx, run, now) => {
+      await tx.fortnoxReadRun.update({
+        where: {
+          id: run.id,
+          organizationId: run.organizationId,
+          claimVersion: run.claimVersion,
+          claimToken: run.claimToken,
+        },
+        data: { claimToken: null, leaseUntil: null, checkpointUpdatedAt: now },
+        select: { id: true },
+      })
+    })
+  }
+
+  async readSourcePage(lease: SourceRunLease, input: SourceRunPageInput): Promise<SourceRunPage> {
+    const parsed = pageSchema.safeParse(input)
+    if (!parsed.success)
+      throw new BadRequestException('Ogiltig position i det frysta källunderlaget')
+    return this.withLease(lease, async (tx, run) => {
+      if (!run.sourceCaptureId) throw invalid()
+      const after = parsed.data.afterOrdinal
+      return parsed.data.kind === 'MAPPINGS'
+        ? readCheckpointSourceMappingPage(tx, run.organizationId, run.sourceCaptureId, after)
+        : readCheckpointSourceExportPage(tx, run.organizationId, run.sourceCaptureId, after)
+    })
+  }
+
+  private checkIdentity(organizationId: string, runId: string): void {
+    if (
+      typeof organizationId !== 'string' ||
+      !organizationId ||
+      typeof runId !== 'string' ||
+      !runId
+    )
+      throw new BadRequestException('Ogiltigt läsanspråk')
+  }
+
+  private checkedLeaseDuration(): number {
+    const duration = this.leaseDurationMs()
+    if (!Number.isInteger(duration) || duration < 1 || duration > 60_000)
+      throw new Error('Ogiltigt serverintervall för läsanspråk')
+    return duration
+  }
+
+  private toLease(
+    run: Pick<FortnoxReadRun, 'organizationId' | 'id'>,
+    fields: Pick<FortnoxReadRun, 'claimVersion' | 'claimToken' | 'leaseUntil'>,
+  ): SourceRunLease {
+    const parsed = leaseSchema.safeParse({
+      organizationId: run.organizationId,
+      runId: run.id,
+      claimVersion: fields.claimVersion,
+      claimToken: fields.claimToken,
+      leaseUntil: fields.leaseUntil,
+    })
+    if (!parsed.success) throw invalid()
+    return parsed.data
+  }
+
+  private async withLease<T>(
+    lease: SourceRunLease,
+    action: (tx: Tx, run: FortnoxReadRun, now: Date) => Promise<T>,
+  ): Promise<T> {
+    const parsed = leaseSchema.safeParse(lease)
+    if (!parsed.success) throw new BadRequestException('Ogiltigt läsanspråk')
+    const current = parsed.data
+    const result = await this.prisma.$transaction(async (tx) => {
+      const { run, connection, now } = await this.lockRun(tx, current.organizationId, current.runId)
+      if (run.workVersion !== 2 || run.status !== 'RUNNING') throw expired()
+      checkLeaseShape(run)
+      // Callerens leaseUntil är bara planeringsinformation. DB-fence och DBtid
+      // avgör, även före en anslutningsreaktion eller en identisk sidläsning.
+      if (
+        run.claimVersion !== current.claimVersion ||
+        run.claimToken !== current.claimToken ||
+        !run.leaseUntil ||
+        run.leaseUntil <= now
+      )
+        throw expired()
+      await this.checkBoundRun(tx, run)
+      if (!sameConnection(run, connection)) {
+        await this.stopChangedConnection(tx, run, now)
+        return { ok: false as const }
+      }
+      return { ok: true as const, value: await action(tx, run, now) }
+    }, PRISMA_DEFAULT_TX_LIMITS)
+    // Kasta efter commit: en giltig ägare stoppar varaktigt en ändrad binding.
+    if (!result.ok) throw new ConflictException(CONNECTION_CHANGED)
+    return result.value
+  }
+
+  private async lockRun(tx: Tx, organizationId: string, runId: string) {
+    await tx.$queryRaw`SELECT "id" FROM "FortnoxConnection"
+      WHERE "organizationId" = ${organizationId} FOR UPDATE`
+    const connection = await tx.fortnoxConnection.findUnique({
+      where: { organizationId },
+      select: connectionSelect,
+    })
+    await tx.$queryRaw`SELECT "id" FROM "FortnoxReadRun"
+      WHERE "id" = ${runId} AND "organizationId" = ${organizationId} FOR UPDATE`
+    const run = await tx.fortnoxReadRun.findUnique({ where: { id: runId, organizationId } })
+    if (!run) throw invalid()
+    return { run, connection, now: await this.databaseNow(tx) }
+  }
+
+  private async databaseNow(tx: Tx): Promise<Date> {
+    // timestamptz → Date ger en verklig instant oberoende av sessionszon.
+    // Prisma skriver Date som UTC till modellens timestamp(3)-kolumner.
+    const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS "now"`
+    if (!clock || !(clock.now instanceof Date) || !Number.isFinite(clock.now.getTime()))
+      throw invalid()
+    return clock.now
+  }
+
+  private async stopChangedConnection(tx: Tx, run: FortnoxReadRun, now: Date): Promise<void> {
+    await tx.fortnoxReadRun.update({
+      where: { id: run.id, organizationId: run.organizationId },
+      data: {
+        status: 'FAILED',
+        reason: CONNECTION_CHANGED,
+        completedAt: now,
+        checkpointUpdatedAt: now,
+        claimToken: null,
+        leaseUntil: null,
+      },
+      select: { id: true, status: true },
+    })
+  }
+
+  private async checkBoundRun(tx: Tx, run: FortnoxReadRun): Promise<void> {
+    if (!run.sourceCaptureId || !run.requestHash) throw invalid()
+    const header = await readCheckpointSourceHeader(tx, run.organizationId, run.sourceCaptureId)
+    checkBinding(run, header, run.requestHash)
+  }
+
   private async readBoundRun(
     tx: Tx,
     organizationId: string,
@@ -213,9 +460,8 @@ export class FortnoxReadSourceRunService {
     requestHash: string,
   ): Promise<FortnoxReadRun> {
     const run = await tx.fortnoxReadRun.findUnique({ where: { id: runId, organizationId } })
-    if (!run?.sourceCaptureId) throw invalid()
-    const header = await readCheckpointSourceHeader(tx, organizationId, run.sourceCaptureId)
-    checkBinding(run, header, requestHash)
+    if (!run || run.requestHash !== requestHash) throw invalid()
+    await this.checkBoundRun(tx, run)
     return run
   }
 }
