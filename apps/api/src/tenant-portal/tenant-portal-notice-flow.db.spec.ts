@@ -157,7 +157,7 @@ describe('två kontrakt → bokförd avi → lokal mailacceptans → tenantporta
       method,
       url,
       headers: token ? { authorization: `Bearer ${token}` } : {},
-      payload,
+      ...(payload === undefined ? {} : { payload }),
     })
   }
   async function post<T>(path: string, payload: object, status: number): Promise<T> {
