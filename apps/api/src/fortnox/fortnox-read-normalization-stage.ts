@@ -163,6 +163,18 @@ async function readStage(tx: Tx, run: FortnoxReadRun, source: SourceHeader): Pro
   return checkedStage(row, run, source)
 }
 
+/** Ingen creation/progress: anroparen håller redan connection→run. */
+export async function readCompletedNormalizationStage(
+  tx: Tx,
+  run: FortnoxReadRun,
+  source: SourceHeader,
+): Promise<Stage> {
+  await lockStage(tx, run)
+  const stage = await readStage(tx, run, source)
+  if (stage.status !== 'NORMALIZED') throw invalid()
+  return stage
+}
+
 /** Endast från SourceRunService.withLease, efter aktuell fence och binding. */
 export async function prepareNormalizationStage(
   tx: Tx,

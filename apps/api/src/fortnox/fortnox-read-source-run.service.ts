@@ -21,12 +21,40 @@ import {
   parseNormalizedPagePosition,
   prepareNormalizationStage,
   readNormalizationStagePage,
+  readCompletedNormalizationStage,
   type NormalizationPage,
   type NormalizationPageReceipt,
   type NormalizationPosition,
   type NormalizationProgress,
   type NormalizedPagePosition,
 } from './fortnox-read-normalization-stage'
+
+import { CheckpointContextDigest } from './fortnox-read-context-digest'
+import {
+  CONTEXT_KINDS,
+  CONTEXT_PAGE_SIZE,
+  contextBindingDigest,
+  contextInitialRoot,
+  contextExtendRoot,
+  type ContextHeader,
+  type ContextKind,
+} from './fortnox-read-context-format'
+import {
+  normalizedContextBinding,
+  assertSameNormalizedContextBinding,
+  findNormalizedContextHeader,
+  assertNormalizedContextHeader,
+  NormalizedContextPlanBuilder,
+  copyNormalizedContextPages,
+  sealNormalizedContext,
+  readNormalizedContextPage,
+  normalizedContextReceipt,
+  invalidNormalizedContext,
+  type NormalizedContextBinding,
+  type NormalizedContextReceipt,
+} from './fortnox-read-normalized-context'
+
+export type { NormalizedContextReceipt } from './fortnox-read-normalized-context'
 
 export type {
   NormalizationPage,
@@ -52,6 +80,7 @@ export type SourceRunPageInput = {
 export type SourceRunPage =
   | Awaited<ReturnType<typeof readCheckpointSourceMappingPage>>
   | Awaited<ReturnType<typeof readCheckpointSourceExportPage>>
+type HeldContextLease = { value: SourceRunLease }
 const MAX_CLAIM_VERSION = 2_147_483_647
 const leaseSchema = z
   .object({
@@ -435,6 +464,167 @@ export class FortnoxReadSourceRunService {
     if (!Number.isInteger(duration) || duration < 1 || duration > 60_000)
       throw new Error('Ogiltigt serverintervall för läsanspråk')
     return duration
+  }
+
+  /**
+   * Inert bro: två sidpass, atomisk COPY/seal, därefter full verifiering av den
+   * beständiga kopian. SOURCE_CAPTURED och normaliseringsstage ändras inte.
+   * Varje sidsteg äger sin korta TX; ingen caller-hash eller plan accepteras.
+   */
+  async freezeNormalizedContext(lease: SourceRunLease): Promise<NormalizedContextReceipt> {
+    const parsed = leaseSchema.safeParse(lease)
+    if (!parsed.success) throw new BadRequestException('Ogiltigt läsanspråk')
+    const held: HeldContextLease = { value: parsed.data }
+    await this.renewContextLeaseIfNeeded(held)
+    // A: fryst metadata och eventuell första snapshot, under aktuell fence.
+    const initial = await this.withNormalizedContext(held.value, async (tx, _run, binding) => ({
+      binding,
+      existing: await findNormalizedContextHeader(tx, binding),
+    }))
+    const binding = initial.binding
+    // B: exakt full sourceDigest, högst en normaliserad sida per TX/minnessteg.
+    const stream = new CheckpointContextDigest(binding.input)
+    for (const kind of CONTEXT_KINDS) {
+      let seen = 0
+      for (let after = 0; after < binding.counts[kind]; after += CONTEXT_PAGE_SIZE) {
+        const page = await this.readContextStagePage(held, binding, kind, BigInt(after))
+        stream.append(kind, page.items)
+        seen += page.itemCount
+      }
+      if (seen !== binding.counts[kind]) throw invalidNormalizedContext()
+    }
+    const sourceDigest = stream.digest()
+    let committed: ContextHeader
+    if (initial.existing) {
+      assertNormalizedContextHeader(initial.existing, initial.existing, sourceDigest)
+      committed = initial.existing
+    } else {
+      // C: andra läspasset binder nya sidhasher till hela sourceDigest. Bara
+      // descriptors bevaras; buildern räknar även om hela källdigesten igen.
+      const builder = new NormalizedContextPlanBuilder(binding, sourceDigest)
+      for (const kind of CONTEXT_KINDS) {
+        for (let after = 0; after < binding.counts[kind]; after += CONTEXT_PAGE_SIZE) {
+          builder.append(await this.readContextStagePage(held, binding, kind, BigInt(after)))
+        }
+      }
+      const plan = builder.finish()
+      await this.renewContextLeaseIfNeeded(held)
+      // D: runlåset serialiserar två callers. En redan committad snapshot
+      // ersätts aldrig, även om det andra anropet hann göra båda hashpassen.
+      committed = await this.withNormalizedContext(held.value, async (tx, run, current) => {
+        assertSameNormalizedContextBinding(current, binding)
+        const existing = await findNormalizedContextHeader(tx, current)
+        if (existing) {
+          assertNormalizedContextHeader(existing, existing, sourceDigest)
+          return existing
+        }
+        await copyNormalizedContextPages(tx, current, plan)
+        const now = await this.assertContextLeaseTime(tx, run)
+        const sealed = await sealNormalizedContext(tx, current, plan, now)
+        // Sista skyddspunkten är efter IMMEDIATE, inte ett löfte om nätets
+        // svarstid eller om klockans exakta värde vid senare COMMIT.
+        await this.assertContextLeaseTime(tx, run)
+        return sealed
+      })
+    }
+    // E: nya TX efter commit. Ett fulfilled Prisma-anrop är inte ensamt ett
+    // kvitto; hela den faktiskt sparade kopian måste återläsas och hashas.
+    return this.verifyNormalizedContext(held, binding, committed, sourceDigest)
+  }
+
+  private async renewContextLeaseIfNeeded(held: HeldContextLease): Promise<void> {
+    // Lokal tid planerar bara förnyelse. renew/withLease använder DB-tid och
+    // kan aldrig återuppliva en expired fence, inte heller på replayvägen.
+    if (held.value.leaseUntil.getTime() - Date.now() <= 15_000) {
+      held.value = await this.renew(held.value)
+    }
+  }
+
+  private async readContextStagePage(
+    held: HeldContextLease,
+    expected: NormalizedContextBinding,
+    kind: ContextKind,
+    afterOrdinal: bigint,
+  ): Promise<NormalizationPage> {
+    await this.renewContextLeaseIfNeeded(held)
+    return this.withNormalizedContext(held.value, (tx, run, binding, source) => {
+      assertSameNormalizedContextBinding(binding, expected)
+      return readNormalizationStagePage(tx, run, source, { kind, afterOrdinal })
+    })
+  }
+
+  private async verifyNormalizedContext(
+    held: HeldContextLease,
+    binding: NormalizedContextBinding,
+    committed: ContextHeader,
+    sourceDigest: string,
+  ): Promise<NormalizedContextReceipt> {
+    await this.renewContextLeaseIfNeeded(held)
+    const header = await this.withNormalizedContext(held.value, async (tx, _run, current) => {
+      assertSameNormalizedContextBinding(current, binding)
+      const observed = await findNormalizedContextHeader(tx, current)
+      assertNormalizedContextHeader(observed, committed, sourceDigest)
+      return observed
+    })
+    const stream = new CheckpointContextDigest(header.manifest.input)
+    const digestBinding = contextBindingDigest(header)
+    for (const kind of CONTEXT_KINDS) {
+      const collection = header.manifest.collections[kind]
+      let root = contextInitialRoot(digestBinding, kind)
+      let seen = 0
+      for (let page = 1; page <= collection.pageCount; page++) {
+        await this.renewContextLeaseIfNeeded(held)
+        const checked = await this.withNormalizedContext(held.value, async (tx, _run, current) => {
+          assertSameNormalizedContextBinding(current, binding)
+          const observed = await findNormalizedContextHeader(tx, current)
+          assertNormalizedContextHeader(observed, header, sourceDigest)
+          return readNormalizedContextPage(tx, observed, kind, page)
+        })
+        stream.append(kind, checked.items)
+        seen += checked.items.length
+        root = contextExtendRoot(root, page, checked.items.length, checked.digest)
+      }
+      if (seen !== collection.itemCount || root !== collection.root)
+        throw invalidNormalizedContext()
+    }
+    if (stream.digest() !== sourceDigest) throw invalidNormalizedContext()
+    await this.renewContextLeaseIfNeeded(held)
+    return this.withNormalizedContext(held.value, async (tx, run, current) => {
+      assertSameNormalizedContextBinding(current, binding)
+      const observed = await findNormalizedContextHeader(tx, current)
+      assertNormalizedContextHeader(observed, header, sourceDigest)
+      for (const kind of CONTEXT_KINDS) {
+        const stored = await tx.fortnoxReadContextPage.count({
+          where: { organizationId: binding.organizationId, snapshotId: header.id, kind },
+        })
+        if (stored !== header.manifest.collections[kind].pageCount) throw invalidNormalizedContext()
+      }
+      await this.assertContextLeaseTime(tx, run)
+      return normalizedContextReceipt(observed)
+    })
+  }
+
+  private async withNormalizedContext<T>(
+    lease: SourceRunLease,
+    action: (
+      tx: Tx,
+      run: FortnoxReadRun,
+      binding: NormalizedContextBinding,
+      source: SourceHeader,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.withLease(lease, async (tx, run, _now, source) => {
+      const stage = await readCompletedNormalizationStage(tx, run, source)
+      // Väntan på stage-låset får inte använda klockan från före väntan.
+      await this.assertContextLeaseTime(tx, run)
+      return action(tx, run, normalizedContextBinding(run, source, stage), source)
+    })
+  }
+
+  private async assertContextLeaseTime(tx: Tx, run: FortnoxReadRun): Promise<Date> {
+    const now = await this.databaseNow(tx)
+    if (!run.leaseUntil || run.leaseUntil <= now) throw expired()
+    return now
   }
 
   private toLease(
