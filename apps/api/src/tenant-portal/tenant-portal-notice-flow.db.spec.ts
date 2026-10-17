@@ -597,8 +597,17 @@ describe('två kontrakt → bokförd avi → lokal mailacceptans → tenantporta
       failed: number
       notices: Array<{ id: string }>
       beforeCutover: null
+      blockedByOpening: number
+      blockedReason: null
     }>('/v1/avisering/generate', { month: MONTH, year: YEAR }, 201)
-    expect(generated).toMatchObject({ created: 2, skipped: 0, failed: 0, beforeCutover: null })
+    expect(generated).toMatchObject({
+      created: 2,
+      skipped: 0,
+      failed: 0,
+      beforeCutover: null,
+      blockedByOpening: 0,
+      blockedReason: null,
+    })
     const saved = await financialSnapshot()
     expect(saved.notices).toHaveLength(2)
     expect(generated.notices.map((n) => n.id).sort()).toEqual(saved.notices.map((n) => n.id).sort())
@@ -709,6 +718,8 @@ describe('två kontrakt → bokförd avi → lokal mailacceptans → tenantporta
       failed: 0,
       notices: [],
       beforeCutover: null,
+      blockedByOpening: 0,
+      blockedReason: null,
     })
     expect(await financialSnapshot()).toEqual(saved)
 
