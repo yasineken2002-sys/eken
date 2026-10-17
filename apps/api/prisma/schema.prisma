@@ -972,6 +972,9 @@ model Organization {
   fortnoxReadVoucherCheckpoints FortnoxReadVoucherCheckpoint[]
   fortnoxReadContextSnapshots FortnoxReadContextSnapshot[]
   fortnoxReadContextPages   FortnoxReadContextPage[]
+  fortnoxReadSourceCaptures FortnoxReadSourceCapture[]
+  fortnoxReadSourceMappings FortnoxReadSourceMapping[]
+  fortnoxReadSourceExports  FortnoxReadSourceExport[]
   fortnoxVoucherExports     FortnoxVoucherExport[]
   contractImportBatches     ContractImportBatch[]
   documents                 Document[]
@@ -7948,6 +7951,75 @@ model FortnoxReadContextPage {
   snapshot FortnoxReadContextSnapshot @relation(fields: [snapshotId, organizationId], references: [id, organizationId], onDelete: Cascade)
 
   @@unique([snapshotId, kind, page])
+  @@index([organizationId])
+}
+
+// Fryst råkälla från samma databasögonblick. Ännu ingen Run-/v2-/produktkoppling.
+// Historiska identiteter saknar avsiktligt FK till levande anslutning och källor.
+// SQL tillåter bara första förseglingen och verklig organisationscascade.
+model FortnoxReadSourceCapture {
+  id                    String   @id @default(uuid())
+  organizationId        String
+  formatVersion         Int      @default(1)
+  connectionId          String
+  connectionGeneration  Int
+  fortnoxDatabaseNumber Int
+  fortnoxOrgNumber       String?
+  input                 Json
+  requestHash           String
+  mappingCount          Int      @default(0)
+  exportCount           Int      @default(0)
+  sealedAt              DateTime? @db.Timestamptz(3)
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  mappings     FortnoxReadSourceMapping[]
+  exports      FortnoxReadSourceExport[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+}
+
+// Append-only: fryst dimensionskoppling, utan FK till den levande fastigheten.
+// Inga nya rader efter försegling; radering endast via faktisk föräldra-/orgcascade.
+model FortnoxReadSourceMapping {
+  id             String               @id @default(uuid())
+  organizationId String
+  captureId      String
+  ordinal        BigInt
+  sourceId       String
+  dimensionType  FortnoxDimensionType
+  code           String
+  propertyId     String
+  propertyName   String
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  capture      FortnoxReadSourceCapture @relation(fields: [captureId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([captureId, ordinal])
+  @@unique([captureId, sourceId])
+  @@index([organizationId])
+}
+
+// Append-only: minimal råkontokälla, inte en validerad ekonomisk normalform.
+// Identiteterna är historiska kopior; inga FK till levande export eller verifikat.
+model FortnoxReadSourceExport {
+  id             String @id @default(uuid())
+  organizationId String
+  captureId      String
+  ordinal        BigInt
+  sourceId       String
+  externalYear   Int
+  externalSeries String
+  externalNumber Int
+  journalEntryId String
+  accountSource  Json
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  capture      FortnoxReadSourceCapture @relation(fields: [captureId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([captureId, ordinal])
+  @@unique([captureId, sourceId])
   @@index([organizationId])
 }
 

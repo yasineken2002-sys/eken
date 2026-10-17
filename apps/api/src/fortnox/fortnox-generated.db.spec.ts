@@ -636,6 +636,8 @@ medDb('A18 G2: tillståndsmaskin mot riktig Postgres och skarp skrivare (synteti
       const je = await leverantorsfaktura(prisma, t.o.id, {
         belopp: oreStr(ore),
         beskrivning: desc,
+        // G2:s fasta frö styr inte Math.random i fixturens standardnumrering.
+        verNumber: i + 1,
       })
       const row = await t.exportsSvc.dryRun(t.o.id, je.id)
       check(row.state === 'DRY_RUN_READY', `fall ${i}: dry-run ${row.state}`)
