@@ -301,7 +301,11 @@ export async function appendVoucherDetail(
     return { kind: 'WRONG_POSITION' }
   const written = await tx.fortnoxReadVoucherCheckpoint.update({
     where: { id: checkpoint.id, organizationId: run.organizationId },
-    data: { validated: validated as Prisma.InputJsonValue, detailDigest, observedAt: now },
+    data: {
+      validated: validated as unknown as Prisma.InputJsonValue,
+      detailDigest,
+      observedAt: now,
+    },
     select: { id: true },
   })
   const next = await nextVoucherKey(tx, run)
