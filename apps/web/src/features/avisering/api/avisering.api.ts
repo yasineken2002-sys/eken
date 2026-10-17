@@ -73,6 +73,10 @@ export interface GenerateResult {
   created: number
   skipped: number
   notices: RentNotice[]
+  /** Äldre svar saknar dessa utfallsfält. Blockering är inte ett driftfel. */
+  failed?: number
+  blockedByOpening?: number
+  blockedReason?: string | null
 }
 
 export interface SendResult {

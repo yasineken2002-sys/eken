@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GenerateNoticesPreview } from '@eken/shared'
@@ -22,15 +22,23 @@ function setup(month = 10) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onClose = vi.fn()
   const onSuccess = vi.fn()
-  const view = (selected: number) => (
+  const view = (selected: number, open = true) => (
     <QueryClientProvider client={client}>
-      <GenerateModal open month={selected} year={2026} onClose={onClose} onSuccess={onSuccess} />
+      <GenerateModal
+        open={open}
+        month={selected}
+        year={2026}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />
     </QueryClientProvider>
   )
-  return { ...render(view(month)), view, onClose, onSuccess }
+  return { ...render(view(month)), view, onClose, onSuccess, client }
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  api.preview.mockReset()
+  api.generate.mockReset()
   api.preview.mockResolvedValue(result)
 })
 afterEach(cleanup)
@@ -115,4 +123,216 @@ describe('serverns förfallodatum i genereringsdialogen', () => {
       (screen.getByRole('button', { name: 'Generera avier' }) as HTMLButtonElement).disabled,
     ).toBe(true)
   })
+})
+
+type GenerateReply = {
+  created: number
+  skipped: number
+  failed: number
+  notices: []
+  beforeCutover: null
+  blockedByOpening: number
+  blockedReason?: string | null
+}
+function reply(overrides: Partial<GenerateReply> = {}): GenerateReply {
+  return {
+    created: 0,
+    skipped: 1,
+    failed: 0,
+    notices: [],
+    beforeCutover: null,
+    blockedByOpening: 2,
+    ...overrides,
+  }
+}
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+async function confirmGeneration() {
+  await waitFor(() =>
+    expect(
+      (screen.getByRole('button', { name: 'Generera avier' }) as HTMLButtonElement).disabled,
+    ).toBe(false),
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Generera avier' }))
+}
+function expectCounts(
+  alert: HTMLElement,
+  created: number,
+  skipped: number,
+  blocked: number,
+  failed: number,
+) {
+  for (const text of [
+    `Skapade: ${created}`,
+    `Överhoppade: ${skipped}`,
+    `Blockerade: ${blocked}`,
+    `Misslyckade: ${failed}`,
+  ])
+    expect(within(alert).getByText(text)).toBeDefined()
+}
+function previewSelectedPeriod() {
+  api.preview.mockImplementation(async (month: number, year: number) => ({
+    ...result,
+    month,
+    year,
+    dueDates: [{ dueDate: month === 10 ? '2026-09-30' : '2026-10-30', count: 2 }],
+  }))
+}
+
+describe('genereringsutfall och dialogens livstid', () => {
+  it('behåller helt blockerad generering synlig med serverns skäl och exakta antal', async () => {
+    const reason = 'Organisationen har ett ofärdigt öppningspaket för aktuellt brytdatum.'
+    api.generate.mockResolvedValueOnce(reply({ blockedReason: reason }))
+    const page = setup()
+    await screen.findByText('2026-09-30')
+    await confirmGeneration()
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText(reason)).toBeDefined()
+    expectCounts(alert, 0, 1, 2, 0)
+    expect(screen.getByRole('dialog', { name: 'Generera hyresavier' })).toBeDefined()
+    expect(api.generate).toHaveBeenCalledOnce()
+    expect(api.generate).toHaveBeenCalledWith(10, 2026)
+    expect(page.onSuccess).not.toHaveBeenCalled()
+    expect(page.onClose).not.toHaveBeenCalled()
+  })
+
+  it('visar både skapade och blockerade avier utan att stänga ett delvis lyckat försök', async () => {
+    const reason = 'Ett öppningspaket hann ändras under genereringen.'
+    api.generate.mockResolvedValueOnce(
+      reply({ created: 1, blockedByOpening: 1, blockedReason: reason }),
+    )
+    const page = setup()
+    await screen.findByText('2026-09-30')
+    await confirmGeneration()
+    const alert = await screen.findByRole('alert')
+    expectCounts(alert, 1, 1, 1, 0)
+    expect(within(alert).getByText(reason)).toBeDefined()
+    expect(page.onSuccess).not.toHaveBeenCalled()
+    expect(page.onClose).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { name: 'utelämnat', fields: {} },
+    { name: 'null', fields: { blockedReason: null } },
+  ])('ger begripligt öppningspaketsskäl när serverns skäl är $name', async ({ fields }) => {
+    api.generate.mockResolvedValueOnce(reply(fields))
+    const page = setup()
+    await screen.findByText('2026-09-30')
+    await confirmGeneration()
+    const alert = await screen.findByRole('alert')
+    expectCounts(alert, 0, 1, 2, 0)
+    expect(within(alert).getByText(/ofärdigt öppningspaket/i)).toBeDefined()
+    expect(alert.textContent).not.toMatch(/undefined|null/)
+    expect(page.onSuccess).not.toHaveBeenCalled()
+    expect(page.onClose).not.toHaveBeenCalled()
+  })
+
+  it('visar misslyckat antal även när API-anropet lyckas och några avier skapades', async () => {
+    api.generate.mockResolvedValueOnce(reply({ created: 1, failed: 1, blockedByOpening: 0 }))
+    const page = setup()
+    await screen.findByText('2026-09-30')
+    await confirmGeneration()
+    const alert = await screen.findByRole('alert')
+    expectCounts(alert, 1, 1, 0, 1)
+    expect(within(alert).getByText(/generering.*misslyck|kunde inte.*skapas/i)).toBeDefined()
+    expect(page.onSuccess).not.toHaveBeenCalled()
+    expect(page.onClose).not.toHaveBeenCalled()
+  })
+
+  it('rensar gammalt besked vid periodbyte och när samma period stängs och öppnas igen', async () => {
+    previewSelectedPeriod()
+    const octoberReason = 'Oktobers öppningspaket behöver hanteras.'
+    const novemberReason = 'Novembers öppningspaket behöver hanteras.'
+    api.generate.mockResolvedValueOnce(reply({ blockedReason: octoberReason }))
+    const page = setup()
+    await screen.findByText('2026-09-30')
+    await confirmGeneration()
+    await screen.findByText(octoberReason)
+    page.rerender(page.view(11))
+    await screen.findByText('2026-10-30')
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.queryByText(octoberReason)).toBeNull()
+    })
+    api.generate.mockResolvedValueOnce(reply({ blockedReason: novemberReason }))
+    await confirmGeneration()
+    await screen.findByText(novemberReason)
+    expect(api.generate).toHaveBeenNthCalledWith(2, 11, 2026)
+    fireEvent.click(screen.getByRole('button', { name: 'Stäng' }))
+    expect(page.onClose).toHaveBeenCalledOnce()
+    page.rerender(page.view(11, false))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    page.rerender(page.view(11))
+    await screen.findByText('2026-10-30')
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.queryByText(novemberReason)).toBeNull()
+    })
+    expect(page.onSuccess).not.toHaveBeenCalled()
+    expect(page.onClose).toHaveBeenCalledOnce()
+    expect(api.generate).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['periodbyte', 'stängning och återöppning'] as const)(
+    'ett sent lyckat svar efter %s får inte stänga den nya dialogen eller ge dess successbesked',
+    async (boundary) => {
+      previewSelectedPeriod()
+      const old = deferred<GenerateReply>()
+      api.generate.mockReturnValueOnce(old.promise)
+      const page = setup()
+      try {
+        await screen.findByText('2026-09-30')
+        await confirmGeneration()
+        await waitFor(() => {
+          expect(api.generate).toHaveBeenCalledOnce()
+          expect(api.generate).toHaveBeenCalledWith(10, 2026)
+          expect(page.client.isMutating()).toBe(1)
+        })
+        const currentMonth = boundary === 'periodbyte' ? 11 : 10
+        if (boundary === 'stängning och återöppning') {
+          // Parent-driven close is possible while pending even if this dialog's
+          // own close control is disabled. The same props object stays mounted.
+          page.rerender(page.view(10, false))
+          expect(screen.queryByRole('dialog')).toBeNull()
+        }
+        page.rerender(page.view(currentMonth))
+        await screen.findByText(currentMonth === 11 ? '2026-10-30' : '2026-09-30')
+        expect(page.client.isMutating()).toBe(1)
+        await act(async () => {
+          old.resolve(reply({ created: 2, blockedByOpening: 0 }))
+          await old.promise
+          await waitFor(() => expect(page.client.isMutating()).toBe(0))
+        })
+        await waitFor(() =>
+          expect(
+            (screen.getByRole('button', { name: 'Generera avier' }) as HTMLButtonElement).disabled,
+          ).toBe(false),
+        )
+        expect(screen.getByRole('dialog', { name: 'Generera hyresavier' })).toBeDefined()
+        expect(screen.queryByRole('alert')).toBeNull()
+        expect(page.onSuccess).not.toHaveBeenCalled()
+        expect(page.onClose).not.toHaveBeenCalled()
+        // The new dialog can still make its own successful, explicitly requested call.
+        api.generate.mockResolvedValueOnce(reply({ created: 1, blockedByOpening: 0 }))
+        await confirmGeneration()
+        await waitFor(() => {
+          expect(page.onSuccess).toHaveBeenCalledOnce()
+          expect(page.onSuccess).toHaveBeenCalledWith(1)
+        })
+        expect(page.onClose).toHaveBeenCalledOnce()
+        expect(api.generate).toHaveBeenNthCalledWith(2, currentMonth, 2026)
+      } finally {
+        await act(async () => {
+          old.resolve(reply({ created: 2, blockedByOpening: 0 }))
+          await old.promise
+          await waitFor(() => expect(page.client.isMutating()).toBe(0))
+        })
+      }
+    },
+  )
 })

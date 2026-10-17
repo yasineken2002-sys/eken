@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { X, Sparkles, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -27,20 +28,63 @@ interface Props {
 }
 
 export function GenerateModal({ open, month, year, onClose, onSuccess }: Props) {
+  if (!open) return null
+  return (
+    <GenerateModalContent
+      key={`${year}-${month}`}
+      month={month}
+      year={year}
+      onClose={onClose}
+      onSuccess={onSuccess}
+    />
+  )
+}
+
+type GenerationOutcome = {
+  created: number
+  skipped: number
+  blockedByOpening: number
+  failed: number
+  blockedReason: string | null
+}
+
+function GenerateModalContent({ month, year, onClose, onSuccess }: Omit<Props, 'open'>) {
   const generate = useGenerateNotices()
-  const preview = useGenerateNoticesPreview(month, year, open)
+  const preview = useGenerateNoticesPreview(month, year, true)
+  const [outcome, setOutcome] = useState<GenerationOutcome | null>(null)
+  const active = useRef(true)
+  useLayoutEffect(() => {
+    active.current = true
+    return () => {
+      active.current = false
+    }
+  }, [])
   const ready =
     preview.isSuccess &&
     !preview.isFetching &&
     preview.data.month === month &&
     preview.data.year === year
 
-  if (!open) return null
-
   const handleGenerate = async () => {
     if (!ready || preview.data.toCreate === 0) return
+    setOutcome(null)
     try {
       const result = await generate.mutateAsync({ month, year })
+      // En avslutad öppning eller period får inte kvittera en ny dialog.
+      if (!active.current) return
+      const failed = result.failed ?? 0
+      const blockedByOpening = result.blockedByOpening ?? 0
+      if (failed > 0 || blockedByOpening > 0) {
+        // Utfallet kommer från svaret, inte den preview som hooken nu uppdaterar.
+        setOutcome({
+          created: result.created,
+          skipped: result.skipped,
+          failed,
+          blockedByOpening,
+          blockedReason: result.blockedReason ?? null,
+        })
+        return
+      }
       onSuccess(result.created)
       onClose()
     } catch {
@@ -78,6 +122,29 @@ export function GenerateModal({ open, month, year, onClose, onSuccess }: Props) 
             <X size={14} strokeWidth={1.8} />
           </button>
         </div>
+
+        {outcome && (
+          <div
+            role="alert"
+            className="mb-4 rounded-xl bg-amber-50 px-3.5 py-3 text-[13px] text-amber-900"
+          >
+            <p className="font-medium">Resultat av genereringen</p>
+            {outcome.blockedByOpening > 0 && (
+              <p className="mt-1">
+                {outcome.blockedReason?.trim()
+                  ? outcome.blockedReason
+                  : 'Avier blockerades av ett ofärdigt öppningspaket. Hantera öppningspaketet innan du försöker igen.'}
+              </p>
+            )}
+            {outcome.failed > 0 && (
+              <p className="mt-1">En eller flera avier kunde inte skapas. Försök igen.</p>
+            )}
+            <p className="mt-2">Skapade: {outcome.created}</p>
+            <p>Överhoppade: {outcome.skipped}</p>
+            <p>Blockerade: {outcome.blockedByOpening}</p>
+            <p>Misslyckade: {outcome.failed}</p>
+          </div>
+        )}
 
         {generate.isError && (
           <div className="mb-4 flex items-center gap-2 rounded-xl bg-red-50 px-3.5 py-3 text-[13px] text-red-700">
