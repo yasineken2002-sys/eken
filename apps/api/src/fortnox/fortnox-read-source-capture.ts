@@ -269,11 +269,23 @@ export async function readCheckpointSourceExportPage(
   afterOrdinal = 0n,
 ): Promise<SourcePage<FortnoxReadSourceExport>> {
   const header = await readCheckpointSourceHeader(tx, organizationId, captureId)
-  pageLength(afterOrdinal, header.exportCount)
-  const items = await tx.fortnoxReadSourceExport.findMany({
-    where: { organizationId, captureId, ordinal: { gt: afterOrdinal } },
-    orderBy: { ordinal: 'asc' },
-    take: PAGE_SIZE,
-  })
+  const length = pageLength(afterOrdinal, header.exportCount)
+  // Tom text bevarar orgjämförelsen men hindrar ett missvisande orgindexval
+  // vid gamla stats: uppmätt 72 000 lästa rader för en sida om 100. Scope ligger
+  // kvar före LIMIT; capture/ordinal-indexet kan begränsa själva läsarbetet.
+  // Bara fulla sidor avgränsas uppåt. Öppen kort/tom svans låter checkedPage
+  // fortsatt upptäcka rader utöver headerns antal, även efter en lucka.
+  const upperBound =
+    length === PAGE_SIZE
+      ? Prisma.sql`AND "ordinal" <= ${afterOrdinal + BigInt(PAGE_SIZE)}`
+      : Prisma.empty
+  const items = await tx.$queryRaw<FortnoxReadSourceExport[]>`
+    SELECT "id", "organizationId", "captureId", "ordinal", "sourceId",
+           "externalYear", "externalSeries", "externalNumber", "journalEntryId", "accountSource"
+    FROM "FortnoxReadSourceExport"
+    WHERE ("organizationId" || '') = ${organizationId}
+      AND "captureId" = ${captureId} AND "ordinal" > ${afterOrdinal}
+      ${upperBound}
+    ORDER BY "ordinal" ASC LIMIT ${PAGE_SIZE}`
   return checkedPage(header, items, afterOrdinal, header.exportCount)
 }
