@@ -71,6 +71,29 @@ check('cgroup counters preserve large values without precision loss', () => {
   assert.equal(c.get('nr_throttled'), 2n)
   assert.equal(c.has('oom_kill'), false)
 })
+check('dotted Linux counter keys preserve the CPU counters', () => {
+  // Linux kernel/cgroup/rstat.c, b91872c56940950a6a0852e499d249c3091d4284.
+  const c = parseCounters(
+    'usage_usec 1500\nuser_usec 1000\nsystem_usec 500\nnice_usec 0\ncore_sched.force_idle_usec 0\nnr_throttled 0\nthrottled_usec 0\n',
+  )
+  assert.equal(c?.get('usage_usec'), 1500n)
+  assert.equal(c?.get('core_sched.force_idle_usec'), 0n)
+  assert.equal(c?.get('throttled_usec'), 0n)
+})
+check('malformed or duplicate dotted counters remain unavailable', () => {
+  for (const line of [
+    'core_sched..force_idle_usec 0',
+    '.usage_usec 1',
+    'usage_usec. 1',
+    'usage_usec -1',
+    'usage_usec 1.5',
+    'usage_usec 1 extra',
+    'ändring 1',
+  ])
+    assert.equal(parseCounters(line), null)
+  assert.equal(parseCounters('usage_usec 1\nusage_usec 2\n'), null)
+  assert.equal(parseCounters('core_sched.force_idle_usec 0\ncore_sched.force_idle_usec 1\n'), null)
+})
 check('PSI reports fixed numeric values, not arbitrary input', () => {
   const p = parsePressure(
     'some avg10=1.25 avg60=2 avg300=3 total=1234\nfull avg10=0.50 avg60=0 avg300=0 total=25\n',
@@ -291,7 +314,7 @@ function fixture(parentPid = 10, selfPid = 20) {
     ['/proc/' + parentPid + '/cgroup', '0::/synthetic\n'],
     [
       '/sys/fs/cgroup/synthetic/cpu.stat',
-      'usage_usec 1000000\nthrottled_usec 200\nnr_throttled 3\n',
+      'core_sched.force_idle_usec 0\nusage_usec 1000000\nthrottled_usec 200\nnr_throttled 3\n',
     ],
     ['/sys/fs/cgroup/synthetic/memory.current', '123456\n'],
     ['/sys/fs/cgroup/synthetic/memory.events', 'high 1\nmax 2\noom 3\noom_kill 4\n'],
@@ -320,6 +343,7 @@ function fixture(parentPid = 10, selfPid = 20) {
   const f = fixture(),
     snap = await readSnapshot(f)
   assert.equal(snap.status, 'ok')
+  assert.equal(snap.cgroup.cpuCountersStatus, 'parsed')
   assert.deepEqual([...snap.processes.keys()].sort(), [30, 31])
   assert.equal(snap.processes.get(30).rssKiB, 1000)
   assert.equal(snap.processes.get(31).rssKiB, 2000)
@@ -347,6 +371,23 @@ function fixture(parentPid = 10, selfPid = 20) {
   assert.equal(snap.processes.has(30), false)
   console.log('PASS PID reuse between stat and RSS is excluded, not charged to old identity')
 }
+{
+  for (const [body, status] of [
+    [null, 'unavailable'],
+    ['usage_usec not-a-number', 'malformed'],
+    ['nr_throttled 0\n', 'parsed'],
+  ]) {
+    const f = fixture()
+    if (body === null) f.files.delete('/sys/fs/cgroup/synthetic/cpu.stat')
+    else f.files.set('/sys/fs/cgroup/synthetic/cpu.stat', body)
+    const snap = await readSnapshot(f)
+    assert.equal(snap.cgroup.cpuCountersStatus, status)
+    assert.equal(snap.cgroup.cpuUsageUs, null)
+    assert.notEqual(snap.cgroup.memoryBytes, null)
+  }
+  console.log('PASS CPU parser status distinguishes unreadable, malformed and absent fields')
+}
+
 {
   const f = fixture()
   f.files.delete('/proc/31/status')
@@ -462,6 +503,7 @@ function fixture(parentPid = 10, selfPid = 20) {
   assert.equal(samples[1].observedCpuTickDelta, 10)
   assert.equal(samples[1].newObservedProcesses, 0)
   assert.equal(samples[1].cgroup.cpuUsageUsDelta, 500)
+  assert.equal(samples[1].cgroup.cpuCountersStatus, 'parsed')
   assert.equal(samples[2].cpuDeltaUnavailable, 1)
   assert.equal(samples[2].newObservedProcesses, 0)
   assert.equal(samples[2].cgroup.cpuUsageUsDelta, null)

@@ -62,7 +62,8 @@ export function parseCounters(text) {
   if (typeof text !== 'string' || !text.trim()) return null
   const result = new Map()
   for (const line of text.trim().split('\n')) {
-    const m = /^([a-z_]+)[ \t]+(\d+)[ \t]*$/.exec(line),
+    // Linux can include dotted keys such as core_sched.force_idle_usec.
+    const m = /^([a-z_]+(?:\.[a-z_]+)*)[ \t]+(\d+)[ \t]*$/.exec(line),
       value = m && unsigned(m[2])
     if (!m || value === null || result.has(m[1])) return null
     result.set(m[1], value)
@@ -136,6 +137,7 @@ export function resolveCgroupV2(mountinfo, cgroup) {
 const emptyGroup = () => ({
   identity: null,
   status: 'unavailable',
+  cpuCountersStatus: 'unavailable',
   cpuUsageUs: null,
   throttledUs: null,
   throttledCount: null,
@@ -183,6 +185,8 @@ async function readGroup(readText, pid) {
     )
     const cpu = parseCounters(values[0]),
       mem = parseCounters(values[2])
+    result.cpuCountersStatus =
+      values[0] === null ? 'unavailable' : cpu === null ? 'malformed' : 'parsed'
     result.cpuUsageUs = cpu?.get('usage_usec') ?? null
     result.throttledUs = cpu?.get('throttled_usec') ?? null
     result.throttledCount = cpu?.get('nr_throttled') ?? null
@@ -322,7 +326,11 @@ export async function readSnapshot({
   return result
 }
 function groupOutput(current, previous) {
-  const output = { scope: 'parent_cgroup_v2_may_include_non_api', status: current.status }
+  const output = {
+    scope: 'parent_cgroup_v2_may_include_non_api',
+    status: current.status,
+    cpuCountersStatus: current.cpuCountersStatus,
+  }
   if (current.identity === null || current.identity !== previous?.identity) previous = null
   for (const field of [
     'cpuUsageUs',
