@@ -8,18 +8,29 @@ import {
   canonicalCheckpointInput,
   checkpointDigest,
   CheckpointCatalogSchema,
+  CheckpointReadPageSchema,
   type CheckpointCatalog,
   type StartCheckpointInput,
 } from './fortnox-read-checkpoint-context'
 import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
+import type { ValidatedLedgerVoucher } from './fortnox-ledger-validation'
+import type { FortnoxVoucher } from './fortnox.types'
 import {
+  appendVoucherDetail,
   appendVoucherManifestPage,
   nextVoucherKey,
+  parseVoucherDetail,
   parseVoucherManifestPage,
+  readValidatedVoucherPage,
+  readVoucherDetailReceipt,
   readVoucherManifestReceipt,
+  type VoucherDetailReceipt,
   type VoucherManifestReceipt,
 } from './fortnox-read-voucher-checkpoint'
-export type { VoucherManifestReceipt } from './fortnox-read-voucher-checkpoint'
+export type {
+  VoucherDetailReceipt,
+  VoucherManifestReceipt,
+} from './fortnox-read-voucher-checkpoint'
 import {
   captureCheckpointSource,
   readCheckpointSourceHeader,
@@ -146,8 +157,11 @@ const CONNECTION_CHANGED = 'Fortnox-anslutningen har ändrats; starta en ny läs
 const INVALID_SOURCE = 'Det frysta källunderlaget kan inte normaliseras; starta en ny läsning.'
 const CATALOG_CONFLICT = 'Katalogunderlaget ändrades under läsningen.'
 const MANIFEST_CONFLICT = 'Verifikationslistan är ofullständig eller ändrades under läsningen.'
+const DETAIL_CONFLICT = 'Verifikationsdetaljen är ogiltig eller ändrades under läsningen.'
+const INVALID_CONTEXT = 'Sparat läsunderlag är ogiltigt; starta en ny läsning.'
 const wrongVoucherStep = () =>
   new ConflictException('Verifikationssidan hör inte till aktuellt lässteg')
+const wrongDetailStep = () => new ConflictException('Verifikatet hör inte till aktuellt lässteg')
 const wrongCatalogStep = () => new ConflictException('Katalogen hör inte till aktuellt lässteg')
 const date = (value: string) => new Date(`${value}T00:00:00Z`)
 
@@ -549,7 +563,7 @@ export class FortnoxReadSourceRunService {
       if (run.phase === 'SOURCE_CAPTURED') throw wrongVoucherStep()
       const page = parseVoucherManifestPage(envelope, run.financialYearId)
       if (!page) {
-        await this.stopManifestConflict(tx, run)
+        await this.stopVoucherConflict(tx, run, MANIFEST_CONFLICT)
         return { ok: false as const }
       }
       await tx.$executeRaw`SET CONSTRAINTS "fortnox_manifest_page_must_advance" DEFERRED`
@@ -557,7 +571,7 @@ export class FortnoxReadSourceRunService {
       if (appended.kind === 'CONFLICT') {
         // Helpern har kontrollerat alla innehållskonflikter före barnINSERT.
         // DB-/timeout-/fencefel fångas aldrig som providersvar.
-        await this.stopManifestConflict(tx, run)
+        await this.stopVoucherConflict(tx, run, MANIFEST_CONFLICT)
         return { ok: false as const }
       }
       if (appended.kind === 'WRONG_POSITION') throw wrongVoucherStep()
@@ -599,7 +613,100 @@ export class FortnoxReadSourceRunService {
     })
   }
 
-  private async stopManifestConflict(tx: Tx, run: FortnoxReadRun): Promise<void> {
+  async commitVoucherDetail(
+    lease: SourceRunLease,
+    key: string,
+    voucher: FortnoxVoucher | undefined,
+  ): Promise<VoucherDetailReceipt> {
+    const result = await this.withLease(lease, async (tx, run) => {
+      if (run.phase !== 'DETAILS' && run.phase !== 'READY_TO_REDUCE') throw wrongDetailStep()
+      const catalog = CheckpointCatalogSchema.parse(run.catalog)
+      // Samma valideringsordning som v1: rådetaljen före lookup/position,
+      // men först efter v2:s aktuella fence och tillåtna detaljfas.
+      const validated = parseVoucherDetail(key, voucher, catalog.financialYear)
+      if (!validated) {
+        await this.stopVoucherConflict(tx, run, DETAIL_CONFLICT)
+        return { ok: false as const }
+      }
+      await tx.$executeRaw`SET CONSTRAINTS "fortnox_v2_detail_must_advance" DEFERRED`
+      const observedAt = await this.assertContextLeaseTime(tx, run)
+      const appended = await appendVoucherDetail(tx, run, validated, observedAt)
+      if (appended.kind === 'CONFLICT') {
+        await this.stopVoucherConflict(tx, run, DETAIL_CONFLICT)
+        return { ok: false as const }
+      }
+      if (appended.kind === 'MISSING')
+        throw new ConflictException('Verifikatet saknas i det sparade manifestet')
+      if (appended.kind === 'WRONG_POSITION') throw wrongDetailStep()
+      if (appended.kind === 'WRITTEN') {
+        const now = await this.assertContextLeaseTime(tx, run)
+        await tx.fortnoxReadRun.update({
+          where: {
+            id: run.id,
+            organizationId: run.organizationId,
+            claimVersion: run.claimVersion,
+            claimToken: run.claimToken,
+          },
+          data: { phase: appended.nextPhase, checkpointUpdatedAt: now },
+          select: { id: true },
+        })
+      }
+      await tx.$executeRaw`SET CONSTRAINTS "fortnox_v2_detail_must_advance" IMMEDIATE`
+      await this.assertContextLeaseTime(tx, run)
+      return { ok: true as const, receipt: appended.receipt }
+    })
+    if (!result.ok) throw new ConflictException(DETAIL_CONFLICT)
+
+    // Kvittot kommer från en ny TX och den faktiskt lagrade normalformen.
+    // Nekad fence här betyder inte att den föregående committen saknas.
+    return this.withLease(lease, async (tx, run) => {
+      if (run.phase !== 'DETAILS' && run.phase !== 'READY_TO_REDUCE') throw invalid()
+      const catalog = CheckpointCatalogSchema.parse(run.catalog)
+      const observed = await readVoucherDetailReceipt(
+        tx,
+        run,
+        catalog.financialYear,
+        result.receipt.key,
+        result.receipt.detailDigest,
+      )
+      if (
+        observed.runId !== result.receipt.runId ||
+        observed.checkpointId !== result.receipt.checkpointId
+      )
+        throw invalid()
+      await this.assertContextLeaseTime(tx, run)
+      return observed
+    })
+  }
+
+  /** Validerad C-ordnad sida för en senare reducerare; ingen resultatpublicering. */
+  async readValidatedPage(
+    lease: SourceRunLease,
+    options: { afterKey?: string; limit?: number } = {},
+  ): Promise<ValidatedLedgerVoucher[]> {
+    const parsed = CheckpointReadPageSchema.safeParse(options)
+    if (!parsed.success) throw new BadRequestException('Ogiltig detaljsida')
+    const result = await this.withLease(lease, async (tx, run) => {
+      if (run.phase !== 'READY_TO_REDUCE')
+        throw new ConflictException('Alla detaljer är inte sparade')
+      const catalog = CheckpointCatalogSchema.parse(run.catalog)
+      const page = await readValidatedVoucherPage(tx, run, catalog.financialYear, parsed.data)
+      if (page.kind === 'INVALID') {
+        await this.stopVoucherConflict(tx, run, INVALID_CONTEXT)
+        return { valid: false as const }
+      }
+      await this.assertContextLeaseTime(tx, run)
+      return { valid: true as const, items: page.items }
+    })
+    if (!result.valid) throw new ConflictException(INVALID_CONTEXT)
+    return result.items
+  }
+
+  private async stopVoucherConflict(
+    tx: Tx,
+    run: FortnoxReadRun,
+    reason: typeof MANIFEST_CONFLICT | typeof DETAIL_CONFLICT | typeof INVALID_CONTEXT,
+  ): Promise<void> {
     const now = await this.assertContextLeaseTime(tx, run)
     await tx.fortnoxReadRun.update({
       where: {
@@ -610,7 +717,7 @@ export class FortnoxReadSourceRunService {
       },
       data: {
         status: 'FAILED',
-        reason: MANIFEST_CONFLICT,
+        reason,
         completedAt: now,
         checkpointUpdatedAt: now,
         claimToken: null,
@@ -1134,11 +1241,16 @@ export class FortnoxReadSourceRunService {
       throw invalid()
     if (run.phase === 'MANIFEST') {
       if (run.nextManifestPage > first.totalPages) throw invalid()
-    } else if (
-      run.nextManifestPage !== Math.max(1, first.totalPages) + 1 ||
-      (run.phase === 'DETAILS' ? first.totalResources === 0 : first.totalResources !== 0)
-    ) {
-      throw invalid()
+    } else {
+      if (run.nextManifestPage !== Math.max(1, first.totalPages) + 1) throw invalid()
+      // SQL:s sista detaljövergång bär fulla count-beviset. Hot restore
+      // behöver endast pending-indexet, aldrig COUNT över alla detaljer.
+      const pending = await nextVoucherKey(tx, run)
+      if (
+        (run.phase === 'DETAILS' && (first.totalResources === 0 || pending === null)) ||
+        (run.phase === 'READY_TO_REDUCE' && pending !== null)
+      )
+        throw invalid()
     }
   }
 

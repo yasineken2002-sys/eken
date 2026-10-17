@@ -5,12 +5,15 @@ import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { kallkonton } from './fortnox-read-provenance'
 import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
-import { validateLedgerVoucher, type ValidatedLedgerVoucher } from './fortnox-ledger-validation'
+import type { ValidatedLedgerVoucher } from './fortnox-ledger-validation'
 import type { FortnoxVoucher } from './fortnox.types'
 import {
   appendVoucherManifestPage,
+  appendVoucherDetail,
   nextVoucherKey,
+  parseVoucherDetail,
   parseVoucherManifestPage,
+  readValidatedVoucherPage,
 } from './fortnox-read-voucher-checkpoint'
 import {
   canonicalCheckpointInput,
@@ -18,7 +21,6 @@ import {
   CheckpointCatalogSchema,
   CheckpointContextSchema,
   CheckpointReadPageSchema,
-  NormalizedVoucherSchema,
   type CheckpointCatalog,
   type StartCheckpointInput,
 } from './fortnox-read-checkpoint-context'
@@ -274,38 +276,17 @@ export class FortnoxReadCheckpointService {
   ): Promise<FortnoxReadRun> {
     return this.withLease(lease, async (tx, { run, now, catalog: restoredCatalog }) => {
       const catalog = restoredCatalog ?? CheckpointCatalogSchema.parse(run.catalog)
-      let validated
-      try {
-        validated = NormalizedVoucherSchema.parse(
-          validateLedgerVoucher(key, voucher, catalog.financialYear),
-        )
-      } catch {
-        return this.terminal(tx, run, now, 'DETAIL_CONFLICT')
-      }
-      const detailDigest = checkpointDigest(validated)
-      const checkpoint = await tx.fortnoxReadVoucherCheckpoint.findUnique({
-        where: { runId_key: { runId: run.id, key }, organizationId: run.organizationId },
-      })
-      if (!checkpoint) throw new ConflictException('Verifikatet saknas i det sparade manifestet')
-      if (checkpoint.detailDigest !== null) {
-        if (
-          !NormalizedVoucherSchema.safeParse(checkpoint.validated).success ||
-          checkpoint.detailDigest !== detailDigest ||
-          checkpointDigest(checkpoint.validated) !== detailDigest
-        )
-          return this.terminal(tx, run, now, 'DETAIL_CONFLICT')
-        return run
-      }
-      if (run.phase !== 'DETAILS' || (await this.nextKey(tx, run)) !== key)
+      const validated = parseVoucherDetail(key, voucher, catalog.financialYear)
+      if (!validated) return this.terminal(tx, run, now, 'DETAIL_CONFLICT')
+      const result = await appendVoucherDetail(tx, run, validated, now)
+      if (result.kind === 'CONFLICT') return this.terminal(tx, run, now, 'DETAIL_CONFLICT')
+      if (result.kind === 'MISSING')
+        throw new ConflictException('Verifikatet saknas i det sparade manifestet')
+      if (result.kind === 'WRONG_POSITION')
         throw new ConflictException('Verifikatet hör inte till aktuellt lässteg')
-      await tx.fortnoxReadVoucherCheckpoint.update({
-        where: { id: checkpoint.id, organizationId: run.organizationId },
-        data: { validated: json(validated), detailDigest, observedAt: now },
-        select: { id: true },
-      })
-      const next = await this.nextKey(tx, run)
+      if (result.kind === 'REPLAY') return run
       return this.updateRun(tx, run, {
-        phase: next ? 'DETAILS' : 'READY_TO_REDUCE',
+        phase: result.nextPhase,
         checkpointUpdatedAt: now,
       })
     })
@@ -329,38 +310,18 @@ export class FortnoxReadCheckpointService {
   ): Promise<ValidatedLedgerVoucher[]> {
     const parsed = CheckpointReadPageSchema.safeParse(options)
     if (!parsed.success) throw new BadRequestException('Ogiltig detaljsida')
-    const afterKey = parsed.data.afterKey ?? null
-    const limit = parsed.data.limit ?? 100
     const result = await this.withLease(
       lease,
       async (tx, { run, now, catalog: restoredCatalog }) => {
         if (run.phase !== 'READY_TO_REDUCE')
           throw new ConflictException('Alla detaljer är inte sparade')
         const catalog = restoredCatalog ?? CheckpointCatalogSchema.parse(run.catalog)
-        const rows = await tx.$queryRaw<
-          Array<{ key: string; detailDigest: string | null; validated: Prisma.JsonValue | null }>
-        >`
-        SELECT "key", "detailDigest", "validated" FROM "FortnoxReadVoucherCheckpoint"
-        WHERE "organizationId" = ${run.organizationId} AND "runId" = ${run.id}
-          ${afterKey === null ? Prisma.empty : Prisma.sql`AND "key" COLLATE "C" > ${afterKey}::text COLLATE "C"`}
-        ORDER BY "key" COLLATE "C" ASC LIMIT ${limit}`
-        const items: ValidatedLedgerVoucher[] = []
-        for (const row of rows) {
-          const detail = NormalizedVoucherSchema.safeParse(row.validated)
-          if (
-            !detail.success ||
-            detail.data.key !== row.key ||
-            Number(row.key.split('|')[0]) !== catalog.financialYear.id ||
-            detail.data.date < catalog.financialYear.fromDate ||
-            detail.data.date > catalog.financialYear.toDate ||
-            row.detailDigest !== checkpointDigest(detail.data)
-          ) {
-            await this.terminal(tx, run, now, 'INVALID_CONTEXT')
-            return { valid: false as const }
-          }
-          items.push(detail.data)
+        const page = await readValidatedVoucherPage(tx, run, catalog.financialYear, parsed.data)
+        if (page.kind === 'INVALID') {
+          await this.terminal(tx, run, now, 'INVALID_CONTEXT')
+          return { valid: false as const }
         }
-        return { valid: true as const, items }
+        return { valid: true as const, items: page.items }
       },
     )
     if (!result.valid) throw new ConflictException(REASONS.INVALID_CONTEXT)
