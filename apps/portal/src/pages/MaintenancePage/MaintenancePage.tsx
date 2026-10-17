@@ -1,5 +1,6 @@
 import { useSessionGuard } from '@/lib/session-guard'
 import { useEffect, useRef, useState } from 'react'
+import { useFocusTrap } from '@eken/ui/hooks'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -198,8 +199,30 @@ export function MaintenancePage() {
   const [images, setImages] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const draftVersion = useRef(0)
+  const submitDisabled = isSubmitting || !title.trim() || !description.trim()
+  const sheetRef = useFocusTrap<HTMLDivElement>(showSheet)
+  const headerButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const focusHeaderAfterSubmit = useRef(false)
+
+  useEffect(() => {
+    if (!showSheet) {
+      if (focusHeaderAfterSubmit.current) {
+        focusHeaderAfterSubmit.current = false
+        // Tomlistans öppnare kan försvinna vid refetch av det första ärendet.
+        headerButtonRef.current?.focus()
+      }
+      return
+    }
+    const focused = document.activeElement
+    // Ett inskick kan inaktivera just den knapp tangentbordet står på.
+    if (!sheetRef.current?.contains(focused) || focused?.matches(':disabled')) {
+      cancelRef.current?.focus()
+    }
+  }, [showSheet, submitDisabled, sheetRef])
 
   function setSheetOpen(open: boolean) {
+    if (open) focusHeaderAfterSubmit.current = false
     draftVersion.current += 1
     setShowSheet(open)
   }
@@ -236,6 +259,7 @@ export function MaintenancePage() {
       if (!currentSession()) return
       // Redigering eller återöppning under väntan tillhör ett nyare utkast.
       if (draftVersion.current === submittedVersion) {
+        focusHeaderAfterSubmit.current = true
         setShowSheet(false)
         setTitle('')
         setDescription('')
@@ -257,6 +281,8 @@ export function MaintenancePage() {
         <h1 className={styles.pageTitle}>Felanmälningar</h1>
         <button
           type="button"
+          ref={headerButtonRef}
+          tabIndex={0}
           className={styles.headerBtn}
           onClick={() => setSheetOpen(true)}
           aria-label="Ny felanmälan"
@@ -307,7 +333,12 @@ export function MaintenancePage() {
               <p className={styles.emptyText}>
                 Tryck på "Ny felanmälan" högst upp för att rapportera ett fel
               </p>
-              <button type="button" className={styles.emptyCta} onClick={() => setSheetOpen(true)}>
+              <button
+                type="button"
+                tabIndex={0}
+                className={styles.emptyCta}
+                onClick={() => setSheetOpen(true)}
+              >
                 + Ny felanmälan
               </button>
             </div>
@@ -322,7 +353,20 @@ export function MaintenancePage() {
 
       {/* Bottom sheet */}
       <div
+        ref={sheetRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="maintenance-sheet-title"
+        aria-hidden={!showSheet}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !showSheet) return
+          event.preventDefault()
+          event.stopPropagation()
+          setSheetOpen(false)
+        }}
         style={{
+          visibility: showSheet ? 'visible' : 'hidden',
           position: 'fixed',
           bottom: 0,
           left: '50%',
@@ -343,7 +387,9 @@ export function MaintenancePage() {
         {/* Fixed header — not scrollable */}
         <div style={{ padding: '16px 20px 0', flexShrink: 0 }}>
           <div className={styles.sheetHandle} />
-          <h2 className={styles.sheetTitle}>Ny felanmälan</h2>
+          <h2 id="maintenance-sheet-title" className={styles.sheetTitle}>
+            Ny felanmälan
+          </h2>
         </div>
         {/* Scrollable content */}
         <div style={{ overflowY: 'auto', flex: 1, padding: '0 20px 20px' }}>
@@ -354,6 +400,7 @@ export function MaintenancePage() {
                 <button
                   key={cat.value}
                   type="button"
+                  tabIndex={0}
                   className={`${styles.catChip} ${category === cat.value ? styles.catChipActive : ''}`}
                   style={
                     category === cat.value
@@ -463,6 +510,8 @@ export function MaintenancePage() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
               <button
                 type="button"
+                ref={cancelRef}
+                tabIndex={0}
                 className={styles.cancelBtn}
                 onClick={() => setSheetOpen(false)}
               >
@@ -473,7 +522,8 @@ export function MaintenancePage() {
             {/* Full-width submit button */}
             <button
               onClick={() => void handleSubmit()}
-              disabled={isSubmitting || !title.trim() || !description.trim()}
+              disabled={submitDisabled}
+              tabIndex={submitDisabled ? -1 : 0}
               style={{
                 width: '100%',
                 padding: '14px',

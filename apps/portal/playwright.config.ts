@@ -9,6 +9,7 @@ export default defineConfig({
     'portal-installation.spec.ts',
     'portal-transport.spec.ts',
     'portal-bankid-dialog.spec.ts',
+    'portal-maintenance-sheet.spec.ts',
   ],
   fullyParallel: false,
   workers: 1,
