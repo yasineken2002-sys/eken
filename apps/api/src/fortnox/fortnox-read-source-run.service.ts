@@ -15,6 +15,26 @@ import {
   readCheckpointSourceMappingPage,
   readCheckpointSourceExportPage,
 } from './fortnox-read-source-capture'
+import {
+  normalizeCheckpointPage,
+  parseNormalizationPosition,
+  parseNormalizedPagePosition,
+  prepareNormalizationStage,
+  readNormalizationStagePage,
+  type NormalizationPage,
+  type NormalizationPageReceipt,
+  type NormalizationPosition,
+  type NormalizationProgress,
+  type NormalizedPagePosition,
+} from './fortnox-read-normalization-stage'
+
+export type {
+  NormalizationPage,
+  NormalizationPageReceipt,
+  NormalizationPosition,
+  NormalizationProgress,
+  NormalizedPagePosition,
+} from './fortnox-read-normalization-stage'
 
 type Tx = Prisma.TransactionClient
 type SourceHeader = Awaited<ReturnType<typeof readCheckpointSourceHeader>>
@@ -61,6 +81,7 @@ const conflict = () => new ConflictException('En annan Fortnox-läsning pågår 
 const invalid = () => new ConflictException('Körningen saknar ett giltigt fryst källunderlag')
 const expired = () => new ConflictException('Läsanspråket har upphört')
 const CONNECTION_CHANGED = 'Fortnox-anslutningen har ändrats; starta en ny läsning.'
+const INVALID_SOURCE = 'Det frysta källunderlaget kan inte normaliseras; starta en ny läsning.'
 const date = (value: string) => new Date(`${value}T00:00:00Z`)
 
 function canonicalInput(input: StartCheckpointInput): StartCheckpointInput {
@@ -155,8 +176,9 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
 /**
  * Inert start för v2: en liten körning binds atomiskt till komplett råkälla.
  * SOURCE_CAPTURED innebär ännu ingen validerad kontext eller ekonomiskt resultat.
- * En lease styr bara ägd råkällsläsning, aldrig beständig bearbetningsprogress.
- * Ingen HTTP-, kö-, normaliserings- eller providerkoppling finns här.
+ * En lease styr råkällsläsning och separata normaliseringssteg. SOURCE_CAPTURED
+ * ändrar inte betydelse när en stage blir NORMALIZED; inget resultat publiceras.
+ * Ingen HTTP-, kö- eller providerkoppling finns här.
  */
 @Injectable()
 export class FortnoxReadSourceRunService {
@@ -345,6 +367,59 @@ export class FortnoxReadSourceRunService {
     })
   }
 
+  async prepareNormalization(lease: SourceRunLease): Promise<NormalizationProgress> {
+    return this.withLease(lease, (tx, run, now, source) =>
+      prepareNormalizationStage(tx, run, source, now),
+    )
+  }
+
+  async normalizePage(
+    lease: SourceRunLease,
+    input: NormalizationPosition,
+  ): Promise<NormalizationPageReceipt> {
+    const expected = parseNormalizationPosition(input)
+    const result = await this.withLease(lease, async (tx, run, _now, source) => {
+      const outcome = await normalizeCheckpointPage(tx, run, source, expected)
+      if (outcome.kind === 'INVALID_SOURCE') {
+        // Normalisering sker före INSERT. Bara den fortfarande giltiga ägaren
+        // får stoppa runen; råkälls-/DB-/fencefel kommer aldrig hit som rådatafel.
+        const now = await this.databaseNow(tx)
+        if (!run.leaseUntil || run.leaseUntil <= now) throw expired()
+        await tx.fortnoxReadRun.update({
+          where: {
+            id: run.id,
+            organizationId: run.organizationId,
+            claimVersion: run.claimVersion,
+            claimToken: run.claimToken,
+          },
+          data: {
+            status: 'FAILED',
+            reason: INVALID_SOURCE,
+            completedAt: now,
+            checkpointUpdatedAt: now,
+            claimToken: null,
+            leaseUntil: null,
+          },
+          select: { id: true, status: true },
+        })
+      }
+      return outcome
+    })
+    // Throw inne i callbacken skulle rulla tillbaka den avsiktliga terminalen.
+    if (result.kind === 'INVALID_SOURCE') throw new ConflictException(INVALID_SOURCE)
+    return result.receipt
+  }
+
+  async readNormalizedPage(
+    lease: SourceRunLease,
+    input: NormalizedPagePosition,
+  ): Promise<NormalizationPage> {
+    const position = parseNormalizedPagePosition(input)
+    return this.withLease(lease, (tx, run, _now, source) =>
+      readNormalizationStagePage(tx, run, source, position),
+    )
+  }
+
   private checkIdentity(organizationId: string, runId: string): void {
     if (
       typeof organizationId !== 'string' ||
@@ -379,7 +454,7 @@ export class FortnoxReadSourceRunService {
 
   private async withLease<T>(
     lease: SourceRunLease,
-    action: (tx: Tx, run: FortnoxReadRun, now: Date) => Promise<T>,
+    action: (tx: Tx, run: FortnoxReadRun, now: Date, source: SourceHeader) => Promise<T>,
   ): Promise<T> {
     const parsed = leaseSchema.safeParse(lease)
     if (!parsed.success) throw new BadRequestException('Ogiltigt läsanspråk')
@@ -397,12 +472,12 @@ export class FortnoxReadSourceRunService {
         run.leaseUntil <= now
       )
         throw expired()
-      await this.checkBoundRun(tx, run)
+      const source = await this.checkBoundRun(tx, run)
       if (!sameConnection(run, connection)) {
         await this.stopChangedConnection(tx, run, now)
         return { ok: false as const }
       }
-      return { ok: true as const, value: await action(tx, run, now) }
+      return { ok: true as const, value: await action(tx, run, now, source) }
     }, PRISMA_DEFAULT_TX_LIMITS)
     // Kasta efter commit: en giltig ägare stoppar varaktigt en ändrad binding.
     if (!result.ok) throw new ConflictException(CONNECTION_CHANGED)
@@ -447,10 +522,11 @@ export class FortnoxReadSourceRunService {
     })
   }
 
-  private async checkBoundRun(tx: Tx, run: FortnoxReadRun): Promise<void> {
+  private async checkBoundRun(tx: Tx, run: FortnoxReadRun): Promise<SourceHeader> {
     if (!run.sourceCaptureId || !run.requestHash) throw invalid()
     const header = await readCheckpointSourceHeader(tx, run.organizationId, run.sourceCaptureId)
     checkBinding(run, header, run.requestHash)
+    return header
   }
 
   private async readBoundRun(
