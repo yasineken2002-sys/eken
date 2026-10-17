@@ -1,5 +1,5 @@
 import { useSessionGuard } from '@/lib/session-guard'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -93,6 +93,7 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
   const [expanded, setExpanded] = useState(false)
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
+  const commentVersion = useRef(0)
   const queryClient = useQueryClient()
   const currentSession = useSessionGuard()
 
@@ -101,11 +102,13 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
   async function handleComment() {
     if (!currentSession()) return
     if (!comment.trim()) return
+    const submittedVersion = commentVersion.current
     setSending(true)
     try {
       await addTicketComment(ticket.id, comment.trim())
       if (!currentSession()) return
-      setComment('')
+      // Svaret hör till den skickade texten, inte ett senare utkast.
+      if (commentVersion.current === submittedVersion) setComment('')
       await queryClient.invalidateQueries({ queryKey: ['portal', 'maintenance'] })
     } catch (err) {
       if (!currentSession()) return
@@ -150,7 +153,10 @@ function TicketCard({ ticket }: { ticket: PortalMaintenanceTicket }) {
               className={styles.commentInput}
               placeholder="Lägg till ett meddelande..."
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              onChange={(e) => {
+                commentVersion.current += 1
+                setComment(e.target.value)
+              }}
               rows={3}
             />
             <button
@@ -175,6 +181,12 @@ export function MaintenancePage() {
   const [category, setCategory] = useState<MaintenanceCategoryValue>('OTHER')
   const [images, setImages] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const draftVersion = useRef(0)
+
+  function setSheetOpen(open: boolean) {
+    draftVersion.current += 1
+    setShowSheet(open)
+  }
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['portal', 'maintenance'],
@@ -184,6 +196,7 @@ export function MaintenancePage() {
   const handleSubmit = async () => {
     if (!currentSession()) return
     if (!title.trim() || !description.trim()) return
+    const submittedVersion = draftVersion.current
     setIsSubmitting(true)
     try {
       const ticket = await submitMaintenanceRequest({
@@ -205,11 +218,14 @@ export function MaintenancePage() {
         }
       }
       if (!currentSession()) return
-      setShowSheet(false)
-      setTitle('')
-      setDescription('')
-      setImages([])
-      setCategory('OTHER')
+      // Redigering eller återöppning under väntan tillhör ett nyare utkast.
+      if (draftVersion.current === submittedVersion) {
+        setShowSheet(false)
+        setTitle('')
+        setDescription('')
+        setImages([])
+        setCategory('OTHER')
+      }
       void refetch()
     } catch (err) {
       if (!currentSession()) return
@@ -226,7 +242,7 @@ export function MaintenancePage() {
         <button
           type="button"
           className={styles.headerBtn}
-          onClick={() => setShowSheet(true)}
+          onClick={() => setSheetOpen(true)}
           aria-label="Ny felanmälan"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -275,7 +291,7 @@ export function MaintenancePage() {
               <p className={styles.emptyText}>
                 Tryck på "Ny felanmälan" högst upp för att rapportera ett fel
               </p>
-              <button type="button" className={styles.emptyCta} onClick={() => setShowSheet(true)}>
+              <button type="button" className={styles.emptyCta} onClick={() => setSheetOpen(true)}>
                 + Ny felanmälan
               </button>
             </div>
@@ -286,7 +302,7 @@ export function MaintenancePage() {
       )}
 
       {/* Bottom sheet backdrop */}
-      {showSheet && <div className={styles.backdrop} onClick={() => setShowSheet(false)} />}
+      {showSheet && <div className={styles.backdrop} onClick={() => setSheetOpen(false)} />}
 
       {/* Bottom sheet */}
       <div
@@ -328,7 +344,10 @@ export function MaintenancePage() {
                       ? { background: cat.bg, color: cat.color, borderColor: cat.color }
                       : {}
                   }
-                  onClick={() => setCategory(cat.value)}
+                  onClick={() => {
+                    draftVersion.current += 1
+                    setCategory(cat.value)
+                  }}
                 >
                   {cat.label}
                 </button>
@@ -345,7 +364,10 @@ export function MaintenancePage() {
                 type="text"
                 placeholder="Kortfattad beskrivning av problemet"
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => {
+                  draftVersion.current += 1
+                  setTitle(e.target.value)
+                }}
               />
             </div>
 
@@ -358,7 +380,10 @@ export function MaintenancePage() {
                 className={styles.textarea}
                 placeholder="Beskriv problemet i detalj"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => {
+                  draftVersion.current += 1
+                  setDescription(e.target.value)
+                }}
                 rows={4}
               />
             </div>
@@ -387,6 +412,7 @@ export function MaintenancePage() {
                   style={{ display: 'none' }}
                   onChange={(e) => {
                     const files = Array.from(e.target.files ?? []).slice(0, 5)
+                    draftVersion.current += 1
                     setImages(files)
                   }}
                 />
@@ -426,7 +452,7 @@ export function MaintenancePage() {
               <button
                 type="button"
                 className={styles.cancelBtn}
-                onClick={() => setShowSheet(false)}
+                onClick={() => setSheetOpen(false)}
               >
                 Avbryt
               </button>
