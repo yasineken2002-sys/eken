@@ -4,6 +4,7 @@ import { Prisma, type FortnoxConnection, type FortnoxReadRun } from '@prisma/cli
 import { PrismaService } from '../common/prisma/prisma.service'
 import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { kallkonton } from './fortnox-read-provenance'
+import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
 import {
   isPosInt,
   validateLedgerVoucher,
@@ -611,45 +612,12 @@ export class FortnoxReadCheckpointService {
     catalog: CheckpointCatalog,
     context: RestoredContext['context'],
   ): boolean {
-    const input = context.input
-    const year = catalog.financialYear
-    if (
-      catalog.companyDatabaseNumber !== run.fortnoxDatabaseNumber ||
-      year.id !== run.financialYearId ||
-      year.fromDate > year.toDate ||
-      input.periodFrom < year.fromDate ||
-      input.periodTo > year.toDate ||
-      (input.financialYearStart !== undefined && input.financialYearStart !== year.fromDate) ||
-      (input.financialYearEnd !== undefined && input.financialYearEnd !== year.toDate)
+    return checkpointCatalogMatches(
+      context.input,
+      run.fortnoxDatabaseNumber,
+      context.mappings.some((mapping) => mapping.type === 'PROJECT'),
+      catalog,
     )
-      return false
-    const accounts = new Set(catalog.accounts.map((a) => a.number))
-    if (
-      accounts.size !== catalog.accounts.length ||
-      accounts.size !== run.costAccounts.length ||
-      run.costAccounts.some((a) => !accounts.has(a)) ||
-      catalog.accounts.some((a) => a.active === false)
-    )
-      return false
-    for (const [type, coverage] of [
-      ['COST_CENTER', catalog.coverage.costCenters],
-      ['PROJECT', catalog.coverage.projects],
-    ] as const) {
-      const codes = catalog.dimensions.filter((d) => d.type === type).map((d) => d.code)
-      if (!coverage) {
-        if (codes.length || context.mappings.some((m) => m.type === type)) return false
-        continue
-      }
-      if (
-        new Set(codes).size !== codes.length ||
-        coverage.totalResources !== codes.length ||
-        coverage.itemsSeen < codes.length ||
-        coverage.pages !== Math.max(1, coverage.totalPages) ||
-        (coverage.totalPages === 0 && (coverage.totalResources !== 0 || coverage.itemsSeen !== 0))
-      )
-        return false
-    }
-    return true
   }
 
   private normalizePage(envelope: unknown, financialYearId: number) {

@@ -7,8 +7,11 @@ import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import {
   canonicalCheckpointInput,
   checkpointDigest,
+  CheckpointCatalogSchema,
+  type CheckpointCatalog,
   type StartCheckpointInput,
 } from './fortnox-read-checkpoint-context'
+import { checkpointCatalogMatches } from './fortnox-read-catalog-contract'
 import {
   captureCheckpointSource,
   readCheckpointSourceHeader,
@@ -80,7 +83,27 @@ export type SourceRunPageInput = {
 export type SourceRunPage =
   | Awaited<ReturnType<typeof readCheckpointSourceMappingPage>>
   | Awaited<ReturnType<typeof readCheckpointSourceExportPage>>
+export type SourceCatalogStep =
+  | {
+      kind: 'READ_CATALOG'
+      input: StartCheckpointInput
+      databaseNumber: number
+      readProjects: boolean
+    }
+  | { kind: 'MANIFEST'; catalog: CheckpointCatalog; nextManifestPage: 1 }
+export type SourceCatalogReceipt = {
+  runId: string
+  phase: 'MANIFEST'
+  nextManifestPage: 1
+  catalogDigest: string
+}
 type HeldContextLease = { value: SourceRunLease }
+type CatalogContext = {
+  held: HeldContextLease
+  binding: NormalizedContextBinding
+  header: ContextHeader
+  hasProjectMapping: boolean
+}
 const MAX_CLAIM_VERSION = 2_147_483_647
 const leaseSchema = z
   .object({
@@ -111,6 +134,7 @@ const invalid = () => new ConflictException('Körningen saknar ett giltigt fryst
 const expired = () => new ConflictException('Läsanspråket har upphört')
 const CONNECTION_CHANGED = 'Fortnox-anslutningen har ändrats; starta en ny läsning.'
 const INVALID_SOURCE = 'Det frysta källunderlaget kan inte normaliseras; starta en ny läsning.'
+const CATALOG_CONFLICT = 'Katalogunderlaget ändrades under läsningen.'
 const date = (value: string) => new Date(`${value}T00:00:00Z`)
 
 function canonicalInput(input: StartCheckpointInput): StartCheckpointInput {
@@ -167,7 +191,7 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
   if (
     run.workVersion !== 2 ||
     run.status !== 'RUNNING' ||
-    run.phase !== 'SOURCE_CAPTURED' ||
+    (run.phase !== 'SOURCE_CAPTURED' && run.phase !== 'MANIFEST') ||
     run.id !== header.id ||
     run.sourceCaptureId !== header.id ||
     run.organizationId !== header.organizationId ||
@@ -182,11 +206,8 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
     run.periodTo.toISOString().slice(0, 10) !== input.periodTo ||
     checkpointDigest(run.costAccounts) !== checkpointDigest(input.costAccounts) ||
     run.frozenContext !== null ||
-    run.catalog !== null ||
     run.summary !== null ||
     run.rows !== null ||
-    run.financialYearStart !== null ||
-    run.financialYearEnd !== null ||
     run.completedAt !== null ||
     run.checkpointUpdatedAt === null ||
     run.reason !== null ||
@@ -200,6 +221,33 @@ function checkBinding(run: FortnoxReadRun, header: SourceHeader, requestHash: st
     run.nextManifestPage !== 1
   )
     throw invalid()
+  if (run.phase === 'SOURCE_CAPTURED') {
+    if (run.catalog !== null || run.financialYearStart !== null || run.financialYearEnd !== null)
+      throw invalid()
+  } else {
+    // Billig återställning: djup projektpolicy prövas mot snapshotens samtliga
+    // mapping-sidor i katalogsteget, inte vid varje leaseoperation.
+    checkedRunCatalog(run, input, false)
+  }
+}
+
+function checkedRunCatalog(
+  run: FortnoxReadRun,
+  input: StartCheckpointInput,
+  hasProjectMapping: boolean,
+): CheckpointCatalog {
+  const parsed = CheckpointCatalogSchema.safeParse(run.catalog)
+  if (
+    run.phase !== 'MANIFEST' ||
+    !parsed.success ||
+    !run.financialYearStart ||
+    !run.financialYearEnd ||
+    run.financialYearStart.toISOString().slice(0, 10) !== parsed.data.financialYear.fromDate ||
+    run.financialYearEnd.toISOString().slice(0, 10) !== parsed.data.financialYear.toDate ||
+    !checkpointCatalogMatches(input, run.fortnoxDatabaseNumber, hasProjectMapping, parsed.data)
+  )
+    throw invalid()
+  return parsed.data
 }
 
 /**
@@ -397,9 +445,10 @@ export class FortnoxReadSourceRunService {
   }
 
   async prepareNormalization(lease: SourceRunLease): Promise<NormalizationProgress> {
-    return this.withLease(lease, (tx, run, now, source) =>
-      prepareNormalizationStage(tx, run, source, now),
-    )
+    return this.withLease(lease, (tx, run, now, source) => {
+      if (run.phase !== 'SOURCE_CAPTURED') throw invalid()
+      return prepareNormalizationStage(tx, run, source, now)
+    })
   }
 
   async normalizePage(
@@ -408,6 +457,7 @@ export class FortnoxReadSourceRunService {
   ): Promise<NormalizationPageReceipt> {
     const expected = parseNormalizationPosition(input)
     const result = await this.withLease(lease, async (tx, run, _now, source) => {
+      if (run.phase !== 'SOURCE_CAPTURED') throw invalid()
       const outcome = await normalizeCheckpointPage(tx, run, source, expected)
       if (outcome.kind === 'INVALID_SOURCE') {
         // Normalisering sker före INSERT. Bara den fortfarande giltiga ägaren
@@ -449,6 +499,172 @@ export class FortnoxReadSourceRunService {
     )
   }
 
+  /** Fryst katalogbegäran eller det redan beständiga nästa steget; ingen nätläsning. */
+  async getCatalogStep(lease: SourceRunLease): Promise<SourceCatalogStep> {
+    const context = await this.readVerifiedCatalogContext(lease)
+    await this.renewContextLeaseIfNeeded(context.held)
+    return this.withNormalizedContext(context.held.value, async (tx, run, binding) => {
+      await this.assertCatalogContext(tx, binding, context)
+      // En annan caller kan ha committat medan fullpasset pågick. Avgör
+      // returgrenen från den sista låsta runen, aldrig från initial metadata.
+      const step: SourceCatalogStep =
+        run.phase === 'SOURCE_CAPTURED'
+          ? {
+              kind: 'READ_CATALOG',
+              input: binding.input,
+              databaseNumber: binding.connection.databaseNumber,
+              readProjects: context.hasProjectMapping,
+            }
+          : {
+              kind: 'MANIFEST',
+              catalog: checkedRunCatalog(run, binding.input, context.hasProjectMapping),
+              nextManifestPage: 1,
+            }
+      await this.assertContextLeaseTime(tx, run)
+      return step
+    })
+  }
+
+  async commitCatalog(lease: SourceRunLease, candidate: unknown): Promise<SourceCatalogReceipt> {
+    // Även en feltypad kandidat måste först passera aktuell fence och faktisk
+    // kontextverifiering; en gammal caller får inte terminalisera en ny ägare.
+    const context = await this.readVerifiedCatalogContext(lease)
+    await this.renewContextLeaseIfNeeded(context.held)
+    const result = await this.withNormalizedContext(
+      context.held.value,
+      async (tx, run, binding) => {
+        await this.assertCatalogContext(tx, binding, context)
+        const parsed = CheckpointCatalogSchema.safeParse(candidate)
+        const matches =
+          parsed.success &&
+          checkpointCatalogMatches(
+            binding.input,
+            binding.connection.databaseNumber,
+            context.hasProjectMapping,
+            parsed.data,
+          )
+        const previous =
+          run.phase === 'MANIFEST'
+            ? checkedRunCatalog(run, binding.input, context.hasProjectMapping)
+            : null
+        if (
+          !parsed.success ||
+          !matches ||
+          (previous && checkpointDigest(previous) !== checkpointDigest(parsed.data))
+        ) {
+          const now = await this.assertContextLeaseTime(tx, run)
+          await tx.fortnoxReadRun.update({
+            where: {
+              id: run.id,
+              organizationId: run.organizationId,
+              claimVersion: run.claimVersion,
+              claimToken: run.claimToken,
+            },
+            data: {
+              status: 'FAILED',
+              reason: CATALOG_CONFLICT,
+              completedAt: now,
+              checkpointUpdatedAt: now,
+              claimToken: null,
+              leaseUntil: null,
+            },
+            select: { id: true, status: true },
+          })
+          // FAILED-grenen tillåter även startens generationsrotation. Den här
+          // callerstyrda terminalen kräver däremot fortfarande samma giltiga
+          // lease efter den verkliga skrivningen; expiry rullar tillbaka den.
+          await this.assertContextLeaseTime(tx, run)
+          return { ok: false as const }
+        }
+        const catalogDigest = checkpointDigest(parsed.data)
+        if (!previous) {
+          const now = await this.assertContextLeaseTime(tx, run)
+          await tx.fortnoxReadRun.update({
+            where: {
+              id: run.id,
+              organizationId: run.organizationId,
+              claimVersion: run.claimVersion,
+              claimToken: run.claimToken,
+            },
+            data: {
+              phase: 'MANIFEST',
+              catalog: parsed.data as Prisma.InputJsonValue,
+              financialYearStart: date(parsed.data.financialYear.fromDate),
+              financialYearEnd: date(parsed.data.financialYear.toDate),
+              checkpointUpdatedAt: now,
+            },
+            select: { id: true },
+          })
+        }
+        await this.assertContextLeaseTime(tx, run)
+        return { ok: true as const, catalogDigest }
+      },
+    )
+    if (!result.ok) throw new ConflictException(CATALOG_CONFLICT)
+
+    // Separat beständighetskvitto efter commit, även vid identisk replay.
+    // En senare expiry/fenceändring ger fel men påstår inte att commit saknas.
+    await this.renewContextLeaseIfNeeded(context.held)
+    return this.withNormalizedContext(context.held.value, async (tx, run, binding) => {
+      await this.assertCatalogContext(tx, binding, context)
+      const stored = checkedRunCatalog(run, binding.input, context.hasProjectMapping)
+      if (checkpointDigest(stored) !== result.catalogDigest) throw invalid()
+      await this.assertContextLeaseTime(tx, run)
+      const receipt: SourceCatalogReceipt = {
+        runId: run.id,
+        phase: 'MANIFEST',
+        nextManifestPage: 1,
+        catalogDigest: result.catalogDigest,
+      }
+      return receipt
+    })
+  }
+
+  private async readVerifiedCatalogContext(lease: SourceRunLease): Promise<CatalogContext> {
+    // Den publika bron verifierar hela den faktiska kopian och sourceDigest.
+    // Bara projektpolicyn behöver därefter mapping-sidor; inga ownExports
+    // samlas eller materialiseras en gång till i katalogkonsumenten.
+    const receipt = await this.freezeNormalizedContext(lease)
+    const parsed = leaseSchema.safeParse(lease)
+    if (!parsed.success) throw new BadRequestException('Ogiltigt läsanspråk')
+    const held: HeldContextLease = { value: parsed.data }
+    await this.renewContextLeaseIfNeeded(held)
+    const initial = await this.withNormalizedContext(held.value, async (tx, run, binding) => {
+      const header = await findNormalizedContextHeader(tx, binding)
+      assertNormalizedContextHeader(
+        header,
+        { id: receipt.snapshotId, digest: receipt.headerDigest },
+        receipt.sourceDigest,
+      )
+      await this.assertContextLeaseTime(tx, run)
+      return { binding, header }
+    })
+    const context: CatalogContext = { held, ...initial, hasProjectMapping: false }
+    for (let page = 1; page <= initial.header.manifest.collections.MAPPINGS.pageCount; page++) {
+      await this.renewContextLeaseIfNeeded(held)
+      const hasProject = await this.withNormalizedContext(held.value, async (tx, run, binding) => {
+        const header = await this.assertCatalogContext(tx, binding, context)
+        const checked = await readNormalizedContextPage(tx, header, 'MAPPINGS', page)
+        const found = checked.items.some((item) => 'type' in item && item.type === 'PROJECT')
+        await this.assertContextLeaseTime(tx, run)
+        return found
+      })
+      context.hasProjectMapping ||= hasProject
+    }
+    return context
+  }
+
+  private async assertCatalogContext(
+    tx: Tx,
+    binding: NormalizedContextBinding,
+    expected: CatalogContext,
+  ): Promise<ContextHeader> {
+    assertSameNormalizedContextBinding(binding, expected.binding)
+    const header = await findNormalizedContextHeader(tx, binding)
+    assertNormalizedContextHeader(header, expected.header, expected.header.manifest.sourceDigest)
+    return header
+  }
+
   private checkIdentity(organizationId: string, runId: string): void {
     if (
       typeof organizationId !== 'string' ||
@@ -477,10 +693,11 @@ export class FortnoxReadSourceRunService {
     const held: HeldContextLease = { value: parsed.data }
     await this.renewContextLeaseIfNeeded(held)
     // A: fryst metadata och eventuell första snapshot, under aktuell fence.
-    const initial = await this.withNormalizedContext(held.value, async (tx, _run, binding) => ({
-      binding,
-      existing: await findNormalizedContextHeader(tx, binding),
-    }))
+    const initial = await this.withNormalizedContext(held.value, async (tx, run, binding) => {
+      const existing = await findNormalizedContextHeader(tx, binding)
+      if (run.phase === 'MANIFEST' && !existing) throw invalidNormalizedContext()
+      return { binding, existing }
+    })
     const binding = initial.binding
     // B: exakt full sourceDigest, högst en normaliserad sida per TX/minnessteg.
     const stream = new CheckpointContextDigest(binding.input)
@@ -518,6 +735,7 @@ export class FortnoxReadSourceRunService {
           assertNormalizedContextHeader(existing, existing, sourceDigest)
           return existing
         }
+        if (run.phase !== 'SOURCE_CAPTURED') throw invalidNormalizedContext()
         await copyNormalizedContextPages(tx, current, plan)
         const now = await this.assertContextLeaseTime(tx, run)
         const sealed = await sealNormalizedContext(tx, current, plan, now)
@@ -716,6 +934,32 @@ export class FortnoxReadSourceRunService {
     if (!run.sourceCaptureId || !run.requestHash) throw invalid()
     const header = await readCheckpointSourceHeader(tx, run.organizationId, run.sourceCaptureId)
     checkBinding(run, header, run.requestHash)
+    if (run.phase === 'MANIFEST') {
+      // Slutförd stage och sealed header är immutabla. Billig återställning
+      // behöver bara deras metadata; inga extra parentlås från kvittoläsaren
+      // och ingen helkontextläsning vid claim/start/renew/release.
+      const stage = await tx.fortnoxReadNormalizationStage.findUnique({
+        where: { id: run.id, organizationId: run.organizationId },
+      })
+      if (
+        !stage ||
+        stage.formatVersion !== 1 ||
+        stage.status !== 'NORMALIZED' ||
+        stage.mappingsDone !== stage.mappingCount ||
+        stage.exportsDone !== stage.exportCount ||
+        !(stage.normalizedAt instanceof Date) ||
+        !Number.isFinite(stage.normalizedAt.getTime()) ||
+        !(stage.createdAt instanceof Date) ||
+        !Number.isFinite(stage.createdAt.getTime())
+      )
+        throw invalid()
+      const binding = normalizedContextBinding(run, header, {
+        ...stage,
+        formatVersion: 1,
+        status: 'NORMALIZED',
+      })
+      if (!(await findNormalizedContextHeader(tx, binding))) throw invalidNormalizedContext()
+    }
     return header
   }
 
