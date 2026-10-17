@@ -120,7 +120,7 @@ export function saldoUrLasning(
 /** Senaste läsningen som omfattar både 1510 och 2890 (oavsett status). */
 export async function senasteSaldolasning(db: Prisma.TransactionClient, organizationId: string) {
   return db.fortnoxReadRun.findFirst({
-    where: { organizationId, costAccounts: { hasEvery: [1510, 2890] } },
+    where: { organizationId, workVersion: null, costAccounts: { hasEvery: [1510, 2890] } },
     orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
   })
 }

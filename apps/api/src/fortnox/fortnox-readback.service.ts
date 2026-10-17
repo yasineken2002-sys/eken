@@ -93,6 +93,7 @@ export class FortnoxReadbackService {
     const running = await this.prisma.fortnoxReadRun.findFirst({
       where: {
         organizationId,
+        workVersion: null,
         status: 'RUNNING',
         startedAt: { gt: new Date(Date.now() - RUNNING_STALE_MS) },
       },
@@ -278,12 +279,16 @@ export class FortnoxReadbackService {
   async latest(organizationId: string) {
     const [latestRead, latestCompleteRead] = await Promise.all([
       this.prisma.fortnoxReadRun.findFirst({
-        where: { organizationId },
+        where: { organizationId, workVersion: null },
         orderBy: { startedAt: 'desc' },
         select: FORTNOX_READ_VIEW_SELECT,
       }),
       this.prisma.fortnoxReadRun.findFirst({
-        where: { organizationId, status: { in: ['COMPLETE', 'COMPLETE_WITH_UNCERTAINTY'] } },
+        where: {
+          organizationId,
+          workVersion: null,
+          status: { in: ['COMPLETE', 'COMPLETE_WITH_UNCERTAINTY'] },
+        },
         orderBy: { startedAt: 'desc' },
         select: FORTNOX_READ_VIEW_SELECT,
       }),
@@ -389,12 +394,16 @@ export class FortnoxReadbackService {
     const select = { ...FORTNOX_READ_VIEW_SELECT, costAccounts: true }
     const [latestRead, latestCompleteRead] = await Promise.all([
       this.prisma.fortnoxReadRun.findFirst({
-        where: { organizationId },
+        where: { organizationId, workVersion: null },
         orderBy: { startedAt: 'desc' },
         select,
       }),
       this.prisma.fortnoxReadRun.findFirst({
-        where: { organizationId, status: { in: ['COMPLETE', 'COMPLETE_WITH_UNCERTAINTY'] } },
+        where: {
+          organizationId,
+          workVersion: null,
+          status: { in: ['COMPLETE', 'COMPLETE_WITH_UNCERTAINTY'] },
+        },
         orderBy: { startedAt: 'desc' },
         select,
       }),

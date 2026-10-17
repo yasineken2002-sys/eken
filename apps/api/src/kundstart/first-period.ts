@@ -97,6 +97,7 @@ export async function fortnoxRiskkontroll(
     where: {
       organizationId,
       connectionId,
+      workVersion: null,
       status: 'COMPLETE',
       periodTo: { gte: cutover },
       periodFrom: { lte: cutover },
