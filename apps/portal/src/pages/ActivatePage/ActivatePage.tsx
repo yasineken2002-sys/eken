@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useSessionMutation } from '@/lib/session-guard'
+import { SessionChangedError, useSessionMutation } from '@/lib/session-guard'
 import { PortalNetworkError } from '@/lib/network-state'
 import { validatePasswordStrength } from '@eken/shared'
 import { activateAccount, fetchActivationContract, fetchActivationInfo } from '@/api/portal.api'
@@ -40,9 +40,22 @@ function tenantDisplayName(t: {
 
 export function ActivatePage() {
   const [searchParams] = useSearchParams()
+  const token = searchParams.get('token') ?? ''
+  // En annan länk måste få ett nytt formulär, utan tidigare utkast/godkännande.
+  return <ActivateForm key={token} token={token} />
+}
+
+function ActivateForm({ token }: { token: string }) {
   const navigate = useNavigate()
   const setSession = useSessionStore((s) => s.setSession)
-  const token = searchParams.get('token') ?? ''
+  const mounted = useRef(false)
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      // Ett skickat serveranrop kan slutföras, men får inte längre styra denna vy.
+      mounted.current = false
+    }
+  }, [])
 
   const today = useMemo(
     () =>
@@ -85,12 +98,18 @@ export function ActivatePage() {
   }, [infoQuery.data, signatureName])
 
   const activateMutation = useSessionMutation({
-    mutationFn: () => activateAccount({ token, password, signatureName: signatureName.trim() }),
+    meta: { handlesOwnError: true },
+    mutationFn: () => {
+      if (!mounted.current) throw new SessionChangedError()
+      return activateAccount({ token, password, signatureName: signatureName.trim() })
+    },
     onSuccess: (result) => {
+      if (!mounted.current) return
       setSession(result.sessionToken, result.tenant, result.expiresAt)
       navigate('/dashboard', { replace: true })
     },
     onError: (err: unknown) => {
+      if (!mounted.current) return
       if (err instanceof PortalNetworkError) {
         setErrorMsg(err.message)
         return
@@ -118,6 +137,7 @@ export function ActivatePage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!mounted.current) return
     const err = validate()
     if (err) {
       setErrorMsg(err)

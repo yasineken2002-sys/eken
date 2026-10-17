@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { useSessionMutation } from '@/lib/session-guard'
+import { SessionChangedError, useSessionMutation } from '@/lib/session-guard'
 import { PortalNetworkError } from '@/lib/network-state'
 import { validatePasswordStrength } from '@eken/shared'
 import { resetPassword } from '@/api/portal.api'
@@ -10,22 +10,41 @@ import { PasswordInput } from '@/components/PasswordInput/PasswordInput'
 import styles from '../LoginPage/LoginPage.module.css'
 
 export function ResetPasswordPage() {
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const setSession = useSessionStore((s) => s.setSession)
   const token = searchParams.get('token') ?? ''
+  // En annan länk måste få ett nytt formulär, utan tidigare utkast/godkännande.
+  return <ResetPasswordForm key={token} token={token} />
+}
+
+function ResetPasswordForm({ token }: { token: string }) {
+  const navigate = useNavigate()
+  const setSession = useSessionStore((s) => s.setSession)
+  const mounted = useRef(false)
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      // Ett skickat serveranrop kan slutföras, men får inte längre styra denna vy.
+      mounted.current = false
+    }
+  }, [])
 
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
 
   const mutation = useSessionMutation({
-    mutationFn: () => resetPassword({ token, password }),
+    meta: { handlesOwnError: true },
+    mutationFn: () => {
+      if (!mounted.current) throw new SessionChangedError()
+      return resetPassword({ token, password })
+    },
     onSuccess: (result) => {
+      if (!mounted.current) return
       setSession(result.sessionToken, result.tenant, result.expiresAt)
       navigate('/dashboard', { replace: true })
     },
     onError: (err: unknown) => {
+      if (!mounted.current) return
       if (err instanceof PortalNetworkError) {
         setErrorMsg(err.message)
         return
@@ -44,6 +63,7 @@ export function ResetPasswordPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!mounted.current) return
     const strength = validatePasswordStrength(password)
     if (!strength.valid) {
       setErrorMsg(strength.errors[0] ?? 'Lösenordet uppfyller inte kraven.')
