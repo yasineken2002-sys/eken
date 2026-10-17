@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { Prisma, type FortnoxReadContextSnapshot } from '@prisma/client'
 import { z } from 'zod'
+import { CheckpointContextDigest } from './fortnox-read-context-digest'
 import {
   canonicalCheckpointInput,
   checkpointDigest,
@@ -278,7 +279,8 @@ export async function readCheckpointContextPage(
 
 /**
  * Fullpass krävs före en framtida publicering. Det binder alla sidor och deras
- * ordning till förseglingen. Publicering/reducerare/anslutningsfence ingår inte.
+ * ordning till förseglingen samt räknar om hela källdigesten från sidinnehållet.
+ * Publicering/reducerare/anslutningsfence ingår inte.
  * Bara en sida och en löpande hash behöver hållas under kontrollen.
  */
 export async function verifyCheckpointContextSnapshot(
@@ -288,12 +290,14 @@ export async function verifyCheckpointContextSnapshot(
 ) {
   const header = await readCheckpointContextHeader(tx, organizationId, runId)
   const binding = bindingDigest(header)
+  const sourceDigest = new CheckpointContextDigest(header.manifest.input)
   for (const kind of KINDS) {
     const collection = header.manifest.collections[kind]
     let root = initialRoot(binding, kind)
     let items = 0
     for (let page = 1; page <= collection.pageCount; page++) {
       const checked = await checkedPage(tx, header, kind, page)
+      sourceDigest.append(kind, checked.items)
       items += checked.items.length
       root = extendRoot(root, page, checked.items.length, checked.digest)
     }
@@ -307,5 +311,6 @@ export async function verifyCheckpointContextSnapshot(
     )
       throw invalid()
   }
+  if (sourceDigest.digest() !== header.manifest.sourceDigest) throw invalid()
   return header
 }

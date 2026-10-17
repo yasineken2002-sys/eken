@@ -146,14 +146,17 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
     return { header, pages }
   }
 
-  function snapshotOracle(f: Awaited<ReturnType<typeof fixture>>, snapshotId: string) {
+  function snapshotOracle(
+    f: Awaited<ReturnType<typeof fixture>>,
+    snapshotId: string,
+    sourceDigest = hash(f.context),
+  ) {
     const connection = {
       id: f.connection.id,
       generation: 0,
       databaseNumber: 900001,
       orgNumber: 'SYNTHETIC_ORG_NUMBER',
     }
-    const sourceDigest = hash(f.context)
     const binding = hash({
       snapshotId,
       organizationId: f.organizationId,
@@ -828,6 +831,79 @@ describe('Fryst Fortnox-kontext som separata snapshots mot riktig PostgreSQL', (
       }
     }
   })
+
+  it.each([0, 101])(
+    'SQL-förseglad snapshot med %i poster och konsekventa sidhasher men fel sourceDigest nekas bara av helverifieringen',
+    async (count) => {
+      const f = await fixture(contextWithCount(count))
+      const differentContext: Context =
+        count === 0
+          ? contextWithCount(1)
+          : {
+              ...f.context,
+              ownExports: f.context.ownExports.map((item, index) =>
+                index === count - 1 ? { ...item, revision: -7 } : item,
+              ),
+            }
+      if (count > 0) {
+        // Endast sista posten på sida2 skiljer den påstådda källan från items.
+        expect(differentContext.ownExports.slice(0, 100)).toStrictEqual(
+          f.context.ownExports.slice(0, 100),
+        )
+        expect(differentContext.ownExports[100]).not.toStrictEqual(f.context.ownExports[100])
+      }
+      const wrongSourceDigest = hash(differentContext)
+      expect(wrongSourceDigest).not.toBe(hash(f.context))
+      // Alla bindningar, sidhasher, roots och headerhash använder SAMMA felaktiga
+      // källdigest. Ingen enskild sidkontroll får vara orsaken till avvisningen.
+      const expected = snapshotOracle(f, randomUUID(), wrongSourceDigest)
+      await transaction(async (tx) => {
+        await tx.fortnoxReadContextSnapshot.create({
+          data: {
+            id: expected.id,
+            organizationId: f.organizationId,
+            runId: f.runId,
+            manifest: expected.manifest,
+            digest: expected.digest,
+          },
+        })
+        if (expected.pages.length)
+          await tx.fortnoxReadContextPage.createMany({ data: expected.pages })
+        await tx.fortnoxReadContextSnapshot.update({
+          where: { id: expected.id },
+          data: { sealedAt: new Date() },
+        })
+        await tx.$executeRaw`SET CONSTRAINTS "fortnox_context_snapshot_must_be_sealed" IMMEDIATE`
+      })
+      const before = await stored(f.organizationId, f.runId)
+      expect(before.header.sealedAt).toBeInstanceOf(Date)
+      expect(before.pages).toHaveLength(count === 0 ? 0 : 4)
+      await expect(
+        transaction((tx) => readCheckpointContextHeader(tx, f.organizationId, f.runId)),
+      ).resolves.toStrictEqual(before.header)
+      for (const kind of ['MAPPINGS', 'OWN_EXPORTS'] as const) {
+        const items = kind === 'MAPPINGS' ? f.context.mappings : f.context.ownExports
+        const pageCount = Math.ceil(items.length / 100)
+        for (let page = 1; page <= Math.max(1, pageCount); page++) {
+          await expect(
+            transaction((tx) =>
+              readCheckpointContextPage(tx, f.organizationId, f.runId, kind, page),
+            ),
+          ).resolves.toStrictEqual({
+            items: items.slice((page - 1) * 100, page * 100),
+            nextPage: page < pageCount ? page + 1 : null,
+          })
+        }
+      }
+      await expect(
+        transaction((tx) => verifyCheckpointContextSnapshot(tx, f.organizationId, f.runId)),
+      ).rejects.toBeInstanceOf(ConflictException)
+      expect(await stored(f.organizationId, f.runId)).toStrictEqual(before)
+      expect(await db().fortnoxReadRun.findUniqueOrThrow({ where: { id: f.runId } })).toStrictEqual(
+        f.before,
+      )
+    },
+  )
 
   it.each(['HEADER_DIGEST', 'LATE_PAGE_DIGEST', 'LATE_PAGE_SHAPE', 'COLLECTION_ROOT'] as const)(
     'rått konstruerad och förseglad %s-korruption avvisas utan triggerundantag',
