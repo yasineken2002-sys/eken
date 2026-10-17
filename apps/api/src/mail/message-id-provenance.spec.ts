@@ -38,6 +38,7 @@
  * driften visa).
  */
 import { RentNoticeEventsService } from '../avisering/rent-notice-events.service'
+import { createHash } from 'node:crypto'
 import { MailWorkerNormal } from './mail.worker'
 import type { MailJobPayload } from './mail.types'
 import type { PrismaService } from '../common/prisma/prisma.service'
@@ -81,7 +82,10 @@ function fejkPrisma(): {
         findFirst: jest.fn().mockResolvedValue({ status: 'SENT' }),
       },
       rentNoticeSend: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      tenant: { update: tenantUpdate },
+      tenant: {
+        updateMany: tenantUpdate,
+        findFirst: jest.fn().mockResolvedValue({ id: 't-1' }),
+      },
       failedEmail: { create: failedEmailCreate },
     } as unknown as PrismaService,
   }
@@ -187,12 +191,27 @@ describe('korrelationsnycklarnas HÄRKOMST (#651)', () => {
     expect(tenantUpdate).not.toHaveBeenCalled()
   })
 
-  it('tenant-invite är oförändrad — den vägen var den enda som redan var rätt', async () => {
+  it('tenant-invite behåller provider-id:ts härkomst och binder kvittot till aktuell länk', async () => {
     const { prisma, tenantUpdate } = fejkPrisma()
-    await kör(fejkWorker(prisma), fejkJobb({ kind: 'tenant-invite', tenantId: 't-1' }))
+    const job = fejkJobb({ kind: 'tenant-invite', tenantId: 't-1' })
+    const token = 'a'.repeat(64)
+    job.data.template = 'tenant-portal-invite'
+    job.data.props = { activationUrl: `http://localhost:5174/activate?token=${token}` }
+    await kör(fejkWorker(prisma), job)
     const anrop = tenantUpdate.mock.calls[0]?.[0] as { data: { lastInviteMessageId?: string } }
     expect(anrop.data.lastInviteMessageId).toBe(RESEND_GAV_TILLBAKA)
     expect(anrop.data.lastInviteMessageId).not.toBe(KÖN_GAV_VID_ENQUEUE)
+    expect(tenantUpdate).toHaveBeenCalledWith({
+      where: {
+        id: 't-1',
+        organizationId: 'org-1',
+        email: job.data.to,
+        activationTokenHash: createHash('sha256').update(token).digest('hex'),
+        anonymizedAt: null,
+        OR: [{ lastInviteMessageId: null }, { lastInviteMessageId: RESEND_GAV_TILLBAKA }],
+      },
+      data: { lastInviteMessageId: RESEND_GAV_TILLBAKA },
+    })
   })
 })
 

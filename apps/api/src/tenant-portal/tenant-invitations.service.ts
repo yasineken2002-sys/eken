@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common'
+import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
 import { MailService } from '../mail/mail.service'
@@ -22,6 +23,8 @@ export type TenantInviteStatus =
 // Inbjudan återanvänder aktiveringstokenets TTL (72 h) — samma mekanik som
 // välkomstmejlet, så länken funkar identiskt i activate-flödet.
 const INVITE_VALID_HOURS = 72
+const INVITE_PAUSED_MESSAGE = 'Inbjudan köades inte eftersom mejlutskick är pausade'
+const INVITE_CHANGED_MESSAGE = 'Inbjudan ändrades under köningen. Kontrollera aktuell status.'
 
 // Dubbelklicks-skydd: "Bjud in alla" hoppar över hyresgäster som redan bjudits
 // in inom detta fönster. Medveten omsändning sker via resend (force = true).
@@ -273,7 +276,13 @@ export class TenantInvitationsService {
           } catch (err) {
             failedTenants.push({
               ...ref(t),
-              error: err instanceof Error ? err.message : String(err),
+              // Prisma-/köfel kan innehålla URL, adress eller credential-hash.
+              // Bara våra två fasta verksamhetsfel får lämna tjänsten ordagrant.
+              error:
+                err instanceof BadRequestException &&
+                [INVITE_PAUSED_MESSAGE, INVITE_CHANGED_MESSAGE].includes(err.message)
+                  ? err.message
+                  : 'Inbjudan kunde inte bekräftas. Kontrollera aktuell status innan du försöker igen.',
             })
           }
         }),
@@ -301,7 +310,12 @@ export class TenantInvitationsService {
   }
 
   private async sendOne(org: { id: string; name: string }, t: TenantRow): Promise<void> {
-    const token = await this.tenantAuth.issueActivationToken(t.id)
+    const token = await this.tenantAuth.issueActivationToken(t.id, undefined, {
+      organizationId: org.id,
+      email: t.email,
+      onlyNotActivated: true,
+      forInvitation: true,
+    })
     const activationUrl = this.tenantAuth.buildActivationUrl(token)
 
     const messageId = await this.mail.sendTenantPortalInvite({
@@ -318,26 +332,26 @@ export class TenantInvitationsService {
       correlation: { kind: 'tenant-invite', tenantId: t.id },
     })
 
-    await this.prisma.tenant.update({
-      where: { id: t.id },
+    if (!messageId) throw new BadRequestException(INVITE_PAUSED_MESSAGE)
+
+    // Ett snabbt worker-/webhook-kvitto kan redan finnas. Rensa aldrig det
+    // efter enqueue, och markera inte en annan adress eller senare inbjudan.
+    const marked = await this.prisma.tenant.updateMany({
+      where: {
+        id: t.id,
+        organizationId: org.id,
+        email: t.email,
+        activationTokenHash: createHash('sha256').update(token).digest('hex'),
+        anonymizedAt: null,
+      },
       data: {
         invitedAt: new Date(),
         inviteCount: { increment: 1 },
-        // Nollställ leverans-/bounce-/spam-state inför det nya utskicket så att
-        // statusen speglar SENASTE inbjudan, inte ett gammalt event. Och rensa
-        // lastInviteMessageId — workern skriver det nya Resend-id:t efter lyckat
-        // utskick (id:t finns inte här). Tills dess saknar inbjudan korrelation,
-        // vilket är korrekt: ett ev. event för det GAMLA id:t träffar då ingen.
-        inviteDeliveredAt: null,
-        inviteBouncedAt: null,
-        inviteBounceReason: null,
-        inviteComplainedAt: null,
-        lastInviteMessageId: null,
       },
     })
-    // Säkerhetsnät: 'messageId' är Bull-jobId (inte Resend-id) och används inte
-    // för korrelation — workern äger lastInviteMessageId. Refereras för loggspår.
-    void messageId
+    if (marked.count !== 1) {
+      throw new BadRequestException(INVITE_CHANGED_MESSAGE)
+    }
   }
 
   // ── Status ─────────────────────────────────────────────────────────────────

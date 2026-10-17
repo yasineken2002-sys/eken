@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../common/guards/roles.guard'
 import { TransformInterceptor } from '../common/interceptors/transform.interceptor'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { TenantPortalController } from '../tenant-portal/tenant-portal.controller'
 import { TenantPortalService } from '../tenant-portal/tenant-portal.service'
 import { TenantAuthService } from '../tenant-portal/tenant-auth.service'
@@ -473,6 +474,158 @@ it('requires a real database', () => expect(hasDb).toBe(true))
         (await avisering.generateMonthlyNotices(orgId, month as number, year as number)).created,
       ).toBe(0)
       expect(await prisma.journalEntry.count({ where: { organizationId: orgId } })).toBe(1)
+    },
+  )
+
+  it.each(['initial', 'backfill'] as const)(
+    '%s persists March 16–31 and the real 1600 SEK ledger without shifting calendar days',
+    async (kind) => {
+      const now = new Date()
+      const year = now.getUTCFullYear() + (kind === 'initial' ? 1 : -1)
+      const expectedStart = `${year}-03-16T00:00:00.000Z`
+      const expectedEnd = `${year}-03-31T00:00:00.000Z`
+      const originalLease = await prisma.lease.findUniqueOrThrow({
+        where: { id: leaseId },
+        select: {
+          startDate: true,
+          tenancyStartDate: true,
+          endDate: true,
+          monthlyRent: true,
+          monthlyRentExcludingVat: true,
+          depositAmount: true,
+          status: true,
+        },
+      })
+      const queued: Array<{ kind: string; organizationId: string; noticeId: string }> = []
+      // Inherit the existing real accounting/OCR fixture without changing its dependencies.
+      // No worker runs: enqueue acceptance is not evidence of delivered email.
+      const service: AviseringService = Object.assign(Object.create(avisering), {
+        rentNoticeEvents: events,
+        pdfQueue: {
+          enqueue: async (job: (typeof queued)[number]) => {
+            queued.push(job)
+            return `calendar-local-job-${queued.length}`
+          },
+        },
+      })
+      const observer = new PrismaClient()
+      try {
+        // Prisma @db.Date input is already canonical UTC midnight. A local Date
+        // constructor here would corrupt the fixture before exercising the writer.
+        const lease = await prisma.lease.update({
+          where: { id: leaseId },
+          data: {
+            startDate: new Date(expectedStart),
+            tenancyStartDate: new Date(expectedStart),
+            endDate: null,
+            monthlyRent: 3100,
+            monthlyRentExcludingVat: false,
+            depositAmount: 0,
+            status: 'ACTIVE',
+          },
+          include: { unit: true },
+        })
+        expect(lease.startDate.toISOString()).toBe(expectedStart)
+        let noticeId: string
+        const ageMonths = (now.getUTCFullYear() - year) * 12 + now.getUTCMonth() + 1 - 3
+        const dueDate = new Date(`${year + 2}-04-20T00:00:00.000Z`)
+        if (kind === 'initial') {
+          const result = await service.createInitialNoticesForLease(leaseId)
+          expect(result).toMatchObject({ deposit: null, mailed: true, blockedReason: null })
+          if (!result.firstRent) throw new Error('Initial notice was not created')
+          noticeId = result.firstRent.id
+          expect(queued).toEqual([{ kind: 'avisering-send', organizationId: orgId, noticeId }])
+        } else {
+          const ocrNumber = await new OcrService(prisma as never).assignOcrToTenant(tenantId, orgId)
+          // This tests the atomic creation primitive and audit, not the separate
+          // backfill eligibility/approval controller. No send operation is requested.
+          const created = await prisma.$transaction(
+            (tx) =>
+              service.createBackfillRentNoticeInTx(tx, lease, {
+                year,
+                month: 3,
+                ocrNumber,
+                dueDate,
+                audit: {
+                  ageMonths,
+                  beyondWarning: ageMonths > 12,
+                  allowBeyondWarning: ageMonths > 12,
+                },
+              }),
+            PRISMA_DEFAULT_TX_LIMITS,
+          )
+          if (!created) throw new Error('Backfill notice was not created')
+          noticeId = created.id
+          expect(queued).toEqual([])
+        }
+        const saved = await observer.rentNotice.findFirstOrThrow({
+          where: { id: noticeId, organizationId: orgId, tenantId, leaseId },
+        })
+        expect(saved.periodStart?.toISOString()).toBe(expectedStart)
+        expect(saved.periodEnd?.toISOString()).toBe(expectedEnd)
+        expect(saved).toMatchObject({
+          year,
+          month: 3,
+          daysCharged: 16,
+          totalDays: 31,
+          isProrated: true,
+          isBackfill: kind === 'backfill',
+          type: 'RENT',
+          status: 'PENDING',
+          sentAt: null,
+        })
+        // Independent arithmetic: 3100 / 31 * 16 = 1600, residential VAT = 0.
+        expect([Number(saved.amount), Number(saved.vatAmount), Number(saved.totalAmount)]).toEqual([
+          1600, 0, 1600,
+        ])
+        expect(await observer.rentNotice.count({ where: { organizationId: orgId } })).toBe(1)
+        expect(await observer.rentNoticeSend.count({ where: { rentNoticeId: noticeId } })).toBe(0)
+        const journals = await observer.journalEntry.findMany({
+          where: { organizationId: orgId, sourceId: `rent-notice:${noticeId}` },
+          include: { lines: { include: { account: true } } },
+        })
+        expect(journals).toHaveLength(1)
+        const journal = journals[0]!
+        expect(journal).toMatchObject({ source: 'INVOICE', fiscalYear: year })
+        expect(journal.date.toISOString()).toBe(`${year}-03-01T00:00:00.000Z`)
+        expect(
+          journal.lines
+            .map((line) => ({
+              account: line.account.number,
+              debit: line.debit === null ? null : Number(line.debit),
+              credit: line.credit === null ? null : Number(line.credit),
+            }))
+            .sort((a, b) => a.account - b.account),
+        ).toEqual([
+          { account: 1510, debit: 1600, credit: null },
+          { account: 3911, debit: null, credit: 1600 },
+        ])
+        if (kind === 'backfill') {
+          expect(saved.dueDate.toISOString()).toBe(dueDate.toISOString())
+          const createdEvents = await observer.rentNoticeEvent.findMany({
+            where: { rentNoticeId: noticeId, type: 'CREATED' },
+          })
+          expect(createdEvents).toHaveLength(1)
+          expect(createdEvents[0]).toMatchObject({ actorType: 'SYSTEM', actorId: null })
+          expect(createdEvents[0]!.payload).toEqual({
+            isBackfill: true,
+            year,
+            month: 3,
+            periodStart: expectedStart,
+            periodEnd: expectedEnd,
+            ageMonths,
+            beyondWarning: ageMonths > 12,
+            allowBeyondWarning: ageMonths > 12,
+            hasVoluntaryTaxLiability: false,
+            vatDeclarationAcknowledged: false,
+            totalAmount: 1600,
+          })
+        }
+      } finally {
+        await observer.$disconnect()
+        await prisma.lease.update({ where: { id: leaseId }, data: originalLease })
+      }
+      // The suite's existing scoped cleanup owns the notice, event, journal and sequences.
     },
   )
 

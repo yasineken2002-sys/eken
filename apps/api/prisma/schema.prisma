@@ -1388,14 +1388,16 @@ model Tenant {
 
   // ─── Portal-inbjudan (massutskick) ───────────────────────────────────────
   // Spårar massinbjudan till portalen separat från aktiveringstoken ovan.
-  // invitedAt sätts när en inbjudan köas; inviteCount ökar vid varje (om)skick.
+  // invitedAt/count registrerar lyckade kökvitteringar för då aktuell inbjudan.
+  // De är inte ett exakt leveransantal: ett okänt köutfall eller en supersession
+  // kan innebära att jobbet finns utan att eftermarkeringen hann registreras.
   // Statusen (ej inbjuden/inbjuden/levererad/studsad/aktiverad/saknar mejl)
   // HÄRLEDS i läs-endpointen — portalActivated är fortsatt auktoritativ för
   // aktivering.
   //
   // Leverans-/bounce-/spam-fälten fylls av Resend-webhooken (PR 2) och
-  // nollställs vid varje (om)skick i sendOne() så att statusen speglar det
-  // SENASTE utskicket, inte ett gammalt event.
+  // nollställs atomiskt med tokenrotationen före köning samt vid e-postbyte.
+  // Sena kvitton måste fortfarande tillhöra den aktuella inbjudans länk/adress.
   //
   // lastInviteMessageId är Resends message-id (email_id) för det senaste
   // utskicket och är webhookens ENDA korrelationsnyckel mot rätt hyresgäst.
@@ -1469,6 +1471,9 @@ model Tenant {
 
   @@unique([organizationId, email])
   @@unique([organizationId, ocrNumber])
+  // Portalinloggning och lösenordsåterställning söker innan hyresvärden är vald.
+  // Icke-unikt: samma adress får fortfarande finnas hos flera hyresvärdar.
+  @@index([email])
   @@index([organizationId])
   @@index([organizationId, personalNumberHash])
   // ── GLOBALT UPPSLAG PÅ BLINDINDEXET (#745 PR 4) ──────────────────────────

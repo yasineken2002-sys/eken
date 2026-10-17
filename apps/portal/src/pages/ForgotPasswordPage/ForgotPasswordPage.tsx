@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useSessionMutation } from '@/lib/session-guard'
+import { PortalNetworkError } from '@/lib/network-state'
 import { requestForgotPassword } from '@/api/portal.api'
 import styles from '../LoginPage/LoginPage.module.css'
 
@@ -11,10 +12,15 @@ export function ForgotPasswordPage() {
   const [state, setState] = useState<State>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const mutation = useMutation({
+  const mutation = useSessionMutation({
     mutationFn: (em: string) => requestForgotPassword(em),
     onSuccess: () => setState('sent'),
-    onError: () => setErrorMsg('Något gick fel. Försök igen om en stund.'),
+    onError: (error: unknown) =>
+      setErrorMsg(
+        error instanceof PortalNetworkError
+          ? error.message
+          : 'Något gick fel. Försök igen om en stund.',
+      ),
   })
 
   function handleSubmit(e: React.FormEvent) {
@@ -31,8 +37,12 @@ export function ForgotPasswordPage() {
           <div className={styles.successIcon}>📧</div>
           <h1 className={styles.title}>Mejl skickat</h1>
           <p className={styles.subtitle}>
-            Om ett konto finns för <strong>{email}</strong> har vi skickat instruktioner för att
-            återställa lösenordet. Länken är giltig i 24 timmar.
+            Om det finns aktiverade konton för <strong>{email}</strong> skickar vi instruktioner för
+            att återställa lösenordet. Varje länk är giltig i 24 timmar.
+          </p>
+          <p className={styles.smallHint}>
+            Har du konton hos flera hyresvärdar får du separata länkar. Hyresvärdens namn står i
+            mejlet så att du kan välja rätt konto.
           </p>
           <p className={styles.smallHint}>Inget mail? Kontrollera skräpposten.</p>
           <Link to="/login" className={styles.linkBtn}>
@@ -75,7 +85,11 @@ export function ForgotPasswordPage() {
             disabled={mutation.isPending}
           />
 
-          {errorMsg && <p className={styles.errorMsg}>{errorMsg}</p>}
+          {errorMsg && (
+            <p className={styles.errorMsg} role="alert">
+              {errorMsg}
+            </p>
+          )}
 
           <button
             type="submit"

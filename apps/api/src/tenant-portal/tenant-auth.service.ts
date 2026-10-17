@@ -13,6 +13,7 @@ import * as crypto from 'crypto'
 import { Prisma } from '@prisma/client'
 import type { Tenant } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service'
+import { PRISMA_DEFAULT_TX_LIMITS } from '../common/prisma/transaction-limits'
 import { CronErrorSink } from '../common/cron/cron-error-sink'
 import { runCronSafely } from '../common/cron/cron-safety'
 import { MailService } from '../mail/mail.service'
@@ -27,6 +28,12 @@ import {
   readManyTenantsWithCredentials,
 } from './tenant-credential-read'
 import { LockService } from '../common/redis/lock.service'
+import { CLEARED_TENANT_INVITE_STATE } from '../tenants/tenant-invite-state'
+import {
+  MAX_LOGIN_CANDIDATES,
+  TenantLoginBudget,
+  type TenantLoginContext,
+} from './tenant-login-budget.service'
 
 /**
  * SELECT för en hyresgäst som autentiserats via portal-session och returneras
@@ -66,6 +73,35 @@ function assertStrongPassword(password: string): void {
   }
 }
 
+type PasswordGrant = 'activation' | 'reset'
+
+type ActivationRecipient = Pick<Tenant, 'organizationId' | 'email'> & {
+  onlyNotActivated?: true
+  previousTokenHash?: string
+  forInvitation?: true
+}
+
+function assertPasswordGrant(
+  tenant: Tenant | null,
+  tokenHash: string,
+  grant: PasswordGrant,
+): asserts tenant is Tenant {
+  const storedHash =
+    grant === 'activation' ? tenant?.activationTokenHash : tenant?.passwordResetTokenHash
+  const expiresAt =
+    grant === 'activation' ? tenant?.activationTokenExpiresAt : tenant?.passwordResetTokenExpiresAt
+  if (!tenant || storedHash !== tokenHash || !expiresAt) {
+    throw new UnauthorizedException(
+      grant === 'activation' ? 'Ogiltig aktiveringslänk' : 'Ogiltig återställningslänk',
+    )
+  }
+  if (expiresAt.getTime() <= Date.now()) {
+    throw new UnauthorizedException(
+      grant === 'activation' ? 'Aktiveringslänken har gått ut' : 'Återställningslänken har gått ut',
+    )
+  }
+}
+
 /**
  * Strippar credential-kolumnerna ur ett tenant-objekt innan det lämnar servicen.
  *
@@ -87,6 +123,10 @@ interface SessionResult {
   expiresAt: Date
   tenant: Tenant & { organization: { id: string; name: string } }
 }
+
+type PasswordLoginResolution =
+  | { status: 'complete'; result: SessionResult }
+  | { status: 'choose'; candidates: Array<{ organizationId: string; organizationName: string }> }
 
 /**
  * TTL för aktiveringspåminnelsernas cron-lås.
@@ -129,6 +169,8 @@ export class TenantAuthService {
      * tystare.
      */
     private readonly cronErrors: CronErrorSink,
+    @Inject(TenantLoginBudget)
+    private readonly loginBudget: Pick<TenantLoginBudget, 'run'>,
   ) {}
 
   // ── Aktiveringstoken ─────────────────────────────────────────────────────────
@@ -141,12 +183,35 @@ export class TenantAuthService {
    * Anropas från LeasesService när ett kontrakt blir ACTIVE och från
    * admin-resend-endpointen.
    */
-  async issueActivationToken(tenantId: string, ttlMs = ACTIVATION_TTL_MS): Promise<string> {
+  async issueActivationToken(
+    tenantId: string,
+    ttlMs = ACTIVATION_TTL_MS,
+    expectedRecipient?: ActivationRecipient,
+  ): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + ttlMs)
 
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
+    // En fördröjd kandidatläsning får inte utfärda en ny giltig länk till
+    // en tidigare adress. Påminnelser binds även till länken som listades.
+    const updated = await this.prisma.tenant.updateMany({
+      where: expectedRecipient
+        ? {
+            id: tenantId,
+            organizationId: expectedRecipient.organizationId,
+            email: expectedRecipient.email,
+            anonymizedAt: null,
+            ...(expectedRecipient.onlyNotActivated || expectedRecipient.forInvitation
+              ? { portalActivated: false }
+              : {}),
+            ...(expectedRecipient.previousTokenHash !== undefined
+              ? {
+                  activationTokenHash: expectedRecipient.previousTokenHash,
+                  activationTokenExpiresAt: { gt: new Date() },
+                  activationReminderSentAt: null,
+                }
+              : {}),
+          }
+        : { id: tenantId },
       data: {
         activationTokenHash: sha256(token),
         activationTokenExpiresAt: expiresAt,
@@ -154,8 +219,13 @@ export class TenantAuthService {
         // en ny påminnelse efter 48 h (annars skulle hyresgäster som fick en
         // ny länk aldrig få en påminnelse).
         activationReminderSentAt: null,
+        // Rotation och rensning måste committa tillsammans före enqueue.
+        ...(expectedRecipient?.forInvitation ? CLEARED_TENANT_INVITE_STATE : {}),
       },
     })
+    if (updated.count !== 1) {
+      throw new UnauthorizedException('Aktiveringslänken kunde inte förberedas')
+    }
 
     return token
   }
@@ -164,17 +234,34 @@ export class TenantAuthService {
    * Skapa en separat lösenordsåterställningstoken. Använder en egen kolumn
    * (passwordResetTokenHash) så att aktiveringsflödet inte överskrivs.
    */
-  async issuePasswordResetToken(tenantId: string, ttlMs = RESET_TTL_MS): Promise<string> {
+  async issuePasswordResetToken(
+    tenantId: string,
+    ttlMs = RESET_TTL_MS,
+    expectedRecipient?: Pick<Tenant, 'organizationId' | 'email'>,
+  ): Promise<string> {
     const token = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + ttlMs)
 
-    await this.prisma.tenant.update({
-      where: { id: tenantId },
+    // Vid utskick måste mottagaren fortfarande vara densamma som vid
+    // listningen. Ett annat kontos köanrop kan ha väntat under tiden.
+    const updated = await this.prisma.tenant.updateMany({
+      where: expectedRecipient
+        ? {
+            id: tenantId,
+            organizationId: expectedRecipient.organizationId,
+            email: expectedRecipient.email,
+            portalActivated: true,
+            anonymizedAt: null,
+          }
+        : { id: tenantId },
       data: {
         passwordResetTokenHash: sha256(token),
         passwordResetTokenExpiresAt: expiresAt,
       },
     })
+    if (updated.count !== 1) {
+      throw new UnauthorizedException('Återställningslänken kunde inte förberedas')
+    }
 
     return token
   }
@@ -274,27 +361,16 @@ export class TenantAuthService {
       where: { activationTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.activationTokenExpiresAt) {
-      throw new UnauthorizedException('Ogiltig aktiveringslänk')
-    }
-    if (tenant.activationTokenExpiresAt < new Date()) {
-      throw new UnauthorizedException('Aktiveringslänken har gått ut')
-    }
+    assertPasswordGrant(tenant, tokenHash, 'activation')
 
     const passwordHash = await bcrypt.hash(password, 12)
-
-    const updated = await this.prisma.tenant.update({
-      where: { id: tenant.id },
-      data: {
-        passwordHash,
-        portalActivated: true,
-        portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
-        activationTokenHash: null,
-        activationTokenExpiresAt: null,
-        activationReminderSentAt: null,
-      },
-      include: { organization: { select: { id: true, name: true } } },
-    })
+    const session = await this.completePasswordChange(
+      tenant.id,
+      tokenHash,
+      passwordHash,
+      'activation',
+    )
+    const updated = session.tenant
 
     // Lås den senaste kontrakts-PDF:en för hyresgästens aktiva kontrakt och
     // skriv signaturmetadata. Vi inväntar låsningen så att vi vet exakt vilket
@@ -319,7 +395,7 @@ export class TenantAuthService {
       })
     }
 
-    return this.createSession(updated)
+    return session
   }
 
   private async lockLatestContractForTenant(
@@ -353,71 +429,165 @@ export class TenantAuthService {
 
   // ── Lösenordsinloggning ──────────────────────────────────────────────────────
 
-  async login(email: string, password: string, organizationId?: string): Promise<SessionResult> {
-    // E-post lagras alltid som lowercase i DB (normalizeEmail vid alla writes).
-    // Vi normaliserar också input här — så B-tree-indexet för email kan
-    // användas av Postgres istället för en sekvensskanning som
-    // mode: 'insensitive' annars hade tvingat fram.
+  async login(
+    email: string,
+    password: string,
+    organizationId?: string,
+    context?: Omit<TenantLoginContext, 'email'>,
+  ): Promise<SessionResult> {
+    const resolution = await this.passwordLogin(email, password, organizationId, false, context)
+    if (resolution.status !== 'complete') {
+      throw new UnauthorizedException('Felaktig e-post eller lösenord')
+    }
+    return resolution.result
+  }
+
+  async resolveLogin(
+    email: string,
+    password: string,
+    organizationId?: string,
+    context?: Omit<TenantLoginContext, 'email'>,
+  ): Promise<PasswordLoginResolution> {
+    return this.passwordLogin(email, password, organizationId, true, context)
+  }
+
+  private async passwordLogin(
+    email: string,
+    password: string,
+    organizationId: string | undefined,
+    allowChoice: boolean,
+    context?: Omit<TenantLoginContext, 'email'>,
+  ): Promise<PasswordLoginResolution> {
+    // Exakt normaliserat uppslag använder email-indexet även utan vald hyresvärd.
     const normalizedEmail = normalizeEmail(email)
     const where = organizationId
-      ? { email: normalizedEmail, organizationId }
-      : { email: normalizedEmail }
-    const tenant = await findTenantWithCredentials(this.prisma, {
-      where,
-      include: { organization: { select: { id: true, name: true } } },
-    })
-    if (!tenant || !tenant.portalActivated || !tenant.passwordHash) {
-      // Samma generiska fel oavsett orsak — ingen enumeration
-      throw new UnauthorizedException('Felaktig e-post eller lösenord')
-    }
+      ? {
+          email: normalizedEmail,
+          organizationId,
+          portalActivated: true,
+          anonymizedAt: null,
+          passwordHash: { not: null },
+        }
+      : {
+          email: normalizedEmail,
+          portalActivated: true,
+          anonymizedAt: null,
+          passwordHash: { not: null },
+        }
+    return this.loginBudget.run(
+      {
+        email: normalizedEmail,
+        ip: context?.ip ?? 'internal',
+        ...(context?.signal ? { signal: context.signal } : {}),
+      },
+      async (permit) => {
+        const candidates = await readManyTenantsWithCredentials(this.prisma, {
+          where,
+          orderBy: { id: 'asc' },
+          // Extra raden upptäcker overflow. Budgeten nekar HELA försöket innan
+          // bcrypt; vi lämnar aldrig en avklippt lista eller första träffen.
+          take: MAX_LOGIN_CANDIDATES + 1,
+          include: { organization: { select: { id: true, name: true } } },
+        })
+        await permit.reserve(candidates.map((candidate) => candidate.passwordHash ?? ''))
+        const matched: typeof candidates = []
+        for (const candidate of candidates) {
+          permit.assertActive()
+          if (candidate.passwordHash && (await bcrypt.compare(password, candidate.passwordHash))) {
+            matched.push(candidate)
+          }
+        }
+        permit.assertActive()
+        if (matched.length === 0) {
+          throw new UnauthorizedException('Felaktig e-post eller lösenord')
+        }
 
-    const valid = await bcrypt.compare(password, tenant.passwordHash)
-    if (!valid) {
-      throw new UnauthorizedException('Felaktig e-post eller lösenord')
-    }
-
-    return this.createSession(tenant)
+        // Bcrypt ligger utanför låsen. Konton som ändras medan jämförelsen
+        // pågår måste åter verifieras; en tidigare lista ger ingen behörighet.
+        matched.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        return this.prisma.$transaction(async (tx) => {
+          const currentMatches: typeof candidates = []
+          for (const candidate of matched) {
+            permit.assertActive()
+            const current = await this.readLockedPasswordTenant(tx, candidate.id)
+            if (
+              current?.portalActivated &&
+              current.anonymizedAt === null &&
+              current.passwordHash === candidate.passwordHash &&
+              current.email === normalizedEmail &&
+              current.organizationId === candidate.organizationId
+            ) {
+              currentMatches.push(current)
+            }
+          }
+          permit.assertActive()
+          if (currentMatches.length === 0 || (!allowChoice && currentMatches.length > 1)) {
+            throw new UnauthorizedException('Felaktig e-post eller lösenord')
+          }
+          if (currentMatches.length > 1) {
+            return {
+              status: 'choose' as const,
+              candidates: currentMatches.map((tenant) => ({
+                organizationId: tenant.organizationId,
+                organizationName: tenant.organization.name,
+              })),
+            }
+          }
+          const result = await this.createSession(currentMatches[0]!, tx)
+          // Ett observerat avbrott före commit ska även rulla tillbaka inserten.
+          permit.assertActive()
+          return { status: 'complete' as const, result }
+        }, PRISMA_DEFAULT_TX_LIMITS)
+      },
+    )
   }
 
   // ── Glömt lösenord ───────────────────────────────────────────────────────────
 
   /**
-   * Skicka mejl med återställningslänk. Returnerar void även om mejlet inte gick
-   * iväg eller hyresgästen inte finns — för att undvika enumeration. Loggas vid
-   * fel så hyresvärden kan felsöka.
+   * En separat, organisationsmärkt länk per aktiverat konto med samma e-post.
+   * Svaret avslöjar varken konton eller antal. Ett enskilt skriv-/köfel får
+   * inte hindra andra hyresvärdars konton från att få sin återställningslänk.
    */
   async sendForgotPassword(email: string): Promise<void> {
-    const tenant = await findTenantWithCredentials(this.prisma, {
-      where: { email: normalizeEmail(email) },
+    const tenants = await readManyTenantsWithCredentials(this.prisma, {
+      where: { email: normalizeEmail(email), portalActivated: true, anonymizedAt: null },
+      orderBy: { id: 'asc' },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.portalActivated) {
-      this.logger.warn(`Forgot password för ${email} — ingen aktiverad hyresgäst`)
-      return
+    for (const tenant of tenants) {
+      let stage: 'token' | 'mail' = 'token'
+      try {
+        const token = await this.issuePasswordResetToken(tenant.id, RESET_TTL_MS, {
+          organizationId: tenant.organizationId,
+          email: tenant.email,
+        })
+        const tenantName = tenant.firstName
+          ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
+          : (tenant.companyName ?? tenant.email)
+        stage = 'mail'
+        await this.mail.sendPasswordReset({
+          to: tenant.email,
+          organizationId: tenant.organizationId,
+          recipientName: tenantName,
+          resetUrl: this.buildResetUrl(token),
+          organizationName: tenant.organization.name,
+          validForHours: 24,
+          // Separat nyckel per konto och länk; samma brevlåda får inte dedupas
+          // mellan hyresvärdar. Ingen återställning av token vid köfel: en
+          // samtidig begäran kan redan ha roterat fram en nyare länk.
+          idempotencyKey: `tenant-reset-${tenant.id}-${token.substring(0, 8)}`,
+        })
+      } catch {
+        // Råa kö-/DB-fel kan innehålla e-post eller återställningslänkar.
+        this.logger.warn({
+          event: 'tenant_password_reset_failed',
+          stage,
+          tenantId: tenant.id,
+          organizationId: tenant.organizationId,
+        })
+      }
     }
-
-    const token = await this.issuePasswordResetToken(tenant.id, RESET_TTL_MS)
-    const resetUrl = this.buildResetUrl(token)
-
-    const tenantName = tenant.firstName
-      ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
-      : (tenant.companyName ?? tenant.email)
-
-    await this.mail
-      .sendPasswordReset({
-        to: tenant.email,
-        organizationId: tenant.organizationId,
-        recipientName: tenantName,
-        resetUrl,
-        organizationName: tenant.organization.name,
-        validForHours: 24,
-        // Stabil nyckel per (tenant, token-prefix) — Bull-jobId dedupar dubbla
-        // enqueues och Resend dedupar dubbla worker-körningar.
-        idempotencyKey: `tenant-reset-${tenant.id}-${token.substring(0, 8)}`,
-      })
-      .catch((err: unknown) => {
-        this.logger.warn(`Forgot-password mail för ${email} failade: ${String(err)}`)
-      })
   }
 
   async resetPassword(token: string, password: string): Promise<SessionResult> {
@@ -428,28 +598,52 @@ export class TenantAuthService {
       where: { passwordResetTokenHash: tokenHash },
       include: { organization: { select: { id: true, name: true } } },
     })
-    if (!tenant || !tenant.passwordResetTokenExpiresAt) {
-      throw new UnauthorizedException('Ogiltig återställningslänk')
-    }
-    if (tenant.passwordResetTokenExpiresAt < new Date()) {
-      throw new UnauthorizedException('Återställningslänken har gått ut')
-    }
+    assertPasswordGrant(tenant, tokenHash, 'reset')
 
     const passwordHash = await bcrypt.hash(password, 12)
+    return this.completePasswordChange(tenant.id, tokenHash, passwordHash, 'reset')
+  }
 
-    const updated = await this.prisma.tenant.update({
-      where: { id: tenant.id },
-      data: {
-        passwordHash,
-        portalActivated: true,
-        portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
-        passwordResetTokenHash: null,
-        passwordResetTokenExpiresAt: null,
-      },
+  private async readLockedPasswordTenant(tx: Prisma.TransactionClient, tenantId: string) {
+    // Samma radlås för login, aktivering och reset. Läs EFTER låset: en annan
+    // transaktion kan ha förbrukat/roterat tokenen medan vi väntade.
+    await tx.$queryRaw`SELECT "id" FROM "Tenant" WHERE "id" = ${tenantId} FOR UPDATE`
+    return readTenantWithCredentials(tx, {
+      where: { id: tenantId },
       include: { organization: { select: { id: true, name: true } } },
     })
+  }
 
-    return this.createSession(updated)
+  private async completePasswordChange(
+    tenantId: string,
+    tokenHash: string,
+    passwordHash: string,
+    grant: PasswordGrant,
+  ): Promise<SessionResult> {
+    return this.prisma.$transaction(async (tx) => {
+      const tenant = await this.readLockedPasswordTenant(tx, tenantId)
+      assertPasswordGrant(tenant, tokenHash, grant)
+      const updated = await tx.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          passwordHash,
+          portalActivated: true,
+          portalActivatedAt: tenant.portalActivated ? tenant.portalActivatedAt : new Date(),
+          // Efter ett lyckat byte får ingen tidigare länk byta lösenord igen,
+          // oavsett om länken skickades som aktivering eller återställning.
+          activationTokenHash: null,
+          activationTokenExpiresAt: null,
+          activationReminderSentAt: null,
+          passwordResetTokenHash: null,
+          passwordResetTokenExpiresAt: null,
+        },
+        include: { organization: { select: { id: true, name: true } } },
+      })
+      await tx.tenantSession.deleteMany({ where: { tenantId } })
+      // Lösenord, förbrukade länkar och ersatt session lyckas eller rullas
+      // tillbaka tillsammans. Kontrakts-/mejlsidoeffekter sker efter commit.
+      return this.createSession(updated, tx)
+    }, PRISMA_DEFAULT_TX_LIMITS)
   }
 
   // ── Sessionshantering ────────────────────────────────────────────────────────
@@ -481,13 +675,14 @@ export class TenantAuthService {
 
   private async createSession(
     tenant: Tenant & { organization: { id: string; name: string } },
+    prisma: Pick<PrismaService, 'tenantSession'> = this.prisma,
   ): Promise<SessionResult> {
     const sessionToken = crypto.randomBytes(32).toString('hex')
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
     // Lagra SHA-256-hash av token, inte token själv. Klienten håller den
     // ohashade token i Authorization-headern; vid validering hashar vi
     // inkommande och slår upp.
-    await this.prisma.tenantSession.create({
+    await prisma.tenantSession.create({
       data: { tenantId: tenant.id, token: sha256(sessionToken), expiresAt },
     })
     // Strippa portal-credentials innan tenant returneras (B1 defense-in-depth).
@@ -545,7 +740,10 @@ export class TenantAuthService {
       return
     }
 
-    const token = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS)
+    const token = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS, {
+      organizationId: tenant.organizationId,
+      email: tenant.email,
+    })
     const activationUrl = this.buildActivationUrl(token)
     const tenantName = tenant.firstName
       ? `${tenant.firstName} ${tenant.lastName ?? ''}`.trim()
@@ -741,10 +939,16 @@ export class TenantAuthService {
       // efter påminnelsen) blir ogiltig, men praktiken är att påminnelsen
       // är den de använder. issueActivationToken nollar
       // activationReminderSentAt — vi sätter den explicit efter mejlet.
-      const newToken = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS)
-      const activationUrl = this.buildActivationUrl(newToken)
-
+      let stage = 'token'
       try {
+        const newToken = await this.issueActivationToken(tenant.id, ACTIVATION_TTL_MS, {
+          organizationId: tenant.organizationId,
+          email: tenant.email,
+          onlyNotActivated: true,
+          previousTokenHash: tenant.activationTokenHash!,
+        })
+        const activationUrl = this.buildActivationUrl(newToken)
+        stage = 'mejlkö'
         await this.mail.sendTenantActivationReminder({
           to: tenant.email,
           organizationId: tenant.organizationId,
@@ -754,17 +958,36 @@ export class TenantAuthService {
           validForHours: 72,
           idempotencyKey: `tenant-activation-reminder-${tenant.id}-${newToken.substring(0, 8)}`,
         })
-        await this.prisma.tenant.update({
-          where: { id: tenant.id },
+        stage = 'påminnelsemarkering'
+        await this.prisma.tenant.updateMany({
+          where: {
+            id: tenant.id,
+            organizationId: tenant.organizationId,
+            email: tenant.email,
+            activationTokenHash: sha256(newToken),
+            portalActivated: false,
+            anonymizedAt: null,
+          },
           data: { activationReminderSentAt: new Date() },
         })
         sent++
-      } catch (err) {
-        this.logger.error(`Aktiveringspåminnelse för ${tenant.email} failade: ${String(err)}`)
-        await this.cronErrors.report('tenant-activation-reminders', err, {
+      } catch {
+        // Kö-/databasfel kan innehålla adress eller länk. Bevara felsänkan
+        // och kontoreferenserna utan att spara den råa feltexten.
+        this.logger.error({
+          event: 'activation-reminder-failed',
+          stage,
+          tenantId: tenant.id,
           organizationId: tenant.organizationId,
-          detail: { steg: 'påminnelseutskick', tenantId: tenant.id },
         })
+        await this.cronErrors.report(
+          'tenant-activation-reminders',
+          new Error(`Aktiveringspåminnelse misslyckades (${stage})`),
+          {
+            organizationId: tenant.organizationId,
+            detail: { steg: stage, tenantId: tenant.id },
+          },
+        )
       }
     }
 

@@ -20,6 +20,12 @@ jest.mock('../mail/mail.service', () => ({ MailService: class {} }))
 import { UnauthorizedException } from '@nestjs/common'
 import * as bcrypt from 'bcryptjs'
 import { TenantAuthService } from './tenant-auth.service'
+import { TenantLoginBudget } from './tenant-login-budget.service'
+
+// Domänprov; den verkliga Redis-budgeten provas i separat svit.
+const loginBudget: Pick<TenantLoginBudget, 'run'> = {
+  run: async (_context, work) => work({ reserve: async () => {}, assertActive: () => {} }),
+}
 
 const CREDENTIAL_KEYS = [
   'passwordHash',
@@ -44,6 +50,7 @@ function makeService(sessionRow: unknown) {
         throw new Error('#605: cronErrors.report anropades oväntat i test')
       },
     } as never,
+    loginBudget,
   )
   return { service, findUnique }
 }
@@ -97,16 +104,22 @@ describe('TenantAuthService.createSession — credential-strip (B1 defense-in-de
       organizationId: 'o1',
       email: 'a@b.se',
       portalActivated: true,
+      anonymizedAt: null,
       passwordHash,
       activationTokenHash: 'should-not-leak',
       passwordResetTokenHash: 'should-not-leak',
       organization: { id: 'o1', name: 'Org' },
     }
-    const findFirst = jest.fn().mockResolvedValue(tenantRow)
+    const findMany = jest.fn().mockResolvedValue([tenantRow])
     const create = jest.fn().mockResolvedValue({})
-    const prisma = {
-      tenant: { findFirst },
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: tenantRow.id }]),
+      tenant: { findUnique: jest.fn().mockResolvedValue(tenantRow) },
       tenantSession: { create },
+    }
+    const prisma = {
+      tenant: { findMany },
+      $transaction: jest.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)),
     }
     const service = new TenantAuthService(
       prisma as never,
@@ -120,6 +133,7 @@ describe('TenantAuthService.createSession — credential-strip (B1 defense-in-de
           throw new Error('#605: cronErrors.report anropades oväntat i test')
         },
       } as never,
+      loginBudget,
     )
 
     const result = await service.login('a@b.se', 'Secret123!')

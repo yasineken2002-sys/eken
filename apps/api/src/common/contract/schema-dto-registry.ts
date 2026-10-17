@@ -1334,6 +1334,19 @@ export const KONTRAKTSREGISTER: readonly KontraktsPost[] = [
     ogiltigVarfor: 'e-postadressen har inte adressform',
   },
   {
+    endpoint: 'POST /tenant-portal/login/resolve',
+    inputTyp: 'TenantLoginInput',
+    schema: TenantLoginSchema,
+    dto: LoginDto,
+    giltig: {
+      email: 'hyresgast@example.se',
+      password: 'Hemligt123!',
+      organizationId: '33333333-4444-4555-8666-777777777777',
+    },
+    ogiltig: { email: 'hyresgast@example.se', password: true },
+    ogiltigVarfor: 'lösenord måste vara en sträng även i kontovalsvägen',
+  },
+  {
     endpoint: 'POST /tenant-portal/activate',
     inputTyp: 'TenantActivateInput',
     schema: TenantActivateSchema,
