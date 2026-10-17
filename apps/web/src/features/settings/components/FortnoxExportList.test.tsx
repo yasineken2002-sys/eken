@@ -352,7 +352,11 @@ describe('FortnoxExportList', () => {
         await client.invalidateQueries({ queryKey: ['fortnox', 'exports-page'] })
       })
       expect(await screen.findByText('Urvalet har ändrats. Hämtar aktuell sida…')).toBeTruthy()
-      expect(mocks.list.mock.calls.map(([query]) => query.offset)).toEqual([0, 50, 50, 0])
+      // Omläsningstexten visas före effekten som byter querynyckel. Vänta på
+      // det faktiska nästa anropet medan svaret fortfarande hålls öppet.
+      await waitFor(() =>
+        expect(mocks.list.mock.calls.map(([query]) => query.offset)).toEqual([0, 50, 50, 0]),
+      )
       expect(screen.queryByText('Visar 1–50 av 51 överföringar.')).toBeNull()
       expect(screen.queryByText('Inget att stämma av i urvalet.')).toBeNull()
       expect(screen.queryByText('Visar 0–0 av 50 överföringar.')).toBeNull()
