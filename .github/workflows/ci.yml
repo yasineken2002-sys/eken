@@ -210,6 +210,20 @@ jobs:
       - name: KD-4 — inga hoppade tester i zonkörningen
         run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report-kd4.json
 
+      # Kalenderdagar lagras som @db.Date. Enbart UTC kan inte upptäcka att
+      # lokal midnatt i Stockholm annars trunkeras till föregående kalenderdag.
+      # Samma produktvägar körs därför i en riktig process med positiv UTC-offset.
+      - name: Aviperiod och portalflöde i Europe/Stockholm
+        working-directory: apps/api
+        env:
+          TZ: Europe/Stockholm
+          PORTAL_FLOW_EXPECT_TZ: Europe/Stockholm
+          RENT_NOTICE_PERIOD_EXPECT_TZ: Europe/Stockholm
+        run: npx jest --ci --runInBand --runTestsByPath --json --outputFile=jest-report-avi-stockholm.json src/avisering/rent-calendar-day.db.spec.ts src/avisering/rent-notice-period-date.spec.ts src/tenant-portal/tenant-portal-notice-flow.db.spec.ts
+
+      - name: Aviperiod — inga hoppade tester i Stockholm
+        run: node apps/api/scripts/check-no-skipped-tests.mjs apps/api/jest-report-avi-stockholm.json
+
   index-guard:
     name: Critical index guard
     runs-on: ubuntu-latest
