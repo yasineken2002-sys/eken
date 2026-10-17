@@ -1,5 +1,5 @@
 import { useSessionGuard } from '@/lib/session-guard'
-import { useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -41,12 +41,8 @@ const POLL_MS = 2000
  * webben använder, och utfallet vid ett misslyckat anrop är AV — vet vi inte,
  * visar vi inte.
  *
- * ── ALL LOGIK LIGGER I REDUCERAREN ────────────────────────────────────────
- *
- * Komponenten anropar, pollar och renderar. Varje beslut om vad ett svar BETYDER
- * ligger i `lib/bankid-flow.ts`, som är ren och prövad — inklusive de två fall
- * som annars aldrig blir prövade: ett svar som landar efter avbryt, och valet som
- * går genom en egen händelse.
+ * Komponenten ansvarar för vilket försök ett svar tillhör. Reduceraren i
+ * `lib/bankid-flow.ts` avgör vad ett aktuellt svar betyder för dialogen.
  */
 export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResult) => void }) {
   const currentSession = useSessionGuard()
@@ -60,6 +56,23 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
   const [state, dispatch] = useReducer(bankIdReducer, BANKID_INAKTIV)
   const [qrUrl, setQrUrl] = useState<string | null>(null)
   const [valjer, setValjer] = useState(false)
+  const mounted = useRef(false)
+  const attemptRef = useRef(0)
+  const [attempt, setAttempt] = useState(0)
+  const chooseOwner = useRef<number | null>(null)
+  const currentAttempt = useCallback(
+    (id: number) => mounted.current && currentSession() && id === attemptRef.current,
+    [currentSession],
+  )
+
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      attemptRef.current += 1
+      chooseOwner.current = null
+    }
+  }, [])
   const orderRef = pollOrderRef(state)
 
   // ── Pollning ──────────────────────────────────────────────────────────────
@@ -70,14 +83,25 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
   // något — intervallet måste dö när ordern försvinner ELLER komponenten
   // avmonteras, annars pollar en stängd dialog vidare.
   useEffect(() => {
-    if (!orderRef) return
+    if (!orderRef || !currentAttempt(attempt)) return
     let stopp = false
     const id = setInterval(() => {
-      if (stopp || !currentSession()) return
+      if (stopp || !currentAttempt(attempt)) return
       bankIdCollect(orderRef)
-        .then((svar) => !stopp && currentSession() && dispatch({ typ: 'svar', svar }))
+        .then((svar) => {
+          if (stopp || !currentAttempt(attempt)) return
+          // Ett färdigt svar förbrukar pollningen direkt, innan effektstädningen.
+          // Redan överlappande collect får inte skriva över valet/sessionen.
+          if (svar.status !== 'pending') {
+            stopp = true
+            clearInterval(id)
+          }
+          dispatch({ typ: 'svar', svar })
+        })
         .catch((err: unknown) => {
-          if (stopp || !currentSession()) return
+          if (stopp || !currentAttempt(attempt)) return
+          stopp = true
+          clearInterval(id)
           const status = (err as { response?: { status?: number } })?.response?.status
           dispatch({
             typ: 'fel',
@@ -89,7 +113,7 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
       stopp = true
       clearInterval(id)
     }
-  }, [orderRef, currentSession])
+  }, [orderRef, attempt, currentAttempt])
 
   // ── QR ────────────────────────────────────────────────────────────────────
   const qrData = state.steg === 'pollar' ? state.qrData : undefined
@@ -100,37 +124,56 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
     }
     let aktuell = true
     QRCode.toDataURL(qrData, { margin: 1, width: 208 })
-      .then((url) => aktuell && setQrUrl(url))
+      .then((url) => aktuell && currentAttempt(attempt) && setQrUrl(url))
       // Textfallbacken nedan tar över. Utan den blir utfallet en tom ruta,
       // alltså ett flöde som ser ut att hänga.
-      .catch(() => aktuell && setQrUrl(null))
+      .catch(() => aktuell && currentAttempt(attempt) && setQrUrl(null))
     return () => {
       aktuell = false
     }
-  }, [qrData])
+  }, [qrData, attempt, currentAttempt])
 
   useEffect(() => {
-    if (state.steg === 'klar' && currentSession()) onSession(state.session)
-  }, [state, onSession, currentSession])
+    if (state.steg !== 'klar' || !currentAttempt(attempt)) return
+    // Förbruka försöket före callbacken, även om föräldern renderar om synkront.
+    attemptRef.current += 1
+    chooseOwner.current = null
+    onSession(state.session)
+  }, [state, onSession, attempt, currentAttempt])
 
   function starta() {
-    if (!currentSession()) return
+    if (!mounted.current || !currentSession()) return
+    const id = ++attemptRef.current
+    setAttempt(id)
+    chooseOwner.current = null
+    setValjer(false)
+    setQrUrl(null)
     dispatch({ typ: 'starta' })
     bankIdStart()
-      .then((start) => currentSession() && dispatch({ typ: 'startad', start }))
+      .then((start) => currentAttempt(id) && dispatch({ typ: 'startad', start }))
       .catch(
         (err: unknown) =>
-          currentSession() &&
+          currentAttempt(id) &&
           dispatch({ typ: 'fel', meddelande: extractApiError(err, 'BankID kunde inte startas') }),
       )
   }
 
+  function avbryt() {
+    setAttempt(++attemptRef.current)
+    chooseOwner.current = null
+    setValjer(false)
+    setQrUrl(null)
+    dispatch({ typ: 'avbryt' })
+  }
+
   function valj(tenantId: string) {
-    if (state.steg !== 'val' || !currentSession()) return
+    if (state.steg !== 'val' || !currentAttempt(attempt) || chooseOwner.current !== null) return
+    // Lås synkront, även före React hunnit inaktivera kandidatknapparna.
+    chooseOwner.current = attempt
     setValjer(true)
     bankIdChoose(state.chooseToken, tenantId)
       .then((svar) => {
-        if (!currentSession()) return
+        if (!currentAttempt(attempt) || chooseOwner.current !== attempt) return
         if (svar.status !== 'complete') throw new Error('Oväntat svar')
         dispatch({
           typ: 'vald',
@@ -143,10 +186,15 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
       })
       .catch(
         (err: unknown) =>
-          currentSession() &&
+          currentAttempt(attempt) &&
+          chooseOwner.current === attempt &&
           dispatch({ typ: 'fel', meddelande: extractApiError(err, 'Valet kunde inte slutföras') }),
       )
-      .finally(() => setValjer(false))
+      .finally(() => {
+        if (currentAttempt(attempt) && chooseOwner.current === attempt) setValjer(false)
+        // Ägarskapet behålls tills nytt försök/avbryt/leverans; ett färdigt val
+        // får inte skickas igen via en knapp från föregående render.
+      })
   }
 
   const oppen = state.steg !== 'inaktiv' && state.steg !== 'klar'
@@ -239,11 +287,7 @@ export function BankIdLogin({ onSession }: { onSession: (session: PortalAuthResu
               </>
             )}
 
-            <button
-              type="button"
-              className={styles.cancel}
-              onClick={() => dispatch({ typ: 'avbryt' })}
-            >
+            <button type="button" className={styles.cancel} onClick={avbryt}>
               Avbryt
             </button>
           </div>
