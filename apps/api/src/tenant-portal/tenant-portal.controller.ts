@@ -472,7 +472,8 @@ export class TenantPortalController {
       throw new UnauthorizedException('Kontot saknar lösenord')
     }
     const valid = await bcrypt.compare(dto.password, fresh.passwordHash)
-    if (!valid) throw new UnauthorizedException('Felaktigt lösenord')
+    // Sessionen är giltig; ett fel i bekräftelsen ska inte logga ut hyresgästen.
+    if (!valid) throw new BadRequestException('Felaktigt lösenord')
     const ipAddress = req.ip
     const userAgent = (req.headers['user-agent'] as string | undefined) ?? undefined
     await this.portalService.deleteTenantAccount(tenant.id, {
