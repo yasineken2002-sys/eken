@@ -162,8 +162,17 @@ jobs:
       # Skälet att dela alls: det här jobbet provisionerar Postgres och Redis
       # för API-sviten. Webs och portals rena enhetsprov behöver ingetdera, och
       # att köra dem här hade gjort dem beroende av en databas de aldrig rör.
+      - name: Resource observer self-tests
+        run: node apps/api/scripts/observe-ci-resources.selftest.mjs
+
+      # Read-only background observer: the test keeps its existing parent,
+      # process group, arguments and exit status. The observer never signals it.
+      # Periodic samples survive a job timeout; the observer exits when this
+      # step's shell disappears. Sampling does not establish a performance fix.
       - name: Run test suite
-        run: pnpm exec turbo test:ci --filter=@eken/api --ui=stream --log-order=stream --output-logs=full
+        run: |
+          node apps/api/scripts/observe-ci-resources.mjs --parent "$$" &
+          pnpm exec turbo test:ci --filter=@eken/api --ui=stream --log-order=stream --output-logs=full
 
       # ── INGA HOPPADE TESTER. NOLL, INTE ETT UNDERHÅLLET TAL. ────────────
       #

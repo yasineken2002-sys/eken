@@ -5,78 +5,70 @@
   "$permanenta": {
     "apps/api/scripts/check-identifier-regex.mjs": "RATCHETENS EGNA FORMDETEKTORER (6 poster). De MÅSTE bära \\w och ASCII-intervall literalt — det är precis de tecknen de finns för att känna igen. \"Lagas\" de slutar spärren mäta, och den blir grön för allt. Dränera dem aldrig.",
     "apps/api/scripts/check-effect-idempotency.mjs": "EN (1) post: kanariefågelns NEGATIVA REFERENS, mönstret (^|\\n) {2}[a-z0-9_]+: \\{ . Den visar vad den GAMLA formen hade sett, och utan den går det inte att skilja \"fixturen mäter något\" från \"fixturen är trivialt grön\". Byts den till \\p{Ll} blir de två talen lika och provet slutar diskriminera. Motiverad vid raden i vakten.",
-    "apps/api/scripts/check-ai-tool-effects.mjs": "EN (1) post: kanariefågel 2b:s NEGATIVA REFERENS, mönstret '([a-z_]+)' . Den visar vad den GAMLA teckenklassen läste, och är det enda som gör kanariefågel 2 meningsfull — utan den kan parseSet och countSetEntries vara blinda samtidigt utan att någon märker det. Byts den till \\p{Ll} blir talen lika och sonden slutar bita. Motiverad vid raden i vakten."
+    "apps/api/scripts/check-ai-tool-effects.mjs": "EN (1) post: kanariefågel 2b:s NEGATIVA REFERENS, mönstret '([a-z_]+)' . Den visar vad den GAMLA teckenklassen läste, och är det enda som gör kanariefågel 2 meningsfull — utan den kan parseSet och countSetEntries vara blinda samtidigt utan att någon märker det. Byts den till \\p{Ll} blir talen lika och sonden slutar bita. Motiverad vid raden i vakten.",
+    "apps/api/scripts/observe-ci-resources.mjs": "TVÅ (2) poster gäller Linux-kärnans dataformat, inte identifierare i källkod: en ASCII-bokstav för processens state i /proc/<pid>/stat och ASCII-nycklar som usage_usec/oom_kill/core_sched.force_idle_usec i cgroup-v2-räknare. Observatören läser aldrig källkod. Unicode-identifierarregler vore en ogrundad breddning av dessa parsers; posterna låser exakt fil, regexform och en förekomst vardera. Nya former eller fler förekomster ska fortsatt vara röda. Motiverat i PR #1002."
   },
   "$permanenta_regel": "De två posterna ovan är PERMANENTA och ska inte räknas som skuld. En negativ referens i en kanariefågel ska helst skrivas UTAN interpolation — då blir den ingen post alls; se sonderna i check-reminder-fee-source.mjs. Behövs ändå en post: lägg den här, med skäl.",
-  "total": 8,
+  "total": 10,
   "poster": [
     {
       "fil": "apps/api/scripts/check-ai-tool-effects.mjs",
       "mönster": "'([a-z_]+)'",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
+      "former": ["fångst-ascii", "matchning-ascii"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-effect-idempotency.mjs",
       "mönster": "(^|\\n) {2}[a-z0-9_]+: \\{",
-      "former": [
-        "matchning-ascii"
-      ],
+      "former": ["matchning-ascii"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-identifier-regex.mjs",
       "mönster": "(\\w+)\\s*:",
-      "former": [
-        "fångst-w",
-        "matchning-w"
-      ],
+      "former": ["fångst-w", "matchning-w"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-identifier-regex.mjs",
       "mönster": "\\\\\\\\\\\\\\\\w|${ASCII_INTERVALL}",
-      "former": [
-        "matchning-w"
-      ],
+      "former": ["matchning-w"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-identifier-regex.mjs",
       "mönster": "\\\\b[A-Za-z]+\\$|\\^[A-Za-z]+\\\\b",
-      "former": [
-        "matchning-ascii",
-        "gräns-idkonstrukt"
-      ],
+      "former": ["matchning-ascii", "gräns-idkonstrukt"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-identifier-regex.mjs",
       "mönster": "\\\\w",
-      "former": [
-        "matchning-w"
-      ],
+      "former": ["matchning-w"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-identifier-regex.mjs",
       "mönster": "^(?:[^\\\\]|\\\\[^bw])*\\\\b[A-Za-z]+\\\\b(?:[^\\\\]|\\\\[^bw])*$",
-      "former": [
-        "matchning-ascii",
-        "gräns-idkonstrukt"
-      ],
+      "former": ["matchning-ascii", "gräns-idkonstrukt"],
       "antal": 1
     },
     {
       "fil": "apps/api/scripts/check-identifier-regex.mjs",
       "mönster": "^\\/([\\s\\S]*)\\/([a-z]*)$",
-      "former": [
-        "fångst-ascii",
-        "matchning-ascii"
-      ],
+      "former": ["fångst-ascii", "matchning-ascii"],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/observe-ci-resources.mjs",
+      "mönster": "^[A-Za-z]$",
+      "former": ["matchning-ascii"],
+      "antal": 1
+    },
+    {
+      "fil": "apps/api/scripts/observe-ci-resources.mjs",
+      "mönster": "^([a-z_]+(?:\\.[a-z_]+)*)[ \\t]+(\\d+)[ \\t]*$",
+      "former": ["fångst-ascii", "matchning-ascii"],
       "antal": 1
     }
   ]
