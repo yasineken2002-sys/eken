@@ -10,6 +10,7 @@ const config: Config = {
     '^.+\\.(t|j)sx?$': [
       'ts-jest',
       {
+        diagnostics: false,
         tsconfig: {
           experimentalDecorators: true,
           emitDecoratorMetadata: true,
